@@ -179,6 +179,7 @@ export type {
   DisposeLineResult,
   AttestStockResult,
   RestockBlockedDetail,
+  RestockAttestationDetail,
   MarkNotReturnedInput,
   MarkNotReturnedResult,
   ReturnRestockTarget,

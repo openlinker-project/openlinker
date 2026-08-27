@@ -98,6 +98,17 @@ export interface ReturnListItem {
   updatedAt: string;
   /** The rollup `deriveReturnStage` reads. See {@link ReturnCounters}. */
   counters: ReturnCounters;
+  /**
+   * Does this return hold a restock the master refused that nobody attested
+   * (#2381)?
+   *
+   * A SIBLING of `counters`, never a member — the derived stage computes from
+   * counters alone (#2377). **`null` means NOT REPORTED**, and is the only
+   * honest third state: `false` asserts the operator's stock is fine, and
+   * `true` would cry wolf on every row of an unreadable page. `null` renders no
+   * badge and is counted through the list's `droppedCount`.
+   */
+  restockBlocked: boolean | null;
 }
 
 /**
@@ -330,6 +341,39 @@ export interface ReturnRestockTarget {
   candidateCount: number | null;
 }
 
+/** A refused restock, keyed to its LINE — see `returnLineId`. */
+export interface ReturnRestockBlock {
+  eventId: string;
+  /**
+   * NOT derivable from `sku`: two lines of one return can share one, and keying
+   * a per-line notice by sku would render one line's block under another's.
+   */
+  returnLineId: string;
+  quantity: number;
+  sku: string | null;
+  reason: string;
+  detail: string | null;
+  connectionId: string | null;
+  connectionName: string | null;
+  state: string;
+}
+
+/**
+ * A recorded operator attestation.
+ *
+ * `actorUserId` is an ID and must never render as a name — nothing resolves one.
+ * A surface says "by you" when it matches the session user, "by another
+ * operator" otherwise.
+ */
+export interface ReturnRestockAttestation {
+  eventId: string;
+  returnLineId: string;
+  quantity: number;
+  actorUserId: string | null;
+  occurredAt: string;
+  note: string | null;
+}
+
 export interface ReturnDetail extends ReturnListItem {
   lines: ReturnLine[];
   declineAvailability: ReturnDeclineAvailability;
@@ -339,6 +383,19 @@ export interface ReturnDetail extends ReturnListItem {
    * could name a connection the write never touches.
    */
   restockTarget: ReturnRestockTarget;
+  /**
+   * Refused restocks nobody has attested yet (#2381). The source for the
+   * persistent per-line notice — NOT the dispose response, which describes an
+   * ACTION and vanishes on reload.
+   */
+  restockBlocks: ReturnRestockBlock[];
+  /**
+   * Attestations already recorded — the terminal state of the remediation loop.
+   *
+   * Disjoint from `restockBlocks` by construction: attesting flips the act out
+   * of the blocked set, so a line appears in at most one at a time.
+   */
+  restockAttestations: ReturnRestockAttestation[];
   /** Lines the server sent that this build could not read. Reported, never hidden. */
   droppedLineCount: number;
 }
@@ -366,6 +423,16 @@ export interface DisposeReturnLineInput {
   quantity: number;
   disposition: ReturnDisposition;
   note?: string;
+}
+
+export interface AttestReturnLineStockInput {
+  note?: string;
+}
+
+export interface AttestReturnLineStockResult {
+  line: ReturnLineCounters;
+  /** One attestation act per outstanding act it resolved. */
+  eventIds: string[];
 }
 
 export interface MarkReturnLineNotReturnedInput {

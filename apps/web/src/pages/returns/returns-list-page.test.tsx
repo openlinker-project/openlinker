@@ -47,6 +47,7 @@ function makeReturn(overrides: Partial<ReturnListItem> = {}): ReturnListItem {
       quantityRestocked: 0,
       quantityScrapped: 0,
     },
+    restockBlocked: null,
     ...overrides,
   };
 }

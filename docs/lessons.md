@@ -497,3 +497,47 @@ What makes it worth an entry is the shape of the resulting failure. It type-chec
 **Applies to**: every `createQueryBuilder(...).addSelect('<raw sql>', 'alias')` in the tree; especially list reads that end in `.getMany()` and feed a DTO field a UI branches on.
 
 **Source**: #2381 (found by the `/pre-implement` readiness gate before any code was written; `libs/core/src/returns/infrastructure/persistence/repositories/return.repository.ts`).
+
+## Audit a plan's ONE-LINERS, not its paragraphs — and for each, ask what supplies it
+
+**Context**: `/tech-review` on the #2381 plan returned four findings. Every one of them was a step the plan stated in a **single line** and never traced to a data source. Every part the plan had reasoned hardest about — the `getMany()` correction, the parameterised correlating predicate, the event-vs-state split between a mutation response and a read — was sound.
+
+The four, and what each was missing:
+
+| One-liner | What was missing |
+|---|---|
+| *"Post-attestation row"* | No read supplies it. Attesting flips the act out of the outstanding set, so the read the plan added returns `[]` exactly when the row must render. |
+| *"the `ReturnRecord`/counters projection"* | Ambiguous placement. A boolean fact would have landed inside a published `ReturnCounters` type whose whole contract is that a derived stage is computed from it. |
+| *"an unreadable value degrades to the safe direction"* | Stated for one surface, unspecified for the other — and the other's answer is harder, because `false` asserts the operator's stock is fine while `true` cries wolf page-wide. |
+| *"Stock added manually by `{user}`"* | No name is obtainable. `actorUserId` is written everywhere and resolved nowhere; there is no `IUsersService`. |
+
+**Problem**: a one-line step reads as settled precisely because it is short. Prose invites scrutiny; a bullet that names a UI element sounds like a rendering detail, so a reviewer's eye skips it and the author never asked the question either. The failure surfaces mid-implementation, when the tempting fix is whatever is nearest to hand — the mutation's own response for the row, the raw UUID for the name — and that is how a placeholder ships.
+
+**Rule**: when reviewing a plan (your own especially), **list every step stated in one line and ask of each: what supplies this?** A field needs a read, a control needs a write, a badge needs a flag on the wire, and **a copy string is a contract too** — `{user}` in a spec is a promise that a name is obtainable, exactly as a button is a promise that a write exists. If the answer is "the response of the action that caused it", check what happens on reload. It is a cheap pass and it would have caught all four here before a review round.
+
+**Applies to**: every `docs/plans/implementation-plan-*.md`; the `/pre-implement` and `/tech-review` gates when the target is a plan rather than a diff.
+
+**Source**: #2381 (four findings, four one-liners, zero from the reasoned paragraphs).
+
+## "Would pass the demo / would pass the harness" is a reliable marker for a whole family of defects — ask what the state is when nobody is looking on purpose
+
+**Context**: #2380/#2381 produced four defects with one shape, found at four different stages:
+
+| Defect | Why it looked fine |
+|---|---|
+| A persistent inline error rendered inside a **collapsed** `DataTable` expansion | A demo expands the row. |
+| The same notice fed from a mutation **response** rather than a read | Nobody reloads mid-demo. |
+| A row badge from a raw `addSelect` on a `getMany()` query | Type-checks; passes a stubbed unit test. |
+| `earliest-order-date.int-spec` asserting the host timezone | Passes in UTC CI. |
+
+**Problem**: each is a surface whose entire purpose is to be **noticed**, failing in exactly the state where nobody is deliberately looking at it — collapsed, reloaded, unmocked, in another timezone. That state is never the one a demo, a review, or a hand-written test exercises, because all three involve someone attending to the thing on purpose. So the defect survives every cheap check and reaches an operator who was not attending, which is the only audience the surface was built for.
+
+The inline-error case is the sharpest: a persistent error behind a disclosure is **not a weaker version of the requirement** — it is precisely the silent no-op the requirement exists to prevent, shipped under the requirement's own name.
+
+**Rule**: for any surface whose job is to be noticed — an alarm, a badge, a warning, a blocked state — ask **"what is this in the state where nobody is looking at it on purpose?"** Collapsed. Reloaded. Filtered out. On a page that was already open. In a locale that is not yours. If the answer is "absent", it does not meet the requirement however good it looks when attended to. This is the same check as the one-liner audit above, applied from the other end: that one asks *what supplies this*; this one asks *who sees it when nobody is trying to*.
+
+**Corollary — a promised test that was never written is indistinguishable from a passing one.** #2381's plan specified a toast/notice overlap test; the implementation did not write it, and nothing failed, because nothing compares a plan's test list against a diff's. When a plan names a test, check it exists by name before calling the work done.
+
+**Applies to**: any operator-facing alarm/badge/notice; any plan whose acceptance criteria name specific tests.
+
+**Source**: #2380 / #2381.

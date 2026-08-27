@@ -80,6 +80,27 @@ const returnLineSchema = z.object({
   note: z.string().nullish(),
 });
 
+const restockBlockSchema = z.object({
+  eventId: z.string(),
+  returnLineId: z.string(),
+  quantity: z.number(),
+  sku: z.string().nullish(),
+  reason: z.string(),
+  detail: z.string().nullish(),
+  connectionId: z.string().nullish(),
+  connectionName: z.string().nullish(),
+  state: z.string(),
+});
+
+const restockAttestationSchema = z.object({
+  eventId: z.string(),
+  returnLineId: z.string(),
+  quantity: z.number(),
+  actorUserId: z.string().nullish(),
+  occurredAt: z.string(),
+  note: z.string().nullish(),
+});
+
 const restockTargetSchema = z.object({
   status: z.string(),
   connectionId: z.string().nullish(),
@@ -122,6 +143,10 @@ const returnDetailSchema = z.object({
   lines: z.array(z.unknown()).nullish(),
   declineAvailability: declineAvailabilitySchema.nullish(),
   restockTarget: restockTargetSchema.nullish(),
+  // `z.unknown()` per element, parsed row by row below, so ONE unreadable block
+  // does not discard the rest — the list schema's own rule.
+  restockBlocks: z.array(z.unknown()).nullish(),
+  restockAttestations: z.array(z.unknown()).nullish(),
 });
 
 const declineResultSchema = z.object({
@@ -130,6 +155,25 @@ const declineResultSchema = z.object({
   declinedAt: z.string().nullish(),
   refusalReason: z.string().nullish(),
 });
+
+/**
+ * Parse an array element-by-element, dropping only what it cannot read.
+ *
+ * One malformed block must not discard the others: each is an independent alarm
+ * about a different line's goods.
+ */
+function parseList<T>(
+  raw: unknown,
+  schema: { safeParse: (value: unknown) => { success: boolean; data?: T } }
+): T[] {
+  if (!Array.isArray(raw)) return [];
+  const out: T[] = [];
+  for (const item of raw) {
+    const parsed = schema.safeParse(item);
+    if (parsed.success && parsed.data !== undefined) out.push(parsed.data);
+  }
+  return out;
+}
 
 /** Collapse `undefined` and `null` — both mean "not reported" — onto `null`. */
 function orNull<T>(value: T | null | undefined): T | null {
@@ -265,6 +309,36 @@ export function parseReturnDetail(raw: unknown, returnId: string): ReturnDetail 
       availability === undefined || availability === null
         ? UNREADABLE_DECLINE_AVAILABILITY
         : { supported: availability.supported, reason: orNull(availability.reason) },
+    // An unreadable or absent array degrades to EMPTY, and that is safe ONLY
+    // here: the row flag is what claims "this return has a problem", and it
+    // degrades to `null` (not reported) rather than to `false`. If the detail's
+    // blocks were the only signal, an empty-on-unreadable would assert the
+    // operator's stock is fine — which is why the two degrade differently.
+    // The DETAIL read reports the blocks themselves, so the row-level summary
+    // flag is `null` here — "not reported by this read", never `false`.
+    restockBlocked: null,
+    restockBlocks: parseList(parsed.data.restockBlocks, restockBlockSchema).map((block) => ({
+      eventId: block.eventId,
+      returnLineId: block.returnLineId,
+      quantity: block.quantity,
+      sku: orNull(block.sku),
+      reason: block.reason,
+      detail: orNull(block.detail),
+      connectionId: orNull(block.connectionId),
+      connectionName: orNull(block.connectionName),
+      state: block.state,
+    })),
+    restockAttestations: parseList(
+      parsed.data.restockAttestations,
+      restockAttestationSchema
+    ).map((attestation) => ({
+      eventId: attestation.eventId,
+      returnLineId: attestation.returnLineId,
+      quantity: attestation.quantity,
+      actorUserId: orNull(attestation.actorUserId),
+      occurredAt: attestation.occurredAt,
+      note: orNull(attestation.note),
+    })),
     restockTarget:
       target === undefined || target === null
         ? UNREADABLE_RESTOCK_TARGET

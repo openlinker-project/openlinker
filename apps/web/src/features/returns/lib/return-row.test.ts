@@ -50,6 +50,9 @@ function item(c: Partial<ReturnCounters>, declined = false): ReturnListItem {
     createdAt: '2026-08-01T00:00:00.000Z',
     updatedAt: '2026-08-01T00:00:00.000Z',
     counters: counters(c),
+    // The derived STAGE must not read this — #2377's rule that the stage
+    // computes from counters alone is why the flag is a sibling, not a member.
+    restockBlocked: null,
   };
 }
 

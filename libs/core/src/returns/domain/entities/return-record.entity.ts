@@ -93,7 +93,24 @@ export class ReturnRecord {
      * `IReturnsService.listReturns` to change its return type and the controller
      * to zip two collections.
      */
-    public readonly counters: ReturnStageCounters | null = null
+    public readonly counters: ReturnStageCounters | null = null,
+    /**
+     * Does this return hold a restock the master refused and nobody attested
+     * (#2381, spec § 5.4)?
+     *
+     * **A SIBLING of `counters`, deliberately never a member of it.** It is
+     * fetched by the same aggregate query, but the fetch mechanism must not
+     * dictate the projection shape: `ReturnStageCounters` is the input
+     * `deriveReturnStage` computes from, and #2377 was deliberate that the stage
+     * derives from counters ALONE. A boolean fact living inside that type would
+     * silently widen the input to a derivation that must not see it.
+     *
+     * **`null` means "this read did not report it", never `false`.** `false`
+     * asserts the operator's stock is fine; on an unreadable or
+     * counters-less read that is a claim OpenLinker is not entitled to make.
+     * The detail read leaves it `null` and surfaces the blocks themselves.
+     */
+    public readonly restockBlocked: boolean | null = null
   ) {}
 
   /**

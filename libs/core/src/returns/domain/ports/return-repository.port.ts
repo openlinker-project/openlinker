@@ -436,6 +436,22 @@ export interface ReturnRepositoryPort {
   findOutstandingRestockEventsForReturn(returnId: string): Promise<ReturnLineEvent[]>;
 
   /**
+   * Every stock attestation on a return, oldest first (#2381).
+   *
+   * The counterpart to the outstanding read, and NOT derivable from it: attesting
+   * FLIPS the blocked act's `restockState` to `handled_manually`, so an attested
+   * act leaves the outstanding set entirely. Without this, spec § 5.4's
+   * post-attestation row — the terminal state of the whole remediation loop —
+   * has no source, and the only observable result of *"I handled this myself"*
+   * is that the alarm disappears.
+   *
+   * One indexed lookup, mirroring its sibling. `listLineEvents` is deliberately
+   * NOT reused: it is per-line and unfiltered, so rendering one sentence per line
+   * would cost N calls returning every act.
+   */
+  findAttestationsForReturn(returnId: string): Promise<ReturnLineEvent[]>;
+
+  /**
    * Every act on a line, oldest first — the audit narrative #2376's timeline
    * renders, and the proof-of-work a spec sums against the counters.
    */

@@ -19615,3 +19615,59 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* --------------------------------------------------------------------------
+   Restock-blocked surfacing (#2381, returns spec § 5.4).
+
+   The highest-severity surface in the returns spec: a restock that silently
+   no-ops is worse than none. The notice is PERSISTENT and read from the server,
+   never from a mutation response — a red box that vanishes on reload is the
+   toast § 5.4 forbids by name.
+
+   Usable at 375 px: the action row wraps rather than scrolling, and the
+   remediation sentence is never truncated — it names the quantity, the sku and
+   the system that refused, which is the whole instruction.
+   -------------------------------------------------------------------------- */
+
+.returns-restock-blocked__body,
+.returns-restock-blocked__remedy {
+  margin: 0 0 var(--space-2);
+}
+
+.returns-restock-blocked__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.returns-restock-blocked__explainer {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-size: 0.8125rem;
+}
+
+.returns-restock-blocked__explainer p {
+  margin: 0;
+}
+
+/* Neutral, deliberately — not success (OpenLinker succeeded at nothing; a human
+   did the work) and not error (nothing is outstanding). No actions. */
+.returns-restock-attested {
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
+/* One per affected line, ABOVE the table — see the panel's docblock. */
+.returns-restock-notice {
+  margin-bottom: var(--space-3);
+}
+
+.returns-restock-notice__line {
+  margin: 0 0 var(--space-1);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}

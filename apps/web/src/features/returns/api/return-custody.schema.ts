@@ -19,6 +19,7 @@
  */
 import { z } from 'zod/v4';
 import type {
+  AttestReturnLineStockResult,
   DisposeReturnLineResult,
   MarkReturnLineNotReturnedResult,
   ReceiveReturnLineResult,
@@ -101,6 +102,19 @@ export function parseMarkNotReturnedResult(raw: unknown): MarkReturnLineNotRetur
     throw new ReturnCustodyResultUnreadableError();
   }
   return { line: toCounters(parsed.data.line), eventId: parsed.data.eventId };
+}
+
+const attestResultSchema = z.object({
+  line: lineCountersSchema,
+  eventIds: z.array(z.string()),
+});
+
+export function parseAttestReturnLineStockResult(raw: unknown): AttestReturnLineStockResult {
+  const parsed = attestResultSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new ReturnCustodyResultUnreadableError();
+  }
+  return { line: toCounters(parsed.data.line), eventIds: parsed.data.eventIds };
 }
 
 export function parseDisposeReturnLineResult(raw: unknown): DisposeReturnLineResult {

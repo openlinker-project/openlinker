@@ -26,7 +26,6 @@
  */
 import { useState, type ReactElement, type ReactNode } from 'react';
 
-import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import {
   Dialog,
@@ -41,20 +40,23 @@ import { ReturnLinesTable } from './return-lines-table';
 import { ReturnReceiveForm } from './return-receive-form';
 import { ReturnDisposeForm } from './return-dispose-form';
 import { ReturnNotReturnedAction } from './return-not-returned-action';
+import { ReturnRestockBlockedNotice } from './return-restock-blocked-notice';
 import { describeCustodyError } from '../lib/custody-error';
+import { RETURN_RESTOCK_ATTESTED_COPY } from '../lib/restock-blocked.copy';
+import { RETURN_LINES_COPY } from '../lib/return-detail.copy';
 import {
   RETURN_DISPOSE_COPY,
   RETURN_RECEIVE_COPY,
   RETURN_NOT_RETURNED_COPY,
-  RETURN_RESTOCK_BLOCKED_COPY,
 } from '../lib/return-custody.copy';
 import { outstandingToDispose, outstandingToReceive } from '../lib/return-line-quantities';
 import {
   useDisposeReturnLineMutation,
   useMarkReturnLineNotReturnedMutation,
+  useMarkStockHandledMutation,
   useReceiveReturnLineMutation,
 } from '../hooks/use-return-custody-mutations';
-import type { ReturnDetail, ReturnLine, ReturnRestockBlocked } from '../api/returns.types';
+import type { ReturnDetail, ReturnLine } from '../api/returns.types';
 
 interface ReturnCustodyPanelProps {
   detail: ReturnDetail;
@@ -65,6 +67,11 @@ interface ReturnCustodyPanelProps {
    * write surfaces on this screen cannot disagree about the session.
    */
   writeAccess: { canWrite: boolean; demoReadOnly: boolean; visible: boolean };
+  /**
+   * Resolves the attestation's *"by you"* vs *"by another operator"* — never a
+   * name, because nothing in the tree resolves a user id to one.
+   */
+  sessionUserId?: string | null;
 }
 
 type FlowMode = 'receive' | 'dispose';
@@ -73,12 +80,14 @@ export function ReturnCustodyPanel({
   detail,
   sourceName = null,
   writeAccess,
+  sessionUserId = null,
 }: ReturnCustodyPanelProps): ReactElement {
   const { showToast } = useToast();
 
   const receive = useReceiveReturnLineMutation(detail.id);
   const dispose = useDisposeReturnLineMutation(detail.id);
   const markNotReturned = useMarkReturnLineNotReturnedMutation(detail.id);
+  const attest = useMarkStockHandledMutation(detail.id);
 
   const [modeByLine, setModeByLine] = useState<Record<string, FlowMode>>({});
   /**
@@ -92,19 +101,26 @@ export function ReturnCustodyPanel({
    */
   const [pendingLineId, setPendingLineId] = useState<string | null>(null);
   const [errorByLine, setErrorByLine] = useState<Record<string, string>>({});
-  /**
-   * Refused restocks observed on THIS page visit.
-   *
-   * It deliberately never clears within a session: what resolves a block is the
-   * operator attestation (`POST .../mark-stock-handled`, spec § 5.4), which is
-   * the sibling issue to this one. Until that ships the flag is
-   * correct-but-incomplete rather than wrong — do not "fix" it into a flag that
-   * clears on nothing, which would hide a stock write that did not happen.
-   */
-  const [blockedByLine, setBlockedByLine] = useState<Record<string, ReturnRestockBlocked>>({});
+  // #2380's `blockedByLine` session state is RETIRED here (#2381). It was the
+  // only thing available before a read existed, and keeping it beside the server
+  // read would leave two homes for one fact. The blocks now arrive on the detail
+  // read, so they survive a reload — which is the whole requirement (spec § 5.4:
+  // a toast must not be the only signal).
   const [bulkOpen, setBulkOpen] = useState(false);
 
   const isOrphan = detail.bucket === 'orphan';
+
+  // Scoped to each line by `returnLineId` — never by sku, which two lines of one
+  // return can legitimately share. A line with neither is omitted entirely.
+  const linesWithCustodyNotices = detail.lines
+    .map((line) => ({
+      line,
+      blocks: detail.restockBlocks.filter((block) => block.returnLineId === line.id),
+      attestations: detail.restockAttestations.filter(
+        (attestation) => attestation.returnLineId === line.id
+      ),
+    }))
+    .filter(({ blocks, attestations }) => blocks.length > 0 || attestations.length > 0);
   const outstandingLines = detail.lines.filter((line) => outstandingToReceive(line) > 0);
 
   const setError = (lineId: string, message: string | null): void => {
@@ -139,14 +155,16 @@ export function ReturnCustodyPanel({
       { lineId: line.id, input },
       {
         onSuccess: (result) => {
-          // A block is NOT an error — the disposition landed. It is recorded in
-          // place so the operator sees it after the toast is gone.
-          setBlockedByLine((current) =>
+          // The response describes an EVENT — "the thing you just clicked was
+          // blocked" — and drives only the toast, which is itself event-shaped.
+          // The persistent notice renders from the detail READ, which describes
+          // STATE and survives a reload. One source for what is on screen, and
+          // no window in which the two can disagree.
+          showToast(
             result.restockBlocked === null
-              ? current
-              : { ...current, [line.id]: result.restockBlocked }
+              ? { tone: 'success', description: RETURN_DISPOSE_COPY.success }
+              : { tone: 'error', description: RETURN_DISPOSE_COPY.restockBlockedToast }
           );
-          showToast({ tone: 'success', description: RETURN_DISPOSE_COPY.success });
         },
         onError: (error) => setError(line.id, describeCustodyError(error)),
         onSettled: () => setPendingLineId(null),
@@ -162,6 +180,20 @@ export function ReturnCustodyPanel({
       {
         onSuccess: () =>
           showToast({ tone: 'success', description: RETURN_NOT_RETURNED_COPY.success }),
+        onError: (error) => setError(line.id, describeCustodyError(error)),
+        onSettled: () => setPendingLineId(null),
+      }
+    );
+  };
+
+  const runAttest = (line: ReturnLine): void => {
+    setError(line.id, null);
+    setPendingLineId(line.id);
+    attest.mutate(
+      { lineId: line.id, input: {} },
+      {
+        onSuccess: () =>
+          showToast({ tone: 'success', description: RETURN_RESTOCK_ATTESTED_COPY.toast }),
         onError: (error) => setError(line.id, describeCustodyError(error)),
         onSettled: () => setPendingLineId(null),
       }
@@ -218,25 +250,11 @@ export function ReturnCustodyPanel({
     // Opens on whatever the line is waiting for, so the common case is one
     // press to expand and one to submit.
     const mode: FlowMode = modeByLine[line.id] ?? (canReceive ? 'receive' : 'dispose');
-    const blocked = blockedByLine[line.id];
     const error = errorByLine[line.id] ?? null;
 
     return (
       <ReadOnlyLock active={writeAccess.demoReadOnly} message={RETURN_RECEIVE_COPY.readOnly}>
         <div className="return-custody-detail">
-          {blocked !== undefined ? (
-            <Alert tone="error">
-              <strong>{RETURN_RESTOCK_BLOCKED_COPY.title}</strong>{' '}
-              {RETURN_RESTOCK_BLOCKED_COPY.bodyPrefix}{' '}
-              <strong>
-                {blocked.connectionName ?? RETURN_RESTOCK_BLOCKED_COPY.bodyUnknownConnection}
-              </strong>{' '}
-              {RETURN_RESTOCK_BLOCKED_COPY.bodySuffix} {RETURN_RESTOCK_BLOCKED_COPY.remedyPrefix}{' '}
-              {blocked.quantity} {RETURN_RESTOCK_BLOCKED_COPY.remedyJoin}{' '}
-              {blocked.sku ?? line.sku ?? RETURN_RESTOCK_BLOCKED_COPY.bodyUnknownConnection}{' '}
-              {RETURN_RESTOCK_BLOCKED_COPY.remedySuffix}
-            </Alert>
-          ) : null}
 
           {canReceive && canDispose ? (
             <div className="return-custody-detail__switch">
@@ -304,6 +322,28 @@ export function ReturnCustodyPanel({
           </div>
         </ReadOnlyLock>
       ) : null}
+
+      {/* ABOVE the table and never inside its expansion (#2381).
+          Spec § 5.4 calls for a *persistent* inline error precisely so it cannot
+          be missed — putting the highest-severity surface behind a disclosure
+          would mean an operator scanning the return sees nothing, which is the
+          silent no-op the whole feature exists to prevent. One block per
+          affected line, named, so the alarm points at specific goods. */}
+      {linesWithCustodyNotices.map(({ line, blocks, attestations }) => (
+        <div className="returns-restock-notice" key={line.id}>
+          <p className="returns-restock-notice__line text-muted">
+            {line.name ?? line.sku ?? RETURN_LINES_COPY.unnamedItem}
+          </p>
+          <ReturnRestockBlockedNotice
+            attestations={attestations}
+            blocks={blocks}
+            lineSku={line.sku}
+            onAttest={() => runAttest(line)}
+            pending={attest.isPending && pendingLineId === line.id}
+            sessionUserId={sessionUserId}
+          />
+        </div>
+      ))}
 
       <ReturnLinesTable
         lines={detail.lines}

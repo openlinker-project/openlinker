@@ -45,6 +45,8 @@ import type {
   ReturnCountersDto,
   ReturnListItemResponseDto,
   ReturnRestockTargetDto,
+  ReturnRestockBlockDto,
+  ReturnRestockAttestationDto,
 } from '../dto/return-response.dto';
 import {
   PaginatedReturnsResponseDto,
@@ -200,13 +202,45 @@ export class ReturnsController {
     }
 
     const declineAvailability = await this.returnsService.getDeclineAvailability(record);
-    const restockTarget = await this.custody.getRestockTarget();
+    // The three custody reads the detail renders. Fanned out together: they are
+    // independent, and serialising them would add two round trips to a page load
+    // for no ordering guarantee.
+    const [restockTarget, restockBlocks, restockAttestations] = await Promise.all([
+      this.custody.getRestockTarget(),
+      this.custody.listOutstandingRestockBlocks(returnId),
+      this.custody.listRestockAttestations(returnId),
+    ]);
 
     return {
       ...this.toListItemDto(record),
       lines: record.lines.map((line) => this.toLineDto(line)),
       declineAvailability,
       restockTarget: ReturnsController.toRestockTargetDto(restockTarget),
+      // Disjoint by construction — attesting flips an act out of the blocked
+      // set — so a line can appear in at most one of these at a time.
+      restockBlocks: restockBlocks.map(
+        (block): ReturnRestockBlockDto => ({
+          eventId: block.eventId,
+          returnLineId: block.returnLineId,
+          quantity: block.quantity,
+          sku: block.sku,
+          reason: block.reason,
+          detail: block.detail,
+          connectionId: block.connectionId,
+          connectionName: block.connectionName,
+          state: block.state,
+        })
+      ),
+      restockAttestations: restockAttestations.map(
+        (attestation): ReturnRestockAttestationDto => ({
+          eventId: attestation.eventId,
+          returnLineId: attestation.returnLineId,
+          quantity: attestation.quantity,
+          actorUserId: attestation.actorUserId,
+          occurredAt: attestation.occurredAt.toISOString(),
+          note: attestation.note,
+        })
+      ),
     };
   }
 
@@ -267,6 +301,9 @@ export class ReturnsController {
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString(),
       counters: this.toCountersDto(record),
+      // Passed through verbatim, including `null`. Defaulting to `false` here
+      // would turn "this read did not report it" into "your stock is fine".
+      restockBlocked: record.restockBlocked,
     };
   }
 

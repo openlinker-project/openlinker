@@ -79,6 +79,7 @@ import type {
   MarkNotReturnedResult,
   ReceiveLineInput,
   ReceiveLineResult,
+  RestockAttestationDetail,
   RestockBlockedDetail,
   ReturnRestockTarget,
 } from './return-custody.service.interface';
@@ -365,6 +366,22 @@ export class ReturnCustodyService implements IReturnCustodyService {
     return { kind: 'one', chosen: candidates[0] };
   }
 
+  async listRestockAttestations(returnId: string): Promise<RestockAttestationDetail[]> {
+    const events = await this.repository.findAttestationsForReturn(returnId);
+
+    // No connection lookup, deliberately: an attestation is a statement about
+    // what a HUMAN did, and OpenLinker explicitly did not write the master here.
+    // Naming a connection would re-raise the block the attestation answered.
+    return events.map((event) => ({
+      eventId: event.id,
+      returnLineId: event.returnLineId,
+      quantity: event.quantity,
+      actorUserId: event.actorUserId,
+      occurredAt: event.occurredAt,
+      note: event.note,
+    }));
+  }
+
   async listOutstandingRestockBlocks(returnId: string): Promise<RestockBlockedDetail[]> {
     const events = await this.repository.findOutstandingRestockEventsForReturn(returnId);
     if (events.length === 0) {
@@ -388,6 +405,7 @@ export class ReturnCustodyService implements IReturnCustodyService {
 
     return events.map((event) => ({
       eventId: event.id,
+      returnLineId: event.returnLineId,
       quantity: event.quantity,
       sku: skuByLineId.get(event.returnLineId) ?? null,
       reason: event.restockBlockedReason ?? 'unknown',
@@ -581,6 +599,7 @@ export class ReturnCustodyService implements IReturnCustodyService {
         ? null
         : {
             eventId: settled.id,
+            returnLineId: line.id,
             quantity: input.quantity,
             sku: line.sku,
             reason: outcome.restockBlockedReason ?? 'unknown',

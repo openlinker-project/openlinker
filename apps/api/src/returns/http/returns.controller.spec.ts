@@ -72,7 +72,11 @@ const buildRecord = (overrides: Record<string, unknown> = {}): ReturnRecord => {
 
 describe('ReturnsController', () => {
   let controller: ReturnsController;
-  let custody: { getRestockTarget: jest.Mock };
+  let custody: {
+    getRestockTarget: jest.Mock;
+    listOutstandingRestockBlocks: jest.Mock;
+    listRestockAttestations: jest.Mock;
+  };
   let returnsService: {
     listReturns: jest.Mock;
     countReturnsByBucket: jest.Mock;
@@ -129,6 +133,10 @@ describe('ReturnsController', () => {
         connectionId: 'conn-1',
         connectionName: 'Warehouse PrestaShop',
       }),
+      // #2381 — disjoint by construction: attesting flips an act out of the
+      // blocked set, so a line is in at most one of these at a time.
+      listOutstandingRestockBlocks: jest.fn().mockResolvedValue([]),
+      listRestockAttestations: jest.fn().mockResolvedValue([]),
     };
 
     controller = new ReturnsController(returnsService as never, custody as never);
@@ -221,6 +229,7 @@ describe('ReturnsController', () => {
           'openedAt',
           'origin',
           'rawStatus',
+          'restockBlocked',
           'sourceConnectionId',
           'updatedAt',
         ].sort()

@@ -31,6 +31,8 @@ import {
   ReturnMoneyStateValues,
   ReturnOriginValues,
   ReturnRestockTargetStatusValues,
+  ReturnRestockBlockReasonValues,
+  ReturnRestockStateValues,
   type ReturnBucket,
   type ReturnCustodyState,
   type ReturnDeclineUnsupportedReason,
@@ -38,6 +40,8 @@ import {
   type ReturnMoneyState,
   type ReturnOrigin,
   type ReturnRestockTargetStatus,
+  type ReturnRestockBlockReason,
+  type ReturnRestockState,
 } from '@openlinker/core/returns';
 import type { ReturnSegment, ReturnStage } from '@openlinker/core/returns';
 import { RefundReasonValues, type RefundReason } from '@openlinker/core/orders/types';
@@ -190,6 +194,16 @@ export class ReturnListItemResponseDto {
 
   @ApiProperty({
     nullable: true,
+    description:
+      'Does this return hold a restock the master refused that nobody has attested (#2381)? ' +
+      'A SIBLING of `counters`, never a member — the derived stage computes from counters alone. ' +
+      '`null` means NOT REPORTED, never `false`: `false` asserts the operator\'s stock is fine, ' +
+      'which is a claim OpenLinker cannot make about a read that did not ask.',
+  })
+  restockBlocked!: boolean | null;
+
+  @ApiProperty({
+    nullable: true,
     description: 'The order this return belongs to. Null exactly when bucket is "orphan".',
   })
   internalOrderId!: string | null;
@@ -293,6 +307,64 @@ export class ReturnRestockTargetDto {
   candidateCount!: number | null;
 }
 
+/**
+ * A refused restock nobody has attested yet (#2381, spec § 5.4).
+ *
+ * Every field the remediation copy interpolates travels with it — the copy names
+ * the quantity, the sku and the system that refused, and a UI that had to fetch
+ * those separately would render the alarm a beat late.
+ */
+export class ReturnRestockBlockDto {
+  @ApiProperty({ description: 'The act to attest to.' }) eventId!: string;
+
+  @ApiProperty({
+    description:
+      'The line these units belong to. NOT derivable from `sku` — two lines of one return can ' +
+      'share one, and keying a per-line notice by sku would render one line\'s block under another\'s.',
+  })
+  returnLineId!: string;
+
+  @ApiProperty() quantity!: number;
+  @ApiProperty({ nullable: true }) sku!: string | null;
+  @ApiProperty({ enum: ReturnRestockBlockReasonValues }) reason!: ReturnRestockBlockReason;
+
+  @ApiProperty({ nullable: true, description: "The adapter's own sentence." })
+  detail!: string | null;
+
+  @ApiProperty({ nullable: true }) connectionId!: string | null;
+  @ApiProperty({ nullable: true }) connectionName!: string | null;
+
+  @ApiProperty({ enum: ReturnRestockStateValues })
+  state!: ReturnRestockState;
+}
+
+/**
+ * A recorded operator attestation — the TERMINAL STATE of the remediation loop.
+ *
+ * Disjoint from {@link ReturnRestockBlockDto} by construction: attesting flips
+ * the act out of the blocked set, so a surface needs both reads — one to raise
+ * the alarm and one to show it was answered. Without this the only observable
+ * result of *"I handled this myself"* is that the alarm disappears, and the next
+ * reader sees a line that was never blocked.
+ */
+export class ReturnRestockAttestationDto {
+  @ApiProperty() eventId!: string;
+  @ApiProperty() returnLineId!: string;
+  @ApiProperty() quantity!: number;
+
+  @ApiProperty({
+    nullable: true,
+    description:
+      'Who attested, as an ID. OpenLinker resolves no display name for it, so a surface renders ' +
+      '"by you" when it matches the session user and "by another operator" otherwise — never a ' +
+      'raw id, and never a name it cannot verify.',
+  })
+  actorUserId!: string | null;
+
+  @ApiProperty({ description: 'ISO-8601.' }) occurredAt!: string;
+  @ApiProperty({ nullable: true }) note!: string | null;
+}
+
 /** The hydrated aggregate: the header above, plus its lines and the decline fact. */
 export class ReturnResponseDto extends ReturnListItemResponseDto {
   @ApiProperty({ type: [ReturnLineResponseDto], description: 'Ordered by lineIndex.' })
@@ -303,6 +375,18 @@ export class ReturnResponseDto extends ReturnListItemResponseDto {
 
   @ApiProperty({ type: ReturnRestockTargetDto })
   restockTarget!: ReturnRestockTargetDto;
+
+  @ApiProperty({
+    type: [ReturnRestockBlockDto],
+    description: 'Refused restocks nobody has attested yet. Empty means none outstanding.',
+  })
+  restockBlocks!: ReturnRestockBlockDto[];
+
+  @ApiProperty({
+    type: [ReturnRestockAttestationDto],
+    description: 'Attestations already recorded. Disjoint from `restockBlocks`.',
+  })
+  restockAttestations!: ReturnRestockAttestationDto[];
 }
 
 export class ReturnBucketCountsDto {

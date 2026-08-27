@@ -81,6 +81,9 @@ function makeDetail(overrides: Partial<ReturnDetail> = {}): ReturnDetail {
     lines: [makeLine()],
     droppedLineCount: 0,
     declineAvailability: { supported: true, reason: null },
+    restockBlocked: null,
+    restockBlocks: [],
+    restockAttestations: [],
     restockTarget: {
       status: 'resolved',
       connectionId: 'conn_master',
@@ -97,6 +100,7 @@ interface SetupOptions {
   declineFn?: Mock;
   getFn?: Mock;
   receiveLine?: Mock;
+  disposeLine?: Mock;
   authenticated?: boolean;
 }
 
@@ -104,6 +108,7 @@ interface SetupResult extends RenderResult {
   getFn: Mock;
   declineFn: Mock;
   receiveLine: Mock;
+  disposeLine: Mock;
 }
 
 function setup(options: SetupOptions = {}): SetupResult {
@@ -115,9 +120,12 @@ function setup(options: SetupOptions = {}): SetupResult {
   const declineFn = options.declineFn ?? vi.fn();
 
   const receiveLine = options.receiveLine ?? vi.fn().mockResolvedValue({ line: {}, eventId: 'e1' });
+  const disposeLine =
+    options.disposeLine ??
+    vi.fn().mockResolvedValue({ line: {}, eventId: 'e2', restockBlocked: null });
 
   const apiClient = createMockApiClient({
-    returns: { get: getFn, decline: declineFn, receiveLine },
+    returns: { get: getFn, decline: declineFn, receiveLine, disposeLine },
     connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
   });
 
@@ -134,7 +142,7 @@ function setup(options: SetupOptions = {}): SetupResult {
     },
   );
 
-  return { ...result, getFn, declineFn, receiveLine };
+  return { ...result, getFn, declineFn, receiveLine, disposeLine };
 }
 
 describe('ReturnDetailPage', () => {
@@ -378,6 +386,91 @@ describe('ReturnDetailPage', () => {
       // unauthorized session), distinct from the record's own state.
       expect(await screen.findByText(/Allegro Main: COMMISSION_REFUND_CLAIMED/)).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Decline return' })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('restock-blocked surfacing (#2381)', () => {
+    it('should render the persistent notice from the SERVER READ, not a mutation response', async () => {
+      setup({
+        detail: makeDetail({
+          lines: [makeLine({ quantityReceived: 2, custodyState: 'received' })],
+          restockBlocks: [
+            {
+              eventId: 'evt-1',
+              returnLineId: 'ol_line_1',
+              quantity: 2,
+              sku: 'SKU-1',
+              reason: 'master-refused',
+              detail: null,
+              connectionId: 'conn-master',
+              connectionName: 'Warehouse PrestaShop',
+              state: 'blocked',
+            },
+          ],
+        }),
+      });
+
+      // Nothing was clicked in this test. The notice is present purely because
+      // the read reported it, which is what makes it survive a reload — the
+      // property spec § 5.4 requires and #2380's session state could not give.
+      expect(await screen.findByText('Stock was not added.')).toBeInTheDocument();
+      // Named in the body, the remedy and the Open action — all three are
+      // deliberate, so assert presence rather than uniqueness.
+      expect(screen.getAllByText(/Warehouse PrestaShop/).length).toBeGreaterThan(0);
+    });
+
+    it('should render the attested row, and no alarm, once handled', async () => {
+      setup({
+        detail: makeDetail({
+          lines: [makeLine({ quantityReceived: 2, custodyState: 'received' })],
+          restockBlocks: [],
+          restockAttestations: [
+            {
+              eventId: 'evt-a',
+              returnLineId: 'ol_line_1',
+              quantity: 2,
+              actorUserId: 'someone',
+              occurredAt: '2026-08-20T10:00:00.000Z',
+              note: null,
+            },
+          ],
+        }),
+      });
+
+      expect(
+        await screen.findByText(/OpenLinker did not change your stock/),
+      ).toBeInTheDocument();
+      // A resolution that leaves the alarm ringing trains the operator to ignore
+      // the alarm; one that leaves no trace trains them to distrust the click.
+      expect(screen.queryByText('Stock was not added.')).not.toBeInTheDocument();
+    });
+
+    it('should never render blocked units as restocked — the acceptance criterion', async () => {
+      setup({
+        detail: makeDetail({
+          lines: [
+            makeLine({ quantityAdvised: 2, quantityReceived: 2, quantityRestocked: 0, custodyState: 'received' }),
+          ],
+          restockBlocks: [
+            {
+              eventId: 'evt-1',
+              returnLineId: 'ol_line_1',
+              quantity: 2,
+              sku: 'SKU-1',
+              reason: 'master-refused',
+              detail: null,
+              connectionId: 'conn-master',
+              connectionName: 'Warehouse PrestaShop',
+              state: 'blocked',
+            },
+          ],
+        }),
+      });
+
+      expect(await screen.findByText('What came back')).toBeInTheDocument();
+      // The units are counted as RECEIVED and nowhere reported as restocked —
+      // the counter column and every rendered string agree on that.
+      expect(document.body.textContent).not.toMatch(/2 restocked/i);
     });
   });
 

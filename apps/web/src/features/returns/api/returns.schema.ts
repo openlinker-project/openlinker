@@ -85,6 +85,7 @@ const returnListItemSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
   counters: returnCountersSchema.nullish(),
+  restockBlocked: z.boolean().nullish(),
 });
 
 const returnBucketCountsSchema = z.object({
@@ -259,6 +260,12 @@ export function parseReturnList(raw: unknown): ParsedReturnList {
         quantityRestocked: parsed.data.counters?.quantityRestocked ?? 0,
         quantityScrapped: parsed.data.counters?.quantityScrapped ?? 0,
       },
+      // `null`, NOT `false`, when the server did not report it (#2381). The two
+      // are different claims: `false` says the operator's stock is fine, which
+      // an absent field is no evidence for. `null` renders no badge — and the
+      // row itself is still returned, because a missing flag is not a reason to
+      // drop a return the operator needs to see.
+      restockBlocked: parsed.data.restockBlocked ?? null,
     });
   }
 

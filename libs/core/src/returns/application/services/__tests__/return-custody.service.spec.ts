@@ -85,8 +85,11 @@ function makeEvent(seq = 1, overrides: Partial<ReturnLineEvent> = {}): ReturnLin
     overrides.restockBlockedDetail ?? null,
     overrides.restockedBy ?? null,
     overrides.masterConnectionId ?? null,
-    null,
-    null,
+    overrides.note ?? null,
+    // Honoured rather than hardcoded (#2381): an attestation's whole content is
+    // WHO said so and when, so a fixture that pinned this to null could not
+    // express the case at all.
+    overrides.actorUserId ?? null,
     new Date('2026-08-02T00:00:00Z'),
     overrides.attestedByEventId ?? null,
     new Date('2026-08-02T00:00:00Z')
@@ -100,6 +103,7 @@ describe('ReturnCustodyService', () => {
     settleLineRestock: jest.Mock;
     findOutstandingRestockEvents: jest.Mock;
     findOutstandingRestockEventsForReturn: jest.Mock;
+    findAttestationsForReturn: jest.Mock;
     listLineEvents: jest.Mock;
   };
   let returns: { assertAttributedForTrigger: jest.Mock; getReturn: jest.Mock };
@@ -153,6 +157,7 @@ describe('ReturnCustodyService', () => {
       ),
       findOutstandingRestockEvents: jest.fn(() => Promise.resolve([])),
       findOutstandingRestockEventsForReturn: jest.fn(() => Promise.resolve([])),
+      findAttestationsForReturn: jest.fn(() => Promise.resolve([])),
       listLineEvents: jest.fn(() => Promise.resolve([])),
     };
 
@@ -658,6 +663,73 @@ describe('ReturnCustodyService', () => {
       await service.markLineNotReturned(LINE_ID, {});
 
       expect(returns.assertAttributedForTrigger).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('listRestockAttestations (#2381)', () => {
+    it('should report the attesting operator and instant, so the terminal state has a source', async () => {
+      repository.findAttestationsForReturn = jest.fn(() =>
+        Promise.resolve([
+          makeEvent(4, {
+            id: 'evt-attest',
+            kind: 'stock_attestation',
+            quantity: 2,
+            actorUserId: 'user-7',
+            note: 'added by hand',
+          }),
+        ])
+      );
+
+      const [attestation] = await service.listRestockAttestations(RETURN_ID);
+
+      expect(attestation).toMatchObject({
+        eventId: 'evt-attest',
+        returnLineId: LINE_ID,
+        quantity: 2,
+        actorUserId: 'user-7',
+        note: 'added by hand',
+      });
+      expect(attestation.occurredAt).toBeInstanceOf(Date);
+    });
+
+    it('should be DISJOINT from the outstanding read, which is why both exist', async () => {
+      // Attesting FLIPS the act out of ('blocked','in_doubt'), so an attested
+      // act leaves the outstanding set entirely. Deriving the terminal state
+      // from `listOutstandingRestockBlocks` is therefore impossible, and reading
+      // it off the mutation's own result would vanish on reload — #2380's
+      // session-state defect one surface down.
+      repository.findOutstandingRestockEventsForReturn = jest.fn(() => Promise.resolve([]));
+      repository.findAttestationsForReturn = jest.fn(() =>
+        Promise.resolve([makeEvent(4, { id: 'evt-attest', kind: 'stock_attestation' })])
+      );
+
+      await expect(service.listOutstandingRestockBlocks(RETURN_ID)).resolves.toEqual([]);
+      await expect(service.listRestockAttestations(RETURN_ID)).resolves.toHaveLength(1);
+    });
+
+    it('should name no connection — the block it answers is gone', async () => {
+      repository.findAttestationsForReturn = jest.fn(() =>
+        Promise.resolve([makeEvent(4, { id: 'e', kind: 'stock_attestation' })])
+      );
+
+      const [attestation] = await service.listRestockAttestations(RETURN_ID);
+
+      // Restating the refusing connection would re-raise an alarm the operator
+      // has already answered.
+      expect(attestation).not.toHaveProperty('connectionName');
+      expect(integrations.listCapabilityAdapters).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('restock block identity (#2381)', () => {
+    it('should carry the LINE, not just the sku — two lines can share one', async () => {
+      repository.findOutstandingRestockEventsForReturn = jest.fn(() =>
+        Promise.resolve([makeEvent(1, { id: 'evt-b', restockState: 'blocked' })])
+      );
+
+      const [block] = await service.listOutstandingRestockBlocks(RETURN_ID);
+
+      expect(block.returnLineId).toBe(LINE_ID);
     });
   });
 

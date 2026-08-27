@@ -75,6 +75,10 @@ Both additions are small because the SQL already exists.
 - The order-detail returns panel (split, above) and its `internalOrderId` filter arm.
 - Any change to the custody transition rules, the counters, or `disposeLine`'s behaviour.
 - A mirror script (see § 3).
+- Actor **name** resolution. `actorUserId -> display name` needs an `IUsersService` that does not
+  exist (the `users` barrel publishes only `IMcpTokenService`) and a new `returns -> users`
+  cross-context edge. Step 10 renders you/another-operator instead; a real name is a follow-up that
+  would improve several surfaces at once, not just this one.
 - The two pre-existing integration reds (#2638 `earliest-order-date`, #2639 carrier-mapping S-3).
 
 ---
@@ -205,7 +209,14 @@ than left open.)*
    - **Acceptance**: unit spec asserts the field is the act's own line, on a two-line fixture where both lines share a SKU.
 
 2. **`restockBlocked` on the list row — via `aggregateCounters`, NOT the paged query**
-   - **Files**: `libs/core/src/returns/infrastructure/persistence/repositories/return.repository.ts`, the `ReturnRecord`/counters projection, `ReturnListItemResponseDto`
+   - **Files**: `libs/core/src/returns/infrastructure/persistence/repositories/return.repository.ts`, `ReturnRecord`, `ReturnListItemResponseDto`
+   - **It is a SIBLING field, never a member of `ReturnCounters`.** The fetch mechanism must not
+     dictate the projection shape. `ReturnCounters` is a published FE type whose docblock states it
+     is *"the per-return counter rollup the derived stage is computed from"*, and #2377 was
+     deliberate that the stage derives from counters **alone** — a blocked flag inside it silently
+     widens the input to a derivation that must not see it. `restockBlocked` is a boolean FACT, not
+     a counter: it lands beside `counters` on `ReturnRecord` / `ReturnListItem`, merged from the
+     same raw row that `aggregateCounters` already returns.
    - **The readiness gate caught a defect in an earlier draft of this step.** It said
      "`addSelect` the constant on the list query". That would have shipped a badge that never
      renders: `listReturns` materialises with **`getMany()`**, which silently discards a raw
@@ -231,10 +242,32 @@ than left open.)*
      through one predicate, so the test proves they cannot diverge. A second case asserts the flag
      is `false`, not `undefined`, for a return with a line awaiting disposition and no block.
 
-3. **`restockBlocks` on the detail read**
-   - **Files**: `apps/api/src/returns/dto/return-response.dto.ts`, `apps/api/src/returns/http/returns.controller.ts`
-   - **Action**: call the existing `listOutstandingRestockBlocks(returnId)`; flatten to a DTO array in the `restockTarget` (#2380) shape.
-   - **Acceptance**: int-spec asserts `[]` with no blocks, and a populated entry naming quantity, sku, connection and line after a refused restock.
+3. **`restockBlocks` AND `restockAttestations` on the detail read**
+   - **Files**: `libs/core/src/returns/domain/ports/return-repository.port.ts`, `.../return-custody.service.ts` (+ its interface), `apps/api/src/returns/dto/return-response.dto.ts`, `apps/api/src/returns/http/returns.controller.ts`
+   - **A `/tech-review` of this plan found step 10 had no data source.** The outstanding read is
+     defined by `restockState IN ('blocked','in_doubt')` (`return.repository.ts:151-155`), and
+     `markStockHandledManually` **flips** the act to `handled_manually` — the repository docblock
+     says so, and it is why `RESTOCK_BLOCKED_EXISTS` keys on state membership rather than
+     `attestedByEventId`. So the instant an operator attests, the act **leaves** the outstanding
+     set, `restockBlocks` returns `[]`, and § 5.4's post-attestation row renders nothing.
+     It would have *appeared* to work in manual testing, off the mutation's own
+     `AttestStockResult.events`, and vanished on reload — #2380's session-state defect
+     reintroduced by the plan whose purpose is to remove it, one surface down.
+   - **The row is not a fourth surface; it is the TERMINAL STATE of surface 2**, which is why it is
+     widened into this step rather than split. Shipping the attestation without it means the only
+     observable result of *"I handled this myself"* is that the alarm disappears — the next reader
+     sees a line that was never blocked. § 5.4's reasoning cuts both ways: a resolution that leaves
+     the alarm ringing trains the operator to ignore it, and a resolution that leaves no trace
+     trains them to distrust that the click did anything. A remediation loop without its terminal
+     state is not a smaller feature, it is a broken one.
+   - **Action**: add `findAttestationsForReturn(returnId)` beside `findOutstandingRestockEventsForReturn`
+     — the same shape, one indexed lookup, filtered to `kind: 'stock_attestation'` — and project
+     both arrays onto the detail response. `listLineEvents(lineId)` is deliberately NOT used: it is
+     per-line and unfiltered, so rendering one sentence would cost N calls returning every act.
+   - **Acceptance**: int-spec asserts `restockBlocks: []` + `restockAttestations: []` on a clean
+     return; a populated block naming quantity, sku, connection and **line** after a refused
+     restock; and — the case that motivated this — after attesting, `restockBlocks` empties **and**
+     `restockAttestations` carries the actor and instant, **on a re-read**, not from the mutation.
 
 ### Phase 2 — The shared copy module
 
@@ -250,8 +283,14 @@ than left open.)*
 
 ### Phase 3 — Frontend
 
-6. **Types + schema**: `restockBlocked` on `ReturnListItem`, `restockBlocks` on `ReturnDetail`
-   (both parsed, never cast; an unreadable value degrades to the safe direction — see § 8).
+6. **Types + schema**: `restockBlocked: boolean | null` on `ReturnListItem`, `restockBlocks` +
+   `restockAttestations` on `ReturnDetail` — all parsed, never cast.
+   - **`null` means NOT REPORTED, and is the only honest third state.** The row's degradation has a
+     harder answer than the detail's: `false` asserts the operator's stock is fine, and `true`
+     cries wolf on every row of an unreadable page. #2024 is the precedent — a sparse response
+     records "not reported" rather than a value an operator cannot tell apart from a real one.
+     `null` renders **no badge**, and the absence is routed through the list's existing
+     `droppedCount` reporting so it is **counted** rather than merely rendered as nothing.
 7. **The attestation mutation joins `use-return-custody-mutations.ts`** rather than getting a file
    of its own. That module (#2380) already holds receive / dispose / not-returned, and its docblock
    states they live together *because they share the invalidation contract exactly* — detail plus
@@ -263,10 +302,53 @@ than left open.)*
 9. **`return-restock-blocked-notice.tsx`** — the persistent inline line-row error: title, the
    remediation sentence naming quantity/sku/connection, the three actions, and the
    `Why did this happen?` **inline disclosure** (not a modal, not a link out).
-10. **Post-attestation row** — neutral tone, `Stock added manually by {user} on {date}. OpenLinker
-    did not change your stock.`, no actions.
+10. **Post-attestation row** — neutral tone (not success, not error), no actions.
+    - **`{user}` cannot be interpolated as a name, and the plan must not pretend otherwise.** The
+      re-review found that `actorUserId` is written by every returns write path and **resolved to a
+      display name nowhere** — the FE renders no actor anywhere, and the `users` context publishes
+      only `IMcpTokenService`, so there is no `IUsersService` to ask. Creating one is a new
+      cross-context edge (`returns -> users`) and is well outside this issue.
+    - **Resolution: say what OL can actually stand behind.** The row reads
+      *"Stock added manually by you on {date}"* when `actorUserId` matches the session user — which
+      the FE already holds, needs no backend, and is the overwhelmingly common single-operator
+      case — and *"Stock added manually by another operator on {date}"* otherwise. Both keep the
+      load-bearing second sentence verbatim: *"OpenLinker did not change your stock."*
+    - Rendering the raw `actorUserId` is rejected: a UUID in operator copy is not an answer to
+      *who*, and it reads as a defect. Asserting a name OL cannot verify is worse still — the
+      same rule that governs every other surface in this epic.
 11. **Replace #2380's placeholder** in `return-custody-panel.tsx`; `blockedByLine` session state is
     retired in favour of the server read, which is what its docblock said would complete it.
+
+### The response describes an EVENT; the read describes STATE
+
+Two things now report the same block, and the rule separating them is what stops that becoming
+two homes for one fact.
+
+- **`DisposeLineResult.restockBlocked` (the 2xx response) answers *"the thing you just clicked was
+  blocked"*.** It is a fact about an ACTION, true at one instant. It is legitimately the input to a
+  **toast**, which is itself an event-shaped surface — and it is the only direct answer to "did MY
+  click just get blocked". It is **never rendered as state.**
+- **`restockBlocks` (the detail read) answers *"this line is currently blocked"*.** A fact about the
+  world that survives a reload, and therefore the only honest source for the **persistent notice**.
+
+The notice appears because the **invalidation settled**, never because the response arrived. That
+gives exactly one source for what is on screen and no window in which the two could disagree —
+settled by construction rather than by timing luck.
+
+Suppressing the response read entirely would be worse, not purer: it would either lose the
+immediate toast or force "did my click get blocked" to be reconstructed by diffing state, which is
+inference where a direct answer already exists.
+
+**#2380's `blockedByLine` session state is retired in the same step**, for the same reason it was
+always temporary — it was the only thing available before a read existed, and keeping it beside the
+server read would leave two homes for one fact. That is the copy-module argument in a different
+medium, and its own docblock names this issue as what completes it.
+
+**The overlap window is specified, not left to chance.** For a few hundred milliseconds after a
+blocked dispose, the toast and the notice are both visible. They must not read as two problems:
+the toast is transient, past-tense and names the action (*"…could not be added"*), while the notice
+is persistent, present-tense and names the remediation. A test asserts both are present in that
+window and that the notice — not the toast — is what remains after it.
 
 ### Phase 4 — Tests
 
@@ -299,6 +381,10 @@ that already reads the detail, for a field the detail can carry — the `restock
 - **Risk — badge/segment drift.** Mitigated structurally: one SQL constant, two consumers.
 - **Risk — a copy variant at a call site.** Mitigated by the module rule (§ 3) and by the move
   leaving no rival home to reach for.
+- **Risk — an unreadable row flag degrading the wrong way.** `restockBlocked` is
+  `boolean | null`; `null` is *not reported*, renders no badge, and is counted through
+  `droppedCount`. Never coerce it to `false` (asserts their stock is fine) or `true` (cries wolf
+  page-wide).
 - **Risk — an unreadable `restockBlocks` degrading the wrong way.** A parse failure must yield
   *no claim*, never "no blocks": an empty array asserts the operator's stock is fine. Degrade to
   the badge-only state and report it, matching the `UNREADABLE_RESTOCK_TARGET` posture (#2380),
@@ -317,6 +403,8 @@ that already reads the detail, for a field the detail can carry — the `restock
       shared module (the third surface is tracked in the split-out issue named on #2381)
 - [ ] A test asserts no component renders blocked units as restocked
 - [ ] The attestation clears the block and records who attested; the post-state row renders
+      **on a re-read**, from `restockAttestations`, not from the mutation's own result — the
+      terminal state of surface 2 must survive a reload or it is #2380's session-state defect again
 - [ ] Component tests; usable at 375 px
 - [ ] **`RETURN_RESTOCK_BLOCKED_COPY` has exactly one home** — moved into the shared module, call
       sites updated, `return-custody.copy.ts` no longer exports it and does not re-export it

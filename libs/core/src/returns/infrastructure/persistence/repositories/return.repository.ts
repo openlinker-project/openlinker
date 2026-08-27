@@ -84,6 +84,18 @@ import {
 } from '../../../domain/types/return-line-event.types';
 import { ReturnLineNotFoundError } from '../../../domain/exceptions/return-line-not-found.error';
 
+/**
+ * What one aggregate row supplies for a list row (#2377 counters, #2381 flag).
+ *
+ * The flag is a SIBLING of the counters rather than a member, because the fetch
+ * mechanism must not dictate the projection shape — see
+ * `ReturnRecord.restockBlocked`.
+ */
+interface ReturnRowAggregate {
+  counters: ReturnStageCounters;
+  restockBlocked: boolean;
+}
+
 @Injectable()
 export class ReturnRepository implements ReturnRepositoryPort {
   /**
@@ -147,12 +159,26 @@ export class ReturnRepository implements ReturnRepositoryPort {
    * `ReturnCustodyService.markStockHandledManually`), so state membership is the
    * whole test. An `attestedByEventId IS NULL` clause would be backwards: it
    * would keep every settled block and drop the attestation.
+   *
+   * **A function of the correlating expression, not a constant (#2381)**, because
+   * two callers need it in two scopes: the list query has `r.id`, while
+   * `aggregateCounters` groups over `return_lines` and has only `l."returnId"`.
+   * Copying the SQL for the second scope would be two rules that agree today —
+   * which is what `orphans` cost a round in #2378 — so the badge and the
+   * `restock_blocked` segment go through this one function instead and cannot
+   * disagree about the same return.
    */
-  private static readonly RESTOCK_BLOCKED_EXISTS = `EXISTS (
+  private static restockBlockedExists(returnIdExpr: string): string {
+    return `EXISTS (
     SELECT 1 FROM return_line_events ev
-     WHERE ev."returnId" = r.id
+     WHERE ev."returnId" = ${returnIdExpr}
        AND ev."restockState" IN ('blocked', 'in_doubt')
   )`;
+  }
+
+  /** The segment/filter scope, correlated on the list query's own alias. */
+  private static readonly RESTOCK_BLOCKED_EXISTS =
+    ReturnRepository.restockBlockedExists('r.id');
 
   /** Units still expected — see `expectedQuantity`. LEFT JOIN, so COALESCE. */
   private static readonly SQL_EXPECTED =
@@ -580,10 +606,18 @@ export class ReturnRepository implements ReturnRepositoryPort {
     // read deliberately loads no lines. One aggregate query over the page's ids
     // rather than a per-row lookup — and rather than hydrating every line of
     // every row to compute six integers.
-    const counters = await this.aggregateCounters(headers.map((header) => header.id));
+    const aggregates = await this.aggregateCounters(headers.map((header) => header.id));
 
     return headers.map((header) =>
-      this.toDomain(header, [], counters.get(header.id) ?? ReturnRepository.EMPTY_COUNTERS)
+      this.toDomain(
+        header,
+        [],
+        aggregates.get(header.id)?.counters ?? ReturnRepository.EMPTY_COUNTERS,
+        // `false`, not `null`, when the row simply has no lines: the aggregate
+        // genuinely reports "nothing is blocked here". `null` is reserved for a
+        // read that did not ASK — see `ReturnRecord.restockBlocked`.
+        aggregates.get(header.id)?.restockBlocked ?? false
+      )
     );
   }
 
@@ -604,7 +638,7 @@ export class ReturnRepository implements ReturnRepositoryPort {
    */
   private async aggregateCounters(
     returnIds: string[]
-  ): Promise<Map<string, ReturnStageCounters>> {
+  ): Promise<Map<string, ReturnRowAggregate>> {
     if (returnIds.length === 0) {
       return new Map();
     }
@@ -622,24 +656,43 @@ export class ReturnRepository implements ReturnRepositoryPort {
       .addSelect('COALESCE(SUM(l."quantityReceived"), 0)', 'quantityReceived')
       .addSelect('COALESCE(SUM(l."quantityRestocked"), 0)', 'quantityRestocked')
       .addSelect('COALESCE(SUM(l."quantityScrapped"), 0)', 'quantityScrapped')
+      // #2381 — the row's blocked flag. It rides THIS query, not the paged one:
+      // `listReturns` ends in `getMany()`, which hydrates entities and silently
+      // discards a raw `addSelect`, so the column would be `undefined` forever
+      // with no error anywhere. Correlated on the GROUP BY key, so it neither
+      // fans out the COUNT(*)s (a LEFT JOIN to events would) nor adds a join to
+      // the paged read — which also keeps that read clear of TypeORM's
+      // distinct-pagination path. See docs/lessons.md.
+      .addSelect(ReturnRepository.restockBlockedExists('l."returnId"'), 'restockBlocked')
       .where('l."returnId" IN (:...returnIds)', { returnIds })
       .groupBy('l."returnId"')
-      .getRawMany<Record<string, string>>();
+      // `string | boolean`: COUNT/SUM come back as strings, but the pg driver
+      // hands a real `boolean` back for an EXISTS. Typing it `string` alone made
+      // the honest comparison below a compile error and would have pushed it
+      // towards `Boolean(row.x)`, which is `true` for the string 'false'.
+      .getRawMany<Record<string, string | boolean>>();
 
     // pg returns COUNT/SUM as STRINGS; leaving them stringly-typed would make
     // every comparison in `deriveReturnStage` a lexicographic one — '10' < '9'
     // — which throws nothing and puts a plausible, wrong stage on the screen.
     return new Map(
       rows.map((row) => [
-        row.returnId,
+        row.returnId as string,
         {
-          lineCount: Number(row.lineCount),
-          notReturnedLineCount: Number(row.notReturnedLineCount),
-          quantityAdvised: Number(row.quantityAdvised),
-          notReturnedQuantityAdvised: Number(row.notReturnedQuantityAdvised),
-          quantityReceived: Number(row.quantityReceived),
-          quantityRestocked: Number(row.quantityRestocked),
-          quantityScrapped: Number(row.quantityScrapped),
+          // A SIBLING of the counters, never a member: see
+          // `ReturnRecord.restockBlocked`. pg renders booleans as 'true'/'false'
+          // through the raw path, so this is a string comparison, not `Boolean(row.x)`
+          // — `Boolean('false')` is `true`, which would mark every row blocked.
+          restockBlocked: row.restockBlocked === true || row.restockBlocked === 'true',
+          counters: {
+            lineCount: Number(row.lineCount as string),
+            notReturnedLineCount: Number(row.notReturnedLineCount as string),
+            quantityAdvised: Number(row.quantityAdvised as string),
+            notReturnedQuantityAdvised: Number(row.notReturnedQuantityAdvised as string),
+            quantityReceived: Number(row.quantityReceived as string),
+            quantityRestocked: Number(row.quantityRestocked as string),
+            quantityScrapped: Number(row.quantityScrapped as string),
+          },
         },
       ])
     );
@@ -1035,7 +1088,8 @@ export class ReturnRepository implements ReturnRepositoryPort {
   private toDomain(
     header: ReturnOrmEntity,
     lines: ReturnLineOrmEntity[],
-    counters: ReturnStageCounters | null = null
+    counters: ReturnStageCounters | null = null,
+    restockBlocked: boolean | null = null
   ): ReturnRecord {
     return new ReturnRecord(
       header.id,
@@ -1055,7 +1109,8 @@ export class ReturnRepository implements ReturnRepositoryPort {
       lines.map((line) => this.toLineDomain(line)),
       header.matchedAt,
       header.matchedByUserId,
-      counters
+      counters,
+      restockBlocked
     );
   }
 
@@ -1222,6 +1277,17 @@ export class ReturnRepository implements ReturnRepositoryPort {
       .createQueryBuilder('event')
       .where('event."returnId" = :returnId', { returnId })
       .andWhere(`event."restockState" IN ('blocked', 'in_doubt')`)
+      .orderBy('event."returnLineId"', 'ASC')
+      .addOrderBy('event."seq"', 'ASC')
+      .getMany();
+    return rows.map((row) => this.toLineEventDomain(row));
+  }
+
+  async findAttestationsForReturn(returnId: string): Promise<ReturnLineEvent[]> {
+    const rows = await this.lineEvents
+      .createQueryBuilder('event')
+      .where('event."returnId" = :returnId', { returnId })
+      .andWhere(`event."kind" = 'stock_attestation'`)
       .orderBy('event."returnLineId"', 'ASC')
       .addOrderBy('event."seq"', 'ASC')
       .getMany();

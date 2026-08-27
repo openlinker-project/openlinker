@@ -25,6 +25,8 @@
 import { useMutation, useQueryClient, type UseMutationResult } from '@tanstack/react-query';
 import { returnsQueryKeys } from '../api/returns.query-keys';
 import type {
+  AttestReturnLineStockInput,
+  AttestReturnLineStockResult,
   DisposeReturnLineInput,
   DisposeReturnLineResult,
   MarkReturnLineNotReturnedInput,
@@ -72,6 +74,27 @@ export function useDisposeReturnLineMutation(
 
   return useMutation<DisposeReturnLineResult, Error, LineScoped<DisposeReturnLineInput>>({
     mutationFn: ({ lineId, input }) => apiClient.returns.disposeLine(returnId, lineId, input),
+    onSettled: invalidate,
+  });
+}
+
+/**
+ * The § 5.4 attestation — *"Mark stock handled manually"* (#2381).
+ *
+ * It shares the invalidation contract exactly, which is why it belongs in this
+ * module rather than a file of its own: attesting clears the line's
+ * `restock_blocked` membership, so the #2378 segment counts and the row badge
+ * both move with it.
+ */
+export function useMarkStockHandledMutation(
+  returnId: string,
+): UseMutationResult<AttestReturnLineStockResult, Error, LineScoped<AttestReturnLineStockInput>> {
+  const apiClient = useApiClient();
+  const invalidate = useCustodyInvalidation(returnId);
+
+  return useMutation<AttestReturnLineStockResult, Error, LineScoped<AttestReturnLineStockInput>>({
+    mutationFn: ({ lineId, input }) =>
+      apiClient.returns.markStockHandled(returnId, lineId, input),
     onSettled: invalidate,
   });
 }

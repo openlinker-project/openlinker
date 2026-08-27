@@ -64,6 +64,13 @@ export const RETURN_DISPOSE_COPY = {
   notWholeUnits: 'Record whole units.',
   overDisposition: 'You only have {n} received unit(s) left to deal with on this line.',
   nothingToDispose: 'Every received unit on this line has already been dealt with.',
+  /**
+   * Past-tense and event-shaped, naming the ACTION — distinct from the notice,
+   * which is present-tense and names the remediation. The two are visible
+   * together for a moment after a blocked dispose and must not read as two
+   * problems.
+   */
+  restockBlockedToast: 'Recorded — but the stock could not be added.',
   orphanBlocked:
     'This return is not matched to an order, so OpenLinker will not add stock anywhere. You can still scrap these units.',
 } as const;
@@ -122,19 +129,9 @@ export const RETURN_CUSTODY_ERROR_COPY = {
   } as Record<string, string>,
 } as const;
 
-/**
- * The restock that did not land, on an otherwise successful disposition.
- *
- * Deliberately surfaced even though § 5.4's full treatment is a sibling issue:
- * a disposition that silently no-ops the stock write is worse than none, and
- * rendering a plain success for it would be the UI stating something false.
- */
-export const RETURN_RESTOCK_BLOCKED_COPY = {
-  title: 'Stock was not added.',
-  bodyPrefix: 'OpenLinker recorded the disposition, but',
-  bodyUnknownConnection: 'the system that owns your stock',
-  bodySuffix: 'did not accept the change, so your stock has not changed.',
-  remedyPrefix: 'Add',
-  remedyJoin: '×',
-  remedySuffix: 'yourself, then mark it handled.',
-} as const;
+// `RETURN_RESTOCK_BLOCKED_COPY` MOVED to `./restock-blocked.copy` (#2381), and
+// is deliberately NOT re-exported from here. A re-export would keep this import
+// path working and therefore keep it in use, so new call sites would go on
+// reaching for the wrong home — the two-homes condition surviving in a form that
+// looks resolved. § 5.4 requires one identical title across every surface, and
+// that is only structural if there is exactly one place to import it from.

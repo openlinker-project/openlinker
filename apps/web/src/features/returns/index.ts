@@ -28,6 +28,15 @@ export { returnsQueryKeys } from './api/returns.query-keys';
 export { useReturnsQuery } from './hooks/use-returns-query';
 export { useReturnIngestionAvailabilityQuery } from './hooks/use-return-ingestion-availability-query';
 export { ReturnCustodyPanel } from './components/return-custody-panel';
+// #2381 — the single home for every refused-restock string (returns spec § 5.4).
+// Exported here because the barrel is the ONLY way a cross-feature consumer can
+// reach it: `.eslintrc.js` hard-blocks deep imports of `features/returns/lib/**`.
+// #2357 (`W2-20`) and the split-out order-panel issue both consume it from here.
+export {
+  RETURN_RESTOCK_ATTESTED_COPY,
+  RETURN_RESTOCK_BLOCKED_COPY,
+  RETURN_RESTOCK_BLOCKED_EXPLAINER,
+} from './lib/restock-blocked.copy';
 export { ReturnIdentityCell, returnIdentitySummary } from './components/return-identity-cell';
 export { ReturnOrderCell, returnOrderSummary } from './components/return-order-cell';
 export { ReturnOpenedCell } from './components/return-opened-cell';

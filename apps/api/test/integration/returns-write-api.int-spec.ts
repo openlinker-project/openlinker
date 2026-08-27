@@ -187,6 +187,124 @@ describe('Returns Write API Integration', () => {
     });
   });
 
+  describe('restock_blocked surfacing (#2381)', () => {
+    it('should report a refused restock on the detail read, keyed to its LINE', async () => {
+      const { returnId, lineId } = await seedAttributedReturn('RET-RB-1');
+      const base = `/v1/returns/${returnId}/lines/${lineId}`;
+
+      await http()
+        .post(`${base}/receive`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ quantity: 2 })
+        .expect(201);
+
+      // No InventoryMaster resolves in this harness, so the restock is refused
+      // and the units stay counted as received.
+      const disposed = await http()
+        .post(`${base}/dispose`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ quantity: 2, disposition: 'restock' })
+        .expect(201);
+      expect(disposed.body.restockBlocked).not.toBeNull();
+      expect(disposed.body.line.quantityRestocked).toBe(0);
+
+      const detail = await http()
+        .get(`/v1/returns/${returnId}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      // The block survives a fresh READ — it is not an artefact of the mutation
+      // response. That is the whole requirement: a notice fed only by the
+      // response would vanish on reload, which spec § 5.4 forbids by name.
+      expect(detail.body.restockBlocks).toHaveLength(1);
+      expect(detail.body.restockBlocks[0]).toMatchObject({
+        returnLineId: lineId,
+        quantity: 2,
+      });
+      expect(detail.body.restockAttestations).toEqual([]);
+    });
+
+    it('should move the block to an attestation, and clear the row badge with it', async () => {
+      const { returnId, lineId } = await seedAttributedReturn('RET-RB-2');
+      const base = `/v1/returns/${returnId}/lines/${lineId}`;
+
+      await http()
+        .post(`${base}/receive`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ quantity: 2 })
+        .expect(201);
+      await http()
+        .post(`${base}/dispose`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ quantity: 2, disposition: 'restock' })
+        .expect(201);
+
+      const blockedList = await http()
+        .get('/v1/returns')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      const blockedRow = blockedList.body.items.find(
+        (row: { id: string }) => row.id === returnId
+      );
+      expect(blockedRow.restockBlocked).toBe(true);
+
+      await http()
+        .post(`${base}/mark-stock-handled`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({})
+        .expect(201);
+
+      const detail = await http()
+        .get(`/v1/returns/${returnId}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      // Disjoint by construction: attesting FLIPS the act out of the outstanding
+      // set, so it leaves one array and enters the other. Deriving the terminal
+      // state from `restockBlocks` alone is therefore impossible.
+      expect(detail.body.restockBlocks).toEqual([]);
+      expect(detail.body.restockAttestations).toHaveLength(1);
+      expect(detail.body.restockAttestations[0]).toMatchObject({
+        returnLineId: lineId,
+        quantity: 2,
+      });
+      expect(detail.body.restockAttestations[0].actorUserId).toEqual(expect.any(String));
+
+      const clearedList = await http()
+        .get('/v1/returns')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      const clearedRow = clearedList.body.items.find(
+        (row: { id: string }) => row.id === returnId
+      );
+      // The badge and the #2378 segment read through ONE predicate, so this
+      // clearing and the segment's clearing cannot diverge.
+      expect(clearedRow.restockBlocked).toBe(false);
+
+      const segment = await http()
+        .get('/v1/returns?segment=restock_blocked')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(
+        segment.body.items.some((row: { id: string }) => row.id === returnId)
+      ).toBe(false);
+    });
+
+    it('should report false, not undefined, for a return with nothing blocked', async () => {
+      const { returnId } = await seedAttributedReturn('RET-RB-3');
+
+      const list = await http()
+        .get('/v1/returns')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      const row = list.body.items.find((item: { id: string }) => item.id === returnId);
+
+      // `false` is a real answer. `undefined` would mean the raw column was
+      // dropped by hydration — the `getMany()` trap this read was routed around.
+      expect(row.restockBlocked).toBe(false);
+    });
+  });
+
   describe('restockTarget on the detail read (#2380)', () => {
     it('should report that no connection owns the stock, rather than omitting the field', async () => {
       const { returnId } = await seedAttributedReturn('RET-RT-1');

@@ -17,6 +17,7 @@
 import type { ReactElement } from 'react';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import type { ReturnListItem } from '../api/returns.types';
+import { RETURN_RESTOCK_BLOCKED_COPY } from '../lib/restock-blocked.copy';
 import {
   RETURN_STAGE_LABELS,
   RETURN_STAGE_TONES,
@@ -36,6 +37,18 @@ export function ReturnStageCell({ item }: ReturnStageCellProps): ReactElement {
       <StatusBadge tone={RETURN_STAGE_TONES[stage]} compact>
         {RETURN_STAGE_LABELS[stage]}
       </StatusBadge>
+      {/* #2381 — the § 5.4 badge, BESIDE the stage rather than replacing it:
+          they answer different questions ("how far along is this return" vs
+          "does it need me"), and a blocked restock does not move the stage.
+          Rendered only on an explicit `true`: `null` means the read did not
+          report it, and a badge there would invent an alarm — while `false`
+          means it genuinely has none. The title text comes from the shared
+          module so this badge and the per-line notice cannot drift. */}
+      {item.restockBlocked === true ? (
+        <StatusBadge tone="error" compact>
+          {RETURN_RESTOCK_BLOCKED_COPY.badge}
+        </StatusBadge>
+      ) : null}
       <span className="returns-stage-cell__counters">{returnCounterLine(item.counters)}</span>
     </div>
   );

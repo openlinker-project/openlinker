@@ -39,6 +39,17 @@ export interface DisposeLineInput {
 export interface RestockBlockedDetail {
   /** The act to attest to, if a surface ever wants per-attempt granularity. */
   eventId: string;
+  /**
+   * The line these units belong to (#2381).
+   *
+   * Required by every per-line surface, and NOT derivable from `sku`:
+   * `return_lines` is unique on `(returnId, lineIndex)` and never on `sku`, so
+   * two lines of one return can legitimately carry the same one (a re-order of
+   * the same item). Keying a per-line notice by sku would render one line's
+   * block under another line's — a specific false claim about which goods are
+   * stuck, on the surface an operator uses to decide what to do about them.
+   */
+  returnLineId: string;
   quantity: number;
   sku: string | null;
   reason: ReturnRestockBlockReason;
@@ -93,6 +104,30 @@ export type ReturnRestockTarget =
   | { status: 'ambiguous-inventory-master'; candidateCount: number }
   | { status: 'no-inventory-master' }
   | { status: 'adapter-unresolved' };
+
+/**
+ * A recorded operator attestation that a refused restock was handled by hand
+ * (#2381, spec § 5.4).
+ *
+ * The terminal state of the remediation loop. It carries no connection name and
+ * no reason: those describe the BLOCK, and the block is gone by the time this
+ * exists — restating them would re-raise an alarm the operator has answered.
+ *
+ * `actorUserId` is an ID, not a name, and callers must not pretend otherwise:
+ * nothing in the tree resolves a user id to a display name (there is no
+ * `IUsersService`), so a surface renders "by you" when it matches the session
+ * user and "by another operator" when it does not.
+ */
+export interface RestockAttestationDetail {
+  eventId: string;
+  returnLineId: string;
+  quantity: number;
+  /** Who said so. An id — see the interface docblock. */
+  actorUserId: string | null;
+  /** When they said so. */
+  occurredAt: Date;
+  note: string | null;
+}
 
 export interface MarkNotReturnedInput {
   note?: string | null;
@@ -213,4 +248,14 @@ export interface IReturnCustodyService {
    * operator-facing badge and its segment (#2376, #2381).
    */
   listOutstandingRestockBlocks(returnId: string): Promise<RestockBlockedDetail[]>;
+
+  /**
+   * Every recorded attestation on a return (#2381).
+   *
+   * Not derivable from {@link listOutstandingRestockBlocks}: attesting flips the
+   * act OUT of the outstanding set, so the two reads are disjoint by
+   * construction and a surface needs both — one to raise the alarm, one to show
+   * it was answered.
+   */
+  listRestockAttestations(returnId: string): Promise<RestockAttestationDetail[]>;
 }

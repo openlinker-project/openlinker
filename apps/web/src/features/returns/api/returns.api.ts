@@ -13,12 +13,15 @@
 import { parseReturnIngestionAvailability, parseReturnList } from './returns.schema';
 import { parseDeclineReturnResult, parseReturnDetail } from './return-detail.schema';
 import {
+  parseAttestReturnLineStockResult,
   parseDisposeReturnLineResult,
   parseMarkNotReturnedResult,
   parseReceiveReturnLineResult,
 } from './return-custody.schema';
 import { RETURNS_MAX_LIMIT } from './returns.types';
 import type {
+  AttestReturnLineStockInput,
+  AttestReturnLineStockResult,
   DeclineReturnInput,
   DeclineReturnResult,
   DisposeReturnLineInput,
@@ -140,6 +143,20 @@ export interface ReturnsApi {
     lineId: string,
     input: MarkReturnLineNotReturnedInput
   ) => Promise<MarkReturnLineNotReturnedResult>;
+
+  /**
+   * `POST /returns/:returnId/lines/:lineId/mark-stock-handled` — the § 5.4
+   * attestation.
+   *
+   * It records that a HUMAN added the stock and **never claims OpenLinker did**.
+   * Settles every outstanding block on the line at once, which is why the result
+   * carries a list of event ids rather than one.
+   */
+  markStockHandled: (
+    returnId: string,
+    lineId: string,
+    input: AttestReturnLineStockInput
+  ) => Promise<AttestReturnLineStockResult>;
 }
 
 interface ApiRequest {
@@ -263,6 +280,14 @@ export function createReturnsApi(request: ApiRequest): ReturnsApi {
         body: JSON.stringify({ ...noteBody(input.note) }),
       });
       return parseMarkNotReturnedResult(raw);
+    },
+
+    async markStockHandled(returnId, lineId, input): Promise<AttestReturnLineStockResult> {
+      const raw = await request<unknown>(linePath(returnId, lineId, 'mark-stock-handled'), {
+        method: 'POST',
+        body: JSON.stringify({ ...noteBody(input.note) }),
+      });
+      return parseAttestReturnLineStockResult(raw);
     },
   };
 }
