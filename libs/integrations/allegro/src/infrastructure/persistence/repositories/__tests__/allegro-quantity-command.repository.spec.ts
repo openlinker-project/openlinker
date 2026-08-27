@@ -62,6 +62,7 @@ describe('AllegroQuantityCommandRepository', () => {
 
     ormRepository = {
       findOne: jest.fn(),
+      find: jest.fn(),
       save: jest.fn(),
       createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder),
     } as unknown as jest.Mocked<Repository<AllegroQuantityCommandOrmEntity>>;
@@ -84,28 +85,40 @@ describe('AllegroQuantityCommandRepository', () => {
   });
 
   describe('findByCommandId', () => {
-    it('should return command when found', async () => {
+    it('should return the command when found', async () => {
       const entity = createOrmEntity({ commandId: 'cmd-123' });
-      ormRepository.findOne.mockResolvedValue(entity);
+      ormRepository.find.mockResolvedValue([entity]);
 
       const result = await repository.findByCommandId('cmd-123');
 
-      expect(result).toBeDefined();
-      expect(result?.commandId).toBe('cmd-123');
-      expect(result?.connectionId).toBe(entity.connectionId);
-      expect(result?.offerId).toBe(entity.offerId);
-      expect(ormRepository.findOne).toHaveBeenCalledWith({
+      expect(result).toHaveLength(1);
+      expect(result[0].commandId).toBe('cmd-123');
+      expect(result[0].connectionId).toBe(entity.connectionId);
+      expect(result[0].offerId).toBe(entity.offerId);
+      expect(ormRepository.find).toHaveBeenCalledWith({
         where: { commandId: 'cmd-123' },
       });
     });
 
-    it('should return null when not found', async () => {
-      ormRepository.findOne.mockResolvedValue(null);
+    it('should return every row sharing a commandId (batched command, #2622)', async () => {
+      const entities = [
+        createOrmEntity({ commandId: 'cmd-batch', offerId: 'offer-1' }),
+        createOrmEntity({ commandId: 'cmd-batch', offerId: 'offer-2' }),
+      ];
+      ormRepository.find.mockResolvedValue(entities);
+
+      const result = await repository.findByCommandId('cmd-batch');
+
+      expect(result.map((c) => c.offerId).sort()).toEqual(['offer-1', 'offer-2']);
+    });
+
+    it('should return an empty array when not found', async () => {
+      ormRepository.find.mockResolvedValue([]);
 
       const result = await repository.findByCommandId('non-existent-cmd');
 
-      expect(result).toBeNull();
-      expect(ormRepository.findOne).toHaveBeenCalledWith({
+      expect(result).toEqual([]);
+      expect(ormRepository.find).toHaveBeenCalledWith({
         where: { commandId: 'non-existent-cmd' },
       });
     });
@@ -328,6 +341,56 @@ describe('AllegroQuantityCommandRepository', () => {
         AllegroQuantityCommandNotFoundException
       );
       await expect(repository.updateStatus(commandId, 'accepted')).rejects.toThrow(commandId);
+    });
+  });
+
+  describe('updateOfferStatus', () => {
+    it('should update only the row matching (commandId, offerId)', async () => {
+      const commandId = 'cmd-batch';
+      const entity = createOrmEntity({ commandId, offerId: 'offer-1', status: 'accepted' });
+      const updatedEntity = createOrmEntity({ commandId, offerId: 'offer-1', status: 'succeeded' });
+      ormRepository.findOne.mockResolvedValue(entity);
+      ormRepository.save.mockResolvedValue(updatedEntity);
+
+      const result = await repository.updateOfferStatus(commandId, 'offer-1', 'succeeded');
+
+      expect(result.status).toBe('succeeded');
+      expect(ormRepository.findOne).toHaveBeenCalledWith({
+        where: { commandId, offerId: 'offer-1' },
+      });
+      expect(entity.status).toBe('succeeded');
+    });
+
+    it('should update status and error message', async () => {
+      const commandId = 'cmd-batch';
+      const entity = createOrmEntity({ commandId, offerId: 'offer-2', status: 'accepted' });
+      const updatedEntity = createOrmEntity({
+        commandId,
+        offerId: 'offer-2',
+        status: 'failed',
+        error: 'OFFER_INACTIVE: Offer is inactive',
+      });
+      ormRepository.findOne.mockResolvedValue(entity);
+      ormRepository.save.mockResolvedValue(updatedEntity);
+
+      const result = await repository.updateOfferStatus(
+        commandId,
+        'offer-2',
+        'failed',
+        'OFFER_INACTIVE: Offer is inactive'
+      );
+
+      expect(result.status).toBe('failed');
+      expect(result.error).toBe('OFFER_INACTIVE: Offer is inactive');
+    });
+
+    it('should throw AllegroQuantityCommandNotFoundException when no row matches (commandId, offerId)', async () => {
+      const commandId = 'cmd-batch';
+      ormRepository.findOne.mockResolvedValue(null);
+
+      await expect(
+        repository.updateOfferStatus(commandId, 'offer-missing', 'succeeded')
+      ).rejects.toThrow(AllegroQuantityCommandNotFoundException);
     });
   });
 });
