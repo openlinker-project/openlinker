@@ -984,6 +984,7 @@ ORDER BY created_at DESC;
 - **Processing Events**: Events currently being delivered (should be temporary)
 - **Failed Events**: Events that reached max retry attempts
 - **Delivered (Last 24h)**: Successfully delivered events in the last 24 hours
+- **Total Rows in Outbox**: every row, next to the hard cap. Red means over the cap.
 
 **Why you might see many "Processing Events"**:
 - Events were claimed for delivery but the HTTP request timed out or failed
@@ -1014,6 +1015,42 @@ WHERE status='processing';
 ```
 
 **Note**: The "Run Delivery Now" button should automatically requeue all processing events before claiming new ones. If you still see processing events after clicking it, there may be an issue with the HTTP delivery (timeout, connection error, etc.).
+
+### Test Outbox Retention (#2604)
+
+Retention deletes finished rows only. It runs from the cron controller at most
+once an hour, and "Run Delivery Now" forces a pass.
+
+```sql
+-- Age a delivered row past the 7-day default horizon
+UPDATE ps_openlinker_webhook_outbox
+SET updated_at = DATE_SUB(NOW(), INTERVAL 10 DAY)
+WHERE status = 'delivered'
+LIMIT 1;
+```
+
+Then click "Run Delivery Now". The confirmation message reports `1 old event(s)
+pruned`, and the row is gone. Repeat with `status = 'pending'` aged the same way:
+that row must still be there afterwards. Queued and in-flight rows are never
+deleted, whatever their age.
+
+The cron response carries the same report:
+
+```bash
+curl -s "http://localhost:8080/index.php?fc=module&module=openlinker&controller=cron&token=YOUR_TOKEN" | jq .retention
+# {"ran":true,"deleted_delivered":1,"deleted_failed":0,"deleted_over_cap":0,"rows":42,"backlog_over_cap":false}
+```
+
+`"ran": false` on a second call within the hour is the interval gate, not a
+failure. `"backlog_over_cap": true` means the table is over its 100000-row cap
+with no finished rows left to prune, so the excess is undelivered events -
+check webhook delivery rather than expecting retention to clear it.
+
+The `DELETE` statements were verified against MySQL 8: queued, retryable and
+leased rows survive every pass; a pass stops at its 10000-row budget and the
+next one resumes; the cap trims the oldest finished rows and reports a
+queued-only excess instead of deleting it; and the 1.4.0 upgrade adds its index
+idempotently on an existing table.
 
 ## Quick Test Script
 

@@ -60,6 +60,10 @@ class OpenLinker extends CarrierModule
     const DEFAULT_BATCH_SIZE = 50;
     const DEFAULT_MAX_RETRY_ATTEMPTS = 25;
     const DEFAULT_RETRY_BACKOFF_MULTIPLIER = 2.0;
+    // Delivered-row retention horizon in days (#2604). The cap, the failed-row
+    // horizon and the pass bounds are OutboxRepository's - only this one is an
+    // operator dial.
+    const DEFAULT_OUTBOX_RETENTION_DAYS = 7;
 
     // Dynamic shipping carrier — display name shown in PS admin carrier list.
     const DYNAMIC_CARRIER_NAME = 'OpenLinker Dynamic';
@@ -92,7 +96,7 @@ class OpenLinker extends CarrierModule
     {
         $this->name = 'openlinker';
         $this->tab = 'administration';
-        $this->version = '1.3.0';
+        $this->version = '1.4.0';
         $this->author = 'OpenLinker Team';
         $this->need_instance = 0;
         $this->ps_versions_compliancy = [
@@ -249,6 +253,7 @@ class OpenLinker extends CarrierModule
             'batch_size' => Configuration::get('BATCH_SIZE') ?: self::DEFAULT_BATCH_SIZE,
             'max_retry_attempts' => Configuration::get('MAX_RETRY_ATTEMPTS') ?: self::DEFAULT_MAX_RETRY_ATTEMPTS,
             'retry_backoff_multiplier' => Configuration::get('RETRY_BACKOFF_MULTIPLIER') ?: self::DEFAULT_RETRY_BACKOFF_MULTIPLIER,
+            'outbox_retention_days' => Configuration::get('OPENLINKER_OUTBOX_RETENTION_DAYS') ?: self::DEFAULT_OUTBOX_RETENTION_DAYS,
             'statistics' => $this->getStatistics(),
         ]);
 
@@ -328,6 +333,13 @@ class OpenLinker extends CarrierModule
                 $errors[] = $this->l('Retry backoff multiplier must be at least 1.0');
             } else {
                 Configuration::updateValue('RETRY_BACKOFF_MULTIPLIER', $backoffMultiplier);
+            }
+
+            $retentionDays = (int)Tools::getValue('OPENLINKER_OUTBOX_RETENTION_DAYS');
+            if ($retentionDays < 1 || $retentionDays > 365) {
+                $errors[] = $this->l('Outbox retention must be between 1 and 365 days');
+            } else {
+                Configuration::updateValue('OPENLINKER_OUTBOX_RETENTION_DAYS', $retentionDays);
             }
 
         // Return messages
@@ -479,7 +491,13 @@ class OpenLinker extends CarrierModule
             $events = $repository->claimBatchDueForDelivery($batchSize, $runId);
 
             if (empty($events)) {
-                return $this->displayConfirmation($this->l('No events due for delivery.'));
+                // An idle queue is when an operator with an oversized outbox
+                // most wants the prune to happen, so it runs here too (#2604).
+                $pruned = $this->runOutboxRetentionNow($repository);
+
+                return $this->displayConfirmation(
+                    $this->l('No events due for delivery.') . ($pruned === '' ? '' : ' ' . $pruned)
+                );
             }
 
             // Process events
@@ -573,6 +591,10 @@ class OpenLinker extends CarrierModule
             }
             if ($resetCount > 0) {
                 $messageParts[] = sprintf('%d scheduled event(s) made available', $resetCount);
+            }
+            $pruned = $this->runOutboxRetentionNow($repository);
+            if ($pruned !== '') {
+                $messageParts[] = $pruned;
             }
             
             $message = implode(', ', $messageParts);
@@ -699,6 +721,50 @@ class OpenLinker extends CarrierModule
     }
 
     /**
+     * Run a retention pass on demand and describe what it removed (#2604)
+     *
+     * Forced, because an operator clicking the button has asked for it and
+     * should not be silently refused by the hourly interval gate. Never fatal:
+     * housekeeping must not break the delivery action it rides along with.
+     *
+     * @param OutboxRepository $repository
+     * @return string Human-readable fragment, empty when nothing was removed
+     */
+    private function runOutboxRetentionNow($repository)
+    {
+        try {
+            $report = $repository->runRetention(true);
+
+            $removed = (int)$report['deleted_delivered']
+                + (int)$report['deleted_failed']
+                + (int)$report['deleted_over_cap'];
+
+            if (!empty($report['backlog_over_cap'])) {
+                return sprintf(
+                    'outbox is over its row cap (%d rows) with no prunable history left - the excess is undelivered events',
+                    (int)$report['rows']
+                );
+            }
+
+            if ($removed === 0) {
+                return '';
+            }
+
+            return sprintf('%d old event(s) pruned', $removed);
+        } catch (Throwable $e) {
+            PrestaShopLogger::addLog(
+                'OpenLinker: outbox retention failed: ' . $e->getMessage(),
+                2,
+                null,
+                'Module',
+                null
+            );
+
+            return '';
+        }
+    }
+
+    /**
      * Create outbox table
      *
      * @return bool
@@ -730,7 +796,8 @@ class OpenLinker extends CarrierModule
             UNIQUE KEY `event_id` (`event_id`),
             UNIQUE KEY `dedup_key` (`dedup_key`),
             KEY `status_next_attempt_created` (`status`, `next_attempt_at`, `created_at`),
-            KEY `processing_owner_started` (`processing_owner`, `processing_started_at`)
+            KEY `processing_owner_started` (`processing_owner`, `processing_started_at`),
+            KEY `status_updated` (`status`, `updated_at`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;';
 
         return Db::getInstance()->execute($sql);
@@ -1165,6 +1232,7 @@ class OpenLinker extends CarrierModule
         Configuration::updateValue('BATCH_SIZE', self::DEFAULT_BATCH_SIZE);
         Configuration::updateValue('MAX_RETRY_ATTEMPTS', self::DEFAULT_MAX_RETRY_ATTEMPTS);
         Configuration::updateValue('RETRY_BACKOFF_MULTIPLIER', self::DEFAULT_RETRY_BACKOFF_MULTIPLIER);
+        Configuration::updateValue('OPENLINKER_OUTBOX_RETENTION_DAYS', self::DEFAULT_OUTBOX_RETENTION_DAYS);
         // Default: suppress buyer mail on OL-imported orders (#905).
         Configuration::updateValue(self::IMPORT_SEND_MAIL_CONFIG_KEY, 0);
     }
@@ -1186,6 +1254,8 @@ class OpenLinker extends CarrierModule
         Configuration::deleteByName('BATCH_SIZE');
         Configuration::deleteByName('MAX_RETRY_ATTEMPTS');
         Configuration::deleteByName('RETRY_BACKOFF_MULTIPLIER');
+        Configuration::deleteByName('OPENLINKER_OUTBOX_RETENTION_DAYS');
+        Configuration::deleteByName('OPENLINKER_OUTBOX_RETENTION_LAST_RUN');
         // Retired in 1.3.0; still deleted so an install that predates the
         // upgrade does not leave the row behind.
         Configuration::deleteByName('DEDUPLICATION_WINDOW_MINUTES');
