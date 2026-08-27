@@ -99,6 +99,7 @@ import { toNeutralCategoryParameter } from '../mappers/allegro-category-paramete
 import type {
   AllegroOfferQuantityChangeCommandResponse,
   AllegroQuantityChangeCommandStatusResponse,
+  AllegroTaskError,
   AllegroCategoryParametersResponse,
   AllegroCategoriesResponse,
   AllegroCategoryResponse,
@@ -805,9 +806,7 @@ export class AllegroOfferManagerAdapter
    * `errors` is present but empty, so callers can safely `?? fallback`
    * without a defined-but-empty string masking it (#2622 review).
    */
-  private formatAllegroTaskErrors(
-    errors: Array<{ code: string; message: string }> | undefined
-  ): string | undefined {
+  private formatAllegroTaskErrors(errors: AllegroTaskError[] | undefined): string | undefined {
     if (!errors || errors.length === 0) {
       return undefined;
     }

@@ -677,6 +677,54 @@ describe('AllegroOfferManagerAdapter', () => {
       ]);
     });
 
+    it('falls back to "rejected" (not an empty string) when a REJECTED command carries an empty errors array (#2622 review)', async () => {
+      const batchAdapter = fastAdapter();
+
+      httpClient.put.mockResolvedValueOnce({
+        data: {
+          id: 'cmd-rejected-empty-errors',
+          status: 'REJECTED',
+          errors: [],
+        } as AllegroOfferQuantityChangeCommandResponse,
+        status: 200,
+        headers: {},
+      });
+
+      const result = await batchAdapter.updateOfferQuantitiesBatch({
+        items: [{ offerId: 'offer-1', quantity: 10, idempotencyKey: 'key-1' }],
+      });
+
+      expect(result.failed).toEqual([{ offerId: 'offer-1', errorCode: 'rejected', message: 'rejected' }]);
+    });
+
+    it('falls back to the task message (not an empty string) when a FAIL task carries an empty errors array (#2622 review)', async () => {
+      const batchAdapter = fastAdapter();
+
+      httpClient.put.mockResolvedValueOnce({
+        data: { id: 'cmd-fail-empty-errors', status: 'ACCEPTED' } as AllegroOfferQuantityChangeCommandResponse,
+        status: 200,
+        headers: {},
+      });
+      httpClient.get.mockResolvedValueOnce({
+        data: {
+          id: 'cmd-fail-empty-errors',
+          taskCount: 1,
+          completedTaskCount: 1,
+          tasks: [{ offerId: 'offer-1', status: 'FAIL', message: 'Offer is inactive', errors: [] }],
+        },
+        status: 200,
+        headers: {},
+      });
+
+      const result = await batchAdapter.updateOfferQuantitiesBatch({
+        items: [{ offerId: 'offer-1', quantity: 10, idempotencyKey: 'key-1' }],
+      });
+
+      expect(result.failed).toEqual([
+        { offerId: 'offer-1', errorCode: 'unknown', message: 'Offer is inactive' },
+      ]);
+    });
+
     it('should report poll-timeout for an offer the terminal response omits, without affecting siblings', async () => {
       const batchAdapter = fastAdapter();
 
