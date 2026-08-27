@@ -59,6 +59,15 @@ export interface AutomationsApi {
    * means the run write path has not landed, NOT that the rule never fired.
    */
   listRuns: (ruleId: string) => Promise<AutomationRunLog | null>;
+  /**
+   * `POST /automations` — create a rule. Admin only.
+   *
+   * Refuses with 409 (`AutomationRuleConflictError`) when an identical
+   * definition already covers an overlapping window, and 400 for an illegal
+   * pair / condition field / step count — each carrying structured fields the
+   * composer reads instead of parsing the message.
+   */
+  create: (input: AutomationRuleWriteInput) => Promise<AutomationRule>;
   /** `PUT /automations/:id` — a full replace. Admin only. */
   replace: (ruleId: string, input: AutomationRuleWriteInput) => Promise<AutomationRule>;
   /** `DELETE /automations/:id`. Admin only. */
@@ -92,6 +101,14 @@ export function createAutomationsApi(request: ApiRequest): AutomationsApi {
       return parseAutomationRunLog(
         await request<unknown>(`/automations/${encodeURIComponent(ruleId)}/runs`),
       );
+    },
+
+    async create(input): Promise<AutomationRule> {
+      const raw = await request<unknown>('/automations', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+      return parseAutomationRule(raw);
     },
 
     async replace(ruleId, input): Promise<AutomationRule> {

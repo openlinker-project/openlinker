@@ -19536,3 +19536,100 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
     min-height: 44px;
   }
 }
+
+/* ── Automation composer (#2365) ─────────────────────────────────────────── */
+
+/*
+ * A DEPARTURE from "complex editors go read-only below 1024 px" — see the
+ * § Responsive note in docs/frontend-ui-style-guide.md. Single column, ≥ 44 px
+ * targets, fully interactive at 375 px.
+ */
+
+.automation-composer__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.automation-composer__section {
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+}
+
+.automation-composer__row,
+.automation-composer__action {
+  background: var(--bg-surface-muted);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+}
+
+.automation-composer__action-head {
+  align-items: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.automation-composer__action-head .form-field {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.automation-composer__remove {
+  margin-left: auto;
+}
+
+.automation-composer__dates {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: 1fr 1fr;
+}
+
+.automation-composer__footer {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+.automation-merge-fields__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: var(--space-1) 0;
+}
+
+@media (min-width: 768px) {
+  .automation-composer__row {
+    align-items: flex-end;
+    display: grid;
+    gap: var(--space-2);
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  }
+}
+
+@media (max-width: 767px) {
+  .automation-composer__dates {
+    grid-template-columns: 1fr;
+  }
+
+  .automation-composer__footer {
+    flex-direction: column-reverse;
+  }
+
+  .automation-composer__footer .button,
+  .automation-composer__row .button,
+  .automation-composer__action-head .button {
+    min-height: 44px;
+    width: 100%;
+  }
+
+  .automation-composer__remove {
+    margin-left: 0;
+  }
+}

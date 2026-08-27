@@ -727,6 +727,14 @@ Parity matrix — what changes across sizes:
 | Complex editors | **read-only + "open on desktop to edit" hint** | full interactive | full interactive |
 | Wizards | one step per screen, stepper collapsed | full | full |
 
+**Documented departure — the automation composer (#2365)** stays **fully interactive at 375 px**
+rather than taking the *Complex editors* row's read-only + "open on desktop to edit" affordance. The
+composer is overwhelmingly closed-vocabulary selects (trigger, action, condition field, hold reason)
+plus three short text fields — a *configuration* surface, far closer to the picker modal below than
+to category mappings or raw-JSON editing, which are the cases that row was written for. It stacks to
+a single column below 768 px with ≥ 44 px targets. Like the picker, it never shows an "open on
+desktop" hint, because there is nothing it refuses to do at that width.
+
 **Documented departure — the offer-creation product picker modal (#1754/#1779)** folds into a two-step wizard (step 1 = product list, step 2 = selection review + connection + Continue) at **both** mobile *and* tablet width (≤ 1023 px), rather than staying "full interactive" at tablet as the *Complex editors* / *Wizards* rows above would suggest. This is deliberate: the modal's side-by-side list + review rail needs two comfortable columns, which only desktop (≥ 1024 px) affords; on an iPad the two-step flow is more usable than two cramped columns. Unlike the "complex editors" rule, the picker stays **fully interactive** at every width (it is a selection surface, not a data editor), so it never shows an "open on desktop" hint.
 
 Rules:

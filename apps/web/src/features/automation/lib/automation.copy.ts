@@ -178,6 +178,118 @@ export const AUTOMATION_ERROR_COPY = {
   loadingMessage: 'Fetching your rules and what each step can do…',
 } as const;
 
+/**
+ * The composer (#2365, spec §5.5 + §5.3b).
+ *
+ * Two sentences here are VERBATIM from the spec and must not be reworded:
+ * `nonRetroactivity` and `stopOnFirstFailure`. Both are promises about what the
+ * product will and will not do on the operator's behalf.
+ */
+export const AUTOMATION_COMPOSER_COPY = {
+  createTitle: 'New automation',
+  nameLabel: 'Name',
+  nameHint: 'You will see this on the run log and on the order timeline.',
+  whenLabel: 'When this happens',
+  onlyIfLabel: 'Only if',
+  thenLabel: 'Then do this',
+  addCondition: '+ Add condition',
+  addAction: '+ Add step',
+  removeCondition: 'Remove condition',
+  removeAction: 'Remove step',
+  conditionsHint:
+    'Every condition must be true for the automation to run. Leave this empty to act on every one.',
+  /** Spec §5.5, verbatim. */
+  nonRetroactivity: 'An automation only acts on things that happen after you save it.',
+  /** Spec §5.5 divergence 3, verbatim in substance — stated once, for the rule. */
+  stopOnFirstFailure: (max: number) =>
+    `Steps run in order, and if one fails the rest are skipped. You can add up to ${max}.`,
+  activeLabel: 'Turn this on when I save it',
+  activeHint: 'You can save it switched off and turn it on once you are happy with it.',
+  effectiveFromLabel: 'Active from',
+  effectiveToLabel: 'Active until',
+  effectiveToOptional: '(optional)',
+  save: 'Save automation',
+  saving: 'Saving…',
+  cancel: 'Cancel',
+  saveFailed: 'The automation was not saved',
+  saveFailedGeneric: 'Something went wrong saving this automation. Try again.',
+  duplicateRule:
+    'You already have an automation that does exactly this over an overlapping period. Both would run, doubling whatever they do — change something about this one, or narrow when it applies.',
+  illegalPair: (action: string) =>
+    `This event cannot do "${action}". Pick a different step, or a different event to watch for.`,
+  triggerConfigLabel: 'How many hours',
+  conditionFieldLabel: 'Condition',
+  conditionValueLabel: 'Value',
+  amountOpLabel: 'Comparison',
+  amountLabel: 'Amount',
+  currencyLabel: 'Currency',
+  currencyHint: 'Only orders in this exact currency can match. Nothing is converted.',
+  actionLabel: 'Step',
+  /** §5.3b A1 — it takes no parameters, and the copy says why. */
+  a1Note:
+    'Which document gets issued, and by which provider, is decided by your Sales documents rules. This automation only decides when.',
+  /** §5.3b A3 — no selectable status vocabulary. */
+  a3Note:
+    'OpenLinker relays what it knows. If no label has been bought yet, the marketplace is told the order shipped without a tracking number.',
+  /** §5.3b A2 — the standing money line. */
+  a2Warning: 'Every time this runs, it buys a label and you are charged for it.',
+  carrierLabel: 'Carrier',
+  carrierHint: 'Which carrier account to buy from.',
+  carrierEmpty: 'No carrier is connected yet, so this step cannot be set up.',
+  /**
+   * Said plainly because the spec asks for pickers OpenLinker cannot build:
+   * there is no service list and no saved package presets anywhere in the
+   * product. An empty picker would read as "you have none configured", which is
+   * a claim about the operator's setup rather than about OpenLinker's.
+   */
+  a2NoOptions:
+    'Service level and package presets are not available yet, so the carrier default is used and the order’s own weight and size are declared.',
+  codLabel: 'Collect the order total from the buyer on delivery',
+  recipientLabel: 'Send it to',
+  recipientBuyer: 'The buyer',
+  recipientAddress: 'A fixed address',
+  addressLabel: 'Email address',
+  subjectLabel: 'Subject',
+  bodyLabel: 'Message',
+  mergeFieldsTitle: 'Drop in order details',
+  mergeFieldsHint:
+    'Click one to insert it. Anything else is sent exactly as you type it — including a field name you mistype, so you can see and fix it.',
+  holdReasonLabel: 'Reason',
+  holdReasonHint: 'Why it is being held. The operator who finds it sees this.',
+  releaseWhichLabel: 'Which hold to lift',
+  releaseAnyHold: 'Any hold',
+  noteLabel: 'Note',
+  noteRequiredHint: 'Required, the same as when you lift a hold by hand.',
+  moneyAckLabel:
+    'I understand this automation spends money every time it runs, and those steps cannot be undone.',
+  readOnly: 'Your account can look at automations but not create them.',
+} as const;
+
+/**
+ * Condition-field and action labels (#2365).
+ *
+ * They live HERE, not beside their row components, because
+ * `check-ui-vocabulary.mjs` reads every string literal in a `*.copy.ts` but only
+ * JSX text and an allow-listed set of JSX attributes in a `.tsx` — an object
+ * literal of labels inside a component file is neither, so it would sit outside
+ * the gate entirely while every other string in this feature sits inside it.
+ */
+export const AUTOMATION_CONDITION_FIELD_LABELS: Record<string, string> = {
+  sourceConnection: 'The order came from',
+  orderCountry: 'The delivery country is',
+  orderTotalGross: 'The order total (gross)',
+  holdReason: 'The hold reason is',
+};
+
+export const AUTOMATION_ACTION_LABELS: Record<string, string> = {
+  'issue-sales-document': 'Issue the invoice or receipt',
+  'dispatch-shipment': 'Buy the shipping label',
+  'relay-status-to-source': 'Tell the marketplace',
+  'send-email': 'Send an email',
+  'place-hold': 'Put the order on hold',
+  'release-hold': 'Lift the hold',
+};
+
 export const AUTOMATION_ACTIVITY_COPY = {
   eyebrow: 'Automations',
   title: 'Run log',

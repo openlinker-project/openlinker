@@ -18,10 +18,11 @@
  *
  * @module apps/web/src/pages/automations
  */
-import type { ReactElement } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useState, type ReactElement } from 'react';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Alert } from '../../shared/ui/alert';
+import { Button } from '../../shared/ui/button';
 import { ErrorState, LoadingState } from '../../shared/ui/feedback-state';
 import { useDemoMode } from '../../features/system/hooks/use-demo-mode';
 import { useWriteAccess } from '../../shared/auth/use-permission';
@@ -30,11 +31,13 @@ import {
   AUTOMATION_ERROR_COPY,
   AUTOMATION_INDEX_COPY,
   AUTOMATION_RULES_COPY,
+  AutomationComposerDialog,
   AutomationRulesList,
   describeTrigger,
   isAutomationTrigger,
   useAutomationRulesQuery,
   useAutomationRunsQuery,
+  useAutomationVocabularyQuery,
   useSetAutomationActiveMutation,
   type AutomationRule,
 } from '../../features/automation';
@@ -60,13 +63,35 @@ export function AutomationTriggerPage(): ReactElement {
   const firstRuleId = rulesQuery.data?.items[0]?.id;
   const runsQuery = useAutomationRunsQuery(firstRuleId ?? '', Boolean(firstRuleId));
   const setActive = useSetAutomationActiveMutation();
+  const vocabularyQuery = useAutomationVocabularyQuery();
+
+  // `?compose=suggested` pre-fills the §5.1 rule; `?compose=new` opens it empty.
+  // URL state, so the #2364 suggestion card can route straight into the
+  // composer — and so nothing is created merely by arriving here.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const composeParam = searchParams.get('compose');
+  const [composerOpen, setComposerOpen] = useState(composeParam !== null);
 
   const described = describeTrigger(trigger ?? '');
 
+  function closeComposer(): void {
+    setComposerOpen(false);
+    if (composeParam === null) return;
+    // Clear the param so a refresh does not reopen a dialog the operator closed.
+    const next = new URLSearchParams(searchParams);
+    next.delete('compose');
+    setSearchParams(next, { replace: true });
+  }
+
   const backLink = (
-    <Link className="button button--secondary" to="/automations">
-      {AUTOMATION_RULES_COPY.backToIndex}
-    </Link>
+    <>
+      {write.canWrite ? (
+        <Button onClick={() => setComposerOpen(true)}>{AUTOMATION_RULES_COPY.addRule}</Button>
+      ) : null}
+      <Link className="button button--secondary" to="/automations">
+        {AUTOMATION_RULES_COPY.backToIndex}
+      </Link>
+    </>
   );
 
   if (!isKnownTrigger) {
@@ -130,6 +155,21 @@ export function AutomationTriggerPage(): ReactElement {
           />
         </>
       )}
+
+      {/*
+        Mounted only once the vocabulary has loaded: it is the ONLY source of the
+        legality matrix, the availability of each action and the step cap, and a
+        composer that opened without it would have to invent all three.
+      */}
+      {isKnownTrigger && vocabularyQuery.data ? (
+        <AutomationComposerDialog
+          open={composerOpen}
+          onOpenChange={(next) => (next ? setComposerOpen(true) : closeComposer())}
+          trigger={trigger}
+          vocabulary={vocabularyQuery.data}
+          prefillSuggested={composeParam === 'suggested'}
+        />
+      ) : null}
     </PageLayout>
   );
 }

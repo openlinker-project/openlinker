@@ -171,7 +171,58 @@ export interface AutomationRun {
   firedAt: string;
 }
 
-/** The complete definition a `PUT /automations/:id` replace must carry. */
+/** The four v1 condition fields (spec §5.5 divergence 2). */
+export const AUTOMATION_CONDITION_FIELD_VALUES = [
+  'sourceConnection',
+  'orderCountry',
+  'orderTotalGross',
+  'holdReason',
+] as const;
+export type AutomationConditionField = (typeof AUTOMATION_CONDITION_FIELD_VALUES)[number];
+
+/** Comparison operators an amount condition may use. Never inferred. */
+export const AUTOMATION_AMOUNT_OP_VALUES = ['gte', 'lt'] as const;
+export type AutomationAmountOp = (typeof AUTOMATION_AMOUNT_OP_VALUES)[number];
+
+/**
+ * The nine merge fields, spec §5.3b — a CLOSED list.
+ *
+ * An open templating surface is a scripting language, which §6 refuses. An
+ * unrecognised `{…}` is rendered VERBATIM as typed, never blanked: blanking
+ * silently produces an email that reads as broken, whereas a visible
+ * `{ordr.reference}` is a typo the operator can see and fix.
+ */
+export const AUTOMATION_MERGE_FIELDS = [
+  { token: '{order.reference}', renders: "the order's operator-facing reference" },
+  { token: '{order.source}', renders: 'the channel name' },
+  { token: '{order.total}', renders: 'the gross total with its currency' },
+  { token: '{order.placedAt}', renders: "the order date, in the operator's locale" },
+  { token: '{order.dispatchBy}', renders: 'the marketplace dispatch deadline, or "no deadline"' },
+  { token: '{buyer.name}', renders: "the buyer's name as the source reported it" },
+  { token: '{shipment.tracking}', renders: 'the tracking number, or "not yet"' },
+  { token: '{hold.reason}', renders: "the current hold's reason, or \"no hold\"" },
+  { token: '{rule.name}', renders: "the automation's own name" },
+] as const;
+
+/**
+ * The capability a connection must carry to appear in A2's carrier select.
+ *
+ * A MANIFEST capability, not a `CoreCapabilityValues` member — capability is
+ * open at the registry boundary (#576). The plausible-looking
+ * `'ShippingProvider'` is asserted NOT to be a core capability in
+ * `adapter.types.spec.ts`; naming it wrong renders an empty select that reads
+ * as "you have no carriers configured".
+ */
+export const AUTOMATION_CARRIER_CAPABILITY = 'ShippingProviderManager';
+
+/**
+ * The complete definition a write must carry.
+ *
+ * ONE type for both `POST /automations` and `PUT /automations/:id`, because the
+ * backend takes the same body for both: `updateRule` re-validates and re-hashes
+ * a COMPLETE input, which is exactly why that route is a `PUT` and not a
+ * `PATCH`. A separate create type would imply a difference that does not exist.
+ */
 export interface AutomationRuleWriteInput {
   name: string;
   trigger: AutomationTrigger;
