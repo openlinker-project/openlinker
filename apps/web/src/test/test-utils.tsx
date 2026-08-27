@@ -624,6 +624,9 @@ export function createMockApiClient(
       getIngestionAvailability: vi
         .fn()
         .mockResolvedValue({ configured: true, connectionIds: [] }),
+      // #2383 — the order detail page reads this on every render. Defaulted to
+      // the no-returns case so every existing order test keeps its behaviour.
+      listReturnEventsForOrder: vi.fn().mockResolvedValue([]),
       ...overrides.returns,
     } as ApiClient['returns'],
     shipments: {

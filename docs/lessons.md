@@ -476,6 +476,8 @@ The unit test covering it passed, and that is the part worth remembering: it con
 
 **Problem**: `pgrep -f` matches against the **full command line**, and the watcher's own command line contains the literal string `pnpm test` — as does every other watcher spawned the same way. So each loop matched itself and its sibling, the condition stayed true after the real `pnpm test` had long since exited, and `pgrep -f "pnpm test"` from any *other* shell then reported `RUNNING` about two sleep loops and nothing else. The failure has **no symptom other than a wrong answer delivered confidently**: no error, no hang in the thing being watched, just a monitor that says "still going" forever and a monitor-of-the-monitor that agrees. It also produced a second-order mistake — a detached PID doing real work was read as "nothing in flight", because the only evidence being consulted was the poisoned `pgrep`.
 
+**The mirror failure — a pattern that matches TOO LITTLE.** The same session then missed a *running* jest twice with `pgrep -f "jest --config ./test/jest-integration"`, because the real command line is `node /path/to/jest.js …` — the binary name never appears. That reported "not running" about a process consuming 13 containers. So the trap has two directions and both yield a confident wrong answer about whether work is in flight: a pattern matching too much (the self-matching watcher above) and one matching too little (the cmdline is not what you assume). The second was hit twice with the first already written down, which is the argument for consulting the ledger over trusting recollection.
+
 **Rule**: never key a wait loop on a pattern that appears in the loop's own command line. Wait on the **PID** (`while kill -0 "$PID" 2>/dev/null; do sleep 15; done`), or on a **marker the watcher cannot produce** — a sentinel line the watched command appends on exit, or its exit-code file. If a pattern really is the only handle available, exclude self and siblings (`pgrep -f "pattern" | grep -v $$`), and treat a non-empty result as evidence only after confirming what those PIDs actually are (`pgrep -fl`). More generally: **a check that can satisfy itself proves nothing** — the same shape as a mock easier to satisfy than the thing it replaces, or a `tsconfig` with no inputs exiting 0.
 
 **Applies to**: any backgrounded `until`/`while` poll used to serialise against a long build, test or migration run; `pgrep`/`pkill -f` used anywhere near a process whose name is a substring of the polling command.
@@ -512,6 +514,8 @@ The four, and what each was missing:
 | *"Stock added manually by `{user}`"* | No name is obtainable. `actorUserId` is written everywhere and resolved nowhere; there is no `IUsersService`. |
 
 **Problem**: a one-line step reads as settled precisely because it is short. Prose invites scrutiny; a bullet that names a UI element sounds like a rendering detail, so a reviewer's eye skips it and the author never asked the question either. The failure surfaces mid-implementation, when the tempting fix is whatever is nearest to hand — the mutation's own response for the row, the raw UUID for the name — and that is how a placeholder ships.
+
+**The harder variant — a parenthetical that NAMES an additional source is not a design for reading it, and is more dangerous than saying nothing.** #2383's plan described its read as *"an order-scoped read of return events (acts — receive, dispose, attestation — plus record-level facts)"*, then designed a single query over `return_line_events`. That ledger has four kinds and supplies only the acts: `opened` and `declined` are header COLUMNS on `returns`, `refund confirmed` is a money state, and `credit note issued` lives in another bounded context entirely. The hedge is what let it through review — it reads as already thought through, so it **satisfies the audit it should have failed**. **Naming a thing is not sourcing it.** When a step names more than one source, the audit is per SOURCE, not per step.
 
 **Rule**: when reviewing a plan (your own especially), **list every step stated in one line and ask of each: what supplies this?** A field needs a read, a control needs a write, a badge needs a flag on the wire, and **a copy string is a contract too** — `{user}` in a spec is a promise that a name is obtainable, exactly as a button is a promise that a write exists. If the answer is "the response of the action that caused it", check what happens on reload. It is a cheap pass and it would have caught all four here before a review round.
 
@@ -551,3 +555,47 @@ So **mounting needs an assertion one level up** — a page test that finds the s
 **Applies to**: any operator-facing alarm/badge/notice; any plan whose acceptance criteria name specific tests, or whose reasoning rests on a named guard.
 
 **Source**: #2380 / #2381.
+
+### An int-spec that cannot reach the route proves nothing — and it will say so as a business failure
+
+**#2383.** A new `GET /returns/events` route was added, correctly declared before
+`@Get(':returnId')`, and its integration spec failed **every** assertion with
+`404 Not Found`. Read at face value that is a routing-order defect, and the
+obvious "fix" is to move a decorator that was already in the right place.
+
+The route was fine. The **spec** was requesting `/returns/events` while the
+harness enables URI versioning, so every path needs `/v1`. Two details made this
+worth an entry rather than a shrug:
+
+1. **The 404 was indistinguishable from the real defect the test exists to
+   catch.** A literal segment swallowed by a parameter route ALSO returns 404 —
+   via `ReturnNotFoundError` → the global filter — so the symptom pointed
+   straight at the hypothesis that was wrong. Debugging by hypothesis would have
+   churned the controller indefinitely.
+2. **The cheap discriminator is to probe a route you did not write.** One
+   throwaway spec hitting `/returns` and `/returns/ingestion-availability` — both
+   long-shipped, both passing in their own spec — returned 404 too. That
+   collapses the search instantly: *nothing* on the controller is reachable, so
+   the fault is in the request, not the routing. `Cannot GET /returns/events` in
+   the body (Nest's own 404) versus a domain-shaped body is the same tell, one
+   layer cheaper.
+
+**When a new test fails in a way that indicts your new code, first check whether
+it also indicts code you did not touch.** If it does, the test is wrong.
+
+### A test expectation written before the seed path was read is a guess
+
+**#2383, same spec.** Two assertions expected `['dispose', 'receive']` and got
+`['opened', 'opened', 'dispose', 'receive']`. The extra entries were **correct** —
+`upsertFromObservation` stamps `openedAt` from the observation, so a seeded
+return really does contribute an `opened` fact. The expectations had been written
+from the plan's source table rather than from what the seed helper actually
+writes.
+
+Harmless here because the surplus was visible. The dangerous direction is the
+same mistake with a *narrower* expectation that happens to pass — `toContain`
+where `toEqual` was meant, or a filter that quietly drops the rows a defect would
+have produced. **Write the assertion against what the seed path writes, not
+against what the design says it should.** And when a test's actual output is
+richer than expected, establish whether the surplus is a defect or a fact before
+editing either side — here it was the feature working.

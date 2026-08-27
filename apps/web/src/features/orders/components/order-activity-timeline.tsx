@@ -26,7 +26,16 @@ import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
 import type { ParsedOrderInvoice } from '../api/order-snapshot.schema';
 import { invoicingBlockedBadge } from '../lib/order-row';
 
-interface TimelineEvent {
+/**
+ * One row on the order activity timeline.
+ *
+ * **Exported since #2383** so a sibling feature can map its own acts into this
+ * shape without the orders timeline learning that feature's vocabulary —
+ * `buildEvents` already takes fifteen positional parameters, and a sixteenth
+ * would put returns concepts inside the orders builder. The type is owned here
+ * because the timeline is owned here.
+ */
+export interface TimelineEvent {
   id: string;
   timestamp: string | null;
   title: ReactElement | string;
@@ -103,6 +112,15 @@ interface OrderActivityTimelineProps {
    * it was ever held.
    */
   salesDocumentBlockReleasedAt?: string | null;
+  /**
+   * Events contributed by another feature (#2383 — the returns half).
+   *
+   * The timeline learns nothing about where they came from: the caller maps its
+   * own acts into `TimelineEvent` and this component merges them by timestamp
+   * (see {@link mergeTimelineEvents}). Optional, and absent or empty leaves the
+   * rendered order identical to before the prop existed.
+   */
+  extraEvents?: TimelineEvent[];
 }
 
 const STATUS_PAST_TENSE: Record<OrderSyncStatusValue, string> = {
@@ -380,6 +398,55 @@ function buildEvents(
   return events;
 }
 
+/**
+ * Merge injected events into the authored sequence WITHOUT re-sorting it.
+ *
+ * `buildEvents` has never sorted: its order is an authored narrative, and it
+ * deliberately includes undated entries (`timestamp: … ?? null`). A global sort
+ * would silently rewrite someone else's surface, and appending would pin every
+ * injected event to the bottom regardless of when it happened — the dateless
+ * entry defect one level up.
+ *
+ * So: each authored event is emitted in its original position, and injected
+ * events are flushed in front of the first DATED authored event they precede.
+ * Two properties follow by construction and are pinned by tests:
+ *
+ * - authored events are never compared with each other, so with `extra` empty
+ *   the output is the input, identical;
+ * - an undated authored entry is not a comparison key, so it keeps its authored
+ *   position and never floats to an end.
+ *
+ * A tie keeps the authored entry first — it described the order first.
+ */
+export function mergeTimelineEvents(
+  authored: TimelineEvent[],
+  extra: TimelineEvent[],
+): TimelineEvent[] {
+  if (extra.length === 0) return authored;
+
+  const pending = [...extra].sort(
+    (a, b) => Date.parse(a.timestamp ?? '') - Date.parse(b.timestamp ?? ''),
+  );
+
+  const merged: TimelineEvent[] = [];
+  let next = 0;
+
+  for (const event of authored) {
+    if (event.timestamp !== null) {
+      const at = Date.parse(event.timestamp);
+      while (next < pending.length) {
+        const candidate = pending[next].timestamp;
+        if (candidate === null || !(Date.parse(candidate) < at)) break;
+        merged.push(pending[next]);
+        next += 1;
+      }
+    }
+    merged.push(event);
+  }
+
+  return [...merged, ...pending.slice(next)];
+}
+
 const TONE_CLASS: Record<TimelineEvent['tone'], string> = {
   default: 'order-activity__dot--default',
   success: 'order-activity__dot--success',
@@ -404,8 +471,9 @@ export function OrderActivityTimeline({
   packedByUserId,
   salesDocumentBlockedAt,
   salesDocumentBlockReleasedAt,
+  extraEvents,
 }: OrderActivityTimelineProps): ReactElement {
-  const events = useMemo(
+  const authored = useMemo(
     () =>
       buildEvents(
         createdAt,
@@ -441,6 +509,11 @@ export function OrderActivityTimeline({
       salesDocumentBlockedAt,
       salesDocumentBlockReleasedAt,
     ],
+  );
+
+  const events = useMemo(
+    () => mergeTimelineEvents(authored, extraEvents ?? []),
+    [authored, extraEvents],
   );
 
   if (events.length === 0) {

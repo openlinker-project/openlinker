@@ -33,6 +33,7 @@ import {
   ReturnRestockTargetStatusValues,
   ReturnRestockBlockReasonValues,
   ReturnRestockStateValues,
+  ReturnTimelineSourceValues,
   type ReturnBucket,
   type ReturnCustodyState,
   type ReturnDeclineUnsupportedReason,
@@ -42,6 +43,7 @@ import {
   type ReturnRestockTargetStatus,
   type ReturnRestockBlockReason,
   type ReturnRestockState,
+  type ReturnTimelineSource,
 } from '@openlinker/core/returns';
 import type { ReturnSegment, ReturnStage } from '@openlinker/core/returns';
 import { RefundReasonValues, type RefundReason } from '@openlinker/core/orders/types';
@@ -530,4 +532,90 @@ export class ReturnIngestionAvailabilityResponseDto {
     description: 'The connections that declare it. Empty exactly when configured is false.',
   })
   connectionIds!: string[];
+}
+
+/**
+ * One entry on the order-detail timeline's returns half (#2383).
+ *
+ * `source` says WHERE the entry came from, `kind` says what happened in that
+ * source's own vocabulary. The two are separate because a consumer that does
+ * not recognise a `kind` must render it rather than drop it, while an
+ * unrecognised `source` is a different problem — and one union covering both
+ * would let the first arm quietly absorb the second.
+ *
+ * No connection id is exposed: the operator reads a channel NAME, and the
+ * browser is never asked to resolve one.
+ */
+export class ReturnTimelineEntryDto {
+  @ApiProperty({ description: 'Stable within one read — the timeline row key.' })
+  id!: string;
+
+  @ApiProperty({
+    enum: ReturnTimelineSourceValues,
+    description: 'Where this entry came from — not what kind of act it was.',
+  })
+  source!: ReturnTimelineSource;
+
+  @ApiProperty({
+    description:
+      "What happened, in the reporting source's own words. A plain string, not a closed enum: an " +
+      'unrecognised value is rendered rather than dropped.',
+  })
+  kind!: string;
+
+  @ApiProperty({ description: 'ISO-8601. Never null — every source supplies an instant.' })
+  occurredAt!: string;
+
+  @ApiProperty() returnId!: string;
+
+  @ApiProperty({ nullable: true, description: "The source's own id for the return." })
+  externalReturnId!: string | null;
+
+  @ApiProperty({ enum: ReturnOriginValues })
+  returnOrigin!: ReturnOrigin;
+
+  @ApiProperty({
+    nullable: true,
+    description:
+      'Display name of the return\'s SOURCE connection, resolved server-side. `null` when it could ' +
+      'not be resolved — the UI renders its unknown-connection copy, never an id.',
+  })
+  sourceConnectionName!: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    description:
+      'The operator who performed an OpenLinker-owned act. `null` on every source claim — `opened` ' +
+      'and `declined` have no actor column, so they are a source claim or nothing.',
+  })
+  actorUserId!: string | null;
+
+  @ApiProperty({ nullable: true, description: 'Custody acts only.' })
+  quantity!: number | null;
+
+  @ApiProperty({ nullable: true, description: 'Custody acts only.' })
+  restockState!: string | null;
+
+  @ApiProperty({ nullable: true, description: 'Custody `dispose` acts only.' })
+  disposition!: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    description:
+      'Refund entries only: WHAT moved the money (ADR-056), never who — `RefundRecord` carries no ' +
+      'actor column, and inventing one would let OpenLinker claim a transfer it did not make.',
+  })
+  refundExecutedBy!: string | null;
+
+  @ApiProperty({ nullable: true, description: 'Refund entries only. Decimal string.' })
+  amount!: string | null;
+
+  @ApiProperty({ nullable: true, description: 'Refund entries only. ISO 4217.' })
+  currency!: string | null;
+}
+
+/** Envelope for the order-scoped returns-events read. */
+export class ReturnTimelineResponseDto {
+  @ApiProperty({ type: [ReturnTimelineEntryDto], description: 'Oldest first. `[]` when none.' })
+  entries!: ReturnTimelineEntryDto[];
 }

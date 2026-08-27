@@ -605,3 +605,31 @@ export interface DeclineReturnResult {
   /** Present only for `refused`. The source's own words, rendered verbatim. */
   refusalReason: string | null;
 }
+
+/**
+ * One entry on the order timeline's returns half (#2383).
+ *
+ * `source` says WHERE it came from (`custody_act` | `record_status` | `refund`),
+ * `kind` says what happened in that source's own vocabulary. Both are plain
+ * strings so a value this build predates still renders.
+ */
+export interface ReturnTimelineEntry {
+  id: string;
+  source: string;
+  kind: string;
+  /** ISO-8601. Never null — every source supplies an instant. */
+  occurredAt: string;
+  returnId: string;
+  externalReturnId: string | null;
+  returnOrigin: string;
+  /** Resolved server-side. `null` renders the unknown-connection copy, never an id. */
+  sourceConnectionName: string | null;
+  actorUserId: string | null;
+  quantity: number | null;
+  restockState: string | null;
+  disposition: string | null;
+  /** WHAT moved the money (ADR-056), never who. */
+  refundExecutedBy: string | null;
+  amount: string | null;
+  currency: string | null;
+}

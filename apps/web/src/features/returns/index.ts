@@ -138,3 +138,12 @@ export {
   isReturnSegment,
 } from './lib/return-segments';
 export type { ReturnSegment, ReturnSegmentCounts } from './lib/return-segments';
+
+// Returns activity on the ORDER timeline (#2383, `W2-45`).
+//
+// The mapper is exported, the timeline component is not: `features/orders` owns
+// the timeline and this feature only contributes rows to it.
+export { useOrderReturnEventsQuery } from './hooks/use-order-return-events-query';
+export { mapReturnEventsToTimeline } from './lib/return-timeline-events';
+export { RETURN_TIMELINE_COPY } from './lib/return-timeline.copy';
+export type { ReturnTimelineEntry } from './api/returns.types';

@@ -58,3 +58,9 @@ export {
 } from './lib/refund-reason';
 export type { RefundReason } from './lib/refund-reason';
 export { REFUND_CONFIRMATION_COPY } from './lib/refund-confirmation.copy';
+
+// #2383 — the returns feature maps its own acts into the orders timeline's row
+// shape. Exported as a TYPE only: the timeline component itself stays a deep
+// import for the one page that mounts it, and no sibling gains the ability to
+// render an orders timeline of its own.
+export type { TimelineEvent } from './components/order-activity-timeline';

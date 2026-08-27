@@ -59,6 +59,7 @@ import {
   PaginatedReturnsResponseDto,
   ReturnIngestionAvailabilityResponseDto,
   ReturnResponseDto,
+  ReturnTimelineResponseDto,
 } from '../dto/return-response.dto';
 
 /** Kept in step with the `default:` values `ListReturnsQueryDto` documents. */
@@ -193,6 +194,75 @@ export class ReturnsController {
       configured: availability.configured,
       connectionIds: availability.connectionIds,
     };
+  }
+
+  /**
+   * The returns half of the ORDER-detail timeline (#2383).
+   *
+   * **Declared before `:returnId`** — Nest matches in declaration order, and a
+   * literal segment placed after a parameter is unreachable.
+   *
+   * This is where the three sources meet. `ReturnsService` supplies the two the
+   * returns context owns (custody acts, and the `opened` / `declined` header
+   * columns); the refund entries are composed HERE, because `RefundRecord`
+   * belongs to `orders` and `ReturnsModule` excludes `OrdersModule` on purpose
+   * (`returns.module.ts` — it pulls in seven siblings that context has no
+   * business carrying). This module already holds that edge (#2382), so
+   * composing here costs no new coupling anywhere.
+   */
+  @Get('events')
+  @ApiOperation({
+    summary: "One order's return activity, oldest first",
+    description:
+      'Feeds the order-detail timeline so an operator can see that a return happened, and what has ' +
+      'been done about it, without leaving for /returns. Returns `[]` for an order with no returns.',
+  })
+  @ApiResponse({ status: 200, type: ReturnTimelineResponseDto })
+  async listReturnEvents(
+    @Query('internalOrderId') internalOrderId: string
+  ): Promise<ReturnTimelineResponseDto> {
+    const { entries: owned, returns } =
+      await this.returnsService.listReturnEventsForOrder(internalOrderId);
+
+    // Iterating the CONTEXTS, not the entries: a return that has produced no
+    // entry of its own still gets its refund. That case is reachable —
+    // `openedAt` is persisted as null when a source reports an unparseable
+    // `createdAt` — and deriving the id set from `owned` would drop exactly it.
+    const refundEntries = (
+      await Promise.all(
+        returns.map(async (context) => {
+          const records = await this.refunds.getRefundsForReturn(context.returnId);
+          return records.map((record) => ({
+            id: `refund:${record.id}`,
+            source: 'refund' as const,
+            kind: 'refund_confirmed',
+            occurredAt: record.recordedAt,
+            returnId: context.returnId,
+            // Taken from the context, never defaulted: a guessed `returnOrigin`
+            // would claim a channel opened a return the operator authored.
+            externalReturnId: context.externalReturnId,
+            returnOrigin: context.returnOrigin,
+            sourceConnectionName: context.sourceConnectionName,
+            // `RefundRecord` carries no actor column (ADR-056). `executedBy`
+            // answers WHAT moved the money, and is reported as itself rather
+            // than dressed up as a person.
+            actorUserId: null,
+            quantity: null,
+            restockState: null,
+            disposition: null,
+            refundExecutedBy: record.executedBy,
+            amount: record.amount,
+            currency: record.currency,
+          }));
+        })
+      )
+    ).flat();
+
+    const entries = [...owned, ...refundEntries]
+      .sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime())
+      .map((entry) => ({ ...entry, occurredAt: entry.occurredAt.toISOString() }));
+
+    return { entries };
   }
 
   @Get(':returnId')

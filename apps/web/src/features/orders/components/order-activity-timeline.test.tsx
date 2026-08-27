@@ -1,6 +1,10 @@
 import { cleanup, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { OrderActivityTimeline } from './order-activity-timeline';
+import {
+  OrderActivityTimeline,
+  mergeTimelineEvents,
+  type TimelineEvent,
+} from './order-activity-timeline';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 import {
   SYNC_ATTEMPTS_PER_DESTINATION_CAP,
@@ -350,5 +354,99 @@ describe('OrderActivityTimeline', () => {
       expect(packedIndex).toBeGreaterThanOrEqual(0);
       expect(blockedIndex).toBeGreaterThan(packedIndex);
     });
+  });
+});
+
+describe('mergeTimelineEvents (#2383)', () => {
+  const authored: TimelineEvent[] = [
+    { id: 'created', timestamp: '2026-08-20T10:00:00.000Z', title: 'Order created', tone: 'default' },
+    // An UNDATED authored entry, deliberately kept in the middle: `buildEvents`
+    // really emits these (`timestamp: … ?? null`), and the merge must not use it
+    // as a comparison key nor float it to either end.
+    { id: 'undated', timestamp: null, title: 'Undated authored entry', tone: 'default' },
+    { id: 'packed', timestamp: '2026-08-20T14:00:00.000Z', title: 'Packed', tone: 'success' },
+  ];
+
+  const ids = (events: TimelineEvent[]): string[] => events.map((event) => event.id);
+
+  it('returns the authored sequence UNCHANGED when there is nothing to merge', () => {
+    // The invariant that makes the prop safe: it is about ORDER, not merely
+    // about the component still rendering.
+    expect(ids(mergeTimelineEvents(authored, []))).toEqual(['created', 'undated', 'packed']);
+    expect(mergeTimelineEvents(authored, [])).toBe(authored);
+  });
+
+  it('places an injected event by timestamp rather than appending it', () => {
+    const extra: TimelineEvent[] = [
+      { id: 'r1', timestamp: '2026-08-20T12:00:00.000Z', title: 'Return received', tone: 'default' },
+    ];
+
+    expect(ids(mergeTimelineEvents(authored, extra))).toEqual([
+      'created',
+      'undated',
+      'r1',
+      'packed',
+    ]);
+  });
+
+  it('keeps the undated authored entry in its authored position', () => {
+    const extra: TimelineEvent[] = [
+      { id: 'early', timestamp: '2026-08-20T09:00:00.000Z', title: 'Return opened', tone: 'default' },
+    ];
+
+    // `early` precedes `created`, and `undated` does not move to accommodate it.
+    expect(ids(mergeTimelineEvents(authored, extra))).toEqual([
+      'early',
+      'created',
+      'undated',
+      'packed',
+    ]);
+  });
+
+  it('never reorders authored events relative to each other', () => {
+    const extra: TimelineEvent[] = [
+      { id: 'x', timestamp: '2026-08-20T23:00:00.000Z', title: 'Late', tone: 'default' },
+      { id: 'y', timestamp: '2026-08-20T11:00:00.000Z', title: 'Mid', tone: 'default' },
+    ];
+
+    const merged = ids(mergeTimelineEvents(authored, extra));
+
+    expect(merged.filter((id) => ['created', 'undated', 'packed'].includes(id))).toEqual([
+      'created',
+      'undated',
+      'packed',
+    ]);
+  });
+
+  it('keeps the authored entry first on a tie — it described the order first', () => {
+    const extra: TimelineEvent[] = [
+      { id: 'tie', timestamp: '2026-08-20T14:00:00.000Z', title: 'Return received', tone: 'default' },
+    ];
+
+    expect(ids(mergeTimelineEvents(authored, extra))).toEqual([
+      'created',
+      'undated',
+      'packed',
+      'tie',
+    ]);
+  });
+
+  it('renders injected events in the timeline', () => {
+    renderTimeline({
+      createdAt: '2026-08-20T10:00:00.000Z',
+      recordStatus: 'ready',
+      syncAttempts: [],
+      sourceConnectionId: SOURCE_CONNECTION_ID,
+      extraEvents: [
+        {
+          id: 'return:ev1',
+          timestamp: '2026-08-20T12:00:00.000Z',
+          title: 'Return received',
+          tone: 'default',
+        },
+      ],
+    });
+
+    expect(screen.getByText('Return received')).toBeInTheDocument();
   });
 });

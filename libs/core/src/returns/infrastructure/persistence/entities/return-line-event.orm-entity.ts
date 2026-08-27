@@ -48,6 +48,15 @@ import {
 @Index('IDX_return_line_events_outstanding_restock', ['returnId'], {
   where: `"restockState" IN ('blocked', 'in_doubt')`,
 })
+// The order timeline's read (#2383): every act on a return, oldest first.
+// **Not servable by the index above**, whose partial predicate excludes the
+// overwhelming majority of acts a timeline exists to show — and not by
+// `UQ_return_line_events_line_seq`, which leads on `returnLineId`. Without this
+// the order-detail page sequentially scans the act ledger on every load.
+// `occurredAt` is the second column because the read orders by it within a
+// return, so one index serves both the lookup and the ordering. No predicate,
+// deliberately: a partial index is precisely what the sibling gets wrong here.
+@Index('IDX_return_line_events_return_id_occurred', ['returnId', 'occurredAt'])
 // An act is about a positive whole number of units. Zero or negative would make
 // the counters derived from these rows meaningless, and a correction is modelled
 // as its own act rather than as a negative one.

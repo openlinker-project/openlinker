@@ -43,6 +43,11 @@ import type {
 } from '../../../domain/ports/return-repository.port';
 import type { CreateReturnRecordInput, ReturnOrigin } from '../../../domain/types/return.types';
 import type {
+  ReturnTimelineContext,
+  ReturnTimelineEntriesForOrder,
+  ReturnTimelineEntry,
+} from '../../../domain/types/return-timeline-entry.types';
+import type {
   UpsertReturnRecordInput,
   UpsertReturnResult,
 } from '../../../domain/types/return-upsert.types';
@@ -1292,6 +1297,129 @@ export class ReturnRepository implements ReturnRepositoryPort {
       .addOrderBy('event."seq"', 'ASC')
       .getMany();
     return rows.map((row) => this.toLineEventDomain(row));
+  }
+
+  /**
+   * See {@link ReturnRepositoryPort.findTimelineEntriesForOrder}.
+   *
+   * One query. `returns` is the driving table because every entry — custody
+   * act included — needs its `origin` and `externalReturnId`, and a
+   * `LEFT JOIN` is what lets a return with no acts yet still contribute its
+   * `opened` entry rather than vanishing from the timeline.
+   *
+   * `getRawMany` rather than `getMany`: this projects a neutral shape and does
+   * not want either entity materialised. It is also the shape that cannot
+   * silently drop an `addSelect` column, which `getMany` does.
+   */
+  async findTimelineEntriesForOrder(internalOrderId: string): Promise<ReturnTimelineEntriesForOrder> {
+    const rows = await this.returns
+      .createQueryBuilder('r')
+      .leftJoin(ReturnLineEventOrmEntity, 'ev', 'ev."returnId" = r.id')
+      .select([
+        'r."id" AS "returnId"',
+        'r."sourceConnectionId" AS "sourceConnectionId"',
+        'r."externalReturnId" AS "externalReturnId"',
+        'r."origin" AS "origin"',
+        'r."openedAt" AS "openedAt"',
+        'r."declinedAt" AS "declinedAt"',
+        'ev."id" AS "eventId"',
+        'ev."kind" AS "kind"',
+        'ev."quantity" AS "quantity"',
+        'ev."restockState" AS "restockState"',
+        'ev."disposition" AS "disposition"',
+        'ev."actorUserId" AS "actorUserId"',
+        'ev."occurredAt" AS "occurredAt"',
+      ])
+      .where('r."internalOrderId" = :internalOrderId', { internalOrderId })
+      .orderBy('ev."occurredAt"', 'ASC')
+      .getRawMany<{
+        returnId: string;
+        sourceConnectionId: string;
+        externalReturnId: string | null;
+        origin: string;
+        openedAt: Date | null;
+        declinedAt: Date | null;
+        eventId: string | null;
+        kind: string | null;
+        quantity: number | null;
+        restockState: string | null;
+        disposition: string | null;
+        actorUserId: string | null;
+        occurredAt: Date | null;
+      }>();
+
+    const entries: ReturnTimelineEntry[] = [];
+    const sourceConnectionIdByReturn = new Map<string, string>();
+    const contexts = new Map<string, ReturnTimelineContext & { sourceConnectionId: string }>();
+    // One `opened` / `declined` entry PER RETURN, not per joined row — the join
+    // repeats the header columns once per act, and emitting them each time
+    // would tell the operator a return was opened four times.
+    const headersSeen = new Set<string>();
+
+    for (const row of rows) {
+      const origin = row.origin as ReturnOrigin;
+
+      sourceConnectionIdByReturn.set(row.returnId, row.sourceConnectionId);
+      contexts.set(row.returnId, {
+        returnId: row.returnId,
+        externalReturnId: row.externalReturnId,
+        returnOrigin: origin,
+        // Resolved by the service — a repository does not turn an id into a name.
+        sourceConnectionName: null,
+        sourceConnectionId: row.sourceConnectionId,
+      });
+
+      if (!headersSeen.has(row.returnId)) {
+        headersSeen.add(row.returnId);
+        for (const [kind, at] of [
+          ['opened', row.openedAt],
+          ['declined', row.declinedAt],
+        ] as const) {
+          if (at === null) continue;
+          entries.push({
+            id: `${row.returnId}:${kind}`,
+            source: 'record_status',
+            kind,
+            occurredAt: at,
+            returnId: row.returnId,
+            externalReturnId: row.externalReturnId,
+            returnOrigin: origin,
+            sourceConnectionName: null,
+            // A header column carries no actor: `opened` and `declined` are a
+            // SOURCE claim or nothing, never a person.
+            actorUserId: null,
+            quantity: null,
+            restockState: null,
+            disposition: null,
+            refundExecutedBy: null,
+            amount: null,
+            currency: null,
+          });
+        }
+      }
+
+      if (row.eventId === null || row.occurredAt === null || row.kind === null) continue;
+
+      entries.push({
+        id: row.eventId,
+        source: 'custody_act',
+        kind: row.kind,
+        occurredAt: row.occurredAt,
+        returnId: row.returnId,
+        externalReturnId: row.externalReturnId,
+        returnOrigin: origin,
+        sourceConnectionName: null,
+        actorUserId: row.actorUserId,
+        quantity: row.quantity,
+        restockState: row.restockState as ReturnRestockState | null,
+        disposition: row.disposition,
+        refundExecutedBy: null,
+        amount: null,
+        currency: null,
+      });
+    }
+
+    return { entries, sourceConnectionIdByReturn, contexts: [...contexts.values()] };
   }
 
   async listLineEvents(lineId: string): Promise<ReturnLineEvent[]> {

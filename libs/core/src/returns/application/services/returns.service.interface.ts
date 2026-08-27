@@ -24,6 +24,7 @@ import type {
   ReturnStageCounts,
 } from '../../domain/types/return-query.types';
 import type { ReturnSegmentCounts } from '../../domain/types/return-segment.types';
+import type { ReturnTimelineForOrder } from '../../domain/types/return-timeline-entry.types';
 
 /**
  * What one ingested observation did.
@@ -212,6 +213,32 @@ export interface IReturnsService {
    * falsehood on the exact screen that exists to answer this question. The
    * route surfaces the failure and the frontend renders its error state.
    */
+  /**
+   * Every return act on ONE order, oldest first (#2383) — the returns half of
+   * the order-detail timeline.
+   *
+   * Covers the two sources this context OWNS: the custody act ledger, and the
+   * `opened` / `declined` header columns. It resolves each return's source
+   * connection to a display NAME, because an operator reads a channel name and
+   * never an id, and a browser must not be asked to resolve one.
+   *
+   * **The refund entry is deliberately NOT here.** `RefundRecord` belongs to
+   * `orders`, and `ReturnsModule` excludes `OrdersModule` on purpose
+   * (`returns.module.ts` — it pulls in seven siblings this context has no
+   * business carrying). The interface layer composes that entry in, on a module
+   * that already holds the edge. Same list, one layer up.
+   *
+   * Returns the per-return CONTEXTS alongside the entries, covering every
+   * return on the order including one that has produced no entry yet — so the
+   * interface layer can compose the refund entry without defaulting a
+   * `returnOrigin` it does not know. That case is reachable: `openedAt` is
+   * persisted as `null` when a source reports an unparseable `createdAt`.
+   *
+   * Returns empty collections for an order with no returns — never throws on
+   * absence.
+   */
+  listReturnEventsForOrder(internalOrderId: string): Promise<ReturnTimelineForOrder>;
+
   getReturnIngestionAvailability(): Promise<ReturnIngestionAvailability>;
 
   /**

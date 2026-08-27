@@ -13,6 +13,7 @@
 import { parseReturnIngestionAvailability, parseReturnList } from './returns.schema';
 import { parseDeclineReturnResult, parseReturnDetail } from './return-detail.schema';
 import { parseCorrectionProposal } from './return-proposal.schema';
+import { parseReturnTimeline } from './return-timeline.schema';
 import {
   parseAttestReturnLineStockResult,
   parseConfirmReturnRefundResult,
@@ -40,6 +41,7 @@ import type {
   ReturnFilters,
   ReturnIngestionAvailability,
   ReturnPagination,
+  ReturnTimelineEntry,
 } from './returns.types';
 
 /**
@@ -184,6 +186,12 @@ export interface ReturnsApi {
    * never performs it.
    */
   getCorrectionProposal: (returnId: string) => Promise<ReturnCorrectionProposalResult>;
+
+  /**
+   * One order's return activity, oldest first (#2383) — the order timeline's
+   * returns half. `[]` for an order with no returns.
+   */
+  listReturnEventsForOrder: (internalOrderId: string) => Promise<ReturnTimelineEntry[]>;
 }
 
 interface ApiRequest {
@@ -328,6 +336,13 @@ export function createReturnsApi(request: ApiRequest): ReturnsApi {
         }),
       });
       return parseConfirmReturnRefundResult(raw);
+    },
+
+    async listReturnEventsForOrder(internalOrderId): Promise<ReturnTimelineEntry[]> {
+      const raw = await request<unknown>(
+        `/returns/events?internalOrderId=${encodeURIComponent(internalOrderId)}`
+      );
+      return parseReturnTimeline(raw);
     },
 
     async getCorrectionProposal(returnId): Promise<ReturnCorrectionProposalResult> {

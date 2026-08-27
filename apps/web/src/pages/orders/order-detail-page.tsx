@@ -46,6 +46,13 @@ import { deriveFulfillment } from '../../features/orders/lib/order-health';
 import { deriveDeliveryOutcome } from '../../features/orders/lib/delivery-outcome';
 import { resolveDeliveryOwner } from '../../features/orders/lib/delivery-owner';
 import { parseOrderSnapshot } from '../../features/orders/api/order-snapshot.schema';
+// #2383 — returns activity on the order timeline. The PAGE composes: the orders
+// timeline stays unaware of returns, and the returns feature maps its own acts.
+import {
+  mapReturnEventsToTimeline,
+  useOrderReturnEventsQuery,
+} from '../../features/returns';
+import { useSession } from '../../shared/auth/use-session';
 
 const RAW_SNAPSHOT_ANCHOR_ID = 'order-raw-snapshot';
 const SHIPPING_CAPABILITY = 'ShippingProviderManager';
@@ -71,6 +78,10 @@ export function OrderDetailPage(): ReactElement {
   const query = useOrderQuery(internalOrderId);
   const connectionsQuery = useConnectionsQuery();
   const shipmentsQuery = useOrderShipmentsQuery(internalOrderId);
+  // Non-fatal by design: a returns read that could not answer must not take the
+  // order's own timeline down with it — the page renders one section shorter.
+  const returnEventsQuery = useOrderReturnEventsQuery(internalOrderId || null);
+  const { session } = useSession();
   const retry = useRetryOrderDestinationMutation();
   const { showToast } = useToast();
   const location = useLocation();
@@ -177,6 +188,15 @@ export function OrderDetailPage(): ReactElement {
 
   const order = query.data;
   const snapshot = parseOrderSnapshot(order.orderSnapshot);
+
+  // `?? []` covers loading AND failure identically — both mean "no returns rows
+  // to contribute yet", and neither is a reason to withhold the order's own
+  // history. `sessionUserId` is passed so the mapper can say `you` rather than
+  // naming a user id no surface can resolve.
+  const returnTimelineEvents = mapReturnEventsToTimeline(
+    returnEventsQuery.data ?? [],
+    session.user?.id ?? null,
+  );
   const failedDestinations = order.syncStatus.filter((s) => s.status === 'failed');
 
   const connections = connectionsQuery.data ?? [];
@@ -483,6 +503,7 @@ export function OrderDetailPage(): ReactElement {
           packedByUserId={order.packedByUserId}
           salesDocumentBlockedAt={order.salesDocumentBlockedAt}
           salesDocumentBlockReleasedAt={order.salesDocumentBlockReleasedAt}
+          extraEvents={returnTimelineEvents}
         />
       </section>
 

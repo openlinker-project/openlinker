@@ -41,6 +41,7 @@ import type {
   ReturnStageCounts,
 } from '../types/return-query.types';
 import type { ReturnSegmentCounts } from '../types/return-segment.types';
+import type { ReturnTimelineEntriesForOrder } from '../types/return-timeline-entry.types';
 
 export interface ReturnRepositoryPort {
   /**
@@ -456,6 +457,28 @@ export interface ReturnRepositoryPort {
    * renders, and the proof-of-work a spec sums against the counters.
    */
   listLineEvents(lineId: string): Promise<ReturnLineEvent[]>;
+
+  /**
+   * Every return act on ONE order, oldest first (#2383) — the order timeline's
+   * source for the returns half.
+   *
+   * **One query over TWO of the four sources**, not one. The custody acts come
+   * from `return_line_events`; `opened` / `declined` are COLUMNS on the very
+   * `returns` rows the join already touches, so sourcing them costs a wider
+   * projection rather than a second round trip. The header rows are read
+   * regardless — `origin`, `externalReturnId` and the source connection are
+   * needed by every entry, custody acts included, to say who did a thing.
+   *
+   * The refund half is deliberately absent: `RefundRecord` lives in `orders`
+   * and is read by the service through `IOrderRefundService`, never joined
+   * here. `sourceConnectionName` is likewise left `null` for the service to
+   * resolve — a repository does not know how to turn a connection id into a
+   * display name.
+   *
+   * Returns empty collections for an order with no returns; never null, never
+   * throws on absence.
+   */
+  findTimelineEntriesForOrder(internalOrderId: string): Promise<ReturnTimelineEntriesForOrder>;
 
   /**
    * Claim the return's refundable lines for ONE refund attempt (#2371, ADR-056).

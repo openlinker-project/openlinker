@@ -58,6 +58,7 @@ import type {
   ReturnStageCounts,
 } from '../../domain/types/return-query.types';
 import type { ReturnSegmentCounts } from '../../domain/types/return-segment.types';
+import type { ReturnTimelineForOrder } from '../../domain/types/return-timeline-entry.types';
 import type { UpsertReturnLineInput } from '../../domain/types/return-upsert.types';
 import { RETURN_REPOSITORY_TOKEN } from '../../returns.tokens';
 import type {
@@ -177,6 +178,58 @@ export class ReturnsService implements IReturnsService {
    * Nothing is caught. A failure here means the integrations registry could not
    * answer, which is not evidence that the operator has configured nothing.
    */
+  /** See {@link IReturnsService.listReturnEventsForOrder}. */
+  async listReturnEventsForOrder(internalOrderId: string): Promise<ReturnTimelineForOrder> {
+    const { entries, sourceConnectionIdByReturn, contexts } =
+      await this.repository.findTimelineEntriesForOrder(internalOrderId);
+
+    if (contexts.length === 0) return { entries: [], returns: [] };
+
+    const nameById = await this.resolveConnectionNames();
+    const nameFor = (returnId: string): string | null =>
+      nameById.get(sourceConnectionIdByReturn.get(returnId) ?? '') ?? null;
+
+    return {
+      entries: entries.map((entry) => ({
+        ...entry,
+        sourceConnectionName: nameFor(entry.returnId),
+      })),
+      returns: contexts.map(({ sourceConnectionId: _ignored, ...context }) => ({
+        ...context,
+        sourceConnectionName: nameFor(context.returnId),
+      })),
+    };
+  }
+
+  /**
+   * `connectionId` → display name, for the timeline's source-claim rows.
+   *
+   * `listCapabilityAdapters` rather than `getAdapter` per return: `getAdapter`
+   * THROWS on a disabled connection, which is the wrong failure direction for a
+   * display name — a source that stopped working must still have its past
+   * returns render. `lazy` so no adapter is constructed, `includeAllStatuses`
+   * for the same reason the trust reads use it.
+   *
+   * A registry failure yields an empty map, not an error: every entry then
+   * renders the frontend's unknown-connection copy. Losing a name degrades one
+   * eyebrow; losing the timeline hides the whole return.
+   */
+  private async resolveConnectionNames(): Promise<Map<string, string>> {
+    try {
+      const entries = await this.integrationsService.listCapabilityAdapters<unknown>({
+        capability: 'OrderSource',
+        lazy: true,
+        includeAllStatuses: true,
+      });
+      return new Map(entries.map((entry) => [entry.connectionId, entry.connection.name]));
+    } catch (error) {
+      this.logger.warn(
+        `Could not resolve connection names for the order return timeline; entries will render without a source name: ${(error as Error).message}`
+      );
+      return new Map();
+    }
+  }
+
   async getReturnIngestionAvailability(): Promise<ReturnIngestionAvailability> {
     const entries = await this.integrationsService.listCapabilityAdapters<unknown>({
       capability: 'OrderSource',

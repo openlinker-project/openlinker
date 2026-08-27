@@ -156,6 +156,7 @@ export type { ReturnCustodyRefusalReason } from './domain/exceptions/return-cust
 // per-arrival identity and is indistinguishable from a correction. The counters
 // remain the invariant, still guarded by `CHK_return_lines_quantity_ordering`.
 export * from './domain/types/return-line-event.types';
+export * from './domain/types/return-timeline-entry.types';
 export { ReturnLineEvent } from './domain/entities/return-line-event.entity';
 export {
   classifyRestockSuccess,
