@@ -9,6 +9,8 @@
  */
 import type { PrestashopConnectionConfig } from '@openlinker/integrations-prestashop';
 
+import { PrestashopInvalidFilterException } from '../../domain/exceptions/prestashop-invalid-filter.exception';
+
 /**
  * PrestaShop query filters
  *
@@ -46,6 +48,12 @@ export interface PrestashopQueryFilters {
    */
   display?: string;
 }
+
+/**
+ * A PrestaShop WebService filter targets one database column, so the only shape
+ * a key may take is a bare column name.
+ */
+const FILTER_FIELD_PATTERN = /^[A-Za-z0-9_]+$/;
 
 /**
  * PrestaShop Query Builder
@@ -122,6 +130,7 @@ export class PrestashopQueryBuilder {
     // Values must be URL-encoded to handle special characters (e.g., +, @, = in email addresses)
     if (filters?.custom) {
       for (const [key, value] of Object.entries(filters.custom)) {
+        this.assertFilterKey(key);
         if (Array.isArray(value)) {
           const arrayParam = value.map((v) => encodeURIComponent(String(v))).join(',');
           params.push(`filter[${key}]=[${arrayParam}]`);
@@ -169,6 +178,34 @@ export class PrestashopQueryBuilder {
     }
 
     return params.join('&');
+  }
+
+  /**
+   * Reject a custom filter key the WebService cannot express.
+   *
+   * PrestaShop takes a bare field name inside the `filter[...]` envelope the
+   * builder adds. A caller that passes an already-wrapped key produces
+   * `filter[filter[reference]]`, which PrestaShop does not recognise: it drops
+   * the condition, returns the first page unfiltered, and the caller reads that
+   * as a legitimate result. On a catalogue larger than one page the row it was
+   * looking for is simply absent, with no error anywhere (#2616). A wrong filter
+   * must therefore be louder than a wrong answer.
+   *
+   * @param key - Custom filter field name
+   * @throws PrestashopInvalidFilterException when the key is not a bare field name
+   */
+  private static assertFilterKey(key: string): void {
+    if (FILTER_FIELD_PATTERN.test(key)) {
+      return;
+    }
+
+    const hint = key.includes('[')
+      ? ' Pass the bare field name - the builder adds the filter[...] envelope itself.'
+      : '';
+    throw new PrestashopInvalidFilterException(
+      `Invalid PrestaShop filter key "${key}".${hint}`,
+      key
+    );
   }
 
   /**

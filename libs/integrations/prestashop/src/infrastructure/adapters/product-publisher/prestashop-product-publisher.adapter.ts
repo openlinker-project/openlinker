@@ -180,7 +180,7 @@ export class PrestashopProductPublisherAdapter
 
     for (const node of cmd.path) {
       const rows = await this.client.listResources<PrestashopCategoryListItem>('categories', {
-        custom: { 'filter[name]': node.name, 'filter[id_parent]': parentId },
+        custom: { name: node.name, id_parent: parentId },
       });
 
       const match = rows.find((row) => this.extractLangText(row.name, languageId) === node.name);
@@ -270,7 +270,7 @@ export class PrestashopProductPublisherAdapter
    */
   private async findExistingByReference(reference: string): Promise<string | null> {
     const rows = await this.client.listResources<PrestashopProductListItem>('products', {
-      custom: { 'filter[reference]': reference },
+      custom: { reference },
     });
     const match = rows.find((row) => String(row.reference ?? '') === reference);
     return match ? String(match.id) : null;
@@ -285,7 +285,7 @@ export class PrestashopProductPublisherAdapter
       const rows = await this.client.listResources<PrestashopStockAvailableItem>(
         'stock_availables',
         {
-          custom: { 'filter[id_product]': productId },
+          custom: { id_product: productId },
         }
       );
 
@@ -328,7 +328,7 @@ export class PrestashopProductPublisherAdapter
       // Resolve or create the feature
       const existingFeatures = await this.client.listResources<PrestashopFeatureListItem>(
         'product_features',
-        { custom: { 'filter[name]': featureName } }
+        { custom: { name: featureName } }
       );
       const existingFeature = existingFeatures.find(
         (f) => this.extractLangText(f.name, languageId) === featureName
@@ -349,7 +349,7 @@ export class PrestashopProductPublisherAdapter
       for (const value of param.values ?? []) {
         const existingValues = await this.client.listResources<PrestashopFeatureValueListItem>(
           'product_feature_values',
-          { custom: { 'filter[id_feature]': featureId } }
+          { custom: { id_feature: featureId } }
         );
         const existingValue = existingValues.find(
           (v) => this.extractLangText(v.value, languageId) === value
