@@ -201,7 +201,9 @@ export class MasterProductReconcileHandler implements SyncJobHandler {
       // The SAME child the sweeps enqueue. A live product simply re-syncs
       // (idempotent); a deleted one raises MasterProductNotFoundError and flows
       // into the deletion authority. This handler never writes staleness itself.
-      jobType: 'master.product.syncByExternalId',
+      // Sweep-triggered type, so ADR-050 lanes it as `bulk` rather than behind
+      // the webhook child's realtime cap (#2594).
+      jobType: 'master.product.syncFromSweep',
       connectionId: job.connectionId,
       payload: {
         schemaVersion: 1,

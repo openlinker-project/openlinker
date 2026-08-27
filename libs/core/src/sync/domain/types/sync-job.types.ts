@@ -38,6 +38,14 @@ export const JobTypeValues = [
   'marketplace.shipment.syncByExternalId',
   'marketplace.fulfillment.statusSync',
   'master.product.syncByExternalId',
+  // The SAME work as `master.product.syncByExternalId`, reached from a sweep
+  // instead of a webhook (#2594). It exists as its own type because the two
+  // triggers have different costs of starvation, and ADR-050 declares a lane
+  // per job type at handler registration: a webhook child is a single unit
+  // someone waits on (`realtime`), while a sweep child arrives a budget wide
+  // and an operator tolerates it being slow (`bulk`). Same payload, same
+  // handler.
+  'master.product.syncFromSweep',
   'master.product.syncAll',
   // Incremental catalog pass (#2220, ADR-048). Opt-in; complements rather than
   // replaces `syncAll`, which remains the reconciliation/bootstrap path.
@@ -47,6 +55,9 @@ export const JobTypeValues = [
   // authority — never inference from absence in a catalog enumeration.
   'master.product.reconcile',
   'master.inventory.syncByExternalId',
+  // Sweep-triggered twin of `master.inventory.syncByExternalId`, for the same
+  // reason as the product pair above (#2594).
+  'master.inventory.syncFromSweep',
   'master.inventory.syncAll',
 
   'master.variants.autoMatch',

@@ -95,7 +95,7 @@ describe('MasterInventorySyncAllHandler', () => {
     expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(3);
 
     const firstCall = jobEnqueue.enqueueJob.mock.calls[0][0];
-    expect(firstCall.jobType).toBe('master.inventory.syncByExternalId');
+    expect(firstCall.jobType).toBe('master.inventory.syncFromSweep');
     expect(firstCall.connectionId).toBe('conn-1');
     expect(firstCall.payload).toEqual(
       expect.objectContaining({ schemaVersion: 1, externalId: 'ext-1', objectType: 'Product' })

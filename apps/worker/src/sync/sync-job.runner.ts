@@ -56,14 +56,27 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Per-lane caps (ADR-050 decisions 2/6). Resolved once at startup from
-   * env-overridable ILLUSTRATIVE defaults — do not treat any number here as
-   * tuned until #1134's per-lane metrics exist. `total` bounds concurrent
-   * jobs in the lane; `perScope` bounds them per isolation scope
-   * (`resolveJobScope`, = connectionId today).
+   * env-overridable defaults. `total` bounds concurrent jobs in the lane;
+   * `perScope` bounds them per isolation scope (`resolveJobScope`, =
+   * connectionId today).
+   *
+   * `realtime`, `fiscal` and `fan-out` are still ILLUSTRATIVE — treat any
+   * number there as a guess until #1134's per-lane metrics exist.
+   *
+   * `bulk` is the first lane with a measurement behind it (#2594, ADR-050
+   * amendment). An interleaved A/B run against a real PrestaShop catalogue
+   * held the shop's p95 response time at a 0.995 ratio while ~12 per-product
+   * child jobs ran concurrently on one connection, taking a full sweep from
+   * ~26.5 h to ~2.4 h. `perScope` is set below that measured ceiling because
+   * ADR-050 decision 4 deliberately ships no round-robin fairness between
+   * scopes: at `perScope === total` one connection's catalogue cycle could
+   * hold the whole lane and a second connection's sweep would make no
+   * progress at all. The measurement covers the PrestaShop catalogue path
+   * only; a slower destination is lowered with OL_LANE_BULK_SCOPE_CAP.
    */
   private laneCaps: Record<SyncJobLane, { total: number; perScope: number }> = {
     realtime: { total: 4, perScope: 2 },
-    bulk: { total: 2, perScope: 1 },
+    bulk: { total: 12, perScope: 8 },
     fiscal: { total: 2, perScope: 1 },
     'fan-out': { total: 1, perScope: 1 },
   };
@@ -129,8 +142,8 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
         perScope: read('OL_LANE_REALTIME_SCOPE_CAP', 2),
       },
       bulk: {
-        total: read('OL_LANE_BULK_CAP', 2),
-        perScope: read('OL_LANE_BULK_SCOPE_CAP', 1),
+        total: read('OL_LANE_BULK_CAP', 12),
+        perScope: read('OL_LANE_BULK_SCOPE_CAP', 8),
       },
       fiscal: {
         total: read('OL_LANE_FISCAL_CAP', 2),

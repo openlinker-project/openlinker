@@ -4,7 +4,7 @@
  * Integration test for the fan-out behavior of `master.inventory.syncAll`:
  * 1. Seed identifier mappings for a connection (simulating previously-synced products)
  * 2. Execute MasterInventorySyncAllHandler with a syncAll job
- * 3. Verify one `master.inventory.syncByExternalId` sub-job is enqueued per mapping
+ * 3. Verify one `master.inventory.syncFromSweep` sub-job is enqueued per mapping
  * 4. Verify sub-job idempotency keys are stable (derived from the CYCLE, #2219)
  * 5. Verify a mapping set larger than one budget completes across successive ticks
  *
@@ -105,7 +105,7 @@ describe('Master Inventory Sync All End-to-End Integration', () => {
     await handler.execute(outerJob);
 
     const subJobCalls = enqueueSpy.mock.calls.filter(
-      ([req]) => req.jobType === 'master.inventory.syncByExternalId'
+      ([req]) => req.jobType === 'master.inventory.syncFromSweep'
     );
     expect(subJobCalls).toHaveLength(externalIds.length);
 
@@ -160,7 +160,7 @@ describe('Master Inventory Sync All End-to-End Integration', () => {
       await expect(handler.execute(outerJob)).resolves.toEqual({ outcome: 'ok' });
       perTickCounts.push(
         enqueueSpy.mock.calls.filter(
-          ([req]) => req.jobType === 'master.inventory.syncByExternalId'
+          ([req]) => req.jobType === 'master.inventory.syncFromSweep'
         ).length
       );
     }
@@ -195,7 +195,7 @@ describe('Master Inventory Sync All End-to-End Integration', () => {
     await expect(handler.execute(outerJob)).resolves.toEqual({ outcome: 'ok' });
 
     const subJobCalls = enqueueSpy.mock.calls.filter(
-      ([req]) => req.jobType === 'master.inventory.syncByExternalId'
+      ([req]) => req.jobType === 'master.inventory.syncFromSweep'
     );
     expect(subJobCalls).toHaveLength(0);
   });

@@ -1238,8 +1238,8 @@ describe('SyncJobRunner', () => {
     };
 
     it('should not let a saturated bulk lane stop a realtime claim in the same tick', async () => {
-      // Saturate bulk (total cap 2 by default).
-      laneInFlight('bulk').set('conn-b', 2);
+      // Saturate bulk (total cap 12 by default since #2594).
+      laneInFlight('bulk').set('conn-b', 12);
 
       const bulkStarted = await (runner as any).claimAndStartForLane('bulk');
       await (runner as any).claimAndStartForLane('realtime');
@@ -1286,7 +1286,9 @@ describe('SyncJobRunner', () => {
     });
 
     it('should release intra-batch surplus beyond the per-scope cap without penalty', async () => {
-      // bulk per-scope cap is 1 by default; one claim returns two same-scope jobs.
+      // bulk per-scope cap is 8 by default (#2594); park 7 so exactly one slot
+      // is free, then let one claim return two same-scope jobs.
+      laneInFlight('bulk').set('conn-wave', 7);
       const jobA = createLaneJob('conn-wave');
       const jobB = createLaneJob('conn-wave');
       jobRepository.findAndLockDueJobsForLane.mockResolvedValueOnce([jobA, jobB]);
@@ -1328,7 +1330,7 @@ describe('SyncJobRunner', () => {
 
     it('should sleep rather than spin when every lane is at cap with jobs in flight', async () => {
       laneInFlight('realtime').set('a', 4);
-      laneInFlight('bulk').set('a', 2);
+      laneInFlight('bulk').set('a', 12);
       laneInFlight('fiscal').set('a', 2);
       laneInFlight('fan-out').set('a', 1);
 
@@ -1343,6 +1345,36 @@ describe('SyncJobRunner', () => {
 
       expect(jobRepository.findAndLockDueJobsForLane).not.toHaveBeenCalled();
       expect(sleepSpy).toHaveBeenCalled();
+    });
+
+    describe('cap defaults and overrides (#2594)', () => {
+      const resolve = (
+        env: Record<string, string>
+      ): Record<string, { total: number; perScope: number }> => {
+        const configService = moduleRef.get<ConfigService>(ConfigService);
+        jest.spyOn(configService, 'get').mockImplementation((key: string) => env[key]);
+        return (runner as any).resolveLaneCaps();
+      };
+
+      it('should default bulk to the measured 12/8 and leave the other lanes untouched', () => {
+        const caps = resolve({});
+
+        // The catalogue-sweep throttle, measured on the PrestaShop path.
+        expect(caps.bulk).toEqual({ total: 12, perScope: 8 });
+        // Buyer-facing and deadline-bearing lanes are deliberately unchanged.
+        expect(caps.realtime).toEqual({ total: 4, perScope: 2 });
+        expect(caps.fiscal).toEqual({ total: 2, perScope: 1 });
+        expect(caps['fan-out']).toEqual({ total: 1, perScope: 1 });
+      });
+
+      it('should let an operator lower the bulk per-scope cap for a slower shop', () => {
+        expect(resolve({ OL_LANE_BULK_SCOPE_CAP: '2' }).bulk.perScope).toBe(2);
+      });
+
+      it('should ignore a zero bulk cap rather than stalling the lane', () => {
+        expect(resolve({ OL_LANE_BULK_SCOPE_CAP: '0' }).bulk.perScope).toBe(8);
+        expect(resolve({ OL_LANE_BULK_CAP: 'plenty' }).bulk.total).toBe(12);
+      });
     });
   });
 
