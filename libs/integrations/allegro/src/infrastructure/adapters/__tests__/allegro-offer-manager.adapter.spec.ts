@@ -694,14 +694,19 @@ describe('AllegroOfferManagerAdapter', () => {
         items: [{ offerId: 'offer-1', quantity: 10, idempotencyKey: 'key-1' }],
       });
 
-      expect(result.failed).toEqual([{ offerId: 'offer-1', errorCode: 'rejected', message: 'rejected' }]);
+      expect(result.failed).toEqual([
+        { offerId: 'offer-1', errorCode: 'rejected', message: 'rejected' },
+      ]);
     });
 
     it('falls back to the task message (not an empty string) when a FAIL task carries an empty errors array (#2622 review)', async () => {
       const batchAdapter = fastAdapter();
 
       httpClient.put.mockResolvedValueOnce({
-        data: { id: 'cmd-fail-empty-errors', status: 'ACCEPTED' } as AllegroOfferQuantityChangeCommandResponse,
+        data: {
+          id: 'cmd-fail-empty-errors',
+          status: 'ACCEPTED',
+        } as AllegroOfferQuantityChangeCommandResponse,
         status: 200,
         headers: {},
       });
