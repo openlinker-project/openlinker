@@ -92,11 +92,20 @@ final class OutboxBackoffSqlTest extends TestCase
         $this->assertGreaterThan(60, $this->secondsUntilNextAttempt($id));
     }
 
-    public function testAFailedRowAlsoCountsAsAnEndpointFailure(): void
+    public function testAFailedRowIsNotEvidenceAboutTheEndpoint(): void
     {
+        // One row exhausting its own attempts must not raise the delay floor
+        // for every healthy row.
         $this->repository->markFailed($this->insertPending(), 'gave up');
 
-        $this->assertSame(1, (int)Configuration::get(self::STREAK_KEY));
+        $this->assertSame(0, (int)Configuration::get(self::STREAK_KEY));
+    }
+
+    public function testADiagnosticProbeDoesNotRaiseTheEndpointFloor(): void
+    {
+        $this->repository->scheduleRetry($this->insertPending(), 0, 'test ping failed', false);
+
+        $this->assertSame(0, (int)Configuration::get(self::STREAK_KEY));
     }
 
     // Recovery
@@ -114,6 +123,65 @@ final class OutboxBackoffSqlTest extends TestCase
             $this->assertNull($this->nextAttemptAt($id), 'a waiting row was left on its outage delay');
             $this->assertSame('pending', $this->statusOf($id));
         }
+    }
+
+    public function testAMixedPassLeavesAFailingRowOnItsOwnBackoff(): void
+    {
+        // The B1 regression. One row keeps failing on its own history while
+        // another row on the same endpoint delivers. The failing row's wait is
+        // its own, so recovery must not pull it forward.
+        $failing = $this->insertPending();
+        self::$pdo->exec('UPDATE `' . self::TABLE . '` SET `attempts` = 9 WHERE `id` = ' . $failing);
+
+        $this->repository->scheduleRetry($failing, 9, 'transient 500 on this row');
+        $waitBefore = $this->secondsUntilNextAttempt($failing);
+        $this->assertGreaterThan(OutboxRepository::ENDPOINT_MAX_DELAY_SECONDS, $waitBefore);
+
+        $this->repository->markDelivered($this->insertPending());
+
+        $this->assertNotNull(
+            $this->nextAttemptAt($failing),
+            'a row waiting on its own repeated failure lost its backoff'
+        );
+        $this->assertGreaterThan(
+            OutboxRepository::ENDPOINT_MAX_DELAY_SECONDS,
+            $this->secondsUntilNextAttempt($failing)
+        );
+    }
+
+    public function testAMixedPassStillReleasesTheOutageBacklog(): void
+    {
+        // The other half: a row that has barely failed is waiting on the
+        // endpoint, so it must come straight back.
+        Configuration::updateValue(self::STREAK_KEY, 9);
+        $queued = $this->insertPending(3600);
+
+        $this->repository->markDelivered($this->insertPending());
+
+        $this->assertNull($this->nextAttemptAt($queued));
+    }
+
+    public function testAFailingRowCannotBeTerminalisedByRepeatedRecoveries(): void
+    {
+        // The consequence B1 described: with the wait destroyed on every pass
+        // the row was eligible again each minute and reached `failed` in about
+        // as many cron passes as its attempt ceiling.
+        Configuration::updateValue('MAX_RETRY_ATTEMPTS', 12);
+        $failing = $this->insertPending();
+
+        for ($pass = 0; $pass < 12; $pass++) {
+            $attempts = (int)$this->rowOf($failing)['attempts'];
+            if ($this->statusOf($failing) !== 'pending' || $this->secondsUntilNextAttempt($failing) > 0) {
+                break;
+            }
+
+            $repository = new OutboxRepository();
+            $repository->scheduleRetry($failing, $attempts, 'still failing');
+            $repository->markDelivered($this->insertPending());
+        }
+
+        $this->assertSame('pending', $this->statusOf($failing));
+        $this->assertLessThan(12, (int)$this->rowOf($failing)['attempts']);
     }
 
     public function testRecoveryDoesNotDisturbRowsThatAreNotWaiting(): void
