@@ -36,6 +36,8 @@ import {
 import { IInventoryQueryService, INVENTORY_QUERY_SERVICE_TOKEN } from '@openlinker/core/inventory';
 import {
   applyStockSafetyBuffer,
+  CONNECTION_PORT_TOKEN,
+  ConnectionPort,
   readStockSafetyBuffer,
   readStockZeroThreshold,
 } from '@openlinker/core/identifier-mapping';
@@ -63,6 +65,8 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
   constructor(
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
+    @Inject(CONNECTION_PORT_TOKEN)
+    private readonly connectionPort: ConnectionPort,
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
     private readonly orderRecordService: IOrderRecordService,
     @Inject(OFFER_MAPPING_REPOSITORY_TOKEN)
@@ -159,7 +163,10 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
   private async resolvePublishPolicy(
     connectionId: string,
   ): Promise<{ reserve: number; zeroThreshold: number }> {
-    const { connection } = await this.integrationsService.getAdapter(connectionId);
+    // ConnectionPort, not getAdapter: only one JSONB column is wanted here, and
+    // getAdapter additionally resolves the adapter key and can raise
+    // ConnectionDisabledException, neither of which this caller asked for.
+    const connection = await this.connectionPort.get(connectionId);
     return {
       reserve: readStockSafetyBuffer(connection.config),
       zeroThreshold: readStockZeroThreshold(connection.config),

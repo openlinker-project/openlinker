@@ -947,67 +947,132 @@ describe('SyncJobRepository', () => {
   describe('getConnectionBacklogStats', () => {
     const connectionId = randomUUID();
     const windowStart = new Date('2026-08-27T09:00:00.000Z');
+    const historyStart = new Date('2026-08-20T10:00:00.000Z');
+    const now = new Date('2026-08-27T10:00:00.000Z');
+
+    function mockRows(live: Record<string, unknown>, history: Record<string, unknown>): void {
+      dataSource.query = jest.fn().mockImplementation((sql: string) => {
+        return Promise.resolve(sql.includes('due_count') ? [live] : [history]);
+      });
+    }
 
     it('should exclude rows with no recorded attempt duration from both the mean and its sample size', async () => {
-      dataSource.query = jest.fn().mockResolvedValue([
+      mockRows(
         {
-          queued_count: 15066,
+          due_count: 15066,
+          deferred_count: 3,
           running_count: 2,
+          oldest_due_at: new Date('2026-08-24T10:00:00.000Z'),
+        },
+        {
           dead_count: 4,
           arrived_in_window: 200,
-          completed_in_window: 55,
+          succeeded_in_window: 55,
+          dead_in_window: 0,
+          last_succeeded_at: new Date('2026-08-27T09:30:00.000Z'),
           avg_attempt_duration_ms: '4200.5',
           attempt_duration_sample_size: 40,
-          oldest_queued_at: new Date('2026-08-24T10:00:00.000Z'),
-        },
-      ]);
+        }
+      );
 
-      const result = await repository.getConnectionBacklogStats(connectionId, windowStart);
+      const result = await repository.getConnectionBacklogStats(
+        connectionId,
+        windowStart,
+        historyStart,
+        now
+      );
 
-      // 55 jobs completed, only 40 carried a duration - the sample size is the
+      // 55 jobs succeeded, only 40 carried a duration - the sample size is the
       // non-null count, never the completed count.
       expect(result.attemptDurationSampleSize).toBe(40);
       expect(result.averageAttemptDurationMs).toBe(4200.5);
 
-      const [sql] = (dataSource.query as jest.Mock).mock.calls[0] as [string, unknown[]];
-      expect(sql).toContain('AVG("lastAttemptDurationMs") FILTER (');
-      expect(sql).toContain('"lastAttemptDurationMs" IS NOT NULL');
+      const sqlTexts = (dataSource.query as jest.Mock).mock.calls.map(
+        (call) => (call as [string, unknown[]])[0]
+      );
+      const historySql = sqlTexts.find((sql) => sql.includes('AVG("lastAttemptDurationMs")'));
+      expect(historySql).toBeDefined();
+      expect(historySql).toContain('"lastAttemptDurationMs" IS NOT NULL');
       // No SUM anywhere: the column describes one attempt, so a total time
       // spent syncing must not be derivable from this read.
-      expect(sql).not.toContain('SUM("lastAttemptDurationMs")');
+      expect(historySql).not.toContain('SUM("lastAttemptDurationMs")');
     });
 
     it('should report a null mean rather than zero when no row carried a duration', async () => {
-      dataSource.query = jest.fn().mockResolvedValue([
+      mockRows(
+        { due_count: 0, deferred_count: 0, running_count: 0, oldest_due_at: null },
         {
-          queued_count: 0,
-          running_count: 0,
           dead_count: 0,
           arrived_in_window: 0,
-          completed_in_window: 3,
+          succeeded_in_window: 3,
+          dead_in_window: 0,
+          last_succeeded_at: null,
           avg_attempt_duration_ms: null,
           attempt_duration_sample_size: 0,
-          oldest_queued_at: null,
-        },
-      ]);
+        }
+      );
 
-      const result = await repository.getConnectionBacklogStats(connectionId, windowStart);
+      const result = await repository.getConnectionBacklogStats(
+        connectionId,
+        windowStart,
+        historyStart,
+        now
+      );
 
       expect(result.averageAttemptDurationMs).toBeNull();
       expect(result.attemptDurationSampleSize).toBe(0);
     });
 
-    it('should read every figure in one round trip scoped to the connection', async () => {
+    it('should count only due jobs as queue depth and report backing-off jobs separately', async () => {
+      mockRows(
+        { due_count: 4, deferred_count: 11, running_count: 1, oldest_due_at: null },
+        {
+          dead_count: 0,
+          arrived_in_window: 0,
+          succeeded_in_window: 0,
+          dead_in_window: 0,
+          last_succeeded_at: null,
+          avg_attempt_duration_ms: null,
+          attempt_duration_sample_size: 0,
+        }
+      );
+
+      const result = await repository.getConnectionBacklogStats(
+        connectionId,
+        windowStart,
+        historyStart,
+        now
+      );
+
+      expect(result.queuedCount).toBe(4);
+      expect(result.deferredCount).toBe(11);
+
+      const liveSql = ((dataSource.query as jest.Mock).mock.calls as Array<[string, unknown[]]>)
+        .map((call) => call[0])
+        .find((sql) => sql.includes('due_count'));
+      expect(liveSql).toContain('"nextRunAt" <= $2');
+      expect(liveSql).toContain("status IN ('queued', 'running')");
+    });
+
+    it('should bound the historical aggregate so it does not read the whole job history', async () => {
       dataSource.query = jest.fn().mockResolvedValue([]);
 
-      const result = await repository.getConnectionBacklogStats(connectionId, windowStart);
+      const result = await repository.getConnectionBacklogStats(
+        connectionId,
+        windowStart,
+        historyStart,
+        now
+      );
 
-      expect(dataSource.query).toHaveBeenCalledTimes(1);
-      const [, params] = (dataSource.query as jest.Mock).mock.calls[0] as [string, unknown[]];
-      expect(params).toEqual([connectionId, windowStart]);
+      const calls = (dataSource.query as jest.Mock).mock.calls as Array<[string, unknown[]]>;
+      const history = calls.find((call) => call[0].includes('arrived_in_window'));
+      expect(history).toBeDefined();
+      expect(history?.[0]).toContain('"createdAt" >= $2');
+      expect(history?.[1]).toEqual([connectionId, historyStart, windowStart]);
       expect(result.queuedCount).toBe(0);
       expect(result.oldestQueuedAt).toBeNull();
     });
+
   });
 
 });

@@ -11,6 +11,7 @@ import type {
   ConnectionBacklogStats,
   ConnectionBacklogStatus,
 } from '../types/connection-sync-status.types';
+import { BACKLOG_MIN_ALERT_JOBS } from '../types/connection-sync-status.types';
 
 const MS_PER_HOUR = 60 * 60 * 1000;
 
@@ -62,48 +63,35 @@ export function estimateClearanceMs(
 }
 
 /**
- * Compute the mean attempt duration from a summed total and the number of
- * rows that actually carried a duration.
- *
- * `lastAttemptDurationMs` is nullable - null on every row predating its
- * migration and on any job that never completed an attempt - so the divisor
- * must be the count of NON-NULL rows, never the count of jobs (#2611). With
- * no non-null rows the answer is `null`, not zero: "nothing measured" and
- * "measured as instant" are different facts.
- */
-export function averageAttemptDuration(
-  totalDurationMs: number,
-  nonNullSampleSize: number
-): number | null {
-  if (nonNullSampleSize <= 0) {
-    return null;
-  }
-  return totalDurationMs / nonNullSampleSize;
-}
-
-/**
  * Classify a connection's backlog.
  *
- * Alerting requires all three of:
+ * The alert requires all four of:
  *
- * 1. The queue is NOT converging - at least as much work arrived as drained
- *    over the window.
- * 2. The queue holds more than the derived threshold, i.e. more work than
- *    this connection drains in the alert horizon.
- * 3. The oldest queued job has already waited longer than that horizon.
+ * 1. The queue is NOT converging - more work arrived than succeeded over the
+ *    observation window.
+ * 2. The DUE queue holds more than the derived threshold, and more than an
+ *    absolute floor. The floor is what stops a measured threshold of 0 from
+ *    turning condition 2 into "the queue is not empty".
+ * 3. The oldest DUE job has already waited longer than the alert horizon.
+ * 4. Something has actually succeeded in the window. With nothing succeeding,
+ *    the honest reading is `'failing'`, not a backlog: no rate was measured,
+ *    so no rate-derived claim can be made.
  *
- * Condition 3 is what keeps the alert honest. An operator who triggers a full
- * catalogue sweep enqueues thousands of jobs in one minute, which satisfies
- * conditions 1 and 2 immediately while nothing is actually wrong. Those jobs
- * are young, so condition 3 fails and the connection reads `'growing'` until
- * the wait is genuinely a day old. An alert that fires on a healthy install is
- * worse than no alert, because the next real one gets ignored.
+ * Condition 3 is what keeps the alert honest about sweeps. An operator who
+ * triggers a full catalogue sweep enqueues thousands of jobs in one minute,
+ * satisfying conditions 1 and 2 immediately while nothing is wrong. Those
+ * jobs are young, so condition 3 fails and the connection reads `'growing'`
+ * until the wait is genuinely a day old.
  *
- * A drain rate of zero is treated as evidence, not as missing data: nothing
- * finished in the last hour, jobs have waited a day, and the queue is not
- * empty is precisely the stuck case this read exists to surface. `'unknown'`
- * is reserved for a failure to read the counts at all, and is produced by the
- * caller rather than here.
+ * Conditions 2 and 4 are what keep it honest about retries. A job that fails
+ * is requeued with a future `nextRunAt` and its original `createdAt`, so on a
+ * quiet connection one such job used to satisfy every condition and print the
+ * red banner while the worker was perfectly healthy. It is now excluded from
+ * the due count upstream, and even if it were not, the floor and the
+ * measured-drain requirement would each block the alert on their own.
+ *
+ * `'unknown'` is reserved for a failure to read the counts at all, and is
+ * produced by the caller rather than here.
  */
 export function classifyConnectionBacklog(input: {
   queuedCount: number;
@@ -112,18 +100,30 @@ export function classifyConnectionBacklog(input: {
   alertThresholdJobs: number;
   oldestQueuedWaitMs: number | null;
   alertHorizonMs: number;
+  succeededInWindow: number;
+  deadInWindow: number;
 }): ConnectionBacklogStatus {
+  const nothingSucceeded = input.succeededInWindow === 0;
+  if (nothingSucceeded && input.deadInWindow > 0) {
+    return 'failing';
+  }
   if (input.queuedCount === 0) {
     return 'idle';
   }
-  const converging = input.drainRatePerHour > input.arrivalRatePerHour;
+  // A tie is convergence: in steady state arrival equals drain, and calling
+  // that "not converging" put the warning badge on normal operation. A zero
+  // drain rate is not, even against zero arrival - nothing is moving, so
+  // nothing is catching up.
+  const converging =
+    input.drainRatePerHour > 0 && input.drainRatePerHour >= input.arrivalRatePerHour;
   if (converging) {
     return 'draining';
   }
-  const overThreshold = input.queuedCount > input.alertThresholdJobs;
+  const effectiveThreshold = Math.max(input.alertThresholdJobs, BACKLOG_MIN_ALERT_JOBS);
+  const overThreshold = input.queuedCount > effectiveThreshold;
   const waitedLongEnough =
     input.oldestQueuedWaitMs !== null && input.oldestQueuedWaitMs > input.alertHorizonMs;
-  return overThreshold && waitedLongEnough ? 'backlogged' : 'growing';
+  return !nothingSucceeded && overThreshold && waitedLongEnough ? 'backlogged' : 'growing';
 }
 
 /**
@@ -145,7 +145,7 @@ export function deriveBacklogSignal(
   oldestQueuedWaitMs: number | null;
 } {
   const arrivalRatePerHour = toRatePerHour(stats.arrivedInWindow, windowMs);
-  const drainRatePerHour = toRatePerHour(stats.completedInWindow, windowMs);
+  const drainRatePerHour = toRatePerHour(stats.succeededInWindow, windowMs);
   const alertThresholdJobs = deriveAlertThresholdJobs(drainRatePerHour, horizonMs);
   const oldestQueuedWaitMs =
     stats.oldestQueuedAt === null ? null : now.getTime() - stats.oldestQueuedAt.getTime();
@@ -158,6 +158,8 @@ export function deriveBacklogSignal(
       alertThresholdJobs,
       oldestQueuedWaitMs,
       alertHorizonMs: horizonMs,
+      succeededInWindow: stats.succeededInWindow,
+      deadInWindow: stats.deadInWindow,
     }),
     arrivalRatePerHour,
     drainRatePerHour,

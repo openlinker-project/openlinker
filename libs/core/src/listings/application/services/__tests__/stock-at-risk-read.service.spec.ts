@@ -50,13 +50,23 @@ describe('StockAtRiskReadService', () => {
   });
 
   function connectionWithBuffer(connectionId: string, buffer: number | undefined): void {
+    connectionWithPolicy(connectionId, buffer, undefined);
+  }
+
+  function connectionWithPolicy(
+    connectionId: string,
+    buffer: number | undefined,
+    zeroThreshold: number | undefined
+  ): void {
     integrationsService.listCapabilityAdapters.mockImplementation(({ capability }) =>
       Promise.resolve(
         capability === 'OfferManager'
           ? [
               {
                 connectionId,
-                connection: { config: { stockSafetyBuffer: buffer } } as never,
+                connection: {
+                  config: { stockSafetyBuffer: buffer, stockZeroThreshold: zeroThreshold },
+                } as never,
                 adapter: {} as never,
                 metadata: {} as never,
               },
@@ -100,8 +110,27 @@ describe('StockAtRiskReadService', () => {
         connectionId: 'conn-a',
         masterStock: 0,
         stockSafetyBuffer: 0,
+        stockZeroThreshold: 0,
       },
     ]);
+  });
+
+  it('should report a variant the zero threshold silenced, not only the buffer (#2610)', async () => {
+    // The threshold is a second way to publish nothing. Leaving it out made
+    // this aggregate under-report exactly the lines the threshold had hidden.
+    connectionWithPolicy('conn-a', 0, 5);
+    offerRepo.findRecentlyListedVariantIds.mockResolvedValue([
+      { variantId: 'v1', productId: 'p1', latestMappedAt: new Date('2026-01-01T00:00:00Z') },
+    ]);
+    inventoryQueryService.getAvailabilityByVariantIds.mockResolvedValue([
+      { productVariantId: 'v1', totalAvailable: 3, locationCount: 1 },
+    ]);
+
+    const result = await service.findStockAtRisk(20);
+
+    expect(result.totalCount).toBe(1);
+    expect(result.items[0]?.stockZeroThreshold).toBe(5);
+    expect(result.items[0]?.masterStock).toBe(3);
   });
 
   it('should report a variant at or below the buffer threshold', async () => {
@@ -123,6 +152,7 @@ describe('StockAtRiskReadService', () => {
         connectionId: 'conn-a',
         masterStock: 5,
         stockSafetyBuffer: 5,
+        stockZeroThreshold: 0,
       },
     ]);
   });

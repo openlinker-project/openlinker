@@ -591,79 +591,107 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
 
   async getConnectionBacklogStats(
     connectionId: string,
-    windowStart: Date
+    windowStart: Date,
+    historyStart: Date,
+    now: Date
   ): Promise<ConnectionBacklogStats> {
-    // One round trip. Every figure is an aggregate over this connection's rows
-    // only, so the response size does not grow with the number of jobs - a
-    // 15 000-job backlog returns the same single row a 3-job one does. The
-    // scan is assisted by the existing (connectionId, createdAt) index.
+    // Two aggregates, and the split is what bounds the read. `sync_jobs` has
+    // no retention anywhere, so one unbounded aggregate touched every row the
+    // connection ever had - millions inside a year on a sweeping connection.
     //
+    // The live-queue read is bounded by the size of the live queue, not by
+    // history, and is served by the (status, nextRunAt) index. The historical
+    // read is bounded by "createdAt >= historyStart" on the
+    // (connectionId, createdAt) index. No job can complete outside that bound
+    // and be missed: the retry ladder tops out around two days.
+    //
+    // Queue depth counts only DUE jobs. A job waiting on its own retry
+    // backoff is queued but nothing is holding it up, and reporting it as
+    // queue depth made one failing job look like a stalled worker.
+    const liveSql = `
+      SELECT
+        COUNT(*) FILTER (WHERE status = 'queued' AND "nextRunAt" <= $2)::int AS due_count,
+        COUNT(*) FILTER (WHERE status = 'queued' AND "nextRunAt" > $2)::int AS deferred_count,
+        COUNT(*) FILTER (WHERE status = 'running')::int AS running_count,
+        MIN("createdAt") FILTER (
+          WHERE status = 'queued' AND "nextRunAt" <= $2
+        ) AS oldest_due_at
+      FROM sync_jobs
+      WHERE "connectionId" = $1 AND status IN ('queued', 'running')
+    `;
+
     // The duration average uses FILTER on IS NOT NULL, and the sample size is
     // COUNT of the same non-null set (#2611): the column is null on every row
     // predating its migration, and counting those as zero would understate
     // every real duration. AVG already ignores nulls; the explicit FILTER on
     // the count is what lets a caller see how thin the sample is.
-    const sql = `
+    const historySql = `
       SELECT
-        COUNT(*) FILTER (WHERE status = 'queued')::int AS queued_count,
-        COUNT(*) FILTER (WHERE status = 'running')::int AS running_count,
         COUNT(*) FILTER (WHERE status = 'dead')::int AS dead_count,
-        COUNT(*) FILTER (WHERE "createdAt" >= $2)::int AS arrived_in_window,
+        COUNT(*) FILTER (WHERE "createdAt" >= $3)::int AS arrived_in_window,
         COUNT(*) FILTER (
-          WHERE status IN ('succeeded', 'dead') AND "updatedAt" >= $2
-        )::int AS completed_in_window,
+          WHERE status = 'succeeded' AND "updatedAt" >= $3
+        )::int AS succeeded_in_window,
+        COUNT(*) FILTER (
+          WHERE status = 'dead' AND "updatedAt" >= $3
+        )::int AS dead_in_window,
+        MAX("updatedAt") FILTER (
+          WHERE status = 'succeeded' AND (outcome IS NULL OR outcome <> 'business_failure')
+        ) AS last_succeeded_at,
         AVG("lastAttemptDurationMs") FILTER (
           WHERE status IN ('succeeded', 'dead')
-            AND "updatedAt" >= $2
+            AND "updatedAt" >= $3
             AND "lastAttemptDurationMs" IS NOT NULL
         ) AS avg_attempt_duration_ms,
         COUNT(*) FILTER (
           WHERE status IN ('succeeded', 'dead')
-            AND "updatedAt" >= $2
+            AND "updatedAt" >= $3
             AND "lastAttemptDurationMs" IS NOT NULL
-        )::int AS attempt_duration_sample_size,
-        MIN("createdAt") FILTER (WHERE status = 'queued') AS oldest_queued_at
+        )::int AS attempt_duration_sample_size
       FROM sync_jobs
-      WHERE "connectionId" = $1
+      WHERE "connectionId" = $1 AND "createdAt" >= $2
     `;
 
-    interface StatsRow {
-      queued_count: number;
+    interface LiveRow {
+      due_count: number;
+      deferred_count: number;
       running_count: number;
+      oldest_due_at: Date | null;
+    }
+
+    interface HistoryRow {
       dead_count: number;
       arrived_in_window: number;
-      completed_in_window: number;
+      succeeded_in_window: number;
+      dead_in_window: number;
+      last_succeeded_at: Date | null;
       // Postgres AVG over an integer column returns numeric, serialized as a string.
       avg_attempt_duration_ms: string | null;
       attempt_duration_sample_size: number;
-      oldest_queued_at: Date | null;
     }
 
-    const rows = await this.dataSource.query<StatsRow[]>(sql, [connectionId, windowStart]);
-    const row = rows[0];
-    if (!row) {
-      return {
-        queuedCount: 0,
-        runningCount: 0,
-        deadCount: 0,
-        arrivedInWindow: 0,
-        completedInWindow: 0,
-        averageAttemptDurationMs: null,
-        attemptDurationSampleSize: 0,
-        oldestQueuedAt: null,
-      };
-    }
+    const [liveRows, historyRows] = await Promise.all([
+      this.dataSource.query<LiveRow[]>(liveSql, [connectionId, now]),
+      this.dataSource.query<HistoryRow[]>(historySql, [connectionId, historyStart, windowStart]),
+    ]);
+    const live = liveRows[0];
+    const history = historyRows[0];
 
     return {
-      queuedCount: row.queued_count,
-      runningCount: row.running_count,
-      deadCount: row.dead_count,
-      arrivedInWindow: row.arrived_in_window,
-      completedInWindow: row.completed_in_window,
+      queuedCount: live?.due_count ?? 0,
+      deferredCount: live?.deferred_count ?? 0,
+      runningCount: live?.running_count ?? 0,
+      deadCount: history?.dead_count ?? 0,
+      arrivedInWindow: history?.arrived_in_window ?? 0,
+      succeededInWindow: history?.succeeded_in_window ?? 0,
+      deadInWindow: history?.dead_in_window ?? 0,
+      lastSucceededAt: history?.last_succeeded_at ?? null,
       averageAttemptDurationMs:
-        row.avg_attempt_duration_ms === null ? null : Number(row.avg_attempt_duration_ms),
-      attemptDurationSampleSize: row.attempt_duration_sample_size,
-      oldestQueuedAt: row.oldest_queued_at,
+        history == null || history.avg_attempt_duration_ms === null
+          ? null
+          : Number(history.avg_attempt_duration_ms),
+      attemptDurationSampleSize: history?.attempt_duration_sample_size ?? 0,
+      oldestQueuedAt: live?.oldest_due_at ?? null,
     };
   }
 

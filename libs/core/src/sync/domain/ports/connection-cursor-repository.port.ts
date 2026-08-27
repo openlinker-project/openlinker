@@ -81,7 +81,15 @@ export interface ConnectionCursorRepositoryPort {
    * @returns Full cursor object or null if not found
    */
   findOne(connectionId: string, cursorKey: string): Promise<ConnectionCursor | null>;
+
+  /**
+   * When any of this connection's cursors last advanced, or null when it
+   * holds none.
+   *
+   * A dedicated read rather than a limit-1 page of `findMany`, which pays a
+   * `COUNT(*)` over every cursor row and discards it.
+   *
+   * @param connectionId - Connection UUID
+   */
+  findMostRecentUpdate(connectionId: string): Promise<Date | null>;
 }
-
-
-

@@ -345,10 +345,18 @@ export interface SyncJobRepositoryPort {
   heartbeat(id: string, workerId: string): Promise<void>;
 
   /**
-   * Aggregate one connection's queue facts in a single round trip (#2615):
-   * current queued/running/dead counts, arrivals and terminal completions
-   * inside `windowStart..now`, the mean attempt duration over that window,
-   * and the creation time of the oldest still-queued job.
+   * Aggregate one connection's queue facts (#2615): the DUE and deferred
+   * queued counts, running and dead counts, arrivals and successes inside
+   * `windowStart..now`, when the connection last succeeded, the mean attempt
+   * duration over the window, and the creation time of the oldest DUE job.
+   *
+   * Queue depth counts only jobs whose `nextRunAt` has arrived. A job in
+   * retry backoff is queued but nothing is holding it up.
+   *
+   * Historical figures are bounded by `historyStart`. `sync_jobs` has no
+   * retention, so an unbounded aggregate would read every row the connection
+   * ever had; the bound is what keeps the read cost proportional to recent
+   * activity rather than to the whole history.
    *
    * The mean EXCLUDES rows whose `lastAttemptDurationMs` is null and reports
    * the non-null sample size alongside it (#2611) - the column is null on
@@ -361,9 +369,13 @@ export interface SyncJobRepositoryPort {
    *
    * @param connectionId - Connection UUID
    * @param windowStart - Start of the observation window
+   * @param historyStart - Lower bound on the rows the historical figures read
+   * @param now - Reference instant deciding which queued jobs are due
    */
   getConnectionBacklogStats(
     connectionId: string,
-    windowStart: Date
+    windowStart: Date,
+    historyStart: Date,
+    now: Date
   ): Promise<ConnectionBacklogStats>;
 }

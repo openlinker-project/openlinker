@@ -29,6 +29,7 @@ describe('CursorsController', () => {
       delete: jest.fn(),
       findMany: jest.fn(),
       findOne: jest.fn(),
+      findMostRecentUpdate: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({

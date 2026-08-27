@@ -23,13 +23,13 @@
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
-import { SYNC_JOB_REPOSITORY_TOKEN } from '../../sync.tokens';
+import { SYNC_CURSORS_SERVICE_TOKEN, SYNC_JOB_REPOSITORY_TOKEN } from '../../sync.tokens';
 import { SyncJobRepositoryPort } from '../../domain/ports/sync-job-repository.port';
 import { ISyncCursorsService } from './sync-cursors.service.interface';
-import { SYNC_CURSORS_SERVICE_TOKEN } from '../../sync.tokens';
 import type { ConnectionSyncStatus } from '../../domain/types/connection-sync-status.types';
 import {
   BACKLOG_ALERT_HORIZON_MS,
+  BACKLOG_HISTORY_WINDOW_MS,
   BACKLOG_OBSERVATION_WINDOW_MS,
 } from '../../domain/types/connection-sync-status.types';
 import { deriveBacklogSignal } from '../../domain/domain-services/connection-backlog.domain-service';
@@ -49,9 +49,10 @@ export class ConnectionSyncStatusService implements IConnectionSyncStatusService
   async getConnectionSyncStatus(connectionId: string): Promise<ConnectionSyncStatus> {
     const now = new Date();
     const windowStart = new Date(now.getTime() - BACKLOG_OBSERVATION_WINDOW_MS);
+    const historyStart = new Date(now.getTime() - BACKLOG_HISTORY_WINDOW_MS);
 
     const [stats, lastCursorAdvanceAt] = await Promise.all([
-      this.readStatsSafely(connectionId, windowStart),
+      this.readStatsSafely(connectionId, windowStart, historyStart, now),
       this.readCursorSafely(connectionId),
     ]);
 
@@ -65,8 +66,11 @@ export class ConnectionSyncStatusService implements IConnectionSyncStatusService
         status: 'unknown',
         alerting: false,
         queuedCount: 0,
+        deferredCount: 0,
         runningCount: 0,
         deadCount: 0,
+        deadInWindow: 0,
+        lastSucceededAt: null,
         arrivalRatePerHour: 0,
         drainRatePerHour: 0,
         alertThresholdJobs: 0,
@@ -77,6 +81,7 @@ export class ConnectionSyncStatusService implements IConnectionSyncStatusService
         lastCursorAdvanceAt,
         observationWindowMs: BACKLOG_OBSERVATION_WINDOW_MS,
         alertHorizonMs: BACKLOG_ALERT_HORIZON_MS,
+        historyWindowMs: BACKLOG_HISTORY_WINDOW_MS,
       };
     }
 
@@ -93,8 +98,11 @@ export class ConnectionSyncStatusService implements IConnectionSyncStatusService
       status: signal.status,
       alerting: signal.status === 'backlogged',
       queuedCount: stats.queuedCount,
+      deferredCount: stats.deferredCount,
       runningCount: stats.runningCount,
       deadCount: stats.deadCount,
+      deadInWindow: stats.deadInWindow,
+      lastSucceededAt: stats.lastSucceededAt,
       arrivalRatePerHour: signal.arrivalRatePerHour,
       drainRatePerHour: signal.drainRatePerHour,
       alertThresholdJobs: signal.alertThresholdJobs,
@@ -105,15 +113,23 @@ export class ConnectionSyncStatusService implements IConnectionSyncStatusService
       lastCursorAdvanceAt,
       observationWindowMs: BACKLOG_OBSERVATION_WINDOW_MS,
       alertHorizonMs: BACKLOG_ALERT_HORIZON_MS,
+      historyWindowMs: BACKLOG_HISTORY_WINDOW_MS,
     };
   }
 
   private async readStatsSafely(
     connectionId: string,
-    windowStart: Date
+    windowStart: Date,
+    historyStart: Date,
+    now: Date
   ): Promise<Awaited<ReturnType<SyncJobRepositoryPort['getConnectionBacklogStats']>> | null> {
     try {
-      return await this.jobRepository.getConnectionBacklogStats(connectionId, windowStart);
+      return await this.jobRepository.getConnectionBacklogStats(
+        connectionId,
+        windowStart,
+        historyStart,
+        now
+      );
     } catch (error) {
       this.logger.warn(
         `Could not read backlog stats for connection ${connectionId}: ${

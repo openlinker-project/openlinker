@@ -19,8 +19,11 @@ function renderPanel(overrides: Partial<ConnectionSyncStatus> = {}): void {
     status: 'idle',
     alerting: false,
     queuedCount: 0,
+    deferredCount: 0,
     runningCount: 0,
     deadCount: 0,
+    deadInWindow: 0,
+    lastSucceededAt: null,
     arrivalRatePerHour: 0,
     drainRatePerHour: 0,
     alertThresholdJobs: 0,
@@ -31,6 +34,7 @@ function renderPanel(overrides: Partial<ConnectionSyncStatus> = {}): void {
     lastCursorAdvanceAt: null,
     observationWindowMs: HOUR,
     alertHorizonMs: DAY,
+    historyWindowMs: 7 * DAY,
     ...overrides,
   };
   const apiClient = createMockApiClient({
@@ -141,5 +145,26 @@ describe('ConnectionSyncStatusPanel', () => {
     renderPanel({ deadCount: 4 });
 
     expect(await screen.findByText(/4 tasks have given up/)).toBeInTheDocument();
+  });
+
+  it('says tasks are failing rather than showing an empty queue as healthy', async () => {
+    renderPanel({ status: 'failing', queuedCount: 0, deadCount: 12, deadInWindow: 12 });
+
+    expect(await screen.findByText('Tasks failing')).toBeInTheDocument();
+    expect(await screen.findByText(/work is dying rather than getting done/)).toBeInTheDocument();
+  });
+
+  it('names the stalled-worker case when tasks are running and nothing finishes', async () => {
+    renderPanel({ status: 'growing', queuedCount: 20, runningCount: 2, drainRatePerHour: 0 });
+
+    expect(
+      await screen.findByText(/the background worker stopped part-way through/)
+    ).toBeInTheDocument();
+  });
+
+  it('does not print an alert level of zero when no drain rate was measured', async () => {
+    renderPanel({ status: 'growing', queuedCount: 20, drainRatePerHour: 0 });
+
+    expect(await screen.findByText(/Not measured yet - nothing finished/)).toBeInTheDocument();
   });
 });

@@ -71,7 +71,14 @@ describe('StockAndPricingSection', () => {
 
   it('states 0 for the worked example when the threshold bites', () => {
     render(<Harness initialStockPolicy={{ safetyBuffer: '4', zeroThreshold: '8' }} />);
-    expect(screen.getByText('0')).toBeInTheDocument();
+    // Two zeros now: the 10-unit example, and the low-stock case the floor is
+    // actually about.
+    expect(screen.getAllByText('0').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('states a low-stock case so a floor demonstrates something (#2610)', () => {
+    render(<Harness initialStockPolicy={{ safetyBuffer: '0', zeroThreshold: '5' }} />);
+    expect(screen.getByText('4 units')).toBeInTheDocument();
   });
 
   it('clears both stock knobs and re-syncs when the group is switched off', () => {

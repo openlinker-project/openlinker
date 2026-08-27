@@ -136,14 +136,25 @@ function readRateLimit(config: Record<string, unknown>): RateLimitFormValues {
  * Read the stock publish policy out of the two flat config keys (#2610).
  * A persisted `0` reads back as `'0'`, NOT as `''` - unset and an explicit
  * zero are different operator statements and must round-trip apart.
+ *
+ * Both knobs are whole units and the backend floors a fractional value, so a
+ * fraction that reached the config through the raw JSON editor is floored on
+ * the way in as well. Hydrating it verbatim would put a value the form's own
+ * rule rejects into the field, and because Zod validates the whole form that
+ * blocks every save on the page, including an unrelated name change.
  */
 function readStockPolicy(config: Record<string, unknown>): StockPolicyFormValues {
   return {
-    safetyBuffer:
-      typeof config.stockSafetyBuffer === 'number' ? String(config.stockSafetyBuffer) : '',
-    zeroThreshold:
-      typeof config.stockZeroThreshold === 'number' ? String(config.stockZeroThreshold) : '',
+    safetyBuffer: readWholeUnits(config.stockSafetyBuffer),
+    zeroThreshold: readWholeUnits(config.stockZeroThreshold),
   };
+}
+
+function readWholeUnits(raw: unknown): string {
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) {
+    return '';
+  }
+  return String(Math.max(0, Math.floor(raw)));
 }
 
 /**
@@ -164,7 +175,13 @@ function readPricingRuleForm(config: Record<string, unknown>): PricingRuleFormVa
       : '';
   return {
     type,
-    percent: typeof raw.percent === 'number' ? String(raw.percent) : '',
+    // Any finite non-negative percent the backend accepts, decimals included.
+    // The field's own rule matches, so a config written through the raw JSON
+    // editor can never hydrate into a value the form refuses to submit.
+    percent:
+      typeof raw.percent === 'number' && Number.isFinite(raw.percent) && raw.percent >= 0
+        ? String(raw.percent)
+        : '',
     rounding,
   };
 }

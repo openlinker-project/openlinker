@@ -14,10 +14,13 @@ const CONNECTION_ID = '11111111-1111-1111-1111-111111111111';
 function stats(overrides: Partial<ConnectionBacklogStats> = {}): ConnectionBacklogStats {
   return {
     queuedCount: 0,
+    deferredCount: 0,
     runningCount: 0,
     deadCount: 0,
     arrivedInWindow: 0,
-    completedInWindow: 0,
+    succeededInWindow: 0,
+    deadInWindow: 0,
+    lastSucceededAt: null,
     averageAttemptDurationMs: null,
     attemptDurationSampleSize: 0,
     oldestQueuedAt: null,
@@ -58,7 +61,7 @@ describe('ConnectionSyncStatusService', () => {
       stats({
         queuedCount: 15066,
         arrivedInWindow: 200,
-        completedInWindow: 55,
+        succeededInWindow: 55,
         oldestQueuedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
       })
     );
@@ -76,7 +79,7 @@ describe('ConnectionSyncStatusService', () => {
       stats({
         queuedCount: 9000,
         arrivedInWindow: 9000,
-        completedInWindow: 55,
+        succeededInWindow: 55,
         oldestQueuedAt: new Date(Date.now() - 5 * 60 * 1000),
       })
     );
@@ -98,7 +101,7 @@ describe('ConnectionSyncStatusService', () => {
 
   it('should keep the backlog answer when the cursor read fails', async () => {
     getConnectionBacklogStats.mockResolvedValue(
-      stats({ queuedCount: 3, arrivedInWindow: 1, completedInWindow: 20 })
+      stats({ queuedCount: 3, arrivedInWindow: 1, succeededInWindow: 20 })
     );
     getMostRecentCursorUpdate.mockRejectedValue(new Error('cursor read failed'));
 
@@ -122,9 +125,46 @@ describe('ConnectionSyncStatusService', () => {
   it('should read the queue stats over the one-hour observation window', async () => {
     await service.getConnectionSyncStatus(CONNECTION_ID);
 
-    const [, windowStart] = getConnectionBacklogStats.mock.calls[0] as [string, Date];
+    const [, windowStart, historyStart] = getConnectionBacklogStats.mock.calls[0] as [
+      string,
+      Date,
+      Date,
+      Date,
+    ];
     const spanMs = Date.now() - windowStart.getTime();
     expect(spanMs).toBeGreaterThanOrEqual(60 * 60 * 1000);
     expect(spanMs).toBeLessThan(60 * 60 * 1000 + 5000);
+
+    // The historical figures are bounded, or the aggregate reads every row the
+    // connection ever had.
+    const historySpanMs = Date.now() - historyStart.getTime();
+    expect(historySpanMs).toBeGreaterThanOrEqual(7 * 24 * 60 * 60 * 1000);
+  });
+
+  it('should report failing rather than idle when nothing succeeded and jobs died', async () => {
+    getConnectionBacklogStats.mockResolvedValue(
+      stats({ queuedCount: 0, deadCount: 12, deadInWindow: 12 })
+    );
+
+    const result = await service.getConnectionSyncStatus(CONNECTION_ID);
+
+    expect(result.status).toBe('failing');
+    expect(result.alerting).toBe(false);
+  });
+
+  it('should not alert on a single job waiting on its own retry backoff', async () => {
+    // The queue count carries only due jobs, and with nothing measured as
+    // draining the absolute floor blocks the alert as well.
+    getConnectionBacklogStats.mockResolvedValue(
+      stats({
+        queuedCount: 1,
+        deferredCount: 1,
+        oldestQueuedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+      })
+    );
+
+    const result = await service.getConnectionSyncStatus(CONNECTION_ID);
+
+    expect(result.alerting).toBe(false);
   });
 });

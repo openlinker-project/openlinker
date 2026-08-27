@@ -11,6 +11,7 @@
  */
 
 import { OfferStockRestoreService } from '../offer-stock-restore.service';
+import type { ConnectionPort } from '@openlinker/core/identifier-mapping';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import {
   CapabilityNotEnabledException,
@@ -52,6 +53,7 @@ describe('OfferStockRestoreService', () => {
   let offerMappings: jest.Mocked<OfferMappingRepositoryPort>;
   let inventoryQuery: jest.Mocked<IInventoryQueryService>;
   let restorer: jest.Mocked<OfferManagerPort & OfferStockRestorer>;
+  let connectionPort: jest.Mocked<ConnectionPort>;
 
   beforeEach(() => {
     restorer = {
@@ -61,11 +63,15 @@ describe('OfferStockRestoreService', () => {
 
     integrationsService = {
       getCapabilityAdapter: jest.fn().mockResolvedValue(restorer),
-      // #2610 — the restore reads the connection's stock publish policy.
-      // Default: no reserve, no threshold (pass-through).
-      getAdapter: jest.fn().mockResolvedValue({ connection: { config: {} } }),
+      getAdapter: jest.fn(),
       listCapabilityAdapters: jest.fn(),
     } as unknown as jest.Mocked<IIntegrationsService>;
+
+    // #2610 — the restore reads the connection's stock publish policy through
+    // ConnectionPort. Default: no reserve, no threshold (pass-through).
+    connectionPort = {
+      get: jest.fn().mockResolvedValue({ id: CONNECTION_ID, config: {} }),
+    } as unknown as jest.Mocked<ConnectionPort>;
 
     orderRecordService = {
       getOrderRecord: jest.fn(),
@@ -87,6 +93,7 @@ describe('OfferStockRestoreService', () => {
 
     service = new OfferStockRestoreService(
       integrationsService,
+      connectionPort,
       orderRecordService,
       offerMappings,
       inventoryQuery
@@ -210,8 +217,9 @@ describe('OfferStockRestoreService', () => {
     expect(restorer.restoreStockOnCancellation).not.toHaveBeenCalled();
   });
   it('should hold back the connection stock safety buffer when restoring (#2610)', async () => {
-    integrationsService.getAdapter.mockResolvedValue({
-      connection: { config: { stockSafetyBuffer: 2 } },
+    connectionPort.get.mockResolvedValue({
+      id: CONNECTION_ID,
+      config: { stockSafetyBuffer: 2 },
     } as never);
     orderRecordService.getOrderRecord.mockResolvedValue(orderRecord([{ variantId: VARIANT_A }]));
     offerMappings.findMappingPage.mockResolvedValue({
@@ -228,8 +236,9 @@ describe('OfferStockRestoreService', () => {
   });
 
   it('should publish 0 when the restored quantity is below the zero threshold (#2610)', async () => {
-    integrationsService.getAdapter.mockResolvedValue({
-      connection: { config: { stockZeroThreshold: 4 } },
+    connectionPort.get.mockResolvedValue({
+      id: CONNECTION_ID,
+      config: { stockZeroThreshold: 4 },
     } as never);
     orderRecordService.getOrderRecord.mockResolvedValue(orderRecord([{ variantId: VARIANT_A }]));
     offerMappings.findMappingPage.mockResolvedValue({

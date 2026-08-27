@@ -6,6 +6,7 @@
 import {
   applyStockSafetyBuffer,
   isPresentButInvalidStockSafetyBuffer,
+  isPresentButInvalidStockZeroThreshold,
   readStockSafetyBuffer,
   readStockZeroThreshold,
 } from '../stock-safety-buffer.types';
@@ -57,8 +58,14 @@ describe('stock-safety-buffer', () => {
       expect(isPresentButInvalidStockSafetyBuffer({ stockSafetyBuffer: 2.9 })).toBe(false);
     });
 
+    it('should be false for a deliberate 0, which is what the connection form writes', () => {
+      // The form tells the operator to enter 0 to publish the full quantity, so
+      // warning on that same value would have the product recommending it and
+      // the log calling it a probable typo.
+      expect(isPresentButInvalidStockSafetyBuffer({ stockSafetyBuffer: 0 })).toBe(false);
+    });
+
     it('should be true when present but coercing to 0 (mistyped buffer)', () => {
-      expect(isPresentButInvalidStockSafetyBuffer({ stockSafetyBuffer: 0 })).toBe(true);
       expect(isPresentButInvalidStockSafetyBuffer({ stockSafetyBuffer: -3 })).toBe(true);
       expect(isPresentButInvalidStockSafetyBuffer({ stockSafetyBuffer: Number.NaN })).toBe(true);
       expect(isPresentButInvalidStockSafetyBuffer({ stockSafetyBuffer: Infinity })).toBe(true);
@@ -94,6 +101,25 @@ describe('stock-safety-buffer', () => {
 
     it('should floor a fractional threshold', () => {
       expect(readStockZeroThreshold({ stockZeroThreshold: 3.7 })).toBe(3);
+    });
+  });
+
+  describe('isPresentButInvalidStockZeroThreshold (#2610)', () => {
+    it('should be false when the key is absent, null or a deliberate 0', () => {
+      expect(isPresentButInvalidStockZeroThreshold(null)).toBe(false);
+      expect(isPresentButInvalidStockZeroThreshold({})).toBe(false);
+      expect(isPresentButInvalidStockZeroThreshold({ stockZeroThreshold: null })).toBe(false);
+      expect(isPresentButInvalidStockZeroThreshold({ stockZeroThreshold: 0 })).toBe(false);
+    });
+
+    it('should be true for a mistyped threshold, which silently sells low stock', () => {
+      expect(isPresentButInvalidStockZeroThreshold({ stockZeroThreshold: '5' })).toBe(true);
+      expect(isPresentButInvalidStockZeroThreshold({ stockZeroThreshold: -3 })).toBe(true);
+      expect(isPresentButInvalidStockZeroThreshold({ stockZeroThreshold: Number.NaN })).toBe(true);
+    });
+
+    it('should be false for a valid positive threshold', () => {
+      expect(isPresentButInvalidStockZeroThreshold({ stockZeroThreshold: 5 })).toBe(false);
     });
   });
 
