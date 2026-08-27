@@ -298,6 +298,18 @@
             </tr>
             {/if}
             <tr>
+                <td><strong>{l s='Fast Delivery' mod='openlinker'}</strong></td>
+                <td>
+                    {if $fast_path_active}
+                        <span class="text-success">{l s='Active' mod='openlinker'}</span>
+                        <span class="help-block">{l s='Stock and order changes are delivered within seconds on this host.' mod='openlinker'}</span>
+                    {else}
+                        <span class="text-warning">{l s='Not available on this host' mod='openlinker'}</span>
+                        <span class="help-block">{l s='This host does not support the fast delivery path. Stock and order changes are delivered on the next cron run instead - expect the interval configured for the cron trigger, not seconds.' mod='openlinker'}</span>
+                    {/if}
+                </td>
+            </tr>
+            <tr>
                 <td><strong>{l s='Pending Events' mod='openlinker'}</strong></td>
                 <td>{$statistics.pending|intval}</td>
             </tr>
