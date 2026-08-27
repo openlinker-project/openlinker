@@ -63,6 +63,25 @@ export {
   JobOutcomeReasonValues,
   BULK_RETRY_MAX_BATCH_SIZE,
 } from './domain/types/sync-job.types';
+export type {
+  ConnectionBacklogStatus,
+  ConnectionBacklogStats,
+  ConnectionSyncStatus,
+} from './domain/types/connection-sync-status.types';
+export {
+  ConnectionBacklogStatusValues,
+  BACKLOG_OBSERVATION_WINDOW_MS,
+  BACKLOG_ALERT_HORIZON_MS,
+} from './domain/types/connection-sync-status.types';
+export {
+  averageAttemptDuration,
+  classifyConnectionBacklog,
+  deriveAlertThresholdJobs,
+  deriveBacklogSignal,
+  estimateClearanceMs,
+  toRatePerHour,
+} from './domain/domain-services/connection-backlog.domain-service';
+export type { IConnectionSyncStatusService } from './application/services/connection-sync-status.service.interface';
 export type { SyncJobLane } from './domain/types/sync-job-lane.types';
 export { SyncJobLaneValues, resolveJobScope } from './domain/types/sync-job-lane.types';
 export {

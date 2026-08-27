@@ -10,6 +10,7 @@
  * @see {@link SyncJobRepository} for the TypeORM implementation
  */
 import type { SyncJob } from '../entities/sync-job.entity';
+import type { ConnectionBacklogStats } from '../types/connection-sync-status.types';
 import type {
   JobOutcome,
   JobOutcomeReason,
@@ -327,4 +328,27 @@ export interface SyncJobRepositoryPort {
    * @param workerId - Worker instance ID that must currently hold the lock
    */
   heartbeat(id: string, workerId: string): Promise<void>;
+
+  /**
+   * Aggregate one connection's queue facts in a single round trip (#2615):
+   * current queued/running/dead counts, arrivals and terminal completions
+   * inside `windowStart..now`, the mean attempt duration over that window,
+   * and the creation time of the oldest still-queued job.
+   *
+   * The mean EXCLUDES rows whose `lastAttemptDurationMs` is null and reports
+   * the non-null sample size alongside it (#2611) - the column is null on
+   * every row predating its migration, so counting those as zero would
+   * understate every real duration. The value describes one attempt, so this
+   * method deliberately offers no sum: total time spent syncing cannot be
+   * built from it.
+   *
+   * Aggregate-only, so the result size is independent of the number of jobs.
+   *
+   * @param connectionId - Connection UUID
+   * @param windowStart - Start of the observation window
+   */
+  getConnectionBacklogStats(
+    connectionId: string,
+    windowStart: Date
+  ): Promise<ConnectionBacklogStats>;
 }

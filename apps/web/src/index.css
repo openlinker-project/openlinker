@@ -3985,6 +3985,38 @@ a.delivery-rider-banner__button:focus-visible {
   color: var(--text-muted);
 }
 
+/* ── Connection sync-status panel (#2615) ── */
+.connection-sync-status__headline {
+  margin: var(--space-2) 0 0;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: var(--text-primary);
+}
+
+.connection-sync-status__note {
+  margin: var(--space-2) 0 0;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
+.connection-sync-status__details {
+  margin-top: var(--space-3);
+}
+
+.connection-sync-status__details > summary {
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.connection-sync-status__details > summary:focus-visible {
+  box-shadow: var(--shadow-focus);
+  outline: none;
+  border-radius: 0.25rem;
+}
+
 /* Button group */
 .button-group {
   display: flex;

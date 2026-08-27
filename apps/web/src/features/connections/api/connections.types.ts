@@ -297,6 +297,37 @@ export interface CatalogTrust {
   reconcileCycleOpen: boolean;
 }
 
+/**
+ * Sync status (#2615) - the per-connection sync queue view. Mirrors the
+ * backend `ConnectionBacklogStatusValues` union (`@openlinker/core/sync`).
+ */
+export type ConnectionBacklogStatus = 'idle' | 'draining' | 'growing' | 'backlogged' | 'unknown';
+
+export interface ConnectionSyncStatus {
+  connectionId: string;
+  generatedAt: string;
+  status: ConnectionBacklogStatus;
+  /** True only for 'backlogged'. The backend owns the rule; never re-derive it here. */
+  alerting: boolean;
+  queuedCount: number;
+  runningCount: number;
+  deadCount: number;
+  arrivalRatePerHour: number;
+  drainRatePerHour: number;
+  /** Derived from this connection's own drain rate, never a fixed number. */
+  alertThresholdJobs: number;
+  /** Null when the queue is not converging, so it has no estimated clearance. */
+  estimatedClearanceMs: number | null;
+  oldestQueuedWaitMs: number | null;
+  /** Mean over one attempt, rows with no recorded duration excluded. */
+  averageAttemptDurationMs: number | null;
+  attemptDurationSampleSize: number;
+  /** Null is normal for a webhook-fed connection, which keeps no cursor. */
+  lastCursorAdvanceAt: string | null;
+  observationWindowMs: number;
+  alertHorizonMs: number;
+}
+
 export interface ConnectionDiagnostics {
   connectionId: string;
   connectionName: string;
