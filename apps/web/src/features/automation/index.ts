@@ -73,6 +73,7 @@ export { useDeleteAutomationMutation } from './hooks/use-delete-automation-mutat
 export { useCreateAutomationMutation } from './hooks/use-create-automation-mutation';
 export { useEvaluateAutomationMutation } from './hooks/use-evaluate-automation-mutation';
 export { useSubjectAutomationRunsQuery } from './hooks/use-subject-automation-runs-query';
+export { useAutomationRunFeedQuery } from './hooks/use-automation-run-feed-query';
 
 export { AutomationActionAvailabilityPanel } from './components/automation-action-availability-panel';
 export { AutomationRuleAvailabilityNotice } from './components/automation-rule-availability-notice';
@@ -90,6 +91,7 @@ export { AutomationActionRow } from './components/automation-action-row';
 export { AutomationMergeFields } from './components/automation-merge-fields';
 export { AutomationDryRunPanel } from './components/automation-dry-run-panel';
 export { AutomationRunLogPanel } from './components/automation-run-log';
+export { AutomationActivityTable } from './components/automation-activity-table';
 export type { AutomationTriggerRow } from './components/automation-trigger-index';
 
 export { describeAvailability, readRuleAvailability } from './lib/action-availability';
@@ -109,6 +111,20 @@ export {
 } from './lib/dry-run-verdict';
 export type { DryRunGateState, VerdictHeadline } from './lib/dry-run-verdict';
 export { describeStepStatus, stepStatusTone } from './lib/step-status';
+export { runOutcomeTone } from './lib/run-outcome';
+export type { RunOutcomeTone } from './lib/run-outcome';
+export {
+  AUTOMATION_ACTIVITY_FILTER_PARAMS,
+  AUTOMATION_ACTIVITY_OFFSET_PARAM,
+  clearAutomationActivityFilters,
+  hasActiveAutomationActivityFilters,
+  readAutomationActivityFilters,
+  readAutomationActivityOffset,
+  readIsoDateParam,
+  setAutomationActivityFilterParam,
+  setAutomationActivityOffsetParam,
+} from './lib/automation-activity-filters';
+export type { AutomationActivityFilters } from './lib/automation-activity-filters';
 export type {
   AutomationErrorTarget,
   AutomationWriteRefusal,

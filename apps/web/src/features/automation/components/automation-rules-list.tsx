@@ -35,7 +35,12 @@ import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
 import { EmptyState } from '../../../shared/ui/feedback-state';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { StatusBadge } from '../../../shared/ui/status-badge';
-import { AUTOMATION_RULES_COPY, AUTOMATION_RUN_LOG_COPY } from '../lib/automation.copy';
+import { Link } from 'react-router-dom';
+import {
+  AUTOMATION_ACTIVITY_COPY,
+  AUTOMATION_RULES_COPY,
+  AUTOMATION_RUN_LOG_COPY,
+} from '../lib/automation.copy';
 import { useAutomationRunsQuery } from '../hooks/use-automation-runs-query';
 import { AutomationRunLogPanel } from './automation-run-log';
 import { AutomationRuleAvailabilityNotice } from './automation-rule-availability-notice';
@@ -164,6 +169,13 @@ export function AutomationRulesList({
                 : AUTOMATION_RUN_LOG_COPY.show}
             </Button>
             {expandedRuleId === rule.id ? <AutomationRuleRunLog ruleId={rule.id} /> : null}
+            {/* Opens the cross-rule log already narrowed to this rule (#2386). */}
+            <Link
+              className="muted-text"
+              to={`/automations/activity?ruleId=${encodeURIComponent(rule.id)}`}
+            >
+              {AUTOMATION_ACTIVITY_COPY.seeAllForRule}
+            </Link>
           </li>
         ))}
       </ul>

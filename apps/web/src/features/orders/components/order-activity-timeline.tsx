@@ -23,7 +23,7 @@ import {
   type OrderAmendmentChange,
 } from '../api/orders.types';
 import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
-import type { AutomationRun } from '../../automation';
+import { AUTOMATION_RUN_OUTCOME_COPY, type AutomationRun } from '../../automation';
 import { buildAutomationTimelineEvents } from '../lib/automation-timeline';
 import type { ParsedOrderInvoice } from '../api/order-snapshot.schema';
 import { invoicingBlockedBadge } from '../lib/order-row';
@@ -395,7 +395,10 @@ function buildEvents(
       id: event.id,
       timestamp: event.timestamp,
       title: event.title,
-      by: event.by,
+      by:
+        event.runOutcome === undefined
+          ? event.by
+          : `${event.by} · ${(AUTOMATION_RUN_OUTCOME_COPY as Record<string, string>)[event.runOutcome] ?? event.runOutcome}`,
       description: event.description,
       tone: event.tone,
       // The rule name in `by` is text; the LINK is what makes turning the rule

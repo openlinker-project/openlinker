@@ -26,6 +26,7 @@
  */
 import type { AutomationRun } from '../../domain/entities/automation-run.entity';
 import type { AutomationRunSubjectKind } from '../../domain/types/automation-run.types';
+import type { AutomationRunFilters } from '../../domain/ports/automation-run-repository.port';
 
 /** §5.6's fired-log page size. A cap, not a promise that fewer means fewer exist. */
 export const AUTOMATION_RUN_LOG_PAGE_SIZE = 50;
@@ -63,8 +64,19 @@ export interface IAutomationRunsReadService {
     limit?: number,
   ): Promise<AutomationRunLogPage>;
 
-  /** Recent runs across every rule, newest first — the activity list (#2385). */
-  listRecent(limit?: number, offset?: number): Promise<AutomationRunLogPage>;
+  /**
+   * Recent runs across every rule, newest first — the activity list
+   * (#2385, filtered by #2386).
+   *
+   * Every filter is a NARROWING one and every absent field means "do not narrow".
+   * A value the caller could not express is dropped before it arrives, so an
+   * unrecognised filter widens the result rather than emptying it.
+   */
+  listRecent(
+    filters?: AutomationRunFilters,
+    limit?: number,
+    offset?: number,
+  ): Promise<AutomationRunLogPage>;
 
   /** One run by id, or `null` (#2385). */
   getRunById(id: string): Promise<AutomationRun | null>;

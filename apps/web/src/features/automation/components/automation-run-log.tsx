@@ -35,19 +35,13 @@ import {
   AUTOMATION_RUN_OUTCOME_COPY,
 } from '../lib/automation.copy';
 import { describeStepStatus, stepStatusTone } from '../lib/step-status';
+import { runOutcomeTone } from '../lib/run-outcome';
 import type { AutomationRunLog } from '../api/automation.types';
 
 export interface AutomationRunLogPanelProps {
   log: AutomationRunLog | null;
   isLoading: boolean;
   error: unknown;
-}
-
-function outcomeTone(outcome: string): 'success' | 'error' | 'warning' | 'neutral' {
-  if (outcome === 'done') return 'success';
-  if (outcome === 'failed') return 'error';
-  if (outcome === 'blocked') return 'warning';
-  return 'neutral';
 }
 
 export function AutomationRunLogPanel({
@@ -82,7 +76,7 @@ export function AutomationRunLogPanel({
       {log.runs.map((run) => (
         <li key={run.id} className="automation-run-log__run">
           <div className="automation-run-log__head">
-            <StatusBadge tone={outcomeTone(run.outcome)} withDot compact>
+            <StatusBadge tone={runOutcomeTone(run.outcome)} withDot compact>
               {(AUTOMATION_RUN_OUTCOME_COPY as Record<string, string>)[run.outcome] ?? run.outcome}
             </StatusBadge>
             <span className="mono-text">{run.firedAt}</span>

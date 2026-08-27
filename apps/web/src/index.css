@@ -19707,3 +19707,58 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
     width: 100%;
   }
 }
+
+/* ── Automation activity log (#2386) ─────────────────────────────────────── */
+
+.automation-activity__filters {
+  align-items: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.automation-activity__filters .form-field {
+  flex: 1 1 10rem;
+  min-width: 0;
+}
+
+.automation-activity__steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.automation-activity__step {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.automation-activity__pager {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+  margin-top: var(--space-3);
+}
+
+@media (max-width: 767px) {
+  .automation-activity__filters .form-field {
+    flex: 1 1 100%;
+  }
+
+  .automation-activity__filters .button,
+  .automation-activity__pager .button {
+    min-height: 44px;
+    width: 100%;
+  }
+}
+
+.automation-activity__active-rule {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}

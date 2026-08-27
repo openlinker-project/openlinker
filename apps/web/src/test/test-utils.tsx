@@ -141,6 +141,9 @@ export function createMockApiClient(
       evaluate: vi.fn(),
       listRuns: vi.fn().mockResolvedValue(null),
       listRunsBySubject: vi.fn().mockResolvedValue(null),
+      listRunFeed: vi
+        .fn()
+        .mockResolvedValue({ runs: [], limit: 50, hasMore: false, recordingAvailable: true, note: null }),
       replace: vi.fn(),
       remove: vi.fn().mockResolvedValue(undefined),
       ...overrides.automations,

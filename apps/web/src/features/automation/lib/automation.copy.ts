@@ -435,9 +435,72 @@ export const AUTOMATION_RUN_OUTCOME_COPY = {
 export const AUTOMATION_ACTIVITY_COPY = {
   eyebrow: 'Automations',
   title: 'Run log',
-  description: 'What your automations have actually done.',
-  notYetTitle: 'There is no combined run log yet',
-  notYetMessage:
-    'OpenLinker records what an automation did against the rule that did it, so history is shown on each rule rather than in one list. A single feed across every rule is still being built.',
+  description: 'What your automations have actually done, newest first.',
   backToIndex: 'Back to automations',
+
+  whenHeader: 'When',
+  ruleHeader: 'Automation',
+  triggerHeader: 'Trigger',
+  subjectHeader: 'Order or return',
+  stepsHeader: 'What it did',
+  outcomeHeader: 'Result',
+
+  filterRule: 'Rule',
+  filterTrigger: 'Event',
+  filterOutcome: 'Result',
+  filterFrom: 'From',
+  filterTo: 'To',
+  filterOrder: 'Order',
+  filterAll: 'All',
+  clearFilters: 'Clear filters',
+  clearRuleFilter: 'Show every rule',
+
+  seeAllForRule: 'See all runs for this rule →',
+  viewJob: 'Job',
+
+  /**
+   * The FOOTER, and the one sentence on this page that had to be argued about.
+   *
+   * Spec §5.6(c) asks for *"Runs older than 90 days are removed."* — but nothing
+   * removes them. There is no prune job anywhere in the tree, and shipping that
+   * sentence would make the UI assert a deletion that never happened. Its stated
+   * purpose even INVERTS without the job: it exists so an empty older window
+   * reads as retention rather than data loss, and with nothing pruning, the
+   * window is not empty at all.
+   *
+   * So this says what is true today. **It must not become a promise about
+   * deletion in either direction** — when `automation.runs.prune` lands (on the
+   * wave follow-up list), this sentence changes with it.
+   */
+  retentionFooter: 'Every automation run recorded so far is listed here.',
+
+  loadingTitle: 'Loading run log',
+  errorTitle: 'Unable to load the run log',
+
+  /** Rules exist and are armed; none has fired yet. */
+  emptyNoRunsTitle: 'Nothing has run yet',
+  emptyNoRunsMessage:
+    'Your automations are set up and waiting. The moment one matches, it will show up here.',
+  /** No rules exist at all — a different situation with a different next step. */
+  emptyNoRulesTitle: 'You have no automations yet',
+  emptyNoRulesMessage: 'Set one up and everything it does will be listed here.',
+  emptyNoRulesAction: 'Go to automations',
+  /** A filter is narrowing the list. Says nothing about the whole set. */
+  emptyFilteredTitle: 'No runs match these filters',
+  emptyFilteredMessage: 'Try widening or clearing the filters.',
+  /**
+   * Filtering by `Blocked` on an empty result.
+   *
+   * `blocked` is a declared outcome with no producer in this build (#2385 D8),
+   * so this filter matches nothing — and an empty list would read as "no
+   * collisions have occurred" when the truth is "collisions are not recorded".
+   * That is the distinction `recordingAvailable` exists to make elsewhere in
+   * this feature, applied to a filter.
+   */
+  emptyBlockedTitle: 'Collisions are not recorded yet',
+  emptyBlockedMessage:
+    'When two money-spending automations match the same order, OpenLinker runs only one — but it does not yet write that down, so nothing can be listed here. This is not a statement that it has never happened.',
+
+  /** Appended to a `skipped` step, so the badge names what did not happen. */
+  skippedSuffix: 'did not run',
 } as const;

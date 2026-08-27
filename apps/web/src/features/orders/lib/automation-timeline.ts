@@ -60,6 +60,8 @@ export interface AutomationTimelineEvent {
   description?: string;
   footer: string;
   tone: 'default' | 'error';
+  /** The run's overall outcome, on exactly one event per run (`stepIndex === 0`). */
+  runOutcome?: string;
   /** The rule this step belongs to. */
   ruleId: string;
   /**
@@ -148,6 +150,7 @@ export function buildAutomationTimelineEvents(
           tone: 'default',
           ruleId: run.ruleId,
           trigger: run.trigger,
+          runOutcome: step.stepIndex === 0 ? run.outcome : undefined,
         });
         continue;
       }
@@ -157,6 +160,14 @@ export function buildAutomationTimelineEvents(
         id: `${run.id}:${step.stepIndex}`,
         timestamp: run.firedAt,
         title: actionTitle(step.action),
+        // The RUN-level outcome, on one event per run — a run-level fact
+        // repeated per step would state N times something true once.
+        //
+        // Anchored to `stepIndex === 0`, a property of the DATA. "The first
+        // event emitted" would be fragile: every event of one run shares
+        // `run.firedAt`, so their order after the timeline's chronological sort
+        // is insertion order, and any future re-sort would move the label.
+        runOutcome: step.stepIndex === 0 ? run.outcome : undefined,
         by,
         // The backend's own sentence, verbatim and attributed — never
         // paraphrased into operator-friendlier wording that loses the reason.

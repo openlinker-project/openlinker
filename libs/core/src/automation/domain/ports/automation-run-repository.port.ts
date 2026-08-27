@@ -48,6 +48,30 @@ export interface NewAutomationRun {
   readonly firedAt: Date;
 }
 
+/**
+ * Narrowing filters for the activity feed (#2386).
+ *
+ * Every field is optional and every absent field means "do not narrow on this".
+ * There is deliberately NO "match nothing" state: a filter the caller could not
+ * express is dropped before it reaches here, so an unrecognised value widens the
+ * result rather than emptying it — visible to the operator, and recoverable.
+ *
+ * The subject pair is the exception and is validated at the boundary instead:
+ * an unresolvable SCOPE would return other subjects' rows, which an operator
+ * cannot detect by looking. See the controller.
+ */
+export interface AutomationRunFilters {
+  readonly ruleId?: string;
+  readonly trigger?: AutomationTrigger;
+  readonly outcome?: AutomationRunOutcome;
+  readonly subjectKind?: AutomationRunSubjectKind;
+  readonly subjectId?: string;
+  /** Inclusive lower bound on `firedAt`. */
+  readonly from?: Date;
+  /** Inclusive upper bound on `firedAt`. */
+  readonly to?: Date;
+}
+
 export interface AutomationRunRepositoryPort {
   /**
    * Persist one firing and return the row as written.
@@ -73,7 +97,7 @@ export interface AutomationRunRepositoryPort {
   findById(id: string): Promise<AutomationRun | null>;
 
   /** Recent runs across every rule, newest first — the activity list. */
-  findRecent(limit: number, offset: number): Promise<AutomationRun[]>;
+  findRecent(filters: AutomationRunFilters, limit: number, offset: number): Promise<AutomationRun[]>;
 
   /**
    * This rule's most recent runs, newest first, capped at `limit`.

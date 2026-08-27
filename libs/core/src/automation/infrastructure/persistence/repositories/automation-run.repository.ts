@@ -19,10 +19,17 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import {
+  Between,
+  LessThanOrEqual,
+  MoreThanOrEqual,
+  Repository,
+  type FindOptionsWhere,
+} from 'typeorm';
 import { Logger } from '@openlinker/shared/logging';
 
 import type {
+  AutomationRunFilters,
   AutomationRunRepositoryPort,
   NewAutomationRun,
 } from '../../../domain/ports/automation-run-repository.port';
@@ -93,8 +100,31 @@ export class AutomationRunRepository implements AutomationRunRepositoryPort {
     return entity === null ? null : this.toDomain(entity);
   }
 
-  async findRecent(limit: number, offset: number): Promise<AutomationRun[]> {
+  async findRecent(
+    filters: AutomationRunFilters,
+    limit: number,
+    offset: number,
+  ): Promise<AutomationRun[]> {
+    const where: FindOptionsWhere<AutomationRunOrmEntity> = {};
+    if (filters.ruleId !== undefined) where.ruleId = filters.ruleId;
+    if (filters.trigger !== undefined) where.trigger = filters.trigger;
+    if (filters.outcome !== undefined) where.outcome = filters.outcome;
+    if (filters.subjectKind !== undefined) where.subjectKind = filters.subjectKind;
+    if (filters.subjectId !== undefined) where.subjectId = filters.subjectId;
+
+    // Both bounds are inclusive. Only one supplied is still a valid window —
+    // `Between` would need both, so the one-sided cases use their own operator
+    // rather than inventing a bound the operator did not ask for.
+    if (filters.from !== undefined && filters.to !== undefined) {
+      where.firedAt = Between(filters.from, filters.to);
+    } else if (filters.from !== undefined) {
+      where.firedAt = MoreThanOrEqual(filters.from);
+    } else if (filters.to !== undefined) {
+      where.firedAt = LessThanOrEqual(filters.to);
+    }
+
     const entities = await this.ormRepository.find({
+      where,
       // `IDX_automation_runs_fired_at`. A second sort key on `id` is deliberately
       // omitted: two runs sharing a `firedAt` to the microsecond would need the
       // same rule to fire twice in one tick, which the dispatcher's sequential

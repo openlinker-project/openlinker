@@ -65,14 +65,17 @@ import {
   AUTOMATION_RULES_SERVICE_TOKEN,
   AUTOMATION_RUNS_READ_SERVICE_TOKEN,
   AutomationRuleNotFoundError,
+  AutomationRunOutcomeValues,
   AutomationRunSubjectKindValues,
   AutomationTriggerValues,
   isAutomationActionKind,
+  isAutomationRunOutcome,
   isAutomationRunSubjectKind,
   isAutomationTrigger,
   isIrreversibleAction,
   isLegalAutomationPair,
   type AutomationMoneyAckInput,
+  type AutomationRunFilters,
   type AutomationRuleInput,
   type AutomationTrigger,
   type IAutomationRulesService,
@@ -97,6 +100,34 @@ import {
 } from './dto/automation-response.dto';
 import { AutomationDryRunResponseDto } from './dto/automation-dry-run-response.dto';
 import { AutomationVocabularyResponseDto } from './dto/automation-vocabulary-response.dto';
+
+/** A bare calendar day, with no time part — what a `<input type="date">` emits. */
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Parse an ISO instant from a query param.
+ *
+ * Returns `null` for anything unparseable — there is no `is*` guard for a date,
+ * so without this `from=banana` has no handler at all: `new Date('banana')` is
+ * an `Invalid Date` that either throws at the query layer or silently matches
+ * nothing. Both would break the rule that an unrecognised NARROWING filter is
+ * ignored rather than thrown.
+ *
+ * **A date-only UPPER bound is widened to the end of that day.** Both bounds are
+ * documented inclusive, but `new Date('2026-08-20')` is midnight UTC — so a
+ * `LessThanOrEqual` against it matches only runs fired at exactly 00:00:00.000
+ * and excludes the entire day the operator picked. On the commonest query of all
+ * (one day, `from` === `to`) that returns an empty list for a day full of
+ * activity, and the operator reads "no runs match" as "nothing ran". The
+ * operator chose a DAY; the control cannot express an instant.
+ */
+function parseIsoDate(value: string | undefined, bound: 'lower' | 'upper'): Date | null {
+  if (value === undefined || value.length === 0) return null;
+  const parsed = new Date(
+    bound === 'upper' && DATE_ONLY.test(value) ? `${value}T23:59:59.999Z` : value,
+  );
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
 
 @ApiBearerAuth()
 @ApiTags('automations')
@@ -176,6 +207,12 @@ export class AutomationsController {
   })
   @ApiQuery({ name: 'subjectKind', required: false, enum: AutomationRunSubjectKindValues })
   @ApiQuery({ name: 'subjectId', required: false, type: String })
+  @ApiQuery({ name: 'orderId', required: false, type: String, description: 'Shorthand for subjectKind=order.' })
+  @ApiQuery({ name: 'ruleId', required: false, type: String })
+  @ApiQuery({ name: 'trigger', required: false, enum: AutomationTriggerValues })
+  @ApiQuery({ name: 'outcome', required: false, enum: AutomationRunOutcomeValues })
+  @ApiQuery({ name: 'from', required: false, type: String, description: 'ISO instant, inclusive.' })
+  @ApiQuery({ name: 'to', required: false, type: String, description: 'ISO instant, inclusive.' })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'offset', required: false, type: Number })
   @ApiResponse({ status: 200, type: AutomationRunLogResponseDto })
@@ -183,29 +220,59 @@ export class AutomationsController {
   async listRunFeed(
     @Query('subjectKind') subjectKind?: string,
     @Query('subjectId') subjectId?: string,
+    @Query('orderId') orderId?: string,
+    @Query('ruleId') ruleId?: string,
+    @Query('trigger') trigger?: string,
+    @Query('outcome') outcome?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
   ): Promise<AutomationRunLogResponseDto> {
     const parsedLimit = limit === undefined ? undefined : Number(limit);
     const parsedOffset = offset === undefined ? undefined : Number(offset);
 
-    if (subjectId !== undefined && subjectId.length > 0) {
-      // Both or neither. A `subjectId` without its kind cannot be resolved to a
-      // row — the index is `(subjectKind, subjectId, firedAt)` — and silently
-      // ignoring the filter would answer a scoped question with every firing in
-      // the system.
-      if (!isAutomationRunSubjectKind(subjectKind)) {
+    // `orderId` is the PUBLIC param name (#2386) — a shared link should use the
+    // operator's vocabulary, not the storage pair. It resolves to the subject
+    // scope here, at the read boundary.
+    const scopedSubjectId =
+      orderId !== undefined && orderId.length > 0 ? orderId : subjectId;
+    const scopedSubjectKind =
+      orderId !== undefined && orderId.length > 0 ? 'order' : subjectKind;
+
+    // ── The asymmetry, and why it is not an inconsistency ──────────────────
+    //
+    // A SUBJECT SCOPE that cannot be honoured THROWS: the result would be rows
+    // for OTHER subjects, which an operator cannot detect by looking.
+    //
+    // A NARROWING filter that cannot be honoured is IGNORED (below): the result
+    // is merely WIDER than asked — visible, and recoverable by fixing the URL.
+    if (scopedSubjectId !== undefined && scopedSubjectId.length > 0) {
+      if (!isAutomationRunSubjectKind(scopedSubjectKind)) {
         throw new BadRequestException(
           `Filtering by subject needs a recognised "subjectKind". Expected one of: ` +
             `${AutomationRunSubjectKindValues.join(', ')}.`,
         );
       }
-      return AutomationRunLogResponseDto.fromDomain(
-        await this.runs.listRecentBySubject(subjectKind, subjectId, parsedLimit),
-      );
     }
+
+    const filters: AutomationRunFilters = {
+      ...(ruleId !== undefined && ruleId.length > 0 ? { ruleId } : {}),
+      ...(isAutomationTrigger(trigger) ? { trigger } : {}),
+      ...(isAutomationRunOutcome(outcome) ? { outcome } : {}),
+      ...(scopedSubjectId !== undefined &&
+      scopedSubjectId.length > 0 &&
+      isAutomationRunSubjectKind(scopedSubjectKind)
+        ? { subjectKind: scopedSubjectKind, subjectId: scopedSubjectId }
+        : {}),
+      ...(parseIsoDate(from, 'lower') === null
+        ? {}
+        : { from: parseIsoDate(from, 'lower') as Date }),
+      ...(parseIsoDate(to, 'upper') === null ? {} : { to: parseIsoDate(to, 'upper') as Date }),
+    };
+
     return AutomationRunLogResponseDto.fromDomain(
-      await this.runs.listRecent(parsedLimit, parsedOffset),
+      await this.runs.listRecent(filters, parsedLimit, parsedOffset),
     );
   }
 

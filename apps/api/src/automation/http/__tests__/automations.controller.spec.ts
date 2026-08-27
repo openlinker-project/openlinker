@@ -266,34 +266,125 @@ describe('AutomationsController — run reads (#2385)', () => {
     controller = new AutomationsController(rules, runs, dryRun);
   });
 
-  it('should list every recent firing when no subject is given', async () => {
-    await controller.listRunFeed(undefined, undefined, undefined, undefined);
+  /** Positional call with every filter defaulted, so a test names only what it varies. */
+  function feed(
+    overrides: Partial<{
+      subjectKind: string;
+      subjectId: string;
+      orderId: string;
+      ruleId: string;
+      trigger: string;
+      outcome: string;
+      from: string;
+      to: string;
+    }> = {},
+  ): Promise<unknown> {
+    return controller.listRunFeed(
+      overrides.subjectKind,
+      overrides.subjectId,
+      overrides.orderId,
+      overrides.ruleId,
+      overrides.trigger,
+      overrides.outcome,
+      overrides.from,
+      overrides.to,
+      undefined,
+      undefined,
+    );
+  }
+
+  function lastFilters(): Record<string, unknown> {
+    return runs.listRecent.mock.calls[0][0] as Record<string, unknown>;
+  }
+
+  it('should list every recent firing when nothing is filtered', async () => {
+    await feed();
     expect(runs.listRecent).toHaveBeenCalled();
-    expect(runs.listRecentBySubject).not.toHaveBeenCalled();
+    expect(lastFilters()).toEqual({});
   });
 
   it('should scope to one subject when both parts are given', async () => {
-    await controller.listRunFeed('order', 'ol_order_1', undefined, undefined);
-    expect(runs.listRecentBySubject).toHaveBeenCalledWith('order', 'ol_order_1', undefined);
+    await feed({ subjectKind: 'order', subjectId: 'ol_order_1' });
+    expect(lastFilters()).toMatchObject({ subjectKind: 'order', subjectId: 'ol_order_1' });
+  });
+
+  it('should accept orderId as the public shorthand for the subject pair', async () => {
+    // The issue names the URL param `orderId`; a shared link should use the
+    // operator's vocabulary rather than the storage pair.
+    await feed({ orderId: 'ol_order_9' });
+    expect(lastFilters()).toMatchObject({ subjectKind: 'order', subjectId: 'ol_order_9' });
+  });
+
+  it('should THROW for a subject scope it cannot honour', async () => {
+    // A scope that cannot be honoured would return OTHER subjects' rows, which
+    // an operator cannot detect by looking. Unlike a narrowing filter, this one
+    // must not degrade.
+    await expect(feed({ subjectId: 'ol_order_1' })).rejects.toThrow(BadRequestException);
+    await expect(
+      feed({ subjectKind: 'spaceship', subjectId: 'ol_order_1' }),
+    ).rejects.toThrow(BadRequestException);
     expect(runs.listRecent).not.toHaveBeenCalled();
   });
 
-  it('should refuse a subjectId without a recognised subjectKind', async () => {
-    // Silently ignoring the filter would answer a scoped question with every
-    // firing in the system — a far worse answer than a 400.
-    await expect(
-      controller.listRunFeed(undefined, 'ol_order_1', undefined, undefined),
-    ).rejects.toThrow(BadRequestException);
-    await expect(
-      controller.listRunFeed('spaceship', 'ol_order_1', undefined, undefined),
-    ).rejects.toThrow(BadRequestException);
-    expect(runs.listRecent).not.toHaveBeenCalled();
+  it('should IGNORE an unrecognised narrowing filter rather than throw', async () => {
+    // The result is merely wider than asked — visible, and recoverable by
+    // fixing the URL. Nothing is hidden from the operator.
+    await feed({ trigger: 'order.teleported', outcome: 'exploded' });
+    expect(lastFilters()).toEqual({});
+  });
+
+  it('should ignore an unparseable date rather than match nothing', async () => {
+    // `new Date('banana')` is an Invalid Date: it would either throw at the
+    // query layer or silently return no rows. Both break the AC.
+    await feed({ from: 'banana', to: '2026-13-45' });
+    expect(lastFilters()).toEqual({});
+  });
+
+  it('should keep the narrowing filters it CAN honour', async () => {
+    await feed({ ruleId: 'rule-1', trigger: 'order.packed', outcome: 'failed' });
+    expect(lastFilters()).toMatchObject({
+      ruleId: 'rule-1',
+      trigger: 'order.packed',
+      outcome: 'failed',
+    });
+  });
+
+  it('should accept a one-sided date window', async () => {
+    await feed({ from: '2026-08-01T00:00:00.000Z' });
+    const filters = lastFilters();
+    expect(filters.from).toBeInstanceOf(Date);
+    expect(filters.to).toBeUndefined();
+  });
+
+  it('should widen a date-only UPPER bound to the end of that day', async () => {
+    // Both bounds are inclusive, but `new Date('2026-08-20')` is midnight UTC —
+    // so a naive `<=` excludes the whole day the operator picked.
+    await feed({ from: '2026-08-20', to: '2026-08-20' });
+    const filters = lastFilters();
+    expect((filters.from as Date).toISOString()).toBe('2026-08-20T00:00:00.000Z');
+    expect((filters.to as Date).toISOString()).toBe('2026-08-20T23:59:59.999Z');
+  });
+
+  it('should cover a run fired during the selected day', async () => {
+    // The commonest query there is: one day, from === to.
+    await feed({ from: '2026-08-20', to: '2026-08-20' });
+    const filters = lastFilters();
+    const firedAt = new Date('2026-08-20T14:32:00.000Z');
+    expect(firedAt >= (filters.from as Date)).toBe(true);
+    expect(firedAt <= (filters.to as Date)).toBe(true);
+  });
+
+  it('should NOT widen a full ISO instant', async () => {
+    // An explicit instant is what the caller meant; widening it would move a
+    // bound the caller was precise about.
+    await feed({ to: '2026-08-20T10:00:00.000Z' });
+    expect((lastFilters().to as Date).toISOString()).toBe('2026-08-20T10:00:00.000Z');
   });
 
   it('should carry recordingAvailable on the activity listing too', async () => {
     // An empty activity list means "the write path is not built" and "nothing
     // fired" identically without it.
-    const page = await controller.listRunFeed(undefined, undefined, undefined, undefined);
+    const page = (await feed()) as { recordingAvailable: boolean };
     expect(page.recordingAvailable).toBe(true);
   });
 

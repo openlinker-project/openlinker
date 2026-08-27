@@ -31,6 +31,7 @@ import {
   type ParsedAutomationRules,
   type ParsedAutomationSummary,
 } from './automation.schema';
+import type { AutomationActivityFilters } from '../lib/automation-activity-filters';
 import type {
   AutomationDryRunResult,
   AutomationEvaluateInput,
@@ -85,6 +86,17 @@ export interface AutomationsApi {
   listRunsBySubject: (
     subjectKind: string,
     subjectId: string,
+  ) => Promise<AutomationRunLog | null>;
+  /**
+   * `GET /automations/runs` — the filtered activity feed (#2386).
+   *
+   * Every filter is narrowing; an unrecognised value is dropped by the filter
+   * layer before it reaches here, so the feed never asks the API to honour
+   * something it cannot express.
+   */
+  listRunFeed: (
+    filters: AutomationActivityFilters,
+    pagination?: { limit?: number; offset?: number },
   ) => Promise<AutomationRunLog | null>;
   /** `PUT /automations/:id` — a full replace. Admin only. */
   replace: (ruleId: string, input: AutomationRuleWriteInput) => Promise<AutomationRule>;
@@ -146,6 +158,22 @@ export function createAutomationsApi(request: ApiRequest): AutomationsApi {
     async listRunsBySubject(subjectKind, subjectId): Promise<AutomationRunLog | null> {
       const query = new URLSearchParams({ subjectKind, subjectId });
       return parseAutomationRunLog(await request<unknown>(`/automations/runs?${query.toString()}`));
+    },
+
+    async listRunFeed(filters, pagination): Promise<AutomationRunLog | null> {
+      const params = new URLSearchParams();
+      if (filters.ruleId) params.set('ruleId', filters.ruleId);
+      if (filters.trigger) params.set('trigger', filters.trigger);
+      if (filters.outcome) params.set('outcome', filters.outcome);
+      if (filters.from) params.set('from', filters.from);
+      if (filters.to) params.set('to', filters.to);
+      if (filters.orderId) params.set('orderId', filters.orderId);
+      if (pagination?.limit !== undefined) params.set('limit', String(pagination.limit));
+      if (pagination?.offset !== undefined) params.set('offset', String(pagination.offset));
+      const query = params.toString();
+      return parseAutomationRunLog(
+        await request<unknown>(`/automations/runs${query.length > 0 ? `?${query}` : ''}`),
+      );
     },
 
     async replace(ruleId, input): Promise<AutomationRule> {

@@ -32,6 +32,7 @@ import {
   AUTOMATION_RUN_REPOSITORY_TOKEN,
 } from '../../automation.tokens';
 import { AutomationRunRepositoryPort } from '../../domain/ports/automation-run-repository.port';
+import type { AutomationRunFilters } from '../../domain/ports/automation-run-repository.port';
 import type { AutomationRun } from '../../domain/entities/automation-run.entity';
 import type { AutomationRunSubjectKind } from '../../domain/types/automation-run.types';
 import { IAutomationRunRecorderService } from '../interfaces/automation-run-recorder.service.interface';
@@ -84,11 +85,12 @@ export class AutomationRunsReadService implements IAutomationRunsReadService {
   }
 
   async listRecent(
+    filters: AutomationRunFilters = {},
     limit: number = AUTOMATION_RUN_LOG_PAGE_SIZE,
     offset = 0,
   ): Promise<AutomationRunLogPage> {
     const capped = Math.min(Math.max(1, limit), AUTOMATION_RUN_LOG_PAGE_SIZE);
-    const runs = await this.runRepository.findRecent(capped, Math.max(0, offset));
+    const runs = await this.runRepository.findRecent(filters, capped, Math.max(0, offset));
     return this.toPage(runs, capped);
   }
 

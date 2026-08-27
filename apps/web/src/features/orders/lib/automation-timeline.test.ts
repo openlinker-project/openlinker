@@ -113,6 +113,31 @@ describe('buildAutomationTimelineEvents', () => {
     expect(events[0].title).toBe('Sent an email');
   });
 
+  it('should name the run outcome on exactly ONE event, anchored to stepIndex 0', () => {
+    // A run-level fact repeated per step would state N times something true
+    // once. The anchor is a property of the DATA — every event of one run
+    // shares `firedAt`, so "the first emitted" would be insertion order and
+    // fragile against any re-sort.
+    const events = buildAutomationTimelineEvents([run({ outcome: 'failed' })]);
+    const withOutcome = events.filter((event) => event.runOutcome !== undefined);
+
+    expect(withOutcome).toHaveLength(1);
+    expect(withOutcome[0].runOutcome).toBe('failed');
+    expect(withOutcome[0].id).toBe('run-1:0');
+  });
+
+  it('should carry the outcome even when the first step was skipped', () => {
+    const events = buildAutomationTimelineEvents([
+      run({
+        outcome: 'blocked',
+        steps: [
+          { stepIndex: 0, action: 'dispatch-shipment', status: 'skipped', detail: null, syncJobId: null, unavailableReason: null },
+        ],
+      }),
+    ]);
+    expect(events[0].runOutcome).toBe('blocked');
+  });
+
   it('should use past tense, not the composer’s imperative labels', () => {
     // The composer offers choices; a timeline reports what happened.
     const [event] = buildAutomationTimelineEvents([run()]);
