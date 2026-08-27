@@ -108,10 +108,11 @@ The left navigation is persistent and grouped into **three sections by frequency
 - Adapters
 - Settings
 
-**Planned** (disabled, `--text-disabled` opacity, non-clickable, tooltip "Coming in a future release"):
-- Automations
-- Shipping
-- Invoices
+**Planned** — retired as of #2364. `Automations` was its last remaining item (Shipments and
+Invoices had already gone live), and promoting it emptied the group, so the group was removed
+rather than left rendering a heading with nothing under it. The `PlannedNavGroup` type and the
+shell's `kind: 'planned'` branch survive — a plugin may still contribute one — so neither is dead
+code. A future IA-anticipated module re-adds the group here.
 
 Rules:
 - No "Live" pills on any live nav item.

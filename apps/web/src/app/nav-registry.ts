@@ -41,6 +41,10 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
       // No `countKey`: the #2334 returns contract exposes no counts endpoint
       // the nav could read, and a badge is worse absent than wrong.
       { to: '/returns', label: 'Returns' },
+      // No `countKey`: `GET /automations/summary` reports rule counts per
+      // trigger, not an attention count — a badge showing how many rules exist
+      // would read as how many need looking at.
+      { to: '/automations', label: 'Automations' },
       { to: '/invoices', label: 'Invoices' },
     ],
   },
@@ -77,13 +81,11 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
     requiresRole: 'admin',
     items: [{ to: '/users', label: 'Users' }],
   },
-  {
-    kind: 'planned',
-    label: 'Planned',
-    items: [
-      { label: 'Automations', reason: 'Coming in a future release' },
-    ],
-  },
+  // The `Planned` group is gone: `Automations` was its only item and #2364
+  // made it real. `PlannedNavGroup` and the shell's `kind: 'planned'` branch
+  // stay — a plugin may still contribute one, and
+  // `merge-nav-contributions.test.ts` exercises that path against its own
+  // fixture — so neither is dead code.
 ];
 
 export interface BuildNavGroupsInput {

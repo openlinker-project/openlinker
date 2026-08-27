@@ -1,0 +1,163 @@
+/**
+ * The rules on one trigger (#2364)
+ *
+ * Per-rule rows with an on/off state and a one-click toggle that PRESERVES the
+ * fired log — turning a rule off is a change of intent, not a deletion, and the
+ * copy says so where the operator decides rather than in a help page.
+ *
+ * ## Three things this component refuses to do
+ *
+ * **It does not present a rule as working when it cannot act.** Every rule
+ * response carries `actionAvailability` per step; a rule with an unavailable
+ * step renders `AutomationRuleAvailabilityNotice` inline, with the backend's
+ * own reason. This is where an operator learns a rule they already saved does
+ * nothing — the write path accepts all six actions deliberately, so the
+ * response is the only place that truth surfaces.
+ *
+ * **It does not claim a rule has never matched.** The only honest observable
+ * for that is the dry run's per-condition trace, which is #2366's. Where the
+ * fired log reports that firings are not recorded at all, the row says
+ * OpenLinker cannot yet tell — which is true — instead of inferring "never"
+ * from an empty list.
+ *
+ * **It does not arm a money-spending rule on one click.** Turning such a rule
+ * ON is a standing grant of authority to act unattended, and the backend
+ * refuses it without an explicit acknowledgement. Turning it OFF stays one
+ * click: a disarmed rule spends nothing, so there is nothing to consent to.
+ *
+ * @module apps/web/src/features/automation/components
+ */
+import { useState, type ReactElement } from 'react';
+import { Alert } from '../../../shared/ui/alert';
+import { Button } from '../../../shared/ui/button';
+import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
+import { EmptyState } from '../../../shared/ui/feedback-state';
+import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
+import { StatusBadge } from '../../../shared/ui/status-badge';
+import { AUTOMATION_RULES_COPY } from '../lib/automation.copy';
+import { AutomationRuleAvailabilityNotice } from './automation-rule-availability-notice';
+import type { AutomationRule } from '../api/automation.types';
+
+export interface AutomationRulesListProps {
+  rules: AutomationRule[];
+  /** Whether the session may change anything here. Reads are open to operators. */
+  canWrite: boolean;
+  /** Render disabled-with-a-tooltip rather than hidden (demo read-only viewers). */
+  readOnlyLocked: boolean;
+  readOnlyMessage: string;
+  /** True while the run log says firings are not recorded in this build. */
+  firingsUnrecorded: boolean;
+  onSetActive: (rule: AutomationRule, isActive: boolean, moneyAcknowledged?: boolean) => void;
+  pendingRuleId: string | null;
+  writeError: string | null;
+}
+
+export function AutomationRulesList({
+  rules,
+  canWrite,
+  readOnlyLocked,
+  readOnlyMessage,
+  firingsUnrecorded,
+  onSetActive,
+  pendingRuleId,
+  writeError,
+}: AutomationRulesListProps): ReactElement {
+  const [armingRule, setArmingRule] = useState<AutomationRule | null>(null);
+
+  if (rules.length === 0) {
+    return (
+      <EmptyState
+        title={AUTOMATION_RULES_COPY.emptyTitle}
+        message={AUTOMATION_RULES_COPY.emptyMessage}
+      />
+    );
+  }
+
+  function requestToggle(rule: AutomationRule): void {
+    // Arming an irreversible rule needs the acknowledgement the backend will
+    // otherwise refuse the write for. Disarming never does.
+    if (!rule.isActive && rule.hasIrreversibleAction) {
+      setArmingRule(rule);
+      return;
+    }
+    onSetActive(rule, !rule.isActive);
+  }
+
+  return (
+    <div className="page-section automation-rules">
+      {writeError === null ? null : (
+        <Alert tone="error" title={AUTOMATION_RULES_COPY.writeFailed}>
+          {writeError}
+        </Alert>
+      )}
+      {canWrite ? null : <Alert tone="info">{AUTOMATION_RULES_COPY.readOnly}</Alert>}
+      {/*
+        ONE banner, not one line per rule. Whether firings are recorded is a
+        property of the BUILD, not of any rule — repeating it per row would
+        state N times something true once (the #2231 rule).
+      */}
+      {firingsUnrecorded ? (
+        <Alert tone="info">{AUTOMATION_RULES_COPY.neverMatchedUnknown}</Alert>
+      ) : null}
+
+      <ul className="automation-rules__list">
+        {rules.map((rule) => (
+          <li key={rule.id} className="panel panel--dense automation-rules__item">
+            <div className="panel__header">
+              <div>
+                <h3 className="section-title">{rule.name}</h3>
+                <p className="muted-text">
+                  <span className="mono-text">{rule.trigger}</span>
+                </p>
+              </div>
+              <div className="automation-rules__state">
+                <StatusBadge tone={rule.isActive ? 'success' : 'neutral'} withDot compact>
+                  {rule.isActive ? AUTOMATION_RULES_COPY.active : AUTOMATION_RULES_COPY.inactive}
+                </StatusBadge>
+                {rule.hasIrreversibleAction ? (
+                  <StatusBadge tone="warning" compact>
+                    {AUTOMATION_RULES_COPY.moneyAckTitle}
+                  </StatusBadge>
+                ) : null}
+                {canWrite || readOnlyLocked ? (
+                  <ReadOnlyLock active={readOnlyLocked} message={readOnlyMessage}>
+                    <Button
+                      tone="secondary"
+                      disabled={readOnlyLocked || pendingRuleId === rule.id}
+                      onClick={() => requestToggle(rule)}
+                    >
+                      {rule.isActive
+                        ? AUTOMATION_RULES_COPY.turnOff
+                        : AUTOMATION_RULES_COPY.turnOn}
+                    </Button>
+                  </ReadOnlyLock>
+                ) : null}
+              </div>
+            </div>
+
+            <AutomationRuleAvailabilityNotice actionAvailability={rule.actionAvailability} />
+
+            {rule.isActive ? <p className="muted-text">{AUTOMATION_RULES_COPY.turnOffHint}</p> : null}
+          </li>
+        ))}
+      </ul>
+
+      <ConfirmDialog
+        open={armingRule !== null}
+        onOpenChange={(open) => {
+          if (!open) setArmingRule(null);
+        }}
+        title={AUTOMATION_RULES_COPY.moneyAckTitle}
+        description={AUTOMATION_RULES_COPY.moneyAckBody}
+        confirmLabel={AUTOMATION_RULES_COPY.moneyAckConfirm}
+        cancelLabel={AUTOMATION_RULES_COPY.cancel}
+        tone="danger"
+        onConfirm={() => {
+          const rule = armingRule;
+          setArmingRule(null);
+          if (rule !== null) onSetActive(rule, true, true);
+        }}
+      />
+    </div>
+  );
+}

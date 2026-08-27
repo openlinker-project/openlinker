@@ -39,6 +39,7 @@ import {
   promptTemplateLegacyDetailRedirectRoute,
   promptTemplatesLegacyListRedirectRoute,
 } from './prompt-templates-legacy-redirects.route';
+import { automationsRoute } from './automations.route';
 import { returnsRoute } from './returns.route';
 import { salesDocumentsRoute } from './sales-documents.route';
 import { settingsRoute } from './settings.route';
@@ -62,6 +63,7 @@ export const coreChildren: RouteObject[] = [
   listingsRoute,
   shipmentsRoute,
   returnsRoute,
+  automationsRoute,
   invoicesRoute,
   connectionsRoute,
   adaptersRoute,

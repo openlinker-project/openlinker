@@ -129,24 +129,34 @@ describe('AppShell', () => {
     window.localStorage.clear();
   });
 
-  it('renders the three live nav groups plus a disabled Planned footer', () => {
+  it('renders the three live nav groups and no Planned footer (#2364)', () => {
     renderShell({ pathname: '/' });
 
     const primary = screen.getByRole('navigation', { name: 'Primary' });
     expect(within(primary).getByText('Operations')).toBeInTheDocument();
     expect(within(primary).getByText('Diagnostics')).toBeInTheDocument();
     expect(within(primary).getByText('Platform')).toBeInTheDocument();
-    expect(within(primary).getByText('Planned')).toBeInTheDocument();
+    // `Automations` was the group's only item; promoting it emptied the group,
+    // and an empty group heading is worse than no group.
+    expect(within(primary).queryByText('Planned')).toBeNull();
 
     expect(within(primary).getByText('Cursors').closest('a')).toHaveAttribute('href', '/cursors');
 
     expect(within(primary).queryByText('Add connection')).toBeNull();
+  });
 
+  it('links Automations into Operations rather than disabling it (#2364)', () => {
+    renderShell({ pathname: '/' });
+
+    const primary = screen.getByRole('navigation', { name: 'Primary' });
     const automations = within(primary).getByText('Automations');
-    expect(automations).toHaveAttribute('role', 'link');
-    expect(automations).toHaveAttribute('aria-disabled', 'true');
-    expect(automations).toHaveAttribute('tabindex', '-1');
-    expect(automations).toHaveAttribute('title', 'Coming in a future release');
+
+    expect(automations.closest('a')).toHaveAttribute('href', '/automations');
+    // The disabled-placeholder attributes must be GONE, not merely unasserted:
+    // a live link that still carried `aria-disabled` would read as unusable to
+    // a screen reader while working for everyone else.
+    expect(automations).not.toHaveAttribute('aria-disabled');
+    expect(automations).not.toHaveAttribute('tabindex', '-1');
   });
 
   it('renders the AI group with a Prompt templates link for admin sessions (#377)', async () => {

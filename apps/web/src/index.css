@@ -19441,3 +19441,98 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .returns-decline > p {
   justify-self: stretch;
 }
+
+/* ── Automations (#2364) ──────────────────────────────────────────────────── */
+
+/*
+ * No new row height: the trigger index uses `DataTable`'s documented 36 px
+ * rows, and its mobile card layout comes from `cardView`. Everything below is
+ * spacing and stacking only.
+ */
+
+.automation-index__trigger {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.automation-suggestion__rule {
+  font-weight: 600;
+  margin: var(--space-2) 0 var(--space-1);
+}
+
+.automation-suggestion__caveat {
+  margin-top: var(--space-2);
+}
+
+.automation-suggestion__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.automation-availability__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.automation-availability__head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.automation-availability__reason {
+  margin-top: var(--space-1);
+}
+
+.automation-rules__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.automation-rules__state {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.automation-rule-notice__reasons {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-4);
+}
+
+/*
+ * At phone width the on/off control stops sharing a line with the badges, so it
+ * spans the row and clears the 44 px touch target the 28/32 px desktop button
+ * heights do not reach on their own.
+ */
+@media (max-width: 640px) {
+  .automation-rules__state {
+    width: 100%;
+  }
+
+  .automation-rules__state .button {
+    flex: 1 1 100%;
+    min-height: 44px;
+  }
+
+  .automation-suggestion__actions .button {
+    flex: 1 1 100%;
+    min-height: 44px;
+  }
+}
