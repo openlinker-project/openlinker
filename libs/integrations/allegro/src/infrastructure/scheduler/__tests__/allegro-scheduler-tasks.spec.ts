@@ -126,6 +126,10 @@ describe('buildAllegroSchedulerTasks', () => {
       expect(key).toBe('marketplace:conn-allegro-1:orders:poll:2026-05-11-12-34');
     });
 
+    it('should default to an every-minute cron (#2620)', () => {
+      expect(ordersPoll?.cronExpression).toBe('*/1 * * * *');
+    });
+
     it('should honour OL_ALLEGRO_POLL_INTERVAL_CRON override', () => {
       const tasks2 = buildAllegroSchedulerTasks(
         makeConfig({ OL_ALLEGRO_POLL_INTERVAL_CRON: '*/2 * * * *' })
