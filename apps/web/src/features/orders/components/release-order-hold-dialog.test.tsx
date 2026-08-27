@@ -61,6 +61,28 @@ function renderDialog(
 afterEach(cleanup);
 
 describe('ReleaseOrderHoldDialog (#2342)', () => {
+  it('should require a note when the payload records NO placer at all', async () => {
+    // `placedByService !== null` treated an ABSENT field as "a service placed
+    // this" (the #939 shape). Requiring the note is the safe direction; what was
+    // wrong was the copy that then asserted OpenLinker had placed it.
+    const { releaseHold } = renderDialog(
+      hold({ placedByUserId: null, placedByService: null }),
+    );
+    const user = userEvent.setup();
+
+    expect(
+      await screen.findByText(/not recorded who put this order on hold/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/OpenLinker put this order on hold by itself/i),
+    ).not.toBeInTheDocument();
+
+    await user.click(await screen.findByRole('button', { name: 'Release hold' }));
+    await waitFor(() => {
+      expect(releaseHold).not.toHaveBeenCalled();
+    });
+  });
+
   it('should release a USER-placed hold with no note', async () => {
     const { releaseHold } = renderDialog(hold());
     const user = userEvent.setup();

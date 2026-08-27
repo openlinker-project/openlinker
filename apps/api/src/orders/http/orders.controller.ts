@@ -42,6 +42,7 @@ import {
   ORDER_HOLD_SERVICE_TOKEN,
   ORDER_PROVISIONING_RESUME_SERVICE_TOKEN,
   OrderAlreadyOnHoldError,
+  OrderHoldContendedError,
   OrderHoldNotFoundError,
   HoldAlreadyReleasedError,
   HoldReleaseNoteRequiredError,
@@ -504,7 +505,12 @@ export class OrdersController {
   @ApiResponse({ status: 400, description: 'Unknown hold reason' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   @ApiResponse({ status: 404, description: 'Order not found' })
-  @ApiResponse({ status: 409, description: 'ORDER_ALREADY_ON_HOLD — the order already has an open hold' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'ORDER_ALREADY_ON_HOLD — the order already has an open hold; or ' +
+      'ORDER_HOLD_CONTENDED — a concurrent placement took and released the slot, so retry',
+  })
   async placeHold(
     @Param('internalOrderId') internalOrderId: string,
     @Body() dto: PlaceOrderHoldRequestDto,
@@ -519,14 +525,26 @@ export class OrdersController {
     }
 
     try {
-      const { hold } = await this.holdService.place({
+      const { hold, dispatchInFlight } = await this.holdService.place({
         internalOrderId,
         reason: dto.reason,
         note: dto.note ?? null,
         placedBy: { kind: 'user', userId: user.id },
       });
-      return { hold: this.toHoldDto(hold) };
+      return { hold: this.toHoldDto(hold), dispatchInFlight };
     } catch (error) {
+      if (error instanceof OrderHoldContendedError) {
+        // A DIFFERENT 409 from the one below, and the distinction is the point:
+        // the order is NOT held (a peer took and released the slot), so the
+        // remedy is to try again rather than to look at an open hold. Before
+        // this the repository re-threw the driver error and the operator got a
+        // 500 carrying a duplicate-key message.
+        throw new ConflictException({
+          statusCode: HttpStatus.CONFLICT,
+          error: 'ORDER_HOLD_CONTENDED',
+          message: error.message,
+        });
+      }
       if (error instanceof OrderAlreadyOnHoldError) {
         // A machine-readable code, because "already on hold" and "already
         // released" are both 409 and their remedies differ.

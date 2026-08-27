@@ -33,6 +33,7 @@
  */
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { SyncModule } from '@openlinker/core/sync';
 import { OrderHoldOrmEntity } from './infrastructure/persistence/entities/order-hold.orm-entity';
 import { OrderRecordOrmEntity } from './infrastructure/persistence/entities/order-record.orm-entity';
 import { OrderHoldRepository } from './infrastructure/persistence/repositories/order-hold.repository';
@@ -47,7 +48,15 @@ import {
 } from './orders.tokens';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([OrderHoldOrmEntity, OrderRecordOrmEntity])],
+  imports: [
+    TypeOrmModule.forFeature([OrderHoldOrmEntity, OrderRecordOrmEntity]),
+    // #2338 review — `OrderHoldService` probes the per-order dispatch lock so a
+    // hold placed over an in-flight carrier call is REPORTED rather than silent.
+    // `SyncModule` is itself a leaf (one `TypeOrmModule.forFeature`, no sibling
+    // context), so the narrow-seam property this split exists for survives: the
+    // hold module still pulls in nothing resembling `OrdersModule`'s graph.
+    SyncModule,
+  ],
   providers: [
     OrderHoldRepository,
     { provide: ORDER_HOLD_REPOSITORY_TOKEN, useExisting: OrderHoldRepository },

@@ -17,7 +17,7 @@
  *
  * @module apps/web/src/features/orders/components
  */
-import { useState, type ReactElement } from 'react';
+import { useEffect, useState, type ReactElement } from 'react';
 
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -28,7 +28,7 @@ import { useIsAdmin, useWriteAccess } from '../../../shared/auth/use-permission'
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
 import type { OrderHold, ProvisioningResume } from '../api/orders.types';
-import { HOLD_REASON_COPY, isHoldReason } from '../lib/order-hold.types';
+import { holdReasonLabel } from '../lib/order-hold.types';
 import { PlaceOrderHoldDialog } from './place-order-hold-dialog';
 import { ReleaseOrderHoldDialog } from './release-order-hold-dialog';
 
@@ -38,10 +38,6 @@ export interface OrderHoldPanelProps {
   activeHold: OrderHold | null | undefined;
   /** Every hold this order has carried. Absent on a pre-#2341 payload. */
   holdHistory: OrderHold[] | null | undefined;
-}
-
-function holdReasonLabelOf(hold: OrderHold): string {
-  return isHoldReason(hold.reason) ? HOLD_REASON_COPY[hold.reason].label : hold.reason;
 }
 
 function placedBy(hold: OrderHold): ReactElement | null {
@@ -81,6 +77,16 @@ export function OrderHoldPanel({
    */
   const [resumeFailure, setResumeFailure] = useState(false);
 
+  // Belt AND braces against the leak: the detail page keys this panel per order
+  // so it remounts, and this clears the flag even if a future caller drops that
+  // key. `resumeFailure` was previously cleared ONLY by a release, so navigating
+  // to a CACHED next order (the page early-returns a skeleton on `isLoading`
+  // only, so no remount happens) showed "this order did not start moving again"
+  // over an order that was never held.
+  useEffect(() => {
+    setResumeFailure(false);
+  }, [internalOrderId]);
+
   const released = (holdHistory ?? []).filter((hold) => hold.releasedAt !== null);
 
   const handleReleased = (resume: ProvisioningResume | undefined): void => {
@@ -102,7 +108,7 @@ export function OrderHoldPanel({
         {activeHold ? (
           <span className="order-hold-panel__state">
             <StatusBadge tone="warning" withDot compact>
-              {`On hold — ${holdReasonLabelOf(activeHold)}`}
+              {`On hold — ${holdReasonLabel(activeHold.reason)}`}
             </StatusBadge>{' '}
             since <TimeDisplay iso={activeHold.placedAt} format="relative" />
             {placedBy(activeHold)}
@@ -133,7 +139,7 @@ export function OrderHoldPanel({
           {released.map((hold) => (
             <li key={hold.id} className="order-hold-panel__history-item">
               <span className="text-muted">
-                {holdReasonLabelOf(hold)} · held{' '}
+                {holdReasonLabel(hold.reason)} · held{' '}
                 <TimeDisplay iso={hold.placedAt} format="relative" />
                 {placedBy(hold)}, released{' '}
                 {hold.releasedAt ? <TimeDisplay iso={hold.releasedAt} format="relative" /> : null}

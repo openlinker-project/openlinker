@@ -12,6 +12,7 @@
 import { QueryFailedError, type Repository } from 'typeorm';
 import { HoldAlreadyReleasedError } from '../../../domain/exceptions/hold-already-released.error';
 import { OrderAlreadyOnHoldError } from '../../../domain/exceptions/order-already-on-hold.error';
+import { OrderHoldContendedError } from '../../../domain/exceptions/order-hold-contended.error';
 import { OrderHoldNotFoundError } from '../../../domain/exceptions/order-hold-not-found.error';
 import { OrderHoldVocabularyError } from '../../../domain/exceptions/order-hold-vocabulary.error';
 import type { PlaceOrderHoldInput } from '../../../domain/types/order-hold.types';
@@ -136,14 +137,34 @@ describe('OrderHoldRepository (#2338)', () => {
       );
     });
 
-    it('should rethrow the original conflict when the winner was released before it could be read', async () => {
+    it('should raise the retryable domain contended error when the winner was released before it could be read', async () => {
       // Reporting "already on hold" here would be a false statement about an
-      // order that is no longer held. The caller retries into a clean insert.
+      // order that is no longer held — but re-throwing the DRIVER error (what
+      // this did until the review) breaks R4 and reached the operator as a 500
+      // carrying a duplicate-key message. A domain error says the true thing.
       const conflict = uniqueViolation();
       repo.save.mockRejectedValue(conflict);
       repo.findOne.mockResolvedValue(null);
 
-      await expect(subject.placeIfNoneOpen(placeInput)).rejects.toBe(conflict);
+      await expect(subject.placeIfNoneOpen(placeInput)).rejects.toThrow(
+        OrderHoldContendedError
+      );
+    });
+
+    it('should let NO QueryFailedError escape on the lost-race path', async () => {
+      // R4 stated as the property rather than as the class: the file's own
+      // docblock promises it, and the previous `throw error` quietly broke it.
+      const conflict = uniqueViolation();
+      repo.save.mockRejectedValue(conflict);
+      repo.findOne.mockResolvedValue(null);
+
+      const raised = await subject
+        .placeIfNoneOpen(placeInput)
+        .then(() => null)
+        .catch((error: unknown) => error);
+
+      expect(raised).not.toBeInstanceOf(QueryFailedError);
+      expect((raised as OrderHoldContendedError).internalOrderId).toBe('ol_order_aaa');
     });
 
     it('should propagate a non-23505 QueryFailedError untranslated', async () => {

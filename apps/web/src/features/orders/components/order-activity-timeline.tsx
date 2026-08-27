@@ -23,7 +23,7 @@ import {
   type OrderAmendmentChange,
   type OrderHold,
 } from '../api/orders.types';
-import { HOLD_REASON_COPY, isHoldReason } from '../lib/order-hold.types';
+import { holdReasonLabel } from '../lib/order-hold.types';
 import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
 import type { ParsedOrderInvoice } from '../api/order-snapshot.schema';
 import { invoicingBlockedBadge } from '../lib/order-row';
@@ -199,18 +199,43 @@ function describeAmendment(changes?: OrderAmendmentChange[] | null): string {
  * operator cannot see is worse than one labelled awkwardly (the
  * `describeAmendment` precedent).
  */
+/**
+ * Who placed this hold, or `undefined` when the payload does not say.
+ *
+ * `undefined` omits the actor eyebrow entirely — `TimelineEvent.by` is optional
+ * precisely so a surface can decline to name one, and matching
+ * `OrderHoldPanel`'s `placedBy()` (which returns `null` in the same case) is
+ * what keeps two surfaces on one page from disagreeing.
+ */
+function describePlacer(hold: OrderHold): string | undefined {
+  if (hold.placedByService) return `system · ${hold.placedByService}`;
+  if (hold.placedByUserId) return 'operator';
+  return undefined;
+}
+
+/** Who released it. See {@link describePlacer} — same rule, same reason. */
+function describeReleaser(hold: OrderHold): string | undefined {
+  return hold.releasedByUserId ? 'operator' : undefined;
+}
+
 function buildHoldEvents(holds: OrderHold[]): TimelineEvent[] {
   const events: TimelineEvent[] = [];
 
   for (const hold of holds) {
-    const label = isHoldReason(hold.reason) ? HOLD_REASON_COPY[hold.reason].label : hold.reason;
+    const label = holdReasonLabel(hold.reason);
     const actor = hold.placedByService ?? hold.placedByUserId;
 
     events.push({
       id: `hold-placed-${hold.id}`,
       timestamp: hold.placedAt,
       title: `Put on hold — ${label}`,
-      by: hold.placedByService ? `system · ${hold.placedByService}` : 'operator',
+      // THREE ways, not two. The XOR that makes "not a service ⇒ a human" total
+      // is a SQL `CHECK` this bundle cannot import (#591), so a payload carrying
+      // neither placer used to render "Held by operator" — asserting a person
+      // held the order, which `order-hold.types.ts`'s own docblock forbids by
+      // name, and disagreeing with the panel's `placedBy()` on the same page.
+      // An unreadable placer omits the eyebrow rather than naming one.
+      by: describePlacer(hold),
       description: hold.note
         ? `${hold.note}${actor && !hold.placedByService ? ` (${actor})` : ''}`
         : 'OpenLinker stopped sending this order on and stopped dispatching it.',
@@ -222,7 +247,11 @@ function buildHoldEvents(holds: OrderHold[]): TimelineEvent[] {
         id: `hold-released-${hold.id}`,
         timestamp: hold.releasedAt,
         title: 'Hold released',
-        by: hold.releasedByUserId ? 'operator' : 'system',
+        // Same rule on the release arm. `order_holds` carries no
+        // `releasedByService` column, so "no releasing user" does NOT mean a
+        // service did it — a service release is recorded by nobody. Claiming
+        // `system` there named an actor the schema cannot identify.
+        by: describeReleaser(hold),
         description: hold.releaseNote
           ? `${hold.releaseNote}${hold.releasedByUserId ? ` (${hold.releasedByUserId})` : ''}`
           : 'OpenLinker started sending this order on again.',

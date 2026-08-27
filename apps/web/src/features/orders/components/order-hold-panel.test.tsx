@@ -6,7 +6,8 @@
  * ordinary operator — who holds `orders:write` but is refused by the
  * `@Roles('admin')` routes — is not shown a button that would 403.
  */
-import { cleanup, screen } from '@testing-library/react';
+import { cleanup, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { OrderHoldPanel } from './order-hold-panel';
@@ -65,13 +66,18 @@ function hold(overrides: Partial<OrderHold> = {}): OrderHold {
 
 function renderPanel(
   props: Partial<React.ComponentProps<typeof OrderHoldPanel>> = {},
-  opts: { user?: SessionUser; demoMode?: boolean } = {},
+  opts: {
+    user?: SessionUser;
+    demoMode?: boolean;
+    releaseHold?: ReturnType<typeof vi.fn>;
+  } = {},
 ) {
   const api = createMockApiClient({
     system: { getConfig: vi.fn().mockResolvedValue({ demoMode: opts.demoMode ?? false }) },
+    ...(opts.releaseHold ? { orders: { releaseHold: opts.releaseHold } as never } : {}),
   });
 
-  renderWithProviders(
+  return renderWithProviders(
     <OrderHoldPanel
       internalOrderId={ORDER_ID}
       activeHold={null}
@@ -138,6 +144,45 @@ describe('OrderHoldPanel (#2342)', () => {
     expect(screen.getByText(/Held by operator/)).toBeInTheDocument();
     expect(screen.getByText(/Buyer confirmed/)).toBeInTheDocument();
     expect(screen.getByText('user_9')).toBeInTheDocument();
+  });
+
+  it('should label a reason this build does not recognise with its raw value', () => {
+    // Through the shared `holdReasonLabel`, which every hold surface now calls —
+    // it was exported, spec'd and reachable only from its own test while three
+    // production call sites hand-copied the logic.
+    renderPanel({ activeHold: hold({ reason: 'reason-from-a-newer-build' as never }) });
+    expect(screen.getByText(/On hold — reason-from-a-newer-build/)).toBeInTheDocument();
+  });
+
+  it('should not carry a failed-resume alert onto a DIFFERENT order', async () => {
+    // The leak: `resumeFailure` was cleared only by a release, and navigating to
+    // a CACHED next order re-renders without remounting (the detail page
+    // early-returns a skeleton on `isLoading` only) — so the operator was told
+    // "this order did not start moving again" about an order never held.
+    const target = hold();
+    const releaseHold = vi.fn().mockResolvedValue({
+      hold: { ...target, releasedAt: '2026-08-21T09:00:00.000Z', releasedByUserId: 'user_1' },
+      provisioningResume: { status: 'failed', jobId: null, reason: 'enqueue-failed' },
+    });
+    const { rerender } = renderPanel({ activeHold: target }, { releaseHold });
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Release hold' }));
+    await user.click(await screen.findByRole('button', { name: 'Release hold' }));
+
+    expect(await screen.findByText(/did not start moving again/i)).toBeInTheDocument();
+
+    rerender(
+      <OrderHoldPanel
+        internalOrderId="ol_order_2_never_held"
+        activeHold={null}
+        holdHistory={[]}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByText(/did not start moving again/i)).not.toBeInTheDocument();
+    });
   });
 
   it('should tolerate a payload carrying no hold fields at all', () => {

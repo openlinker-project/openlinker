@@ -391,6 +391,13 @@ export function OrderDetailPage(): ReactElement {
               sits in the always-rendered stack: a hold is a fact about every
               order, whatever capabilities its connections declare. */}
           <OrderHoldPanel
+            // Remount per order. `resumeFailure` is session-local state inside
+            // the panel and was cleared only by a release; navigating to a
+            // CACHED next order re-renders without remounting (the page
+            // early-returns a skeleton on `isLoading` only), so the "did not
+            // start moving again" alert leaked onto an order that was never
+            // held — a false claim about someone else's order.
+            key={order.internalOrderId}
             internalOrderId={order.internalOrderId}
             activeHold={order.activeHold}
             holdHistory={order.holdHistory}

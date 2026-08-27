@@ -34,6 +34,32 @@ function renderDialog(placeHold = vi.fn().mockResolvedValue({ hold: { id: 'hold_
 afterEach(cleanup);
 
 describe('PlaceOrderHoldDialog (#2342)', () => {
+  it('should warn that a label may already exist when the backend reports an in-flight dispatch', async () => {
+    // A hold cannot recall a carrier call already under way. The silence was the
+    // defect: the operator otherwise sees a hold badge and, later, a tracking
+    // number, with nothing connecting the two.
+    const placeHold = vi
+      .fn()
+      .mockResolvedValue({ hold: { id: 'hold_1' }, dispatchInFlight: true });
+    renderDialog(placeHold);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Put on hold' }));
+
+    expect(await screen.findByText(/label may already have been created/i)).toBeInTheDocument();
+  });
+
+  it('should report a plain success when no dispatch was in flight', async () => {
+    // Absent must never read as an overlap — an older backend sends no field.
+    renderDialog();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Put on hold' }));
+
+    expect(await screen.findByText('Order put on hold.')).toBeInTheDocument();
+    expect(screen.queryByText(/label may already have been created/i)).not.toBeInTheDocument();
+  });
+
   it('should submit the chosen reason and omit an empty note', async () => {
     const { placeHold, onOpenChange } = renderDialog();
     const user = userEvent.setup();
@@ -86,7 +112,7 @@ describe('PlaceOrderHoldDialog (#2342)', () => {
     await user.click(await screen.findByRole('button', { name: 'Put on hold' }));
 
     expect(
-      await screen.findByText('This order is already on hold. Reload to see the hold that is open.'),
+      await screen.findByText('This order is already on hold. The open hold is being loaded now.'),
     ).toBeInTheDocument();
     // The dialog stays open: the operator is still in the form.
     expect(onOpenChange).not.toHaveBeenCalledWith(false);

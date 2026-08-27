@@ -32,7 +32,7 @@ import { TimeDisplay } from '../../../shared/ui/time-display';
 import { useToast } from '../../../shared/ui/toast-provider';
 import type { OrderHold, ProvisioningResume } from '../api/orders.types';
 import { describeHoldWriteError } from '../lib/order-hold-errors';
-import { describeProvisioningResume, HOLD_REASON_COPY, isHoldReason } from '../lib/order-hold.types';
+import { describeProvisioningResume, holdReasonLabel } from '../lib/order-hold.types';
 import { useReleaseOrderHoldMutation } from '../hooks/use-release-order-hold-mutation';
 import { HOLD_NOTE_MAX_LENGTH } from './place-order-hold-dialog.schema';
 import {
@@ -62,7 +62,14 @@ export function ReleaseOrderHoldDialog({
   const mutation = useReleaseOrderHoldMutation();
 
   // §6.4: a note is mandatory when a USER releases a hold a SERVICE placed.
-  const noteRequired = hold.placedByService !== null;
+  //
+  // `!= null`, not `!== null`: an ABSENT field (the #939 shape — OL serialises a
+  // missing optional as JSON `null`, and a payload can omit it outright) was
+  // read as "a service placed this". Requiring the note on an unreadable placer
+  // is the safe direction; ASSERTING who placed it is not — see the description
+  // below, which no longer says so.
+  const placerUnknown = hold.placedByService == null && hold.placedByUserId == null;
+  const noteRequired = hold.placedByService != null || placerUnknown;
   const schema = useMemo(() => buildReleaseOrderHoldSchema(noteRequired), [noteRequired]);
 
   const form = useForm<ReleaseOrderHoldFormValues>({
@@ -99,7 +106,7 @@ export function ReleaseOrderHoldDialog({
     );
   });
 
-  const reasonLabel = isHoldReason(hold.reason) ? HOLD_REASON_COPY[hold.reason].label : hold.reason;
+  const reasonLabel = holdReasonLabel(hold.reason);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -153,9 +160,11 @@ export function ReleaseOrderHoldDialog({
             label={noteRequired ? 'Note' : 'Note (optional)'}
             error={form.formState.errors.note?.message}
             description={
-              noteRequired
-                ? 'OpenLinker put this order on hold by itself, so say why it is safe to release.'
-                : 'Anything the next person needs to know. Never buyer details.'
+              placerUnknown
+                ? 'It is not recorded who put this order on hold, so say why it is safe to release.'
+                : noteRequired
+                  ? 'OpenLinker put this order on hold by itself, so say why it is safe to release.'
+                  : 'Anything the next person needs to know. Never buyer details.'
             }
           >
             <Textarea rows={3} maxLength={HOLD_NOTE_MAX_LENGTH} {...form.register('note')} />

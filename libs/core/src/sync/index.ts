@@ -20,6 +20,7 @@ export {
   EnqueueJobOptions,
 } from './application/ports/sync-job-queue.port';
 export { SyncLockPort, SyncLockToken } from './application/ports/sync-lock.port';
+export { shipmentDispatchLockKey } from './application/services/order-scoped-lock-keys';
 
 // Domain Entities
 // NOTE: the entity CLASS is aliased to `SyncJobEntity` because the `SyncJob`

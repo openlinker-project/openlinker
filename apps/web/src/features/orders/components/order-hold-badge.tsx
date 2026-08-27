@@ -10,9 +10,11 @@
  * badge is the precedent, and a hold is the same shape of fact: something is
  * outstanding and someone must act. It never joins Shipment or Money.
  *
- * Renders nothing for an absent or unrecognised reason — the `OrderPhaseBadge`
- * contract. A payload predating #2340 carries no reason at all, and a reason
- * this build does not know is not one it can label honestly.
+ * Renders nothing for an ABSENT reason only. An unrecognised one renders a
+ * neutral badge carrying the raw value: the order is genuinely held, and a
+ * silent badge made it indistinguishable from an un-held order — the one claim
+ * this component must never make. The timeline already took that position for
+ * the same data.
  *
  * The source is `OrderRecord.activeHoldReason`, which is #2340's display cache
  * with an hourly repair window. That is exactly what a badge may read and what
@@ -23,7 +25,16 @@
 import type { ReactElement } from 'react';
 
 import { StatusBadge } from '../../../shared/ui/status-badge';
-import { HOLD_REASON_COPY, isHoldReason } from '../lib/order-hold.types';
+import { HOLD_REASON_COPY, holdReasonLabel, isHoldReason } from '../lib/order-hold.types';
+
+/**
+ * Hint for a reason this build does not recognise.
+ *
+ * The order IS held — a newer backend simply named a reason this bundle predates
+ * — so the badge says the true, useful half and declines to invent the rest.
+ */
+const UNRECOGNISED_HINT =
+  'This order is held for a reason this version of OpenLinker does not recognise. Open the order to see it.';
 
 interface OrderHoldBadgeProps {
   /** The row/detail `activeHoldReason`; unknown or absent renders nothing. */
@@ -33,8 +44,16 @@ interface OrderHoldBadgeProps {
 }
 
 export function OrderHoldBadge({ reason, compact = false }: OrderHoldBadgeProps): ReactElement | null {
-  if (!isHoldReason(reason)) return null;
-  const copy = HOLD_REASON_COPY[reason];
+  // Absence is the ONLY thing that renders nothing. An unrecognised reason used
+  // to render nothing too, which made a held order look unheld — it survived
+  // only because `deriveOrderLifecyclePhase` keys `held` off the same field, an
+  // accident of a sibling derivation rather than a property of this component.
+  // The timeline made the opposite call and said so; this now matches it.
+  if (reason === null || reason === undefined || reason === '') return null;
+
+  const label = holdReasonLabel(reason);
+  const hint = isHoldReason(reason) ? HOLD_REASON_COPY[reason].hint : UNRECOGNISED_HINT;
+  const copy = { label, hint };
 
   return (
     // `StatusBadge` takes no `title`, so the hint rides on a wrapper — and it is

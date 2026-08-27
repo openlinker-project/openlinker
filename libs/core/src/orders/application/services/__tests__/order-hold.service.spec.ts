@@ -14,6 +14,7 @@ import { OrderHoldNotFoundError } from '../../../domain/exceptions/order-hold-no
 import type { OrderHoldRepositoryPort } from '../../../domain/ports/order-hold-repository.port';
 import { OrderHoldService } from '../order-hold.service';
 import type { OrderHoldProjectionRepositoryPort } from '../../../domain/ports/order-hold-projection-repository.port';
+import { shipmentDispatchLockKey, type SyncLockPort } from '@openlinker/core/sync';
 import {
   OmsLifecycleFactTypeValues,
   type HoldReason,
@@ -42,6 +43,7 @@ describe('OrderHoldService', () => {
   let repository: jest.Mocked<OrderHoldRepositoryPort>;
   let projection: jest.Mocked<OrderHoldProjectionRepositoryPort>;
   let service: OrderHoldService;
+  let locks: jest.Mocked<SyncLockPort>;
 
   beforeEach(() => {
     repository = {
@@ -57,7 +59,14 @@ describe('OrderHoldService', () => {
       setActiveHoldReason: jest.fn().mockResolvedValue(true),
       findDivergentProjections: jest.fn().mockResolvedValue([]),
     } as unknown as jest.Mocked<OrderHoldProjectionRepositoryPort>;
-    service = new OrderHoldService(repository, projection);
+    locks = {
+      // Acquired ⇒ nothing was dispatching. The refusal case is opted into
+      // per-test, because it is the exceptional one.
+      acquire: jest.fn().mockResolvedValue('token'),
+      release: jest.fn().mockResolvedValue(true),
+      extend: jest.fn().mockResolvedValue(true),
+    } as unknown as jest.Mocked<SyncLockPort>;
+    service = new OrderHoldService(repository, projection, locks);
   });
 
   describe('place', () => {
@@ -109,6 +118,85 @@ describe('OrderHoldService', () => {
           placedBy: { kind: 'user', userId: 'user-1' },
         })
       ).rejects.toBe(error);
+    });
+  });
+
+  describe('place — in-flight dispatch reporting (#2338 review)', () => {
+    it('should report dispatchInFlight when the per-order dispatch lock is held', async () => {
+      // The dispatch gate reads `order_holds` ONCE and then spends seconds
+      // inside the carrier call. A hold placed in that window cannot recall the
+      // label — so the silence was the defect, and the overlap is reported.
+      const placed = hold();
+      repository.placeIfNoneOpen.mockResolvedValue(placed);
+      locks.acquire.mockResolvedValue(null);
+
+      const result = await service.place({
+        internalOrderId: 'ol_order_1',
+        reason: 'stock-shortfall',
+        note: null,
+        placedBy: { kind: 'service', service: 'inventory-automation' },
+      });
+
+      expect(locks.acquire).toHaveBeenCalledWith(
+        shipmentDispatchLockKey('ol_order_1'),
+        expect.any(Number)
+      );
+      expect(result.dispatchInFlight).toBe(true);
+      // The hold is placed REGARDLESS — refusing to stop an order because it is
+      // busy shipping is exactly backwards.
+      expect(result.hold).toBe(placed);
+    });
+
+    it('should release the probe lock immediately when it acquires, so a dispatch is never blocked', async () => {
+      repository.placeIfNoneOpen.mockResolvedValue(hold());
+
+      const result = await service.place({
+        internalOrderId: 'ol_order_1',
+        reason: 'stock-shortfall',
+        note: null,
+        placedBy: { kind: 'service', service: 'inventory-automation' },
+      });
+
+      expect(result.dispatchInFlight).toBe(false);
+      expect(locks.release).toHaveBeenCalledWith(
+        shipmentDispatchLockKey('ol_order_1'),
+        'token'
+      );
+    });
+
+    it('should still place the hold, reporting no overlap, when the probe itself throws', async () => {
+      // "Cannot tell" must not become "a parcel may have shipped": asserting an
+      // overlap on a Redis blip is a claim nothing supports.
+      const placed = hold();
+      repository.placeIfNoneOpen.mockResolvedValue(placed);
+      locks.acquire.mockRejectedValue(new Error('redis down'));
+
+      const result = await service.place({
+        internalOrderId: 'ol_order_1',
+        reason: 'stock-shortfall',
+        note: null,
+        placedBy: { kind: 'service', service: 'inventory-automation' },
+      });
+
+      expect(result.hold).toBe(placed);
+      expect(result.dispatchInFlight).toBe(false);
+    });
+
+    it('should place the hold with no lock port wired at all', async () => {
+      // The port is optional so a graph without SyncModule still constructs.
+      const placed = hold();
+      repository.placeIfNoneOpen.mockResolvedValue(placed);
+      const withoutLocks = new OrderHoldService(repository, projection);
+
+      const result = await withoutLocks.place({
+        internalOrderId: 'ol_order_1',
+        reason: 'stock-shortfall',
+        note: null,
+        placedBy: { kind: 'service', service: 'inventory-automation' },
+      });
+
+      expect(result.hold).toBe(placed);
+      expect(result.dispatchInFlight).toBe(false);
     });
   });
 

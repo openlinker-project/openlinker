@@ -8,6 +8,12 @@
  * `order_holds` stays the authority. This column is a cache with a staleness
  * window, repaired by `orders.holds.reconcile`; no hold GATE reads it.
  *
+ * The index is keyed on `activeHoldReason` — the SAME column the column-level
+ * `@Index('IDX_order_records_active_hold')` on `OrderRecordOrmEntity` builds on.
+ * It was keyed on `internalOrderId` (the primary key) until the review caught
+ * it, which meant the int harness — which builds by `synchronize` — ran a
+ * different index under the same name than production does.
+ *
  * The index is PARTIAL because the only queries over this column are the
  * reconcile pass's two candidate arms, both of which test `IS NOT NULL` — and
  * on a healthy install that set is a handful of rows out of the whole table.
@@ -23,7 +29,7 @@ export class AddOrderRecordActiveHoldReason1855000000000 implements MigrationInt
     );
     await queryRunner.query(
       `CREATE INDEX IF NOT EXISTS "IDX_order_records_active_hold" ` +
-        `ON "order_records" ("internalOrderId") WHERE "activeHoldReason" IS NOT NULL`
+        `ON "order_records" ("activeHoldReason") WHERE "activeHoldReason" IS NOT NULL`
     );
   }
 

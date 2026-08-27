@@ -107,6 +107,23 @@ export class ProvisioningResumeDto {
 export class PlaceOrderHoldResponseDto {
   @ApiProperty({ type: OrderHoldDto })
   hold!: OrderHoldDto;
+
+  /**
+   * A dispatch of this order was in flight when the hold landed.
+   *
+   * The hold IS placed either way — this reports an overlap it could not
+   * prevent. A carrier call already under way cannot be recalled, so a label
+   * may exist for an order that now reads held; the operator needs to know
+   * rather than discover it from a tracking number. `false` also covers
+   * "could not tell".
+   */
+  @ApiProperty({
+    description:
+      'A dispatch of this order was in flight when the hold was placed, so a label may ' +
+      'already have been minted. The hold is placed regardless.',
+    example: false,
+  })
+  dispatchInFlight!: boolean;
 }
 
 export class ReleaseOrderHoldResponseDto {

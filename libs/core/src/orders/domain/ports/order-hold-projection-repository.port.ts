@@ -38,6 +38,23 @@ import type { HoldProjectionDivergence } from '../types/order-hold-projection.ty
 
 export interface SetActiveHoldReasonOptions {
   /**
+   * Apply the write only while `order_holds` still carries NO open hold for
+   * this order (`NOT EXISTS`, evaluated inside the same statement).
+   *
+   * **This is what makes the reconcile pass's CLEAR arm race-free, and
+   * `ifCurrentlyIs` alone was not.** The compare-and-set compares a VALUE, not a
+   * version: a missed clear witnessed as `'operator'` still matches
+   * `ifCurrentlyIs: 'operator'` after a genuinely NEW `'operator'` hold was
+   * placed in between, so the repair wrote `null` over a live hold and left the
+   * order reading un-held for up to an hour. Conditioning on the AUTHORITY
+   * instead removes the window by construction rather than narrowing it.
+   *
+   * Passed only when repairing towards `null`; setting a reason is already
+   * guarded by the open hold the pass just read.
+   */
+  requireNoOpenHold?: boolean;
+
+  /**
    * Compare-and-set witness: apply the write only while the column still holds
    * this exact value (NULL-safe, via `IS NOT DISTINCT FROM`).
    *

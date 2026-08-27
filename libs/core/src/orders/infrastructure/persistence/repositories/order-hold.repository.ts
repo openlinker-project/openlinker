@@ -19,7 +19,9 @@
  *
  * ## No TypeORM error escapes (port rule R4)
  *
- * `23505` becomes `OrderAlreadyOnHoldError`; a zero-affected release becomes
+ * `23505` becomes `OrderAlreadyOnHoldError` — or, when the winning hold was
+ * released before the loser could read it, the retryable
+ * `OrderHoldContendedError`; a zero-affected release becomes
  * `HoldAlreadyReleasedError` or `OrderHoldNotFoundError`; an unrecognised stored
  * `reason` becomes `OrderHoldVocabularyError`. A `QueryFailedError` carrying any
  * OTHER code still propagates untranslated, deliberately: a repository that
@@ -35,6 +37,7 @@ import { In, IsNull, LessThan, QueryFailedError, Repository } from 'typeorm';
 import { OrderHold } from '../../../domain/entities/order-hold.entity';
 import { HoldAlreadyReleasedError } from '../../../domain/exceptions/hold-already-released.error';
 import { OrderAlreadyOnHoldError } from '../../../domain/exceptions/order-already-on-hold.error';
+import { OrderHoldContendedError } from '../../../domain/exceptions/order-hold-contended.error';
 import { OrderHoldNotFoundError } from '../../../domain/exceptions/order-hold-not-found.error';
 import { OrderHoldVocabularyError } from '../../../domain/exceptions/order-hold-vocabulary.error';
 import type { OrderHoldRepositoryPort } from '../../../domain/ports/order-hold-repository.port';
@@ -81,10 +84,13 @@ export class OrderHoldRepository implements OrderHoldRepositoryPort {
       const winner = await this.findOpenByOrder(input.internalOrderId);
       if (winner === null) {
         // The peer's hold was released between the conflict and this read, so
-        // the slot is free again. Rethrowing is honest: the caller retries and
-        // gets a clean insert, which beats looping here — and reporting
-        // "already on hold" would be a false statement about a now-unheld order.
-        throw error;
+        // the slot is free again. Reporting "already on hold" would be a false
+        // statement about a now-unheld order — and rethrowing the driver error
+        // (what this did before) breaks this file's own no-TypeORM-escapes rule
+        // and reached the operator as a 500 carrying a duplicate-key message.
+        // A retryable DOMAIN error says the true thing: nothing is holding the
+        // order, and a re-run gets a clean insert.
+        throw new OrderHoldContendedError(input.internalOrderId);
       }
       throw new OrderAlreadyOnHoldError(input.internalOrderId, winner.id);
     }

@@ -71,7 +71,15 @@ const ORDER_FX_STAMP_SWEEP_DEFAULT_LIMIT = 100;
 const ORDER_FX_STAMP_SWEEP_DEFAULT_MAX_AGE_DAYS = 30;
 
 /**
- * The nil-UUID connection the provenance-backfill pass is enqueued under.
+ * The nil-UUID connection a pass with NO connection axis is enqueued under.
+ *
+ * Named for what it is, not for its first caller: `SyncJob.connectionId` is
+ * non-nullable, so every connection-less scheduled pass needs this value. The
+ * inventory provenance backfill (#2317) was merely the first; the orders hold
+ * reconcile (#2340) is the second, and the provenance backfill is a latching,
+ * completing pass someone will eventually retire — under the old name
+ * (`INVENTORY_PROVENANCE_SCOPE_ID`) they would have read it as inventory-owned
+ * and deleted an orders cron's scope with it.
  *
  * Declared HERE rather than imported from
  * `sync/handlers/inventory-provenance-backfill.handler`: this file belongs to
@@ -80,11 +88,12 @@ const ORDER_FX_STAMP_SWEEP_DEFAULT_MAX_AGE_DAYS = 30;
  * boundary makes the scheduler pull in a handler module it can never run.
  *
  * A local constant is the established convention for exactly this
- * (`InventoryService.SYSTEM_CONNECTION_ID`): the value is the nil UUID, which
+ * (`InventoryService.SYSTEM_CONNECTION_ID`, whose
+ * name this now matches): the value is the nil UUID, which
  * is a well-known literal rather than something derived, so the two cannot
  * drift into different values without one of them being plainly wrong.
  */
-const INVENTORY_PROVENANCE_SCOPE_ID = '00000000-0000-0000-0000-000000000000';
+const SYSTEM_CONNECTION_ID = '00000000-0000-0000-0000-000000000000';
 
 /**
  * Default page size for the tax-rate backfill sweep (#2440). Bounds the
@@ -827,7 +836,7 @@ export class SchedulerService implements OnModuleDestroy {
 
     // No connection axis exists for this pass — see the method docblock.
     const systemConnection = new Connection(
-      INVENTORY_PROVENANCE_SCOPE_ID,
+      SYSTEM_CONNECTION_ID,
       'system',
       'system',
       'active',
@@ -889,7 +898,7 @@ export class SchedulerService implements OnModuleDestroy {
 
     // No connection axis exists for this pass — see the method docblock.
     const systemConnection = new Connection(
-      INVENTORY_PROVENANCE_SCOPE_ID,
+      SYSTEM_CONNECTION_ID,
       'system',
       'system',
       'active',

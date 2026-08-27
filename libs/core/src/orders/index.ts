@@ -285,6 +285,7 @@ export type {
   ReleaseOrderHoldInput,
 } from './domain/types/order-hold.types';
 export { OrderAlreadyOnHoldError } from './domain/exceptions/order-already-on-hold.error';
+export { OrderHoldContendedError } from './domain/exceptions/order-hold-contended.error';
 export { HoldAlreadyReleasedError } from './domain/exceptions/hold-already-released.error';
 export { OrderHoldNotFoundError } from './domain/exceptions/order-hold-not-found.error';
 export { OrderHoldVocabularyError } from './domain/exceptions/order-hold-vocabulary.error';

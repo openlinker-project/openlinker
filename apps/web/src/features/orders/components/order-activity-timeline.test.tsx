@@ -422,6 +422,42 @@ describe('OrderActivityTimeline — order holds (#2342)', () => {
     expect(screen.getByText('Put on hold — reason-from-a-newer-build')).toBeInTheDocument();
   });
 
+  it('does NOT claim a person held the order when the payload names no placer', () => {
+    // The XOR that made "not a service ⇒ a human" total is a SQL CHECK this
+    // bundle cannot import (#591), so a payload with neither field rendered
+    // "Held by operator" — asserting a person acted, which the types file
+    // forbids by name, and contradicting the panel's own `placedBy()` on the
+    // same page.
+    renderTimeline({
+      ...base,
+      holds: [hold({ placedByUserId: null, placedByService: null })],
+    });
+
+    const title = screen.getByText('Put on hold — Held by operator');
+    // The actor eyebrow lives inside the entry's own title element, so scope the
+    // assertion there — the ingestion entry above legitimately carries one.
+    expect(title.querySelector('.order-activity__by')).toBeNull();
+  });
+
+  it('does NOT claim a system released the hold when no releasing user is recorded', () => {
+    // `order_holds` has no `releasedByService` column, so "no releasing user"
+    // does not mean a service did it — a service release is recorded by nobody.
+    renderTimeline({
+      ...base,
+      holds: [
+        hold({
+          placedByUserId: null,
+          placedByService: 'stock-monitor',
+          releasedAt: '2026-08-21T08:00:00.000Z',
+          releasedByUserId: null,
+        }),
+      ],
+    });
+
+    const title = screen.getByText('Hold released');
+    expect(title.querySelector('.order-activity__by')).toBeNull();
+  });
+
   it('adds nothing when the payload carries no holds', () => {
     // Absent and null mean the same on this optional wire field.
     renderTimeline({ ...base, holds: undefined });

@@ -64,6 +64,16 @@ export class OrderHoldProjectionReconcileService
    * `superseded`. That is a normal outcome, not an error, and it is deliberately
    * NOT retried in-loop: a retry would re-read the same stale witness. The next
    * tick re-examines the row if it still diverges.
+   *
+   * **A value witness is not enough on the CLEAR arm**, because a new hold can
+   * carry the same reason the stale projection already shows — so that arm adds
+   * `requireNoOpenHold` and lets the database evaluate `order_holds` in the same
+   * statement. `superseded` therefore means "something else got there first",
+   * and never "we erased a live hold".
+   *
+   * `failed` covers a throw, which now includes
+   * `HoldProjectionWriteUnreadableError` — an outcome nobody can read, kept
+   * distinct from `superseded` because the two have different remedies.
    */
   private async repairOne(
     divergence: HoldProjectionDivergence
@@ -72,7 +82,14 @@ export class OrderHoldProjectionReconcileService
       const changed = await this.projection.setActiveHoldReason(
         divergence.internalOrderId,
         divergence.expectedReason,
-        { ifCurrentlyIs: divergence.projectedReason }
+        {
+          ifCurrentlyIs: divergence.projectedReason,
+          // The CLEAR arm is additionally conditioned on the AUTHORITY, not on
+          // the value this pass witnessed — see the option's docblock. A
+          // same-reason hold placed between the read and here otherwise slipped
+          // through the compare-and-set and had its projection erased.
+          requireNoOpenHold: divergence.expectedReason === null,
+        }
       );
 
       if (changed) {

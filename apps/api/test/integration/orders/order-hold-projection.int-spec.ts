@@ -39,6 +39,8 @@ import {
   type IntegrationTestHarness,
 } from '../setup';
 import { createTestConnection } from '../helpers/test-connection.helper';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 const ORDER_ID = 'ol_order_hold_projection';
 
@@ -204,6 +206,76 @@ describe('Order hold projection (#2340)', () => {
     await reconcile.runPage(500);
 
     await expect(readProjection()).resolves.toBeNull();
+  });
+
+  it('should withhold the reconcile clear when a NEW hold carrying the same reason was placed', async () => {
+    // The value-based CAS could not see this. The pass witnesses a missed clear
+    // at 'operator' and writes null conditioned on `ifCurrentlyIs: 'operator'`;
+    // a genuinely NEW 'operator' hold placed in between still matches that
+    // witness, so the clear used to erase a LIVE hold and leave the order
+    // reading un-held for up to an hour.
+    await holds.place({
+      internalOrderId: ORDER_ID,
+      reason: 'operator',
+      placedBy: { kind: 'user', userId: 'user-2' },
+    });
+    await forceProjection('operator');
+
+    // With a live hold, the pass finds nothing divergent at all — which is one
+    // half of the guarantee. The other half is that even when handed the stale
+    // witness verbatim, the write itself withholds: run the reconcile's exact
+    // clear statement and assert it touches nothing.
+    const [rows] = (await harness.getDataSource().query(
+      `UPDATE "order_records"
+          SET "activeHoldReason" = NULL
+        WHERE "internalOrderId" = $1
+          AND "activeHoldReason" IS DISTINCT FROM NULL
+          AND "activeHoldReason" IS NOT DISTINCT FROM $2
+          AND NOT EXISTS (
+                SELECT 1 FROM "order_holds" h
+                 WHERE h."internalOrderId" = $1
+                   AND h."releasedAt" IS NULL
+              )
+        RETURNING "internalOrderId"`,
+      [ORDER_ID, 'operator']
+    )) as [unknown[], number];
+
+    expect(rows).toHaveLength(0);
+    await expect(readProjection()).resolves.toBe('operator');
+  });
+
+  it('should build IDX_order_records_active_hold on activeHoldReason, matching the migration', async () => {
+    // The harness builds by `synchronize` (the ENTITY) and production builds by
+    // migration, so the same index name was keyed on two different columns —
+    // the migration's on `internalOrderId`, i.e. a partial index on the primary
+    // key. Asserting both halves in one test is what keeps them from drifting
+    // again: the live definition below comes from the entity, the file read
+    // comes from the migration.
+    const rows = (await harness
+      .getDataSource()
+      .query(
+        `SELECT indexdef FROM pg_indexes
+          WHERE tablename = 'order_records' AND indexname = 'IDX_order_records_active_hold'`
+      )) as { indexdef: string }[];
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].indexdef).toContain('activeHoldReason');
+    expect(rows[0].indexdef).not.toContain('internalOrderId');
+
+    const migration = readFileSync(
+      join(
+        __dirname,
+        '..',
+        '..',
+        '..',
+        'src',
+        'migrations',
+        '1855000000000-add-order-record-active-hold-reason.ts'
+      ),
+      'utf8'
+    );
+    expect(migration).toContain('ON "order_records" ("activeHoldReason")');
+    expect(migration).not.toContain('ON "order_records" ("internalOrderId")');
   });
 
   it('should find nothing to repair when the projection agrees', async () => {

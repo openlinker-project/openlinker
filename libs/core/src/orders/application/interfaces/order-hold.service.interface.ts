@@ -63,6 +63,25 @@ export interface ReleaseHoldRequest {
 export interface OrderHoldTransition {
   hold: OrderHold;
   fact: OmsLifecycleFact;
+  /**
+   * A dispatch of this order was in flight when the hold was placed (#2338
+   * review).
+   *
+   * **A hold cannot recall a carrier call.** The dispatch gate reads
+   * `order_holds` once and then spends seconds inside `generateLabel`; a hold
+   * placed in that window is accepted, the label is minted anyway, and the
+   * operator is left looking at a hold badge over a shipped parcel. The
+   * carrier round-trip is unrecallable — the SILENCE was the defect, so the
+   * hold reports the overlap instead of pretending it prevented anything.
+   *
+   * Detected by a NON-BLOCKING probe of the per-order dispatch lock. Placing
+   * the hold never waits on it and never fails on it: refusing to stop an
+   * order because it is busy shipping is precisely backwards.
+   *
+   * `false` also covers "could not tell" (no lock port wired, or the probe
+   * threw) — the field asserts an overlap, never the absence of one.
+   */
+  dispatchInFlight: boolean;
 }
 
 /**

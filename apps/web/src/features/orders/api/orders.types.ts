@@ -377,6 +377,15 @@ export interface PlaceOrderHoldRequest {
 
 export interface PlaceOrderHoldResult {
   hold: OrderHold;
+  /**
+   * A dispatch of this order was in flight when the hold landed, so a carrier
+   * label may already have been minted for an order that now reads held.
+   *
+   * The hold IS placed either way — this reports an overlap OpenLinker could
+   * not prevent. Optional because a backend predating the review does not send
+   * it; absent must never read as "an overlap happened".
+   */
+  dispatchInFlight?: boolean;
 }
 
 /**

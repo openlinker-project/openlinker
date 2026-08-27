@@ -3,6 +3,7 @@
  *
  * @module libs/core/src/orders/application/services/__tests__
  */
+import { HoldProjectionWriteUnreadableError } from '../../../domain/exceptions/hold-projection-write-unreadable.error';
 import type { OrderHoldProjectionRepositoryPort } from '../../../domain/ports/order-hold-projection-repository.port';
 import type { HoldProjectionDivergence } from '../../../domain/types/order-hold-projection.types';
 import { OrderHoldProjectionReconcileService } from '../order-hold-projection-reconcile.service';
@@ -47,7 +48,7 @@ describe('OrderHoldProjectionReconcileService', () => {
     expect(projection.setActiveHoldReason).toHaveBeenCalledWith(
       'ol_order_1',
       'stock-shortfall',
-      { ifCurrentlyIs: null }
+      { ifCurrentlyIs: null, requireNoOpenHold: false }
     );
     expect(result).toMatchObject({ examined: 1, repaired: 1 });
   });
@@ -61,6 +62,58 @@ describe('OrderHoldProjectionReconcileService', () => {
 
     expect(projection.setActiveHoldReason).toHaveBeenCalledWith('ol_order_1', null, {
       ifCurrentlyIs: 'operator',
+      requireNoOpenHold: true,
+    });
+  });
+
+  it('should condition the CLEAR arm on the authority, not on the witnessed value', async () => {
+    // The race the value-witness alone could not close: the pass witnesses a
+    // missed clear at 'operator', and a genuinely NEW 'operator' hold is placed
+    // before the repair runs. `ifCurrentlyIs: 'operator'` STILL matches — it
+    // compares a value, not a version — so the clear would erase a live hold
+    // and leave the order reading un-held for up to an hour.
+    //
+    // `requireNoOpenHold` moves that check into the statement, where
+    // `order_holds` decides it. Asserted at the port because that is where the
+    // guarantee lives; `order-hold-projection.int-spec.ts` proves the SQL arm
+    // actually withholds the write against real Postgres.
+    projection.findDivergentProjections.mockResolvedValue([
+      divergence({ expectedReason: null, projectedReason: 'operator' }),
+    ]);
+
+    await service.runPage(500);
+
+    const options = projection.setActiveHoldReason.mock.calls[0][2];
+    expect(options).toEqual({ ifCurrentlyIs: 'operator', requireNoOpenHold: true });
+  });
+
+  it('should NOT ask for the authority guard when writing a reason', async () => {
+    // Setting a reason is already guarded by the open hold the pass just read;
+    // demanding "no open hold" there would make every set-arm repair a no-op.
+    projection.findDivergentProjections.mockResolvedValue([divergence()]);
+
+    await service.runPage(500);
+
+    const options = projection.setActiveHoldReason.mock.calls[0][2] as {
+      requireNoOpenHold?: boolean;
+    };
+    expect(options.requireNoOpenHold).toBe(false);
+  });
+
+  it('should count an unreadable driver result as failed, never as superseded', async () => {
+    // The two have DIFFERENT remedies and the counter is this pass's only
+    // observability, so "we do not know what happened" must not be reported as
+    // "a peer beat us to it".
+    projection.findDivergentProjections.mockResolvedValue([divergence()]);
+    projection.setActiveHoldReason.mockRejectedValue(
+      new HoldProjectionWriteUnreadableError('ol_order_1')
+    );
+
+    await expect(service.runPage(500)).resolves.toEqual({
+      examined: 1,
+      repaired: 0,
+      superseded: 0,
+      failed: 1,
     });
   });
 

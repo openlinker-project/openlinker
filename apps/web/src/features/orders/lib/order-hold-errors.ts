@@ -32,9 +32,9 @@ function readErrorCode(error: unknown): string | null {
 export function describeHoldWriteError(error: unknown, fallback: string): string {
   switch (readErrorCode(error)) {
     case 'ORDER_ALREADY_ON_HOLD':
-      return 'This order is already on hold. Reload to see the hold that is open.';
+      return 'This order is already on hold. The open hold is being loaded now.';
     case 'HOLD_ALREADY_RELEASED':
-      return 'This hold was already released. Reload to see the order as it stands.';
+      return 'This hold was already released. The order is being reloaded now.';
     default:
       return (error instanceof Error && error.message) || fallback;
   }
@@ -45,6 +45,15 @@ export function describeHoldWriteError(error: unknown, fallback: string): string
  *
  * Both conflicts do: in each case the server holds a truth this client does
  * not, and re-reading is what makes the next attempt meaningful.
+ *
+ * Called from the `onError` of both hold mutation hooks. It was exported and
+ * unused for a while, next to copy telling the operator to reload by hand — on
+ * a screen where every success path already invalidates. The copy above now
+ * describes what actually happens instead.
+ *
+ * `ORDER_HOLD_CONTENDED` is deliberately NOT included: it means a peer took and
+ * RELEASED the slot, so the client's view is not stale — the remedy is to press
+ * the button again, and the server's own message says so.
  */
 export function holdWriteErrorNeedsRefresh(error: unknown): boolean {
   const code = readErrorCode(error);

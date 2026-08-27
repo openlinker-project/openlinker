@@ -26,8 +26,13 @@
  * @module libs/core/src/orders/application/services
  * @implements {IOrderHoldService}
  */
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { HoldReason, OmsLifecycleFact } from '@openlinker/core/order-lifecycle';
+import {
+  shipmentDispatchLockKey,
+  SYNC_LOCK_TOKEN,
+  type SyncLockPort,
+} from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
 import type { OrderHold } from '../../domain/entities/order-hold.entity';
 import { HoldReleaseNotPermittedError } from '../../domain/exceptions/hold-release-not-permitted.error';
@@ -47,6 +52,13 @@ import type {
   ReleaseHoldRequest,
 } from '../interfaces/order-hold.service.interface';
 
+/**
+ * TTL for the non-blocking dispatch probe. Short on purpose: the probe releases
+ * the key itself, and this is only the ceiling on how long a lost release could
+ * stall a genuine dispatch.
+ */
+const DISPATCH_PROBE_TTL_MS = 1;
+
 /** Empty / whitespace-only operator text is absence, not content. */
 function normalizeNote(note: string | null | undefined): string | null {
   if (typeof note !== 'string') {
@@ -64,7 +76,13 @@ export class OrderHoldService implements IOrderHoldService {
     @Inject(ORDER_HOLD_REPOSITORY_TOKEN)
     private readonly holds: OrderHoldRepositoryPort,
     @Inject(ORDER_HOLD_PROJECTION_REPOSITORY_TOKEN)
-    private readonly projection: OrderHoldProjectionRepositoryPort
+    private readonly projection: OrderHoldProjectionRepositoryPort,
+    // Optional so a graph without `SyncModule` (and every existing unit spec)
+    // still constructs. Absent means "cannot tell", which reports as no
+    // overlap — never as a refusal.
+    @Optional()
+    @Inject(SYNC_LOCK_TOKEN)
+    private readonly locks?: SyncLockPort
   ) {}
 
   async place(request: PlaceHoldRequest): Promise<OrderHoldTransition> {
@@ -78,11 +96,20 @@ export class OrderHoldService implements IOrderHoldService {
 
     await this.projectActiveHoldReason(hold.internalOrderId, hold.reason);
 
-    return this.emit(hold, {
-      type: 'held',
-      internalOrderId: hold.internalOrderId,
-      reason: hold.reason,
-    });
+    const dispatchInFlight = await this.detectDispatchInFlight(
+      hold.internalOrderId,
+      hold.id
+    );
+
+    return this.emit(
+      hold,
+      {
+        type: 'held',
+        internalOrderId: hold.internalOrderId,
+        reason: hold.reason,
+      },
+      dispatchInFlight
+    );
   }
 
   async release(request: ReleaseHoldRequest): Promise<OrderHoldTransition> {
@@ -126,11 +153,15 @@ export class OrderHoldService implements IOrderHoldService {
     // what CLEARS the stale reason (#2100's rule).
     await this.projectActiveHoldReason(hold.internalOrderId, null);
 
-    return this.emit(hold, {
-      type: 'released',
-      internalOrderId: hold.internalOrderId,
-      reason: hold.reason,
-    });
+    return this.emit(
+      hold,
+      {
+        type: 'released',
+        internalOrderId: hold.internalOrderId,
+        reason: hold.reason,
+      },
+      false
+    );
   }
 
   async getOpenHold(internalOrderId: string): Promise<OrderHold | null> {
@@ -219,11 +250,66 @@ export class OrderHoldService implements IOrderHoldService {
    * `OrderLifecycleEvent` union — so no `OrderStatusWriteback` adapter can be
    * asked to express a warehouse fact it has no verb for.
    */
-  private emit(hold: OrderHold, fact: OmsLifecycleFact): OrderHoldTransition {
+  private emit(
+    hold: OrderHold,
+    fact: OmsLifecycleFact,
+    dispatchInFlight: boolean
+  ): OrderHoldTransition {
     this.logger.log(
       `OMS lifecycle fact '${fact.type}' for order ${hold.internalOrderId} ` +
         `(hold ${hold.id}, reason '${hold.reason}')`
     );
-    return { hold, fact };
+    return { hold, fact, dispatchInFlight };
+  }
+
+  /**
+   * Was a dispatch of this order in flight when the hold landed?
+   *
+   * **Non-blocking, and it never changes the outcome of `place()`.** The probe
+   * is an `acquire` of the SAME per-order key `ShipmentDispatchService` holds
+   * across its carrier round-trip, released immediately: acquired means no
+   * dispatch was running, refused means one was. Holding it would serialize a
+   * hold behind a multi-second label call for no benefit, and failing the hold
+   * on contention would refuse to stop an order because it is busy shipping —
+   * exactly backwards.
+   *
+   * The hold is already committed by the time this runs, so a `true` here is a
+   * report, never a gate. The carrier call cannot be recalled; what this closes
+   * is the SILENCE — an operator otherwise finds a hold badge over a parcel that
+   * shipped anyway, with nothing anywhere saying the two overlapped.
+   *
+   * A TTL of one millisecond is used deliberately: the probe must not leave a
+   * key behind that could stall a real dispatch if the release call is lost.
+   */
+  private async detectDispatchInFlight(
+    internalOrderId: string,
+    holdId: string
+  ): Promise<boolean> {
+    if (!this.locks) {
+      return false;
+    }
+
+    const key = shipmentDispatchLockKey(internalOrderId);
+    try {
+      const token = await this.locks.acquire(key, DISPATCH_PROBE_TTL_MS);
+      if (token === null) {
+        this.logger.warn(
+          `order_hold_placed_during_dispatch for order ${internalOrderId} ` +
+            `(hold ${holdId}): a dispatch was in flight, so a label may already ` +
+            `have been minted for this order — the hold cannot recall it`
+        );
+        return true;
+      }
+      await this.locks.release(key, token);
+      return false;
+    } catch (error) {
+      // "Cannot tell" reports as no overlap. Asserting one on a Redis blip
+      // would tell the operator a parcel may have shipped when nothing says so.
+      this.logger.warn(
+        `order_hold_dispatch_probe_failed for order ${internalOrderId}: ` +
+          `${error instanceof Error ? error.message : String(error)}`
+      );
+      return false;
+    }
   }
 }

@@ -77,8 +77,22 @@ export function PlaceOrderHoldDialog({
     mutation.mutate(
       { internalOrderId, reason: values.reason, note: note ? note : undefined },
       {
-        onSuccess: () => {
-          showToast({ tone: 'success', description: 'Order put on hold.' });
+        onSuccess: (result) => {
+          // A hold cannot recall a carrier call already in flight (#2338
+          // review). When the backend reports the overlap, say so — the
+          // alternative is an operator seeing a hold badge and later a tracking
+          // number with nothing anywhere connecting the two.
+          if (result.dispatchInFlight === true) {
+            showToast({
+              tone: 'warning',
+              description:
+                'Order put on hold, but it was being dispatched at that moment — a shipping ' +
+                'label may already have been created. Check its shipment before assuming it ' +
+                'stopped.',
+            });
+          } else {
+            showToast({ tone: 'success', description: 'Order put on hold.' });
+          }
           onOpenChange(false);
         },
         // The error renders in the dialog's own Alert rather than a toast: the
