@@ -19,15 +19,21 @@
  *     code, the shop has no currency row for its ISO code, or the matching row's
  *     id is unusable. Same reasoning as above - nothing about the order or the
  *     shop changes between attempts, so the answer is identical every time.
+ *   - `PrestashopInvalidFilterException` (#2616) - a custom filter key the
+ *     WebService cannot express. Every key in the package is a source literal,
+ *     so the malformed key is a programming error that re-sends unchanged: the
+ *     retry ladder can only delay the report by its full backoff.
  *
- * Neither class reaches this classifier on the shipped ORDER-CREATE path today,
- * so the "attempts" above describe what retrying would cost, not what currently
- * happens: `OrderSyncService` reduces a per-destination `createOrder` rejection
- * to its message under `Promise.allSettled`, and `OrderIngestionService` records
- * that message without rethrowing - the job succeeds and the runner never asks.
- * Both registrations are kept because the classification is correct by
+ * Neither of the first two reaches this classifier on the shipped ORDER-CREATE
+ * path today, so the "attempts" above describe what retrying would cost, not what
+ * currently happens: `OrderSyncService` reduces a per-destination `createOrder`
+ * rejection to its message under `Promise.allSettled`, and `OrderIngestionService`
+ * records that message without rethrowing - the job succeeds and the runner never
+ * asks. Both registrations are kept because the classification is correct by
  * construction and is already right for the day the failure does propagate; the
  * value they carry unconditionally is on the message, not on the retry count.
+ * `PrestashopInvalidFilterException` is different: it is raised by the query
+ * builder on EVERY PrestaShop read, so it does propagate out of a job today.
  *
  * Retryable, deliberately left out (return `false`):
  *   - `PrestashopApiException` — a failed CALL, including the transport failure
@@ -51,12 +57,14 @@
 import type { RetryClassifierPort } from '@openlinker/core/sync';
 import { PrestashopTaxRateUnknownException } from '../../domain/exceptions/prestashop-tax-rate-unknown.exception';
 import { PrestashopCurrencyUnknownException } from '../../domain/exceptions/prestashop-currency-unknown.exception';
+import { PrestashopInvalidFilterException } from '../../domain/exceptions/prestashop-invalid-filter.exception';
 
 export class PrestashopRetryClassifierAdapter implements RetryClassifierPort {
   isNonRetryable(cause: unknown): boolean {
     return (
       cause instanceof PrestashopTaxRateUnknownException ||
-      cause instanceof PrestashopCurrencyUnknownException
+      cause instanceof PrestashopCurrencyUnknownException ||
+      cause instanceof PrestashopInvalidFilterException
     );
   }
 }

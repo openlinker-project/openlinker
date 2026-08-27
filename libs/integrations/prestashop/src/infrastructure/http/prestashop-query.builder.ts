@@ -188,8 +188,10 @@ export class PrestashopQueryBuilder {
    * `filter[filter[reference]]`, which PrestaShop does not recognise: it drops
    * the condition, returns the first page unfiltered, and the caller reads that
    * as a legitimate result. On a catalogue larger than one page the row it was
-   * looking for is simply absent, with no error anywhere (#2616). A wrong filter
-   * must therefore be louder than a wrong answer.
+   * looking for is simply absent, with no error anywhere. Worse, a caller that
+   * writes back through `rows[0]` of such a page - as `updateStock` did - PATCHes
+   * an arbitrary unrelated row (#2616). A wrong filter must therefore be louder
+   * than a wrong answer.
    *
    * @param key - Custom filter field name
    * @throws PrestashopInvalidFilterException when the key is not a bare field name
@@ -199,13 +201,7 @@ export class PrestashopQueryBuilder {
       return;
     }
 
-    const hint = key.includes('[')
-      ? ' Pass the bare field name - the builder adds the filter[...] envelope itself.'
-      : '';
-    throw new PrestashopInvalidFilterException(
-      `Invalid PrestaShop filter key "${key}".${hint}`,
-      key
-    );
+    throw new PrestashopInvalidFilterException(key);
   }
 
   /**
