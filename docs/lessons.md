@@ -634,3 +634,35 @@ edge exists one layer up, that is usually the better place for the code: here it
 moved the refund read to a controller whose module already imported
 `OrdersModule`, which produced **strictly less coupling than the plan
 described** — the rare direction for a mid-implementation correction.
+
+### A safe fallback beside a confident wrong one is worse than two loud failures
+
+**#2645 review, #2383's mapper.** One module authored the rule *"an act whose
+actor is unknown gets NO eyebrow rather than a guessed one: an omitted
+attribution is silent, a wrong one is a claim"* — and two functions below it,
+`resolveBy` used a ternary that sent every `executedBy` value except one to
+`"an operator"`. `null` included, and every future member.
+
+Unreachable today (the column is `NOT NULL` with two members), so it would have
+survived indefinitely. But `refundExecutedBy` is an **open string on the wire**,
+so the day a `MasterRefundExecutor` writes a third value, every such row reads
+`Refund confirmed · an operator` — OpenLinker attributing to a human a refund a
+machine made, silently, on a surface built to be auditable.
+
+**The tell was the asymmetry, not the ternary.** `resolveTitle`, twelve lines
+down, already had an honest `unknownKind` arm. So the title failed safe while
+the attribution failed loud and wrong, and *that combination is the dangerous
+one*: **a safe title beside a confident wrong actor is more dangerous than both
+failing, because the safe half makes the row look checked.** A reader who sees
+`Refund confirmed` rendered correctly has no reason to doubt the `an operator`
+beside it.
+
+Two rules follow.
+
+1. **Where one arm of a shape degrades honestly, every arm must.** When you write
+   an unknown-value fallback, grep the same file for its siblings — the one that
+   guesses is rarely the one you were editing.
+2. **A closed-looking ternary over an open string is a default arm in
+   disguise.** `x === 'a' ? A : B` is a total map only if the type is `'a' | 'b'`.
+   Over `string`, it silently claims every future value is `b`. Use a
+   `Record<string, T>` lookup and let the miss be `undefined`.
