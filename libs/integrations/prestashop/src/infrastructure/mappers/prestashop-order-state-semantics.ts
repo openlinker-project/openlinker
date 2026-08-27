@@ -14,14 +14,30 @@
  * The state row itself carries PrestaShop's own answer. `delivered`, `shipped`
  * and `paid` are the flags PrestaShop uses internally to decide whether to show
  * a tracking link or send a shipped email, so they are as authoritative as
- * anything the WebService exposes.
+ * anything the WebService exposes, and they are the same in every language.
  *
  * Cancellation and refund have no flag of their own - `ps_order_state` has no
  * such column, and PrestaShop identifies those states through configuration
  * keys instead. So they are read from the state's own labels, across every
- * language the row carries. That is the same rule the fulfillment-status
- * mapper (#834) already applied to cancellation, generalised here to every
- * status the order feed reports.
+ * language the row carries.
+ *
+ * Reading labels is the weak half, and two rules keep it honest (#2607 review).
+ *
+ * A stem matches the START of ONE WORD of the label, never a fragment anywhere
+ * in the string, and every stem is at least `MIN_STEM_LENGTH` characters. The
+ * previous rule matched four-character fragments anywhere, so `abge` matched
+ * the German "Abgeschlossen" (completed) and "Abgesendet" (sent) and read a
+ * finished order as cancelled. Where a language prefixes the word family -
+ * Dutch "Geannuleerd", German "Rückerstattet" - the prefixed form is its own
+ * entry rather than relaxing the rule for everybody, because a stem allowed to
+ * match mid-word matches unrelated words too ("Granulat" contains `anulat`).
+ *
+ * A label that matches nothing does not go quiet. `deriveOrderState` reports
+ * `basis: 'no-evidence'` for it, and the catalogue names every such state once
+ * per read. On a clean install those are the awaiting states, where `pending`
+ * is the right answer; on a shop in a language this vocabulary does not cover
+ * they may include the cancellation or refund state, and then `pending` is a
+ * false statement about money that nobody could previously see.
  *
  * @module libs/integrations/prestashop/src/infrastructure/mappers
  */
@@ -32,19 +48,93 @@ import type { PrestashopOrderState } from '../../domain/types/prestashop-options
 const TRUE_VALUES: ReadonlySet<string> = new Set(['1', 'true']);
 
 /**
- * Latin-script cancellation vocabulary. Non-Latin scripts (HU, RU, UA, BG) are
- * a known gap; a shop in one of those languages needs the operator's own
- * order-state mapping, which is consulted before any derivation.
+ * Shortest stem allowed in either vocabulary below.
+ *
+ * Five is where the false positives stopped in practice: `abge` (4) matched two
+ * unrelated German states, while `storn` and `annul` (5) start no word a shop
+ * would use for something else. Asserted by the spec, so a shorter stem cannot
+ * be added quietly.
  */
-const CANCEL_REGEX = /cancel|annul|anul|storno|reject|abge/i;
+export const MIN_STEM_LENGTH = 5;
 
 /**
- * Refund vocabulary, same Latin-script caveat. Checked after cancellation
- * because a refund label rarely also matches the cancel one, and never before
- * the flags: a state can be both refunded and shipped, and what the operator
- * needs to know first is where the parcel is.
+ * Cancellation vocabulary, one entry per word family rather than per language,
+ * with diacritics already folded away (`annulé` is matched by `annul`).
+ *
+ * `reject` is deliberately here: a state named "Payment rejected" will not
+ * ship, which is what a cancellation means to every reader of this value, and
+ * no default-install state carries the word.
+ *
+ * Non-Latin scripts (EL, RU, UK, BG, HE, AR, ZH, JA, KO) and a few short Latin
+ * words (Turkish "İade", Vietnamese "Hủy") are a known gap: they are shorter
+ * than one word family can safely be, or written in a script this rule cannot
+ * stem. A shop in one of those languages sees the `no-evidence` report.
  */
-const REFUND_REGEX = /refund|rembours|zwrot|rimbors|reembols|erstatt|storniert/i;
+const CANCEL_STEMS: readonly string[] = [
+  'cancel', // en, es, pt
+  'annul', // fr, it, tr
+  'geannul', // nl
+  'anulow', // pl
+  'anulat', // ro
+  'anulad', // es
+  'anulir', // hr, sr, sl
+  'storn', // de, cs, sk
+  'abgebroch', // de
+  'avbrut', // sv
+  'avbryt', // no
+  'peruut', // fi
+  'zrusen', // cs, sk
+  'iptal', // tr
+  'dibatalk', // id
+  'reject', // en
+];
+
+/**
+ * Refund vocabulary, same rules and the same documented gap. Checked after
+ * cancellation, and never before the flags: a state can be both refunded and
+ * shipped, and where the parcel is comes first.
+ */
+const REFUND_STEMS: readonly string[] = [
+  'refund', // en, da, no, hr, sr
+  'rembours', // fr
+  'reembols', // es, pt
+  'rimbors', // it
+  'erstatt', // de
+  'ruckerstatt', // de "Rückerstattet"
+  'zwroc', // pl "Zwrócono"
+  'zwrot', // pl "Zwrot"
+  'terugbetaa', // nl
+  'vracen', // cs
+  'vraten', // sk
+  'aterbetal', // sv "Återbetald"
+  'hyvite', // fi
+  'rambursa', // ro
+  'visszater', // hu
+  'grazint', // lt
+  'atmaksa', // lv
+];
+
+/**
+ * How `deriveOrderState` reached its answer.
+ *
+ * `no-evidence` is the one value a caller must act on: nothing about the state
+ * said anything, so `pending` is a default rather than a reading.
+ */
+export const ORDER_STATE_DERIVATION_BASIS_VALUES = [
+  'delivered-flag',
+  'shipped-flag',
+  'cancel-label',
+  'refund-label',
+  'paid-flag',
+  'no-evidence',
+] as const;
+
+export type OrderStateDerivationBasis = (typeof ORDER_STATE_DERIVATION_BASIS_VALUES)[number];
+
+export interface OrderStateDerivation {
+  status: OrderStatus;
+  basis: OrderStateDerivationBasis;
+}
 
 /**
  * True for PrestaShop's `'1'` / `1` / `'true'` flag spellings.
@@ -95,43 +185,74 @@ export function extractOrderStateLabels(name: PrestashopOrderState['name']): rea
  * True when any of the state's labels reads as a cancellation.
  */
 export function isCancelledOrderState(state: PrestashopOrderState): boolean {
-  return extractOrderStateLabels(state.name).some((label) => CANCEL_REGEX.test(label));
+  return labelMatchesAnyStem(state, CANCEL_STEMS);
 }
 
 /**
  * True when any of the state's labels reads as a refund.
  */
 export function isRefundedOrderState(state: PrestashopOrderState): boolean {
-  return extractOrderStateLabels(state.name).some((label) => REFUND_REGEX.test(label));
+  return labelMatchesAnyStem(state, REFUND_STEMS);
 }
 
 /**
- * Derive the neutral order status one state row stands for.
+ * Derive the neutral order status one state row stands for, with the evidence
+ * that produced it.
  *
  * Order of the tests is the point. `delivered` and `shipped` come first because
  * they are the shop's own flags and beat any label reading. `paid` alone is
- * `processing`: money has arrived and nothing has left the warehouse. A state
- * with no flag and no recognised label is `pending`, which is what an
- * unstarted order is - the difference from before is that a custom shipped or
- * paid state is no longer swept into it.
+ * `processing`: money has arrived and nothing has left the warehouse.
  */
-export function deriveOrderStatusFromState(state: PrestashopOrderState): OrderStatus {
+export function deriveOrderState(state: PrestashopOrderState): OrderStateDerivation {
   if (isTruthyStateFlag(state.delivered)) {
-    return 'delivered';
+    return { status: 'delivered', basis: 'delivered-flag' };
   }
   if (isTruthyStateFlag(state.shipped)) {
-    return 'shipped';
+    return { status: 'shipped', basis: 'shipped-flag' };
   }
   if (isCancelledOrderState(state)) {
-    return 'cancelled';
+    return { status: 'cancelled', basis: 'cancel-label' };
   }
   if (isRefundedOrderState(state)) {
-    return 'refunded';
+    return { status: 'refunded', basis: 'refund-label' };
   }
   if (isTruthyStateFlag(state.paid)) {
-    return 'processing';
+    return { status: 'processing', basis: 'paid-flag' };
   }
-  return 'pending';
+  return { status: 'pending', basis: 'no-evidence' };
+}
+
+/**
+ * The neutral status alone, for the callers that only route on it.
+ */
+export function deriveOrderStatusFromState(state: PrestashopOrderState): OrderStatus {
+  return deriveOrderState(state).status;
+}
+
+/**
+ * Lowercase, diacritic-folded words of a label.
+ *
+ * Folding is what lets one stem serve "Annulé", "Annullato" and "Geannuleerd".
+ * Splitting into words is what stops a stem spanning two of them.
+ */
+export function toLabelWords(label: string): readonly string[] {
+  return label
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((word) => word.length > 0);
+}
+
+function labelMatchesAnyStem(state: PrestashopOrderState, stems: readonly string[]): boolean {
+  for (const label of extractOrderStateLabels(state.name)) {
+    for (const word of toLabelWords(label)) {
+      if (stems.some((stem) => word.startsWith(stem))) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 function extractTextLabel(value: unknown): string | null {
@@ -146,3 +267,6 @@ function extractTextLabel(value: unknown): string | null {
   }
   return null;
 }
+
+/** Exposed for the spec that pins the minimum-stem-length rule. */
+export const ORDER_STATE_LABEL_STEMS: readonly string[] = [...CANCEL_STEMS, ...REFUND_STEMS];

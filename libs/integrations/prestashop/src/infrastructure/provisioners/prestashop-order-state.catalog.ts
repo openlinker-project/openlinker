@@ -32,7 +32,11 @@ import type { OrderStatus } from '@openlinker/core/orders';
 import { Logger } from '@openlinker/shared/logging';
 
 import type { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
-import { deriveOrderStatusFromState } from '../mappers/prestashop-order-state-semantics';
+import {
+  deriveOrderState,
+  deriveOrderStatusFromState,
+  extractOrderStateLabels,
+} from '../mappers/prestashop-order-state-semantics';
 import type { PrestashopOrderState } from '../../domain/types/prestashop-options.types';
 
 /**
@@ -82,6 +86,20 @@ export class PrestashopOrderStateSnapshot {
   statusOf(stateId: string | number | undefined): OrderStatus | null {
     const state = this.find(stateId);
     return state === null ? null : deriveOrderStatusFromState(state);
+  }
+
+  /**
+   * The states nothing could be read from: no flag set, and no label that reads
+   * as a cancellation or a refund.
+   *
+   * On a clean install these are the awaiting states, where `pending` is the
+   * right answer. On a shop in a language the label vocabulary does not cover
+   * they can include the cancellation or the refund state, and then `pending`
+   * is a false statement about money - which is why the catalogue reports them
+   * instead of letting them pass unremarked (#2607 review).
+   */
+  statesWithoutEvidence(): readonly PrestashopOrderState[] {
+    return this.ordered.filter((state) => deriveOrderState(state).basis === 'no-evidence');
   }
 
   /**
@@ -143,6 +161,29 @@ export class PrestashopOrderStateCatalog {
     this.logger.debug(
       `Read ${rows.length} PrestaShop order states (connection: ${this.connectionId})`
     );
-    return new PrestashopOrderStateSnapshot(rows);
+    const snapshot = new PrestashopOrderStateSnapshot(rows);
+    this.reportStatesWithoutEvidence(snapshot);
+    return snapshot;
+  }
+
+  /**
+   * One line per read, not per order: the read is cached for the connection's
+   * lifetime, so this is the cheapest place to say it once.
+   */
+  private reportStatesWithoutEvidence(snapshot: PrestashopOrderStateSnapshot): void {
+    const unread = snapshot.statesWithoutEvidence();
+    if (unread.length === 0) {
+      return;
+    }
+    const described = unread
+      .map((state) => `id=${state.id} "${extractOrderStateLabels(state.name).join(' / ')}"`)
+      .join(', ');
+    this.logger.warn(
+      `${unread.length} PrestaShop order states carry no flag and no label OpenLinker recognises, ` +
+        `so orders sitting in them read as 'pending': ${described}. That is correct for an ` +
+        `awaiting-payment state. If one of them means cancelled or refunded, OpenLinker cannot ` +
+        `tell from the name and the label needs reporting so the vocabulary can cover it ` +
+        `(connection: ${this.connectionId}).`
+    );
   }
 }

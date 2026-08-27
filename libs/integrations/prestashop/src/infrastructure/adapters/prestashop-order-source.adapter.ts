@@ -2,8 +2,8 @@
  * PrestaShop Order Source Adapter
  *
  * Implements `OrderSourcePort` for PrestaShop WebService API. Provides
- * incremental order-feed ingestion (via `date_upd` watermark cursor) and
- * full-order hydration into the neutral `IncomingOrder` shape. Enables
+ * incremental order-feed ingestion (via a `(date_upd, id)` keyset cursor, #2605)
+ * and full-order hydration into the neutral `IncomingOrder` shape. Enables
  * PrestaShop as an order source alongside marketplace sources (Allegro).
  *
  * @module libs/integrations/prestashop/src/infrastructure/adapters
@@ -89,12 +89,12 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
   }
 
   /**
-   * Pages read in one poll before giving up on draining a single second.
+   * Reads issued in one poll before giving up on draining a single second.
    *
-   * A poll normally reads one page. More than one is needed only when the whole
-   * page was already consumed - which happens when more orders than the page
-   * holds share one `date_upd` second. Bounded so a pathological shop costs a
-   * fixed number of requests per poll rather than an unbounded scan.
+   * A poll normally reads once. More is needed only when everything read was
+   * already consumed - which happens when more orders than the page holds share
+   * one `date_upd` second. Bounded so a pathological shop costs a fixed number
+   * of requests per poll rather than an unbounded scan.
    */
   private static readonly MAX_FEED_PAGES_PER_POLL = 20;
 
@@ -125,6 +125,21 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
     let rowsRead = 0;
 
     for (let page = 0; page < PrestashopOrderSourceAdapter.MAX_FEED_PAGES_PER_POLL; page += 1) {
+      // The window GROWS from the start of the result set; it does not walk
+      // forward on an offset (#2605 review). Under offset paging a row whose
+      // `date_upd` was bumped while the drain was in progress leaves the result
+      // set, every later row shifts down one position, and the row that was on
+      // the page boundary is never returned - and because the cursor then
+      // advances past it, it is dropped for good. Re-reading from the start
+      // cannot skip a row that way: a row can only shift TOWARDS the window,
+      // and a bumped row is now ahead of the cursor, so a later poll reads it.
+      //
+      // The cost is re-examining rows already seen. That is bounded and cheap:
+      // the loop only runs a second time when everything read was already
+      // consumed, so the re-examined rows are all dropped again by the keyset,
+      // and the last read of a pathological drain is
+      // `MAX_FEED_PAGES_PER_POLL * limit` rows in one response.
+      const windowSize = pageSize * (page + 1);
       const rows = await this.httpClient.listResources<PrestashopOrder>(
         'orders',
         {
@@ -138,11 +153,13 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
           // resume from (#2605).
           sort: ['date_upd_ASC', 'id_ASC'],
         },
-        pageSize,
-        page * pageSize
+        windowSize,
+        0
       );
 
-      rowsRead += rows.length;
+      // Assigned, not accumulated: the window is cumulative, so each read
+      // already contains everything the previous one did.
+      rowsRead = rows.length;
 
       for (const row of rows) {
         const item = this.toFeedItem(row, orderStates);
@@ -165,11 +182,12 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
         }
       }
 
-      // A short page ends the collection. A full page whose rows all turned out
-      // to be already consumed means the poll has not made progress yet, so the
-      // next offset is read within this same poll - otherwise a second holding
-      // more orders than one page would return an empty feed for ever.
-      if (rows.length < pageSize || items.length > 0) {
+      // A short read ends the collection: there is nothing beyond the window.
+      // A full window whose rows all turned out to be already consumed means the
+      // poll has not made progress yet, so a wider window is read within this
+      // same poll - otherwise a second holding more orders than one page would
+      // return an empty feed for ever.
+      if (rows.length < windowSize || items.length > 0) {
         break;
       }
     }
@@ -200,7 +218,16 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
         `nextCursor=${nextCursor ?? 'none'} (connection: ${this.connection.id})`
     );
 
-    return { items: filtered, nextCursor: nextCursor ?? input.fromCursor ?? null };
+    // The caller's cursor is re-serialized rather than echoed (#2605 review).
+    // The echo was reachable only for a cursor that could not be parsed - a
+    // parsed one already round-trips through `cursor` - and echoing that back
+    // poll after poll both emits a shape core cannot compare against the keyset
+    // form, which switches its monotonicity guard off, and leaves the unreadable
+    // value in place for ever. `null` is the honest answer: this poll read from
+    // the beginning, and it says so.
+    const echoedCursor = fromCursor === null ? null : formatOrderFeedCursor(fromCursor);
+
+    return { items: filtered, nextCursor: nextCursor ?? echoedCursor };
   }
 
   /**

@@ -98,11 +98,12 @@ export interface OrderCreate {
    * tell what the buyer has actually paid from what the order is worth (#2600).
    *
    * A cash-on-delivery order is worth its full total and nothing has reached
-   * the seller, so a destination that records both figures must record zero
-   * received. It is deliberately the source's own explicit statement, never
-   * inferred from a payment-method name: those are free text, they differ per
-   * shop and per language, and getting it wrong writes a false figure into the
-   * merchant's books.
+   * the seller. What a destination can do about that is the destination's own
+   * business - some record two figures, some decide it from the order's state -
+   * so this field states the fact and nothing more. It is deliberately the
+   * source's own explicit statement, never inferred from a payment-method
+   * name: those are free text, they differ per shop and per language, and
+   * getting it wrong writes a false figure into the merchant's books.
    *
    * Absent means the source did not report it, which is not the same as
    * `'paid'` - a destination that cannot tell keeps its prior behaviour rather

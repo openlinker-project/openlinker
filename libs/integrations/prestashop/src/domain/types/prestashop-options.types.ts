@@ -74,4 +74,14 @@ export interface PrestashopOrderState {
    * "Paid, picking" state stops reading as an order nobody has touched.
    */
   paid?: string | number;
+  /**
+   * `'1'` ⇔ PrestaShop counts an order in this state as a real sale. Read
+   * since the amount-paid review (#2600): `PaymentModule::validateOrder`
+   * records a payment row only for a logable state, and it replaces the
+   * requested state with "Payment error" when the amount paid does not equal
+   * the cart total. So this flag decides whether an imported order is booked
+   * as settled, and whether sending anything other than the full total is
+   * safe.
+   */
+  logable?: string | number;
 }

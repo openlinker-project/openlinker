@@ -62,6 +62,7 @@ import type { PrestashopCurrencyResolver } from '../provisioners/prestashop-curr
 import type { PrestashopTaxRateResolver } from '../provisioners/prestashop-tax-rate.resolver';
 import type { PrestashopTaxRateUnknown } from '../provisioners/prestashop-tax-rate.types';
 import { allocateByLargestRemainder } from '@openlinker/shared/money';
+import { isTruthyStateFlag } from '../mappers/prestashop-order-state-semantics';
 import { toPrestashopProductAttributeId } from '../mappers/prestashop-variant-id';
 import type { CustomerProjectionRepositoryPort } from '@openlinker/core/customers';
 import type { PrestashopConnectionConfig } from '../../domain/types/prestashop-config.types';
@@ -483,6 +484,7 @@ export class PrestashopOrderProcessorManagerAdapter
       // already in place; the module sets the cart's delivery_option then calls
       // validateOrder with $dont_touch_amount so OL's total is authoritative.
       const stateId = await this.resolveStateId(order.status);
+      await this.warnIfUnpaidOrderBooksAsSettled(order, stateId);
       let externalOrderId: string;
       let resolvedReference: string;
 
@@ -540,7 +542,7 @@ export class PrestashopOrderProcessorManagerAdapter
           const imported = await this.openlinkerModuleClient.importOrder({
             idCart: Number.parseInt(String(externalCartId), 10),
             idOrderState: stateId,
-            amountPaid: this.resolveAmountPaid(order),
+            amountPaid: order.totals.total,
             // Matches the payment provenance the WS path recorded — the module
             // delegates to ps_checkpayment::validateOrder.
             paymentMethod: 'Check payment',
@@ -590,6 +592,9 @@ export class PrestashopOrderProcessorManagerAdapter
         // characters and push the product identity out of every truncated
         // surface that renders it (#2052 — see `taxRateUnknownError`).
         error instanceof PrestashopTaxRateUnknownException ||
+        // Same reason as in `updateFulfillment`: the classifier keys on the
+        // class, so wrapping it would cost the refusal its terminal handling.
+        error instanceof PrestashopOrderStateUnresolvedException ||
         // Same contract for the currency refusal (#2139). What it buys today is
         // the operator-facing message: wrapping prepends 35 characters and
         // pushes the currency identity out of the truncated surfaces. It also
@@ -937,7 +942,11 @@ export class PrestashopOrderProcessorManagerAdapter
     } catch (error) {
       if (
         error instanceof PrestashopResourceNotFoundException ||
-        error instanceof PrestashopApiException
+        error instanceof PrestashopApiException ||
+        // The shop has no state for the requested status (#2607). Wrapping it
+        // made the retry classifier see a generic API failure and spend the
+        // whole retry ladder on a refusal only an operator can clear.
+        error instanceof PrestashopOrderStateUnresolvedException
       ) {
         throw error;
       }
@@ -1361,37 +1370,52 @@ export class PrestashopOrderProcessorManagerAdapter
   }
 
   /**
-   * What the buyer has ALREADY paid, which is not the same as what the order is
-   * worth (#2600).
+   * Warn when the source says the buyer has not paid yet but the state the
+   * order is about to be imported into makes PrestaShop book it as settled
+   * (#2600 review).
    *
-   * PrestaShop records two figures. `total_paid` is the order's value, rebuilt
-   * from the cart (pinned lines plus sidecar shipping). `total_paid_real` is
-   * what has actually reached the seller, and it is this value - sent with
-   * `$dont_touch_amount = true`, so PrestaShop stores it verbatim without
-   * re-rounding (ADR-016). The source is authoritative for both: `totals.total`
-   * is the buyer-paid order value (ADR-014), and `paymentStatus` is the
-   * source's own statement of whether that money has arrived.
+   * `amount_paid` cannot express "nothing has arrived". PrestaShop starts
+   * `total_paid_real` at 0 and raises it only from `addOrderPayment`, which
+   * `PaymentModule::validateOrder` calls only for a `logable` state. So on a
+   * non-logable state the figure is already 0 whatever OpenLinker sends, and on
+   * a logable state an amount that differs from the cart total makes
+   * validateOrder discard the requested state and use "Payment error" instead.
+   * Sending 0 therefore never records an unpaid order correctly; it only turns
+   * a correct state into a wrong one.
    *
-   * For cash on delivery nothing has arrived, so the correct figure is 0 and
-   * the full value stays outstanding for the courier to collect. Sending the
-   * total instead marks the order settled and the shop's books show income it
-   * never received. The same holds for an order still awaiting payment.
-   *
-   * The distinction comes only from the neutral `paymentStatus`, never from a
-   * payment-module name: those are free text that differs per shop and per
-   * language. A source that reports nothing keeps the previous behaviour rather
-   * than defaulting every order to unpaid.
+   * What actually decides the outcome is the state, and the state is the
+   * operator's to choose - it comes from their own order-state mapping, or from
+   * the shop's catalogue when they have not mapped it. OpenLinker will not
+   * silently move an order somewhere else than asked, so it reports the
+   * mismatch instead of hiding it.
    */
-  private resolveAmountPaid(order: OrderCreate): number {
-    if (order.paymentStatus === 'cod' || order.paymentStatus === 'awaiting') {
-      this.logger.log(
-        `Importing PrestaShop order as not-yet-paid: paymentStatus='${order.paymentStatus}' ` +
-          `orderNumber=${order.orderNumber ?? 'N/A'} amountPaid=0 ` +
-          `outstanding=${order.totals.total} (connection: ${this.connection.id})`
-      );
-      return 0;
+  private async warnIfUnpaidOrderBooksAsSettled(
+    order: OrderCreate,
+    stateId: number
+  ): Promise<void> {
+    if (order.paymentStatus !== 'cod' && order.paymentStatus !== 'awaiting') {
+      return;
     }
-    return order.totals.total;
+    let state: PrestashopOrderState | null;
+    try {
+      state = await this.lookupOrderState(String(stateId));
+    } catch {
+      // The catalogue read is already logged where it fails, and an
+      // observability warning must never be the thing that fails an import.
+      return;
+    }
+    if (state === null || !isTruthyStateFlag(state.logable)) {
+      return;
+    }
+    this.logger.warn(
+      `Order will be booked as settled although the source reports it unpaid: ` +
+        `paymentStatus='${order.paymentStatus}' orderNumber=${order.orderNumber ?? 'N/A'} ` +
+        `id_order_state=${stateId} value=${order.totals.total}. That state counts as a real ` +
+        `sale in PrestaShop, so the shop records the full value as received. Map this status to ` +
+        `a state that does not count as a sale (for example "Awaiting cash on delivery ` +
+        `validation") on this connection to record it as outstanding ` +
+        `(connection: ${this.connection.id}).`
+    );
   }
 
   // ─────────────────────────────────────────────────────────────────────────
