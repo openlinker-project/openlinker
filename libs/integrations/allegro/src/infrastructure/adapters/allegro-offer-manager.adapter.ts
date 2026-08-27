@@ -683,17 +683,16 @@ export class AllegroOfferManagerAdapter
       );
 
       this.logger.debug(
-        `Allegro batch offer quantity command submitted: commandId=${response.data.id}, offers=${items.length} (connection: ${this.connectionId})`
+        `Allegro batch offer quantity command submitted: commandId=${commandId}, offers=${items.length} (connection: ${this.connectionId})`
       );
 
-      await this.persistBatchCommandRows(response.data.id, response.data.status, items);
+      await this.persistBatchCommandRows(commandId, response.data.status, items);
 
       if (response.data.status === 'REJECTED') {
         // Allegro answered synchronously — there is nothing to poll for and
         // no task will ever appear, so reporting this via the poll-timeout
         // branch below would discard the platform's own rejection reason.
-        const message =
-          response.data.errors?.map((e) => `${e.code}: ${e.message}`).join('; ') ?? 'rejected';
+        const message = this.formatAllegroTaskErrors(response.data.errors) ?? 'rejected';
         for (const item of items) {
           failed.push({ offerId: item.offerId, errorCode: 'rejected', message });
           await this.persistBatchOfferStatus(commandId, item.offerId, 'failed', message);
@@ -701,7 +700,7 @@ export class AllegroOfferManagerAdapter
         return;
       }
 
-      const result = await this.pollQuantityCommandStatus(response.data.id);
+      const result = await this.pollQuantityCommandStatus(commandId);
       const tasksByOfferId = new Map((result?.tasks ?? []).map((task) => [task.offerId, task]));
 
       for (const item of items) {
@@ -713,8 +712,7 @@ export class AllegroOfferManagerAdapter
         }
         if (task) {
           const errorCode = task.errors?.[0]?.code ?? 'unknown';
-          const message =
-            task.errors?.map((e) => `${e.code}: ${e.message}`).join('; ') ?? task.message;
+          const message = this.formatAllegroTaskErrors(task.errors) ?? task.message;
           failed.push({ offerId: item.offerId, errorCode, message });
           await this.persistBatchOfferStatus(commandId, item.offerId, 'failed', message ?? null);
           continue;
@@ -799,6 +797,21 @@ export class AllegroOfferManagerAdapter
         `Failed to persist batch offer quantity command status (commandId: ${commandId}, offerId: ${offerId}): ${(persistError as Error).message}`
       );
     }
+  }
+
+  /**
+   * Joins Allegro's `{code, message}` error list into one string, or
+   * returns `undefined` when there is nothing to report — including when
+   * `errors` is present but empty, so callers can safely `?? fallback`
+   * without a defined-but-empty string masking it (#2622 review).
+   */
+  private formatAllegroTaskErrors(
+    errors: Array<{ code: string; message: string }> | undefined
+  ): string | undefined {
+    if (!errors || errors.length === 0) {
+      return undefined;
+    }
+    return errors.map((e) => `${e.code}: ${e.message}`).join('; ');
   }
 
   /**
@@ -2596,8 +2609,7 @@ export class AllegroOfferManagerAdapter
     if (failedTasks.length > 0) {
       const errorMessages = failedTasks
         .map((t) => {
-          const errDetails =
-            t.errors?.map((e) => `${e.code}: ${e.message}`).join('; ') ?? t.message ?? 'unknown';
+          const errDetails = this.formatAllegroTaskErrors(t.errors) ?? t.message ?? 'unknown';
           return `offer ${t.offerId}: ${errDetails}`;
         })
         .join(', ');
