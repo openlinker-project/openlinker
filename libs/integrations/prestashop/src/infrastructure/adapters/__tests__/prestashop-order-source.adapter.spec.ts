@@ -706,6 +706,75 @@ describe('PrestashopOrderSourceAdapter', () => {
       expect(incoming.shippingAddress).toEqual(incoming.billingAddress);
       expect(incoming.billingAddress?.address1).toBe('Bill St 1');
     });
+
+    it('should carry the buyer tax id verbatim from vat_number (#2599)', async () => {
+      mockHttpClient.getResource = jest.fn().mockImplementation((resource: string, id: string) => {
+        if (resource === 'orders') return Promise.resolve(orderWithAddresses);
+        if (resource === 'addresses') {
+          return Promise.resolve({
+            id,
+            address1: 'ul. Testowa 1',
+            city: 'Poznań',
+            postcode: '60-001',
+            id_country: '14',
+            vat_number: ' PL 123-456-78-90 ',
+          });
+        }
+        if (resource === 'countries') return Promise.resolve({ id, iso_code: 'PL' });
+        return Promise.resolve({});
+      });
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([]);
+
+      const incoming = await adapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.billingAddress?.taxId).toBe('PL 123-456-78-90');
+      expect(incoming.shippingAddress?.taxId).toBe('PL 123-456-78-90');
+    });
+
+    it('should read a blank vat_number as the shop asserting the buyer has no tax id (#2599)', async () => {
+      mockHttpClient.getResource = jest.fn().mockImplementation((resource: string, id: string) => {
+        if (resource === 'orders') return Promise.resolve(orderWithAddresses);
+        if (resource === 'addresses') {
+          return Promise.resolve({
+            id,
+            address1: 'ul. Testowa 1',
+            city: 'Poznań',
+            postcode: '60-001',
+            id_country: '14',
+            vat_number: '',
+          });
+        }
+        if (resource === 'countries') return Promise.resolve({ id, iso_code: 'PL' });
+        return Promise.resolve({});
+      });
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([]);
+
+      const incoming = await adapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.billingAddress?.taxId).toBeNull();
+    });
+
+    it('should leave the tax id unknown when the address resource carries no vat_number at all (#2599)', async () => {
+      mockHttpClient.getResource = jest.fn().mockImplementation((resource: string, id: string) => {
+        if (resource === 'orders') return Promise.resolve(orderWithAddresses);
+        if (resource === 'addresses') {
+          return Promise.resolve({
+            id,
+            address1: 'ul. Testowa 1',
+            city: 'Poznań',
+            postcode: '60-001',
+            id_country: '14',
+          });
+        }
+        if (resource === 'countries') return Promise.resolve({ id, iso_code: 'PL' });
+        return Promise.resolve({});
+      });
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([]);
+
+      const incoming = await adapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.billingAddress?.taxId).toBeUndefined();
+    });
   });
 
   describe('getOrder — buyer e-mail hydration (#1928)', () => {
