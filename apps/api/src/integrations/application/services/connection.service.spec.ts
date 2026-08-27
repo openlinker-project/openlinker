@@ -8,6 +8,7 @@
  */
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
+import type { PricingRule } from '@openlinker/core/identifier-mapping';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConnectionService } from './connection.service';
 import type {
@@ -749,6 +750,96 @@ describe('ConnectionService', () => {
           })
         ).rejects.toThrow(BadRequestException);
         expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('neutral stock and pricing config validation (#2610)', () => {
+      it('should accept a create carrying all three keys within bounds', async () => {
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await expect(
+          service.create({
+            ...payload,
+            config: {
+              ...payload.config,
+              stockSafetyBuffer: 3,
+              stockZeroThreshold: 5,
+              pricingRule: { type: 'margin', percent: 33.333, rounding: 'endingIn99' },
+            },
+          })
+        ).resolves.toEqual(mockConnection);
+        expect(connectionPort.create).toHaveBeenCalled();
+      });
+
+      it('should reject a margin of 100% or more, which core degrades to the catalogue price', async () => {
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, pricingRule: { type: 'margin', percent: 120 } },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should accept a markup of 100% or more, which is a real price above the catalogue', async () => {
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, pricingRule: { type: 'markup', percent: 120 } },
+          })
+        ).resolves.toEqual(mockConnection);
+      });
+
+      it('should reject a negative buffer and a non-numeric threshold', async () => {
+        await expect(
+          service.create({ ...payload, config: { ...payload.config, stockSafetyBuffer: -1 } })
+        ).rejects.toThrow(BadRequestException);
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, stockZeroThreshold: '5' as unknown as number },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should reject an unknown pricing rule type', async () => {
+        await expect(
+          service.create({
+            ...payload,
+            // A shape only a non-browser caller can send, which is the point.
+            config: {
+              ...payload.config,
+              pricingRule: { type: 'discount', percent: 10 } as unknown as PricingRule,
+            },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should reject the same values on update, which is the path the raw JSON editor takes', async () => {
+        connectionPort.get.mockResolvedValue(mockConnection);
+
+        await expect(
+          service.update('connection-123', {
+            config: {
+              baseUrl: 'https://shop.example.com',
+              pricingRule: { type: 'margin', percent: 100 },
+            },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
+      it('should leave a config with none of the three keys untouched', async () => {
+        connectionPort.get.mockResolvedValue(mockConnection);
+        connectionPort.update.mockResolvedValue(mockConnection);
+        const config = { baseUrl: 'https://shop.example.com' };
+
+        await expect(service.update('connection-123', { config })).resolves.toEqual(mockConnection);
+        expect(connectionPort.update).toHaveBeenCalledWith('connection-123', { config });
       });
     });
   });

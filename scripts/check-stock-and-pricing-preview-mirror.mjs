@@ -27,10 +27,20 @@
  * Both files are parsed TEXTUALLY (no TypeScript import, no transpile) so this
  * stays a zero-dependency `check:invariants` step like its siblings.
  *
- * SCOPE, so the wrong guard is not trusted: only the four function bodies are
- * compared. The mirrored `PricingRule` / `PriceRoundingMode` types are NOT -
- * a field added to one side only is caught by that side's own call sites - and
- * nothing here asserts that the form actually calls the mirror.
+ * SCOPE, so the wrong guard is not trusted: this guards THE FUNCTION, not the
+ * CALL. Only the four function bodies are compared. Three things it therefore
+ * does not catch:
+ *
+ * - Call sites. If core ever swaps the `reserve` and `zeroThreshold`
+ *   parameters, both bodies stay identical and this check passes while the
+ *   form's call and core's callers now mean different things.
+ * - The read-and-coerce helpers. The form's own `toUnits` and `Number(percent)`
+ *   can drift from `readStockSafetyBuffer`, `readStockZeroThreshold` and
+ *   `readPricingRule` freely.
+ * - The mirrored `PricingRule` / `PriceRoundingMode` types. A field added to
+ *   one side only is caught by that side's own call sites.
+ *
+ * Nothing here asserts that the form actually calls the mirror either.
  */
 
 import { readFile } from 'node:fs/promises';

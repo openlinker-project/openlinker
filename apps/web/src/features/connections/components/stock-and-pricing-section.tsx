@@ -90,11 +90,18 @@ export function StockAndPricingSection({
   const percent = form.watch('pricingRule.percent') ?? '';
   const rounding = form.watch('pricingRule.rounding') ?? '';
 
+  const reserveUnits = toUnits(safetyBuffer);
+  const thresholdUnits = toUnits(zeroThreshold);
   const examplePublishedStock = applyStockSafetyBuffer(
     EXAMPLE_STOCK,
-    toUnits(safetyBuffer),
-    toUnits(zeroThreshold),
+    reserveUnits,
+    thresholdUnits,
   );
+
+  // A fixed 10-unit example demonstrates nothing about a low floor: the floor
+  // only shows up on a line that is actually low. This is the highest stock
+  // level that still publishes 0, so the operator sees where the floor bites.
+  const lowStockExample = thresholdUnits > 0 ? reserveUnits + thresholdUnits - 1 : null;
 
   const parsedPercent = percent === '' ? 0 : Number(percent);
   const previewRule: PricingRule | null =
@@ -161,6 +168,12 @@ export function StockAndPricingSection({
           <p className="rate-limit-section__help">
             With <strong>{EXAMPLE_STOCK} units</strong> in your catalogue, this destination is told{' '}
             <strong>{examplePublishedStock}</strong>.
+            {lowStockExample !== null && lowStockExample >= 1 ? (
+              <>
+                {' '}
+                With <strong>{lowStockExample} units</strong> it is told <strong>0</strong>.
+              </>
+            ) : null}
           </p>
 
           <FormField

@@ -37,6 +37,7 @@ import {
   applyPricingRule,
   applyStockSafetyBuffer,
   isPresentButInvalidStockSafetyBuffer,
+  isPresentButInvalidStockZeroThreshold,
   readPricingRule,
   readStockSafetyBuffer,
   readStockZeroThreshold,
@@ -171,7 +172,7 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
       stock: applyStockSafetyBuffer(
         input.stock,
         this.resolveStockReserve(input.connectionId, connection.config),
-        readStockZeroThreshold(connection.config)
+        this.resolveStockZeroThreshold(connection.id, connection.config)
       ),
       status: input.status,
       // Thread the variant SKU so shop products publish with a reference the
@@ -488,10 +489,29 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
     if (isPresentButInvalidStockSafetyBuffer(config)) {
       this.logger.warn(
         `Connection ${connectionId} has a stockSafetyBuffer that is present but invalid ` +
-          `(non-numeric, negative, zero, or non-finite) — it coerces to 0, so no stock ` +
+          `(non-numeric, negative, or non-finite) — it coerces to 0, so no stock ` +
           `reserve is applied. Set a positive integer to enable oversell protection.`
       );
     }
     return readStockSafetyBuffer(config);
+  }
+
+  /**
+   * The connection's zero threshold, warning when the key is set to something
+   * that reads back as off. A mistyped threshold lets the destination sell the
+   * low stock the operator asked it to hide.
+   */
+  private resolveStockZeroThreshold(
+    connectionId: string,
+    config: Parameters<typeof readStockZeroThreshold>[0]
+  ): number {
+    if (isPresentButInvalidStockZeroThreshold(config)) {
+      this.logger.warn(
+        `Connection ${connectionId} has a stockZeroThreshold that is present but invalid ` +
+          `(non-numeric, negative, or non-finite) — it coerces to 0, so no low-stock floor ` +
+          `is applied. Set a positive integer to enable it.`
+      );
+    }
+    return readStockZeroThreshold(config);
   }
 }

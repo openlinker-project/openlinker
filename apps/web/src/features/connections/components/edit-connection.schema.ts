@@ -179,8 +179,12 @@ const stockPolicyFormSchema = z.object({
  * The `margin` guard is the reason this is a `superRefine` and not two plain
  * fields: the server degrades a margin of 100% or more back to the catalogue
  * price, so an operator who typed 120 would save happily and then quietly
- * publish an unchanged price. Refusing it here is the only place they find out
- * while they can still fix it.
+ * publish an unchanged price. Refusing it here is where they find out while
+ * they can still fix it.
+ *
+ * It is not the only place. The same bound is enforced server-side on the
+ * neutral config keys, which is what covers the raw JSON editor on this very
+ * form and every non-browser caller.
  */
 const pricingRuleFormSchema = z
   .object({
@@ -189,7 +193,10 @@ const pricingRuleFormSchema = z
       .optional(),
     percent: z
       .union([
-        z.string().regex(/^\d+(\.\d{1,2})?$/, 'Must be a number, 0 or more'),
+        // Any decimal precision the backend accepts. A tighter rule rejected a
+        // value already stored on the connection, which blocked every save on
+        // the page until the operator fixed a field they never set.
+        z.string().regex(/^\d+(\.\d+)?$/, 'Must be a number, 0 or more'),
         z.literal(''),
       ])
       .optional(),

@@ -177,6 +177,65 @@ export class ConnectionService implements IConnectionService {
     }
   }
 
+  /**
+   * Core-owned bounds check for the three platform-neutral stock and pricing
+   * keys (#2610): `config.stockSafetyBuffer`, `config.stockZeroThreshold` and
+   * `config.pricingRule`. Neutral, like `validateRateLimitConfig` - every
+   * adapter shares it, so no per-plugin config-shape validator knows about it.
+   *
+   * The connection form refuses a bad value already, but the form is not the
+   * only way in: the raw JSON editor sits on the same page and bypasses the
+   * form's own rules, and curl and MCP bypass the browser entirely. The
+   * margin bound matters most - core degrades a margin of 100% or more back to
+   * the catalogue price, so without this the operator saves happily and then
+   * quietly publishes an unchanged price.
+   *
+   * Never defaults a value in; an absent key stays absent.
+   */
+  private validateStockAndPricingConfig(config: Record<string, unknown>): void {
+    for (const key of ['stockSafetyBuffer', 'stockZeroThreshold'] as const) {
+      const value = config[key];
+      if (value === undefined || value === null) continue;
+      if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+        throw new BadRequestException(`config.${key} must be a number of 0 or more`);
+      }
+    }
+
+    const pricingRule = config.pricingRule;
+    if (pricingRule === undefined || pricingRule === null) return;
+    if (typeof pricingRule !== 'object' || Array.isArray(pricingRule)) {
+      throw new BadRequestException('config.pricingRule must be an object');
+    }
+
+    const { type, percent, rounding } = pricingRule as Record<string, unknown>;
+    const types = ['passthrough', 'markup', 'margin'];
+    if (type !== undefined && (typeof type !== 'string' || !types.includes(type))) {
+      throw new BadRequestException(
+        `config.pricingRule.type must be one of ${types.join(', ')}`
+      );
+    }
+    const roundings = ['none', 'nearestWhole', 'endingIn99'];
+    if (
+      rounding !== undefined &&
+      (typeof rounding !== 'string' || !roundings.includes(rounding))
+    ) {
+      throw new BadRequestException(
+        `config.pricingRule.rounding must be one of ${roundings.join(', ')}`
+      );
+    }
+    if (percent !== undefined && percent !== null) {
+      if (typeof percent !== 'number' || !Number.isFinite(percent) || percent < 0) {
+        throw new BadRequestException('config.pricingRule.percent must be a number of 0 or more');
+      }
+      if (type === 'margin' && percent >= 100) {
+        throw new BadRequestException(
+          'config.pricingRule.percent must be below 100 for a margin rule. To add more than ' +
+            'the catalogue price, use a markup instead.'
+        );
+      }
+    }
+  }
+
   private async validateCredentialsShape(
     adapterKey: string,
     credentials: Record<string, unknown>
@@ -321,6 +380,7 @@ export class ConnectionService implements IConnectionService {
       // deliberate skip — plugins with no fixed shape don't register one.
       if (rest.config !== undefined) {
         this.validateRateLimitConfig(rest.config);
+        this.validateStockAndPricingConfig(rest.config);
         await this.validateConfigShape(metadata.adapterKey, rest.config);
       }
 
@@ -568,6 +628,7 @@ export class ConnectionService implements IConnectionService {
       // platform default via `resolveAdapterMetadata`.
       if (patch.config !== undefined && metadata) {
         this.validateRateLimitConfig(patch.config);
+        this.validateStockAndPricingConfig(patch.config);
         await this.validateConfigShape(metadata.adapterKey, patch.config);
       }
 

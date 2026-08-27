@@ -18,6 +18,7 @@ import {
   ConnectionPort,
   applyStockSafetyBuffer,
   isPresentButInvalidStockSafetyBuffer,
+  isPresentButInvalidStockZeroThreshold,
   readStockSafetyBuffer,
   readStockZeroThreshold,
 } from '@openlinker/core/identifier-mapping';
@@ -77,8 +78,15 @@ export class InventorySyncService implements IInventorySyncService {
     if (isPresentButInvalidStockSafetyBuffer(connection.config)) {
       this.logger.warn(
         `Connection ${connectionId} has a stockSafetyBuffer that is present but invalid ` +
-          `(non-numeric, negative, zero, or non-finite) — it coerces to 0, so no stock ` +
+          `(non-numeric, negative, or non-finite) — it coerces to 0, so no stock ` +
           `reserve is applied to write-back. Set a positive integer to enable oversell protection.`
+      );
+    }
+    if (isPresentButInvalidStockZeroThreshold(connection.config)) {
+      this.logger.warn(
+        `Connection ${connectionId} has a stockZeroThreshold that is present but invalid ` +
+          `(non-numeric, negative, or non-finite) — it coerces to 0, so no low-stock floor ` +
+          `is applied to write-back. Set a positive integer to enable it.`
       );
     }
     const reserve = readStockSafetyBuffer(connection.config);
