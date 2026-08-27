@@ -101,14 +101,6 @@ export function AnalyticsPage(): ReactElement {
       ) : trustQuery.data ? (
         <>
           <AnalyticsDegradationBanner connections={trustQuery.data.connections} />
-          <AnalyticsTrustHeader connections={trustQuery.data.connections} />
-          {/* Coverage gaps and stock-at-risk are listing facts, not order
-              facts, so they render regardless of ingestion status — a fresh
-              install with a full catalogue and no orders yet is exactly
-              when they matter most (#2120 review, SUGGESTION). Only the
-              order-derived sections below stay behind the never-ingested
-              gate. */}
-          <AnalyticsNeedsAttention />
           {trustQuery.data.connections.every((entry) => entry.status === 'never-ingested') ? (
             <EmptyState
               title="First orders are still arriving"
@@ -126,6 +118,14 @@ export function AnalyticsPage(): ReactElement {
               <ProductSalesTable filters={salesFilters} />
             </>
           )}
+          {/* Coverage gaps and stock-at-risk are listing facts, not order
+              facts, so they render regardless of ingestion status — a fresh
+              install with a full catalogue and no orders yet is exactly
+              when they matter most (#2120 review, SUGGESTION). Both this
+              section and the data-coverage header below it render
+              unconditionally, after the order-derived figures above. */}
+          <AnalyticsNeedsAttention />
+          <AnalyticsTrustHeader connections={trustQuery.data.connections} />
         </>
       ) : null}
     </PageLayout>
