@@ -135,6 +135,70 @@ describe('suggestCatalogueValueWithin', () => {
   });
 });
 
+describe('sweep cadence (#2660 review)', () => {
+  // Both cadences are settable through the worker's environment
+  // (OL_PRODUCT_SYNC_CRON / OL_INVENTORY_SYNC_CRON, and apps/api/.env.example
+  // ships one uncommented), so a pass length computed against a hardcoded 20 /
+  // 15 minutes is an order of magnitude wrong on an install that changed one.
+  it('should compute the catalogue pass from the cadence in force', () => {
+    const projection = projectSyncPacing({
+      ...DEFAULTS,
+      catalogueSweepCadence: '0 */6 * * *',
+    });
+
+    // 100 000 / 500 = 200 runs, six hours apart, versus 2.8 d at */20.
+    expect(projection.catalogueIntervalMinutes).toBe(360);
+    expect(formatDays(projection.cataloguePassDays)).toBe('50 d');
+  });
+
+  it('should compute the stock pass from the cadence in force', () => {
+    const projection = projectSyncPacing({
+      ...DEFAULTS,
+      inventorySweepCadence: '0 * * * *',
+    });
+
+    expect(projection.inventoryIntervalMinutes).toBe(60);
+    expect(projection.stockPassDays).not.toBe(
+      projectSyncPacing(DEFAULTS).stockPassDays
+    );
+  });
+
+  it('should measure the run window against the reported cadence, not the shipped one', () => {
+    const projection = projectSyncPacing({
+      ...DEFAULTS,
+      catalogueSweepBudget: 2000,
+      catalogueSweepCadence: '*/5 * * * *',
+    });
+
+    expect(projection.catalogueWindowSeconds).toBe(300);
+    // 184 s of work against a 300 s window still fits; against */20 the same
+    // budget looked comfortable, which is the point of reading the real one.
+    expect(projection.exceedsInterval).toBe(false);
+  });
+
+  // Absent or unreadable falls back to the shipped cadence AND says so, so the
+  // page can qualify the figure instead of stating it as fact.
+  it('should fall back to the shipped cadence and report that it assumed one', () => {
+    expect(projectSyncPacing(DEFAULTS).assumedShippedCadence).toBe(true);
+    expect(
+      projectSyncPacing({ ...DEFAULTS, catalogueSweepCadence: 'not-a-cron' })
+        .assumedShippedCadence
+    ).toBe(true);
+    expect(projectSyncPacing({ ...DEFAULTS, catalogueSweepCadence: 'not-a-cron' })
+      .catalogueIntervalMinutes).toBe(20);
+  });
+
+  it('should report no assumption when both cadences were reported', () => {
+    const projection = projectSyncPacing({
+      ...DEFAULTS,
+      catalogueSweepCadence: '*/20 * * * *',
+      inventorySweepCadence: '*/15 * * * *',
+    });
+
+    expect(projection.assumedShippedCadence).toBe(false);
+  });
+});
+
 describe('formatters', () => {
   it('should render seconds whole', () => {
     expect(formatSeconds(183.9999)).toBe('184 s');

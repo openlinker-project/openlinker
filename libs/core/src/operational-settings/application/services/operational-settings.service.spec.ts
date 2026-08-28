@@ -42,7 +42,11 @@ describe('OperationalSettingsService', () => {
       expect(view.inventorySweepBudget).toMatchObject({ value: 100, source: 'default' });
       expect(view.sweepPageSize).toMatchObject({ value: 100, source: 'default' });
       expect(view.deletionAuditBudget).toMatchObject({ value: 100, source: 'default' });
-      expect(view.deletionAuditCadence).toEqual({ value: '0 * * * *', source: 'default' });
+      expect(view.deletionAuditCadence).toEqual({
+        value: '0 * * * *',
+        source: 'default',
+        workerMayDiffer: true,
+      });
       expect(view.updatedAt).toBeNull();
       expect(view.updatedBy).toBeNull();
     });
@@ -54,7 +58,11 @@ describe('OperationalSettingsService', () => {
       const view = await service.resolve();
 
       expect(view.catalogueSweepBudget).toMatchObject({ value: 250, source: 'env' });
-      expect(view.deletionAuditCadence).toEqual({ value: '*/30 * * * *', source: 'env' });
+      expect(view.deletionAuditCadence).toEqual({
+        value: '*/30 * * * *',
+        source: 'env',
+        workerMayDiffer: true,
+      });
     });
 
     it('should let a stored row win over the env var and report the row stamp', async () => {
@@ -84,7 +92,11 @@ describe('OperationalSettingsService', () => {
 
       const view = await service.resolve();
 
-      expect(view.deletionAuditCadence).toEqual({ value: '0 * * * *', source: 'default' });
+      expect(view.deletionAuditCadence).toEqual({
+        value: '0 * * * *',
+        source: 'default',
+        workerMayDiffer: true,
+      });
     });
 
     it('should read the row on every call, so a change needs no restart', async () => {
@@ -198,6 +210,85 @@ describe('OperationalSettingsService', () => {
       await service.updateSettings({ deletionAuditCadence: '0 3 * * 1' }, 'ada');
 
       expect(repository.upsertSettings).toHaveBeenCalled();
+    });
+
+    // The gap check measured the NEXT TWO firings only, so a schedule that
+    // clusters its firings and then stops for a year passed it: Jan 1 and
+    // Jan 2 are one day apart, and the audit then ran twice a year with the
+    // gate reporting it closed (#2660 review).
+    it('should refuse a clustered cadence whose first two firings are close but which stops for a year', async () => {
+      await expect(
+        service.updateSettings({ deletionAuditCadence: '0 0 1,2 1 *' }, null)
+      ).rejects.toThrow('cannot be disabled through this surface');
+      expect(repository.upsertSettings).not.toHaveBeenCalled();
+    });
+
+    it('should refuse a monthly cadence for the same reason', async () => {
+      await expect(
+        service.updateSettings({ deletionAuditCadence: '0 3 1 * *' }, null)
+      ).rejects.toThrow('cannot be disabled through this surface');
+    });
+
+    it('should accept a dense day-of-month list that still fires at least weekly', async () => {
+      // Every 5th day of the month, so the longest gap (26th to the 1st) is
+      // six days. Compliant — and the shape that shows the check has to walk
+      // by TIME rather than by a fixed number of consecutive firings, since a
+      // day-of-month list fires many times in a row and then not for a while.
+      await service.updateSettings({ deletionAuditCadence: '0 3 1,6,11,16,21,26 * *' }, 'ada');
+
+      expect(repository.upsertSettings).toHaveBeenCalled();
+    });
+  });
+
+  describe('worker-environment honesty (#2660 review)', () => {
+    it('should mark an env-resolved value as one the worker may not share', async () => {
+      env.OL_PRODUCT_SYNC_PAGE_LIMIT = '250';
+
+      const view = await service.resolve();
+
+      expect(view.catalogueSweepBudget).toMatchObject({
+        source: 'env',
+        workerMayDiffer: true,
+      });
+    });
+
+    it('should mark a stored value as one both processes read', async () => {
+      repository.findSettings.mockResolvedValue(
+        new OperationalSettings(750, null, null, null, null, new Date(), 'ada')
+      );
+
+      const view = await service.resolve();
+
+      expect(view.catalogueSweepBudget).toMatchObject({
+        source: 'setting',
+        workerMayDiffer: false,
+      });
+    });
+
+    it('should report the sweep cadences in force so a caller does not assume the shipped ones', async () => {
+      env.OL_PRODUCT_SYNC_CRON = '0 */6 * * *';
+
+      const view = await service.resolve();
+
+      expect(view.catalogueSweepCadence).toEqual({
+        value: '0 */6 * * *',
+        source: 'env',
+        workerMayDiffer: true,
+      });
+      expect(view.inventorySweepCadence).toEqual({
+        value: '*/15 * * * *',
+        source: 'default',
+        workerMayDiffer: true,
+      });
+    });
+
+    it('should fall back rather than report a sweep cadence the scheduler could not register', async () => {
+      env.OL_INVENTORY_SYNC_CRON = 'not-a-cron';
+
+      const view = await service.resolve();
+
+      expect(view.inventorySweepCadence.value).toBe('*/15 * * * *');
+      expect(view.inventorySweepCadence.source).toBe('default');
     });
   });
 });

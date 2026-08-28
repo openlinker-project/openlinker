@@ -62,11 +62,22 @@ export interface ResolvedNumberSetting {
   absoluteReason?: string;
   /** True when the effective value already exceeds our recommendation. */
   aboveRecommended?: boolean;
+  /**
+   * True when the API process cannot vouch for what the worker applies.
+   *
+   * The API and the worker are separate processes with separate environments,
+   * and the sweeps run in the worker — so an `env` or `default` rung the API
+   * reports describes the API's own environment, not what runs. Optional, so a
+   * response that predates the field renders without the caveat rather than
+   * asserting one either way.
+   */
+  workerMayDiffer?: boolean;
 }
 
 export interface ResolvedCadenceSetting {
   value: string;
   source: OperationalSettingSource;
+  workerMayDiffer?: boolean;
 }
 
 /**
@@ -89,6 +100,15 @@ export interface OperationalSettingsView {
   sweepPageSize: ResolvedNumberSetting;
   deletionAuditBudget: ResolvedNumberSetting;
   deletionAuditCadence: ResolvedCadenceSetting;
+  /**
+   * How often each sweep runs. Read-only — there is no input for either.
+   *
+   * Optional so a response that predates them still renders; the page then
+   * falls back to the shipped cadence and says the figure assumes it, rather
+   * than stating a pass length as fact.
+   */
+  catalogueSweepCadence?: ResolvedCadenceSetting;
+  inventorySweepCadence?: ResolvedCadenceSetting;
   /**
    * Always `true`. The deletion audit is the deletion authority and has no
    * off switch on this surface; the page states that rather than leaving its

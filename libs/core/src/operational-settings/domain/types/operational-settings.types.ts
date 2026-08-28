@@ -48,7 +48,7 @@ export interface OperationalSettingBound {
   /**
    * The refusal line. Also ours - a sanity backstop against a typo or a
    * pathological value, NOT a platform fact. A platform's own wall is enforced
-   * where the request is built (see `clampToAdapterPageSize`), because that is
+   * where the request is built (see `exceedsAdapterPageSize`), because that is
    * the only place that knows which adapter is about to send it.
    */
   readonly absoluteMax: number;
@@ -81,8 +81,34 @@ export interface OperationalSettingBound {
  * live shop), so 100 was an OpenLinker convention presented as a platform
  * fact. And WooCommerce's genuine `per_page` cap does not apply to this value
  * at all: it is the batch child's `groupSize`, never a `per_page`. The real
- * `per_page` carrier is the enumeration page size, and that wall is now
- * enforced where the request is built.
+ * `per_page` carrier is the enumeration page size, and that wall is refused
+ * where the request is built.
+ *
+ * **The two `*Reason` strings are OPERATOR copy, not engineering notes.** They
+ * are rendered verbatim on the settings page and appended to the 400 a refused
+ * write returns, so they may not cite an issue number, a class name, a lane
+ * cap or a piece of web-server configuration - an operator reading "the lane's
+ * per-scope cap" learns nothing they can act on. The numbers stay, because the
+ * numbers are the useful part. The engineering derivations behind them live
+ * here instead:
+ *
+ * - `catalogueSweepBudget` recommendation: #2644's linear model puts a
+ *   2000-item tick at ~184 s against a 1200 s window. Past that the binding
+ *   constraint is the ADR-050 lane's per-scope cap rather than the read, so
+ *   raising the budget alone mostly deepens the queue.
+ * - `inventorySweepBudget` recommendation: #2644 measured a 10.4-day inventory
+ *   cycle at the default of 100 on a 100 000-product catalogue.
+ * - `deletionAuditBudget` recommendation: #2644 measured a 41.7-day audit
+ *   cycle at the default of 100 on the same catalogue.
+ * - `sweepPageSize` recommendation: 100 is PrestaShop's own collection page
+ *   size and the size #2593 measured the batched read against.
+ * - `sweepPageSize` absolute ceiling: the batch child's ids are `|`-joined into
+ *   a query-string filter (`PrestashopQueryBuilder`), so this value drives URL
+ *   length directly. 500 seven-digit ids is roughly 4 KB of query string,
+ *   comfortably under the 8 KB request-line limit nginx and Apache default to;
+ *   2000 would not be.
+ * - the `20_000` absolute ceilings: one run holds every enqueued id in memory
+ *   and writes one child job each.
  */
 export const OPERATIONAL_SETTING_BOUNDS: Readonly<
   Record<OperationalSettingKey, OperationalSettingBound>
@@ -91,10 +117,10 @@ export const OPERATIONAL_SETTING_BOUNDS: Readonly<
     min: 1,
     recommendedMax: 2000,
     recommendedReason:
-      "#2644's linear model puts a 2000-item tick at ~184 s against a 1200 s window. Past this the binding constraint is the lane's per-scope cap rather than the read, so raising it alone mostly deepens the queue.",
+      'At 2000 products, one run takes about 3 minutes of the 20 minutes between runs. Above that, raising this number mostly makes work wait in a queue instead of finishing sooner.',
     absoluteMax: 20_000,
     absoluteReason:
-      'A sanity backstop against a mistyped value, not a platform limit. One run holds every enqueued id in memory and writes one child job each.',
+      'A guard against a mistyped number, not a limit your shop sets. Everything one run picks up is held in memory at once.',
     default: 500,
     envVar: 'OL_PRODUCT_SYNC_PAGE_LIMIT',
   },
@@ -102,9 +128,9 @@ export const OPERATIONAL_SETTING_BOUNDS: Readonly<
     min: 1,
     recommendedMax: 2000,
     recommendedReason:
-      '#2644 measured a 10.4-day inventory cycle at the default of 100, so headroom is the point; 2000 matches the catalogue sweep.',
+      'At the default of 100, a shop with 100 000 products takes about 10 days to re-check every stock level. 2000 brings that down to hours, and matches what the product sweep is allowed.',
     absoluteMax: 20_000,
-    absoluteReason: 'The same sanity backstop as the catalogue sweep.',
+    absoluteReason: 'The same guard against a mistyped number as the product sweep.',
     default: 100,
     envVar: 'OL_INVENTORY_SYNC_PAGE_LIMIT',
   },
@@ -112,10 +138,10 @@ export const OPERATIONAL_SETTING_BOUNDS: Readonly<
     min: 1,
     recommendedMax: 100,
     recommendedReason:
-      "100 is PrestaShop's own collection page size and the size #2593 measured the batched read against. A larger batch buys few extra requests and makes one failure cost more work.",
+      '100 is the page size a PrestaShop shop serves best, and the size this was measured against. Asking for more saves few requests and makes one failed request cost more work.',
     absoluteMax: 500,
     absoluteReason:
-      "The batch child's ids are |-joined into a query-string filter (PrestashopQueryBuilder), so this value drives URL length directly. 500 seven-digit ids is roughly 4 KB of query string, comfortably under the 8 KB request-line limit nginx and Apache default to; 2000 would not be.",
+      'Every product asked for in one request adds to the length of the web address that request is sent as. Around 500 that address is about 4 KB, which web servers accept; several times that is rejected outright.',
     default: 100,
     envVar: 'OL_SWEEP_PAGE_SIZE',
   },
@@ -123,9 +149,9 @@ export const OPERATIONAL_SETTING_BOUNDS: Readonly<
     min: 1,
     recommendedMax: 2000,
     recommendedReason:
-      '#2644 measured a 41.7-day audit cycle at the default of 100 on a 100 000-product catalogue, which is the number this knob exists for.',
+      'At the default of 100, a shop with 100 000 products takes about 42 days to check every product for deletion, and a deleted product keeps selling until it is reached.',
     absoluteMax: 20_000,
-    absoluteReason: 'The same sanity backstop as the catalogue sweep.',
+    absoluteReason: 'The same guard against a mistyped number as the product sweep.',
     default: 100,
     envVar: 'OL_MASTER_PRODUCT_RECONCILE_PAGE_LIMIT',
   },
@@ -137,10 +163,44 @@ export const DELETION_AUDIT_CADENCE_DEFAULT = '0 * * * *';
 /** The env var consulted between the settings row and the default cadence. */
 export const DELETION_AUDIT_CADENCE_ENV_VAR = 'OL_MASTER_PRODUCT_RECONCILE_CRON';
 
-/** One resolved value plus the rung that produced it. */
+/**
+ * The two sweep cadences (#2660 review).
+ *
+ * These are NOT settable through this surface - they have no column and no
+ * `PUT` field - but they ARE settable through the worker's environment, so a
+ * caller that assumes the shipped defaults reports pass lengths that can be an
+ * order of magnitude wrong on an install that changed one. They are reported so
+ * a consumer computes with the real cadence instead of a constant it holds.
+ *
+ * `CORE_CAPABILITY_TASKS` consumes these same constants as its `defaultCron`,
+ * so what the settings page reports and what the scheduler registers cannot
+ * drift - the #2229 reported-===-enforced rule applied to a cadence.
+ */
+export const CATALOGUE_SWEEP_CADENCE_DEFAULT = '*/20 * * * *';
+export const CATALOGUE_SWEEP_CADENCE_ENV_VAR = 'OL_PRODUCT_SYNC_CRON';
+export const INVENTORY_SWEEP_CADENCE_DEFAULT = '*/15 * * * *';
+export const INVENTORY_SWEEP_CADENCE_ENV_VAR = 'OL_INVENTORY_SYNC_CRON';
+
+/**
+ * One resolved value plus the rung that produced it.
+ *
+ * `workerMayDiffer` is the honest half (#2660 review). The api and the worker
+ * are separate processes with separate `.env` files and separate `environment:`
+ * blocks in `docker-compose.yml`, and since #2279 the SWEEPS run in the worker
+ * - so an env rung this process reads is a fact about the api, not about what
+ * the sweep applies. Only a value read from the shared settings ROW is
+ * authoritative for both. The flag is therefore `source !== 'setting'`, and it
+ * is reported rather than hidden because the alternative - dropping the env
+ * rung - would report `default` for a value an env var really did change.
+ */
 export interface ResolvedOperationalSetting<T> {
   readonly value: T;
   readonly source: OperationalSettingSource;
+  /**
+   * `true` when this process cannot vouch for the value the worker applies:
+   * nothing is stored, so the worker resolves it from its OWN environment.
+   */
+  readonly workerMayDiffer: boolean;
 }
 
 /**
@@ -171,6 +231,15 @@ export interface OperationalSettingsView {
   readonly sweepPageSize: ResolvedOperationalNumber;
   readonly deletionAuditBudget: ResolvedOperationalNumber;
   readonly deletionAuditCadence: ResolvedOperationalSetting<string>;
+  /**
+   * How often each sweep runs (#2660 review).
+   *
+   * Read-only here - there is no input for either - but reported so a consumer
+   * computing "how long is a full pass" uses the cadence in force rather than a
+   * hardcoded 20 / 15 minutes. `source` is never `'setting'`.
+   */
+  readonly catalogueSweepCadence: ResolvedOperationalSetting<string>;
+  readonly inventorySweepCadence: ResolvedOperationalSetting<string>;
   /**
    * Always `true`.
    *
@@ -289,6 +358,7 @@ export function resolveOperationalSetting(
   ): ResolvedOperationalNumber => ({
     value,
     source,
+    workerMayDiffer: source !== 'setting',
     recommendedMax: bound.recommendedMax,
     recommendedReason: bound.recommendedReason,
     absoluteMax: bound.absoluteMax,
@@ -310,25 +380,25 @@ export function resolveOperationalSetting(
 }
 
 /**
- * Narrows a resolved page size to what a specific adapter can actually send.
+ * Whether a resolved page size is one a specific adapter can actually send.
  *
  * This is where a PLATFORM's own wall belongs, as opposed to the opinions in
  * `OPERATIONAL_SETTING_BOUNDS`: only the call site knows which adapter is
  * about to build the request. WooCommerce's REST layer caps `per_page` at 100
- * across every list endpoint, so a larger value is not a bigger page - it is a
- * 400, or a page of 100 the operator believes is bigger.
+ * across every list endpoint, so a larger value is not a bigger page.
  *
- * Returns the clamped value and whether it moved, so the caller can LOG the
- * clamp. Silently narrowing would recreate exactly the defect this whole split
- * exists to prevent: a number the operator set, reported back to them intact,
- * and quietly not what was sent.
+ * **It reports, and the caller REFUSES; it does not clamp** (#2660 review). An
+ * earlier revision narrowed the value and warned. That is safe for a read whose
+ * caller looks at the rows it got back, and unsafe for the one caller this
+ * actually had: an ENUMERATION feeding `readPagedIds`, which infers
+ * end-of-collection from `batch.length < pageSize` against the REQUESTED size.
+ * A clamped page is always short, so every cycle "completed" after one page,
+ * the cursor cleared, and only the first 100 products were ever swept - on
+ * every tick, for ever, behind one warn line. Before the clamp existed the shop
+ * answered 400 and the job failed loudly, which is strictly better. A refusal
+ * restores that, and names the operator's own setting so the failure says what
+ * to change.
  */
-export function clampToAdapterPageSize(
-  requested: number,
-  adapterMax: number
-): { readonly value: number; readonly clamped: boolean } {
-  if (requested <= adapterMax) {
-    return { value: requested, clamped: false };
-  }
-  return { value: adapterMax, clamped: true };
+export function exceedsAdapterPageSize(requested: number, adapterMax: number): boolean {
+  return requested > adapterMax;
 }

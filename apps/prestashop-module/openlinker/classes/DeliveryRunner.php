@@ -72,7 +72,8 @@ class DeliveryRunner
                 if (!OutboxRepository::hasBudgetForAnotherDelivery(
                     microtime(true) - $startedAt,
                     $budgetSeconds,
-                    $worstCaseDelivery
+                    $worstCaseDelivery,
+                    $attempted
                 )) {
                     $budgetExhausted = true;
                     break;

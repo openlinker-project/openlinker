@@ -30,8 +30,16 @@
 
 /**
  * One measured run, from `perf/prestashop-baseline/results-D-2026-08-28.md`
- * (#2644). `intervalMinutes` is the cadence the worker ships for that sweep;
- * neither is settable through this surface, so both are constants here.
+ * (#2644).
+ *
+ * `intervalMinutes` is the cadence the worker SHIPS for that sweep — a
+ * fallback, not a fact about the install. An earlier revision called it "not
+ * settable", which was wrong: `OL_PRODUCT_SYNC_CRON` and
+ * `OL_INVENTORY_SYNC_CRON` change them in the worker's environment, and
+ * `apps/api/.env.example` ships one of them uncommented. A six-hourly product
+ * sweep makes a full pass ~18x longer than the shipped cadence implies, so the
+ * projection reads the real cadence when the API reports it and falls back to
+ * these only when it does not (#2660 review).
  */
 export interface MeasuredRun {
   readonly perRun: number;
@@ -66,9 +74,21 @@ export interface SyncPacingInputs {
   readonly hostProcessLimitSeconds: number;
   /** `null` when OpenLinker does not know how many products the shop holds. */
   readonly catalogueSize: number | null;
+  /**
+   * The sweep cadences in force, as cron expressions, when the API reported
+   * them. Omitted (or unreadable) falls back to the shipped cadence — which the
+   * page then labels as an assumption rather than stating a pass length flat.
+   */
+  readonly catalogueSweepCadence?: string;
+  readonly inventorySweepCadence?: string;
 }
 
 export interface SyncPacingProjection {
+  /** The cadences the pass lengths were computed with, in minutes. */
+  readonly catalogueIntervalMinutes: number;
+  readonly inventoryIntervalMinutes: number;
+  /** True when either cadence had to fall back to the shipped default. */
+  readonly assumedShippedCadence: boolean;
   readonly catalogueRequestsPerRun: number;
   readonly catalogueRunSeconds: number;
   readonly catalogueWindowSeconds: number;
@@ -158,11 +178,27 @@ export function projectSyncPacing(inputs: SyncPacingInputs): SyncPacingProjectio
   const catalogueScale = positive(inputs.catalogueSweepBudget, 1) / CATALOGUE_RUN_BASELINE.perRun;
   const stockScale = positive(inputs.inventorySweepBudget, 1) / STOCK_RUN_BASELINE.perRun;
 
+  // The reported cadence wins; the shipped one is only a fallback, and the
+  // projection says which it used so the page can qualify the figure.
+  const reportedCatalogue =
+    inputs.catalogueSweepCadence === undefined
+      ? null
+      : readCadenceIntervalMinutes(inputs.catalogueSweepCadence);
+  const reportedInventory =
+    inputs.inventorySweepCadence === undefined
+      ? null
+      : readCadenceIntervalMinutes(inputs.inventorySweepCadence);
+  const catalogueIntervalMinutes = reportedCatalogue ?? CATALOGUE_RUN_BASELINE.intervalMinutes;
+  const inventoryIntervalMinutes = reportedInventory ?? STOCK_RUN_BASELINE.intervalMinutes;
+
   const catalogueRunSeconds = CATALOGUE_RUN_BASELINE.seconds * catalogueScale;
-  const catalogueWindowSeconds = CATALOGUE_RUN_BASELINE.intervalMinutes * 60;
+  const catalogueWindowSeconds = catalogueIntervalMinutes * 60;
   const auditIntervalMinutes = readCadenceIntervalMinutes(inputs.deletionAuditCadence);
 
   return {
+    catalogueIntervalMinutes,
+    inventoryIntervalMinutes,
+    assumedShippedCadence: reportedCatalogue === null || reportedInventory === null,
     catalogueRequestsPerRun: Math.round(CATALOGUE_RUN_BASELINE.requests * catalogueScale),
     catalogueRunSeconds,
     catalogueWindowSeconds,
@@ -171,12 +207,12 @@ export function projectSyncPacing(inputs: SyncPacingInputs): SyncPacingProjectio
     cataloguePassDays: passDays(
       inputs.catalogueSize,
       inputs.catalogueSweepBudget,
-      CATALOGUE_RUN_BASELINE.intervalMinutes
+      catalogueIntervalMinutes
     ),
     stockPassDays: passDays(
       inputs.catalogueSize,
       inputs.inventorySweepBudget,
-      STOCK_RUN_BASELINE.intervalMinutes
+      inventoryIntervalMinutes
     ),
     deletionWindowDays: passDays(
       inputs.catalogueSize,

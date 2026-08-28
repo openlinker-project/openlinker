@@ -34,6 +34,10 @@ import {
 } from '@openlinker/core/sync';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import {
+  CATALOGUE_SWEEP_CADENCE_DEFAULT,
+  CATALOGUE_SWEEP_CADENCE_ENV_VAR,
+  INVENTORY_SWEEP_CADENCE_DEFAULT,
+  INVENTORY_SWEEP_CADENCE_ENV_VAR,
   OPERATIONAL_SETTINGS_SERVICE_TOKEN,
   type IOperationalSettingsService,
   type OperationalSettingsView,
@@ -145,8 +149,10 @@ const CORE_CAPABILITY_TASKS: readonly CoreCapabilityTaskDescriptor[] = [
     jobType: 'master.inventory.syncAll',
     capability: 'InventoryMaster',
     enabledEnvVar: 'OL_INVENTORY_SYNC_ENABLED',
-    cronEnvVar: 'OL_INVENTORY_SYNC_CRON',
-    defaultCron: '*/15 * * * *',
+    cronEnvVar: INVENTORY_SWEEP_CADENCE_ENV_VAR,
+    // Shared with the settings surface so what it REPORTS and what this
+    // registers cannot drift (#2660 review).
+    defaultCron: INVENTORY_SWEEP_CADENCE_DEFAULT,
     idempotencyKey: (connectionId, timestamp) =>
       `master:${connectionId}:inventory:syncAll:${timestamp}`,
   },
@@ -155,8 +161,8 @@ const CORE_CAPABILITY_TASKS: readonly CoreCapabilityTaskDescriptor[] = [
     jobType: 'master.product.syncAll',
     capability: 'ProductMaster',
     enabledEnvVar: 'OL_PRODUCT_SYNC_ENABLED',
-    cronEnvVar: 'OL_PRODUCT_SYNC_CRON',
-    defaultCron: '*/20 * * * *',
+    cronEnvVar: CATALOGUE_SWEEP_CADENCE_ENV_VAR,
+    defaultCron: CATALOGUE_SWEEP_CADENCE_DEFAULT,
     idempotencyKey: (connectionId, timestamp) =>
       `master:${connectionId}:product:syncAll:${timestamp}`,
   },

@@ -1110,21 +1110,36 @@ class OutboxRepository
      * whether the budget has already been passed: checking afterwards is what
      * lets a run that was inside the budget at second 119 leave at second 129.
      *
-     * The first delivery of a pass is always allowed. A run that delivered
-     * nothing at all makes no progress, and a queue that never drains is worse
-     * than one pass overshooting by a single HTTP timeout.
+     * The first delivery of a pass is always allowed, and that guarantee is
+     * keyed to the DELIVERY COUNT, not to elapsed time (#2660 review). It used
+     * to read `$elapsedSeconds <= 0`, which is never true in a real pass:
+     * DeliveryRunner takes its clock before requeueStaleProcessingRows() and
+     * claimBatchDueForDelivery(), both of which are paid out of the same
+     * budget. On a large outbox those two statements alone can outlast a short
+     * budget, so the very first iteration refused, the whole claimed batch was
+     * requeued, and every following pass did the same - a queue that never
+     * drains, behind one warn line. The unit test asserted the guarantee with a
+     * literal 0, so it passed while the property was absent.
+     *
+     * A run that delivered nothing at all makes no progress, so it is allowed
+     * to overshoot by at most one delivery. minimumStaleThresholdMinutes()
+     * already sizes the lease floor for exactly that overshoot.
      *
      * @param float $elapsedSeconds Wall clock since the pass started
      * @param int $budgetSeconds Resolved budget
      * @param int $worstCaseDeliverySeconds Longest one delivery can take
+     * @param int $deliveriesAttempted How many deliveries this pass already started
      * @return bool
      */
     public static function hasBudgetForAnotherDelivery(
         $elapsedSeconds,
         $budgetSeconds,
-        $worstCaseDeliverySeconds
+        $worstCaseDeliverySeconds,
+        $deliveriesAttempted = 1
     ) {
-        if ($elapsedSeconds <= 0) {
+        // Defaults to 1 ("not the first"), so a caller that forgets to pass the
+        // counter gets the strict check rather than a free pass every loop.
+        if ((int)$deliveriesAttempted <= 0) {
             return true;
         }
 
@@ -1156,6 +1171,25 @@ class OutboxRepository
             + self::STALE_THRESHOLD_SAFETY_SECONDS;
 
         return (int)ceil($seconds / 60);
+    }
+
+    /**
+     * The stale-lease threshold to SUGGEST for a given run budget (#2660 review)
+     *
+     * Pure. The built-in default is 5 minutes and the floor rises with the
+     * budget, so at a 280 s budget the floor is 6 - and a form advertising
+     * "default: 5" beside a minimum of 6 offers a value it would then refuse.
+     * The suggestion is the built-in default or the floor, whichever is larger.
+     *
+     * @param int $budgetSeconds Resolved run budget
+     * @return int Minutes
+     */
+    public static function defaultStaleThresholdMinutes($budgetSeconds)
+    {
+        return max(
+            self::DEFAULT_STALE_PROCESSING_THRESHOLD_MINUTES,
+            self::minimumStaleThresholdMinutes($budgetSeconds)
+        );
     }
 
     /**

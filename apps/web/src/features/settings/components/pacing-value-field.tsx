@@ -28,6 +28,13 @@
  * acknowledgement is never inferred from the value being high — inferring it
  * would turn the gate into a formality and there would be no point having it.
  *
+ * **The controls carry no HTML `step`.** They used to carry the granularity
+ * itself, and because a range value is `min + n·step` with `min = 1`, the
+ * reachable set was `1, 51, 101, …` — so 500, 100, 2000 and 20000, every
+ * default and every recommendation this page documents, were unreachable by
+ * dragging and `stepMismatch` when typed (#2660 review). Granularity is applied
+ * on drag instead, snapped to a grid anchored at zero.
+ *
  * The description is visible text rather than a tooltip on purpose: an
  * operator who needs the tooltip does not know to hover.
  *
@@ -50,6 +57,11 @@ interface PacingValueFieldProps {
   description: string;
   value: number;
   limits: ValueLimits;
+  /**
+   * Slider granularity, anchored at zero. NOT an HTML `step`: the controls
+   * carry `step={1}` so no legitimate whole number is ever `stepMismatch`, and
+   * the snapping happens on drag only.
+   */
   step?: number;
   /** The saved value, for the changed-from marker. */
   savedValue: number;
@@ -66,7 +78,10 @@ interface PacingValueFieldProps {
 
 const SOURCE_SUFFIX: Record<OperationalSettingSource, string> = {
   setting: 'you set this',
-  env: 'from a server setting',
+  // Named precisely: this is an environment variable on the API process, and
+  // the sweeps run in the worker, which reads its own (#2660 review). The page
+  // carries the caveat once, above the panels.
+  env: "from this server's environment",
   default: 'default',
 };
 
@@ -99,11 +114,44 @@ export function PacingValueField({
       ? ((limits.recommendedMax - limits.min) / (limits.absoluteMax - limits.min)) * 100
       : null;
 
-  const handle = (raw: string): void => {
+  const clamp = (value: number): number =>
+    Math.min(Math.max(value, limits.min), limits.absoluteMax);
+
+  /**
+   * The number box takes the whole number as typed.
+   *
+   * It neither snaps nor clamps mid-keystroke: snapping a half-typed `5` to the
+   * nearest 50, or clamping it up to the minimum, would make the field fight
+   * the operator as they type. What it must not do is mark a legitimate value
+   * invalid, which `step` on a `min`-anchored grid did — HTML range values are
+   * `min + n·step`, so with `min=1, step=50` the reachable set was
+   * `1, 51, 101, …` and 500, 100, 2000 and 20000, every default and every
+   * recommendation this page documents, were all `stepMismatch` (#2660 review).
+   * An out-of-range value is refused at save, beside this control, with the
+   * API's own reason.
+   */
+  const handleTyped = (raw: string): void => {
     const parsed = Number(raw);
     if (Number.isFinite(parsed)) {
       onChange(Math.round(parsed));
     }
+  };
+
+  /**
+   * The slider snaps to a grid anchored at ZERO, not at `min`.
+   *
+   * That is what makes 500 / 2000 / 20000 reachable by dragging. The native
+   * `step` stays 1 so the browser never rejects a value; the granularity is
+   * applied here instead, and the endpoints are kept reachable so the operator
+   * can always drag to the minimum and to the absolute ceiling.
+   */
+  const handleDragged = (raw: string): void => {
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) {
+      return;
+    }
+    const grid = step > 0 ? step : 1;
+    onChange(clamp(Math.round(parsed / grid) * grid));
   };
 
   // The saved value's own provenance, and — when the server said so — that it
@@ -136,12 +184,12 @@ export function PacingValueField({
             type="range"
             min={limits.min}
             max={limits.absoluteMax}
-            step={step}
+            step={1}
             value={value}
             aria-label={ariaLabel}
             aria-describedby={error ? `${descriptionId} ${errorId}` : descriptionId}
             onChange={(event) => {
-              handle(event.target.value);
+              handleDragged(event.target.value);
             }}
           />
           {markerPercent !== null ? (
@@ -158,13 +206,13 @@ export function PacingValueField({
           type="number"
           min={limits.min}
           max={limits.absoluteMax}
-          step={step}
+          step={1}
           value={value}
           invalid={Boolean(error)}
           aria-label={ariaLabel}
           aria-describedby={error ? `${descriptionId} ${errorId}` : descriptionId}
           onChange={(event) => {
-            handle(event.target.value);
+            handleTyped(event.target.value);
           }}
         />
       </div>
