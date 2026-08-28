@@ -746,11 +746,13 @@ describe('AllegroOfferManagerAdapter', () => {
       );
     });
 
-    it('should disambiguate two rows sharing the same batch commandId by their own offerId (#2622 regression)', async () => {
+    it('should disambiguate two rows sharing the same batch commandId by their own offerId, checking Allegro ONCE for the pair (#2622 regression, tech-review dedup fix)', async () => {
       // Both rows were persisted under the SAME Allegro commandId by
       // `updateOfferQuantitiesBatch` (#2622) — using the commandId-only
       // `updateStatus` here would resolve an arbitrary one of the two rather
-      // than the row this call is actually about.
+      // than the row this call is actually about. Allegro's command-status
+      // read also answers for the WHOLE command in one response, so the two
+      // rows must be resolved from a single GET, never one GET per row.
       const commandRepository = repoWith({
         find: jest.fn().mockImplementation(async ({ status }: { status: string }) =>
           status === 'accepted'
@@ -783,6 +785,7 @@ describe('AllegroOfferManagerAdapter', () => {
 
       const result = await reconcileAdapter.reconcilePendingQuantityAcks(50);
 
+      expect(httpClient.get).toHaveBeenCalledTimes(1);
       expect(result).toEqual({ reconciled: 2, stillPending: 0 });
       expect(commandRepository.updateOfferStatus).toHaveBeenCalledWith(
         'cmd-batch',
@@ -797,6 +800,59 @@ describe('AllegroOfferManagerAdapter', () => {
       );
       // Never falls back to the commandId-only update for a batch row.
       expect(commandRepository.updateStatus).not.toHaveBeenCalled();
+    });
+
+    it('should check Allegro once per DISTINCT commandId, not once per row (tech-review dedup fix)', async () => {
+      const commandRepository = repoWith({
+        find: jest.fn().mockImplementation(({ status }: { status: string }) =>
+          Promise.resolve(
+            status === 'accepted'
+              ? [
+                  pendingCommand({ commandId: 'cmd-a', offerId: 'offer-1' }),
+                  pendingCommand({ commandId: 'cmd-a', offerId: 'offer-2' }),
+                  pendingCommand({ commandId: 'cmd-a', offerId: 'offer-3' }),
+                  pendingCommand({ commandId: 'cmd-b', offerId: 'offer-4' }),
+                ]
+              : []
+          )
+        ),
+      });
+      const reconcileAdapter = fastAdapterWithRepo(commandRepository);
+
+      httpClient.get.mockImplementation((path: string) => {
+        if (path.includes('cmd-a')) {
+          return Promise.resolve({
+            data: {
+              id: 'cmd-a',
+              taskCount: 3,
+              completedTaskCount: 3,
+              tasks: [
+                { offerId: 'offer-1', status: 'SUCCESS' },
+                { offerId: 'offer-2', status: 'SUCCESS' },
+                { offerId: 'offer-3', status: 'SUCCESS' },
+              ],
+            },
+            status: 200,
+            headers: {},
+          });
+        }
+        return Promise.resolve({
+          data: {
+            id: 'cmd-b',
+            taskCount: 1,
+            completedTaskCount: 1,
+            tasks: [{ offerId: 'offer-4', status: 'SUCCESS' }],
+          },
+          status: 200,
+          headers: {},
+        });
+      });
+
+      const result = await reconcileAdapter.reconcilePendingQuantityAcks(50);
+
+      // 2 distinct commandIds → 2 GET calls, regardless of the 4 persisted rows.
+      expect(httpClient.get).toHaveBeenCalledTimes(2);
+      expect(result).toEqual({ reconciled: 4, stillPending: 0 });
     });
 
     it('should report still-pending and touch nothing when the command has not reached a terminal status', async () => {

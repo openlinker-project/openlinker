@@ -2614,6 +2614,18 @@ export class AllegroOfferManagerAdapter
    * later" half of `updateOfferQuantity`, which returns as soon as Allegro
    * acknowledges submission rather than waiting for a terminal status.
    *
+   * Pending rows are grouped by `commandId` before any Allegro call: a batch
+   * write (#2622) persists several rows — one per offer — under ONE shared
+   * commandId, and Allegro's own command-status read answers for the whole
+   * command regardless of how many rows OL keeps for it. Issuing one GET per
+   * row here would re-fetch the identical response once per offer in the
+   * group, undoing #2622's batching efficiency and multiplying outbound
+   * calls against Allegro's rate limit for no new information. Each distinct
+   * commandId is checked once via `reconcileQuantityCommandGroup`; remaining
+   * fan-out across groups is bounded by `resolveBatchConcurrency` — the same
+   * operator-configurable ceiling (#2229) the EAN-resolve batch path already
+   * honours — rather than firing every group at once.
+   *
    * Never throws for an individual command's outcome — a genuinely failed
    * command is persisted as `'failed'` and counted, not raised, since there
    * is no caller left waiting to catch it. Only a whole-pass infrastructure
@@ -2639,57 +2651,105 @@ export class AllegroOfferManagerAdapter
     ]);
     const pending = [...queued, ...accepted].slice(0, limit);
 
+    const groupsByCommandId = new Map<string, AllegroQuantityCommand[]>();
+    for (const command of pending) {
+      const group = groupsByCommandId.get(command.commandId);
+      if (group) {
+        group.push(command);
+      } else {
+        groupsByCommandId.set(command.commandId, [command]);
+      }
+    }
+
     let reconciled = 0;
     let stillPending = 0;
 
-    await Promise.all(
-      pending.map(async (command) => {
-        const outcome = await this.reconcileOneQuantityCommand(command);
-        if (outcome === 'pending') {
-          stillPending += 1;
-        } else {
-          reconciled += 1;
+    const concurrency = resolveBatchConcurrency(this.configuredMaxConcurrent).maxInFlight;
+    await this.runWithConcurrency(
+      Array.from(groupsByCommandId.values()),
+      concurrency,
+      async (group) => {
+        const outcomes = await this.reconcileQuantityCommandGroup(group);
+        for (const outcome of outcomes) {
+          if (outcome === 'pending') {
+            stillPending += 1;
+          } else {
+            reconciled += 1;
+          }
         }
-      })
+      }
     );
 
     return { reconciled, stillPending };
   }
 
   /**
-   * Checks one outstanding command's CURRENT status with a single, immediate
+   * Runs `worker` over `items` in fixed-size waves capped at `concurrency` —
+   * the next wave starts only once the previous one fully settles. Kept
+   * local and generic rather than reused from `throttleStream`
+   * (`resolve-categories-for-batch-by-ean.ts`), which is EAN-match-shaped and
+   * streams results; this caller only needs bounded fan-out over a pass that
+   * already completes in one shot.
+   */
+  private async runWithConcurrency<T>(
+    items: T[],
+    concurrency: number,
+    worker: (item: T) => Promise<void>
+  ): Promise<void> {
+    const cap = Math.max(1, concurrency);
+    for (let i = 0; i < items.length; i += cap) {
+      await Promise.all(items.slice(i, i + cap).map(worker));
+    }
+  }
+
+  /**
+   * Checks ONE Allegro commandId's CURRENT status with a single, immediate
    * request — deliberately not the multi-attempt backoff
    * `pollQuantityCommandStatus` otherwise uses (`maxAttempts: 1,
-   * initialDelayMs: 0`). This runs inside a periodic reconcile sweep whose
-   * own cadence already supplies the wait; layering the write-path's
-   * "wait-a-bit-right-after-submit" backoff on top would reintroduce, inside
-   * the sweep, the exact per-write blocking cost #2621 removed from
-   * `updateOfferQuantity`. A `null` (or still-non-terminal) result reports
-   * `'pending'` and touches nothing — retried by the NEXT scheduled pass, so
-   * a command Allegro is simply slow to process is never marked failed on a
-   * fluke.
-   *
-   * `result.tasks` covers every offer named in the (possibly batched, #2622)
-   * Allegro command sharing `command.commandId` — this row's own
-   * `command.offerId` is looked up within it and persisted via
-   * `updateOfferStatus(commandId, offerId, …)`, never the commandId-only
-   * `updateStatus`, which would resolve an arbitrary row sharing that
-   * commandId rather than the one this call is actually about.
+   * initialDelayMs: 0`) — and resolves EVERY persisted row sharing that
+   * commandId from the one response, rather than one GET per row. This runs
+   * inside a periodic reconcile sweep whose own cadence already supplies the
+   * wait; layering the write-path's "wait-a-bit-right-after-submit" backoff
+   * on top would reintroduce, inside the sweep, the exact per-write blocking
+   * cost #2621 removed from `updateOfferQuantity`. A `null` (or
+   * still-non-terminal) result reports every row in the group as `'pending'`
+   * and touches nothing — retried by the NEXT scheduled pass, so a command
+   * Allegro is simply slow to process is never marked failed on a fluke.
    */
-  private async reconcileOneQuantityCommand(
-    command: AllegroQuantityCommand
-  ): Promise<'succeeded' | 'failed' | 'pending'> {
-    const result = await this.pollQuantityCommandStatus(command.commandId, {
+  private async reconcileQuantityCommandGroup(
+    commands: AllegroQuantityCommand[]
+  ): Promise<Array<'succeeded' | 'failed' | 'pending'>> {
+    const commandId = commands[0].commandId;
+    const result = await this.pollQuantityCommandStatus(commandId, {
       maxAttempts: 1,
       initialDelayMs: 0,
     });
 
     if (!result) {
-      return 'pending';
+      return commands.map(() => 'pending' as const);
     }
 
-    const task = result.tasks?.find((t) => t.offerId === command.offerId);
+    const tasksByOfferId = new Map((result.tasks ?? []).map((task) => [task.offerId, task]));
 
+    return Promise.all(
+      commands.map((command) =>
+        this.reconcileOneQuantityCommand(command, tasksByOfferId.get(command.offerId))
+      )
+    );
+  }
+
+  /**
+   * Resolves one persisted (commandId, offerId) row against its already-
+   * fetched task (or `undefined` if the group's terminal response never
+   * named this offer). Persisted via `updateOfferStatus(commandId, offerId,
+   * …)`, never the commandId-only `updateStatus`, which would resolve an
+   * arbitrary row sharing that commandId rather than the one this call is
+   * actually about (#2622 regression).
+   */
+  private async reconcileOneQuantityCommand(
+    command: AllegroQuantityCommand,
+    task: AllegroQuantityChangeCommandStatusResponse['tasks'][number] | undefined
+  ): Promise<'succeeded' | 'failed' | 'pending'> {
     if (task?.status === 'FAIL') {
       const errorMessage = this.formatAllegroTaskErrors(task.errors) ?? task.message ?? 'unknown';
 
