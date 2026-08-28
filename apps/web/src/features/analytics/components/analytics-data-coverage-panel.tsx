@@ -28,10 +28,10 @@
  */
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
 import { Button, ErrorState, LoadingState, StatusBadge, TimeDisplay } from '../../../shared/ui';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useConnectionsQuery } from '../../connections';
+import { OrderIdentityCell } from '../../orders';
 import { useAnalyticsCoverageQuery } from '../hooks/use-analytics-coverage-query';
 import { useRecalculateCurrencyMutation } from '../hooks/use-recalculate-currency-mutation';
 import { useCurrencyRemediationStatusQuery } from '../hooks/use-currency-remediation-status-query';
@@ -40,6 +40,7 @@ import { useTaxCoverageOrdersQuery } from '../hooks/use-tax-coverage-orders-quer
 import { useMatchingCoverageOrdersQuery } from '../hooks/use-matching-coverage-orders-query';
 import { useRerunTaxBackfillMutation } from '../hooks/use-rerun-tax-backfill-mutation';
 import { analyticsCoverageQueryKeys } from '../api/analytics-coverage.query-keys';
+import { AnalyticsCoverageAlert } from './analytics-coverage-alert';
 import { CoverageDetailDialog } from './coverage-detail-dialog';
 import {
   COVERAGE_CATEGORY_ORDER,
@@ -100,6 +101,20 @@ export function AnalyticsDataCoveragePanel({
   const dwellTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const runStatusQuery = useCurrencyRemediationStatusQuery(activeRunId);
+
+  // Recovers the live sub-state after a page reload / re-navigation (#2475):
+  // the coverage aggregate reports the SERVER's own knowledge of an
+  // in-flight run, which may exist even though this component instance
+  // never called `recalculate` itself. Only seeds when nothing is already
+  // being tracked locally — a run this session already started (and may be
+  // mid-dwell) must not be clobbered by a slightly-stale poll response.
+  useEffect(() => {
+    const serverRunId = coverageQuery.data?.categories.find((row) => row.category === 'currency')
+      ?.activeRunId;
+    if (serverRunId && !activeRunId) {
+      setActiveRunId(serverRunId);
+    }
+  }, [coverageQuery.data, activeRunId]);
 
   useEffect(() => {
     const status = runStatusQuery.data?.status;
@@ -219,7 +234,12 @@ export function AnalyticsDataCoveragePanel({
   // server-side count would otherwise have dropped to zero mid-repair.
   const openRows: CoverageCategoryRow[] = COVERAGE_CATEGORY_ORDER.map((category) => categoriesByKey.get(category))
     .filter((row): row is CoverageCategoryRow => row !== undefined)
-    .filter((row) => row.affectedCount > 0 || (row.category === 'currency' && activeRunId !== null));
+    .filter(
+      (row) =>
+        row.affectedCount > 0 ||
+        row.status === 'in-progress' ||
+        (row.category === 'currency' && activeRunId !== null)
+    );
 
   return (
     <article className="panel panel--dense">
@@ -228,28 +248,7 @@ export function AnalyticsDataCoveragePanel({
       </div>
 
       {alertRun && (
-        <div className="coverage-alert" role="status">
-          <span className="coverage-alert__icon" aria-hidden="true">
-            ✓
-          </span>
-          <span className="coverage-alert__body">
-            <span className="coverage-alert__title">
-              {alertRun.affectedCount} order{alertRun.affectedCount === 1 ? '' : 's'} recalculated
-            </span>
-            <span className="coverage-alert__sub">
-              The real exchange rate from each order&rsquo;s own date, saved for good. Logged in Jobs &amp;
-              Logs with who ran it and when.
-            </span>
-          </span>
-          <button
-            type="button"
-            className="coverage-alert__close"
-            aria-label="Dismiss"
-            onClick={() => setAlertRun(null)}
-          >
-            ×
-          </button>
-        </div>
+        <AnalyticsCoverageAlert affectedCount={alertRun.affectedCount} onDismiss={() => setAlertRun(null)} />
       )}
 
       <ul className="attention-list">
@@ -440,9 +439,7 @@ function CurrencyOrderRow({
   return (
     <>
       <span className="coverage-detail-row__body">
-        <Link to={`/orders/${item.internalOrderId}`} className="coverage-detail-row__title">
-          Order {item.internalOrderId.slice(-8)}
-        </Link>
+        <OrderIdentityCell orderId={item.internalOrderId} />
         <span className="coverage-detail-row__meta text-muted">
           {connectionName}
           {item.stampedAt ? (
@@ -464,9 +461,7 @@ function TaxOrderRow({ item, connectionName }: { item: TaxCoverageOrder; connect
   return (
     <>
       <span className="coverage-detail-row__body">
-        <Link to={`/orders/${item.internalOrderId}`} className="coverage-detail-row__title">
-          Order {item.internalOrderId.slice(-8)}
-        </Link>
+        <OrderIdentityCell orderId={item.internalOrderId} />
         <span className="coverage-detail-row__meta text-muted">
           {connectionName}
           {item.placedAt ? (
@@ -491,9 +486,7 @@ function MatchingOrderRow({
   return (
     <>
       <span className="coverage-detail-row__body">
-        <Link to={`/orders/${item.internalOrderId}`} className="coverage-detail-row__title">
-          Order {item.internalOrderId.slice(-8)}
-        </Link>
+        <OrderIdentityCell orderId={item.internalOrderId} />
         <span className="coverage-detail-row__meta text-muted">
           {connectionName}
           {item.mappingFailureReason ? ` · ${item.mappingFailureReason}` : ''}

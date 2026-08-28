@@ -26,6 +26,14 @@ export interface CoverageCategoryRow {
   status: CoverageResolutionStatus;
   affectedCount: number;
   sampleOrderIds: string[];
+  /**
+   * The in-flight `analytics_remediation_runs` id when `status` is
+   * `'in-progress'` — only ever set for the `'currency'` row. Present so a
+   * page reload recovers the live sub-state instead of only tracking it in
+   * local component state from the moment the operator clicked
+   * "Recalculate now" in the current session (#2475).
+   */
+  activeRunId?: string | null;
 }
 
 export interface AnalyticsCoverage {
