@@ -162,8 +162,39 @@ export function createMockApiClient(
         unresolvedProductCount: 0,
         coverageGapAvailable: true,
       }),
+      getCoverage: vi.fn().mockResolvedValue({
+        categories: [
+          { category: 'currency', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+          { category: 'tax-a', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+          { category: 'tax-b', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+          { category: 'tax-c', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+          { category: 'product-matching', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+        ],
+      }),
+      recalculateCurrency: vi.fn().mockResolvedValue({
+        id: 'ol_remrun_test',
+        category: 'currency',
+        status: 'in-progress',
+        detail: null,
+        affectedCount: 0,
+        triggeredByUserId: 'user-1',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      }),
       ...overrides.analytics,
     } as ApiClient['analytics'],
+    analyticsSettings: {
+      getSettings: vi.fn().mockResolvedValue({
+        displayCurrency: 'EUR',
+        displayCurrencySource: 'default',
+        rateBasis: 'current',
+        includeBackfilledTaxRatesInNetSales: false,
+        updatedAt: null,
+        updatedByUserId: null,
+      }),
+      updateSettings: vi.fn().mockResolvedValue(undefined),
+      ...overrides.analyticsSettings,
+    } as ApiClient['analyticsSettings'],
     analyticsTrust: {
       getTrust: vi.fn().mockResolvedValue({
         generatedAt: '2026-01-01T00:00:00.000Z',
