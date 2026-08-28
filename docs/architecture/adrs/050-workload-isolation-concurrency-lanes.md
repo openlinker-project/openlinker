@@ -266,6 +266,21 @@ server's `max_connections`. And a fourth limit belongs beside the three in the #
 so lane concurrency was the only thing bounding them. Low risk today - one job per tick, its per-order
 children stayed in `realtime` - but it is the constraint a future raise has to argue against.
 
+## Amendment (#2613 / #2617) - a deferred job is queued, not running, and what that costs a lane
+
+[ADR-007](./007-syncjob-status-vs-outcome-split.md) § Amendment (#2613) records the retry-ladder half of penalty-free deferral: a failure that is neither the job's fault nor a terminal platform answer requeues without consuming an attempt, bounded by a cumulative `sync_jobs.deferredTotalMs` budget. This amendment records what it does to lane occupancy, because that is this ADR's subject and it is easy to state wrongly.
+
+**The precise claim.** A deferred job sits at `status: 'queued'` with a future `nextRunAt`. Slot accounting here is in-process and counts **started** jobs, so a job parked on its `nextRunAt` holds **no** lane slot while it waits. What it does hold is queue depth, and it re-consumes a `(lane, scope)` slot on every re-pickup - so a destination that keeps deferring turns one job into an indefinite sequence of short occupancies in its own scope. **That recycling is what the budget bounds**, and it is the reason the deferral could not ship without one: an unbounded penalty-free requeue is a job that can never leave the lane's rotation.
+
+The scope cap is what keeps that bounded in the meantime. Deferral is per-job and the cap is per-(lane, scope), so a throttling destination's jobs recycle inside their own connection's slice and cannot crowd out another connection's work in the same lane - the property decision 3 exists for, doing its job on a failure mode decision 3 did not anticipate.
+
+**Contention is the second source of deferral, and it is this ADR's own doing.** Decision 2 made a lane run jobs concurrently and #2609 removed the last accidental serialisation, which is what made a per-target write guard necessary ([ADR-067](./067-freshness-token-write-ordering.md)). A write refused because a peer holds that guard's lock is reported as `write_contended` and reaches the runner as a neutral `ContendedWriteError` with a fixed short grant. Retrying it under the ordinary ladder would spend attempts - and eventually a `dead` row - on the guard **working**, which would make the concurrency this ADR chose look like a defect in the very path it protects.
+
+**Two things are deliberately not done.** No lane is exempt from deferral, and no lane gets its own budget: the grant is a property of the destination's answer, not of the workload profile, and a per-lane budget would be a second pacing knob with no measurement behind it ([ADR-069](./069-operator-settable-sweep-pacing.md) covers the pacing knobs that do have one). And nothing counts deferred jobs against a cap - a parked job consumes no worker, and charging it a slot would idle capacity to model a job that is not running.
+
+*Reversal gate (prose-only):* a lane whose queue depth is dominated by deferred jobs. That is the signal that deferral has become a pacing mechanism rather than an exception, and the destination in question needs a real rate-limit configuration rather than a retry policy.
+
+
 ## Alternatives considered
 
 - **Strict priority ordering** (realtime first): starves `bulk` under sustained realtime load — the
@@ -306,9 +321,10 @@ children stayed in `realtime` - but it is the constraint a future raise has to a
 
 ## References
 
-- Related issues: #2167, #2162, #1134, #2169, #2594, #2609, #2617
+- Related issues: #2167, #2162, #1134, #2169, #2594, #2609, #2613, #2617
 - Related ADRs: [ADR-005](./005-postgres-authoritative-job-dedup.md),
   [ADR-007](./007-syncjob-status-vs-outcome-split.md),
   [ADR-049](./049-durability-spine-and-domain-event-contract.md),
-  [ADR-051](./051-worker-topology-one-artifact-roles.md)
+  [ADR-051](./051-worker-topology-one-artifact-roles.md),
+  [ADR-067](./067-freshness-token-write-ordering.md)
 - Primary doc section: [docs/architecture-overview.md](../../architecture-overview.md) § Sync Manager

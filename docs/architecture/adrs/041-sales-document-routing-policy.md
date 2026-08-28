@@ -164,6 +164,47 @@ flowchart TD
     ISSUE --> D
 ```
 
+## Amendment (#2599) - decision 5's blocking prerequisite is met; enabling the rule is a separate decision
+
+The Context above records a buyer tax id on the `Order` contract as a **blocking prerequisite** of the rule
+engine, and decision 5's tax-id precondition is described as inert because "no issuance caller wires
+`buyerTaxId`". **#2599 landed the fact.** The prerequisite is met; the refusal is not turned on.
+
+What shipped, and the one property that matters most: the field carries **three** states, not two.
+
+| state | meaning | on the order contract | in `order_records.buyerTaxId` |
+|---|---|---|---|
+| absent | the source asserted nothing | `undefined` | `NULL` |
+| asserted none | the source says this buyer has no tax id | `null` | `''` |
+| present | the id itself | the string | the string |
+
+`toSalesDocumentOrderFacts` maps that to `SalesDocumentOrderFacts.buyerHasTaxId` as `undefined` / `false` /
+`true` respectively - which is why that field was widened from `boolean` to `boolean | undefined` rather than
+defaulting the unknown case. Collapsing absent into `false` would make `evaluateSalesDocumentRules` decide a
+real order on a fact nobody asserted, which for a fiscal document is decision 6's forbidden silent pick
+wearing a different hat. A consumer reading the column directly must use `decodeBuyerTaxIdColumn`: a bare
+`IS NOT NULL` reads the middle state wrong.
+
+Three consequences the ADR should carry.
+
+**The value is verbatim, never validated.** No format check, no normalisation, no scheme tag - ADR-026 keeps
+national specifics in the provider adapter, and a `NIP` rule in `libs/core` is precisely what that forbids.
+
+**It is PII-gated like `customerEmail`.** For a sole trader a tax id identifies a natural person, so
+`sanitizeAddress` drops it from the snapshot and a `OL_STORE_PII=false` deployment stores no scalar either -
+which reads back as *not asserted*, i.e. the safe state rather than a false "has none".
+
+**Coverage is one source.** PrestaShop supplies it from `ps_address.vat_number`. Neither the Allegro nor the
+WooCommerce order source reads one (Allegro's checkout-form invoice block carries a company tax id that OL's
+own type does not model; WooCommerce's `billing` block has no tax field at all), so an order from either is
+*not asserted*, never *known to have none*. A rule keyed on `buyerHasTaxId === false` therefore still matches
+almost nothing in practice, for a data-coverage reason rather than a contract one.
+
+**`'missing-required-tax-id'` is still declared and never written**, and turning it on is a separate decision -
+it needs a gate that acts on the fact, and on this coverage a refusal keyed to it would block the two sources
+that simply do not report. That is a routing-policy choice to take deliberately, not a wiring step that fell
+out of #2599.
+
 ## Alternatives considered
 
 - **Put routing in `orders`** (order transition picks the document): rejected - `orders` would have to learn both fiscal domains' connections, capabilities and document types, and it is depended on by five sibling contexts that have no fiscal concern.
@@ -199,7 +240,7 @@ This ADR **refines** [ADR-026](./026-country-agnostic-invoicing-domain.md) Decis
 ## References
 
 - Related PRs: #2055 (this ADR)
-- Related issues: #2051, #2009, #2047, #1908, #2054, #1902, #1841
+- Related issues: #2051, #2009, #2047, #1908, #2054, #1902, #1841, #2599 (buyer tax id on the order contract)
 - Related ADRs: [ADR-026](./026-country-agnostic-invoicing-domain.md) (invoicing domain; policy-above-the-port, and the VAT-rate annex proposed under #2009), [ADR-002](./002-capability-ports-with-sub-capabilities.md) (capability decomposition), [ADR-007](./007-syncjob-status-vs-outcome-split.md) (job status vs outcome), [ADR-014](./014-source-authoritative-order-pricing.md) (source-authoritative amounts; note its live text *rejects* a per-line tax rate as destination-catalog knowledge - the supersession that would carry the VAT rate through is proposed in #2054, not settled here)
 - Primary doc section: [docs/architecture-overview.md](../../architecture-overview.md) § 14 Invoicing, § Cross-context dependencies in core
 - Spec: [`docs/specs/product-spec-1902-eparagony-e-receipts.md`](../../specs/product-spec-1902-eparagony-e-receipts.md)

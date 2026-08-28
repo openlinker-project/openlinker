@@ -39,8 +39,27 @@ Each `SyncJobHandler.execute()` returns a typed `SyncJobHandlerResult` whose `ou
 - "Did this succeed?" now has two correct definitions (orchestrationally vs. business-wise). Callers must say which they mean.
 - Existing handlers default to `outcome='ok'` mechanically until they grow domain-failure branches; risk of "outcome looks reliable but most handlers don't compute it" until coverage catches up.
 
+## Amendment (#2613 / #2617) - a third arm on the retry ladder: penalty-free deferral, and the budget that keeps it finite
+
+This ADR splits *orchestration* from *business result*. It says nothing about a third case the concurrency work made common: a failure that is **neither** - not the job's own fault and not a deterministic "no" from the platform. A destination throttling us (429), a destination in maintenance (503), a rate-limit slot that timed out, or a write refused because a peer held the serialisation lock ([ADR-067](./067-freshness-token-write-ordering.md)) are all evidence about the world at that instant, not about the job.
+
+Spending a retry attempt on those walks a healthy job toward `dead` for reasons it cannot influence. So the runner **requeues without consuming an attempt** (`requeueWithoutPenalty`): `status` returns to `queued` with a future `nextRunAt`, `attempts` is deliberately left standing, and `outcome` stays `null` - the job has not succeeded, so the outcome column is untouched. The two columns' meanings are unchanged; deferral is a new arm on the path *between* them.
+
+**A deferral must be bounded, or a job becomes immortal.** A deferral consumes no attempt, so a destination answering 503 for ever would recycle its jobs for ever and never reach `dead` - the terminal state an operator's alerting reads. `sync_jobs.deferredTotalMs` (nullable integer, no default, `NULL` = never deferred) accumulates the wait GRANTED to the job; once the next grant would pass the budget (`OL_JOB_MAX_DEFERRED_WAIT_SECONDS`, default 24 h) the job **rejoins the ordinary ladder** at `attempts + 1` and can reach `dead` exactly as before.
+
+Four properties are load-bearing.
+
+- **A cumulative time budget, not a deferral count.** The grants differ by an order of magnitude by reason, so a count would mean a different amount of patience per reason.
+- **A deferral never beats a terminal answer.** The deferral check runs only when the non-retryable check said no, because both registry lookups OR across every registered classifier - so a cause one plugin calls deterministic and another reports as deferrable must die rather than defer for ever.
+- **The grant is coerced and clamped, not trusted.** A platform adapter reports it through the optional `RetryClassifierPort.getRetryDeferral`, probed at runtime rather than trusted to the type ([ADR-046](./046-adapter-declared-description-format.md)'s shape); a non-positive or non-finite delay is ignored and anything above one hour is clamped, so a buggy plugin cannot park a job for decades. The one core-recognised cause is `ContendedWriteError`, which no platform classifier could see.
+- **A deferred job is visible AS deferred**, not merely as queued. The reason and the spent budget are written into `lastError`, and the jobs surfaces render `deferred` beside the attempts counter that a deferral deliberately leaves standing still. Without that, an unmoving attempts count on a `queued` row reads as a stuck worker.
+
+One reporting detail follows from the split this ADR made: the recorded attempt duration is honest about what ran. A 429 or 503 means the handler executed and spent real time before the destination turned it away, so that path writes `lastAttemptDurationMs`; the paths where nothing executed (a rate-limit slot that never opened, a job killed for having no registered handler) **clear** the column rather than leaving an earlier attempt's number beside a new state.
+
+The lane-occupancy half of this decision is recorded in [ADR-050](./050-workload-isolation-concurrency-lanes.md) § Amendment (#2613). The whole ladder - attempts, backoff, dead, and this third arm - lives in these two ADRs and nowhere else; a standalone ADR for the deferral was rejected precisely so it does not end up described in three places.
+
 ## References
 
 - Primary doc: [docs/architecture-overview.md](../../architecture-overview.md) § Sync Manager.
-- Related ADRs: [ADR-005](./005-postgres-authoritative-job-dedup.md) (the upstream webhook → job flow this consumes).
-- Related PRs: #391 (initial outcome thinking), #400 (`status`/`outcome` split + `markSucceeded` API).
+- Related ADRs: [ADR-005](./005-postgres-authoritative-job-dedup.md) (the upstream webhook → job flow this consumes); [ADR-050](./050-workload-isolation-concurrency-lanes.md) (lanes, and the deferral's lane-occupancy half); [ADR-067](./067-freshness-token-write-ordering.md) (the contended-write refusal the deferral carries).
+- Related PRs: #391 (initial outcome thinking), #400 (`status`/`outcome` split + `markSucceeded` API), #2613 (penalty-free deferral + `deferredTotalMs`), #2617 (the contended-write cause).
