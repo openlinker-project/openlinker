@@ -44,6 +44,10 @@ function buildQuery(filters: SalesAnalyticsFilters): string {
   if (filters.sourceConnectionId) {
     params.set('sourceConnectionId', filters.sourceConnectionId);
   }
+  if (filters.displayCurrency) {
+    params.set('displayCurrency', filters.displayCurrency);
+    params.set('rateBasis', filters.rateBasis ?? 'current-rate');
+  }
   return params.toString();
 }
 
