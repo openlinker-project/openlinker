@@ -98,6 +98,7 @@ import { PrestashopOrderStateUnresolvedException } from '../../domain/exceptions
 import { PrestashopInvalidFilterException } from '../../domain/exceptions/prestashop-invalid-filter.exception';
 import { PrestashopTruncatedReadException } from '../../domain/exceptions/prestashop-truncated-read.exception';
 import { PrestashopPackFilterIgnoredException } from '../../domain/exceptions/prestashop-pack-filter-ignored.exception';
+import { PrestashopOrFilterIgnoredException } from '../../domain/exceptions/prestashop-or-filter-ignored.exception';
 import { PrestashopOlModuleException } from '../../domain/exceptions/prestashop-ol-module.exception';
 
 /**
@@ -165,6 +166,7 @@ export class PrestashopRetryClassifierAdapter implements RetryClassifierPort {
       cause instanceof PrestashopInvalidFilterException ||
       cause instanceof PrestashopTruncatedReadException ||
       cause instanceof PrestashopPackFilterIgnoredException ||
+      cause instanceof PrestashopOrFilterIgnoredException ||
       this.isTerminalModuleRefusal(cause)
     );
   }

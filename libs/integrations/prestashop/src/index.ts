@@ -47,6 +47,7 @@ export { PrestashopProvisioningException } from './domain/exceptions/prestashop-
 export { PrestashopInvalidFilterException } from './domain/exceptions/prestashop-invalid-filter.exception';
 export { PrestashopTruncatedReadException } from './domain/exceptions/prestashop-truncated-read.exception';
 export { PrestashopPackFilterIgnoredException } from './domain/exceptions/prestashop-pack-filter-ignored.exception';
+export { PrestashopOrFilterIgnoredException } from './domain/exceptions/prestashop-or-filter-ignored.exception';
 // #2052 — raised when a gross→net conversion needs a tax rate the shop's tax
 // configuration cannot supply. Exported because it is the input the retry
 // classifier keys on (a configuration error must not be retried).

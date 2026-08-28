@@ -933,18 +933,30 @@ export class WooCommerceProductMasterAdapter
   private storeCountry: string | null | undefined;
 
   /**
-   * Narrow a requested page size to what WooCommerce will actually honour.
+   * Refuse a requested page size WooCommerce will not honour.
    *
-   * Warns when it bites. A silent clamp is the reported-versus-enforced defect
-   * in miniature: the operator set 250, the settings page reports 250, and the
-   * shop was asked for 100 - with nothing anywhere saying so.
+   * It REFUSES rather than clamping, and the difference is the whole point:
+   * `readPagedIds` infers end-of-collection from a page shorter than the size it
+   * asked for, so a clamped page reads as the end of the catalogue - a cycle
+   * "completed" after 100 products, the cursor cleared, and the same first 100
+   * swept on every tick for ever behind one warn line.
+   *
+   * **The message names the control that actually feeds this value** (#2627
+   * review). The enumeration page size comes from `getPageSize()` in the sweep
+   * handler, i.e. `OL_PRODUCT_SYNC_PAGE_SIZE`, which is env-only and is NOT on
+   * `/settings/sync-pacing`. The earlier wording sent the operator to lower the
+   * "sweep page size" on that page - which is the batch child's `groupSize`, a
+   * different value with a different ceiling - so following the instruction
+   * changed nothing and the sweep kept failing.
    */
   private resolvePerPage(requested: number, operation: string): number {
     if (exceedsAdapterPageSize(requested, WC_MAX_PER_PAGE)) {
       throw new WooCommerceInvalidArgumentException(
         `WooCommerce accepts at most ${String(WC_MAX_PER_PAGE)} products per request; ` +
           `${operation} asked for ${String(requested)} (connection: ${this.connection.id}). ` +
-          `Lower the sweep page size to ${String(WC_MAX_PER_PAGE)} or below.`,
+          `Set OL_PRODUCT_SYNC_PAGE_SIZE to ${String(WC_MAX_PER_PAGE)} or below on the worker. ` +
+          `This is NOT the "products per request" control on /settings/sync-pacing, which sets a ` +
+          `different value.`,
       );
     }
     return requested;

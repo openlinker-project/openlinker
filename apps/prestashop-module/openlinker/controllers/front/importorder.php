@@ -58,9 +58,31 @@
  * an order having to be created. An older module answers without it, so the
  * backend keeps pinning over the Webservice until it has seen the field.
  *
- * Idempotent: if an order already exists for `id_cart`, the existing order is
- * returned (`already_existed: true`) rather than validated a second time — so a
- * backend retry after a partial failure is safe.
+ * Idempotent for a SEQUENTIAL retry, not for a concurrent one. If an order
+ * already exists for `id_cart` the existing order is returned
+ * (`already_existed: true`) rather than validated a second time, so a retry
+ * issued after the first request finished is safe.
+ *
+ * It is NOT safe against two requests for one cart that overlap (#2627 review).
+ * The check is `Order::getIdByCartId($idCart)` followed, ~100 lines later, by
+ * `validateOrder`, with nothing serialising the two — no `GET_LOCK`, no
+ * `SELECT ... FOR UPDATE`, no transaction anywhere in this request path. A
+ * client that times out at 30 s while `validateOrder` is still running and then
+ * retries passes `ReplayGuard::claim` (the retry is freshly signed and carries
+ * its own nonce), reads 0 from `getIdByCartId` because the first request has
+ * not committed, and validates the cart a second time: two orders, two stock
+ * decrements, one cart. PrestaShop's own `OrderExists()` check inside
+ * `validateOrder` narrows the window; it is the same read-then-act shape, and
+ * the shutdown guard turns its `die()` into a 502 rather than an idempotent
+ * reply.
+ *
+ * Closing it properly needs a per-cart lock held across both statements — a
+ * named `GET_LOCK('openlinker:cart:<id>')` acquired before the existence check
+ * and released after the response is composed. That is deliberately not done in
+ * the review round that found it: this module ships no `vendor/`, so its
+ * PHPUnit suite cannot execute here, and adding untested locking to the live
+ * order-creation path would trade a documented narrow race for an unbounded
+ * one. What is fixed here is the claim: the docblock said the retry was safe.
  *
  * @module prestashop-module/controllers
  * @see {@link HmacRequestVerifier} for signature verification
@@ -111,6 +133,10 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
         require_once $this->module->getLocalPath() . 'classes/PaymentModuleGate.php';
         require_once $this->module->getLocalPath() . 'classes/LinePriceRequest.php';
         require_once $this->module->getLocalPath() . 'classes/ReplayGuard.php';
+        // For `WebhookSender::getErrorMessage`, the module's one redaction pass.
+        // Every error detail this controller puts in a response body goes
+        // through it (#2627 review).
+        require_once $this->module->getLocalPath() . 'classes/WebhookSender.php';
 
         $rawBody         = (string) @file_get_contents('php://input');
         $timestampHeader = $this->headerValue('HTTP_X_OPENLINKER_TIMESTAMP');
@@ -120,7 +146,7 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
         try {
             HmacRequestVerifier::verify($rawBody, $timestampHeader, $signatureHeader, $secret);
         } catch (Exception $e) {
-            $this->jsonError(401, $e->getMessage());
+            $this->jsonError(401, $this->redact($e->getMessage()));
             return;
         }
 
@@ -264,7 +290,7 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
             if ($pinError !== null) {
                 $this->cleanupPinnedPrices();
                 OpenLinker::$suppressImportMail = false;
-                $this->jsonError(502, 'line-price-pin-failed', $pinError);
+                $this->jsonError(502, 'line-price-pin-failed', $this->redact($pinError));
                 return;
             }
         }
@@ -296,7 +322,7 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
                 'OpenLinker: validateOrder failed for id_cart=' . $idCart . ': ' . $e->getMessage(),
                 3, null, 'Cart', $idCart
             );
-            $this->jsonError(502, 'validate-order-failed', $e->getMessage());
+            $this->jsonError(502, 'validate-order-failed', $this->redact($e->getMessage()));
             return;
         }
         $this->discardStrayOutput();
@@ -530,6 +556,36 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
      * @param string|null $detail
      * @return void
      */
+    /**
+     * Strip credential-shaped fragments out of anything derived from an
+     * exception before it leaves the process.
+     *
+     * Every other error path in this module already routes through
+     * `WebhookSender::getErrorMessage`; four in this controller did not, and
+     * this is the controller whose body OpenLinker stores verbatim in
+     * `sync_jobs.lastError` — visible to any operator, `viewer` included. A
+     * `PrestaShopDatabaseException` embeds the failing SQL, so an unredacted
+     * 502 carried table names, the DB prefix and order column values out with it
+     * (#2627 review).
+     *
+     * Redaction is not the same thing as safety: this narrows a known leak
+     * shape, it does not make arbitrary driver text fit for publication. That is
+     * why the detail is also truncated.
+     *
+     * @param string $message
+     * @return string
+     */
+    private function redact($message)
+    {
+        $message = (string) $message;
+
+        if (class_exists('WebhookSender') && method_exists('WebhookSender', 'getErrorMessage')) {
+            $message = WebhookSender::getErrorMessage(new Exception($message));
+        }
+
+        return substr($message, 0, 500);
+    }
+
     private function jsonError($status, $reason, $detail = null)
     {
         $this->discardStrayOutput();

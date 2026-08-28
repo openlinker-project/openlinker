@@ -309,6 +309,7 @@ class OpenLinker extends CarrierModule
             // A shop whose replay guard cannot answer looks completely healthy
             // otherwise, so the panel has to say so (#2619).
             'replay_guard_degraded_at' => Configuration::get(ReplayGuard::DEGRADED_CONFIG_KEY),
+            'replay_guard_degraded_error' => Configuration::get(ReplayGuard::DEGRADED_ERROR_CONFIG_KEY),
         ]);
 
         return $output . $this->display(__FILE__, 'views/templates/admin/configure.tpl');
@@ -522,16 +523,24 @@ class OpenLinker extends CarrierModule
                 'payloadJson' => json_encode(['test' => true]),
             ]);
 
-            // Immediately trigger delivery (process one event)
+            // Deliver THE ROW WE JUST ENQUEUED, by id.
+            //
+            // Not `claimBatchDueForDelivery(1, ...)`: that is the delivery
+            // pass's claim, ordered `created_at ASC`, so on any non-empty queue
+            // it hands back the oldest pending row - a real `product.saved`,
+            // possibly at attempt 18 - and this probe would POST it as a test,
+            // reset its backoff to the 60 s base, bypass the terminal
+            // `attempts >= maxAttempts` check, and overwrite the `last_error`
+            // the operator is reading, while the actual test event sat pending
+            // and the verdict shown was about a different event (#2627 review).
             $sender = new WebhookSender();
             $runId = uniqid('test_', true);
-            $events = $repository->claimBatchDueForDelivery(1, $runId);
+            $event = $repository->claimEventById($testEventId, $runId);
 
-            if (empty($events)) {
+            if ($event === null) {
                 return $this->displayError($this->l('Failed to claim test event'));
             }
 
-            $event = $events[0];
             $success = $sender->sendEvent($event);
 
             if ($success) {

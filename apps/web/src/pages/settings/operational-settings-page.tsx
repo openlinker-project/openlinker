@@ -498,13 +498,22 @@ export function OperationalSettingsPage(): ReactElement {
                   <h3 className="section-title">Deletion audit</h3>
                 </div>
                 {view.deletionAuditAlwaysEnabled ? (
-                  <span className="panel__meta">cannot be switched off</span>
+                  <span className="panel__meta">no off switch here</span>
                 ) : null}
               </div>
 
               <p className="panel-copy muted-text">
-                A shop never tells OpenLinker that a product is gone, so OpenLinker walks its own
-                list and checks. Until a deleted product is reached, its offers keep selling.
+                OpenLinker walks its own list of products and checks each one against the shop, so a
+                deletion is found even when nothing told us about it. Some shops do tell us — the
+                PrestaShop module reports a delete as it happens — and where they do, the audit is
+                the backstop rather than the only route. This page cannot tell which is true for a
+                given connection.
+              </p>
+              <p className="panel-copy muted-text">
+                This page has no switch to turn the audit off, because it is what stops a deleted
+                product's offers from selling. It can still be disabled on the worker with{' '}
+                <code>OL_MASTER_PRODUCT_RECONCILE_ENABLED=false</code>, and this page cannot see
+                that.
               </p>
 
               <div className="field-stack">

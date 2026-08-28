@@ -5,10 +5,16 @@
  * a one-row product list — the cheapest existing surface that answers it.
  *
  * It is deliberately reported as "what OpenLinker has replicated", not "what
- * the shop holds". Mid-first-sync those are different numbers, and the page
- * says so next to the figure. A `null` result means the question is
- * unanswered, and every cycle length then renders as unknown rather than
- * being computed from a guess.
+ * the shop holds". Mid-first-sync those are different numbers, and every
+ * surface that DERIVES from this figure has to say so - not just the figure
+ * itself. The catalogue sweep enumerates the SHOP's catalogue, so a pass length
+ * computed from this number is a floor, and mid-first-sync it can understate by
+ * an order of magnitude or more (#2627 review). A `null` result means the
+ * question is unanswered, and every cycle length then renders as unknown rather
+ * than being computed from a guess.
+ *
+ * `stockPassDays` and `deletionWindowDays` are exempt from that caveat: those
+ * sweeps really do enumerate OpenLinker's own mappings, so this IS their input.
  *
  * @module apps/web/src/features/settings/hooks
  */

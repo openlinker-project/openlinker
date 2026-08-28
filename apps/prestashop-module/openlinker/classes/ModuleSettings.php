@@ -77,24 +77,26 @@ class ModuleSettings
      * merchant whose second shop genuinely held a different secret is losing
      * it and needs a trace of that.
      *
+     * `null` when EVERY row is empty. An earlier revision documented that and
+     * did not do it: `$fallback` was initialised `null` and then immediately
+     * assigned `''` by the first empty-valued row, so the caller's
+     * `if ($value !== null)` guard was dead and an empty string was written
+     * globally over whatever was there - after which `HmacRequestVerifier::verify`
+     * answers `misconfigured` on every inbound request (#2627 review).
+     *
      * @param array $rows Rows of ['value' => string|null], in id order.
      * @return string|null null when there is nothing worth promoting.
      */
     public static function pickValueToPromote(array $rows)
     {
-        $fallback = null;
-
         foreach ($rows as $row) {
             $value = isset($row['value']) ? (string) $row['value'] : '';
             if ($value !== '') {
                 return $value;
             }
-            if ($fallback === null) {
-                $fallback = $value;
-            }
         }
 
-        return $fallback;
+        return null;
     }
 
     /**
@@ -126,7 +128,28 @@ class ModuleSettings
 
             $value = self::pickValueToPromote($rows);
             self::logConflictingValues($key, $rows);
-            if ($value !== null) {
+
+            // A global row that already holds a value is NOT overwritten
+            // (#2627 review). The shape this protects is ordinary: a merchant
+            // configured the module under one shop, later re-configured it
+            // under "All shops", and now holds an OLD secret shop-scoped and
+            // the CURRENT one globally. Promoting the shop-scoped row over it
+            // and then deleting the source replaced the working secret with a
+            // stale one and left nothing to recover it from - every inbound
+            // request answering 401, with `logConflictingValues` silent because
+            // there was only one distinct shop-scoped value. The shop-scoped
+            // rows are still deleted below, which is the part that has to
+            // happen either way: `Configuration::get` prefers them over the
+            // global row, so leaving them would keep shadowing the value in use.
+            $existingGlobal = self::readGlobalValue($key);
+            if ($existingGlobal !== '' && $value !== null && $existingGlobal !== $value) {
+                self::log(
+                    'OpenLinker upgrade: keeping the existing global value for "' . $key . '"'
+                    . ' and discarding a different shop-scoped one. If webhooks were working'
+                    . ' before this upgrade they still are; if they were not, the shop-scoped'
+                    . ' value may have been the live one.'
+                );
+            } elseif ($existingGlobal === '' && $value !== null) {
                 Configuration::updateGlobalValue($key, $value);
             }
 
@@ -170,11 +193,44 @@ class ModuleSettings
             return;
         }
 
-        PrestaShopLogger::addLog(
+        self::log(
             'OpenLinker: ' . $key . ' had ' . count($distinct) . ' different per-shop values while'
             . ' being promoted to global scope. The value from the lowest id_configuration was kept'
-            . ' and the others were deleted. Re-enter this setting if the wrong shop won.',
-            2
+            . ' and the others were deleted. Re-enter this setting if the wrong shop won.'
         );
+    }
+
+    /**
+     * The current global value for a key, as a string.
+     *
+     * Read straight off the table rather than through `Configuration::get`,
+     * which prefers a shop-scoped row - the very rows this migration is about
+     * to delete - and would therefore answer about the wrong scope.
+     *
+     * @param string $key
+     * @return string '' when there is no global row, or it is empty.
+     */
+    private static function readGlobalValue($key)
+    {
+        $table = _DB_PREFIX_ . 'configuration';
+        $row = Db::getInstance()->getRow(
+            'SELECT `value` FROM `' . bqSQL($table) . '`'
+            . ' WHERE `name` = "' . pSQL($key) . '"'
+            . ' AND NOT ' . self::SHOP_SCOPED_PREDICATE
+            . ' ORDER BY `id_configuration` ASC'
+        );
+
+        return (!is_array($row) || !isset($row['value'])) ? '' : (string) $row['value'];
+    }
+
+    /**
+     * One place the upgrade writes its notes, at warning severity.
+     *
+     * @param string $message
+     * @return void
+     */
+    private static function log($message)
+    {
+        PrestaShopLogger::addLog($message, 2);
     }
 }

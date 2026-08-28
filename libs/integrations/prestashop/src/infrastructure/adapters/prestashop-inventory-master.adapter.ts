@@ -358,9 +358,18 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort, Bu
       return null;
     }
 
+    if (pack.unreadableComponentCount > 0) {
+      this.logger.warn(
+        `master_inventory_pack_unreadable_components product=${productId} psProductId=${psProductId} ` +
+          `count=${String(pack.unreadableComponentCount)} - a bundle entry could not be read; the pack is ` +
+          `reported as zero rather than as the minimum of the entries that could be`
+      );
+    }
+
     const derived = derivePackAvailability(
       pack.components,
-      await this.readComponentAvailability(pack.components)
+      await this.readComponentAvailability(pack.components),
+      pack.unreadableComponentCount
     );
 
     if (derived === null) {
@@ -427,7 +436,7 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort, Bu
       }
     );
 
-    this.assertOrFilterHonoured(componentProductIds, rows);
+    await this.assertOrFilterHonoured(componentProductIds, rows);
 
     const availability = new Map<string, number>();
     for (const row of rows) {
@@ -450,14 +459,34 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort, Bu
   /**
    * Refuse a component stock response the OR filter cannot have produced.
    *
-   * Both shapes would otherwise read as "every component is out of stock" and
-   * publish the pack at 0 - the same silent false zero the paged read closes,
-   * arriving by a different route.
+   * THREE shapes are checked, and the third is the one an all-or-nothing test
+   * misses (#2627 review). A response holding an id nobody asked for means the
+   * condition was dropped and the whole collection came back. A response
+   * holding no row at all means the same thing, since PrestaShop materialises a
+   * stock row per product. And a response holding SOME of the requested ids is
+   * the partial case: `derivePackAvailability` maps a missing key to 0, so four
+   * of five components honoured publishes a fully in-stock pack at 0 and stops
+   * a live listing - the exact #2598 false zero, arriving through the gap the
+   * first two checks leave open.
+   *
+   * A missing id is NOT fatal on its own, because a genuinely deleted component
+   * product legitimately has no stock row, and refusing there would fail the
+   * inventory sync of every pack whose bundle still names a removed product -
+   * trading a wrong quantity for a permanently failing job. The two are told
+   * apart by asking the shop whether the missing products still exist: one
+   * extra narrowed read, issued only when something is missing. A product that
+   * still exists and answered no stock row is a dropped condition and throws; a
+   * product that is gone keeps the existing "counts as zero" reading and warns.
+   *
+   * The existence probe is itself best-effort: if it cannot be read we cannot
+   * tell the two apart, and refusing on an unrelated transport failure would
+   * make the guard the thing that breaks pack syncing. That degrades to the
+   * pre-check behaviour, logged.
    */
-  private assertOrFilterHonoured(
+  private async assertOrFilterHonoured(
     componentProductIds: readonly string[],
     rows: readonly PrestashopStockAvailable[]
-  ): void {
+  ): Promise<void> {
     const requested = new Set(componentProductIds);
     const answered = new Set(rows.map((row) => String(row.id_product)));
 
@@ -477,6 +506,64 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort, Bu
         componentProductIds,
         'it returned no rows at all, and PrestaShop materialises a stock row per product'
       );
+    }
+
+    const missing = componentProductIds.filter((id) => !answered.has(id));
+    if (missing.length === 0) {
+      return;
+    }
+
+    const stillPresent = await this.readExistingProductIds(missing);
+    if (stillPresent === null) {
+      this.logger.warn(
+        `master_inventory_pack_component_existence_unknown connection=${this.connection.id} ` +
+          `missing=${missing.join(',')} - cannot tell a deleted component from a dropped filter; ` +
+          `treating the missing components as zero stock`
+      );
+      return;
+    }
+
+    if (stillPresent.length > 0) {
+      throw new PrestashopPackFilterIgnoredException(
+        this.connection.id,
+        componentProductIds,
+        `it returned no stock row for product(s) ${stillPresent.join(', ')}, which still exist in the shop`
+      );
+    }
+
+    this.logger.warn(
+      `master_inventory_pack_component_deleted connection=${this.connection.id} ` +
+        `missing=${missing.join(',')} - component product(s) no longer exist in the shop; ` +
+        `the pack is limited to zero by them`
+    );
+  }
+
+  /**
+   * Which of these product ids the shop still has, or `null` when the read
+   * failed and the answer is unknown.
+   *
+   * `display=[id]` keeps the body tiny - the question is existence, not content.
+   */
+  private async readExistingProductIds(productIds: readonly string[]): Promise<string[] | null> {
+    try {
+      const products = await readAllPrestashopResourcePages<{ id?: string | number }>(
+        this.httpClient,
+        'products',
+        { display: '[id]', custom: { id: productIds.join('|') } },
+        {
+          connectionId: this.connection.id,
+          detail: `${productIds.length} unanswered pack component(s)`,
+        }
+      );
+      const requested = new Set(productIds.map(String));
+      return [...new Set(products.map((product) => String(product.id ?? '')))].filter((id) =>
+        requested.has(id)
+      );
+    } catch (error) {
+      this.logger.warn(
+        `master_inventory_pack_component_existence_probe_failed connection=${this.connection.id}: ${(error as Error).message}`
+      );
+      return null;
     }
   }
 
