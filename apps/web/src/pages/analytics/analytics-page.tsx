@@ -27,8 +27,8 @@ import {
   ProductSalesTable,
   computePresetRange,
   toExclusiveEndInstant,
-  useAnalyticsSettingsQuery,
   useAnalyticsTrustQuery,
+  useSalesAnalyticsQuery,
   type DisplayCurrencyRateBasis,
   type SalesAnalyticsFilters,
 } from '../../features/analytics';
@@ -67,7 +67,6 @@ export function AnalyticsPage(): ReactElement {
   }
 
   const trustQuery = useAnalyticsTrustQuery();
-  const settingsQuery = useAnalyticsSettingsQuery();
 
   // `null` means no override — the dashboard renders in the reporting
   // currency (#2472, ADR-064). Read raw rather than derived-from-settings:
@@ -102,6 +101,17 @@ export function AnalyticsPage(): ReactElement {
     [from, to, displayCurrency, rateBasis]
   );
 
+  // Reads the same cache entry `AnalyticsKpiStrip` populates (byte-identical
+  // query key) — no extra request. `headline.currency` is the TRUE system
+  // reporting currency these figures are stamped in, open to every
+  // authenticated user (unlike `GET /currency-settings`, which is
+  // admin-only). This must not be read from `AnalyticsSettingsView.
+  // displayCurrency` — that field resolves to an operator-saved *view*
+  // default when one exists, which is a different axis and would mislabel
+  // the "native" option the moment an admin sets a non-default preference.
+  const salesQuery = useSalesAnalyticsQuery(salesFilters);
+  const reportingCurrency = salesQuery.data?.headline.currency ?? null;
+
   // Same range as `salesFilters`, converted to the ISO-instant shape
   // `GET /analytics/coverage` expects (#2473).
   const coverageFilters = useMemo(
@@ -128,7 +138,7 @@ export function AnalyticsPage(): ReactElement {
         onApply={handleApply}
         trailing={
           <AnalyticsCurrencyPicker
-            reportingCurrency={settingsQuery.data?.displayCurrency ?? null}
+            reportingCurrency={reportingCurrency}
             displayCurrency={displayCurrency}
             onChange={handleDisplayCurrencyChange}
           />
@@ -194,7 +204,7 @@ export function AnalyticsPage(): ReactElement {
         onOpenChange={setSettingsDialogOpen}
         displayCurrency={displayCurrency}
         rateBasis={rateBasis}
-        reportingCurrency={settingsQuery.data?.displayCurrency ?? null}
+        reportingCurrency={reportingCurrency}
         onApplyView={handleDisplayCurrencyChange}
         coverageFilters={coverageFilters}
       />

@@ -10,6 +10,8 @@
  */
 import { useMutation, useQueryClient, type UseMutationResult } from '@tanstack/react-query';
 import { useApiClient } from '../../../app/api/api-client-provider';
+import { analyticsCoverageQueryKeys } from '../api/analytics-coverage.query-keys';
+import { salesAnalyticsQueryKeys } from '../api/sales-analytics.query-keys';
 import type { AnalyticsRemediationRun, RecalculateCurrencyInput } from '../api/analytics-remediation.types';
 
 export function useRecalculateCurrencyMutation(): UseMutationResult<
@@ -23,8 +25,8 @@ export function useRecalculateCurrencyMutation(): UseMutationResult<
   return useMutation({
     mutationFn: (input) => apiClient.analytics.recalculateCurrency(input),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['analytics', 'coverage'] });
-      await queryClient.invalidateQueries({ queryKey: ['analytics', 'sales'] });
+      await queryClient.invalidateQueries({ queryKey: analyticsCoverageQueryKeys.all });
+      await queryClient.invalidateQueries({ queryKey: salesAnalyticsQueryKeys.all });
     },
   });
 }
