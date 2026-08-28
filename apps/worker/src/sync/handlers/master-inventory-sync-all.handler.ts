@@ -48,6 +48,12 @@ import {
   ISyncCursorsService,
   SyncLockPort} from '@openlinker/core/sync';
 import {
+  OPERATIONAL_SETTING_BOUNDS,
+  OPERATIONAL_SETTINGS_SERVICE_TOKEN,
+  type IOperationalSettingsService,
+  type OperationalSettingsView,
+} from '@openlinker/core/operational-settings';
+import {
   IdentifierMappingQueryPort,
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
   CORE_ENTITY_TYPE,
@@ -58,7 +64,7 @@ import {
   SWEEP_BATCH_SIZE_MAX,
   formatSweepCursor,
   parseSweepCursor,
-  resolveSweepBudget,
+  resolveRunBudget,
   resolveSweepLockTtlMs,
   runBoundedSweep,
   sweepCursorKey,
@@ -81,6 +87,8 @@ export class MasterInventorySyncAllHandler implements SyncJobHandler {
     private readonly cursors: ISyncCursorsService,
     @Inject(SYNC_LOCK_TOKEN)
     private readonly syncLock: SyncLockPort,
+    @Inject(OPERATIONAL_SETTINGS_SERVICE_TOKEN)
+    private readonly operationalSettings: IOperationalSettingsService,
     private readonly configService: ConfigService
   ) {}
 
@@ -91,8 +99,18 @@ export class MasterInventorySyncAllHandler implements SyncJobHandler {
     // the deletion audit and with a measurement to back it. So this run still
     // covers the same 100 products it covered before - in one child issuing a
     // handful of requests instead of a hundred children issuing one each.
-    const budget = resolveSweepBudget(this.getPayload(job).pageLimit);
-    const batchSize = this.getBatchSize();
+    //
+    // What the run may afford is now the OPERATOR's answer rather than a
+    // constant (#2651), resolved per tick so a change needs no restart. The
+    // default is unchanged at 100, so an install that sets nothing sweeps
+    // exactly the same 100 products it swept before.
+    const settings = await this.operationalSettings.resolve();
+    const budget = resolveRunBudget(
+      this.getPayload(job).pageLimit,
+      settings.inventorySweepBudget.value,
+      OPERATIONAL_SETTING_BOUNDS.inventorySweepBudget
+    );
+    const batchSize = this.getBatchSize(settings);
     const lockKey = sweepLockKey('inventory', job.connectionId);
     const lockTtlMs = resolveSweepLockTtlMs(
       this.configService.get<string>('OL_MASTER_SWEEP_LOCK_TTL_MS')
@@ -200,12 +218,29 @@ export class MasterInventorySyncAllHandler implements SyncJobHandler {
     return this.jobEnqueue.enqueueJob(jobRequest);
   }
 
-  /** Products per batch child, clamped to PrestaShop's own collection page. */
-  private getBatchSize(): number {
-    const raw = this.configService.get<string>(
-      'OL_INVENTORY_SYNC_BATCH_SIZE',
-      String(SWEEP_BATCH_SIZE_DEFAULT)
-    );
+  /**
+   * Products per batch child.
+   *
+   * Precedence, and the reason for each step:
+   *
+   * 1. The shared setting when a row OR `OL_SWEEP_PAGE_SIZE` supplied it - used
+   *    VERBATIM. It has already been clamped to the setting's absolute ceiling,
+   *    and narrowing it again here would silently undo a value the operator was
+   *    shown and acknowledged.
+   * 2. Otherwise `OL_INVENTORY_SYNC_BATCH_SIZE`, which survives as a narrower,
+   *    sweep-specific override and keeps its own legacy clamp so an install
+   *    that had tuned only this one is unchanged. Collapsing it into the shared
+   *    setting would silently move the other sweep's page size too.
+   * 3. Otherwise the built-in default.
+   */
+  private getBatchSize(settings: OperationalSettingsView): number {
+    if (settings.sweepPageSize.source !== 'default') {
+      return settings.sweepPageSize.value;
+    }
+    const raw = this.configService.get<string>('OL_INVENTORY_SYNC_BATCH_SIZE');
+    if (raw === undefined) {
+      return settings.sweepPageSize.value;
+    }
     const parsed = Number(raw);
     if (!Number.isFinite(parsed) || parsed <= 0) return SWEEP_BATCH_SIZE_DEFAULT;
     return Math.min(Math.floor(parsed), SWEEP_BATCH_SIZE_MAX);

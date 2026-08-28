@@ -18,9 +18,14 @@ import type {
 import type { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
 import { SyncJobExecutionError } from '@openlinker/core/sync';
 import type { ConfigService } from '@nestjs/config';
+import {
+  FakeOperationalSettingsService,
+  settingNumber,
+} from '../../../testing/operational-settings.double';
 
 describe('MasterInventorySyncAllHandler', () => {
   let handler: MasterInventorySyncAllHandler;
+  let operationalSettings: FakeOperationalSettingsService;
   let identifierMapping: jest.Mocked<IdentifierMappingQueryPort>;
   let jobEnqueue: jest.Mocked<JobEnqueuePort>;
   let cursors: jest.Mocked<ISyncCursorsService>;
@@ -55,11 +60,14 @@ describe('MasterInventorySyncAllHandler', () => {
       get: jest.fn((_key: string, defaultValue?: unknown) => defaultValue),
     } as unknown as jest.Mocked<ConfigService>;
 
+    operationalSettings = new FakeOperationalSettingsService();
+
     handler = new MasterInventorySyncAllHandler(
       identifierMapping,
       jobEnqueue,
       cursors,
       syncLock,
+      operationalSettings,
       configService
     );
   });
@@ -234,6 +242,34 @@ describe('MasterInventorySyncAllHandler', () => {
       await handler.execute(createJob('conn-1'));
 
       expect(cursors.advanceCursor).toHaveBeenCalledWith('conn-1', CURSOR_KEY, 'cycle-abc:50');
+    });
+
+    // #2651 — read per tick, not at boot.
+    it('should use the operator-set inventory budget on the next tick, with no restart', async () => {
+      identifierMapping.listExternalIdsByConnection.mockResolvedValue(['ext-1']);
+      jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'j', isExisting: false });
+
+      await handler.execute(createJob('conn-1'));
+      expect(identifierMapping.listExternalIdsByConnection).toHaveBeenCalledWith(
+        'Product',
+        'conn-1',
+        { limit: 100, offset: 0 }
+      );
+
+      operationalSettings.setValues({
+        inventorySweepBudget: settingNumber('inventorySweepBudget', 1500),
+      });
+      identifierMapping.listExternalIdsByConnection.mockClear();
+
+      await handler.execute(createJob('conn-1'));
+
+      // 1500 is above the legacy SWEEP_BUDGET_MAX of 500 — the settings bound
+      // is what applies, so what an operator is told is accepted is what runs.
+      expect(identifierMapping.listExternalIdsByConnection).toHaveBeenCalledWith(
+        'Product',
+        'conn-1',
+        { limit: 1500, offset: 0 }
+      );
     });
 
     it('should skip without throwing when another run holds the lock', async () => {

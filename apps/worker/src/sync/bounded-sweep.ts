@@ -238,6 +238,35 @@ export function resolveSweepBudget(
 }
 
 /**
+ * Picks the budget for a run, honouring which ceiling the value earned.
+ *
+ * A value that came from the SETTINGS surface may sit above the recommended
+ * ceiling: getting there required an explicit `acknowledgeAboveRecommended`,
+ * and clamping it back here would report a budget the sweep does not run.
+ *
+ * A value from the JOB PAYLOAD did not pass that gate - a payload is a raw
+ * enqueue with nowhere to record an acknowledgement - so it keeps the
+ * RECOMMENDED ceiling. The narrower bound is the safe direction for the input
+ * that carries no stated intent.
+ */
+export function resolveRunBudget(
+  payloadLimit: number | undefined,
+  settingValue: number,
+  bounds: { default: number; recommendedMax: number; absoluteMax: number }
+): number {
+  if (payloadLimit !== undefined) {
+    return resolveSweepBudget(payloadLimit, {
+      default: bounds.default,
+      max: bounds.recommendedMax,
+    });
+  }
+  return resolveSweepBudget(settingValue, {
+    default: bounds.default,
+    max: bounds.absoluteMax,
+  });
+}
+
+/**
  * Parses a stored cursor value. An absent, empty, or unparseable value starts a
  * fresh cycle rather than throwing — a malformed cursor must never wedge a sweep,
  * and re-running a cycle is idempotent.

@@ -56,17 +56,21 @@ import {
   ISyncCursorsService,
   SyncLockPort} from '@openlinker/core/sync';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import {
+  OPERATIONAL_SETTING_BOUNDS,
+  OPERATIONAL_SETTINGS_SERVICE_TOKEN,
+  type IOperationalSettingsService,
+  type OperationalSettingsView,
+} from '@openlinker/core/operational-settings';
 import type { ProductMasterPort } from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
 import {
-  BATCHED_SWEEP_BUDGET_DEFAULT,
-  BATCHED_SWEEP_BUDGET_MAX,
   SWEEP_BATCH_SIZE_DEFAULT,
   SWEEP_BATCH_SIZE_MAX,
   formatSweepCursor,
   parseSweepCursor,
   readPagedIds,
-  resolveSweepBudget,
+  resolveRunBudget,
   resolveSweepLockTtlMs,
   runBoundedSweep,
   sweepCursorKey,
@@ -98,15 +102,24 @@ export class MasterProductSyncAllHandler implements SyncJobHandler {
     private readonly cursors: ISyncCursorsService,
     @Inject(SYNC_LOCK_TOKEN)
     private readonly syncLock: SyncLockPort,
+    @Inject(OPERATIONAL_SETTINGS_SERVICE_TOKEN)
+    private readonly operationalSettings: IOperationalSettingsService,
     private readonly configService: ConfigService
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
-    const budget = resolveSweepBudget(
-      this.getPayload(job).pageLimit ?? this.getConfiguredBudget(),
-      { default: BATCHED_SWEEP_BUDGET_DEFAULT, max: BATCHED_SWEEP_BUDGET_MAX }
+    // Read PER TICK, never cached at boot (#2651): a budget an operator has to
+    // restart the worker to apply is barely better than the env var it
+    // replaces. One singleton-row primary-key lookup, against a run that is
+    // about to issue platform calls.
+    const settings = await this.operationalSettings.resolve();
+    const budget = resolveRunBudget(
+      this.getPayload(job).pageLimit,
+      this.getConfiguredBudget(settings),
+      // The bound carries the code default too, so there is one source for it.
+      OPERATIONAL_SETTING_BOUNDS.catalogueSweepBudget
     );
-    const batchSize = this.getBatchSize();
+    const batchSize = this.getBatchSize(settings);
     const lockKey = sweepLockKey('product', job.connectionId);
     const lockTtlMs = resolveSweepLockTtlMs(
       this.configService.get<string>('OL_MASTER_SWEEP_LOCK_TTL_MS')
@@ -241,24 +254,43 @@ export class MasterProductSyncAllHandler implements SyncJobHandler {
   }
 
   /**
-   * Items per run, overridable without a payload edit.
+   * Items per run.
    *
-   * An explicit payload `pageLimit` still wins - the scheduler descriptor is the
+   * The settings service owns the `row -> OL_PRODUCT_SYNC_PAGE_LIMIT ->
+   * BATCHED_SWEEP_BUDGET_DEFAULT` ladder, so this is the same resolution the
+   * env var used to provide on its own - an install that set nothing, or set
+   * only the env var, gets the same number it got before #2651.
+   *
+   * An explicit payload `pageLimit` still wins: the scheduler descriptor is the
    * narrower statement.
    */
-  private getConfiguredBudget(): number | undefined {
-    const raw = this.configService.get<string>('OL_PRODUCT_SYNC_PAGE_LIMIT');
-    if (raw === undefined) return undefined;
-    const parsed = Number(raw);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+  private getConfiguredBudget(settings: OperationalSettingsView): number {
+    return settings.catalogueSweepBudget.value;
   }
 
-  /** Products per batch child, clamped to PrestaShop's own collection page. */
-  private getBatchSize(): number {
-    const raw = this.configService.get<string>(
-      'OL_PRODUCT_SYNC_BATCH_SIZE',
-      String(SWEEP_BATCH_SIZE_DEFAULT)
-    );
+  /**
+   * Products per batch child.
+   *
+   * Precedence, and the reason for each step:
+   *
+   * 1. The shared setting when a row OR `OL_SWEEP_PAGE_SIZE` supplied it - used
+   *    VERBATIM. It has already been clamped to the setting's absolute ceiling,
+   *    and narrowing it again here would silently undo a value the operator was
+   *    shown and acknowledged.
+   * 2. Otherwise `OL_PRODUCT_SYNC_BATCH_SIZE`, which survives as a narrower,
+   *    sweep-specific override and keeps its own legacy clamp so an install
+   *    that had tuned only this one is unchanged. Collapsing it into the shared
+   *    setting would silently move the other sweep's page size too.
+   * 3. Otherwise the built-in default.
+   */
+  private getBatchSize(settings: OperationalSettingsView): number {
+    if (settings.sweepPageSize.source !== 'default') {
+      return settings.sweepPageSize.value;
+    }
+    const raw = this.configService.get<string>('OL_PRODUCT_SYNC_BATCH_SIZE');
+    if (raw === undefined) {
+      return settings.sweepPageSize.value;
+    }
     const parsed = Number(raw);
     if (!Number.isFinite(parsed) || parsed <= 0) return SWEEP_BATCH_SIZE_DEFAULT;
     return Math.min(Math.floor(parsed), SWEEP_BATCH_SIZE_MAX);
