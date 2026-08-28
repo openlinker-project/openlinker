@@ -5982,6 +5982,18 @@ a.kpi-card:focus-visible {
   outline: none;
 }
 
+/* ── forceMount'd panel that exists only as an `aria-controls` target
+   (#2448 / #2450 review) ────────────────────────────────────────────
+   A `forceMount`ed, non-selected Radix panel keeps `present === true`, so
+   Radix never sets the native `hidden` attribute on it - it stays an
+   ordinary flex item (dead gap under the tab bar) and a focusable
+   `tabIndex=0` stop with no content. This takes it out of both. Declared
+   after `.tabs__content` on purpose: same specificity, so source order is
+   what makes the override win. */
+.tabs__content--aria-anchor {
+  display: none;
+}
+
 /* ── Listings lifecycle tab bar: scroll, don't wrap, at phone widths
    (#2029 / #2042 round 1) ───────────────────────────────────────────
    Five buckets (the original four plus Unsynced) no longer fit unwrapped at
