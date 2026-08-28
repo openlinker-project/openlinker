@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';
+import {
+  renderWithProviders,
+  createMockApiClient,
+  createAuthenticatedSessionAdapter,
+} from '../../../test/test-utils';
 import { AnalyticsSettingsDialog } from './analytics-settings-dialog';
 
 const baseProps = {
@@ -83,7 +87,10 @@ describe('AnalyticsSettingsDialog', () => {
       },
     });
 
-    renderWithProviders(<AnalyticsSettingsDialog {...baseProps} />, { apiClient });
+    renderWithProviders(<AnalyticsSettingsDialog {...baseProps} />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     expect(await screen.findByText('23 orders waiting to be recalculated')).toBeInTheDocument();
 
@@ -119,7 +126,10 @@ describe('AnalyticsSettingsDialog', () => {
       },
     });
 
-    renderWithProviders(<AnalyticsSettingsDialog {...baseProps} />, { apiClient });
+    renderWithProviders(<AnalyticsSettingsDialog {...baseProps} />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     const taxToggle = await screen.findByRole('checkbox', {
       name: /Use the rate found in the product catalog/,
@@ -132,6 +142,68 @@ describe('AnalyticsSettingsDialog', () => {
         rateBasis: 'current',
         includeBackfilledTaxRatesInNetSales: true,
       });
+    });
+  });
+
+  describe('admin-only write affordances (#2473 review)', () => {
+    // PUT /analytics/settings and POST /analytics/coverage/currency/recalculate
+    // are @Roles('admin')-gated server-side — the tax-rate toggle and
+    // "Recalculate now" must not render as live, clickable controls for a
+    // session that would just get a 403.
+    const viewerSession = {
+      sessionAdapter: createAuthenticatedSessionAdapter({
+        id: 'u2',
+        username: 'viewer',
+        email: null,
+        role: 'viewer',
+        permissions: ['orders:read'],
+      }),
+    };
+
+    function coverageApiClient(): ReturnType<typeof createMockApiClient> {
+      return createMockApiClient({
+        analytics: {
+          getCoverage: vi.fn().mockResolvedValue({
+            categories: [
+              { category: 'currency', status: 'open', affectedCount: 23, sampleOrderIds: [] },
+              { category: 'tax-a', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+              { category: 'tax-b', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+              { category: 'tax-c', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+              { category: 'product-matching', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+            ],
+          }),
+        },
+      });
+    }
+
+    it('should hide the tax-rate toggle and the recalculate action for a non-admin, non-demo session', async () => {
+      renderWithProviders(<AnalyticsSettingsDialog {...baseProps} />, {
+        apiClient: coverageApiClient(),
+        ...viewerSession,
+      });
+
+      expect(await screen.findByText('23 orders waiting to be recalculated')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Recalculate now' })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('checkbox', { name: /Use the rate found in the product catalog/ })
+      ).not.toBeInTheDocument();
+    });
+
+    it('should render both admin-only controls visible-but-disabled for a demo read-only viewer', async () => {
+      const apiClient = createMockApiClient({
+        ...coverageApiClient(),
+        system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
+      });
+
+      renderWithProviders(<AnalyticsSettingsDialog {...baseProps} />, {
+        apiClient,
+        ...viewerSession,
+      });
+
+      expect(await screen.findByRole('button', { name: 'Recalculate now' })).toBeDisabled();
+      expect(
+        screen.getByRole('checkbox', { name: /Use the rate found in the product catalog/ })
+      ).toBeDisabled();
     });
   });
 });

@@ -41,6 +41,10 @@ import {
 } from '../../../shared/ui/dialog';
 import { Select } from '../../../shared/ui/select';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
+import { useWriteAccess } from '../../../shared/auth/use-permission';
+import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { useDemoMode } from '../../system';
 import { useAnalyticsSettingsQuery } from '../hooks/use-analytics-settings-query';
 import { useUpdateAnalyticsSettingsMutation } from '../hooks/use-update-analytics-settings-mutation';
 import { useAnalyticsCoverageQuery } from '../hooks/use-analytics-coverage-query';
@@ -73,6 +77,8 @@ export function AnalyticsSettingsDialog({
   coverageFilters,
 }: AnalyticsSettingsDialogProps): ReactElement {
   const { showToast } = useToast();
+  const demoMode = useDemoMode();
+  const write = useWriteAccess('analytics:write', demoMode);
 
   const [draftDisplayCurrency, setDraftDisplayCurrency] = useState(displayCurrency ?? NATIVE_VALUE);
   const [draftRateBasis, setDraftRateBasis] = useState<DisplayCurrencyRateBasis>(rateBasis);
@@ -218,14 +224,18 @@ export function AnalyticsSettingsDialog({
                 {currencyPendingCount} order{currencyPendingCount === 1 ? '' : 's'} waiting to be
                 recalculated
               </span>
-              <Button
-                type="button"
-                className="button--sm"
-                disabled={recalculate.isPending}
-                onClick={handleRecalculate}
-              >
-                {recalculate.isPending ? 'Starting…' : 'Recalculate now'}
-              </Button>
+              {write.visible && (
+                <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                  <Button
+                    type="button"
+                    className="button--sm"
+                    disabled={recalculate.isPending || write.demoReadOnly}
+                    onClick={handleRecalculate}
+                  >
+                    {recalculate.isPending ? 'Starting…' : 'Recalculate now'}
+                  </Button>
+                </ReadOnlyLock>
+              )}
             </div>
           ) : (
             <p className="analytics-settings-dialog__status">Everything&rsquo;s up to date</p>
@@ -234,22 +244,26 @@ export function AnalyticsSettingsDialog({
 
         <section className="analytics-settings-dialog__section">
           <h3 className="analytics-settings-dialog__section-title">Tax rates</h3>
-          <label className="analytics-settings-dialog__toggle">
-            <input
-              type="checkbox"
-              checked={settingsQuery.data?.includeBackfilledTaxRatesInNetSales ?? false}
-              disabled={!settingsQuery.data || updateSettings.isPending}
-              onChange={(event) => handleTaxToggleChange(event.target.checked)}
-            />
-            <span>
-              <strong>Use the rate found in the product catalog</strong>
-              <span className="analytics-settings-dialog__toggle-desc">
-                Trust a tax rate found retroactively in the catalog and include such orders in Net
-                Sales automatically. This is reversible — turning it off does not undo any figure
-                already shown.
-              </span>
-            </span>
-          </label>
+          {write.visible && (
+            <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+              <label className="analytics-settings-dialog__toggle">
+                <input
+                  type="checkbox"
+                  checked={settingsQuery.data?.includeBackfilledTaxRatesInNetSales ?? false}
+                  disabled={!settingsQuery.data || updateSettings.isPending || write.demoReadOnly}
+                  onChange={(event) => handleTaxToggleChange(event.target.checked)}
+                />
+                <span>
+                  <strong>Use the rate found in the product catalog</strong>
+                  <span className="analytics-settings-dialog__toggle-desc">
+                    Trust a tax rate found retroactively in the catalog and include such orders in Net
+                    Sales automatically. This is reversible — turning it off does not undo any figure
+                    already shown.
+                  </span>
+                </span>
+              </label>
+            </ReadOnlyLock>
+          )}
           <ul className="analytics-settings-dialog__tax-summary">
             <li>{taxA} orders — rate found, {settingsQuery.data?.includeBackfilledTaxRatesInNetSales ? 'included automatically' : 'waiting for confirmation'}</li>
             <li>{taxB} orders — no rate at the source (needs fixing at the source)</li>
