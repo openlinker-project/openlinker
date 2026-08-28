@@ -3,7 +3,7 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';
 import { AnalyticsConvertNote } from './analytics-convert-note';
-import type { SalesAnalyticsFilters } from '../api/sales-analytics.types';
+import type { SalesAnalyticsFilters, SalesAndChannelAnalytics } from '../api/sales-analytics.types';
 
 const baseFilters: SalesAnalyticsFilters = { from: '2026-01-01', to: '2026-01-31' };
 
@@ -16,7 +16,9 @@ describe('AnalyticsConvertNote', () => {
 
   it('should show a converting message while the query is in flight', () => {
     const apiClient = createMockApiClient({
-      analytics: { getSales: vi.fn(() => new Promise(() => {})) },
+      analytics: {
+        getSales: vi.fn(() => new Promise<SalesAndChannelAnalytics>(() => {})),
+      },
     });
 
     renderWithProviders(
