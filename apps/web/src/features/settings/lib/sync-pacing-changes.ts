@@ -13,7 +13,11 @@
  *
  * @module apps/web/src/features/settings/lib
  */
-import type { OperationalSettingField } from '../api/operational-settings.types';
+import type {
+  OperationalSettingField,
+  OperationalSettingKey,
+} from '../api/operational-settings.types';
+import { isAboveRecommended, type ValueLimits } from './resolve-value-limits';
 import { describeCadence } from './deletion-audit-cadence';
 import {
   formatDays,
@@ -48,6 +52,20 @@ export interface SyncPacingChange {
    * and only because the API said so - see `SyncPacingDiffContext`.
    */
   readonly timing?: string;
+  /**
+   * Set when this change takes the value past OpenLinker's RECOMMENDED
+   * ceiling.
+   *
+   * The modal is where the decision is taken, and raising a value past our
+   * advice is a different decision from moving it inside the range - so the
+   * entry has to say which ceiling was crossed rather than reading like any
+   * other edit. `reason` is the API's own sentence; a sentence written here
+   * would drift from it.
+   */
+  readonly aboveRecommended?: {
+    readonly recommendedMax: number;
+    readonly reason: string | null;
+  };
 }
 
 export interface SyncPacingDiff {
@@ -72,6 +90,12 @@ export interface SyncPacingDiffContext {
    * recognise the value says nothing rather than guessing.
    */
   readonly cadenceAppliesAt?: string;
+  /**
+   * The ceilings the API reported, per numeric field. Absent for a response
+   * that carried none - the diff then says nothing about ceilings rather
+   * than inventing one.
+   */
+  readonly limits?: Partial<Record<OperationalSettingKey, ValueLimits>>;
 }
 
 /**
@@ -132,6 +156,29 @@ function deletionWindowFactor(values: SyncPacingValues): number | null {
   return minutes / values.deletionAuditBudget;
 }
 
+/**
+ * Whether this change lands past our recommendation, and the API's reason.
+ *
+ * Reports only when the NEW value crosses it. A value that was already above
+ * the recommendation and is being lowered - still above, but moving the right
+ * way - is not a fresh crossing, and flagging it would make the modal cry wolf
+ * on the one edit that improves matters.
+ */
+function crossingFor(
+  key: OperationalSettingKey,
+  value: number,
+  context: SyncPacingDiffContext
+): SyncPacingChange['aboveRecommended'] {
+  const limits = context.limits?.[key];
+  if (limits === undefined || !isAboveRecommended(value, limits)) {
+    return undefined;
+  }
+  return {
+    recommendedMax: limits.recommendedMax ?? value,
+    reason: limits.recommendedReason,
+  };
+}
+
 export function diffSyncPacing(
   saved: SyncPacingValues,
   draft: SyncPacingValues,
@@ -146,6 +193,7 @@ export function diffSyncPacing(
     changes.push({
       field: 'catalogueSweepBudget',
       label: 'Catalogue: products per run',
+      aboveRecommended: crossingFor('catalogueSweepBudget', draft.catalogueSweepBudget, context),
       fromLabel: String(saved.catalogueSweepBudget),
       toLabel: String(draft.catalogueSweepBudget),
       effect:
@@ -161,6 +209,7 @@ export function diffSyncPacing(
     changes.push({
       field: 'inventorySweepBudget',
       label: 'Stock: products per run',
+      aboveRecommended: crossingFor('inventorySweepBudget', draft.inventorySweepBudget, context),
       fromLabel: String(saved.inventorySweepBudget),
       toLabel: String(draft.inventorySweepBudget),
       effect:
@@ -174,6 +223,7 @@ export function diffSyncPacing(
     changes.push({
       field: 'sweepPageSize',
       label: 'Products per shop request',
+      aboveRecommended: crossingFor('sweepPageSize', draft.sweepPageSize, context),
       fromLabel: String(saved.sweepPageSize),
       toLabel: String(draft.sweepPageSize),
       effect:
@@ -187,6 +237,7 @@ export function diffSyncPacing(
     changes.push({
       field: 'deletionAuditBudget',
       label: 'Deleted products: checked per run',
+      aboveRecommended: crossingFor('deletionAuditBudget', draft.deletionAuditBudget, context),
       fromLabel: String(saved.deletionAuditBudget),
       toLabel: String(draft.deletionAuditBudget),
       effect: passSentence(

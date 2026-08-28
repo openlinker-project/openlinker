@@ -19737,3 +19737,75 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   color: var(--status-info-fg);
   font-size: 0.75rem;
 }
+
+/* ── Two ceilings (#2653 follow-up) ──────────────────────────────────────
+ * The slider runs to the ABSOLUTE ceiling, so the recommended one has to be
+ * visible on the track - otherwise an operator only learns they crossed it
+ * when the save is refused.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+.field-row__track {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.field-row__track .field-row__slider {
+  width: 100%;
+}
+
+.field-row__recommended-marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--status-warning);
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+.field-row__scale {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+}
+
+/* A value the operator deliberately pushed past our advice must not read as
+   an ordinary setting when the page is reopened. */
+.form-field__source[data-above-recommended='true'] {
+  color: var(--status-warning-fg);
+}
+
+/* The acknowledgement sits inside its warning, so it inherits the alert's
+   ground rather than drawing a second box on top of it. */
+.ack-row--inline {
+  margin-top: var(--space-2);
+  margin-bottom: 0;
+  border: 0;
+  padding: 0;
+  gap: var(--space-2);
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+/* Which ceiling a change crossed, on that change's own entry in the modal. */
+.change__ceiling {
+  margin: 0;
+  border-left: 2px solid var(--status-warning-border);
+  padding-left: var(--space-2);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.change__ceiling-label {
+  color: var(--status-warning-fg);
+  font-weight: 600;
+}

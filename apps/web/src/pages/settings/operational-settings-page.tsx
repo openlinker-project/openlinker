@@ -53,8 +53,12 @@ import {
   DEFAULT_HOST_PROCESS_LIMIT_SECONDS,
   projectSyncPacing,
 } from '../../features/settings/lib/sync-pacing-model';
+import {
+  isAboveRecommended,
+  limitsFor,
+  type ValueLimits,
+} from '../../features/settings/lib/resolve-value-limits';
 import type {
-  OperationalSettingBound,
   OperationalSettingKey,
   OperationalSettingsView,
   UpdateOperationalSettingsInput,
@@ -68,17 +72,13 @@ import type {
  */
 const HOST_LIMIT_STORAGE_KEY = 'ol.syncPacing.hostProcessLimitSeconds';
 
-/** Used only when the server omits a bound, so a control always has a range. */
-const FALLBACK_BOUND: OperationalSettingBound = {
-  min: 1,
-  max: 2000,
-  default: 100,
-  envVar: '',
-};
-
-function boundFor(view: OperationalSettingsView, key: OperationalSettingKey): OperationalSettingBound {
-  return view.bounds[key] ?? FALLBACK_BOUND;
-}
+/** The numeric fields, in the order the page lays them out. */
+const NUMERIC_FIELDS: readonly OperationalSettingKey[] = [
+  'catalogueSweepBudget',
+  'sweepPageSize',
+  'inventorySweepBudget',
+  'deletionAuditBudget',
+];
 
 function toValues(view: OperationalSettingsView): SyncPacingValues {
   return {
@@ -112,6 +112,16 @@ export function OperationalSettingsPage(): ReactElement {
   const [draft, setDraft] = useState<SyncPacingValues | null>(null);
   const [hostLimit, setHostLimit] = useState<number>(readStoredHostLimit);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  /**
+   * Which fields the operator has explicitly accepted going past our
+   * recommendation on.
+   *
+   * Kept per FIELD even though the API flag is per request: each crossing has
+   * its own reason, and one blanket checkbox would ask the operator to accept
+   * a sentence they were never shown. The request flag is the OR of these,
+   * and is never set from the value alone.
+   */
+  const [acknowledged, setAcknowledged] = useState<Record<string, boolean>>({});
 
   const view = query.data ?? null;
   const savedStamp = view === null ? null : `${view.updatedAt ?? 'none'}:${view.deletionAuditCadence.value}`;
@@ -123,6 +133,9 @@ export function OperationalSettingsPage(): ReactElement {
   useEffect(() => {
     if (view !== null) {
       setDraft(toValues(view));
+      // A fresh saved row is a fresh decision; an acknowledgement must not
+      // carry over to a value the operator has not looked at.
+      setAcknowledged({});
     }
     // Dependency list is deliberately just the saved stamp; `view` is read
     // inside and must not re-trigger this.
@@ -134,6 +147,16 @@ export function OperationalSettingsPage(): ReactElement {
 
   const catalogueSize = catalogueSizeQuery.data ?? null;
 
+  // Resolved once per render and threaded everywhere, so the slider's range,
+  // the diff's crossing test and the save gate cannot disagree about where a
+  // ceiling is.
+  const limits = useMemo((): Partial<Record<OperationalSettingKey, ValueLimits>> => {
+    if (view === null) {
+      return {};
+    }
+    return Object.fromEntries(NUMERIC_FIELDS.map((key) => [key, limitsFor(view, key)]));
+  }, [view]);
+
   const diff = useMemo(() => {
     if (view === null || draft === null) {
       return { changes: [], lengthensDeletionWindow: false };
@@ -142,8 +165,21 @@ export function OperationalSettingsPage(): ReactElement {
       hostProcessLimitSeconds: hostLimit,
       catalogueSize,
       cadenceAppliesAt: view.cadenceAppliesAt,
+      limits,
     });
-  }, [view, draft, hostLimit, catalogueSize]);
+  }, [view, draft, hostLimit, catalogueSize, limits]);
+
+  // The fields whose CURRENT draft value sits past our recommendation, and
+  // which of those the operator has not yet accepted. Save is blocked on the
+  // second list: a crossing nobody acknowledged would be refused by the API
+  // anyway, and refusing it here says why while the control is still in view.
+  const crossingFields = draft === null
+    ? []
+    : NUMERIC_FIELDS.filter((key) => {
+        const fieldLimits = limits[key];
+        return fieldLimits !== undefined && isAboveRecommended(draft[key], fieldLimits);
+      });
+  const unacknowledgedFields = crossingFields.filter((key) => acknowledged[key] !== true);
 
   // Read off the diff rather than restated here, so the sentence beside the
   // control and the sentence in the modal cannot drift apart.
@@ -206,6 +242,11 @@ export function OperationalSettingsPage(): ReactElement {
     }
     if (draft.deletionAuditCadence !== saved.deletionAuditCadence) {
       payload.deletionAuditCadence = draft.deletionAuditCadence;
+    }
+    // Set from the operator's own acknowledgement, never from the value being
+    // high. Inferring it would make the gate a formality.
+    if (crossingFields.length > 0 && unacknowledgedFields.length === 0) {
+      payload.acknowledgeAboveRecommended = true;
     }
 
     try {
@@ -326,10 +367,14 @@ export function OperationalSettingsPage(): ReactElement {
                   ariaLabel="Products per catalogue run"
                   description="How many products OpenLinker reads from the shop in one run. Raise it and a full pass finishes sooner, but each run leans harder on the shop."
                   value={draft.catalogueSweepBudget}
-                  min={boundFor(view, 'catalogueSweepBudget').min}
-                  max={boundFor(view, 'catalogueSweepBudget').max}
+                  limits={limitsFor(view, 'catalogueSweepBudget')}
                   savedValue={view.catalogueSweepBudget.value}
                   savedSource={view.catalogueSweepBudget.source}
+                  savedAboveRecommended={view.catalogueSweepBudget.aboveRecommended === true}
+                  acknowledged={acknowledged['catalogueSweepBudget'] === true}
+                  onAcknowledgedChange={(next) => {
+                    setAcknowledged({ ...acknowledged, catalogueSweepBudget: next });
+                  }}
                   error={errors.fieldErrors.catalogueSweepBudget}
                   onChange={(value) => {
                     setDraft({ ...draft, catalogueSweepBudget: value });
@@ -339,18 +384,29 @@ export function OperationalSettingsPage(): ReactElement {
                 <PacingValueField
                   label="Products per shop request"
                   ariaLabel="Products per shop request"
-                  description="How many products OpenLinker asks the shop for at a time. 100 is the most any supported shop will return; asking for fewer only means more requests for the same work."
+                  description="How many products OpenLinker asks the shop for in one request. Asking for fewer means more requests for the same work; asking for more makes a single failed request cost more."
                   value={draft.sweepPageSize}
-                  min={boundFor(view, 'sweepPageSize').min}
-                  max={boundFor(view, 'sweepPageSize').max}
+                  limits={limitsFor(view, 'sweepPageSize')}
                   step={10}
                   savedValue={view.sweepPageSize.value}
                   savedSource={view.sweepPageSize.source}
+                  savedAboveRecommended={view.sweepPageSize.aboveRecommended === true}
+                  acknowledged={acknowledged['sweepPageSize'] === true}
+                  onAcknowledgedChange={(next) => {
+                    setAcknowledged({ ...acknowledged, sweepPageSize: next });
+                  }}
                   error={errors.fieldErrors.sweepPageSize}
                   onChange={(value) => {
                     setDraft({ ...draft, sweepPageSize: value });
                   }}
                 />
+
+                {/* The API's own sentence. A cap restated here would have to be
+                    kept in step with every adapter, and would be wrong first. */}
+                {view.adapterClampNote !== undefined &&
+                view.adapterClampNote.trim().length > 0 ? (
+                  <p className="form-field__description">{view.adapterClampNote}</p>
+                ) : null}
               </div>
             </article>
 
@@ -370,10 +426,14 @@ export function OperationalSettingsPage(): ReactElement {
                   ariaLabel="Products per stock run"
                   description="How many products have their stock re-read in one run. On a shop that does not push stock changes to OpenLinker, this is the only thing that notices a quantity change."
                   value={draft.inventorySweepBudget}
-                  min={boundFor(view, 'inventorySweepBudget').min}
-                  max={boundFor(view, 'inventorySweepBudget').max}
+                  limits={limitsFor(view, 'inventorySweepBudget')}
                   savedValue={view.inventorySweepBudget.value}
                   savedSource={view.inventorySweepBudget.source}
+                  savedAboveRecommended={view.inventorySweepBudget.aboveRecommended === true}
+                  acknowledged={acknowledged['inventorySweepBudget'] === true}
+                  onAcknowledgedChange={(next) => {
+                    setAcknowledged({ ...acknowledged, inventorySweepBudget: next });
+                  }}
                   error={errors.fieldErrors.inventorySweepBudget}
                   onChange={(value) => {
                     setDraft({ ...draft, inventorySweepBudget: value });
@@ -405,10 +465,14 @@ export function OperationalSettingsPage(): ReactElement {
                   ariaLabel="Products checked per deletion-audit run"
                   description="How many products are checked in one run."
                   value={draft.deletionAuditBudget}
-                  min={boundFor(view, 'deletionAuditBudget').min}
-                  max={boundFor(view, 'deletionAuditBudget').max}
+                  limits={limitsFor(view, 'deletionAuditBudget')}
                   savedValue={view.deletionAuditBudget.value}
                   savedSource={view.deletionAuditBudget.source}
+                  savedAboveRecommended={view.deletionAuditBudget.aboveRecommended === true}
+                  acknowledged={acknowledged['deletionAuditBudget'] === true}
+                  onAcknowledgedChange={(next) => {
+                    setAcknowledged({ ...acknowledged, deletionAuditBudget: next });
+                  }}
                   error={errors.fieldErrors.deletionAuditBudget}
                   onChange={(value) => {
                     setDraft({ ...draft, deletionAuditBudget: value });
@@ -480,7 +544,11 @@ export function OperationalSettingsPage(): ReactElement {
 
             <div className="form-actions">
               <Button
-                disabled={diff.changes.length === 0 || mutation.isPending}
+                disabled={
+                  diff.changes.length === 0 ||
+                  unacknowledgedFields.length > 0 ||
+                  mutation.isPending
+                }
                 onClick={() => {
                   setConfirmOpen(true);
                 }}
@@ -499,9 +567,15 @@ export function OperationalSettingsPage(): ReactElement {
               <span className="actions-hint">
                 {diff.changes.length === 0
                   ? 'No changes yet.'
-                  : `${String(diff.changes.length)} ${
-                      diff.changes.length === 1 ? 'setting' : 'settings'
-                    } changed. You will see what each one does before it saves.`}
+                  : unacknowledgedFields.length > 0
+                    ? `${
+                        unacknowledgedFields.length === 1 ? 'One value is' : 'Some values are'
+                      } past what we suggest. Tick the box next to ${
+                        unacknowledgedFields.length === 1 ? 'it' : 'each of them'
+                      } to continue.`
+                    : `${String(diff.changes.length)} ${
+                        diff.changes.length === 1 ? 'setting' : 'settings'
+                      } changed. You will see what each one does before it saves.`}
               </span>
             </div>
           </div>
@@ -511,7 +585,7 @@ export function OperationalSettingsPage(): ReactElement {
               before={projections.before}
               after={projections.after}
               catalogueValue={draft.catalogueSweepBudget}
-              catalogueBound={boundFor(view, 'catalogueSweepBudget')}
+              catalogueLimits={limitsFor(view, 'catalogueSweepBudget')}
               hostLimitSeconds={hostLimit}
               catalogueSizeKnown={catalogueSize !== null}
             />

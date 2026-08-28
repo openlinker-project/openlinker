@@ -72,6 +72,14 @@ export function SyncPacingConfirmDialog({
                   </span>
                 </div>
                 <p className="change__effect">{change.effect}</p>
+                {change.aboveRecommended !== undefined ? (
+                  <p className="change__ceiling">
+                    <span className="change__ceiling-label">
+                      Above the {change.aboveRecommended.recommendedMax} we suggest.
+                    </span>{' '}
+                    {change.aboveRecommended.reason ?? ''}
+                  </p>
+                ) : null}
                 {change.timing !== undefined ? (
                   <p className="change__timing">{change.timing}</p>
                 ) : null}

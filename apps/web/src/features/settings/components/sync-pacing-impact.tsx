@@ -20,13 +20,14 @@ import {
   suggestCatalogueValueWithin,
   type SyncPacingProjection,
 } from '../lib/sync-pacing-model';
+import type { ValueLimits } from '../lib/resolve-value-limits';
 import { TickBudgetBar } from './tick-budget-bar';
 
 interface SyncPacingImpactProps {
   before: SyncPacingProjection;
   after: SyncPacingProjection;
   catalogueValue: number;
-  catalogueBound: { min: number; max: number };
+  catalogueLimits: ValueLimits;
   hostLimitSeconds: number;
   catalogueSizeKnown: boolean;
 }
@@ -55,11 +56,18 @@ export function SyncPacingImpact({
   before,
   after,
   catalogueValue,
-  catalogueBound,
+  catalogueLimits,
   hostLimitSeconds,
   catalogueSizeKnown,
 }: SyncPacingImpactProps): ReactElement {
-  const suggestion = suggestCatalogueValueWithin(hostLimitSeconds, catalogueBound);
+  // Clamped to the ABSOLUTE ceiling, not the recommended one: the suggestion
+  // answers "what fits your host", and a host that can take more than we
+  // suggest should be told the number that fits it. Crossing the
+  // recommendation still costs an acknowledgement at the control.
+  const suggestion = suggestCatalogueValueWithin(hostLimitSeconds, {
+    min: catalogueLimits.min,
+    max: catalogueLimits.absoluteMax,
+  });
 
   const rows: ImpactRow[] = [
     {

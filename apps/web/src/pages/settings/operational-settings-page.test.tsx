@@ -21,24 +21,63 @@ import {
 } from '../../test/test-utils';
 import { OperationalSettingsPage } from './operational-settings-page';
 
+const CATALOGUE_REASON = 'Past this the queue deepens rather than the read.';
+
+function numeric(
+  value: number,
+  recommendedMax: number,
+  absoluteMax: number,
+  recommendedReason: string,
+): Record<string, unknown> {
+  return {
+    value,
+    source: 'default',
+    recommendedMax,
+    recommendedReason,
+    absoluteMax,
+    absoluteReason: 'A sanity backstop against a mistyped value.',
+    aboveRecommended: value > recommendedMax,
+  };
+}
+
 function view(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    catalogueSweepBudget: { value: 500, source: 'default' },
-    inventorySweepBudget: { value: 100, source: 'default' },
-    sweepPageSize: { value: 100, source: 'default' },
-    deletionAuditBudget: { value: 100, source: 'default' },
+    catalogueSweepBudget: numeric(500, 2000, 20_000, CATALOGUE_REASON),
+    inventorySweepBudget: numeric(100, 2000, 20_000, 'Headroom is the point.'),
+    sweepPageSize: numeric(100, 100, 500, 'Ids are joined into a query string.'),
+    deletionAuditBudget: numeric(100, 2000, 20_000, 'A 41.7-day cycle is what this is for.'),
     deletionAuditCadence: { value: '0 * * * *', source: 'default' },
     deletionAuditAlwaysEnabled: true,
     cadenceAppliesAt: 'next-scheduler-start',
     updatedAt: null,
     updatedBy: null,
+    adapterClampNote: 'A page size above what an adapter can send is clamped when the request is built.',
     bounds: {
-      catalogueSweepBudget: { min: 1, max: 2000, default: 500, envVar: 'OL_PRODUCT_SYNC_PAGE_LIMIT' },
-      inventorySweepBudget: { min: 1, max: 2000, default: 100, envVar: 'OL_INVENTORY_SYNC_PAGE_LIMIT' },
-      sweepPageSize: { min: 1, max: 100, default: 100, envVar: 'OL_SWEEP_PAGE_SIZE' },
+      catalogueSweepBudget: {
+        min: 1,
+        recommendedMax: 2000,
+        absoluteMax: 20_000,
+        default: 500,
+        envVar: 'OL_PRODUCT_SYNC_PAGE_LIMIT',
+      },
+      inventorySweepBudget: {
+        min: 1,
+        recommendedMax: 2000,
+        absoluteMax: 20_000,
+        default: 100,
+        envVar: 'OL_INVENTORY_SYNC_PAGE_LIMIT',
+      },
+      sweepPageSize: {
+        min: 1,
+        recommendedMax: 100,
+        absoluteMax: 500,
+        default: 100,
+        envVar: 'OL_SWEEP_PAGE_SIZE',
+      },
       deletionAuditBudget: {
         min: 1,
-        max: 2000,
+        recommendedMax: 2000,
+        absoluteMax: 20_000,
         default: 100,
         envVar: 'OL_MASTER_PRODUCT_RECONCILE_PAGE_LIMIT',
       },
@@ -165,6 +204,141 @@ describe('OperationalSettingsPage', () => {
     expect(await screen.findByText('When this starts')).toBeInTheDocument();
     expect(
       screen.getByText(/picked up the next time OpenLinker's background service restarts/),
+    ).toBeInTheDocument();
+  });
+
+  it('should let the slider reach past the recommendation, up to the absolute ceiling', () => {
+    // Stopping the control at the recommendation would make the raised
+    // ceiling unreachable, which is the point of having two.
+    renderPage();
+
+    return screen
+      .findByRole('slider', { name: 'Products per catalogue run' })
+      .then((slider) => {
+        expect(slider).toHaveAttribute('max', '20000');
+      });
+  });
+
+  it('should refuse to save a value past the recommendation until it is acknowledged', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const numberBox = await screen.findByRole('spinbutton', { name: 'Products per catalogue run' });
+    await user.clear(numberBox);
+    await user.type(numberBox, '5000');
+
+    expect(await screen.findByText(CATALOGUE_REASON)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
+    });
+  });
+
+  it('should allow the save once the operator acknowledges the crossing', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const numberBox = await screen.findByRole('spinbutton', { name: 'Products per catalogue run' });
+    await user.clear(numberBox);
+    await user.type(numberBox, '5000');
+
+    await user.click(await screen.findByRole('checkbox', { name: /I understand/ }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Save changes' })).toBeEnabled();
+    });
+  });
+
+  it('should send the acknowledgement flag only after the operator ticked it', async () => {
+    const update = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    renderPage({ update });
+
+    const numberBox = await screen.findByRole('spinbutton', { name: 'Products per catalogue run' });
+    await user.clear(numberBox);
+    await user.type(numberBox, '5000');
+    await user.click(await screen.findByRole('checkbox', { name: /I understand/ }));
+
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+    const confirm = await screen.findByRole('dialog');
+    await user.click(within(confirm).getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() => {
+      expect(update).toHaveBeenCalledWith({
+        catalogueSweepBudget: 5000,
+        acknowledgeAboveRecommended: true,
+      });
+    });
+  });
+
+  it('should not send the acknowledgement flag for a change inside the recommendation', async () => {
+    const update = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    renderPage({ update });
+
+    const numberBox = await screen.findByRole('spinbutton', { name: 'Products per catalogue run' });
+    await user.clear(numberBox);
+    await user.type(numberBox, '1500');
+
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+    const confirm = await screen.findByRole('dialog');
+    await user.click(within(confirm).getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() => {
+      expect(update).toHaveBeenCalledWith({ catalogueSweepBudget: 1500 });
+    });
+  });
+
+  it('should say in the modal which ceiling a change crossed', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const numberBox = await screen.findByRole('spinbutton', { name: 'Products per catalogue run' });
+    await user.clear(numberBox);
+    await user.type(numberBox, '5000');
+    await user.click(await screen.findByRole('checkbox', { name: /I understand/ }));
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    const confirm = await screen.findByRole('dialog');
+    expect(within(confirm).getByText(/Above the 2000 we suggest/)).toBeInTheDocument();
+  });
+
+  it('should read a value already above the recommendation back as a deliberate override', async () => {
+    renderPage({
+      get: vi.fn().mockResolvedValue(
+        view({
+          catalogueSweepBudget: {
+            ...numeric(5000, 2000, 20_000, CATALOGUE_REASON),
+            source: 'setting',
+          },
+        }),
+      ),
+    });
+
+    expect(
+      await screen.findByText('5000 (you set this, above our recommendation)'),
+    ).toBeInTheDocument();
+  });
+
+  it('should render a working control when the API reported no ceilings', async () => {
+    renderPage({
+      get: vi.fn().mockResolvedValue(
+        view({
+          catalogueSweepBudget: { value: 500, source: 'default' },
+          bounds: undefined,
+        }),
+      ),
+    });
+
+    const slider = await screen.findByRole('slider', { name: 'Products per catalogue run' });
+    expect(slider).toBeInTheDocument();
+    expect(Number(slider.getAttribute('max'))).toBeGreaterThan(500);
+  });
+
+  it("should render the API's own note about adapter clamping", async () => {
+    renderPage();
+
+    expect(
+      await screen.findByText(/clamped when the request is built/),
     ).toBeInTheDocument();
   });
 });

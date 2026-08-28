@@ -13,6 +13,7 @@ import {
   diffSyncPacing,
   type SyncPacingValues,
 } from './sync-pacing-changes';
+import { resolveValueLimits } from './resolve-value-limits';
 
 const SAVED: SyncPacingValues = {
   catalogueSweepBudget: 500,
@@ -23,6 +24,18 @@ const SAVED: SyncPacingValues = {
 };
 
 const CONTEXT = { hostProcessLimitSeconds: 300, catalogueSize: 100_000 };
+
+const LIMITS = resolveValueLimits(
+  {
+    value: 500,
+    source: 'default',
+    recommendedMax: 2000,
+    recommendedReason: 'Past this the queue deepens.',
+    absoluteMax: 20_000,
+    absoluteReason: 'A sanity backstop.',
+  },
+  { min: 1, default: 500 },
+);
 
 describe('diffSyncPacing', () => {
   it('should report nothing when nothing changed', () => {
@@ -127,5 +140,44 @@ describe('diffSyncPacing', () => {
     });
 
     expect(diff.changes[0].timing).toBeUndefined();
+  });
+
+  it('should say which ceiling a change crossed, in the API\'s own words', () => {
+    const diff = diffSyncPacing(SAVED, { ...SAVED, catalogueSweepBudget: 5000 }, {
+      ...CONTEXT,
+      limits: { catalogueSweepBudget: LIMITS },
+    });
+
+    expect(diff.changes[0].aboveRecommended).toEqual({
+      recommendedMax: 2000,
+      reason: 'Past this the queue deepens.',
+    });
+  });
+
+  it('should say nothing about a ceiling for a change that stays inside it', () => {
+    const diff = diffSyncPacing(SAVED, { ...SAVED, catalogueSweepBudget: 1500 }, {
+      ...CONTEXT,
+      limits: { catalogueSweepBudget: LIMITS },
+    });
+
+    expect(diff.changes[0].aboveRecommended).toBeUndefined();
+  });
+
+  it('should not flag lowering a value that stays above the recommendation', () => {
+    // Still above, but moving the right way - crying wolf on the one edit
+    // that improves matters would teach the operator to ignore the flag.
+    const diff = diffSyncPacing(
+      { ...SAVED, catalogueSweepBudget: 8000 },
+      { ...SAVED, catalogueSweepBudget: 5000 },
+      { ...CONTEXT, limits: { catalogueSweepBudget: LIMITS } },
+    );
+
+    expect(diff.changes[0].aboveRecommended).toBeDefined();
+  });
+
+  it('should say nothing about ceilings when the API reported none', () => {
+    const diff = diffSyncPacing(SAVED, { ...SAVED, catalogueSweepBudget: 5000 }, CONTEXT);
+
+    expect(diff.changes[0].aboveRecommended).toBeUndefined();
   });
 });
