@@ -49,15 +49,37 @@ class DeliveryRunner
         $runId = uniqid('cron_', true);
 
         try {
-            $requeued = $repository->requeueStaleProcessingRows();
+            // Wall clock for this pass (#2652). Taken before the sweep and the
+            // claim, because those are paid out of the same host process limit
+            // the budget exists to stay under.
+            $startedAt = microtime(true);
+            $budgetSeconds = OutboxRepository::readRunBudgetSeconds();
+            $worstCaseDelivery = OutboxRepository::worstCaseDeliverySeconds();
+
+            // Passing this run's own id is what stops the sweep reclaiming a
+            // lease it is about to take itself.
+            $requeued = $repository->requeueStaleProcessingRows($runId);
 
             $batchSize = (int) Configuration::get('BATCH_SIZE') ?: 50;
             $events = $repository->claimBatchDueForDelivery($batchSize, $runId);
 
             $delivered = 0;
             $failed = 0;
+            $attempted = 0;
+            $budgetExhausted = false;
 
             foreach ($events as $event) {
+                if (!OutboxRepository::hasBudgetForAnotherDelivery(
+                    microtime(true) - $startedAt,
+                    $budgetSeconds,
+                    $worstCaseDelivery
+                )) {
+                    $budgetExhausted = true;
+                    break;
+                }
+
+                $attempted++;
+
                 if (self::deliverOne($repository, $sender, $event)) {
                     $delivered++;
                 } else {
@@ -65,17 +87,37 @@ class DeliveryRunner
                 }
             }
 
+            // Everything still `processing` under this run is a row the budget
+            // stopped us reaching. Releasing it here is what makes the stop
+            // clean: it goes back to `pending` for the next pass instead of
+            // waiting out the stale threshold.
+            $skipped = 0;
+            if ($budgetExhausted) {
+                $skipped = $repository->requeueEventsByRunId(
+                    $runId,
+                    'Run budget of ' . (int) $budgetSeconds . 's reached; requeued for the next run'
+                );
+                self::warnBudgetExhausted($skipped, $budgetSeconds, $source);
+            }
+
             // An idle queue is exactly when retention should run, so the pass
-            // is the same shape whether or not there was work.
-            $retention = self::runRetention($repository);
+            // is the same shape whether or not there was work. Skipped when the
+            // budget is gone: retention costs time out of the same process
+            // limit, and delivery is what the budget is protecting.
+            $retention = $budgetExhausted
+                ? ['ran' => false, 'reason' => 'run budget reached']
+                : self::runRetention($repository);
 
             self::recordRun($source);
 
             return [
-                'processed' => count($events),
+                'processed' => $attempted,
                 'delivered' => $delivered,
                 'failed' => $failed,
                 'requeued' => $requeued,
+                'skipped' => $skipped,
+                'budget_exhausted' => $budgetExhausted,
+                'budget_seconds' => $budgetSeconds,
                 'retention' => $retention,
             ];
         } catch (Throwable $e) {
@@ -134,6 +176,39 @@ class DeliveryRunner
             }
 
             return false;
+        }
+    }
+
+    /**
+     * Surface a budget stop.
+     *
+     * A run that quietly delivers half its queue and returns looks identical
+     * to one with half as much work, so the stop is logged rather than
+     * swallowed. It is a warning, not an error: nothing was lost, the rows are
+     * `pending` again and the next pass takes them. It only becomes an
+     * operator problem if it repeats, which is what a log lets them see.
+     *
+     * @param int $skipped Rows released back to pending
+     * @param int $budgetSeconds Budget that was reached
+     * @param string $source Trigger name
+     * @return void
+     */
+    private static function warnBudgetExhausted($skipped, $budgetSeconds, $source)
+    {
+        try {
+            PrestaShopLogger::addLog(
+                'OpenLinker: delivery pass (' . (string) $source . ') stopped at its '
+                . (int) $budgetSeconds . 's budget with ' . (int) $skipped
+                . ' event(s) left queued for the next run. If this repeats every run,'
+                . ' the queue is growing faster than delivery drains it - check the'
+                . ' cron interval and webhook response times.',
+                2,
+                null,
+                'Module',
+                null
+            );
+        } catch (Throwable $e) {
+            // Logging must never turn a clean stop into a failed pass.
         }
     }
 

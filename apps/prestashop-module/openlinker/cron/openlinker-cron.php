@@ -75,6 +75,16 @@ if ($isCli) {
         (int) $stats['failed'],
         (int) $stats['requeued']
     );
+
+    // A pass that stopped on its budget delivered less than the queue held, and
+    // the counters above cannot show that on their own (#2652).
+    if (!empty($stats['budget_exhausted'])) {
+        echo sprintf(
+            "OpenLinker delivery: stopped at the %ds run budget, %d event(s) left queued for the next run.\n",
+            (int) $stats['budget_seconds'],
+            (int) $stats['skipped']
+        );
+    }
 } else {
     header('Content-Type: text/plain');
     echo "OpenLinker delivery pass completed.\n";
