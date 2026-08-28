@@ -3,14 +3,14 @@
  *
  * Pins the ADR-050 lane partition (#2278): every `JobTypeValues` member is
  * registered with exactly one lane, the per-lane counts match the ADR's
- * table (12 realtime / 13 bulk / 5 fiscal / 6 fan-out — `fiscalization.register`
+ * table (12 realtime / 14 bulk / 5 fiscal / 6 fan-out — `fiscalization.register`
  * joined `fiscal` post-ADR, #2156; `orders.taxRate.backfill` joined `bulk`,
- * #2440), and the consequential assignments the ADR calls out cannot
- * silently churn.
+ * #2440; `marketplace.offerQuantity.reconcile` joined `bulk`, #2621), and the
+ * consequential assignments the ADR calls out cannot silently churn.
  *
  * @module apps/worker/src/sync/handlers
  */
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call -- test constructs the service with 36 interchangeable dummy handlers */
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call -- test constructs the service with 37 interchangeable dummy handlers */
 import type { SyncJobHandler } from '@openlinker/core/sync';
 import { JobTypeValues } from '@openlinker/core/sync';
 import { SyncJobHandlerRegistry } from '../sync-job-handler.registry';
@@ -22,10 +22,10 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
   beforeEach(() => {
     registry = new SyncJobHandlerRegistry();
     const dummyHandler = { execute: jest.fn() } as unknown as SyncJobHandler;
-    // The constructor takes the registry followed by 36 handler instances;
+    // The constructor takes the registry followed by 37 handler instances;
     // the partition under test keys on jobType, so interchangeable dummies
     // are sufficient.
-    const handlers = Array.from({ length: 36 }, () => dummyHandler);
+    const handlers = Array.from({ length: 37 }, () => dummyHandler);
     const service = new (HandlerRegistrationService as any)(registry, ...handlers);
     (service as HandlerRegistrationService).onModuleInit();
   });
@@ -35,9 +35,9 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     expect(() => registry.assertFullLaneCoverage()).not.toThrow();
   });
 
-  it('should partition the 36 job types 12/13/5/6 per ADR-050 decision 1', () => {
+  it('should partition the 37 job types 12/14/5/6 per ADR-050 decision 1', () => {
     expect(registry.getJobTypesByLane('realtime')).toHaveLength(12);
-    expect(registry.getJobTypesByLane('bulk')).toHaveLength(13);
+    expect(registry.getJobTypesByLane('bulk')).toHaveLength(14);
     expect(registry.getJobTypesByLane('fiscal')).toHaveLength(5);
     expect(registry.getJobTypesByLane('fan-out')).toHaveLength(6);
   });

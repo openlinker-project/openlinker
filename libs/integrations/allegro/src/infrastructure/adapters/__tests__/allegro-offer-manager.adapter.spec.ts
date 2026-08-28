@@ -678,10 +678,12 @@ describe('AllegroOfferManagerAdapter', () => {
       const commandRepository = repoWith({
         find: jest
           .fn()
-          .mockImplementation(async ({ status }: { status: string }) =>
-            status === 'accepted'
-              ? [pendingCommand({ commandId: 'cmd-1', offerId: 'offer-1' })]
-              : []
+          .mockImplementation(({ status }: { status: string }) =>
+            Promise.resolve(
+              status === 'accepted'
+                ? [pendingCommand({ commandId: 'cmd-1', offerId: 'offer-1' })]
+                : []
+            )
           ),
       });
       const reconcileAdapter = fastAdapterWithRepo(commandRepository);
@@ -712,8 +714,12 @@ describe('AllegroOfferManagerAdapter', () => {
       const commandRepository = repoWith({
         find: jest
           .fn()
-          .mockImplementation(async ({ status }: { status: string }) =>
-            status === 'queued' ? [pendingCommand({ commandId: 'cmd-2', offerId: 'offer-1', status: 'queued' })] : []
+          .mockImplementation(({ status }: { status: string }) =>
+            Promise.resolve(
+              status === 'queued'
+                ? [pendingCommand({ commandId: 'cmd-2', offerId: 'offer-1', status: 'queued' })]
+                : []
+            )
           ),
       });
       const reconcileAdapter = fastAdapterWithRepo(commandRepository);
@@ -754,13 +760,15 @@ describe('AllegroOfferManagerAdapter', () => {
       // read also answers for the WHOLE command in one response, so the two
       // rows must be resolved from a single GET, never one GET per row.
       const commandRepository = repoWith({
-        find: jest.fn().mockImplementation(async ({ status }: { status: string }) =>
-          status === 'accepted'
-            ? [
-                pendingCommand({ commandId: 'cmd-batch', offerId: 'offer-1' }),
-                pendingCommand({ commandId: 'cmd-batch', offerId: 'offer-2' }),
-              ]
-            : []
+        find: jest.fn().mockImplementation(({ status }: { status: string }) =>
+          Promise.resolve(
+            status === 'accepted'
+              ? [
+                  pendingCommand({ commandId: 'cmd-batch', offerId: 'offer-1' }),
+                  pendingCommand({ commandId: 'cmd-batch', offerId: 'offer-2' }),
+                ]
+              : []
+          )
         ),
       });
       const reconcileAdapter = fastAdapterWithRepo(commandRepository);
@@ -859,10 +867,12 @@ describe('AllegroOfferManagerAdapter', () => {
       const commandRepository = repoWith({
         find: jest
           .fn()
-          .mockImplementation(async ({ status }: { status: string }) =>
-            status === 'accepted'
-              ? [pendingCommand({ commandId: 'cmd-3', offerId: 'offer-1' })]
-              : []
+          .mockImplementation(({ status }: { status: string }) =>
+            Promise.resolve(
+              status === 'accepted'
+                ? [pendingCommand({ commandId: 'cmd-3', offerId: 'offer-1' })]
+                : []
+            )
           ),
       });
       const reconcileAdapter = fastAdapterWithRepo(commandRepository);
@@ -889,10 +899,12 @@ describe('AllegroOfferManagerAdapter', () => {
       const commandRepository = repoWith({
         find: jest
           .fn()
-          .mockImplementation(async ({ status }: { status: string }) =>
-            status === 'accepted'
-              ? [pendingCommand({ commandId: 'cmd-4', offerId: 'offer-1' })]
-              : []
+          .mockImplementation(({ status }: { status: string }) =>
+            Promise.resolve(
+              status === 'accepted'
+                ? [pendingCommand({ commandId: 'cmd-4', offerId: 'offer-1' })]
+                : []
+            )
           ),
       });
       const reconcileAdapter = fastAdapterWithRepo(commandRepository);
