@@ -212,6 +212,8 @@ Three consequences follow, and they are testable rather than aspirational.
 
 **The one sanctioned exception.** A per-order override may exist, bounded: admin only, reachable **only** where nothing has been issued, recorded against the acting user, and never the default path. Offering it on an issued document invites a second document for one sale, and offering it where OpenLinker does not know whether a document exists (`in-doubt`) is worse - that is the state where a second attempt is most dangerous. An override that is not bounded this way breaks decision 3a rather than extending it.
 
+**Enforcement.** Consequences 1 and 2 are lexical, so they get a mechanical gate rather than reviewer discipline: an invariant script under `pnpm check:invariants` (the `check-sales-document-reason-mirror.mjs` precedent) fails the build on a hardcoded `invoice` / `receipt` noun or action verb in the three bound surfaces, allowing those words only where they are rendered from a resolved `SalesDocumentKind`. Consequence 3 is structural, not lexical - a kind picker on an unresolved order is a component choice no grep can see - so it stays reviewer-enforced, and this amendment is what a reviewer cites. The gate ships with the implementing epic (#2499), not with this ADR.
+
 **Scope.** The invariant binds three surfaces: `/settings/sales-documents`, the `/orders` row, and the order-detail sales-document panel. It is a UI contract; the write-path guard in decision 3a remains the enforcement of record, and no surface may rely on being the only thing preventing a second document.
 
 ## References
