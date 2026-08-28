@@ -77,6 +77,7 @@ export {
   MarketplaceOfferCreatePayloadV2,
   MarketplaceOfferPollCreationStatusPayloadV1,
   MarketplaceOfferStatusSyncPayloadV1,
+  MarketplaceOfferQuantityReconcilePayloadV1,
   MarketplaceOfferRefreshSnapshotPayloadV1,
   MarketplaceOfferStockRestorePayloadV1,
   MarketplaceOfferPauseStalePayloadV1,

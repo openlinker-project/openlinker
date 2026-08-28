@@ -2,7 +2,7 @@
  * Allegro Scheduler Tasks
  *
  * Builds the `SchedulerTaskConfig` instances Allegro contributes to the core
- * `SchedulerTaskRegistryService` (#584). Four tasks today:
+ * `SchedulerTaskRegistryService` (#584). Five tasks today:
  *
  *   - `allegro-orders-poll` — incremental `/order/events` ingest, default
  *     every minute (#2620 — shortened from 5 minutes). A tick costs exactly
@@ -17,6 +17,10 @@
  *   - `allegro-offers-sync` — incremental offer-events ingest (or full
  *     listing, depending on `OL_ALLEGRO_OFFERS_SYNC_FEED_TYPE`), default
  *     every 30 minutes. Cursor key `allegro.offers.lastEventId`.
+ *   - `allegro-quantity-ack-reconcile` (#2621) — reconciles outstanding
+ *     asynchronously-acknowledged quantity commands (`updateOfferQuantity`
+ *     returns once Allegro acknowledges SUBMISSION, not once the command
+ *     reaches a terminal status). Default every 2 minutes, page limit 200.
  *   - `allegro-offer-status-sync` (#816) — steady-state refresh of mapped
  *     offers' publication status into `offer_status_snapshots`, default
  *     hourly. Rolling scan-offset cursor key `allegro.offerStatus.scanOffset`.
@@ -32,8 +36,9 @@
  * Env-var gating is preserved verbatim from the previous core implementation
  * for deployer back-compat: when `OL_ALLEGRO_POLL_SCHEDULER_ENABLED=false`
  * (or `OL_ALLEGRO_OFFERS_SYNC_SCHEDULER_ENABLED=false`,
- * `OL_ALLEGRO_OFFER_STATUS_SYNC_SCHEDULER_ENABLED=false`) the helper omits
- * the corresponding task. The scheduler also re-checks the gate at each
+ * `OL_ALLEGRO_OFFER_STATUS_SYNC_SCHEDULER_ENABLED=false`,
+ * `OL_ALLEGRO_QUANTITY_ACK_RECONCILE_SCHEDULER_ENABLED=false`) the helper
+ * omits the corresponding task. The scheduler also re-checks the gate at each
  * cron tick, so toggling without restart works for tasks that *did*
  * register at boot.
  *
@@ -59,7 +64,7 @@ const getMasterCatalogConnectionId = (connection: Connection): string | null => 
 };
 
 /**
- * Build the Allegro scheduler-task list. Returns 0–2 tasks depending on
+ * Build the Allegro scheduler-task list. Returns 0–5 tasks depending on
  * the `OL_ALLEGRO_*_SCHEDULER_ENABLED` env-var gates.
  */
 export function buildAllegroSchedulerTasks(configService: ConfigService): SchedulerTaskConfig[] {
@@ -154,6 +159,31 @@ export function buildAllegroSchedulerTasks(configService: ConfigService): Schedu
       }),
       generateIdempotencyKey: (connection, timestamp) =>
         `marketplace:${connection.id}:offer:status:sync:${timestamp}`,
+    });
+  }
+
+  if (isEnabled(configService, 'OL_ALLEGRO_QUANTITY_ACK_RECONCILE_SCHEDULER_ENABLED')) {
+    const cronExpression = configService.get<string>(
+      'OL_ALLEGRO_QUANTITY_ACK_RECONCILE_INTERVAL_CRON',
+      '*/2 * * * *'
+    );
+    const pageLimitRaw = Number(
+      configService.get<string>('OL_ALLEGRO_QUANTITY_ACK_RECONCILE_PAGE_LIMIT', '200')
+    );
+    const pageLimit = Number.isFinite(pageLimitRaw) && pageLimitRaw > 0 ? pageLimitRaw : 200;
+
+    tasks.push({
+      taskId: 'allegro-quantity-ack-reconcile',
+      platformType: 'allegro',
+      jobType: 'marketplace.offerQuantity.reconcile',
+      cronExpression,
+      enabledEnvVar: 'OL_ALLEGRO_QUANTITY_ACK_RECONCILE_SCHEDULER_ENABLED',
+      generatePayload: () => ({
+        schemaVersion: 1,
+        limit: pageLimit,
+      }),
+      generateIdempotencyKey: (connection, timestamp) =>
+        `marketplace:${connection.id}:offerQuantity:reconcile:${timestamp}`,
     });
   }
 

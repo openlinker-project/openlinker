@@ -16,6 +16,7 @@ import { MarketplaceOrderFxStampHandler } from './marketplace-order-fx-stamp.han
 import { MarketplaceOrderFxStampSweepHandler } from './marketplace-order-fx-stamp-sweep.handler';
 import { OrdersTaxRateBackfillHandler } from './orders-tax-rate-backfill.handler';
 import { MarketplaceOfferQuantityUpdateHandler } from './marketplace-offer-quantity-update.handler';
+import { MarketplaceOfferQuantityReconcileHandler } from './marketplace-offer-quantity-reconcile.handler';
 import { MarketplaceOfferFieldUpdateHandler } from './marketplace-offer-field-update.handler';
 import { MarketplaceOfferCreateHandler } from './marketplace-offer-create.handler';
 import { MarketplaceOfferPollCreationStatusHandler } from './marketplace-offer-poll-creation-status.handler';
@@ -57,6 +58,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly marketplaceOrderFxStampSweepHandler: MarketplaceOrderFxStampSweepHandler,
     private readonly ordersTaxRateBackfillHandler: OrdersTaxRateBackfillHandler,
     private readonly marketplaceOfferQuantityUpdateHandler: MarketplaceOfferQuantityUpdateHandler,
+    private readonly marketplaceOfferQuantityReconcileHandler: MarketplaceOfferQuantityReconcileHandler,
     private readonly marketplaceOfferFieldUpdateHandler: MarketplaceOfferFieldUpdateHandler,
     private readonly marketplaceOfferCreateHandler: MarketplaceOfferCreateHandler,
     private readonly marketplaceOfferPollCreationStatusHandler: MarketplaceOfferPollCreationStatusHandler,
@@ -126,6 +128,14 @@ export class HandlerRegistrationService implements OnModuleInit {
       'marketplace.offerQuantity.update',
       this.marketplaceOfferQuantityUpdateHandler,
       'realtime'
+    );
+    // Steady-state reconcile of outstanding async quantity acks (#2621) —
+    // a scan-style pass over adapter-internal pending state, same shape as
+    // the other `*.sync`/`*Sweep` bulk passes below.
+    this.handlerRegistry.register(
+      'marketplace.offerQuantity.reconcile',
+      this.marketplaceOfferQuantityReconcileHandler,
+      'bulk'
     );
     this.handlerRegistry.register(
       'marketplace.offer.updateFields',

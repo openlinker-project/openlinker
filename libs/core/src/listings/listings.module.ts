@@ -60,6 +60,7 @@ import { BulkListingSubmitService } from './application/services/bulk-listing-su
 import { BulkListingRetryService } from './application/services/bulk-listing-retry.service';
 import { OfferStatusPollService } from './application/services/offer-status-poll.service';
 import { OfferStatusSyncService } from './application/services/offer-status-sync.service';
+import { OfferQuantityAckReconcileService } from './application/services/offer-quantity-ack-reconcile.service';
 import { OfferStatusReadService } from './application/services/offer-status-read.service';
 import { OfferStockRestoreService } from './application/services/offer-stock-restore.service';
 import { OfferStatusSnapshotOrmEntity } from './infrastructure/persistence/entities/offer-status-snapshot.orm-entity';
@@ -87,6 +88,7 @@ import {
   BULK_LISTING_RETRY_SERVICE_TOKEN,
   OFFER_STATUS_POLL_SERVICE_TOKEN,
   OFFER_STATUS_SYNC_SERVICE_TOKEN,
+  OFFER_QUANTITY_ACK_RECONCILE_SERVICE_TOKEN,
   OFFER_STATUS_READ_SERVICE_TOKEN,
   OFFER_STATUS_SNAPSHOT_REPOSITORY_TOKEN,
   OFFER_COMMERCIAL_SNAPSHOT_REPOSITORY_TOKEN,
@@ -136,6 +138,7 @@ export {
   BULK_LISTING_RETRY_SERVICE_TOKEN,
   OFFER_STATUS_POLL_SERVICE_TOKEN,
   OFFER_STATUS_SYNC_SERVICE_TOKEN,
+  OFFER_QUANTITY_ACK_RECONCILE_SERVICE_TOKEN,
   OFFER_STATUS_READ_SERVICE_TOKEN,
   OFFER_STATUS_SNAPSHOT_REPOSITORY_TOKEN,
   OFFER_COMMERCIAL_SNAPSHOT_REPOSITORY_TOKEN,
@@ -219,6 +222,7 @@ export {
     BulkListingRetryService,
     OfferStatusPollService,
     OfferStatusSyncService,
+    OfferQuantityAckReconcileService,
     OfferStatusReadService,
     OfferStatusSnapshotRepository,
     OfferCommercialSnapshotRepository,
@@ -355,6 +359,10 @@ export {
       useExisting: OfferStatusSyncService,
     },
     {
+      provide: OFFER_QUANTITY_ACK_RECONCILE_SERVICE_TOKEN,
+      useExisting: OfferQuantityAckReconcileService,
+    },
+    {
       provide: OFFER_STATUS_READ_SERVICE_TOKEN,
       useExisting: OfferStatusReadService,
     },
@@ -440,6 +448,7 @@ export {
     BULK_LISTING_RETRY_SERVICE_TOKEN,
     OFFER_STATUS_POLL_SERVICE_TOKEN,
     OFFER_STATUS_SYNC_SERVICE_TOKEN,
+    OFFER_QUANTITY_ACK_RECONCILE_SERVICE_TOKEN,
     OFFER_STATUS_READ_SERVICE_TOKEN,
     SELLER_POLICIES_SERVICE_TOKEN,
     SELLER_POLICIES_CACHE_TOKEN,

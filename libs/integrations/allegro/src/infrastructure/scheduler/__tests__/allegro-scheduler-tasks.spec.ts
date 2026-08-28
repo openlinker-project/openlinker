@@ -35,12 +35,13 @@ const makeConnection = (overrides: Partial<{ config: Record<string, unknown> }> 
 
 describe('buildAllegroSchedulerTasks', () => {
   describe('enable gates', () => {
-    it('should return all four tasks by default (env-vars unset)', () => {
+    it('should return all five tasks by default (env-vars unset)', () => {
       const tasks = buildAllegroSchedulerTasks(makeConfig());
       expect(tasks.map((t) => t.taskId)).toEqual([
         'allegro-orders-poll',
         'allegro-offers-sync',
         'allegro-offer-status-sync',
+        'allegro-quantity-ack-reconcile',
         'allegro-shipment-status-sync',
       ]);
     });
@@ -52,6 +53,7 @@ describe('buildAllegroSchedulerTasks', () => {
       expect(tasks.map((t) => t.taskId)).toEqual([
         'allegro-offers-sync',
         'allegro-offer-status-sync',
+        'allegro-quantity-ack-reconcile',
         'allegro-shipment-status-sync',
       ]);
     });
@@ -63,6 +65,7 @@ describe('buildAllegroSchedulerTasks', () => {
       expect(tasks.map((t) => t.taskId)).toEqual([
         'allegro-orders-poll',
         'allegro-offer-status-sync',
+        'allegro-quantity-ack-reconcile',
         'allegro-shipment-status-sync',
       ]);
     });
@@ -74,6 +77,19 @@ describe('buildAllegroSchedulerTasks', () => {
       expect(tasks.map((t) => t.taskId)).toEqual([
         'allegro-orders-poll',
         'allegro-offers-sync',
+        'allegro-quantity-ack-reconcile',
+        'allegro-shipment-status-sync',
+      ]);
+    });
+
+    it('should omit quantity-ack-reconcile when OL_ALLEGRO_QUANTITY_ACK_RECONCILE_SCHEDULER_ENABLED=false', () => {
+      const tasks = buildAllegroSchedulerTasks(
+        makeConfig({ OL_ALLEGRO_QUANTITY_ACK_RECONCILE_SCHEDULER_ENABLED: 'false' })
+      );
+      expect(tasks.map((t) => t.taskId)).toEqual([
+        'allegro-orders-poll',
+        'allegro-offers-sync',
+        'allegro-offer-status-sync',
         'allegro-shipment-status-sync',
       ]);
     });
@@ -86,6 +102,7 @@ describe('buildAllegroSchedulerTasks', () => {
         'allegro-orders-poll',
         'allegro-offers-sync',
         'allegro-offer-status-sync',
+        'allegro-quantity-ack-reconcile',
       ]);
     });
 
@@ -95,6 +112,7 @@ describe('buildAllegroSchedulerTasks', () => {
           OL_ALLEGRO_POLL_SCHEDULER_ENABLED: 'false',
           OL_ALLEGRO_OFFERS_SYNC_SCHEDULER_ENABLED: 'false',
           OL_ALLEGRO_OFFER_STATUS_SYNC_SCHEDULER_ENABLED: 'false',
+          OL_ALLEGRO_QUANTITY_ACK_RECONCILE_SCHEDULER_ENABLED: 'false',
           OL_ALLEGRO_SHIPMENT_STATUS_SYNC_SCHEDULER_ENABLED: 'false',
         })
       );
@@ -247,6 +265,49 @@ describe('buildAllegroSchedulerTasks', () => {
       const statusSync = tasks.find((t) => t.taskId === 'allegro-offer-status-sync');
       expect(statusSync?.generateIdempotencyKey(makeConnection(), '2026-05-11-12-34')).toBe(
         'marketplace:conn-allegro-1:offer:status:sync:2026-05-11-12-34'
+      );
+    });
+  });
+
+  describe('quantity-ack-reconcile task (#2621)', () => {
+    it('should target platformType=allegro and jobType=marketplace.offerQuantity.reconcile', () => {
+      const tasks = buildAllegroSchedulerTasks(makeConfig());
+      const reconcile = tasks.find((t) => t.taskId === 'allegro-quantity-ack-reconcile');
+      expect(reconcile?.platformType).toBe('allegro');
+      expect(reconcile?.jobType).toBe('marketplace.offerQuantity.reconcile');
+    });
+
+    it('should default to an every-2-minute cron and emit limit 200', () => {
+      const tasks = buildAllegroSchedulerTasks(makeConfig());
+      const reconcile = tasks.find((t) => t.taskId === 'allegro-quantity-ack-reconcile');
+      expect(reconcile?.cronExpression).toBe('*/2 * * * *');
+      expect(reconcile?.generatePayload(makeConnection())).toEqual({
+        schemaVersion: 1,
+        limit: 200,
+      });
+    });
+
+    it('should honour OL_ALLEGRO_QUANTITY_ACK_RECONCILE_INTERVAL_CRON override', () => {
+      const tasks = buildAllegroSchedulerTasks(
+        makeConfig({ OL_ALLEGRO_QUANTITY_ACK_RECONCILE_INTERVAL_CRON: '*/5 * * * *' })
+      );
+      const reconcile = tasks.find((t) => t.taskId === 'allegro-quantity-ack-reconcile');
+      expect(reconcile?.cronExpression).toBe('*/5 * * * *');
+    });
+
+    it('should fall back to limit=200 when OL_ALLEGRO_QUANTITY_ACK_RECONCILE_PAGE_LIMIT is non-numeric', () => {
+      const tasks = buildAllegroSchedulerTasks(
+        makeConfig({ OL_ALLEGRO_QUANTITY_ACK_RECONCILE_PAGE_LIMIT: 'not-a-number' })
+      );
+      const reconcile = tasks.find((t) => t.taskId === 'allegro-quantity-ack-reconcile');
+      expect(reconcile?.generatePayload(makeConnection())?.limit).toBe(200);
+    });
+
+    it('should generate a per-connection, per-minute idempotency key', () => {
+      const tasks = buildAllegroSchedulerTasks(makeConfig());
+      const reconcile = tasks.find((t) => t.taskId === 'allegro-quantity-ack-reconcile');
+      expect(reconcile?.generateIdempotencyKey(makeConnection(), '2026-05-11-12-34')).toBe(
+        'marketplace:conn-allegro-1:offerQuantity:reconcile:2026-05-11-12-34'
       );
     });
   });
