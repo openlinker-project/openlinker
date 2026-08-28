@@ -39,12 +39,12 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     expect(() => registry.assertFullLaneCoverage()).not.toThrow();
   });
 
-  it('should partition the 39 job types 12/16/5/6 per ADR-050 decision 1', () => {
-    // 16 bulk since #2593 added `master.product.syncBatch` - a catalogue-sweep
-    // child, so it lands beside the two sweep-triggered master children #2594
-    // moved out of `realtime`.
+  it('should partition the 40 job types 12/17/5/6 per ADR-050 decision 1', () => {
+    // 17 bulk since #2648 added `master.inventory.syncBatch` beside #2593's
+    // `master.product.syncBatch` - both sweep children, so they land beside the
+    // two sweep-triggered master children #2594 moved out of `realtime`.
     expect(registry.getJobTypesByLane('realtime')).toHaveLength(12);
-    expect(registry.getJobTypesByLane('bulk')).toHaveLength(16);
+    expect(registry.getJobTypesByLane('bulk')).toHaveLength(17);
     expect(registry.getJobTypesByLane('fiscal')).toHaveLength(5);
     expect(registry.getJobTypesByLane('fan-out')).toHaveLength(6);
   });

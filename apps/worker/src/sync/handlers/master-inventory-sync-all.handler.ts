@@ -2,8 +2,11 @@
  * Master Inventory Sync All Handler
  *
  * Handles jobs of type 'master.inventory.syncAll'. Enumerates known product
- * external IDs for a connection and enqueues per-product
- * 'master.inventory.syncFromSweep' sub-jobs.
+ * external IDs for a connection and enqueues 'master.inventory.syncBatch'
+ * sub-jobs, each covering a page of products (#2648 - it used to fan out one
+ * 'master.inventory.syncFromSweep' per product, which built a fresh adapter
+ * instance per product and so could never share a bulk stock read; measured at
+ * 100 requests per 100 stock positions).
  *
  * BOUNDED AND RESUMABLE since #2219 (ADR-048 decisions 4-6) — same shape as the
  * product sweep (`runBoundedSweep`), with one difference that matters: this sweep
@@ -51,6 +54,8 @@ import {
 } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 import {
+  SWEEP_BATCH_SIZE_DEFAULT,
+  SWEEP_BATCH_SIZE_MAX,
   formatSweepCursor,
   parseSweepCursor,
   resolveSweepBudget,
@@ -80,7 +85,14 @@ export class MasterInventorySyncAllHandler implements SyncJobHandler {
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
+    // Deliberately still the per-item budget (100), NOT the product sweep's
+    // batched 500. #2648 makes the CHILD cheap; choosing what the run may then
+    // afford is a separate decision, taken together with the same question for
+    // the deletion audit and with a measurement to back it. So this run still
+    // covers the same 100 products it covered before - in one child issuing a
+    // handful of requests instead of a hundred children issuing one each.
     const budget = resolveSweepBudget(this.getPayload(job).pageLimit);
+    const batchSize = this.getBatchSize();
     const lockKey = sweepLockKey('inventory', job.connectionId);
     const lockTtlMs = resolveSweepLockTtlMs(
       this.configService.get<string>('OL_MASTER_SWEEP_LOCK_TTL_MS')
@@ -112,8 +124,8 @@ export class MasterInventorySyncAllHandler implements SyncJobHandler {
             offset,
             pageBudget
           ),
-        // One id per child: this sweep keeps the per-item fan-out.
-        enqueue: (externalIds, cycleId) => this.enqueueChild(job, externalIds[0], cycleId),
+        groupSize: batchSize,
+        enqueue: (externalIds, cycleId) => this.enqueueChild(job, externalIds, cycleId),
         newCycleId: () => randomUUID(),
       });
 
@@ -156,22 +168,47 @@ export class MasterInventorySyncAllHandler implements SyncJobHandler {
     }
   }
 
-  private async enqueueChild(job: SyncJob, externalId: string, cycleId: string): Promise<unknown> {
+  /**
+   * Enqueue one child covering a whole batch of products (#2648).
+   *
+   * The child is `master.inventory.syncBatch`, not one
+   * `master.inventory.syncFromSweep` per id: a per-product child builds its own
+   * adapter instance, so it cannot benefit from a bulk read no matter how cheap
+   * the read is. The per-product job survives as the fallback for a failed
+   * batch member and as the webhook-driven path's sweep twin.
+   */
+  private async enqueueChild(
+    job: SyncJob,
+    externalIds: readonly string[],
+    cycleId: string
+  ): Promise<unknown> {
     const jobRequest: SyncJobRequest = {
-      // Sweep-triggered child: same handler and payload as the
-      // webhook-driven `master.inventory.syncByExternalId`, distinct type so
-      // ADR-050 can lane it by its own cost of starvation (#2594).
-      jobType: 'master.inventory.syncFromSweep',
+      jobType: 'master.inventory.syncBatch',
       connectionId: job.connectionId,
       payload: {
         schemaVersion: 1,
-        externalId,
-        objectType: CORE_ENTITY_TYPE.Product,
+        externalIds: [...externalIds],
       },
-      // Cycle-scoped, not job-scoped — see the product sweep's note.
-      idempotencyKey: `master:${job.connectionId}:inventory:sync:${externalId}:${cycleId}`,
+      // Keyed on the CYCLE and on the batch's FIRST id, exactly as the product
+      // sweep is: a resuming tick is a different job, so a job-scoped key would
+      // re-enqueue the same child under a fresh key on every overlapping page.
+      // Cycle-scoping also makes a crash between enqueue and cursor write safe -
+      // the retry produces identical keys, since the same offset yields the
+      // same batch boundaries.
+      idempotencyKey: `master:${job.connectionId}:inventory:syncBatch:${externalIds[0]}:${cycleId}`,
     };
     return this.jobEnqueue.enqueueJob(jobRequest);
+  }
+
+  /** Products per batch child, clamped to PrestaShop's own collection page. */
+  private getBatchSize(): number {
+    const raw = this.configService.get<string>(
+      'OL_INVENTORY_SYNC_BATCH_SIZE',
+      String(SWEEP_BATCH_SIZE_DEFAULT)
+    );
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed <= 0) return SWEEP_BATCH_SIZE_DEFAULT;
+    return Math.min(Math.floor(parsed), SWEEP_BATCH_SIZE_MAX);
   }
 
   /**

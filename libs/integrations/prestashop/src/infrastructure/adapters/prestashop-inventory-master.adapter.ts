@@ -9,6 +9,7 @@
  */
 import type {
   InventoryMasterPort,
+  BulkInventoryReader,
   Inventory,
   InventoryAdjustment,
 } from '@openlinker/core/inventory';
@@ -35,7 +36,10 @@ import {
   resolvePackStockMode,
   type PrestashopPackComponent,
 } from '../../domain/types/prestashop-pack.types';
-import { readAllPrestashopResourcePages } from '../http/prestashop-paged-read';
+import {
+  readAllPrestashopResourcePages,
+  PRESTASHOP_UNNARROWED_MAX_ROWS,
+} from '../http/prestashop-paged-read';
 import { PrestashopPackFilterIgnoredException } from '../../domain/exceptions/prestashop-pack-filter-ignored.exception';
 import type { PrestashopPackResolver } from '../provisioners/prestashop-pack.resolver';
 import { Logger } from '@openlinker/shared/logging';
@@ -45,19 +49,137 @@ import { Logger } from '@openlinker/shared/logging';
  *
  * Read-only adapter for PrestaShop inventory operations.
  */
-export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
+export class PrestashopInventoryMasterAdapter implements InventoryMasterPort, BulkInventoryReader {
   private readonly logger = new Logger(PrestashopInventoryMasterAdapter.name);
+
+  /**
+   * Stock rows per PrestaShop product id, when {@link prefetchInventory} read
+   * them in bulk (#2648).
+   *
+   * Populated only by the bulk path: `listInventory` on its own has one product
+   * to ask about and gains nothing from a memo. An ABSENT key means "not
+   * prefetched" and falls through to the per-product read, so a product the
+   * bulk read did not cover behaves exactly as before - which is why an empty
+   * array must be stored for a product the shop confirmed has no stock rows,
+   * rather than left out.
+   *
+   * The instance lives for one capability resolution, i.e. one batch job, which
+   * is the right scope: within a job those reads want the same snapshot, and
+   * the next job builds a new adapter and re-reads. A longer-lived cache would
+   * serve stale stock to a later sync, and stock is the value that moves most.
+   */
+  private readonly stockRowsCache = new Map<string, PrestashopStockAvailable[]>();
 
   constructor(
     private readonly httpClient: IPrestashopWebserviceClient,
     private readonly identifierMapping: IdentifierMappingPort,
     private readonly inventoryMapper: IPrestashopInventoryMapper,
     private readonly connection: Connection,
-    // Process-singleton, held by the factory: master inventory sync builds one
-    // adapter per product, so any pack cache kept on this instance would never
-    // be read twice.
+    // Process-singleton, held by the factory. It predates #2648's batching, when
+    // master inventory sync built one adapter per product and any pack cache
+    // kept on this instance would never have been read twice. A batch now shares
+    // one instance, but the resolver stays process-wide - the shop's pack set and
+    // its PS_PACK_STOCK_TYPE do not change between pages.
     private readonly packResolver?: PrestashopPackResolver
   ) {}
+
+  /**
+   * Read the stock rows of a whole page of products in one filtered collection
+   * read (#2648, `BulkInventoryReader`).
+   *
+   * `stock_availables` is exactly the resource the per-product path reads, and
+   * PrestaShop answers a filtered collection for many products as readily as
+   * for one - the mechanism is already in this file, in
+   * `readComponentAvailability`, which reads a pack's whole component bundle
+   * that way. So the page costs a handful of requests where the fan-out cost
+   * one per product.
+   *
+   * Two things about the filter are load-bearing and must stay:
+   *
+   * - the ids are an OR list, so they must be PIPE-joined. PrestaShop reads
+   *   `[a,b]` as the RANGE a..b, which answers with a near-whole-catalogue page
+   *   and nothing at all for the ids in between. The query builder's array
+   *   branch does the pipe-joining, which is why an array is passed rather than
+   *   a hand-built string.
+   * - the read must be sorted, or offset paging trusts whatever order MySQL
+   *   happens to return and two pages can overlap or leave a hole.
+   *   `readAllPrestashopResourcePages` applies `id_ASC` unless a caller asks
+   *   for its own order, so this goes through that helper rather than
+   *   `listResources` directly.
+   *
+   * Best-effort by contract: a failure logs and returns, leaving the cache
+   * empty, so the per-product loop behind it reads exactly what it read before
+   * this method existed.
+   */
+  async prefetchInventory(internalProductIds: readonly string[]): Promise<void> {
+    if (internalProductIds.length === 0) {
+      return;
+    }
+
+    try {
+      const psProductIds = await this.resolvePrestashopProductIds(internalProductIds);
+      if (psProductIds.length === 0) {
+        return;
+      }
+
+      const rows = await readAllPrestashopResourcePages<PrestashopStockAvailable>(
+        this.httpClient,
+        'stock_availables',
+        { custom: { id_product: psProductIds } },
+        {
+          connectionId: this.connection.id,
+          detail: `id_product in ${String(psProductIds.length)} product(s)`,
+          // A page of products carries one stock row per combination of each, so
+          // the narrowed budget - sized for one product's rows - is far too
+          // tight here.
+          maxRows: PRESTASHOP_UNNARROWED_MAX_ROWS,
+        }
+      );
+
+      // Seed an empty bucket for every id asked about, so a product the shop
+      // genuinely has no stock rows for is a positive answer rather than a
+      // cache miss that costs another request. That is safe because a
+      // zero-row product does not stale anything on its own - `listInventory`
+      // still probes the product resource to tell a deletion from a data gap.
+      for (const psProductId of psProductIds) {
+        this.stockRowsCache.set(psProductId, []);
+      }
+      for (const row of rows) {
+        const bucket = this.stockRowsCache.get(String(row.id_product));
+        if (bucket !== undefined) {
+          bucket.push(row);
+        }
+      }
+    } catch (error) {
+      this.stockRowsCache.clear();
+      this.logger.warn(
+        `PrestaShop bulk inventory prefetch failed for ${String(internalProductIds.length)} product(s) ` +
+          `(connection: ${this.connection.id}); falling back to per-product reads: ` +
+          `${(error as Error).message}`
+      );
+    }
+  }
+
+  /**
+   * PrestaShop ids for a page of internal product ids.
+   *
+   * An id with no mapping for this connection is dropped rather than failing
+   * the warm-up: the per-product read resolves the same mapping again and
+   * raises its own, better-classified error for it (`master_inventory_mapping_gap`).
+   */
+  private async resolvePrestashopProductIds(
+    internalProductIds: readonly string[]
+  ): Promise<string[]> {
+    const psProductIds: string[] = [];
+    for (const internalProductId of internalProductIds) {
+      try {
+        psProductIds.push(await this.resolvePrestashopProductId(internalProductId));
+      } catch {
+        // Deliberately silent - `resolvePrestashopProductId` already logged it.
+      }
+    }
+    return [...new Set(psProductIds)];
+  }
 
   /**
    * Reads one stock row and reports it as-is.
@@ -124,10 +246,15 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
     const psProductId = await this.resolvePrestashopProductId(productId);
 
     // All stock rows for the product: the id_product_attribute=0 aggregate plus
-    // one row per combination.
-    const stockRecords = await this.listStockRecords(productId, {
-      custom: { id_product: psProductId },
-    });
+    // one row per combination. Served from the bulk read when this page was
+    // prefetched (#2648), and read per product when it was not - the two answer
+    // the same question about the same resource, so the rest of this method
+    // cannot tell them apart.
+    const stockRecords =
+      this.stockRowsCache.get(psProductId) ??
+      (await this.listStockRecords(productId, {
+        custom: { id_product: psProductId },
+      }));
 
     const combinationRows = stockRecords.filter(
       (record) => Number(record.id_product_attribute) !== 0
