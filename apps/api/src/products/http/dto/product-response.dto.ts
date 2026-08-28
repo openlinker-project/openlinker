@@ -132,4 +132,11 @@ export class ProductResponseDto {
     description: 'Per-connection listed-variant counts (#1720, list only)',
   })
   listingsCoverage?: ProductListingsCoverageDto[];
+
+  @ApiPropertyOptional({
+    description:
+      'Number of the product\'s variants deleted at the master (#1599, list only). 0 when none ' +
+      'are stale; compare against variantCount to tell "some" apart from "all" (#2447).',
+  })
+  staleVariantCount?: number;
 }

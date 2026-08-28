@@ -250,6 +250,8 @@ describe('ListingDetailPage', () => {
         sku: 'SKU-RED-42',
         ean: '5901234123457',
         name: 'Red / 42',
+        isStale: false,
+        staleAt: null,
       };
       renderWithOfferData(
         buildMapping({ entityType: 'ProductVariant', internalId: 'ol_variant_xyz' }),
