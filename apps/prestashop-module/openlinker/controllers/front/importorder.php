@@ -68,7 +68,7 @@
  * `validateOrder`, with nothing serialising the two — no `GET_LOCK`, no
  * `SELECT ... FOR UPDATE`, no transaction anywhere in this request path. A
  * client that times out at 30 s while `validateOrder` is still running and then
- * retries passes `ReplayGuard::claim` (the retry is freshly signed and carries
+ * retries passes the replay guard (the retry is freshly signed and carries
  * its own nonce), reads 0 from `getIdByCartId` because the first request has
  * not committed, and validates the cart a second time: two orders, two stock
  * decrements, one cart. PrestaShop's own `OrderExists()` check inside
