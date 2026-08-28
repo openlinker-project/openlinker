@@ -22,10 +22,19 @@ export interface ITaxCoverageDetectionService {
    * The three returned arrays are a complete, non-overlapping partition of
    * the candidate population — their combined length always equals
    * `netExcludedCount` for the same filters/currency.
+   *
+   * `includeBackfilledPreRollout` (#2469) must be the SAME value the caller
+   * passes to the net-sales reads. It shrinks the candidate population rather
+   * than reclassifying it: with the operator's opt-in ON, a backfilled
+   * pre-rollout order is net-ELIGIBLE and so is no longer excluded at all, and
+   * reporting it as `tax-a` would tell the operator work remains on an order
+   * already counted in Net Sales. Optional, defaulting to `false`, so a caller
+   * that has not been rewired reports exactly the pre-#2469 partition.
    */
   classify(
     filters: SalesAnalyticsFilters,
-    currentReportingCurrency: string
+    currentReportingCurrency: string,
+    includeBackfilledPreRollout?: boolean
   ): Promise<TaxCoverageClassification>;
 
   /**
@@ -39,7 +48,8 @@ export interface ITaxCoverageDetectionService {
     category: TaxCoverageCategory,
     filters: SalesAnalyticsFilters,
     currentReportingCurrency: string,
-    pagination: CoverageDetectionPagination
+    pagination: CoverageDetectionPagination,
+    includeBackfilledPreRollout?: boolean
   ): Promise<PaginatedTaxCoverageOrders>;
 
   /**
@@ -49,7 +59,8 @@ export interface ITaxCoverageDetectionService {
    */
   getCategoryCounts(
     filters: SalesAnalyticsFilters,
-    currentReportingCurrency: string
+    currentReportingCurrency: string,
+    includeBackfilledPreRollout?: boolean
   ): Promise<Record<TaxCoverageCategory, number>>;
 
   /**
@@ -62,6 +73,7 @@ export interface ITaxCoverageDetectionService {
   getAllCategoryPages(
     filters: SalesAnalyticsFilters,
     currentReportingCurrency: string,
-    pagination: CoverageDetectionPagination
+    pagination: CoverageDetectionPagination,
+    includeBackfilledPreRollout?: boolean
   ): Promise<Record<TaxCoverageCategory, PaginatedTaxCoverageOrders>>;
 }

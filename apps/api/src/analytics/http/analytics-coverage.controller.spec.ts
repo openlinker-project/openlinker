@@ -13,6 +13,7 @@ import type {
   TaxCoverageCategory,
 } from '@openlinker/core/orders';
 import type { IReportingCurrencySettingsService } from '@openlinker/core/currency';
+import type { IAnalyticsDisplaySettingsService } from '@openlinker/core/analytics';
 import { AnalyticsCoverageController } from './analytics-coverage.controller';
 import type { AnalyticsCoverageQueryDto } from './dto/analytics-coverage-query.dto';
 
@@ -36,6 +37,18 @@ describe('AnalyticsCoverageController (#2466)', () => {
     resolve: jest.fn(),
   });
 
+  const createDisplaySettings = (
+    includeBackfilledTaxRatesInNetSales = false
+  ): jest.Mocked<Pick<IAnalyticsDisplaySettingsService, 'getSettings'>> => ({
+    getSettings: jest.fn().mockResolvedValue({
+      displayCurrency: null,
+      rateBasis: 'current',
+      includeBackfilledTaxRatesInNetSales,
+      updatedAt: null,
+      updatedByUserId: null,
+    }),
+  });
+
   const emptyPage = { items: [], total: 0 };
 
   const emptyTaxPages = (): Record<TaxCoverageCategory, PaginatedTaxCoverageOrders> => ({
@@ -47,23 +60,27 @@ describe('AnalyticsCoverageController (#2466)', () => {
   function buildController(
     orderRecordService = createOrderRecordService(),
     taxCoverageDetectionService = createTaxCoverageDetectionService(),
-    reportingCurrencySettings = createReportingCurrencySettings()
+    reportingCurrencySettings = createReportingCurrencySettings(),
+    displaySettings = createDisplaySettings()
   ): {
     controller: AnalyticsCoverageController;
     orderRecordService: ReturnType<typeof createOrderRecordService>;
     taxCoverageDetectionService: ReturnType<typeof createTaxCoverageDetectionService>;
     reportingCurrencySettings: ReturnType<typeof createReportingCurrencySettings>;
+    displaySettings: ReturnType<typeof createDisplaySettings>;
   } {
     const controller = new AnalyticsCoverageController(
       orderRecordService as unknown as IOrderRecordService,
       taxCoverageDetectionService as unknown as ITaxCoverageDetectionService,
-      reportingCurrencySettings as unknown as IReportingCurrencySettingsService
+      reportingCurrencySettings as unknown as IReportingCurrencySettingsService,
+      displaySettings as unknown as IAnalyticsDisplaySettingsService
     );
     return {
       controller,
       orderRecordService,
       taxCoverageDetectionService,
       reportingCurrencySettings,
+      displaySettings,
     };
   }
 
@@ -120,7 +137,36 @@ describe('AnalyticsCoverageController (#2466)', () => {
     expect(taxCoverageDetectionService.getAllCategoryPages).toHaveBeenCalledWith(
       expect.anything(),
       'PLN',
+      expect.anything(),
       expect.anything()
+    );
+  });
+
+  it("threads the operator's backfilled-tax-rate opt-in through, read fresh per request (#2469)", async () => {
+    const displaySettings = createDisplaySettings(true);
+    const {
+      controller,
+      orderRecordService,
+      taxCoverageDetectionService,
+      reportingCurrencySettings,
+    } = buildController(undefined, undefined, undefined, displaySettings);
+    reportingCurrencySettings.resolve.mockResolvedValue('EUR');
+    orderRecordService.getCurrencyMismatchOrders.mockResolvedValue(
+      emptyPage as PaginatedCurrencyMismatchOrders
+    );
+    orderRecordService.getProductMatchingErrorOrders.mockResolvedValue(
+      emptyPage as PaginatedProductMatchingErrorOrders
+    );
+    taxCoverageDetectionService.getAllCategoryPages.mockResolvedValue(emptyTaxPages());
+
+    await controller.getCoverage(query);
+
+    expect(displaySettings.getSettings).toHaveBeenCalledTimes(1);
+    expect(taxCoverageDetectionService.getAllCategoryPages).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      true
     );
   });
 

@@ -55,8 +55,17 @@ export class TopProductsService implements ITopProductsService {
     private readonly publishedVariantsService: IPublishedVariantsService
   ) {}
 
-  async getTopProducts(filters: TopProductFilters): Promise<TopProductsResponseDto> {
-    const core = await this.orderRecordService.getTopProducts(filters);
+  async getTopProducts(
+    filters: TopProductFilters,
+    includeBackfilledTaxRatesInNetSales = false
+  ): Promise<TopProductsResponseDto> {
+    // Passed through rather than resolved here (#2469): the controller reads the
+    // setting once per request so every read in that request agrees, and this
+    // composition service is not the place to acquire it.
+    const core = await this.orderRecordService.getTopProducts(
+      filters,
+      includeBackfilledTaxRatesInNetSales
+    );
     const productIds = core.items.map((item) => item.productId);
 
     const [catalogByProductId, coverageGaps] = await Promise.all([

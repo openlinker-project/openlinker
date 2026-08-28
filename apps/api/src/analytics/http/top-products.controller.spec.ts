@@ -5,6 +5,7 @@ import { BadRequestException } from '@nestjs/common';
 import { TopProductsController } from './top-products.controller';
 import type { TopProductsResponseDto } from './dto/top-products-response.dto';
 import type { ITopProductsService } from '../application/services/top-products.service.interface';
+import type { IAnalyticsDisplaySettingsService } from '@openlinker/core/analytics';
 
 describe('TopProductsController', () => {
   const response: TopProductsResponseDto = {
@@ -18,10 +19,31 @@ describe('TopProductsController', () => {
     getTopProducts: jest.fn(),
   });
 
+  const createDisplaySettings = (
+    includeBackfilledTaxRatesInNetSales = false
+  ): jest.Mocked<Pick<IAnalyticsDisplaySettingsService, 'getSettings'>> => ({
+    getSettings: jest.fn().mockResolvedValue({
+      displayCurrency: null,
+      rateBasis: 'current',
+      includeBackfilledTaxRatesInNetSales,
+      updatedAt: null,
+      updatedByUserId: null,
+    }),
+  });
+
+  const build = (
+    service: jest.Mocked<ITopProductsService>,
+    displaySettings = createDisplaySettings()
+  ): TopProductsController =>
+    new TopProductsController(
+      service,
+      displaySettings as unknown as IAnalyticsDisplaySettingsService
+    );
+
   it('maps query params to filters (with defaults) and returns the service result', async () => {
     const service = createService();
     service.getTopProducts.mockResolvedValue(response);
-    const controller = new TopProductsController(service);
+    const controller = build(service);
 
     const result = await controller.getTopProducts({
       from: '2026-08-01T00:00:00.000Z',
@@ -29,21 +51,24 @@ describe('TopProductsController', () => {
       sourceConnectionId: 'conn-a',
     });
 
-    expect(service.getTopProducts).toHaveBeenCalledWith({
-      from: new Date('2026-08-01T00:00:00.000Z'),
-      to: new Date('2026-08-08T00:00:00.000Z'),
-      sourceConnectionId: 'conn-a',
-      sortBy: 'revenue',
-      limit: 20,
-      offset: 0,
-    });
+    expect(service.getTopProducts).toHaveBeenCalledWith(
+      {
+        from: new Date('2026-08-01T00:00:00.000Z'),
+        to: new Date('2026-08-08T00:00:00.000Z'),
+        sourceConnectionId: 'conn-a',
+        sortBy: 'revenue',
+        limit: 20,
+        offset: 0,
+      },
+      false
+    );
     expect(result).toBe(response);
   });
 
   it('forwards an explicit sortBy/limit/offset', async () => {
     const service = createService();
     service.getTopProducts.mockResolvedValue(response);
-    const controller = new TopProductsController(service);
+    const controller = build(service);
 
     await controller.getTopProducts({
       from: '2026-08-01T00:00:00.000Z',
@@ -54,13 +79,29 @@ describe('TopProductsController', () => {
     });
 
     expect(service.getTopProducts).toHaveBeenCalledWith(
-      expect.objectContaining({ sortBy: 'units', limit: 5, offset: 10 })
+      expect.objectContaining({ sortBy: 'units', limit: 5, offset: 10 }),
+      false
     );
+  });
+
+  it("threads the operator's backfilled-tax-rate opt-in through, read fresh per request (#2469)", async () => {
+    const service = createService();
+    service.getTopProducts.mockResolvedValue(response);
+    const displaySettings = createDisplaySettings(true);
+    const controller = build(service, displaySettings);
+
+    await controller.getTopProducts({
+      from: '2026-08-01T00:00:00.000Z',
+      to: '2026-08-08T00:00:00.000Z',
+    });
+
+    expect(displaySettings.getSettings).toHaveBeenCalledTimes(1);
+    expect(service.getTopProducts).toHaveBeenCalledWith(expect.anything(), true);
   });
 
   it('throws BadRequestException when to <= from', async () => {
     const service = createService();
-    const controller = new TopProductsController(service);
+    const controller = build(service);
 
     await expect(
       controller.getTopProducts({
@@ -73,7 +114,7 @@ describe('TopProductsController', () => {
 
   it('throws BadRequestException when to === from', async () => {
     const service = createService();
-    const controller = new TopProductsController(service);
+    const controller = build(service);
 
     await expect(
       controller.getTopProducts({

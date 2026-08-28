@@ -43,6 +43,12 @@
  *    `AnalyticsCoverageController` because it writes and needs `admin`; see
  *    its own header. Composes `CoreAnalyticsModule` (the ledger),
  *    `OrdersModule` (the detector count), `CurrencyModule` and `SyncModule`.
+ * 8. **`/analytics/coverage/tax/rerun-backfill`**
+ *    (`AnalyticsTaxRemediationController`, #2469) — the one tax-side action
+ *    that does real work: triggering the existing `TaxRateBackfillService`
+ *    resolution early for a selected set of orders. No run ledger and no
+ *    polling, because a backfill attempt is idempotent; see the controller's
+ *    own header for why tax categories A and B have no endpoint at all.
  *
  * The concerns share nothing except the URL prefix. If a future
  * `/analytics` route (#1986 route shell, KPI strip, etc.) needs its own
@@ -75,6 +81,7 @@ import { TopProductsController } from './http/top-products.controller';
 import { AnalyticsSettingsController } from './http/analytics-settings.controller';
 import { AnalyticsCoverageController } from './http/analytics-coverage.controller';
 import { AnalyticsRemediationController } from './http/analytics-remediation.controller';
+import { AnalyticsTaxRemediationController } from './http/analytics-tax-remediation.controller';
 import { NeedsAttentionService } from './application/services/needs-attention.service';
 import { NEEDS_ATTENTION_SERVICE_TOKEN } from './application/services/needs-attention.service.interface';
 import { TopProductsService } from './application/services/top-products.service';
@@ -99,6 +106,7 @@ import { TOP_PRODUCTS_SERVICE_TOKEN } from './application/services/top-products.
     AnalyticsSettingsController,
     AnalyticsCoverageController,
     AnalyticsRemediationController,
+    AnalyticsTaxRemediationController,
   ],
   providers: [
     NeedsAttentionService,
