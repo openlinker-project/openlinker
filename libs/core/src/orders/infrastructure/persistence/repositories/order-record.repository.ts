@@ -1426,10 +1426,10 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * exist for. Its docblock carries the reasoning; this method owns only the
    * outcome-to-payload mapping and the error posture.
    */
-  async updateOmsAttention(
+  async updateOmsAttention<P extends AuthorityAttentionProducer>(
     internalOrderId: string,
-    producer: AuthorityAttentionProducer,
-    outcome: AuthorityAttentionOutcome
+    producer: P,
+    outcome: AuthorityAttentionOutcome<P>
   ): Promise<void> {
     if (outcome.kind === 'indeterminate') {
       // Leave the stored entry alone. Clearing on a transient failure would

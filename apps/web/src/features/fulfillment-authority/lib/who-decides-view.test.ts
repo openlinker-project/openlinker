@@ -12,7 +12,7 @@ import {
   rowBadgeTone,
 } from './who-decides-view';
 import { ATTENTION_REASON_COPY, ATTENTION_UNKNOWN_COPY } from './attention-reason.copy';
-import { WHY_CODE_COPY } from './who-decides.copy';
+import { WHY_CODE_COPY, WHY_CODE_FALLBACK } from './who-decides.copy';
 import type {
   AuthorityAnswer,
   AuthorityAnswerRow,
@@ -166,6 +166,18 @@ describe('resolveWhyLine', () => {
         EMPTY_ATTENTION,
       ),
     ).toBe(WHY_CODE_COPY['a2-single-origin-nothing-to-choose']);
+  });
+
+  // `WHY_CODE_FALLBACK` was unreachable dead code until the parse stopped
+  // treating an unknown why-code as a page-wide contract break: the envelope
+  // never survived long enough for this branch to run.
+  it('should name a why-code this build does not recognise rather than blanking the line', () => {
+    expect(
+      resolveWhyLine(
+        row({ why: { kind: 'default', code: 'a1-invented-by-a-newer-release' } }),
+        EMPTY_ATTENTION,
+      ),
+    ).toBe(WHY_CODE_FALLBACK);
   });
 
   it('should REPLACE the why-line with the matching inert-state body when the row is ambiguous', () => {

@@ -12,8 +12,15 @@
  *
  * ## The two projections it offers
  *
- * `byConnectionId` answers *does this connection have a state named against it*,
- * for a card badge. `forReason` answers *is this state live anywhere*, for a
+ * `byConnectionId` answers *does this connection have a state that RENDERS HERE
+ * named against it*, for a card badge. Both halves are load-bearing: an item's
+ * `connectionIds` say which connections a state is ABOUT, while its `surfaces`
+ * say where it renders — `authority-status.types.ts` is explicit that the
+ * descriptor table answers the second question "rather than letting each
+ * consumer re-derive it". Keying on `connectionIds` alone happens to be right
+ * today only because all three connection-carrying states declare `'connection'`;
+ * a later state naming connections but rendering on the ORDER surface would
+ * badge the connections table for a reason nothing there can act on. `forReason` answers *is this state live anywhere*, for a
  * page-level notice about a state whose EFFECT lands on rows OL cannot name
  * individually — A1-U is derived from `Connection.config`, so no per-product
  * datum exists and inventing one would assert knowledge OL does not have.
@@ -35,25 +42,42 @@ export interface OmsAttentionProjection {
   readonly isLoading: boolean;
 }
 
+/**
+ * The connection-surface projection, as a pure function so it can be asserted
+ * without mounting a query.
+ *
+ * Exported for its spec, not for a second consumer.
+ */
+export function projectAttentionByConnection(
+  items: readonly AuthorityAttentionItem[],
+): ReadonlyMap<string, readonly AuthorityAttentionItem[]> {
+  const byConnectionId = new Map<string, AuthorityAttentionItem[]>();
+  for (const item of items) {
+    // `connectionIds` says which connections the state is ABOUT; `surfaces` says
+    // where it renders. Both are required — see the module docblock.
+    if (!item.surfaces.includes('connection')) {
+      continue;
+    }
+    for (const connectionId of item.connectionIds) {
+      const existing = byConnectionId.get(connectionId);
+      if (existing) {
+        existing.push(item);
+      } else {
+        byConnectionId.set(connectionId, [item]);
+      }
+    }
+  }
+  return byConnectionId;
+}
+
 export function useOmsAttentionQuery(): OmsAttentionProjection {
   const statusQuery = useWhoDecidesStatusQuery();
   const counted = statusQuery.data?.attention.counted;
 
   return useMemo(() => {
     const items = counted ?? [];
-    const byConnectionId = new Map<string, AuthorityAttentionItem[]>();
-    for (const item of items) {
-      for (const connectionId of item.connectionIds) {
-        const existing = byConnectionId.get(connectionId);
-        if (existing) {
-          existing.push(item);
-        } else {
-          byConnectionId.set(connectionId, [item]);
-        }
-      }
-    }
     return {
-      byConnectionId,
+      byConnectionId: projectAttentionByConnection(items),
       // A failed read degrades to "nothing to report" rather than to an error
       // banner on a page whose subject is products or connections: the badge is
       // supplementary, and losing it must never cost the operator the list.

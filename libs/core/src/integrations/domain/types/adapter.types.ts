@@ -43,8 +43,11 @@ export const CoreCapabilityValues = [
   // to goods a customer sends back. Unlike `ReturnSourceReader` / `ReturnDecliner`
   // — read off an adapter manifest and never written — this name is written by an
   // operator into `enabledCapabilities`, which both connection DTOs `@IsIn`-validate
-  // against this array. Keeping it out would make it unwritable, and A5 could then
-  // never resolve to a non-OpenLinker holder.
+  // against this array. Keeping it out would make it unwritable — necessary, but on
+  // its own NOT sufficient: `ConnectionService` also validates the name against the
+  // resolved adapter's `supportedCapabilities`, and no shipped manifest advertises
+  // `ReturnsAuthority` yet, so A5 cannot resolve to a non-OpenLinker holder until an
+  // adapter declares it.
   'ReturnsAuthority',
 ] as const;
 

@@ -65,8 +65,36 @@ describe('who-decides stylesheet coverage', () => {
     // A guard over an empty set would pass forever; the classes are the point.
     expect(used.size).toBeGreaterThan(0);
 
-    const undefinedClasses = [...used].filter((name) => !css.includes(`.${name}`));
+    // ANCHORED, not `css.includes('.' + name)`: a substring test lets a class
+    // with no rule of its own pass on the strength of a longer sibling's
+    // selector (`.who-decides-attention` matched `.who-decides-attention__counts`),
+    // so the guard could not catch the very rendered-invisible defect it exists
+    // for. Collect the declared selectors and test membership instead.
+    const declared = new Set<string>();
+    for (const match of css.matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)) declared.add(match[1]);
+
+    // A BEM BLOCK ROOT is a namespace, not a claim of a rule: the attention
+    // section carries `who-decides-attention` only so its children can be named
+    // `who-decides-attention__*`, and takes its own layout from
+    // `who-decides__section`. Requiring the `__`/`--` separator keeps this exact
+    // — a LEAF with no rule still fails, because a longer sibling no longer
+    // covers it.
+    const isBlockRoot = (name: string) =>
+      css.includes(`.${name}__`) || css.includes(`.${name}--`);
+
+    const undefinedClasses = [...used].filter(
+      (name) => !declared.has(name) && !isBlockRoot(name),
+    );
     expect(undefinedClasses).toEqual([]);
+
+    // The guard of the guard. Under the old substring test this name passed on
+    // the strength of `.who-decides-attention__counts`, so the check could not
+    // fail for the defect it exists to catch — and an assertion nobody has seen
+    // fail is a claim, not a guard.
+    const fabricatedLeaf = 'who-decides-attention__coun';
+    expect(declared.has(fabricatedLeaf)).toBe(false);
+    expect(isBlockRoot(fabricatedLeaf)).toBe(false);
+    expect(css.includes(`.${fabricatedLeaf}`)).toBe(true);
   });
 
   /**

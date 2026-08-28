@@ -102,6 +102,52 @@ describe('parseAuthorityStatus', () => {
     expect(parsed?.rows[0].inactiveClaimantConnectionIds).toEqual([]);
   });
 
+  // A rolling deploy hands this bundle a newer release's codes. Parsed as closed
+  // enums these blanked the ENTIRE page — seven rows plus every preset replaced
+  // by an error state — and degraded `useOmsAttentionQuery` silently, so the
+  // `/connections` and `/products` badges vanished with no error anywhere.
+  it('should survive a why-code this build does not recognise, degrading one line', () => {
+    const payload = zeroConfigPayload() as Record<string, unknown>;
+    const rows = payload.rows as Record<string, unknown>[];
+    rows[0].why = { kind: 'default', code: 'a1-invented-by-a-newer-release' };
+
+    const parsed = parseAuthorityStatus(payload);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.rows).toHaveLength(7);
+    expect(parsed?.rows[0].why).toEqual({
+      kind: 'default',
+      code: 'a1-invented-by-a-newer-release',
+    });
+    // Every OTHER row still carries its own real answer.
+    expect(parsed?.rows[1].why).toEqual({
+      kind: 'default',
+      code: 'a2-single-origin-nothing-to-choose',
+    });
+  });
+
+  it('should survive an unavailable-reason this build does not recognise', () => {
+    const payload = zeroConfigPayload() as Record<string, unknown>;
+    const presets = payload.presets as Record<string, unknown>[];
+    presets[2].unavailableReason = 'needs-something-invented-later';
+
+    const parsed = parseAuthorityStatus(payload);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.presets).toHaveLength(3);
+    expect(
+      parsed?.presets.find((p) => p.id === 'keep-other-system')?.unavailableReason,
+    ).toBe('needs-something-invented-later');
+  });
+
+  // The other half of the ruling: a code that selects STRUCTURE stays closed,
+  // because a row whose answer this build cannot interpret must not be drawn.
+  it('should still refuse the envelope when a structural discriminant is unknown', () => {
+    const payload = zeroConfigPayload() as Record<string, unknown>;
+    const rows = payload.rows as Record<string, unknown>[];
+    rows[0].state = 'invented-state';
+
+    expect(parseAuthorityStatus(payload)).toBeNull();
+  });
+
   it('should keep the unavailable preset and its reason code', () => {
     const parsed = parseAuthorityStatus(zeroConfigPayload());
     const preset = parsed?.presets.find((p) => p.id === 'keep-other-system');

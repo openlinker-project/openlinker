@@ -130,7 +130,19 @@ export type AuthorityAnswer =
  * apart mechanically. A flat union would make that a string-prefix convention.
  */
 export type AuthorityWhy =
-  | { readonly kind: 'default'; readonly code: AuthorityDefaultWhyCode }
+  /**
+   * `code` is a plain `string`, not the union below.
+   *
+   * The union is a hand-copy of core's (#591 forbids importing it), so a release
+   * that adds a why-code reaches a browser still running the old bundle during
+   * every rolling deploy. Parsed as a closed enum, one unrecognised code failed
+   * the WHOLE-envelope parse: seven rows and every preset replaced by an error
+   * state, and `useOmsAttentionQuery` degrading silently so the `/connections`
+   * and `/products` badges vanished too. A code this build cannot name is a
+   * one-LINE degradation instead — `WHY_CODE_FALLBACK` says so on that row and
+   * every other row still renders its own answer.
+   */
+  | { readonly kind: 'default'; readonly code: string }
   | { readonly kind: 'ambiguous'; readonly reason: AuthorityAmbiguityReason };
 
 /** One rendered row of the table. */
@@ -205,8 +217,13 @@ export type AuthorityPresetUnavailableReason =
 export interface AuthorityPreset {
   readonly id: AuthorityPresetId;
   readonly available: boolean;
-  /** A code, present exactly when `available` is false. */
-  readonly unavailableReason: AuthorityPresetUnavailableReason | null;
+  /**
+   * A code, present exactly when `available` is false. A plain `string` for the
+   * same skew reason as {@link AuthorityWhy}'s `code`: an unrecognised reason
+   * renders `PRESET_UNAVAILABLE_REASON_FALLBACK` on that one card rather than
+   * costing the operator the whole page.
+   */
+  readonly unavailableReason: string | null;
 }
 
 /**

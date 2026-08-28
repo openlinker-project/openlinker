@@ -69,7 +69,7 @@ port interfaces in `libs/core/src/<context>/domain/ports/`. An adapter
 implements one or more of them.
 
 The well-known set is `CoreCapabilityValues`, declared verbatim at
-[`libs/core/src/integrations/domain/types/adapter.types.ts:23-49`](../libs/core/src/integrations/domain/types/adapter.types.ts#L23-L49):
+[`libs/core/src/integrations/domain/types/adapter.types.ts:23-52`](../libs/core/src/integrations/domain/types/adapter.types.ts#L23-L52):
 
 ```typescript
 export const CoreCapabilityValues = [
@@ -95,8 +95,11 @@ export const CoreCapabilityValues = [
   // to goods a customer sends back. Unlike `ReturnSourceReader` / `ReturnDecliner`
   // — read off an adapter manifest and never written — this name is written by an
   // operator into `enabledCapabilities`, which both connection DTOs `@IsIn`-validate
-  // against this array. Keeping it out would make it unwritable, and A5 could then
-  // never resolve to a non-OpenLinker holder.
+  // against this array. Keeping it out would make it unwritable — necessary, but on
+  // its own NOT sufficient: `ConnectionService` also validates the name against the
+  // resolved adapter's `supportedCapabilities`, and no shipped manifest advertises
+  // `ReturnsAuthority` yet, so A5 cannot resolve to a non-OpenLinker holder until an
+  // adapter declares it.
   'ReturnsAuthority',
 ] as const;
 ```

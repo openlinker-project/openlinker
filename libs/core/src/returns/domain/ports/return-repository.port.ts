@@ -197,11 +197,16 @@ export interface ReturnRepositoryPort {
    * NULL` (`ReturnRecord.isOrphan()`) and must have exactly one definition.
    *
    * No-op (no throw) when the return row does not exist.
+   *
+   * `outcome` is generic in the producer, so a producer can persist only the state
+   * {@link AUTHORITY_ATTENTION_PRODUCER_REASONS} assigns it: a DERIVED state (one the
+   * read model recomputes from config on every read) and a peer producer's state are
+   * both unrepresentable here rather than merely discouraged.
    */
-  updateOmsAttention(
+  updateOmsAttention<P extends AuthorityAttentionProducer>(
     id: string,
-    producer: AuthorityAttentionProducer,
-    outcome: AuthorityAttentionOutcome
+    producer: P,
+    outcome: AuthorityAttentionOutcome<P>
   ): Promise<void>;
 
   /**

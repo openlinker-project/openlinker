@@ -3,6 +3,7 @@
  */
 
 import {
+  AUTHORITY_ATTENTION_PRODUCER_REASONS,
   AUTHORITY_ATTENTION_REASON_DESCRIPTORS,
   AuthorityAttentionBadgeValues,
   AuthorityAttentionCountedReasonValues,
@@ -17,6 +18,8 @@ import {
   isAuthorityAttentionReason,
   readAuthorityAttentionEntries,
   readAuthorityAttentionEntry,
+  type AuthorityAttentionOutcome,
+  type AuthorityAttentionProducer,
   type AuthorityAttentionReason,
 } from './authority-attention-reason.types';
 import { AuthorityKindValues, type AuthorityKind } from './authority-kind.types';
@@ -344,5 +347,59 @@ describe('attentionReasonForAuthorityQuestion, against real resolveAuthorities o
   it('should name no state for a zero-config install, so the count stays zero', () => {
     const views = resolveAuthorities({ claimants: [] });
     expect(views.filter((view) => view.state === 'ambiguous')).toHaveLength(0);
+  });
+});
+
+
+// The write side of the derived/persisted partition. The descriptor table has said
+// which four states have no producer since #2352; until now nothing read it, so a
+// producer could persist a derived state (double-reported — counted from the jsonb
+// AND independently derived from config) or persist a peer's state (filed under the
+// wrong level-trigger key, so the wrong "nothing to report" clears it).
+describe('AUTHORITY_ATTENTION_PRODUCER_REASONS', () => {
+  it('should agree with the descriptor table in both directions when read', () => {
+    // Every mapped state names the producer that maps to it...
+    for (const producer of AuthorityAttentionProducerValues) {
+      const reason = AUTHORITY_ATTENTION_PRODUCER_REASONS[producer];
+      const descriptor = AUTHORITY_ATTENTION_REASON_DESCRIPTORS[reason];
+      expect(descriptor.origin).toBe('persisted');
+      expect(descriptor.producer).toBe(producer);
+    }
+
+    // ...and every persisted state is reachable from some producer, so no state
+    // is left with a writer it cannot be written by.
+    const mapped = new Set<string>(Object.values(AUTHORITY_ATTENTION_PRODUCER_REASONS));
+    for (const reason of AuthorityAttentionReasonValues) {
+      const isPersisted = AUTHORITY_ATTENTION_REASON_DESCRIPTORS[reason].origin === 'persisted';
+      expect(mapped.has(reason)).toBe(isPersisted);
+    }
+  });
+
+  it('should refuse a derived or a peer producer\'s state at COMPILE time', () => {
+    // These are the assertions that matter, and they are checked by `tsc`, not by
+    // jest: a runtime guard would reach the three not-yet-written Wave-3 producers
+    // only when they run, whereas a compile error reaches them as they are written.
+    const derived: AuthorityAttentionOutcome<'routing'> = {
+      kind: 'blocked',
+      // @ts-expect-error `sourcing-ambiguous` is derived by `resolveAuthorities`; it has no producer.
+      reason: 'sourcing-ambiguous',
+    };
+    const peer: AuthorityAttentionOutcome<'routing'> = {
+      kind: 'blocked',
+      // @ts-expect-error `reservation-shortfall` belongs to `reservations`, not `routing`.
+      reason: 'reservation-shortfall',
+    };
+    const own: AuthorityAttentionOutcome<'routing'> = {
+      kind: 'blocked',
+      reason: 'line-unfulfillable',
+    };
+
+    expect([derived, peer, own]).toHaveLength(3);
+  });
+
+  it('should still let a caller holding a non-literal producer clear an entry', () => {
+    const producer: AuthorityAttentionProducer = 'reservations';
+    const cleared: AuthorityAttentionOutcome<typeof producer> = { kind: 'none' };
+    expect(cleared.kind).toBe('none');
   });
 });

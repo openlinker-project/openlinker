@@ -370,11 +370,16 @@ export interface OrderRecordRepositoryPort {
    * is taken `FOR UPDATE`, so a peer producer committing concurrently cannot be
    * dropped. No-op (no throw) when the order row doesn't exist, mirroring
    * {@link updateFulfillmentState}'s residual-race tolerance.
+   *
+   * `outcome` is generic in the producer, so a producer can persist only the state
+   * {@link AUTHORITY_ATTENTION_PRODUCER_REASONS} assigns it: a DERIVED state (one the
+   * read model recomputes from config on every read) and a peer producer's state are
+   * both unrepresentable here rather than merely discouraged.
    */
-  updateOmsAttention(
+  updateOmsAttention<P extends AuthorityAttentionProducer>(
     internalOrderId: string,
-    producer: AuthorityAttentionProducer,
-    outcome: AuthorityAttentionOutcome
+    producer: P,
+    outcome: AuthorityAttentionOutcome<P>
   ): Promise<void>;
 
   /**

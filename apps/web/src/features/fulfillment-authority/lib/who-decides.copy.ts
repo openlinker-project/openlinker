@@ -135,6 +135,15 @@ export const PRESET_CARD_COPY = {
 /** Render order for the cards — never `Object.keys` of the map above. */
 export const PRESET_CARD_ORDER = AuthorityPresetIdValues;
 
+/**
+ * Introduces the card's `bestIf` sentence.
+ *
+ * Here rather than inline in the JSX: an operator-facing string in a component
+ * escapes `check-ui-vocabulary` and the `t(key, fallback)` seam, which is the
+ * whole reason this module exists.
+ */
+export const PRESET_BEST_IF_LABEL = 'Best if:';
+
 /** Shown on the card that describes the arrangement in force right now. */
 export const PRESET_CURRENT_BADGE = 'Current';
 
@@ -148,7 +157,7 @@ export const PRESET_UNAVAILABLE_BADGE = 'Not available yet';
  * hidden: it tells the operator the shape of the choice they will eventually
  * have, which is the same discipline as #2170's disabled tax-id checkbox.
  */
-export const PRESET_UNAVAILABLE_REASON_COPY = {
+export const PRESET_UNAVAILABLE_REASON_COPY: Readonly<Record<string, string | undefined>> = {
   'needs-a-system-that-can-take-over': 'Needs a system that can take over. Connect one first.',
 } satisfies Record<AuthorityPresetUnavailableReason, string>;
 
@@ -316,7 +325,7 @@ export const ANSWER_COPY = {
  * configuration dump, while an answer WITH one doubles as the explanation of
  * what the default is.
  */
-export const WHY_CODE_COPY = {
+export const WHY_CODE_COPY: Readonly<Record<string, string | undefined>> = {
   'a1-computed-from-master-minus-buffer':
     'Worked out from your stock master, minus your safety buffer. Nobody else has claimed it.',
   'a1-claimed-by-connection': 'You have put this system in charge of your stock.',

@@ -40,10 +40,12 @@ import type {
  * it names only the methods it exercises rather than claiming the whole port.
  */
 interface OmsAttentionWriter<TRecord> {
-  updateOmsAttention(
+  // Generic in the producer, like the ports it stands in for, so these tests
+  // exercise the constraint rather than opting out of it.
+  updateOmsAttention<P extends AuthorityAttentionProducer>(
     id: string,
-    producer: AuthorityAttentionProducer,
-    outcome: AuthorityAttentionOutcome,
+    producer: P,
+    outcome: AuthorityAttentionOutcome<P>,
   ): Promise<void>;
   findById(id: string): Promise<TRecord | null>;
 }
@@ -146,16 +148,27 @@ describe('OMS attention columns (integration)', () => {
     expect(await rawAttention(seeded.internalOrderId)).toBeNull();
   });
 
+  // This one pins the STATEMENT, not the port contract, and the distinction is
+  // why the producer below is deliberately widened. `AUTHORITY_ATTENTION_PRODUCER_REASONS`
+  // is 1:1 today, so no producer can currently change its own reason and this
+  // scenario is unreachable through a literal producer. The SQL's preserve-`since`
+  // behaviour is nonetheless real and is what a producer gaining a second state
+  // would rely on, so it is covered here through the documented non-literal form
+  // (which permits any persisted reason) rather than faked with a cast.
   it('preserves since across a change of reason within one episode', async () => {
     const seeded = await createTestOrderRecord(harness.getDataSource());
+    // A helper rather than an annotated `const`: control-flow analysis narrows a
+    // `const` back to its literal even when annotated, which would re-apply the
+    // per-producer constraint this test needs to reach past.
+    const report = (
+      producer: AuthorityAttentionProducer,
+      outcome: AuthorityAttentionOutcome,
+    ): Promise<void> => repository.updateOmsAttention(seeded.internalOrderId, producer, outcome);
 
-    await repository.updateOmsAttention(seeded.internalOrderId, 'routing', {
-      kind: 'blocked',
-      reason: 'line-unfulfillable',
-    });
+    await report('routing', { kind: 'blocked', reason: 'line-unfulfillable' });
     const first = (await repository.findById(seeded.internalOrderId))?.omsAttention[0]?.since;
 
-    await repository.updateOmsAttention(seeded.internalOrderId, 'routing', {
+    await report('routing', {
       kind: 'blocked',
       reason: 'fulfillment-unaccepted',
       detail: 'refined',

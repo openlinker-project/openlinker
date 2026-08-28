@@ -302,6 +302,46 @@ export const AuthorityAttentionCountedReasonValues: readonly AuthorityAttentionR
   );
 
 /**
+ * The one state each producer may persist — the descriptor table's `producer`
+ * column, inverted, as a TYPE rather than as prose.
+ *
+ * Two things were previously true only by convention, and a Wave-3 producer coding
+ * against `updateOmsAttention` would have had nothing to stop it breaking either.
+ * A producer could persist one of the four DERIVED states (`producer: null` in the
+ * descriptor table) — and then `HAS_OMS_ATTENTION` counts the row while
+ * `AuthorityStatusService.deriveAmbiguities` independently derives the same state
+ * from config, so one situation is reported twice with a staleness window on the
+ * stored copy; on a return it is worse, because `ReturnRecord.attentionReasons()`
+ * appends the derived `return-unmatched` unconditionally and a persisted one would
+ * therefore emit twice. And a producer could persist a state the table assigns to a
+ * different subsystem (`routing` writing `reservation-shortfall`), which breaks the
+ * level-trigger key: clearing means *clear my entry*, so an entry filed under the
+ * wrong producer is cleared by the wrong "nothing to report".
+ *
+ * The mapping is 1:1 today. A producer that legitimately gains a second state widens
+ * its value to a union here — one edit, in the place the spec already cross-checks
+ * against {@link AUTHORITY_ATTENTION_REASON_DESCRIPTORS} in both directions.
+ */
+export const AUTHORITY_ATTENTION_PRODUCER_REASONS = Object.freeze({
+  reservations: 'reservation-shortfall',
+  routing: 'line-unfulfillable',
+  acceptance: 'fulfillment-unaccepted',
+  'returns-restock': 'restock-blocked',
+} as const satisfies Record<AuthorityAttentionProducer, AuthorityAttentionReason>);
+
+/** The state(s) `P` may persist. */
+export type AuthorityAttentionReasonFor<P extends AuthorityAttentionProducer> =
+  (typeof AUTHORITY_ATTENTION_PRODUCER_REASONS)[P];
+
+/**
+ * Every state with a writer — the complement of the derived four.
+ *
+ * Derived from the map above rather than hand-listed, so it cannot drift from it.
+ */
+export type AuthorityAttentionPersistedReason =
+  AuthorityAttentionReasonFor<AuthorityAttentionProducer>;
+
+/**
  * One persisted inert state, as stored in the `omsAttention` jsonb array.
  *
  * `producer` is the level-trigger key: a writer replaces or removes ONLY its own
@@ -333,14 +373,24 @@ export interface AuthorityAttentionEntry {
   readonly since: string;
 }
 
-/** What a producer reports about ITS OWN question, for one row. */
-export type AuthorityAttentionOutcome =
+/**
+ * What a producer reports about ITS OWN question, for one row.
+ *
+ * Parameterised by the producer so that `reason` is constrained to what that
+ * producer owns — see {@link AUTHORITY_ATTENTION_PRODUCER_REASONS}. Unparameterised
+ * it is the union over every producer, which is what a caller holding a
+ * non-literal producer gets; a write signature should stay generic in `P` so the
+ * constraint survives to the call site.
+ */
+export type AuthorityAttentionOutcome<
+  P extends AuthorityAttentionProducer = AuthorityAttentionProducer,
+> =
   /** This producer has nothing to report. The writer REMOVES this producer's entry. */
   | { readonly kind: 'none' }
   /** Carries the state to persist under this producer. */
   | {
       readonly kind: 'blocked';
-      readonly reason: AuthorityAttentionReason;
+      readonly reason: AuthorityAttentionReasonFor<P>;
       readonly detail?: string;
       readonly subjectRef?: string;
     }

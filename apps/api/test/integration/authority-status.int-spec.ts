@@ -119,7 +119,9 @@ describe('Authority status API (integration)', () => {
       .post('/v1/fulfillment-authority/presets/preview')
       .set('Authorization', `Bearer ${token}`)
       .send({ presetId: 'openlinker-decides' })
-      .expect(201);
+      // 200, not Nest's POST default of 201: a preview creates nothing, and
+      // Swagger has always declared 200.
+      .expect(200);
     const after = await getStatus(token);
 
     expect((preview.body as { changes: Array<{ question: string }> }).changes).toHaveLength(1);

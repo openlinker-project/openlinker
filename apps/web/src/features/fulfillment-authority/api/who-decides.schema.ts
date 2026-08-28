@@ -20,20 +20,28 @@
  * therefore reported as unreadable and the page renders an error, which is the
  * only honest rendering of "this build cannot read your setup".
  *
- * **Unknown codes fail the parse rather than rendering.** Every union here is
- * closed and server-validated before it is written, so a value outside one is a
- * genuine contract break — and this page's whole job is to tell an operator who
- * decides what. Rendering a row whose state or answer this build cannot
- * interpret would be worse than declining to draw the table.
+ * **A whole-envelope parse means every closed union here is a page-wide single
+ * point of failure — so a code the operator does not act on structurally is not
+ * one.** These unions are hand-copies of core's (the browser bundle cannot
+ * depend on `@openlinker/core`, #591), and only `AuthorityKindValues` carries a
+ * build-enforced mirror. During any rolling deploy a newer API can hand this
+ * bundle a code it has never heard of. Where that code merely selects a
+ * SENTENCE — `why.code`, a preset's `unavailableReason` — it is parsed as
+ * `z.string()` and the copy module's existing fallback names it honestly on
+ * that one line. Where it selects STRUCTURE the page reasons about —
+ * `question`, `state`, `source`, the answer discriminant — it stays a closed
+ * enum, because rendering a row whose answer this build cannot interpret would
+ * be worse than declining to draw the table. Extending a mirror script instead
+ * would keep the two in step and still hard-fail the page during the skew
+ * window, which is exactly the window the `unreadable` apply outcome exists
+ * because we accept as real.
  *
  * @module apps/web/src/features/fulfillment-authority/api
  */
 import { z } from 'zod/v4';
 import {
   AuthorityAmbiguityReasonValues,
-  AuthorityDefaultWhyCodeValues,
   AuthorityPresetIdValues,
-  AuthorityPresetUnavailableReasonValues,
   AuthorityQuestionValues,
   AuthoritySourceValues,
   AuthorityStateValues,
@@ -70,7 +78,9 @@ const answerSchema = z.discriminatedUnion('kind', [
 ]);
 
 const whySchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('default'), code: z.enum(AuthorityDefaultWhyCodeValues) }),
+  // `code` is `z.string()`, not `z.enum(...)` — see the module docblock's third
+  // note. It is what makes `WHY_CODE_FALLBACK` reachable.
+  z.object({ kind: z.literal('default'), code: z.string() }),
   z.object({ kind: z.literal('ambiguous'), reason: z.enum(AuthorityAmbiguityReasonValues) }),
 ]);
 
@@ -109,7 +119,7 @@ const attentionSchema = z.object({
 const presetSchema = z.object({
   id: z.enum(AuthorityPresetIdValues),
   available: z.boolean(),
-  unavailableReason: z.enum(AuthorityPresetUnavailableReasonValues).nullish(),
+  unavailableReason: z.string().nullish(),
 });
 
 const appliedSchema = z.object({

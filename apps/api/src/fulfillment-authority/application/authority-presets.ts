@@ -20,9 +20,12 @@
  * ## A6 is never touched
  *
  * Refund authority never leaves OpenLinker (ADR-056), so `refund-trigger` is
- * excluded from the loop rather than merely being harmless to write: the key is
- * readable so an operator's claim is OBSERVABLE, and a preset rewriting it would
- * imply the claim had ever been honoured. A7 cannot appear at all — its question
+ * excluded from the loop rather than merely being harmless to write: rewriting the
+ * key would imply the claim had ever been honoured. Note the key is only READABLE,
+ * not reported — the A6 row is `fixed-by-design` and its
+ * `inactiveClaimantConnectionIds` is hardcoded empty, so no surface tells an
+ * operator that their claim was ignored. Enforcement is right; surfacing the
+ * ignored claim is not built. A7 cannot appear at all — its question
  * carries `kind: null` and is answered by `sales-documents`.
  *
  * ## Pure, and non-mutating by construction

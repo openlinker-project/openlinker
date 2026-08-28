@@ -17,7 +17,7 @@
  * @module apps/api/src/fulfillment-authority/http
  * @see docs/specs/product-spec-oms-wave2-operator-experience.md §3
  */
-import { Body, Controller, Get, Inject, Post, Put } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Inject, Post, Put } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import {
@@ -63,6 +63,9 @@ export class FulfillmentAuthorityController {
   }
 
   @Post('presets/preview')
+  // A preview creates nothing — Swagger has always declared 200, and Nest's
+  // default 201 for POST made the documented contract and the wire disagree.
+  @HttpCode(HttpStatus.OK)
   @Roles('admin', 'operator', 'viewer')
   @ApiOperation({
     summary: 'What a preset would change — commits nothing',

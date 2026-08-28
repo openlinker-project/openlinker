@@ -556,10 +556,10 @@ export class ReturnRepository implements ReturnRepositoryPort {
    * fact once, whereas a state report is re-decided and the newest answer is the
    * truthful one.
    */
-  async updateOmsAttention(
+  async updateOmsAttention<P extends AuthorityAttentionProducer>(
     id: string,
-    producer: AuthorityAttentionProducer,
-    outcome: AuthorityAttentionOutcome
+    producer: P,
+    outcome: AuthorityAttentionOutcome<P>
   ): Promise<void> {
     if (outcome.kind === 'indeterminate') {
       return;
