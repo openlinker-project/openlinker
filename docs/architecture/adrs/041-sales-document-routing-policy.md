@@ -196,6 +196,26 @@ flowchart TD
 
 This ADR **refines** [ADR-026](./026-country-agnostic-invoicing-domain.md) Decision 3 by filling the placement it deferred, and **narrows** Decision 4's write-path stance (adding a service-level originating-document guard) without superseding it: the `(connectionId, idempotencyKey)` uniqueness and the corrective-re-issue allowance both stand exactly as chosen.
 
+## Amendment (#2504, 2026-08-26): routing-first as a product invariant
+
+This ADR records how routing decides a document kind. Nothing bound the **user interface** to that decision, and the gap showed: the shipped order-detail panel offers a document-kind dropdown and two competing primary actions, so the operator is asked to re-decide what their configured rules already decided. A colleague testing the flow clicked the wrong control on each of her first three attempts. The same order consequently has two different answers on two different screens - the `/orders` row offers `+ Issue invoice` on an order routed to a fiscal receipt.
+
+**The invariant.** Routing decides the document kind. Every surface **states that decision** and offers **only that document**. Where routing has not decided, the surface says so and points at the configuration - it never falls back to asking.
+
+Three consequences follow, and they are testable rather than aspirational.
+
+**1. "Sales document" is the generic noun.** *Invoice* and *fiscal receipt* appear only as a resolved kind. A counter, a filter or a column that spans both kinds may not be labelled with one of them - the shipped `Invoicing blocked` chip counts fiscal receipts too, and `SalesDocumentGateBlockReason` was never invoice-specific.
+
+**2. Every action label follows the resolved kind.** `Issue invoice` for an invoice, `Register receipt` for a receipt. A hardcoded verb is a defect, not a wording preference, because it offers the document routing rejected.
+
+**3. Absence of a decision is a first-class state, not an empty form.** An order whose routing is unresolved renders the persisted reason and the fix. It never renders a kind picker, because a wrong pick is a real tax document with the wrong details on it - see decision 6's rule that silence-and-pick-one is forbidden. This amendment extends that rule from the auto-issue gate to every operator surface.
+
+**The one sanctioned exception.** A per-order override may exist, bounded: admin only, reachable **only** where nothing has been issued, recorded against the acting user, and never the default path. Offering it on an issued document invites a second document for one sale, and offering it where OpenLinker does not know whether a document exists (`in-doubt`) is worse - that is the state where a second attempt is most dangerous. An override that is not bounded this way breaks decision 3a rather than extending it.
+
+**Enforcement.** Consequences 1 and 2 are lexical, so they get a mechanical gate rather than reviewer discipline: an invariant script under `pnpm check:invariants` (the `check-sales-document-reason-mirror.mjs` precedent) fails the build on a hardcoded `invoice` / `receipt` noun or action verb in the three bound surfaces, allowing those words only where they are rendered from a resolved `SalesDocumentKind`. Consequence 3 is structural, not lexical - a kind picker on an unresolved order is a component choice no grep can see - so it stays reviewer-enforced, and this amendment is what a reviewer cites. The gate ships with the implementing epic (#2499), not with this ADR.
+
+**Scope.** The invariant binds three surfaces: `/settings/sales-documents`, the `/orders` row, and the order-detail sales-document panel. It is a UI contract; the write-path guard in decision 3a remains the enforcement of record, and no surface may rely on being the only thing preventing a second document.
+
 ## References
 
 - Related PRs: #2055 (this ADR)
