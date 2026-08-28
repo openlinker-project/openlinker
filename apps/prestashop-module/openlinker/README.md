@@ -84,6 +84,8 @@ After installation, the OpenLinker module is accessible in two ways:
 - **Max Retry Attempts**: Maximum delivery attempts before marking as failed (default: 25)
 - **Retry Backoff Multiplier**: Exponential backoff multiplier (default: 2.0)
 - **Keep Delivered Events (days)**: retention horizon for delivered rows (default: 7, range 1-365). See Outbox Retention below.
+- **Delivery Run Budget (seconds)**: how long one delivery run may spend sending, before it stops and leaves the rest for the next run (default: 120, range 30-280). See Run Budget below.
+- **Recover Stuck Events After (minutes)**: how long an event may sit half-sent before another run takes it over (default: 5). The lowest value the form accepts is derived from the run budget above and rises with it. See Run Budget below.
 
 ## Event Deduplication
 
@@ -235,6 +237,31 @@ every finished row is gone, the excess is genuinely undelivered work: the
 statistics panel says so, the cron logs an error, and webhook delivery needs
 fixing.
 
+### Run Budget and Stuck-Event Recovery
+
+Shared hosting kills a long-running PHP process - 300 seconds on the tightest
+tier we know of - and the worst delivery path is a full batch of events each
+waiting out a 10-second HTTP timeout. A killed run does not stop cleanly: the
+events it had claimed stay `processing`, and nothing sends them until they are
+recovered.
+
+So a run watches its own clock. Before each event it asks whether the *worst
+case* of that one delivery still fits inside the budget; when it does not, the
+run stops, puts everything it did not reach back to `pending`, and returns. The
+next run picks up where it left off. The budget costs latency, never events.
+
+Recovery covers the case where the process was killed anyway. A run that has
+been holding an event for longer than the **Recover Stuck Events After**
+threshold is treated as gone, and the next run takes its events over.
+
+The two settings are linked, which is why the form derives the threshold's lower
+bound from the budget. A live run can hold an event for at most its budget plus
+one delivery; a threshold shorter than that would let a second run take over
+events the first is still sending, and the buyer's shop would receive the same
+event twice. Reclaiming also never touches the reclaiming run's own events, and
+"Run delivery now" only takes over events whose owner is provably gone - so
+pressing it during a scheduled run is safe.
+
 ### State Machine
 
 Events flow through these states:
@@ -249,7 +276,7 @@ their horizon; nothing else in the table is ever deleted.
 
 - **Deterministic claiming**: Each cron run uses unique `runId` to claim events
 - **Processing lease**: `processing_owner` and `processing_started_at` prevent overlap
-- **Stale recovery**: Rows stuck in `processing` for >15 minutes are automatically requeued
+- **Stale recovery**: Rows held by a run that is provably gone are automatically requeued, after the configured **Recover Stuck Events After** threshold (default 5 minutes). A run never reclaims its own rows.
 
 ## Dynamic Shipping Carrier
 

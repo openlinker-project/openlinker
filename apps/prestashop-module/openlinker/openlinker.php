@@ -34,7 +34,7 @@
  * @see {@link HmacRequestVerifier} for inbound HMAC verification
  *
  * @author OpenLinker Team
- * @version 1.9.0
+ * @version 1.10.0
  */
 
 if (!defined('_PS_VERSION_')) {
@@ -96,7 +96,7 @@ class OpenLinker extends CarrierModule
     {
         $this->name = 'openlinker';
         $this->tab = 'administration';
-        $this->version = '1.9.0';
+        $this->version = '1.10.0';
         $this->author = 'OpenLinker Team';
         $this->need_instance = 0;
         $this->ps_versions_compliancy = [
@@ -277,6 +277,19 @@ class OpenLinker extends CarrierModule
             'outbox_retention_days' => Configuration::get('OPENLINKER_OUTBOX_RETENTION_DAYS') ?: self::DEFAULT_OUTBOX_RETENTION_DAYS,
             'outbox_retention_days_min' => OutboxRepository::RETENTION_DELIVERED_DAYS_MIN,
             'outbox_retention_days_max' => OutboxRepository::RETENTION_DELIVERED_DAYS_MAX,
+            // Read through the resolvers, never `?:` - a stored "0" is falsy
+            // in PHP and would silently render as the default while the
+            // resolver clamped it to something else (#2652).
+            'outbox_run_budget_seconds' => OutboxRepository::readRunBudgetSeconds(),
+            'outbox_run_budget_seconds_min' => OutboxRepository::RUN_BUDGET_SECONDS_MIN,
+            'outbox_run_budget_seconds_max' => OutboxRepository::RUN_BUDGET_SECONDS_MAX,
+            'outbox_run_budget_seconds_default' => OutboxRepository::DEFAULT_RUN_BUDGET_SECONDS,
+            'outbox_stale_minutes' => OutboxRepository::readStaleThresholdMinutes(),
+            'outbox_stale_minutes_min' => OutboxRepository::minimumStaleThresholdMinutes(
+                OutboxRepository::readRunBudgetSeconds()
+            ),
+            'outbox_stale_minutes_max' => OutboxRepository::STALE_PROCESSING_THRESHOLD_MINUTES_MAX,
+            'outbox_stale_minutes_default' => OutboxRepository::DEFAULT_STALE_PROCESSING_THRESHOLD_MINUTES,
             'statistics' => $this->getStatistics(),
             // Whether delivery is actually running at all (#2618). Without
             // this a dead cron is indistinguishable from an empty queue.
@@ -399,6 +412,45 @@ class OpenLinker extends CarrierModule
             );
         } else {
             Configuration::updateGlobalValue('OPENLINKER_OUTBOX_RETENTION_DAYS', $retentionDays);
+        }
+
+        // Per-run wall-clock budget and stale-lease threshold (#2652).
+        //
+        // The budget is validated first because the threshold's lower bound is
+        // derived from it: a threshold shorter than a run can legitimately
+        // take lets a second run reclaim rows the first is still delivering.
+        // The submitted budget is used for that derivation, not the stored
+        // one, or raising both in a single save would be judged against the
+        // value being replaced.
+        $budgetMin = OutboxRepository::RUN_BUDGET_SECONDS_MIN;
+        $budgetMax = OutboxRepository::RUN_BUDGET_SECONDS_MAX;
+        $runBudget = (int)Tools::getValue(OutboxRepository::RUN_BUDGET_CONFIG_KEY);
+        $effectiveBudget = OutboxRepository::readRunBudgetSeconds();
+        if ($runBudget < $budgetMin || $runBudget > $budgetMax) {
+            $errors[] = sprintf(
+                $this->l('Delivery run budget must be between %d and %d seconds'),
+                $budgetMin,
+                $budgetMax
+            );
+        } else {
+            Configuration::updateGlobalValue(OutboxRepository::RUN_BUDGET_CONFIG_KEY, $runBudget);
+            $effectiveBudget = $runBudget;
+        }
+
+        $staleFloor = OutboxRepository::minimumStaleThresholdMinutes($effectiveBudget);
+        $staleMax = OutboxRepository::STALE_PROCESSING_THRESHOLD_MINUTES_MAX;
+        $staleMinutes = (int)Tools::getValue(OutboxRepository::STALE_PROCESSING_THRESHOLD_CONFIG_KEY);
+        if ($staleMinutes < $staleFloor || $staleMinutes > $staleMax) {
+            $errors[] = sprintf(
+                $this->l('Stuck-event recovery must be between %d and %d minutes. The lower bound is set by the delivery run budget: anything shorter can reclaim events another run is still sending, and deliver them twice.'),
+                $staleFloor,
+                $staleMax
+            );
+        } else {
+            Configuration::updateGlobalValue(
+                OutboxRepository::STALE_PROCESSING_THRESHOLD_CONFIG_KEY,
+                $staleMinutes
+            );
         }
 
         // Return messages
@@ -533,12 +585,25 @@ class OpenLinker extends CarrierModule
             $repository = new OutboxRepository();
             $sender = new WebhookSender();
 
-            // Requeue stale rows (older than threshold defined in OutboxRepository)
-            $requeued = $repository->requeueStaleProcessingRows();
-            
-            // Also requeue all processing rows for manual delivery (user explicitly wants to retry)
-            // This ensures any stuck events are immediately available for delivery
-            $requeued += $repository->requeueAllProcessingRows();
+            // Wall clock for this pass (#2652). The admin request runs under
+            // the same process limit as the cron, so the manual button needs
+            // the same budget.
+            $startedAt = microtime(true);
+            $budgetSeconds = OutboxRepository::readRunBudgetSeconds();
+            $worstCaseDelivery = OutboxRepository::worstCaseDeliverySeconds();
+
+            // Minted before the reclaims, so this run can be excluded from
+            // them - see requeueStaleProcessingRows().
+            $runId = uniqid('manual_', true);
+
+            // Requeue rows whose owner is gone (threshold from configuration)
+            $requeued = $repository->requeueStaleProcessingRows($runId);
+
+            // The button means "stop waiting", so leases that cannot belong to
+            // a live process are released early too. It is not "every
+            // processing row": a cron pass may be mid-flight, and taking its
+            // rows would deliver those events twice (#2652).
+            $requeued += $repository->requeueAllProcessingRows($runId);
             
             // Reset next_attempt_at for pending events scheduled for future delivery
             // This allows manual delivery to process all pending events immediately,
@@ -549,7 +614,6 @@ class OpenLinker extends CarrierModule
             $batchSize = (int)Configuration::get('BATCH_SIZE') ?: self::DEFAULT_BATCH_SIZE;
 
             // Claim batch
-            $runId = uniqid('manual_', true);
             $events = $repository->claimBatchDueForDelivery($batchSize, $runId);
 
             if (empty($events)) {
@@ -565,8 +629,21 @@ class OpenLinker extends CarrierModule
             // Process events
             $delivered = 0;
             $failed = 0;
+            $attempted = 0;
+            $budgetExhausted = false;
 
             foreach ($events as $event) {
+                if (!OutboxRepository::hasBudgetForAnotherDelivery(
+                    microtime(true) - $startedAt,
+                    $budgetSeconds,
+                    $worstCaseDelivery
+                )) {
+                    $budgetExhausted = true;
+                    break;
+                }
+
+                $attempted++;
+
                 try {
                     PrestaShopLogger::addLog(
                         'OpenLinker:Attempting to deliver event ' . $event->id . ' (eventId: ' . $event->event_id . ', type: ' . $event->event_type . ')',
@@ -639,9 +716,19 @@ class OpenLinker extends CarrierModule
                 }
             }
 
+            // Release everything the budget stopped us reaching, so it is
+            // `pending` for the next run rather than sitting in `processing`.
+            $skipped = 0;
+            if ($budgetExhausted) {
+                $skipped = $repository->requeueEventsByRunId(
+                    $runId,
+                    'Run budget of ' . (int)$budgetSeconds . 's reached; requeued for the next run'
+                );
+            }
+
             // Build user-friendly message
             $messageParts = [];
-            $messageParts[] = sprintf('%d event(s) processed', count($events));
+            $messageParts[] = sprintf('%d event(s) processed', $attempted);
             if ($delivered > 0) {
                 $messageParts[] = sprintf('%d delivered', $delivered);
             }
@@ -654,7 +741,18 @@ class OpenLinker extends CarrierModule
             if ($resetCount > 0) {
                 $messageParts[] = sprintf('%d scheduled event(s) made available', $resetCount);
             }
-            $pruned = $this->runOutboxRetentionNow($repository);
+            // Never silent: a half-delivered queue looks exactly like a small
+            // one unless the stop is stated (#2652).
+            if ($budgetExhausted) {
+                $messageParts[] = sprintf(
+                    '%d event(s) left queued - the %ds run budget was reached, press again or wait for the next cron',
+                    $skipped,
+                    $budgetSeconds
+                );
+            }
+            // Retention costs time out of the same process limit, so it is
+            // skipped when the budget is already gone.
+            $pruned = $budgetExhausted ? '' : $this->runOutboxRetentionNow($repository);
             if ($pruned !== '') {
                 $messageParts[] = $pruned;
             }
@@ -1350,6 +1448,15 @@ class OpenLinker extends CarrierModule
         Configuration::updateGlobalValue('MAX_RETRY_ATTEMPTS', self::DEFAULT_MAX_RETRY_ATTEMPTS);
         Configuration::updateGlobalValue('RETRY_BACKOFF_MULTIPLIER', self::DEFAULT_RETRY_BACKOFF_MULTIPLIER);
         Configuration::updateGlobalValue('OPENLINKER_OUTBOX_RETENTION_DAYS', self::DEFAULT_OUTBOX_RETENTION_DAYS);
+        self::requireOutboxRepository();
+        Configuration::updateGlobalValue(
+            OutboxRepository::RUN_BUDGET_CONFIG_KEY,
+            OutboxRepository::DEFAULT_RUN_BUDGET_SECONDS
+        );
+        Configuration::updateGlobalValue(
+            OutboxRepository::STALE_PROCESSING_THRESHOLD_CONFIG_KEY,
+            OutboxRepository::DEFAULT_STALE_PROCESSING_THRESHOLD_MINUTES
+        );
         // Default: suppress buyer mail on OL-imported orders (#905).
         Configuration::updateGlobalValue(self::IMPORT_SEND_MAIL_CONFIG_KEY, 0);
     }
@@ -1375,6 +1482,8 @@ class OpenLinker extends CarrierModule
         Configuration::deleteByName('RETRY_BACKOFF_MULTIPLIER');
         Configuration::deleteByName('OPENLINKER_OUTBOX_RETENTION_DAYS');
         Configuration::deleteByName('OPENLINKER_OUTBOX_RETENTION_LAST_RUN');
+        Configuration::deleteByName('OPENLINKER_OUTBOX_RUN_BUDGET_SECONDS');
+        Configuration::deleteByName('OPENLINKER_OUTBOX_STALE_MINUTES');
         Configuration::deleteByName('OPENLINKER_OUTBOX_FAILURE_STREAK');
         Configuration::deleteByName('OPENLINKER_CRON_LAST_RUN_AT');
         Configuration::deleteByName('OPENLINKER_CRON_LAST_RUN_SOURCE');

@@ -23,8 +23,55 @@
 
 class OutboxRepository
 {
-    // Stale row recovery threshold (events stuck in processing longer than this are requeued)
+    // Stale row recovery threshold (events stuck in processing longer than
+    // this are requeued). Kept as the fallback for an unset or unusable
+    // configuration value - see resolveStaleThresholdMinutes() (#2652).
     const STALE_PROCESSING_THRESHOLD_MINUTES = 15;
+
+    // Per-run wall-clock budget (#2652, AC3 of #2614).
+    //
+    // There was no cap at all: the worst delivery path is BATCH_SIZE (50 by
+    // default) rows x WebhookSender::HTTP_TIMEOUT_SECONDS (10 s), i.e. 500 s,
+    // while AZ.pl's lowest shared tier kills a PHP process at 300 s. The
+    // process died mid-loop, its claimed rows stayed `processing`, and nothing
+    // recovered them until the stale sweep.
+    //
+    // 120 s is deliberately well under that 300 s: the budget bounds the
+    // delivery loop only, and a run also pays for PHP bootstrap, the claim, the
+    // retention pass and one delivery that may overshoot the check by up to the
+    // HTTP timeout. Leaving that much headroom is what turns a kill into a
+    // clean stop. Rows not reached stay `pending` for the next run, so the
+    // budget costs latency, never events.
+    const DEFAULT_RUN_BUDGET_SECONDS = 120;
+
+    // Below the floor a run cannot finish a single delivery plus its own
+    // overhead, so the queue would never drain. Above the ceiling the run is
+    // back inside the range where the tightest documented hosting limit
+    // (300 s) can kill it, which is the whole failure this removes.
+    const RUN_BUDGET_SECONDS_MIN = 30;
+    const RUN_BUDGET_SECONDS_MAX = 280;
+    const RUN_BUDGET_CONFIG_KEY = 'OPENLINKER_OUTBOX_RUN_BUDGET_SECONDS';
+
+    // Stale-lease threshold, now an operator dial (#2652, AC4 of #2614).
+    //
+    // Fifteen minutes was a class constant, so a shop whose host kills
+    // processes at 60 s waited a quarter of an hour after the outage ended
+    // before its rows moved again, and had no way to change that without
+    // editing PHP.
+    //
+    // Five minutes is the default because that is what a killed run actually
+    // costs: a run cannot legitimately hold a lease for longer than its budget
+    // plus one delivery, and at the default budget that is a little over two
+    // minutes. See minimumStaleThresholdMinutes() for the floor this must
+    // never go below - a threshold shorter than a live run steals live work.
+    const DEFAULT_STALE_PROCESSING_THRESHOLD_MINUTES = 5;
+    const STALE_PROCESSING_THRESHOLD_MINUTES_MAX = 1440; // 24 h
+    const STALE_PROCESSING_THRESHOLD_CONFIG_KEY = 'OPENLINKER_OUTBOX_STALE_MINUTES';
+
+    // Slack between the longest a live run can hold a lease and the earliest a
+    // peer may reclaim it. Absorbs clock skew between the PHP host and MySQL,
+    // and the seconds between the claim and the first delivery.
+    const STALE_THRESHOLD_SAFETY_SECONDS = 60;
 
     // Retry backoff constants
     const RETRY_BASE_DELAY_SECONDS = 60; // 1 minute
@@ -276,46 +323,104 @@ class OutboxRepository
     /**
      * Requeue stale processing rows
      *
-     * Recovers rows stuck in 'processing' status (e.g., cron crashed mid-run).
-     * Called at start of cron execution.
+     * Recovers rows stuck in 'processing' because the process that leased them
+     * is gone (a cron killed by the host's process limit is the normal case on
+     * shared hosting, not an edge case). Called at the start of every pass.
      *
+     * Two guards make "gone" mean gone (#2652):
+     *
+     * - The age predicate is only sound because the threshold has a floor
+     *   derived from the run budget (see minimumStaleThresholdMinutes()). A
+     *   live run stops before its budget, so its lease can never be older than
+     *   that floor; anything older therefore belongs to a process that is not
+     *   coming back.
+     * - The owner predicate stops a run reclaiming its own lease. The caller
+     *   passes its own runId, which is excluded, so a pass that sweeps before
+     *   claiming - and any future caller that sweeps mid-run - can never pull a
+     *   row out from under itself and deliver it twice.
+     *
+     * @param string|null $currentRunId Run id to never reclaim from, if any
+     * @param int|null $thresholdMinutes Age threshold; null resolves it from configuration
      * @return int Number of rows requeued
      */
-    public function requeueStaleProcessingRows()
+    public function requeueStaleProcessingRows($currentRunId = null, $thresholdMinutes = null)
     {
+        if ($thresholdMinutes === null) {
+            $thresholdMinutes = self::readStaleThresholdMinutes();
+        }
+
         $sql = 'UPDATE `' . $this->tableName . '`
                 SET `status` = "pending",
                     `processing_owner` = NULL,
                     `processing_started_at` = NULL,
-                    `last_error` = "Stale processing row requeued (cron crashed)",
+                    `last_error` = "Stale processing row requeued (delivery process gone)",
                     `updated_at` = NOW()
                 WHERE `status` = "processing"
-                AND `processing_started_at` < DATE_SUB(NOW(), INTERVAL ' . (int)self::STALE_PROCESSING_THRESHOLD_MINUTES . ' MINUTE)';
+                AND `processing_started_at` < DATE_SUB(NOW(), INTERVAL ' . (int)$thresholdMinutes . ' MINUTE)'
+                . self::otherOwnerPredicate($currentRunId);
 
         Db::getInstance()->execute($sql);
         return (int)Db::getInstance()->Affected_Rows();
     }
 
     /**
-     * Requeue all processing rows
+     * Requeue processing rows an operator is asking to retry now
      *
-     * Requeues all rows in 'processing' status. Used for manual delivery
-     * to ensure any stuck events are immediately available.
+     * The manual button means "stop waiting", so this is deliberately more
+     * eager than the scheduled sweep - but it used to match every `processing`
+     * row with no age and no owner predicate at all, so pressing it while a
+     * cron pass was mid-flight handed that pass's rows to the manual run and
+     * both delivered them (#2652).
      *
+     * The grace period below is the shortest window in which an owner can be
+     * proven gone rather than merely slow, so a genuinely stuck row is still
+     * released within minutes instead of the old fifteen, and a live peer's
+     * work is never taken.
+     *
+     * @param string|null $currentRunId Run id to never reclaim from, if any
+     * @param int|null $graceMinutes Age threshold; null derives the liveness floor
      * @return int Number of rows requeued
      */
-    public function requeueAllProcessingRows()
+    public function requeueAllProcessingRows($currentRunId = null, $graceMinutes = null)
     {
+        if ($graceMinutes === null) {
+            $graceMinutes = self::minimumStaleThresholdMinutes(self::readRunBudgetSeconds());
+        }
+
         $sql = 'UPDATE `' . $this->tableName . '`
                 SET `status` = "pending",
                     `processing_owner` = NULL,
                     `processing_started_at` = NULL,
                     `last_error` = "Requeued for manual delivery",
                     `updated_at` = NOW()
-                WHERE `status` = "processing"';
+                WHERE `status` = "processing"
+                AND `processing_started_at` < DATE_SUB(NOW(), INTERVAL ' . (int)$graceMinutes . ' MINUTE)'
+                . self::otherOwnerPredicate($currentRunId);
 
         Db::getInstance()->execute($sql);
         return (int)Db::getInstance()->Affected_Rows();
+    }
+
+    /**
+     * SQL fragment excluding one run's own leases from a reclaim
+     *
+     * Pure and public so the property can be pinned by a test: a reclaim that
+     * forgets it delivers the reclaiming run's own events twice. An empty
+     * runId yields no predicate rather than a comparison against "" - a caller
+     * with no identity of its own has nothing to exclude, and matching NULL
+     * owners on an equality test would exclude nothing anyway.
+     *
+     * @param string|null $currentRunId
+     * @return string
+     */
+    public static function otherOwnerPredicate($currentRunId)
+    {
+        $runId = (string)$currentRunId;
+        if ($runId === '') {
+            return '';
+        }
+
+        return ' AND (`processing_owner` IS NULL OR `processing_owner` <> "' . pSQL($runId) . '")';
     }
 
     /**
@@ -968,6 +1073,165 @@ class OutboxRepository
         }
 
         return $days;
+    }
+
+    /**
+     * Resolve the per-run wall-clock budget from operator configuration (#2652)
+     *
+     * Pure. An unset, non-numeric or out-of-range value falls back to the
+     * default rather than to zero: a zero budget would stop the run before its
+     * first delivery and the queue would never drain, which is a worse failure
+     * than the one the budget removes. Deliberately no `empty()` anywhere here
+     * - a stored "0" is falsy in PHP and would be indistinguishable from an
+     * unset key, so the coercion is done on the integer and its range.
+     *
+     * @param mixed $raw Raw Configuration value
+     * @return int Seconds
+     */
+    public static function resolveRunBudgetSeconds($raw)
+    {
+        $seconds = (int)$raw;
+
+        if ($seconds < self::RUN_BUDGET_SECONDS_MIN) {
+            return self::DEFAULT_RUN_BUDGET_SECONDS;
+        }
+
+        if ($seconds > self::RUN_BUDGET_SECONDS_MAX) {
+            return self::RUN_BUDGET_SECONDS_MAX;
+        }
+
+        return $seconds;
+    }
+
+    /**
+     * Whether one more delivery can start without crossing the run budget
+     *
+     * Pure. Asks whether the *worst case* of the next delivery fits, not
+     * whether the budget has already been passed: checking afterwards is what
+     * lets a run that was inside the budget at second 119 leave at second 129.
+     *
+     * The first delivery of a pass is always allowed. A run that delivered
+     * nothing at all makes no progress, and a queue that never drains is worse
+     * than one pass overshooting by a single HTTP timeout.
+     *
+     * @param float $elapsedSeconds Wall clock since the pass started
+     * @param int $budgetSeconds Resolved budget
+     * @param int $worstCaseDeliverySeconds Longest one delivery can take
+     * @return bool
+     */
+    public static function hasBudgetForAnotherDelivery(
+        $elapsedSeconds,
+        $budgetSeconds,
+        $worstCaseDeliverySeconds
+    ) {
+        if ($elapsedSeconds <= 0) {
+            return true;
+        }
+
+        return ((float)$elapsedSeconds + (int)$worstCaseDeliverySeconds) <= (int)$budgetSeconds;
+    }
+
+    /**
+     * Lowest stale threshold that cannot steal live work (#2652)
+     *
+     * Pure. A run stops before its budget and may overshoot by at most one
+     * delivery, so budget + one delivery is the longest a *live* run can hold
+     * a lease. Anything at or below that would let a peer reclaim rows another
+     * process is still delivering, and both would send the same event - which
+     * is exactly what lowering the threshold, on its own, would have caused.
+     * The safety margin on top absorbs clock skew between PHP and MySQL.
+     *
+     * @param int $budgetSeconds Resolved run budget
+     * @param int|null $worstCaseDeliverySeconds Longest one delivery can take
+     * @return int Minutes
+     */
+    public static function minimumStaleThresholdMinutes($budgetSeconds, $worstCaseDeliverySeconds = null)
+    {
+        if ($worstCaseDeliverySeconds === null) {
+            $worstCaseDeliverySeconds = self::worstCaseDeliverySeconds();
+        }
+
+        $seconds = (int)$budgetSeconds
+            + (int)$worstCaseDeliverySeconds
+            + self::STALE_THRESHOLD_SAFETY_SECONDS;
+
+        return (int)ceil($seconds / 60);
+    }
+
+    /**
+     * Resolve the stale-lease threshold from operator configuration (#2652)
+     *
+     * Pure. Clamped up to the liveness floor rather than rejected: an operator
+     * who types 1 minute gets the shortest safe value and a working outbox,
+     * not a setting that silently double-delivers. The form refuses such a
+     * value with an explanation - this is the read-side backstop for a value
+     * that reached the table some other way, and for a floor that moved
+     * because the budget was raised afterwards.
+     *
+     * @param mixed $raw Raw Configuration value
+     * @param int $floorMinutes Result of minimumStaleThresholdMinutes()
+     * @return int Minutes
+     */
+    public static function resolveStaleThresholdMinutes($raw, $floorMinutes)
+    {
+        $minutes = (int)$raw;
+
+        if ($minutes < 1) {
+            $minutes = self::DEFAULT_STALE_PROCESSING_THRESHOLD_MINUTES;
+        }
+
+        if ($minutes > self::STALE_PROCESSING_THRESHOLD_MINUTES_MAX) {
+            $minutes = self::STALE_PROCESSING_THRESHOLD_MINUTES_MAX;
+        }
+
+        return max($minutes, (int)$floorMinutes);
+    }
+
+    /**
+     * The configured run budget, in seconds.
+     *
+     * @return int
+     */
+    public static function readRunBudgetSeconds()
+    {
+        return self::resolveRunBudgetSeconds(Configuration::get(self::RUN_BUDGET_CONFIG_KEY));
+    }
+
+    /**
+     * The configured stale-lease threshold, in minutes, never below its floor.
+     *
+     * @return int
+     */
+    public static function readStaleThresholdMinutes()
+    {
+        return self::resolveStaleThresholdMinutes(
+            Configuration::get(self::STALE_PROCESSING_THRESHOLD_CONFIG_KEY),
+            self::minimumStaleThresholdMinutes(self::readRunBudgetSeconds())
+        );
+    }
+
+    /**
+     * Longest a single delivery can take.
+     *
+     * Read from WebhookSender so the budget arithmetic and the HTTP timeout
+     * cannot drift apart. The fallback covers an unusual load order only.
+     *
+     * @return int Seconds
+     */
+    public static function worstCaseDeliverySeconds()
+    {
+        if (!class_exists('WebhookSender')) {
+            $senderPath = dirname(__FILE__) . '/WebhookSender.php';
+            if (file_exists($senderPath)) {
+                require_once($senderPath);
+            }
+        }
+
+        if (class_exists('WebhookSender')) {
+            return (int)WebhookSender::HTTP_TIMEOUT_SECONDS;
+        }
+
+        return 10;
     }
 
     /**
