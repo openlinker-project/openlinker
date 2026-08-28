@@ -31,6 +31,7 @@ export const PermissionValues = [
   'content:write',
   'automations:read',
   'automations:write',
+  'analytics:write',
 ] as const;
 
 export type Permission = (typeof PermissionValues)[number];
