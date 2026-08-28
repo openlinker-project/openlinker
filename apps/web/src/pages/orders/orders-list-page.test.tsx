@@ -401,6 +401,46 @@ describe('OrdersListPage', () => {
     });
   });
 
+  it('should set ?attention=true, clear the offset and pass the filter when the chip is clicked (#2356)', async () => {
+    const user = userEvent.setup();
+    const list = vi.fn().mockResolvedValue(paginated([syncedOrder]));
+    const mockApi = createMockApiClient({
+      orders: {
+        list,
+        // The chip mounts on `filterActive || count`; the summary supplies the
+        // count so it is reachable from an unfiltered URL.
+        statusSummary: vi.fn().mockResolvedValue({
+          total: 1,
+          sourceDeleted: 0,
+          awaitingMapping: 0,
+          needsAttention: 0,
+          synced: 1,
+          awaitingDispatch: 0,
+          omsAttention: 2,
+        }),
+      },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    renderWithProviders(<OrdersListPage />, {
+      apiClient: mockApi,
+      // A non-zero offset, so the reset is observable rather than assumed.
+      route: '/orders?offset=25',
+    });
+
+    await screen.findByText('ALG-882414');
+    await user.click(screen.getByRole('button', { name: /OpenLinker stopped/ }));
+
+    await vi.waitFor(() => {
+      const calledWithAttention = list.mock.calls.some(
+        ([filters, pagination]) =>
+          (filters as { attention?: boolean } | undefined)?.attention === true &&
+          (pagination as { offset?: number } | undefined)?.offset === 0,
+      );
+      expect(calledWithAttention).toBe(true);
+    });
+  });
+
   it('should render one reconciled health badge with a plain-language reason for a failed order (#929)', async () => {
     const mockApi = createMockApiClient({
       orders: { list: vi.fn().mockResolvedValue(paginated([failedOrder])) },

@@ -145,6 +145,21 @@ const NON_KNOBS = new Map([
     // change that belongs in its own reviewed PR, tracked separately.
     'superseded by readSalesDocumentRouting (#2161); dead export pending removal',
   ],
+  [
+    'libs/core/src/fulfillment-authority/domain/types/authority-attention-reason.types.ts',
+    // NOT a per-connection config knob, despite matching both halves of the
+    // heuristic. `readAuthorityAttentionEntry` / `readAuthorityAttentionEntries`
+    // (#2352) coerce a PERSISTED COLUMN — `order_records.omsAttention` /
+    // `returns.omsAttention`, a jsonb array this repo itself writes — not an
+    // operator-authored `Connection.config` value; nothing in the file reads
+    // `Connection.config` at all. The breadcrumb the scanner matched is a
+    // docblock sentence EXPLAINING why three of the eight states are derived
+    // from `Connection.config` by `resolveAuthorities` and therefore
+    // deliberately NOT persisted here. Counting it would inflate the #1032
+    // threshold with a read that coerces OL's own storage, which is the one
+    // thing the shared-rules-model conversation is not about.
+    'coerces a persisted jsonb column, not Connection.config (#2352)',
+  ],
 ]);
 
 /**
