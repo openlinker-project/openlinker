@@ -1,7 +1,7 @@
 # ADR-066: The PrestaShop integration stays Webservice-first; shop-side PHP is added only where the Webservice loses structurally
 
-- **Status**: Proposed
-- **Date**: 2026-08-27
+- **Status**: Accepted
+- **Date**: 2026-08-27 (accepted 2026-08-28 on the closing measurement — see the amendment below)
 - **Authors**: @norbert-kulus-blockydevs
 
 ## Context
@@ -44,10 +44,87 @@ Concretely: #2489's ten acceptance criteria are closed by adapter work, a lane-p
 - None for existing installs on the adapter side. The two module children that change stored settings (#2602, #2604) ship upgrade scripts through the module's existing mechanism.
 - #2597 is negotiated: the adapter falls back to the per-line path when the module reports the field unsupported.
 
+## Amendment (#2625 / #2644 / #2657) - the closing measurement, and the two premises it corrects
+
+This ADR was filed `Proposed` on a measurement of the *problem*. It is accepted on a
+measurement of the *result*: `results-C` (the epic against the pre-change baseline, 10 000
+products), `results-D` (the same code at 100 000) and `results-E` (the tree as it now
+stands, after #2647, #2648, #2651 and #2652). All three are in
+[`perf/prestashop-baseline/`](../../../perf/prestashop-baseline/). Every figure below is
+**measured** in PrestaShop's own Apache access log, median of the repeat runs with the cold
+run discarded, zero retries, and - this qualifies all of them - on a **single worker
+replica**. Lane caps bound one process, so N replicas multiply every request-rate figure.
+
+| per 100 products | baseline | after the adapter fix | **the epic** |
+|---|---:|---:|---:|
+| shop requests | 796 | 397 | **5.8** |
+| requests per SKU | 7.96 | 3.97 | **0.058** |
+| per stock position | 3.00 | 1.00 | **1.00** |
+| inventory tick | 300 requests | 100 requests | **5 requests / 21 s** |
+| catalogue tick | - | - | **29 requests / 46 s** for 500 products |
+| eight-line order | 29 | 27 | **7** |
+
+A control run on untouched code under the final stand conditions reproduced the baseline
+within **0.4%** (799 requests against 796), so the improvement is attributable to the code
+and not to anything the campaign changed around it. #2489's AC3, AC4, AC5 and AC10 are met
+**without the twelve-endpoint module.** The decision stands.
+
+**Correction 1 - the flagship store-impact figure in the Context above is an artefact, and
+must not be quoted again.** The 0.989 and 0.995 ratios were taken with a probe that never
+checked the HTTP status code, so a fast error under load counted as a fast sample. Both are
+below 1.0, which asserts the shop answered *faster* while being swept - not a plausible
+physical result. With a status-checked probe the direction is up.
+
+**Correction 2 - and store impact is a function of cursor DEPTH, not catalogue size.**
+`results-D` measured 1.403 at 100 000 products against 1.053 at 10 000 and read that as a
+size effect. `results-E` re-measured it at two cursor positions under the same budget:
+
+| cursor | p95 ratio vs idle | errors |
+|---|---:|---:|
+| offset 0 | **0.97** (no impact) | 0 |
+| offset 98 000 | **1.39** | 0 |
+
+Request count per tick is flat; what changes is the cost of each request
+(`products?display=full&limit=100` costs 254 ms at offset 0 against 386 ms at offset
+99 000) and the storefront shares MySQL with it. So impact is **not constant across a
+cycle**: a tick early in a pass is free, a tick deep in one costs about 40% of p95 - on this
+stand 76 ms against 54 ms, with zero errors in every window. The decision's practical
+conclusion (a catalogue sweep does not meaningfully hurt the storefront) survives; the
+unqualified claim that "the shop does not slow down" does not.
+
+**Two conditions the headline throughput number carries.** The connection's declared
+`requestsPerMinute: 60` - a placeholder, per the plugin's own comment and #1810's open
+question - metered both sweeps flat at 60-61/min through every set-1 run. Raising the lane
+cap changed how many OL jobs ran at once and did not change how many requests reached the
+shop. Only the lane cap shipped as a default, so **an operator who deploys this epic and
+changes nothing gets the request-count reduction in full and none of the throughput
+headline**; "~2.4 h instead of 26.5 h" must be quoted with the configuration it requires.
+After this epic the next real PrestaShop throughput gain is a rate-limit decision, not a
+concurrency one.
+
+**One cost the decision created and the measurement found.** The epic's process-scoped
+resolver cache writes only on success, so a *permanently* failing read (here a missing
+webservice permission on `product_options`) is never cached and is retried per product:
+196 reads per 100 products became **996**, and a 1 134-warning window named the URL every
+time without ever aggregating or reaching an operator-facing state. The correct shape ships
+next door in the same epic - `prestashop-pack.resolver.ts` caches a *negative* answer under
+its own short TTL. The attribute and feature resolvers are not on it. Pre-existing, and
+reported because it dominated the measurement this ADR is judged by.
+
+**What the campaign did not establish**, stated so it is not read as covered: no full
+replication cycle was ever reached at 100 000 products (~2.8 days, derived); the A4 orders
+priced at zero on the synthetic stand, so the request counts are valid and the orders they
+produced are not correct orders; the module's PHPUnit suite did not execute; and the
+Redis-limiter degraded-mode caveat (per-process insurance limiter, so N replicas can pace at
+N x the declared limit during an episode) was never exercised - this campaign used one
+replica.
+
+
 ## References
 
-- Related issues: #2489, #2590, #2592, #2593, #2594, #2597, #2609, #2612, #2625
+- Related issues: #2489, #2590, #2592, #2593, #2594, #2597, #2609, #2612, #2625, #2644, #2647, #2648, #2651, #2652, #2657
 - Related PRs: #2627
 - Related ADRs: [ADR-048](./048-incremental-catalog-replication.md), [ADR-050](./050-workload-isolation-concurrency-lanes.md)
+- Measurements: [`perf/prestashop-baseline/results-C-2026-08-27.md`](../../../perf/prestashop-baseline/results-C-2026-08-27.md), [`results-D-2026-08-28.md`](../../../perf/prestashop-baseline/results-D-2026-08-28.md), [`results-E-2026-08-28.md`](../../../perf/prestashop-baseline/results-E-2026-08-28.md)
 - Implementation plan: [docs/plans/implementation-plan-2590-prestashop-no-module.md](../../plans/implementation-plan-2590-prestashop-no-module.md)
 - Primary doc section: [docs/architecture-overview.md](../../architecture-overview.md)
