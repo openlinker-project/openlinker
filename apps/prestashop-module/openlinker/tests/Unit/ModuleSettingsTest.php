@@ -105,9 +105,18 @@ class ModuleSettingsTest extends TestCase
         self::assertSame('first', ModuleSettings::pickValueToPromote($rows));
     }
 
-    public function testReturnsAnEmptyStringWhenEveryRowIsEmpty(): void
+    /**
+     * Every row empty means there is nothing worth promoting, so the caller's
+     * `if ($value !== null)` guard has something to fire on.
+     *
+     * This previously asserted `''`, pinning the defect the docblock already
+     * forbade: an empty string was written over the global row and
+     * `HmacRequestVerifier::verify` then answered `misconfigured` on every
+     * inbound request (#2627 review).
+     */
+    public function testReturnsNullWhenEveryRowIsEmpty(): void
     {
-        self::assertSame('', ModuleSettings::pickValueToPromote([['value' => ''], ['value' => null]]));
+        self::assertNull(ModuleSettings::pickValueToPromote([['value' => ''], ['value' => null]]));
     }
 
     public function testReturnsNullWhenThereAreNoRows(): void

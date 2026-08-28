@@ -156,7 +156,10 @@ One pointer per section, identical format every time.
 | [ADR-062](./062-trust-posture-authority-holding-capabilities.md) | Trust posture for authority-holding capabilities | Proposed | 2026-08-21 |
 | [ADR-063](./063-per-line-tax-rate-resolution-and-provenance.md) | Per-line tax-rate resolution, provenance and rounding ownership - master first then channel, three answer states, projection at sync, adapter-owned rounding | Proposed | 2026-08-21 |
 | [ADR-064](./064-analytics-display-currency-conversion.md) | Analytics display-currency conversion is a read-only, aggregate-level transform (no restatement of the ADR-040 stamp) | Proposed | 2026-08-25 |
-| [ADR-066](./066-prestashop-webservice-first-integration.md) | The PrestaShop integration stays Webservice-first; shop-side PHP is added only where the Webservice loses structurally | Proposed | 2026-08-27 |
+| [ADR-066](./066-prestashop-webservice-first-integration.md) | The PrestaShop integration stays Webservice-first; shop-side PHP is added only where the Webservice loses structurally | Accepted | 2026-08-27 |
+| [ADR-067](./067-freshness-token-write-ordering.md) | Ordering a concurrent write by a single-clock freshness token plus a short per-target lock | Accepted | 2026-08-27 |
+| [ADR-068](./068-page-to-the-end-or-fail-loudly.md) | Page to the end or fail loudly - a truncated read must never be indistinguishable from a complete one | Accepted | 2026-08-27 |
+| [ADR-069](./069-operator-settable-sweep-pacing.md) | Sweep pacing is the operator's decision, bounded by a two-tier ceiling, and reported must equal enforced | Accepted | 2026-08-28 |
 
 > *Dates for pre-trail ADRs (001, 004) are approximate to the month — the underlying decisions predate the project's current git history. Other dates are merge-date of the cited PR.*
 

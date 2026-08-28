@@ -218,8 +218,8 @@ function slugify(name: string): string {
 }
 
 /**
- * Defensive runtime check for the persisted `Connection.config.allegro
- * .sellerDefaults` blob. The TypeScript shape (`AllegroSellerDefaultsConfig`)
+ * Defensive runtime check for the persisted `Connection.config
+ * .sellerDefaults` (config ROOT) blob. The TypeScript shape (`AllegroSellerDefaultsConfig`)
  * marks every sub-field non-optional, but the JSONB column can carry partial
  * shapes if the operator saved a half-completed wizard before #437 closed
  * the DTO bypass — and on the operator-experience side we still want to
@@ -374,7 +374,7 @@ export class AllegroOfferManagerAdapter
     /**
      * Connection-level seller defaults — `location` (every offer),
      * `responsibleProducerId` and `safetyInformation` (inline-product path).
-     * Sourced from `Connection.config.allegro.sellerDefaults` by
+     * Sourced from `Connection.config.sellerDefaults` (config ROOT) by
      * `AllegroAdapterFactory`. When undefined, `createOffer` throws
      * `OfferCreateRejectedException` with code
      * `SELLER_DEFAULTS_NOT_CONFIGURED` rather than silently producing a
@@ -1373,7 +1373,7 @@ export class AllegroOfferManagerAdapter
    *
    * #487 — Allegro re-validates the whole offer on every PATCH. A description-
    * only update will 422 if the offer happens to be missing required fields
-   * that live on `Connection.config.allegro.sellerDefaults` (GPSR
+   * that live on `Connection.config.sellerDefaults` (config ROOT; GPSR
    * `responsibleProducer` / `safetyInformation`, ship-from `location`). When
    * `sellerDefaults` is configured, we opportunistically merge those into the
    * PATCH body via `buildSellerDefaultsPatch`. Caller-supplied fields always

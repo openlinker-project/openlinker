@@ -18,9 +18,14 @@ import type {
 import type { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
 import { SyncJobExecutionError } from '@openlinker/core/sync';
 import type { ConfigService } from '@nestjs/config';
+import {
+  FakeOperationalSettingsService,
+  settingNumber,
+} from '../../../testing/operational-settings.double';
 
 describe('MasterInventorySyncAllHandler', () => {
   let handler: MasterInventorySyncAllHandler;
+  let operationalSettings: FakeOperationalSettingsService;
   let identifierMapping: jest.Mocked<IdentifierMappingQueryPort>;
   let jobEnqueue: jest.Mocked<JobEnqueuePort>;
   let cursors: jest.Mocked<ISyncCursorsService>;
@@ -55,11 +60,14 @@ describe('MasterInventorySyncAllHandler', () => {
       get: jest.fn((_key: string, defaultValue?: unknown) => defaultValue),
     } as unknown as jest.Mocked<ConfigService>;
 
+    operationalSettings = new FakeOperationalSettingsService();
+
     handler = new MasterInventorySyncAllHandler(
       identifierMapping,
       jobEnqueue,
       cursors,
       syncLock,
+      operationalSettings,
       configService
     );
   });
@@ -81,7 +89,7 @@ describe('MasterInventorySyncAllHandler', () => {
     updatedAt: new Date(),
   });
 
-  it('should enqueue syncByExternalId jobs for all products', async () => {
+  it('should enqueue ONE batch child carrying the whole page (#2648)', async () => {
     identifierMapping.listExternalIdsByConnection.mockResolvedValue(['ext-1', 'ext-2', 'ext-3']);
     jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'new-job', isExisting: false });
 
@@ -92,13 +100,30 @@ describe('MasterInventorySyncAllHandler', () => {
       'conn-1',
       { limit: 100, offset: 0 }
     );
-    expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(3);
+    // One child, not three: a per-product child builds its own adapter instance
+    // and so can never share a bulk stock read.
+    expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(1);
 
     const firstCall = jobEnqueue.enqueueJob.mock.calls[0][0];
-    expect(firstCall.jobType).toBe('master.inventory.syncFromSweep');
+    expect(firstCall.jobType).toBe('master.inventory.syncBatch');
     expect(firstCall.connectionId).toBe('conn-1');
     expect(firstCall.payload).toEqual(
-      expect.objectContaining({ schemaVersion: 1, externalId: 'ext-1', objectType: 'Product' })
+      expect.objectContaining({ schemaVersion: 1, externalIds: ['ext-1', 'ext-2', 'ext-3'] })
+    );
+  });
+
+  it('should keep the budget at the per-item default rather than raising it with the batching', async () => {
+    // #2648 makes the CHILD cheap; what the run may then afford is a separate
+    // decision. A silent jump to the product sweep's batched 500 would be that
+    // decision taken by accident.
+    identifierMapping.listExternalIdsByConnection.mockResolvedValue([]);
+
+    await handler.execute(createJob('conn-1'));
+
+    expect(identifierMapping.listExternalIdsByConnection).toHaveBeenCalledWith(
+      'Product',
+      'conn-1',
+      { limit: 100, offset: 0 }
     );
   });
 
@@ -110,14 +135,12 @@ describe('MasterInventorySyncAllHandler', () => {
     expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
   });
 
-  it('should not throw when some enqueue calls fail', async () => {
+  it('should not throw when an enqueue call fails', async () => {
     identifierMapping.listExternalIdsByConnection.mockResolvedValue(['ext-1', 'ext-2']);
-    jobEnqueue.enqueueJob
-      .mockResolvedValueOnce({ jobId: 'j1', isExisting: false })
-      .mockRejectedValueOnce(new Error('queue full'));
+    jobEnqueue.enqueueJob.mockRejectedValueOnce(new Error('queue full'));
 
     await expect(handler.execute(createJob('conn-1'))).resolves.toEqual({ outcome: 'ok' });
-    expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(2);
+    expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(1);
   });
 
   it('should skip synthetic variant external IDs (product: prefix)', async () => {
@@ -129,8 +152,8 @@ describe('MasterInventorySyncAllHandler', () => {
 
     await handler.execute(createJob('conn-1'));
 
-    expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(2);
-    const enqueuedIds = jobEnqueue.enqueueJob.mock.calls.map((call) => call[0].payload.externalId);
+    expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(1);
+    const enqueuedIds = jobEnqueue.enqueueJob.mock.calls[0][0].payload.externalIds;
     expect(enqueuedIds).toEqual(['13', '14']);
     expect(enqueuedIds).not.toContain('product:13');
   });
@@ -148,7 +171,7 @@ describe('MasterInventorySyncAllHandler', () => {
     await handler.execute(createJob('conn-1'));
 
     const key = jobEnqueue.enqueueJob.mock.calls[0][0].idempotencyKey;
-    expect(key).toMatch(/^master:conn-1:inventory:sync:ext-1:/);
+    expect(key).toMatch(/^master:conn-1:inventory:syncBatch:ext-1:/);
     expect(key).not.toContain('job-id');
   });
 
@@ -180,7 +203,7 @@ describe('MasterInventorySyncAllHandler', () => {
         { limit: 100, offset: 200 }
       );
       expect(jobEnqueue.enqueueJob.mock.calls[0][0].idempotencyKey).toBe(
-        'master:conn-1:inventory:sync:ext-9:cycle-abc'
+        'master:conn-1:inventory:syncBatch:ext-9:cycle-abc'
       );
     });
 
@@ -195,7 +218,10 @@ describe('MasterInventorySyncAllHandler', () => {
 
       await handler.execute(createJob('conn-1'));
 
-      expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(50);
+      // One batch child carrying the 50 survivors, while the cursor still moves
+      // by the 100 rows the page actually read.
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(1);
+      expect(jobEnqueue.enqueueJob.mock.calls[0][0].payload.externalIds).toHaveLength(50);
       expect(cursors.advanceCursor.mock.calls[0][2]).toMatch(/:100$/);
     });
 
@@ -211,13 +237,39 @@ describe('MasterInventorySyncAllHandler', () => {
     it('should NOT advance the cursor past a failed enqueue', async () => {
       cursors.getCursor.mockResolvedValue('cycle-abc:50');
       identifierMapping.listExternalIdsByConnection.mockResolvedValue(['ext-1', 'ext-2']);
-      jobEnqueue.enqueueJob
-        .mockResolvedValueOnce({ jobId: 'j1', isExisting: false })
-        .mockRejectedValueOnce(new Error('queue full'));
+      jobEnqueue.enqueueJob.mockRejectedValueOnce(new Error('queue full'));
 
       await handler.execute(createJob('conn-1'));
 
       expect(cursors.advanceCursor).toHaveBeenCalledWith('conn-1', CURSOR_KEY, 'cycle-abc:50');
+    });
+
+    // #2651 — read per tick, not at boot.
+    it('should use the operator-set inventory budget on the next tick, with no restart', async () => {
+      identifierMapping.listExternalIdsByConnection.mockResolvedValue(['ext-1']);
+      jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'j', isExisting: false });
+
+      await handler.execute(createJob('conn-1'));
+      expect(identifierMapping.listExternalIdsByConnection).toHaveBeenCalledWith(
+        'Product',
+        'conn-1',
+        { limit: 100, offset: 0 }
+      );
+
+      operationalSettings.setValues({
+        inventorySweepBudget: settingNumber('inventorySweepBudget', 1500),
+      });
+      identifierMapping.listExternalIdsByConnection.mockClear();
+
+      await handler.execute(createJob('conn-1'));
+
+      // 1500 is above the legacy SWEEP_BUDGET_MAX of 500 — the settings bound
+      // is what applies, so what an operator is told is accepted is what runs.
+      expect(identifierMapping.listExternalIdsByConnection).toHaveBeenCalledWith(
+        'Product',
+        'conn-1',
+        { limit: 1500, offset: 0 }
+      );
     });
 
     it('should skip without throwing when another run holds the lock', async () => {

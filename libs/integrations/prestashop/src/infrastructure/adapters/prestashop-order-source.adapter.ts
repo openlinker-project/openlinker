@@ -41,7 +41,6 @@ import {
   PrestashopApiException,
   PrestashopResourceNotFoundException,
 } from '@openlinker/integrations-prestashop';
-import { PrestashopTruncatedReadException } from '../../domain/exceptions/prestashop-truncated-read.exception';
 import { readAllPrestashopResourcePages } from '../http/prestashop-paged-read';
 import type { PrestashopOrderFeedCursor } from '../../domain/types/prestashop-order-feed-cursor.types';
 import {
@@ -237,6 +236,15 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
    * substitute for it: the worker's own clock would place the order at a
    * position the shop never wrote, moving the watermark past orders that were
    * really updated earlier.
+   *
+   * **Such a row is lost, and the log says so** (#2627 review). It previously
+   * claimed the row would be re-read on the next poll; it will not. The loop
+   * continues, later rows in the same page advance the cursor, and the next
+   * poll's `updatedSince` is already past this row's window. Holding the cursor
+   * back instead would be worse rather than better - the same unreadable row
+   * would block every subsequent poll for ever, so one lost order becomes the
+   * whole feed. It is logged at `error` because it needs a person: the fix is in
+   * the shop's own data, and nothing in OpenLinker can recover it.
    */
   private toFeedItem(
     order: PrestashopOrder,
@@ -247,9 +255,11 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
     const occurredAt = normalizeWallClock(order.date_upd);
 
     if (occurredAt === null || !Number.isFinite(orderId)) {
-      this.logger.warn(
-        `Skipping PrestaShop order ${externalOrderId} with unusable id/date_upd ` +
-          `(connection: ${this.connection.id}); it will be re-read on the next poll.`
+      this.logger.error(
+        `Skipping PrestaShop order ${externalOrderId}: unusable id/date_upd ` +
+          `(connection: ${this.connection.id}). This order is NOT re-read on the next poll - the ` +
+          `feed's read position advances past it with the rest of this page - so it will not be ` +
+          `ingested until its date_upd is repaired in the shop and the order is touched again.`
       );
       return null;
     }
@@ -575,33 +585,34 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
     }
   }
 
+  /**
+   * The order's lines.
+   *
+   * **Nothing here is caught.** An order with no lines mirrors as an order with
+   * nothing bought - the destination shop receives an empty order and analytics
+   * records no units - so an empty array must only ever be the shop's own
+   * answer, never our substitute for one we could not read. #2608 applied that
+   * reasoning to a truncated read and then left every OTHER failure on the
+   * `return []` path: a webservice key without `order_details` permission
+   * answers 403, and the order mirrored empty behind one warn line (#2627
+   * review). A failed order sync retries and is visible; a silently empty order
+   * is neither.
+   */
   private async fetchOrderRows(orderId: string | number): Promise<PrestashopOrderRow[]> {
-    try {
-      // PrestaShop 9.x renamed the `order_rows` webservice resource to
-      // `order_details`; the row field shape (product_id/quantity/price/
-      // reference) is unchanged, so the existing PrestashopOrderRow mapping
-      // still applies.
-      // Paged: a wholesale order runs past one page, and one page of lines is
-      // indistinguishable from all of them (#2608).
-      return await readAllPrestashopResourcePages<PrestashopOrderRow>(
-        this.httpClient,
-        'order_details',
-        { custom: { id_order: orderId } },
-        {
-          connectionId: this.connection.id,
-          detail: `id_order=${String(orderId)}`,
-        }
-      );
-    } catch (error) {
-      // A truncated read must not degrade into the empty-lines answer below: an
-      // order with no lines mirrors as an order with nothing bought.
-      if (error instanceof PrestashopTruncatedReadException) {
-        throw error;
+    // PrestaShop 9.x renamed the `order_rows` webservice resource to
+    // `order_details`; the row field shape (product_id/quantity/price/
+    // reference) is unchanged, so the existing PrestashopOrderRow mapping
+    // still applies.
+    // Paged: a wholesale order runs past one page, and one page of lines is
+    // indistinguishable from all of them (#2608).
+    return readAllPrestashopResourcePages<PrestashopOrderRow>(
+      this.httpClient,
+      'order_details',
+      { custom: { id_order: orderId } },
+      {
+        connectionId: this.connection.id,
+        detail: `id_order=${String(orderId)}`,
       }
-      this.logger.warn(
-        `Failed to fetch order rows for order ${orderId}: ${(error as Error).message}`
-      );
-      return [];
-    }
+    );
   }
 }

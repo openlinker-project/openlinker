@@ -25,6 +25,20 @@ export interface MasterProductSyncBatchPayloadV1 {
   externalIds: string[];
 }
 
+/**
+ * One page of products whose stock to sync through a single adapter instance
+ * (#2648).
+ *
+ * The ids are the ones OL has MAPPED for the connection, exactly as the sweep
+ * enumerated them from its own `identifier_mappings`, so nothing has to be
+ * resolved before the batch runs. The list is the work: a handler reading an
+ * empty one must refuse rather than report a healthy sync of nothing.
+ */
+export interface MasterInventorySyncBatchPayloadV1 {
+  schemaVersion: 1;
+  externalIds: string[];
+}
+
 export interface MasterInventorySyncByExternalIdPayloadV1 {
   schemaVersion: 1;
   externalId: string;

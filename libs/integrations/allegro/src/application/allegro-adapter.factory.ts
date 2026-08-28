@@ -134,7 +134,12 @@ export class AllegroAdapterFactory implements IAllegroAdapterFactory {
       this.cache,
       this.catParamsTtlSec,
       // #430 — connection-level seller defaults sourced from
-      // `Connection.config.allegro.sellerDefaults`. Passed through unparsed
+      // `Connection.config.sellerDefaults`, at the config ROOT. The frontend's
+      // batch precondition (`allegro-offer-validation.ts`) reads the same root
+      // path, so the two agree; an earlier comment here named a nested
+      // `config.allegro.sellerDefaults` that nothing has ever read, and an
+      // operator following it configures a key the gate cannot see.
+      // Passed through unparsed
       // (the API DTO layer validates province enum / postcode regex /
       // discriminated safetyInformation before persistence). Undefined when
       // operator hasn't configured them yet — adapter throws

@@ -21,6 +21,9 @@ PS_CONTAINER="${PS_CONTAINER:-ol-demo-fresh-prestashop}"
 PG="${PG_CONTAINER:-ol-demo-fresh-postgres}"
 OUT="${OUT:-./results}"
 CURSOR="master.inventory.sweep:connection:${CONN}"
+# Every job type that represents inventory work done FOR a product, across the
+# #2594 rename and the #2648 batching. Shared by the coverage and breakdown reads.
+TYPES="('master.inventory.syncBatch','master.inventory.syncFromSweep','master.inventory.syncByExternalId')"
 mkdir -p "$OUT"
 
 pg() { docker exec -i "$PG" sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA' <<< "$1"; }
@@ -78,8 +81,16 @@ for i in $(seq 1 "$RUNS"); do
   ELAPSED=$(( $(date +%s) - START - 25 ))
   JOBS_AFTER=$(pg "SELECT COUNT(*) FROM sync_jobs WHERE \"connectionId\"='$CONN';")
   ATT_AFTER=$(pg "SELECT COALESCE(SUM(attempts),0) FROM sync_jobs WHERE \"connectionId\"='$CONN';")
-  CHILDREN=$(pg "SELECT COUNT(*) FROM sync_jobs WHERE \"connectionId\"='$CONN' AND \"jobType\"='master.inventory.syncByExternalId' AND \"createdAt\" >= now() - interval '90 minutes';")
-  OTHER=$(pg "SELECT COALESCE(string_agg(t || ':' || c::text, ' '),'none') FROM (SELECT \"jobType\" t, COUNT(*) c FROM sync_jobs WHERE \"connectionId\"='$CONN' AND \"jobType\" NOT IN ('master.inventory.syncAll','master.inventory.syncByExternalId') AND \"createdAt\" >= now() - interval '90 minutes' GROUP BY 1) s;")
+  # #2594 renamed the sweep-triggered child to `master.inventory.syncFromSweep`
+  # (same handler, `bulk` lane instead of `realtime`); #2648 then replaced the
+  # one-child-per-product fan-out with `master.inventory.syncBatch`, whose single
+  # child carries a whole page of ids in `payloadJson->'externalIds'`. All three
+  # names are counted, and coverage sums the batch payload lengths, so the
+  # harness reads the same figure on either side of both changes.
+  # A batch child covers many products, a per-product child covers exactly one.
+  COVERED=$(pg "SELECT COALESCE(SUM(CASE WHEN \"jobType\"='master.inventory.syncBatch' THEN COALESCE(jsonb_array_length(\"payloadJson\"->'externalIds'),0) ELSE 1 END),0) FROM sync_jobs WHERE \"connectionId\"='$CONN' AND \"jobType\" IN $TYPES AND \"createdAt\" >= to_timestamp($MARK);")
+  CHILDREN=$(pg "SELECT COALESCE(string_agg(t || ':' || c::text, ' '),'none') FROM (SELECT \"jobType\" t, COUNT(*) c FROM sync_jobs WHERE \"connectionId\"='$CONN' AND \"jobType\" IN $TYPES AND \"createdAt\" >= to_timestamp($MARK) GROUP BY 1) s;")
+  OTHER=$(pg "SELECT COALESCE(string_agg(t || ':' || c::text, ' '),'none') FROM (SELECT \"jobType\" t, COUNT(*) c FROM sync_jobs WHERE \"connectionId\"='$CONN' AND \"jobType\" NOT IN ('master.inventory.syncAll','master.inventory.syncByExternalId','master.inventory.syncFromSweep','master.inventory.syncBatch') AND \"createdAt\" >= to_timestamp($MARK) GROUP BY 1) s;")
 
   docker logs --since "$MARK" "$PS_CONTAINER" > "$OUT/$LABEL.access.log" 2>&1
 
@@ -88,7 +99,8 @@ for i in $(seq 1 "$RUNS"); do
     echo "elapsed_seconds=$ELAPSED"
     echo "jobs_created=$((JOBS_AFTER - JOBS_BEFORE))"
     echo "attempts_delta=$((ATT_AFTER - ATT_BEFORE))"
-    echo "stock_children=$CHILDREN"
+    echo "products_covered=$COVERED"
+    echo "child_jobs=$CHILDREN"
     echo "contaminating_jobs=$OTHER"
     echo
     python3 "$(dirname "$0")/analyze-log.py" < "$OUT/$LABEL.access.log"

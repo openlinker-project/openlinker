@@ -187,6 +187,38 @@
                     <p class="help-block">{l s='Between' mod='openlinker'} {$outbox_retention_days_min|intval} {l s='and' mod='openlinker'} {$outbox_retention_days_max|intval} (default: 7). {l s='Failed events are kept longer as evidence. Events still queued or being retried are never deleted.' mod='openlinker'}</p>
                 </div>
             </div>
+
+            <div class="form-group">
+                <label class="control-label col-lg-3">
+                    <span class="label-tooltip" data-toggle="tooltip" title="{l s='How long one delivery run may take before it stops and leaves the rest for the next run' mod='openlinker'}">
+                        {l s='Delivery Run Budget (seconds)' mod='openlinker'}
+                    </span>
+                </label>
+                <div class="col-lg-9">
+                    <input type="number" name="OPENLINKER_OUTBOX_RUN_BUDGET_SECONDS" value="{$outbox_run_budget_seconds|intval}" class="form-control" min="{$outbox_run_budget_seconds_min|intval}" max="{$outbox_run_budget_seconds_max|intval}" />
+                    <p class="help-block">
+                        {l s='Between' mod='openlinker'} {$outbox_run_budget_seconds_min|intval} {l s='and' mod='openlinker'} {$outbox_run_budget_seconds_max|intval} ({l s='default' mod='openlinker'}: {$outbox_run_budget_seconds_default|intval}).
+                        {l s='A run stops cleanly once it runs out of time. Events it did not reach stay queued and go out on the next run, so nothing is lost.' mod='openlinker'}
+                        {l s='Set it too high and your hosting kills the run instead - shared hosting often stops a PHP process at 300 seconds, and a killed run leaves events stuck until they are recovered. Set it too low and each run sends only a few events, so a backlog drains slowly.' mod='openlinker'}
+                    </p>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="control-label col-lg-3">
+                    <span class="label-tooltip" data-toggle="tooltip" title="{l s='How long an event may sit half-sent before another run takes it over' mod='openlinker'}">
+                        {l s='Recover Stuck Events After (minutes)' mod='openlinker'}
+                    </span>
+                </label>
+                <div class="col-lg-9">
+                    <input type="number" name="OPENLINKER_OUTBOX_STALE_MINUTES" value="{$outbox_stale_minutes|intval}" class="form-control" min="{$outbox_stale_minutes_min|intval}" max="{$outbox_stale_minutes_max|intval}" />
+                    <p class="help-block">
+                        {l s='Between' mod='openlinker'} {$outbox_stale_minutes_min|intval} {l s='and' mod='openlinker'} {$outbox_stale_minutes_max|intval} ({l s='default' mod='openlinker'}: {$outbox_stale_minutes_default|intval}).
+                        {l s='If a delivery run is killed by your hosting, the events it had in hand stay stuck until this much time has passed. Then the next run takes them over.' mod='openlinker'}
+                        {l s='Set it too high and an outage keeps stalling delivery long after it ends. Set it too low and a run can take over events another run is still sending, and the same event is delivered twice - so the lowest value allowed here follows the run budget above and rises with it.' mod='openlinker'}
+                    </p>
+                </div>
+            </div>
         </div>
 
         <div class="panel-footer">
@@ -256,7 +288,11 @@
                     <span class="help-block text-danger">
                         {l s='Signed requests are not being checked for replays, since' mod='openlinker'}
                         {$replay_guard_degraded_at|escape:'html':'UTF-8'}.
-                        {l s='This happens when the module files were copied over an older version instead of upgraded, so the table the check needs was never created. Reset the module from the module list to create it.' mod='openlinker'}
+                        {if $replay_guard_degraded_error}
+                        {l s='The database reported:' mod='openlinker'}
+                        <code>{$replay_guard_degraded_error|escape:'html':'UTF-8'}</code>
+                        {/if}
+                        {l s='The check writes one row per signed request. It can fail because the table was never created (module files copied over an older version instead of upgraded — reset the module from the module list), or because the database refused the write for another reason: the table is full, the disk is full, the connection was lost, or this server is reading a replica. Fix what the message above names.' mod='openlinker'}
                     </span>
                 </td>
             </tr>

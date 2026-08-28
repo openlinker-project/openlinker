@@ -34,7 +34,7 @@
  * @see {@link HmacRequestVerifier} for inbound HMAC verification
  *
  * @author OpenLinker Team
- * @version 1.7.0
+ * @version 1.10.0
  */
 
 if (!defined('_PS_VERSION_')) {
@@ -96,7 +96,7 @@ class OpenLinker extends CarrierModule
     {
         $this->name = 'openlinker';
         $this->tab = 'administration';
-        $this->version = '1.8.0';
+        $this->version = '1.10.0';
         $this->author = 'OpenLinker Team';
         $this->need_instance = 0;
         $this->ps_versions_compliancy = [
@@ -124,6 +124,7 @@ class OpenLinker extends CarrierModule
         // in sync with the live row.
         $hooks = [
             'actionProductSave',
+            'actionProductDelete',
             'actionValidateOrderAfter',
             'actionOrderHistoryAddAfter',
             'actionUpdateQuantity',
@@ -182,6 +183,7 @@ class OpenLinker extends CarrierModule
         // Remove hooks
         $hooks = [
             'actionProductSave',
+            'actionProductDelete',
             'actionValidateOrderAfter',
             'actionOrderHistoryAddAfter',
             'actionUpdateQuantity',
@@ -275,6 +277,25 @@ class OpenLinker extends CarrierModule
             'outbox_retention_days' => Configuration::get('OPENLINKER_OUTBOX_RETENTION_DAYS') ?: self::DEFAULT_OUTBOX_RETENTION_DAYS,
             'outbox_retention_days_min' => OutboxRepository::RETENTION_DELIVERED_DAYS_MIN,
             'outbox_retention_days_max' => OutboxRepository::RETENTION_DELIVERED_DAYS_MAX,
+            // Read through the resolvers, never `?:` - a stored "0" is falsy
+            // in PHP and would silently render as the default while the
+            // resolver clamped it to something else (#2652).
+            'outbox_run_budget_seconds' => OutboxRepository::readRunBudgetSeconds(),
+            'outbox_run_budget_seconds_min' => OutboxRepository::RUN_BUDGET_SECONDS_MIN,
+            'outbox_run_budget_seconds_max' => OutboxRepository::RUN_BUDGET_SECONDS_MAX,
+            'outbox_run_budget_seconds_default' => OutboxRepository::DEFAULT_RUN_BUDGET_SECONDS,
+            'outbox_stale_minutes' => OutboxRepository::readStaleThresholdMinutes(),
+            'outbox_stale_minutes_min' => OutboxRepository::minimumStaleThresholdMinutes(
+                OutboxRepository::readRunBudgetSeconds()
+            ),
+            'outbox_stale_minutes_max' => OutboxRepository::STALE_PROCESSING_THRESHOLD_MINUTES_MAX,
+            // Never below the floor the current budget implies (#2660 review):
+            // at a 280 s budget the floor is 6 minutes while the built-in
+            // default is 5, so the help text read "Between 6 and 1440 (default:
+            // 5)" - a default the field itself would refuse.
+            'outbox_stale_minutes_default' => OutboxRepository::defaultStaleThresholdMinutes(
+                OutboxRepository::readRunBudgetSeconds()
+            ),
             'statistics' => $this->getStatistics(),
             // Whether delivery is actually running at all (#2618). Without
             // this a dead cron is indistinguishable from an empty queue.
@@ -288,6 +309,7 @@ class OpenLinker extends CarrierModule
             // A shop whose replay guard cannot answer looks completely healthy
             // otherwise, so the panel has to say so (#2619).
             'replay_guard_degraded_at' => Configuration::get(ReplayGuard::DEGRADED_CONFIG_KEY),
+            'replay_guard_degraded_error' => Configuration::get(ReplayGuard::DEGRADED_ERROR_CONFIG_KEY),
         ]);
 
         return $output . $this->display(__FILE__, 'views/templates/admin/configure.tpl');
@@ -399,6 +421,58 @@ class OpenLinker extends CarrierModule
             Configuration::updateGlobalValue('OPENLINKER_OUTBOX_RETENTION_DAYS', $retentionDays);
         }
 
+        // Per-run wall-clock budget and stale-lease threshold (#2652).
+        //
+        // The budget is validated first because the threshold's lower bound is
+        // derived from it: a threshold shorter than a run can legitimately
+        // take lets a second run reclaim rows the first is still delivering.
+        // The submitted budget is used for that derivation, not the stored
+        // one, or raising both in a single save would be judged against the
+        // value being replaced.
+        // These two are validated TOGETHER and written together, or not at all
+        // (#2660 review). The threshold's lower bound is derived from the
+        // budget, so writing the budget before the threshold has been judged
+        // left a rejected save having already moved the value the refusal was
+        // measured against - the operator reads "must be between 6 and 1440"
+        // while the floor that produced the 6 is now stored. The rest of this
+        // form is independent fields and keeps its per-field write.
+        $budgetMin = OutboxRepository::RUN_BUDGET_SECONDS_MIN;
+        $budgetMax = OutboxRepository::RUN_BUDGET_SECONDS_MAX;
+        $runBudget = (int)Tools::getValue(OutboxRepository::RUN_BUDGET_CONFIG_KEY);
+        $budgetValid = ($runBudget >= $budgetMin && $runBudget <= $budgetMax);
+        if (!$budgetValid) {
+            $errors[] = sprintf(
+                $this->l('Delivery run budget must be between %d and %d seconds'),
+                $budgetMin,
+                $budgetMax
+            );
+        }
+
+        // The SUBMITTED budget is what the floor is derived from, not the
+        // stored one, or raising both in one save would be judged against the
+        // value being replaced. A rejected budget falls back to what is stored,
+        // since that is what will still be in force after this save.
+        $effectiveBudget = $budgetValid ? $runBudget : OutboxRepository::readRunBudgetSeconds();
+        $staleFloor = OutboxRepository::minimumStaleThresholdMinutes($effectiveBudget);
+        $staleMax = OutboxRepository::STALE_PROCESSING_THRESHOLD_MINUTES_MAX;
+        $staleMinutes = (int)Tools::getValue(OutboxRepository::STALE_PROCESSING_THRESHOLD_CONFIG_KEY);
+        $staleValid = ($staleMinutes >= $staleFloor && $staleMinutes <= $staleMax);
+        if (!$staleValid) {
+            $errors[] = sprintf(
+                $this->l('Stuck-event recovery must be between %d and %d minutes. The lower bound is set by the delivery run budget: anything shorter can reclaim events another run is still sending, and deliver them twice.'),
+                $staleFloor,
+                $staleMax
+            );
+        }
+
+        if ($budgetValid && $staleValid) {
+            Configuration::updateGlobalValue(OutboxRepository::RUN_BUDGET_CONFIG_KEY, $runBudget);
+            Configuration::updateGlobalValue(
+                OutboxRepository::STALE_PROCESSING_THRESHOLD_CONFIG_KEY,
+                $staleMinutes
+            );
+        }
+
         // Return messages
         if (!empty($errors)) {
             return $this->displayError(implode('<br />', $errors));
@@ -449,16 +523,24 @@ class OpenLinker extends CarrierModule
                 'payloadJson' => json_encode(['test' => true]),
             ]);
 
-            // Immediately trigger delivery (process one event)
+            // Deliver THE ROW WE JUST ENQUEUED, by id.
+            //
+            // Not `claimBatchDueForDelivery(1, ...)`: that is the delivery
+            // pass's claim, ordered `created_at ASC`, so on any non-empty queue
+            // it hands back the oldest pending row - a real `product.saved`,
+            // possibly at attempt 18 - and this probe would POST it as a test,
+            // reset its backoff to the 60 s base, bypass the terminal
+            // `attempts >= maxAttempts` check, and overwrite the `last_error`
+            // the operator is reading, while the actual test event sat pending
+            // and the verdict shown was about a different event (#2627 review).
             $sender = new WebhookSender();
             $runId = uniqid('test_', true);
-            $events = $repository->claimBatchDueForDelivery(1, $runId);
+            $event = $repository->claimEventById($testEventId, $runId);
 
-            if (empty($events)) {
+            if ($event === null) {
                 return $this->displayError($this->l('Failed to claim test event'));
             }
 
-            $event = $events[0];
             $success = $sender->sendEvent($event);
 
             if ($success) {
@@ -531,12 +613,25 @@ class OpenLinker extends CarrierModule
             $repository = new OutboxRepository();
             $sender = new WebhookSender();
 
-            // Requeue stale rows (older than threshold defined in OutboxRepository)
-            $requeued = $repository->requeueStaleProcessingRows();
-            
-            // Also requeue all processing rows for manual delivery (user explicitly wants to retry)
-            // This ensures any stuck events are immediately available for delivery
-            $requeued += $repository->requeueAllProcessingRows();
+            // Wall clock for this pass (#2652). The admin request runs under
+            // the same process limit as the cron, so the manual button needs
+            // the same budget.
+            $startedAt = microtime(true);
+            $budgetSeconds = OutboxRepository::readRunBudgetSeconds();
+            $worstCaseDelivery = OutboxRepository::worstCaseDeliverySeconds();
+
+            // Minted before the reclaims, so this run can be excluded from
+            // them - see requeueStaleProcessingRows().
+            $runId = uniqid('manual_', true);
+
+            // Requeue rows whose owner is gone (threshold from configuration)
+            $requeued = $repository->requeueStaleProcessingRows($runId);
+
+            // The button means "stop waiting", so leases that cannot belong to
+            // a live process are released early too. It is not "every
+            // processing row": a cron pass may be mid-flight, and taking its
+            // rows would deliver those events twice (#2652).
+            $requeued += $repository->requeueAllProcessingRows($runId);
             
             // Reset next_attempt_at for pending events scheduled for future delivery
             // This allows manual delivery to process all pending events immediately,
@@ -547,7 +642,6 @@ class OpenLinker extends CarrierModule
             $batchSize = (int)Configuration::get('BATCH_SIZE') ?: self::DEFAULT_BATCH_SIZE;
 
             // Claim batch
-            $runId = uniqid('manual_', true);
             $events = $repository->claimBatchDueForDelivery($batchSize, $runId);
 
             if (empty($events)) {
@@ -563,8 +657,22 @@ class OpenLinker extends CarrierModule
             // Process events
             $delivered = 0;
             $failed = 0;
+            $attempted = 0;
+            $budgetExhausted = false;
 
             foreach ($events as $event) {
+                if (!OutboxRepository::hasBudgetForAnotherDelivery(
+                    microtime(true) - $startedAt,
+                    $budgetSeconds,
+                    $worstCaseDelivery,
+                    $attempted
+                )) {
+                    $budgetExhausted = true;
+                    break;
+                }
+
+                $attempted++;
+
                 try {
                     PrestaShopLogger::addLog(
                         'OpenLinker:Attempting to deliver event ' . $event->id . ' (eventId: ' . $event->event_id . ', type: ' . $event->event_type . ')',
@@ -637,9 +745,19 @@ class OpenLinker extends CarrierModule
                 }
             }
 
+            // Release everything the budget stopped us reaching, so it is
+            // `pending` for the next run rather than sitting in `processing`.
+            $skipped = 0;
+            if ($budgetExhausted) {
+                $skipped = $repository->requeueEventsByRunId(
+                    $runId,
+                    'Run budget of ' . (int)$budgetSeconds . 's reached; requeued for the next run'
+                );
+            }
+
             // Build user-friendly message
             $messageParts = [];
-            $messageParts[] = sprintf('%d event(s) processed', count($events));
+            $messageParts[] = sprintf('%d event(s) processed', $attempted);
             if ($delivered > 0) {
                 $messageParts[] = sprintf('%d delivered', $delivered);
             }
@@ -652,7 +770,18 @@ class OpenLinker extends CarrierModule
             if ($resetCount > 0) {
                 $messageParts[] = sprintf('%d scheduled event(s) made available', $resetCount);
             }
-            $pruned = $this->runOutboxRetentionNow($repository);
+            // Never silent: a half-delivered queue looks exactly like a small
+            // one unless the stop is stated (#2652).
+            if ($budgetExhausted) {
+                $messageParts[] = sprintf(
+                    '%d event(s) left queued - the %ds run budget was reached, press again or wait for the next cron',
+                    $skipped,
+                    $budgetSeconds
+                );
+            }
+            // Retention costs time out of the same process limit, so it is
+            // skipped when the budget is already gone.
+            $pruned = $budgetExhausted ? '' : $this->runOutboxRetentionNow($repository);
             if ($pruned !== '') {
                 $messageParts[] = $pruned;
             }
@@ -1348,6 +1477,15 @@ class OpenLinker extends CarrierModule
         Configuration::updateGlobalValue('MAX_RETRY_ATTEMPTS', self::DEFAULT_MAX_RETRY_ATTEMPTS);
         Configuration::updateGlobalValue('RETRY_BACKOFF_MULTIPLIER', self::DEFAULT_RETRY_BACKOFF_MULTIPLIER);
         Configuration::updateGlobalValue('OPENLINKER_OUTBOX_RETENTION_DAYS', self::DEFAULT_OUTBOX_RETENTION_DAYS);
+        self::requireOutboxRepository();
+        Configuration::updateGlobalValue(
+            OutboxRepository::RUN_BUDGET_CONFIG_KEY,
+            OutboxRepository::DEFAULT_RUN_BUDGET_SECONDS
+        );
+        Configuration::updateGlobalValue(
+            OutboxRepository::STALE_PROCESSING_THRESHOLD_CONFIG_KEY,
+            OutboxRepository::DEFAULT_STALE_PROCESSING_THRESHOLD_MINUTES
+        );
         // Default: suppress buyer mail on OL-imported orders (#905).
         Configuration::updateGlobalValue(self::IMPORT_SEND_MAIL_CONFIG_KEY, 0);
     }
@@ -1373,10 +1511,13 @@ class OpenLinker extends CarrierModule
         Configuration::deleteByName('RETRY_BACKOFF_MULTIPLIER');
         Configuration::deleteByName('OPENLINKER_OUTBOX_RETENTION_DAYS');
         Configuration::deleteByName('OPENLINKER_OUTBOX_RETENTION_LAST_RUN');
+        Configuration::deleteByName('OPENLINKER_OUTBOX_RUN_BUDGET_SECONDS');
+        Configuration::deleteByName('OPENLINKER_OUTBOX_STALE_MINUTES');
         Configuration::deleteByName('OPENLINKER_OUTBOX_FAILURE_STREAK');
         Configuration::deleteByName('OPENLINKER_CRON_LAST_RUN_AT');
         Configuration::deleteByName('OPENLINKER_CRON_LAST_RUN_SOURCE');
         Configuration::deleteByName('OPENLINKER_REPLAY_GUARD_DEGRADED_AT');
+        Configuration::deleteByName('OPENLINKER_REPLAY_GUARD_DEGRADED_ERROR');
         Configuration::deleteByName(self::DYNAMIC_CARRIER_CONFIG_KEY);
         // Retired in 1.3.0; still deleted so an install that predates the
         // upgrade does not leave the row behind.
@@ -1591,6 +1732,100 @@ class OpenLinker extends CarrierModule
             // Catch PHP 7+ fatal errors
             PrestaShopLogger::addLog(
                 'OpenLinker:Fatal error in product hook: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString(),
+                3,
+                null,
+                'Product',
+                $productId
+            );
+        }
+    }
+
+    /**
+     * Hook: Product deleted
+     *
+     * Captures product deletion. PrestaShop fires actionProductDelete from
+     * Product::delete() once the product is really gone - the hook is skipped
+     * while the product still has entries in another shop, so a multistore
+     * delete from one shop does not report a deletion the catalogue has not
+     * made yet.
+     *
+     * Without this hook a deletion reached OpenLinker only through the hourly
+     * deletion-audit pass, which walks the whole catalogue a page at a time, so
+     * on a large shop the deleted product kept selling on every marketplace for
+     * as long as the audit took to reach it (#2647). The audit pass is
+     * unchanged and stays the backstop for a lost delivery.
+     *
+     * The event carries the PrestaShop product id only. OpenLinker re-reads the
+     * product and treats the resulting not-found as the authoritative deletion
+     * signal, so the event is a trigger rather than a source of truth: if the
+     * delete was rolled back, the same re-read simply re-syncs a live product.
+     *
+     * Non-blocking: only enqueues to outbox, no HTTP calls.
+     *
+     * @param array $params Hook parameters
+     * @return void
+     */
+    public function hookActionProductDelete(array $params)
+    {
+        // Shares the product-events switch with actionProductSave - both report
+        // the same subject, and an operator turning product events off does not
+        // mean "keep sending me half of them".
+        if (!Configuration::get('ENABLE_PRODUCT_EVENTS')) {
+            return;
+        }
+
+        // Extract product ID
+        $productId = null;
+        if (isset($params['id_product'])) {
+            $productId = (int)$params['id_product'];
+        } elseif (isset($params['product']) && is_object($params['product'])) {
+            $productId = (int)$params['product']->id;
+        }
+
+        if (!$productId) {
+            return;
+        }
+
+        // Get connection ID (required for enqueueing)
+        $connectionId = Configuration::get('OPENLINKER_CONNECTION_ID');
+        if (empty($connectionId)) {
+            return; // Module not configured yet
+        }
+
+        // Enqueue event (non-blocking, fast write to outbox)
+        try {
+            // Ensure classes are loaded
+            $classesDir = dirname(__FILE__) . '/classes/';
+
+            if (!class_exists('EventIdGenerator')) {
+                require_once($classesDir . 'EventIdGenerator.php');
+            }
+            if (!class_exists('OutboxRepository')) {
+                require_once($classesDir . 'OutboxRepository.php');
+            }
+
+            $repository = new OutboxRepository();
+            $repository->enqueueEvent([
+                'connectionId' => $connectionId,
+                'eventType' => 'product.deleted',
+                'objectType' => 'product',
+                'externalId' => (string)$productId,
+                'occurredAt' => date('Y-m-d H:i:s'),
+                'payloadJson' => null, // The id is the whole event
+            ]);
+        } catch (Exception $e) {
+            // Log error but don't break the hook (non-fatal)
+            PrestaShopLogger::addLog(
+                'OpenLinker:Failed to enqueue product.deleted event: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString(),
+                3, // Error level
+                null,
+                'Product',
+                $productId
+            );
+        } catch (Throwable $e) {
+            // Catch PHP 7+ fatal errors
+            PrestaShopLogger::addLog(
+                'OpenLinker:Fatal error in product delete hook: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString(),
                 3,
                 null,
                 'Product',

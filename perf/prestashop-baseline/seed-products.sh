@@ -12,6 +12,12 @@
 set -euo pipefail
 
 COUNT="${1:-10000}"
+# Ordinal the generated series STARTS AFTER. A second generation must not reuse
+# the first's ordinals: `reference` and `ean13` are both derived from it, so
+# seeding 90 000 more at offset 0 would mint 10 000 duplicate references and
+# 10 000 duplicate barcodes, and a duplicate barcode is exactly what the
+# offer-linking path refuses to resolve. Set it to the count already seeded.
+SEED_OFFSET="${SEED_OFFSET:-0}"
 MYSQL_CONTAINER="${MYSQL_CONTAINER:-ol-demo-fresh-mysql}"
 DB="${PS_DB:-prestashop}"
 TEMPLATE_ID="${TEMPLATE_ID:-22}"     # multi-variant template (3 combinations)
@@ -60,7 +66,7 @@ if [ -n "$EXISTING" ] && [ "$EXISTING" != "0" ]; then
   echo "       FORCE_SEED=1 set, continuing anyway." >&2
 fi
 
-echo "Seeding $COUNT products from template id=$TEMPLATE_ID (prefix ${PREFIX})..."
+echo "Seeding $COUNT products from template id=$TEMPLATE_ID (prefix ${PREFIX}, ordinals $((SEED_OFFSET+1))..$((SEED_OFFSET+COUNT)))..."
 date +%T
 
 mysql_run <<SQL
@@ -74,7 +80,7 @@ SET @vcount := (SELECT COUNT(*) FROM ps_product_attribute WHERE id_product = $TE
 CREATE TEMPORARY TABLE perf_seq (n INT PRIMARY KEY);
 INSERT INTO perf_seq
 WITH RECURSIVE s(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM s WHERE n < $COUNT)
-SELECT n FROM s;
+SELECT n + $SEED_OFFSET FROM s;
 
 -- Stable 1..V rank per template combination, so a clone's combination ids are
 -- a contiguous block and every child table can recompute the same id.

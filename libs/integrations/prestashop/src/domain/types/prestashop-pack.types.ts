@@ -61,6 +61,17 @@ export interface PrestashopPackDefinition {
   /** Raw `pack_stock_type`, still possibly the `3` sentinel. */
   rawStockType: number;
   components: PrestashopPackComponent[];
+  /**
+   * Bundle entries whose product id could not be read (#2627 review).
+   *
+   * A dropped entry is a dropped CONSTRAINT, and dropping a constraint from a
+   * `min` always WIDENS the answer: a 3-component pack whose one unreadable
+   * entry is out of stock would otherwise publish at the other two's 50 and
+   * oversell. It is carried rather than discarded so `derivePackAvailability`
+   * can treat it the same way it treats a component whose stock is unreadable -
+   * as zero - instead of giving the same uncertainty the opposite reading.
+   */
+  unreadableComponentCount: number;
 }
 
 /** Available quantity of one component, keyed by {@link packComponentStockKey}. */
@@ -101,13 +112,16 @@ export function readPackDefinition(product: unknown): PrestashopPackDefinition |
       : {};
 
   const components: PrestashopPackComponent[] = [];
+  let unreadableComponentCount = 0;
   for (const entry of unwrapBundleEntries(associations.product_bundle)) {
     if (entry === null || typeof entry !== 'object') {
+      unreadableComponentCount += 1;
       continue;
     }
     const row = entry as Record<string, unknown>;
     const productId = readId(row.id) ?? readId(row['@_id']) ?? readId(row.id_product);
     if (productId === null) {
+      unreadableComponentCount += 1;
       continue;
     }
     const combinationId = readId(row.id_product_attribute);
@@ -130,7 +144,11 @@ export function readPackDefinition(product: unknown): PrestashopPackDefinition |
     });
   }
 
-  return { rawStockType: readNumber(raw.pack_stock_type) ?? PACK_STOCK_TYPE_SHOP_DEFAULT, components };
+  return {
+    rawStockType: readNumber(raw.pack_stock_type) ?? PACK_STOCK_TYPE_SHOP_DEFAULT,
+    components,
+    unreadableComponentCount,
+  };
 }
 
 /**
@@ -174,7 +192,10 @@ export function resolvePackStockMode(
  *
  * A component with no known availability counts as zero, matching PrestaShop
  * (`StockAvailable::getQuantityAvailableByProduct` answers 0 for a missing
- * row): a component that cannot be found cannot be packed.
+ * row): a component that cannot be found cannot be packed. `unreadableComponentCount`
+ * gets the SAME reading rather than the opposite one (#2627 review): a bundle
+ * entry `readPackDefinition` could not parse is still a constraint, and leaving
+ * it out of the `min` widens the answer and oversells.
  *
  * `null` - not `0` - is returned for a pack with no components, because a
  * derivation with no inputs is not the shop reporting a sell-out. The caller
@@ -183,10 +204,19 @@ export function resolvePackStockMode(
  */
 export function derivePackAvailability(
   components: readonly PrestashopPackComponent[],
-  availability: PackComponentAvailability
+  availability: PackComponentAvailability,
+  unreadableComponentCount = 0
 ): number | null {
   if (components.length === 0) {
     return null;
+  }
+
+  // An entry that could not be read is a constraint we know exists and cannot
+  // measure, and it is measured the same way an unmeasurable component's stock
+  // is: as zero. The alternative - leaving it out of the `min` - widens the
+  // answer on exactly the uncertainty that should narrow it, and oversells.
+  if (unreadableComponentCount > 0) {
+    return 0;
   }
 
   let limit = Number.POSITIVE_INFINITY;

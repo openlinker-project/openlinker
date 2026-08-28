@@ -67,6 +67,20 @@ describe('PrestashopWebhookEventTranslatorAdapter', () => {
     expect(result?.externalId).toBe('99');
   });
 
+  it('should translate product.deleted to the product domain, keeping the event type', () => {
+    const result = translator.translate(
+      event({ objectType: 'product', eventType: 'product.deleted', externalId: '99' })
+    );
+
+    expect(result).toEqual({
+      domain: 'product',
+      externalId: '99',
+      eventType: 'product.deleted',
+      occurredAt: '2026-01-01T00:00:00.000Z',
+      payload: {},
+    });
+  });
+
   it('should be case-insensitive on objectType', () => {
     const result = translator.translate(event({ objectType: 'ORDER', eventType: 'order.created' }));
 

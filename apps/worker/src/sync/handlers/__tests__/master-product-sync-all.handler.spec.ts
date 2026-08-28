@@ -15,9 +15,14 @@ import { SyncJobExecutionError } from '@openlinker/core/sync';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { ProductMasterPort } from '@openlinker/core/products';
 import type { ConfigService } from '@nestjs/config';
+import {
+  FakeOperationalSettingsService,
+  settingNumber,
+} from '../../../testing/operational-settings.double';
 
 describe('MasterProductSyncAllHandler', () => {
   let handler: MasterProductSyncAllHandler;
+  let operationalSettings: FakeOperationalSettingsService;
   let integrationsService: jest.Mocked<IIntegrationsService>;
   let jobEnqueue: jest.Mocked<JobEnqueuePort>;
   let productMaster: jest.Mocked<ProductMasterPort>;
@@ -57,11 +62,14 @@ describe('MasterProductSyncAllHandler', () => {
       get: jest.fn((_key: string, defaultValue?: unknown) => defaultValue),
     } as unknown as jest.Mocked<ConfigService>;
 
+    operationalSettings = new FakeOperationalSettingsService();
+
     handler = new MasterProductSyncAllHandler(
       integrationsService,
       jobEnqueue,
       cursors,
       syncLock,
+      operationalSettings,
       configService
     );
   });
@@ -315,6 +323,72 @@ describe('MasterProductSyncAllHandler', () => {
       // 500 items per run, 100 per batch.
       expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(5);
       expect(writtenCursorValue()).toMatch(/:500$/);
+    });
+
+    // #2651 — the operator-settable budget is read PER TICK. This is the
+    // acceptance criterion the issue asks to be PROVEN rather than asserted:
+    // the handler instance below is never re-constructed, and no module is
+    // re-created, so a passing assertion means a budget change reaches a
+    // running worker with no restart.
+    it('should pick up an operator budget change on the next tick, with no restart', async () => {
+      distinctPages(100);
+      jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'j', isExisting: false });
+
+      await handler.execute(createJob('conn-1'));
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(5); // 500 items / 100
+
+      operationalSettings.setValues({
+        catalogueSweepBudget: settingNumber('catalogueSweepBudget', 1000),
+      });
+      jobEnqueue.enqueueJob.mockClear();
+      cursors.getCursor.mockResolvedValue(null);
+
+      await handler.execute(createJob('conn-1'));
+
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(10); // 1000 items / 100
+    });
+
+    it('should let an operator page size resize the batch children', async () => {
+      distinctPages(100);
+      jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'j', isExisting: false });
+      operationalSettings.setValues({
+        catalogueSweepBudget: settingNumber('catalogueSweepBudget', 100),
+        sweepPageSize: settingNumber('sweepPageSize', 25),
+      });
+
+      await handler.execute(createJob('conn-1'));
+
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(4);
+    });
+
+    // The two ceilings are earned differently, so they clamp differently.
+    // Reaching the settings surface with a value above our recommendation
+    // required an explicit acknowledgement; a raw job payload has nowhere to
+    // record one, so it keeps the narrower bound.
+    it('should honour an acknowledged setting above the recommended ceiling', async () => {
+      distinctPages(100);
+      jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'j', isExisting: false });
+      operationalSettings.setValues({
+        catalogueSweepBudget: settingNumber('catalogueSweepBudget', 3000),
+      });
+
+      await handler.execute(createJob('conn-1'));
+
+      // 3000 items, 100 per batch — not clamped back to the recommended 2000.
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(30);
+    });
+
+    it('should still clamp a raw payload limit to the RECOMMENDED ceiling', async () => {
+      distinctPages(100);
+      jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'j', isExisting: false });
+      operationalSettings.setValues({
+        catalogueSweepBudget: settingNumber('catalogueSweepBudget', 3000),
+      });
+
+      await handler.execute(createJob('conn-1', 9000));
+
+      // The payload wins over the setting, and is bounded at 2000.
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(20);
     });
 
     it('should clamp a payload page limit above the ceiling', async () => {

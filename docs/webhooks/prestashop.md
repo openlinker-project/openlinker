@@ -91,6 +91,37 @@ Triggered when a product is created or updated.
 
 **Result**: Triggers `master.product.syncByExternalId` job to fetch full product data via PrestaShop WebService API.
 
+#### `product.deleted`
+Triggered when a product is deleted (PrestaShop's `actionProductDelete` hook).
+On a multistore install the hook fires only once the product is gone from every
+shop, so a delete in one shop does not report a deletion the catalogue has not
+made yet.
+
+**Payload**:
+```json
+{
+  "schemaVersion": 1,
+  "eventId": "prestashop-product-12345",
+  "eventType": "product.deleted",
+  "occurredAt": "2025-01-01T12:00:00.000Z",
+  "object": {
+    "type": "product",
+    "externalId": "12345"
+  }
+}
+```
+
+**Result**: Triggers the same `master.product.syncByExternalId` job. The webhook
+is a trigger, not the deletion itself - the shop answering "no such product" is
+the authoritative signal, which stales the product's variants, emits
+`master.product.stale` and pauses the offers on every marketplace.
+
+Without this event a deletion reached OpenLinker only through the hourly
+deletion-audit pass (`master.product.reconcile`), which walks the catalogue a
+page at a time, so on a large shop a deleted product kept selling for as long as
+the walk took to reach it. The audit pass is unchanged and stays the backstop
+for a lost or undelivered webhook.
+
 ### Inventory Events
 
 #### `stock.changed`

@@ -102,6 +102,26 @@ describe('InboundRoutingPolicyService', () => {
     );
   });
 
+  it('should route a product deletion to the same re-read job, which owns the deletion decision', async () => {
+    // A deletion webhook is a trigger, not an assertion (#2647): it routes the
+    // ordinary re-read, and the master's not-found answer is what stales the
+    // variants and pauses the offers (#1599 / #1688 / #1689).
+    const outcome = await service.route(
+      event({ domain: 'product', eventType: 'product.deleted' }),
+      connection(['ProductMaster']),
+      ['ProductMaster'],
+      'evt-10'
+    );
+
+    expect(outcome.status).toBe('enqueued');
+    expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jobType: 'master.product.syncByExternalId',
+        payload: { schemaVersion: 1, externalId: '42', objectType: 'Product' },
+      })
+    );
+  });
+
   it('should route a shipment event to marketplace.shipment.syncByExternalId gated on ShippingProviderManager', async () => {
     const outcome = await service.route(
       event({ domain: 'shipment', eventType: 'tracking' }),
