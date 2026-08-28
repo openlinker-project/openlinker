@@ -126,8 +126,53 @@ describe('ReservationRepository', () => {
       expect(outcome.previousQuantity).toBe(0);
       expect(outcome.deltaApplied).toBe(3);
       expect(outcome.remainingAtp).toBe(4);
-      const add = h.statements.find((s) => s.sql.includes('+ $2'));
-      expect(add?.params).toEqual(['inv-b', 3]);
+      const add = h.statements.find((s) => s.sql.includes('+ $3'));
+      // [inventoryItemId, reservationId (excluded from the sum), delta,
+      //  headroom required, this claim's own contribution to the published sum]
+      expect(add?.params).toEqual(['inv-b', 'res-1', 3, 3, 3]);
+    });
+
+    it('should subtract only PUBLISHED holds in the guard, and exclude its own row', async () => {
+      // The #2628-review scoping, asserted on the STATEMENT because a mocked
+      // driver cannot exercise a `WHERE`. Two properties, both of which broke
+      // something real when absent:
+      //
+      //  - `atpEffect = 'published'`: guarding on the raw `olReservedQuantity`
+      //    counter lets a `diagnostic` hold refuse a reservation, and on the
+      //    default `omp_fulfilled` topology those accumulate for the life of the
+      //    install.
+      //  - `"id" <> $2`: `claimOne` writes the ledger row BEFORE it moves the
+      //    counter, so without the exclusion the guard tests the claim against
+      //    its own units.
+      const h = createHarness([
+        [reservationRow({ quantity: 3 })],
+        [{ remainingAtp: 4 }],
+        [reservationRow({ quantity: 3 })],
+      ]);
+
+      await h.repository.claimHeld([claim({ quantity: 3 })]);
+
+      const add = h.statements.find((s) => s.sql.includes('+ $3'));
+      expect(add?.sql).toContain(`"r_pub"."atpEffect" = 'published'`);
+      expect(add?.sql).toContain(`"r_pub"."id" <> $2`);
+      expect(add?.sql).not.toContain('- "olReservedQuantity" >=');
+    });
+
+    it('should contribute nothing to the published sum for a diagnostic claim', async () => {
+      // A `diagnostic` hold promises nothing, so granting one must leave the
+      // reported published ATP exactly where it was. The counter still moves by
+      // the full delta — it is the denormalised total of BOTH stamps.
+      const h = createHarness([
+        [reservationRow({ quantity: 3, atpEffect: 'diagnostic' })],
+        [{ remainingAtp: 10 }],
+        [reservationRow({ quantity: 3, atpEffect: 'diagnostic' })],
+      ]);
+
+      await h.repository.claimHeld([claim({ quantity: 3, atpEffect: 'diagnostic' })]);
+
+      const add = h.statements.find((s) => s.sql.includes('+ $3'));
+      // …, delta = 3 (the counter moves), …, published contribution = 0.
+      expect(add?.params).toEqual(['inv-b', 'res-1', 3, 3, 0]);
     });
 
     it('should grant a repeated identical claim and move the counter not at all', async () => {
@@ -158,8 +203,12 @@ describe('ReservationRepository', () => {
       const [outcome] = await h.repository.claimHeld([claim({ quantity: 5 })]);
 
       expect(outcome.deltaApplied).toBe(3);
-      const add = h.statements.find((s) => s.sql.includes('+ $2'));
-      expect(add?.params).toEqual(['inv-b', 3]);
+      const add = h.statements.find((s) => s.sql.includes('+ $3'));
+      // The DESIRED total (5) is what the guard asks headroom for, not the
+      // delta — the exact `atpEffect`-scoping of the pre-#2628 predicate, which
+      // compared the delta against a subtrahend that still contained this row's
+      // previous quantity.
+      expect(add?.params).toEqual(['inv-b', 'res-1', 3, 5, 5]);
     });
 
     it('should release the difference without a guard when a claim is amended down', async () => {

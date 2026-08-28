@@ -429,3 +429,35 @@ decision 3 (#2165, epic #2162)
 **Rule**: a `const` string holding a raw SQL boolean expression that will ever be concatenated into a larger expression via `${...}` must be wrapped in its own parens **at the point it's defined**, not only at call sites that happen to need it today — a sibling call site added later, or an existing one edited, inherits the same trap silently. Prefer pinning the exact value with a real int-spec against Postgres; a unit spec with a mocked repository cannot observe operator precedence.
 **Applies to**: `libs/core/src/orders/infrastructure/persistence/repositories/order-line-item.repository.ts` (`unconvertedOrZeroTotal`); any raw-SQL-builder helper anywhere that stores a boolean sub-expression as a string constant for reuse across `FILTER (WHERE ...)`/`CASE WHEN ...` clauses.
 **Source**: #2172/#2191 (`top-products-ranking.int-spec.ts`, "labels a channel's own unconvertedCurrency...").
+
+## A denormalised counter that sums two semantic classes must be scoped by EVERY reader, and "the published quantity is unaffected" is only half the blast radius
+
+**Context**: ADR-061's advisory reservation ledger. A hold carries an immutable `atpEffect` stamp —
+`published` reduces what OpenLinker promises, `diagnostic` records the hold and is contractually
+inert. `inventory_items.olReservedQuantity` is denormalised over the ledger and legitimately sums
+**both** stamps.
+
+**Problem**: the design was justified with *"on a default install every hold is `diagnostic`, so
+nothing published moves"*. That is true about the **published quantity** and silent about the
+**counter**. Two shipped readers subtracted the raw counter — the admission guard
+(`availableQuantity - olReservedQuantity >= q`) and the shortfall reconciler
+(`olReservedQuantity > availableQuantity`) — so a stamp that promises nothing still refused
+reservations and opened operator-visible "stock at risk" episodes naming real orders. It was not a
+tail case: on the DEFAULT `omp_fulfilled` topology the marketplace ships, OL creates no `Shipment`,
+no cancellation arrives, and the expiry sweep is fail-closed — so nothing ever closes a hold and the
+counter grows monotonically for the life of the install. A healthy catalogue degrades on a clock.
+
+**Rule**: when a denormalised aggregate sums rows of more than one semantic class, enumerate its
+readers and scope each one, at the same time as the class is introduced. Reviewing "does the
+headline output change?" is not enough — walk every consumer of the aggregate, including guards and
+reconcilers that never surface a number of their own. And a value class whose whole contract is
+*"record this, let it restrict nothing"* must be checked against that contract literally: any
+operator-visible consequence at all — a refusal, an episode, a badge — contradicts it. Prefer one
+shared SQL/expression definition for the scoped sum over per-reader copies, so a new reader inherits
+the scoping instead of re-deriving it.
+
+**Applies to**: `libs/core/src/inventory/**` (`ReservationRepository.applyGuardedAdd`,
+`ReservationShortfallRepository`, `publishedReservedSum`); generally any denormalised counter or
+cached aggregate in `libs/core`.
+
+**Source**: PR #2628 review (ADR-061).

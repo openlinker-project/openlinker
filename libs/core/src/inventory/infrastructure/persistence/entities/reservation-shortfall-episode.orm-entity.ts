@@ -5,8 +5,9 @@
  *
  * - **`UQ_reservation_shortfall_open` is PARTIAL on `"closedAt" IS NULL`.**
  *   That partiality IS the episode model: while an episode is open the insert
- *   conflicts and writes nothing, so its occurrence id is stable for as long as
- *   the condition lasts; once closed the row leaves the index, so a recurrence
+ *   conflicts, and the conflict arm refreshes the quantities while leaving the
+ *   ID alone (#2628 review), so the occurrence id is stable for as long as the
+ *   condition lasts; once closed the row leaves the index, so a recurrence
  *   inserts cleanly under a NEW id. Same idiom as `UQ_reservations_active_line`.
  * - **The key is `(orderRecordId, inventoryItemId)`, not `(orderRecordId, sku)`.**
  *   The shortfall is only observable per POSITION, `sku` is nullable and not

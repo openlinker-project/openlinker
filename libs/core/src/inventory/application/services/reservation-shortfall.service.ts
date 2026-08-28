@@ -12,9 +12,12 @@
  * for as long as it lasts. Stored as "currently true", automation trigger T8
  * (`W2-23`, `edge`-classified) would have nothing to build an idempotency key
  * from and would degrade into firing on every recompute: the hourly-email bug.
- * The partial unique index makes a re-detection CONFLICT and write nothing, so
- * the id survives untouched for the life of the condition and a recurrence
- * after a close mints a new one.
+ * The partial unique index makes a re-detection CONFLICT, and the conflict arm
+ * REFRESHES the quantities while leaving the id alone (#2628 review) — a frozen
+ * `shortQuantity` would leave the row asserting a figure nothing recomputes
+ * after a partial recovery. So the id survives untouched for the life of the
+ * condition, only the numbers move, and a recurrence after a close mints a new
+ * one.
  *
  * **It repairs nothing.** No write to `inventory_items`, none to
  * `reservations`. Clamping the counter would make the numbers agree and the
@@ -149,7 +152,7 @@ export class ReservationShortfallService implements IReservationShortfallService
     let failed = 0;
 
     for (const position of positions) {
-      const positionShortfall = position.olReservedQuantity - position.availableQuantity;
+      const positionShortfall = position.publishedReservedQuantity - position.availableQuantity;
       const attributions = this.attribute(
         positionShortfall,
         heldByPosition.get(position.inventoryItemId) ?? []
@@ -181,8 +184,9 @@ export class ReservationShortfallService implements IReservationShortfallService
           });
 
           // `null` is the partial index doing its job: an episode is already
-          // open for this key and NOTHING was written. That is the property
-          // T8's idempotency key rests on, so it is counted, not ignored.
+          // open for this key, so its quantities were REFRESHED in place and no
+          // new occurrence was minted. The stable id is the property T8's
+          // idempotency key rests on, so this is counted, not ignored.
           if (episode === null) {
             episodesStillOpen += 1;
           } else {
@@ -248,6 +252,14 @@ export class ReservationShortfallService implements IReservationShortfallService
       shortPositions.map((position) => [position.inventoryItemId, position])
     );
 
+    // Absence from `shortPositions` has TWO causes, and conflating them writes a
+    // false all-clear: the position recovered, or the master STALED it (#2628
+    // review). Every shortfall read filters `isStale = false`, so this is the
+    // only way the close pass can tell them apart.
+    const stalePositionIds = new Set(
+      await this.shortfalls.listStalePositionIds(positionIds)
+    );
+
     const held = await this.shortfalls.listHeldForPositions(positionIds);
     const holdKeys = new Set(
       held.map((reservation) => this.holdKey(reservation.orderRecordId, reservation.inventoryItemId))
@@ -262,7 +274,7 @@ export class ReservationShortfallService implements IReservationShortfallService
     const attributedOrders = new Map<string, Set<string>>();
     for (const position of shortPositions) {
       const attributions = this.attribute(
-        position.olReservedQuantity - position.availableQuantity,
+        position.publishedReservedQuantity - position.availableQuantity,
         heldByPosition.get(position.inventoryItemId) ?? []
       );
       attributedOrders.set(
@@ -293,13 +305,21 @@ export class ReservationShortfallService implements IReservationShortfallService
       // youngest-first attribution now lands none of the shortfall on THIS
       // order. Closing beats leaving the row standing, because a stale row
       // asserts a risk nothing recomputes.
+      // `position-stale` sits ABOVE `recovered` and below `reservation-closed`.
+      // Below, because an order that no longer holds there has a truer reason
+      // than a fact about the position. Above, because `recovered` is inferred
+      // from ABSENCE from the short set, and a staled position is absent from it
+      // too — so without this arm #1689 staling a deleted product would close
+      // the episode claiming stock came back for a product that is gone.
       const reason = !stillHeld
         ? 'reservation-closed'
-        : !stillShort
-          ? 'recovered'
-          : !stillAttributed
-            ? 'no-longer-attributed'
-            : null;
+        : stalePositionIds.has(episode.inventoryItemId)
+          ? 'position-stale'
+          : !stillShort
+            ? 'recovered'
+            : !stillAttributed
+              ? 'no-longer-attributed'
+              : null;
       if (reason === null) {
         continue;
       }
@@ -425,11 +445,13 @@ export class ReservationShortfallService implements IReservationShortfallService
   /**
    * The counter-versus-ledger disagreement signal.
    *
-   * `olReservedQuantity` is denormalised over the ledger and the ledger is
-   * authoritative, so a shortfall with no `held` row behind it means the two
-   * have drifted. There is no order to name, so no episode is written — but a
-   * non-recording exit that logged nothing would be exactly the silent decline
-   * this issue exists to remove.
+   * Both terms of the shortfall are read from the LEDGER (#2628 review): the
+   * predicate sums `held` holds stamped `published` per position, and
+   * attribution divides that same set. A residue therefore means the two reads
+   * disagreed BETWEEN them — a hold terminalised, or its position restocked,
+   * between the position page and the attribution page. There is no order to
+   * name, so no episode is written; but a non-recording exit that logged
+   * nothing would be exactly the silent decline this issue exists to remove.
    */
   private warnUnattributable(
     position: ShortfallPositionRow,
@@ -440,11 +462,12 @@ export class ReservationShortfallService implements IReservationShortfallService
       `reservation_shortfall_unattributable position=${position.inventoryItemId} ` +
         `variant=${position.productVariantId ?? 'none'} ` +
         `available=${String(position.availableQuantity)} ` +
-        `olReserved=${String(position.olReservedQuantity)} ` +
+        `publishedReserved=${String(position.publishedReservedQuantity)} ` +
         `shortfall=${String(positionShortfall)} unattributed=${String(residue)} — ` +
-        `the position counter promises more than the reservation ledger accounts ` +
-        `for, so these units name no order and no episode was opened. The ledger ` +
-        `is authoritative; investigate the drift.`
+        `more units are promised on this position than the attributable held ` +
+        `reservations account for, so these units name no order and no episode ` +
+        `was opened. Usually a hold closed between the two reads and the next ` +
+        `run settles it; a residue that persists is drift worth investigating.`
     );
   }
 }

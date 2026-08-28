@@ -176,10 +176,15 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
   /**
    * Publish the recomputed available-to-promise to the marketplace.
    *
-   * `release` is threaded in as the FIRST PARAMETER and is not optional: it is
-   * obtainable only from {@link releaseHolds}, so this step cannot be reached
-   * before the release has returned. That is the structural half of the ordering
-   * guarantee — a reordering fails to compile, not merely a test.
+   * `release` is threaded in as the FIRST PARAMETER and is not optional: the
+   * natural way to obtain one is to call {@link releaseHolds}, so the dependency
+   * is visible in the signature rather than in a comment.
+   *
+   * Its honest limit (#2628 review): `CloseForOrderResult` is a STRUCTURAL type,
+   * so an object literal of the same shape type-checks and a determined
+   * reordering still compiles. This makes the order obvious and hard to invert
+   * by accident; it is not a compile-time proof. The shared-recorder spec is
+   * what actually pins the two effects in sequence — see the class docblock.
    */
   private async publishRestoredAtp(
     release: CloseForOrderResult,

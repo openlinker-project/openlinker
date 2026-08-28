@@ -33,7 +33,7 @@ const position = (overrides: Partial<ShortfallPositionRow> = {}): ShortfallPosit
   productId: PRODUCT_ID,
   productVariantId: VARIANT_ID,
   availableQuantity: 1,
-  olReservedQuantity: 3,
+  publishedReservedQuantity: 3,
   ...overrides,
 });
 
@@ -85,6 +85,7 @@ describe('ReservationShortfallService', () => {
       listShortfallPositions: jest.fn().mockResolvedValue([]),
       listShortfallPositionsByIds: jest.fn().mockResolvedValue([]),
       listHeldForPositions: jest.fn().mockResolvedValue([]),
+      listStalePositionIds: jest.fn().mockResolvedValue([]),
       openEpisode: jest.fn().mockResolvedValue(null),
       listOpenEpisodes: jest.fn().mockResolvedValue([]),
       closeEpisode: jest.fn().mockResolvedValue(true),
@@ -150,13 +151,21 @@ describe('ReservationShortfallService', () => {
       ]);
     });
 
-    it('should write nothing when the episode is already open, over three consecutive runs', async () => {
+    it('should count a re-observed episode as still-open rather than opened, over three consecutive runs', async () => {
       repository.listShortfallPositions.mockResolvedValue([position()]);
       repository.listHeldForPositions.mockResolvedValue([held('ol_order_a', 3, NEWER)]);
       repository.openEpisode
         .mockResolvedValueOnce(episode({ orderRecordId: 'ol_order_a' }))
-        // `null` is the partial unique index refusing a duplicate: an episode
-        // is already open and NOTHING was written.
+        // `null` is the repository's contract for "an episode was already open,
+        // so its quantities were refreshed and no NEW occurrence was minted".
+        //
+        // This test pins the SERVICE's counting of that answer and nothing more
+        // (#2628 review): the answer is a mock, so it would pass with the
+        // partial unique index dropped. The index itself — a re-detection
+        // conflicting, the id surviving, the quantities moving — is pinned
+        // against a real Postgres in
+        // `apps/api/test/integration/reservation-shortfall-episodes.int-spec.ts`,
+        // which is the only place it can be.
         .mockResolvedValueOnce(null)
         .mockResolvedValueOnce(null);
 
@@ -173,7 +182,7 @@ describe('ReservationShortfallService', () => {
 
     it('should report unattributed units when the counter promises more than the ledger holds', async () => {
       repository.listShortfallPositions.mockResolvedValue([
-        position({ availableQuantity: 0, olReservedQuantity: 5 }),
+        position({ availableQuantity: 0, publishedReservedQuantity: 5 }),
       ]);
       repository.listHeldForPositions.mockResolvedValue([held('ol_order_a', 2, NEWER)]);
 
@@ -198,7 +207,7 @@ describe('ReservationShortfallService', () => {
 
     it('should keep going when one open write fails', async () => {
       repository.listShortfallPositions.mockResolvedValue([
-        position({ availableQuantity: 0, olReservedQuantity: 4 }),
+        position({ availableQuantity: 0, publishedReservedQuantity: 4 }),
       ]);
       repository.listHeldForPositions.mockResolvedValue([
         held('ol_order_a', 2, NEWER, 'res-a'),
@@ -225,6 +234,37 @@ describe('ReservationShortfallService', () => {
 
       expect(result.episodesClosed).toBe(1);
       expect(repository.closeEpisode).toHaveBeenCalledWith('episode-1', 'recovered', NOW);
+    });
+
+    it('should close as position-stale, never as recovered, when the master staled the position', async () => {
+      // #2628 review. Every shortfall read filters `isStale = false`, so a
+      // staled position drops out of `listShortfallPositionsByIds` exactly as a
+      // recovered one does. Inferring `'recovered'` from that absence asserts
+      // that stock came back for a product #1689 has just established no longer
+      // exists — a false all-clear on the one order that certainly cannot be
+      // fulfilled.
+      repository.listOpenEpisodes.mockResolvedValue([episode({ orderRecordId: 'ol_order_a' })]);
+      repository.listShortfallPositionsByIds.mockResolvedValue([]);
+      repository.listStalePositionIds.mockResolvedValue([POSITION_ID]);
+      repository.listHeldForPositions.mockResolvedValue([held('ol_order_a', 3, NEWER)]);
+
+      const result = await service.detectShortfalls(RUN);
+
+      expect(result.episodesClosed).toBe(1);
+      expect(repository.closeEpisode).toHaveBeenCalledWith('episode-1', 'position-stale', NOW);
+    });
+
+    it('should prefer reservation-closed over position-stale when the order no longer holds there', async () => {
+      // Ordering of the arms: a fact about THIS order's hold is a truer reason
+      // than a fact about the position.
+      repository.listOpenEpisodes.mockResolvedValue([episode({ orderRecordId: 'ol_order_a' })]);
+      repository.listShortfallPositionsByIds.mockResolvedValue([]);
+      repository.listStalePositionIds.mockResolvedValue([POSITION_ID]);
+      repository.listHeldForPositions.mockResolvedValue([]);
+
+      await service.detectShortfalls(RUN);
+
+      expect(repository.closeEpisode).toHaveBeenCalledWith('episode-1', 'reservation-closed', NOW);
     });
 
     it('should close by cancellation when the order no longer holds the position, even while it is still short', async () => {
@@ -265,7 +305,7 @@ describe('ReservationShortfallService', () => {
         episode({ id: 'ep-older', orderRecordId: 'ol_order_older' }),
       ]);
       repository.listShortfallPositionsByIds.mockResolvedValue([
-        position({ availableQuantity: 2, olReservedQuantity: 3 }),
+        position({ availableQuantity: 2, publishedReservedQuantity: 3 }),
       ]);
       repository.listHeldForPositions.mockResolvedValue([
         held('ol_order_younger', 2, NEWER, 'res-younger'),
@@ -287,7 +327,7 @@ describe('ReservationShortfallService', () => {
         episode({ id: 'ep-younger', orderRecordId: 'ol_order_younger' }),
       ]);
       repository.listShortfallPositionsByIds.mockResolvedValue([
-        position({ availableQuantity: 2, olReservedQuantity: 3 }),
+        position({ availableQuantity: 2, publishedReservedQuantity: 3 }),
       ]);
       repository.listHeldForPositions.mockResolvedValue([
         held('ol_order_younger', 2, NEWER, 'res-younger'),
@@ -349,22 +389,31 @@ describe('ReservationShortfallService', () => {
   });
 
   describe('no clamping', () => {
-    it('should expose no write to the position counter or the ledger at all', () => {
-      // The AC is "no number is clamped anywhere as a side effect". Asserted
-      // structurally rather than behaviourally: the reconciler's ONLY
-      // collaborator for stock is this port, and the port carries no method
-      // that could move `availableQuantity`, `olReservedQuantity`, or a
-      // reservation quantity. A future method that could would fail here.
-      expect(Object.keys(repository).sort()).toEqual([
-        'closeEpisode',
-        'listHeldForPositions',
-        'listOpenByOrderRecordId',
-        'listOpenByOrderRecordIds',
-        'listOpenEpisodes',
-        'listShortfallPositions',
-        'listShortfallPositionsByIds',
-        'openEpisode',
-      ]);
+    it('should take no collaborator beyond the shortfall port and the products read', () => {
+      // Half of "no number is clamped anywhere as a side effect" is that there
+      // is nothing here that COULD clamp one. A frozen name list could not say
+      // that (#2628 review): it broke on a harmless rename and passed happily
+      // once a second, stock-writing collaborator was injected, because it
+      // asserted about the port and never about the service.
+      //
+      // Constructor arity is the assertion that actually catches the dangerous
+      // change. Adding an inventory repository, a reservation repository or an
+      // availability service to this reconciler fails here.
+      expect(ReservationShortfallService.length).toBe(2);
+    });
+
+    it('should expose only read and episode-scoped methods on its one stock collaborator', () => {
+      // The other half: the single stock-facing collaborator must carry no
+      // method that could move `availableQuantity`, `olReservedQuantity` or a
+      // reservation quantity. Asserted by SHAPE rather than by a frozen list,
+      // so renaming `listHeldForPositions` is free while adding, say,
+      // `clampReservedQuantity` or `updatePosition` fails.
+      const writesOnlyEpisodes = /^(list[A-Z]|openEpisode$|closeEpisode$)/;
+      const offenders = Object.keys(repository).filter(
+        (method) => !writesOnlyEpisodes.test(method)
+      );
+
+      expect(offenders).toEqual([]);
     });
   });
 

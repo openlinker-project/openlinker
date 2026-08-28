@@ -32,7 +32,7 @@ export class ReservationShortfallEpisode {
     public readonly orderRecordId: string,
     /**
      * The position. It is the grain at which a shortfall is OBSERVABLE at all —
-     * `olReservedQuantity > availableQuantity` is a position-level fact — and it
+     * "promised more than the master has" is a position-level fact — and it
      * resolves to exactly one variant, hence one sku.
      */
     public readonly inventoryItemId: string,

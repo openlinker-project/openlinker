@@ -9,11 +9,20 @@
  * and repairing the counter would erase the evidence and restore exactly the
  * silence design § 4.2 declined the `CHECK` in order to prevent.
  *
- * Raw SQL for the two statements that cannot be expressed otherwise — the
- * cross-column shortfall predicate (`"olReservedQuantity" > "availableQuantity"`)
- * and the `ON CONFLICT DO NOTHING` against a PARTIAL unique index, whose
- * conflict target must repeat the index predicate (the `product_content_field`
- * precedent). Every value is a bound parameter; nothing is interpolated.
+ * Raw SQL for the statements that cannot be expressed otherwise — the shortfall
+ * predicate, which compares a column against a correlated sub-select, and the
+ * `ON CONFLICT DO UPDATE` against a PARTIAL unique index, whose conflict target
+ * must repeat the index predicate (the `product_content_field` precedent).
+ * Every value is a bound parameter; nothing is interpolated.
+ *
+ * **The shortfall predicate is `atpEffect`-SCOPED, not counter-based** (#2628
+ * review). `inventory_items.olReservedQuantity` sums holds of both stamps, and a
+ * `diagnostic` hold promises nothing — so an episode opened from the counter
+ * names a real order for a risk that does not exist. On the DEFAULT
+ * `omp_fulfilled` topology, where every hold is `diagnostic` and no shipped
+ * closer runs, the counter grows for the life of the install and the
+ * counter-based predicate opened a permanent, never-clearing episode on a
+ * healthy catalogue. See `publishedReservedSum`.
  *
  * @module libs/core/src/inventory/infrastructure/persistence/repositories
  * @implements {ReservationShortfallRepositoryPort}
@@ -27,6 +36,9 @@ import { ReservationShortfallEpisode } from '../../../domain/entities/reservatio
 import { Reservation } from '../../../domain/entities/reservation.entity';
 import type { ReservationShortfallRepositoryPort } from '../../../domain/ports/reservation-shortfall-repository.port';
 import { ReservationLedgerConstraintError } from '../../../domain/exceptions/reservation-ledger-constraint.error';
+import { publishedReservedSum } from '../sql/published-reserved-sum';
+import type { ReservationAtpEffect } from '../../../domain/ports/reservation-ledger-reader.port';
+import type { ReservationStatus } from '../../../domain/types/reservation.types';
 import type {
   OpenShortfallEpisodeInput,
   ReservationShortfallCloseReason,
@@ -39,8 +51,26 @@ interface PositionRow {
   productId: string;
   productVariantId: string | null;
   availableQuantity: number | string;
-  olReservedQuantity: number | string;
+  publishedReservedQuantity: number | string;
 }
+
+/**
+ * The `published`-scoped claimed sum, correlated to the `inventory_items` row
+ * aliased `i`. One definition, shared by both position reads and by the
+ * admission guard, so the detection predicate and the guard can never disagree
+ * about what "promised" means.
+ */
+const PUBLISHED_SUM = publishedReservedSum({ positionAlias: 'i' });
+
+/**
+ * The one live status, as a typed constant rather than an inline literal —
+ * matching the `ReservationLedgerReader` precedent, so a rename of the union
+ * member is a compile break here too.
+ */
+const HELD: ReservationStatus = 'held';
+
+/** The one stamp that reduces what OpenLinker publishes (ADR-061 decision 1). */
+const PUBLISHED: ReservationAtpEffect = 'published';
 
 @Injectable()
 export class ReservationShortfallRepository implements ReservationShortfallRepositoryPort {
@@ -59,17 +89,24 @@ export class ReservationShortfallRepository implements ReservationShortfallRepos
     // already handled by the #1689 stale-variant pause, and reporting it as a
     // shortfall would name an order for a product that is gone rather than for
     // one that is genuinely oversold.
+    //
+    // `olReservedQuantity > 0` stays as the leading arm purely to keep
+    // `IDX_inventory_items_ol_reserved` serving the scan. It is a sound
+    // pre-filter, never the test: the counter sums BOTH stamps, so a non-zero
+    // counter is implied by a non-zero published sum and can never exclude a
+    // genuine shortfall — while the shortfall itself is decided by
+    // `PUBLISHED_SUM` alone.
     const rows = await this.raw<PositionRow>(
-      `SELECT "id"                  AS "inventoryItemId",
-              "productId",
-              "productVariantId",
-              "availableQuantity",
-              "olReservedQuantity"
-         FROM "inventory_items"
-        WHERE "olReservedQuantity" > 0
-          AND "olReservedQuantity" > "availableQuantity"
-          AND "isStale" = false
-        ORDER BY "id" ASC
+      `SELECT "i"."id"              AS "inventoryItemId",
+              "i"."productId"       AS "productId",
+              "i"."productVariantId" AS "productVariantId",
+              "i"."availableQuantity" AS "availableQuantity",
+              ${PUBLISHED_SUM}      AS "publishedReservedQuantity"
+         FROM "inventory_items" AS "i"
+        WHERE "i"."olReservedQuantity" > 0
+          AND "i"."isStale" = false
+          AND ${PUBLISHED_SUM} > "i"."availableQuantity"
+        ORDER BY "i"."id" ASC
         LIMIT $1 OFFSET $2`,
       [limit, offset]
     );
@@ -79,7 +116,7 @@ export class ReservationShortfallRepository implements ReservationShortfallRepos
       productId: row.productId,
       productVariantId: row.productVariantId,
       availableQuantity: Number(row.availableQuantity),
-      olReservedQuantity: Number(row.olReservedQuantity),
+      publishedReservedQuantity: Number(row.publishedReservedQuantity),
     }));
   }
 
@@ -91,15 +128,15 @@ export class ReservationShortfallRepository implements ReservationShortfallRepos
     }
 
     const rows = await this.raw<PositionRow>(
-      `SELECT "id"                  AS "inventoryItemId",
-              "productId",
-              "productVariantId",
-              "availableQuantity",
-              "olReservedQuantity"
-         FROM "inventory_items"
-        WHERE "id" = ANY($1)
-          AND "olReservedQuantity" > "availableQuantity"
-          AND "isStale" = false`,
+      `SELECT "i"."id"              AS "inventoryItemId",
+              "i"."productId"       AS "productId",
+              "i"."productVariantId" AS "productVariantId",
+              "i"."availableQuantity" AS "availableQuantity",
+              ${PUBLISHED_SUM}      AS "publishedReservedQuantity"
+         FROM "inventory_items" AS "i"
+        WHERE "i"."id" = ANY($1)
+          AND "i"."isStale" = false
+          AND ${PUBLISHED_SUM} > "i"."availableQuantity"`,
       [[...inventoryItemIds]]
     );
 
@@ -108,8 +145,23 @@ export class ReservationShortfallRepository implements ReservationShortfallRepos
       productId: row.productId,
       productVariantId: row.productVariantId,
       availableQuantity: Number(row.availableQuantity),
-      olReservedQuantity: Number(row.olReservedQuantity),
+      publishedReservedQuantity: Number(row.publishedReservedQuantity),
     }));
+  }
+
+  async listStalePositionIds(
+    inventoryItemIds: readonly string[]
+  ): Promise<readonly string[]> {
+    if (inventoryItemIds.length === 0) {
+      return [];
+    }
+
+    const rows = await this.raw<{ id: string }>(
+      `SELECT "id" FROM "inventory_items"
+        WHERE "id" = ANY($1) AND "isStale" = true`,
+      [[...inventoryItemIds]]
+    );
+    return rows.map((row) => row.id);
   }
 
   async listHeldForPositions(
@@ -122,8 +174,17 @@ export class ReservationShortfallRepository implements ReservationShortfallRepos
     // Youngest first — the attribution policy the service applies. Ordered here
     // so the service never re-sorts and the two cannot disagree; `id` breaks a
     // `createdAt` tie so the result is deterministic across runs.
+    //
+    // Scoped to `published` (#2628 review), matching `PUBLISHED_SUM` exactly.
+    // Attribution divides a shortfall that only published holds created, so a
+    // `diagnostic` hold must not absorb a share of it — it would both name an
+    // order that promised nothing and hide the published order that did.
     const rows = await this.reservations.find({
-      where: { inventoryItemId: In([...inventoryItemIds]), status: 'held' },
+      where: {
+        inventoryItemId: In([...inventoryItemIds]),
+        status: HELD,
+        atpEffect: PUBLISHED,
+      },
       order: { createdAt: 'DESC', id: 'ASC' },
     });
 
@@ -148,7 +209,13 @@ export class ReservationShortfallRepository implements ReservationShortfallRepos
              "shortQuantity" = EXCLUDED."shortQuantity",
              "positionShortfall" = EXCLUDED."positionShortfall",
              "sku" = EXCLUDED."sku",
-             "productVariantId" = EXCLUDED."productVariantId"
+             "productVariantId" = EXCLUDED."productVariantId",
+             -- Explicit, because raw SQL bypasses \`@UpdateDateColumn\` entirely
+             -- (#2628 review): without it a refreshed row carries the timestamp
+             -- of the run that OPENED it, so \`updatedAt\` reports the episode as
+             -- untouched for the whole life of a condition whose numbers are in
+             -- fact being rewritten on every tick.
+             "updatedAt" = now()
          RETURNING *, (xmax = 0) AS "wasInserted"`,
         [
           input.orderRecordId,

@@ -94,10 +94,19 @@ export interface ReservationClaimOutcome {
   /** `quantity - previousQuantity`. Zero for an idempotent repeat. */
   readonly deltaApplied: number;
   /**
-   * `availableQuantity - olReservedQuantity` after the counter moved, straight
-   * from the guarded statement's `RETURNING`. `null` when `deltaApplied === 0`,
-   * because no counter statement ran and inventing a value would mean reading
-   * the row again for a figure nobody asked for.
+   * Published available-to-promise on the position after this claim —
+   * `availableQuantity` less the sum of `held` holds stamped `published`
+   * (#2628 review) — straight from the guarded statement's `RETURNING`.
+   *
+   * NOT `availableQuantity - olReservedQuantity`: that counter sums holds of
+   * both stamps, so on a `diagnostic`-only install it would report a promise
+   * shrinking against a published quantity that never moves. A `diagnostic`
+   * claim consequently leaves this figure unchanged, which is correct — it
+   * promises nothing.
+   *
+   * `null` when `deltaApplied === 0`, because no counter statement ran and
+   * inventing a value would mean reading the row again for a figure nobody
+   * asked for.
    */
   readonly remainingAtp: number | null;
 }

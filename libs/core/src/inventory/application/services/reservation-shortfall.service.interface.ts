@@ -33,9 +33,11 @@ export interface IReservationShortfallService {
    *
    * | | |
    * |---|---|
-   * | Open | first time `(order, position)` is observed short — `INSERT … ON CONFLICT DO NOTHING` against the partial unique index, so a still-open episode is re-observed and **written to not at all** |
+   * | Open | first time `(order, position)` is observed short — `INSERT … ON CONFLICT DO UPDATE` against the partial unique index, so a still-open episode is re-observed and its quantities **refreshed in place, its id untouched** |
    * | Close `recovered` | the position is no longer short |
    * | Close `reservation-closed` | the order holds no `held` reservation there any more — cancellation, dispatch or expiry |
+   * | Close `no-longer-attributed` | still short and still held, but youngest-first attribution lands none of it here |
+   * | Close `position-stale` | the master staled the position, so it left the shortfall set for a reason that is not a recovery |
    * | Recur | a NEW episode with a NEW occurrence id, because the closed row left the partial index |
    *
    * ## Attribution is a STATED POLICY

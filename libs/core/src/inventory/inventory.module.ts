@@ -157,10 +157,37 @@ export {
     },
     {
       provide: RESERVATION_OBLIGATION_READERS_TOKEN,
-      // While `UnavailableOrderHoldReader` is bound here the sweep extends every
-      // candidate and releases NOTHING (#2346). #2339 replaces this one entry
-      // with a reader over `order_holds` — which must answer `'absent'` only on
-      // a positively confirmed absence, never as a default.
+      // WHAT IS INERT: while `UnavailableOrderHoldReader` is bound here the
+      // expiry sweep extends every candidate and releases NOTHING (#2346) — the
+      // reader answers `'indeterminate'` unconditionally and the obligation fold
+      // is fail-closed.
+      //
+      // WHY IT MATTERS MORE THAN IT READS: the sweep is the designed close path
+      // for an order OpenLinker does not fulfil itself. The other two closers
+      // need an OL-side event that never happens there — `closeForOrder` fires on
+      // a cancellation (`OfferStockRestoreService`) and on an OL-owned
+      // `Shipment` shipping (`ShipmentReservationConsumeService`) — and on the
+      // DEFAULT `omp_fulfilled` topology the marketplace ships, so OL creates no
+      // `Shipment`. A normally-fulfilled, never-cancelled order's holds
+      // therefore stay `held` for the life of the install while this stand-in is
+      // bound. That is contained rather than harmful because every reader of
+      // `inventory_items.olReservedQuantity` is now `atpEffect`-scoped (#2628
+      // review — `publishedReservedSum`), so accumulating `diagnostic` holds
+      // refuse no reservation and open no shortfall episode; but the rows do
+      // accumulate, and a `published`-stamped install would hold real ATP.
+      //
+      // WHAT UNBLOCKS IT: nothing in this file. `order_holds` DOES exist now —
+      // body A shipped it earlier in this same wave (PR #2588) — so the blocker
+      // is no longer the table but the branch topology: this branch does not
+      // contain it, and binding a reader over a table it cannot compile against
+      // is not possible here. Binding the real reader is a WAVE-LEVEL
+      // integration step taken once both bodies sit on
+      // `oms-programme-wave-2` (#2339).
+      //
+      // THE ONE CONSTRAINT ON THAT READER: it must answer `'absent'` only on a
+      // positively confirmed absence — never as a default, never as the fallback
+      // arm of a failed read, and never for an order it could not find. That
+      // single shortcut converts the fail-closed design into a silent oversell.
       useFactory: (holds: UnavailableOrderHoldReader): ObligationReaders => ({
         'open-order-hold': (orderRecordId) => holds.read(orderRecordId),
       }),

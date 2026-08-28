@@ -18,10 +18,15 @@
  *   delta-adjust fall out of one operation, and no caller is in a position to
  *   forget the transaction.
  * - **Raw SQL, not the query builder, for the two guarded statements.** The
- *   guards read a column against an expression over two other columns
- *   (`"availableQuantity" - "olReservedQuantity" >= $2`) and need `GREATEST`;
- *   the builder cannot express either without a raw fragment anyway. Every value
- *   is a bound parameter — nothing is interpolated.
+ *   guards read a column against an expression over another column and a
+ *   correlated sub-select, and need `GREATEST`; the builder cannot express
+ *   either without a raw fragment anyway. Every value is a bound parameter —
+ *   nothing is interpolated.
+ * - **The admission guard's subtrahend is `atpEffect`-SCOPED, not the counter**
+ *   (#2628 review). `olReservedQuantity` legitimately sums holds of both stamps,
+ *   so guarding on it lets a `diagnostic` hold refuse a reservation — which is
+ *   the one thing that stamp exists to promise it will never do. See
+ *   `publishedReservedSum`.
  *
  * @module libs/core/src/inventory/infrastructure/persistence/repositories
  * @implements {ReservationRepositoryPort}
@@ -37,6 +42,7 @@ import { InsufficientAvailabilityError } from '../../../domain/exceptions/insuff
 import { ReservationLedgerConstraintError } from '../../../domain/exceptions/reservation-ledger-constraint.error';
 import { ReservationNotHeldError } from '../../../domain/exceptions/reservation-not-held.error';
 import { ReservationPositionUnavailableError } from '../../../domain/exceptions/reservation-position-unavailable.error';
+import { publishedReservedSum } from '../sql/published-reserved-sum';
 import type {
   ExtendReservationExpiryInput,
   ReleaseReservationInput,
@@ -304,7 +310,7 @@ export class ReservationRepository implements ReservationRepositoryPort {
     }
 
     if (delta > 0) {
-      const remainingAtp = await this.applyGuardedAdd(manager, claim.inventoryItemId, delta);
+      const remainingAtp = await this.applyGuardedAdd(manager, claim, row.id, delta);
       const updated = await this.setQuantity(manager, row.id, claim.quantity);
       return {
         reservation: this.toDomain(updated),
@@ -372,7 +378,29 @@ export class ReservationRepository implements ReservationRepositoryPort {
   }
 
   /**
-   * § 6I's guarded reserve, verbatim.
+   * § 6I's guarded reserve, with its subtrahend scoped by `atpEffect`.
+   *
+   * § 6I wrote the predicate against the raw counter
+   * (`availableQuantity - olReservedQuantity >= $q`). That is wrong once a
+   * second stamp exists: `olReservedQuantity` sums `published` and `diagnostic`
+   * holds alike, so on the DEFAULT `omp_fulfilled` topology — where every hold
+   * is `diagnostic`, nothing OL publishes moves, and no shipped closer runs —
+   * the counter climbs for the life of the install until this guard starts
+   * refusing perfectly ordinary orders on stock that is plainly there. A
+   * `diagnostic` hold must never refuse a reservation; the subtrahend is
+   * therefore `publishedReservedSum`, not the counter.
+   *
+   * The counter is still what MOVES: it is the denormalised total of both
+   * stamps and every stamp's units belong in it. Only the *guard* narrows.
+   *
+   * The claim's OWN row is excluded from the sum. `claimOne` writes the ledger
+   * row before it moves the counter, so this claim's units are already inside
+   * the sum by the time the guard runs — without the exclusion the guard would
+   * test the claim against itself. Excluding it also makes the predicate the
+   * exact `atpEffect`-scoping of the pre-existing one: the old
+   * `available - counter_total >= delta` is algebraically
+   * `available - others_all >= quantity`, so testing the DESIRED quantity
+   * against the OTHER holds changes the scope and nothing else.
    *
    * Zero rows means the position is missing, stale, or short of units — three
    * different operator situations, discriminated by a follow-up read that runs
@@ -383,18 +411,30 @@ export class ReservationRepository implements ReservationRepositoryPort {
    */
   private async applyGuardedAdd(
     manager: EntityManager,
-    inventoryItemId: string,
+    claim: ReservationClaimInput,
+    reservationId: string,
     delta: number,
   ): Promise<number> {
+    const othersSum = publishedReservedSum({
+      positionAlias: 'i',
+      excludeReservationIdParam: '$2',
+    });
+    // What THIS claim will contribute to the published sum once it is granted —
+    // zero for a `diagnostic` hold, which is the whole point of the stamp. Only
+    // the REPORTED figure uses it; the guard above deliberately keeps asking for
+    // headroom the size of the claim whatever its stamp, so this change narrows
+    // the subtrahend and nothing else.
+    const publishedClaim = claim.atpEffect === 'published' ? claim.quantity : 0;
+
     const rows = await this.raw<{ remainingAtp: number | string }>(
       manager,
-      `UPDATE "inventory_items"
-          SET "olReservedQuantity" = "olReservedQuantity" + $2
-        WHERE "id" = $1
-          AND "isStale" = false
-          AND "availableQuantity" - "olReservedQuantity" >= $2
-    RETURNING "availableQuantity" - "olReservedQuantity" AS "remainingAtp"`,
-      [inventoryItemId, delta],
+      `UPDATE "inventory_items" AS "i"
+          SET "olReservedQuantity" = "i"."olReservedQuantity" + $3
+        WHERE "i"."id" = $1
+          AND "i"."isStale" = false
+          AND "i"."availableQuantity" - ${othersSum} >= $4
+    RETURNING "i"."availableQuantity" - ${othersSum} - $5 AS "remainingAtp"`,
+      [claim.inventoryItemId, reservationId, delta, claim.quantity, publishedClaim],
     );
 
     const claimed = rows[0];
@@ -404,18 +444,22 @@ export class ReservationRepository implements ReservationRepositoryPort {
 
     const probe = await this.raw<{ isStale: boolean; atp: number | string }>(
       manager,
-      `SELECT "isStale", "availableQuantity" - "olReservedQuantity" AS "atp"
-         FROM "inventory_items" WHERE "id" = $1`,
-      [inventoryItemId],
+      `SELECT "i"."isStale", "i"."availableQuantity" - ${othersSum} AS "atp"
+         FROM "inventory_items" AS "i" WHERE "i"."id" = $1`,
+      [claim.inventoryItemId, reservationId],
     );
     const position = probe[0];
     if (!position) {
-      throw new ReservationPositionUnavailableError(inventoryItemId, 'missing');
+      throw new ReservationPositionUnavailableError(claim.inventoryItemId, 'missing');
     }
     if (position.isStale) {
-      throw new ReservationPositionUnavailableError(inventoryItemId, 'stale');
+      throw new ReservationPositionUnavailableError(claim.inventoryItemId, 'stale');
     }
-    throw new InsufficientAvailabilityError(inventoryItemId, delta, Number(position.atp));
+    throw new InsufficientAvailabilityError(
+      claim.inventoryItemId,
+      claim.quantity,
+      Number(position.atp),
+    );
   }
 
   private async setQuantity(

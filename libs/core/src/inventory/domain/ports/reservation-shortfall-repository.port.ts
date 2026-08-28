@@ -28,11 +28,14 @@ export interface ReservationShortfallRepositoryPort {
    * leave this set from arbitrary positions, and under a recency ordering the
    * scan offset would over-advance systematically rather than randomly.
    *
-   * The predicate `olReservedQuantity > availableQuantity` is a cross-column
-   * comparison, so no index serves it directly; the partial index
-   * `IDX_inventory_items_ol_reserved` narrows the scan to positions carrying
-   * any hold at all, which bounds the cost by the size of the LEDGER rather
-   * than of the catalogue.
+   * "Promised" means holds stamped `published`, never
+   * `inventory_items.olReservedQuantity` (#2628 review) — the counter sums both
+   * stamps, and a `diagnostic` hold promises nothing, so a counter-based
+   * predicate names a real order for a risk that does not exist. The comparison
+   * is a column against a correlated sub-select, so no index serves it
+   * directly; the partial index `IDX_inventory_items_ol_reserved` narrows the
+   * scan to positions carrying any hold at all, which bounds the cost by the
+   * size of the LEDGER rather than of the catalogue.
    */
   listShortfallPositions(limit: number, offset: number): Promise<readonly ShortfallPositionRow[]>;
 
@@ -54,7 +57,30 @@ export interface ReservationShortfallRepositoryPort {
   ): Promise<readonly ShortfallPositionRow[]>;
 
   /**
-   * Every `held` reservation on the given positions, youngest first.
+   * Which of the given positions the master has STALED.
+   *
+   * The close pass's disambiguator (#2628 review). Every shortfall read filters
+   * `isStale = false`, so a staled position silently leaves the short set — and
+   * absence alone would be read as a recovery, asserting that stock came back
+   * for a product that no longer exists. This read is what lets the close pass
+   * tell the two apart, and it is the only place `isStale` is consulted
+   * positively.
+   *
+   * Returns ids only: the pass needs membership, not quantities, and a staled
+   * position's numbers are not a figure worth reporting.
+   */
+  listStalePositionIds(
+    inventoryItemIds: readonly string[]
+  ): Promise<readonly string[]>;
+
+  /**
+   * Every `held` reservation stamped `published` on the given positions,
+   * youngest first.
+   *
+   * Scoped to `published` for the same reason the position predicate is: a
+   * `diagnostic` hold contributes nothing to the shortfall, so letting it
+   * absorb a share of the attribution would both name an order that promised
+   * nothing and hide the published order that did.
    *
    * Batched across the whole page on purpose — one query per position would be
    * an N+1 over the hottest table in the system.

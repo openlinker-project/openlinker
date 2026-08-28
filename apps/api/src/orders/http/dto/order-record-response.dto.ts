@@ -139,9 +139,12 @@ export class OrderRecordResponseDto {
     description:
       'Still-open reservation shortfall episodes for this order (#2349) — the ' +
       'master dropped below what OpenLinker already promised, and this order ' +
-      'is one the shortfall lands on. Nothing was silently reduced. Present ' +
-      'only on the DETAIL read; the list read does not carry it, so a page of ' +
-      'orders costs no per-row lookup.',
+      'is one the shortfall lands on. Nothing was silently reduced. Carried by ' +
+      'BOTH the detail read and the list read (#2350) — the list read batches ' +
+      'one projection across the whole page rather than an N+1 of per-row ' +
+      'lookups, so it costs no per-row cost either. Absent means nothing was ' +
+      'reported for this order, never a positive assertion that it is fine: ' +
+      'the projection is best-effort and degrades to absent on failure.',
   })
   reservationShortfalls?: OrderReservationShortfallDto[];
 

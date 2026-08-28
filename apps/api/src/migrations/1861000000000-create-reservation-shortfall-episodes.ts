@@ -9,13 +9,15 @@
  *
  * - **`UQ_reservation_shortfall_open` is PARTIAL on `"closedAt" IS NULL`.** It
  *   is not merely a duplicate guard: it is what makes an episode's id STABLE.
- *   While the condition stands, every re-detection conflicts and writes
- *   nothing, so an edge-triggered automation (`W2-23`'s T8) has a fixed key to
- *   build an idempotency key from. A closed row leaves the index, so a
- *   recurrence inserts cleanly under a NEW id.
+ *   While the condition stands, every re-detection conflicts, and the conflict
+ *   arm refreshes the quantities while leaving the ID alone (#2628 review) — so
+ *   an edge-triggered automation (`W2-23`'s T8) has a fixed key to build an
+ *   idempotency key from, and the row never asserts a stale figure. A closed
+ *   row leaves the index, so a recurrence inserts cleanly under a NEW id.
  * - **`IDX_inventory_items_ol_reserved` is added to `inventory_items`.** The
- *   reconciler's predicate `"olReservedQuantity" > "availableQuantity"` is a
- *   cross-column comparison that NO index can serve directly, so without this
+ *   reconciler compares `"availableQuantity"` against a correlated sum over
+ *   `reservations` (#2628 review — only holds stamped `published` count), which
+ *   NO index on this table can serve directly, so without this
  *   the pass sequentially scans the table every published quantity derives
  *   from, on every tick. Narrowing to positions carrying any hold bounds that
  *   cost by the size of the ledger rather than of the catalogue.

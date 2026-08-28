@@ -2,8 +2,11 @@
  * Insufficient Availability Error (#2343, ANALYSIS-1032 § 6I)
  *
  * The guarded reservation claim matched no row because the position exists and
- * is live, but `availableQuantity - olReservedQuantity` is below what was asked
- * for. This is the ordinary, expected refusal of an oversell — not a defect.
+ * is live, but its PUBLISHED available-to-promise — `availableQuantity` less
+ * the `held` holds stamped `published` (#2628 review; never the raw
+ * `olReservedQuantity` counter, which sums `diagnostic` holds too) — is below
+ * what was asked for. This is the ordinary, expected refusal of an oversell —
+ * not a defect.
  *
  * Deliberately distinct from {@link ReservationPositionUnavailableError}: a
  * position that cannot be reserved against AT ALL is a different operator
