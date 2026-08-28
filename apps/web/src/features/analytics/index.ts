@@ -16,9 +16,14 @@ export type { NeedsAttentionSummary } from './api/needs-attention.types';
 export { useSalesAnalyticsQuery } from './hooks/use-sales-analytics-query';
 export { AnalyticsKpiStrip } from './components/analytics-kpi-strip';
 export { ChannelSalesTable } from './components/channel-sales-table';
+export { AnalyticsCurrencyPicker } from './components/analytics-currency-picker';
+export { AnalyticsConvertNote } from './components/analytics-convert-note';
+export { DISPLAY_CURRENCY_RATE_BASIS_VALUES } from './api/sales-analytics.types';
 export type {
   ChannelSalesAnalytics,
   DailyTrendPoint,
+  DisplayCurrencyConversion,
+  DisplayCurrencyRateBasis,
   SalesAnalyticsFilters,
   SalesAnalyticsHeadline,
   SalesAndChannelAnalytics,
