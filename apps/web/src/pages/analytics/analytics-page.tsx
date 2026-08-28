@@ -12,7 +12,7 @@
  *
  * @module apps/web/src/pages/analytics
  */
-import { useEffect, useMemo, useRef, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   AnalyticsConvertNote,
@@ -21,10 +21,12 @@ import {
   AnalyticsDegradationBanner,
   AnalyticsKpiStrip,
   AnalyticsNeedsAttention,
+  AnalyticsSettingsDialog,
   AnalyticsTrustHeader,
   ChannelSalesTable,
   ProductSalesTable,
   computePresetRange,
+  toExclusiveEndInstant,
   useAnalyticsSettingsQuery,
   useAnalyticsTrustQuery,
   type DisplayCurrencyRateBasis,
@@ -75,11 +77,14 @@ export function AnalyticsPage(): ReactElement {
   const rateBasis: DisplayCurrencyRateBasis =
     searchParams.get('rateBasis') === 'order-date' ? 'order-date' : 'current-rate';
 
-  function handleDisplayCurrencyChange(nextDisplayCurrency: string | null): void {
+  function handleDisplayCurrencyChange(
+    nextDisplayCurrency: string | null,
+    nextRateBasis: DisplayCurrencyRateBasis = rateBasis
+  ): void {
     const next = new URLSearchParams(searchParams);
     if (nextDisplayCurrency) {
       next.set('displayCurrency', nextDisplayCurrency);
-      next.set('rateBasis', rateBasis);
+      next.set('rateBasis', nextRateBasis);
     } else {
       next.delete('displayCurrency');
       next.delete('rateBasis');
@@ -97,11 +102,25 @@ export function AnalyticsPage(): ReactElement {
     [from, to, displayCurrency, rateBasis]
   );
 
+  // Same range as `salesFilters`, converted to the ISO-instant shape
+  // `GET /analytics/coverage` expects (#2473).
+  const coverageFilters = useMemo(
+    () => ({ from: new Date(`${from}T00:00:00.000Z`).toISOString(), to: toExclusiveEndInstant(to) }),
+    [from, to]
+  );
+
+  const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
+
   return (
     <PageLayout
       eyebrow="Operations"
       title="Analytics"
       description="Sales across connected channels, with clear data coverage."
+      actions={
+        <Button type="button" tone="secondary" onClick={() => setSettingsDialogOpen(true)}>
+          Analytics settings
+        </Button>
+      }
     >
       <AnalyticsDateRangeToolbar
         from={from}
@@ -169,6 +188,16 @@ export function AnalyticsPage(): ReactElement {
           <AnalyticsTrustHeader connections={trustQuery.data.connections} />
         </>
       ) : null}
+
+      <AnalyticsSettingsDialog
+        open={settingsDialogOpen}
+        onOpenChange={setSettingsDialogOpen}
+        displayCurrency={displayCurrency}
+        rateBasis={rateBasis}
+        reportingCurrency={settingsQuery.data?.displayCurrency ?? null}
+        onApplyView={handleDisplayCurrencyChange}
+        coverageFilters={coverageFilters}
+      />
     </PageLayout>
   );
 }

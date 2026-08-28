@@ -14,6 +14,7 @@ export type { AnalyticsTrustSnapshot, ConnectionIngestionTrust } from './api/ana
 export type { NeedsAttentionSummary } from './api/needs-attention.types';
 
 export { useSalesAnalyticsQuery } from './hooks/use-sales-analytics-query';
+export { toExclusiveEndInstant } from './api/sales-analytics.api';
 export { AnalyticsKpiStrip } from './components/analytics-kpi-strip';
 export { ChannelSalesTable } from './components/channel-sales-table';
 export { AnalyticsCurrencyPicker } from './components/analytics-currency-picker';
@@ -38,6 +39,12 @@ export type {
   RateBasis,
   UpdateAnalyticsSettingsInput,
 } from './api/analytics-settings.types';
+
+export { useAnalyticsCoverageQuery } from './hooks/use-analytics-coverage-query';
+export { useRecalculateCurrencyMutation } from './hooks/use-recalculate-currency-mutation';
+export { AnalyticsSettingsDialog } from './components/analytics-settings-dialog';
+export type { AnalyticsCoverage, AnalyticsCoverageFilters, CoverageCategoryRow } from './api/analytics-coverage.types';
+export type { AnalyticsRemediationRun, RecalculateCurrencyInput } from './api/analytics-remediation.types';
 
 export { useTopProductsQuery } from './hooks/use-top-products-query';
 export { ProductSalesTable } from './components/product-sales-table';
