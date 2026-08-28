@@ -1,0 +1,173 @@
+import { screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
+import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';
+import { AnalyticsDataCoveragePanel } from './analytics-data-coverage-panel';
+import type { AnalyticsCoverage } from '../api/analytics-coverage.types';
+
+const FILTERS = { from: '2026-08-01T00:00:00.000Z', to: '2026-08-27T00:00:00.000Z' };
+
+function coverage(overrides: Partial<AnalyticsCoverage> = {}): AnalyticsCoverage {
+  return {
+    categories: [
+      { category: 'currency', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+      { category: 'tax-a', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+      { category: 'tax-b', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+      { category: 'tax-c', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+      { category: 'product-matching', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+    ],
+    ...overrides,
+  };
+}
+
+describe('AnalyticsDataCoveragePanel (#2474)', () => {
+  it('should show the loading state before the coverage aggregate resolves', () => {
+    const apiClient = createMockApiClient({
+      analytics: { getCoverage: vi.fn(() => new Promise<AnalyticsCoverage>(() => {})) },
+    });
+
+    renderWithProviders(<AnalyticsDataCoveragePanel filters={FILTERS} onOpenSettings={() => {}} />, { apiClient });
+
+    expect(screen.getByText('Checking data coverage')).toBeInTheDocument();
+  });
+
+  it('should render the all-clear line when every category is empty', async () => {
+    const apiClient = createMockApiClient({
+      analytics: { getCoverage: vi.fn().mockResolvedValue(coverage()) },
+    });
+
+    renderWithProviders(<AnalyticsDataCoveragePanel filters={FILTERS} onOpenSettings={() => {}} />, { apiClient });
+
+    expect(await screen.findByText('Nothing to do')).toBeInTheDocument();
+    expect(screen.getByText('5 checks · currency, tax rates, product matching')).toBeInTheDocument();
+  });
+
+  it('should render one human-language row per open category, never a raw enum value', async () => {
+    const apiClient = createMockApiClient({
+      analytics: {
+        getCoverage: vi.fn().mockResolvedValue(
+          coverage({
+            categories: [
+              { category: 'currency', status: 'open', affectedCount: 23, sampleOrderIds: [] },
+              { category: 'tax-a', status: 'open', affectedCount: 18, sampleOrderIds: [] },
+              { category: 'tax-b', status: 'open', affectedCount: 7, sampleOrderIds: [] },
+              { category: 'tax-c', status: 'open', affectedCount: 2, sampleOrderIds: [] },
+              { category: 'product-matching', status: 'open', affectedCount: 4, sampleOrderIds: [] },
+            ],
+          })
+        ),
+      },
+    });
+
+    renderWithProviders(<AnalyticsDataCoveragePanel filters={FILTERS} onOpenSettings={() => {}} />, { apiClient });
+
+    expect(await screen.findByText('23 orders counted in an outdated currency')).toBeInTheDocument();
+    expect(screen.getByText('18 orders have an unconfirmed tax rate')).toBeInTheDocument();
+    expect(screen.getByText('7 orders have no tax rate at all')).toBeInTheDocument();
+    expect(screen.getByText('2 orders — rate not yet resolved')).toBeInTheDocument();
+    expect(screen.getByText('4 orders with a product-matching error')).toBeInTheDocument();
+
+    // Regression guard (mini-epic AC): no raw backend enum value ever reaches the DOM.
+    expect(screen.queryByText(/pre-rollout/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/awaiting_mapping/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/source_deleted/i)).not.toBeInTheDocument();
+    // Regression guard: country-agnostic wording only.
+    expect(screen.queryByText(/VAT/)).not.toBeInTheDocument();
+  });
+
+  it('should open the currency detail modal with real pagination, not a "View more" link', async () => {
+    const user = userEvent.setup();
+    const apiClient = createMockApiClient({
+      analytics: {
+        getCoverage: vi.fn().mockResolvedValue(
+          coverage({
+            categories: [
+              { category: 'currency', status: 'open', affectedCount: 23, sampleOrderIds: [] },
+              { category: 'tax-a', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+              { category: 'tax-b', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+              { category: 'tax-c', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+              { category: 'product-matching', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+            ],
+          })
+        ),
+        getCurrencyMismatchOrders: vi.fn().mockResolvedValue({
+          items: [
+            {
+              internalOrderId: 'ol_order_abc12345',
+              sourceConnectionId: 'conn-1',
+              nativeCurrency: 'EUR',
+              stampedCurrency: 'EUR',
+              stampedAt: '2026-08-18T00:00:00.000Z',
+            },
+          ],
+          total: 23,
+        }),
+      },
+    });
+
+    renderWithProviders(<AnalyticsDataCoveragePanel filters={FILTERS} onOpenSettings={() => {}} />, { apiClient });
+
+    await user.click(await screen.findByText('23 orders counted in an outdated currency'));
+
+    expect(await screen.findByText('Showing 1–10 of 23')).toBeInTheDocument();
+    expect(screen.queryByText(/view more/i)).not.toBeInTheDocument();
+  });
+
+  it('should transition the currency row through a "Fixed — closing…" sub-state driven by the real run status, then show the dismissible coverage-alert', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+
+    const apiClient = createMockApiClient({
+      analytics: {
+        getCoverage: vi.fn().mockResolvedValue(
+          coverage({
+            categories: [
+              { category: 'currency', status: 'open', affectedCount: 5, sampleOrderIds: [] },
+              { category: 'tax-a', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+              { category: 'tax-b', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+              { category: 'tax-c', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+              { category: 'product-matching', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+            ],
+          })
+        ),
+        getCurrencyMismatchOrders: vi.fn().mockResolvedValue({ items: [], total: 5 }),
+        recalculateCurrency: vi.fn().mockResolvedValue({
+          id: 'ol_remrun_1',
+          category: 'currency',
+          status: 'in-progress',
+          detail: null,
+          affectedCount: 5,
+          triggeredByUserId: 'user-1',
+          createdAt: '2026-08-26T09:00:00.000Z',
+          updatedAt: '2026-08-26T09:00:00.000Z',
+        }),
+        getCurrencyRemediationStatus: vi.fn().mockResolvedValue({
+          id: 'ol_remrun_1',
+          category: 'currency',
+          status: 'resolved',
+          detail: null,
+          affectedCount: 5,
+          triggeredByUserId: 'user-1',
+          createdAt: '2026-08-26T09:00:00.000Z',
+          updatedAt: '2026-08-26T09:00:05.000Z',
+        }),
+      },
+    });
+
+    renderWithProviders(<AnalyticsDataCoveragePanel filters={FILTERS} onOpenSettings={() => {}} />, { apiClient });
+
+    await user.click(await screen.findByText('5 orders counted in an outdated currency'));
+    await user.click(await screen.findByText('Recalculate all 5 now'));
+
+    expect(await screen.findByText('Recalculated and saved — closing…')).toBeInTheDocument();
+
+    await waitFor(() => expect(screen.getByText('5 orders recalculated')).toBeInTheDocument(), {
+      timeout: 5000,
+    });
+
+    await user.click(screen.getByLabelText('Dismiss'));
+    expect(screen.queryByText('5 orders recalculated')).not.toBeInTheDocument();
+
+    vi.useRealTimers();
+  });
+});
