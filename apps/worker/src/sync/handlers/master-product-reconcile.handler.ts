@@ -58,8 +58,14 @@ import {
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
   CORE_ENTITY_TYPE,
 } from '@openlinker/core/identifier-mapping';
+import {
+  OPERATIONAL_SETTING_BOUNDS,
+  OPERATIONAL_SETTINGS_SERVICE_TOKEN,
+  type IOperationalSettingsService,
+} from '@openlinker/core/operational-settings';
 import { Logger } from '@openlinker/shared/logging';
 import {
+  SWEEP_BUDGET_DEFAULT,
   formatSweepCursor,
   parseSweepCursor,
   resolveSweepBudget,
@@ -87,11 +93,20 @@ export class MasterProductReconcileHandler implements SyncJobHandler {
     private readonly cursors: ISyncCursorsService,
     @Inject(SYNC_LOCK_TOKEN)
     private readonly syncLock: SyncLockPort,
+    @Inject(OPERATIONAL_SETTINGS_SERVICE_TOKEN)
+    private readonly operationalSettings: IOperationalSettingsService,
     private readonly configService: ConfigService
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
-    const budget = resolveSweepBudget(this.getPayload(job).pageLimit);
+    // Per tick, never cached (#2651). This is the budget #2644 measured at a
+    // 41.7-day audit cycle on 100k products, and it is the one an operator is
+    // most likely to want to raise - so it must not need a restart.
+    const settings = await this.operationalSettings.resolve();
+    const budget = resolveSweepBudget(
+      this.getPayload(job).pageLimit ?? settings.deletionAuditBudget.value,
+      { default: SWEEP_BUDGET_DEFAULT, max: OPERATIONAL_SETTING_BOUNDS.deletionAuditBudget.max }
+    );
     const lockKey = sweepLockKey('product-reconcile', job.connectionId);
     const lockTtlMs = resolveSweepLockTtlMs(
       this.configService.get<string>('OL_MASTER_SWEEP_LOCK_TTL_MS')

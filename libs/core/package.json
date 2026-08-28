@@ -24,6 +24,11 @@
       "require": "./dist/currency/index.js",
       "default": "./dist/currency/index.js"
     },
+    "./operational-settings": {
+      "types": "./dist/operational-settings/index.d.ts",
+      "require": "./dist/operational-settings/index.js",
+      "default": "./dist/operational-settings/index.js"
+    },
     "./integrations": {
       "types": "./dist/integrations/index.d.ts",
       "require": "./dist/integrations/index.js",

@@ -33,6 +33,11 @@ import {
   SCHEDULER_TASK_REGISTRY_TOKEN,
 } from '@openlinker/core/sync';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import {
+  OPERATIONAL_SETTINGS_SERVICE_TOKEN,
+  type IOperationalSettingsService,
+  type OperationalSettingsView,
+} from '@openlinker/core/operational-settings';
 import type { OfferManagerPort, TaxonomyOwner } from '@openlinker/core/listings';
 import { resolveTaxonomyOwner } from '@openlinker/core/listings';
 import { Logger } from '@openlinker/shared/logging';
@@ -102,6 +107,21 @@ interface CoreCapabilityTaskDescriptor {
   readonly cronEnvVar: string;
   /** Cron expression used when `cronEnvVar` is unset. */
   readonly defaultCron: string;
+  /**
+   * Reads this task's cadence off the operator-settable operational settings
+   * (#2651), taking precedence over `cronEnvVar` / `defaultCron`.
+   *
+   * Only `master-product-reconcile` declares one: the deletion audit is the
+   * deletion authority (#2222) and #2644 measured its cycle at 41.7 days on a
+   * 100k catalogue, so its cadence is the one an operator has to be able to
+   * change. Every other task keeps the env-var route until someone shows a
+   * reason to widen the surface.
+   *
+   * The settings service owns the whole `row -> env -> default` ladder for this
+   * value, so an install that sets no row still resolves `cronEnvVar` exactly
+   * as before.
+   */
+  readonly cadenceFromSettings?: (settings: OperationalSettingsView) => string;
   /**
    * Builds the idempotency key for a (connection, minute-timestamp) pair.
    * Preserves each task's existing key namespace verbatim.
@@ -188,6 +208,7 @@ const CORE_CAPABILITY_TASKS: readonly CoreCapabilityTaskDescriptor[] = [
     enabledEnvVar: 'OL_MASTER_PRODUCT_RECONCILE_ENABLED',
     cronEnvVar: 'OL_MASTER_PRODUCT_RECONCILE_CRON',
     defaultCron: '0 * * * *',
+    cadenceFromSettings: (settings) => settings.deletionAuditCadence.value,
     idempotencyKey: (connectionId, timestamp) =>
       `master:${connectionId}:product:reconcile:${timestamp}`,
   },
@@ -309,6 +330,18 @@ export class SchedulerService implements OnModuleDestroy {
   private readonly logger = new Logger(SchedulerService.name);
   private tasks: SchedulerTaskConfig[] = [];
   private started = false;
+  /**
+   * The operator-settable cadences, snapshotted by `refreshOperationalSettings()`.
+   *
+   * `start()` stays SYNCHRONOUS and the read is a separate async step the
+   * lease coordinator awaits first. Making `start()` async instead would push
+   * an `await` through every caller and every spec for one value, and the
+   * ordering is the same either way. `null` means the snapshot was never taken
+   * (a caller that skipped the refresh, or a read that failed), in which case
+   * every task falls back to its `cronEnvVar` / `defaultCron` - the exact
+   * pre-#2651 behaviour.
+   */
+  private operationalSettings: OperationalSettingsView | null = null;
 
   constructor(
     @Inject(CONNECTION_PORT_TOKEN)
@@ -320,8 +353,39 @@ export class SchedulerService implements OnModuleDestroy {
     private readonly configService: ConfigService,
     private readonly schedulerRegistry: SchedulerRegistry,
     @Inject(SCHEDULER_TASK_REGISTRY_TOKEN)
-    private readonly schedulerTaskRegistry: SchedulerTaskRegistryService
+    private readonly schedulerTaskRegistry: SchedulerTaskRegistryService,
+    @Inject(OPERATIONAL_SETTINGS_SERVICE_TOKEN)
+    private readonly operationalSettingsService: IOperationalSettingsService
   ) {}
+
+  /**
+   * Snapshot the operator-settable cadences, to be called immediately before
+   * `start()`.
+   *
+   * NEVER THROWS. A database hiccup while acquiring the scheduler lease must
+   * not stop the crons registering - the fleet would then have no scheduler at
+   * all, which is strictly worse than one running on the previous cadence.
+   * A failure leaves the snapshot untouched and every task resolves its
+   * `cronEnvVar` / `defaultCron` as it did before #2651.
+   *
+   * The consequence, stated rather than papered over: a cadence change applies
+   * at the next scheduler START - a lease hand-over or a worker restart - not
+   * at the next tick. A cron job's expression is fixed when the job is
+   * constructed, so honouring a mid-flight change would mean tearing down and
+   * rebuilding the registry, and the settings response says
+   * `cadenceAppliesAt: 'next-scheduler-start'` for exactly this reason. The
+   * BUDGETS, which are what #2651's acceptance criterion is about, are read
+   * per tick by the handlers themselves and need no restart.
+   */
+  async refreshOperationalSettings(): Promise<void> {
+    try {
+      this.operationalSettings = await this.operationalSettingsService.resolve();
+    } catch (error) {
+      this.logger.warn(
+        `Could not read operational settings — scheduler cadences fall back to env vars: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
 
   /**
    * Register + schedule every task. Idempotent — the lease coordinator may
@@ -606,10 +670,11 @@ export class SchedulerService implements OnModuleDestroy {
       return;
     }
 
-    const cronExpression = this.configService.get<string>(
-      descriptor.cronEnvVar,
-      descriptor.defaultCron
-    );
+    const cronExpression =
+      (this.operationalSettings !== null && descriptor.cadenceFromSettings
+        ? descriptor.cadenceFromSettings(this.operationalSettings)
+        : undefined) ??
+      this.configService.get<string>(descriptor.cronEnvVar, descriptor.defaultCron);
 
     this.tasks.push({
       taskId: descriptor.taskId,

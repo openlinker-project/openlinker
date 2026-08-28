@@ -49,6 +49,7 @@ import { AnalyticsApiModule } from './analytics/analytics.module';
 import { AnalyticsTrustApiModule } from './analytics-trust/analytics-trust.module';
 import { CatalogTrustApiModule } from './catalog-trust/catalog-trust.module';
 import { CurrencyApiModule } from './currency/currency.module';
+import { OperationalSettingsApiModule } from './operational-settings/operational-settings.module';
 import { RequestPriorityModule } from './http/request-priority.module';
 
 @Module({
@@ -96,6 +97,7 @@ import { RequestPriorityModule } from './http/request-priority.module';
     SystemModule, // Server-driven runtime config (demoMode) via GET /system/config (#1127)
     McpModule, // MCP Resource-Server auth (PATs) + Streamable-HTTP ingress (#1486, ADR-034)
     CurrencyApiModule, // Reporting-currency settings HTTP API (#2126, ADR-040)
+    OperationalSettingsApiModule, // Operator-settable sweep budgets + deletion-audit cadence (#2651)
   ],
   controllers: [AppController],
   providers: [AppService],
