@@ -123,8 +123,10 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
       useExisting: OrderDestinationRetryService,
     },
     {
-      // #2341 — beside the retry service because it takes the same three seams
-      // (record repository, identifier mapping, job enqueue).
+      // #2341 — beside the retry service because it takes the same seams
+      // (record repository, identifier mapping, job enqueue), plus the record
+      // SERVICE since #2588 review I-2, which needs the clock-stamping
+      // `updateSyncStatus` to strand-mark withheld destinations.
       provide: ORDER_PROVISIONING_RESUME_SERVICE_TOKEN,
       useExisting: OrderProvisioningResumeService,
     },

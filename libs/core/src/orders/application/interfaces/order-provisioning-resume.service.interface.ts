@@ -39,12 +39,22 @@
  * 4. **`skipped` is not `failed`.** An order with no source-external-id mapping
  *    has no source-side job to enqueue at all; reporting that as a failure would
  *    put a red state on a healthy order.
+ * 5. **A `failed` resume leaves the order in the state the documented remedy
+ *    actually recovers (#2588 review I-2).** Reporting the failure in a one-shot
+ *    response is not enough on its own: the withheld destination rows are
+ *    `pending`, `OrderDestinationRetryService` refuses anything that is not
+ *    `failed`, and `pending` renders identically to healthy in-flight — so an
+ *    operator who missed the toast had an order that read normal and never
+ *    shipped, with no reachable remedy. The failure arm therefore also marks
+ *    every still-withheld destination `failed`, which both unlocks the Retry
+ *    action and makes the strand visible. That write is best-effort and never
+ *    converts a modelled `failed` into a throw (property 2).
  *
- * The outcome is RETURNED rather than swallowed because
- * `marketplace.order.sync` has no cron backstop for one specific order — a lost
- * enqueue is an order that stays un-provisioned. Returning it is what lets the
- * operator surface (#2342) point at the existing destination Retry action
- * instead of watching nothing happen.
+ * The outcome is still RETURNED as well, because `marketplace.order.sync` has no
+ * cron backstop for one specific order — a lost enqueue is an order that stays
+ * un-provisioned until someone retries it. Returning it is what lets the
+ * operator surface (#2342) point at the destination Retry action in the same
+ * breath as the release, rather than leaving it to be discovered.
  *
  * @module libs/core/src/orders/application/interfaces
  * @see {@link OrderProvisioningResumeService} for the implementation

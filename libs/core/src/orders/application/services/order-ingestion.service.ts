@@ -62,6 +62,7 @@ import {
 } from '@openlinker/core/products';
 import type { Order } from '../../domain/types/order.types';
 import type { OrderFeedEventType } from '../../domain/types/order-feed.types';
+import { withheldOnHoldError } from '../../domain/types/order-hold.types';
 import type { OrderRecord } from '../../domain/entities/order-record.entity';
 import type { SalesDocumentBlockOutcome } from '@openlinker/core/sales-documents';
 import type { OrderRecordStatus } from '../../domain/types/order-record.types';
@@ -491,28 +492,66 @@ export class OrderIngestionService implements IOrderIngestionService {
         } else if (result.status === 'skipped_held') {
           // #2339 — the order is on hold, so provisioning was withheld.
           //
-          // The row is written as `pending`, which is the literal truth: this
-          // destination is still owed an order, and the hold is why it has not
-          // been created yet. Every alternative states something false.
-          // `skipped_cancelled` claims the order is over. `failed` claims
-          // something broke and puts the row in the operator-retry affordance
-          // for a condition retrying cannot change. Inventing a persisted
-          // `skipped_held` makes the row terminal and defeats the guarantee that
-          // releasing un-blocks the next run. And writing NOTHING is the worst
-          // of the four on a FIRST ingestion, because `syncStatus` starts empty
-          // — the order would render "No destinations" on `/orders`, denying
-          // that the destinations exist at all.
+          // **On a FIRST ingestion** the row is written as `pending`, which is
+          // the literal truth: this destination is still owed an order, and the
+          // hold is why it has not been created yet. Every alternative states
+          // something false. `skipped_cancelled` claims the order is over.
+          // `failed` claims something broke and puts the row in the
+          // operator-retry affordance for a condition retrying cannot change.
+          // Inventing a persisted `skipped_held` makes the row terminal and
+          // defeats the guarantee that releasing un-blocks the next run. And
+          // writing NOTHING is the worst of the four here, because `syncStatus`
+          // starts empty — the order would render "No destinations" on
+          // `/orders`, denying that the destinations exist at all.
           //
+          // **On a RE-ingestion of a destination already `synced`, none of that
+          // reasoning holds and the write is refused (#2588 review I-1).** A
+          // hold cannot withhold what has already shipped, so `pending` would
+          // be a false statement about that destination — and the write is
+          // destructive, not merely wrong: `OrderRecordRepository.updateSyncStatus`
+          // implements a per-destination upsert as DROP-then-append, so the
+          // withheld row REPLACES the synced one and takes its `externalOrderId`
+          // and `externalOrderNumber` with it. The routine poll re-drives
+          // ingestion on a held order every few minutes, so the shop's own order
+          // number would vanish from `/orders` for the whole life of the hold —
+          // precisely when the operator needs it to act in the shop.
+          //
+          // `existing` is the pre-persist read from the top of this method;
+          // `persistOrder` leaves `syncStatus` alone (#2140, sole writer
+          // `updateSyncStatus`), so it is current for this purpose. A null
+          // `existing` is a first ingestion.
+          //
+          // Only `synced` is tested, and that is a fact about gate ORDER rather
+          // than a narrower rule: `OrderSyncService` evaluates its cancellation
+          // predicate BEFORE the hold predicate and returns `skipped_cancelled`
+          // for every destination when it fires, so a `skipped_held` result can
+          // never coexist with a `skipped_cancelled` row — the other terminal
+          // status a `pending` write would falsely reopen. Reorder those two
+          // gates and this test must widen with them.
+          const alreadyProvisioned = existing?.syncStatus?.some(
+            (row) =>
+              row.destinationConnectionId === result.destinationConnectionId &&
+              row.status === 'synced'
+          );
+          if (alreadyProvisioned) {
+            this.logger.debug(
+              `Order ${order.id} is on hold (${result.holdReason}) but destination ` +
+                `${result.destinationConnectionId} is already provisioned; leaving its ` +
+                `synced row and destination order number intact`
+            );
+            return Promise.resolve();
+          }
           // The reason rides in `error` (no new column — the #2284 precedent),
           // so the timeline narrates the withholding even before #2340's
-          // projection column and #2342's badge land.
+          // projection column and #2342's badge land. The string is built by the
+          // shared rule because the resume path matches on it (#2588 I-2).
           return this.orderRecordService.updateSyncStatus(
             order.id,
             result.destinationConnectionId,
             {
               destinationConnectionId: result.destinationConnectionId,
               status: 'pending',
-              error: `Withheld: order is on hold (${result.holdReason})`,
+              error: withheldOnHoldError(result.holdReason),
             }
           );
         } else if (result.status === 'skipped_cancelled') {

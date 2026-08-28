@@ -85,12 +85,15 @@ export interface OrderHoldTransition {
 }
 
 /**
- * **Known gap this seam does not close, stated so #2341 does not inherit it
- * silently:** releasing a hold makes the next provisioning run succeed, but
- * nothing here ENQUEUES that run. The gates are re-entrant, not self-driving,
- * and for a cursor-based source journal the original order event will not be
- * re-delivered. #2341's release route sits beside the job-enqueue seam and
- * should enqueue `marketplace.order.sync` for the order it just freed.
+ * **This seam releases; it does not RESUME.** Releasing a hold makes the next
+ * provisioning run succeed, but nothing here enqueues that run — the gates are
+ * re-entrant, not self-driving, and for a cursor-based source journal the
+ * original order event is never re-delivered.
+ *
+ * That was #2341's open gap; it is now a shipped OBLIGATION ON THE CALLER, and
+ * the rule plus the reason it is not folded in live on {@link
+ * IOrderHoldService.release}. Read it there before adding a second release
+ * caller — this paragraph only says the gap exists, not what to do about it.
  */
 export interface IOrderHoldService {
   /**
@@ -118,6 +121,29 @@ export interface IOrderHoldService {
    *   with no note.
    * @throws {HoldReleaseNotPermittedError} a service released another service's
    *   hold.
+   *
+   * ## The caller's obligation: resume provisioning (#2588 review I-3)
+   *
+   * **Releasing is not the whole act — every caller of this method must then
+   * call `IOrderProvisioningResumeService.resume(internalOrderId)`, and must
+   * handle its result.** This method ends the hold and clears the projection;
+   * it does NOT enqueue the provisioning run the hold was suppressing. The
+   * gates are re-entrant, not self-driving, and for a cursor-based source
+   * journal (Allegro) the original order event is never re-delivered — so a
+   * release with no resume is an order that silently never ships.
+   *
+   * It is stated here rather than folded into `release()` because the resume
+   * seam needs `JobEnqueuePort`, `IIdentifierMappingService` and
+   * `OrderRecordRepositoryPort`, and this service is provided by the LEAF
+   * `OrderHoldsModule` whose whole purpose is to take a narrow set of local
+   * repositories. Folding it in would manufacture exactly the module edge that
+   * split exists to avoid, and would make the `released` lifecycle fact
+   * conditional on a job queue being reachable — see
+   * {@link IOrderProvisioningResumeService} property 1.
+   *
+   * The HTTP release route does both today. `assertReleaseAllowed` deliberately
+   * permits a SERVICE-placed automated release (§6.4), so the next such caller
+   * is the one this note is written for.
    */
   release(request: ReleaseHoldRequest): Promise<OrderHoldTransition>;
 

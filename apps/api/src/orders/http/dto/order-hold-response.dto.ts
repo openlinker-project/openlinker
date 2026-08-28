@@ -80,8 +80,13 @@ export class OrderHoldDto {
  *
  * Reported rather than assumed: `marketplace.order.sync` has no cron backstop
  * for one specific order, so a lost enqueue leaves that order un-provisioned
- * until something unrelated re-polls it. A 2xx that silently claimed
+ * until an operator retries its destination. A 2xx that silently claimed
  * "provisioning resumed" would assert a fact OL had not witnessed.
+ *
+ * The `failed` arm is not the only record of that outcome — the withheld
+ * destinations are also marked `failed` on the order itself (#2588 review I-2),
+ * so an operator who never sees this response still finds a stranded order that
+ * looks stranded and can be retried.
  *
  * `reason` on the `failed` arm is a stable CODE, never the caught message — an
  * enqueue failure surfaces from Redis / Postgres / TypeORM and those messages

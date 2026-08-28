@@ -15,6 +15,12 @@ afterEach(cleanup);
 
 describe('OrderHoldBadge (#2342)', () => {
   it('should render the reason label for every declared reason', () => {
+    // #2588 review S-4. The loop iterates the same vocabulary the badge reads,
+    // so an empty `HoldReasonValues` would make it pass while asserting nothing.
+    // Pinning the count is what makes the loop a real claim about coverage; the
+    // mirror script keeps that count honest against core.
+    expect(HoldReasonValues.length).toBeGreaterThan(0);
+
     for (const reason of HoldReasonValues) {
       const { unmount } = render(<OrderHoldBadge reason={reason} />);
       expect(screen.getByText(`On hold — ${HOLD_REASON_COPY[reason].label}`)).toBeInTheDocument();

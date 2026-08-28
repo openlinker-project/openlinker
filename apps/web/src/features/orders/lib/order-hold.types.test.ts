@@ -17,7 +17,18 @@ import {
 } from './order-hold.types';
 
 describe('hold reason vocabulary (#2342)', () => {
-  it('should carry renderable copy for every reason', () => {
+  it('should carry renderable, distinct copy for every reason', () => {
+    // #2588 review S-4. The loop below iterates the vocabulary it is checking,
+    // so on its own it cannot fail: an EMPTY `HoldReasonValues` would pass it
+    // silently, and the `satisfies Record<HoldReason, …>` on `HOLD_REASON_COPY`
+    // already makes a MISSING key a compile error. These two assertions are the
+    // part that can actually fail — the vocabulary is non-empty, and no two
+    // reasons render the same pill, which nothing else in the repo checks and
+    // which would make two different holds indistinguishable to an operator.
+    expect(HoldReasonValues.length).toBeGreaterThan(0);
+    const labels = HoldReasonValues.map((reason) => HOLD_REASON_COPY[reason].label);
+    expect(new Set(labels).size).toBe(labels.length);
+
     for (const reason of HoldReasonValues) {
       const copy = HOLD_REASON_COPY[reason];
       expect(copy.label.length).toBeGreaterThan(0);

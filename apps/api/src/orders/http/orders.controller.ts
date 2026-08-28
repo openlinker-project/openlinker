@@ -567,7 +567,8 @@ export class OrdersController {
       'Ends the hold and re-enqueues the provisioning run it was suppressing. A note is required ' +
       'when releasing a hold that a service placed. The response reports what happened to that ' +
       're-enqueue rather than assuming it: marketplace.order.sync has no cron backstop for one ' +
-      'order, so a failed enqueue leaves the order un-provisioned until its destination is retried.',
+      'order. On a failed enqueue every destination the hold was withholding is marked failed, so ' +
+      'the order is visibly stranded and the existing per-destination retry recovers it.',
   })
   @ApiResponse({ status: 200, description: 'Hold released', type: ReleaseOrderHoldResponseDto })
   @ApiResponse({ status: 400, description: 'A note is required to release a service-placed hold' })

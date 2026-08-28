@@ -9,8 +9,13 @@
  * shipped identifier is `HoldReason`, not the design prose's `OrderHoldReason`
  * (REVIEW H14): a later reader should not "correct" it.
  *
- * This file carries no runtime functions. The coercion the types need
- * (`isHoldReason`) already exists upstream and belongs with the union it guards.
+ * The coercion the types need (`isHoldReason`) already exists upstream and
+ * belongs with the union it guards, so it is not restated here. What this file
+ * DOES carry is one pure builder — {@link withheldOnHoldError} — under
+ * `engineering-standards.md § The pure-rule exception to "types only"`: it is
+ * the rule for the withheld sync-status message, it has two writers that must
+ * agree on the string, and the union it derives from (`HoldReason`) is right
+ * here.
  *
  * @module libs/core/src/orders/domain/types
  */
@@ -56,4 +61,29 @@ export interface ReleaseOrderHoldInput {
    */
   releaseNote: string | null;
   releasedByUserId: string | null;
+}
+
+/**
+ * The `error` string a destination's sync-status row carries while its
+ * provisioning is withheld by an open hold (#2339).
+ *
+ * **This exists because two writers must agree on it, not for reuse's sake.**
+ * `OrderIngestionService` writes it when the dispatch gate withholds a
+ * destination; `OrderProvisioningResumeService` reads it back to find exactly
+ * the rows a failed post-release re-enqueue has stranded (#2588 review I-2).
+ * If the two drifted, the resume would silently strand the rows it exists to
+ * rescue — so the prefix is one constant with one builder over it, and the
+ * match is on {@link WITHHELD_ON_HOLD_ERROR_PREFIX} rather than on the whole
+ * string, which carries the reason and therefore varies per hold.
+ */
+export const WITHHELD_ON_HOLD_ERROR_PREFIX = 'Withheld: order is on hold';
+
+/** The full withheld-row message for one hold reason. Pure. */
+export function withheldOnHoldError(reason: HoldReason): string {
+  return `${WITHHELD_ON_HOLD_ERROR_PREFIX} (${reason})`;
+}
+
+/** Whether a sync-status row's `error` was written by the withholding path. */
+export function isWithheldOnHoldError(error: string | undefined | null): boolean {
+  return typeof error === 'string' && error.startsWith(WITHHELD_ON_HOLD_ERROR_PREFIX);
 }
