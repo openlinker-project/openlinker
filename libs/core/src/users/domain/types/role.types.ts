@@ -58,6 +58,13 @@ export const PermissionValues = [
   'webhooks:read',
   'ai:suggest',
   'content:write',
+  // DISPLAY-ONLY (#2473): gates the FE's analytics-settings write affordances
+  // (tax-rate opt-in toggle, currency-recalculation trigger). It authorizes no
+  // mutation — those endpoints are `@Roles('admin')`-gated directly and no
+  // permission-based guard exists. Deliberately omitted from `operator` and
+  // `viewer` so only `admin` (which holds the full `PermissionValues` set)
+  // carries it, matching those admin-only `@Roles` guards.
+  'analytics:write',
 ] as const;
 
 /**
