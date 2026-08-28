@@ -13,13 +13,17 @@
 
 // Types + the pure rules that belong to them
 export {
+  CATALOGUE_SWEEP_CADENCE_DEFAULT,
+  CATALOGUE_SWEEP_CADENCE_ENV_VAR,
   DELETION_AUDIT_CADENCE_DEFAULT,
   DELETION_AUDIT_CADENCE_ENV_VAR,
+  INVENTORY_SWEEP_CADENCE_DEFAULT,
+  INVENTORY_SWEEP_CADENCE_ENV_VAR,
   OPERATIONAL_SETTING_BOUNDS,
   OPERATIONAL_SETTING_KEYS,
   OPERATIONAL_SETTING_SOURCES,
   checkOperationalSettingBound,
-  clampToAdapterPageSize,
+  exceedsAdapterPageSize,
   readOperationalSettingEnv,
   resolveOperationalSetting,
 } from './domain/types/operational-settings.types';

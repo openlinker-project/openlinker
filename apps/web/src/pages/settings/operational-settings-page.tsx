@@ -147,6 +147,15 @@ export function OperationalSettingsPage(): ReactElement {
 
   const catalogueSize = catalogueSizeQuery.data ?? null;
 
+  // True when at least one reported value is not stored, so the worker resolves
+  // it from its own environment and this process cannot vouch for it. Read from
+  // the API's own flag rather than re-derived from `source` here, so the two
+  // cannot disagree about what "definite" means.
+  const workerMayDiffer =
+    view !== null &&
+    (NUMERIC_FIELDS.some((key) => view[key].workerMayDiffer === true) ||
+      view.deletionAuditCadence.workerMayDiffer === true);
+
   // Resolved once per render and threaded everywhere, so the slider's range,
   // the diff's crossing test and the save gate cannot disagree about where a
   // ceiling is.
@@ -164,6 +173,8 @@ export function OperationalSettingsPage(): ReactElement {
     return diffSyncPacing(toValues(view), draft, {
       hostProcessLimitSeconds: hostLimit,
       catalogueSize,
+      catalogueSweepCadence: view.catalogueSweepCadence?.value,
+      inventorySweepCadence: view.inventorySweepCadence?.value,
       cadenceAppliesAt: view.cadenceAppliesAt,
       limits,
     });
@@ -192,7 +203,15 @@ export function OperationalSettingsPage(): ReactElement {
       return null;
     }
     const saved = toValues(view);
-    const context = { hostProcessLimitSeconds: hostLimit, catalogueSize };
+    const context = {
+      hostProcessLimitSeconds: hostLimit,
+      catalogueSize,
+      // The cadences in force, when the API reported them. Without these the
+      // pass lengths assume the shipped 20 / 15 minutes and are an order of
+      // magnitude wrong on an install that changed one (#2660 review).
+      catalogueSweepCadence: view.catalogueSweepCadence?.value,
+      inventorySweepCadence: view.inventorySweepCadence?.value,
+    };
     return {
       before: projectSyncPacing({ ...saved, ...context }),
       after: projectSyncPacing({ ...draft, ...context }),
@@ -302,6 +321,23 @@ export function OperationalSettingsPage(): ReactElement {
               </Alert>
             ) : null}
 
+            {/* Stated once, not per field. OpenLinker runs as two processes with
+                separate environments, and the sweeps run in the background
+                worker — so a value this page read from an environment variable,
+                or fell back to a default for, describes the API process rather
+                than the one doing the work. Only a saved value is definite for
+                both (#2660 review). Rendered when ANY value is unsaved, which
+                on a fresh install is all of them, and is exactly when the
+                caveat is worth reading. */}
+            {workerMayDiffer ? (
+              <Alert tone="info" title="Some of these are not saved here yet">
+                Values you have not saved come from this server&apos;s settings or from
+                OpenLinker&apos;s defaults. The part of OpenLinker that does the syncing runs
+                as a separate process and reads its own settings, so it may be using
+                something else. Saving a value here makes it definite for both.
+              </Alert>
+            ) : null}
+
             {/* ── Hosting ──────────────────────────────────────────────── */}
             <article className="panel">
               <div className="panel__header">
@@ -358,7 +394,15 @@ export function OperationalSettingsPage(): ReactElement {
                   <p className="eyebrow">Catalogue</p>
                   <h3 className="section-title">Product sweep</h3>
                 </div>
-                <span className="panel__meta">every 20 min</span>
+                {/* Rendered from what the API reported, never a literal: both
+                    sweep cadences are settable in the worker's environment, so a
+                    hardcoded badge states as fact something an operator may have
+                    changed (#2660 review). */}
+                <span className="panel__meta">
+                  {view.catalogueSweepCadence === undefined
+                    ? 'every 20 min (assumed)'
+                    : describeCadence(view.catalogueSweepCadence.value).toLowerCase()}
+                </span>
               </div>
 
               <div className="field-stack">
@@ -417,7 +461,11 @@ export function OperationalSettingsPage(): ReactElement {
                   <p className="eyebrow">Stock</p>
                   <h3 className="section-title">Stock sweep</h3>
                 </div>
-                <span className="panel__meta">every 15 min</span>
+                <span className="panel__meta">
+                  {view.inventorySweepCadence === undefined
+                    ? 'every 15 min (assumed)'
+                    : describeCadence(view.inventorySweepCadence.value).toLowerCase()}
+                </span>
               </div>
 
               <div className="field-stack">

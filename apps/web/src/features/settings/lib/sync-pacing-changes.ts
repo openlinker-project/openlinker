@@ -84,6 +84,14 @@ export interface SyncPacingDiffContext {
   readonly hostProcessLimitSeconds: number;
   readonly catalogueSize: number | null;
   /**
+   * The sweep cadences the API reported, as cron expressions. Threaded so a
+   * pass-length sentence in the confirm dialog uses the cadence in force
+   * rather than the shipped one (#2660 review); absent falls back, exactly as
+   * the projection does.
+   */
+  readonly catalogueSweepCadence?: string;
+  readonly inventorySweepCadence?: string;
+  /**
    * The API's own answer for when a cadence change starts applying
    * (`OperationalSettingsView.cadenceAppliesAt`). The note is emitted from
    * what the server reported, never assumed - a build that does not
@@ -125,6 +133,8 @@ function projectionFor(
     deletionAuditCadence: values.deletionAuditCadence,
     hostProcessLimitSeconds: context.hostProcessLimitSeconds,
     catalogueSize: context.catalogueSize,
+    catalogueSweepCadence: context.catalogueSweepCadence,
+    inventorySweepCadence: context.inventorySweepCadence,
   });
 }
 

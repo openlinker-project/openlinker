@@ -158,7 +158,11 @@ describe('SchedulerService', () => {
     it('should register the deletion audit at the operator-set cadence (#2651)', async () => {
       configService.get.mockImplementation(defaultConfigGet);
       operationalSettings.setValues({
-        deletionAuditCadence: { value: '*/10 * * * *', source: 'setting' },
+        deletionAuditCadence: {
+          value: '*/10 * * * *',
+          source: 'setting',
+          workerMayDiffer: false,
+        },
       });
 
       await service.refreshOperationalSettings();

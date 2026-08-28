@@ -114,49 +114,44 @@ describe('WooCommerceProductMasterAdapter', () => {
     // This is a real platform wall, unlike the advisory ceilings in
     // OPERATIONAL_SETTING_BOUNDS, so it is enforced where the request is built
     // — the only place that knows WooCommerce is the adapter about to send it.
-    it('should clamp per_page to the WooCommerce maximum of 100', async () => {
+    //
+    // It REFUSES rather than clamping (#2660 review): this method feeds the
+    // worker's `readPagedIds`, which treats a page shorter than the REQUESTED
+    // size as the end of the collection. A clamped page is always short, so
+    // clamping made every sweep cycle "complete" after 100 products and sweep
+    // the same 100 on every tick for ever, behind one warn line.
+    it('should refuse a page size above the WooCommerce maximum of 100', async () => {
       const httpClient = makeHttpClient();
       httpClient.get.mockResolvedValue([]);
       const adapter = makeAdapter(httpClient, makeIdentifierMapping(), makeMapper());
 
-      await adapter.listExternalIds({ limit: 250, offset: 0 });
+      await expect(adapter.listExternalIds({ limit: 250, offset: 0 })).rejects.toThrow(
+        /100/,
+      );
+      expect(httpClient.get).not.toHaveBeenCalled();
+    });
+
+    it('should name the offending value so the refusal says what to change', async () => {
+      const httpClient = makeHttpClient();
+      httpClient.get.mockResolvedValue([]);
+      const adapter = makeAdapter(httpClient, makeIdentifierMapping(), makeMapper());
+
+      await expect(adapter.listExternalIds({ limit: 250, offset: 0 })).rejects.toThrow(
+        /250/,
+      );
+    });
+
+    it('should send a page size the platform accepts unchanged', async () => {
+      const httpClient = makeHttpClient();
+      httpClient.get.mockResolvedValue([]);
+      const adapter = makeAdapter(httpClient, makeIdentifierMapping(), makeMapper());
+
+      await adapter.listExternalIds({ limit: 100, offset: 0 });
 
       expect(httpClient.get).toHaveBeenCalledWith(
         '/wp-json/wc/v3/products',
         expect.objectContaining({ per_page: 100 }),
       );
-    });
-
-    // The clamp must be OBSERVABLE. Narrowing silently is exactly the
-    // reported-versus-enforced defect: the operator configured 250, the
-    // settings page reports 250, and the shop was asked for 100.
-    it('should warn when it clamps, so the narrowing is not silent', async () => {
-      const httpClient = makeHttpClient();
-      httpClient.get.mockResolvedValue([]);
-      const adapter = makeAdapter(httpClient, makeIdentifierMapping(), makeMapper());
-      const warn = jest
-        .spyOn((adapter as unknown as { logger: { warn: (m: string) => void } }).logger, 'warn')
-        .mockImplementation(() => undefined);
-
-      await adapter.listExternalIds({ limit: 250, offset: 0 });
-
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining('per_page'));
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining('250'));
-      warn.mockRestore();
-    });
-
-    it('should not warn when the requested page size is within what WooCommerce accepts', async () => {
-      const httpClient = makeHttpClient();
-      httpClient.get.mockResolvedValue([]);
-      const adapter = makeAdapter(httpClient, makeIdentifierMapping(), makeMapper());
-      const warn = jest
-        .spyOn((adapter as unknown as { logger: { warn: (m: string) => void } }).logger, 'warn')
-        .mockImplementation(() => undefined);
-
-      await adapter.listExternalIds({ limit: 100, offset: 0 });
-
-      expect(warn).not.toHaveBeenCalled();
-      warn.mockRestore();
     });
 
     it('should translate offset to page correctly (offset=100, limit=100 → page=2)', async () => {

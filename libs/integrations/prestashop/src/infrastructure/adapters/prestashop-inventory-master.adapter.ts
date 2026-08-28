@@ -388,9 +388,15 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort, Bu
    * bundle (PrestaShop's `[a|b|c]` OR filter). A request per component would make
    * one pack cost as much as the sweep it belongs to.
    *
-   * The array branch of the query builder emits `[a,b,c]`, which PrestaShop reads
-   * as a RANGE, so the ids are joined with a pipe by hand here and must stay
-   * that way.
+   * The ids MUST be pipe-joined: PrestaShop reads `[a,b,c]` as the RANGE a..c,
+   * which answers with a near-whole-catalogue page and nothing for the ids in
+   * between. The joining is done by hand here and the query builder's array
+   * branch does the same thing (`prestashop-query.builder.ts` pipe-joins an
+   * array value, never comma-joins it), so the two agree - an earlier revision
+   * of this comment claimed the array branch emitted a comma and was the
+   * opposite of what the builder does (#2660 review). Either form is correct;
+   * this one is left as it is because it is the shape verified against a live
+   * shop.
    *
    * Read failures are deliberately not swallowed: a component quantity we could
    * not read is not a quantity, so failing the job and retrying is honest where

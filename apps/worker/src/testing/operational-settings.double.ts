@@ -17,6 +17,8 @@ import {
   DELETION_AUDIT_CADENCE_DEFAULT,
   OPERATIONAL_SETTING_BOUNDS,
   type IOperationalSettingsService,
+  CATALOGUE_SWEEP_CADENCE_DEFAULT,
+  INVENTORY_SWEEP_CADENCE_DEFAULT,
   type OperationalSettingKey,
   type OperationalSettingsView,
   type ResolvedOperationalNumber,
@@ -31,6 +33,7 @@ const defaultNumber = (key: OperationalSettingKey): ResolvedOperationalNumber =>
   return {
     value: bound.default,
     source: 'default',
+    workerMayDiffer: true,
     recommendedMax: bound.recommendedMax,
     recommendedReason: bound.recommendedReason,
     absoluteMax: bound.absoluteMax,
@@ -52,6 +55,7 @@ export const settingNumber = (
     ...defaultNumber(key),
     value,
     source: 'setting',
+    workerMayDiffer: false,
     aboveRecommended: value > bound.recommendedMax,
   };
 };
@@ -62,7 +66,21 @@ export class FakeOperationalSettingsService implements IOperationalSettingsServi
     inventorySweepBudget: defaultNumber('inventorySweepBudget'),
     sweepPageSize: defaultNumber('sweepPageSize'),
     deletionAuditBudget: defaultNumber('deletionAuditBudget'),
-    deletionAuditCadence: { value: DELETION_AUDIT_CADENCE_DEFAULT, source: 'default' },
+    deletionAuditCadence: {
+      value: DELETION_AUDIT_CADENCE_DEFAULT,
+      source: 'default',
+      workerMayDiffer: true,
+    },
+    catalogueSweepCadence: {
+      value: CATALOGUE_SWEEP_CADENCE_DEFAULT,
+      source: 'default',
+      workerMayDiffer: true,
+    },
+    inventorySweepCadence: {
+      value: INVENTORY_SWEEP_CADENCE_DEFAULT,
+      source: 'default',
+      workerMayDiffer: true,
+    },
     deletionAuditAlwaysEnabled: true,
     updatedAt: null,
     updatedBy: null,

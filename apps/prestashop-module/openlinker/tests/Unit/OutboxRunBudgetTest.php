@@ -61,21 +61,49 @@ class OutboxRunBudgetTest extends TestCase
         $this->assertSame(90, OutboxRepository::resolveRunBudgetSeconds('90'));
     }
 
-    public function testTheFirstDeliveryOfAPassIsAlwaysAllowed(): void
+    /**
+     * Asserted with a REALISTIC elapsed value, not with 0 (#2660 review).
+     *
+     * A pass takes its clock before the stale sweep and the batch claim, so
+     * elapsed is never 0 by the time the first delivery is considered. Pinning
+     * the guarantee at 0 asserted a branch no real pass reaches, which is why
+     * the earlier elapsed-based implementation passed its test while the
+     * property it documented was absent: on a large outbox the first iteration
+     * refused, the batch was requeued, and the queue never drained.
+     */
+    public function testTheFirstDeliveryOfAPassIsAllowedEvenPastTheBudget(): void
     {
-        $this->assertTrue(OutboxRepository::hasBudgetForAnotherDelivery(0, 120, 10));
+        $this->assertTrue(OutboxRepository::hasBudgetForAnotherDelivery(21.0, 30, 10, 0));
+    }
+
+    public function testTheSecondDeliveryIsNoLongerExempt(): void
+    {
+        // Same numbers, one delivery already made: the exemption is spent and
+        // the ordinary worst-case check applies.
+        $this->assertFalse(OutboxRepository::hasBudgetForAnotherDelivery(21.0, 30, 10, 1));
     }
 
     public function testADeliveryThatFitsInsideTheBudgetIsAllowed(): void
     {
-        $this->assertTrue(OutboxRepository::hasBudgetForAnotherDelivery(110, 120, 10));
+        $this->assertTrue(OutboxRepository::hasBudgetForAnotherDelivery(110, 120, 10, 1));
     }
 
     public function testADeliveryThatCouldCrossTheBudgetIsRefused(): void
     {
         // 110.5 + 10 > 120: the check is on the worst case of the NEXT
         // delivery, not on whether the budget has already been passed.
-        $this->assertFalse(OutboxRepository::hasBudgetForAnotherDelivery(110.5, 120, 10));
+        $this->assertFalse(OutboxRepository::hasBudgetForAnotherDelivery(110.5, 120, 10, 1));
+    }
+
+    /**
+     * A caller that omits the counter gets the strict check, never a free pass.
+     *
+     * The parameter is optional for source compatibility, and the wrong default
+     * would exempt EVERY iteration rather than only the first.
+     */
+    public function testAnOmittedDeliveryCountDoesNotExemptTheCheck(): void
+    {
+        $this->assertFalse(OutboxRepository::hasBudgetForAnotherDelivery(21.0, 30, 10));
     }
 
     public function testTheStaleFloorExceedsTheLongestALiveRunCanHoldALease(): void
@@ -193,6 +221,13 @@ class OutboxRunBudgetTest extends TestCase
         $this->assertStringContainsString('hasBudgetForAnotherDelivery', $source);
         $this->assertStringContainsString('budgetExhausted', $source);
         $this->assertStringContainsString('requeueEventsByRunId', $source);
+
+        // The delivery counter must reach the budget check, or the
+        // first-delivery guarantee is unreachable again (#2660 review).
+        $this->assertMatchesRegularExpression(
+            '/hasBudgetForAnotherDelivery\(\s*microtime\(true\) - \$startedAt,\s*\$budgetSeconds,\s*\$worstCaseDelivery,\s*\$attempted/',
+            $source
+        );
     }
 
     private static function sourceOf(string $relativePath): string

@@ -24,6 +24,7 @@ const number = (
 ): OperationalSettingsView['catalogueSweepBudget'] => ({
   value,
   source: 'default',
+  workerMayDiffer: true,
   recommendedMax,
   recommendedReason: 'because measurement',
   absoluteMax,
@@ -36,7 +37,9 @@ const view = (overrides: Partial<OperationalSettingsView> = {}): OperationalSett
   inventorySweepBudget: number(100, 2000, 20_000),
   sweepPageSize: number(100, 100, 500),
   deletionAuditBudget: number(100, 2000, 20_000),
-  deletionAuditCadence: { value: '0 * * * *', source: 'default' },
+  deletionAuditCadence: { value: '0 * * * *', source: 'default', workerMayDiffer: true },
+  catalogueSweepCadence: { value: '*/20 * * * *', source: 'default', workerMayDiffer: true },
+  inventorySweepCadence: { value: '*/15 * * * *', source: 'default', workerMayDiffer: true },
   deletionAuditAlwaysEnabled: true,
   updatedAt: null,
   updatedBy: null,
@@ -62,7 +65,15 @@ describe('OperationalSettingsController', () => {
       const dto = await controller.get(res);
 
       expect(dto.catalogueSweepBudget).toMatchObject({ value: 500, source: 'default' });
-      expect(dto.deletionAuditCadence).toEqual({ value: '0 * * * *', source: 'default' });
+      expect(dto.deletionAuditCadence).toEqual({
+        value: '0 * * * *',
+        source: 'default',
+        workerMayDiffer: true,
+      });
+      // The two sweep cadences ride along read-only, so a caller works out pass
+      // lengths from the cadence in force rather than a hardcoded 20 / 15 (#2660).
+      expect(dto.catalogueSweepCadence.value).toBe('*/20 * * * *');
+      expect(dto.inventorySweepCadence.value).toBe('*/15 * * * *');
     });
 
     it('should return both ceilings a PUT would enforce, so no client restates them', async () => {
@@ -100,10 +111,13 @@ describe('OperationalSettingsController', () => {
       expect(dto.catalogueSweepBudget.aboveRecommended).toBe(true);
     });
 
-    it('should say that an adapter may narrow a page size further, and that the clamp is logged', async () => {
+    it('should say that a platform may cap a page size, and that a larger one is refused rather than narrowed', async () => {
       const dto = await controller.get(res);
 
-      expect(dto.adapterClampNote).toContain('logged');
+      // The enumeration path REFUSES rather than clamping (#2660 review): a
+      // narrowed page reads as the end of the collection to the resumable
+      // sweep, so clamping truncated the cycle to one page for ever.
+      expect(dto.adapterClampNote).toContain('refused');
     });
 
     it('should state that the deletion audit cannot be disabled here', async () => {

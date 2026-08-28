@@ -53,6 +53,12 @@ export class ResolvedNumberSettingDto {
       'True when this value exceeds our recommendation — the UI should show it as a deliberate override rather than an ordinary setting.',
   })
   aboveRecommended!: boolean;
+
+  @ApiProperty({
+    description:
+      'True when this API process cannot vouch for the value the worker applies. The two are separate processes with separate environments, and the sweeps run in the worker — so an `env` or `default` rung resolved here describes the API, not what runs. Save a value to make it definite.',
+  })
+  workerMayDiffer!: boolean;
 }
 
 export class ResolvedCadenceSettingDto {
@@ -61,6 +67,12 @@ export class ResolvedCadenceSettingDto {
 
   @ApiProperty({ enum: OPERATIONAL_SETTING_SOURCES })
   source!: OperationalSettingSource;
+
+  @ApiProperty({
+    description:
+      'True when the value is not stored, so the worker resolves it from its own environment.',
+  })
+  workerMayDiffer!: boolean;
 }
 
 export class OperationalSettingBoundDto {
@@ -103,6 +115,20 @@ export class OperationalSettingsResponseDto {
   deletionAuditCadence!: ResolvedCadenceSettingDto;
 
   @ApiProperty({
+    type: ResolvedCadenceSettingDto,
+    description:
+      'How often the product sweep runs. Not settable here (no input accepts it), but reported so a caller works out pass lengths from the cadence in force rather than from a hardcoded 20 minutes — `OL_PRODUCT_SYNC_CRON` in the worker environment changes it.',
+  })
+  catalogueSweepCadence!: ResolvedCadenceSettingDto;
+
+  @ApiProperty({
+    type: ResolvedCadenceSettingDto,
+    description:
+      'How often the stock sweep runs. Not settable here; `OL_INVENTORY_SYNC_CRON` in the worker environment changes it.',
+  })
+  inventorySweepCadence!: ResolvedCadenceSettingDto;
+
+  @ApiProperty({
     description:
       'Always `true`. The deletion audit is the deletion authority (#2222) and has no off switch on this surface; turning it off would silently reopen #1689.',
   })
@@ -134,7 +160,7 @@ export class OperationalSettingsResponseDto {
 
   @ApiProperty({
     description:
-      'A platform may narrow a page size further where its own API caps it (WooCommerce caps `per_page` at 100). That clamp is applied where the request is built and logged when it bites, so a value shown here is never quietly not what was sent.',
+      'A platform may cap a page size below what this table accepts (WooCommerce caps `per_page` at 100). That wall is enforced where the request is built, by REFUSING the enumeration rather than narrowing it — a narrowed page is indistinguishable from the end of the collection to the resumable sweep, so clamping silently truncated the cycle (#2660 review).',
   })
   adapterClampNote!: string;
 
@@ -145,12 +171,14 @@ export class OperationalSettingsResponseDto {
     dto.sweepPageSize = { ...view.sweepPageSize };
     dto.deletionAuditBudget = { ...view.deletionAuditBudget };
     dto.deletionAuditCadence = { ...view.deletionAuditCadence };
+    dto.catalogueSweepCadence = { ...view.catalogueSweepCadence };
+    dto.inventorySweepCadence = { ...view.inventorySweepCadence };
     dto.deletionAuditAlwaysEnabled = view.deletionAuditAlwaysEnabled;
     dto.cadenceAppliesAt = 'next-scheduler-start';
     dto.updatedAt = view.updatedAt ? view.updatedAt.toISOString() : null;
     dto.updatedBy = view.updatedBy;
     dto.adapterClampNote =
-      'A page size above what a specific adapter can send is clamped where the request is built, and the clamp is logged.';
+      'Some shops cap how many products one request may ask for — WooCommerce allows at most 100. A larger page size is refused there, with an error naming the cap, rather than quietly sending a smaller page than you set.';
     dto.bounds = Object.fromEntries(
       OPERATIONAL_SETTING_KEYS.map((key) => [key, { ...OPERATIONAL_SETTING_BOUNDS[key] }])
     );

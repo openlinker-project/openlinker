@@ -52,7 +52,7 @@ import type {
 import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
-import { clampToAdapterPageSize } from '@openlinker/core/operational-settings';
+import { exceedsAdapterPageSize } from '@openlinker/core/operational-settings';
 import type { IWooCommerceHttpClient } from '../../http/woocommerce-http-client.interface';
 import { WooCommerceHttpResponseException } from '../../http/woocommerce-http-response.exception';
 import type { IWooCommerceProductMapper } from '../../mappers/woocommerce-product.mapper.interface';
@@ -62,6 +62,7 @@ import {
 } from '../../mappers/woocommerce-variant-id';
 import { WooCommerceResourceNotFoundException } from '../../../domain/exceptions/woocommerce-resource-not-found.exception';
 import { WooCommerceDuplicateSkuException } from '../../../domain/exceptions/woocommerce-duplicate-sku.exception';
+import { WooCommerceInvalidArgumentException } from '../../../domain/exceptions/woocommerce-invalid-argument.exception';
 import type {
   WooCommerceProduct,
   WooCommerceProductVariation,
@@ -79,9 +80,18 @@ import { fetchAllPages } from '../../utils/woocommerce-utils';
  * `OPERATIONAL_SETTING_BOUNDS`: above it the shop does not return a bigger
  * page, it returns 100 or a 400. It is enforced here, at the point the request
  * is built, because this is the only place that knows WooCommerce is the
- * adapter about to send it - and it is LOGGED when it bites, so a page size an
- * operator set can never be reported back to them intact while quietly not
- * being what was sent.
+ * adapter about to send it.
+ *
+ * **It REFUSES; it does not clamp** (#2660 review). Clamping is safe for a read
+ * whose caller inspects the rows it got back, and unsafe for the two callers
+ * this has: `listExternalIds` / `listExternalIdsModifiedSince` feed the worker's
+ * `readPagedIds`, which infers end-of-collection from `batch.length < pageSize`
+ * measured against the size it REQUESTED. A clamped page is always short, so
+ * with `OL_SWEEP_PAGE_SIZE=250` every cycle "completed" after 100 products, the
+ * cursor cleared, and the same first 100 were swept on every tick for ever -
+ * behind a single warn line. Before the clamp existed WP REST answered 400 and
+ * the job failed loudly, which is strictly better; the refusal restores that and
+ * names the setting to change.
  */
 const WC_MAX_PER_PAGE = 100;
 
@@ -145,10 +155,12 @@ export class WooCommerceProductMasterAdapter
     );
     const perPage = this.resolvePerPage(limit, 'listExternalIdsModifiedSince');
     // Same derivation as listExternalIds — exact while the caller keeps `offset` a
-    // multiple of `limit`, which the bounded sweep's page loop does. Derived from
-    // the REQUESTED limit, not the clamped one, so a clamp narrows the page
-    // without also skewing which page is asked for.
-    const page = Math.floor(offset / limit) + 1;
+    // multiple of `perPage`, which the bounded sweep's page loop does. Derived
+    // from the size actually sent, which since #2660 IS the requested one: a
+    // request the platform cannot serve is refused rather than narrowed, so the
+    // two can no longer differ (they used to, and the two call sites disagreed
+    // about which to divide by).
+    const page = Math.floor(offset / perPage) + 1;
     const raw = await this.httpClient.get<Array<{ id: number }>>('/wp-json/wc/v3/products', {
       _fields: 'id',
       per_page: perPage,
@@ -928,16 +940,14 @@ export class WooCommerceProductMasterAdapter
    * shop was asked for 100 - with nothing anywhere saying so.
    */
   private resolvePerPage(requested: number, operation: string): number {
-    const { value, clamped } = clampToAdapterPageSize(requested, WC_MAX_PER_PAGE);
-    if (clamped) {
-      this.logger.warn(
-        `WooCommerce caps per_page at ${String(WC_MAX_PER_PAGE)}; ${operation} requested ` +
-          `${String(requested)} and was clamped (connection: ${this.connection.id}). ` +
-          `Lower the sweep page size to ${String(WC_MAX_PER_PAGE)} or below to make the ` +
-          `configured value match what is sent.`,
+    if (exceedsAdapterPageSize(requested, WC_MAX_PER_PAGE)) {
+      throw new WooCommerceInvalidArgumentException(
+        `WooCommerce accepts at most ${String(WC_MAX_PER_PAGE)} products per request; ` +
+          `${operation} asked for ${String(requested)} (connection: ${this.connection.id}). ` +
+          `Lower the sweep page size to ${String(WC_MAX_PER_PAGE)} or below.`,
       );
     }
-    return value;
+    return requested;
   }
 }
 

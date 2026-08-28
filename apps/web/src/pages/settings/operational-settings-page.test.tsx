@@ -86,6 +86,14 @@ function view(overrides: Record<string, unknown> = {}): Record<string, unknown> 
   };
 }
 
+/**
+ * The namespace shape, reached through the test factory rather than through
+ * `app/api/api-client` — a page module may not import app modules, and the cast
+ * is needed because `vi.fn()` widens to `Mock<Procedure | Constructable>`,
+ * which is not assignable to a concrete call signature.
+ */
+type OperationalSettingsApi = ReturnType<typeof createMockApiClient>['operationalSettings'];
+
 function renderPage(
   overrides: {
     get?: ReturnType<typeof vi.fn>;
@@ -93,10 +101,13 @@ function renderPage(
   } = {},
 ): void {
   const apiClient = createMockApiClient({
+    // Cast for the same reason `createMockApiClient`'s own namespace defaults
+    // do: `vi.fn()` widens to `Mock<Procedure | Constructable>`, which is not
+    // assignable to a concrete call signature.
     operationalSettings: {
       get: overrides.get ?? vi.fn().mockResolvedValue(view()),
       update: overrides.update ?? vi.fn().mockResolvedValue(undefined),
-    },
+    } as OperationalSettingsApi,
   });
 
   renderWithProviders(<OperationalSettingsPage />, {
@@ -146,6 +157,37 @@ describe('OperationalSettingsPage', () => {
       expect(screen.getByText('changed from 100')).toBeInTheDocument();
     });
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeEnabled();
+  });
+
+  // Every documented value — each default, each recommendation, each absolute
+  // ceiling — must be reachable and must not be reported invalid. With the
+  // granularity on the control's own `step` and `min=1`, the reachable set was
+  // `1, 51, 101, …`, so 500 / 100 / 2000 / 20000 were all `stepMismatch` and a
+  // drag produced values like 5001 (#2660 review).
+  it('should accept a documented value in the number box without marking it invalid', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const numberBox = await screen.findByRole('spinbutton', {
+      name: 'Products per catalogue run',
+    });
+    await user.clear(numberBox);
+    await user.type(numberBox, '2000');
+
+    await waitFor(() => {
+      expect(screen.getByText('changed from 500')).toBeInTheDocument();
+    });
+    expect((numberBox as HTMLInputElement).checkValidity()).toBe(true);
+  });
+
+  it('should let the slider land on a documented value rather than on a min-anchored grid', async () => {
+    renderPage();
+
+    const slider = await screen.findByRole('slider', { name: 'Products per catalogue run' });
+    // The native step must not carry the granularity, or the browser rounds
+    // every drag onto `min + n·step` and the documented values are unreachable.
+    expect(slider).toHaveAttribute('step', '1');
+    expect((slider as HTMLInputElement).checkValidity()).toBe(true);
   });
 
   it('should put a rejected value beside its own control, not in one banner', async () => {

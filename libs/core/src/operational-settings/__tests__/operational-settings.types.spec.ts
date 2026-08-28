@@ -8,8 +8,9 @@
  */
 import {
   OPERATIONAL_SETTING_BOUNDS,
+  OPERATIONAL_SETTING_KEYS,
   checkOperationalSettingBound,
-  clampToAdapterPageSize,
+  exceedsAdapterPageSize,
   readOperationalSettingEnv,
   resolveOperationalSetting,
 } from '../domain/types/operational-settings.types';
@@ -90,7 +91,32 @@ describe('resolveOperationalSetting', () => {
     expect(resolved.recommendedMax).toBe(100);
     expect(resolved.absoluteMax).toBe(500);
     expect(resolved.recommendedReason.length).toBeGreaterThan(0);
-    expect(resolved.absoluteReason).toContain('query string');
+    // The reason keeps the NUMBER, which is the useful part.
+    expect(resolved.absoluteReason).toContain('500');
+  });
+
+  // These strings are rendered verbatim on the settings page and appended to
+  // the 400 a refused write returns, so they are operator copy: no issue
+  // numbers, no class names, no internal vocabulary (#2660 review).
+  it('should state every ceiling reason in operator-facing words', () => {
+    const jargon = [
+      /#\d{3,}/,
+      /per-scope cap/i,
+      /PrestashopQueryBuilder/,
+      /nginx/i,
+      /request-line/i,
+      /query string/i,
+      /groupSize/,
+    ];
+
+    for (const key of OPERATIONAL_SETTING_KEYS) {
+      const bound = OPERATIONAL_SETTING_BOUNDS[key];
+      for (const reason of [bound.recommendedReason, bound.absoluteReason]) {
+        for (const pattern of jargon) {
+          expect(reason).not.toMatch(pattern);
+        }
+      }
+    }
   });
 
   it('should clamp an out-of-range env value to the absolute ceiling rather than passing it through', () => {
@@ -104,15 +130,16 @@ describe('resolveOperationalSetting', () => {
   });
 });
 
-describe('clampToAdapterPageSize', () => {
-  it('should pass a value the adapter can send through untouched', () => {
-    expect(clampToAdapterPageSize(100, 100)).toEqual({ value: 100, clamped: false });
+describe('exceedsAdapterPageSize', () => {
+  it('should accept a value at the adapter maximum', () => {
+    expect(exceedsAdapterPageSize(100, 100)).toBe(false);
   });
 
-  // The clamp must be OBSERVABLE. A silent narrowing is the exact
-  // reported-versus-enforced defect the ceiling split exists to prevent.
-  it('should report that it clamped, so the caller can log it', () => {
-    expect(clampToAdapterPageSize(250, 100)).toEqual({ value: 100, clamped: true });
+  // The caller REFUSES on a true answer rather than narrowing. A narrowed page
+  // is indistinguishable from the end of the collection to the resumable sweep,
+  // which silently truncated the cycle to one page for ever (#2660 review).
+  it('should report a value the adapter cannot send', () => {
+    expect(exceedsAdapterPageSize(250, 100)).toBe(true);
   });
 });
 
@@ -129,7 +156,7 @@ describe('checkOperationalSettingBound', () => {
     expect(problem).toContain('acknowledgeAboveRecommended');
     // The reason travels with the refusal — "2001 is too high" with no
     // explanation is a message an operator works around rather than understands.
-    expect(problem).toContain('1200 s window');
+    expect(problem).toContain(OPERATIONAL_SETTING_BOUNDS.catalogueSweepBudget.recommendedReason);
   });
 
   it('should accept a value above the recommendation once acknowledged', () => {
@@ -141,7 +168,7 @@ describe('checkOperationalSettingBound', () => {
     const problem = checkOperationalSettingBound('sweepPageSize', 2000, true);
 
     expect(problem).toContain('must not exceed 500');
-    expect(problem).toContain('query string');
+    expect(problem).toContain(OPERATIONAL_SETTING_BOUNDS.sweepPageSize.absoluteReason);
   });
 
   it('should still refuse a value below the minimum', () => {

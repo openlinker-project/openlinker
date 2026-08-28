@@ -289,7 +289,13 @@ class OpenLinker extends CarrierModule
                 OutboxRepository::readRunBudgetSeconds()
             ),
             'outbox_stale_minutes_max' => OutboxRepository::STALE_PROCESSING_THRESHOLD_MINUTES_MAX,
-            'outbox_stale_minutes_default' => OutboxRepository::DEFAULT_STALE_PROCESSING_THRESHOLD_MINUTES,
+            // Never below the floor the current budget implies (#2660 review):
+            // at a 280 s budget the floor is 6 minutes while the built-in
+            // default is 5, so the help text read "Between 6 and 1440 (default:
+            // 5)" - a default the field itself would refuse.
+            'outbox_stale_minutes_default' => OutboxRepository::defaultStaleThresholdMinutes(
+                OutboxRepository::readRunBudgetSeconds()
+            ),
             'statistics' => $this->getStatistics(),
             // Whether delivery is actually running at all (#2618). Without
             // this a dead cron is indistinguishable from an empty queue.
@@ -422,31 +428,44 @@ class OpenLinker extends CarrierModule
         // The submitted budget is used for that derivation, not the stored
         // one, or raising both in a single save would be judged against the
         // value being replaced.
+        // These two are validated TOGETHER and written together, or not at all
+        // (#2660 review). The threshold's lower bound is derived from the
+        // budget, so writing the budget before the threshold has been judged
+        // left a rejected save having already moved the value the refusal was
+        // measured against - the operator reads "must be between 6 and 1440"
+        // while the floor that produced the 6 is now stored. The rest of this
+        // form is independent fields and keeps its per-field write.
         $budgetMin = OutboxRepository::RUN_BUDGET_SECONDS_MIN;
         $budgetMax = OutboxRepository::RUN_BUDGET_SECONDS_MAX;
         $runBudget = (int)Tools::getValue(OutboxRepository::RUN_BUDGET_CONFIG_KEY);
-        $effectiveBudget = OutboxRepository::readRunBudgetSeconds();
-        if ($runBudget < $budgetMin || $runBudget > $budgetMax) {
+        $budgetValid = ($runBudget >= $budgetMin && $runBudget <= $budgetMax);
+        if (!$budgetValid) {
             $errors[] = sprintf(
                 $this->l('Delivery run budget must be between %d and %d seconds'),
                 $budgetMin,
                 $budgetMax
             );
-        } else {
-            Configuration::updateGlobalValue(OutboxRepository::RUN_BUDGET_CONFIG_KEY, $runBudget);
-            $effectiveBudget = $runBudget;
         }
 
+        // The SUBMITTED budget is what the floor is derived from, not the
+        // stored one, or raising both in one save would be judged against the
+        // value being replaced. A rejected budget falls back to what is stored,
+        // since that is what will still be in force after this save.
+        $effectiveBudget = $budgetValid ? $runBudget : OutboxRepository::readRunBudgetSeconds();
         $staleFloor = OutboxRepository::minimumStaleThresholdMinutes($effectiveBudget);
         $staleMax = OutboxRepository::STALE_PROCESSING_THRESHOLD_MINUTES_MAX;
         $staleMinutes = (int)Tools::getValue(OutboxRepository::STALE_PROCESSING_THRESHOLD_CONFIG_KEY);
-        if ($staleMinutes < $staleFloor || $staleMinutes > $staleMax) {
+        $staleValid = ($staleMinutes >= $staleFloor && $staleMinutes <= $staleMax);
+        if (!$staleValid) {
             $errors[] = sprintf(
                 $this->l('Stuck-event recovery must be between %d and %d minutes. The lower bound is set by the delivery run budget: anything shorter can reclaim events another run is still sending, and deliver them twice.'),
                 $staleFloor,
                 $staleMax
             );
-        } else {
+        }
+
+        if ($budgetValid && $staleValid) {
+            Configuration::updateGlobalValue(OutboxRepository::RUN_BUDGET_CONFIG_KEY, $runBudget);
             Configuration::updateGlobalValue(
                 OutboxRepository::STALE_PROCESSING_THRESHOLD_CONFIG_KEY,
                 $staleMinutes
@@ -636,7 +655,8 @@ class OpenLinker extends CarrierModule
                 if (!OutboxRepository::hasBudgetForAnotherDelivery(
                     microtime(true) - $startedAt,
                     $budgetSeconds,
-                    $worstCaseDelivery
+                    $worstCaseDelivery,
+                    $attempted
                 )) {
                     $budgetExhausted = true;
                     break;
