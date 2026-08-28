@@ -26,6 +26,18 @@ import {
 } from '../../features/ai-provider-settings/api/ai-provider-settings.api';
 import { createAnalyticsApi, type AnalyticsApi } from '../../features/analytics/api/sales-analytics.api';
 import {
+  createAnalyticsCoverageApi,
+  type AnalyticsCoverageApi,
+} from '../../features/analytics/api/analytics-coverage.api';
+import {
+  createAnalyticsRemediationApi,
+  type AnalyticsRemediationApi,
+} from '../../features/analytics/api/analytics-remediation.api';
+import {
+  createAnalyticsSettingsApi,
+  type AnalyticsSettingsApi,
+} from '../../features/analytics/api/analytics-settings.api';
+import {
   createAnalyticsTrustApi,
   type AnalyticsTrustApi,
 } from '../../features/analytics/api/analytics-trust.api';
@@ -161,7 +173,8 @@ export interface PluginApiNamespaces {}
 export interface CoreApiClient {
   adapters: AdaptersApi;
   aiProviderSettings: AiProviderSettingsApi;
-  analytics: AnalyticsApi & TopProductsApi;
+  analytics: AnalyticsApi & TopProductsApi & AnalyticsCoverageApi & AnalyticsRemediationApi;
+  analyticsSettings: AnalyticsSettingsApi;
   analyticsTrust: AnalyticsTrustApi;
   auth: AuthApi;
   connections: ConnectionsApi;
@@ -382,7 +395,13 @@ export function createApiClient({
   const core: CoreApiClient = {
     adapters: createAdaptersApi(request),
     aiProviderSettings: createAiProviderSettingsApi(request),
-    analytics: { ...createAnalyticsApi(request), ...createTopProductsApi(request) },
+    analytics: {
+      ...createAnalyticsApi(request),
+      ...createTopProductsApi(request),
+      ...createAnalyticsCoverageApi(request),
+      ...createAnalyticsRemediationApi(request),
+    },
+    analyticsSettings: createAnalyticsSettingsApi(request),
     analyticsTrust: createAnalyticsTrustApi(request),
     auth: createAuthApi(request),
     connections: createConnectionsApi(request),

@@ -18848,6 +18848,150 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   box-shadow: var(--shadow-focus);
 }
 
+/* ── Analytics settings dialog (#2473) ──
+   Mirrors the mockup's `.settings-field` / `.rate-basis-option` /
+   `.settings-section` / `.settings-toggle` shapes — see
+   docs/plans/mockups/analytics-display-currency-picker.html. */
+.analytics-settings-dialog__field {
+  display: grid;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+}
+
+fieldset.analytics-settings-dialog__field {
+  border: none;
+  padding: 0;
+  margin: 0 0 var(--space-5);
+  min-width: 0;
+}
+
+.analytics-settings-dialog__label {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+legend.analytics-settings-dialog__label {
+  padding: 0;
+  margin-bottom: var(--space-2);
+}
+
+.analytics-settings-dialog__hint {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.analytics-settings-dialog__rate-basis-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.analytics-settings-dialog__rate-basis-option + .analytics-settings-dialog__rate-basis-option {
+  margin-top: var(--space-2);
+}
+
+.analytics-settings-dialog__rate-basis-option:has(input:checked) {
+  border-color: var(--accent-primary);
+  background: var(--accent-primary-soft);
+}
+
+.analytics-settings-dialog__rate-basis-option:has(input:checked) strong {
+  color: var(--accent-primary-soft-strong);
+}
+
+.analytics-settings-dialog__rate-basis-desc {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  padding-left: 1.4rem;
+}
+
+.analytics-settings-dialog__section {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+  display: grid;
+  gap: var(--space-3);
+}
+
+.analytics-settings-dialog__section:last-of-type {
+  margin-bottom: 0;
+}
+
+.analytics-settings-dialog__section-title {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.analytics-settings-dialog__toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+
+.analytics-settings-dialog__toggle input {
+  margin-top: 3px;
+  flex: none;
+  width: 0.875rem;
+  height: 0.875rem;
+  accent-color: var(--accent-primary);
+  cursor: pointer;
+}
+
+.analytics-settings-dialog__toggle:has(input:disabled) {
+  cursor: not-allowed;
+}
+
+.analytics-settings-dialog__toggle-desc {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+
+.analytics-settings-dialog__status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.analytics-settings-dialog__tax-summary {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.analytics-settings-dialog__tax-summary li {
+  padding: 7px 0;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.analytics-settings-dialog__tax-summary li:first-child {
+  border-top: none;
+}
+
 /* ── Analytics trust header (#1986) ──
    Opens on click, never hover-only — Radix Tooltip ignores
    `pointerType === 'touch'`, which would make a hover-only affordance
