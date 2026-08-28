@@ -18,7 +18,10 @@ import type {
 import type { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
 import { SyncJobExecutionError } from '@openlinker/core/sync';
 import type { ConfigService } from '@nestjs/config';
-import { FakeOperationalSettingsService } from '../../../testing/operational-settings.double';
+import {
+  FakeOperationalSettingsService,
+  settingNumber,
+} from '../../../testing/operational-settings.double';
 
 describe('MasterInventorySyncAllHandler', () => {
   let handler: MasterInventorySyncAllHandler;
@@ -254,7 +257,7 @@ describe('MasterInventorySyncAllHandler', () => {
       );
 
       operationalSettings.setValues({
-        inventorySweepBudget: { value: 1500, source: 'setting' },
+        inventorySweepBudget: settingNumber('inventorySweepBudget', 1500),
       });
       identifierMapping.listExternalIdsByConnection.mockClear();
 

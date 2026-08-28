@@ -17,24 +17,51 @@ import {
   DELETION_AUDIT_CADENCE_DEFAULT,
   OPERATIONAL_SETTING_BOUNDS,
   type IOperationalSettingsService,
+  type OperationalSettingKey,
   type OperationalSettingsView,
+  type ResolvedOperationalNumber,
 } from '@openlinker/core/operational-settings';
+
+/**
+ * A resolved number sitting on its built-in default, with the ceilings the
+ * real service reports alongside it.
+ */
+const defaultNumber = (key: OperationalSettingKey): ResolvedOperationalNumber => {
+  const bound = OPERATIONAL_SETTING_BOUNDS[key];
+  return {
+    value: bound.default,
+    source: 'default',
+    recommendedMax: bound.recommendedMax,
+    recommendedReason: bound.recommendedReason,
+    absoluteMax: bound.absoluteMax,
+    absoluteReason: bound.absoluteReason,
+    aboveRecommended: false,
+  };
+};
+
+/**
+ * Builds a resolved number a spec is overriding, so a test does not have to
+ * restate the ceiling fields it does not care about.
+ */
+export const settingNumber = (
+  key: OperationalSettingKey,
+  value: number
+): ResolvedOperationalNumber => {
+  const bound = OPERATIONAL_SETTING_BOUNDS[key];
+  return {
+    ...defaultNumber(key),
+    value,
+    source: 'setting',
+    aboveRecommended: value > bound.recommendedMax,
+  };
+};
 
 export class FakeOperationalSettingsService implements IOperationalSettingsService {
   private view: OperationalSettingsView = {
-    catalogueSweepBudget: {
-      value: OPERATIONAL_SETTING_BOUNDS.catalogueSweepBudget.default,
-      source: 'default',
-    },
-    inventorySweepBudget: {
-      value: OPERATIONAL_SETTING_BOUNDS.inventorySweepBudget.default,
-      source: 'default',
-    },
-    sweepPageSize: { value: OPERATIONAL_SETTING_BOUNDS.sweepPageSize.default, source: 'default' },
-    deletionAuditBudget: {
-      value: OPERATIONAL_SETTING_BOUNDS.deletionAuditBudget.default,
-      source: 'default',
-    },
+    catalogueSweepBudget: defaultNumber('catalogueSweepBudget'),
+    inventorySweepBudget: defaultNumber('inventorySweepBudget'),
+    sweepPageSize: defaultNumber('sweepPageSize'),
+    deletionAuditBudget: defaultNumber('deletionAuditBudget'),
     deletionAuditCadence: { value: DELETION_AUDIT_CADENCE_DEFAULT, source: 'default' },
     deletionAuditAlwaysEnabled: true,
     updatedAt: null,

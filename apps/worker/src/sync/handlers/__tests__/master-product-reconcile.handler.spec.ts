@@ -12,7 +12,10 @@ import type { JobEnqueuePort, ISyncCursorsService, SyncLockPort } from '@openlin
 import type { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
 import type { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
 import type { ConfigService } from '@nestjs/config';
-import { FakeOperationalSettingsService } from '../../../testing/operational-settings.double';
+import {
+  FakeOperationalSettingsService,
+  settingNumber,
+} from '../../../testing/operational-settings.double';
 
 describe('MasterProductReconcileHandler', () => {
   let handler: MasterProductReconcileHandler;
@@ -279,7 +282,7 @@ describe('MasterProductReconcileHandler', () => {
       mappings(3);
       jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'j', isExisting: false });
       operationalSettings.setValues({
-        deletionAuditBudget: { value: 750, source: 'setting' },
+        deletionAuditBudget: settingNumber('deletionAuditBudget', 750),
       });
 
       await handler.execute(createJob());

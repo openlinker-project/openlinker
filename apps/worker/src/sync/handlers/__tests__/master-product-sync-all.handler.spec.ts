@@ -15,7 +15,10 @@ import { SyncJobExecutionError } from '@openlinker/core/sync';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { ProductMasterPort } from '@openlinker/core/products';
 import type { ConfigService } from '@nestjs/config';
-import { FakeOperationalSettingsService } from '../../../testing/operational-settings.double';
+import {
+  FakeOperationalSettingsService,
+  settingNumber,
+} from '../../../testing/operational-settings.double';
 
 describe('MasterProductSyncAllHandler', () => {
   let handler: MasterProductSyncAllHandler;
@@ -335,7 +338,7 @@ describe('MasterProductSyncAllHandler', () => {
       expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(5); // 500 items / 100
 
       operationalSettings.setValues({
-        catalogueSweepBudget: { value: 1000, source: 'setting' },
+        catalogueSweepBudget: settingNumber('catalogueSweepBudget', 1000),
       });
       jobEnqueue.enqueueJob.mockClear();
       cursors.getCursor.mockResolvedValue(null);
@@ -349,13 +352,43 @@ describe('MasterProductSyncAllHandler', () => {
       distinctPages(100);
       jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'j', isExisting: false });
       operationalSettings.setValues({
-        catalogueSweepBudget: { value: 100, source: 'setting' },
-        sweepPageSize: { value: 25, source: 'setting' },
+        catalogueSweepBudget: settingNumber('catalogueSweepBudget', 100),
+        sweepPageSize: settingNumber('sweepPageSize', 25),
       });
 
       await handler.execute(createJob('conn-1'));
 
       expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(4);
+    });
+
+    // The two ceilings are earned differently, so they clamp differently.
+    // Reaching the settings surface with a value above our recommendation
+    // required an explicit acknowledgement; a raw job payload has nowhere to
+    // record one, so it keeps the narrower bound.
+    it('should honour an acknowledged setting above the recommended ceiling', async () => {
+      distinctPages(100);
+      jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'j', isExisting: false });
+      operationalSettings.setValues({
+        catalogueSweepBudget: settingNumber('catalogueSweepBudget', 3000),
+      });
+
+      await handler.execute(createJob('conn-1'));
+
+      // 3000 items, 100 per batch — not clamped back to the recommended 2000.
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(30);
+    });
+
+    it('should still clamp a raw payload limit to the RECOMMENDED ceiling', async () => {
+      distinctPages(100);
+      jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'j', isExisting: false });
+      operationalSettings.setValues({
+        catalogueSweepBudget: settingNumber('catalogueSweepBudget', 3000),
+      });
+
+      await handler.execute(createJob('conn-1', 9000));
+
+      // The payload wins over the setting, and is bounded at 2000.
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(20);
     });
 
     it('should clamp a payload page limit above the ceiling', async () => {

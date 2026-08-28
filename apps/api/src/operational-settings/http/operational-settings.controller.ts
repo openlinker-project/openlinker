@@ -79,7 +79,8 @@ export class OperationalSettingsController {
   @ApiResponse({ status: 204, description: 'Settings updated' })
   @ApiResponse({
     status: 400,
-    description: 'A value is out of range, or the cadence is unusable; the message names the field',
+    description:
+      'A value is below the minimum, above the absolute ceiling, or above the recommended ceiling without `acknowledgeAboveRecommended`; or the cadence is unusable. The message names the field, the ceiling and why it sits there.',
   })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async update(
@@ -96,6 +97,7 @@ export class OperationalSettingsController {
           sweepPageSize: dto.sweepPageSize,
           deletionAuditBudget: dto.deletionAuditBudget,
           deletionAuditCadence: dto.deletionAuditCadence,
+          acknowledgeAboveRecommended: dto.acknowledgeAboveRecommended,
         },
         user?.id ?? null
       )

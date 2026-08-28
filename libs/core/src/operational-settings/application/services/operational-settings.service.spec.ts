@@ -38,10 +38,10 @@ describe('OperationalSettingsService', () => {
     it('should reproduce the pre-#2651 constants when the table is empty and no env var is set', async () => {
       const view = await service.resolve();
 
-      expect(view.catalogueSweepBudget).toEqual({ value: 500, source: 'default' });
-      expect(view.inventorySweepBudget).toEqual({ value: 100, source: 'default' });
-      expect(view.sweepPageSize).toEqual({ value: 100, source: 'default' });
-      expect(view.deletionAuditBudget).toEqual({ value: 100, source: 'default' });
+      expect(view.catalogueSweepBudget).toMatchObject({ value: 500, source: 'default' });
+      expect(view.inventorySweepBudget).toMatchObject({ value: 100, source: 'default' });
+      expect(view.sweepPageSize).toMatchObject({ value: 100, source: 'default' });
+      expect(view.deletionAuditBudget).toMatchObject({ value: 100, source: 'default' });
       expect(view.deletionAuditCadence).toEqual({ value: '0 * * * *', source: 'default' });
       expect(view.updatedAt).toBeNull();
       expect(view.updatedBy).toBeNull();
@@ -53,7 +53,7 @@ describe('OperationalSettingsService', () => {
 
       const view = await service.resolve();
 
-      expect(view.catalogueSweepBudget).toEqual({ value: 250, source: 'env' });
+      expect(view.catalogueSweepBudget).toMatchObject({ value: 250, source: 'env' });
       expect(view.deletionAuditCadence).toEqual({ value: '*/30 * * * *', source: 'env' });
     });
 
@@ -65,7 +65,7 @@ describe('OperationalSettingsService', () => {
 
       const view = await service.resolve();
 
-      expect(view.catalogueSweepBudget).toEqual({ value: 900, source: 'setting' });
+      expect(view.catalogueSweepBudget).toMatchObject({ value: 900, source: 'setting' });
       // The rest still fall through, per-field.
       expect(view.inventorySweepBudget.source).toBe('default');
       expect(view.updatedBy).toBe('ada');
@@ -108,20 +108,64 @@ describe('OperationalSettingsService', () => {
       expect(repository.upsertSettings).toHaveBeenCalledWith({ catalogueSweepBudget: null }, 'ada');
     });
 
-    it('should reject an out-of-range value naming the field and the range', async () => {
+    it('should reject an unacknowledged out-of-range value naming the field and the ceiling', async () => {
       await expect(service.updateSettings({ catalogueSweepBudget: 5000 }, null)).rejects.toThrow(
         InvalidOperationalSettingError
       );
       await expect(service.updateSettings({ catalogueSweepBudget: 5000 }, null)).rejects.toThrow(
-        'catalogueSweepBudget must be an integer between 1 and 2000'
+        'recommended maximum of 2000'
       );
       expect(repository.upsertSettings).not.toHaveBeenCalled();
     });
 
-    it('should reject a sweep page size above the batch-size clamp the handlers enforce', async () => {
-      await expect(service.updateSettings({ sweepPageSize: 500 }, null)).rejects.toThrow(
-        InvalidOperationalSettingError
+    it('should refuse a value above the recommendation without an acknowledgement', async () => {
+      await expect(service.updateSettings({ sweepPageSize: 250 }, null)).rejects.toThrow(
+        'requires acknowledgeAboveRecommended'
       );
+      expect(repository.upsertSettings).not.toHaveBeenCalled();
+    });
+
+    // PrestaShop pages through `limit=[offset,]count` with no cap, so our 100
+    // is advice, not a platform fact — an operator may run past it.
+    it('should accept a value above the recommendation when acknowledged', async () => {
+      await service.updateSettings(
+        { sweepPageSize: 250, acknowledgeAboveRecommended: true },
+        'ada'
+      );
+
+      expect(repository.upsertSettings).toHaveBeenCalledWith({ sweepPageSize: 250 }, 'ada');
+    });
+
+    it('should refuse a value above the absolute ceiling however it is acknowledged', async () => {
+      await expect(
+        service.updateSettings({ sweepPageSize: 2000, acknowledgeAboveRecommended: true }, null)
+      ).rejects.toThrow('must not exceed 500');
+      expect(repository.upsertSettings).not.toHaveBeenCalled();
+    });
+
+    // The acknowledgement is permission for one request. Persisting it would
+    // let a single decision quietly license every later write.
+    it('should not persist the acknowledgement flag', async () => {
+      await service.updateSettings(
+        { catalogueSweepBudget: 5000, acknowledgeAboveRecommended: true },
+        'ada'
+      );
+
+      const [persisted] = repository.upsertSettings.mock.calls[0];
+      expect(persisted).toEqual({ catalogueSweepBudget: 5000 });
+      expect(persisted).not.toHaveProperty('acknowledgeAboveRecommended');
+    });
+
+    it('should report an acknowledged override as above the recommendation when read back', async () => {
+      repository.findSettings.mockResolvedValue(
+        new OperationalSettings(5000, null, null, null, null, new Date(), 'ada')
+      );
+
+      const view = await service.resolve();
+
+      // Reported === enforced: the value survives the round trip intact.
+      expect(view.catalogueSweepBudget.value).toBe(5000);
+      expect(view.catalogueSweepBudget.aboveRecommended).toBe(true);
     });
 
     it('should accept a valid cron cadence', async () => {

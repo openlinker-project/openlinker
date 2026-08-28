@@ -32,6 +32,27 @@ export class ResolvedNumberSettingDto {
       '`setting` (an operator saved it), `env` (an environment variable), or `default` (nobody has chosen).',
   })
   source!: OperationalSettingSource;
+
+  @ApiProperty({
+    description:
+      'Our recommended ceiling. Advisory — a write above it is accepted with `acknowledgeAboveRecommended`.',
+  })
+  recommendedMax!: number;
+
+  @ApiProperty({ description: 'Why the recommendation sits where it does.' })
+  recommendedReason!: string;
+
+  @ApiProperty({ description: 'The refusal line. No acknowledgement can exceed it.' })
+  absoluteMax!: number;
+
+  @ApiProperty({ description: 'Why the absolute ceiling sits where it does.' })
+  absoluteReason!: string;
+
+  @ApiProperty({
+    description:
+      'True when this value exceeds our recommendation — the UI should show it as a deliberate override rather than an ordinary setting.',
+  })
+  aboveRecommended!: boolean;
 }
 
 export class ResolvedCadenceSettingDto {
@@ -46,8 +67,17 @@ export class OperationalSettingBoundDto {
   @ApiProperty()
   min!: number;
 
+  @ApiProperty({ description: 'Advisory ceiling; exceedable with an explicit acknowledgement.' })
+  recommendedMax!: number;
+
   @ApiProperty()
-  max!: number;
+  recommendedReason!: string;
+
+  @ApiProperty({ description: 'Hard ceiling; refused whatever the request says.' })
+  absoluteMax!: number;
+
+  @ApiProperty()
+  absoluteReason!: string;
 
   @ApiProperty({ description: 'The built-in value used when neither a row nor an env var sets one.' })
   default!: number;
@@ -98,9 +128,15 @@ export class OperationalSettingsResponseDto {
     type: 'object',
     additionalProperties: { type: 'object' },
     description:
-      'The accepted range, built-in default and env var for each numeric knob — the same table the API validator and the worker clamp read.',
+      'The two ceilings, built-in default and env var for each numeric knob — the same table the API validator and the worker clamp read. A form derives its limits from this rather than restating them.',
   })
   bounds!: Record<string, OperationalSettingBoundDto>;
+
+  @ApiProperty({
+    description:
+      'A platform may narrow a page size further where its own API caps it (WooCommerce caps `per_page` at 100). That clamp is applied where the request is built and logged when it bites, so a value shown here is never quietly not what was sent.',
+  })
+  adapterClampNote!: string;
 
   static fromView(view: OperationalSettingsView): OperationalSettingsResponseDto {
     const dto = new OperationalSettingsResponseDto();
@@ -113,6 +149,8 @@ export class OperationalSettingsResponseDto {
     dto.cadenceAppliesAt = 'next-scheduler-start';
     dto.updatedAt = view.updatedAt ? view.updatedAt.toISOString() : null;
     dto.updatedBy = view.updatedBy;
+    dto.adapterClampNote =
+      'A page size above what a specific adapter can send is clamped where the request is built, and the clamp is logged.';
     dto.bounds = Object.fromEntries(
       OPERATIONAL_SETTING_KEYS.map((key) => [key, { ...OPERATIONAL_SETTING_BOUNDS[key] }])
     );

@@ -40,6 +40,7 @@ import {
   type OperationalSettingKey,
   type OperationalSettingsInput,
   type OperationalSettingsView,
+  type ResolvedOperationalNumber,
   type ResolvedOperationalSetting,
 } from '../../domain/types/operational-settings.types';
 import { OPERATIONAL_SETTINGS_REPOSITORY_TOKEN } from '../../operational-settings.tokens';
@@ -66,7 +67,7 @@ export class OperationalSettingsService implements IOperationalSettingsService {
   async resolve(): Promise<OperationalSettingsView> {
     const stored = await this.repository.findSettings();
 
-    const numeric = (key: OperationalSettingKey): ResolvedOperationalSetting<number> =>
+    const numeric = (key: OperationalSettingKey): ResolvedOperationalNumber =>
       resolveOperationalSetting(
         key,
         stored?.[key] ?? null,
@@ -90,6 +91,8 @@ export class OperationalSettingsService implements IOperationalSettingsService {
   }
 
   async updateSettings(input: OperationalSettingsInput, updatedBy: string | null): Promise<void> {
+    const acknowledged = input.acknowledgeAboveRecommended === true;
+
     for (const key of OPERATIONAL_SETTING_KEYS) {
       const value = input[key];
       if (value === undefined || value === null) {
@@ -98,7 +101,7 @@ export class OperationalSettingsService implements IOperationalSettingsService {
       if (typeof value !== 'number') {
         throw new InvalidOperationalSettingError(key, `${key} must be a number or null`);
       }
-      const problem = checkOperationalSettingBound(key, value);
+      const problem = checkOperationalSettingBound(key, value, acknowledged);
       if (problem !== null) {
         throw new InvalidOperationalSettingError(key, problem);
       }
@@ -108,7 +111,30 @@ export class OperationalSettingsService implements IOperationalSettingsService {
       this.assertUsableCadence(input.deletionAuditCadence);
     }
 
-    await this.repository.upsertSettings(input, updatedBy);
+    // The acknowledgement is permission for THIS request, not a stored
+    // preference. It is dropped before persistence so it cannot silently
+    // license a later write, and so it can never become a column that outlives
+    // the decision it recorded. Built by naming the persisted fields rather
+    // than by spreading `input` minus one key: a field added to the input type
+    // should have to be listed here on purpose.
+    await this.repository.upsertSettings(
+      {
+        ...(input.catalogueSweepBudget !== undefined && {
+          catalogueSweepBudget: input.catalogueSweepBudget,
+        }),
+        ...(input.inventorySweepBudget !== undefined && {
+          inventorySweepBudget: input.inventorySweepBudget,
+        }),
+        ...(input.sweepPageSize !== undefined && { sweepPageSize: input.sweepPageSize }),
+        ...(input.deletionAuditBudget !== undefined && {
+          deletionAuditBudget: input.deletionAuditBudget,
+        }),
+        ...(input.deletionAuditCadence !== undefined && {
+          deletionAuditCadence: input.deletionAuditCadence,
+        }),
+      },
+      updatedBy
+    );
   }
 
   /**

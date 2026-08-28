@@ -19,6 +19,7 @@ export {
   OPERATIONAL_SETTING_KEYS,
   OPERATIONAL_SETTING_SOURCES,
   checkOperationalSettingBound,
+  clampToAdapterPageSize,
   readOperationalSettingEnv,
   resolveOperationalSetting,
 } from './domain/types/operational-settings.types';
@@ -28,6 +29,7 @@ export type {
   OperationalSettingSource,
   OperationalSettingsInput,
   OperationalSettingsView,
+  ResolvedOperationalNumber,
   ResolvedOperationalSetting,
 } from './domain/types/operational-settings.types';
 

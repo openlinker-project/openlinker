@@ -52,6 +52,7 @@ import type {
 import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
+import { clampToAdapterPageSize } from '@openlinker/core/operational-settings';
 import type { IWooCommerceHttpClient } from '../../http/woocommerce-http-client.interface';
 import { WooCommerceHttpResponseException } from '../../http/woocommerce-http-response.exception';
 import type { IWooCommerceProductMapper } from '../../mappers/woocommerce-product.mapper.interface';
@@ -72,6 +73,18 @@ import type {
 } from './woocommerce-product.types';
 import { fetchAllPages } from '../../utils/woocommerce-utils';
 
+/**
+ * WooCommerce's REST layer caps `per_page` at 100 on every list endpoint
+ * (#1723). This is a genuine PLATFORM wall, unlike the advisory ceilings in
+ * `OPERATIONAL_SETTING_BOUNDS`: above it the shop does not return a bigger
+ * page, it returns 100 or a 400. It is enforced here, at the point the request
+ * is built, because this is the only place that knows WooCommerce is the
+ * adapter about to send it - and it is LOGGED when it bites, so a page size an
+ * operator set can never be reported back to them intact while quietly not
+ * being what was sent.
+ */
+const WC_MAX_PER_PAGE = 100;
+
 export class WooCommerceProductMasterAdapter
   implements ProductMasterPort, ModifiedProductLister, ProductTaxRateReader
 {
@@ -90,7 +103,7 @@ export class WooCommerceProductMasterAdapter
     this.logger.debug(
       `Listing external product IDs (connection: ${this.connection.id}, limit: ${String(filters?.limit)}, offset: ${String(filters?.offset)})`,
     );
-    const perPage = filters?.limit ?? 100;
+    const perPage = this.resolvePerPage(filters?.limit ?? 100, 'listExternalIds');
     const page =
       filters?.offset !== undefined ? Math.floor(filters.offset / perPage) + 1 : 1;
     const raw = await this.httpClient.get<Array<{ id: number }>>(
@@ -130,12 +143,15 @@ export class WooCommerceProductMasterAdapter
       `Listing external product IDs modified since ${since.toISOString()} ` +
         `(connection: ${this.connection.id}, limit: ${String(limit)}, offset: ${String(offset)})`,
     );
+    const perPage = this.resolvePerPage(limit, 'listExternalIdsModifiedSince');
     // Same derivation as listExternalIds — exact while the caller keeps `offset` a
-    // multiple of `limit`, which the bounded sweep's page loop does.
+    // multiple of `limit`, which the bounded sweep's page loop does. Derived from
+    // the REQUESTED limit, not the clamped one, so a clamp narrows the page
+    // without also skewing which page is asked for.
     const page = Math.floor(offset / limit) + 1;
     const raw = await this.httpClient.get<Array<{ id: number }>>('/wp-json/wc/v3/products', {
       _fields: 'id',
-      per_page: limit,
+      per_page: perPage,
       page,
       modified_after: since.toISOString(),
       dates_are_gmt: true,
@@ -903,6 +919,26 @@ export class WooCommerceProductMasterAdapter
   }
 
   private storeCountry: string | null | undefined;
+
+  /**
+   * Narrow a requested page size to what WooCommerce will actually honour.
+   *
+   * Warns when it bites. A silent clamp is the reported-versus-enforced defect
+   * in miniature: the operator set 250, the settings page reports 250, and the
+   * shop was asked for 100 - with nothing anywhere saying so.
+   */
+  private resolvePerPage(requested: number, operation: string): number {
+    const { value, clamped } = clampToAdapterPageSize(requested, WC_MAX_PER_PAGE);
+    if (clamped) {
+      this.logger.warn(
+        `WooCommerce caps per_page at ${String(WC_MAX_PER_PAGE)}; ${operation} requested ` +
+          `${String(requested)} and was clamped (connection: ${this.connection.id}). ` +
+          `Lower the sweep page size to ${String(WC_MAX_PER_PAGE)} or below to make the ` +
+          `configured value match what is sent.`,
+      );
+    }
+    return value;
+  }
 }
 
 /**

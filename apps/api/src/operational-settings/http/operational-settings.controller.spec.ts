@@ -17,11 +17,25 @@ import {
 import type { AuthenticatedUser } from '../../auth/auth.types';
 import { OperationalSettingsController } from './operational-settings.controller';
 
+const number = (
+  value: number,
+  recommendedMax: number,
+  absoluteMax: number
+): OperationalSettingsView['catalogueSweepBudget'] => ({
+  value,
+  source: 'default',
+  recommendedMax,
+  recommendedReason: 'because measurement',
+  absoluteMax,
+  absoluteReason: 'because request lines',
+  aboveRecommended: value > recommendedMax,
+});
+
 const view = (overrides: Partial<OperationalSettingsView> = {}): OperationalSettingsView => ({
-  catalogueSweepBudget: { value: 500, source: 'default' },
-  inventorySweepBudget: { value: 100, source: 'default' },
-  sweepPageSize: { value: 100, source: 'default' },
-  deletionAuditBudget: { value: 100, source: 'default' },
+  catalogueSweepBudget: number(500, 2000, 20_000),
+  inventorySweepBudget: number(100, 2000, 20_000),
+  sweepPageSize: number(100, 100, 500),
+  deletionAuditBudget: number(100, 2000, 20_000),
   deletionAuditCadence: { value: '0 * * * *', source: 'default' },
   deletionAuditAlwaysEnabled: true,
   updatedAt: null,
@@ -47,20 +61,49 @@ describe('OperationalSettingsController', () => {
     it('should return every value with the rung that produced it', async () => {
       const dto = await controller.get(res);
 
-      expect(dto.catalogueSweepBudget).toEqual({ value: 500, source: 'default' });
+      expect(dto.catalogueSweepBudget).toMatchObject({ value: 500, source: 'default' });
       expect(dto.deletionAuditCadence).toEqual({ value: '0 * * * *', source: 'default' });
     });
 
-    it('should return the bounds a PUT would enforce, so no client restates them', async () => {
+    it('should return both ceilings a PUT would enforce, so no client restates them', async () => {
       const dto = await controller.get(res);
 
-      expect(dto.bounds.catalogueSweepBudget).toEqual({
+      expect(dto.bounds.catalogueSweepBudget).toMatchObject({
         min: 1,
-        max: 2000,
+        recommendedMax: 2000,
+        absoluteMax: 20_000,
         default: 500,
         envVar: 'OL_PRODUCT_SYNC_PAGE_LIMIT',
       });
-      expect(dto.bounds.sweepPageSize.max).toBe(100);
+      // Advisory and hard limits are separate values, never one `max`: a client
+      // that saw only one could not tell "we advise against this" from "this
+      // will be refused".
+      expect(dto.bounds.sweepPageSize.recommendedMax).toBe(100);
+      expect(dto.bounds.sweepPageSize.absoluteMax).toBe(500);
+    });
+
+    it('should carry the reason for each ceiling so the UI renders the why', async () => {
+      const dto = await controller.get(res);
+
+      expect(dto.bounds.sweepPageSize.recommendedReason.length).toBeGreaterThan(0);
+      expect(dto.bounds.sweepPageSize.absoluteReason.length).toBeGreaterThan(0);
+    });
+
+    it('should mark a value pushed past the recommendation as such', async () => {
+      settings.resolve.mockResolvedValue(
+        view({ catalogueSweepBudget: number(5000, 2000, 20_000) })
+      );
+
+      const dto = await controller.get(res);
+
+      expect(dto.catalogueSweepBudget.value).toBe(5000);
+      expect(dto.catalogueSweepBudget.aboveRecommended).toBe(true);
+    });
+
+    it('should say that an adapter may narrow a page size further, and that the clamp is logged', async () => {
+      const dto = await controller.get(res);
+
+      expect(dto.adapterClampNote).toContain('logged');
     });
 
     it('should state that the deletion audit cannot be disabled here', async () => {
@@ -108,7 +151,21 @@ describe('OperationalSettingsController', () => {
           sweepPageSize: undefined,
           deletionAuditBudget: undefined,
           deletionAuditCadence: undefined,
+          acknowledgeAboveRecommended: undefined,
         },
+        'user-1'
+      );
+    });
+
+    it('should forward the acknowledgement so the service can weigh it', async () => {
+      await controller.update(
+        { sweepPageSize: 250, acknowledgeAboveRecommended: true },
+        { id: 'user-1' } as AuthenticatedUser,
+        res
+      );
+
+      expect(settings.updateSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ sweepPageSize: 250, acknowledgeAboveRecommended: true }),
         'user-1'
       );
     });

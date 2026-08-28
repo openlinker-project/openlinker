@@ -65,10 +65,9 @@ import {
 } from '@openlinker/core/operational-settings';
 import { Logger } from '@openlinker/shared/logging';
 import {
-  SWEEP_BUDGET_DEFAULT,
   formatSweepCursor,
   parseSweepCursor,
-  resolveSweepBudget,
+  resolveRunBudget,
   resolveSweepLockTtlMs,
   runBoundedSweep,
   sweepCompletedAtCursorKey,
@@ -103,9 +102,10 @@ export class MasterProductReconcileHandler implements SyncJobHandler {
     // 41.7-day audit cycle on 100k products, and it is the one an operator is
     // most likely to want to raise - so it must not need a restart.
     const settings = await this.operationalSettings.resolve();
-    const budget = resolveSweepBudget(
-      this.getPayload(job).pageLimit ?? settings.deletionAuditBudget.value,
-      { default: SWEEP_BUDGET_DEFAULT, max: OPERATIONAL_SETTING_BOUNDS.deletionAuditBudget.max }
+    const budget = resolveRunBudget(
+      this.getPayload(job).pageLimit,
+      settings.deletionAuditBudget.value,
+      OPERATIONAL_SETTING_BOUNDS.deletionAuditBudget
     );
     const lockKey = sweepLockKey('product-reconcile', job.connectionId);
     const lockTtlMs = resolveSweepLockTtlMs(
