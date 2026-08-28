@@ -39,4 +39,15 @@ export interface MappingOption {
    * time). Static options omit this field.
    */
   kind?: MappingOptionKind;
+  /**
+   * The neutral value the integration already derives for this option when the
+   * operator has configured no override (#2607). Present only where the
+   * integration can answer it from the destination's own data; absent means
+   * "this integration derives nothing here", never "nothing is matched".
+   *
+   * It exists so the mapping UI can show what is matched already, and - more
+   * usefully - which option nothing matched, which is the one an operator has
+   * to map by hand.
+   */
+  derivedValue?: string;
 }

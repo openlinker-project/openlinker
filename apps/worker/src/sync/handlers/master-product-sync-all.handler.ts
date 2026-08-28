@@ -3,7 +3,10 @@
  *
  * Handles jobs of type 'master.product.syncAll'. Enumerates external product IDs
  * from the source platform via ProductMasterPort.listExternalIds and fans out
- * per-product 'master.product.syncByExternalId' sub-jobs. This is the catalog
+ * 'master.product.syncBatch' sub-jobs, each covering a page of products (#2593 -
+ * it used to fan out one 'master.product.syncByExternalId' per product, which
+ * built a fresh adapter instance per product and so could never share a bulk
+ * read). This is the catalog
  * discovery path — the mechanism by which OpenLinker learns about products that
  * exist on a freshly connected source platform but have no identifier mapping yet.
  *
@@ -53,14 +56,21 @@ import {
   ISyncCursorsService,
   SyncLockPort} from '@openlinker/core/sync';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import {
+  OPERATIONAL_SETTING_BOUNDS,
+  OPERATIONAL_SETTINGS_SERVICE_TOKEN,
+  type IOperationalSettingsService,
+  type OperationalSettingsView,
+} from '@openlinker/core/operational-settings';
 import type { ProductMasterPort } from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
-import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import {
+  SWEEP_BATCH_SIZE_DEFAULT,
+  SWEEP_BATCH_SIZE_MAX,
   formatSweepCursor,
   parseSweepCursor,
   readPagedIds,
-  resolveSweepBudget,
+  resolveRunBudget,
   resolveSweepLockTtlMs,
   runBoundedSweep,
   sweepCursorKey,
@@ -92,11 +102,24 @@ export class MasterProductSyncAllHandler implements SyncJobHandler {
     private readonly cursors: ISyncCursorsService,
     @Inject(SYNC_LOCK_TOKEN)
     private readonly syncLock: SyncLockPort,
+    @Inject(OPERATIONAL_SETTINGS_SERVICE_TOKEN)
+    private readonly operationalSettings: IOperationalSettingsService,
     private readonly configService: ConfigService
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
-    const budget = resolveSweepBudget(this.getPayload(job).pageLimit);
+    // Read PER TICK, never cached at boot (#2651): a budget an operator has to
+    // restart the worker to apply is barely better than the env var it
+    // replaces. One singleton-row primary-key lookup, against a run that is
+    // about to issue platform calls.
+    const settings = await this.operationalSettings.resolve();
+    const budget = resolveRunBudget(
+      this.getPayload(job).pageLimit,
+      this.getConfiguredBudget(settings),
+      // The bound carries the code default too, so there is one source for it.
+      OPERATIONAL_SETTING_BOUNDS.catalogueSweepBudget
+    );
+    const batchSize = this.getBatchSize(settings);
     const lockKey = sweepLockKey('product', job.connectionId);
     const lockTtlMs = resolveSweepLockTtlMs(
       this.configService.get<string>('OL_MASTER_SWEEP_LOCK_TTL_MS')
@@ -130,7 +153,8 @@ export class MasterProductSyncAllHandler implements SyncJobHandler {
             pageBudget,
             this.getPageSize()
           ),
-        enqueue: (externalId, cycleId) => this.enqueueChild(job, externalId, cycleId),
+        groupSize: batchSize,
+        enqueue: (externalIds, cycleId) => this.enqueueChild(job, externalIds, cycleId),
         newCycleId: () => randomUUID(),
       });
 
@@ -178,21 +202,37 @@ export class MasterProductSyncAllHandler implements SyncJobHandler {
     }
   }
 
-  private async enqueueChild(job: SyncJob, externalId: string, cycleId: string): Promise<unknown> {
+  /**
+   * Enqueue one child covering a whole batch of products (#2593).
+   *
+   * The child is `master.product.syncBatch`, not one
+   * `master.product.syncByExternalId` per id: a per-product child builds its own
+   * adapter instance, so it cannot benefit from a bulk read no matter how cheap
+   * the read is. The per-product job survives as the fallback for a failed batch
+   * member and as the deletion-reconcile child.
+   */
+  private async enqueueChild(
+    job: SyncJob,
+    externalIds: readonly string[],
+    cycleId: string
+  ): Promise<unknown> {
     const jobRequest: SyncJobRequest = {
-      jobType: 'master.product.syncByExternalId',
+      // Sweep-triggered child, page-sized (#2593). Its own job type so ADR-050
+      // can lane it by its own cost of starvation (#2594): a sweep child arrives
+      // a budget wide, so it runs in `bulk`, not `realtime`.
+      jobType: 'master.product.syncBatch',
       connectionId: job.connectionId,
       payload: {
         schemaVersion: 1,
-        externalId,
-        objectType: CORE_ENTITY_TYPE.Product,
+        externalIds: [...externalIds],
       },
-      // Keyed on the CYCLE, not on `job.id`. A resuming tick is a different job,
-      // so a job-scoped key would re-enqueue the same child under a fresh key on
-      // every overlapping page (#2039's `reconcileId` lesson: a job id is not a
-      // run identity). Cycle-scoping also makes a crash between enqueue and
-      // cursor write safe — the retry produces identical keys.
-      idempotencyKey: `master:${job.connectionId}:product:sync:${externalId}:${cycleId}`,
+      // Keyed on the CYCLE and on the batch's FIRST id. A resuming tick is a
+      // different job, so a job-scoped key would re-enqueue the same child under
+      // a fresh key on every overlapping page (#2039's `reconcileId` lesson: a
+      // job id is not a run identity). Cycle-scoping also makes a crash between
+      // enqueue and cursor write safe - the retry produces identical keys, since
+      // the same offset yields the same batch boundaries.
+      idempotencyKey: `master:${job.connectionId}:product:syncBatch:${externalIds[0]}:${cycleId}`,
     };
     return this.jobEnqueue.enqueueJob(jobRequest);
   }
@@ -211,6 +251,49 @@ export class MasterProductSyncAllHandler implements SyncJobHandler {
       pageLimit:
         payload && typeof payload.pageLimit === 'number' ? payload.pageLimit : undefined,
     };
+  }
+
+  /**
+   * Items per run.
+   *
+   * The settings service owns the `row -> OL_PRODUCT_SYNC_PAGE_LIMIT ->
+   * BATCHED_SWEEP_BUDGET_DEFAULT` ladder, so this is the same resolution the
+   * env var used to provide on its own - an install that set nothing, or set
+   * only the env var, gets the same number it got before #2651.
+   *
+   * An explicit payload `pageLimit` still wins: the scheduler descriptor is the
+   * narrower statement.
+   */
+  private getConfiguredBudget(settings: OperationalSettingsView): number {
+    return settings.catalogueSweepBudget.value;
+  }
+
+  /**
+   * Products per batch child.
+   *
+   * Precedence, and the reason for each step:
+   *
+   * 1. The shared setting when a row OR `OL_SWEEP_PAGE_SIZE` supplied it - used
+   *    VERBATIM. It has already been clamped to the setting's absolute ceiling,
+   *    and narrowing it again here would silently undo a value the operator was
+   *    shown and acknowledged.
+   * 2. Otherwise `OL_PRODUCT_SYNC_BATCH_SIZE`, which survives as a narrower,
+   *    sweep-specific override and keeps its own legacy clamp so an install
+   *    that had tuned only this one is unchanged. Collapsing it into the shared
+   *    setting would silently move the other sweep's page size too.
+   * 3. Otherwise the built-in default.
+   */
+  private getBatchSize(settings: OperationalSettingsView): number {
+    if (settings.sweepPageSize.source !== 'default') {
+      return settings.sweepPageSize.value;
+    }
+    const raw = this.configService.get<string>('OL_PRODUCT_SYNC_BATCH_SIZE');
+    if (raw === undefined) {
+      return settings.sweepPageSize.value;
+    }
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed <= 0) return SWEEP_BATCH_SIZE_DEFAULT;
+    return Math.min(Math.floor(parsed), SWEEP_BATCH_SIZE_MAX);
   }
 
   private getPageSize(): number {

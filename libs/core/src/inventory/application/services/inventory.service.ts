@@ -22,7 +22,9 @@ import { SyncJobQueuePort, SYNC_JOB_QUEUE_TOKEN } from '@openlinker/core/sync';
 @Injectable()
 export class InventoryService implements IInventoryService {
   private readonly logger = new Logger(InventoryService.name);
-  // inventory.propagateToMarketplaces is global and not tied to one connection.
+  // Fallback scope for a propagation whose caller did not name the master it
+  // read from. Nothing in the tree reaches this today; keeping it means an
+  // out-of-tree caller loses per-scope isolation rather than the enqueue.
   private readonly SYSTEM_CONNECTION_ID = '00000000-0000-0000-0000-000000000000';
 
   constructor(
@@ -32,7 +34,7 @@ export class InventoryService implements IInventoryService {
     private readonly jobQueue: SyncJobQueuePort
   ) {}
 
-  async setInventory(item: InventoryItem): Promise<InventoryItem> {
+  async setInventory(item: InventoryItem, sourceConnectionId?: string): Promise<InventoryItem> {
     this.logger.debug(
       `Setting inventory for product: ${item.productId}, variant: ${item.productVariantId ?? 'base'}, location: ${item.locationId ?? 'default'}`
     );
@@ -66,7 +68,12 @@ export class InventoryService implements IInventoryService {
     try {
       await this.jobQueue.enqueue({
         type: 'inventory.propagateToMarketplaces',
-        connectionId: this.SYSTEM_CONNECTION_ID,
+        // The master this stock was read from, so the runner's per-scope lane
+        // accounting isolates one master's burst from another's (ADR-050
+        // decision 3, #2609). A single synthetic id put every propagation in
+        // the whole installation into one scope, and a per-scope cap of 1 then
+        // serialised all of them behind each other.
+        connectionId: sourceConnectionId ?? this.SYSTEM_CONNECTION_ID,
         payload: {
           productId: upserted.productId,
           variantId: upserted.productVariantId,

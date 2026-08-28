@@ -26,6 +26,7 @@ import {
 } from '@openlinker/integrations-prestashop';
 import { PrestashopQueryBuilder } from './prestashop-query.builder';
 import { PrestashopResponseParser } from './prestashop-response.parser';
+import { parseRetryAfterSeconds } from './prestashop-retry-after.types';
 import { Logger, formatBodyForLog } from '@openlinker/shared/logging';
 import { XMLBuilder } from 'fast-xml-parser';
 import type { FetchLike } from '@openlinker/shared/http';
@@ -175,6 +176,13 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     return parsed as T;
   }
 
+  /**
+   * The page size collection reads use when the caller passes no explicit limit.
+   */
+  getPageSize(): number {
+    return this.config.pageSize ?? 100;
+  }
+
   async listResources<T = unknown>(
     resource: string,
     filters?: PrestashopQueryFilters,
@@ -243,7 +251,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     resourcePath: string,
     imageBytes: Uint8Array,
     mimeType: string,
-    filename = 'image',
+    filename = 'image'
   ): Promise<{ id: string }> {
     const url = `${this.baseUrl}/api/${resourcePath}`;
     this.logger.debug(`Uploading image to ${resourcePath}`);
@@ -275,7 +283,12 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
       const body = await response.text();
 
       if (!response.ok) {
-        this.handleError(response.status, body, url);
+        this.handleError(
+          response.status,
+          body,
+          url,
+          parseRetryAfterSeconds(response.headers.get('retry-after'))
+        );
       }
 
       const contentType = response.headers.get('content-type') ?? undefined;
@@ -283,8 +296,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
       const obj = parsed as Record<string, unknown>;
 
       // PS image upload response: { prestashop: { image: { id } } } or { image: { id } }
-      const inner =
-        (obj.prestashop as Record<string, unknown> | undefined)?.image ?? obj.image;
+      const inner = (obj.prestashop as Record<string, unknown> | undefined)?.image ?? obj.image;
       const imageData = inner as Record<string, unknown> | undefined;
       const rawId = imageData?.id ?? imageData?.['@_id'];
 
@@ -292,7 +304,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
         throw new PrestashopApiException(
           `Unexpected image upload response from ${url}: ${JSON.stringify(obj)}`,
           undefined,
-          undefined,
+          undefined
         );
       }
 
@@ -302,7 +314,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
         throw new PrestashopApiException(
           `Image upload timeout after ${timeoutMs}ms: ${url}`,
           undefined,
-          undefined,
+          undefined
         );
       }
       if (
@@ -316,7 +328,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
       throw new PrestashopApiException(
         `Network error during image upload: ${errorMessage}`,
         undefined,
-        undefined,
+        undefined
       );
     } finally {
       clearTimeout(timeoutId);
@@ -511,6 +523,19 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
           }
         }
 
+        // Honour the shop's own Retry-After for the in-client retry too, not
+        // only for the exception this eventually throws (#2613 review): the
+        // header is already parsed, and waiting less than the shop asked for
+        // just earns another 429. Clamped to the configured max delay so a
+        // hostile header cannot park a request indefinitely, and the local
+        // backoff is used whenever it is longer.
+        if (error instanceof PrestashopApiException && error.retryAfterSeconds !== undefined) {
+          delay = Math.max(
+            delay,
+            Math.min(error.retryAfterSeconds * 1000, this.retryConfig.maxDelayMs)
+          );
+        }
+
         // Retry on server errors (5xx) or network errors
         if (attempt < this.retryConfig.maxRetries) {
           this.logger.error(lastError.message);
@@ -598,7 +623,12 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
 
       // Handle errors
       if (!response.ok) {
-        this.handleError(response.status, body, url);
+        this.handleError(
+          response.status,
+          body,
+          url,
+          parseRetryAfterSeconds(response.headers.get('retry-after'))
+        );
       }
 
       return { body, contentType };
@@ -638,7 +668,12 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
   /**
    * Handle HTTP error responses
    */
-  private handleError(statusCode: number, body: string, url: string): never {
+  private handleError(
+    statusCode: number,
+    body: string,
+    url: string,
+    retryAfterSeconds?: number
+  ): never {
     if (statusCode === 401) {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
       const authError = new PrestashopAuthenticationException(
@@ -670,7 +705,9 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
       const serverError = new PrestashopApiException(
         `PrestaShop API server error (${statusCode}): ${url}`,
         statusCode,
-        body
+        body,
+        undefined,
+        retryAfterSeconds
       );
       throw serverError;
     }
@@ -679,7 +716,9 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     const apiError = new PrestashopApiException(
       `PrestaShop API error (${statusCode}): ${url}`,
       statusCode,
-      body
+      body,
+      undefined,
+      retryAfterSeconds
     );
     throw apiError;
   }

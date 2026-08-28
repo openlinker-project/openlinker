@@ -2,8 +2,13 @@
  * Stock At Risk Read Service
  *
  * Computes the stock-at-risk "needs attention" aggregate (#1983): variants
- * listed on a connection whose master stock, minus that connection's
- * configured stock safety buffer (#1844), is at or below zero.
+ * listed on a connection that publish nothing there.
+ *
+ * The predicate is the connection's own publish policy, applied by the same
+ * pure helper the write paths use. The zero threshold (#2610) is a second way
+ * to publish nothing, so leaving it out made this count under-report exactly
+ * the lines the threshold had silenced - which is the one place an operator
+ * would look for them.
  *
  * Lives in the `listings` context (not `inventory`) so it can inject the two
  * listing-mapping repository ports intra-context while reaching `inventory`
@@ -17,7 +22,11 @@
  * @implements {IStockAtRiskReadService}
  */
 import { Inject, Injectable } from '@nestjs/common';
-import { readStockSafetyBuffer } from '@openlinker/core/identifier-mapping';
+import {
+  applyStockSafetyBuffer,
+  readStockSafetyBuffer,
+  readStockZeroThreshold,
+} from '@openlinker/core/identifier-mapping';
 import { INTEGRATIONS_SERVICE_TOKEN, type IIntegrationsService } from '@openlinker/core/integrations';
 import {
   INVENTORY_QUERY_SERVICE_TOKEN,
@@ -63,6 +72,7 @@ export class StockAtRiskReadService implements IStockAtRiskReadService {
   private async findAtRiskForConnection(connection: {
     connectionId: string;
     buffer: number;
+    zeroThreshold: number;
   }): Promise<StockAtRiskItem[]> {
     const [offerRows, shopRows] = await Promise.all([
       this.offerMappingRepository.findRecentlyListedVariantIds({
@@ -87,7 +97,12 @@ export class StockAtRiskReadService implements IStockAtRiskReadService {
 
     const items: StockAtRiskItem[] = [];
     for (const availability of availabilities) {
-      if (availability.totalAvailable - connection.buffer <= 0) {
+      const published = applyStockSafetyBuffer(
+        availability.totalAvailable,
+        connection.buffer,
+        connection.zeroThreshold
+      );
+      if (published === 0) {
         items.push({
           variantId: availability.productVariantId,
           productId:
@@ -96,6 +111,7 @@ export class StockAtRiskReadService implements IStockAtRiskReadService {
           connectionId: connection.connectionId,
           masterStock: availability.totalAvailable,
           stockSafetyBuffer: connection.buffer,
+          stockZeroThreshold: connection.zeroThreshold,
         });
       }
     }
@@ -104,14 +120,13 @@ export class StockAtRiskReadService implements IStockAtRiskReadService {
 
   /**
    * Every active connection with `OfferManager` or `ProductPublisher`
-   * enabled, carrying its configured stock safety buffer (0 when unset —
-   * per `checkRequiredToSell`'s `OUT_OF_STOCK` rule (#1842), zero master
-   * stock is unsellable regardless of buffer, so a buffer-0 connection is
-   * still included and reported "at risk" via `findAtRiskForConnection`'s
-   * `totalAvailable - buffer <= 0` check).
+   * enabled, carrying its configured stock publish policy (both knobs `0`
+   * when unset - per `checkRequiredToSell`'s `OUT_OF_STOCK` rule (#1842),
+   * zero master stock is unsellable whatever the policy says, so a
+   * policy-less connection is still included and still reported at risk).
    */
   private async resolveBufferedConnections(): Promise<
-    Array<{ connectionId: string; buffer: number }>
+    Array<{ connectionId: string; buffer: number; zeroThreshold: number }>
   > {
     const [offerManagerAdapters, productPublisherAdapters] = await Promise.all([
       this.integrationsService.listCapabilityAdapters({ capability: 'OfferManager', lazy: true }),
@@ -121,10 +136,16 @@ export class StockAtRiskReadService implements IStockAtRiskReadService {
       }),
     ]);
 
-    const byConnectionId = new Map<string, { connectionId: string; buffer: number }>();
+    const byConnectionId = new Map<
+      string,
+      { connectionId: string; buffer: number; zeroThreshold: number }
+    >();
     for (const entry of [...offerManagerAdapters, ...productPublisherAdapters]) {
-      const buffer = readStockSafetyBuffer(entry.connection.config);
-      byConnectionId.set(entry.connectionId, { connectionId: entry.connectionId, buffer });
+      byConnectionId.set(entry.connectionId, {
+        connectionId: entry.connectionId,
+        buffer: readStockSafetyBuffer(entry.connection.config),
+        zeroThreshold: readStockZeroThreshold(entry.connection.config),
+      });
     }
     return [...byConnectionId.values()];
   }

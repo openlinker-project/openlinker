@@ -101,7 +101,7 @@ describe('PrestashopShopCurrencyResolver', () => {
     await expect(resolver.resolveDefaultCurrencyIso('conn-1', client)).resolves.toBeNull();
   });
 
-  it('should NOT poison the cache for 24h on a transient failure — the next call retries', async () => {
+  it('should NOT poison the cache for an hour on a transient failure — the next call retries', async () => {
     // First call: a transient WS blip resolves to null.
     client.listResources.mockRejectedValueOnce(new Error('timeout'));
     const first = await resolver.resolveDefaultCurrencyIso('conn-1', client);
@@ -113,7 +113,7 @@ describe('PrestashopShopCurrencyResolver', () => {
     jest.spyOn(Date, 'now').mockReturnValue(past + 61 * 1000);
     try {
       // Second call: the client is healthy again → resolves the real ISO,
-      // proving the transient null was not cached under the full 24h TTL.
+      // proving the transient null was not cached under the full resolved TTL.
       const second = await resolver.resolveDefaultCurrencyIso('conn-1', client);
       expect(second).toBe('PLN');
     } finally {
@@ -123,7 +123,7 @@ describe('PrestashopShopCurrencyResolver', () => {
   });
 
   it('should re-read an absent PS_CURRENCY_DEFAULT after the short TTL', async () => {
-    // A missing default currency used to cache for the full 24h TTL, so a shop
+    // A missing default currency used to cache for the full resolved TTL, so a shop
     // whose operator configured it in the back office kept reporting no
     // currency for up to a day. Any unresolved answer now gets the short TTL.
     client.listResources.mockResolvedValueOnce([]);

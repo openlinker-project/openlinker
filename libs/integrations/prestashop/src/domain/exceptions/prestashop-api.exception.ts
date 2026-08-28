@@ -10,6 +10,13 @@
  * separately capped via `formatBodyForLog` (#416). If you re-log this field,
  * route it through that helper.
  *
+ * `retryAfterSeconds` carries the upstream `Retry-After` header when the shop
+ * sent one (#2613). Honouring the shop's own number beats any backoff we could
+ * compute, so the retry classifier reads it for a 429. It is `undefined`
+ * whenever the header was absent or unparseable - PrestaShop core sends no
+ * `Retry-After`, so in practice it is populated only by a fronting proxy or
+ * WAF that does.
+ *
  * @module libs/integrations/prestashop/src/domain/exceptions
  */
 export class PrestashopApiException extends Error {
@@ -18,15 +25,10 @@ export class PrestashopApiException extends Error {
     public readonly statusCode?: number,
     public readonly responseBody?: string,
     public readonly connectionId?: string,
+    public readonly retryAfterSeconds?: number
   ) {
     super(message);
     this.name = 'PrestashopApiException';
     Error.captureStackTrace(this, this.constructor);
   }
 }
-
-
-
-
-
-

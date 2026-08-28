@@ -382,6 +382,35 @@ describe('OrderSyncService', () => {
       );
     });
 
+    it('should pass the source payment status through to the destination (#2600)', async () => {
+      // A destination cannot tell a cash-on-delivery order from a prepaid one
+      // without this, and there is nothing else on the contract that says so.
+      const adapter = makeAdapter();
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+      const order = createOrder();
+      order.paymentStatus = 'cod';
+
+      await service.syncOrder({ order, sourceConnectionId: 'source-1' });
+
+      expect(adapter.createOrder).toHaveBeenCalledWith(
+        expect.objectContaining({ paymentStatus: 'cod' })
+      );
+    });
+
+    it('should leave the payment status absent when the source reported none (#2600)', async () => {
+      const adapter = makeAdapter();
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+      const order = createOrder();
+      expect(order.paymentStatus).toBeUndefined();
+
+      await service.syncOrder({ order, sourceConnectionId: 'source-1' });
+
+      const created = adapter.createOrder.mock.calls[0][0];
+      expect(created.paymentStatus).toBeUndefined();
+    });
+
     it('should propagate mapping service errors', async () => {
       registerDestinations([{ connectionId: 'dest-a', adapter: makeAdapter() }]);
       mappingConfigService.resolveStatusMapping.mockRejectedValue(
@@ -565,24 +594,33 @@ describe('OrderSyncService', () => {
     // read-before-write race (MappingAlreadyExistsError). Either resolves to an
     // idempotent success returning the adapter's external id.
     it.each([
-      ['DuplicateIdentifierMappingError', new DuplicateIdentifierMappingError('Order', 'PS-555', 'prestashop', 'dest-a')],
-      ['MappingAlreadyExistsError', new MappingAlreadyExistsError('Order', 'PS-555', 'dest-a', 'ol_order_123')],
-    ])('should swallow %s from createMapping (concurrent create resolved)', async (_label, error) => {
-      const adapter = makeAdapter({ orderId: 'PS-555' });
-      registerDestinations([{ connectionId: 'dest-a', adapter }]);
-      identifierMapping.getExternalIds.mockResolvedValue([]);
-      identifierMapping.createMapping.mockRejectedValue(error);
+      [
+        'DuplicateIdentifierMappingError',
+        new DuplicateIdentifierMappingError('Order', 'PS-555', 'prestashop', 'dest-a'),
+      ],
+      [
+        'MappingAlreadyExistsError',
+        new MappingAlreadyExistsError('Order', 'PS-555', 'dest-a', 'ol_order_123'),
+      ],
+    ])(
+      'should swallow %s from createMapping (concurrent create resolved)',
+      async (_label, error) => {
+        const adapter = makeAdapter({ orderId: 'PS-555' });
+        registerDestinations([{ connectionId: 'dest-a', adapter }]);
+        identifierMapping.getExternalIds.mockResolvedValue([]);
+        identifierMapping.createMapping.mockRejectedValue(error);
 
-      const results = await service.syncOrder({
-        order: createOrder(),
-        sourceConnectionId: 'source-1',
-      });
+        const results = await service.syncOrder({
+          order: createOrder(),
+          sourceConnectionId: 'source-1',
+        });
 
-      expect(results[0]).toMatchObject({
-        status: 'success',
-        orderRef: { orderId: 'PS-555' },
-      });
-    });
+        expect(results[0]).toMatchObject({
+          status: 'success',
+          orderRef: { orderId: 'PS-555' },
+        });
+      }
+    );
   });
 
   describe('post-sale master inventory refresh (#2623)', () => {

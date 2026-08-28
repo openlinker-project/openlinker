@@ -41,8 +41,13 @@ import type {
   PrestashopTaxRateUnknown,
 } from './prestashop-tax-rate.types';
 import { TAX_RATE_EVIDENCE_DETAIL_MAX } from './prestashop-tax-rate.types';
+import { readAllPrestashopResourcePages } from '../http/prestashop-paged-read';
 
-interface PrestashopProductTaxRow {
+/**
+ * The only field this resolver reads off a product. Exported so a caller that
+ * has already fetched the product can name what it is handing over (#2592).
+ */
+export interface PrestashopProductTaxRow {
   id_tax_rules_group?: string | number;
 }
 
@@ -57,6 +62,19 @@ interface PrestashopTaxRow {
 }
 
 const CACHE_TTL_MS = 5 * 60_000;
+
+/**
+ * Cap on live cache entries, enforced by a sweep on insert.
+ *
+ * This is the only cache on the PrestaShop resolvers whose key space grows with
+ * SKU count, and since #2592 the resolver lives for the process. Nothing reads
+ * an entry again after a sweep moves on, so an expired entry is never evicted
+ * by the read path: a 100k-SKU catalogue sweep would leave 100k dead entries
+ * behind for the rest of the process's life. The cap is generous enough that a
+ * normal sweep never touches it and small enough that the worst case stays a
+ * few megabytes.
+ */
+const MAX_CACHE_ENTRIES = 20_000;
 
 interface CacheEntry {
   rate: number;
@@ -95,7 +113,21 @@ export class PrestashopTaxRateResolver {
     externalProductId: string | number,
     deliveryCountryIso: string | undefined,
     connectionId: string,
-    webserviceClient: IPrestashopWebserviceClient
+    webserviceClient: IPrestashopWebserviceClient,
+    /**
+     * The product resource, when the caller has already fetched it (#2592).
+     *
+     * All this resolver reads off the product is `id_tax_rules_group`, and the
+     * catalogue sweep has just fetched the very same resource one call earlier.
+     * Without this the shop served `products/{id}` a second time for every SKU
+     * on every sweep - measured at 1.00 extra request per SKU after the
+     * per-instance memo had already collapsed the master sync's own two reads
+     * into one.
+     *
+     * Omitting it keeps the previous behaviour exactly: the resolver fetches
+     * the product itself.
+     */
+    preloadedProduct?: PrestashopProductTaxRow
   ): Promise<PrestashopTaxRateResolution> {
     const countryId = await this.resolveCountryIdSafe(
       deliveryCountryIso,
@@ -109,30 +141,75 @@ export class PrestashopTaxRateResolver {
       return { kind: 'resolved', rate: cached.rate };
     }
 
-    const resolution = await this.computeRate(externalProductId, countryId, webserviceClient);
+    const resolution = await this.computeRate(
+      externalProductId,
+      countryId,
+      webserviceClient,
+      connectionId,
+      preloadedProduct
+    );
     // Only a resolved rate enters the cache. An unknown is a condition an
     // operator fixes in the shop's admin and then retries — a cached unknown
     // would answer the retry from memory for up to the TTL and read as "the
     // fix did not work".
     if (resolution.kind === 'resolved') {
+      this.sweepIfAtCapacity();
       this.cache.set(cacheKey, { rate: resolution.rate, timestamp: Date.now() });
     }
     return resolution;
   }
 
+  /** Clear the cache for one connection, or all connections when omitted. */
+  clearCache(connectionId?: string): void {
+    if (connectionId === undefined) {
+      this.cache.clear();
+      this.countryResolver.clearCache();
+      return;
+    }
+    for (const key of [...this.cache.keys()]) {
+      if (key.startsWith(`${connectionId}:`)) {
+        this.cache.delete(key);
+      }
+    }
+    // The country resolver is private to this resolver, so nothing else can
+    // reach it to invalidate the country-id rows behind these rates.
+    this.countryResolver.clearCache(connectionId);
+  }
+
+  private sweepIfAtCapacity(): void {
+    if (this.cache.size < MAX_CACHE_ENTRIES) {
+      return;
+    }
+    const now = Date.now();
+    for (const [key, entry] of [...this.cache.entries()]) {
+      if (now - entry.timestamp >= CACHE_TTL_MS) {
+        this.cache.delete(key);
+      }
+    }
+    // Everything still live and still at the cap means a burst wider than the
+    // cap inside one TTL. Dropping the lot costs re-reads, never a wrong rate.
+    if (this.cache.size >= MAX_CACHE_ENTRIES) {
+      this.cache.clear();
+    }
+  }
+
   private async computeRate(
     externalProductId: string | number,
     countryId: number | undefined,
-    webserviceClient: IPrestashopWebserviceClient
+    webserviceClient: IPrestashopWebserviceClient,
+    connectionId: string,
+    preloadedProduct?: PrestashopProductTaxRow
   ): Promise<PrestashopTaxRateResolution> {
-    let product: PrestashopProductTaxRow | undefined;
-    try {
-      product = await webserviceClient.getResource<PrestashopProductTaxRow>(
-        'products',
-        externalProductId
-      );
-    } catch (error) {
-      return this.transportUnknown(`products/${externalProductId}`, error, externalProductId);
+    let product: PrestashopProductTaxRow | undefined = preloadedProduct;
+    if (product === undefined) {
+      try {
+        product = await webserviceClient.getResource<PrestashopProductTaxRow>(
+          'products',
+          externalProductId
+        );
+      } catch (error) {
+        return this.transportUnknown(`products/${externalProductId}`, error, externalProductId);
+      }
     }
 
     const rawGroup = product?.id_tax_rules_group;
@@ -175,9 +252,19 @@ export class PrestashopTaxRateResolver {
 
     let rules: PrestashopTaxRuleRow[];
     try {
-      rules = await webserviceClient.listResources<PrestashopTaxRuleRow>('tax_rules', {
-        custom: { id_tax_rules_group: groupId },
-      });
+      // Paged: a tax-rule group can carry a rule per country and state, which is
+      // past one page on a shop that sells widely. A cut page hides the buyer's
+      // own country's rule, and `selectRule` then reports no usable rule at all
+      // for a shop that has one (#2608).
+      rules = await readAllPrestashopResourcePages<PrestashopTaxRuleRow>(
+        webserviceClient,
+        'tax_rules',
+        { custom: { id_tax_rules_group: groupId } },
+        {
+          connectionId,
+          detail: `id_tax_rules_group=${String(groupId)}`,
+        }
+      );
     } catch (error) {
       return this.transportUnknown(
         `tax_rules?id_tax_rules_group=${groupId}`,

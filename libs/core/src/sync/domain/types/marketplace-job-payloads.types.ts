@@ -88,6 +88,12 @@ export interface MarketplaceOfferQuantityUpdatePayloadV1 {
   offerId: string;
   quantity: number;
   idempotencyKey?: string;
+  /**
+   * ISO timestamp of the inventory observation this quantity came from (#2617).
+   * Absent on a legacy job already queued across the deploy, which then writes
+   * unguarded as before.
+   */
+  observedAt?: string;
 }
 
 export interface MarketplaceOfferFieldUpdatePayloadV1 {

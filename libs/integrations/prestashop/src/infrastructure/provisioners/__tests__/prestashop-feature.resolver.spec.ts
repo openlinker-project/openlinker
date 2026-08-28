@@ -59,10 +59,18 @@ describe('PrestashopFeatureResolver', () => {
   it('should request only the fields it needs (display field-selection)', async () => {
     await resolver.getFeatureLookups('conn-1', client, localize);
 
-    expect(client.listResources).toHaveBeenCalledWith('product_features', { display: '[id,name]' });
-    expect(client.listResources).toHaveBeenCalledWith('product_feature_values', {
-      display: '[id,value]',
-    });
+    expect(client.listResources).toHaveBeenCalledWith(
+      'product_features',
+      { display: '[id,name]', sort: ['id_ASC'] },
+      100,
+      0
+    );
+    expect(client.listResources).toHaveBeenCalledWith(
+      'product_feature_values',
+      { display: '[id,value]', sort: ['id_ASC'] },
+      100,
+      0
+    );
   });
 
   it('should omit feature values whose label cannot be localized', async () => {

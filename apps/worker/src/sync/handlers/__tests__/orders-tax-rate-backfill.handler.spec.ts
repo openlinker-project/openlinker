@@ -15,6 +15,7 @@ import type { TaxRateBackfillPageResult } from '@openlinker/core/orders';
 
 describe('OrdersTaxRateBackfillHandler', () => {
   let handler: OrdersTaxRateBackfillHandler;
+  let syncLock: { acquire: jest.Mock; release: jest.Mock; extend: jest.Mock };
   type TaxRateBackfillServiceLike = { backfillPage: jest.Mock };
   let taxRateBackfill: TaxRateBackfillServiceLike;
   let cursorRepository: jest.Mocked<ConnectionCursorRepositoryPort>;
@@ -33,7 +34,19 @@ describe('OrdersTaxRateBackfillHandler', () => {
       delete: jest.fn(),
     } as unknown as jest.Mocked<ConnectionCursorRepositoryPort>;
 
-    handler = new OrdersTaxRateBackfillHandler(taxRateBackfill as never, cursorRepository);
+    // Uncontended lock and default TTL (#2594 review).
+    syncLock = {
+      acquire: jest.fn().mockResolvedValue('lock-token'),
+      release: jest.fn().mockResolvedValue(true),
+      extend: jest.fn().mockResolvedValue(true),
+    };
+
+    handler = new OrdersTaxRateBackfillHandler(
+      taxRateBackfill as never,
+      cursorRepository,
+      syncLock as never,
+      { get: jest.fn().mockReturnValue(undefined) } as never
+    );
   });
 
   const createJob = (payload: Record<string, unknown>): SyncJob => ({

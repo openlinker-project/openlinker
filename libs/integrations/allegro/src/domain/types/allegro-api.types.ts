@@ -671,8 +671,8 @@ export interface AllegroProductOfferCreateRequest extends Record<string, unknown
   /**
    * Ship-from address. Required for every offer regardless of inline vs
    * smart-link path (#430 — sandbox 422 on `location.state` was the
-   * original trigger). Sourced from `Connection.config.allegro
-   * .sellerDefaults.location` at offer-build time.
+   * original trigger). Sourced from `Connection.config.sellerDefaults
+   * (config ROOT).location` at offer-build time.
    */
   location?: {
     countryCode: string;

@@ -60,6 +60,13 @@ export interface MappingOption {
    * tag); runtime routing is handled BE-side.
    */
   kind?: MappingOptionKind;
+  /**
+   * What OpenLinker reads this option as, when it derives that rather than
+   * being told (#2607). For a PrestaShop order state it is the neutral status
+   * the state's own flags and label add up to, which is the only place an
+   * operator can see that a state reads as something they did not expect.
+   */
+  derivedValue?: string;
 }
 
 /**

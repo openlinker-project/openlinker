@@ -18,19 +18,26 @@
  *   `order.totals`. The evaluator itself is what turns an `exclusive`
  *   treatment into the terminal `net-priced-order` signal; this mapper never
  *   re-derives or converts anything.
- * - `buyerHasTaxId` — ALWAYS `undefined` (never defaulted to `false`): the
- *   `Order` contract carries no buyer-tax-id field yet (a separate, tracked
- *   prerequisite — see ADR-041 decision 5 / `SalesDocumentOrderFacts`'s own
- *   doc comment). "Unknown" and "known to have no tax id" are different
- *   facts, and defaulting to `false` would let a `buyerHasTaxId` rule
- *   condition silently misfire on exactly the orders this gap is honest about
- *   not knowing. No heuristic inference (company-name guessing, VAT-looking
- *   free-text strings) is performed, by design.
+ * - `buyerHasTaxId` - read from the order's own buyer tax id (#2599), which
+ *   closed the prerequisite ADR-041 decision 5 was waiting on. It stays
+ *   `undefined` whenever the source asserted nothing, and is `false` only when
+ *   a source positively said the buyer has none: "unknown" and "known to have
+ *   no tax id" are different facts, and defaulting the first to `false` would
+ *   let a `buyerHasTaxId` rule condition misfire on exactly the orders OL is
+ *   honest about not knowing. Still no heuristic inference - no company-name
+ *   guessing, no VAT-looking free-text scraping - and the value itself is not
+ *   validated here.
  *
  * @module libs/core/src/invoicing/application/mappers
  * @see docs/architecture/adrs/041-sales-document-routing-policy.md
  */
+// Value imports come from the `@openlinker/core/orders/types` cycle-breaker
+// sub-barrel, never the main barrel: that one re-exports `OrdersModule`, whose
+// own module file value-imports `@openlinker/core/invoicing`, so a value import
+// here would close an `invoicing -> orders -> invoicing` CJS load cycle. `Order`
+// is type-only and erases, so it may come from either.
 import type { Order } from '@openlinker/core/orders';
+import { buyerHasTaxId, readBuyerTaxId } from '@openlinker/core/orders/types';
 import type { SalesDocumentOrderFacts } from '@openlinker/core/sales-documents';
 
 /**
@@ -48,7 +55,8 @@ export function toSalesDocumentOrderFacts(order: Order): SalesDocumentOrderFacts
     totalGross: order.totals.total,
     currency: order.totals.currency,
     taxTreatment: order.totals.taxTreatment,
-    // Never defaulted — see the module doc comment.
-    buyerHasTaxId: undefined,
+    // Stays `undefined` when the source asserted nothing — see the module doc
+    // comment. Never defaulted to `false`.
+    buyerHasTaxId: buyerHasTaxId(readBuyerTaxId(order)),
   };
 }

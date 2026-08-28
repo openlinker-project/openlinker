@@ -12,7 +12,7 @@ export { JobEnqueuePort } from './domain/ports/job-enqueue.port';
 export { SyncJobRepositoryPort } from './domain/ports/sync-job-repository.port';
 export { SyncJobHandler } from './domain/ports/sync-job-handler.port';
 export { ConnectionCursorRepositoryPort } from './domain/ports/connection-cursor-repository.port';
-export { RetryClassifierPort } from './domain/ports/retry-classifier.port';
+export { RetryClassifierPort, RetryDeferral } from './domain/ports/retry-classifier.port';
 export { AuthFailureClassifierPort } from './domain/ports/auth-failure-classifier.port';
 export {
   SyncJobQueuePort,
@@ -55,6 +55,7 @@ export type {
   SyncJobGroupsResult,
   SyncJobGroupFilters,
   BulkRetryResult,
+  PenaltyFreeRequeuePatch,
 } from './domain/types/sync-job.types';
 export {
   JobTypeValues,
@@ -63,6 +64,26 @@ export {
   JobOutcomeReasonValues,
   BULK_RETRY_MAX_BATCH_SIZE,
 } from './domain/types/sync-job.types';
+export type {
+  ConnectionBacklogStatus,
+  ConnectionBacklogStats,
+  ConnectionSyncStatus,
+} from './domain/types/connection-sync-status.types';
+export {
+  ConnectionBacklogStatusValues,
+  BACKLOG_OBSERVATION_WINDOW_MS,
+  BACKLOG_ALERT_HORIZON_MS,
+  BACKLOG_HISTORY_WINDOW_MS,
+  BACKLOG_MIN_ALERT_JOBS,
+} from './domain/types/connection-sync-status.types';
+export {
+  classifyConnectionBacklog,
+  deriveAlertThresholdJobs,
+  deriveBacklogSignal,
+  estimateClearanceMs,
+  toRatePerHour,
+} from './domain/domain-services/connection-backlog.domain-service';
+export type { IConnectionSyncStatusService } from './application/services/connection-sync-status.service.interface';
 export type { SyncJobLane } from './domain/types/sync-job-lane.types';
 export { SyncJobLaneValues, resolveJobScope } from './domain/types/sync-job-lane.types';
 export {
@@ -96,8 +117,10 @@ export {
 export {
   MasterProductSyncByExternalIdPayloadV1,
   MasterInventorySyncByExternalIdPayloadV1,
+  MasterInventorySyncBatchPayloadV1,
   MasterInventorySyncAllPayloadV1,
   MasterProductSyncAllPayloadV1,
+  MasterProductSyncBatchPayloadV1,
   MasterProductSyncDeltaPayloadV1,
   MasterProductReconcilePayloadV1,
 } from './domain/types/master-job-payloads.types';
@@ -123,6 +146,7 @@ export type { OrdersTaxRateBackfillPayloadV1 } from './domain/types/orders-job-p
 export { SyncJobExecutionError } from './domain/exceptions/sync-job-execution.error';
 export { InvalidSyncJobStateError } from './domain/exceptions/invalid-sync-job-state.error';
 export { SyncJobNotFoundError } from './domain/exceptions/sync-job-not-found.error';
+export { ContendedWriteError } from './domain/exceptions/contended-write.error';
 
 // Infrastructure exports (for testing/mocking)
 export { RedisStreamsJobEnqueueService } from './infrastructure/adapters/redis-streams-job-enqueue.service';

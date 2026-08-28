@@ -43,6 +43,25 @@ export const JobTypeValues = [
   'marketplace.shipment.syncByExternalId',
   'marketplace.fulfillment.statusSync',
   'master.product.syncByExternalId',
+  // The SAME work as `master.product.syncByExternalId`, reached from a sweep
+  // instead of a webhook (#2594). It exists as its own type because the two
+  // triggers have different costs of starvation, and ADR-050 declares a lane
+  // per job type at handler registration: a webhook child is a single unit
+  // someone waits on (`realtime`), while a sweep child arrives a budget wide
+  // and an operator tolerates it being slow (`bulk`). Same payload, same
+  // handler. Since #2593 the FULL product sweep enqueues page-sized
+  // `master.product.syncBatch` children instead, but this type is still the
+  // child of the delta pass and of the deletion-reconcile pass, and it is the
+  // per-product fallback for a failed batch member.
+  'master.product.syncFromSweep',
+  // Batched catalogue read (#2593, ADR-048). One job, one page of products, one
+  // adapter instance - so a master declaring the bulk-read rung hydrates the
+  // page in a handful of requests instead of a handful per product. Same work
+  // per product as `master.product.syncByExternalId`, which remains the
+  // fallback for a failed page member and the deletion-reconcile child.
+  // Registered in `bulk`, not `realtime`: it is a catalogue-sweep child, and
+  // ADR-050 picks the lane by cost of starvation.
+  'master.product.syncBatch',
   'master.product.syncAll',
   // Incremental catalog pass (#2220, ADR-048). Opt-in; complements rather than
   // replaces `syncAll`, which remains the reconciliation/bootstrap path.
@@ -52,6 +71,17 @@ export const JobTypeValues = [
   // authority — never inference from absence in a catalog enumeration.
   'master.product.reconcile',
   'master.inventory.syncByExternalId',
+  // Sweep-triggered twin of `master.inventory.syncByExternalId`, for the same
+  // reason as the product pair above (#2594).
+  'master.inventory.syncFromSweep',
+  // Batched stock read (#2648, ADR-048). The inventory twin of
+  // `master.product.syncBatch`: one job, one page of products, one adapter
+  // instance - so a master declaring `BulkInventoryReader` reads the page's
+  // stock in a handful of requests instead of a handful per product. Same work
+  // per product as `master.inventory.syncByExternalId`, which remains the
+  // fallback for a failed page member. Registered in `bulk`, not `realtime`:
+  // it is a sweep child, and ADR-050 picks the lane by cost of starvation.
+  'master.inventory.syncBatch',
   'master.inventory.syncAll',
 
   'master.variants.autoMatch',
@@ -367,6 +397,41 @@ export interface SyncJob extends SyncJobRequest {
   lastError?: string | null;
 
   /**
+   * Wall-clock milliseconds of the most recently COMPLETED attempt (#2611),
+   * measured around the handler call, so it INCLUDES any time that attempt
+   * spent waiting for a per-connection rate-limit slot - that wait is a real
+   * cost of the job. One attempt, never a total across retries, and never the
+   * time the job spent queued before it was claimed or in retry backoff.
+   *
+   * Written in the same UPDATE as the terminal status transition that ended
+   * that attempt, so it always describes the same attempt as `status`,
+   * `outcome` and `lastError`.
+   *
+   * `null` when no attempt has completed, when the job was killed without
+   * executing, or for a row predating the column. Never read it as zero - an
+   * aggregate that does understates every real duration.
+   */
+  lastAttemptDurationMs?: number | null;
+
+  /**
+   * Total milliseconds this job has been parked by penalty-free DEFERRALS
+   * (#2613/#2617) - a destination throttling us, a destination that is
+   * unavailable, or a write refused because a peer held the lock.
+   *
+   * A deferral does not consume a retry attempt, so without a running total
+   * nothing could ever end the cycle: a destination answering 503 forever
+   * would recycle the job for ever while the row read `queued`. This column
+   * is that bound. Once the total would exceed the runner's budget the job
+   * falls back to the ordinary retry ladder, so it can still reach `dead`.
+   *
+   * Accumulates the wait GRANTED, not wall clock, and is never reset - a job
+   * lives through one execution lifetime, so a reset could only re-open the
+   * cycle it exists to close. `null`/absent means the job has never been
+   * deferred.
+   */
+  deferredTotalMs?: number | null;
+
+  /**
    * Business outcome of the job (only set on the succeeded path).
    *
    * - `'ok'`: business operation succeeded.
@@ -393,4 +458,17 @@ export interface SyncJob extends SyncJobRequest {
    * Last update timestamp
    */
   updatedAt: Date | string;
+}
+
+/**
+ * Extra columns a penalty-free requeue may write in the same UPDATE
+ * (#2613/#2611).
+ *
+ * `lastAttemptDurationMs` is a tri-state on purpose: omitted leaves whatever
+ * was recorded, a number records the attempt that just ran, and an explicit
+ * `null` clears a stale number left by an earlier attempt.
+ */
+export interface PenaltyFreeRequeuePatch {
+  readonly lastAttemptDurationMs?: number | null;
+  readonly deferredTotalMs?: number;
 }

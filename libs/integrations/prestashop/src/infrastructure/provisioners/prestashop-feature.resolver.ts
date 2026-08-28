@@ -21,6 +21,10 @@
  * @module libs/integrations/prestashop/src/infrastructure/provisioners
  */
 import { Logger } from '@openlinker/shared/logging';
+import {
+  PRESTASHOP_UNNARROWED_MAX_ROWS,
+  readAllPrestashopResourcePages,
+} from '../http/prestashop-paged-read';
 import type { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
 import type {
   PrestashopProductFeature,
@@ -79,13 +83,23 @@ export class PrestashopFeatureResolver {
 
     // Field-selection keeps this per-connection bootstrap lean — we only read the
     // id/name (groups) and id/value (values), not full bodies.
+    // Both reads enumerate a whole shop-wide collection with no narrowing filter,
+    // so they get the wide page budget. A feature value missing from this map is
+    // dropped from the product silently, which is why one page is not enough on a
+    // catalogue with more than a hundred of them (#2608).
     const [features, values] = await Promise.all([
-      client.listResources<PrestashopProductFeature>('product_features', {
-        display: '[id,name]',
-      }),
-      client.listResources<PrestashopProductFeatureValue>('product_feature_values', {
-        display: '[id,value]',
-      }),
+      readAllPrestashopResourcePages<PrestashopProductFeature>(
+        client,
+        'product_features',
+        { display: '[id,name]' },
+        { connectionId, maxRows: PRESTASHOP_UNNARROWED_MAX_ROWS }
+      ),
+      readAllPrestashopResourcePages<PrestashopProductFeatureValue>(
+        client,
+        'product_feature_values',
+        { display: '[id,value]' },
+        { connectionId, maxRows: PRESTASHOP_UNNARROWED_MAX_ROWS }
+      ),
     ]);
 
     const nameById = new Map<string, string>();

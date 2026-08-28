@@ -77,6 +77,7 @@ creation.
    | **Webservice key** | yes | The key from Step 1 |
    | **Storefront URL** | no | Only set this if your public storefront is on a different host than the webservice URL. Leave blank to default to Shop URL. |
    | **Shop ID** | no | Only for multi-shop PrestaShop installations. Leave blank for a single-shop install. |
+   | **Default currency** | no, but recommended | ISO 4217 code (`PLN`, `EUR`, …) stamped on every product synced from this connection. Leave it blank and OpenLinker asks the shop for its default currency instead: two extra requests, made once per worker process per connection and then remembered for 24 hours. Cheap - **unless the shop has no default currency set**, in which case the answer is only remembered for 60 seconds, the two requests repeat about once a minute for as long as sync runs, and products still arrive with no currency. Setting this field skips the lookup and is the only way to be certain which code you get. See [Advanced connection settings](#advanced-connection-settings) for the detail. |
    | **OL callback URL** | no (but required before Step 6) | OpenLinker's own URL, as reachable **from PrestaShop** — not derived automatically, since guessing it from request headers would be a spoofing risk. Local/Docker dev: `http://host.docker.internal:3000`. Production: your public OL API URL. |
    | **Fallback carrier** | no | Which PrestaShop carrier to use when an incoming shipping method has no explicit mapping. Leave unset to fall back to the **OpenLinker Dynamic** carrier (Step 5) once it's installed — this always works and carries the exact marketplace shipping cost. |
    | **InPost PS module type** | no | Only if you use InPost paczkomat lockers — see [`paczkomat.md`](./paczkomat.md). |
@@ -90,6 +91,53 @@ creation.
 Click **Test connection** on the detail page (**Actions** tab) — it should
 return a green success indicator confirming the webservice key is valid and
 reachable.
+
+### Advanced connection settings
+
+The guided setup form shows the fields most stores need. A few more settings
+exist, and OpenLinker reads all of them. You set these on the connection's
+**Edit** page: click **Show raw config JSON** to reveal the box. While the JSON
+in that box is invalid, the structured fields above it are locked, so fix the
+JSON before editing anything else.
+
+Every one is optional. The table says what OpenLinker does when you leave it
+out, so you can decide whether the default is fine for your store.
+
+| Setting | Default when unset | What it does, and what leaving it out costs |
+|---|---|---|
+| `currency` (also in the guided form) | OpenLinker asks the shop | ISO 4217 code stamped on synced products. Unset, OpenLinker reads the shop's default currency instead: one request for the shop setting, one for the currency row. Those two requests are made once per worker process per connection and the answer is then kept for 24 hours, so on a healthy shop the cost is negligible. The bad case is a shop with **no** default currency configured: a failed lookup is only kept for 60 seconds, so the pair repeats roughly once a minute while sync runs, and products still get no currency at all. Setting the field skips the lookup completely. |
+| `preferredLanguageId` | `1` | Which PrestaShop language OpenLinker reads product names and descriptions in. Wrong value on a multi-language shop means products arrive with empty or wrong-language names. `langId` is the old name for the same thing and still works, but use `preferredLanguageId`. |
+| `pageSize` | `100` | How many records OpenLinker asks for per list request. Lower means more requests for the same catalogue. Higher means fewer, larger responses, and a slow or memory-limited shop may time out. Leave it at `100` unless you have measured something better on your own shop. The maximum the connection accepts is `1000`; a higher value fails to save. |
+| `timeoutMs` | `30000` | How long OpenLinker waits for one shop request, in milliseconds. Raise it if your shop is slow under load and jobs fail on timeouts rather than on errors. The maximum is `120000`; a higher value fails to save. |
+| `responseFormat` | `auto` | `auto` uses JSON when the shop returns it and falls back to XML. Force `json` or `xml` only if your shop's webservice misreports its own content type. There is no extra request either way. |
+| `defaultCarrierId` (also in the guided form, as **Fallback carrier**) | none | Which PrestaShop carrier to use when an incoming shipping method has no explicit mapping. See §7 for the full order of priority. Unset, orders fall through to the OpenLinker Dynamic carrier. |
+| `guestCustomerGroupId` | `2` | Which PrestaShop customer group OpenLinker puts auto-created guest buyers in. `2` is the "Guest" group on a stock PrestaShop install. If your shop uses that group for something else, orders can be rejected by carriers with group restrictions, or created without the discounts you expect. |
+| `paymentModuleOverrides` | none | Extra payment-module names to offer when you map payment methods, for modules OpenLinker does not already know about. Purely a dropdown convenience: mappings you already saved keep working either way. |
+| `webhooksConfigured` | n/a | Written by OpenLinker when §6 succeeds. Do not set it by hand. |
+
+A **Config JSON** with a few of these set. Keep the fields the guided setup
+already wrote, and add the ones you want:
+
+```json
+{
+  "baseUrl": "https://shop.example.com",
+  "currency": "PLN",
+  "preferredLanguageId": 2,
+  "guestCustomerGroupId": 2
+}
+```
+
+#### Outbound rate limit
+
+How hard OpenLinker is allowed to hit this shop is **not** a PrestaShop setting
+and does not belong in the Config JSON box. The connection's **Edit** page has
+its own **Outbound rate limit** section with two numeric fields, **Requests per
+minute** (default `60` for PrestaShop) and **Max concurrent requests** (default
+`4`). Both are split evenly across your worker replicas, so the figure you type
+is the deployment-wide one.
+
+Read [Throughput](#throughput-what-actually-limits-sync-speed) before changing
+either. Raising them on their own will not make sync faster.
 
 ## 3. Enable capabilities
 
@@ -178,17 +226,82 @@ Once "Configure webhooks" (§6) has run, the module's **Base URL**,
 **Connection ID**, and **Webhook Secret** are pushed automatically — you
 don't need to enter them by hand. One thing still needs a manual step:
 
-- **Cron Token**: generated automatically on install. Open the module's
-  config page (**Improve → OpenLinker** in the left sidebar, or **Modules →
-  Module Manager → OpenLinker → Configure**) and copy it, then wire up a
-  system cron job on the PrestaShop server to drive webhook delivery:
-
-  ```bash
-  # Every 1–5 minutes
-  */2 * * * * curl -s "https://your-shop.com/index.php?fc=module&module=openlinker&controller=cron&token=YOUR_CRON_TOKEN" > /dev/null 2>&1
-  ```
+- **Cron**: something on your server has to trigger delivery on a schedule.
+  Nothing is sent to OpenLinker until it does. Pick the option below that
+  matches your hosting.
 
 <!-- SCREENSHOT: OL module admin config page showing the cron token field -->
+
+### Setting up the cron
+
+The module ships a ready-made file at
+`modules/openlinker/cron/openlinker-cron.php`. Run that file on a schedule and
+you are done. It needs no arguments, no URL and no token, and it finds your shop
+on its own.
+
+**If your host lets you write a cron command** (a normal VPS, or cPanel/DirectAdmin
+with a command field):
+
+```bash
+# Every 2 minutes
+*/2 * * * * /usr/bin/php /path/to/your/shop/modules/openlinker/cron/openlinker-cron.php > /dev/null 2>&1
+```
+
+**If your host only lets you place a file** (home.pl and AZ.pl work this way):
+the schedule comes from the file's name, and you cannot pass it anything. Copy
+`openlinker-cron.php` into the directory your host uses for cron files and rename
+it to the name that means the interval you want, for example `cron-5min.php`.
+That is all. If the copy ends up outside your shop's directory tree, set the
+`OPENLINKER_PS_ROOT` environment variable to the folder that contains
+`config/config.inc.php`.
+
+**If you cannot run a PHP file at all**, call the endpoint over HTTP instead. The
+token goes in a header, never in the address — an address is written to server
+logs and browser history:
+
+```bash
+*/2 * * * * curl -s -X POST -H "X-OpenLinker-Cron-Token: YOUR_CRON_TOKEN" \
+  "https://your-shop.com/index.php?fc=module&module=openlinker&controller=cron" > /dev/null 2>&1
+```
+
+Copy the token from the module's config page (**Improve → OpenLinker** in the
+left sidebar, or **Modules → Module Manager → OpenLinker → Configure**). If you
+still have an older cron that puts `&token=...` in the address, it will be
+refused with a message telling you this.
+
+### If your host only offers hourly cron
+
+Some hosting tiers, OVH's shared plans among them, will not run a cron more often
+than once an hour. The module works, but everything gets slower in a way you
+should plan around:
+
+- A price or stock change in PrestaShop can take up to an hour to reach your
+  marketplaces. If an item sells fast, expect overselling. Give it a stock
+  safety buffer on the connection settings page.
+- A failed delivery is retried on the next pass, so a retry is an hour away
+  rather than a minute away.
+- Orders are not affected. They arrive by webhook or by OpenLinker's own polling,
+  neither of which uses this cron.
+
+If an hour is too slow, you have two ways out. Move the shop to a plan that
+allows minute-level cron, or have something outside your hosting call the HTTP
+endpoint above every few minutes — any uptime-monitoring or scheduled-request
+service can do it, as long as it can send a POST with a header.
+
+### Do not use PrestaShop's built-in cron service
+
+PrestaShop's own `cron.prestashop.com` scheduling service was switched off in
+December 2025. It is worse than unavailable: after the shutdown it still answers
+requests with a success code and does nothing at all. A shop relying on it looks
+perfectly healthy while nothing is delivered. If your shop is set up that way,
+replace it with one of the options above.
+
+### Checking that it works
+
+The module's config page shows **Delivery Last Ran**. If it says *Never*, or the
+timestamp is red, delivery is not happening and events are piling up in the
+outbox. That row is the one place that tells you the difference between "nothing
+to send" and "nothing is sending".
 
 Everything else on that page (event-type toggles, batch size, retry
 attempts, backoff multiplier) has sane defaults — leave them unless you have
@@ -249,6 +362,62 @@ PrestaShop send its own emails too, set **OPENLINKER_IMPORT_SEND_MAIL** to
 | `OL_PRESTASHOP_FULFILLMENT_STATUS_SYNC_UPDATED_SINCE_DAYS` | `30` | How far back to look for orders needing a status check. |
 
 Add any overrides to your worker `.env`.
+
+### Throughput: what actually limits sync speed
+
+If a full catalogue sweep feels slow, the shop is almost certainly not the
+problem, and neither is the connection's rate limit. Measured on a store with
+10 000 products and 3 variants each:
+
+- **The shop's response times did not change measurably while OpenLinker
+  synced.** Three runs were taken, including one at 5.5 times the normal tempo,
+  and all three landed within about 1% of the same shop's idle baseline. Read
+  that as "the shop answered just as fast", not as "the shop served correct
+  pages": the probe used for those runs measured response times without
+  checking the HTTP status, so a fast error page would have counted as a fast
+  sample. The probe has since been corrected and the runs have not been
+  repeated.
+- **Raising the connection's `rateLimit` barely helps.** Going from the default
+  60 requests/min to 300 moved actual traffic from 50 to 63 requests/min. Almost
+  all of the headroom went unused.
+- **The real ceiling is one of OpenLinker's own concurrency caps: the `bulk`
+  one.** Catalogue sweeps enqueue one job per product, and those jobs run in
+  the `bulk` lane. `OL_LANE_BULK_SCOPE_CAP` decides how many of them run at
+  once for one connection. It now defaults to `8`, and the lane's overall cap
+  `OL_LANE_BULK_CAP` to `12`, which is where the 277 requests/min above comes
+  from - a full sweep of that store drops from roughly 26.5 hours to roughly
+  2.4 hours.
+- **If you are on an older version, the knob was a different one.** Before this
+  change these jobs ran in the `realtime` lane, and the throttle was
+  `OL_LANE_REALTIME_SCOPE_CAP`, default `2`. Check the lane your version uses
+  before changing anything. On current versions raising
+  `OL_LANE_REALTIME_SCOPE_CAP` does nothing for catalogue speed.
+- **Each cap bounds one worker process, not the whole deployment.** Run three
+  worker replicas and you already get 24 per-product jobs at once for this
+  connection, not eight. That is the opposite of how the connection's own rate
+  limit behaves, which is split across replicas.
+
+**The `bulk` caps are shared, so change them deliberately.** They apply to
+every `bulk` job on every connection - offer and product publish batches,
+status-sync sweeps, backfills - not just this connection's catalogue. The
+defaults were measured against a PrestaShop shop, so if yours is slower, or
+your worker host is small, lower `OL_LANE_BULK_SCOPE_CAP`. Every cap is listed
+with its trade-offs in the worker's `.env.example` file, which ships with the
+OpenLinker source at `apps/worker/.env.example`. If you run the published image
+and have no checkout, read the same file in the OpenLinker repository on GitHub.
+
+Two things to fix first, because they are free:
+
+1. Set `currency` on the connection (see
+   [Advanced connection settings](#advanced-connection-settings)). It skips the
+   shop-default lookup, which matters most if your shop has no default currency
+   configured.
+2. Leave `pageSize` at `100` unless you have measured something better.
+
+For reference, syncing one product currently costs about 4 shop requests, down
+from about 8 - so roughly 40 000 requests for a 10 000-product catalogue rather
+than 80 000. Creating an eight-line order costs 27 requests, 16 of which are
+PrestaShop's price pin-and-unpin dance around order creation.
 
 ## 9. Local development
 
@@ -333,7 +502,9 @@ and **Stock** resources (§1).
 | Test connection fails, but the key looks right | Webservice is disabled, or the key lacks **View (GET)** on a resource OL needs (products, orders, customers, carriers, categories, currencies, …) | Re-check the permission grid — tick the **View** column header to grant read on everything |
 | Orders fail with "no shipping methods available" | OpenLinker's cart-build step for that order didn't complete before order creation, so no shipping-cost sidecar row exists for the cart | Check the worker logs for the failed order's `marketplace.order.sync` job; the OL Dynamic carrier fails closed rather than silently charging zero |
 | Carrier picked is unexpected / wrong shipping charge on some orders | No explicit shipping-method mapping and no fallback carrier set, and the OL module isn't installed | Install the OL Dynamic Carrier module (§5), or set an explicit fallback carrier (§2) |
-| Order created without expected customer-group discounts/restrictions | `guestCustomerGroupId` unset — defaults to PrestaShop group `2` | Set **Fallback carrier** section's sibling field `guestCustomerGroupId` in the connection's advanced config to match your shop's actual guest group |
+| Order created without expected customer-group discounts/restrictions | `guestCustomerGroupId` unset, so OpenLinker uses PrestaShop group `2` | Set `guestCustomerGroupId` in the connection's **Config JSON** to your shop's actual guest group - see [Advanced connection settings](#advanced-connection-settings) |
+| Products sync in but show no currency | `currency` unset on the connection **and** the shop reports no default currency. OpenLinker also retries that failed lookup every 60 seconds, which is two wasted requests each time | Set `currency` on the connection (see [Advanced connection settings](#advanced-connection-settings)), which skips the lookup entirely. Failing that, set the default currency in PrestaShop under **Shop Parameters → General** |
+| A full catalogue sweep takes many hours | One of OpenLinker's own concurrency caps, not the shop. Per-product sweep jobs run in the `bulk` lane, so `OL_LANE_BULK_SCOPE_CAP` (default `8`) is how many run at once per connection per worker process. On versions before that change the knob was `OL_LANE_REALTIME_SCOPE_CAP`, default `2` | Read [Throughput](#throughput-what-actually-limits-sync-speed) first, and check which lane your version puts these jobs in. Raising the connection's rate limit on its own will not help |
 | Module install fails with "This functionality has been disabled" | PrestaShop is still in demo mode, or a leftover `/install` folder exists | Disable demo mode and remove the `/install` directory, then retry |
 | Multi-shop install: "Configure webhooks" pushes config to the wrong shop scope | PrestaShop ≥8.2 multi-store may reject the plain config-write body OL sends; explicit shop-scope targeting isn't implemented yet | Known limitation for multi-store installs — configure the three module settings (Base URL, Connection ID, Webhook Secret) manually on the affected shop via the module's own admin page instead |
 | Orders not appearing in OL | `OL_PRESTASHOP_POLL_SCHEDULER_ENABLED=false` and webhooks aren't configured | Set the scheduler flag to `true`, or complete §6 |

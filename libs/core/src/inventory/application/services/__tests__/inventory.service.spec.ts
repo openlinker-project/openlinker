@@ -83,6 +83,41 @@ describe('InventoryService', () => {
     });
   });
 
+  it('scopes propagation to the master connection the stock was read from', async () => {
+    // ADR-050 decision 3 keys the lane caps on this value. With one synthetic
+    // id for every write, the per-scope cap of 1 serialised the installation.
+    const input = createItem({
+      availableQuantity: 7,
+      updatedAt: new Date('2026-01-01T12:00:00.000Z'),
+    });
+
+    inventoryRepository.findByProductAndVariant.mockResolvedValue(null);
+    inventoryRepository.upsert.mockResolvedValue(input);
+
+    await service.setInventory(input, 'connection-a');
+
+    expect(jobQueue.enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({ connectionId: 'connection-a' })
+    );
+  });
+
+  it('falls back to the synthetic scope when no master connection is named', async () => {
+    // Losing per-scope isolation is better than losing the enqueue.
+    const input = createItem({
+      availableQuantity: 7,
+      updatedAt: new Date('2026-01-01T12:00:00.000Z'),
+    });
+
+    inventoryRepository.findByProductAndVariant.mockResolvedValue(null);
+    inventoryRepository.upsert.mockResolvedValue(input);
+
+    await service.setInventory(input);
+
+    expect(jobQueue.enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({ connectionId: '00000000-0000-0000-0000-000000000000' })
+    );
+  });
+
   it('skips enqueue when available quantity is unchanged', async () => {
     const input = createItem({
       availableQuantity: 5,

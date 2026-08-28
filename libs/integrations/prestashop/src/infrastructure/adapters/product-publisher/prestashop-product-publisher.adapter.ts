@@ -33,6 +33,7 @@ import {
 
 import { PRESTASHOP_DESCRIPTION_FORMAT } from './prestashop-description-format';
 import { PrestashopApiException } from '@openlinker/integrations-prestashop';
+import { findAcrossPrestashopResourcePages } from '../../http/prestashop-paged-read';
 
 import type { IPrestashopWebserviceClient } from '../../http/prestashop-webservice.client.interface';
 import type {
@@ -179,11 +180,19 @@ export class PrestashopProductPublisherAdapter
     const createdPath: string[] = [];
 
     for (const node of cmd.path) {
-      const rows = await this.client.listResources<PrestashopCategoryListItem>('categories', {
-        custom: { 'filter[name]': node.name, 'filter[id_parent]': parentId },
-      });
-
-      const match = rows.find((row) => this.extractLangText(row.name, languageId) === node.name);
+      // The name match is decided here, never by the shop. `name` is multilang, and
+      // PS filters multilang columns unevenly across versions: a filter it does not
+      // honour comes back as an empty page, which this resolve-or-create loop would
+      // read as "absent" and answer by creating a second copy of a category that
+      // already exists. `id_parent` is a plain column, so it narrows the scan to
+      // this one level exactly (#2616).
+      const match = await this.findByLangText<PrestashopCategoryListItem>(
+        'categories',
+        { id_parent: parentId },
+        languageId,
+        node.name,
+        (row) => row.name
+      );
 
       if (match) {
         parentId = String(match.id);
@@ -270,8 +279,11 @@ export class PrestashopProductPublisherAdapter
    */
   private async findExistingByReference(reference: string): Promise<string | null> {
     const rows = await this.client.listResources<PrestashopProductListItem>('products', {
-      custom: { 'filter[reference]': reference },
+      custom: { reference },
     });
+    // `reference` is a plain column, so the server filter is exact and this re-check
+    // is a belt-and-braces guard against a partial match, not the thing that decides.
+    // Contrast provisionCategory, where the match itself has to happen locally.
     const match = rows.find((row) => String(row.reference ?? '') === reference);
     return match ? String(match.id) : null;
   }
@@ -282,14 +294,22 @@ export class PrestashopProductPublisherAdapter
     // no longer duplicates — findExistingByReference adopts the orphan by its
     // stable `reference` (#1107). An unset stock heals on the next inventory sync.
     try {
+      // The id_product filter has to reach the shop. While it was double-wrapped PS
+      // ignored it, so rows[0] was the first row of an unfiltered page and this PATCH
+      // wrote the new product's stock onto an arbitrary unrelated product (#2616).
       const rows = await this.client.listResources<PrestashopStockAvailableItem>(
         'stock_availables',
         {
-          custom: { 'filter[id_product]': productId },
+          custom: { id_product: productId },
         }
       );
 
-      const row = rows[0];
+      // Re-checked locally as well as filtered, because the PATCH below sets
+      // `id_product`: writing an arbitrary row would not merely store a wrong
+      // quantity, it would reassign another product's stock row to this
+      // product. The filter reaching the shop is the fix for #2616; this makes
+      // a dropped filter a no-op instead of damage.
+      const row = rows.find((candidate) => String(candidate.id_product) === productId);
       if (!row) {
         this.logger.warn(
           `No stock_available row found for product ${productId} on connection ${this.connection.id} — stock not updated.`
@@ -326,12 +346,15 @@ export class PrestashopProductPublisherAdapter
       const featureName = param.id;
 
       // Resolve or create the feature
-      const existingFeatures = await this.client.listResources<PrestashopFeatureListItem>(
+      // Same reasoning as provisionCategory: a multilang `name` filter the shop
+      // ignores would return nothing and mint a duplicate feature. There is no
+      // plain column to narrow features by, so the whole level is scanned (#2616).
+      const existingFeature = await this.findByLangText<PrestashopFeatureListItem>(
         'product_features',
-        { custom: { 'filter[name]': featureName } }
-      );
-      const existingFeature = existingFeatures.find(
-        (f) => this.extractLangText(f.name, languageId) === featureName
+        {},
+        languageId,
+        featureName,
+        (f) => f.name
       );
 
       let featureId: string;
@@ -347,12 +370,12 @@ export class PrestashopProductPublisherAdapter
 
       // Resolve or create each feature value
       for (const value of param.values ?? []) {
-        const existingValues = await this.client.listResources<PrestashopFeatureValueListItem>(
+        const existingValue = await this.findByLangText<PrestashopFeatureValueListItem>(
           'product_feature_values',
-          { custom: { 'filter[id_feature]': featureId } }
-        );
-        const existingValue = existingValues.find(
-          (v) => this.extractLangText(v.value, languageId) === value
+          { id_feature: featureId },
+          languageId,
+          value,
+          (v) => v.value
         );
 
         let featureValueId: string;
@@ -445,6 +468,55 @@ export class PrestashopProductPublisherAdapter
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '');
+  }
+
+  /**
+   * Find the row on one level whose multilang field equals `expected`, scanning
+   * every page of that level.
+   *
+   * Two failure modes are closed together. The WebService filters multilang
+   * columns unevenly, so the name comparison is always done locally rather than
+   * delegated - an ignored filter answers with an empty page, and a resolve-or-
+   * create caller reads that as "absent" and creates a duplicate. And a single
+   * page can legitimately not hold the whole level, which is the same silent miss
+   * one step further out, so the scan pages until the shop returns a short page.
+   * Exhausting the page budget throws `PrestashopTruncatedReadException`: a
+   * duplicate category or feature is worse than a failed publish, and only a
+   * throw makes the operator aware (#2616). The paging itself is the shared
+   * primitive every PrestaShop list read now uses (#2608).
+   *
+   * The paging carries no explicit sort, because `PrestashopQueryFilters` exposes
+   * none. PrestaShop answers an unsorted collection read in primary-key order, so
+   * the pages tile the level as long as nothing inserts into it mid-scan - which a
+   * catalogue level is not doing during a publish. The one hole left is a
+   * concurrent insert into the same level shifting a row across a page boundary,
+   * which would be missed and duplicated. That needs a write racing this scan on
+   * the same parent, where the old code duplicated on any publish whose unfiltered
+   * page simply did not happen to contain the node.
+   *
+   * @param resource - PrestaShop collection to scan
+   * @param custom - plain-column filters that narrow the level, may be empty
+   * @param languageId - PS language id whose text is compared
+   * @param expected - exact text to match
+   * @param readField - reads the multilang field off a row
+   */
+  private async findByLangText<T>(
+    resource: string,
+    custom: Record<string, string | number>,
+    languageId: string,
+    expected: string,
+    readField: (row: T) => string | PrestashopLangField
+  ): Promise<T | null> {
+    return findAcrossPrestashopResourcePages<T>(
+      this.client,
+      resource,
+      { custom },
+      (row) => this.extractLangText(readField(row), languageId) === expected,
+      {
+        connectionId: this.connection.id,
+        detail: `searching for "${expected}"`,
+      }
+    );
   }
 
   private extractLangText(value: string | PrestashopLangField, languageId: string): string {
