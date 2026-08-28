@@ -19823,3 +19823,81 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   align-items: center;
 }
 
+/* ── Order holds (#2342) ───────────────────────────────────────────────────
+   The badge wrapper carries the reason hint as a `title`; `StatusBadge` takes
+   no `title` of its own, so the wrapper is what makes the hint reachable to a
+   sighted operator (the `.order-phase-badge` precedent).                     */
+.order-hold-badge {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Detail-page panel. Same shape as the packed control it sits beside: the fact
+   on the left, the single write affordance on the right, wrapping on narrow
+   screens rather than pushing the button off-canvas.                          */
+.order-hold-panel {
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+}
+.order-hold-panel__state {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  font-size: 0.8125rem;
+}
+.order-hold-panel__note {
+  color: var(--text-secondary);
+}
+.order-hold-panel__history {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-1);
+  font-size: 0.75rem;
+}
+.order-hold-panel__history-item {
+  margin: 0;
+}
+
+/* Dialogs. Single column at every width — two fields never earn a grid, and a
+   stacked form is what keeps the controls full-width at 375 px.               */
+.order-hold-dialog__form {
+  display: grid;
+  gap: var(--space-4);
+}
+.order-hold-dialog__summary {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-1) var(--space-3);
+  margin: var(--space-3) 0 0;
+  font-size: 0.8125rem;
+}
+.order-hold-dialog__summary dt {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+.order-hold-dialog__summary dd {
+  margin: 0;
+  color: var(--text-primary);
+}
+
+/* Mobile: the style guide's ≥ 44 px tap-target floor applies to every control
+   on this surface, so the dialog's footer buttons and the panel's action grow
+   and the footer stacks rather than crowding two 28 px buttons onto one line. */
+@media (max-width: 767px) {
+  .order-hold-panel .button,
+  .order-hold-dialog .dialog__footer .button {
+    min-height: 44px;
+  }
+  .order-hold-dialog__summary {
+    grid-template-columns: 1fr;
+    gap: 0 0;
+  }
+  .order-hold-dialog__summary dd {
+    margin-bottom: var(--space-2);
+  }
+}

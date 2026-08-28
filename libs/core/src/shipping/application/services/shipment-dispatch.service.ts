@@ -36,6 +36,8 @@ import {
   type OrderRecord,
   PAYMENT_STATUS,
   ORDER_RECORD_SERVICE_TOKEN,
+  type IOrderHoldService,
+  ORDER_HOLD_SERVICE_TOKEN,
 } from '@openlinker/core/orders';
 import { type SyncLockPort, SYNC_LOCK_TOKEN } from '@openlinker/core/sync';
 
@@ -52,6 +54,7 @@ import {
 } from '../../domain/delivery-intent-resolution';
 import { UndispatchableResolutionException } from '../../domain/exceptions/undispatchable-resolution.exception';
 import { OrderNotDispatchablePaymentStatusException } from '../../domain/exceptions/order-not-dispatchable-payment-status.exception';
+import { OrderNotDispatchableHeldException } from '../../domain/exceptions/order-not-dispatchable-held.exception';
 import { ShippingProviderRejectionException } from '../../domain/exceptions/shipping-provider-rejection.exception';
 import { ShipmentDispatchContendedException } from '../../domain/exceptions/shipment-dispatch-contended.exception';
 import { ShipmentRepositoryPort } from '../../domain/ports/shipment-repository.port';
@@ -90,6 +93,8 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
     private readonly fulfillmentProjection: IOrderFulfillmentProjectionService,
     @Inject(SYNC_LOCK_TOKEN)
     private readonly dispatchLock: SyncLockPort,
+    @Inject(ORDER_HOLD_SERVICE_TOKEN)
+    private readonly orderHolds: IOrderHoldService,
   ) {}
 
   /**
@@ -193,6 +198,38 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
         `Blocked dispatch of order ${input.orderId}: payment status '${paymentStatus}'`,
       );
       throw new OrderNotDispatchablePaymentStatusException(input.orderId, paymentStatus);
+    }
+
+    // Hold gate (#2339, DESIGN §6.4): an order OL deliberately stopped must not
+    // ship. Placed immediately after the payment gate so the two operator-facing
+    // refusals sit together, and BEFORE any processor branch — an
+    // `omp_fulfilled` order is held too; the difference is only who prints the
+    // label.
+    //
+    // Reads `order_holds` through `IOrderHoldService`, never #2340's
+    // denormalised projection column, for the same reason the provisioning gate
+    // does: a cache that loses on drift must not be what decides whether a
+    // parcel leaves the building.
+    //
+    // Fails CLOSED like the payment gate — a read failure propagates rather than
+    // permitting a possibly-held dispatch. Terminal, never retryable (ADR-007):
+    // releasing the hold is the only thing that changes the answer.
+    //
+    // Like the payment gate, this precedes the per-order idempotency check, so
+    // an order held AFTER a successful dispatch is refused (422) on a repeat
+    // call rather than handed back its existing shipment — intended, and the
+    // same trade the #938 gate above already documents.
+    const openHold = await this.orderHolds.getOpenHold(input.orderId);
+    if (openHold) {
+      this.logger.warn(
+        `Blocked dispatch of order ${input.orderId}: on hold (${openHold.id}, ` +
+          `reason '${openHold.reason}')`,
+      );
+      throw new OrderNotDispatchableHeldException(
+        input.orderId,
+        openHold.id,
+        openHold.reason,
+      );
     }
 
     switch (resolution.processorKind) {

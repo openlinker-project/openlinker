@@ -9,7 +9,7 @@
 import type { OrderRecord } from '../entities/order-record.entity';
 import type { SlaState } from './order-sla.types';
 import type { FulfillmentRollupState } from './order-fulfillment.types';
-import type { OrderLifecyclePhase } from '@openlinker/core/order-lifecycle';
+import type { HoldReason, OrderLifecyclePhase } from '@openlinker/core/order-lifecycle';
 
 /**
  * Per-destination sync status values (#2284).
@@ -347,6 +347,22 @@ export interface OrderRecordFilters {
    * rather than "the column is not empty" (spec §4.4 S2-5).
    */
   omsAttention?: boolean;
+  /**
+   * Restrict to orders whose OPEN hold carries this reason (#2342).
+   * `undefined` means "don't filter".
+   *
+   * Reads `order_records.activeHoldReason`, #2340's denormalised projection —
+   * the same column the lifecycle `CASE`'s `held` arm already tests. That is
+   * legitimate here for the same reason it is there: a filter is a display
+   * query over a display cache with an hourly repair window, never a gate.
+   * Whether an order is really held is decided against `order_holds`, which is
+   * what `OrderHoldService` does on both write paths.
+   *
+   * A REASON axis, deliberately not a boolean: `lifecyclePhase: 'held'` already
+   * answers "is it held", so a boolean here would be the same predicate twice.
+   * ANDed with every other axis, like its neighbours.
+   */
+  activeHoldReason?: HoldReason;
   /**
    * Result ordering (#927/#944/#1108). Maps to a SQL `ORDER BY` by
    * `OrderRecordRepository.applySort`. `dispatchBy` (ship-by deadline, NULLs

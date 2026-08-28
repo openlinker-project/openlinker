@@ -27,6 +27,7 @@ import {
   SlaStateValues,
   FulfillmentRollupStateValues,
 } from '@openlinker/core/orders';
+import { HoldReasonValues, type HoldReason } from '@openlinker/core/order-lifecycle';
 import {
   OrderSyncStatusFilter,
   OrderRecordStatus,
@@ -136,6 +137,20 @@ export class ListOrdersQueryDto {
   @IsOptional()
   @IsEnum(FulfillmentRollupStateValues)
   fulfillmentState?: FulfillmentRollupState;
+
+  @ApiPropertyOptional({
+    enum: HoldReasonValues,
+    description:
+      'Hold-reason filter (#2342), sent as `?hold=`: keeps only orders whose OPEN hold carries ' +
+      'this reason. Reason-scoped with no "any" value on purpose — `?phase=held` already answers ' +
+      '"show me held orders" and carries a count, so this is the narrower axis that chip cannot ' +
+      'express, and its result set is a strict subset of that one. Composes with `phase` and ' +
+      '`health` rather than replacing either. An unrecognised reason is rejected with a 400 ' +
+      'rather than silently returning the unfiltered list.',
+  })
+  @IsOptional()
+  @IsEnum(HoldReasonValues)
+  hold?: HoldReason;
 
   @ApiPropertyOptional({
     type: Boolean,

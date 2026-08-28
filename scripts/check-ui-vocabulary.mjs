@@ -170,6 +170,15 @@ const SCAN_ROOTS = [
     owner: 'W1c-8 (#2335)',
     pending: false,
   },
+  {
+    // #2342's hold copy (badge, dialogs, timeline) lives here, and the gate was
+    // scanning three folders none of which contained it. Added after a trial run
+    // proved the folder is already clean — widening a shared gate onto existing
+    // violations would be a wave-scoped decision, not a body-scoped one.
+    dir: join('apps', 'web', 'src', 'features', 'orders'),
+    owner: 'W2-A (#2342)',
+    pending: false,
+  },
 ];
 
 /**

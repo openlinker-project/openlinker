@@ -191,6 +191,15 @@ export {
   OrderDestinationRetryInput,
   OrderDestinationRetryResult,
 } from './application/interfaces/order-destination-retry.service.interface';
+// Release -> provisioning resume (#2341). Closes the gap #2339 stated: releasing
+// a hold un-blocks the next run but nothing enqueued it, and a cursor-based
+// source journal never re-delivers the original event.
+export type {
+  IOrderProvisioningResumeService,
+  OrderProvisioningResumeResult,
+  ProvisioningResumeSkipReason,
+} from './application/interfaces/order-provisioning-resume.service.interface';
+export { ProvisioningResumeSkipReasonValues } from './application/interfaces/order-provisioning-resume.service.interface';
 export type {
   IOrderLifecycleRelayService,
   OrderLifecycleRelayInput,
@@ -264,6 +273,32 @@ export type {
   CreateOrderChangeInput,
 } from './domain/types/order-change.types';
 export { OrderChange } from './domain/entities/order-change.entity';
+
+// Order holds (#2338) — the first OL-owned lifecycle write.
+// `OrderHoldRepositoryPort` is deliberately NOT exported: it is intra-context,
+// and a sibling reaches the record through `IOrderHoldService` (#2339) alone —
+// the `OrderChangeRepositoryPort` precedent directly above.
+export { OrderHold } from './domain/entities/order-hold.entity';
+export type {
+  OrderHoldPlacedBy,
+  PlaceOrderHoldInput,
+  ReleaseOrderHoldInput,
+} from './domain/types/order-hold.types';
+export { OrderAlreadyOnHoldError } from './domain/exceptions/order-already-on-hold.error';
+export { OrderHoldContendedError } from './domain/exceptions/order-hold-contended.error';
+export { HoldAlreadyReleasedError } from './domain/exceptions/hold-already-released.error';
+export { OrderHoldNotFoundError } from './domain/exceptions/order-hold-not-found.error';
+export { OrderHoldVocabularyError } from './domain/exceptions/order-hold-vocabulary.error';
+export { HoldReleaseNoteRequiredError } from './domain/exceptions/hold-release-note-required.error';
+export { HoldReleaseNotPermittedError } from './domain/exceptions/hold-release-not-permitted.error';
+// The hold seam a sibling context uses (#2339) — service interface + its request
+// shapes. The repository port stays unexported, one line above.
+export type {
+  IOrderHoldService,
+  OrderHoldTransition,
+  PlaceHoldRequest,
+  ReleaseHoldRequest,
+} from './application/interfaces/order-hold.service.interface';
 export type {
   IOrderChangeService,
   OpenOrderChangeResult,
@@ -277,6 +312,16 @@ export { OrdersModule } from './orders.module';
 // Leaf module carrying `order_changes` only — see its docblock for why a
 // sibling context must import THIS rather than `OrdersModule` (#2333).
 export { OrderChangesModule } from './order-changes.module';
+// Leaf module carrying `order_holds` only (#2338). `OrdersModule` imports it,
+// but #2339's `OrderHoldService` takes THIS rather than `OrdersModule` — see
+// its docblock for why the narrow seam matters.
+// #2340 — the `order_records.activeHoldReason` reconcile seam. The worker
+// handler reaches the pass through this interface; the projection REPOSITORY
+// port stays intra-context (a cache's write statement is nobody else's
+// business, and no hold gate may read the column at all).
+export type { IOrderHoldProjectionReconcileService } from './application/interfaces/order-hold-projection-reconcile.service.interface';
+export type { HoldProjectionReconcileResult } from './domain/types/order-hold-projection.types';
+export { OrderHoldsModule } from './order-holds.module';
 
 
 

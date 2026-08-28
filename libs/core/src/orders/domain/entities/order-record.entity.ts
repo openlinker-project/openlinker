@@ -7,6 +7,7 @@
  *
  * @module domain/entities
  */
+import type { HoldReason } from '@openlinker/core/order-lifecycle';
 import type { OrderRecordStatus } from '../types/order-record.types';
 import type { OrderSyncStatus, SyncAttempt } from '../types/order-sync.types';
 import { PaymentStatusValues } from '../types/payment-status.types';
@@ -273,6 +274,26 @@ export class OrderRecord {
      * nothing to back-compute from.
      */
     public readonly taxRateEra: TaxRateEra | null = null,
+    /**
+     * Reason of the order's currently-open hold (#2340), or `null` when nothing
+     * holds it — the denormalised projection of `order_holds`, read by the
+     * derived lifecycle phase (#2307) and its SQL twin (#2309).
+     *
+     * **`order_holds` is the authority; this is a cache.** No hold GATE reads
+     * it (the epic's L4 exit criterion); a gate calls `IOrderHoldService`.
+     *
+     * Coerced with `isHoldReason` on read, never defaulted — an unrecognised
+     * persisted value must surface as "not a hold reason" rather than silently
+     * becoming `operator`, which would attribute a machine's hold to a human.
+     *
+     * **Appended at the tail, and its position must not move.** This
+     * constructor is positional with defaulted parameters; inserting a field
+     * anywhere before it silently retypes a positional argument at every
+     * construction site, `toDomain`'s own call included. It was last when
+     * #2340 landed; `omsAttention` (#2352) was appended after it when the two
+     * Wave-2 bodies merged, so the pair must now be passed in this order.
+     */
+    public readonly activeHoldReason: HoldReason | null = null,
     /**
      * The OMS inert states currently reported against this order (#2352), one
      * entry per reporting producer. Empty when nothing is reported.

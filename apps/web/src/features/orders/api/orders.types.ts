@@ -11,6 +11,11 @@
 // that module imports `StatusBadgeTone`, which would have this wire-shape module
 // transitively naming a component module.
 import type { OrderLifecyclePhaseValue } from '../lib/order-lifecycle-phase.types';
+import type { HoldReason, ProvisioningResume } from '../lib/order-hold.types';
+
+// Re-exported so a consumer of the orders transport types can name a hold's
+// reason and the release outcome without also reaching into `lib/`.
+export type { HoldReason, ProvisioningResume };
 
 /**
  * Mirrors CORE `OrderSyncStatusFilterValues` (`order-record.types.ts`).
@@ -332,6 +337,27 @@ export interface OrderRecord {
    * narrows it and renders an unrecognised one neutrally and uncounted.
    */
   omsAttention?: OrderOmsAttentionEntry[] | null;
+  /**
+   * The reason of this order's OPEN hold, or null when it is not held (#2340).
+   * Present on EVERY row — list and detail — because the column is already
+   * loaded, which is what lets the list badge it for free.
+   *
+   * A DISPLAY CACHE with an hourly repair window: a badge may render it, and
+   * nothing gate-like may read it. Whether an order is really held is decided
+   * server-side against `order_holds`, which is what both write routes do.
+   */
+  activeHoldReason?: HoldReason | null;
+  /**
+   * The open hold in full (#2341). **Detail read only** — attached by
+   * `GET /orders/:id`, never by the paged list, where one query per order would
+   * be an N+1. `null` when the order is not held.
+   *
+   * Optional on the wire, so `undefined` and `null` mean the same thing here
+   * and every read must treat them identically (#939).
+   */
+  activeHold?: OrderHold | null;
+  /** Every hold this order has ever carried, open and released (#2341). Detail only. */
+  holdHistory?: OrderHold[] | null;
 }
 
 /** One inert state as an order row carries it (#2352). */
@@ -346,6 +372,73 @@ export interface OrderOmsAttentionEntry {
   subjectRef?: string | null;
   /** When THIS producer's entry first appeared (ISO 8601). */
   since?: string | null;
+}
+
+/**
+ * One `order_holds` row (#2341). Every column is projected: all of it is
+ * operator-facing audit data and none of it is a secret — `note` and
+ * `releaseNote` are operator free text, never buyer data.
+ */
+export interface OrderHold {
+  /** Plain uuid — a hold is not an `ol_*` internal id. */
+  id: string;
+  internalOrderId: string;
+  reason: HoldReason;
+  note: string | null;
+  /** Exactly one of `placedByUserId` / `placedByService` is set on every row. */
+  placedByUserId: string | null;
+  placedByService: string | null;
+  /** ISO 8601. Stamped from OpenLinker's clock — a hold is an internal act. */
+  placedAt: string;
+  /** ISO 8601, or null while the hold is open. */
+  releasedAt: string | null;
+  releasedByUserId: string | null;
+  releaseNote: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** `POST /orders/:internalOrderId/holds` (#2341). */
+export interface PlaceOrderHoldRequest {
+  reason: HoldReason;
+  /** Operator free text. Never buyer data. */
+  note?: string;
+}
+
+export interface PlaceOrderHoldResult {
+  hold: OrderHold;
+  /**
+   * A dispatch of this order was in flight when the hold landed, so a carrier
+   * label may already have been minted for an order that now reads held.
+   *
+   * The hold IS placed either way — this reports an overlap OpenLinker could
+   * not prevent. Optional because a backend predating the review does not send
+   * it; absent must never read as "an overlap happened".
+   */
+  dispatchInFlight?: boolean;
+}
+
+/**
+ * `POST /orders/:internalOrderId/holds/:holdId/release` (#2341).
+ *
+ * `note` is optional on the wire and conditionally required by the domain — a
+ * user releasing a SERVICE-placed hold must supply one, and a 400 names that
+ * case. Making it unconditionally required here would refuse a perfectly valid
+ * note-less release of a user-placed hold.
+ */
+export interface ReleaseOrderHoldRequest {
+  note?: string;
+}
+
+export interface ReleaseOrderHoldResult {
+  hold: OrderHold;
+  /**
+   * What OpenLinker did about the provisioning run the hold was suppressing.
+   * REPORTED rather than assumed — a `failed` here means the hold is gone and
+   * the order is still un-provisioned. Optional so an API predating #2341
+   * degrades to "released" rather than to a fabricated success.
+   */
+  provisioningResume?: ProvisioningResume;
 }
 
 // Result ordering for the orders list (#927, extended #944). Mirrors
@@ -476,6 +569,16 @@ export interface OrderFilters {
    * stayed the operator-facing `attention`.
    */
   attention?: boolean;
+  /**
+   * Narrow to orders held for ONE reason (#2342), sent as `?hold=`.
+   *
+   * Deliberately reason-scoped with no "any" value: `?phase=held` (#2310)
+   * already answers "show me held orders" and carries a real count, so a second
+   * boolean control would mean the same thing twice. This is the axis the phase
+   * chip cannot express. Composes with `phase` and `health` like every other
+   * filter on the page.
+   */
+  holdReason?: HoldReason;
 }
 
 /**

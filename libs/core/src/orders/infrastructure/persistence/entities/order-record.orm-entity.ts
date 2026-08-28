@@ -348,6 +348,28 @@ export class OrderRecordOrmEntity {
   lastAmendmentChanges!: OrderAmendmentChange[] | null;
 
   /**
+   * Denormalised reason of the order's currently-open hold (#2340), or `null`
+   * when nothing holds it.
+   *
+   * **`order_holds` is the authority; this column is a CACHE.** It exists so the
+   * derived-lifecycle `CASE` (#2309) and the `?phase=held` filter can answer
+   * without joining `order_holds` per bucket — that `CASE` is already
+   * non-sargable and `getManyAndCount()` evaluates it twice per request. On
+   * drift the table wins and `orders.holds.reconcile` repairs the column; no
+   * hold GATE may read it (the epic's L4 exit criterion).
+   *
+   * Written ONLY by `OrderHoldProjectionRepositoryPort.setActiveHoldReason`,
+   * and deliberately excluded from `toOrm` + `upsert`'s column tuple — the
+   * `cancelledAt` / `salesDocument*` single-writer precedent.
+   *
+   * Plain `text` with no check constraint, matching `salesDocumentBlockReason`:
+   * the union is enforced in TypeScript, and `isHoldReason` coerces on read.
+   */
+  @Column({ type: 'text', nullable: true })
+  @Index('IDX_order_records_active_hold', { where: '"activeHoldReason" IS NOT NULL' })
+  activeHoldReason!: string | null;
+
+  /**
    * The OMS inert states currently reported against this order (#2352,
    * Wave-2 product spec §4.2) — an array of `AuthorityAttentionEntry`, or NULL
    * when nothing is reported.
