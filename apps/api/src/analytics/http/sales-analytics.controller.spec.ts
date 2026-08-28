@@ -107,11 +107,14 @@ describe('SalesAnalyticsController', () => {
       sourceConnectionId: 'conn-a',
     });
 
-    expect(orderRecordService.getSalesAndChannelAnalytics).toHaveBeenCalledWith({
-      from: new Date('2026-08-01T00:00:00.000Z'),
-      to: new Date('2026-08-08T00:00:00.000Z'),
-      sourceConnectionId: 'conn-a',
-    });
+    expect(orderRecordService.getSalesAndChannelAnalytics).toHaveBeenCalledWith(
+      {
+        from: new Date('2026-08-01T00:00:00.000Z'),
+        to: new Date('2026-08-08T00:00:00.000Z'),
+        sourceConnectionId: 'conn-a',
+      },
+      false
+    );
     expect(result.headline.revenue).toBe(18420.5);
     expect(result.headline.medianOrderValue).toBe(98);
     expect(result.headline.currency).toBe('EUR');
@@ -127,6 +130,28 @@ describe('SalesAnalyticsController', () => {
     expect(result.channels[0].currency).toBe('EUR');
     expect(result.channels[0].unconvertedCount).toBe(1);
     expect(result.channels[0].unconvertedCurrency).toBe('PLN');
+  });
+
+  it("threads the operator's backfilled-tax-rate opt-in through, read fresh per request (#2469)", async () => {
+    const orderRecordService = createOrderRecordService();
+    orderRecordService.getSalesAndChannelAnalytics.mockResolvedValue(analytics);
+    const displaySettings = createDisplaySettings(true);
+    const controller = createController(
+      orderRecordService,
+      createDisplayCurrencyConversionService(),
+      displaySettings
+    );
+
+    await controller.getSalesAnalytics({
+      from: '2026-08-01T00:00:00.000Z',
+      to: '2026-08-08T00:00:00.000Z',
+    });
+
+    expect(displaySettings.getSettings).toHaveBeenCalledTimes(1);
+    expect(orderRecordService.getSalesAndChannelAnalytics).toHaveBeenCalledWith(
+      expect.anything(),
+      true
+    );
   });
 
   it('throws BadRequestException when to <= from', async () => {

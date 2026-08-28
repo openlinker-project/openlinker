@@ -137,7 +137,36 @@ describe('AnalyticsCoverageController (#2466)', () => {
     expect(taxCoverageDetectionService.getAllCategoryPages).toHaveBeenCalledWith(
       expect.anything(),
       'PLN',
+      expect.anything(),
       expect.anything()
+    );
+  });
+
+  it("threads the operator's backfilled-tax-rate opt-in through, read fresh per request (#2469)", async () => {
+    const displaySettings = createDisplaySettings(true);
+    const {
+      controller,
+      orderRecordService,
+      taxCoverageDetectionService,
+      reportingCurrencySettings,
+    } = buildController(undefined, undefined, undefined, displaySettings);
+    reportingCurrencySettings.resolve.mockResolvedValue('EUR');
+    orderRecordService.getCurrencyMismatchOrders.mockResolvedValue(
+      emptyPage as PaginatedCurrencyMismatchOrders
+    );
+    orderRecordService.getProductMatchingErrorOrders.mockResolvedValue(
+      emptyPage as PaginatedProductMatchingErrorOrders
+    );
+    taxCoverageDetectionService.getAllCategoryPages.mockResolvedValue(emptyTaxPages());
+
+    await controller.getCoverage(query);
+
+    expect(displaySettings.getSettings).toHaveBeenCalledTimes(1);
+    expect(taxCoverageDetectionService.getAllCategoryPages).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      true
     );
   });
 
