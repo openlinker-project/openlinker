@@ -86,11 +86,13 @@ export class TaxCoverageDetectionService implements ITaxCoverageDetectionService
 
   async classify(
     filters: SalesAnalyticsFilters,
-    currentReportingCurrency: string
+    currentReportingCurrency: string,
+    includeBackfilledPreRollout = false
   ): Promise<TaxCoverageClassification> {
     const candidates = await this.orderRecordRepository.findNetExcludedOrderCandidates(
       filters,
-      currentReportingCurrency
+      currentReportingCurrency,
+      includeBackfilledPreRollout
     );
 
     const result: TaxCoverageClassification = {
@@ -111,9 +113,14 @@ export class TaxCoverageDetectionService implements ITaxCoverageDetectionService
     category: TaxCoverageCategory,
     filters: SalesAnalyticsFilters,
     currentReportingCurrency: string,
-    pagination: CoverageDetectionPagination
+    pagination: CoverageDetectionPagination,
+    includeBackfilledPreRollout = false
   ): Promise<PaginatedTaxCoverageOrders> {
-    const classification = await this.classify(filters, currentReportingCurrency);
+    const classification = await this.classify(
+      filters,
+      currentReportingCurrency,
+      includeBackfilledPreRollout
+    );
     const rows = classification[category];
     return {
       items: rows.slice(pagination.offset, pagination.offset + pagination.limit),
@@ -123,9 +130,14 @@ export class TaxCoverageDetectionService implements ITaxCoverageDetectionService
 
   async getCategoryCounts(
     filters: SalesAnalyticsFilters,
-    currentReportingCurrency: string
+    currentReportingCurrency: string,
+    includeBackfilledPreRollout = false
   ): Promise<Record<TaxCoverageCategory, number>> {
-    const classification = await this.classify(filters, currentReportingCurrency);
+    const classification = await this.classify(
+      filters,
+      currentReportingCurrency,
+      includeBackfilledPreRollout
+    );
     const counts: Partial<Record<TaxCoverageCategory, number>> = {};
     for (const category of TaxCoverageCategoryValues) {
       counts[category] = classification[category].length;
@@ -136,9 +148,14 @@ export class TaxCoverageDetectionService implements ITaxCoverageDetectionService
   async getAllCategoryPages(
     filters: SalesAnalyticsFilters,
     currentReportingCurrency: string,
-    pagination: CoverageDetectionPagination
+    pagination: CoverageDetectionPagination,
+    includeBackfilledPreRollout = false
   ): Promise<Record<TaxCoverageCategory, PaginatedTaxCoverageOrders>> {
-    const classification = await this.classify(filters, currentReportingCurrency);
+    const classification = await this.classify(
+      filters,
+      currentReportingCurrency,
+      includeBackfilledPreRollout
+    );
     const pages: Partial<Record<TaxCoverageCategory, PaginatedTaxCoverageOrders>> = {};
     for (const category of TaxCoverageCategoryValues) {
       const rows = classification[category];

@@ -571,7 +571,8 @@ export class OrderRecordService implements IOrderRecordService {
   }
 
   async getSalesAndChannelAnalytics(
-    filters: SalesAnalyticsFilters
+    filters: SalesAnalyticsFilters,
+    includeBackfilledPreRollout = false
   ): Promise<SalesAndChannelAnalytics> {
     // Resolved once per read, never per row (#1987 review notes) — every
     // downstream query is scoped against the SAME current-era reporting
@@ -581,9 +582,17 @@ export class OrderRecordService implements IOrderRecordService {
 
     const [dailyRows, medianOrderValue, netMedianOrderValue, unitsByConnection] =
       await Promise.all([
-        this.repository.getDailyOrderAggregates(filters, currentReportingCurrency),
+        this.repository.getDailyOrderAggregates(
+          filters,
+          currentReportingCurrency,
+          includeBackfilledPreRollout
+        ),
         this.repository.getMedianOrderValue(filters, currentReportingCurrency),
-        this.repository.getNetMedianOrderValue(filters, currentReportingCurrency),
+        this.repository.getNetMedianOrderValue(
+          filters,
+          currentReportingCurrency,
+          includeBackfilledPreRollout
+        ),
         this.lineItemRepository.getUnitsSoldByConnection(filters, currentReportingCurrency),
       ]);
 
@@ -616,17 +625,22 @@ export class OrderRecordService implements IOrderRecordService {
    * to the current page's `productIds`, which only exist once the ranking
    * query has returned (#2172 review, SUGGESTION 2).
    */
-  async getTopProducts(filters: TopProductFilters): Promise<TopProductsResult> {
+  async getTopProducts(
+    filters: TopProductFilters,
+    includeBackfilledPreRollout = false
+  ): Promise<TopProductsResult> {
     const reportingCurrency = await this.reportingCurrencySettings.resolve();
     const { rows: ranking, total } = await this.lineItemRepository.getTopProductRanking(
       filters,
-      reportingCurrency
+      reportingCurrency,
+      includeBackfilledPreRollout
     );
     const productIds = ranking.map((row) => row.productId);
     const breakdown = await this.lineItemRepository.getProductChannelBreakdown(
       productIds,
       filters,
-      reportingCurrency
+      reportingCurrency,
+      includeBackfilledPreRollout
     );
 
     return buildTopProducts({ ranking, total, breakdown });

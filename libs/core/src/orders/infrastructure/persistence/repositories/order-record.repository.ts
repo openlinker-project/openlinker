@@ -455,7 +455,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    */
   async getDailyOrderAggregates(
     filters: SalesAnalyticsFilters,
-    currentReportingCurrency: string
+    currentReportingCurrency: string,
+    includeBackfilledPreRollout = false
   ): Promise<DailyOrderAggregateRow[]> {
     const notCancelled = 'rec."cancelledAt" IS NULL';
     const isCancelled = 'rec."cancelledAt" IS NOT NULL';
@@ -469,7 +470,9 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     const unconvertedAndNotCancelled = `${notCancelled} AND ${isUnconverted}`;
 
     // Net-sales (VAT-exclusive) eligibility — see `buildNetSalesOrderFragments`.
-    const { netEligible, netOrderAmount } = this.buildNetSalesOrderFragments();
+    const { netEligible, netOrderAmount } = this.buildNetSalesOrderFragments(
+      includeBackfilledPreRollout
+    );
     const netAndNotCancelled = `${stampedAndNotCancelled} AND ${netEligible}`;
     const netExcludedAndNotCancelled = `${stampedAndNotCancelled} AND NOT ${netEligible}`;
 
@@ -740,9 +743,10 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    */
   async findNetExcludedOrderCandidates(
     filters: SalesAnalyticsFilters,
-    currentReportingCurrency: string
+    currentReportingCurrency: string,
+    includeBackfilledPreRollout = false
   ): Promise<NetExcludedOrderCandidate[]> {
-    const { netEligible } = this.buildNetSalesOrderFragments();
+    const { netEligible } = this.buildNetSalesOrderFragments(includeBackfilledPreRollout);
     const netExcludedAndNotCancelled = `rec."cancelledAt" IS NULL AND rec."reportingCurrency" = :currentReportingCurrency AND NOT ${netEligible}`;
 
     const qb = this.repository
@@ -850,9 +854,12 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    */
   async getNetMedianOrderValue(
     filters: SalesAnalyticsFilters,
-    currentReportingCurrency: string
+    currentReportingCurrency: string,
+    includeBackfilledPreRollout = false
   ): Promise<number | null> {
-    const { netEligible, netOrderAmount } = this.buildNetSalesOrderFragments();
+    const { netEligible, netOrderAmount } = this.buildNetSalesOrderFragments(
+      includeBackfilledPreRollout
+    );
 
     const qb = this.repository
       .createQueryBuilder('rec')
@@ -882,12 +889,23 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * multiply the caller's row cardinality (one row per order-line instead of
    * one per order), corrupting every `COUNT(*)`/`SUM` aggregate grouped at
    * the order level.
+   *
+   * `includeBackfilledPreRollout` (#2469) is threaded straight through to the
+   * era half of the predicate — see `netSalesEraEligibleSql`. Deliberately a
+   * PARAMETER of this helper rather than a field on the repository: the flag is
+   * a per-request operator preference, and holding it as instance state would
+   * make one request's setting leak into a concurrent one on the same
+   * (singleton-scoped) repository.
    */
-  private buildNetSalesOrderFragments(): { netEligible: string; netOrderAmount: string } {
+  private buildNetSalesOrderFragments(includeBackfilledPreRollout: boolean): {
+    netEligible: string;
+    netOrderAmount: string;
+  } {
     const netEligible = netSalesOrderNetEligibleSql(
       'rec."internalOrderId"',
       'net_li',
-      'rec."taxTreatment"'
+      'rec."taxTreatment"',
+      includeBackfilledPreRollout
     );
     const lineNetAmount = netSalesLineNetAmountSql(
       'net_li."unitPrice"',
