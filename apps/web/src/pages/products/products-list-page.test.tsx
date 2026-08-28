@@ -490,6 +490,73 @@ describe('ProductsListPage', () => {
     );
   });
 
+  // ── Deleted-at-source badge + filter (#2447) ──────────────────────
+
+  it('renders a "some deleted" warning badge for a partially-stale product and none for a live one', async () => {
+    const products: PaginatedProducts = {
+      ...sampleProducts,
+      items: [
+        { ...sampleProducts.items[0], variantCount: 3, staleVariantCount: 1 },
+        sampleProducts.items[1],
+      ],
+    };
+    const mockApi = createMockApiClient({
+      products: { list: vi.fn().mockResolvedValue(products) },
+    });
+
+    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+    await screen.findByText('Test Product');
+    expect(screen.getByText('1 of 3 variants deleted at source')).toBeInTheDocument();
+    expect(screen.queryByText('Deleted at source')).toBeNull();
+  });
+
+  it('renders an "all deleted" error badge for a fully-stale product', async () => {
+    const products: PaginatedProducts = {
+      ...sampleProducts,
+      items: [
+        { ...sampleProducts.items[0], variantCount: 2, staleVariantCount: 2 },
+        sampleProducts.items[1],
+      ],
+    };
+    const mockApi = createMockApiClient({
+      products: { list: vi.fn().mockResolvedValue(products) },
+    });
+
+    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+    await screen.findByText('Test Product');
+    expect(screen.getByText('Deleted at source')).toBeInTheDocument();
+  });
+
+  it('"Hide deleted at source" chip toggles the hideFullyStale filter on and off', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const list = vi.fn().mockResolvedValue(sampleProducts);
+    const mockApi = createMockApiClient({ products: { list } });
+
+    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+    await screen.findByText('Test Product');
+    const chip = screen.getByRole('button', { name: 'Hide deleted at source' });
+    expect(chip).toHaveAttribute('aria-pressed', 'false');
+    await user.click(chip);
+
+    expect(chip).toHaveAttribute('aria-pressed', 'true');
+    await waitFor(() => {
+      expect(list).toHaveBeenCalledWith(
+        expect.objectContaining({ hideFullyStale: true }),
+        PAGE,
+        expect.anything(),
+      );
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Hide deleted at source' }));
+    expect(screen.getByRole('button', { name: 'Hide deleted at source' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+  });
+
   it('per-connection Unlisted-on chip writes that single connection id', async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     const list = vi.fn().mockResolvedValue(sampleProducts);

@@ -35,7 +35,10 @@ import {
   TAX_RATE_JOURNAL_SERVICE_TOKEN,
   ITaxRateJournalService,
 } from '@openlinker/core/products';
-import { IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
+import {
+  IDENTIFIER_MAPPING_SERVICE_TOKEN,
+  CORE_ENTITY_TYPE,
+} from '@openlinker/core/identifier-mapping';
 import type {
   Product,
   ProductVariant,
@@ -167,7 +170,17 @@ export class ProductsController {
     type: PaginatedProductsResponseDto,
   })
   async listProducts(@Query() query: ListProductsQueryDto): Promise<PaginatedProductsResponseDto> {
-    const { search, stock, taxRateState, connectionId, sort, dir, limit = 20, offset = 0 } = query;
+    const {
+      search,
+      stock,
+      taxRateState,
+      connectionId,
+      sort,
+      dir,
+      hideFullyStale,
+      limit = 20,
+      offset = 0,
+    } = query;
 
     const unlistedOnConnectionIds = this.parseUnlistedOn(query.unlistedOn);
     const sortSpec: ProductListSort | undefined = sort
@@ -175,7 +188,14 @@ export class ProductsController {
       : undefined;
 
     const { items, total } = await this.productsService.listProducts(
-      { search, stock, taxRateState, unlistedOnConnectionIds, sourceConnectionId: connectionId },
+      {
+        search,
+        stock,
+        taxRateState,
+        unlistedOnConnectionIds,
+        sourceConnectionId: connectionId,
+        hideFullyStale,
+      },
       { limit, offset },
       sortSpec
     );
@@ -188,17 +208,28 @@ export class ProductsController {
     // ids (identifier mapping), all in parallel.
     if (items.length > 0) {
       const ids = items.map((p) => p.id);
-      const [aggregates, offerCoverage, shopCoverage, variantCounts, externalIdLists] =
-        await Promise.all([
-          this.inventoryQuery.getProductStockAggregates(ids),
-          this.offerMappings.countListedVariantsByProducts(ids),
-          // Shop-destination coverage (#1838 follow-up fix): a product published
-          // to a WooCommerce connection previously showed no coverage indication
-          // because only Offer mappings fed this pipeline.
-          this.shopProductMappings.countListedVariantsByProducts(ids),
-          this.productsService.getVariantCountsByProductIds(ids),
-          Promise.all(ids.map((id) => this.identifierMapping.getExternalIds(CORE_ENTITY_TYPE.Product, id))),
-        ]);
+      const [
+        aggregates,
+        offerCoverage,
+        shopCoverage,
+        variantCounts,
+        staleVariantCounts,
+        externalIdLists,
+      ] = await Promise.all([
+        this.inventoryQuery.getProductStockAggregates(ids),
+        this.offerMappings.countListedVariantsByProducts(ids),
+        // Shop-destination coverage (#1838 follow-up fix): a product published
+        // to a WooCommerce connection previously showed no coverage indication
+        // because only Offer mappings fed this pipeline.
+        this.shopProductMappings.countListedVariantsByProducts(ids),
+        this.productsService.getVariantCountsByProductIds(ids),
+        // #2447 — the list-row "deleted at source" badge. Paired with
+        // variantCount below so the FE can tell "some" stale apart from "all".
+        this.productsService.getStaleVariantCountsByProductIds(ids),
+        Promise.all(
+          ids.map((id) => this.identifierMapping.getExternalIds(CORE_ENTITY_TYPE.Product, id))
+        ),
+      ]);
 
       const aggregateByProduct = new Map(aggregates.map((a) => [a.productId, a]));
       const coverageByProduct = new Map<string, ProductListingsCoverageDto[]>();
@@ -214,8 +245,11 @@ export class ProductsController {
         // for display (no stock = 0 available / 0 reserved, never written).
         dto.totalAvailable = aggregate?.totalAvailable ?? 0;
         dto.totalReserved = aggregate?.totalReserved ?? 0;
-        dto.stockUpdatedAt = aggregate?.stockUpdatedAt ? aggregate.stockUpdatedAt.toISOString() : null;
+        dto.stockUpdatedAt = aggregate?.stockUpdatedAt
+          ? aggregate.stockUpdatedAt.toISOString()
+          : null;
         dto.variantCount = variantCounts.get(dto.id) ?? 0;
+        dto.staleVariantCount = staleVariantCounts.get(dto.id) ?? 0;
         dto.listingsCoverage = coverageByProduct.get(dto.id) ?? [];
         dto.externalIds = externalIdLists[i].map((e) => this.toExternalIdDto(e));
       });
@@ -384,7 +418,7 @@ export class ProductsController {
   @ApiOperation({
     summary: 'Tax-rate provenance journal for a product or variant',
     description:
-      'Returns the latest journal entry per connection for one catalogue item: what the shop said, what OpenLinker wrote onto a channel, and what a channel reported back. Omit `variantId` for the product-level entries; pass one for that variant\'s.',
+      "Returns the latest journal entry per connection for one catalogue item: what the shop said, what OpenLinker wrote onto a channel, and what a channel reported back. Omit `variantId` for the product-level entries; pass one for that variant's.",
   })
   @ApiParam({ name: 'productId', description: 'Internal product ID (e.g. ol_product_...)' })
   @ApiQuery({
@@ -411,10 +445,7 @@ export class ProductsController {
       throw new NotFoundException(`Product not found: ${productId}`);
     }
 
-    const entries = await this.taxRateJournal.getLatestPerConnection(
-      productId,
-      variantId ?? null
-    );
+    const entries = await this.taxRateJournal.getLatestPerConnection(productId, variantId ?? null);
     return { items: entries.map((entry) => toTaxRateJournalEntryDto(entry)) };
   }
 
