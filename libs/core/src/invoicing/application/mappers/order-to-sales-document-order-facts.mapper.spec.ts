@@ -79,7 +79,7 @@ describe('toSalesDocumentOrderFacts (#2173)', () => {
     expect(toSalesDocumentOrderFacts(order)).toBeNull();
   });
 
-  it('should always set buyerHasTaxId to undefined, never inferred or defaulted to false', () => {
+  it('should leave buyerHasTaxId undefined when no address asserted a tax id, even for a company buyer (#2599)', () => {
     const order = makeOrder({
       shippingAddress: {
         company: 'Acme Sp. z o.o.',
@@ -93,6 +93,40 @@ describe('toSalesDocumentOrderFacts (#2173)', () => {
     const facts = toSalesDocumentOrderFacts(order);
 
     expect(facts?.buyerHasTaxId).toBeUndefined();
+  });
+
+  it('should report buyerHasTaxId true from the billing address tax id (#2599)', () => {
+    const order = makeOrder({
+      shippingAddress: {
+        address1: 'ul. Testowa 1',
+        city: 'Poznań',
+        postalCode: '60-001',
+        country: 'PL',
+      },
+      billingAddress: {
+        address1: 'ul. Testowa 1',
+        city: 'Poznań',
+        postalCode: '60-001',
+        country: 'PL',
+        taxId: '1234567890',
+      },
+    });
+
+    expect(toSalesDocumentOrderFacts(order)?.buyerHasTaxId).toBe(true);
+  });
+
+  it('should report buyerHasTaxId false only when the source asserted the buyer has none (#2599)', () => {
+    const order = makeOrder({
+      shippingAddress: {
+        address1: 'ul. Testowa 1',
+        city: 'Poznań',
+        postalCode: '60-001',
+        country: 'PL',
+        taxId: null,
+      },
+    });
+
+    expect(toSalesDocumentOrderFacts(order)?.buyerHasTaxId).toBe(false);
   });
 
   it('should carry taxTreatment verbatim, including absent (never re-derived)', () => {

@@ -143,6 +143,89 @@ const rateLimitFormSchema = z.object({
     .optional(),
 });
 
+/**
+ * Per-connection stock publish policy (#2610) - platform-neutral, rendered for
+ * every connection. Two independent whole-number knobs on `config`:
+ * `stockSafetyBuffer` (#1844) holds units back, `stockZeroThreshold` publishes
+ * `0` below a floor. Empty string is the unset sentinel; a typed `0` is a real,
+ * persisted value meaning "no reserve" / "no floor" and must survive a
+ * round-trip as `0`, never collapse into unset.
+ */
+const stockPolicyFormSchema = z.object({
+  safetyBuffer: z
+    .union([
+      z
+        .string()
+        .regex(/^\d+$/, 'Must be a whole number, 0 or more')
+        .refine((v) => Number(v) <= 100000, 'Must be at most 100000'),
+      z.literal(''),
+    ])
+    .optional(),
+  zeroThreshold: z
+    .union([
+      z
+        .string()
+        .regex(/^\d+$/, 'Must be a whole number, 0 or more')
+        .refine((v) => Number(v) <= 100000, 'Must be at most 100000'),
+      z.literal(''),
+    ])
+    .optional(),
+});
+
+/**
+ * Per-connection pricing rule (#2610) - platform-neutral. Mirrors `PricingRule`
+ * (`@openlinker/core/identifier-mapping`) as form-input strings.
+ *
+ * The `margin` guard is the reason this is a `superRefine` and not two plain
+ * fields: the server degrades a margin of 100% or more back to the catalogue
+ * price, so an operator who typed 120 would save happily and then quietly
+ * publish an unchanged price. Refusing it here is where they find out while
+ * they can still fix it.
+ *
+ * It is not the only place. The same bound is enforced server-side on the
+ * neutral config keys, which is what covers the raw JSON editor on this very
+ * form and every non-browser caller.
+ */
+const pricingRuleFormSchema = z
+  .object({
+    type: z
+      .union([z.enum(['passthrough', 'markup', 'margin']), z.literal('')])
+      .optional(),
+    percent: z
+      .union([
+        // Any decimal precision the backend accepts. A tighter rule rejected a
+        // value already stored on the connection, which blocked every save on
+        // the page until the operator fixed a field they never set.
+        z.string().regex(/^\d+(\.\d+)?$/, 'Must be a number, 0 or more'),
+        z.literal(''),
+      ])
+      .optional(),
+    rounding: z
+      .union([z.enum(['none', 'nearestWhole', 'endingIn99']), z.literal('')])
+      .optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.type !== 'markup' && value.type !== 'margin') {
+      return;
+    }
+    if (!value.percent) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['percent'],
+        message: 'Enter a percentage',
+      });
+      return;
+    }
+    if (value.type === 'margin' && Number(value.percent) >= 100) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['percent'],
+        message:
+          'A margin must be below 100%. To add more than the catalogue price, use a markup instead.',
+      });
+    }
+  });
+
 export const editConnectionSchema = z
   .object({
     name: z.string().trim().min(1, 'Connection name is required'),
@@ -310,6 +393,9 @@ export const editConnectionSchema = z
     inpostSenderAddress: inpostSenderAddressSchema.optional(),
     // Per-connection outbound rate limit (#1810) — platform-neutral, every connection.
     rateLimit: rateLimitFormSchema.optional(),
+    // Per-connection stock publish policy + pricing rule (#2610) — platform-neutral.
+    stockPolicy: stockPolicyFormSchema.optional(),
+    pricingRule: pricingRuleFormSchema.optional(),
   });
 
 /**
@@ -459,7 +545,42 @@ export type StructuredConfigPatch = {
    * key (#2016) — see `mergeStructuredIntoConfig`'s rateLimit clause for why.
    */
   rateLimit?: RateLimitFormValues | null;
+  /**
+   * Per-connection stock publish policy — the two flat config keys
+   * `stockSafetyBuffer` (#1844) and `stockZeroThreshold` (#2610).
+   * Platform-neutral, rendered for every connection. Each knob is a
+   * digit-string field where `''` clears the key and `'0'` persists a real
+   * `0`; a cleared knob writes an EXPLICIT `null` rather than deleting the
+   * key, for the same shallow-spread reason as `rateLimit` (#2016).
+   */
+  stockPolicy?: StockPolicyFormValues | null;
+  /**
+   * Per-connection pricing rule — whole-object `config.pricingRule`
+   * (#2610). Platform-neutral. An empty `type` writes an explicit `null`
+   * (see `rateLimit` for why not a delete).
+   */
+  pricingRule?: PricingRuleFormValues | null;
 };
+
+/**
+ * Mirrors the two flat stock config keys as FE form-input strings.
+ * `''` = unset, `'0'` = an explicit zero. The two are different states and the
+ * form must not conflate them.
+ */
+export interface StockPolicyFormValues {
+  safetyBuffer?: string;
+  zeroThreshold?: string;
+}
+
+/**
+ * Mirrors `PricingRule` (`@openlinker/core/identifier-mapping`) as FE
+ * form-input strings. `''` type = no rule (catalogue price passes through).
+ */
+export interface PricingRuleFormValues {
+  type?: '' | 'passthrough' | 'markup' | 'margin';
+  percent?: string;
+  rounding?: '' | 'none' | 'nearestWhole' | 'endingIn99';
+}
 
 /**
  * Mirrors `ConnectionRateLimit` (`@openlinker/core/identifier-mapping`) but
@@ -714,6 +835,48 @@ export function mergeStructuredIntoConfig(
         pruned.maxConcurrent = Number.parseInt(structured.rateLimit.maxConcurrent, 10);
       }
       next.rateLimit = Object.keys(pruned).length === 0 ? null : pruned;
+    }
+  }
+  // Stock publish policy (#2610). Platform-neutral, two FLAT keys. A cleared
+  // knob writes an EXPLICIT `null` rather than deleting the key - same
+  // shallow-spread reason as the rateLimit clause above, and every reader
+  // (`readStockSafetyBuffer` / `readStockZeroThreshold`) already treats `null`
+  // exactly like absent. A typed `'0'` persists a real `0`, which is a
+  // different state from unset and must round-trip as `0`.
+  if (structured.stockPolicy !== undefined) {
+    if (structured.stockPolicy === null) {
+      next.stockSafetyBuffer = null;
+      next.stockZeroThreshold = null;
+    } else {
+      const buffer = structured.stockPolicy.safetyBuffer;
+      const threshold = structured.stockPolicy.zeroThreshold;
+      next.stockSafetyBuffer =
+        buffer === undefined || buffer === '' ? null : Number.parseInt(buffer, 10);
+      next.stockZeroThreshold =
+        threshold === undefined || threshold === '' ? null : Number.parseInt(threshold, 10);
+    }
+  }
+  // Pricing rule (#2610). Whole-object key; an empty `type` means the operator
+  // wants the catalogue price untouched, which is an explicit `null` (see the
+  // rateLimit clause for why not a delete). `percent` is omitted for
+  // `passthrough` - the core helper ignores it there, and writing a stale
+  // percentage into a passthrough rule invites a later misreading.
+  if (structured.pricingRule !== undefined) {
+    if (structured.pricingRule === null || !structured.pricingRule.type) {
+      next.pricingRule = null;
+    } else {
+      const rule: Record<string, unknown> = { type: structured.pricingRule.type };
+      if (
+        structured.pricingRule.type !== 'passthrough' &&
+        structured.pricingRule.percent !== undefined &&
+        structured.pricingRule.percent !== ''
+      ) {
+        rule.percent = Number(structured.pricingRule.percent);
+      }
+      if (structured.pricingRule.rounding) {
+        rule.rounding = structured.pricingRule.rounding;
+      }
+      next.pricingRule = rule;
     }
   }
   // Platform-owned assembly pass (#1330): plugin field names on the patch are

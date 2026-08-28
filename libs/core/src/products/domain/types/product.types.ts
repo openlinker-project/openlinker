@@ -18,6 +18,17 @@ import type { ProductVariant } from '../entities/product-variant.entity';
  */
 export interface ProductFilters {
   /**
+   * Restrict the read to these EXTERNAL product ids.
+   *
+   * External, not internal, because this is the master's own vocabulary and the
+   * caller that needs it - the catalogue sweep - already holds the ids the
+   * master enumerated. An adapter that cannot express an id list ignores it and
+   * returns its ordinary page, so a caller must not read the result as
+   * pre-filtered.
+   */
+  externalIds?: string[];
+
+  /**
    * Filter by category IDs
    */
   categoryIds?: string[];

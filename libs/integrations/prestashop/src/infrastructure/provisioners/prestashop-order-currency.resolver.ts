@@ -32,11 +32,9 @@
  * Caching mirrors `PrestashopCurrencyResolver`: only RESOLVED codes are cached,
  * keyed `${connectionId}:${id_currency}` with a 24h TTL. A refusal is never
  * cached, so an operator who fixes the currency in the PrestaShop back office
- * is picked up by the very next attempt. As wired today the owning
- * `PrestashopAdapterFactory` is rebuilt per `createCapabilityAdapter`, so the
- * cache is per-build - the same caveat `PrestashopShopCurrencyResolver`
- * documents, and it becomes load-bearing the moment the factory is genuinely
- * held as a process singleton.
+ * is picked up by the very next attempt. The cache spans jobs since #2592: the
+ * owning `PrestashopAdapterFactory` was rebuilt per `createCapabilityAdapter`
+ * until then, so the cache was per-build and never hit.
  *
  * @module libs/integrations/prestashop/src/infrastructure/provisioners
  */

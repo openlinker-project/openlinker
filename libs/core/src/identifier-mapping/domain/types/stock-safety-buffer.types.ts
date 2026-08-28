@@ -40,39 +40,108 @@ export function readStockSafetyBuffer(config: ConnectionConfig | null | undefine
 }
 
 /**
- * Report whether `config.stockSafetyBuffer` is present but invalid — i.e. the
- * key is set to a non-null value that `readStockSafetyBuffer` coerces to `0`
- * (a non-numeric, negative, zero-as-typo-adjacent, or non-finite value).
+ * Report whether a stock-policy key is present but invalid - set to a value
+ * that reads back as `0` for a reason the operator did not intend.
  *
- * A mistyped buffer (e.g. the JSON string `"5"`, or `-3`) silently removes the
- * oversell protection the operator believes they configured, so callers use
- * this to emit a warning. Pure (no I/O). Returns `false` when the key is absent
- * or `null` (the intentional "no buffer" case), and `false` for a valid
- * positive number (which `readStockSafetyBuffer` returns as-is).
+ * A mistyped value (the JSON string `"5"`, `-3`, `NaN`) silently removes the
+ * protection the operator believes they configured, so callers warn on it.
  *
- * Note: a literal `0` is treated as present-but-invalid here — `0` is
- * indistinguishable from the default and disables protection, so surfacing it
- * as a likely typo is intentional.
+ * A literal `0` is NOT invalid. It is what the connection form writes when the
+ * operator deliberately turns the knob off, so warning on it would have the
+ * product recommending a value and the log calling that same value a probable
+ * typo. Absent and `null` are the same intentional "off" statement.
  */
-export function isPresentButInvalidStockSafetyBuffer(
-  config: ConnectionConfig | null | undefined
+function isPresentButInvalidStockPolicyValue(
+  config: ConnectionConfig | null | undefined,
+  key: string
 ): boolean {
   if (!config) {
     return false;
   }
-  const raw = config[STOCK_SAFETY_BUFFER_CONFIG_KEY];
+  const raw = config[key];
   if (raw == null) {
     return false;
   }
-  return readStockSafetyBuffer(config) === 0;
+  if (raw === 0) {
+    return false;
+  }
+  return typeof raw !== 'number' || !Number.isFinite(raw) || raw < 0;
 }
 
 /**
- * Apply a stock safety buffer to a master stock level.
- *
- * Returns `max(0, masterStock - reserve)` so the published quantity never goes
- * negative. A `reserve` of `0` (the default) returns `masterStock` unchanged.
+ * Report whether `config.stockSafetyBuffer` is present but invalid. See
+ * {@link isPresentButInvalidStockPolicyValue}.
  */
-export function applyStockSafetyBuffer(masterStock: number, reserve: number): number {
-  return Math.max(0, masterStock - reserve);
+export function isPresentButInvalidStockSafetyBuffer(
+  config: ConnectionConfig | null | undefined
+): boolean {
+  return isPresentButInvalidStockPolicyValue(config, STOCK_SAFETY_BUFFER_CONFIG_KEY);
+}
+
+/**
+ * Config key holding the per-connection zero threshold on `Connection.config`.
+ */
+export const STOCK_ZERO_THRESHOLD_CONFIG_KEY = 'stockZeroThreshold';
+
+/**
+ * Read the per-connection zero threshold from a connection config.
+ *
+ * The second remedy the #1844 design named, for slow-moving stock: below this
+ * many units the destination is told `0` rather than the real, low number, so a
+ * dwindling line stops selling instead of racing the next sync. `0` (the
+ * default) means the threshold is off.
+ *
+ * Coerces exactly like `readStockSafetyBuffer`: a missing, non-numeric,
+ * negative, or non-finite value yields `0`, and a fractional value is floored.
+ */
+export function readStockZeroThreshold(config: ConnectionConfig | null | undefined): number {
+  if (!config) {
+    return 0;
+  }
+  const raw = config[STOCK_ZERO_THRESHOLD_CONFIG_KEY];
+  if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0) {
+    return 0;
+  }
+  return Math.floor(raw);
+}
+
+/**
+ * Report whether `config.stockZeroThreshold` is present but invalid. See
+ * {@link isPresentButInvalidStockPolicyValue}.
+ *
+ * The threshold needs this as much as the buffer does, and the failure
+ * direction is the worse one: a mistyped threshold silently lets the
+ * destination sell the low stock the operator asked it to hide.
+ */
+export function isPresentButInvalidStockZeroThreshold(
+  config: ConnectionConfig | null | undefined
+): boolean {
+  return isPresentButInvalidStockPolicyValue(config, STOCK_ZERO_THRESHOLD_CONFIG_KEY);
+}
+
+/**
+ * Resolve the quantity a destination is told, from the master stock level and
+ * the connection's two policy knobs.
+ *
+ * The reserve is subtracted first, floored at `0` so the published quantity
+ * never goes negative. A `reserve` of `0` (the default) leaves `masterStock`
+ * unchanged.
+ *
+ * `zeroThreshold` is applied AFTER the reserve, to the quantity that would
+ * actually be published: a quantity strictly below the threshold publishes as
+ * `0`. Ordering matters and this ordering is the operator-legible one - the
+ * threshold is a statement about the number the destination sees, not about the
+ * master's own count. `0` (the default) disables the threshold, so an existing
+ * connection is byte-identical to the pre-threshold behaviour.
+ */
+export function applyStockSafetyBuffer(
+  masterStock: number,
+  reserve: number,
+  zeroThreshold = 0
+): number {
+  const published = Math.max(0, masterStock - reserve);
+  if (zeroThreshold > 0 && published < zeroThreshold) {
+    return 0;
+  }
+  return published;
 }

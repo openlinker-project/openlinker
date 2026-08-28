@@ -244,7 +244,7 @@ export function PrestashopSetupForm(): ReactElement {
               label="Default currency (optional)"
               name="currency"
               error={form.formState.errors.currency?.message}
-              description="ISO 4217 code applied to every product synced from this connection. Leave blank to persist currency as unknown."
+              description="ISO 4217 code applied to every product synced from this connection. Leave blank and OpenLinker asks the shop for its default currency instead; products stay without a currency if the shop has none set."
             >
               <Select
                 {...form.register('currency')}

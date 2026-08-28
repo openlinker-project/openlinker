@@ -823,6 +823,87 @@ describe('OrderRecordRepository', () => {
       expect(callArg.taxTreatment).toBe('inclusive');
       expect(callArg.totalAmount).toBe(199.99);
     });
+
+    /**
+     * The middle state (`''` = the source asserted the buyer has no tax id) is
+     * the one a well-meaning edit destroys. A `|| null` or a `.trim()` on the
+     * write line, or a `|| null` on the read, collapses it into "not asserted"
+     * while every three-state unit test on the pure helpers stays green,
+     * because those never touch this repository. So each state is pinned here,
+     * through the real write and the real read.
+     */
+    it.each([
+      ['a tax id', '1234567890', '1234567890'],
+      ['asserted-none', '', ''],
+      ['not asserted', null, null],
+    ])(
+      'round-trips buyerTaxId in the %s state through save() and toDomain() (#2599 review, finding 4)',
+      async (_label, stored: string | null, expected: string | null) => {
+        const domainEntity = new OrderRecord(
+          'order-123',
+          'customer-456',
+          'source-connection-123',
+          'event-456',
+          { id: 'order-123', orderNumber: 'ORD-001', status: 'pending' },
+          [],
+          'ready',
+          new Date('2025-01-01T10:00:00Z'),
+          new Date('2025-01-01T10:00:00Z'),
+          [],
+          null,
+          null,
+          null,
+          new Date('2025-01-01T09:00:00Z'),
+          'PLN',
+          'inclusive',
+          199.99,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          stored
+        );
+        const savedOrm = createOrmEntity();
+        savedOrm.buyerTaxId = stored;
+        transactionalManager.save.mockResolvedValue(savedOrm);
+        transactionalManager.delete.mockResolvedValue(undefined);
+
+        await repository.upsertWithLineItems(domainEntity, []);
+
+        const callArg = transactionalManager.save.mock.calls[0][1] as OrderRecordOrmEntity;
+        expect(callArg.buyerTaxId).toBe(stored);
+
+        ormRepository.findOne.mockResolvedValue(savedOrm);
+        const read = await repository.findById('order-123');
+        expect(read?.buyerTaxId).toBe(expected);
+      }
+    );
+
+    it('decodes the round-tripped column back to the three domain states', async () => {
+      const withColumn = (stored: string | null): OrderRecordOrmEntity => {
+        const entity = createOrmEntity();
+        entity.buyerTaxId = stored;
+        return entity;
+      };
+
+      ormRepository.findOne.mockResolvedValue(withColumn('1234567890'));
+      expect((await repository.findById('order-123'))?.buyerTaxIdState).toBe('1234567890');
+
+      ormRepository.findOne.mockResolvedValue(withColumn(''));
+      expect((await repository.findById('order-123'))?.buyerTaxIdState).toBeNull();
+
+      ormRepository.findOne.mockResolvedValue(withColumn(null));
+      expect((await repository.findById('order-123'))?.buyerTaxIdState).toBeUndefined();
+    });
   });
 
   describe('findMany', () => {

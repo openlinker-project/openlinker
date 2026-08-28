@@ -15,9 +15,14 @@ import { SyncJobExecutionError } from '@openlinker/core/sync';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { ProductMasterPort } from '@openlinker/core/products';
 import type { ConfigService } from '@nestjs/config';
+import {
+  FakeOperationalSettingsService,
+  settingNumber,
+} from '../../../testing/operational-settings.double';
 
 describe('MasterProductSyncAllHandler', () => {
   let handler: MasterProductSyncAllHandler;
+  let operationalSettings: FakeOperationalSettingsService;
   let integrationsService: jest.Mocked<IIntegrationsService>;
   let jobEnqueue: jest.Mocked<JobEnqueuePort>;
   let productMaster: jest.Mocked<ProductMasterPort>;
@@ -57,11 +62,14 @@ describe('MasterProductSyncAllHandler', () => {
       get: jest.fn((_key: string, defaultValue?: unknown) => defaultValue),
     } as unknown as jest.Mocked<ConfigService>;
 
+    operationalSettings = new FakeOperationalSettingsService();
+
     handler = new MasterProductSyncAllHandler(
       integrationsService,
       jobEnqueue,
       cursors,
       syncLock,
+      operationalSettings,
       configService
     );
   });
@@ -98,7 +106,7 @@ describe('MasterProductSyncAllHandler', () => {
   const writtenCursorValue = (): string =>
     String(cursors.advanceCursor.mock.calls[0][2]);
 
-  it('should enqueue per-product sync job for each discovered external id', async () => {
+  it('should enqueue ONE batch child covering the whole page (#2593)', async () => {
     productMaster.listExternalIds.mockResolvedValueOnce(['1', '2', '3']).mockResolvedValueOnce([]);
     jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'j', isExisting: false });
 
@@ -108,11 +116,28 @@ describe('MasterProductSyncAllHandler', () => {
       'conn-1',
       'ProductMaster'
     );
-    expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(3);
+    // One child, not three: a per-product child builds its own adapter instance
+    // and so can never share a bulk read.
+    expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(1);
     const first = jobEnqueue.enqueueJob.mock.calls[0][0];
-    expect(first.jobType).toBe('master.product.syncByExternalId');
+    expect(first.jobType).toBe('master.product.syncBatch');
     expect(first.connectionId).toBe('conn-1');
-    expect(first.payload).toEqual({ schemaVersion: 1, externalId: '1', objectType: 'Product' });
+    expect(first.payload).toEqual({ schemaVersion: 1, externalIds: ['1', '2', '3'] });
+  });
+
+  it('should cut a page into batches of the configured size', async () => {
+    distinctPages(100);
+    jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'j', isExisting: false });
+
+    await handler.execute(createJob('conn-1', 250));
+
+    // The budget truncates at a PAGE boundary, so 250 overshoots to 300 items -
+    // three batches of 100.
+    expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(3);
+    const sizes = jobEnqueue.enqueueJob.mock.calls.map(
+      (call) => (call[0].payload as { externalIds: string[] }).externalIds.length
+    );
+    expect(sizes).toEqual([100, 100, 100]);
   });
 
   it('should key the child idempotency key on the cycle, not the outer job id', async () => {
@@ -124,7 +149,7 @@ describe('MasterProductSyncAllHandler', () => {
     await handler.execute(createJob('conn-1'));
 
     const key = jobEnqueue.enqueueJob.mock.calls[0][0].idempotencyKey;
-    expect(key).toMatch(/^master:conn-1:product:sync:1:/);
+    expect(key).toMatch(/^master:conn-1:product:syncBatch:1:/);
     expect(key).not.toContain('outer-job-1');
   });
 
@@ -139,7 +164,8 @@ describe('MasterProductSyncAllHandler', () => {
 
     expect(productMaster.listExternalIds).toHaveBeenNthCalledWith(1, { limit: 100, offset: 0 });
     expect(productMaster.listExternalIds).toHaveBeenNthCalledWith(2, { limit: 100, offset: 100 });
-    expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(102);
+    // 102 items over two batches.
+    expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(2);
   });
 
   it('should deduplicate external ids repeated across pages', async () => {
@@ -151,7 +177,11 @@ describe('MasterProductSyncAllHandler', () => {
 
     await handler.execute(createJob('conn-1', 500));
 
-    expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(101);
+    const enqueued = jobEnqueue.enqueueJob.mock.calls.flatMap(
+      (call) => (call[0].payload as { externalIds: string[] }).externalIds
+    );
+    expect(enqueued).toHaveLength(101);
+    expect(new Set(enqueued).size).toBe(101);
   });
 
   it('should handle empty catalog gracefully', async () => {
@@ -163,12 +193,12 @@ describe('MasterProductSyncAllHandler', () => {
   });
 
   it('should not throw when some enqueue calls fail', async () => {
-    productMaster.listExternalIds.mockResolvedValueOnce(['1', '2']).mockResolvedValueOnce([]);
+    distinctPages(100);
     jobEnqueue.enqueueJob
       .mockResolvedValueOnce({ jobId: 'j1', isExisting: false })
       .mockRejectedValueOnce(new Error('queue full'));
 
-    await expect(handler.execute(createJob('conn-1'))).resolves.toEqual({ outcome: 'ok' });
+    await expect(handler.execute(createJob('conn-1', 200))).resolves.toEqual({ outcome: 'ok' });
     expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(2);
   });
 
@@ -207,7 +237,8 @@ describe('MasterProductSyncAllHandler', () => {
 
       await handler.execute(createJob('conn-1', 100));
 
-      expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(100);
+      // The budget still bounds ITEMS - 100 of them, in one batch child.
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(1);
       expect(cursors.advanceCursor).toHaveBeenCalledTimes(1);
       expect(writtenCursorValue()).toMatch(/:100$/);
     });
@@ -225,7 +256,7 @@ describe('MasterProductSyncAllHandler', () => {
         offset: 100,
       });
       expect(jobEnqueue.enqueueJob.mock.calls[0][0].idempotencyKey).toBe(
-        'master:conn-1:product:sync:a:cycle-abc'
+        'master:conn-1:product:syncBatch:a:cycle-abc'
       );
     });
 
@@ -243,13 +274,25 @@ describe('MasterProductSyncAllHandler', () => {
       // cycle, which is many ticks away.
       cursors.getCursor.mockResolvedValue('cycle-abc:40');
       productMaster.listExternalIds.mockResolvedValueOnce(['a', 'b']).mockResolvedValueOnce([]);
-      jobEnqueue.enqueueJob
-        .mockResolvedValueOnce({ jobId: 'j1', isExisting: false })
-        .mockRejectedValueOnce(new Error('queue full'));
+      jobEnqueue.enqueueJob.mockRejectedValueOnce(new Error('queue full'));
 
       await handler.execute(createJob('conn-1'));
 
       expect(cursors.advanceCursor).toHaveBeenCalledWith('conn-1', CURSOR_KEY, 'cycle-abc:40');
+    });
+
+    it('should NOT advance the cursor when one batch of several fails (#2593)', async () => {
+      // Batching does not weaken the rule: a page whose second batch failed
+      // holds the cursor at the page start, so the whole page retries.
+      cursors.getCursor.mockResolvedValue('cycle-abc:200');
+      distinctPages(100);
+      jobEnqueue.enqueueJob
+        .mockResolvedValueOnce({ jobId: 'j1', isExisting: false })
+        .mockRejectedValueOnce(new Error('queue full'));
+
+      await handler.execute(createJob('conn-1', 200));
+
+      expect(cursors.advanceCursor).toHaveBeenCalledWith('conn-1', CURSOR_KEY, 'cycle-abc:200');
     });
 
     it('should start a fresh cycle when the stored cursor is malformed', async () => {
@@ -271,14 +314,91 @@ describe('MasterProductSyncAllHandler', () => {
       expect(cursors.advanceCursor).not.toHaveBeenCalled();
     });
 
+    it('should default the budget to the batched default when no override exists', async () => {
+      distinctPages(100);
+      jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'j', isExisting: false });
+
+      await handler.execute(createJob('conn-1'));
+
+      // 500 items per run, 100 per batch.
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(5);
+      expect(writtenCursorValue()).toMatch(/:500$/);
+    });
+
+    // #2651 — the operator-settable budget is read PER TICK. This is the
+    // acceptance criterion the issue asks to be PROVEN rather than asserted:
+    // the handler instance below is never re-constructed, and no module is
+    // re-created, so a passing assertion means a budget change reaches a
+    // running worker with no restart.
+    it('should pick up an operator budget change on the next tick, with no restart', async () => {
+      distinctPages(100);
+      jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'j', isExisting: false });
+
+      await handler.execute(createJob('conn-1'));
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(5); // 500 items / 100
+
+      operationalSettings.setValues({
+        catalogueSweepBudget: settingNumber('catalogueSweepBudget', 1000),
+      });
+      jobEnqueue.enqueueJob.mockClear();
+      cursors.getCursor.mockResolvedValue(null);
+
+      await handler.execute(createJob('conn-1'));
+
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(10); // 1000 items / 100
+    });
+
+    it('should let an operator page size resize the batch children', async () => {
+      distinctPages(100);
+      jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'j', isExisting: false });
+      operationalSettings.setValues({
+        catalogueSweepBudget: settingNumber('catalogueSweepBudget', 100),
+        sweepPageSize: settingNumber('sweepPageSize', 25),
+      });
+
+      await handler.execute(createJob('conn-1'));
+
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(4);
+    });
+
+    // The two ceilings are earned differently, so they clamp differently.
+    // Reaching the settings surface with a value above our recommendation
+    // required an explicit acknowledgement; a raw job payload has nowhere to
+    // record one, so it keeps the narrower bound.
+    it('should honour an acknowledged setting above the recommended ceiling', async () => {
+      distinctPages(100);
+      jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'j', isExisting: false });
+      operationalSettings.setValues({
+        catalogueSweepBudget: settingNumber('catalogueSweepBudget', 3000),
+      });
+
+      await handler.execute(createJob('conn-1'));
+
+      // 3000 items, 100 per batch — not clamped back to the recommended 2000.
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(30);
+    });
+
+    it('should still clamp a raw payload limit to the RECOMMENDED ceiling', async () => {
+      distinctPages(100);
+      jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'j', isExisting: false });
+      operationalSettings.setValues({
+        catalogueSweepBudget: settingNumber('catalogueSweepBudget', 3000),
+      });
+
+      await handler.execute(createJob('conn-1', 9000));
+
+      // The payload wins over the setting, and is bounded at 2000.
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(20);
+    });
+
     it('should clamp a payload page limit above the ceiling', async () => {
       distinctPages(100);
       jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'j', isExisting: false });
 
       await handler.execute(createJob('conn-1', 100_000));
 
-      // 500 is the ceiling; 5 full pages of 100.
-      expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(500);
+      // 2 000 is the batched ceiling; 20 pages of 100 items, one batch child each.
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(20);
     });
   });
 });

@@ -6,6 +6,7 @@ import { MailerSettingsTile } from '../../features/mailer-settings/components/ma
 import { PosthogSettingsTile } from '../../features/posthog-settings/components/posthog-settings-tile';
 import { McpTokensTile } from '../../features/mcp-tokens/components/mcp-tokens-tile';
 import { SalesDocumentsTile } from '../../features/sales-documents';
+import { SyncPacingTile } from '../../features/settings';
 import { PageLayout } from '../../shared/ui/page-layout';
 
 export function SettingsPage(): ReactElement {
@@ -26,6 +27,7 @@ export function SettingsPage(): ReactElement {
           {isAdmin ? <span className="toolbar-chip">PostHog</span> : null}
           {isAdmin ? <span className="toolbar-chip">MCP tokens</span> : null}
           {isAdmin ? <span className="toolbar-chip">Sales documents</span> : null}
+          {isAdmin ? <span className="toolbar-chip">Sync pacing</span> : null}
           <span className="toolbar-chip">Upcoming</span>
         </div>
       }
@@ -104,6 +106,9 @@ export function SettingsPage(): ReactElement {
 
         {/* ── Sales documents (admin-only, #2159) ───────────────────── */}
         {isAdmin ? <SalesDocumentsTile /> : null}
+
+        {/* ── Sync pacing (admin-only, #2653) ───────────────────────── */}
+        {isAdmin ? <SyncPacingTile /> : null}
 
         {/* ── Notifications (planned) ───────────────────────────────── */}
         <article className="panel panel--dense">
