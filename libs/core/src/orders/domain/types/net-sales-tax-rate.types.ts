@@ -99,6 +99,13 @@ export function resolveNetSalesTaxRate(
  * - `'exclusive'`: `unitPrice` is already net — return `unitPrice × quantity`.
  * - `'inclusive'` or absent: treat `unitPrice` as gross and strip VAT via the
  *   resolved rate fraction; return `null` when the rate is unresolvable.
+ *
+ * A gross price already includes the tax on top of net (`gross = net × (1 +
+ * rate)`), so recovering net divides by `(1 + rate)` — it does NOT multiply
+ * by `(1 - rate)`, which is a different (and wrong) computation that
+ * understates net by `gross × rate²/(1+rate)` (#2637 review: caught by the
+ * tax-inclusion-setting int-spec expecting 123 gross / 1.23 = 100, not
+ * 123 × 0.77 = 94.71).
  */
 export function deriveNetLineAmount(
   unitPrice: number,
@@ -114,7 +121,7 @@ export function deriveNetLineAmount(
   if (rateOutcome.kind === 'unknown') {
     return null;
   }
-  return lineTotal * (1 - rateOutcome.rateFraction);
+  return lineTotal / (1 + rateOutcome.rateFraction);
 }
 
 /**
@@ -143,7 +150,9 @@ export function netSalesRateFractionSql(taxRateColumnRef: string): string {
 
 /**
  * SQL for one line's VAT-exclusive amount, honoring the parent order's
- * {@link PriceTaxTreatment}. Mirrors {@link deriveNetLineAmount}.
+ * {@link PriceTaxTreatment}. Mirrors {@link deriveNetLineAmount} — divides
+ * the gross line total by `(1 + rate)` rather than multiplying by
+ * `(1 - rate)`, which understates net (#2637 review).
  */
 export function netSalesLineNetAmountSql(
   unitPriceColumnRef: string,
@@ -155,7 +164,7 @@ export function netSalesLineNetAmountSql(
   const rateFraction = netSalesRateFractionSql(taxRateColumnRef);
   return `CASE
       WHEN ${taxTreatmentColumnRef} = 'exclusive' THEN ${lineTotal}
-      ELSE ${lineTotal} * (1 - (${rateFraction}))
+      ELSE ${lineTotal} / (1 + (${rateFraction}))
     END`;
 }
 

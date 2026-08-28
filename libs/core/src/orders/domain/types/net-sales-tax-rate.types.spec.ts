@@ -64,12 +64,13 @@ describe('deriveNetLineAmount', () => {
   });
 
   it('strips VAT from gross-priced lines when taxTreatment is inclusive', () => {
-    expect(deriveNetLineAmount(100, 1, '23', 'inclusive')).toBe(77);
+    // 100 gross at 23% VAT-inclusive -> 100 / 1.23, not 100 * 0.77 (#2637 review).
+    expect(deriveNetLineAmount(100, 1, '23', 'inclusive')).toBeCloseTo(100 / 1.23, 10);
   });
 
   it('treats absent taxTreatment as gross-priced', () => {
-    expect(deriveNetLineAmount(100, 1, '23', null)).toBe(77);
-    expect(deriveNetLineAmount(100, 1, '23', undefined)).toBe(77);
+    expect(deriveNetLineAmount(100, 1, '23', null)).toBeCloseTo(100 / 1.23, 10);
+    expect(deriveNetLineAmount(100, 1, '23', undefined)).toBeCloseTo(100 / 1.23, 10);
   });
 
   it('returns null when a gross-priced line has an unresolvable tax rate', () => {
