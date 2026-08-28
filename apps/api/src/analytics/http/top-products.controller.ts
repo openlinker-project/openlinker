@@ -18,6 +18,10 @@
  */
 import { BadRequestException, Controller, Get, Inject, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ANALYTICS_DISPLAY_SETTINGS_SERVICE_TOKEN,
+  type IAnalyticsDisplaySettingsService,
+} from '@openlinker/core/analytics';
 import { TopProductsQueryDto } from './dto/top-products-query.dto';
 import { TopProductsResponseDto } from './dto/top-products-response.dto';
 import { SalesAnalyticsQueryDto } from './dto/sales-analytics-query.dto';
@@ -33,7 +37,9 @@ import {
 export class TopProductsController {
   constructor(
     @Inject(TOP_PRODUCTS_SERVICE_TOKEN)
-    private readonly topProductsService: ITopProductsService
+    private readonly topProductsService: ITopProductsService,
+    @Inject(ANALYTICS_DISPLAY_SETTINGS_SERVICE_TOKEN)
+    private readonly displaySettings: IAnalyticsDisplaySettingsService
   ) {}
 
   @Get('top-products')
@@ -51,14 +57,22 @@ export class TopProductsController {
       throw new BadRequestException('to must be after from');
     }
 
-    return this.topProductsService.getTopProducts({
-      from,
-      to,
-      sourceConnectionId: query.sourceConnectionId,
-      sortBy: query.sortBy ?? 'revenue',
-      limit: query.limit ?? 20,
-      offset: query.offset ?? 0,
-    });
+    // Read fresh on every request (#2469): the setting is an operator toggle
+    // whose whole point is that it takes effect on the next query, and `orders`
+    // cannot read it itself without an `orders -> analytics` edge.
+    const { includeBackfilledTaxRatesInNetSales } = await this.displaySettings.getSettings();
+
+    return this.topProductsService.getTopProducts(
+      {
+        from,
+        to,
+        sourceConnectionId: query.sourceConnectionId,
+        sortBy: query.sortBy ?? 'revenue',
+        limit: query.limit ?? 20,
+        offset: query.offset ?? 0,
+      },
+      includeBackfilledTaxRatesInNetSales
+    );
   }
 
   @Get('top-products/:productId/variants')

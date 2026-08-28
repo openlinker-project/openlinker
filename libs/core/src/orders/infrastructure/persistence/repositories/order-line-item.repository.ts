@@ -141,7 +141,8 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
    */
   async getTopProductRanking(
     filters: TopProductFilters,
-    reportingCurrency: string
+    reportingCurrency: string,
+    includeBackfilledPreRollout = false
   ): Promise<{ rows: ProductRankingRow[]; total: number }> {
     const {
       stampedNonZero,
@@ -149,7 +150,7 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       lineNetAmount,
       stampedNonZeroKnownRate,
       stampedNonZeroUnknownRate,
-    } = this.buildTopProductsSqlFragments();
+    } = this.buildTopProductsSqlFragments(includeBackfilledPreRollout);
 
     const rankingQb = this.repository
       .createQueryBuilder('li')
@@ -254,7 +255,8 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
   async getProductChannelBreakdown(
     productIds: string[],
     filters: SalesAnalyticsFilters,
-    reportingCurrency: string
+    reportingCurrency: string,
+    includeBackfilledPreRollout = false
   ): Promise<ProductChannelBreakdownRow[]> {
     if (productIds.length === 0) {
       return [];
@@ -266,7 +268,7 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       lineNetAmount,
       stampedNonZeroKnownRate,
       stampedNonZeroUnknownRate,
-    } = this.buildTopProductsSqlFragments();
+    } = this.buildTopProductsSqlFragments(includeBackfilledPreRollout);
 
     const qb = this.repository
       .createQueryBuilder('li')
@@ -544,7 +546,7 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
    * fragment is parameter-name-only (`:reportingCurrency`); the actual value
    * is bound once per query via `.setParameter(...)`, so this needs none.
    */
-  private buildTopProductsSqlFragments(): {
+  private buildTopProductsSqlFragments(includeBackfilledPreRollout = false): {
     stampedNonZero: string;
     unconvertedOrZeroTotal: string;
     lineNetAmount: string;
@@ -574,7 +576,8 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
     );
     const netEligibleCondition = netSalesLineNetEligibleConditionSql(
       'li."taxRate"',
-      'rec."taxTreatment"'
+      'rec."taxTreatment"',
+      includeBackfilledPreRollout
     );
 
     return {

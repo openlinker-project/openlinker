@@ -75,10 +75,18 @@ export interface OrderLineItemRepositoryPort {
    * rather than mixed in — same rule {@link
    * OrderRecordRepositoryPort.getDailyOrderAggregates} applies at the order
    * level.
+   * `includeBackfilledPreRollout` (#2469) is the operator's Net-Sales opt-in
+   * for backfilled pre-rollout tax rates — see
+   * `OrderRecordRepositoryPort.getDailyOrderAggregates` for why it arrives as
+   * a parameter rather than being read here, and `netSalesEraEligibleSql` for
+   * exactly what `true` admits. This read applies it at LINE grain, which is a
+   * pre-existing grain difference against the order-level aggregates rather
+   * than something the flag introduces.
    */
   getTopProductRanking(
     filters: TopProductFilters,
-    reportingCurrency: string
+    reportingCurrency: string,
+    includeBackfilledPreRollout?: boolean
   ): Promise<{ rows: ProductRankingRow[]; total: number }>;
 
   /**
@@ -88,12 +96,13 @@ export interface OrderLineItemRepositoryPort {
    * set) to keep this query's cost bounded by page size, not catalogue size.
    * `reportingCurrency` is the CURRENT system reporting currency — same
    * meaning and same bugfix as {@link getTopProductRanking}'s parameter of
-   * the same name.
+   * the same name; `includeBackfilledPreRollout` likewise.
    */
   getProductChannelBreakdown(
     productIds: string[],
     filters: SalesAnalyticsFilters,
-    reportingCurrency: string
+    reportingCurrency: string,
+    includeBackfilledPreRollout?: boolean
   ): Promise<ProductChannelBreakdownRow[]>;
 
   /**

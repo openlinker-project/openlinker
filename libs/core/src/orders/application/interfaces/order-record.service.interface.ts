@@ -326,8 +326,18 @@ export interface IOrderRecordService {
    * per-channel coverage signal. Currency-mixing detection and gross/net
    * tax-treatment normalization are deliberately out of scope — see
    * #2049/ADR-040 and a separate tax-normalization effort.
+   *
+   * `includeBackfilledPreRollout` (#2469) carries the operator's org-wide
+   * Net-Sales opt-in for backfilled pre-rollout tax rates (#2461). It is a
+   * caller-supplied parameter rather than something this service resolves,
+   * because the setting lives in the `analytics` context and `orders` must not
+   * import it — see `OrderRecordRepositoryPort.getDailyOrderAggregates`. It
+   * defaults to `false`, which is byte-identical to the pre-#2469 figure.
    */
-  getSalesAndChannelAnalytics(filters: SalesAnalyticsFilters): Promise<SalesAndChannelAnalytics>;
+  getSalesAndChannelAnalytics(
+    filters: SalesAnalyticsFilters,
+    includeBackfilledPreRollout?: boolean
+  ): Promise<SalesAndChannelAnalytics>;
 
   /**
    * Products ranked by revenue or units for a date range, each carrying its
@@ -337,9 +347,15 @@ export interface IOrderRecordService {
    * FX-stamped orders; unstamped orders' contribution is surfaced separately
    * via `unconvertedRevenue`/`unconvertedOrderCount`, never silently summed
    * in or dropped. Product-level grouping only — variant-level ranking is a
-   * separate, not-yet-scoped read (spec row C3).
+   * separate, not-yet-scoped read (spec row C3). `includeBackfilledPreRollout`
+   * carries the same meaning as in {@link getSalesAndChannelAnalytics}, and is
+   * applied at LINE grain here — a pre-existing grain difference, not one the
+   * flag introduces.
    */
-  getTopProducts(filters: TopProductFilters): Promise<TopProductsResult>;
+  getTopProducts(
+    filters: TopProductFilters,
+    includeBackfilledPreRollout?: boolean
+  ): Promise<TopProductsResult>;
 
   /**
    * One page of T4 `order.dispatch_deadline_near` candidates (#2360) — orders on
