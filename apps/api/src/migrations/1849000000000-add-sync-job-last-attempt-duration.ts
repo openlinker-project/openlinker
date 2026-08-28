@@ -22,8 +22,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddSyncJobLastAttemptDuration1842000000000 implements MigrationInterface {
-  name = 'AddSyncJobLastAttemptDuration1842000000000';
+export class AddSyncJobLastAttemptDuration1849000000000 implements MigrationInterface {
+  name = 'AddSyncJobLastAttemptDuration1849000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(

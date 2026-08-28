@@ -28,8 +28,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddOrderRecordBuyerTaxId1842000000001 implements MigrationInterface {
-  name = 'AddOrderRecordBuyerTaxId1842000000001';
+export class AddOrderRecordBuyerTaxId1849000000001 implements MigrationInterface {
+  name = 'AddOrderRecordBuyerTaxId1849000000001';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(

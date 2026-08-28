@@ -19,8 +19,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddSyncJobDeferredTotal1842000000002 implements MigrationInterface {
-  name = 'AddSyncJobDeferredTotal1842000000002';
+export class AddSyncJobDeferredTotal1849000000002 implements MigrationInterface {
+  name = 'AddSyncJobDeferredTotal1849000000002';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
