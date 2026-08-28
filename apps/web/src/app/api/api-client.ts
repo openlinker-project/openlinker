@@ -26,6 +26,10 @@ import {
 } from '../../features/ai-provider-settings/api/ai-provider-settings.api';
 import { createAnalyticsApi, type AnalyticsApi } from '../../features/analytics/api/sales-analytics.api';
 import {
+  createAnalyticsSettingsApi,
+  type AnalyticsSettingsApi,
+} from '../../features/analytics/api/analytics-settings.api';
+import {
   createAnalyticsTrustApi,
   type AnalyticsTrustApi,
 } from '../../features/analytics/api/analytics-trust.api';
@@ -158,6 +162,7 @@ export interface CoreApiClient {
   adapters: AdaptersApi;
   aiProviderSettings: AiProviderSettingsApi;
   analytics: AnalyticsApi & TopProductsApi;
+  analyticsSettings: AnalyticsSettingsApi;
   analyticsTrust: AnalyticsTrustApi;
   auth: AuthApi;
   connections: ConnectionsApi;
@@ -378,6 +383,7 @@ export function createApiClient({
     adapters: createAdaptersApi(request),
     aiProviderSettings: createAiProviderSettingsApi(request),
     analytics: { ...createAnalyticsApi(request), ...createTopProductsApi(request) },
+    analyticsSettings: createAnalyticsSettingsApi(request),
     analyticsTrust: createAnalyticsTrustApi(request),
     auth: createAuthApi(request),
     connections: createConnectionsApi(request),

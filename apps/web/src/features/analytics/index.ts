@@ -24,6 +24,16 @@ export type {
   SalesAndChannelAnalytics,
 } from './api/sales-analytics.types';
 
+export { useAnalyticsSettingsQuery } from './hooks/use-analytics-settings-query';
+export { useUpdateAnalyticsSettingsMutation } from './hooks/use-update-analytics-settings-mutation';
+export { RATE_BASIS_VALUES } from './api/analytics-settings.types';
+export type {
+  AnalyticsDisplayCurrencySource,
+  AnalyticsSettingsView,
+  RateBasis,
+  UpdateAnalyticsSettingsInput,
+} from './api/analytics-settings.types';
+
 export { useTopProductsQuery } from './hooks/use-top-products-query';
 export { ProductSalesTable } from './components/product-sales-table';
 export { TopProductsSortByValues } from './api/top-products.types';

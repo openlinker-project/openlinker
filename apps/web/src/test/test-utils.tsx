@@ -164,6 +164,18 @@ export function createMockApiClient(
       }),
       ...overrides.analytics,
     } as ApiClient['analytics'],
+    analyticsSettings: {
+      getSettings: vi.fn().mockResolvedValue({
+        displayCurrency: 'EUR',
+        displayCurrencySource: 'default',
+        rateBasis: 'current',
+        includeBackfilledTaxRatesInNetSales: false,
+        updatedAt: null,
+        updatedByUserId: null,
+      }),
+      updateSettings: vi.fn().mockResolvedValue(undefined),
+      ...overrides.analyticsSettings,
+    } as ApiClient['analyticsSettings'],
     analyticsTrust: {
       getTrust: vi.fn().mockResolvedValue({
         generatedAt: '2026-01-01T00:00:00.000Z',
