@@ -363,9 +363,12 @@ describe('PrestashopProductMasterAdapter', () => {
       const result = await adapter.listExternalIds({ limit: 100, offset: 0 });
 
       expect(result).toEqual(['1', '2', '3']);
+      // Sorted, always: this is the read `runBoundedSweep` pages across ticks,
+      // so an unsorted offset read can drop a live product for a whole cycle
+      // (#2627 review).
       expect(mockHttpClient.listResources).toHaveBeenCalledWith(
         'products',
-        { display: '[id]' },
+        { display: '[id]', sort: ['id_ASC'] },
         100,
         0
       );

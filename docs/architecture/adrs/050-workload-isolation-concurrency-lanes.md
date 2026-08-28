@@ -131,11 +131,13 @@ against it:
 
 | Run | req/min | p95 idle | p95 under load | ratio |
 |---|---|---|---|---|
-| Default lanes | ~50 | 0.0386 s | 0.0382 s | 0.989 |
-| Default lanes, after the adapter fix | ~50 | 0.0378 s | 0.0380 s | 1.005 |
-| Raised per-scope cap (~12 concurrent children) | **~277** | 0.0405 s | 0.0403 s | **0.995** |
+| Default lanes | ~50 | *withdrawn* | *withdrawn* | *withdrawn* |
+| Default lanes, after the adapter fix | ~50 | *withdrawn* | *withdrawn* | *withdrawn* |
+| Raised per-scope cap (~12 concurrent children) | **~277** | *withdrawn* | *withdrawn* | *withdrawn* |
 
-At 5.5x the tempo the shop did not move. Applied to the catalogue: 39 700 requests goes from ~26.5 h
+**The p95 columns are withdrawn** ([ADR-066](./066-prestashop-request-reduction-without-a-module.md) correction 1, applied here by the #2627 review): the probe that produced them never checked the HTTP status code, so a fast error under load counted as a fast sample - which is why two of the three ratios were below 1.0, asserting the shop answered faster while being swept. They must not be quoted as evidence anywhere, including here, and this table quoted them while ADR-066 forbade it. ADR-066 correction 2 adds that store impact tracks cursor DEPTH rather than catalogue size, so a single ratio could not have justified the cap even if it had been measured correctly.
+
+**What survives is the throughput column**, which is a count of requests OL issued and does not depend on the probe: the raised cap sustained ~277 req/min against ~50. Applied to the catalogue: 39 700 requests goes from ~26.5 h
 to ~2.4 h. Raising the connection's own rate limit from 60 to 300/min, by contrast, moved traffic
 from 50 to 63 req/min — the limiter was never the ceiling.
 

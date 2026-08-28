@@ -827,6 +827,66 @@ describe('PrestashopInventoryMasterAdapter', () => {
       );
     });
 
+    /**
+     * A router whose `products` reads answer an EXISTENCE probe, so the partial
+     * OR-filter guard can be exercised in both directions (#2627 review).
+     */
+    function partialAnswerRouter(existingProductIds: string[]): jest.Mock {
+      return jest.fn(
+        (resource: string, filters: { custom?: Record<string, unknown>; display?: string }) => {
+          if (resource === 'configurations') {
+            return Promise.resolve([]);
+          }
+          if (resource === 'products') {
+            // The existence probe is the only `products` read that names ids;
+            // the pack-set enumeration reads `display=[id]` with no filter.
+            if (filters?.custom?.id !== undefined) {
+              const asked = String(filters.custom.id).split('|');
+              return Promise.resolve(
+                existingProductIds.filter((id) => asked.includes(id)).map((id) => ({ id }))
+              );
+            }
+            return Promise.resolve([{ id: '42' }]);
+          }
+          const idProduct = String(filters?.custom?.id_product ?? '');
+          if (idProduct === '42') {
+            return Promise.resolve([ownRow]);
+          }
+          // Component 11 answered; component 12 did not. Before the guard this
+          // collapsed the `min` to 0 and a fully in-stock pack published at 0.
+          return Promise.resolve([
+            { id: '201', id_product: '11', id_product_attribute: '0', quantity: '40' },
+          ]);
+        }
+      );
+    }
+
+    it('refuses to derive when the OR filter answered for only some components that still exist', async () => {
+      mockHttpClient.listResources =
+        partialAnswerRouter(['11', '12']) as unknown as jest.Mocked<IPrestashopWebserviceClient>['listResources'];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(packProduct('1'));
+
+      await expect(adapter.listInventory(productId)).rejects.toThrow(
+        PrestashopPackFilterIgnoredException
+      );
+    });
+
+    it('treats an unanswered component that no longer exists as zero rather than a filter fault', async () => {
+      // A genuinely deleted component product has no stock row, so refusing
+      // here would fail the inventory sync of every pack whose bundle still
+      // names a removed product - a permanently failing job in place of a wrong
+      // quantity.
+      mockHttpClient.listResources =
+        partialAnswerRouter(['11']) as unknown as jest.Mocked<IPrestashopWebserviceClient>['listResources'];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(packProduct('1'));
+
+      const result = await adapter.listInventory(productId);
+
+      expect(result[0].quantity).toBe(0);
+    });
+
     it('reports zero for a both-mode pack with no stock row of its own', async () => {
       mockHttpClient.listResources = stockRouter([], componentRows);
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape

@@ -84,6 +84,50 @@ final class ModuleSettingsMigrationSqlTest extends TestCase
         self::assertSame([], $this->remainingRows('OPENLINKER_WEBHOOK_SECRET'));
     }
 
+    /**
+     * A global row that already holds a value wins over a shop-scoped one.
+     *
+     * The shape is ordinary: configured under shop 1, later re-configured under
+     * "All shops", so the OLD secret is shop-scoped and the CURRENT one global.
+     * Promoting the shop-scoped row and deleting the source replaced a working
+     * secret with a stale one and every inbound request answered 401, with
+     * `logConflictingValues` silent because there was only one distinct
+     * shop-scoped value (#2627 review).
+     */
+    public function testKeepsAnExistingGlobalValueOverAShopScopedOne(): void
+    {
+        $this->insert('OPENLINKER_WEBHOOK_SECRET', 'current-secret', null, null);
+        $this->insert('OPENLINKER_WEBHOOK_SECRET', 'stale-secret', 1);
+
+        ModuleSettings::migrateToGlobal();
+
+        self::assertArrayNotHasKey('OPENLINKER_WEBHOOK_SECRET', Configuration::$globalValues);
+
+        // The shadowing shop-scoped row still goes: `Configuration::get` prefers
+        // it over the global one, so leaving it would keep hiding the value in
+        // use.
+        $remaining = $this->remainingRows('OPENLINKER_WEBHOOK_SECRET');
+        self::assertCount(1, $remaining);
+        self::assertSame('current-secret', $remaining[0]['value']);
+    }
+
+    /**
+     * An all-empty shop-scoped set writes nothing at all.
+     *
+     * `pickValueToPromote` answers `null` there, and the caller's guard is what
+     * stops an empty string being written globally - after which
+     * `HmacRequestVerifier::verify` answers `misconfigured` on every request.
+     */
+    public function testWritesNothingWhenEveryShopScopedRowIsEmpty(): void
+    {
+        $this->insert('OPENLINKER_WEBHOOK_SECRET', '', 1);
+        $this->insert('OPENLINKER_WEBHOOK_SECRET', '', 2);
+
+        ModuleSettings::migrateToGlobal();
+
+        self::assertArrayNotHasKey('OPENLINKER_WEBHOOK_SECRET', Configuration::$globalValues);
+    }
+
     public function testPromotesAShopGroupScopedRow(): void
     {
         $this->insert('OPENLINKER_CONNECTION_ID', 'conn-1', null, 3);

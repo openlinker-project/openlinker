@@ -93,7 +93,15 @@ export function SyncPacingImpact({
     },
     {
       key: 'deletionWindow',
-      label: 'Deleted product still selling',
+      // Named for what it measures - the AUDIT's cycle - not for the outcome
+      // (#2627 review). A shop that reports deletions as they happen (the
+      // PrestaShop module's `product.deleted` webhook, #2647) finds one in about
+      // a minute, and this page cannot tell per connection whether that is
+      // installed. Labelling the audit cycle "deleted product still selling"
+      // would invite an operator to raise this budget twenty-fold, past the
+      // recommendation and through the acknowledgement, to fix a latency the
+      // webhook already fixed.
+      label: 'Deletion audit cycle',
       from: formatDays(before.deletionWindowDays) ?? UNKNOWN,
       to: formatDays(after.deletionWindowDays) ?? UNKNOWN,
       tone: toneFor(before.deletionWindowDays, after.deletionWindowDays),
@@ -120,7 +128,7 @@ export function SyncPacingImpact({
         {after.exceedsHostLimit ? (
           <Alert tone="error" title="This run will be cut short" className="impact-alert">
             At {catalogueValue} products a run takes about{' '}
-            {formatSeconds(after.catalogueRunSeconds)}. You told us your host stops processes at{' '}
+            {formatSeconds(after.catalogueRunSeconds)}. This assumes your host stops processes at{' '}
             <strong>{formatSeconds(hostLimitSeconds)}</strong>. The run will be killed part-way and
             its work is held until OpenLinker picks it up again. Try {suggestion} or fewer.
           </Alert>
@@ -161,12 +169,25 @@ export function SyncPacingImpact({
           ))}
         </div>
 
-        {!catalogueSizeKnown ? (
+        {catalogueSizeKnown ? (
+          // The pass lengths are derived from the count of products OPENLINKER
+          // has replicated, which is the only number the browser can read - there
+          // is no shop-side count endpoint. Mid-first-sync that is a floor, and
+          // the gap is not small: on this epic's own stand 3 501 of 100 000 were
+          // mapped, so the row read 2.4 h against a real pass of ~2.8 days. The
+          // qualifier used to fire only when the size was UNKNOWN, i.e. never in
+          // the state where it mattered most (#2627 review).
+          <p className="form-field__description impact-rows__note">
+            The pass lengths count the products OpenLinker has already replicated, not the products
+            your shop holds. While a first sync is still running the real pass is longer — often far
+            longer — than these rows say. The per-run figures above are exact either way.
+          </p>
+        ) : (
           <p className="form-field__description impact-rows__note">
             OpenLinker does not know yet how many products this shop holds, so how long a full pass
             takes cannot be worked out. The per-run figures above are still exact.
           </p>
-        ) : null}
+        )}
       </article>
 
       <article className="panel">

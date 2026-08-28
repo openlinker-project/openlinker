@@ -241,12 +241,25 @@ export interface OperationalSettingsView {
   readonly catalogueSweepCadence: ResolvedOperationalSetting<string>;
   readonly inventorySweepCadence: ResolvedOperationalSetting<string>;
   /**
-   * Always `true`.
+   * Always `true`, and it means exactly one thing: THIS SURFACE offers no off
+   * switch.
    *
    * #2222 made the deletion audit the deletion authority, and switching it off
    * silently reopens #1689 - a deleted product whose offers keep selling. The
    * field exists so the surface STATES that rather than leaving its absence to
    * be read as an oversight; there is no input that can change it.
+   *
+   * It is NOT a claim that the audit is running (#2627 review). The
+   * `master-product-reconcile` scheduler task still carries
+   * `enabledEnvVar: 'OL_MASTER_PRODUCT_RECONCILE_ENABLED'`, which gates both its
+   * registration and each run, so an operator who sets that to `false` on the
+   * worker stops the audit while this field still reads `true`. That env var is
+   * deliberately the only off switch (see the service's own refusal message,
+   * which says "through this surface"), and the copy this field drives must
+   * carry the same qualifier - a surface asserting a guarantee the code does not
+   * enforce is the defect the epic exists to close. Reporting the env var's
+   * value here would be a second false claim: it is read in whichever process
+   * answers, and since #2279 the audit runs in the WORKER.
    */
   readonly deletionAuditAlwaysEnabled: true;
   /** `null` on the env / default rungs - there is no row to have been written. */

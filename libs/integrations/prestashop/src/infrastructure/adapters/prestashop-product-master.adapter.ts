@@ -43,6 +43,7 @@ import {
   PRESTASHOP_UNNARROWED_MAX_ROWS,
   readAllPrestashopResourcePages,
 } from '../http/prestashop-paged-read';
+import { PrestashopOrFilterIgnoredException } from '../../domain/exceptions/prestashop-or-filter-ignored.exception';
 import type {
   BulkProductReader,
   ProductTaxRateReader,
@@ -423,11 +424,29 @@ export class PrestashopProductMasterAdapter
    * back to the shop for the simple products - the majority on an SMB
    * catalogue, and the ones this is cheapest for.
    *
-   * The empty array is seeded only for ids the products read itself returned.
-   * An empty array is a positive claim that the product has no variants, and
-   * acting on a wrong one stales every real variant and zeroes its offers
-   * (#1689). An absent key is the honest answer for an id the shop did not
-   * confirm, and costs one per-product read.
+   * The empty array is seeded only for ids the products read itself returned,
+   * and only from a response proven to be ABOUT those ids. An empty array is a
+   * positive claim that the product has no variants, and acting on a wrong one
+   * stales every real variant and zeroes its offers (#1689). An absent key is
+   * the honest answer for an id the shop did not confirm, and costs one
+   * per-product read.
+   *
+   * Confirming the PRODUCT exists says nothing about whether the COMBINATIONS
+   * filter was applied, so the response is checked in its own right: a row for
+   * an id nobody asked for means the condition was dropped and the collection
+   * came back whole - the #2616 shape, already observed on `stock_availables`
+   * in #2598. Every such row would otherwise be discarded as unrequested and
+   * every requested product left holding `[]`, i.e. a whole page of products
+   * each claiming to have no variants. Refusing is the only safe reading; the
+   * caller's catch then falls back to per-product reads.
+   *
+   * Nothing is seeded before the check, so a refusal leaves the cache untouched
+   * rather than half-seeded.
+   *
+   * The completeness half of the sibling guard (`assertOrFilterHonoured`) is
+   * deliberately NOT applied here: a product with no combinations is the
+   * majority case on an SMB catalogue, so a missing id is the expected answer
+   * rather than evidence of a dropped filter.
    */
   private async prefetchCombinations(externalIds: readonly string[]): Promise<void> {
     const combinations = await readAllPrestashopResourcePages<PrestashopCombination>(
@@ -442,6 +461,21 @@ export class PrestashopProductMasterAdapter
         maxRows: PRESTASHOP_UNNARROWED_MAX_ROWS,
       }
     );
+
+    const requested = new Set(externalIds.map(String));
+    for (const combination of combinations) {
+      const answeredId = String(combination.id_product ?? '');
+      if (!requested.has(answeredId)) {
+        throw new PrestashopOrFilterIgnoredException(
+          this.connection.id,
+          'combinations',
+          'id_product',
+          [...requested],
+          `it returned a combination of product ${answeredId === '' ? '(unreadable)' : answeredId}, ` +
+            `which was not asked for`
+        );
+      }
+    }
 
     for (const externalId of externalIds) {
       const key = String(externalId);
@@ -535,9 +569,16 @@ export class PrestashopProductMasterAdapter
       `Listing external product IDs (connection: ${this.connection.id}, limit: ${String(filters?.limit)}, offset: ${String(filters?.offset)})`
     );
 
+    // Sorted, always (#2627 review). This is the one read `runBoundedSweep`
+    // pages across TICKS - a 100k catalogue spans ~200 of them - so an unsorted
+    // offset read has no tiling guarantee over a window of days: a product
+    // inserted or deleted mid-cycle shifts the rows, and a live product sitting
+    // at a page boundary is returned by no tick and never syncs for the whole
+    // cycle. It is invisible to every guard the batched path added, because it
+    // never enters a batch.
     const raw = await this.httpClient.listResources<{ id: string | number }>(
       'products',
-      { display: '[id]' },
+      { display: '[id]', sort: ['id_ASC'] },
       filters?.limit,
       filters?.offset
     );

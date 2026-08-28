@@ -692,8 +692,12 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder resolution', ()
 
         expect(mockHttpClient.listResources).toHaveBeenCalledWith(
           'order_states',
-          { custom: { deleted: '0' } },
-          1000,
+          // No `deleted` filter: the catalogue reads soft-deleted states too so
+          // an order sitting in one is still understood (#2627 review). The
+          // flag is applied to the OUTBOUND direction and to this list, in the
+          // adapter, not to the read.
+          { sort: ['id_ASC'] },
+          100,
           0
         );
         // `derivedValue` is read through the same catalogue the write path uses

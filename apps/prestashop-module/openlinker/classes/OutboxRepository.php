@@ -590,6 +590,55 @@ class OutboxRepository
     }
 
     /**
+     * Claim ONE named row for delivery, whatever else is queued.
+     *
+     * `claimBatchDueForDelivery` is the delivery pass's claim: ordered by
+     * `created_at ASC`, so on any non-empty queue it returns the OLDEST row,
+     * not the row a caller just inserted. The admin "Test connection" probe
+     * used it with `limit = 1` and then treated the result as its own event -
+     * so on a shop with a backlog it POSTed a real `product.saved` row as a
+     * test, and on failure gave that row the base 60 s backoff, bypassed the
+     * terminal `attempts >= maxAttempts` check, and overwrote its `last_error`
+     * with "Test connection failed" (#2627 review).
+     *
+     * The claim carries the same `processing_owner` / `dedup_key`-release
+     * semantics as the batch claim, so a row taken this way behaves identically
+     * from there on. It is deliberately NOT restricted by `next_attempt_at`:
+     * the caller names the row, so there is no scheduling decision to make.
+     *
+     * @param int $outboxId
+     * @param string $runId
+     * @return OutboxEvent|null null when the row is gone or already claimed.
+     */
+    public function claimEventById($outboxId, $runId)
+    {
+        if (!class_exists('OutboxEvent')) {
+            $classesDir = dirname(__FILE__) . '/';
+            require_once($classesDir . 'OutboxEvent.php');
+        }
+
+        $sql = 'UPDATE `' . $this->tableName . '`
+                SET `status` = "processing",
+                    ' . ($this->hasDedupKeyColumn() ? '`dedup_key` = NULL,' : '') . '
+                    `processing_owner` = "' . pSQL($runId) . '",
+                    `processing_started_at` = NOW(),
+                    `updated_at` = NOW()
+                WHERE `id` = ' . (int)$outboxId . '
+                AND `status` = "pending"';
+
+        Db::getInstance()->execute($sql);
+
+        $row = Db::getInstance()->getRow(
+            'SELECT * FROM `' . $this->tableName . '`
+             WHERE `id` = ' . (int)$outboxId . '
+             AND `status` = "processing"
+             AND `processing_owner` = "' . pSQL($runId) . '"'
+        );
+
+        return $row ? OutboxEvent::fromArray($row) : null;
+    }
+
+    /**
      * Mark event as delivered
      *
      * Updates status to 'delivered', clears processing_owner, sets delivered_at.

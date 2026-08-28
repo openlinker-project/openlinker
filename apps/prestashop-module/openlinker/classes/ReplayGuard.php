@@ -36,6 +36,20 @@ class ReplayGuard
      */
     const DEGRADED_CONFIG_KEY = 'OPENLINKER_REPLAY_GUARD_DEGRADED_AT';
 
+    /**
+     * The database's own message for the write that failed.
+     *
+     * Stored beside the timestamp because the configuration page previously
+     * asserted ONE cause - "the table was never created, reset the module" -
+     * for a branch that is reached by every failure mode there is: a deadlock,
+     * `Table is full`, a lost connection, a read-only replica, a full disk
+     * (#2627 review). On a full table that sent the operator to re-run a
+     * `CREATE TABLE IF NOT EXISTS` that cannot help, while the shop ran
+     * unprotected. The message is already in hand at the point of failure;
+     * discarding it was the whole defect.
+     */
+    const DEGRADED_ERROR_CONFIG_KEY = 'OPENLINKER_REPLAY_GUARD_DEGRADED_ERROR';
+
     /** One prune per this many accepted requests, to keep the money path short. */
     const PRUNE_EVERY = 20;
 
@@ -133,6 +147,13 @@ class ReplayGuard
 
         try {
             Configuration::updateGlobalValue(self::DEGRADED_CONFIG_KEY, date('Y-m-d H:i:s'));
+            // Truncated: this lands in `ps_configuration.value` and is rendered
+            // on an admin page, so an unbounded driver message has no business
+            // being stored whole.
+            Configuration::updateGlobalValue(
+                self::DEGRADED_ERROR_CONFIG_KEY,
+                substr((string) $db->getMsgError(), 0, 255)
+            );
         } catch (Throwable $e) {
             // The request itself must survive a failed bookkeeping write.
         }
@@ -151,6 +172,7 @@ class ReplayGuard
         try {
             if ((string) Configuration::get(self::DEGRADED_CONFIG_KEY) !== '') {
                 Configuration::updateGlobalValue(self::DEGRADED_CONFIG_KEY, '');
+                Configuration::updateGlobalValue(self::DEGRADED_ERROR_CONFIG_KEY, '');
             }
         } catch (Throwable $e) {
             // Same reason as above.

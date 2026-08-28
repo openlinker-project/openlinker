@@ -204,9 +204,49 @@ describe('PrestashopProductMasterAdapter bulk read (#2593)', () => {
     // Product 9 was never confirmed, so "no variants" is not a claim this
     // prefetch may make: the per-product read decides.
     await adapter.getProductVariants('int-9');
+    // The per-product read goes through `readAllPrestashopResourcePages`, which
+    // stamps `id_ASC` unless the caller asked for its own order - this
+    // expectation predated that and had been failing on the branch.
     expect(httpClient.listResources).toHaveBeenCalledWith(
       'combinations',
-      { custom: { id_product: '9' } },
+      { custom: { id_product: '9' }, sort: ['id_ASC'] },
+      expect.anything(),
+      expect.anything()
+    );
+  });
+
+  it('should refuse to seed empty combinations when the id_product filter was ignored (#2627)', async () => {
+    // The #2616 / #2598 shape: the shop drops `filter[id_product]` and answers
+    // with the whole collection. Every returned row is then dropped as
+    // unrequested and every requested product is left holding `[]` - a positive
+    // claim that it has no variants, which stales every real variant of a whole
+    // page and zeroes its offers (#1689).
+    httpClient.listResources = jest
+      .fn()
+      .mockImplementation((resource: string) =>
+        Promise.resolve(
+          resource === 'products'
+            ? [productRow(3), productRow(9)]
+            : [{ id: '900', id_product: '777' } as unknown as PrestashopCombination]
+        )
+      );
+    httpClient.getResource = jest
+      .fn()
+      .mockImplementation((_resource: string, id: string) =>
+        Promise.resolve(productRow(Number(id)))
+      );
+
+    // `prefetchProducts` is best-effort by contract, so the refusal surfaces as
+    // a fallback to per-product reads rather than as a thrown batch.
+    await expect(adapter.prefetchProducts(['3', '9'])).resolves.toBeUndefined();
+
+    httpClient.listResources = jest.fn().mockResolvedValue([]);
+    await adapter.getProductVariants('int-9');
+
+    // Nothing was seeded, so the per-product read still ran.
+    expect(httpClient.listResources).toHaveBeenCalledWith(
+      'combinations',
+      { custom: { id_product: '9' }, sort: ['id_ASC'] },
       expect.anything(),
       expect.anything()
     );

@@ -1465,7 +1465,11 @@ export class PrestashopOrderProcessorManagerAdapter
    */
   async listOrderStatuses(): Promise<MappingOption[]> {
     const states = await this.orderStates.load();
-    return states.all().map((row) => {
+    // `active`, not `all`: the catalogue reads soft-deleted states too so an
+    // order sitting in one can still be understood (#2627 review), but a state
+    // the merchant retired must not be offered as something to map TO -
+    // `stateIdFor` will never target it.
+    return states.active().map((row) => {
       const option: MappingOption = {
         value: String(row.id),
         label: this.flattenLanguageField(row.name),

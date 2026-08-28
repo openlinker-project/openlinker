@@ -63,7 +63,36 @@ describe('readPackDefinition', () => {
         { productId: '11', combinationId: null, quantity: 2 },
         { productId: '12', combinationId: '55', quantity: 1 },
       ],
+      unreadableComponentCount: 0,
     });
+  });
+
+  it('should count a bundle entry whose product id cannot be read instead of dropping it', () => {
+    const definition = readPackDefinition({
+      id: '7',
+      cache_is_pack: '1',
+      pack_stock_type: '1',
+      associations: {
+        product_bundle: [
+          { id: '11', quantity: '1' },
+          { quantity: '1' },
+          'not-an-object',
+        ],
+      },
+    });
+
+    expect(definition?.components).toEqual([
+      { productId: '11', combinationId: null, quantity: 1 },
+    ]);
+    expect(definition?.unreadableComponentCount).toBe(2);
+  });
+
+  it('should report zero packs when a component entry could not be read', () => {
+    // Dropping a constraint from a `min` always widens: without this the pack
+    // publishes at the surviving component's 50 and oversells.
+    expect(
+      derivePackAvailability([component('11', 1)], availability([['11', null, 50]]), 1)
+    ).toBe(0);
   });
 
   it('should read components from the XML association shape with a single entry', () => {

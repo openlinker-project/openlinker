@@ -288,7 +288,11 @@
                     <span class="help-block text-danger">
                         {l s='Signed requests are not being checked for replays, since' mod='openlinker'}
                         {$replay_guard_degraded_at|escape:'html':'UTF-8'}.
-                        {l s='This happens when the module files were copied over an older version instead of upgraded, so the table the check needs was never created. Reset the module from the module list to create it.' mod='openlinker'}
+                        {if $replay_guard_degraded_error}
+                        {l s='The database reported:' mod='openlinker'}
+                        <code>{$replay_guard_degraded_error|escape:'html':'UTF-8'}</code>
+                        {/if}
+                        {l s='The check writes one row per signed request. It can fail because the table was never created (module files copied over an older version instead of upgraded — reset the module from the module list), or because the database refused the write for another reason: the table is full, the disk is full, the connection was lost, or this server is reading a replica. Fix what the message above names.' mod='openlinker'}
                     </span>
                 </td>
             </tr>
