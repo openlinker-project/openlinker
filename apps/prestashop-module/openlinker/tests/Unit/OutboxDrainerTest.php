@@ -72,6 +72,22 @@ class OutboxDrainerTest extends TestCase
         $this->assertSame([6], $repository->failedIds);
     }
 
+    public function testSchedulesARetryWhenSendingRaisesAnErrorRatherThanAnException(): void
+    {
+        // A TypeError/Error does not extend Exception - if drainBatch ever
+        // regresses to `catch (Exception ...)`, this event's Error escapes
+        // the loop uncaught instead of being retried, and PHPUnit reports it
+        // as an uncaught-error test failure rather than an assertion failure.
+        $repository = new FakeOutboxDrainerRepository([$this->makeEvent(9, 1)]);
+        $sender = new FakeOutboxDrainerSender(['9' => new TypeError('bad argument')]);
+
+        $result = OutboxDrainer::drainBatch($repository, $sender, 5, 'run-1', null, 25);
+
+        $this->assertSame(['claimed' => 1, 'delivered' => 0, 'failed' => 1], $result);
+        $this->assertSame([9], $repository->retriedIds);
+        $this->assertSame([], $repository->failedIds);
+    }
+
     public function testSchedulesARetryWhenTheSenderReturnsFalseInsteadOfThrowing(): void
     {
         $repository = new FakeOutboxDrainerRepository([$this->makeEvent(7)]);
@@ -139,7 +155,7 @@ class FakeOutboxDrainerRepository
 
 class FakeOutboxDrainerSender
 {
-    /** @var array<string, Exception> keyed by event id */
+    /** @var array<string, Throwable> keyed by event id */
     private $throwFor;
 
     /** @var array<int|string> event ids for which sendEvent() returns false */

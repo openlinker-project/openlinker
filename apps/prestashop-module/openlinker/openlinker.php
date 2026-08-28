@@ -67,7 +67,15 @@ class OpenLinker extends CarrierModule
     // Response-flush fast path (#2624): deliberately small and fixed (not
     // the operator-configurable BATCH_SIZE) - this runs inside every urgent
     // request's PHP-FPM worker, so it must stay a handful of rows, not the
-    // cron path's full page.
+    // cron path's full page. Unlike DeliveryRunner::run, this batch has no
+    // wall-clock budget check between events - the bound here is coarse but
+    // fixed by construction: FAST_PATH_BATCH_LIMIT events, each capped at
+    // WebhookSender::FAST_PATH_TIMEOUT_SECONDS, so one shutdown-function run
+    // can hold its PHP-FPM worker for at most
+    // (5 * 3s =) 15 seconds even if every delivery times out. Keep this
+    // comment's arithmetic in sync with either constant if either changes -
+    // that worst case is what an operator's FPM `pm.max_children` sizing has
+    // to absorb under concurrent urgent requests.
     const FAST_PATH_BATCH_LIMIT = 5;
 
     // Dynamic shipping carrier — display name shown in PS admin carrier list.
