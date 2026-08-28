@@ -173,6 +173,14 @@ export interface ProductListFilters {
    *  - `known` - a rate is on record (including a deliberate zero).
    */
   taxRateState?: 'missing' | 'not-checked' | 'known';
+
+  /**
+   * Hide products where EVERY variant is stale — deleted at the master
+   * (#1599) and never replaced (#2447). A product with at least one live
+   * variant is kept regardless of how many siblings are stale; a product
+   * with zero variants is also kept (staleness is not what that means).
+   */
+  hideFullyStale?: boolean;
 }
 
 /**

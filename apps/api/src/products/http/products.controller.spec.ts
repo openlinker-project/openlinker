@@ -52,6 +52,8 @@ function makeVariant(overrides: Partial<ProductVariant> = {}): ProductVariant {
     price: overrides.price,
     createdAt: overrides.createdAt ?? new Date('2026-01-01T00:00:00Z'),
     updatedAt: overrides.updatedAt ?? new Date('2026-01-01T00:00:00Z'),
+    isStale: overrides.isStale,
+    staleAt: overrides.staleAt,
   };
 }
 
@@ -70,6 +72,7 @@ function createMockProductsService(): jest.Mocked<IProductsService> {
     listProducts: jest.fn(),
     listVariants: jest.fn(),
     getVariantCountsByProductIds: jest.fn(),
+    getStaleVariantCountsByProductIds: jest.fn(),
     markVariantsStaleExcept: jest.fn(),
   recordProductTaxRate: jest.fn(),
   recordVariantTaxRate: jest.fn(),
@@ -182,6 +185,7 @@ describe('ProductsController', () => {
     offerMappings.countListedVariantsByProducts.mockResolvedValue([]);
     shopProductMappings.countListedVariantsByProducts.mockResolvedValue([]);
     productsService.getVariantCountsByProductIds.mockResolvedValue(new Map());
+    productsService.getStaleVariantCountsByProductIds.mockResolvedValue(new Map());
     identifierMapping.getExternalIds.mockResolvedValue([]);
   });
 
@@ -326,6 +330,9 @@ describe('ProductsController', () => {
       productsService.getVariantCountsByProductIds.mockResolvedValue(
         new Map([['ol_product_1', 3]])
       );
+      productsService.getStaleVariantCountsByProductIds.mockResolvedValue(
+        new Map([['ol_product_1', 1]])
+      );
       identifierMapping.getExternalIds.mockResolvedValue([
         {
           externalId: '42',
@@ -343,6 +350,9 @@ describe('ProductsController', () => {
         'ol_product_1',
       ]);
       expect(productsService.getVariantCountsByProductIds).toHaveBeenCalledWith(['ol_product_1']);
+      expect(productsService.getStaleVariantCountsByProductIds).toHaveBeenCalledWith([
+        'ol_product_1',
+      ]);
       expect(identifierMapping.getExternalIds).toHaveBeenCalledWith('Product', 'ol_product_1');
 
       const item = result.items[0];
@@ -350,6 +360,7 @@ describe('ProductsController', () => {
       expect(item.totalReserved).toBe(3);
       expect(item.stockUpdatedAt).toBe('2026-05-01T12:00:00.000Z');
       expect(item.variantCount).toBe(3);
+      expect(item.staleVariantCount).toBe(1);
       // Offer (marketplace) and ShopProduct (shop) coverage rows merge into
       // the same per-product list (#1838 follow-up fix).
       expect(item.listingsCoverage).toEqual([
@@ -371,8 +382,21 @@ describe('ProductsController', () => {
       expect(item.totalReserved).toBe(0);
       expect(item.stockUpdatedAt).toBeNull();
       expect(item.variantCount).toBe(0);
+      expect(item.staleVariantCount).toBe(0);
       expect(item.listingsCoverage).toEqual([]);
       expect(item.externalIds).toEqual([]);
+    });
+
+    it('should pass hideFullyStale through to the service (#2447)', async () => {
+      productsService.listProducts.mockResolvedValue({ items: [], total: 0 });
+
+      await controller.listProducts({ hideFullyStale: true, limit: 20, offset: 0 });
+
+      expect(productsService.listProducts).toHaveBeenCalledWith(
+        expect.objectContaining({ hideFullyStale: true }),
+        { limit: 20, offset: 0 },
+        undefined
+      );
     });
 
     it('should skip enrichment reads entirely for an empty page (#1720)', async () => {
@@ -385,6 +409,7 @@ describe('ProductsController', () => {
       expect(offerMappings.countListedVariantsByProducts).not.toHaveBeenCalled();
       expect(shopProductMappings.countListedVariantsByProducts).not.toHaveBeenCalled();
       expect(productsService.getVariantCountsByProductIds).not.toHaveBeenCalled();
+      expect(productsService.getStaleVariantCountsByProductIds).not.toHaveBeenCalled();
       expect(identifierMapping.getExternalIds).not.toHaveBeenCalled();
     });
   });
@@ -431,6 +456,32 @@ describe('ProductsController', () => {
       const result = await controller.getProduct('ol_product_1');
 
       expect(result.variants![0].price).toBe(19.99);
+    });
+
+    it('should surface isStale/staleAt when the master deleted the variant (#2446)', async () => {
+      const staleAt = new Date('2026-03-01T00:00:00Z');
+      productsService.getProduct.mockResolvedValue(makeProduct());
+      productsService.listVariants.mockResolvedValue({
+        items: [makeVariant({ isStale: true, staleAt })],
+        total: 1,
+      });
+      identifierMapping.getExternalIds.mockResolvedValue([]);
+
+      const result = await controller.getProduct('ol_product_1');
+
+      expect(result.variants![0].isStale).toBe(true);
+      expect(result.variants![0].staleAt).toBe(staleAt.toISOString());
+    });
+
+    it('should default isStale to false and staleAt to null for a live variant', async () => {
+      productsService.getProduct.mockResolvedValue(makeProduct());
+      productsService.listVariants.mockResolvedValue({ items: [makeVariant()], total: 1 });
+      identifierMapping.getExternalIds.mockResolvedValue([]);
+
+      const result = await controller.getProduct('ol_product_1');
+
+      expect(result.variants![0].isStale).toBe(false);
+      expect(result.variants![0].staleAt).toBeNull();
     });
 
     it('should surface currency when the domain entity carries one', async () => {
@@ -502,8 +553,22 @@ describe('ProductsController', () => {
         sku: 'SKU-RED-42',
         ean: '5901234123457',
         name: 'Red / 42',
+        isStale: false,
+        staleAt: null,
       });
       expect(productsService.getVariant).toHaveBeenCalledWith('ol_variant_42');
+    });
+
+    it('should surface isStale/staleAt when the master deleted the variant (#2446)', async () => {
+      const staleAt = new Date('2026-03-01T00:00:00Z');
+      productsService.getVariant.mockResolvedValue(
+        makeVariant({ id: 'ol_variant_44', isStale: true, staleAt })
+      );
+
+      const result = await controller.getVariantSummary('ol_variant_44');
+
+      expect(result.isStale).toBe(true);
+      expect(result.staleAt).toBe(staleAt.toISOString());
     });
 
     it('should leave name undefined when the variant has no string attributes', async () => {
