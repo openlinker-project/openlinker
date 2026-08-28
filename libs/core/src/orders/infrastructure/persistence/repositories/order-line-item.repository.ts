@@ -139,7 +139,8 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
    */
   async getTopProductRanking(
     filters: TopProductFilters,
-    reportingCurrency: string
+    reportingCurrency: string,
+    includeBackfilledPreRollout = false
   ): Promise<{ rows: ProductRankingRow[]; total: number }> {
     const stampedNonZero = 'rec."reportingCurrency" = :reportingCurrency AND rec."totalAmount" <> 0';
     // Parenthesized even though it's the only clause needing it today —
@@ -164,7 +165,8 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
     );
     const netEligibleCondition = netSalesLineNetEligibleConditionSql(
       'li."taxRate"',
-      'rec."taxTreatment"'
+      'rec."taxTreatment"',
+      includeBackfilledPreRollout
     );
     const stampedNonZeroKnownRate = `${stampedNonZero} AND ${netEligibleCondition}`;
     const stampedNonZeroUnknownRate = `${stampedNonZero} AND NOT ${netEligibleCondition}`;
@@ -272,7 +274,8 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
   async getProductChannelBreakdown(
     productIds: string[],
     filters: SalesAnalyticsFilters,
-    reportingCurrency: string
+    reportingCurrency: string,
+    includeBackfilledPreRollout = false
   ): Promise<ProductChannelBreakdownRow[]> {
     if (productIds.length === 0) {
       return [];
@@ -296,7 +299,8 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
     );
     const netEligibleCondition = netSalesLineNetEligibleConditionSql(
       'li."taxRate"',
-      'rec."taxTreatment"'
+      'rec."taxTreatment"',
+      includeBackfilledPreRollout
     );
     const stampedNonZeroKnownRate = `${stampedNonZero} AND ${netEligibleCondition}`;
     const stampedNonZeroUnknownRate = `${stampedNonZero} AND NOT ${netEligibleCondition}`;

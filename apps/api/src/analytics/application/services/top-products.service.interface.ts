@@ -14,5 +14,8 @@ import type { TopProductsResponseDto } from '../../http/dto/top-products-respons
 export const TOP_PRODUCTS_SERVICE_TOKEN = Symbol('ITopProductsService');
 
 export interface ITopProductsService {
-  getTopProducts(filters: TopProductFilters): Promise<TopProductsResponseDto>;
+  getTopProducts(
+    filters: TopProductFilters,
+    includeBackfilledTaxRatesInNetSales?: boolean
+  ): Promise<TopProductsResponseDto>;
 }

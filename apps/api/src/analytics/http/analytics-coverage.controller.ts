@@ -31,6 +31,10 @@ import {
   REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN,
   type IReportingCurrencySettingsService,
 } from '@openlinker/core/currency';
+import {
+  ANALYTICS_DISPLAY_SETTINGS_SERVICE_TOKEN,
+  type IAnalyticsDisplaySettingsService,
+} from '@openlinker/core/analytics';
 import { AnalyticsCoverageQueryDto } from './dto/analytics-coverage-query.dto';
 import {
   AnalyticsCoverageResponseDto,
@@ -58,7 +62,9 @@ export class AnalyticsCoverageController {
     @Inject(TAX_COVERAGE_DETECTION_SERVICE_TOKEN)
     private readonly taxCoverageDetectionService: ITaxCoverageDetectionService,
     @Inject(REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN)
-    private readonly reportingCurrencySettings: IReportingCurrencySettingsService
+    private readonly reportingCurrencySettings: IReportingCurrencySettingsService,
+    @Inject(ANALYTICS_DISPLAY_SETTINGS_SERVICE_TOKEN)
+    private readonly displaySettings: IAnalyticsDisplaySettingsService
   ) {}
 
   @Get('coverage')
@@ -91,6 +97,11 @@ export class AnalyticsCoverageController {
     const pagination = { limit: COVERAGE_SAMPLE_SIZE, offset: 0 };
 
     const currentReportingCurrency = await this.reportingCurrencySettings.resolve();
+    // Threaded into the tax read for the same reason the currency is (#2469):
+    // with the operator's opt-in ON a backfilled pre-rollout order is already
+    // inside Net Sales, so reporting it as `tax-a` would claim outstanding work
+    // on an order that has none.
+    const { includeBackfilledTaxRatesInNetSales } = await this.displaySettings.getSettings();
 
     const [currencyPage, taxPages, productMatchingPage] = await Promise.all([
       this.orderRecordService.getCurrencyMismatchOrders(
@@ -101,7 +112,8 @@ export class AnalyticsCoverageController {
       this.taxCoverageDetectionService.getAllCategoryPages(
         salesFilters,
         currentReportingCurrency,
-        pagination
+        pagination,
+        includeBackfilledTaxRatesInNetSales
       ),
       this.orderRecordService.getProductMatchingErrorOrders(healthFilters, pagination),
     ]);
