@@ -28,7 +28,11 @@ import { Logger } from '@openlinker/shared/logging';
 import type { IOrderRecordService } from '@openlinker/core/orders';
 import type { MailerPort } from '@openlinker/core/users';
 
-import { renderAutomationTemplate } from '../../../domain/domain-services/render-automation-template';
+import {
+  formatMergeAmount,
+  formatMergeDate,
+  renderAutomationTemplate,
+} from '../../../domain/domain-services/render-automation-template';
 import { availabilityForAction } from '../../../domain/types/automation-action-availability.types';
 import type {
   AutomationActionExecutionInput,
@@ -122,9 +126,9 @@ export class SendEmailExecutorService implements AutomationActionExecutorPort {
     // than as a fact about their order.
     const context = {
       orderReference: input.facts.subjectId,
-      orderTotal: this.formatTotal(input),
-      orderPlacedAt: record?.placedAt?.toISOString(),
-      orderDispatchBy: record?.dispatchByAt?.toISOString(),
+      orderTotal: formatMergeAmount(input.facts.totalGross, input.facts.currency),
+      orderPlacedAt: formatMergeDate(record?.placedAt),
+      orderDispatchBy: formatMergeDate(record?.dispatchByAt),
       holdReason: input.facts.holdReason,
       ruleName: input.rule.name,
     };
@@ -181,12 +185,5 @@ export class SendEmailExecutorService implements AutomationActionExecutorPort {
       );
       return null;
     }
-  }
-
-  /** `{order.total}` — the gross total with its currency, per §5.3b. */
-  private formatTotal(input: AutomationActionExecutionInput): string | undefined {
-    const { totalGross, currency } = input.facts;
-    if (totalGross === undefined) return undefined;
-    return currency === undefined ? String(totalGross) : `${totalGross} ${currency}`;
   }
 }

@@ -109,6 +109,54 @@ function isMergeField(token: string): token is AutomationMergeField {
 }
 
 /**
+ * Render a date merge field as a plain calendar day in UTC.
+ *
+ * **Not `toISOString()`**, which put `2026-08-27T10:00:00.000Z` in front of a
+ * buyer — a machine timestamp reads as a defect in an email. And deliberately
+ * **not** "in the operator's locale" either, which is what the composer's chip
+ * used to promise: this runs in a worker with no operator and no locale, so
+ * honouring that copy is impossible and the copy is what changed. A calendar day
+ * is the largest true statement available here.
+ *
+ * Lives beside the field list rather than at the call site so the value and the
+ * promise cannot drift — the same reason `FALLBACKS` is here.
+ */
+export function formatMergeDate(value: Date | null | undefined): string | undefined {
+  if (value === null || value === undefined || Number.isNaN(value.getTime())) return undefined;
+  return value.toISOString().slice(0, 10);
+}
+
+/**
+ * Render the gross total with its currency, at that currency's own precision.
+ *
+ * `${totalGross} ${currency}` emitted the raw float — `123.5 PLN` rather than
+ * `123.50 PLN` — which reads as a truncated number to the person being asked to
+ * pay it. `Intl` is used for the minor-unit count only; a currency OL does not
+ * recognise falls back to the bare pairing rather than throwing, since a
+ * slightly plain total is a far better outcome than a failed step.
+ */
+export function formatMergeAmount(
+  totalGross: number | undefined,
+  currency: string | undefined,
+): string | undefined {
+  if (totalGross === undefined) return undefined;
+  if (currency === undefined) return String(totalGross);
+  try {
+    const formatted = new Intl.NumberFormat('en-US', {
+      style: 'decimal',
+      minimumFractionDigits: new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency,
+      }).resolvedOptions().minimumFractionDigits,
+      useGrouping: false,
+    }).format(totalGross);
+    return `${formatted} ${currency}`;
+  } catch {
+    return `${totalGross} ${currency}`;
+  }
+}
+
+/**
  * Substitute the nine known fields; leave every other `{...}` exactly as typed.
  *
  * The pattern deliberately matches only `{` + non-brace run + `}` so a stray

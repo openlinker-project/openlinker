@@ -19,6 +19,7 @@
 import { mergePluginNavContributions } from '../plugins/merge-nav-contributions';
 import { plugins } from '../plugins';
 import { NAV_DEMO_RESTRICTED_MESSAGE } from '../shared/config/demo-mode';
+import type { Permission } from '../shared/auth/session.types';
 import type { NavGroup, NavRegistryGroup } from './nav-registry.types';
 
 /**
@@ -44,7 +45,11 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
       // No `countKey`: `GET /automations/summary` reports rule counts per
       // trigger, not an attention count — a badge showing how many rules exist
       // would read as how many need looking at.
-      { to: '/automations', label: 'Automations' },
+      // Permission-gated (#2358 review I5): `AutomationsController` is
+      // `@Roles('admin', 'operator')` on every route, so a `viewer` shown this
+      // entry gets a 403 on the first request the page makes. `automations:read`
+      // is held by exactly admin + operator in `ROLE_PERMISSIONS`.
+      { to: '/automations', label: 'Automations', requiresPermission: 'automations:read' },
       { to: '/invoices', label: 'Invoices' },
     ],
   },
@@ -91,6 +96,13 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
 export interface BuildNavGroupsInput {
   isAdmin: boolean;
   demoMode: boolean;
+  /**
+   * The session's permissions, from `GET /me`. Items declaring
+   * `requiresPermission` are dropped when it is absent. Defaults to empty so an
+   * anonymous / not-yet-resolved session sees no permission-gated item rather
+   * than every one of them.
+   */
+  permissions?: readonly Permission[];
 }
 
 /**
@@ -108,7 +120,11 @@ export interface BuildNavGroupsInput {
  * Plugin contributions are then folded in via `mergePluginNavContributions`,
  * which applies the same `requiresRole` gate against the session role.
  */
-export function buildNavGroups({ isAdmin, demoMode }: BuildNavGroupsInput): NavGroup[] {
+export function buildNavGroups({
+  isAdmin,
+  demoMode,
+  permissions = [],
+}: BuildNavGroupsInput): NavGroup[] {
   // `mergePluginNavContributions` deep-clones each live group before mutating,
   // so pushing the readonly BASE group objects by reference is safe.
   const baseGroups: NavGroup[] = [];
@@ -125,6 +141,18 @@ export function buildNavGroups({ isAdmin, demoMode }: BuildNavGroupsInput): NavG
       }
       continue;
     }
+    if (group.kind === 'live') {
+      // Per-ITEM permission gate. A live group whose every item is gated away
+      // is dropped entirely — an empty group heading advertises a section the
+      // session cannot reach.
+      const items = group.items.filter(
+        (item) => item.requiresPermission === undefined || permissions.includes(item.requiresPermission),
+      );
+      if (items.length === 0) continue;
+      baseGroups.push(items.length === group.items.length ? group : { ...group, items });
+      continue;
+    }
+
     baseGroups.push(group);
   }
 

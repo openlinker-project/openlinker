@@ -23,7 +23,11 @@ import {
   type OrderAmendmentChange,
 } from '../api/orders.types';
 import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
-import { AUTOMATION_RUN_OUTCOME_COPY, type AutomationRun } from '../../automation';
+import {
+  AUTOMATION_FAILURE_COPY,
+  AUTOMATION_RUN_OUTCOME_COPY,
+  type AutomationRun,
+} from '../../automation';
 import { buildAutomationTimelineEvents } from '../lib/automation-timeline';
 import type { ParsedOrderInvoice } from '../api/order-snapshot.schema';
 import { invoicingBlockedBadge } from '../lib/order-row';
@@ -403,8 +407,24 @@ function buildEvents(
       tone: event.tone,
       // The rule name in `by` is text; the LINK is what makes turning the rule
       // off reachable from the order without knowing which rule to suspect (S3-8).
+      //
+      // `isRetry` / `handledByOperator` ride here rather than in `title` or
+      // `description`: the title is the action's own verb and the description is
+      // the failure's own words (never paraphrased), so a note ABOUT the firing
+      // belongs beside the trigger sentence. Both were computed and read by
+      // nothing, which meant a retry chain rendered as two unrelated firings the
+      // operator had to correlate by timestamp, and a failure someone had
+      // already handled stayed indistinguishable from one nobody had touched.
       footer: (
-        <Link to={`/automations/${encodeURIComponent(event.trigger)}`}>{event.footer}</Link>
+        <>
+          <Link to={`/automations/${encodeURIComponent(event.trigger)}`}>{event.footer}</Link>
+          {event.isRetry ? (
+            <span className="muted-text"> · {AUTOMATION_FAILURE_COPY.isRetryOf}</span>
+          ) : null}
+          {event.handledByOperator ? (
+            <span className="muted-text"> · {AUTOMATION_FAILURE_COPY.dismissed}</span>
+          ) : null}
+        </>
       ),
     });
   }

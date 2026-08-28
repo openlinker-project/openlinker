@@ -75,6 +75,36 @@ function StepLine({ step }: { step: AutomationStepResult }): ReactElement {
   );
 }
 
+/**
+ * The outcome badges for one firing — shared by the desktop `Result` column and
+ * the mobile card's summary slot, so the two cannot say different things.
+ */
+function RunOutcome({ run }: { run: AutomationRun }): ReactElement {
+  return (
+    <div className="automation-activity__outcome">
+      <StatusBadge tone={runOutcomeTone(run.outcome)} withDot compact>
+        {(AUTOMATION_RUN_OUTCOME_COPY as Record<string, string>)[run.outcome] ?? run.outcome}
+      </StatusBadge>
+      {/*
+        `needsAttention` is the SERVER's answer, rendered — never re-derived
+        here. It depends on whether a DIFFERENT row retried this one, which
+        no single row can answer about itself (#2387).
+      */}
+      {run.needsAttention ? (
+        <StatusBadge tone="error" compact>
+          {AUTOMATION_FAILURE_COPY.badge}
+        </StatusBadge>
+      ) : null}
+      {run.dismissedAt === null ? null : (
+        <span className="muted-text">{AUTOMATION_FAILURE_COPY.dismissed}</span>
+      )}
+      {run.retryOfRunId === null ? null : (
+        <span className="muted-text">{AUTOMATION_FAILURE_COPY.isRetryOf}</span>
+      )}
+    </div>
+  );
+}
+
 interface AutomationActivityTableProps {
   runs: AutomationRun[];
   emptyState: ReactElement;
@@ -216,29 +246,7 @@ export function AutomationActivityTable({
     {
       id: 'outcome',
       header: AUTOMATION_ACTIVITY_COPY.outcomeHeader,
-      cell: (run) => (
-        <div className="automation-activity__outcome">
-          <StatusBadge tone={runOutcomeTone(run.outcome)} withDot compact>
-            {(AUTOMATION_RUN_OUTCOME_COPY as Record<string, string>)[run.outcome] ?? run.outcome}
-          </StatusBadge>
-          {/*
-            `needsAttention` is the SERVER's answer, rendered — never re-derived
-            here. It depends on whether a DIFFERENT row retried this one, which
-            no single row can answer about itself (#2387).
-          */}
-          {run.needsAttention ? (
-            <StatusBadge tone="error" compact>
-              {AUTOMATION_FAILURE_COPY.badge}
-            </StatusBadge>
-          ) : null}
-          {run.dismissedAt === null ? null : (
-            <span className="muted-text">{AUTOMATION_FAILURE_COPY.dismissed}</span>
-          )}
-          {run.retryOfRunId === null ? null : (
-            <span className="muted-text">{AUTOMATION_FAILURE_COPY.isRetryOf}</span>
-          )}
-        </div>
-      ),
+      cell: (run) => <RunOutcome run={run} />,
     },
     {
       id: 'actions',
@@ -271,6 +279,19 @@ export function AutomationActivityTable({
               <StepLine key={step.stepIndex} step={step} />
             ))}
           </ul>
+        ),
+        // The card view renders solely from `cardView` — a column has no mobile
+        // fallback — so without these two slots the outcome, the attention badge
+        // and both remediation controls vanish entirely below the breakpoint,
+        // which is where a failed automation is most likely to be noticed.
+        summary: (run) => <RunOutcome run={run} />,
+        actions: (run) => (
+          <AutomationRunActions
+            run={run}
+            canWrite={canWrite}
+            readOnlyLocked={readOnlyLocked}
+            readOnlyMessage={readOnlyMessage}
+          />
         ),
       }}
     />

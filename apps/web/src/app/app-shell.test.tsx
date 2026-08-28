@@ -145,11 +145,14 @@ describe('AppShell', () => {
     expect(within(primary).queryByText('Add connection')).toBeNull();
   });
 
-  it('links Automations into Operations rather than disabling it (#2364)', () => {
+  it('links Automations into Operations rather than disabling it (#2364)', async () => {
     renderShell({ pathname: '/' });
 
     const primary = screen.getByRole('navigation', { name: 'Primary' });
-    const automations = within(primary).getByText('Automations');
+    // `find`, not `get`: the item is permission-gated on `automations:read`
+    // (#2358 review I5), so it appears only once the session resolves — the
+    // same reason the AI-group assertions below are async.
+    const automations = await within(primary).findByText('Automations');
 
     expect(automations.closest('a')).toHaveAttribute('href', '/automations');
     // The disabled-placeholder attributes must be GONE, not merely unasserted:
@@ -157,6 +160,30 @@ describe('AppShell', () => {
     // a screen reader while working for everyone else.
     expect(automations).not.toHaveAttribute('aria-disabled');
     expect(automations).not.toHaveAttribute('tabindex', '-1');
+  });
+
+  it('hides Automations from a session without automations:read (#2358 I5)', async () => {
+    // A `viewer` holds no `automations:read`, and every AutomationsController
+    // route is `@Roles('admin', 'operator')` — so showing the entry offered a
+    // link whose first request 403s. Absence is the honest rendering.
+    const viewerAdapter = createAuthenticatedSessionAdapter({
+      id: 'u2',
+      username: 'viewer',
+      email: 'viewer@example.com',
+      role: 'viewer',
+      permissions: ['orders:read'],
+      analyticsConsent: true,
+    });
+    renderShell({ pathname: '/', sessionAdapter: viewerAdapter });
+
+    // Wait for the session to resolve before asserting absence, or the
+    // assertion passes on the pre-resolution render for the wrong reason.
+    await screen.findAllByText('viewer');
+    const primary = screen.getByRole('navigation', { name: 'Primary' });
+    expect(within(primary).queryByText('Automations')).toBeNull();
+    // The rest of Operations is untouched — the gate is per-item, not per-group.
+    expect(within(primary).getByText('Orders')).toBeInTheDocument();
+    expect(within(primary).getByText('Operations')).toBeInTheDocument();
   });
 
   it('renders the AI group with a Prompt templates link for admin sessions (#377)', async () => {

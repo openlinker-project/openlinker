@@ -181,6 +181,14 @@ export const AUTOMATION_ERROR_COPY = {
   vocabularyMessage:
     'Without this, OpenLinker cannot tell you which steps are legal or which ones work — so it will not guess. Try again in a moment.',
   summaryTitle: 'Unable to load automations',
+  /**
+   * The ENVELOPE was unreadable — zero items AND zero drops, which every
+   * emptiness test reads as "the server said there are none". Saying "you have
+   * no automations" there is a false claim about the operator's own setup.
+   */
+  unreadableTitle: 'Unable to read the automations list',
+  unreadableEnvelopeMessage:
+    'OpenLinker could not read the response, so it cannot say how many automations you have. This is not a statement that you have none.',
   rulesTitle: 'Unable to load these rules',
   loadingTitle: 'Loading automations',
   loadingMessage: 'Fetching your rules and what each step can do…',
@@ -480,6 +488,14 @@ export const AUTOMATION_ACTIVITY_COPY = {
   errorTitle: 'Unable to load the run log',
 
   /** Rules exist and are armed; none has fired yet. */
+  /**
+   * Recording is off (`recordingAvailable: false`). The backend's own `note`
+   * leads; this is only the fallback when it sent none. An empty list says
+   * nothing at all about whether a rule fired, so `emptyNoRuns` would be a
+   * false claim here.
+   */
+  recordingUnavailableFallback:
+    'OpenLinker is not recording automation runs in this build, so this list cannot tell you whether anything has fired.',
   emptyNoRunsTitle: 'Nothing has run yet',
   emptyNoRunsMessage:
     'Your automations are set up and waiting. The moment one matches, it will show up here.',

@@ -5,9 +5,10 @@
  * is not a failure must not render as one, and the job link must exist exactly
  * when a step dispatched a job — pointing at a route that honours the id.
  */
-import { screen, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
-import { renderWithProviders } from '../../../test/test-utils';
+import { cleanup, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 import { AutomationActivityTable } from './automation-activity-table';
 import type { AutomationRun } from '../api/automation.types';
 
@@ -38,7 +39,7 @@ function run(overrides: Partial<AutomationRun> = {}): AutomationRun {
   };
 }
 
-function render(runs: AutomationRun[]): void {
+function render(runs: AutomationRun[], apiClient?: ReturnType<typeof createMockApiClient>): void {
   renderWithProviders(
     <AutomationActivityTable
       runs={runs}
@@ -47,7 +48,26 @@ function render(runs: AutomationRun[]): void {
       readOnlyLocked={false}
       readOnlyMessage="Read only"
     />,
+    apiClient ? { apiClient } : undefined,
   );
+}
+
+/** Forces the mobile (cardView) breakpoint for the DataTable (#1620). */
+function mockMobileViewport(): { restore: () => void } {
+  const spy = vi.spyOn(window, 'matchMedia').mockImplementation(
+    (query) =>
+      ({
+        matches: query.includes('max-width'),
+        media: query,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+      }) as MediaQueryList,
+  );
+  return { restore: () => spy.mockRestore() };
 }
 
 describe('AutomationActivityTable', () => {
@@ -175,5 +195,65 @@ describe('AutomationActivityTable', () => {
     ]);
     const list = screen.getAllByRole('list')[0];
     expect(within(list).getAllByRole('listitem')).toHaveLength(2);
+  });
+
+  describe('mobile card view', () => {
+    afterEach(cleanup);
+
+    it('should keep the outcome, the attention badge and both remediation controls on the card', async () => {
+      // The card view renders solely from `cardView` — a column has no mobile
+      // fallback — so every AF-X control was desktop-only, which is where a
+      // failed automation is LEAST likely to be looked at.
+      const viewport = mockMobileViewport();
+      const retryRun = vi.fn().mockResolvedValue(run());
+      const dismissRun = vi.fn().mockResolvedValue(run());
+      try {
+        render(
+          [
+            run({
+              outcome: 'failed',
+              needsAttention: true,
+              retryable: true,
+              steps: [
+                { stepIndex: 0, action: 'dispatch-shipment', status: 'failed', detail: FAILURE, syncJobId: null, unavailableReason: null, report: null },
+              ],
+            }),
+          ],
+          createMockApiClient({ automations: { retryRun, dismissRun } }),
+        );
+
+        // No table at all below the breakpoint — proves these come from the card.
+        expect(screen.queryByRole('table')).toBeNull();
+        // Scoped to the card's summary slot: `Failed` also appears on the step
+        // line, and the point here is that the OUTCOME badge survives.
+        const summary = document.querySelector('.data-table__card-summary');
+        expect(summary).not.toBeNull();
+        expect(within(summary as HTMLElement).getByText('Failed')).toBeInTheDocument();
+        expect(within(summary as HTMLElement).getByText('Stopped')).toBeInTheDocument();
+
+        const retry = screen.getByRole('button', { name: 'Try again' });
+        const dismiss = screen.getByRole('button', { name: 'I handled this myself' });
+        expect(retry).toBeEnabled();
+        expect(dismiss).toBeEnabled();
+
+        // And they are wired, not decorative.
+        await userEvent.click(retry);
+        expect(retryRun).toHaveBeenCalledWith('run-1');
+        await userEvent.click(dismiss);
+        expect(dismissRun).toHaveBeenCalledWith('run-1');
+      } finally {
+        viewport.restore();
+      }
+    });
+
+    it('should offer no remediation controls on a card that did not fail', () => {
+      const viewport = mockMobileViewport();
+      try {
+        render([run()]);
+        expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      } finally {
+        viewport.restore();
+      }
+    });
   });
 });

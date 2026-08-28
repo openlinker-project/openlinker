@@ -64,8 +64,22 @@ describe('parseAutomationRules', () => {
     expect(parsed.items[0].actionAvailability).toEqual([]);
   });
 
-  it('should report an unreadable envelope as empty with no drops', () => {
-    expect(parseAutomationRules({ nope: true })).toEqual({ items: [], droppedCount: 0 });
+  it('should flag an unreadable envelope rather than reporting "no rules"', () => {
+    // Zero items AND zero drops is exactly what "the server said there are
+    // none" looks like, so the flag is the only thing that separates them.
+    expect(parseAutomationRules({ nope: true })).toEqual({
+      items: [],
+      droppedCount: 0,
+      envelopeUnreadable: true,
+    });
+  });
+
+  it('should not flag a readable but empty envelope', () => {
+    expect(parseAutomationRules([])).toEqual({
+      items: [],
+      droppedCount: 0,
+      envelopeUnreadable: false,
+    });
   });
 });
 
@@ -77,6 +91,15 @@ describe('parseAutomationSummary', () => {
     ]);
     expect(parsed.items).toHaveLength(2);
     expect(parsed.items[0].ruleCount).toBe(0);
+  });
+
+  it('should flag an unreadable summary envelope rather than reporting "no rules"', () => {
+    expect(parseAutomationSummary({ nope: true })).toEqual({
+      items: [],
+      droppedCount: 0,
+      envelopeUnreadable: true,
+    });
+    expect(parseAutomationSummary([]).envelopeUnreadable).toBe(false);
   });
 
   it('should drop an unrecognised trigger and count it', () => {

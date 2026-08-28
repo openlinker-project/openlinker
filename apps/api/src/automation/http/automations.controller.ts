@@ -56,6 +56,7 @@ import {
   Inject,
   NotFoundException,
   Param,
+  ParseUUIDPipe,
   Post,
   Put,
   Query,
@@ -106,6 +107,20 @@ import { AutomationVocabularyResponseDto } from './dto/automation-vocabulary-res
 
 /** A bare calendar day, with no time part — what a `<input type="date">` emits. */
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Parse a numeric query param, treating anything unparseable as absent.
+ *
+ * `Number('abc')` is `NaN`, which is not caught by the `Math.max` / `Math.min`
+ * clamps in `AutomationRunsReadService` — every comparison with `NaN` is false,
+ * so both clamps return it unchanged and it reaches TypeORM's `.take()` /
+ * `.skip()`. Returning `undefined` lets the service's own default apply.
+ */
+function parseFiniteNumber(value: string | undefined): number | undefined {
+  if (value === undefined || value.length === 0) return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
 
 /**
  * Parse an ISO instant from a query param.
@@ -251,7 +266,7 @@ export class AutomationsController {
     @Query('subjectKind') subjectKind?: string,
     @Query('subjectId') subjectId?: string,
     @Query('orderId') orderId?: string,
-    @Query('ruleId') ruleId?: string,
+    @Query('ruleId', new ParseUUIDPipe({ optional: true })) ruleId?: string,
     @Query('trigger') trigger?: string,
     @Query('outcome') outcome?: string,
     @Query('from') from?: string,
@@ -260,8 +275,14 @@ export class AutomationsController {
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
   ): Promise<AutomationRunLogResponseDto> {
-    const parsedLimit = limit === undefined ? undefined : Number(limit);
-    const parsedOffset = offset === undefined ? undefined : Number(offset);
+    // `Number.isFinite`, not just `!== undefined`: `Number('abc')` is `NaN`, and
+    // `NaN` survives BOTH clamps downstream (`Math.min(Math.max(1, NaN), n)` is
+    // `NaN`, as is `Math.max(0, NaN)`), reaching `.take()` / `.skip()`. Falling
+    // back to `undefined` hands the read service its own default, which is the
+    // same answer an omitted param gets. Negative and zero are already correct —
+    // the clamps handle them.
+    const parsedLimit = parseFiniteNumber(limit);
+    const parsedOffset = parseFiniteNumber(offset);
 
     // `orderId` is the PUBLIC param name (#2386) — a shared link should use the
     // operator's vocabulary, not the storage pair. It resolves to the subject
@@ -328,11 +349,11 @@ export class AutomationsController {
       'shows a disabled action with its reason rather than discovering the 400. ' +
       'NOTE: this dispatches INLINE, so the request blocks for the rule\'s steps.',
   })
-  @ApiParam({ name: 'runId', type: String })
+  @ApiParam({ name: 'runId', type: String, format: 'uuid' })
   @ApiResponse({ status: 200, type: AutomationRunResponseDto, description: 'The ORIGINAL run, re-projected.' })
   @ApiResponse({ status: 400, description: 'Not retryable — body carries `reason`.' })
   @ApiResponse({ status: 404, description: 'Run, or its order, not found' })
-  async retryRun(@Param('runId') runId: string): Promise<AutomationRunResponseDto> {
+  async retryRun(@Param('runId', new ParseUUIDPipe()) runId: string): Promise<AutomationRunResponseDto> {
     return AutomationRunResponseDto.fromDomain(await this.retryService.retry({ runId }));
   }
 
@@ -350,11 +371,11 @@ export class AutomationsController {
       'succeeded — OpenLinker must not claim it did something a person did outside it. ' +
       'Re-dismissing is a no-op that returns the row unchanged.',
   })
-  @ApiParam({ name: 'runId', type: String })
+  @ApiParam({ name: 'runId', type: String, format: 'uuid' })
   @ApiResponse({ status: 200, type: AutomationRunResponseDto })
   @ApiResponse({ status: 404, description: 'Run not found' })
   async dismissRun(
-    @Param('runId') runId: string,
+    @Param('runId', new ParseUUIDPipe()) runId: string,
     @CurrentUser() user: AuthenticatedUser
   ): Promise<AutomationRunResponseDto> {
     const run = await this.runs.dismiss(runId, user.id, new Date());
@@ -367,10 +388,10 @@ export class AutomationsController {
   @Get('runs/:runId')
   @Roles('admin', 'operator')
   @ApiOperation({ summary: 'One firing' })
-  @ApiParam({ name: 'runId', type: String })
+  @ApiParam({ name: 'runId', type: String, format: 'uuid' })
   @ApiResponse({ status: 200, type: AutomationRunResponseDto })
   @ApiResponse({ status: 404, description: 'Run not found' })
-  async getRun(@Param('runId') runId: string): Promise<AutomationRunResponseDto> {
+  async getRun(@Param('runId', new ParseUUIDPipe()) runId: string): Promise<AutomationRunResponseDto> {
     const run = await this.runs.getRunById(runId);
     if (run === null) {
       throw new NotFoundException(`Automation run "${runId}" not found.`);
@@ -381,10 +402,10 @@ export class AutomationsController {
   @Get(':id')
   @Roles('admin', 'operator')
   @ApiOperation({ summary: 'Read one rule' })
-  @ApiParam({ name: 'id', type: String })
+  @ApiParam({ name: 'id', type: String, format: 'uuid' })
   @ApiResponse({ status: 200, type: AutomationRuleResponseDto })
   @ApiResponse({ status: 404, description: 'Rule not found' })
-  async getRule(@Param('id') id: string): Promise<AutomationRuleResponseDto> {
+  async getRule(@Param('id', new ParseUUIDPipe()) id: string): Promise<AutomationRuleResponseDto> {
     const rule = await this.rules.getRule(id);
     if (rule === null) // The DOMAIN error, not a `NotFoundException`: it goes through the same
     // `AutomationExceptionFilter` as every write and carries the same `ruleId`
@@ -402,10 +423,10 @@ export class AutomationsController {
       'step dispatched a job — a step that did carries `syncJobId`, so the job detail stays one link away. ' +
       'Check `recordingAvailable`: while it is false the log stays empty even when rules fire.',
   })
-  @ApiParam({ name: 'id', type: String })
+  @ApiParam({ name: 'id', type: String, format: 'uuid' })
   @ApiResponse({ status: 200, type: AutomationRunLogResponseDto })
   @ApiResponse({ status: 404, description: 'Rule not found' })
-  async listRunsForRule(@Param('id') id: string): Promise<AutomationRunLogResponseDto> {
+  async listRunsForRule(@Param('id', new ParseUUIDPipe()) id: string): Promise<AutomationRunLogResponseDto> {
     // The rule is read first so an unknown id is a 404 rather than an empty log —
     // "this rule never fired" and "there is no such rule" are different answers.
     const rule = await this.rules.getRule(id);
@@ -465,13 +486,13 @@ export class AutomationsController {
       'acknowledgement is evidence about that definition; a rename, an arm/disarm or a moved effective window ' +
       'keeps it.',
   })
-  @ApiParam({ name: 'id', type: String })
+  @ApiParam({ name: 'id', type: String, format: 'uuid' })
   @ApiResponse({ status: 200, type: AutomationRuleResponseDto })
   @ApiResponse({ status: 400, description: 'Illegal pair, malformed step, or a missing money acknowledgement' })
   @ApiResponse({ status: 404, description: 'Rule not found' })
   @ApiResponse({ status: 409, description: 'An identical definition already covers an overlapping window' })
   async replaceRule(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
     @Body() dto: WriteAutomationRuleDto,
     @CurrentUser() user: AuthenticatedUser
   ): Promise<AutomationRuleResponseDto> {
@@ -484,10 +505,10 @@ export class AutomationsController {
   @Roles('admin')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete a rule' })
-  @ApiParam({ name: 'id', type: String })
+  @ApiParam({ name: 'id', type: String, format: 'uuid' })
   @ApiResponse({ status: 204 })
   @ApiResponse({ status: 404, description: 'Rule not found' })
-  async deleteRule(@Param('id') id: string): Promise<void> {
+  async deleteRule(@Param('id', new ParseUUIDPipe()) id: string): Promise<void> {
     await this.rules.deleteRule(id);
   }
 

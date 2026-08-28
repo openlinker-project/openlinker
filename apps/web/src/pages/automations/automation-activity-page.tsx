@@ -30,6 +30,7 @@ import { useDemoMode } from '../../features/system/hooks/use-demo-mode';
 import { NAV_DEMO_RESTRICTED_MESSAGE } from '../../shared/config/demo-mode';
 import { Button } from '../../shared/ui/button';
 import { Chip } from '../../shared/ui/chip';
+import { Alert } from '../../shared/ui/alert';
 import { AUTOMATION_FAILURE_COPY } from '../../features/automation';
 import { Select } from '../../shared/ui/select';
 import { FormField } from '../../shared/ui/form-field';
@@ -80,6 +81,9 @@ export function AutomationActivityPage(): ReactElement {
   }, [filters.orderId]);
 
   const runs = feedQuery.data?.runs ?? [];
+  // `undefined` while loading / unreadable — only an explicit `false` means
+  // "this build does not record firings".
+  const recordingAvailable = feedQuery.data?.recordingAvailable;
   const hasAnyRule = (summaryQuery.data?.items ?? []).some((entry) => entry.ruleCount > 0);
 
   function patch(key: Parameters<typeof setAutomationActivityFilterParam>[1], value: string): void {
@@ -108,6 +112,18 @@ export function AutomationActivityPage(): ReactElement {
    * "nothing matched" would read as "no collisions have occurred".
    */
   const emptyState = ((): ReactElement => {
+    // Checked BEFORE every other branch, exactly as `AutomationRunLogPanel`
+    // does: while `recordingAvailable` is false an empty list says nothing at
+    // all about whether anything fired, so "Nothing has run yet" would be a
+    // false statement about the operator's own automations. The backend ships
+    // the correct sentence in `note`; it leads.
+    if (recordingAvailable === false) {
+      return (
+        <Alert tone="info">
+          {feedQuery.data?.note ?? AUTOMATION_ACTIVITY_COPY.recordingUnavailableFallback}
+        </Alert>
+      );
+    }
     if (filters.outcome === 'blocked') {
       return (
         <EmptyState

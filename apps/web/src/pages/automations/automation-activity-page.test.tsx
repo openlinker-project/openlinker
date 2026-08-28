@@ -66,6 +66,34 @@ describe('AutomationActivityPage', () => {
     expect(await screen.findByText('You have no automations yet')).toBeInTheDocument();
   });
 
+  it('should render the backend note, not "nothing has run yet", while recording is off', async () => {
+    // `recordingAvailable: false` means an empty list says NOTHING about
+    // whether a rule fired — the same rule `AutomationRunLogPanel` already
+    // applies. "Your automations are set up and waiting" would be a false
+    // statement about the operator's own automations.
+    const note = 'OpenLinker does not record automation runs yet.';
+    render({
+      feed: { runs: [], limit: 50, hasMore: false, recordingAvailable: false, note },
+    });
+
+    expect(await screen.findByText(note)).toBeInTheDocument();
+    expect(screen.queryByText('Nothing has run yet')).toBeNull();
+    expect(
+      screen.queryByText('Your automations are set up and waiting. The moment one matches, it will show up here.'),
+    ).toBeNull();
+  });
+
+  it('should still lead with the recording note under an active filter', async () => {
+    // Checked FIRST: "no runs match these filters" is equally unsupportable
+    // while nothing is being recorded at all.
+    render({
+      route: '/automations/activity?outcome=failed',
+      feed: { runs: [], limit: 50, hasMore: false, recordingAvailable: false, note: 'Not recorded.' },
+    });
+    expect(await screen.findByText('Not recorded.')).toBeInTheDocument();
+    expect(screen.queryByText('No runs match these filters')).toBeNull();
+  });
+
   it('should say a filter excluded everything rather than that nothing ran', async () => {
     render({ route: '/automations/activity?outcome=failed' });
     expect(await screen.findByText('No runs match these filters')).toBeInTheDocument();

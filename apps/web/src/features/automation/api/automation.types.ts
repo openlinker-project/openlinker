@@ -385,21 +385,37 @@ export const AUTOMATION_AMOUNT_OP_VALUES = ['gte', 'lt'] as const;
 export type AutomationAmountOp = (typeof AUTOMATION_AMOUNT_OP_VALUES)[number];
 
 /**
- * The nine merge fields, spec §5.3b — a CLOSED list.
+ * The merge fields the composer may offer — a CLOSED list, and a deliberate
+ * MIRROR of `AUTOMATION_MERGE_FIELDS` in
+ * `libs/core/src/automation/domain/domain-services/render-automation-template.ts`.
  *
  * An open templating surface is a scripting language, which §6 refuses. An
  * unrecognised `{…}` is rendered VERBATIM as typed, never blanked: blanking
  * silently produces an email that reads as broken, whereas a visible
  * `{ordr.reference}` is a typo the operator can see and fix.
+ *
+ * **Six, not the spec's nine, and the three absentees are the point.** The
+ * backend resolves six; `{order.source}`, `{buyer.name}` and `{shipment.tracking}`
+ * have no resolvable source in this slice, so `renderAutomationTemplate` returns
+ * them verbatim — meaning a composer that OFFERED them shipped
+ * `Hi {buyer.name}, your order {shipment.tracking} has shipped` to real buyers,
+ * literally, while the step recorded `done`. Offering a field the backend cannot
+ * render is a promise the composer makes and the backend cannot keep.
+ *
+ * `apps/web` has no `@openlinker/*` dependency, so this cannot be an import;
+ * `scripts/check-automation-merge-field-mirror.mjs` (under `pnpm check:invariants`)
+ * fails the build if the two token sets drift. Each `renders` string is the
+ * operator-facing promise, so it must describe what the executor ACTUALLY
+ * produces — see the mirror script's header.
  */
 export const AUTOMATION_MERGE_FIELDS = [
   { token: '{order.reference}', renders: "the order's operator-facing reference" },
-  { token: '{order.source}', renders: 'the channel name' },
   { token: '{order.total}', renders: 'the gross total with its currency' },
-  { token: '{order.placedAt}', renders: "the order date, in the operator's locale" },
-  { token: '{order.dispatchBy}', renders: 'the marketplace dispatch deadline, or "no deadline"' },
-  { token: '{buyer.name}', renders: "the buyer's name as the source reported it" },
-  { token: '{shipment.tracking}', renders: 'the tracking number, or "not yet"' },
+  { token: '{order.placedAt}', renders: 'the order date (YYYY-MM-DD, UTC)' },
+  {
+    token: '{order.dispatchBy}',
+    renders: 'the marketplace dispatch deadline (YYYY-MM-DD, UTC), or "no deadline"',
+  },
   { token: '{hold.reason}', renders: "the current hold's reason, or \"no hold\"" },
   { token: '{rule.name}', renders: "the automation's own name" },
 ] as const;

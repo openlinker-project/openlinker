@@ -55,7 +55,9 @@ import {
 } from '@openlinker/core/automation';
 import {
   ORDER_RECORD_SERVICE_TOKEN,
+  buildOrderAutomationFacts,
   type IOrderRecordService,
+  type OrderRecord,
 } from '@openlinker/core/orders';
 import {
   SYNC_CURSORS_SERVICE_TOKEN,
@@ -77,31 +79,36 @@ const CURSOR_KEY = 'automation.deadlineSweep.scanOffset';
 /** The master sweeps' "cycle complete" sentinel — `ISyncCursorsService` exposes no delete. */
 const CURSOR_CLEARED = '';
 
-/** The distinct, usable `hoursBefore` thresholds across the armed T4 rules. */
-function collectThresholds(rules: readonly { triggerConfig: unknown }[]): ReadonlySet<number> {
-  const thresholds = new Set<number>();
+/**
+ * The armed T4 rules, PARTITIONED by their own `hoursBefore` threshold.
+ *
+ * The grouping is the whole correctness story of this sweep, not a micro-
+ * optimisation. `occurredAt` is derived from a threshold, so an emission carrying
+ * threshold H must be handed ONLY the rules that declared H — hand it every rule
+ * and a 2-hour rule fires on the 24-hour rule's crossing, 22 hours early. Because
+ * the firing claim is `(ruleId, subjectKind, subjectId)`, that early firing is
+ * also the ONLY one that rule ever gets: its real 2-hour crossing is permanently
+ * suppressed by the claim the wrong crossing took.
+ */
+function groupRulesByThreshold(
+  rules: readonly AutomationRule[]
+): ReadonlyMap<number, readonly AutomationRule[]> {
+  const groups = new Map<number, AutomationRule[]>();
   for (const rule of rules) {
     const config = rule.triggerConfig as { hoursBefore?: unknown };
     // A T3/T4 rule can read back with `{}` when its config did not narrow
     // (#2358's read path degrades rather than dropping the row), so a missing or
     // non-positive threshold is skipped rather than defaulted — the safe
     // direction, and #2359 reports the same rule as `trigger-config-invalid`.
-    if (typeof config.hoursBefore === 'number' && config.hoursBefore > 0) {
-      thresholds.add(config.hoursBefore);
+    if (typeof config.hoursBefore !== 'number' || config.hoursBefore <= 0) continue;
+    const group = groups.get(config.hoursBefore);
+    if (group === undefined) {
+      groups.set(config.hoursBefore, [rule]);
+    } else {
+      group.push(rule);
     }
   }
-  return thresholds;
-}
-
-/**
- * A deliberate STRUCTURAL narrowing of `OrderRecord` — only the three fields this
- * sweep reads. Not a domain type; it decouples from the entity on purpose, so keep
- * the field names in step with it.
- */
-interface DeadlineCandidate {
-  readonly internalOrderId: string;
-  readonly dispatchByAt: Date | null;
-  readonly sourceConnectionId: string;
+  return groups;
 }
 
 @Injectable()
@@ -159,7 +166,11 @@ export class AutomationTriggerDeadlineSweepHandler implements SyncJobHandler {
     // evaluator via its `occurredAt`. A per-rule query would be N queries for
     // one page of orders.
     const rules = await this.rules.listRulesByTrigger('order.dispatch_deadline_near');
-    const widestHours = Math.max(0, ...collectThresholds(rules));
+    // Computed ONCE per run, not per candidate: the rule set is fixed for the
+    // whole page, so recomputing it inside the loop was O(candidates x rules)
+    // for an answer that cannot change.
+    const groups = groupRulesByThreshold(rules);
+    const widestHours = Math.max(0, ...groups.keys());
 
     if (widestHours <= 0) {
       // No armed T4 rule with a usable threshold — nothing to sweep. Clearing the
@@ -180,13 +191,9 @@ export class AutomationTriggerDeadlineSweepHandler implements SyncJobHandler {
       offset,
     });
 
-    // Computed ONCE per run, not per candidate: the rule set is fixed for the
-    // whole page, so recomputing it inside the loop was O(candidates x rules)
-    // for an answer that cannot change.
-    const thresholds = collectThresholds(rules);
     for (const candidate of candidates) {
       if (candidate.dispatchByAt === null) continue;
-      await this.emitForCandidate(candidate, thresholds, now, rules);
+      await this.emitForCandidate(candidate, groups, now);
     }
 
     if (candidates.length < DEFAULT_PAGE_LIMIT) {
@@ -209,32 +216,33 @@ export class AutomationTriggerDeadlineSweepHandler implements SyncJobHandler {
    *
    * The evaluator is per-(trigger, facts), and `occurredAt` depends on the
    * rule's own `hoursBefore` — so rules are grouped by threshold and one
-   * emission runs per group. Rules whose window this order has not yet entered
-   * are simply not in a group whose crossing has passed.
+   * emission runs per group, carrying ONLY that group's rules. Rules whose
+   * window this order has not yet entered are simply not in a group whose
+   * crossing has passed.
+   *
+   * The facts come from `buildOrderAutomationFacts`, never a hand-built literal:
+   * §5.4 declares `sourceConnection`, `orderCountry` and `orderTotalGross` legal
+   * conditions for T4, and the write path enforces that — so a literal narrower
+   * than the projection makes a rule that validates, saves, arms and then never
+   * fires, silently and forever.
    */
   private async emitForCandidate(
-    candidate: DeadlineCandidate,
-    thresholds: ReadonlySet<number>,
+    candidate: OrderRecord,
+    groups: ReadonlyMap<number, readonly AutomationRule[]>,
     now: Date,
-    rules: readonly AutomationRule[],
   ): Promise<void> {
     const deadline = candidate.dispatchByAt;
     if (deadline === null) return;
 
-    for (const hoursBefore of thresholds) {
+    for (const [hoursBefore, rules] of groups) {
       const crossing = new Date(deadline.getTime() - hoursBefore * 60 * 60 * 1000);
       // Not yet inside this rule's window — nothing has happened to fire on.
       if (crossing.getTime() > now.getTime()) continue;
 
       await this.emission.emit({
         trigger: 'order.dispatch_deadline_near',
-        facts: {
-          subjectKind: 'order',
-          subjectId: candidate.internalOrderId,
-          // THE CROSSING, not the deadline. See the class docblock.
-          occurredAt: crossing,
-          sourceConnectionId: candidate.sourceConnectionId,
-        },
+        // THE CROSSING, not the deadline. See the class docblock.
+        facts: buildOrderAutomationFacts(candidate, crossing),
         now,
         // Already loaded for this whole page — see `AutomationEmissionInput.rules`.
         rules,

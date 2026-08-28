@@ -95,11 +95,21 @@ export interface ParsedAutomationSummary {
   items: AutomationTriggerSummary[];
   /** Entries the server sent that this build could not read. Reported, never hidden. */
   droppedCount: number;
+  /**
+   * The ENVELOPE itself could not be read — not a row, the whole response.
+   *
+   * A distinct fact from `droppedCount`, and the reason it is a separate field
+   * (the `returns.schema.ts` precedent): an unreadable envelope yields zero
+   * items AND zero drops, which every emptiness test in the caller reads as
+   * "the server said there are none". Callers render "we could not read it",
+   * never the first-run suggestion.
+   */
+  envelopeUnreadable: boolean;
 }
 
 export function parseAutomationSummary(raw: unknown): ParsedAutomationSummary {
   const envelope = z.array(z.unknown()).safeParse(raw);
-  if (!envelope.success) return { items: [], droppedCount: 0 };
+  if (!envelope.success) return { items: [], droppedCount: 0, envelopeUnreadable: true };
 
   const items: AutomationTriggerSummary[] = [];
   let droppedCount = 0;
@@ -108,7 +118,7 @@ export function parseAutomationSummary(raw: unknown): ParsedAutomationSummary {
     if (parsed.success) items.push(parsed.data);
     else droppedCount += 1;
   }
-  return { items, droppedCount };
+  return { items, droppedCount, envelopeUnreadable: false };
 }
 
 const ruleSchema = z.object({
@@ -153,11 +163,21 @@ export function parseAutomationRule(raw: unknown): AutomationRule {
 export interface ParsedAutomationRules {
   items: AutomationRule[];
   droppedCount: number;
+  /**
+   * The ENVELOPE itself could not be read — not a row, the whole response.
+   *
+   * A distinct fact from `droppedCount`, and the reason it is a separate field
+   * (the `returns.schema.ts` precedent): an unreadable envelope yields zero
+   * items AND zero drops, which every emptiness test in the caller reads as
+   * "the server said there are none". Callers render "we could not read it",
+   * never the first-run suggestion.
+   */
+  envelopeUnreadable: boolean;
 }
 
 export function parseAutomationRules(raw: unknown): ParsedAutomationRules {
   const envelope = z.array(z.unknown()).safeParse(raw);
-  if (!envelope.success) return { items: [], droppedCount: 0 };
+  if (!envelope.success) return { items: [], droppedCount: 0, envelopeUnreadable: true };
 
   const items: AutomationRule[] = [];
   let droppedCount = 0;
@@ -166,7 +186,7 @@ export function parseAutomationRules(raw: unknown): ParsedAutomationRules {
     if (parsed.success) items.push(toRule(parsed.data));
     else droppedCount += 1;
   }
-  return { items, droppedCount };
+  return { items, droppedCount, envelopeUnreadable: false };
 }
 
 /**

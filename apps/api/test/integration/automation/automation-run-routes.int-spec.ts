@@ -1,13 +1,6 @@
 /**
  * Automation run-read routing (#2385)
  *
- * ## UNVERIFIED — written and committed, never executed
- *
- * Docker was wedged host-level when this shipped (the daemon hung on
- * `docker version`, not merely on container creation), so this spec has NOT been
- * run. It is committed rather than withheld because the property it covers is
- * the one thing the unit suite structurally cannot reach.
- *
  * ## What it covers, and why a unit test cannot
  *
  * `AutomationsController` declares `@Get('runs')` BEFORE `@Get(':id')`. Nest
@@ -41,7 +34,7 @@ describe('Automation run reads (routing)', () => {
     await teardownTestHarness();
   });
 
-  it('should resolve /automations/runs as the feed, not as a rule id', async () => {
+  it('should resolve /automations/runs as the feed with recording available', async () => {
     const response = await harness
       .getHttp()
       .get('/v1/automations/runs')
@@ -50,17 +43,9 @@ describe('Automation run reads (routing)', () => {
 
     // A rule lookup would 404. An envelope proves the static route won.
     expect(Array.isArray(response.body.runs)).toBe(true);
-    expect(typeof response.body.recordingAvailable).toBe('boolean');
-  });
-
-  it('should report recording as available now that the write path is bound', async () => {
-    // The single switch that retires the "not recorded in this build" banner.
-    const response = await harness
-      .getHttp()
-      .get('/v1/automations/runs')
-      .set('Authorization', `Bearer ${token}`)
-      .expect(200);
-
+    // `recordingAvailable` is the single switch that retires the "not recorded
+    // in this build" banner — and asserting the literal `true` subsumes the
+    // typeof check a second request was making against the same endpoint.
     expect(response.body.recordingAvailable).toBe(true);
   });
 
@@ -79,5 +64,40 @@ describe('Automation run reads (routing)', () => {
       .get('/v1/automations/00000000-0000-0000-0000-000000000000')
       .set('Authorization', `Bearer ${token}`)
       .expect(404);
+  });
+
+  // ── Malformed ids (#2358 review I3) ─────────────────────────────────────
+  //
+  // The probes above all use a WELL-FORMED uuid, which is the one shape that
+  // hides the bug: `internalId` columns are `TEXT`, so a well-formed-but-absent
+  // uuid selects nothing and 404s honestly. A MALFORMED id reached the query
+  // unvalidated. These assert a 4xx — never a 500 — so the pipes cannot be
+  // dropped without the suite noticing.
+  describe.each([
+    ['GET', '/v1/automations/not-a-uuid'],
+    ['GET', '/v1/automations/not-a-uuid/runs'],
+    ['GET', '/v1/automations/runs/not-a-uuid'],
+    ['GET', '/v1/automations/runs?ruleId=not-a-uuid'],
+    ['DELETE', '/v1/automations/not-a-uuid'],
+    ['POST', '/v1/automations/runs/not-a-uuid/retry'],
+    ['POST', '/v1/automations/runs/not-a-uuid/dismiss'],
+  ])('%s %s', (method, url) => {
+    it('should refuse a malformed id with a 4xx, never a 500', async () => {
+      const http = harness.getHttp();
+      const request = method === 'GET' ? http.get(url) : method === 'DELETE' ? http.delete(url) : http.post(url);
+      const response = await request.set('Authorization', `Bearer ${token}`).send();
+      expect(response.status).toBe(400);
+    });
+  });
+
+  it('should ignore a non-numeric limit rather than paging on NaN (#2358 I7)', async () => {
+    const response = await harness
+      .getHttp()
+      .get('/v1/automations/runs?limit=abc')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(response.body.limit).toBeGreaterThan(0);
+    expect(Array.isArray(response.body.runs)).toBe(true);
   });
 });

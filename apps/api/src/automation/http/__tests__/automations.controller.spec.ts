@@ -306,6 +306,43 @@ describe('AutomationsController — run reads (#2385)', () => {
     return runs.listRecent.mock.calls[0][0] as Record<string, unknown>;
   }
 
+  // ── Paging params (#2358 review I7) ───────────────────────────────────────
+  //
+  // `Number('abc')` is `NaN`, and `NaN` survives BOTH clamps in the read service
+  // (`Math.min(Math.max(1, NaN), n)` and `Math.max(0, NaN)` are both `NaN`), so
+  // an unguarded parse reaches TypeORM's `.take()` / `.skip()`. Negative and
+  // zero are already handled by those clamps and are deliberately unchanged.
+  function feedPaging(limit?: string, offset?: string): Promise<unknown> {
+    return controller.listRunFeed(
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      undefined,
+      limit,
+      offset,
+    );
+  }
+
+  it('should ignore a non-numeric limit rather than passing NaN down', async () => {
+    await feedPaging('abc');
+    expect(runs.listRecent.mock.calls[0][1]).toBeUndefined();
+  });
+
+  it('should ignore a non-numeric offset rather than passing NaN down', async () => {
+    await feedPaging(undefined, 'abc');
+    expect(runs.listRecent.mock.calls[0][2]).toBeUndefined();
+  });
+
+  it('should still forward a well-formed limit and offset', async () => {
+    await feedPaging('10', '20');
+    expect(runs.listRecent.mock.calls[0][1]).toBe(10);
+    expect(runs.listRecent.mock.calls[0][2]).toBe(20);
+  });
+
+  it('should still forward zero and negative paging values to the clamps', async () => {
+    await feedPaging('0', '-5');
+    expect(runs.listRecent.mock.calls[0][1]).toBe(0);
+    expect(runs.listRecent.mock.calls[0][2]).toBe(-5);
+  });
+
   it('should list every recent firing when nothing is filtered', async () => {
     await feed();
     expect(runs.listRecent).toHaveBeenCalled();

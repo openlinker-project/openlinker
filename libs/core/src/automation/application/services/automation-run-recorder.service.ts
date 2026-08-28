@@ -80,10 +80,13 @@ export class LoggingAutomationRunRecorder implements IAutomationRunRecorderServi
  * swallowing here too would mean a write failure produced no signal at either
  * level. One catch, at the site that knows what re-running would cost.
  *
- * It also writes no `blocked` row: the #2362 gate refuses colliding rules BEFORE
- * dispatch and reports nothing back, so nothing ever calls this with that
- * outcome. Wiring it would change #2362's contract from an issue scoped to a
- * write path; deferred deliberately (see the #2385 plan, D8).
+ * It writes a `blocked` row like any other outcome, and that row is the ONLY
+ * record of a refusal: `AutomationIrreversibleGateService.recordBlocked` calls
+ * `record` with `outcome: 'blocked'`, an empty `steps` array (nothing ran — a
+ * fabricated `skipped` step would claim the rule reached the dispatcher) and the
+ * colliding rule ids in `blockedByRuleIds`. That call is wrapped in its own
+ * try/catch there, so a failed write cannot turn a refusal into a thrown
+ * dispatch.
  */
 @Injectable()
 export class PersistingAutomationRunRecorder implements IAutomationRunRecorderService {

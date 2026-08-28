@@ -112,6 +112,26 @@ export function AutomationsPage(): ReactElement {
     );
   }
 
+  // The envelope itself was unreadable: zero items AND zero drops, which the
+  // `hasNoRules` test below reads as "you have no automations". Showing the
+  // first-run suggestion card there tells an operator with ten rules that they
+  // have none — the same false claim `droppedCount` exists to prevent, arriving
+  // by the one route a row counter cannot see (`returns.schema.ts` precedent).
+  if (summaryQuery.data?.envelopeUnreadable === true) {
+    return (
+      <PageLayout
+        eyebrow={AUTOMATIONS_PAGE_COPY.eyebrow}
+        title={AUTOMATIONS_PAGE_COPY.title}
+        actions={header}
+      >
+        <ErrorState
+          title={AUTOMATION_ERROR_COPY.unreadableTitle}
+          message={AUTOMATION_ERROR_COPY.unreadableEnvelopeMessage}
+        />
+      </PageLayout>
+    );
+  }
+
   const droppedCount = summaryQuery.data?.droppedCount ?? 0;
   // Settled, and genuinely zero across every trigger — never merely "the page
   // has not loaded yet". The card disappears the moment any rule exists and

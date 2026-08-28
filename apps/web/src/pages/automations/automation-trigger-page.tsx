@@ -133,6 +133,14 @@ export function AutomationTriggerPage(): ReactElement {
         />
       ) : (
         <>
+          {rulesQuery.data?.envelopeUnreadable === true ? (
+            // An unreadable envelope yields zero rules and zero drops, which the
+            // list below renders as "no rules for this trigger" — a false claim.
+            <ErrorState
+              title={AUTOMATION_ERROR_COPY.unreadableTitle}
+              message={AUTOMATION_ERROR_COPY.unreadableEnvelopeMessage}
+            />
+          ) : null}
           {(rulesQuery.data?.droppedCount ?? 0) > 0 ? (
             <Alert tone="warning">
               {AUTOMATION_INDEX_COPY.droppedRows(rulesQuery.data?.droppedCount ?? 0)}
