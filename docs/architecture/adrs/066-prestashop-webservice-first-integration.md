@@ -18,9 +18,9 @@ One measured path is different. An eight-line order costs 27 requests, of which 
 
 ## Decision
 
-The PrestaShop integration stays Webservice-first. Shop-side PHP is added only where the Webservice cannot express the operation at all, and only on a controller that already exists with its own secret and signature.
+The PrestaShop integration stays Webservice-first. New shop-side *capability* is added only where the Webservice cannot express the operation at all, and only on a controller that already exists with its own secret and signature.
 
-Concretely: #2489's ten acceptance criteria are closed by adapter work, a lane-policy decision under [ADR-050](./050-workload-isolation-concurrency-lanes.md), and a measurement campaign. The only PHP addition is an optional line-prices field on `controllers/front/importorder.php` (#2597). The twelve endpoints of the original design are not built.
+Concretely: #2489's ten acceptance criteria are closed by adapter work, a lane-policy decision under [ADR-050](./050-workload-isolation-concurrency-lanes.md), and a measurement campaign. What is rejected is the **proposed new data channel** - the twelve endpoints, the security envelope, the GDPR pack and the version negotiation that come with it. That is not the same as rejecting all PHP: the module already runs at customers and carries live defects, so shop-side PHP changes are confined to defect-fixing and hardening of the controller and delivery path that already exist (eight children, taking the module from `1.2.0` to `1.10.0` with an upgrade script per minor). The only new shop-side **capability** is an optional line-prices field on `controllers/front/importorder.php` (#2597).
 
 ## Alternatives considered
 
