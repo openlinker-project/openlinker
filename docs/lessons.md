@@ -461,3 +461,40 @@ the scoping instead of re-deriving it.
 cached aggregate in `libs/core`.
 
 **Source**: PR #2628 review (ADR-061).
+
+## When a test you wrote fails against an implementation you also wrote, decide which one encodes the decision you actually made — before changing either
+
+**Context**: a narrowing where the same author owns both sides. In PR #2628 the fix scoped a
+guard's *subtrahend* to one class of rows, and deliberately did **not** exempt the other class from
+the guard's headroom requirement — a considered line, argued in the commit and the docblock. The
+acceptance fixture written in the same sitting then asked for more units than that line permits, and
+went red against correct code.
+
+**Problem**: this is the inverse of the failure shape the rest of this ledger warns about. The
+familiar danger is a test that passes for the wrong reason — self-satisfying, or green against a
+harness rather than the behaviour. This one is rarer and worse: **the fixture encoded the design the
+author had considered and rejected**, so the *correct* implementation is what makes it fail. The
+instinct on a red test is to move the code toward the test, and here that would have reinstated the
+rejected exemption and silently undone the fix the whole change existed to make — with a green suite
+afterwards, and the review already passed. Author-owns-both-sides removes the usual protection: when
+a test and an implementation come from different people, the disagreement surfaces as a
+conversation; when they come from one person, it surfaces only as a red line that is cheapest to
+make green.
+
+**Rule**: a red test is a *disagreement between two artefacts*, not automatically a defect report
+about the code. Before touching either side, name the decision in dispute out loud and check which
+artefact encodes it — the one that can cite the ADR, the docblock, or the commit message wins, and
+the other is the bug. Be most suspicious when the failure is *convenient*: if making the test pass
+would relax a constraint you deliberately chose, treat that as the signal, not the fix. Then say so
+in the report rather than quietly re-sizing the fixture, because "my test assumed the behaviour I
+rejected" is evidence the constraint is easy to forget and belongs where the next person will see
+it. A fixture corrected this way should carry a comment recording *why* its value is the ceiling, so
+the next author does not re-derive the same wrong assumption.
+
+**Applies to**: any test the change's own author writes against a constraint that change introduces
+— guards, gates, validators, narrowings, refusals. Sharpest where the constraint is a *deliberate
+non-exemption*, since nothing in the type system marks one.
+
+**Source**: PR #2628 review (ADR-061) — `diagnostic-holds-are-inert.int-spec.ts`, where the guard's
+subtrahend was scoped by `atpEffect` but a `diagnostic` claim still needs headroom the size of the
+claim.
