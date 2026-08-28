@@ -203,6 +203,58 @@ describe('AnalyticsPage', () => {
     expect(screen.getByText('Top products')).toBeInTheDocument();
   });
 
+  it('should label the currency picker with the true reporting currency from the sales headline, never the operator-saved display-currency default', async () => {
+    // Regression guard: `AnalyticsSettingsView.displayCurrency` (mocked here
+    // as 'EUR' by `createMockApiClient`'s default) is a saved *view*
+    // preference, a different axis from the actual stamped reporting
+    // currency the sales headline reports ('PLN'). Conflating the two once
+    // made the toolbar/dialog show 'EUR' as the "native" currency the
+    // moment an admin had a non-default preference saved.
+    const apiClient = createMockApiClient({
+      analyticsTrust: { getTrust: vi.fn().mockResolvedValue(healthySnapshot()) },
+      analytics: {
+        getSales: vi.fn().mockResolvedValue({
+          headline: {
+            revenue: 4800,
+            currency: 'PLN',
+            orderCount: 40,
+            averageOrderValue: 120,
+            medianOrderValue: 100,
+            unitsSold: 60,
+            cancelledCount: 2,
+            cancelledValue: 200,
+            unconvertedCount: 0,
+            unconvertedValue: 0,
+            unconvertedCurrency: null,
+            netRevenue: 4300,
+            netAverageOrderValue: 107.5,
+            netMedianOrderValue: 90,
+            netExcludedCount: 0,
+            netExcludedValue: 0,
+            trend: [],
+          },
+          channels: [],
+        }),
+      },
+      analyticsSettings: {
+        getSettings: vi.fn().mockResolvedValue({
+          displayCurrency: 'EUR',
+          displayCurrencySource: 'setting',
+          rateBasis: 'current',
+          includeBackfilledTaxRatesInNetSales: false,
+          updatedAt: null,
+          updatedByUserId: null,
+        }),
+      },
+    });
+
+    renderWithProviders(<AnalyticsPage />, { apiClient, route: ROUTE });
+
+    expect(await screen.findByText('Current rate · PLN')).toBeInTheDocument();
+    expect(screen.queryByText('Current rate · EUR')).not.toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Display currency' })).toHaveValue('');
+  });
+
   it('should render each section its own error state, never a blank page, when the sales request fails', async () => {
     const apiClient = createMockApiClient({
       analyticsTrust: { getTrust: vi.fn().mockResolvedValue(healthySnapshot()) },
