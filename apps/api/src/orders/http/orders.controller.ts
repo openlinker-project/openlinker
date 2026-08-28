@@ -13,11 +13,13 @@ import {
   Delete,
   Query,
   Param,
+  Body,
   HttpCode,
   HttpStatus,
   NotFoundException,
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   InternalServerErrorException,
   Inject,
   ParseUUIDPipe,
@@ -37,12 +39,24 @@ import {
   OrderDestinationNotRetryableException,
   MissingSourceExternalIdException,
   IOrderDestinationRetryService,
+  ORDER_HOLD_SERVICE_TOKEN,
+  ORDER_PROVISIONING_RESUME_SERVICE_TOKEN,
+  OrderAlreadyOnHoldError,
+  OrderHoldContendedError,
+  OrderHoldNotFoundError,
+  HoldAlreadyReleasedError,
+  HoldReleaseNoteRequiredError,
+  HoldReleaseNotPermittedError,
   deriveSlaState,
-} from '@openlinker/core/orders';
+
+  IOrderHoldService,
+  IOrderProvisioningResumeService} from '@openlinker/core/orders';
 import type {
   OrderRecord,
   OrderSyncStatus,
   SyncAttempt,
+  OrderHold,
+  OrderProvisioningResumeResult,
 } from '@openlinker/core/orders';
 import {
   INVOICE_SERVICE_TOKEN,
@@ -75,6 +89,15 @@ import type { OrderSyncStatusResponseDto } from './dto/order-sync-status-respons
 import type { SyncAttemptResponseDto } from './dto/sync-attempt-response.dto';
 import { PaginatedOrdersResponseDto } from './dto/paginated-orders-response.dto';
 import { RetryOrderDestinationResponseDto } from './dto/retry-order-destination-response.dto';
+import { PlaceOrderHoldRequestDto } from './dto/place-order-hold-request.dto';
+import { ReleaseOrderHoldRequestDto } from './dto/release-order-hold-request.dto';
+import type {
+  OrderHoldDto,
+  ProvisioningResumeDto} from './dto/order-hold-response.dto';
+import {
+  PlaceOrderHoldResponseDto,
+  ReleaseOrderHoldResponseDto,
+} from './dto/order-hold-response.dto';
 import type { OrderInvoiceProjectionDto } from './dto/order-invoice-projection.dto';
 import type { OrderDeliveryResolutionDto } from './dto/order-delivery-resolution.dto';
 import type { OrderDeliveryRiderDto } from './dto/order-delivery-rider.dto';
@@ -100,7 +123,13 @@ export class OrdersController {
     @Inject(FULFILLMENT_ROUTING_SERVICE_TOKEN)
     private readonly fulfillmentRouting: IFulfillmentRoutingService,
     @Inject(DELIVERY_RIDER_SERVICE_TOKEN)
-    private readonly deliveryRider: IDeliveryRiderService
+    private readonly deliveryRider: IDeliveryRiderService,
+    // #2341 — holds are reached ONLY through the service seam. The intra-context
+    // `OrderHoldRepositoryPort` is deliberately absent from the barrel (#2338).
+    @Inject(ORDER_HOLD_SERVICE_TOKEN)
+    private readonly holdService: IOrderHoldService,
+    @Inject(ORDER_PROVISIONING_RESUME_SERVICE_TOKEN)
+    private readonly provisioningResume: IOrderProvisioningResumeService
   ) {}
 
   @Get()
@@ -134,6 +163,7 @@ export class OrdersController {
       cancelled,
       phase,
       taxRateConflict,
+      hold,
       limit = 20,
       offset = 0,
     } = query;
@@ -180,6 +210,10 @@ export class OrdersController {
         // orthogonal ones.
         lifecyclePhase: phase,
         taxRateConflict,
+        // #2342 — the query param is the short `hold`; the repository filter
+        // names the column it reads, matching the `phase` -> `lifecyclePhase`
+        // precedent two lines up.
+        activeHoldReason: hold,
       },
       { limit, offset }
     );
@@ -342,6 +376,19 @@ export class OrdersController {
         await this.deliveryRider.resolve(this.toRiderInput(order, resolution))
       );
     }
+    // Hold projection (#2341). DETAIL ONLY — one query per order, which on the
+    // paged list would be N. `activeHold` is derived from the same read rather
+    // than a second `getOpenHold` call, so the two answers cannot disagree.
+    //
+    // Consequence worth knowing: this widens the blast radius of
+    // `OrderHoldVocabularyError`. One `order_holds` row carrying a reason
+    // outside the closed union now fails the WHOLE order-detail read, not just a
+    // hold surface. Reaching that needs direct SQL — both the request DTO and
+    // the service validate against the union — so failing loudly is the right
+    // trade, but it is a new consequence rather than a pre-existing one.
+    const holds = await this.holdService.listHolds(order.internalOrderId);
+    dto.holdHistory = holds.map((hold) => this.toHoldDto(hold));
+    dto.activeHold = dto.holdHistory.find((hold) => hold.releasedAt === null) ?? null;
     return dto;
   }
 
@@ -444,6 +491,193 @@ export class OrdersController {
     }
   }
 
+  @Roles('admin')
+  @Post(':internalOrderId/holds')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Place a hold on an order',
+    description:
+      'Stops OpenLinker provisioning this order to its destination and dispatching it, until the ' +
+      'hold is released. The reason is a closed vocabulary; the acting user is taken from the ' +
+      'session, never the body. At most one hold is open per order — a second attempt answers 409.',
+  })
+  @ApiResponse({ status: 201, description: 'Hold placed', type: PlaceOrderHoldResponseDto })
+  @ApiResponse({ status: 400, description: 'Unknown hold reason' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  @ApiResponse({ status: 404, description: 'Order not found' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'ORDER_ALREADY_ON_HOLD — the order already has an open hold; or ' +
+      'ORDER_HOLD_CONTENDED — a concurrent placement took and released the slot, so retry',
+  })
+  async placeHold(
+    @Param('internalOrderId') internalOrderId: string,
+    @Body() dto: PlaceOrderHoldRequestDto,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<PlaceOrderHoldResponseDto> {
+    // Read-then-act against a concurrently-deleted order. `order_holds` carries
+    // no FK by design (#2338), so a hold could in principle outlive its order.
+    // NOT worth a lock: the window is tiny and the row is inert audit data.
+    const order = await this.orderRecordRepository.findById(internalOrderId);
+    if (!order) {
+      throw new NotFoundException(`Order not found: ${internalOrderId}`);
+    }
+
+    try {
+      const { hold, dispatchInFlight } = await this.holdService.place({
+        internalOrderId,
+        reason: dto.reason,
+        note: dto.note ?? null,
+        placedBy: { kind: 'user', userId: user.id },
+      });
+      return { hold: this.toHoldDto(hold), dispatchInFlight };
+    } catch (error) {
+      if (error instanceof OrderHoldContendedError) {
+        // A DIFFERENT 409 from the one below, and the distinction is the point:
+        // the order is NOT held (a peer took and released the slot), so the
+        // remedy is to try again rather than to look at an open hold. Before
+        // this the repository re-threw the driver error and the operator got a
+        // 500 carrying a duplicate-key message.
+        throw new ConflictException({
+          statusCode: HttpStatus.CONFLICT,
+          error: 'ORDER_HOLD_CONTENDED',
+          message: error.message,
+        });
+      }
+      if (error instanceof OrderAlreadyOnHoldError) {
+        // A machine-readable code, because "already on hold" and "already
+        // released" are both 409 and their remedies differ.
+        throw new ConflictException({
+          statusCode: HttpStatus.CONFLICT,
+          error: 'ORDER_ALREADY_ON_HOLD',
+          message: error.message,
+        });
+      }
+      throw error;
+    }
+  }
+
+  @Roles('admin')
+  @Post(':internalOrderId/holds/:holdId/release')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Release a hold on an order',
+    description:
+      'Ends the hold and re-enqueues the provisioning run it was suppressing. A note is required ' +
+      'when releasing a hold that a service placed. The response reports what happened to that ' +
+      're-enqueue rather than assuming it: marketplace.order.sync has no cron backstop for one ' +
+      'order. On a failed enqueue every destination the hold was withholding is marked failed, so ' +
+      'the order is visibly stranded and the existing per-destination retry recovers it.',
+  })
+  @ApiResponse({ status: 200, description: 'Hold released', type: ReleaseOrderHoldResponseDto })
+  @ApiResponse({ status: 400, description: 'A note is required to release a service-placed hold' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  @ApiResponse({ status: 404, description: 'Order not found, or no such hold on this order' })
+  @ApiResponse({ status: 409, description: 'HOLD_ALREADY_RELEASED — the hold is already released' })
+  async releaseHold(
+    @Param('internalOrderId') internalOrderId: string,
+    @Param('holdId') holdId: string,
+    @Body() dto: ReleaseOrderHoldRequestDto,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<ReleaseOrderHoldResponseDto> {
+    // The ownership check PRECEDES the write. Releasing first and 404-ing after
+    // would perform a side effect on the refusal path — the hold released while
+    // the caller is told nothing happened. This pre-read only decides WHICH
+    // refusal: a concurrent release in the window is caught below as 409.
+    const holds = await this.holdService.listHolds(internalOrderId);
+    if (!holds.some((hold) => hold.id === holdId)) {
+      throw new NotFoundException(
+        `Hold not found on order ${internalOrderId}: ${holdId}`
+      );
+    }
+
+    let released: OrderHold;
+    try {
+      const transition = await this.holdService.release({
+        holdId,
+        note: dto.note ?? null,
+        releasedBy: { kind: 'user', userId: user.id },
+      });
+      released = transition.hold;
+    } catch (error) {
+      if (error instanceof OrderHoldNotFoundError) {
+        throw new NotFoundException(error.message);
+      }
+      if (error instanceof HoldAlreadyReleasedError) {
+        throw new ConflictException({
+          statusCode: HttpStatus.CONFLICT,
+          error: 'HOLD_ALREADY_RELEASED',
+          message: error.message,
+        });
+      }
+      if (error instanceof HoldReleaseNoteRequiredError) {
+        // Fixable by resubmitting with a note — a request problem, not a
+        // permission one.
+        throw new BadRequestException(error.message);
+      }
+      if (error instanceof HoldReleaseNotPermittedError) {
+        // Unreachable from this route (the actor is always a user), but mapped
+        // so a future service-actor route cannot fall through to a 500.
+        throw new ForbiddenException(error.message);
+      }
+      throw error;
+    }
+
+    // The release is the fact; the enqueue is a consequence (#2341). The service
+    // never throws for a modelled condition — this catch is a last-resort guard
+    // for an UNMODELLED throw only, so a release that DID happen can never
+    // answer 5xx and send the operator into a HoldAlreadyReleasedError retry.
+    let resume: OrderProvisioningResumeResult;
+    try {
+      resume = await this.provisioningResume.resume(released.internalOrderId);
+    } catch {
+      resume = { status: 'failed', reason: 'enqueue-failed' };
+    }
+
+    return {
+      hold: this.toHoldDto(released),
+      provisioningResume: this.toProvisioningResumeDto(resume),
+    };
+  }
+
+  /** TypeORM may hand back a string for a timestamptz; `toDto` guards the same way. */
+  private toIsoOrPassThrough(value: Date | string): string {
+    return value instanceof Date ? value.toISOString() : value;
+  }
+
+  private toHoldDto(hold: OrderHold): OrderHoldDto {
+    return {
+      id: hold.id,
+      internalOrderId: hold.internalOrderId,
+      reason: hold.reason,
+      note: hold.note,
+      placedByUserId: hold.placedByUserId,
+      placedByService: hold.placedByService,
+      // `toDto` below guards its own dates the same way: TypeORM has handed this
+      // codebase a string before, and `OrderHoldRepository.toDomain` passes the
+      // entity's dates through with no coercion.
+      placedAt: this.toIsoOrPassThrough(hold.placedAt),
+      releasedAt: hold.releasedAt ? this.toIsoOrPassThrough(hold.releasedAt) : null,
+      releasedByUserId: hold.releasedByUserId,
+      releaseNote: hold.releaseNote,
+      createdAt: this.toIsoOrPassThrough(hold.createdAt),
+      updatedAt: this.toIsoOrPassThrough(hold.updatedAt),
+    };
+  }
+
+  private toProvisioningResumeDto(
+    result: OrderProvisioningResumeResult
+  ): ProvisioningResumeDto {
+    return {
+      status: result.status,
+      jobId: result.status === 'enqueued' ? result.jobId : null,
+      // `enqueued` carries no reason; both other arms name theirs. The code is
+      // never the caught provider message — see the resume service's docblock.
+      reason: result.status === 'enqueued' ? null : result.reason,
+    };
+  }
+
   private toDto(order: OrderRecord): OrderRecordResponseDto {
     const fulfillmentState = order.fulfillmentState ?? 'not-shipped';
     return {
@@ -491,7 +725,11 @@ export class OrdersController {
       lifecyclePhase: deriveOrderLifecyclePhase({
         cancelledAt: order.cancelledAt ?? null,
         fulfillmentState: order.fulfillmentState,
-        activeHoldReason: null, // Wave 2 — `order_holds` + its denormalised column
+        // #2340 — the denormalised projection of the open `order_holds` row.
+        // Read here rather than through `IOrderHoldService` because `toDto` runs
+        // per row on the paged list; the SQL twin's `held` arm reads the same
+        // column, which is what keeps this badge and `?phase=held` in agreement.
+        activeHoldReason: order.activeHoldReason,
         hasOpenAmendment: false, // Wave 2 — widened `order_changes.kind`
         recordStatus: order.recordStatus,
         authority: DEFAULT_LIFECYCLE_AUTHORITY, // Wave 4 binds this per order at ingestion
@@ -502,6 +740,11 @@ export class OrdersController {
       // orderSnapshot blob. Read off the OrderRecord getters; null when absent.
       sourceDeliveryMethodId: order.sourceDeliveryMethodId,
       sourceDeliveryMethodName: order.sourceDeliveryMethodName,
+      // #2341 — the ONE hold fact the list gets, and it is free: the column is
+      // already loaded, so no query is added per row. `activeHold` /
+      // `holdHistory` stay detail-only because those ARE a query per row.
+      // #2340's display cache: a badge may render it, no gate may read it.
+      activeHoldReason: order.activeHoldReason,
     };
   }
 

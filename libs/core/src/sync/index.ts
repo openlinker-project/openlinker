@@ -20,6 +20,7 @@ export {
   EnqueueJobOptions,
 } from './application/ports/sync-job-queue.port';
 export { SyncLockPort, SyncLockToken } from './application/ports/sync-lock.port';
+export { shipmentDispatchLockKey } from './application/services/order-scoped-lock-keys';
 
 // Domain Entities
 // NOTE: the entity CLASS is aliased to `SyncJobEntity` because the `SyncJob`
@@ -124,6 +125,7 @@ export type { PendingRecoverySweepPayloadV1 } from './domain/types/invoicing-job
 export type { PaymentStatusRefreshByExternalIdPayloadV1 } from './domain/types/invoicing-job-payloads.types';
 export type { FiscalizationRegisterPayloadV1 } from './domain/types/fiscalization-job-payloads.types';
 export type { OrdersTaxRateBackfillPayloadV1 } from './domain/types/orders-job-payloads.types';
+export type { OrdersHoldsReconcilePayloadV1 } from './domain/types/orders-job-payloads.types';
 
 // Exceptions
 export { SyncJobExecutionError } from './domain/exceptions/sync-job-execution.error';

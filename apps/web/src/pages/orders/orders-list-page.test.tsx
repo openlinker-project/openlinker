@@ -2079,3 +2079,79 @@ describe('OrdersListPage — lifecycle phase (#2310)', () => {
     expect(list.mock.calls[0][0].phase).toBeUndefined();
   });
 });
+
+describe('OrdersListPage — hold surfacing (#2342)', () => {
+  it('should badge a held order in the Status group from the shared renderer', async () => {
+    const list = vi
+      .fn()
+      .mockResolvedValue(paginated([{ ...syncedOrder, activeHoldReason: 'stock-shortfall' }]));
+    const mockApi = createMockApiClient({ orders: { list } });
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    // Whatever `OrderHoldBadge` renders is what BOTH the desktop cell and the
+    // mobile card show — one component, mounted twice.
+    expect(await screen.findByText('On hold — Stock shortfall')).toBeInTheDocument();
+  });
+
+  it('should render no hold badge for an order that is not held', async () => {
+    const list = vi.fn().mockResolvedValue(paginated([syncedOrder]));
+    const mockApi = createMockApiClient({ orders: { list } });
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findAllByText('ALG-882414');
+    expect(screen.queryByText(/^On hold — /)).not.toBeInTheDocument();
+  });
+
+  it('should round-trip ?hold= through the URL and reset the offset', async () => {
+    const list = vi.fn().mockResolvedValue(paginated([syncedOrder]));
+    const mockApi = createMockApiClient({ orders: { list } });
+    const user = userEvent.setup();
+
+    // Start on page 2 so the offset drop is observable.
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi, route: '/orders?offset=20' });
+
+    await user.selectOptions(
+      await screen.findByLabelText('Filter by hold reason'),
+      'address-invalid',
+    );
+
+    await vi.waitFor(() => {
+      const [filters, pagination] = list.mock.calls[list.mock.calls.length - 1];
+      expect(filters).toMatchObject({ holdReason: 'address-invalid' });
+      expect(pagination).toMatchObject({ offset: 0 });
+    });
+
+    // And back to unfiltered.
+    await user.selectOptions(screen.getByLabelText('Filter by hold reason'), '');
+
+    await vi.waitFor(() => {
+      expect(list.mock.calls[list.mock.calls.length - 1][0].holdReason).toBeUndefined();
+    });
+  });
+
+  it('should arrive already filtered from a bookmarked ?hold= link', async () => {
+    const list = vi.fn().mockResolvedValue(paginated([]));
+    const mockApi = createMockApiClient({ orders: { list } });
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi, route: '/orders?hold=fraud-review' });
+
+    await vi.waitFor(() => {
+      expect(list.mock.calls[0][0]).toMatchObject({ holdReason: 'fraud-review' });
+    });
+  });
+
+  it('should ignore an unrecognised ?hold= rather than passing it through', async () => {
+    // A stale bookmark should show the operator their orders, not a 400 the
+    // server would answer for a reason this build does not know.
+    const list = vi.fn().mockResolvedValue(paginated([syncedOrder]));
+    const mockApi = createMockApiClient({ orders: { list } });
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi, route: '/orders?hold=nonsense' });
+
+    await vi.waitFor(() => {
+      expect(list.mock.calls[0][0].holdReason).toBeUndefined();
+    });
+  });
+});
