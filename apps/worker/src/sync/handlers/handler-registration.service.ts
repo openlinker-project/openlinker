@@ -94,7 +94,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     // Every registration declares its ADR-050 concurrency lane (#2278). The
     // lane is chosen by cost-of-starvation, never by I/O shape or bounded
     // context — the authoritative table is ADR-050 decision 1 (12 realtime /
-    // 12 bulk / 5 fiscal / 6 fan-out; `fiscalization.register` joined
+    // 14 bulk / 5 fiscal / 6 fan-out; `fiscalization.register` joined
     // `fiscal` post-ADR, #2156).
 
     // Register generic marketplace handlers (Option B)
