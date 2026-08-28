@@ -7,6 +7,7 @@ import { Button } from '../../shared/ui/button';
 import { KeyValueList, type KeyValueItem } from '../../shared/ui/key-value-list';
 import { RawPayloadPanel } from '../../shared/ui/raw-payload-panel';
 import { TimeDisplay } from '../../shared/ui/time-display';
+import { formatDurationMs } from '../../shared/format/format-duration-ms';
 import { useToast } from '../../shared/ui/toast-provider';
 import { SyncJobStatusBadge } from '../../features/sync-jobs/components/SyncJobStatusBadge';
 import { useSyncJobQuery } from '../../features/sync-jobs/hooks/use-sync-job-query';
@@ -63,6 +64,23 @@ function buildSyncJobItems(job: SyncJob): KeyValueItem[] {
       label: 'Idempotency key',
       value: job.idempotencyKey,
       mono: true,
+    });
+  }
+  const duration = formatDurationMs(job.lastAttemptDurationMs);
+  if (duration !== null) {
+    // Omitted rather than shown as a dash when unmeasured, matching the
+    // lockedAt/lockedBy treatment below - a row that says nothing is better
+    // than a row that implies the attempt took no time.
+    items.push({ id: 'lastAttemptDuration', label: 'Last attempt duration', value: duration });
+  }
+  const deferred = formatDurationMs(job.deferredTotalMs);
+  if (deferred !== null) {
+    // A deferral consumes no attempt, so the attempts counter cannot show it.
+    // Say so, or a job waiting on a throttling destination reads as stuck.
+    items.push({
+      id: 'deferredTotal',
+      label: 'Deferred so far',
+      value: `${deferred} (waiting on the destination, no attempt consumed)`,
     });
   }
   if (job.lockedAt) {

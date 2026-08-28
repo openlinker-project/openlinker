@@ -54,6 +54,13 @@ export class StockAtRiskItemDto {
   @ApiProperty()
   stockSafetyBuffer!: number;
 
+  @ApiProperty({
+    description:
+      "The connection's zero threshold. 0 means it is off and the buffer alone accounts for the " +
+      'variant publishing nothing.',
+  })
+  stockZeroThreshold!: number;
+
   static fromDomain(item: StockAtRiskItem): StockAtRiskItemDto {
     const dto = new StockAtRiskItemDto();
     dto.variantId = item.variantId;
@@ -61,6 +68,7 @@ export class StockAtRiskItemDto {
     dto.connectionId = item.connectionId;
     dto.masterStock = item.masterStock;
     dto.stockSafetyBuffer = item.stockSafetyBuffer;
+    dto.stockZeroThreshold = item.stockZeroThreshold;
     return dto;
   }
 }

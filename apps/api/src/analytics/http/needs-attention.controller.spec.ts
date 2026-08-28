@@ -17,7 +17,7 @@ describe('NeedsAttentionController', () => {
       ],
       coverageGapsTotalCount: 3,
       stockAtRisk: [
-        { variantId: 'v2', productId: 'p2', connectionId: 'conn-a', masterStock: 0, stockSafetyBuffer: 5 },
+        { variantId: 'v2', productId: 'p2', connectionId: 'conn-a', masterStock: 0, stockSafetyBuffer: 5, stockZeroThreshold: 0 },
       ],
       stockAtRiskTotalCount: 6,
       failedSyncValue: {

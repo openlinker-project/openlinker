@@ -17,6 +17,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { SyncModule as CoreSyncModule } from '@openlinker/core/sync';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { IntegrationsModule as CoreIntegrationsModule } from '@openlinker/core/integrations';
+import { OperationalSettingsModule } from '@openlinker/core/operational-settings';
 import { SchedulerService } from './scheduler.service';
 import { SchedulerLeaseCoordinator } from './scheduler-lease.coordinator';
 
@@ -26,6 +27,7 @@ import { SchedulerLeaseCoordinator } from './scheduler-lease.coordinator';
     CoreSyncModule, // JobEnqueuePort + SchedulerTaskRegistry + SyncLockPort
     IdentifierMappingModule, // ConnectionPort
     CoreIntegrationsModule, // IIntegrationsService (capability-based fan-out)
+    OperationalSettingsModule, // IOperationalSettingsService — the deletion-audit cadence (#2651)
   ],
   providers: [SchedulerService, SchedulerLeaseCoordinator],
 })

@@ -7,9 +7,14 @@
  */
 
 import { InventorySyncService } from '../inventory-sync.service';
-import type { OfferManagerPort, OfferQuantityBatchUpdater } from '@openlinker/core/listings';
+import type {
+  OfferManagerPort,
+  OfferQuantityBatchUpdater,
+  UpdateOfferQuantitiesBatchResult,
+} from '@openlinker/core/listings';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { Connection, ConnectionConfig, ConnectionPort } from '@openlinker/core/identifier-mapping';
+import type { ISyncCursorsService, SyncLockPort } from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
 
 describe('InventorySyncService', () => {
@@ -17,6 +22,10 @@ describe('InventorySyncService', () => {
   let integrationsService: jest.Mocked<IIntegrationsService>;
   let connectionPort: jest.Mocked<ConnectionPort>;
   let marketplace: jest.Mocked<OfferManagerPort & OfferQuantityBatchUpdater>;
+  let syncLock: jest.Mocked<SyncLockPort>;
+  let syncCursors: jest.Mocked<ISyncCursorsService>;
+  /** In-memory stand-in for the durable per-offer observation mark. */
+  let marks: Map<string, string>;
 
   const connectionId = 'connection-123';
 
@@ -45,7 +54,44 @@ describe('InventorySyncService', () => {
       disable: jest.fn(),
     } as unknown as jest.Mocked<ConnectionPort>;
 
-    service = new InventorySyncService(integrationsService, connectionPort);
+    marks = new Map<string, string>();
+    syncCursors = {
+      getCursor: jest.fn((cid: string, key: string) =>
+        Promise.resolve(marks.get(`${cid}|${key}`) ?? null)
+      ),
+      advanceCursor: jest.fn((cid: string, key: string, value: string) => {
+        marks.set(`${cid}|${key}`, value);
+        return Promise.resolve();
+      }),
+      // Same compare-and-set the repository does, so a test can observe a
+      // refused backwards move rather than only the call.
+      advanceCursorIfNewer: jest.fn((cid: string, key: string, value: string) => {
+        const current = marks.get(`${cid}|${key}`) ?? null;
+        if (current !== null && current >= value) {
+          return Promise.resolve(false);
+        }
+        marks.set(`${cid}|${key}`, value);
+        return Promise.resolve(true);
+      }),
+    } as unknown as jest.Mocked<ISyncCursorsService>;
+
+    const heldLocks = new Set<string>();
+    syncLock = {
+      acquire: jest.fn((key: string) => {
+        if (heldLocks.has(key)) return Promise.resolve(null);
+        heldLocks.add(key);
+        return Promise.resolve(`token:${key}`);
+      }),
+      release: jest.fn((key: string) => Promise.resolve(heldLocks.delete(key))),
+      extend: jest.fn().mockResolvedValue(true),
+    } as unknown as jest.Mocked<SyncLockPort>;
+
+    service = new InventorySyncService(
+      integrationsService,
+      connectionPort,
+      syncLock,
+      syncCursors
+    );
   });
 
   it('uses batch API when available and multiple items provided', async () => {
@@ -250,6 +296,176 @@ describe('InventorySyncService', () => {
           ],
         })
       );
+    });
+  });
+
+  describe('write-order guard (#2617)', () => {
+    const older = '2026-08-27T10:00:00.000Z';
+    const newer = '2026-08-27T10:00:05.000Z';
+
+    const write = (
+      quantity: number,
+      observedAt: string
+    ): Promise<UpdateOfferQuantitiesBatchResult> =>
+      service.updateOfferQuantity(connectionId, { offerId: 'o1', quantity, observedAt });
+
+    it('should resolve to the newer quantity when the newer write arrives first', async () => {
+      await write(2, newer);
+      await write(9, older);
+
+      expect(marketplace.updateOfferQuantity).toHaveBeenCalledTimes(1);
+      expect(marketplace.updateOfferQuantity).toHaveBeenCalledWith(
+        expect.objectContaining({ quantity: 2 })
+      );
+    });
+
+    it('should resolve to the newer quantity when the newer write arrives second', async () => {
+      await write(9, older);
+      await write(2, newer);
+
+      const calls = (marketplace.updateOfferQuantity as unknown as jest.Mock).mock
+        .calls as ReadonlyArray<readonly [{ quantity: number }]>;
+      const written = calls.map((call) => call[0].quantity);
+      expect(written).toEqual([9, 2]);
+    });
+
+    it('should not move the mark backwards when a slow write outlives its lock', async () => {
+      // The write lock expired mid-call: while this older write was in flight a
+      // peer wrote the newer quantity and marked it. The slow winner must not
+      // set the mark back to its own observation, or the next stale write is
+      // admitted behind it (#2609 review).
+      (marketplace.updateOfferQuantity as unknown as jest.Mock).mockImplementationOnce(() => {
+        marks.set(`${connectionId}|inventory.offerQuantity.observedAt:offer:o1`, newer);
+        return Promise.resolve();
+      });
+
+      await write(9, older);
+
+      expect(marks.get(`${connectionId}|inventory.offerQuantity.observedAt:offer:o1`)).toBe(newer);
+
+      // And the mark still refuses the next older write.
+      const result = await write(7, older);
+      expect(result).toEqual({ succeeded: ['o1'], failed: [] });
+      expect(marketplace.updateOfferQuantity).toHaveBeenCalledTimes(1);
+    });
+
+    it('should report a superseded write as done, so the job does not retry forever', async () => {
+      await write(2, newer);
+      const result = await write(9, older);
+
+      expect(result).toEqual({ succeeded: ['o1'], failed: [] });
+    });
+
+    it('should not lock out an older write when the newer write failed', async () => {
+      (marketplace.updateOfferQuantity as unknown as jest.Mock).mockRejectedValueOnce(
+        new Error('marketplace unavailable')
+      );
+
+      const failed = await write(2, newer);
+      expect(failed.failed).toHaveLength(1);
+
+      // The mark advances only after a successful write, so the channel is not
+      // left stale by a refusal that followed a failure.
+      const recovered = await write(9, older);
+      expect(recovered).toEqual({ succeeded: ['o1'], failed: [] });
+      expect(marketplace.updateOfferQuantity).toHaveBeenLastCalledWith(
+        expect.objectContaining({ quantity: 9 })
+      );
+    });
+
+    it('should allow a retry of the same observation', async () => {
+      await write(2, newer);
+      await write(2, newer);
+
+      expect(marketplace.updateOfferQuantity).toHaveBeenCalledTimes(2);
+    });
+
+    it('should release the per-offer lock after every write', async () => {
+      await write(2, newer);
+
+      expect(syncLock.release).toHaveBeenCalledTimes(1);
+    });
+
+    it('should report contention as a retryable failure rather than dropping the write', async () => {
+      (syncLock.acquire as unknown as jest.Mock).mockResolvedValueOnce(null);
+
+      const result = await write(2, newer);
+
+      expect(result.failed).toEqual([
+        expect.objectContaining({ offerId: 'o1', errorCode: 'write_contended' }),
+      ]);
+      expect(marketplace.updateOfferQuantity).not.toHaveBeenCalled();
+    });
+
+    it('should write unguarded when the caller quotes no observation', async () => {
+      await service.updateOfferQuantity(connectionId, { offerId: 'o1', quantity: 0 });
+
+      expect(syncLock.acquire).not.toHaveBeenCalled();
+      expect(marketplace.updateOfferQuantity).toHaveBeenCalledWith(
+        expect.objectContaining({ quantity: 0 })
+      );
+    });
+
+    // #2617 review: guarding an observed batch must not cost N-1 extra
+    // marketplace calls. Each item is locked and compared first, then the
+    // survivors go out in ONE batch call.
+    it('should keep the single batch call for an observed batch', async () => {
+      (marketplace.updateOfferQuantitiesBatch as unknown as jest.Mock).mockResolvedValueOnce({
+        succeeded: ['o1', 'o2'],
+        failed: [],
+      });
+
+      await service.updateOfferQuantities(connectionId, {
+        items: [
+          { offerId: 'o1', quantity: 1, observedAt: newer },
+          { offerId: 'o2', quantity: 2, observedAt: newer },
+        ],
+      });
+
+      expect(marketplace.updateOfferQuantitiesBatch).toHaveBeenCalledTimes(1);
+      expect(marketplace.updateOfferQuantity).not.toHaveBeenCalled();
+      expect(syncCursors.advanceCursorIfNewer).toHaveBeenCalledTimes(2);
+      expect(syncLock.release).toHaveBeenCalledTimes(2);
+    });
+
+    it('should drop a superseded item from the batch and keep the rest', async () => {
+      (syncCursors.getCursor as unknown as jest.Mock).mockImplementation(
+        (_conn: string, key: string) => Promise.resolve(key.includes('o1') ? newer : null)
+      );
+      (marketplace.updateOfferQuantitiesBatch as unknown as jest.Mock).mockResolvedValueOnce({
+        succeeded: ['o2'],
+        failed: [],
+      });
+
+      const result = await service.updateOfferQuantities(connectionId, {
+        items: [
+          { offerId: 'o1', quantity: 1, observedAt: older },
+          { offerId: 'o2', quantity: 2, observedAt: newer },
+        ],
+      });
+
+      expect(marketplace.updateOfferQuantitiesBatch).toHaveBeenCalledWith(
+        expect.objectContaining({ items: [expect.objectContaining({ offerId: 'o2' })] })
+      );
+      expect(result.succeeded).toEqual(expect.arrayContaining(['o1', 'o2']));
+      // Only the item the adapter actually wrote may claim the channel.
+      expect(syncCursors.advanceCursorIfNewer).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not advance the mark for an item the batch reported as failed', async () => {
+      (marketplace.updateOfferQuantitiesBatch as unknown as jest.Mock).mockResolvedValueOnce({
+        succeeded: ['o1'],
+        failed: [{ offerId: 'o2', errorCode: 'unknown', message: 'rejected' }],
+      });
+
+      await service.updateOfferQuantities(connectionId, {
+        items: [
+          { offerId: 'o1', quantity: 1, observedAt: newer },
+          { offerId: 'o2', quantity: 2, observedAt: newer },
+        ],
+      });
+
+      expect(syncCursors.advanceCursorIfNewer).toHaveBeenCalledTimes(1);
     });
   });
 });

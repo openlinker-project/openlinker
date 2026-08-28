@@ -90,6 +90,44 @@ export class ConnectionCursorRepository implements ConnectionCursorRepositoryPor
     }
   }
 
+  async advanceIfGreater(
+    connectionId: string,
+    cursorKey: string,
+    value: string
+  ): Promise<boolean> {
+    try {
+      // One statement, so the read and the decision cannot be separated by a
+      // peer's write. Text comparison rather than a timestamp cast: the cast
+      // would throw on a value that is not a timestamp, and a mark that fails
+      // the job is worse than one that refuses to move.
+      const result: unknown = await this.repository.query(
+        `INSERT INTO "connection_cursors" ("connectionId", "cursorKey", "value")
+         VALUES ($1, $2, $3)
+         ON CONFLICT ("connectionId", "cursorKey")
+         DO UPDATE SET "value" = EXCLUDED."value", "updatedAt" = now()
+         WHERE "connection_cursors"."value" < EXCLUDED."value"
+         RETURNING "value"`,
+        [connectionId, cursorKey, value]
+      );
+
+      const advanced = Array.isArray(result) && result.length > 0;
+      this.logger.debug(
+        `Cursor ${cursorKey} for connection ${connectionId} ${advanced ? 'advanced to' : 'kept, not moved back to'} ${value}`
+      );
+      return advanced;
+    } catch (error) {
+      if (error instanceof QueryFailedError) {
+        this.logger.error(
+          `Failed to advance cursor ${cursorKey} for connection ${connectionId}: ${error.message}`
+        );
+        throw new Error(
+          `Failed to advance cursor ${cursorKey} for connection ${connectionId}: ${error.message}`
+        );
+      }
+      throw error;
+    }
+  }
+
   async delete(connectionId: string, cursorKey: string): Promise<void> {
     try {
       await this.repository.delete({
@@ -138,6 +176,15 @@ export class ConnectionCursorRepository implements ConnectionCursorRepositoryPor
       items: entities.map((entity) => this.toDomain(entity)),
       total,
     };
+  }
+
+  async findMostRecentUpdate(connectionId: string): Promise<Date | null> {
+    const entity = await this.repository.findOne({
+      where: { connectionId },
+      order: { updatedAt: 'DESC' },
+      select: { updatedAt: true },
+    });
+    return entity?.updatedAt ?? null;
   }
 
   async findOne(connectionId: string, cursorKey: string): Promise<ConnectionCursor | null> {

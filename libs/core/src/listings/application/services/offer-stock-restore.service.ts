@@ -10,7 +10,9 @@
  *      connection (`OfferMappingRepositoryPort.findMany`);
  *   3. reads the absolute master-inventory target per variant
  *      (`IInventoryQueryService.getAvailabilityByVariantIds`, #823) — master is
- *      authoritative, including 0;
+ *      authoritative, including 0 — and applies the connection's stock publish
+ *      policy to it (reserve #1844, zero threshold #2610), so a cancellation
+ *      restores the buffered quantity rather than wiping the reserve (#2610);
  *   4. builds `OfferStockRestoreTarget[]` and dispatches the destination
  *      `OfferStockRestorer` capability (no-op when honestly absent).
  *
@@ -32,6 +34,13 @@ import {
   INTEGRATIONS_SERVICE_TOKEN,
 } from '@openlinker/core/integrations';
 import { IInventoryQueryService, INVENTORY_QUERY_SERVICE_TOKEN } from '@openlinker/core/inventory';
+import {
+  applyStockSafetyBuffer,
+  CONNECTION_PORT_TOKEN,
+  ConnectionPort,
+  readStockSafetyBuffer,
+  readStockZeroThreshold,
+} from '@openlinker/core/identifier-mapping';
 import { IOrderRecordService, ORDER_RECORD_SERVICE_TOKEN } from '@openlinker/core/orders';
 import type {
   OfferManagerPort,
@@ -56,6 +65,8 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
   constructor(
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
+    @Inject(CONNECTION_PORT_TOKEN)
+    private readonly connectionPort: ConnectionPort,
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
     private readonly orderRecordService: IOrderRecordService,
     @Inject(OFFER_MAPPING_REPOSITORY_TOKEN)
@@ -79,6 +90,14 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
     if (!restorer) {
       return;
     }
+
+    // #2610 — the restore writes an ABSOLUTE quantity, so it has to reproduce
+    // the same publish policy the ordinary write-back applies. Without this the
+    // first cancellation replaced the buffered quantity with the raw master
+    // count, silently removing the operator's oversell reserve until the next
+    // full sync. Read once per order (single connection); an unconfigured
+    // connection resolves 0/0 and the restore is byte-identical to before.
+    const publishPolicy = await this.resolvePublishPolicy(connectionId);
 
     const record = await this.orderRecordService.getOrderRecord(internalOrderId);
     if (!record) {
@@ -117,7 +136,15 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
     for (const [variantId, externalOfferId] of externalOfferIdByVariant) {
       // Master is authoritative including 0; a variant absent from the read
       // zero-fills via getAvailabilityByVariantIds, so default to 0 defensively.
-      const quantity = targetByVariant.get(variantId) ?? 0;
+      const masterQuantity = targetByVariant.get(variantId) ?? 0;
+      // The threshold's 0 here is a deliberate operator choice about what the
+      // destination may sell, not a post-sale hold: the same policy produced
+      // the quantity that was published before the order arrived.
+      const quantity = applyStockSafetyBuffer(
+        masterQuantity,
+        publishPolicy.reserve,
+        publishPolicy.zeroThreshold,
+      );
       targets.push({ externalOfferId, quantity });
     }
 
@@ -125,6 +152,25 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
       `Restoring marketplace stock for ${targets.length} offer(s) [connectionId=${connectionId}, orderId=${internalOrderId}]`,
     );
     await restorer.restoreStockOnCancellation(targets);
+  }
+
+  /**
+   * Read the connection's stock publish policy - the per-connection reserve
+   * (#1844) and the zero threshold (#2610). Reached only on the participating
+   * path (a destination that really does implement `OfferStockRestorer`), so the
+   * extra connection read costs nothing on the common no-op cancellation.
+   */
+  private async resolvePublishPolicy(
+    connectionId: string,
+  ): Promise<{ reserve: number; zeroThreshold: number }> {
+    // ConnectionPort, not getAdapter: only one JSONB column is wanted here, and
+    // getAdapter additionally resolves the adapter key and can raise
+    // ConnectionDisabledException, neither of which this caller asked for.
+    const connection = await this.connectionPort.get(connectionId);
+    return {
+      reserve: readStockSafetyBuffer(connection.config),
+      zeroThreshold: readStockZeroThreshold(connection.config),
+    };
   }
 
   /**

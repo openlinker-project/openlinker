@@ -1644,6 +1644,11 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     entity.currency = orderRecord.currency;
     entity.taxTreatment = orderRecord.taxTreatment;
     entity.totalAmount = orderRecord.totalAmount;
+    // Same reason the four scalars above are stamped here rather than in the
+    // shared toOrm: `upsert()` is also reached by `persistIncomingSnapshot`,
+    // which has no resolved billing address to read a tax id off, so mapping
+    // the column there would NULL a value a previous ready-path write settled.
+    entity.buyerTaxId = orderRecord.buyerTaxId;
     const savedRecord = await this.dataSource.transaction(async (manager: EntityManager) => {
       const saved = await manager.save(OrderRecordOrmEntity, entity);
       await manager.delete(OrderLineItemOrmEntity, { orderRecordId: orderRecord.internalOrderId });
@@ -1821,7 +1826,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       // reason columns above are: the column is a plain `varchar`, and a value
       // this build does not recognise must read as "no era" - i.e. the tax-rate
       // guard applies - rather than silently exempting the order from it.
-      isTaxRateEra(entity.taxRateEra) ? entity.taxRateEra : null
+      isTaxRateEra(entity.taxRateEra) ? entity.taxRateEra : null,
+      entity.buyerTaxId ?? null
     );
   }
 

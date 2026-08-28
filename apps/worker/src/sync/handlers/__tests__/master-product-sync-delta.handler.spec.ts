@@ -365,7 +365,7 @@ describe('MasterProductSyncDeltaHandler', () => {
       );
       // ADR-048 decision 2: the delta path may not reach any catalog-level prune,
       // and the only thing it is allowed to enqueue is the per-product child.
-      expect(jobTypes).toEqual(new Set(['master.product.syncByExternalId']));
+      expect(jobTypes).toEqual(new Set(['master.product.syncFromSweep']));
     });
 
     it('should key children on the cycle in a namespace distinct from the full sweep', async () => {
