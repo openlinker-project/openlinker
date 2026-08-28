@@ -56,6 +56,7 @@ import { InventoryProvenanceBackfillHandler } from './handlers/inventory-provena
 import { ReservationExpiryHandler } from './handlers/reservation-expiry.handler';
 import { ReservationShortfallHandler } from './handlers/reservation-shortfall.handler';
 import { ReservationConsumeHandler } from './handlers/reservation-consume.handler';
+import { OrdersHoldsReconcileHandler } from './handlers/orders-holds-reconcile.handler';
 import { PickupPointRefreshHandler } from './handlers/pickup-point-refresh.handler';
 import { ShopProductPublishHandler } from './handlers/shop-product-publish.handler';
 import { ShopProductStatusSyncHandler } from './handlers/shop-product-status-sync.handler';
@@ -121,6 +122,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     ReservationExpiryHandler,
     ReservationShortfallHandler,
     ReservationConsumeHandler,
+    OrdersHoldsReconcileHandler,
     PickupPointRefreshHandler,
     ShopProductPublishHandler,
     ShopProductStatusSyncHandler,

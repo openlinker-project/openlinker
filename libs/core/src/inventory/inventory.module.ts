@@ -176,13 +176,22 @@ export {
       // refuse no reservation and open no shortfall episode; but the rows do
       // accumulate, and a `published`-stamped install would hold real ATP.
       //
-      // WHAT UNBLOCKS IT: nothing in this file. `order_holds` DOES exist now —
-      // body A shipped it earlier in this same wave (PR #2588) — so the blocker
-      // is no longer the table but the branch topology: this branch does not
-      // contain it, and binding a reader over a table it cannot compile against
-      // is not possible here. Binding the real reader is a WAVE-LEVEL
-      // integration step taken once both bodies sit on
-      // `oms-programme-wave-2` (#2339).
+      // WHAT UNBLOCKS IT: neither the table nor the branch, any more. Body A
+      // (PR #2588) merged into `oms-programme-wave-2` and this branch now
+      // CONTAINS it: `order_holds`, `OrderHoldsModule` and
+      // `IOrderHoldService.getOpenHold` are all reachable from here. The real
+      // reader is therefore bindable today — it takes importing the leaf
+      // `OrderHoldsModule` (deliberately narrow: it pulls in nothing resembling
+      // `OrdersModule`'s graph), injecting `ORDER_HOLD_SERVICE_TOKEN` from
+      // `@openlinker/core/orders`, and mapping a non-null `getOpenHold` to
+      // `'present'` and a confirmed null to `'absent'`. It adds one new
+      // cross-context edge, `inventory -> orders`, which is acyclic because
+      // `orders` does not import `inventory`.
+      //
+      // The remaining blocker is SEQUENCING, not topology: flipping this
+      // binding turns the expiry sweep from inert to live, and that behaviour
+      // change is a deliberate wave-level step (#2339) that must not ride
+      // inside a merge commit, where it would be invisible to review.
       //
       // THE ONE CONSTRAINT ON THAT READER: it must answer `'absent'` only on a
       // positively confirmed absence — never as a default, never as the fallback

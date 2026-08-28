@@ -1,10 +1,10 @@
 /**
  * Unavailable Order-Hold Reader (#2346)
  *
- * The Wave-2 stand-in for the `'open-order-hold'` obligation kind: the
- * `order_holds` table (#2339) is not present on THIS branch, so this reader
- * cannot see the data that would answer the question and says so — every call
- * returns `'indeterminate'`.
+ * The Wave-2 stand-in for the `'open-order-hold'` obligation kind: this reader
+ * consults no hold source at all, so it cannot answer the question and says so
+ * — every call returns `'indeterminate'`. (It was written when `order_holds`
+ * did not exist on this branch; see *Replacing this* below for what changed.)
  *
  * **Consequence, stated plainly: while this is bound, the expiry sweep extends
  * every candidate and releases nothing.** That is the deliberate fail-closed
@@ -21,10 +21,13 @@
  *
  * ## Replacing this (#2339)
  *
- * The table is no longer the blocker — body A shipped `order_holds` earlier in
- * this same wave (PR #2588). This branch simply does not contain that body, so
- * the swap is a WAVE-LEVEL integration step taken once both sit on
- * `oms-programme-wave-2`, not something this branch can do.
+ * Neither the table nor the branch is the blocker any more: body A (PR #2588)
+ * merged into `oms-programme-wave-2` and this branch now contains it, so
+ * `order_holds`, `OrderHoldsModule` and `IOrderHoldService.getOpenHold` are all
+ * reachable and the real reader is bindable today. What remains is SEQUENCING —
+ * the swap flips the expiry sweep from inert to live, so it is a deliberate
+ * wave-level step of its own rather than something folded into an integration
+ * merge, where a behaviour change would escape review.
  *
  * Bind a reader that returns `'present'` for an open `order_holds` row and
  * `'absent'` **only when it has positively confirmed there is none**. Never

@@ -43,6 +43,7 @@ import { InventoryProvenanceBackfillHandler } from './inventory-provenance-backf
 import { ReservationExpiryHandler } from './reservation-expiry.handler';
 import { ReservationShortfallHandler } from './reservation-shortfall.handler';
 import { ReservationConsumeHandler } from './reservation-consume.handler';
+import { OrdersHoldsReconcileHandler } from './orders-holds-reconcile.handler';
 import { PickupPointRefreshHandler } from './pickup-point-refresh.handler';
 import { ShopProductPublishHandler } from './shop-product-publish.handler';
 import { ShopProductStatusSyncHandler } from './shop-product-status-sync.handler';
@@ -63,6 +64,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly reservationExpiryHandler: ReservationExpiryHandler,
     private readonly reservationShortfallHandler: ReservationShortfallHandler,
     private readonly reservationConsumeHandler: ReservationConsumeHandler,
+    private readonly ordersHoldsReconcileHandler: OrdersHoldsReconcileHandler,
     private readonly marketplaceOrdersPollHandler: OrdersPollHandler,
     private readonly marketplaceOrderSyncHandler: MarketplaceOrderSyncHandler,
     private readonly marketplaceOrderFxStampHandler: MarketplaceOrderFxStampHandler,
@@ -108,13 +110,14 @@ export class HandlerRegistrationService implements OnModuleInit {
     // Every registration declares its ADR-050 concurrency lane (#2278). The
     // lane is chosen by cost-of-starvation, never by I/O shape or bounded
     // context — the authoritative table is ADR-050 decision 1, now 13 realtime /
-    // 19 bulk / 5 fiscal / 7 fan-out: `fiscalization.register` joined `fiscal`
+    // 20 bulk / 5 fiscal / 7 fan-out: `fiscalization.register` joined `fiscal`
     // post-ADR (#2156), `inventory.provenance.backfill` joined `bulk` (#2317),
     // the three returns types joined realtime/bulk/fan-out (#2330),
-    // `returns.orphan.reconcile` joined `bulk` (#2332), and
-    // `orders.taxRate.backfill` joined `bulk` (#2440), and
-    // `inventory.reservations.shortfall` joined `bulk` (#2349). The
-    // tripwire in `handler-registration.service.spec.ts` is the authority on
+    // `returns.orphan.reconcile` joined `bulk` (#2332),
+    // `orders.taxRate.backfill` joined `bulk` (#2440),
+    // `orders.holds.reconcile` joined `bulk` (#2340, Wave 2 body A), and the
+    // three reservation sweeps joined `bulk` (#2346 / #2347 / #2349, Wave 2
+    // body B). The tripwire in `handler-registration.service.spec.ts` is the authority on
     // these counts — this comment had drifted from it before #2330.
 
     // Register generic marketplace handlers (Option B)
@@ -303,6 +306,14 @@ export class HandlerRegistrationService implements OnModuleInit {
     this.handlerRegistry.register(
       'inventory.provenance.backfill',
       this.inventoryProvenanceBackfillHandler,
+      'bulk'
+    );
+    // `bulk` (#2340): a periodic local-only repair of a DISPLAY cache. Nothing
+    // a buyer waits on, and the gates it does NOT feed read `order_holds`
+    // directly — so starving it costs a stale badge, never a wrong decision.
+    this.handlerRegistry.register(
+      'orders.holds.reconcile',
+      this.ordersHoldsReconcileHandler,
       'bulk'
     );
 

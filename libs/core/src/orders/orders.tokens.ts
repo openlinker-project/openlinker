@@ -14,6 +14,10 @@ export const ORDER_INGESTION_SERVICE_TOKEN = Symbol('IOrderIngestionService');
 export const ORDER_RECORD_REPOSITORY_TOKEN = Symbol('OrderRecordRepositoryPort');
 export const ORDER_RECORD_SERVICE_TOKEN = Symbol('IOrderRecordService');
 export const ORDER_DESTINATION_RETRY_SERVICE_TOKEN = Symbol('IOrderDestinationRetryService');
+// Re-enqueues the source-side provisioning run a released hold had suppressed (#2341).
+export const ORDER_PROVISIONING_RESUME_SERVICE_TOKEN = Symbol(
+  'IOrderProvisioningResumeService'
+);
 export const ORDER_ITEM_REF_RESOLVER_SERVICE_TOKEN = Symbol('IOrderItemRefResolverService');
 export const ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN = Symbol('IOrderLifecycleRelayService');
 // Per-order reporting-currency stamp (#2125, ADR-040).
@@ -34,3 +38,24 @@ export const TAX_RATE_BACKFILL_SERVICE_TOKEN = Symbol('ITaxRateBackfillService')
 // reaches the record through `IOrderChangeService`, never the repository port.
 export const ORDER_CHANGE_REPOSITORY_TOKEN = Symbol('OrderChangeRepositoryPort');
 export const ORDER_CHANGE_SERVICE_TOKEN = Symbol('IOrderChangeService');
+
+// Order holds (#2338, DESIGN §6.3 / REVIEW §3 H9). `OrderHoldsModule` is a LEAF
+// module inside this context — #2339's service imports THAT, never
+// `OrdersModule`, and a sibling context reaches holds through
+// `IOrderHoldService` rather than the repository port.
+export const ORDER_HOLD_REPOSITORY_TOKEN = Symbol('OrderHoldRepositoryPort');
+
+// The cross-context seam for holds (#2339). Exported by `OrderHoldsModule` and
+// re-exported through `OrdersModule`, so shipping's dispatch gate can inject it
+// without deep-importing anything.
+export const ORDER_HOLD_SERVICE_TOKEN = Symbol('IOrderHoldService');
+
+/** #2340 — the `order_records.activeHoldReason` cache's only write statement. */
+export const ORDER_HOLD_PROJECTION_REPOSITORY_TOKEN = Symbol(
+  'OrderHoldProjectionRepositoryPort'
+);
+
+/** #2340 — the bounded `orders.holds.reconcile` repair pass. */
+export const ORDER_HOLD_PROJECTION_RECONCILE_SERVICE_TOKEN = Symbol(
+  'IOrderHoldProjectionReconcileService'
+);

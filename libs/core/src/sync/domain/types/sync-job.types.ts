@@ -108,6 +108,11 @@ export const JobTypeValues = [
   // stock drop puts at risk, as persisted episodes. Reads OL's own tables and
   // repairs nothing; no platform call.
   'inventory.reservations.shortfall',
+  // Repairs the `order_records.activeHoldReason` cache against `order_holds`
+  // (#2340). Deliberately NOT named `marketplace.*`: it makes zero platform
+  // calls and reads only OL's own tables - `inventory.provenance.backfill` is
+  // the naming precedent for a core-owned internal pass.
+  'orders.holds.reconcile',
 
   // Invoicing (core-owned policy; executed by worker — OL #1120)
   'invoicing.issue',

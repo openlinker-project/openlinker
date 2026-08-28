@@ -119,6 +119,7 @@ export type { LabelDocument } from './domain/types/label-document.types';
 export { ShipmentNotFoundException } from './domain/exceptions/shipment-not-found.exception';
 export { UndispatchableResolutionException } from './domain/exceptions/undispatchable-resolution.exception';
 export { OrderNotDispatchablePaymentStatusException } from './domain/exceptions/order-not-dispatchable-payment-status.exception';
+export { OrderNotDispatchableHeldException } from './domain/exceptions/order-not-dispatchable-held.exception';
 export { ShipmentNotCancellableException } from './domain/exceptions/shipment-not-cancellable.exception';
 export { ShipmentCancellationNotSupportedException } from './domain/exceptions/shipment-cancellation-not-supported.exception';
 export { PickupPointFinderNotSupportedException } from './domain/exceptions/pickup-point-finder-not-supported.exception';

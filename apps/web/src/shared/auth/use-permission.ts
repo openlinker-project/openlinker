@@ -59,3 +59,34 @@ export function useWriteAccess(permission: Permission, demoMode: boolean): Write
   const demoReadOnly = !canWrite && demoMode;
   return { canWrite, demoReadOnly, visible: canWrite || demoReadOnly };
 }
+
+/**
+ * The one place the admin role name is spelled (#2342).
+ *
+ * `SessionUser.role` is typed `string`, so an inline `role === 'admin'` compiles
+ * with a typo and silently evaluates false — which is why writing that
+ * comparison at a call site is banned. A permission is the normal gate and
+ * covers almost every case; this exists for the narrow one it cannot express:
+ * a route guarded by `@Roles('admin')` whose permission is ALSO granted to a
+ * lesser role. `orders:write` is the live example — `ROLE_PERMISSIONS.operator`
+ * carries it, while both order-hold routes are admin-only, so gating on the
+ * permission alone renders a control that answers 403.
+ *
+ * Reach for a `Permission` first. Use this only when the endpoint's own
+ * `@Roles(...)` guard is strictly narrower than any permission that implies it,
+ * and pair it with the permission rather than replacing it — this answers "which
+ * role", never "may they write at all".
+ *
+ * Returns `false` while the session is still hydrating, so a call site must not
+ * treat it as a denial worth explaining; render the affordance or nothing.
+ */
+export function useIsAdmin(): boolean {
+  const { session } = useSession();
+  return session.status === 'authenticated' && session.user?.role === ADMIN_ROLE;
+}
+
+/**
+ * Deliberately not imported from `app/nav-registry.types.ts`'s `Role` union:
+ * `features` may not import `app/`, and `shared` may not either.
+ */
+const ADMIN_ROLE = 'admin';

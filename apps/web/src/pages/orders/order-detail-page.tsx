@@ -37,6 +37,7 @@ import {
 import { OrderCustomerCard } from '../../features/orders/components/order-customer-card';
 import { OrderActivityTimeline } from '../../features/orders/components/order-activity-timeline';
 import { OrderPackedControl } from '../../features/orders/components/order-packed-control';
+import { OrderHoldPanel } from '../../features/orders/components/order-hold-panel';
 import { OrderShipmentPanel } from '../../features/orders/components/order-shipment-panel';
 import { SalesDocumentPanel } from '../../features/orders/components/sales-document-panel';
 import { OrderDetailHeader } from '../../features/orders/components/order-detail-header';
@@ -394,6 +395,23 @@ export function OrderDetailPage(): ReactElement {
             packedByUserId={order.packedByUserId}
           />
 
+          {/* #2342 — the list DISPLAYS a hold, the detail page ACTS on it
+              (#2081 rule 3). Beside the packed control for the same reason it
+              sits in the always-rendered stack: a hold is a fact about every
+              order, whatever capabilities its connections declare. */}
+          <OrderHoldPanel
+            // Remount per order. `resumeFailure` is session-local state inside
+            // the panel and was cleared only by a release; navigating to a
+            // CACHED next order re-renders without remounting (the page
+            // early-returns a skeleton on `isLoading` only), so the "did not
+            // start moving again" alert leaked onto an order that was never
+            // held — a false claim about someone else's order.
+            key={order.internalOrderId}
+            internalOrderId={order.internalOrderId}
+            activeHold={order.activeHold}
+            holdHistory={order.holdHistory}
+          />
+
           <section className="detail-section">
             <h3 className="detail-section__title">
               Sync status{order.syncStatus.length > 0 ? ` (${order.syncStatus.length})` : ''}
@@ -492,6 +510,7 @@ export function OrderDetailPage(): ReactElement {
           packedByUserId={order.packedByUserId}
           salesDocumentBlockedAt={order.salesDocumentBlockedAt}
           salesDocumentBlockReleasedAt={order.salesDocumentBlockReleasedAt}
+          holds={order.holdHistory}
         />
       </section>
 

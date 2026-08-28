@@ -48,6 +48,12 @@ import { useOrderStatusSummaryQuery } from '../../features/orders/hooks/use-orde
 import { useOrderSlaSummaryQuery } from '../../features/orders/hooks/use-order-sla-summary-query';
 import { useOrderLifecycleSummaryQuery } from '../../features/orders/hooks/use-order-lifecycle-summary-query';
 import { OrderPhaseBadge } from '../../features/orders/components/order-phase-badge';
+import { OrderHoldBadge } from '../../features/orders/components/order-hold-badge';
+import {
+  HOLD_REASON_COPY,
+  HoldReasonValues,
+  isHoldReason,
+} from '../../features/orders/lib/order-hold.types';
 import {
   OrderLifecyclePhaseValues,
   ORDER_LIFECYCLE_PHASE_META,
@@ -274,6 +280,7 @@ const NARROWING_FILTER_URL_PARAM: Record<NarrowingOrderFilterKey, string> = {
   salesDocumentBlocked: 'invoicing',
   phase: 'phase',
   taxRateConflict: 'taxRate',
+  holdReason: 'hold',
 };
 
 /**
@@ -410,6 +417,11 @@ export function OrdersListPage(): ReactElement {
   // finds are usually already invoiced, so it composes with the other two
   // rather than replacing either. Present-only, like its neighbour.
   const rateConflict = searchParams.get('taxRate') === 'conflict';
+  // #2342 — the hold REASON axis. An unrecognised value falls back to
+  // "unfiltered" rather than being passed through: the server would reject it,
+  // and an operator with a stale bookmark should see their orders, not an error.
+  const rawHoldReason = searchParams.get('hold');
+  const holdReason = isHoldReason(rawHoldReason) ? rawHoldReason : undefined;
   const offset = Number(searchParams.get('offset') ?? '0');
 
   // "Breaching soon / overdue" cutoff — stable per toggle (not recomputed each
@@ -438,6 +450,8 @@ export function OrdersListPage(): ReactElement {
     // #2310 — orthogonal to `health`; both compose server-side.
     phase,
     taxRateConflict: rateConflict ? true : undefined,
+    // #2342 — composes with `phase` and `health` server-side, like every other axis.
+    holdReason,
   };
   const pagination = { limit: PAGE_SIZE, offset };
 
@@ -893,6 +907,10 @@ export function OrdersListPage(): ReactElement {
                   sync failure behind a stock one. Shared verbatim with the
                   mobile card. */}
               <StockAtRiskBadge shortfalls={order.reservationShortfalls} />
+              {/* #2342 — the STATUS group: an exception is a badge and belongs
+                  beside the failure reasons (style guide § Order-row signal
+                  placement rule 2), never in Shipment or Money. */}
+              <OrderHoldBadge reason={order.activeHoldReason} compact />
               {h.reason ? (
                 <span className="orders-status-reason" title={h.reason}>
                   {h.reason}
@@ -1407,6 +1425,30 @@ export function OrdersListPage(): ReactElement {
             {FULFILLMENT_FILTER_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
+              </option>
+            ))}
+          </Select>
+          {/*
+            #2342 — a Select rather than a chip row, and reason-scoped rather
+            than boolean. `?phase=held` already answers "show me held orders"
+            and carries a real count, so a boolean chip here would be a second
+            control meaning the same thing; the reason is the axis the phase
+            chip cannot express. Eight countless chips for a state most installs
+            rarely hit would be noise, and the chip row is for partitions that
+            carry counts.
+          */}
+          <Select
+            aria-label="Filter by hold reason"
+            value={holdReason ?? ''}
+            // `setFilterParam` writes the key VERBATIM, so this is the URL param
+            // name (`hold`), not the filter field (`holdReason`) — the two differ
+            // here, like `phase` -> `lifecyclePhase` does server-side.
+            onChange={(e) => { setFilterParam('hold', e.target.value); }}
+          >
+            <option value="">Any hold reason</option>
+            {HoldReasonValues.map((value) => (
+              <option key={value} value={value}>
+                {HOLD_REASON_COPY[value].label}
               </option>
             ))}
           </Select>
@@ -1930,6 +1972,7 @@ export function OrdersListPage(): ReactElement {
                       {h.label}
                     </StatusBadge>
                     <OrderPhaseBadge phase={order.lifecyclePhase} compact />
+                    <OrderHoldBadge reason={order.activeHoldReason} compact />
                     <StatusBadge tone={fulfillment.tone} withDot compact>
                       {fulfillment.label}
                     </StatusBadge>
