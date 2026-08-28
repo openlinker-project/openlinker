@@ -1376,9 +1376,9 @@ describe('OrderRecordService', () => {
 
       const result = await service.getSalesAndChannelAnalytics(filters);
 
-      expect(repository.getDailyOrderAggregates).toHaveBeenCalledWith(filters, 'EUR');
+      expect(repository.getDailyOrderAggregates).toHaveBeenCalledWith(filters, 'EUR', false);
       expect(repository.getMedianOrderValue).toHaveBeenCalledWith(filters, 'EUR');
-      expect(repository.getNetMedianOrderValue).toHaveBeenCalledWith(filters, 'EUR');
+      expect(repository.getNetMedianOrderValue).toHaveBeenCalledWith(filters, 'EUR', false);
       expect(lineItemRepository.getUnitsSoldByConnection).toHaveBeenCalledWith(filters, 'EUR');
       expect(repository.findEarliestOrderDateByConnection).toHaveBeenCalledWith(['conn-a']);
       expect(result.headline.revenue).toBe(200);
@@ -1472,14 +1472,15 @@ describe('OrderRecordService', () => {
 
       const result = await service.getTopProducts(filters);
 
-      expect(lineItemRepository.getTopProductRanking).toHaveBeenCalledWith(filters, 'PLN');
+      expect(lineItemRepository.getTopProductRanking).toHaveBeenCalledWith(filters, 'PLN', false);
       // Breakdown query MUST receive only the ranked page's product ids —
       // never re-derived from the full scoped set — to keep its cost bounded
       // by page size (#1988 correctness requirement).
       expect(lineItemRepository.getProductChannelBreakdown).toHaveBeenCalledWith(
         ['p1', 'p2'],
         filters,
-        'PLN'
+        'PLN',
+        false
       );
       expect(result.total).toBe(2);
       expect(result.items).toHaveLength(2);
@@ -1512,7 +1513,8 @@ describe('OrderRecordService', () => {
       expect(lineItemRepository.getProductChannelBreakdown).toHaveBeenCalledWith(
         ['p1'],
         filters,
-        'PLN'
+        'PLN',
+        false
       );
     });
 
@@ -1525,7 +1527,8 @@ describe('OrderRecordService', () => {
       expect(lineItemRepository.getProductChannelBreakdown).toHaveBeenCalledWith(
         [],
         filters,
-        'PLN'
+        'PLN',
+        false
       );
       expect(result).toEqual({ items: [], total: 0 });
     });
@@ -1538,11 +1541,12 @@ describe('OrderRecordService', () => {
       await service.getTopProducts(filters);
 
       expect(reportingCurrencySettings.resolve).toHaveBeenCalled();
-      expect(lineItemRepository.getTopProductRanking).toHaveBeenCalledWith(filters, 'EUR');
+      expect(lineItemRepository.getTopProductRanking).toHaveBeenCalledWith(filters, 'EUR', false);
       expect(lineItemRepository.getProductChannelBreakdown).toHaveBeenCalledWith(
         [],
         filters,
-        'EUR'
+        'EUR',
+        false
       );
     });
   });

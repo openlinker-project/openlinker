@@ -26,6 +26,14 @@
  *    `SalesAnalyticsHeadline.revenue` as its intended input).
  *
  * @module apps/api/src/analytics/http
+ *
+ * **The backfilled-tax-rate Net Sales opt-in is read PER REQUEST** (#2469).
+ * `analytics_display_settings.include_backfilled_tax_rates_in_net_sales`
+ * (#2461) is threaded into the core read as a plain boolean, because `orders`
+ * must not import `analytics`. Reading it here, with no cache, is what makes
+ * the acceptance criterion literal: toggling the setting changes the very next
+ * query's result set, and toggling it back reverts it, without touching a
+ * single `order_records` row.
  */
 import { BadRequestException, Controller, Get, Inject, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
@@ -40,6 +48,10 @@ import {
   type NativeCurrencyAmount,
   type SalesAnalyticsHeadline,
 } from '@openlinker/core/orders';
+import {
+  ANALYTICS_DISPLAY_SETTINGS_SERVICE_TOKEN,
+  type IAnalyticsDisplaySettingsService,
+} from '@openlinker/core/analytics';
 import { SalesAnalyticsQueryDto } from './dto/sales-analytics-query.dto';
 import {
   DisplayCurrencyConversionDto,
@@ -74,7 +86,9 @@ export class SalesAnalyticsController {
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
     private readonly orderRecordService: IOrderRecordService,
     @Inject(DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN)
-    private readonly displayCurrencyConversionService: IDisplayCurrencyConversionService
+    private readonly displayCurrencyConversionService: IDisplayCurrencyConversionService,
+    @Inject(ANALYTICS_DISPLAY_SETTINGS_SERVICE_TOKEN)
+    private readonly displaySettings: IAnalyticsDisplaySettingsService
   ) {}
 
   @Get('sales')
@@ -98,11 +112,17 @@ export class SalesAnalyticsController {
       );
     }
 
-    const analytics = await this.orderRecordService.getSalesAndChannelAnalytics({
-      from,
-      to,
-      sourceConnectionId: query.sourceConnectionId,
-    });
+    // Read fresh on every request — see the class doc comment.
+    const { includeBackfilledTaxRatesInNetSales } = await this.displaySettings.getSettings();
+
+    const analytics = await this.orderRecordService.getSalesAndChannelAnalytics(
+      {
+        from,
+        to,
+        sourceConnectionId: query.sourceConnectionId,
+      },
+      includeBackfilledTaxRatesInNetSales
+    );
 
     const dto = SalesAnalyticsResponseDto.fromDomain(analytics);
 
