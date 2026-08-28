@@ -24,13 +24,24 @@ export class WidenAllegroQuantityCommandUniqueIndex1841000000007 implements Migr
     `);
   }
 
+  /**
+   * Recreates a `commandId` index, but deliberately NON-unique. Once a single
+   * batch command (#2622) has persisted more than one row under the same
+   * commandId — the entire point of the `up()` widening — a UNIQUE index on
+   * `commandId` alone can no longer be created without first deleting data:
+   * re-establishing it here would make `down()` fail with a duplicate-key
+   * error on exactly the deployments where this feature has been exercised,
+   * i.e. exactly when a revert would be needed. A plain index preserves the
+   * lookup performance `commandId` alone provided without asserting a
+   * uniqueness constraint that is no longer true of the data.
+   */
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
       `DROP INDEX IF EXISTS "IDX_allegro_quantity_commands_commandId_offerId"`
     );
 
     await queryRunner.query(`
-      CREATE UNIQUE INDEX "IDX_allegro_quantity_commands_commandId"
+      CREATE INDEX "IDX_allegro_quantity_commands_commandId"
       ON "allegro_quantity_commands" ("commandId")
     `);
   }
