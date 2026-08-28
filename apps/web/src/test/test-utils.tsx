@@ -366,6 +366,32 @@ export function createMockApiClient(
         ),
       ...overrides.invoicing,
     } as ApiClient['invoicing'],
+    operationalSettings: {
+      get: vi.fn().mockResolvedValue({
+        catalogueSweepBudget: { value: 500, source: 'default' },
+        inventorySweepBudget: { value: 100, source: 'default' },
+        sweepPageSize: { value: 100, source: 'default' },
+        deletionAuditBudget: { value: 100, source: 'default' },
+        deletionAuditCadence: { value: '0 * * * *', source: 'default' },
+        deletionAuditAlwaysEnabled: true,
+        cadenceAppliesAt: 'next-scheduler-start',
+        updatedAt: null,
+        updatedBy: null,
+        bounds: {
+          catalogueSweepBudget: { min: 1, max: 2000, default: 500, envVar: 'OL_PRODUCT_SYNC_PAGE_LIMIT' },
+          inventorySweepBudget: { min: 1, max: 2000, default: 100, envVar: 'OL_INVENTORY_SYNC_PAGE_LIMIT' },
+          sweepPageSize: { min: 1, max: 100, default: 100, envVar: 'OL_SWEEP_PAGE_SIZE' },
+          deletionAuditBudget: {
+            min: 1,
+            max: 2000,
+            default: 100,
+            envVar: 'OL_MASTER_PRODUCT_RECONCILE_PAGE_LIMIT',
+          },
+        },
+      }),
+      update: vi.fn().mockResolvedValue(undefined),
+      ...overrides.operationalSettings,
+    } as ApiClient['operationalSettings'],
     orders: {
       list: vi.fn().mockResolvedValue({
         items: [],
