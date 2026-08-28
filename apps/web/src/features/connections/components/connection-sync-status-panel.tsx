@@ -1,3 +1,12 @@
+/**
+ * Connection Sync Status Panel
+ *
+ * Connection detail health-tab panel rendering the per-connection sync queue
+ * readout (#2615). Presentation only - the read lives in
+ * `use-connection-sync-status-query`.
+ *
+ * @module features/connections/components
+ */
 import type { ReactElement } from 'react';
 import { useConnectionSyncStatusQuery } from '../hooks/use-connection-sync-status-query';
 import type { ConnectionBacklogStatus, ConnectionSyncStatus } from '../api/connections.types';

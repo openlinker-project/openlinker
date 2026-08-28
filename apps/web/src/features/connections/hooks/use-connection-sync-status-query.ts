@@ -1,3 +1,11 @@
+/**
+ * Connection Sync Status Query Hook
+ *
+ * TanStack Query wrapper over `GET /connections/:id/sync-status` (#2615),
+ * backing the connection detail health tab's sync panel.
+ *
+ * @module features/connections/hooks
+ */
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import type { ConnectionSyncStatus } from '../api/connections.types';
 import { connectionsQueryKeys } from '../api/connections.query-keys';

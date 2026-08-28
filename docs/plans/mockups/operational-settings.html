@@ -402,6 +402,16 @@ select.control { padding-right: var(--space-6); }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+/* Mockup state switcher (docs/frontend-architecture.md, UX Mockups). */
+.proto-rail { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-bottom: var(--space-4); padding: var(--space-3); border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-surface); }
+.proto-rail__label { font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.proto-rail__note { flex-basis: 100%; font-size: 0.6875rem; color: var(--text-muted); }
+.state-btn { padding: 4px 10px; font-family: inherit; font-size: 0.75rem; color: var(--text-default); background: var(--bg-shell); border: 1px solid var(--border-default); border-radius: var(--radius-sm); cursor: pointer; }
+.state-btn[aria-pressed="true"] { color: var(--text-on-primary); background: var(--color-primary); border-color: var(--color-primary); }
+body[data-state="default"] .mock-state:not([data-state="default"]),
+body[data-state="save-confirm"] .mock-state:not([data-state="save-confirm"]),
+body[data-state="host-limit-blocked"] .mock-state:not([data-state="host-limit-blocked"]) { display: none; }
 </style>
 
 <div class="shell">
@@ -409,6 +419,15 @@ select.control { padding-right: var(--space-6); }
   <div class="mock-note">
     <strong>Mockup for issue #2653 — not shipped code.</strong>
     <span>Dark theme only. Every colour, radius and class name is taken from <code>apps/web/src/index.css</code> and the existing <code>/settings</code> pages. The sliders are live so the calculator can be judged the way an operator would meet it.</span>
+  </div>
+
+  <div class="proto-rail" role="toolbar" aria-label="Mockup state switcher">
+    <span class="proto-rail__label">State:</span>
+    <button class="state-btn" type="button" data-goto="all" aria-pressed="true">All (stacked)</button>
+    <button class="state-btn" type="button" data-goto="default">default</button>
+    <button class="state-btn" type="button" data-goto="save-confirm">save-confirm</button>
+    <button class="state-btn" type="button" data-goto="host-limit-blocked">host-limit-blocked</button>
+    <span class="proto-rail__note">Implementation and E2E tasks cite these <code>data-state</code> values by name (<code>docs/frontend-architecture.md</code> &sect; UX Mockups).</span>
   </div>
 
   <header class="page-header">
@@ -426,6 +445,7 @@ select.control { padding-right: var(--space-6); }
     </div>
   </header>
 
+  <section class="mock-state" data-state="default">
   <p class="state-label">Default state</p>
 
   <div class="workspace-grid--primary">
@@ -692,6 +712,9 @@ select.control { padding-right: var(--space-6); }
   </div>
 
   <!-- ── Confirmation state ────────────────────────────────────────────── -->
+  </section>
+
+  <section class="mock-state" data-state="save-confirm">
   <p class="state-label">Confirmation, shown on save</p>
 
   <div class="dialog-backdrop">
@@ -744,6 +767,9 @@ select.control { padding-right: var(--space-6); }
   </div>
 
   <!-- ── Blocked state ─────────────────────────────────────────────────── -->
+  </section>
+
+  <section class="mock-state" data-state="host-limit-blocked">
   <p class="state-label">When a value will not fit the host</p>
 
   <div class="workspace-grid--primary">
@@ -809,6 +835,7 @@ select.control { padding-right: var(--space-6); }
       </article>
     </aside>
   </div>
+  </section>
 </div>
 
 <script>
@@ -983,5 +1010,22 @@ select.control { padding-right: var(--space-6); }
   });
 
   render();
+
+  // State switcher. `all` keeps the stacked reading; a named value isolates one
+  // block so a task or an E2E spec can cite it unambiguously by name.
+  Array.prototype.forEach.call(document.querySelectorAll('.state-btn'), function (btn) {
+    btn.addEventListener('click', function () {
+      var name = btn.getAttribute('data-goto');
+      if (name === 'all') {
+        document.body.removeAttribute('data-state');
+      } else {
+        document.body.setAttribute('data-state', name);
+      }
+      Array.prototype.forEach.call(document.querySelectorAll('.state-btn'), function (other) {
+        other.setAttribute('aria-pressed', String(other === btn));
+      });
+    });
+  });
+
 })();
 </script>
