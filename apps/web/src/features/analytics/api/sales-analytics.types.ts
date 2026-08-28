@@ -28,6 +28,30 @@ export interface DailyTrendPoint {
   orderCount: number;
 }
 
+/**
+ * Sales-query vocabulary for ADR-064's two conversion modes — distinct from
+ * the Analytics Settings `RateBasis` (`'current' | 'order-date'`,
+ * `analytics-settings.types.ts`), which is a saved operator preference, not
+ * a request parameter. There is no FE mapper between the two yet — #2473
+ * (the settings dialog) is where that reconciliation belongs, once the
+ * dialog actually needs to turn a saved preference into a query param.
+ */
+export const DISPLAY_CURRENCY_RATE_BASIS_VALUES = ['current-rate', 'order-date'] as const;
+export type DisplayCurrencyRateBasis = (typeof DISPLAY_CURRENCY_RATE_BASIS_VALUES)[number];
+
+/**
+ * Mirrors `DisplayCurrencyConversionDto` (ADR-064). Present on the headline
+ * and per-channel figures only when the request carried a `displayCurrency`.
+ * `convertedRevenue: null` is the explicit "couldn't get a rate" state — see
+ * `resolveConvertNoteState` in `../lib/display-currency.lib.ts`.
+ */
+export interface DisplayCurrencyConversion {
+  displayCurrency: string;
+  rateBasis: DisplayCurrencyRateBasis;
+  convertedRevenue: number | null;
+  unresolvedNativeCurrencies: string[];
+}
+
 export interface SalesAnalyticsHeadline {
   /** `SUM(reportingTotalAmount)` over stamped, non-cancelled orders — expressed in `currency`. */
   revenue: number;
@@ -68,6 +92,8 @@ export interface SalesAnalyticsHeadline {
   netExcludedCount: number;
   /** Native-currency sum for `netExcludedCount` — informational only, may mix currencies. */
   netExcludedValue: number;
+  /** Present only when the request carried a `displayCurrency` (#2472, ADR-064). */
+  displayCurrencyConversion?: DisplayCurrencyConversion;
 }
 
 export interface ChannelSalesAnalytics {
@@ -97,6 +123,8 @@ export interface ChannelSalesAnalytics {
   trend: DailyTrendPoint[];
   /** `false` when this channel's oldest ingested order postdates the requested range start. */
   coverageComplete: boolean;
+  /** Same meaning as {@link SalesAnalyticsHeadline.displayCurrencyConversion}, scoped to this channel. */
+  displayCurrencyConversion?: DisplayCurrencyConversion;
 }
 
 export interface SalesAndChannelAnalytics {
@@ -110,4 +138,8 @@ export interface SalesAnalyticsFilters {
   /** Range end, inclusive, `yyyy-mm-dd` — converted to an exclusive instant before the request is sent, see `sales-analytics.api.ts`. */
   to: string;
   sourceConnectionId?: string;
+  /** ISO-4217 code to convert into (#2472, ADR-064). Omit for the reporting-currency (native) view. */
+  displayCurrency?: string;
+  /** Required together with `displayCurrency`; ignored when `displayCurrency` is absent. */
+  rateBasis?: DisplayCurrencyRateBasis;
 }
