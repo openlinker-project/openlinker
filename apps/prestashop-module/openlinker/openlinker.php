@@ -1517,6 +1517,7 @@ class OpenLinker extends CarrierModule
         Configuration::deleteByName('OPENLINKER_CRON_LAST_RUN_AT');
         Configuration::deleteByName('OPENLINKER_CRON_LAST_RUN_SOURCE');
         Configuration::deleteByName('OPENLINKER_REPLAY_GUARD_DEGRADED_AT');
+        Configuration::deleteByName('OPENLINKER_REPLAY_GUARD_DEGRADED_ERROR');
         Configuration::deleteByName(self::DYNAMIC_CARRIER_CONFIG_KEY);
         // Retired in 1.3.0; still deleted so an install that predates the
         // upgrade does not leave the row behind.
