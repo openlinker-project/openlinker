@@ -240,3 +240,15 @@ What #1134 still owns after this:
   as the shop sees them;
 * burst behaviour against the hand-rolled retry and backoff in the adapter
   HTTP clients.
+
+## Report set
+
+Read them in order; each states what it did not establish.
+
+| Report | Question it answers |
+|---|---|
+| `results-A-2026-08-27.md` | pre-change baseline |
+| `results-B-2026-08-27.md` | the adapter fix alone |
+| `results-C-2026-08-27.md` | the whole epic against the baseline (#2625) |
+| `results-D-2026-08-28.md` | does it hold at 100 000 products (#2644) |
+| `results-E-2026-08-28.md` | the epic as it now stands, plus live deletion and the settings (#2657) |
