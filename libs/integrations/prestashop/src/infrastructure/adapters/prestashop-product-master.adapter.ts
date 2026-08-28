@@ -27,6 +27,7 @@ import type {
   PrestashopCombination,
 } from '../mappers/prestashop.mapper.interface';
 import type { PrestashopConnectionConfig } from '@openlinker/integrations-prestashop';
+import type { PrestashopSort } from '../http/prestashop-query.builder';
 import {
   PrestashopApiException,
   PrestashopNotSupportedException,
@@ -38,7 +39,13 @@ import type { PrestashopFeatureResolver } from '../provisioners/prestashop-featu
 import type { PrestashopCategoryPathResolver } from '../provisioners/prestashop-category-path.resolver';
 import type { OptionValueResolver } from '../../domain/types/prestashop-product-option.types';
 import type { PrestashopTaxRateResolver } from '../provisioners/prestashop-tax-rate.resolver';
+import {
+  PRESTASHOP_UNNARROWED_MAX_ROWS,
+  readAllPrestashopResourcePages,
+} from '../http/prestashop-paged-read';
+import { PrestashopOrFilterIgnoredException } from '../../domain/exceptions/prestashop-or-filter-ignored.exception';
 import type {
+  BulkProductReader,
   ProductTaxRateReader,
   ReadProductTaxRateInput,
   TaxRateResolution,
@@ -49,8 +56,43 @@ import type {
  *
  * Read-only adapter for PrestaShop product catalog operations.
  */
-export class PrestashopProductMasterAdapter implements ProductMasterPort, ProductTaxRateReader {
+export class PrestashopProductMasterAdapter
+  implements ProductMasterPort, ProductTaxRateReader, BulkProductReader
+{
   private readonly logger = new Logger(PrestashopProductMasterAdapter.name);
+
+  /**
+   * One `GET /api/products/{id}` per product per adapter instance (#2592).
+   *
+   * The catalogue sweep read the same product resource three times per SKU:
+   * `getProduct` and `getProductVariants` each fetched it, and
+   * `readProductTaxRate` made the tax resolver fetch it a third time through
+   * its own code path. Measured at exactly 3.00 fetches for 100 of 100
+   * products, twice.
+   *
+   * An adapter instance lives for one capability resolution, i.e. one child
+   * job, which is the right scope: within a job those reads want the same
+   * snapshot, and the next job builds a new adapter and re-reads. A
+   * longer-lived cache would serve a stale product to a later sync.
+   *
+   * Keyed by the PrestaShop id, since one instance can be asked about several
+   * products through `getProducts`.
+   */
+  private readonly productResourceCache = new Map<string, Promise<PrestashopProduct>>();
+
+  /**
+   * Combinations per PrestaShop product id, when {@link prefetchProducts} read
+   * them in bulk (#2593).
+   *
+   * Separate from {@link productResourceCache} because it is populated only by
+   * the bulk path: `getProductVariants` on its own has one product to ask about
+   * and gains nothing from a memo. An ABSENT key means "not prefetched" and
+   * falls through to the per-product read, so a product the bulk read did not
+   * cover behaves exactly as before - which is why an empty array must be
+   * stored for a product that genuinely has no combinations, rather than left
+   * out.
+   */
+  private readonly combinationsCache = new Map<string, PrestashopCombination[]>();
 
   constructor(
     private readonly httpClient: IPrestashopWebserviceClient,
@@ -76,6 +118,31 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort, Produc
     // which is the honest answer for a shop whose resolver was never wired.
     private readonly taxRateResolver?: PrestashopTaxRateResolver
   ) {}
+
+  /**
+   * `GET /api/products/{id}`, served from {@link productResourceCache} when
+   * this instance has already asked for it.
+   *
+   * The PROMISE is cached rather than its value, so two concurrent callers
+   * within one job share a single request instead of racing to issue two.
+   * A rejection is evicted, so a transient failure does not pin an error for
+   * the rest of the job. A synchronous throw out of `getResource` never reaches
+   * the `set` below, so nothing poisoned enters the cache on that path either.
+   */
+  private async fetchProductResource(externalId: string): Promise<PrestashopProduct> {
+    const cached = this.productResourceCache.get(externalId);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const pending = this.httpClient
+      .getResource<PrestashopProduct>('products', externalId)
+      .catch((error: unknown) => {
+        this.productResourceCache.delete(externalId);
+        throw error;
+      });
+    this.productResourceCache.set(externalId, pending);
+    return pending;
+  }
 
   /**
    * PrestaShop keys tax on the **product**, through
@@ -128,11 +195,23 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort, Produc
       throw new MasterProductNotFoundError(input.productId, this.connection.id);
     }
 
+    // Hand the resolver the product this instance has already fetched (#2592):
+    // all it reads is `id_tax_rules_group`, and re-fetching cost one extra
+    // `GET /api/products/{id}` per SKU on every catalogue sweep. A failure here
+    // is not fatal to the rate read - the resolver falls back to fetching it
+    // itself, which is exactly the pre-#2592 path. That fallback is not free:
+    // the shop is asked for the same product twice, once here and once in the
+    // resolver. Paying it keeps the resolver's own `transportUnknown` evidence,
+    // which is what the re-raise below reports, so a swallowed failure here
+    // never turns into a silent "no rate" on the catalogue row.
+    const preloaded = await this.fetchProductResource(externalId).catch(() => undefined);
+
     const resolution = await this.taxRateResolver.resolveProductTaxRate(
       externalId,
       undefined,
       this.connection.id,
-      this.httpClient
+      this.httpClient,
+      preloaded
     );
 
     if (resolution.kind === 'resolved') {
@@ -184,10 +263,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort, Produc
       }
 
       // Fetch from PrestaShop
-      const prestashopProduct = await this.httpClient.getResource<PrestashopProduct>(
-        'products',
-        prestashopId.externalId
-      );
+      const prestashopProduct = await this.fetchProductResource(prestashopId.externalId);
 
       // Map to OpenLinker schema
       const langIdValue: number = this.resolveLangId();
@@ -302,6 +378,135 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort, Produc
     }
   }
 
+  /**
+   * Hydrate a page of products in a handful of requests instead of a handful
+   * per product (#2593, `BulkProductReader`).
+   *
+   * Two bulk reads, both already implemented and both cheap because PrestaShop
+   * answers `display=full` for a whole page: the products themselves through
+   * the existing `getProducts` - which also batch-creates every identifier
+   * mapping the page needs in one round trip - and the combinations of all of
+   * them in one filtered collection read.
+   *
+   * Best-effort by contract. A failure logs and returns, leaving the caches
+   * empty, so the per-product loop behind it reads exactly what it read before
+   * this method existed. That is the only reason it is safe to put the whole
+   * page's read behind one call: the fast path may vanish without the sync
+   * losing a guarantee.
+   */
+  async prefetchProducts(externalIds: readonly string[]): Promise<void> {
+    if (externalIds.length === 0) {
+      return;
+    }
+
+    try {
+      // The mapped result is discarded - the value is in the two caches it
+      // seeds and the identifier mappings it creates. `limit` is the id count
+      // because the WebService page size would otherwise cut the answer at 100
+      // and leave the tail unwarmed, which reads as a slower sweep rather than
+      // as an error.
+      await this.getProducts({ externalIds: [...externalIds], limit: externalIds.length });
+      await this.prefetchCombinations(externalIds);
+    } catch (error) {
+      this.logger.warn(
+        `PrestaShop bulk product prefetch failed for ${String(externalIds.length)} product(s) ` +
+          `(connection: ${this.connection.id}); falling back to per-product reads: ` +
+          `${(error as Error).message}`
+      );
+    }
+  }
+
+  /**
+   * One filtered `combinations` read for the whole page.
+   *
+   * A product with no combinations gets an explicit empty array, because an
+   * absent key means "not prefetched" and would send `getProductVariants`
+   * back to the shop for the simple products - the majority on an SMB
+   * catalogue, and the ones this is cheapest for.
+   *
+   * The empty array is seeded only for ids the products read itself returned,
+   * and only from a response proven to be ABOUT those ids. An empty array is a
+   * positive claim that the product has no variants, and acting on a wrong one
+   * stales every real variant and zeroes its offers (#1689). An absent key is
+   * the honest answer for an id the shop did not confirm, and costs one
+   * per-product read.
+   *
+   * Confirming the PRODUCT exists says nothing about whether the COMBINATIONS
+   * filter was applied, so the response is checked in its own right: a row for
+   * an id nobody asked for means the condition was dropped and the collection
+   * came back whole - the #2616 shape, already observed on `stock_availables`
+   * in #2598. Every such row would otherwise be discarded as unrequested and
+   * every requested product left holding `[]`, i.e. a whole page of products
+   * each claiming to have no variants. Refusing is the only safe reading; the
+   * caller's catch then falls back to per-product reads.
+   *
+   * Nothing is seeded before the check, so a refusal leaves the cache untouched
+   * rather than half-seeded.
+   *
+   * The completeness half of the sibling guard (`assertOrFilterHonoured`) is
+   * deliberately NOT applied here: a product with no combinations is the
+   * majority case on an SMB catalogue, so a missing id is the expected answer
+   * rather than evidence of a dropped filter.
+   */
+  private async prefetchCombinations(externalIds: readonly string[]): Promise<void> {
+    const combinations = await readAllPrestashopResourcePages<PrestashopCombination>(
+      this.httpClient,
+      'combinations',
+      { custom: { id_product: externalIds.map(String) } },
+      {
+        connectionId: this.connection.id,
+        detail: `id_product in ${String(externalIds.length)} product(s)`,
+        // A page of products can legitimately carry more combinations than a
+        // single product ever would, so the narrowed budget is too tight here.
+        maxRows: PRESTASHOP_UNNARROWED_MAX_ROWS,
+      }
+    );
+
+    const requested = new Set(externalIds.map(String));
+    for (const combination of combinations) {
+      const answeredId = String(combination.id_product ?? '');
+      if (!requested.has(answeredId)) {
+        throw new PrestashopOrFilterIgnoredException(
+          this.connection.id,
+          'combinations',
+          'id_product',
+          [...requested],
+          `it returned a combination of product ${answeredId === '' ? '(unreadable)' : answeredId}, ` +
+            `which was not asked for`
+        );
+      }
+    }
+
+    for (const externalId of externalIds) {
+      const key = String(externalId);
+      if (this.productResourceCache.has(key)) {
+        this.combinationsCache.set(key, []);
+      }
+    }
+    for (const combination of combinations) {
+      const productId = String(combination.id_product ?? '');
+      const bucket = this.combinationsCache.get(productId);
+      if (bucket !== undefined) {
+        bucket.push(combination);
+      }
+    }
+  }
+
+  /**
+   * Store each hydrated row against the id its per-product read would use.
+   *
+   * The promise, not the value, so the shape matches what
+   * `fetchProductResource` stores and reads.
+   */
+  private seedProductResourceCache(products: readonly PrestashopProduct[]): void {
+    for (const product of products) {
+      const externalId = String(product.id ?? '');
+      if (externalId.length > 0) {
+        this.productResourceCache.set(externalId, Promise.resolve(product));
+      }
+    }
+  }
+
   async getProducts(filters?: ProductFilters): Promise<Product[]> {
     this.logger.debug(`Getting products with filters (connection: ${this.connection.id})`);
 
@@ -319,6 +524,13 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort, Produc
     if (prestashopProducts.length === 0) {
       return [];
     }
+
+    // Every row here is a fully hydrated product resource, i.e. exactly what
+    // `fetchProductResource` would go and fetch one at a time. Seeding the memo
+    // is what turns this read into a saving rather than an addition (#2593):
+    // without it the sweep paid for the bulk read AND then re-read every product
+    // through the per-product path.
+    this.seedProductResourceCache(prestashopProducts);
 
     // Batch identifier mapping
     const mappingRequests = prestashopProducts.map((p) => ({
@@ -357,9 +569,16 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort, Produc
       `Listing external product IDs (connection: ${this.connection.id}, limit: ${String(filters?.limit)}, offset: ${String(filters?.offset)})`
     );
 
+    // Sorted, always (#2627 review). This is the one read `runBoundedSweep`
+    // pages across TICKS - a 100k catalogue spans ~200 of them - so an unsorted
+    // offset read has no tiling guarantee over a window of days: a product
+    // inserted or deleted mid-cycle shifts the rows, and a live product sitting
+    // at a page boundary is returned by no tick and never syncs for the whole
+    // cycle. It is invisible to every guard the batched path added, because it
+    // never enters a batch.
     const raw = await this.httpClient.listResources<{ id: string | number }>(
       'products',
-      { display: '[id]' },
+      { display: '[id]', sort: ['id_ASC'] },
       filters?.limit,
       filters?.offset
     );
@@ -392,20 +611,23 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort, Produc
     }
 
     // Fetch product for barcode fallback / synthetic variant
-    const prestashopProduct = await this.httpClient.getResource<PrestashopProduct>(
-      'products',
-      prestashopProductId.externalId
-    );
+    const prestashopProduct = await this.fetchProductResource(prestashopProductId.externalId);
 
-    // Fetch combinations from PrestaShop
-    const combinations = await this.httpClient.listResources<PrestashopCombination>(
-      'combinations',
-      {
-        custom: {
-          id_product: prestashopProductId.externalId,
-        },
-      }
-    );
+    // Fetch combinations from PrestaShop, unless the bulk prefetch already read
+    // them for this page (#2593).
+    // Paged: a product with more than a page of combinations reported only the
+    // first page, and the missing variants read as not existing (#2608).
+    const combinations =
+      this.combinationsCache.get(prestashopProductId.externalId) ??
+      (await readAllPrestashopResourcePages<PrestashopCombination>(
+        this.httpClient,
+        'combinations',
+        { custom: { id_product: prestashopProductId.externalId } },
+        {
+          connectionId: this.connection.id,
+          detail: `id_product=${prestashopProductId.externalId}`,
+        }
+      ));
 
     if (combinations.length === 0) {
       const syntheticExternalId = `product:${prestashopProductId.externalId}`;
@@ -696,10 +918,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort, Produc
       throw error;
     }
 
-    const prestashopProduct = await this.httpClient.getResource<PrestashopProduct>(
-      'products',
-      prestashopId.externalId
-    );
+    const prestashopProduct = await this.fetchProductResource(prestashopId.externalId);
 
     const path = await this.resolveCategoryBreadcrumb(prestashopProduct, this.resolveLangId());
 
@@ -721,7 +940,18 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort, Produc
   async getCategories(): Promise<Category[]> {
     this.logger.debug(`Fetching all categories (connection: ${this.connection.id})`);
 
-    const raw = await this.httpClient.listResources<Record<string, unknown>>('categories');
+    // Shop-wide enumeration, so it gets the wide page budget: a large catalogue
+    // legitimately runs to tens of thousands of category rows, and a category
+    // missing from this list is unmappable with no error anywhere (#2608).
+    const raw = await readAllPrestashopResourcePages<Record<string, unknown>>(
+      this.httpClient,
+      'categories',
+      undefined,
+      {
+        connectionId: this.connection.id,
+        maxRows: PRESTASHOP_UNNARROWED_MAX_ROWS,
+      }
+    );
 
     const langId = this.getLangId();
 
@@ -775,16 +1005,26 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort, Produc
    */
   private buildPrestashopFilters(filters?: ProductFilters): {
     ids?: (string | number)[];
+    sort?: PrestashopSort[];
     custom?: Record<string, string | number | (string | number)[]>;
   } {
     if (!filters) {
-      return {};
+      return { sort: ['id_ASC'] };
     }
 
     const prestashopFilters: {
       ids?: (string | number)[];
+      sort?: PrestashopSort[];
       custom?: Record<string, string | number | (string | number)[]>;
     } = {};
+
+    if (filters.externalIds && filters.externalIds.length > 0) {
+      prestashopFilters.ids = [...filters.externalIds];
+    }
+
+    // Primary-key order, so a caller paging this read tiles the catalogue
+    // instead of trusting whatever order MySQL returns.
+    prestashopFilters.sort = ['id_ASC'];
 
     // Status filter
     if (filters.status) {

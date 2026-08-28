@@ -6,7 +6,8 @@
  * 1. It enumerates OL's OWN `Product` identifier mappings — not a master catalog.
  *    This is the inversion the whole pass exists for: a catalog enumeration cannot
  *    reveal a deletion, because the deleted record simply stops appearing.
- * 2. It enqueues the EXISTING `master.product.syncByExternalId`, so the adapter's
+ * 2. It enqueues `master.product.syncFromSweep` - the same handler as the
+ *    webhook child, under the sweep-triggered type (#2594) - so the adapter's
  *    404 stays the authority and this handler never writes staleness itself.
  * 3. Synthetic variant ids are filtered, and the cursor still advances by rows READ.
  * 4. A mapping set larger than one budget resumes across ticks and then completes.
@@ -135,7 +136,7 @@ describe('Master Product Reconcile End-to-End Integration (#2222)', () => {
     await runReconcile(connection.id);
 
     const children = enqueueSpy.mock.calls.filter(
-      ([req]) => req.jobType === 'master.product.syncByExternalId'
+      ([req]) => req.jobType === 'master.product.syncFromSweep'
     );
     expect(children).toHaveLength(externalIds.length);
     expect(
@@ -145,7 +146,7 @@ describe('Master Product Reconcile End-to-End Integration (#2222)', () => {
     // The authority stays with the child. This pass must never enqueue anything
     // else — in particular nothing that writes staleness directly.
     const enqueuedTypes = new Set(enqueueSpy.mock.calls.map(([req]) => req.jobType));
-    expect(enqueuedTypes).toEqual(new Set(['master.product.syncByExternalId']));
+    expect(enqueuedTypes).toEqual(new Set(['master.product.syncFromSweep']));
   });
 
   it('skips synthetic variant mappings but still advances the cursor past them', async () => {
@@ -163,7 +164,7 @@ describe('Master Product Reconcile End-to-End Integration (#2222)', () => {
     await runReconcile(connection.id, { pageLimit: 3 });
 
     expect(
-      enqueueSpy.mock.calls.filter(([req]) => req.jobType === 'master.product.syncByExternalId')
+      enqueueSpy.mock.calls.filter(([req]) => req.jobType === 'master.product.syncFromSweep')
     ).toHaveLength(0);
 
     const cursor = await cursors.getCursor(
@@ -195,7 +196,7 @@ describe('Master Product Reconcile End-to-End Integration (#2222)', () => {
 
     const seen = new Set(
       enqueueSpy.mock.calls
-        .filter(([req]) => req.jobType === 'master.product.syncByExternalId')
+        .filter(([req]) => req.jobType === 'master.product.syncFromSweep')
         .map(([req]) => (req.payload as { externalId: string }).externalId)
     );
     expect([...seen].sort()).toEqual([...externalIds].sort());
@@ -210,7 +211,7 @@ describe('Master Product Reconcile End-to-End Integration (#2222)', () => {
     await runReconcile(connection.id);
 
     expect(
-      enqueueSpy.mock.calls.filter(([req]) => req.jobType === 'master.product.syncByExternalId')
+      enqueueSpy.mock.calls.filter(([req]) => req.jobType === 'master.product.syncFromSweep')
     ).toHaveLength(0);
   });
 });

@@ -157,7 +157,7 @@ describe('MasterInventorySyncService', () => {
           locationId: 'loc-1',
           updatedAt: adapterInventory.updatedAt,
         })
-      );
+      , connectionId);
       expect(result).toEqual({
         internalProductId,
         itemsWritten: 1,
@@ -196,11 +196,11 @@ describe('MasterInventorySyncService', () => {
       expect(inventoryService.setInventory).toHaveBeenNthCalledWith(
         1,
         expect.objectContaining({ productVariantId: 'ol_variant_a', availableQuantity: 9 })
-      );
+      , connectionId);
       expect(inventoryService.setInventory).toHaveBeenNthCalledWith(
         2,
         expect.objectContaining({ productVariantId: 'ol_variant_b', availableQuantity: 5 })
-      );
+      , connectionId);
       expect(result).toEqual({
         internalProductId,
         itemsWritten: 2,
@@ -233,7 +233,7 @@ describe('MasterInventorySyncService', () => {
           availableQuantity: 15,
           reservedQuantity: 5,
         })
-      );
+      , connectionId);
       expect(result.availableQuantity).toBe(15);
       expect(result.reservedQuantity).toBe(5);
     });
@@ -271,7 +271,7 @@ describe('MasterInventorySyncService', () => {
       );
       expect(inventoryService.setInventory).toHaveBeenCalledWith(
         expect.objectContaining({ id: 'preserved-inv-id' })
-      );
+      , connectionId);
     });
 
     it('should mint a fresh inventory item ID when no existing record matches', async () => {
@@ -299,7 +299,7 @@ describe('MasterInventorySyncService', () => {
           productVariantId: null,
           locationId: null,
         })
-      );
+      , connectionId);
     });
 
     it('should default updatedAt to the current Date when the adapter omits it', async () => {
@@ -319,7 +319,7 @@ describe('MasterInventorySyncService', () => {
 
       expect(inventoryService.setInventory).toHaveBeenCalledWith(
         expect.objectContaining({ updatedAt: expect.any(Date) })
-      );
+      , connectionId);
     });
 
     it('should propagate identifierMapping.getOrCreateInternalId failures and skip downstream calls', async () => {
@@ -328,7 +328,10 @@ describe('MasterInventorySyncService', () => {
 
       await expect(service.syncFromMasterByExternalId(connectionId, externalId)).rejects.toBe(boom);
 
-      expect(integrationsService.getCapabilityAdapter).not.toHaveBeenCalled();
+      // The adapter is resolved first since #2648 (the batch path resolves it
+      // once for the whole page and hands it to each iteration), so a mapping
+      // failure now costs one adapter construction. Everything downstream of
+      // the mapping is still skipped, which is what this test is about.
       expect(inventoryAdapter.listInventory).not.toHaveBeenCalled();
       expect(inventoryService.setInventory).not.toHaveBeenCalled();
     });
@@ -771,7 +774,7 @@ describe('MasterInventorySyncService', () => {
       );
       expect(inventoryService.setInventory).toHaveBeenCalledWith(
         expect.objectContaining({ productVariantId: 'ol_variant_a' })
-      );
+      , connectionId);
     });
 
     it('keeps inventory product-level (null) when the product has multiple variants', async () => {
@@ -785,7 +788,7 @@ describe('MasterInventorySyncService', () => {
 
       expect(inventoryService.setInventory).toHaveBeenCalledWith(
         expect.objectContaining({ productVariantId: null })
-      );
+      , connectionId);
     });
 
     it('uses an adapter-supplied variantId verbatim without resolving variants', async () => {
@@ -798,7 +801,7 @@ describe('MasterInventorySyncService', () => {
       expect(productsService.getVariantsByProductId).not.toHaveBeenCalled();
       expect(inventoryService.setInventory).toHaveBeenCalledWith(
         expect.objectContaining({ productVariantId: 'ol_variant_adapter' })
-      );
+      , connectionId);
     });
   });
 
@@ -870,6 +873,112 @@ describe('MasterInventorySyncService', () => {
         masterDeleted: true,
         pruneSkipped: true,
       });
+    });
+  });
+
+  describe('syncFromMasterByExternalIds (#2648)', () => {
+    const inventoryFor = (productId: string): InventoryPortInterface => ({
+      id: `adapter-inv-${productId}`,
+      productId,
+      variantId: 'var-1',
+      quantity: 4,
+      reserved: 0,
+      available: 4,
+      updatedAt: new Date('2026-08-01T10:00:00Z'),
+    });
+
+    beforeEach(() => {
+      identifierMapping.getOrCreateInternalId = jest
+        .fn()
+        .mockImplementation((_type: string, id: string) => Promise.resolve(`ol_product_${id}`));
+      inventoryAdapter.listInventory = jest
+        .fn()
+        .mockImplementation((productId: string) => Promise.resolve([inventoryFor(productId)]));
+    });
+
+    it('should resolve the adapter ONCE for the whole page', async () => {
+      // This is the whole mechanism: a per-product resolution builds a fresh
+      // adapter and throws away whatever the last one cached.
+      await service.syncFromMasterByExternalIds(connectionId, ['a', 'b', 'c']);
+
+      expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledTimes(1);
+      expect(inventoryAdapter.listInventory).toHaveBeenCalledTimes(3);
+    });
+
+    it('should report a per-product failure instead of failing the page', async () => {
+      inventoryAdapter.listInventory = jest
+        .fn()
+        .mockImplementation((productId: string) =>
+          productId === 'ol_product_b'
+            ? Promise.reject(new Error('read timeout'))
+            : Promise.resolve([inventoryFor(productId)])
+        );
+
+      const result = await service.syncFromMasterByExternalIds(connectionId, ['a', 'b', 'c']);
+
+      expect(result.results).toHaveLength(2);
+      expect(result.failures).toEqual([{ externalId: 'b', message: 'read timeout' }]);
+    });
+
+    it('should warm a master declaring the bulk-read rung, with the internal ids', async () => {
+      const prefetchInventory = jest.fn().mockResolvedValue(undefined);
+      integrationsService.getCapabilityAdapter = jest
+        .fn()
+        .mockResolvedValue({ ...inventoryAdapter, prefetchInventory });
+
+      const result = await service.syncFromMasterByExternalIds(connectionId, ['a', 'b']);
+
+      expect(prefetchInventory).toHaveBeenCalledWith(['ol_product_a', 'ol_product_b']);
+      expect(result.prefetched).toBe(true);
+    });
+
+    it('should not warm a master that declares nothing, and report so', async () => {
+      const result = await service.syncFromMasterByExternalIds(connectionId, ['a']);
+
+      expect(result.prefetched).toBe(false);
+      expect(result.results).toHaveLength(1);
+    });
+
+    it('should degrade to the per-product reads when the prefetch throws', async () => {
+      const prefetchInventory = jest.fn().mockRejectedValue(new Error('shop down'));
+      integrationsService.getCapabilityAdapter = jest
+        .fn()
+        .mockResolvedValue({ ...inventoryAdapter, prefetchInventory });
+
+      const result = await service.syncFromMasterByExternalIds(connectionId, ['a', 'b']);
+
+      // Invisible except in request count: the page still synced, and reports
+      // honestly that it was not warmed.
+      expect(result.prefetched).toBe(false);
+      expect(result.results).toHaveLength(2);
+      expect(result.failures).toHaveLength(0);
+    });
+
+    it('should keep the #1904 rival-claimant prune guard per product', async () => {
+      entityClaims.findRivalClaimants = jest.fn().mockResolvedValue(['rival-connection']);
+
+      const result = await service.syncFromMasterByExternalIds(connectionId, ['a', 'b']);
+
+      expect(inventoryService.pruneStaleVariants).not.toHaveBeenCalled();
+      expect(result.results.every((one) => one.pruneSkipped)).toBe(true);
+    });
+
+    it('should keep the #1688 deletion signal per product', async () => {
+      inventoryAdapter.listInventory = jest
+        .fn()
+        .mockImplementation((productId: string) =>
+          productId === 'ol_product_b'
+            ? Promise.reject(new MasterProductNotFoundError(productId, connectionId))
+            : Promise.resolve([inventoryFor(productId)])
+        );
+
+      const result = await service.syncFromMasterByExternalIds(connectionId, ['a', 'b']);
+
+      // A deletion is a RESULT, not a failure - it was handled, the rows were
+      // staled, and the products context was delegated to.
+      expect(result.failures).toHaveLength(0);
+      expect(result.results.filter((one) => one.masterDeleted)).toHaveLength(1);
+      expect(masterProductSync.markProductDeletedAtMaster).toHaveBeenCalledTimes(1);
     });
   });
 });

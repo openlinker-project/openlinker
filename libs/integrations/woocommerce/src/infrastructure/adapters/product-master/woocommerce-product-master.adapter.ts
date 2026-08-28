@@ -52,6 +52,7 @@ import type {
 import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
+import { exceedsAdapterPageSize } from '@openlinker/core/operational-settings';
 import type { IWooCommerceHttpClient } from '../../http/woocommerce-http-client.interface';
 import { WooCommerceHttpResponseException } from '../../http/woocommerce-http-response.exception';
 import type { IWooCommerceProductMapper } from '../../mappers/woocommerce-product.mapper.interface';
@@ -61,6 +62,7 @@ import {
 } from '../../mappers/woocommerce-variant-id';
 import { WooCommerceResourceNotFoundException } from '../../../domain/exceptions/woocommerce-resource-not-found.exception';
 import { WooCommerceDuplicateSkuException } from '../../../domain/exceptions/woocommerce-duplicate-sku.exception';
+import { WooCommerceInvalidArgumentException } from '../../../domain/exceptions/woocommerce-invalid-argument.exception';
 import type {
   WooCommerceProduct,
   WooCommerceProductVariation,
@@ -71,6 +73,27 @@ import type {
   WooCommerceGeneralSetting,
 } from './woocommerce-product.types';
 import { fetchAllPages } from '../../utils/woocommerce-utils';
+
+/**
+ * WooCommerce's REST layer caps `per_page` at 100 on every list endpoint
+ * (#1723). This is a genuine PLATFORM wall, unlike the advisory ceilings in
+ * `OPERATIONAL_SETTING_BOUNDS`: above it the shop does not return a bigger
+ * page, it returns 100 or a 400. It is enforced here, at the point the request
+ * is built, because this is the only place that knows WooCommerce is the
+ * adapter about to send it.
+ *
+ * **It REFUSES; it does not clamp** (#2660 review). Clamping is safe for a read
+ * whose caller inspects the rows it got back, and unsafe for the two callers
+ * this has: `listExternalIds` / `listExternalIdsModifiedSince` feed the worker's
+ * `readPagedIds`, which infers end-of-collection from `batch.length < pageSize`
+ * measured against the size it REQUESTED. A clamped page is always short, so
+ * with `OL_SWEEP_PAGE_SIZE=250` every cycle "completed" after 100 products, the
+ * cursor cleared, and the same first 100 were swept on every tick for ever -
+ * behind a single warn line. Before the clamp existed WP REST answered 400 and
+ * the job failed loudly, which is strictly better; the refusal restores that and
+ * names the setting to change.
+ */
+const WC_MAX_PER_PAGE = 100;
 
 export class WooCommerceProductMasterAdapter
   implements ProductMasterPort, ModifiedProductLister, ProductTaxRateReader
@@ -90,7 +113,7 @@ export class WooCommerceProductMasterAdapter
     this.logger.debug(
       `Listing external product IDs (connection: ${this.connection.id}, limit: ${String(filters?.limit)}, offset: ${String(filters?.offset)})`,
     );
-    const perPage = filters?.limit ?? 100;
+    const perPage = this.resolvePerPage(filters?.limit ?? 100, 'listExternalIds');
     const page =
       filters?.offset !== undefined ? Math.floor(filters.offset / perPage) + 1 : 1;
     const raw = await this.httpClient.get<Array<{ id: number }>>(
@@ -130,12 +153,17 @@ export class WooCommerceProductMasterAdapter
       `Listing external product IDs modified since ${since.toISOString()} ` +
         `(connection: ${this.connection.id}, limit: ${String(limit)}, offset: ${String(offset)})`,
     );
+    const perPage = this.resolvePerPage(limit, 'listExternalIdsModifiedSince');
     // Same derivation as listExternalIds — exact while the caller keeps `offset` a
-    // multiple of `limit`, which the bounded sweep's page loop does.
-    const page = Math.floor(offset / limit) + 1;
+    // multiple of `perPage`, which the bounded sweep's page loop does. Derived
+    // from the size actually sent, which since #2660 IS the requested one: a
+    // request the platform cannot serve is refused rather than narrowed, so the
+    // two can no longer differ (they used to, and the two call sites disagreed
+    // about which to divide by).
+    const page = Math.floor(offset / perPage) + 1;
     const raw = await this.httpClient.get<Array<{ id: number }>>('/wp-json/wc/v3/products', {
       _fields: 'id',
-      per_page: limit,
+      per_page: perPage,
       page,
       modified_after: since.toISOString(),
       dates_are_gmt: true,
@@ -903,6 +931,36 @@ export class WooCommerceProductMasterAdapter
   }
 
   private storeCountry: string | null | undefined;
+
+  /**
+   * Refuse a requested page size WooCommerce will not honour.
+   *
+   * It REFUSES rather than clamping, and the difference is the whole point:
+   * `readPagedIds` infers end-of-collection from a page shorter than the size it
+   * asked for, so a clamped page reads as the end of the catalogue - a cycle
+   * "completed" after 100 products, the cursor cleared, and the same first 100
+   * swept on every tick for ever behind one warn line.
+   *
+   * **The message names the control that actually feeds this value** (#2627
+   * review). The enumeration page size comes from `getPageSize()` in the sweep
+   * handler, i.e. `OL_PRODUCT_SYNC_PAGE_SIZE`, which is env-only and is NOT on
+   * `/settings/sync-pacing`. The earlier wording sent the operator to lower the
+   * "sweep page size" on that page - which is the batch child's `groupSize`, a
+   * different value with a different ceiling - so following the instruction
+   * changed nothing and the sweep kept failing.
+   */
+  private resolvePerPage(requested: number, operation: string): number {
+    if (exceedsAdapterPageSize(requested, WC_MAX_PER_PAGE)) {
+      throw new WooCommerceInvalidArgumentException(
+        `WooCommerce accepts at most ${String(WC_MAX_PER_PAGE)} products per request; ` +
+          `${operation} asked for ${String(requested)} (connection: ${this.connection.id}). ` +
+          `Set OL_PRODUCT_SYNC_PAGE_SIZE to ${String(WC_MAX_PER_PAGE)} or below on the worker. ` +
+          `This is NOT the "products per request" control on /settings/sync-pacing, which sets a ` +
+          `different value.`,
+      );
+    }
+    return requested;
+  }
 }
 
 /**

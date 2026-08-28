@@ -21,6 +21,8 @@ export interface StockAtRiskItem {
   connectionId: string;
   masterStock: number;
   stockSafetyBuffer: number;
+  /** 0 means the zero threshold is off on that connection. */
+  stockZeroThreshold: number;
 }
 
 /**

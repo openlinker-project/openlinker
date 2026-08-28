@@ -17,6 +17,7 @@ import { MarketplaceFulfillmentStatusSyncHandler } from '../marketplace-fulfillm
 
 describe('MarketplaceFulfillmentStatusSyncHandler', () => {
   let handler: MarketplaceFulfillmentStatusSyncHandler;
+  let syncLock: { acquire: jest.Mock; release: jest.Mock; extend: jest.Mock };
   type FulfillmentStatusSyncServiceLike = { sync: jest.Mock };
   let fulfillmentStatusSync: FulfillmentStatusSyncServiceLike;
   let cursorRepository: jest.Mocked<ConnectionCursorRepositoryPort>;
@@ -39,9 +40,19 @@ describe('MarketplaceFulfillmentStatusSyncHandler', () => {
       delete: jest.fn(),
     } as unknown as jest.Mocked<ConnectionCursorRepositoryPort>;
 
+    // Uncontended lock and default TTL - the sweep's own exclusivity (#2594
+    // review) is asserted separately.
+    syncLock = {
+      acquire: jest.fn().mockResolvedValue('lock-token'),
+      release: jest.fn().mockResolvedValue(true),
+      extend: jest.fn().mockResolvedValue(true),
+    };
+
     handler = new MarketplaceFulfillmentStatusSyncHandler(
       fulfillmentStatusSync as never,
       cursorRepository,
+      syncLock as never,
+      { get: jest.fn().mockReturnValue(undefined) } as never
     );
   });
 

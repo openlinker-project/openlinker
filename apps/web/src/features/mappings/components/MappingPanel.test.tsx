@@ -192,6 +192,27 @@ describe('MappingPanel', () => {
       expect(styledSuffixes).toHaveLength(1);
     });
 
+    it('shows what a derived option reads as (#2607)', () => {
+      // A PrestaShop order state carries the neutral status its own flags and
+      // label add up to. This cue is the operator's only view of it, so a
+      // state that reads as something unexpected is visible before an order
+      // lands in it.
+      render(
+        <MappingPanel
+          {...baseProps}
+          sourceOptions={[ALLEGRO_PACZKOMAT]}
+          targetOptions={[{ value: '24', label: 'Anulowane', derivedValue: 'cancelled' }]}
+          savedRows={[{ sourceValue: ALLEGRO_PACZKOMAT.value, targetValue: '24' }]}
+          onSave={vi.fn()}
+        />,
+      );
+
+      const styled = screen
+        .getAllByText(/reads as cancelled/)
+        .filter((el) => el.classList.contains('mapping-option__derived-suffix'));
+      expect(styled).toHaveLength(1);
+    });
+
     it('does NOT add the dynamic suffix to static options', () => {
       // Regression guard: only `kind === 'dynamic'` triggers the cue. A
       // static option with no `kind` field stays bare.

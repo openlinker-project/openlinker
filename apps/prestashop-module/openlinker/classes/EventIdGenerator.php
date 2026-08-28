@@ -2,13 +2,22 @@
 /**
  * Event ID Generator
  *
- * Generates stable, unique event IDs for webhook events. Event IDs must be
- * stable across retries (generate once when enqueueing, reuse for all attempts).
+ * Produces the two identifiers an outbox row carries:
  *
- * Uses a configurable time window (deduplication window) to prevent duplicate
- * events when the same hook fires multiple times rapidly. The time window is
- * rounded to the nearest window boundary (e.g., if window is 1 minute, events
- * within the same minute generate the same event ID).
+ * - `generateEventId()` - a globally unique id for one delivery. It is stable
+ *   across retries because it is generated once at enqueue time and stored on
+ *   the row, never recomputed per attempt.
+ * - `generateDedupKey()` - a deterministic key over the event's subject, used to
+ *   coalesce a burst of identical hook fires into one undelivered row.
+ *
+ * The event id used to embed a rounded time window so that a burst of hook
+ * fires collapsed onto one id. That coupled coalescing to a clock instead of to
+ * queue state: because the unique index covered rows that had already been
+ * delivered, and nothing removed them, a second change to the same product
+ * inside the window was silently dropped once the cron had already sent the
+ * first one (#2603). Coalescing is now expressed on `dedup_key`, which the
+ * repository clears the moment a row leaves the queue, so a change that happens
+ * after a delivery always gets a row of its own whatever the cron cadence.
  *
  * @module prestashop-module/classes
  * @see {@link OutboxRepository} for event enqueueing
@@ -17,23 +26,12 @@
 class EventIdGenerator
 {
     /**
-     * Generate a unique event ID
+     * Generate a globally unique event ID
      *
-     * Generates a deterministic event ID based on the event properties and a configurable
-     * time window (deduplication window). This ensures that if the same hook fires multiple
-     * times within the same time window for the same object (common in PrestaShop), it will
-     * generate the same event ID, preventing duplicate events via the unique constraint on event_id.
-     *
-     * Event ID format: Deterministic hash based on:
-     *   - provider + connectionId + eventType + objectType + externalId + timeWindow
-     *   where timeWindow is the timestamp rounded to the nearest deduplication window boundary
-     *
-     * This approach:
-     * - Prevents duplicate events when hooks fire multiple times rapidly (PrestaShop behavior)
-     * - Still allows separate events for different time windows (correct behavior)
-     * - Works across multiple PHP processes (no shared state needed)
-     * - No performance overhead (INSERT IGNORE handles duplicates efficiently)
-     * - Configurable deduplication window (default: 1 minute)
+     * The value must be unique per outbox row: OpenLinker's webhook intake keys
+     * its own durable replay protection on (provider, connectionId, eventId), so
+     * reusing an id across rows would make the second delivery look like a
+     * replay and be discarded.
      *
      * @param string $provider Provider name (e.g., 'prestashop')
      * @param string $connectionId Connection ID
@@ -41,12 +39,7 @@ class EventIdGenerator
      * @param string $objectType Object type (e.g., 'product')
      * @param string $externalId External object ID
      * @param string $occurredAt ISO 8601 timestamp when event occurred
-     * @param int    $windowMinutes Deduplication window in minutes (default: 1). Values < 1
-     *                             (zero, negative, non-numeric) are clamped to 1 to preserve the
-     *                             pre-refactor `?: 1` fallback when Configuration::get returns empty.
-     *                             The production caller resolves this from
-     *                             Configuration::get('DEDUPLICATION_WINDOW_MINUTES').
-     * @return string Event ID (deterministic hash-based, UUID-like format)
+     * @return string Event ID (UUID-like format)
      */
     public static function generateEventId(
         $provider,
@@ -54,36 +47,82 @@ class EventIdGenerator
         $eventType,
         $objectType,
         $externalId,
-        $occurredAt,
-        $windowMinutes = 1
+        $occurredAt
     ) {
-        $windowMinutes = max(1, (int) $windowMinutes);
-        $windowSeconds = $windowMinutes * 60;
-
-        // Round timestamp to the nearest window boundary to create a time window
-        // This prevents duplicate events when the same hook fires multiple times
-        // within the same window (common in PrestaShop - can fire 6+ times per save)
-        $timestamp = strtotime($occurredAt);
-        $roundedTimestamp = floor($timestamp / $windowSeconds) * $windowSeconds;
-        $timeWindow = date('Y-m-d H:i:s', $roundedTimestamp);
-        
-        // Create a deterministic string from all event properties
-        $eventKey = sprintf(
-            '%s|%s|%s|%s|%s|%s',
+        $seed = sprintf(
+            '%s|%s|%s|%s|%s|%s|%s|%s',
             $provider,
             $connectionId,
             $eventType,
             $objectType,
             $externalId,
-            $timeWindow
+            $occurredAt,
+            microtime(true),
+            self::entropy()
         );
-        
-        // Generate a deterministic hash (SHA-256)
-        // This ensures same inputs = same event ID
-        $hash = hash('sha256', $eventKey);
-        
-        // Format as UUID-like string for consistency with existing schema
-        // Format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+
+        return self::formatAsUuid(hash('sha256', $seed));
+    }
+
+    /**
+     * Generate the coalescing key for an event's subject
+     *
+     * Deterministic over the subject only, with no time component. Two hook
+     * fires describing the same change therefore share a key and, while the
+     * first row is still queued, the second insert is dropped by the unique
+     * index. Once the row is delivered or has failed terminally the repository
+     * nulls the column, which frees the key for the next real change.
+     *
+     * @param string $provider Provider name
+     * @param string $connectionId Connection ID
+     * @param string $eventType Event type
+     * @param string $objectType Object type
+     * @param string $externalId External object ID
+     * @return string Deduplication key (UUID-like format)
+     */
+    public static function generateDedupKey(
+        $provider,
+        $connectionId,
+        $eventType,
+        $objectType,
+        $externalId
+    ) {
+        $subject = sprintf(
+            '%s|%s|%s|%s|%s',
+            $provider,
+            $connectionId,
+            $eventType,
+            $objectType,
+            $externalId
+        );
+
+        return self::formatAsUuid(hash('sha256', $subject));
+    }
+
+    /**
+     * Random material for the event id
+     *
+     * @return string
+     */
+    private static function entropy()
+    {
+        try {
+            return bin2hex(random_bytes(16));
+        } catch (Exception $e) {
+            // random_bytes only fails if the platform has no usable CSPRNG. The
+            // id still has to be unique, so fall back rather than break a hook.
+            return uniqid('', true) . mt_rand();
+        }
+    }
+
+    /**
+     * Render a hex hash in the 8-4-4-4-12 shape the schema expects
+     *
+     * @param string $hash Hex hash, at least 32 characters
+     * @return string
+     */
+    private static function formatAsUuid($hash)
+    {
         return sprintf(
             '%s-%s-%s-%s-%s',
             substr($hash, 0, 8),

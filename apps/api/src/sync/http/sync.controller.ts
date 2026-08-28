@@ -303,6 +303,8 @@ export class SyncController {
       idempotencyKey: job.idempotencyKey ?? null,
       lockedAt: job.lockedAt instanceof Date ? job.lockedAt.toISOString() : job.lockedAt ?? null,
       lockedBy: job.lockedBy ?? null,
+      lastAttemptDurationMs: job.lastAttemptDurationMs ?? null,
+      deferredTotalMs: job.deferredTotalMs ?? null,
     };
   }
 }

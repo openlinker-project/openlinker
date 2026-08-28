@@ -2,8 +2,9 @@
  * Stock At Risk Types
  *
  * Type definitions for the stock-at-risk "needs attention" aggregate (#1983):
- * variants whose master stock, minus the connection's stock safety buffer
- * (#1844), is at or below zero.
+ * variants that publish nothing to the connection - master stock minus the
+ * stock safety buffer (#1844), then the zero threshold (#2610), comes out at
+ * zero. Both knobs are ways to publish nothing, so both belong in the count.
  *
  * @module libs/core/src/listings/domain/types
  */
@@ -14,6 +15,11 @@ export interface StockAtRiskItem {
   connectionId: string;
   masterStock: number;
   stockSafetyBuffer: number;
+  /**
+   * The connection's zero threshold. `0` means the threshold is off and the
+   * buffer alone accounts for the variant being at risk.
+   */
+  stockZeroThreshold: number;
 }
 
 /**

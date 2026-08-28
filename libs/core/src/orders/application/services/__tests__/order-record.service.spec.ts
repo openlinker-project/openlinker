@@ -345,6 +345,42 @@ describe('OrderRecordService', () => {
       expect(callArg.orderSnapshot).not.toHaveProperty('deliverySmart');
     });
 
+    it('should denormalize the buyer tax id from the billing address (#2599)', async () => {
+      const order = createMockOrder();
+      order.billingAddress = { ...order.billingAddress!, taxId: '1234567890' };
+
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
+      expect(callArg.buyerTaxId).toBe('1234567890');
+    });
+
+    it('should encode an asserted-none buyer tax id as the empty string, not NULL (#2599)', async () => {
+      const order = createMockOrder();
+      order.billingAddress = { ...order.billingAddress!, taxId: null };
+
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
+      expect(callArg.buyerTaxId).toBe('');
+    });
+
+    it('should leave the buyer tax id NULL when no address asserted one (#2599)', async () => {
+      const order = createMockOrder();
+      expect(order.billingAddress?.taxId).toBeUndefined();
+
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
+      expect(callArg.buyerTaxId).toBeNull();
+    });
+
     it('should serialise Order.placedAt into the snapshot as an ISO string when present (#926)', async () => {
       const order = createMockOrder();
       order.placedAt = new Date('2026-05-31T16:00:00.000Z');
@@ -493,6 +529,19 @@ describe('OrderRecordService', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'false';
       service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
+    });
+
+    it('should store no buyer tax id at all when PII storage is disabled (#2599)', async () => {
+      const order = createMockOrder();
+      order.billingAddress = { ...order.billingAddress!, taxId: '1234567890' };
+
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
+      expect(callArg.buyerTaxId).toBeNull();
+      expect(callArg.orderSnapshot.billingAddress).not.toHaveProperty('taxId');
     });
 
     it('should persist order with sanitized addresses when PII storage is disabled', async () => {

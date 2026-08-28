@@ -164,6 +164,47 @@ flowchart TD
     ISSUE --> D
 ```
 
+## Amendment (#2599) - decision 5's blocking prerequisite is met; enabling the rule is a separate decision
+
+The Context above records a buyer tax id on the `Order` contract as a **blocking prerequisite** of the rule
+engine, and decision 5's tax-id precondition is described as inert because "no issuance caller wires
+`buyerTaxId`". **#2599 landed the fact.** The prerequisite is met; the refusal is not turned on.
+
+What shipped, and the one property that matters most: the field carries **three** states, not two.
+
+| state | meaning | on the order contract | in `order_records.buyerTaxId` |
+|---|---|---|---|
+| absent | the source asserted nothing | `undefined` | `NULL` |
+| asserted none | the source says this buyer has no tax id | `null` | `''` |
+| present | the id itself | the string | the string |
+
+`toSalesDocumentOrderFacts` maps that to `SalesDocumentOrderFacts.buyerHasTaxId` as `undefined` / `false` /
+`true` respectively - which is why that field was widened from `boolean` to `boolean | undefined` rather than
+defaulting the unknown case. Collapsing absent into `false` would make `evaluateSalesDocumentRules` decide a
+real order on a fact nobody asserted, which for a fiscal document is decision 6's forbidden silent pick
+wearing a different hat. A consumer reading the column directly must use `decodeBuyerTaxIdColumn`: a bare
+`IS NOT NULL` reads the middle state wrong.
+
+Three consequences the ADR should carry.
+
+**The value is verbatim, never validated.** No format check, no normalisation, no scheme tag - ADR-026 keeps
+national specifics in the provider adapter, and a `NIP` rule in `libs/core` is precisely what that forbids.
+
+**It is PII-gated like `customerEmail`.** For a sole trader a tax id identifies a natural person, so
+`sanitizeAddress` drops it from the snapshot and a `OL_STORE_PII=false` deployment stores no scalar either -
+which reads back as *not asserted*, i.e. the safe state rather than a false "has none".
+
+**Coverage is one source.** PrestaShop supplies it from `ps_address.vat_number`. Neither the Allegro nor the
+WooCommerce order source reads one (Allegro's checkout-form invoice block carries a company tax id that OL's
+own type does not model; WooCommerce's `billing` block has no tax field at all), so an order from either is
+*not asserted*, never *known to have none*. A rule keyed on `buyerHasTaxId === false` therefore still matches
+almost nothing in practice, for a data-coverage reason rather than a contract one.
+
+**`'missing-required-tax-id'` is still declared and never written**, and turning it on is a separate decision -
+it needs a gate that acts on the fact, and on this coverage a refusal keyed to it would block the two sources
+that simply do not report. That is a routing-policy choice to take deliberately, not a wiring step that fell
+out of #2599.
+
 ## Alternatives considered
 
 - **Put routing in `orders`** (order transition picks the document): rejected - `orders` would have to learn both fiscal domains' connections, capabilities and document types, and it is depended on by five sibling contexts that have no fiscal concern.
@@ -196,10 +237,30 @@ flowchart TD
 
 This ADR **refines** [ADR-026](./026-country-agnostic-invoicing-domain.md) Decision 3 by filling the placement it deferred, and **narrows** Decision 4's write-path stance (adding a service-level originating-document guard) without superseding it: the `(connectionId, idempotencyKey)` uniqueness and the corrective-re-issue allowance both stand exactly as chosen.
 
+## Amendment (#2504, 2026-08-26): routing-first as a product invariant
+
+This ADR records how routing decides a document kind. Nothing bound the **user interface** to that decision, and the gap showed: the shipped order-detail panel offers a document-kind dropdown and two competing primary actions, so the operator is asked to re-decide what their configured rules already decided. A colleague testing the flow clicked the wrong control on each of her first three attempts. The same order consequently has two different answers on two different screens - the `/orders` row offers `+ Issue invoice` on an order routed to a fiscal receipt.
+
+**The invariant.** Routing decides the document kind. Every surface **states that decision** and offers **only that document**. Where routing has not decided, the surface says so and points at the configuration - it never falls back to asking.
+
+Three consequences follow, and they are testable rather than aspirational.
+
+**1. "Sales document" is the generic noun.** *Invoice* and *fiscal receipt* appear only as a resolved kind. A counter, a filter or a column that spans both kinds may not be labelled with one of them - the shipped `Invoicing blocked` chip counts fiscal receipts too, and `SalesDocumentGateBlockReason` was never invoice-specific.
+
+**2. Every action label follows the resolved kind.** `Issue invoice` for an invoice, `Register receipt` for a receipt. A hardcoded verb is a defect, not a wording preference, because it offers the document routing rejected.
+
+**3. Absence of a decision is a first-class state, not an empty form.** An order whose routing is unresolved renders the persisted reason and the fix. It never renders a kind picker, because a wrong pick is a real tax document with the wrong details on it - see decision 6's rule that silence-and-pick-one is forbidden. This amendment extends that rule from the auto-issue gate to every operator surface.
+
+**The one sanctioned exception.** A per-order override may exist, bounded: admin only, reachable **only** where nothing has been issued, recorded against the acting user, and never the default path. Offering it on an issued document invites a second document for one sale, and offering it where OpenLinker does not know whether a document exists (`in-doubt`) is worse - that is the state where a second attempt is most dangerous. An override that is not bounded this way breaks decision 3a rather than extending it.
+
+**Enforcement.** Consequences 1 and 2 are lexical, so they get a mechanical gate rather than reviewer discipline: an invariant script under `pnpm check:invariants` (the `check-sales-document-reason-mirror.mjs` precedent) fails the build on a hardcoded `invoice` / `receipt` noun or action verb in the three bound surfaces, allowing those words only where they are rendered from a resolved `SalesDocumentKind`. Consequence 3 is structural, not lexical - a kind picker on an unresolved order is a component choice no grep can see - so it stays reviewer-enforced, and this amendment is what a reviewer cites. The gate ships with the implementing epic (#2499), not with this ADR.
+
+**Scope.** The invariant binds three surfaces: `/settings/sales-documents`, the `/orders` row, and the order-detail sales-document panel. It is a UI contract; the write-path guard in decision 3a remains the enforcement of record, and no surface may rely on being the only thing preventing a second document.
+
 ## References
 
 - Related PRs: #2055 (this ADR)
-- Related issues: #2051, #2009, #2047, #1908, #2054, #1902, #1841
+- Related issues: #2051, #2009, #2047, #1908, #2054, #1902, #1841, #2599 (buyer tax id on the order contract)
 - Related ADRs: [ADR-026](./026-country-agnostic-invoicing-domain.md) (invoicing domain; policy-above-the-port, and the VAT-rate annex proposed under #2009), [ADR-002](./002-capability-ports-with-sub-capabilities.md) (capability decomposition), [ADR-007](./007-syncjob-status-vs-outcome-split.md) (job status vs outcome), [ADR-014](./014-source-authoritative-order-pricing.md) (source-authoritative amounts; note its live text *rejects* a per-line tax rate as destination-catalog knowledge - the supersession that would carry the VAT rate through is proposed in #2054, not settled here)
 - Primary doc section: [docs/architecture-overview.md](../../architecture-overview.md) § 14 Invoicing, § Cross-context dependencies in core
 - Spec: [`docs/specs/product-spec-1902-eparagony-e-receipts.md`](../../specs/product-spec-1902-eparagony-e-receipts.md)

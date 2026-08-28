@@ -62,6 +62,7 @@ import {
 } from '@openlinker/core/products';
 import type { Order } from '../../domain/types/order.types';
 import type { OrderFeedEventType } from '../../domain/types/order-feed.types';
+import { compareOrderCursors } from '../../domain/types/order-cursor.types';
 import type { OrderRecord } from '../../domain/entities/order-record.entity';
 import type { SalesDocumentBlockOutcome } from '@openlinker/core/sales-documents';
 import type { OrderRecordStatus } from '../../domain/types/order-record.types';
@@ -75,6 +76,11 @@ export class OrderIngestionService implements IOrderIngestionService {
 
   // Keep comfortably above worst-case poll+enqueue duration; we currently do not refresh TTL.
   private readonly LOCK_TTL_MS = 5 * 60_000;
+
+  // A cursor shape core cannot order is reported once per (connection, cursorKey).
+  // It is a standing property of that adapter's cursor, not a per-poll event, so
+  // logging it every tick would bury the regressions this guard exists to surface.
+  private readonly reportedUnrecognisedCursors = new Set<string>();
 
   constructor(
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
@@ -169,11 +175,11 @@ export class OrderIngestionService implements IOrderIngestionService {
 
       let committed = false;
       const nextCursor = feed.nextCursor;
-      // Cursor monotonicity guard (best-effort):
-      // - if adapter returns a cursor that "goes backwards" relative to current cursor, do not commit.
-      // For MVP we only enforce this when both cursors look like Allegro event IDs (stringified integers or comparable).
+      // Cursor monotonicity guard (best-effort): do not commit a cursor that goes
+      // backwards. Enforced only for cursor shapes core can order - see
+      // `compareOrderCursors`.
       if (nextCursor && nextCursor.trim() !== '') {
-        if (fromCursor && this.isCursorRegression(fromCursor, nextCursor)) {
+        if (fromCursor && this.isCursorRegression(connectionId, cursorKey, fromCursor, nextCursor)) {
           this.logger.warn(
             `Cursor regression detected; not committing cursor. cursorKey=${cursorKey}, fromCursor=${fromCursor}, nextCursor=${nextCursor} (connection: ${connectionId})`
           );
@@ -201,15 +207,33 @@ export class OrderIngestionService implements IOrderIngestionService {
     }
   }
 
-  private isCursorRegression(previous: string, next: string): boolean {
-    // Allegro event IDs are comparable as strings (lexicographic) because they are numeric-like,
-    // but to be safer try numeric compare first when both parse.
-    const prevNum = Number(previous);
-    const nextNum = Number(next);
-    if (Number.isFinite(prevNum) && Number.isFinite(nextNum)) {
-      return nextNum < prevNum;
+  /**
+   * A cursor is an opaque adapter-defined string, so core only blocks the commit
+   * for a shape it genuinely knows how to order. An unrecognised shape is NOT a
+   * regression: blocking on a guess halts ingestion for that connection until an
+   * operator intervenes, whereas letting an unverified cursor through costs at
+   * most one repeated read of an idempotent path.
+   */
+  private isCursorRegression(
+    connectionId: string,
+    cursorKey: string,
+    previous: string,
+    next: string
+  ): boolean {
+    const order = compareOrderCursors(previous, next);
+
+    if (order === 'unrecognised') {
+      const scope = `${connectionId}:${cursorKey}`;
+      if (!this.reportedUnrecognisedCursors.has(scope)) {
+        this.reportedUnrecognisedCursors.add(scope);
+        this.logger.warn(
+          `Cursor shape not recognised by core; monotonicity is unchecked for this source. cursorKey=${cursorKey}, fromCursor=${previous}, nextCursor=${next} (connection: ${connectionId})`
+        );
+      }
+      return false;
     }
-    return next < previous;
+
+    return order === 'regressed';
   }
 
   async syncOrderFromSource(

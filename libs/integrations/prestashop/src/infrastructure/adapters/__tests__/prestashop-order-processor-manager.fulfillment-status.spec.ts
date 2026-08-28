@@ -144,8 +144,8 @@ describe('PrestashopOrderProcessorManagerAdapter — getFulfillmentStatus', () =
       expect(mockHttpClient.getResource).toHaveBeenCalledWith('orders', PS_ORDER_ID);
       expect(mockHttpClient.listResources).toHaveBeenCalledWith(
         'order_states',
-        { custom: { deleted: '0' } },
-        1000,
+        { sort: ['id_ASC'] },
+        100,
         0
       );
       // order_carriers is NOT called here — shipping_number was set on the order.

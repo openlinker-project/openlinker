@@ -29,6 +29,13 @@
  *   tolerates; letting the wave monopolise slots is the measured failure).
  * - `fiscal` — deadline-bearing, at-most-once.
  * - `fan-out` — near-zero HTTP of its own; output is child jobs.
+ *
+ * The list stays at four on purpose: ADR-050 decision 1 makes a fifth entry a
+ * reversal gate, on the grounds that it would mean the axis is wrong. When one
+ * unit of work has two costs of starvation depending on what triggered it, the
+ * repo expresses that as two job types under one handler, not as a new lane —
+ * `master.product.syncFromSweep` beside `master.product.syncByExternalId`
+ * (#2594) is the worked example.
  */
 export const SyncJobLaneValues = ['realtime', 'bulk', 'fiscal', 'fan-out'] as const;
 

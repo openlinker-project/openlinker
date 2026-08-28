@@ -9,6 +9,8 @@
  */
 import type { PrestashopConnectionConfig } from '@openlinker/integrations-prestashop';
 
+import { PrestashopInvalidFilterException } from '../../domain/exceptions/prestashop-invalid-filter.exception';
+
 /**
  * PrestaShop query filters
  *
@@ -25,7 +27,20 @@ export interface PrestashopQueryFilters {
    */
   dateFrom?: Date;
   dateTo?: Date;
-  updatedSince?: Date;
+
+  /**
+   * `date_upd` lower bound, exclusive, as the shop's own wall clock
+   * (`YYYY-MM-DD HH:MM:SS`) and emitted verbatim.
+   *
+   * A string, not a `Date` (#2605). PrestaShop's `date_upd` is a zone-less
+   * `DATETIME` written by the shop, so formatting a `Date` here read the
+   * worker's clock and compared it against the shop's - the same naive string
+   * only by accident, and a different one the moment the container's timezone
+   * changed. Offset the wrong way and the filter excludes real orders while the
+   * cursor stays put. The caller therefore hands over the shop's own reading and
+   * nothing here interprets it.
+   */
+  updatedAfter?: string;
 
   /**
    * Status filters
@@ -38,6 +53,19 @@ export interface PrestashopQueryFilters {
   custom?: Record<string, string | number | (string | number)[]>;
 
   /**
+   * Result ordering, one entry per column, e.g. `['date_upd_ASC', 'id_ASC']`.
+   *
+   * PrestaShop answers an unsorted collection read in primary-key order. For a
+   * read whose cursor is a value other than the primary key - the order feed's
+   * `date_upd` watermark - that is not the same order, so a row with a higher id
+   * and an older timestamp ends a page and is then never revisited (#2605). A
+   * paged read whose cursor is not the sort key is unsound, so the sort is
+   * stated rather than inherited, and stated as a closed union so a sweep
+   * cannot ship a typo that PrestaShop would answer with a 400 (#2593).
+   */
+  sort?: PrestashopSort[];
+
+  /**
    * Field selection override.
    *
    * Defaults to `'full'`. Set to `'[id]'` (or another PrestaShop display clause)
@@ -46,6 +74,47 @@ export interface PrestashopQueryFilters {
    */
   display?: string;
 }
+
+/**
+ * Sortable columns, as a closed union rather than a runtime allow-list.
+ *
+ * A caller naming a column the resource does not have gets a PrestaShop 400,
+ * so the check has to exist; making it a type puts it at compile time, where a
+ * sweep cannot ship a typo. `date_upd` is here because the incremental and
+ * resumable catalogue passes order on it.
+ */
+export const PrestashopSortFieldValues = [
+  'id',
+  'date_upd',
+  'date_add',
+  'reference',
+] as const;
+export type PrestashopSortField = (typeof PrestashopSortFieldValues)[number];
+
+export type PrestashopSortDirection = 'ASC' | 'DESC';
+
+/**
+ * One sort entry: an allowed column plus PrestaShop's own direction suffix.
+ *
+ * A template literal rather than a `{field, direction}` pair because the wire
+ * form is a single token, so the type that callers write is the token that goes
+ * out - there is no shape to get wrong between the two.
+ */
+export type PrestashopSort = `${PrestashopSortField}_${PrestashopSortDirection}`;
+
+/**
+ * A PrestaShop WebService filter targets one database column, so the only shape
+ * a key may take is a bare column name.
+ */
+const FILTER_FIELD_PATTERN = /^[A-Za-z0-9_]+$/;
+
+/**
+ * A sort entry is one bare column name plus PrestaShop's own direction suffix.
+ * Same reasoning as the filter key: the builder owns the envelope, so a caller
+ * that smuggles syntax through the value gets a refusal, not a query PrestaShop
+ * quietly ignores.
+ */
+const SORT_ENTRY_PATTERN = /^[A-Za-z0-9_]+_(ASC|DESC)$/;
 
 /**
  * PrestaShop Query Builder
@@ -82,14 +151,19 @@ export class PrestashopQueryBuilder {
     }
 
     // Date filtering: PrestaShop requires date=1 to enable date filters
-    const hasDateFilters = filters?.dateFrom || filters?.dateTo || filters?.updatedSince;
+    const hasDateFilters = filters?.dateFrom || filters?.dateTo || filters?.updatedAfter;
     if (hasDateFilters) {
       params.push('date=1');
     }
 
-    // ID filters
+    // ID filters.
+    //
+    // Pipe-joined, never comma-joined: PrestaShop reads `[1,9]` as the RANGE
+    // 1 to 9 and `[1|9]` as the OR list of exactly those two. A comma here
+    // returned every id between the lowest and highest requested one, which on
+    // a page of ids sampled from a large catalogue is most of the catalogue.
     if (filters?.ids && filters.ids.length > 0) {
-      const idsParam = filters.ids.map(String).join(',');
+      const idsParam = filters.ids.map(String).join('|');
       params.push(`filter[id]=[${idsParam}]`);
     }
 
@@ -105,25 +179,43 @@ export class PrestashopQueryBuilder {
     }
 
     // Updated since filter
-    if (filters?.updatedSince) {
-      const dateStr = this.formatDate(filters.updatedSince);
-      params.push(`filter[date_upd]=>[${dateStr}]`);
+    if (filters?.updatedAfter) {
+      params.push(`filter[date_upd]=>[${filters.updatedAfter}]`);
+    }
+
+    // Result ordering
+    if (filters?.sort && filters.sort.length > 0) {
+      for (const entry of filters.sort) {
+        this.assertSortEntry(entry);
+      }
+      params.push(`sort=[${filters.sort.join(',')}]`);
     }
 
     // Status filters
+    // Pipe-joined for the same reason `filter[id]` is: a list of states is an OR
+    // list, and a comma would ask PrestaShop for every state id between the
+    // lowest and the highest one named.
     if (filters?.status) {
       const statusArray = Array.isArray(filters.status) ? filters.status : [filters.status];
-      const statusParam = statusArray.map(String).join(',');
+      const statusParam = statusArray.map(String).join('|');
       params.push(`filter[current_state]=[${statusParam}]`);
     }
 
     // Custom filters
     // PrestaShop filter syntax: filter[field]=[value]
     // Values must be URL-encoded to handle special characters (e.g., +, @, = in email addresses)
+    //
+    // An array value is an OR list, so it is pipe-joined, never comma-joined:
+    // PrestaShop reads `[1,9]` as the RANGE 1 to 9 and `[1|9]` as exactly those
+    // two values. A comma here asked the shop for every row between the lowest
+    // and the highest value in the list and returned nothing for the rest, which
+    // a caller reading "no rows for this id" cannot tell apart from a real
+    // absence.
     if (filters?.custom) {
       for (const [key, value] of Object.entries(filters.custom)) {
+        this.assertFilterKey(key);
         if (Array.isArray(value)) {
-          const arrayParam = value.map((v) => encodeURIComponent(String(v))).join(',');
+          const arrayParam = value.map((v) => encodeURIComponent(String(v))).join('|');
           params.push(`filter[${key}]=[${arrayParam}]`);
         } else {
           const encodedValue = encodeURIComponent(String(value));
@@ -169,6 +261,44 @@ export class PrestashopQueryBuilder {
     }
 
     return params.join('&');
+  }
+
+  /**
+   * Reject a custom filter key the WebService cannot express.
+   *
+   * PrestaShop takes a bare field name inside the `filter[...]` envelope the
+   * builder adds. A caller that passes an already-wrapped key produces
+   * `filter[filter[reference]]`, which PrestaShop does not recognise: it drops
+   * the condition, returns the first page unfiltered, and the caller reads that
+   * as a legitimate result. On a catalogue larger than one page the row it was
+   * looking for is simply absent, with no error anywhere. Worse, a caller that
+   * writes back through `rows[0]` of such a page - as `updateStock` did - PATCHes
+   * an arbitrary unrelated row (#2616). A wrong filter must therefore be louder
+   * than a wrong answer.
+   *
+   * @param key - Custom filter field name
+   * @throws PrestashopInvalidFilterException when the key is not a bare field name
+   */
+  private static assertFilterKey(key: string): void {
+    if (FILTER_FIELD_PATTERN.test(key)) {
+      return;
+    }
+
+    throw new PrestashopInvalidFilterException(key);
+  }
+
+  /**
+   * Reject a sort entry the WebService cannot express.
+   *
+   * @param entry - Sort entry, e.g. `date_upd_ASC`
+   * @throws PrestashopInvalidFilterException when the entry is not `<column>_ASC|DESC`
+   */
+  private static assertSortEntry(entry: string): void {
+    if (SORT_ENTRY_PATTERN.test(entry)) {
+      return;
+    }
+
+    throw new PrestashopInvalidFilterException(entry);
   }
 
   /**
