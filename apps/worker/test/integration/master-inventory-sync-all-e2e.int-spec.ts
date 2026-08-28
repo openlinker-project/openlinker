@@ -4,7 +4,9 @@
  * Integration test for the fan-out behavior of `master.inventory.syncAll`:
  * 1. Seed identifier mappings for a connection (simulating previously-synced products)
  * 2. Execute MasterInventorySyncAllHandler with a syncAll job
- * 3. Verify one `master.inventory.syncFromSweep` sub-job is enqueued per mapping
+ * 3. Verify one `master.inventory.syncBatch` sub-job is enqueued per PAGE of
+ *    mappings (#2648 batched the fan-out: one child carries a page of ids in
+ *    `payload.externalIds`, where the pre-batch sweep enqueued one child per id)
  * 4. Verify sub-job idempotency keys are stable (derived from the CYCLE, #2219)
  * 5. Verify a mapping set larger than one budget completes across successive ticks
  *
@@ -69,7 +71,7 @@ describe('Master Inventory Sync All End-to-End Integration', () => {
     }
   }
 
-  it('enqueues one sub-job per known product mapping and uses stable idempotency keys', async () => {
+  it('enqueues one batch sub-job covering the known product mappings, with a stable idempotency key', async () => {
     const connection = await createTestConnection(dataSource, {
       platformType: 'prestashop',
       status: 'active',
@@ -104,14 +106,16 @@ describe('Master Inventory Sync All End-to-End Integration', () => {
 
     await handler.execute(outerJob);
 
+    // #2648: one child per PAGE, not per product. The default batch size is far
+    // larger than this fixture, so all three ids ride in a single child.
     const subJobCalls = enqueueSpy.mock.calls.filter(
-      ([req]) => req.jobType === 'master.inventory.syncFromSweep'
+      ([req]) => req.jobType === 'master.inventory.syncBatch'
     );
-    expect(subJobCalls).toHaveLength(externalIds.length);
+    expect(subJobCalls).toHaveLength(1);
 
-    const enqueuedExternalIds = subJobCalls
-      .map(([req]) => (req.payload as { externalId: string }).externalId)
-      .sort();
+    const enqueuedExternalIds = [
+      ...(subJobCalls[0][0].payload as { externalIds: string[] }).externalIds,
+    ].sort();
     expect(enqueuedExternalIds).toEqual([...externalIds].sort());
 
     // Since #2219 the key embeds the CYCLE, not the outer job id: a resuming tick
@@ -120,7 +124,7 @@ describe('Master Inventory Sync All End-to-End Integration', () => {
     for (const [req] of subJobCalls) {
       expect(req.idempotencyKey).not.toContain(outerJob.id);
       expect(req.idempotencyKey).toMatch(
-        new RegExp(`^master:${connection.id}:inventory:sync:ext-\\d:`)
+        new RegExp(`^master:${connection.id}:inventory:syncBatch:ext-\\d:`)
       );
       expect(req.connectionId).toBe(connection.id);
     }
@@ -145,6 +149,7 @@ describe('Master Inventory Sync All End-to-End Integration', () => {
 
     const enqueueSpy = jest.spyOn(jobEnqueue, 'enqueueJob');
     const perTickCounts: number[] = [];
+    const coveredPerTick: number[] = [];
 
     // Each tick is a DISTINCT outer job, exactly as the scheduler mints one per
     // cron fire — which is why the child key cannot be job-scoped.
@@ -158,15 +163,24 @@ describe('Master Inventory Sync All End-to-End Integration', () => {
       });
       enqueueSpy.mockClear();
       await expect(handler.execute(outerJob)).resolves.toEqual({ outcome: 'ok' });
-      perTickCounts.push(
-        enqueueSpy.mock.calls.filter(
-          ([req]) => req.jobType === 'master.inventory.syncFromSweep'
-        ).length
+      const tickChildren = enqueueSpy.mock.calls.filter(
+        ([req]) => req.jobType === 'master.inventory.syncBatch'
+      );
+      perTickCounts.push(tickChildren.length);
+      coveredPerTick.push(
+        tickChildren.reduce(
+          (n, [req]) => n + (req.payload as { externalIds: string[] }).externalIds.length,
+          0
+        )
       );
     }
 
     // Budget respected per tick, and the whole set covered across the cycle.
-    expect(perTickCounts).toEqual([2, 2, 1]);
+    // One CHILD per tick now (#2648) — the page of 2, 2 then 1 ids rides in one
+    // `syncBatch` payload each, so the budget is visible in the ids covered
+    // rather than in the child count.
+    expect(perTickCounts).toEqual([1, 1, 1]);
+    expect(coveredPerTick).toEqual([2, 2, 1]);
   });
 
   it('is a no-op when no product mappings exist for the connection', async () => {
@@ -195,7 +209,7 @@ describe('Master Inventory Sync All End-to-End Integration', () => {
     await expect(handler.execute(outerJob)).resolves.toEqual({ outcome: 'ok' });
 
     const subJobCalls = enqueueSpy.mock.calls.filter(
-      ([req]) => req.jobType === 'master.inventory.syncFromSweep'
+      ([req]) => req.jobType === 'master.inventory.syncBatch'
     );
     expect(subJobCalls).toHaveLength(0);
   });
