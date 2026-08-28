@@ -1,7 +1,11 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';
+import {
+  renderWithProviders,
+  createMockApiClient,
+  createAuthenticatedSessionAdapter,
+} from '../../../test/test-utils';
 import { AnalyticsDataCoveragePanel } from './analytics-data-coverage-panel';
 import type { AnalyticsCoverage } from '../api/analytics-coverage.types';
 
@@ -154,7 +158,10 @@ describe('AnalyticsDataCoveragePanel (#2474)', () => {
       },
     });
 
-    renderWithProviders(<AnalyticsDataCoveragePanel filters={FILTERS} onOpenSettings={() => {}} />, { apiClient });
+    renderWithProviders(<AnalyticsDataCoveragePanel filters={FILTERS} onOpenSettings={() => {}} />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     await user.click(await screen.findByText('5 orders counted in an outdated currency'));
     await user.click(await screen.findByText('Recalculate all 5 now'));
@@ -169,5 +176,81 @@ describe('AnalyticsDataCoveragePanel (#2474)', () => {
     expect(screen.queryByText('5 orders recalculated')).not.toBeInTheDocument();
 
     vi.useRealTimers();
+  });
+
+  describe('admin-only write affordances (tech-review finding)', () => {
+    // POST /analytics/coverage/currency/recalculate and
+    // POST /analytics/coverage/tax/rerun-backfill are @Roles('admin')-gated
+    // server-side — neither action must render as a live, clickable
+    // control for a session that would just get a 403.
+    const viewerSession = {
+      sessionAdapter: createAuthenticatedSessionAdapter({
+        id: 'u2',
+        username: 'viewer',
+        email: null,
+        role: 'viewer',
+        permissions: ['orders:read'],
+      }),
+    };
+
+    function apiClientWithOpenCurrencyAndTaxC(): ReturnType<typeof createMockApiClient> {
+      return createMockApiClient({
+        analytics: {
+          getCoverage: vi.fn().mockResolvedValue(
+            coverage({
+              categories: [
+                { category: 'currency', status: 'open', affectedCount: 5, sampleOrderIds: [] },
+                { category: 'tax-a', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+                { category: 'tax-b', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+                { category: 'tax-c', status: 'open', affectedCount: 2, sampleOrderIds: [] },
+                { category: 'product-matching', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+              ],
+            })
+          ),
+          getCurrencyMismatchOrders: vi.fn().mockResolvedValue({ items: [], total: 5 }),
+          getTaxCoverageOrders: vi.fn().mockResolvedValue({
+            items: [{ internalOrderId: 'ol_order_a', sourceConnectionId: 'conn-1', placedAt: null }],
+            total: 2,
+          }),
+        },
+      });
+    }
+
+    it('should hide "Recalculate now" and "Sync the catalog" for a non-admin, non-demo session', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(
+        <AnalyticsDataCoveragePanel filters={FILTERS} onOpenSettings={() => {}} />,
+        { apiClient: apiClientWithOpenCurrencyAndTaxC(), ...viewerSession }
+      );
+
+      await user.click(await screen.findByText('5 orders counted in an outdated currency'));
+      await screen.findByText('Close');
+      expect(screen.queryByRole('button', { name: /Recalculate all/ })).not.toBeInTheDocument();
+      await user.click(screen.getByText('Close'));
+
+      await user.click(await screen.findByText('2 orders — rate not yet resolved'));
+      await screen.findByText('Close');
+      expect(screen.queryByRole('button', { name: /Sync the catalog/ })).not.toBeInTheDocument();
+    });
+
+    it('should render both admin-only actions visible-but-disabled for a demo read-only viewer', async () => {
+      const user = userEvent.setup();
+      const apiClient = createMockApiClient({
+        ...apiClientWithOpenCurrencyAndTaxC(),
+        system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
+      });
+
+      renderWithProviders(<AnalyticsDataCoveragePanel filters={FILTERS} onOpenSettings={() => {}} />, {
+        apiClient,
+        ...viewerSession,
+      });
+
+      await user.click(await screen.findByText('5 orders counted in an outdated currency'));
+      expect(await screen.findByRole('button', { name: /Recalculate all/ })).toBeDisabled();
+      await user.click(screen.getByText('Close'));
+
+      await user.click(await screen.findByText('2 orders — rate not yet resolved'));
+      expect(await screen.findByRole('button', { name: /Sync the catalog/ })).toBeDisabled();
+    });
   });
 });

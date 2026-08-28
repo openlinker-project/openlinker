@@ -3,6 +3,7 @@
  *
  * @module apps/api/src/analytics/http
  */
+import { BadRequestException } from '@nestjs/common';
 import type { IOrderRecordService } from '@openlinker/core/orders';
 import { AnalyticsMatchingCoverageController } from './analytics-matching-coverage.controller';
 
@@ -70,6 +71,20 @@ describe('AnalyticsMatchingCoverageController (#2474)', () => {
         expect.objectContaining({ sourceConnectionId: 'conn-9' }),
         expect.anything()
       );
+    });
+
+    it('should throw BadRequestException when to is not after from', async () => {
+      await expect(
+        controller.getOrders({ from: '2026-08-08T00:00:00.000Z', to: '2026-08-01T00:00:00.000Z' })
+      ).rejects.toThrow(BadRequestException);
+      expect(orderRecordService.getProductMatchingErrorOrders).not.toHaveBeenCalled();
+    });
+
+    it('should throw BadRequestException when the range exceeds the max window', async () => {
+      await expect(
+        controller.getOrders({ from: '2020-01-01T00:00:00.000Z', to: '2026-08-08T00:00:00.000Z' })
+      ).rejects.toThrow(BadRequestException);
+      expect(orderRecordService.getProductMatchingErrorOrders).not.toHaveBeenCalled();
     });
   });
 });

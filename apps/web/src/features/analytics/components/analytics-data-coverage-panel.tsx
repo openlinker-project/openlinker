@@ -30,6 +30,10 @@ import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, ErrorState, LoadingState, StatusBadge, TimeDisplay } from '../../../shared/ui';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
+import { useWriteAccess } from '../../../shared/auth/use-permission';
+import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { useDemoMode } from '../../system';
 import { useConnectionsQuery } from '../../connections';
 import { OrderIdentityCell } from '../../orders';
 import { useAnalyticsCoverageQuery } from '../hooks/use-analytics-coverage-query';
@@ -73,6 +77,8 @@ export function AnalyticsDataCoveragePanel({
   onOpenSettings,
 }: AnalyticsDataCoveragePanelProps): ReactElement {
   const { showToast } = useToast();
+  const demoMode = useDemoMode();
+  const write = useWriteAccess('analytics:write', demoMode);
   const queryClient = useQueryClient();
   const coverageQuery = useAnalyticsCoverageQuery(filters);
   const connectionsQuery = useConnectionsQuery();
@@ -295,11 +301,19 @@ export function AnalyticsDataCoveragePanel({
           <CurrencyOrderRow item={item} connectionName={connectionName(item.sourceConnectionId)} />
         )}
         footerAction={
-          <Button type="button" disabled={recalculate.isPending} onClick={handleRecalculate}>
-            {recalculate.isPending
-              ? 'Starting…'
-              : `Recalculate all ${currencyOrdersQuery.data?.total ?? 0} now`}
-          </Button>
+          write.visible ? (
+            <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+              <Button
+                type="button"
+                disabled={recalculate.isPending || write.demoReadOnly}
+                onClick={handleRecalculate}
+              >
+                {recalculate.isPending
+                  ? 'Starting…'
+                  : `Recalculate all ${currencyOrdersQuery.data?.total ?? 0} now`}
+              </Button>
+            </ReadOnlyLock>
+          ) : undefined
         }
       />
 
@@ -335,16 +349,22 @@ export function AnalyticsDataCoveragePanel({
               >
                 Turn on this setting ›
               </Button>
-            ) : openCategory === 'tax-c' ? (
-              <Button
-                type="button"
-                disabled={rerunBackfill.isPending || (taxOrdersQuery.data?.items.length ?? 0) === 0}
-                onClick={() => handleSyncCatalog(taxOrdersQuery.data?.items ?? [])}
-              >
-                {rerunBackfill.isPending
-                  ? 'Syncing…'
-                  : `Sync the catalog for these ${taxOrdersQuery.data?.items.length ?? 0} now`}
-              </Button>
+            ) : openCategory === 'tax-c' && write.visible ? (
+              <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                <Button
+                  type="button"
+                  disabled={
+                    rerunBackfill.isPending ||
+                    write.demoReadOnly ||
+                    (taxOrdersQuery.data?.items.length ?? 0) === 0
+                  }
+                  onClick={() => handleSyncCatalog(taxOrdersQuery.data?.items ?? [])}
+                >
+                  {rerunBackfill.isPending
+                    ? 'Syncing…'
+                    : `Sync the catalog for these ${taxOrdersQuery.data?.items.length ?? 0} now`}
+                </Button>
+              </ReadOnlyLock>
             ) : undefined
           }
         />

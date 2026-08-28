@@ -8,14 +8,18 @@
  * the product; a `source_deleted` one needs the deletion itself
  * remediated, out of Data Coverage's scope) — so this controller carries
  * only the read, mirroring `AnalyticsTaxRemediationController.getOrders`
- * and `AnalyticsRemediationController.getAffectedOrders` byte-for-byte in
- * shape. No `@Roles` guard, for the same reason those two have none — a
- * read of the same shape `GET /analytics/coverage` already samples for
- * every authenticated user.
+ * and `AnalyticsRemediationController.getAffectedOrders` in shape, including
+ * their `parseRange` guard (`to` must be after `from`, bounded to
+ * `MAX_COVERAGE_RANGE_DAYS`) — duplicated rather than shared for the same
+ * reason those two duplicate it from each other (three lines of
+ * DTO-adjacent guard isn't worth a shared helper module). No `@Roles`
+ * guard, for the same reason those two have none — a read of the same
+ * shape `GET /analytics/coverage` already samples for every authenticated
+ * user.
  *
  * @module apps/api/src/analytics/http
  */
-import { Controller, Get, Inject, Query } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Inject, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ORDER_RECORD_SERVICE_TOKEN, type IOrderRecordService } from '@openlinker/core/orders';
 import { ProductMatchingOrdersQueryDto } from './dto/product-matching-orders-query.dto';
@@ -25,6 +29,9 @@ import {
 } from './dto/product-matching-orders-response.dto';
 
 const DEFAULT_ORDERS_PAGE_SIZE = 25;
+
+/** Mirrors `AnalyticsCoverageController`'s bound — see that controller. */
+const MAX_COVERAGE_RANGE_DAYS = 400;
 
 @ApiBearerAuth()
 @ApiTags('analytics')
@@ -43,11 +50,13 @@ export class AnalyticsMatchingCoverageController {
   async getOrders(
     @Query() query: ProductMatchingOrdersQueryDto
   ): Promise<ProductMatchingOrdersResponseDto> {
+    const { from, to } = this.parseRange(query.from, query.to);
+
     const page = await this.orderRecordService.getProductMatchingErrorOrders(
       {
         sourceConnectionId: query.sourceConnectionId,
-        createdFrom: new Date(query.from),
-        createdTo: new Date(query.to),
+        createdFrom: from,
+        createdTo: to,
       },
       { limit: query.limit ?? DEFAULT_ORDERS_PAGE_SIZE, offset: query.offset ?? 0 }
     );
@@ -56,5 +65,25 @@ export class AnalyticsMatchingCoverageController {
     response.items = page.items.map((row) => ProductMatchingOrderDto.fromRow(row));
     response.total = page.total;
     return response;
+  }
+
+  /**
+   * Shared range validation. Duplicated from the sibling coverage
+   * controllers rather than extracted — see their own comments on why a
+   * shared helper isn't worth it for three lines of DTO-adjacent guard.
+   */
+  private parseRange(fromRaw: string, toRaw: string): { from: Date; to: Date } {
+    const from = new Date(fromRaw);
+    const to = new Date(toRaw);
+    if (to.getTime() <= from.getTime()) {
+      throw new BadRequestException('to must be after from');
+    }
+    const rangeDays = (to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000);
+    if (rangeDays > MAX_COVERAGE_RANGE_DAYS) {
+      throw new BadRequestException(
+        `Range too wide: ${Math.ceil(rangeDays)} days exceeds the ${MAX_COVERAGE_RANGE_DAYS}-day limit`
+      );
+    }
+    return { from, to };
   }
 }
