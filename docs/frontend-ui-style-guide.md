@@ -108,10 +108,11 @@ The left navigation is persistent and grouped into **three sections by frequency
 - Adapters
 - Settings
 
-**Planned** (disabled, `--text-disabled` opacity, non-clickable, tooltip "Coming in a future release"):
-- Automations
-- Shipping
-- Invoices
+**Planned** — retired as of #2364. `Automations` was its last remaining item (Shipments and
+Invoices had already gone live), and promoting it emptied the group, so the group was removed
+rather than left rendering a heading with nothing under it. The `PlannedNavGroup` type and the
+shell's `kind: 'planned'` branch survive — a plugin may still contribute one — so neither is dead
+code. A future IA-anticipated module re-adds the group here.
 
 Rules:
 - No "Live" pills on any live nav item.
@@ -753,6 +754,14 @@ Parity matrix — what changes across sizes:
 | Raw payload panel | collapsed by default | as desktop | as desktop |
 | Complex editors | **read-only + "open on desktop to edit" hint** | full interactive | full interactive |
 | Wizards | one step per screen, stepper collapsed | full | full |
+
+**Documented departure — the automation composer (#2365)** stays **fully interactive at 375 px**
+rather than taking the *Complex editors* row's read-only + "open on desktop to edit" affordance. The
+composer is overwhelmingly closed-vocabulary selects (trigger, action, condition field, hold reason)
+plus three short text fields — a *configuration* surface, far closer to the picker modal below than
+to category mappings or raw-JSON editing, which are the cases that row was written for. It stacks to
+a single column below 768 px with ≥ 44 px targets. Like the picker, it never shows an "open on
+desktop" hint, because there is nothing it refuses to do at that width.
 
 **Documented departure — the offer-creation product picker modal (#1754/#1779)** folds into a two-step wizard (step 1 = product list, step 2 = selection review + connection + Continue) at **both** mobile *and* tablet width (≤ 1023 px), rather than staying "full interactive" at tablet as the *Complex editors* / *Wizards* rows above would suggest. This is deliberate: the modal's side-by-side list + review rail needs two comfortable columns, which only desktop (≥ 1024 px) affords; on an iPad the two-step flow is more usable than two cramped columns. Unlike the "complex editors" rule, the picker stays **fully interactive** at every width (it is a selection surface, not a data editor), so it never shows an "open on desktop" hint.
 

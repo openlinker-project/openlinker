@@ -111,6 +111,7 @@ describe('OrdersController', () => {
       getMedianOrderValue: jest.fn(),
       patchSnapshotTaxRates: jest.fn(),
       getNetMedianOrderValue: jest.fn(),
+      findDispatchDeadlineCandidates: jest.fn(),
     };
 
     const mockOrderRecordService = {

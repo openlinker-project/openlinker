@@ -592,4 +592,10 @@ export interface OrderRecordRepositoryPort {
     lineNumber: number,
     patch: { taxRate: string; taxSource: 'backfill'; taxRateReadAt: Date }
   ): Promise<void>;
+
+  /** One page of T4 deadline candidates (#2360). See the repository for the predicate reuse note. */
+  findDispatchDeadlineCandidates(
+    connectionId: string,
+    input: { windowEnd: Date; now: Date; limit: number; offset: number }
+  ): Promise<OrderRecord[]>;
 }

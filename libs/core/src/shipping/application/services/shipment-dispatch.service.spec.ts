@@ -181,6 +181,7 @@ describe('ShipmentDispatchService', () => {
       getEarliestOrderDateByConnection: jest.fn(),
       getSalesAndChannelAnalytics: jest.fn(),
       getTopProducts: jest.fn(),
+      findDispatchDeadlineCandidates: jest.fn(),
       countOrdersWithOmsAttention: jest.fn(),
     };
     const fulfillmentProjection = { recompute: jest.fn() };

@@ -304,6 +304,15 @@ export type {
   OpenOrderChangeResult,
 } from './application/services/order-change.service.interface';
 
+// The automation facts projection (#2363). Exported because it has two callers
+// that must agree — the T5 packed emission here and the §5.6(a) dry run in
+// `apps/api` — and a preview built from a different projection than the firing
+// is a preview of something else.
+export {
+  buildOrderAutomationFacts,
+  readSnapshotCountry,
+} from './domain/order-automation-facts-projection';
+
 // ORM entities are exposed on the host-only `@openlinker/core/orders/orm-entities`
 // sub-path (#594). Plugins must not import them from here.
 

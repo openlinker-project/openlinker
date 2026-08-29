@@ -24,6 +24,7 @@ import { InventoryLocationExceptionFilter } from './common/filters/inventory-loc
 import { ConnectionExceptionFilter } from './common/filters/connection-exception.filter';
 import { AvailabilityUnknownFilter } from './common/filters/availability-unknown.filter';
 import { ReturnsExceptionFilter } from './common/filters/returns-exception.filter';
+import { AutomationExceptionFilter } from './common/filters/automation-exception.filter';
 
 async function bootstrap(): Promise<void> {
   // Route shared `Logger` calls through @nestjs/common before any other work,
@@ -92,6 +93,7 @@ async function bootstrap(): Promise<void> {
     new InventoryLocationExceptionFilter(),
     new AvailabilityUnknownFilter(),
     new ReturnsExceptionFilter(),
+    new AutomationExceptionFilter(),
   );
 
   // HTTP API URI versioning (#1133 / ADR-029 Axis 3) — every route is served

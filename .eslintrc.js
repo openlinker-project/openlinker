@@ -220,6 +220,16 @@ module.exports = {
                   '**/analytics/components/**',
                   '**/analytics/lib/**',
                   '**/analytics/types/**',
+                  // #2364 — `features/automation` (SINGULAR) serves the
+                  // `/automations` route (plural). The slug must match the
+                  // vocabulary-gate scan root in
+                  // `scripts/check-ui-vocabulary.mjs`; a silent singular/plural
+                  // drift makes that gate skip the folder it was written for.
+                  '**/automation/api/**',
+                  '**/automation/hooks/**',
+                  '**/automation/components/**',
+                  '**/automation/lib/**',
+                  '**/automation/types/**',
                   // Added in #1938 review, when `features/demo` reached into
                   // `../../auth/hooks/`. Enumerated in full like every other
                   // slug; note that `pages/auth/*` and `app/api/api-client.ts`
@@ -455,6 +465,16 @@ module.exports = {
                   '**/analytics/components/**',
                   '**/analytics/lib/**',
                   '**/analytics/types/**',
+                  // #2364 — `features/automation` (SINGULAR) serves the
+                  // `/automations` route (plural). The slug must match the
+                  // vocabulary-gate scan root in
+                  // `scripts/check-ui-vocabulary.mjs`; a silent singular/plural
+                  // drift makes that gate skip the folder it was written for.
+                  '**/automation/api/**',
+                  '**/automation/hooks/**',
+                  '**/automation/components/**',
+                  '**/automation/lib/**',
+                  '**/automation/types/**',
                   // #1938 review — `features/auth` gained a barrel; a new slug
                   // goes into BOTH pattern groups per
                   // docs/frontend-architecture.md § Feature Public Surface,

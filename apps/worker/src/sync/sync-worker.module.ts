@@ -12,6 +12,7 @@ import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { ProductsModule } from '@openlinker/core/products';
 import { InventoryModule } from '@openlinker/core/inventory';
+import { AutomationModule } from '@openlinker/core/automation';
 import { OrdersModule } from '@openlinker/core/orders';
 import { ReturnsModule } from '@openlinker/core/returns';
 import { ListingsModule } from '@openlinker/core/listings/services';
@@ -59,6 +60,7 @@ import { ReservationConsumeHandler } from './handlers/reservation-consume.handle
 import { OrdersHoldsReconcileHandler } from './handlers/orders-holds-reconcile.handler';
 import { PickupPointRefreshHandler } from './handlers/pickup-point-refresh.handler';
 import { ShopProductPublishHandler } from './handlers/shop-product-publish.handler';
+import { AutomationTriggerDeadlineSweepHandler } from './handlers/automation-trigger-deadline-sweep.handler';
 import { ShopProductStatusSyncHandler } from './handlers/shop-product-status-sync.handler';
 import { DestinationTaxonomySyncHandler } from './handlers/destination-taxonomy-sync.handler';
 import { InvoicingIssueHandler } from './handlers/invoicing-issue.handler';
@@ -83,6 +85,10 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     InvoicingModule, // OL #1120/#1121 — exposes INVOICE_SERVICE_TOKEN + AUTO_ISSUE_TRIGGER_SERVICE_TOKEN (OrderIngestionService) + REGULATORY_STATUS_RECONCILIATION_SERVICE_TOKEN
     FiscalizationModule, // #2156 — exposes FISCAL_REGISTRATION_SERVICE_TOKEN for the fiscalization.register handler
     WorkerContentModule, // Worker-side ContentModule for #737 — exposes CONTENT_SUGGESTION_SERVICE_TOKEN
+    // #2360 — exposes AUTOMATION_RULES_SERVICE_TOKEN + AUTOMATION_TRIGGER_EMISSION_SERVICE_TOKEN
+    // for `automation.trigger.deadlineSweep`. OrdersModule imports AutomationModule too (for T5's
+    // write-site emission) but does not re-export it, and Nest imports are not transitive.
+    AutomationModule,
   ],
   providers: [
     JobIntakeConsumer,
@@ -125,6 +131,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     OrdersHoldsReconcileHandler,
     PickupPointRefreshHandler,
     ShopProductPublishHandler,
+    AutomationTriggerDeadlineSweepHandler,
     ShopProductStatusSyncHandler,
     DestinationTaxonomySyncHandler,
     InvoicingIssueHandler,

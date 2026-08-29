@@ -3,13 +3,15 @@
  *
  * Pins the ADR-050 lane partition (#2278): every `JobTypeValues` member is
  * registered with exactly one lane, the per-lane counts match the ADR's
- * table (13 realtime / 20 bulk / 5 fiscal / 7 fan-out — `fiscalization.register`
+ * table (13 realtime / 21 bulk / 5 fiscal / 7 fan-out — `fiscalization.register`
  * joined `fiscal` post-ADR, #2156; `inventory.provenance.backfill` joined
  * `bulk` with #2317; the three returns types joined realtime/bulk/fan-out with
  * #2330; `returns.orphan.reconcile` joined `bulk` with #2332;
  * `orders.taxRate.backfill` joined `bulk` with #2440; `orders.holds.reconcile`
  * joined `bulk` with #2340 (Wave 2 body A); and the three reservation sweeps
- * joined `bulk` with #2346 / #2347 / #2349 (Wave 2 body B)), and the consequential
+ * joined `bulk` with #2346 / #2347 / #2349 (Wave 2 body B); and
+ * `automation.trigger.deadlineSweep` joined `bulk` with #2360 (Wave 2 body D)),
+ * and the consequential
  * assignments the ADR calls out cannot silently churn.
  *
  * @module apps/worker/src/sync/handlers
@@ -39,26 +41,25 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     expect(() => registry.assertFullLaneCoverage()).not.toThrow();
   });
 
-  it('should partition the 45 job types 13/20/5/7 per ADR-050 decision 1', () => {
+  it('should partition the 46 job types 13/21/5/7 per ADR-050 decision 1', () => {
     expect(registry.getJobTypesByLane('realtime')).toHaveLength(13);
-    // 17 after #2340 added `orders.holds.reconcile` — background catch-up work whose
-    // lateness costs nobody a request, and which must not contend with the `realtime`
-    // order ingestion that is what RESOLVES its orphans — and #2440 added
-    // `orders.taxRate.backfill`, a paced backfill with the same profile.
+    // 21, and every one of the six additions since the lane split shares one
+    // profile: background catch-up work that enqueues no children, writes
+    // locally, and whose lateness costs nobody a request — so `fan-out` (whose
+    // subject is a job whose cost is the wave it emits) is wrong for all of
+    // them, and none may contend with the `realtime` order ingestion that is
+    // what RESOLVES their backlog.
     //
-    // 18 after #2346 added `inventory.reservations.expire`, which shares that
-    // profile exactly: it enqueues no children and writes locally, so `fan-out`
-    // (whose subject is a job whose cost is the wave it emits) is wrong for it,
-    // and a hold examined a tick later is a hold that STAYED held — the safe
-    // direction — so a saturated lane delaying it costs nothing.
-    //
-    // 19 after #2347 added `inventory.reservations.consume` — the same profile
-    // once more, and safe in the same direction for the opposite reason: a
-    // shipment consumed a tick later is stock released a tick later, never
-    // stock oversold. 20 after #2349 added `inventory.reservations.shortfall`,
-    // which names risk and repairs nothing, so its lateness costs nobody a
-    // request either.
-    expect(registry.getJobTypesByLane('bulk')).toHaveLength(20);
+    // #2340 `orders.holds.reconcile` and #2440 `orders.taxRate.backfill` (a
+    // paced backfill) took it to 17. #2346 `inventory.reservations.expire`,
+    // #2347 `inventory.reservations.consume` and #2349
+    // `inventory.reservations.shortfall` took it to 20 — each safe in the same
+    // direction: a hold examined a tick later STAYED held, a shipment consumed
+    // a tick later is stock released a tick later (never stock oversold), and
+    // shortfall names risk rather than repairing anything. #2360
+    // `automation.trigger.deadlineSweep` — a page of automation evaluations —
+    // is the twenty-first.
+    expect(registry.getJobTypesByLane('bulk')).toHaveLength(21);
     expect(registry.getJobTypesByLane('fiscal')).toHaveLength(5);
     expect(registry.getJobTypesByLane('fan-out')).toHaveLength(7);
   });

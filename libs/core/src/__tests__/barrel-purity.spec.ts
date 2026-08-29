@@ -30,6 +30,7 @@ import { join } from 'node:path';
 
 const CONTEXT_BARRELS = [
   'ai',
+  'automation',
   'catalog-trust',
   'content',
   'customers',

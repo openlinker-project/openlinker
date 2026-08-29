@@ -117,6 +117,37 @@ export function createMockApiClient(
       list: vi.fn().mockResolvedValue([]),
       ...overrides.adapters,
     } as ApiClient['adapters'],
+    // #2364. `getSummary` / `listByTrigger` default to the SHAPE the parse
+    // layer returns (`{items, droppedCount}`), not a bare array — a mock that
+    // returned `[]` would let a component read `.items` as undefined and pass,
+    // while the real client never can.
+    automations: {
+      getVocabulary: vi.fn().mockResolvedValue({
+        triggers: [],
+        actions: [],
+        conditionFields: [],
+        amountOps: [],
+        holdReasons: [],
+        stepBounds: { min: 1, max: 3 },
+        runOutcomes: [],
+        stepStatuses: [],
+        nonFiringReasons: [],
+        conditionOutcomes: [],
+      }),
+      getSummary: vi.fn().mockResolvedValue({ items: [], droppedCount: 0 }),
+      listByTrigger: vi.fn().mockResolvedValue({ items: [], droppedCount: 0 }),
+      get: vi.fn(),
+      create: vi.fn(),
+      evaluate: vi.fn(),
+      listRuns: vi.fn().mockResolvedValue(null),
+      listRunsBySubject: vi.fn().mockResolvedValue(null),
+      listRunFeed: vi
+        .fn()
+        .mockResolvedValue({ runs: [], limit: 50, hasMore: false, recordingAvailable: true, note: null }),
+      replace: vi.fn(),
+      remove: vi.fn().mockResolvedValue(undefined),
+      ...overrides.automations,
+    } as ApiClient['automations'],
     aiProviderSettings: {
       getAll: vi.fn().mockResolvedValue({
         activeProvider: 'fake',

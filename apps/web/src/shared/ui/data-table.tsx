@@ -73,6 +73,18 @@ export interface DataTableCardView<Row> {
    * to false: existing consumers keep the always-expanded card body.
    */
   collapsibleDetail?: boolean;
+  /**
+   * Per-row action controls, rendered as a card footer OUTSIDE the card's
+   * navigation Link and below the detail (#2629 review).
+   *
+   * The card view renders solely from this contract — there is no `columns`
+   * fallback — so a row action that lives only in an actions COLUMN simply does
+   * not exist below the mobile breakpoint. `summary` is the wrong home for it:
+   * that slot is always-visible *facts*, and a remediation control is not a
+   * fact. Rendered last so a tap target never sits between the card's identity
+   * and its detail.
+   */
+  actions?: (row: Row) => ReactNode;
 }
 
 /**
@@ -842,6 +854,19 @@ function DataTableCard<Row>({
       {showDetail && detail ? (
         <div id={detailId} className="data-table__card-detail">
           {detail(row)}
+        </div>
+      ) : null}
+      {cardView.actions ? (
+        <div
+          className="data-table__card-actions"
+          // Never bubble to the card-level navigation handler — the same guard
+          // the disclosure button above carries. A card with `rowHref` navigates
+          // on click, so without this a remediation control would fire its own
+          // action AND leave the page, which is precisely the outcome the
+          // operator did not ask for.
+          onClick={(event) => event.stopPropagation()}
+        >
+          {cardView.actions(row)}
         </div>
       ) : null}
     </li>

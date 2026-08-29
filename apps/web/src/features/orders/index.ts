@@ -22,6 +22,11 @@
  * the feature that owns what an order identity looks like (#1996).
  */
 export { ordersQueryKeys } from './api/orders.query-keys';
+// Exported for the #2366 automation dry-run order picker, which needs a
+// "last 30 days" list. The hook and its filter type are the whole surface it
+// consumes; `features/automation` imports them from this barrel like any other
+// cross-feature consumer.
+export { useOrdersQuery } from './hooks/use-orders-query';
 // #2254 — the invoice panel needs the parsed lines to decide WHICH remedy a
 // missing rate calls for; the reason alone cannot say.
 export { parseOrderSnapshot } from './api/order-snapshot.schema';

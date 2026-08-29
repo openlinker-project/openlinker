@@ -27,6 +27,8 @@ import type {
 } from '../../domain/types/order-record.types';
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
+import { IAutomationTriggerEmissionService } from '@openlinker/core/automation';
+import { AUTOMATION_TRIGGER_EMISSION_SERVICE_TOKEN } from '@openlinker/core/automation';
 import { redactAddress } from '../../domain/order-address-redaction';
 import type { OrderAmendmentChange } from '../../domain/order-amendment-diff';
 import type {
@@ -46,6 +48,7 @@ import {
   ORDER_RECORD_REPOSITORY_TOKEN,
 } from '../../orders.tokens';
 import { deriveOrderAnalyticsScalars, deriveOrderLineItems } from '../../domain/order-analytics-projection';
+import { buildOrderAutomationFacts } from '../../domain/order-automation-facts-projection';
 import { buildSalesAndChannelAnalytics } from '../../domain/order-sales-aggregation';
 import { buildTopProducts } from '../../domain/top-products-aggregation';
 import type { TopProductFilters, TopProductsResult } from '../../domain/types/top-products.types';
@@ -62,7 +65,9 @@ export class OrderRecordService implements IOrderRecordService {
     @Inject(ORDER_LINE_ITEM_REPOSITORY_TOKEN)
     private readonly lineItemRepository: OrderLineItemRepositoryPort,
     @Inject(REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN)
-    private readonly reportingCurrencySettings: IReportingCurrencySettingsService
+    private readonly reportingCurrencySettings: IReportingCurrencySettingsService,
+    @Inject(AUTOMATION_TRIGGER_EMISSION_SERVICE_TOKEN)
+    private readonly automationEmission: IAutomationTriggerEmissionService
   ) {}
 
   /**
@@ -630,12 +635,59 @@ export class OrderRecordService implements IOrderRecordService {
    * rather than on this call's discarded one.
    */
   async markPacked(internalOrderId: string, packedByUserId: string): Promise<OrderRecord> {
-    await this.repository.markPacked(internalOrderId, new Date(), packedByUserId);
+    const packedAt = new Date();
+    // The guard's boolean IS the T5 edge (#2360). The repository's WHERE carries
+    // `packedAt: IsNull()`, so `true` means THIS call performed the null -> value
+    // transition — which is exactly spec §5.2's rule that re-writing `packedAt`
+    // (a timestamp correction, a re-pack) must not re-fire. Capturing it costs
+    // nothing and needs no new state; discarding it, as this method used to,
+    // threw the transition signal away at the one layer that can emit.
+    const isFirstPack = await this.repository.markPacked(internalOrderId, packedAt, packedByUserId);
     const record = await this.repository.findById(internalOrderId);
     if (!record) {
       throw new OrderRecordNotFoundException(internalOrderId);
     }
+    if (isFirstPack) {
+      await this.emitPackedTrigger(record, packedAt);
+    }
     return record;
+  }
+
+  /**
+   * Fire T5 `order.packed`, best-effort (#2360).
+   *
+   * **Never able to fail the pack.** The operator physically packed a box; an
+   * automation that cannot run is not a reason to refuse to record that, and a
+   * throw here would roll the caller back into retrying a write that already
+   * succeeded. The failure is logged and swallowed — the accepted cost is that a
+   * crash between the committed write and this call loses the firing silently,
+   * which is the safe direction (the alternative buys a second label).
+   */
+  async findDispatchDeadlineCandidates(
+    connectionId: string,
+    input: { windowEnd: Date; now: Date; limit: number; offset: number }
+  ): Promise<OrderRecord[]> {
+    return this.repository.findDispatchDeadlineCandidates(connectionId, input);
+  }
+
+  private async emitPackedTrigger(record: OrderRecord, packedAt: Date): Promise<void> {
+    try {
+      await this.automationEmission.emit({
+        trigger: 'order.packed',
+        facts: buildOrderAutomationFacts(
+          record,
+          // The transition instant, not `record.placedAt`: the fact this trigger
+          // is about is "an operator marked it packed", which happened now.
+          packedAt
+        ),
+        now: packedAt,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Automation emission failed for order.packed on ${record.internalOrderId}: ` +
+          `${(error as Error).message}`
+      );
+    }
   }
 
   /**

@@ -147,6 +147,27 @@ interface CoreCapabilityTaskDescriptor {
  */
 const CORE_CAPABILITY_TASKS: readonly CoreCapabilityTaskDescriptor[] = [
   {
+    // Automation v1's only time-based mode (#2360). Spec §5.2: every 15 minutes.
+    // The cron is the TICK, not the cycle — a connection with many candidates
+    // spans several ticks, and the scan-offset cursor is what says a cycle is
+    // still in flight.
+    //
+    // The `timestamp` in this key is the SCHEDULER's per-tick discriminator and
+    // is deliberately wall-clock: without it the second tick would dedup against
+    // the first forever. It is not a trigger idempotency key. #2360's
+    // "no wall-clock in an idempotency key" rule is about the FIRING record,
+    // whose key is `(ruleId, subjectKind, subjectId)` and carries no clock —
+    // which is what makes a standing deadline fire once rather than every tick.
+    taskId: 'automation-deadline-sweep',
+    jobType: 'automation.trigger.deadlineSweep',
+    capability: 'OrderSource',
+    enabledEnvVar: 'OL_AUTOMATION_DEADLINE_SWEEP_ENABLED',
+    cronEnvVar: 'OL_AUTOMATION_DEADLINE_SWEEP_CRON',
+    defaultCron: '*/15 * * * *',
+    idempotencyKey: (connectionId, timestamp) =>
+      `automation:${connectionId}:deadlineSweep:${timestamp}`,
+  },
+  {
     taskId: 'master-inventory-sync',
     jobType: 'master.inventory.syncAll',
     capability: 'InventoryMaster',

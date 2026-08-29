@@ -1013,6 +1013,40 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * "cleared once shipped" guard — the SQL twin of `deriveSlaState`; keep both
    * in lockstep. NULL deadlines / shipped orders are `none`.
    */
+  /**
+   * One page of T4 `order.dispatch_deadline_near` candidates (#2360).
+   *
+   * "Still needs dispatching, and its deadline falls inside the window."
+   * **Reuses `NOT_SHIPPED`** rather than spelling the predicate again: a second
+   * definition of "still needs dispatching" would drift from the SLA buckets,
+   * and the operator's SLA badge and their automation would then disagree about
+   * the same order.
+   *
+   * Deliberately NOT filtered on `automation_trigger_firings`: that is an
+   * `automation` table (a cross-context read-model join needing ADR-036
+   * treatment), and the firing key is per RULE, a grain this query cannot see.
+   * Dedup is the firing claim, so an already-fired pair is simply re-read and
+   * loses its claim. Ordered by `dispatchByAt` so paging is stable.
+   */
+  async findDispatchDeadlineCandidates(
+    connectionId: string,
+    input: { windowEnd: Date; now: Date; limit: number; offset: number }
+  ): Promise<OrderRecord[]> {
+    const rows = await this.repository
+      .createQueryBuilder('rec')
+      .where('rec."sourceConnectionId" = :connectionId', { connectionId })
+      .andWhere(OrderRecordRepository.NOT_SHIPPED)
+      .andWhere('rec."dispatchByAt" IS NOT NULL')
+      .andWhere('rec."dispatchByAt" > :now', { now: input.now })
+      .andWhere('rec."dispatchByAt" <= :windowEnd', { windowEnd: input.windowEnd })
+      .orderBy('rec."dispatchByAt"', 'ASC')
+      .addOrderBy('rec."internalOrderId"', 'ASC')
+      .skip(input.offset)
+      .take(input.limit)
+      .getMany();
+    return rows.map((row) => this.toDomain(row));
+  }
+
   private applySlaFilter(qb: SelectQueryBuilder<OrderRecordOrmEntity>, slaState: SlaState): void {
     const now = new Date();
     const riskCutoff = new Date(now.getTime() + SLA_AT_RISK_WINDOW_MS);

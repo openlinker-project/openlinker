@@ -162,7 +162,10 @@ const SCAN_ROOTS = [
     // #2364 is "automations index and trigger list" — this folder's real owner.
     dir: join('apps', 'web', 'src', 'features', 'automation'),
     owner: 'W2-27 (#2364)',
-    pending: true,
+    // Live as of #2364 — the folder ships `.tsx` components and
+    // `lib/automation.copy.ts`, so the scan is real rather than vacuous (Z3
+    // fails an existing root with nothing scannable in it).
+    pending: false,
   },
   {
     // Built by #2335 (the returns list), ahead of #2364's own returns surfaces.

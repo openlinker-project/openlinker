@@ -46,6 +46,7 @@ import { ReservationConsumeHandler } from './reservation-consume.handler';
 import { OrdersHoldsReconcileHandler } from './orders-holds-reconcile.handler';
 import { PickupPointRefreshHandler } from './pickup-point-refresh.handler';
 import { ShopProductPublishHandler } from './shop-product-publish.handler';
+import { AutomationTriggerDeadlineSweepHandler } from './automation-trigger-deadline-sweep.handler';
 import { ShopProductStatusSyncHandler } from './shop-product-status-sync.handler';
 import { DestinationTaxonomySyncHandler } from './destination-taxonomy-sync.handler';
 import { InvoicingIssueHandler } from './invoicing-issue.handler';
@@ -96,6 +97,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly masterProductReconcileHandler: MasterProductReconcileHandler,
     private readonly pickupPointRefreshHandler: PickupPointRefreshHandler,
     private readonly shopProductPublishHandler: ShopProductPublishHandler,
+    private readonly automationTriggerDeadlineSweepHandler: AutomationTriggerDeadlineSweepHandler,
     private readonly shopProductStatusSyncHandler: ShopProductStatusSyncHandler,
     private readonly destinationTaxonomySyncHandler: DestinationTaxonomySyncHandler,
     private readonly invoicingIssueHandler: InvoicingIssueHandler,
@@ -110,14 +112,15 @@ export class HandlerRegistrationService implements OnModuleInit {
     // Every registration declares its ADR-050 concurrency lane (#2278). The
     // lane is chosen by cost-of-starvation, never by I/O shape or bounded
     // context — the authoritative table is ADR-050 decision 1, now 13 realtime /
-    // 20 bulk / 5 fiscal / 7 fan-out: `fiscalization.register` joined `fiscal`
+    // 21 bulk / 5 fiscal / 7 fan-out: `fiscalization.register` joined `fiscal`
     // post-ADR (#2156), `inventory.provenance.backfill` joined `bulk` (#2317),
     // the three returns types joined realtime/bulk/fan-out (#2330),
     // `returns.orphan.reconcile` joined `bulk` (#2332),
     // `orders.taxRate.backfill` joined `bulk` (#2440),
     // `orders.holds.reconcile` joined `bulk` (#2340, Wave 2 body A), and the
     // three reservation sweeps joined `bulk` (#2346 / #2347 / #2349, Wave 2
-    // body B). The tripwire in `handler-registration.service.spec.ts` is the authority on
+    // body B), and `automation.trigger.deadlineSweep` joined `bulk` (#2360,
+    // Wave 2 body D). The tripwire in `handler-registration.service.spec.ts` is the authority on
     // these counts — this comment had drifted from it before #2330.
 
     // Register generic marketplace handlers (Option B)
@@ -364,6 +367,13 @@ export class HandlerRegistrationService implements OnModuleInit {
     // Register shop product publish handler (#1042, ADR-024) — operator-wave
     // child, same `bulk` reasoning as marketplace.offer.create.
     this.handlerRegistry.register('shop.product.publish', this.shopProductPublishHandler, 'bulk');
+    // `bulk`: a page of automation evaluations is background work whose delay
+    // costs nothing a buyer can see, and it must never crowd out `realtime`.
+    this.handlerRegistry.register(
+      'automation.trigger.deadlineSweep',
+      this.automationTriggerDeadlineSweepHandler,
+      'bulk',
+    );
     // Register shop product status-sync handler (#1845)
     this.handlerRegistry.register(
       'shop.product.statusSync',
