@@ -18,7 +18,7 @@ import type {
   ReservationLedgerReaderPort,
   SumReservedInput,
 } from '../../../domain/ports/reservation-ledger-reader.port';
-import { EmptyReservationLedgerReader } from '../../../infrastructure/reservations/empty-reservation-ledger.reader';
+import { EmptyReservationLedgerReader } from '../../../testing/empty-reservation-ledger.reader';
 import { UnsupportedAvailabilityScopeError } from '../../../domain/exceptions/unsupported-availability-scope.error';
 import type { AvailabilityScope } from '../../../domain/types/availability.types';
 import type { VariantStockRow } from '../../../domain/types/inventory.types';
@@ -152,6 +152,9 @@ describe('AvailabilityService', () => {
       });
 
       expect(result.quantity).toBe(6);
+      // The computed path reflects its holds inside `quantity`, so there is
+      // nothing unreflected to report (#2345) — `0` would say the opposite.
+      expect(result.olHeldNotReflected).toBeNull();
     });
 
     it('should never let a published reservation drive the quantity below zero', async () => {
@@ -205,6 +208,7 @@ describe('AvailabilityService', () => {
         productVariantId: 'v-missing',
         quantity: 0,
         provenance: 'computed',
+        olHeldNotReflected: null,
         observedAt: null,
         stalenessMs: null,
       });

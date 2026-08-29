@@ -38,6 +38,21 @@ export type {
 // compiling without it, but no cross-feature consumer could NAME the type.
 // From the types-only module, never the label/tone lib (see S10).
 export type { OrderLifecyclePhaseValue } from './lib/order-lifecycle-phase.types';
+// #2350 — the SINGLE source for the shortfall sentence. AC1 requires the row
+// badge and `W2-19`'s attention-table title to be byte-identical, so #2356
+// imports these builders rather than restating the string; a second copy cannot
+// exist without deleting this import. `W2-20` (#2357) should ABSORB
+// `stock-at-risk-copy.ts` when it lands, not grow its own copy.
+export {
+  stockAtRiskTitle,
+  stockAtRiskBadge,
+  stockAtRiskCallout,
+  shortfallItemLabel,
+  STOCK_AT_RISK_BODY,
+} from './lib/stock-at-risk-copy';
+export { StockAtRiskBadge } from './components/stock-at-risk-badge';
+export { StockAtRiskCallout } from './components/stock-at-risk-callout';
+export type { OrderReservationShortfall } from './api/orders.types';
 export { ConnectionDot } from './components/connection-dot';
 export { OrderIdentityCell, formatOrderRef } from './components/order-identity-cell';
 export type { OrderIdentityCellProps } from './components/order-identity-cell';

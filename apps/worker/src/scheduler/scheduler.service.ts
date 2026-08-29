@@ -859,6 +859,77 @@ export class SchedulerService implements OnModuleDestroy {
       generateIdempotencyKey: (_connection, timestamp) =>
         `inventory:provenance:backfill:${timestamp}`,
     });
+
+    // #2346 — the state-dependent reservation expiry sweep. Global scope for the
+    // same reason: reservations key on (order, line, position) and carry no
+    // connection axis.
+    //
+    // Default ON. On a default install every hold is stamped `diagnostic`
+    // (#2344), so neither an extension nor a release moves a published number;
+    // and while `order_holds` (#2339) is absent the pass releases NOTHING at all.
+    // It is registered now so the sweep exists the moment a real obligation
+    // reader is bound, rather than being remembered later.
+    this.tasks.push({
+      taskId: 'reservation-expiry-sweep',
+      jobType: 'inventory.reservations.expire',
+      cronExpression: '15 * * * *',
+      enabledEnvVar: 'OL_RESERVATION_EXPIRY_SWEEP_ENABLED',
+      enabledDefault: true,
+      connectionFilter: () => Promise.resolve([systemConnection]),
+      generatePayload: () => ({ schemaVersion: 1 }),
+      generateIdempotencyKey: (_connection, timestamp) =>
+        `inventory:reservations:expire:${timestamp}`,
+    });
+
+    // #2347 — the reservation CONSUME sweep. Global scope for the same reason as
+    // its expiry sibling: reservations key on (order, line, position) and
+    // shipments on the order, so neither carries a connection axis.
+    //
+    // More frequent than expiry's hourly tick, deliberately: this pass RELEASES
+    // available-to-promise the operator can resell, so lag here is lost sales
+    // rather than a safety risk — the opposite direction from expiry, where
+    // waiting is the safe choice.
+    //
+    // Default ON. On a default install every hold is stamped `diagnostic`
+    // (#2344), so consuming moves no published number; on an existing install
+    // the first cycles are a one-time, self-limiting marker backfill over
+    // historical shipments (see the handler docblock).
+    this.tasks.push({
+      taskId: 'reservation-consume-sweep',
+      jobType: 'inventory.reservations.consume',
+      cronExpression: '*/10 * * * *',
+      enabledEnvVar: 'OL_RESERVATION_CONSUME_SWEEP_ENABLED',
+      enabledDefault: true,
+      connectionFilter: () => Promise.resolve([systemConnection]),
+      generatePayload: () => ({ schemaVersion: 1 }),
+      generateIdempotencyKey: (_connection, timestamp) =>
+        `inventory:reservations:consume:${timestamp}`,
+    });
+
+    // #2349 — the reservation SHORTFALL reconciler. Global scope for the same
+    // reason as its two siblings: reservations key on (order, line, position)
+    // and carry no connection axis.
+    //
+    // Default ON, and safe to be: it makes no platform call, writes only its
+    // own episodes table, and REPAIRS nothing — no counter is clamped, no
+    // reservation is touched, no quantity is published. The worst a
+    // misconfiguration can do is record a fact nobody reads.
+    //
+    // Every 20 minutes rather than expiry's hourly tick: this pass is how an
+    // operator learns an order is at risk, and the remediation is off-system
+    // (buy stock, cancel, contact the buyer), so latency here is the operator's
+    // reaction time.
+    this.tasks.push({
+      taskId: 'reservation-shortfall-sweep',
+      jobType: 'inventory.reservations.shortfall',
+      cronExpression: '*/20 * * * *',
+      enabledEnvVar: 'OL_RESERVATION_SHORTFALL_SWEEP_ENABLED',
+      enabledDefault: true,
+      connectionFilter: () => Promise.resolve([systemConnection]),
+      generatePayload: () => ({ schemaVersion: 1 }),
+      generateIdempotencyKey: (_connection, timestamp) =>
+        `inventory:reservations:shortfall:${timestamp}`,
+    });
   }
 
   /**

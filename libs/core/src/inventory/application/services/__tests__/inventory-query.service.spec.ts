@@ -77,6 +77,7 @@ describe('InventoryQueryService', () => {
       upsert: jest.fn(),
       findMany: jest.fn(),
       findAvailabilityByVariantIds: jest.fn(),
+      findLivePositionsByProductIds: jest.fn(),
       findStockAggregatesByProductIds: jest.fn(),
       markStaleExceptVariants: jest.fn(),
       markLocationlessStaleForSource: jest.fn(),

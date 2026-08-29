@@ -44,4 +44,14 @@ export class ShipmentQueryService implements IShipmentQueryService {
   async getActiveByOrderId(orderId: string): Promise<Shipment | null> {
     return this.shipments.findActiveByOrderId(orderId);
   }
+
+  /**
+   * The contract — why the marker and not the ledger, why ANY shipment, and why
+   * the fold rather than a repository `EXISTS` — is documented once on
+   * {@link IShipmentQueryService.hasConsumedReservations}.
+   */
+  async hasConsumedReservations(orderId: string): Promise<boolean> {
+    const shipments = await this.shipments.findByOrderId(orderId);
+    return shipments.some((shipment) => shipment.reservationConsumedAt !== null);
+  }
 }

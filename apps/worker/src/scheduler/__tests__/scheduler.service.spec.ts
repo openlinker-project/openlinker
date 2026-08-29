@@ -288,6 +288,13 @@ describe('SchedulerService', () => {
         'pending-recovery',
         'pickup-point-refresh',
         'regulatory-status-reconcile',
+        // #2346 — global scope like the provenance backfill: reservations key on
+        // (order, line, position) and carry no connection axis, so the task names
+        // no platform either.
+        'reservation-consume-sweep',
+      'reservation-expiry-sweep',
+        // #2349 — same global scope and same reason.
+        'reservation-shortfall-sweep',
         'returns-orphan-reconcile',
         'stale-offer-pause-sweep',
       ]);

@@ -84,6 +84,23 @@ export interface PromisableQuantity {
    * does not re-read a clock the seam already read (and disagree with it).
    */
   readonly stalenessMs: number | null;
+  /**
+   * Units OpenLinker holds in its own advisory ledger that are **not** reflected
+   * in `quantity` (#2345, design §4.2) — the scoped-subtraction rule's
+   * diagnostic half.
+   *
+   * `null` on the computed path, and that is not the same as `0`: OL computed
+   * the number itself, so the holds ARE inside `quantity` and there is nothing
+   * unreflected to report. `0` would say "no outstanding holds", which is a
+   * different and usually false claim.
+   *
+   * A number only on the `'authority'` path, where the answer is taken as-is
+   * and OL's own holds were deliberately not subtracted. `0` there is
+   * meaningful: OL holds nothing the authority does not already know about.
+   * `'unknown'` reports `null` — an answer that knows nothing knows nothing
+   * about outstanding holds either.
+   */
+  readonly olHeldNotReflected: number | null;
 }
 
 /**
@@ -117,6 +134,75 @@ export function computeAtp(
 }
 
 /**
+ * Who answered the available-to-promise question for this scope.
+ *
+ * A deliberate NARROWING of {@link AvailabilityProvenance} that excludes
+ * `'unknown'`: these are the two arms that carry a number, so a caller cannot
+ * assemble an `'unknown'` answer through the same door as a real quantity (the
+ * `quantity === null <=> provenance === 'unknown'` pairing stays structural).
+ */
+export type AtpAnsweredBy = Exclude<AvailabilityProvenance, 'unknown'>;
+
+/**
+ * The two shapes an ATP answer can arrive in, before Controls.
+ *
+ * A discriminated union rather than two optional fields, so "computed from our
+ * own positions" and "an authority told us" can never be supplied together or
+ * omitted together.
+ */
+export type AtpAnswer =
+  | { readonly answeredBy: 'computed'; readonly totalAvailable: number }
+  | { readonly answeredBy: 'authority'; readonly availableToPromise: number };
+
+/** {@link applyScopedLedgerSubtraction}'s result: the number, and what it omits. */
+export interface ScopedAtpResult {
+  readonly quantity: number;
+  readonly olHeldNotReflected: number | null;
+}
+
+/**
+ * The scoped-subtraction rule (#2345, design §4.2).
+ *
+ * **OpenLinker subtracts its own ledger only for scopes where OpenLinker
+ * computes ATP itself.** An authority-answered scope is taken as-is — OL's
+ * holds are reported alongside as `olHeldNotReflected` and subtracted from
+ * nothing. Subtracting there would double-count: an authority that models holds
+ * has already netted its own, and one that does not is telling us a number OL
+ * has no standing to reduce.
+ *
+ * Two properties are load-bearing rather than incidental.
+ *
+ * **The buffer applies on BOTH arms.** ADR-061 decision 3 makes it a Control —
+ * the operator's own cushion on top of whatever produced the promise, not part
+ * of the promise. Reconciling it against a future
+ * `AvailabilityAnswer.controlsApplied` (an authority that already applied its
+ * own) is Wave 3's, and is named here rather than guessed at now.
+ *
+ * **The authority arm is declared and never produced in Wave 2.** No dispatched
+ * `AvailabilityAuthority` adapter exists, so `AvailabilityService` always passes
+ * `'computed'`. It ships here anyway because the rule is what the issue is
+ * about, and because a rule with one arm is a rule nobody can check — the arm is
+ * asserted directly at this level, which is where it lives.
+ */
+export function applyScopedLedgerSubtraction(
+  answer: AtpAnswer,
+  olReservedPublished: number,
+  buffer: number
+): ScopedAtpResult {
+  if (answer.answeredBy === 'authority') {
+    return {
+      quantity: applyStockSafetyBuffer(Math.max(0, answer.availableToPromise), buffer),
+      olHeldNotReflected: olReservedPublished,
+    };
+  }
+
+  return {
+    quantity: computeAtp(answer.totalAvailable, olReservedPublished, buffer),
+    olHeldNotReflected: null,
+  };
+}
+
+/**
  * Assemble one `PromisableQuantity` from computed inputs.
  *
  * **A variant with zero inventory rows is `'computed'` with quantity `0` and
@@ -131,17 +217,25 @@ export function computeAtp(
  */
 export function toPromisableQuantity(input: {
   productVariantId: string;
-  quantity: number;
+  /**
+   * Which arm produced `atp`. **Required, never defaulted** — the same reason
+   * `SumReservedInput.atpEffect` is: a default here is a policy decision hidden
+   * in a signature, and it is the field that tells a consumer whether the
+   * ledger was subtracted.
+   */
+  provenance: AtpAnsweredBy;
+  atp: ScopedAtpResult;
   observedAt: Date | null;
   now: Date;
 }): PromisableQuantity {
   return {
     productVariantId: input.productVariantId,
-    quantity: input.quantity,
-    provenance: 'computed',
+    quantity: input.atp.quantity,
+    provenance: input.provenance,
     observedAt: input.observedAt,
     stalenessMs:
       input.observedAt === null ? null : input.now.getTime() - input.observedAt.getTime(),
+    olHeldNotReflected: input.atp.olHeldNotReflected,
   };
 }
 
@@ -159,5 +253,6 @@ export function unknownPromisableQuantity(productVariantId: string): PromisableQ
     provenance: 'unknown',
     observedAt: null,
     stalenessMs: null,
+    olHeldNotReflected: null,
   };
 }

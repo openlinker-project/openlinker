@@ -34,6 +34,7 @@ import { OrderOmsAttentionEntryDto } from './order-oms-attention-entry.dto';
 import { OrderSyncStatusResponseDto } from './order-sync-status-response.dto';
 import { SyncAttemptResponseDto } from './sync-attempt-response.dto';
 import type { OrderInvoiceProjectionDto } from './order-invoice-projection.dto';
+import { OrderReservationShortfallDto } from './order-reservation-shortfall.dto';
 import { OrderDeliveryResolutionDto } from './order-delivery-resolution.dto';
 import { OrderDeliveryRiderDto } from './order-delivery-rider.dto';
 
@@ -150,6 +151,20 @@ export class OrderRecordResponseDto {
       'say the order was held and then released — the reason itself is gone by then.',
   })
   salesDocumentBlockReleasedAt!: string | null;
+
+  @ApiPropertyOptional({
+    type: [OrderReservationShortfallDto],
+    description:
+      'Still-open reservation shortfall episodes for this order (#2349) — the ' +
+      'master dropped below what OpenLinker already promised, and this order ' +
+      'is one the shortfall lands on. Nothing was silently reduced. Carried by ' +
+      'BOTH the detail read and the list read (#2350) — the list read batches ' +
+      'one projection across the whole page rather than an N+1 of per-row ' +
+      'lookups, so it costs no per-row cost either. Absent means nothing was ' +
+      'reported for this order, never a positive assertion that it is fine: ' +
+      'the projection is best-effort and degrades to absent on failure.',
+  })
+  reservationShortfalls?: OrderReservationShortfallDto[];
 
   @ApiProperty({ description: 'Order last-update timestamp (ISO 8601)' })
   updatedAt!: string;

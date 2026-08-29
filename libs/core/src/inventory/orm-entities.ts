@@ -10,3 +10,4 @@
  */
 export { InventoryItemOrmEntity } from './infrastructure/persistence/entities/inventory-item.orm-entity';
 export { InventoryLocationOrmEntity } from './infrastructure/persistence/entities/inventory-location.orm-entity';
+export { ReservationOrmEntity } from './infrastructure/persistence/entities/reservation.orm-entity';

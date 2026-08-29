@@ -19,6 +19,7 @@ import type {
   PruneStaleVariantsResult,
   ProvenanceScope,
   DuplicatePositionReport,
+  InventoryPositionCandidate,
 } from '../types/inventory.types';
 
 /**
@@ -153,6 +154,34 @@ export interface InventoryRepositoryPort {
   findAvailabilityByVariantIds(
     variantIds: readonly string[]
   ): Promise<readonly VariantStockRow[]>;
+
+  /**
+   * Every LIVE position an order's lines could be reserved against (#2344).
+   *
+   * Deliberately **not** a sum and deliberately **not** a single-row resolve:
+   * `findAvailabilityByVariantIds` above collapses a variant's positions into
+   * one total and `findByProductAndVariant` picks one row, so neither can tell a
+   * caller that a variant resolved to SEVERAL positions — the condition
+   * ANALYSIS-1032 § 6I's multi-position guard has to reject loudly, because a
+   * reserve's `UPDATE … WHERE id = $1` takes exactly one of them.
+   *
+   * Keyed by **product** rather than variant so one bound-parameter statement
+   * serves a whole order, with `productVariantIds` narrowing inside it: without
+   * that narrowing a 500-SKU apparel product would return 500 rows for a
+   * one-line order, since variant-count-per-product — not order size — is the
+   * growth axis. Product-level positions (`productVariantId IS NULL`) are always
+   * included, because a line with no variant resolves against exactly those.
+   *
+   * `isStale = false` only, matching § 6I's claim predicate and the filter
+   * `findAvailabilityByVariantIds` already applies: a stale position must never
+   * accept a new promise.
+   *
+   * Empty `productIds` returns `[]` without a storage round trip.
+   */
+  findLivePositionsByProductIds(
+    productIds: readonly string[],
+    productVariantIds: readonly string[]
+  ): Promise<readonly InventoryPositionCandidate[]>;
 
   /**
    * Product-level stock aggregates for the given product IDs (#1720).

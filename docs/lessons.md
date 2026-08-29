@@ -429,3 +429,108 @@ decision 3 (#2165, epic #2162)
 **Rule**: a `const` string holding a raw SQL boolean expression that will ever be concatenated into a larger expression via `${...}` must be wrapped in its own parens **at the point it's defined**, not only at call sites that happen to need it today — a sibling call site added later, or an existing one edited, inherits the same trap silently. Prefer pinning the exact value with a real int-spec against Postgres; a unit spec with a mocked repository cannot observe operator precedence.
 **Applies to**: `libs/core/src/orders/infrastructure/persistence/repositories/order-line-item.repository.ts` (`unconvertedOrZeroTotal`); any raw-SQL-builder helper anywhere that stores a boolean sub-expression as a string constant for reuse across `FILTER (WHERE ...)`/`CASE WHEN ...` clauses.
 **Source**: #2172/#2191 (`top-products-ranking.int-spec.ts`, "labels a channel's own unconvertedCurrency...").
+
+## A denormalised counter that sums two semantic classes must be scoped by EVERY reader, and "the published quantity is unaffected" is only half the blast radius
+
+**Context**: ADR-061's advisory reservation ledger. A hold carries an immutable `atpEffect` stamp —
+`published` reduces what OpenLinker promises, `diagnostic` records the hold and is contractually
+inert. `inventory_items.olReservedQuantity` is denormalised over the ledger and legitimately sums
+**both** stamps.
+
+**Problem**: the design was justified with *"on a default install every hold is `diagnostic`, so
+nothing published moves"*. That is true about the **published quantity** and silent about the
+**counter**. Two shipped readers subtracted the raw counter — the admission guard
+(`availableQuantity - olReservedQuantity >= q`) and the shortfall reconciler
+(`olReservedQuantity > availableQuantity`) — so a stamp that promises nothing still refused
+reservations and opened operator-visible "stock at risk" episodes naming real orders. It was not a
+tail case: on the DEFAULT `omp_fulfilled` topology the marketplace ships, OL creates no `Shipment`,
+no cancellation arrives, and the expiry sweep is fail-closed — so nothing ever closes a hold and the
+counter grows monotonically for the life of the install. A healthy catalogue degrades on a clock.
+
+**Rule**: when a denormalised aggregate sums rows of more than one semantic class, enumerate its
+readers and scope each one, at the same time as the class is introduced. Reviewing "does the
+headline output change?" is not enough — walk every consumer of the aggregate, including guards and
+reconcilers that never surface a number of their own. And a value class whose whole contract is
+*"record this, let it restrict nothing"* must be checked against that contract literally: any
+operator-visible consequence at all — a refusal, an episode, a badge — contradicts it. Prefer one
+shared SQL/expression definition for the scoped sum over per-reader copies, so a new reader inherits
+the scoping instead of re-deriving it.
+
+**Applies to**: `libs/core/src/inventory/**` (`ReservationRepository.applyGuardedAdd`,
+`ReservationShortfallRepository`, `publishedReservedSum`); generally any denormalised counter or
+cached aggregate in `libs/core`.
+
+**Source**: PR #2628 review (ADR-061).
+
+## When a test you wrote fails against an implementation you also wrote, decide which one encodes the decision you actually made — before changing either
+
+**Context**: a narrowing where the same author owns both sides. In PR #2628 the fix scoped a
+guard's *subtrahend* to one class of rows, and deliberately did **not** exempt the other class from
+the guard's headroom requirement — a considered line, argued in the commit and the docblock. The
+acceptance fixture written in the same sitting then asked for more units than that line permits, and
+went red against correct code.
+
+**Problem**: this is the inverse of the failure shape the rest of this ledger warns about. The
+familiar danger is a test that passes for the wrong reason — self-satisfying, or green against a
+harness rather than the behaviour. This one is rarer and worse: **the fixture encoded the design the
+author had considered and rejected**, so the *correct* implementation is what makes it fail. The
+instinct on a red test is to move the code toward the test, and here that would have reinstated the
+rejected exemption and silently undone the fix the whole change existed to make — with a green suite
+afterwards, and the review already passed. Author-owns-both-sides removes the usual protection: when
+a test and an implementation come from different people, the disagreement surfaces as a
+conversation; when they come from one person, it surfaces only as a red line that is cheapest to
+make green.
+
+**Rule**: a red test is a *disagreement between two artefacts*, not automatically a defect report
+about the code. Before touching either side, name the decision in dispute out loud and check which
+artefact encodes it — the one that can cite the ADR, the docblock, or the commit message wins, and
+the other is the bug. Be most suspicious when the failure is *convenient*: if making the test pass
+would relax a constraint you deliberately chose, treat that as the signal, not the fix. Then say so
+in the report rather than quietly re-sizing the fixture, because "my test assumed the behaviour I
+rejected" is evidence the constraint is easy to forget and belongs where the next person will see
+it. A fixture corrected this way should carry a comment recording *why* its value is the ceiling, so
+the next author does not re-derive the same wrong assumption.
+
+**Applies to**: any test the change's own author writes against a constraint that change introduces
+— guards, gates, validators, narrowings, refusals. Sharpest where the constraint is a *deliberate
+non-exemption*, since nothing in the type system marks one.
+
+**Source**: PR #2628 review (ADR-061) — `diagnostic-holds-are-inert.int-spec.ts`, where the guard's
+subtrahend was scoped by `atpEffect` but a `diagnostic` claim still needs headroom the size of the
+claim.
+
+## A merge that drops a closing brace leaves no marker — check the seam, in a language a gate parses
+
+**Context**: integrating OMS Wave 2 bodies A and C into body B. Both sides had appended a new block
+at the same place in two files, so git produced a textbook additive conflict and the union looked
+obviously right. In `orders.controller.ts` it aligned body A's trailing `};`/`}` with the closing
+braces of body B's `toReservationShortfallDto`, silently truncating that method. In
+`apps/web/src/index.css` it did the identical thing to `.stock-at-risk-callout__items`.
+
+**Problem**: the two defects were caught by completely different luck. The controller is TypeScript,
+so `pnpm type-check` failed loudly — but only because a resolution one line different would have
+compiled and been *wrong* rather than unparseable. The CSS was not caught at all: it shipped through
+lint, type-check, 4142 web unit tests and 130 integration suites in the previous merge round and was
+only found a round later, by eye. **Nothing in the pipeline parses `index.css`**, so an unclosed rule
+is invisible to every gate — and under CSS nesting it does not even error, it silently re-scopes the
+following rules as descendants, so the styles are still "there" and simply never apply. Absent
+conflict markers are not evidence of a correct merge; a green suite is not evidence either, for any
+artefact no gate parses.
+
+**Rule**: after resolving a conflict, re-read the **seam itself** — the last lines of the first block
+and the first lines of the second — and confirm the first block still *closes*. Do it structurally,
+not by eye: strip comments and compare `{` / `}` counts for the whole file, which takes seconds and
+catches the whole class. Prefer this specifically where both sides append to one list and the
+resolution is "obviously" a union, because that is exactly the shape whose closing punctuation is
+identical on both sides and therefore eligible to be treated as shared context. And when the file is
+one no gate parses (CSS, YAML, JSON fixtures), treat the structural check as **mandatory** rather
+than a double-check, since nothing downstream will do it for you.
+
+**Applies to**: any merge or rebase touching an append-heavy file — a stylesheet, a barrel, a job-type
+union, a DI provider list, a long positional constructor. Sharpest when several parallel bodies of
+work land in one integration branch, because every one of them appends at the same seam.
+
+**Source**: PR #2628 Wave-2 integration merges (bodies A and C). Also surfaced two stale counts of
+the same family: the ADR-050 lane tripwire's dummy-handler count was wrong on *both* sides and its
+test could not fail (surplus constructor args become `undefined`), and the orders Status-cell row
+height was documented as four lines by two bodies independently when the composition is six.

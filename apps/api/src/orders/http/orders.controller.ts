@@ -62,7 +62,13 @@ import {
   INVOICE_SERVICE_TOKEN,
   IInvoiceService,
 } from '@openlinker/core/invoicing';
+import { Logger } from '@openlinker/shared/logging';
 import type { InvoiceRecord } from '@openlinker/core/invoicing';
+import {
+  RESERVATION_SHORTFALL_SERVICE_TOKEN,
+  type IReservationShortfallService,
+  type ReservationShortfallEpisode,
+} from '@openlinker/core/inventory';
 import {
   FULFILLMENT_ROUTING_SERVICE_TOKEN,
   IFulfillmentRoutingService,
@@ -99,6 +105,7 @@ import {
   ReleaseOrderHoldResponseDto,
 } from './dto/order-hold-response.dto';
 import type { OrderInvoiceProjectionDto } from './dto/order-invoice-projection.dto';
+import type { OrderReservationShortfallDto } from './dto/order-reservation-shortfall.dto';
 import type { OrderDeliveryResolutionDto } from './dto/order-delivery-resolution.dto';
 import type { OrderDeliveryRiderDto } from './dto/order-delivery-rider.dto';
 
@@ -106,7 +113,11 @@ import type { OrderDeliveryRiderDto } from './dto/order-delivery-rider.dto';
 @ApiTags('orders')
 @Controller('orders')
 export class OrdersController {
+  private readonly logger = new Logger(OrdersController.name);
+
   constructor(
+    @Inject(RESERVATION_SHORTFALL_SERVICE_TOKEN)
+    private readonly reservationShortfalls: IReservationShortfallService,
     @Inject(ORDER_RECORD_REPOSITORY_TOKEN)
     private readonly orderRecordRepository: OrderRecordRepositoryPort,
     // #2287: the packed writes go through the SERVICE, not the repository port
@@ -241,6 +252,20 @@ export class OrdersController {
     // have no `deliveryResolution` / `deliveryRider` on their DTO.
     const deliveryByOrderId = await this.resolveDeliveryForOrders(items);
 
+    // Batch the shortfall projection for the whole page (#2350), the same shape
+    // and for the same reason as the invoice batch above: one read across the
+    // page's order ids, never a per-row `listOpenForOrder`. #2349 put the field
+    // on the DETAIL read only precisely to avoid an N+1 here — this adds the
+    // batched list read beside that decision rather than moving the field.
+    //
+    // Best-effort, matching the detail read: a failed projection must not take
+    // the whole order list down. An order absent from the map carries no
+    // `reservationShortfalls`, which the FE reads as "nothing reported" and
+    // never as a positive "this order is fine".
+    const shortfallByOrderId = await this.loadReservationShortfallsForPage(
+      items.map((order) => order.internalOrderId)
+    );
+
     return {
       items: items.map((order) => {
         const dto = this.toDto(order);
@@ -252,6 +277,10 @@ export class OrdersController {
         if (delivery) {
           dto.deliveryResolution = delivery.resolution;
           dto.deliveryRider = delivery.rider;
+        }
+        const shortfalls = shortfallByOrderId.get(order.internalOrderId);
+        if (shortfalls && shortfalls.length > 0) {
+          dto.reservationShortfalls = shortfalls;
         }
         return dto;
       }),
@@ -382,6 +411,11 @@ export class OrdersController {
         await this.deliveryRider.resolve(this.toRiderInput(order, resolution))
       );
     }
+    // Still-open reservation shortfalls (#2349). DETAIL read only — putting it
+    // on the shared `toDto` would cost one lookup per row on every page of
+    // `/orders`. Best-effort: a shortfall projection failing must not take the
+    // whole order detail down with it, and the episodes are re-readable.
+    dto.reservationShortfalls = await this.loadReservationShortfalls(order.internalOrderId);
     // Hold projection (#2341). DETAIL ONLY — one query per order, which on the
     // paged list would be N. `activeHold` is derived from the same read rather
     // than a second `getOpenHold` call, so the two answers cannot disagree.
@@ -495,6 +529,68 @@ export class OrdersController {
       }
       throw error;
     }
+  }
+
+  /**
+   * The list page's batched shortfall projection.
+   *
+   * Returns an EMPTY map on failure, never throws: one supplementary panel must
+   * not take a page of orders down with it. That is why the FE must never
+   * render an absent entry as "no shortfalls" — absence and failure look the
+   * same here by design, so only the presence of an episode is a claim.
+   */
+  private async loadReservationShortfallsForPage(
+    internalOrderIds: string[]
+  ): Promise<Map<string, OrderReservationShortfallDto[]>> {
+    if (internalOrderIds.length === 0) {
+      return new Map();
+    }
+    try {
+      const grouped = await this.reservationShortfalls.listOpenForOrders(internalOrderIds);
+      return new Map(
+        [...grouped.entries()].map(([orderId, episodes]) => [
+          orderId,
+          episodes.map((episode) => this.toReservationShortfallDto(episode)),
+        ])
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to project reservation shortfalls for a page of ${String(
+          internalOrderIds.length
+        )} order(s)`,
+        (error as Error).stack
+      );
+      return new Map();
+    }
+  }
+
+  private async loadReservationShortfalls(
+    internalOrderId: string
+  ): Promise<OrderReservationShortfallDto[]> {
+    try {
+      const episodes = await this.reservationShortfalls.listOpenForOrder(internalOrderId);
+      return episodes.map((episode) => this.toReservationShortfallDto(episode));
+    } catch (error) {
+      this.logger.error(
+        `Failed to project reservation shortfalls for order ${internalOrderId}`,
+        (error as Error).stack
+      );
+      return [];
+    }
+  }
+
+  private toReservationShortfallDto(
+    episode: ReservationShortfallEpisode
+  ): OrderReservationShortfallDto {
+    return {
+      episodeId: episode.id,
+      inventoryItemId: episode.inventoryItemId,
+      productVariantId: episode.productVariantId,
+      sku: episode.sku,
+      shortQuantity: episode.shortQuantity,
+      positionShortfall: episode.positionShortfall,
+      openedAt: episode.openedAt.toISOString(),
+    };
   }
 
   @Roles('admin')
