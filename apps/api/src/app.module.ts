@@ -50,6 +50,7 @@ import { MailerApiModule } from './mailer/mailer.module';
 import { AnalyticsApiModule } from './analytics/analytics.module';
 import { AnalyticsTrustApiModule } from './analytics-trust/analytics-trust.module';
 import { CatalogTrustApiModule } from './catalog-trust/catalog-trust.module';
+import { FulfillmentAuthorityApiModule } from './fulfillment-authority/fulfillment-authority.module';
 import { ReturnActionsApiModule } from './returns/return-actions.module';
 import { ReturnsReadApiModule } from './returns/returns-read.module';
 import { AutomationApiModule } from './automation/automation-api.module';
@@ -101,6 +102,7 @@ import { RequestPriorityModule } from './http/request-priority.module';
     AnalyticsApiModule, // Admin REST surface for PostHog analytics settings (#1685)
     AnalyticsTrustApiModule, // GET /analytics/trust — data-trust snapshot for the /analytics page (#1982)
     CatalogTrustApiModule, // GET /connections/:id/catalog-trust — master rung + reconcile recency (#2258)
+    FulfillmentAuthorityApiModule, // /fulfillment-authority — who decides what + presets (#2353)
     ReturnActionsApiModule, // POST /returns/:id/decline — the one return write (#2333)
     ReturnsReadApiModule, // GET /returns[, /:id, /ingestion-availability] — returns reads (#2334)
     // /automations — rule CRUD, the closed vocabulary, the §5.6a dry run and the

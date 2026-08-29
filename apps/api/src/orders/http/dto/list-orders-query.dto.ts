@@ -27,6 +27,7 @@ import {
   SlaStateValues,
   FulfillmentRollupStateValues,
 } from '@openlinker/core/orders';
+import { HoldReasonValues, type HoldReason } from '@openlinker/core/order-lifecycle';
 import {
   OrderSyncStatusFilter,
   OrderRecordStatus,
@@ -138,6 +139,20 @@ export class ListOrdersQueryDto {
   fulfillmentState?: FulfillmentRollupState;
 
   @ApiPropertyOptional({
+    enum: HoldReasonValues,
+    description:
+      'Hold-reason filter (#2342), sent as `?hold=`: keeps only orders whose OPEN hold carries ' +
+      'this reason. Reason-scoped with no "any" value on purpose — `?phase=held` already answers ' +
+      '"show me held orders" and carries a count, so this is the narrower axis that chip cannot ' +
+      'express, and its result set is a strict subset of that one. Composes with `phase` and ' +
+      '`health` rather than replacing either. An unrecognised reason is rejected with a 400 ' +
+      'rather than silently returning the unfiltered list.',
+  })
+  @IsOptional()
+  @IsEnum(HoldReasonValues)
+  hold?: HoldReason;
+
+  @ApiPropertyOptional({
     type: Boolean,
     description:
       'Sales-document block filter (#2100): true keeps only orders carrying an ATTENTION-WORTHY ' +
@@ -209,6 +224,27 @@ export class ListOrdersQueryDto {
   @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
   @IsBoolean()
   taxRateConflict?: boolean;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    name: 'attention',
+    description:
+      'THIS IS NOT `health=needs_attention`. That value is a member of the health PARTITION and ' +
+      'means a sync failure; this is an orthogonal axis (#2352/#2353) meaning OpenLinker stopped ' +
+      'deciding something about the order - two systems claiming one thing, a stock shortfall ' +
+      'against what was promised, a line nothing can ship, an unaccepted job. An order is ' +
+      'routinely one, the other, or both, so this composes with `health` rather than competing ' +
+      'with it. true keeps only orders carrying at least one COUNTED inert state, false keeps ' +
+      'only the rest, omitted does not filter. A reason this build does not recognise never ' +
+      'matches and is never counted.',
+  })
+  @IsOptional()
+  // Same string-literal mapping + pass-through-to-400 posture as
+  // `salesDocumentBlocked` above; see that comment for why a stray value must not
+  // collapse to `undefined`.
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  attention?: boolean;
 
   @ApiPropertyOptional({ default: 0, minimum: 0, description: 'Number of items to skip' })
   @IsOptional()

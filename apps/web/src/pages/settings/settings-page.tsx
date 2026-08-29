@@ -6,6 +6,7 @@ import { MailerSettingsTile } from '../../features/mailer-settings/components/ma
 import { PosthogSettingsTile } from '../../features/posthog-settings/components/posthog-settings-tile';
 import { McpTokensTile } from '../../features/mcp-tokens/components/mcp-tokens-tile';
 import { SalesDocumentsTile } from '../../features/sales-documents';
+import { WhoDecidesTile } from '../../features/fulfillment-authority';
 import { PageLayout } from '../../shared/ui/page-layout';
 
 export function SettingsPage(): ReactElement {
@@ -26,6 +27,8 @@ export function SettingsPage(): ReactElement {
           {isAdmin ? <span className="toolbar-chip">PostHog</span> : null}
           {isAdmin ? <span className="toolbar-chip">MCP tokens</span> : null}
           {isAdmin ? <span className="toolbar-chip">Sales documents</span> : null}
+          {/* Ungated, unlike its five neighbours — see `WhoDecidesTile`'s docblock. */}
+          <span className="toolbar-chip">Who decides what</span>
           <span className="toolbar-chip">Upcoming</span>
         </div>
       }
@@ -104,6 +107,8 @@ export function SettingsPage(): ReactElement {
 
         {/* ── Sales documents (admin-only, #2159) ───────────────────── */}
         {isAdmin ? <SalesDocumentsTile /> : null}
+        {/* Deliberately NOT admin-gated — see `WhoDecidesTile`'s docblock. */}
+        <WhoDecidesTile />
 
         {/* ── Notifications (planned) ───────────────────────────────── */}
         <article className="panel panel--dense">

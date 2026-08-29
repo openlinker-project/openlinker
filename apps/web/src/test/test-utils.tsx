@@ -621,6 +621,11 @@ export function createMockApiClient(
       deleteAttributeRule: vi.fn().mockResolvedValue(undefined),
       ...overrides.mappings,
     } as ApiClient['mappings'],
+    fulfillmentAuthority: {
+      getStatus: vi.fn().mockResolvedValue(null),
+      applyPreset: vi.fn().mockResolvedValue(null),
+      ...overrides.fulfillmentAuthority,
+    } as ApiClient['fulfillmentAuthority'],
     salesDocumentRules: {
       listRules: vi.fn().mockResolvedValue([]),
       createRule: vi.fn().mockResolvedValue(null),

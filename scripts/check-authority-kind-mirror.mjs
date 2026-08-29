@@ -79,9 +79,28 @@ const DOCS_FENCE_END = '<!-- authority-kinds:end -->';
  */
 const PENDING_MIRRORS = [
   {
-    file: join('apps', 'web', 'src', 'features', 'orders', 'lib', 'authority-kind.ts'),
+    // RE-POINTED by #2354 (`W2-17`), which is what the previous note asked for.
+    // The path stood under `features/orders` only because this folder did not
+    // exist yet and the parent-directory guard below — correctly — refuses a
+    // path that can never resolve; #2354's "Who decides what" page created the
+    // real one, so both fields moved here in that same commit.
+    //
+    // The entry stays in PENDING_MIRRORS because there is no separate "live"
+    // list to graduate into: the loop below already enforces a declared mirror
+    // the moment its file exists (absent + parent dir present => a note;
+    // present => parsed and diffed against core, in order). Deleting the entry
+    // would instead break two `--self-check` assertions.
+    file: join(
+      'apps',
+      'web',
+      'src',
+      'features',
+      'fulfillment-authority',
+      'lib',
+      'authority-kind.ts',
+    ),
     declaration: KIND_DECLARATION,
-    pending: 'W2-14 (first frontend consumer of the authority vocabulary)',
+    pending: 'W2-17 / #2354 (live since the who-decides page; kept declared, see note)',
   },
 ];
 

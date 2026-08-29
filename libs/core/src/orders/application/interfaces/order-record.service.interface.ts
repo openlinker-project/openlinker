@@ -135,6 +135,24 @@ export interface IOrderRecordService {
   getEarliestOrderDateByConnection(connectionIds: string[]): Promise<Map<string, Date>>;
 
   /**
+   * How many orders carry at least one COUNTED OMS inert state (#2352/#2353)?
+   *
+   * The cross-context seam for the `Needs attention (N)` count on the
+   * who-decides surface — the `getEarliestOrderDateByConnection` (#2083) and
+   * `getFailedSyncValueSummary` (#1983) precedent: a sibling context reads
+   * through this interface, never `OrderRecordRepositoryPort`, which is an
+   * intra-context contract.
+   *
+   * Install-wide and unscoped, deliberately distinct from the filter-scoped
+   * `omsAttention` count in the orders summary aggregate: the who-decides page
+   * has no filter scope to pass, and inventing one would make its number depend
+   * on a scope no operator chose. Both read one predicate, so they cannot drift.
+   *
+   * The ORDER half only — return-scoped states are counted on the returns side.
+   */
+  countOrdersWithOmsAttention(): Promise<number>;
+
+  /**
    * Push a per-order fulfillment rollup (#1108) onto the order record. The
    * cross-context surface the shipping context calls after a shipment-status
    * change (`shipping → orders`, via this service — never the repository port).

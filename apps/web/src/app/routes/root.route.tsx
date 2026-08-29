@@ -42,6 +42,7 @@ import {
 import { automationsRoute } from './automations.route';
 import { returnsRoute } from './returns.route';
 import { salesDocumentsRoute } from './sales-documents.route';
+import { whoDecidesRoute } from './who-decides.route';
 import { settingsRoute } from './settings.route';
 import { shipmentsRoute } from './shipments.route';
 import { usersRoute } from './users.route';
@@ -77,6 +78,7 @@ export const coreChildren: RouteObject[] = [
   webhookDeliveriesRoute,
   settingsRoute,
   salesDocumentsRoute,
+  whoDecidesRoute,
   promptTemplatesListRoute,
   promptTemplateDetailRoute,
   promptTemplatesLegacyListRedirectRoute,

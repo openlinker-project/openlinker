@@ -562,6 +562,73 @@ describe('OrderIngestionService', () => {
       );
     });
 
+    // #2588 review I-1. The withheld row is written by DROP-then-append
+    // (`OrderRecordRepository.updateSyncStatus`), so writing it over an
+    // already-provisioned destination destroys that destination's
+    // `externalOrderId` / `externalOrderNumber` — the shop's own order number,
+    // which is exactly what the operator needs while the hold is on.
+    describe('a withheld destination that is already synced (#2588 I-1)', () => {
+      const heldResult = {
+        status: 'skipped_held' as const,
+        destinationConnectionId: 'dest-conn-1',
+        holdId: 'hold-1',
+        holdReason: 'fraud-review' as const,
+      };
+
+      it('does NOT overwrite the row of a destination already synced', async () => {
+        orderRecordService.getOrderRecord.mockResolvedValue({
+          sourceConnectionId: connectionId,
+          syncStatus: [
+            {
+              destinationConnectionId: 'dest-conn-1',
+              status: 'synced',
+              externalOrderId: '12345',
+              externalOrderNumber: 'PS-9981',
+            },
+          ],
+        } as unknown as OrderRecord);
+        orderSyncService.syncOrder.mockResolvedValue([heldResult]);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(orderRecordService.updateSyncStatus).not.toHaveBeenCalled();
+      });
+
+      it('still writes the withheld row on a FIRST ingestion, where nothing is provisioned yet', async () => {
+        orderRecordService.getOrderRecord.mockResolvedValue(null);
+        orderSyncService.syncOrder.mockResolvedValue([heldResult]);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(orderRecordService.updateSyncStatus).toHaveBeenCalledWith(
+          'ol_order_test',
+          'dest-conn-1',
+          expect.objectContaining({
+            status: 'pending',
+            error: 'Withheld: order is on hold (fraud-review)',
+          })
+        );
+      });
+
+      it('still writes the withheld row for a destination whose existing row is not synced', async () => {
+        orderRecordService.getOrderRecord.mockResolvedValue({
+          sourceConnectionId: connectionId,
+          syncStatus: [
+            { destinationConnectionId: 'dest-conn-1', status: 'failed', error: 'boom' },
+          ],
+        } as unknown as OrderRecord);
+        orderSyncService.syncOrder.mockResolvedValue([heldResult]);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(orderRecordService.updateSyncStatus).toHaveBeenCalledWith(
+          'ol_order_test',
+          'dest-conn-1',
+          expect.objectContaining({ status: 'pending' })
+        );
+      });
+    });
+
     it('should persist snapshot and order even when syncOrder throws', async () => {
       orderSyncService.syncOrder.mockRejectedValue(new Error('no destinations'));
 

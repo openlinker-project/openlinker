@@ -531,6 +531,10 @@ export class OrderRecordService implements IOrderRecordService {
     return this.repository.findEarliestOrderDateByConnection(connectionIds);
   }
 
+  async countOrdersWithOmsAttention(): Promise<number> {
+    return this.repository.countOrdersWithOmsAttention();
+  }
+
   /**
    * Durably record the instant this order was cancelled (#1984). Thin
    * pass-through to the repository's first-write-wins absolute-set — see

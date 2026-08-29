@@ -14,7 +14,13 @@ import {
   FulfillmentRollupStateValues,
 } from '@openlinker/core/orders';
 import { OrderRecordStatus, SlaState, FulfillmentRollupState } from '@openlinker/core/orders';
-import { OrderLifecyclePhaseValues, type OrderLifecyclePhase } from '@openlinker/core/order-lifecycle';
+import {
+  OrderLifecyclePhaseValues,
+  HoldReasonValues,
+  type OrderLifecyclePhase,
+  type HoldReason,
+} from '@openlinker/core/order-lifecycle';
+import { OrderHoldDto } from './order-hold-response.dto';
 import {
   SalesDocumentGateBlockReasonValues,
   SalesDocumentUnresolvedReasonValues,
@@ -24,6 +30,7 @@ import type {
   SalesDocumentUnresolvedReason,
 } from '@openlinker/core/sales-documents';
 import { OrderAmendmentChangeDto } from './order-amendment-change.dto';
+import { OrderOmsAttentionEntryDto } from './order-oms-attention-entry.dto';
 import { OrderSyncStatusResponseDto } from './order-sync-status-response.dto';
 import { SyncAttemptResponseDto } from './sync-attempt-response.dto';
 import type { OrderInvoiceProjectionDto } from './order-invoice-projection.dto';
@@ -112,6 +119,17 @@ export class OrderRecordResponseDto {
       'connections, none marked primary"), rendered to the operator verbatim.',
   })
   salesDocumentBlockDetail!: string | null;
+
+  @ApiProperty({
+    type: [OrderOmsAttentionEntryDto],
+    description:
+      'Inert states this order carries (#2352/#2356) — what OpenLinker STOPPED deciding about it. ' +
+      'Empty for an ordinary order, and empty on every install until a producer writes the column. ' +
+      'This is NOT the `needs_attention` health bucket: that bucket is a member of a partition and ' +
+      'means a sync failure, while this is an orthogonal axis, so an order is routinely one, the ' +
+      'other, or both. Keyed by PRODUCER, so an order can carry several at once.',
+  })
+  omsAttention!: OrderOmsAttentionEntryDto[];
 
   @ApiPropertyOptional({
     nullable: true,
@@ -256,4 +274,33 @@ export class OrderRecordResponseDto {
     description: 'Source delivery method label (#1791).',
   })
   sourceDeliveryMethodName?: string | null;
+
+  @ApiPropertyOptional({
+    enum: HoldReasonValues,
+    nullable: true,
+    description:
+      'Why this order is currently held, or null (#2340/#2341). On the SHARED projection, so it ' +
+      'reaches the list and the detail read from one place at no query cost — the column is ' +
+      'already loaded. It is #2340\'s DISPLAY CACHE with an hourly repair window: a badge may ' +
+      'render it, and no GATE may read it. Whether an order is held is decided through ' +
+      'IOrderHoldService.getOpenHold against order_holds (the epic\'s L4 exit criterion).',
+  })
+  activeHoldReason!: HoldReason | null;
+
+  @ApiPropertyOptional({
+    type: OrderHoldDto,
+    nullable: true,
+    description:
+      'The open hold on this order, or null (#2341). DETAIL READ ONLY — absent on the list, where ' +
+      'resolving it would be one query per row. Read it as `.nullish()`, never `.optional()` (#939).',
+  })
+  activeHold?: OrderHoldDto | null;
+
+  @ApiPropertyOptional({
+    type: [OrderHoldDto],
+    description:
+      'Every hold this order has carried, newest first — the operator-facing audit trail (#2341). ' +
+      'DETAIL READ ONLY, same as activeHold above.',
+  })
+  holdHistory?: OrderHoldDto[];
 }

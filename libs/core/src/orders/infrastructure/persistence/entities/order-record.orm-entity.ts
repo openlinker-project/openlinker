@@ -10,6 +10,7 @@
 import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
 import type { OrderSyncStatusFilter } from '../../../domain/types/order-record.types';
 import type { OrderAmendmentChange } from '../../../domain/order-amendment-diff';
+import type { AuthorityAttentionEntry } from '@openlinker/core/fulfillment-authority';
 
 /**
  * Sync status JSONB structure
@@ -345,6 +346,59 @@ export class OrderRecordOrmEntity {
    */
   @Column({ type: 'jsonb', nullable: true })
   lastAmendmentChanges!: OrderAmendmentChange[] | null;
+
+  /**
+   * Denormalised reason of the order's currently-open hold (#2340), or `null`
+   * when nothing holds it.
+   *
+   * **`order_holds` is the authority; this column is a CACHE.** It exists so the
+   * derived-lifecycle `CASE` (#2309) and the `?phase=held` filter can answer
+   * without joining `order_holds` per bucket — that `CASE` is already
+   * non-sargable and `getManyAndCount()` evaluates it twice per request. On
+   * drift the table wins and `orders.holds.reconcile` repairs the column; no
+   * hold GATE may read it (the epic's L4 exit criterion).
+   *
+   * Written ONLY by `OrderHoldProjectionRepositoryPort.setActiveHoldReason`,
+   * and deliberately excluded from `toOrm` + `upsert`'s column tuple — the
+   * `cancelledAt` / `salesDocument*` single-writer precedent.
+   *
+   * Plain `text` with no check constraint, matching `salesDocumentBlockReason`:
+   * the union is enforced in TypeScript, and `isHoldReason` coerces on read.
+   */
+  @Column({ type: 'text', nullable: true })
+  @Index('IDX_order_records_active_hold', { where: '"activeHoldReason" IS NOT NULL' })
+  activeHoldReason!: string | null;
+
+  /**
+   * The OMS inert states currently reported against this order (#2352,
+   * Wave-2 product spec §4.2) — an array of `AuthorityAttentionEntry`, or NULL
+   * when nothing is reported.
+   *
+   * **An ARRAY keyed by producer, not a scalar reason, and that is the whole
+   * point.** #2100's single `salesDocumentBlockReason` is safe because ONE
+   * authority re-decides the whole question on every order transition, so its
+   * `null` is a complete statement. Here the writers are three unrelated
+   * subsystems (the reservation ledger, routing, the execution handshake) and an
+   * order can genuinely carry two states at once — one line unroutable, another
+   * short. A level-triggered scalar would make each producer's "nothing is
+   * wrong" honest about its own question and a lie about the others', so the
+   * `Needs attention (N)` count would depend on which subsystem ran last.
+   * `updateOmsAttention` therefore replaces or removes exactly ONE producer's
+   * entry and leaves the rest alone.
+   *
+   * Sole writer `updateOmsAttention` — deliberately NOT round-tripped through
+   * `toOrm`, for the reason the three `salesDocument*` columns are not.
+   *
+   * **No index, deliberately.** Nothing writes this column yet (its producers
+   * are Wave-3 / the reservation-ledger and returns-custody bodies), so an index
+   * added here would be permanently empty DDL sized against no real cardinality;
+   * and a partial index over a hardcoded value list is exactly the shape that
+   * silently went stale on `IDX_order_records_salesDocumentBlockReason` when
+   * #2248 widened the union without touching the index. The producing issue adds
+   * it, against its own data.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  omsAttention!: AuthorityAttentionEntry[] | null;
 
   @CreateDateColumn()
   createdAt!: Date;

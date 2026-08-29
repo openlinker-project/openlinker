@@ -15,6 +15,7 @@ import { OrderRecordService } from './application/services/order-record.service'
 import { OrderFxStampService } from './application/services/order-fx-stamp.service';
 import { OrderFxReadService } from './application/services/order-fx-read.service';
 import { OrderDestinationRetryService } from './application/services/order-destination-retry.service';
+import { OrderProvisioningResumeService } from './application/services/order-provisioning-resume.service';
 import { OrderLifecycleRelayService } from './application/services/order-lifecycle-relay.service';
 import { OrderRecordRepository } from './infrastructure/persistence/repositories/order-record.repository';
 import { OrderLineItemRepository } from './infrastructure/persistence/repositories/order-line-item.repository';
@@ -31,6 +32,7 @@ import {
   ORDER_RECORD_SERVICE_TOKEN,
   ORDER_FX_STAMP_SERVICE_TOKEN,
   ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
+  ORDER_PROVISIONING_RESUME_SERVICE_TOKEN,
   ORDER_ITEM_REF_RESOLVER_SERVICE_TOKEN,
   ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
   ORDER_REFUND_RECORD_REPOSITORY_TOKEN,
@@ -39,6 +41,7 @@ import {
   ORDER_LINE_ITEM_REPOSITORY_TOKEN,
   TAX_RATE_BACKFILL_SERVICE_TOKEN,
 } from './orders.tokens';
+import { OrderHoldsModule } from './order-holds.module';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { SyncModule } from '@openlinker/core/sync';
@@ -78,6 +81,12 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     // The module is deliberately static (never `forRoot`) so the provider
     // registry `@openlinker/integrations-fx` writes into is the one read here.
     CurrencyModule,
+    // Order holds (#2338). A LEAF module in this same context, imported rather
+    // than inlined so #2339's `OrderHoldService` — and anything else needing
+    // only the hold seam — can take it WITHOUT the eight-context graph above.
+    // The edge is directional: importing the leaf here does not give the leaf
+    // any of these dependencies.
+    OrderHoldsModule,
   ],
   providers: [
     // Provide classes directly first
@@ -87,6 +96,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     OrderRecordService,
     OrderFxStampService,
     OrderDestinationRetryService,
+    OrderProvisioningResumeService,
     OrderLifecycleRelayService,
     OrderRecordRepository,
     OrderFxReadService,
@@ -118,6 +128,14 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     {
       provide: ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
       useExisting: OrderDestinationRetryService,
+    },
+    {
+      // #2341 — beside the retry service because it takes the same seams
+      // (record repository, identifier mapping, job enqueue), plus the record
+      // SERVICE since #2588 review I-2, which needs the clock-stamping
+      // `updateSyncStatus` to strand-mark withheld destinations.
+      provide: ORDER_PROVISIONING_RESUME_SERVICE_TOKEN,
+      useExisting: OrderProvisioningResumeService,
     },
     {
       provide: ORDER_ITEM_REF_RESOLVER_SERVICE_TOKEN,
@@ -159,12 +177,19 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     // handlers can inject the stamp seam (#2125).
     ORDER_FX_STAMP_SERVICE_TOKEN,
     ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
+    ORDER_PROVISIONING_RESUME_SERVICE_TOKEN,
     ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
     ORDER_REFUND_SERVICE_TOKEN,
     ORDER_FX_READ_SERVICE_TOKEN,
     // Exported so the worker's `orders.taxRate.backfill` handler can inject
     // the backfill seam (#2440).
     TAX_RATE_BACKFILL_SERVICE_TOKEN,
+    // Re-exported so a consumer of `OrdersModule` reaches the hold repository
+    // without also importing `OrderHoldsModule` (#2338). It is the MODULE that
+    // is re-exported, not the token: Nest refuses to export a provider it does
+    // not own, and re-exporting an imported module is the supported way to pass
+    // its exports through.
+    OrderHoldsModule,
   ],
 })
 export class OrdersModule {}

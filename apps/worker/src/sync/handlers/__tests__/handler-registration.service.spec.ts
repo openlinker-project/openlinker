@@ -3,16 +3,17 @@
  *
  * Pins the ADR-050 lane partition (#2278): every `JobTypeValues` member is
  * registered with exactly one lane, the per-lane counts match the ADR's
- * table (13 realtime / 16 bulk / 5 fiscal / 7 fan-out — `fiscalization.register`
+ * table (13 realtime / 17 bulk / 5 fiscal / 7 fan-out — `fiscalization.register`
  * joined `fiscal` post-ADR, #2156; `inventory.provenance.backfill` joined
  * `bulk` with #2317; the three returns types joined realtime/bulk/fan-out with
  * #2330; `returns.orphan.reconcile` joined `bulk` with #2332; and
- * `orders.taxRate.backfill` joined `bulk` with #2440), and the consequential
+ * `orders.taxRate.backfill` joined `bulk` with #2440; and
+ * `orders.holds.reconcile` joined `bulk` with #2340), and the consequential
  * assignments the ADR calls out cannot silently churn.
  *
  * @module apps/worker/src/sync/handlers
  */
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call -- test constructs the service with 42 interchangeable dummy handlers */
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call -- test constructs the service with 43 interchangeable dummy handlers */
 import type { SyncJobHandler } from '@openlinker/core/sync';
 import { JobTypeValues } from '@openlinker/core/sync';
 import { SyncJobHandlerRegistry } from '../sync-job-handler.registry';
@@ -37,16 +38,14 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     expect(() => registry.assertFullLaneCoverage()).not.toThrow();
   });
 
-  it('should partition the 42 job types 13/17/5/7 per ADR-050 decision 1', () => {
+  it('should partition the 43 job types 13/18/5/7 per ADR-050 decision 1', () => {
     expect(registry.getJobTypesByLane('realtime')).toHaveLength(13);
-    // 16 since #2332 added `returns.orphan.reconcile` — background catch-up work whose
-    // lateness costs nobody a request, and which must not contend with the `realtime`
-    // order ingestion that is what RESOLVES its orphans — and #2440 added
-    // `orders.taxRate.backfill`, a paced backfill with the same profile.
-    // 17 since #2360 added `automation.trigger.deadlineSweep`: a page of
-    // automation evaluations is background work whose delay costs nobody a
-    // request, and which must never crowd out `realtime` order ingestion.
-    expect(registry.getJobTypesByLane('bulk')).toHaveLength(17);
+    // 18 after three waves each added one bulk job: #2340 `orders.holds.reconcile`
+    // and #2440 `orders.taxRate.backfill` (a paced backfill), then #2360
+    // `automation.trigger.deadlineSweep`. All three are background catch-up work
+    // whose lateness costs nobody a request, and none may contend with the
+    // `realtime` order ingestion that is what RESOLVES their backlog.
+    expect(registry.getJobTypesByLane('bulk')).toHaveLength(18);
     expect(registry.getJobTypesByLane('fiscal')).toHaveLength(5);
     expect(registry.getJobTypesByLane('fan-out')).toHaveLength(7);
   });

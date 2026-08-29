@@ -4,6 +4,7 @@ import { OrderActivityTimeline } from './order-activity-timeline';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 import {
   SYNC_ATTEMPTS_PER_DESTINATION_CAP,
+  type OrderHold,
   type SyncAttempt,
 } from '../api/orders.types';
 
@@ -350,5 +351,120 @@ describe('OrderActivityTimeline', () => {
       expect(packedIndex).toBeGreaterThanOrEqual(0);
       expect(blockedIndex).toBeGreaterThan(packedIndex);
     });
+  });
+});
+
+describe('OrderActivityTimeline — order holds (#2342)', () => {
+  afterEach(cleanup);
+
+  function hold(overrides: Partial<OrderHold> = {}): OrderHold {
+    return {
+      id: 'hold_1',
+      internalOrderId: 'ol_order_1',
+      reason: 'operator',
+      note: null,
+      placedByUserId: 'user_7',
+      placedByService: null,
+      placedAt: '2026-08-20T10:00:00.000Z',
+      releasedAt: null,
+      releasedByUserId: null,
+      releaseNote: null,
+      createdAt: '2026-08-20T10:00:00.000Z',
+      updatedAt: '2026-08-20T10:00:00.000Z',
+      ...overrides,
+    };
+  }
+
+  const base = {
+    createdAt: '2026-08-20T09:00:00.000Z',
+    recordStatus: 'ready',
+    syncAttempts: [] as SyncAttempt[],
+    sourceConnectionId: SOURCE_CONNECTION_ID,
+  };
+
+  it('narrates a hold with its reason and its note', () => {
+    renderTimeline({ ...base, holds: [hold({ note: 'Supplier is late' })] });
+
+    expect(screen.getByText('Put on hold — Held by operator')).toBeInTheDocument();
+    expect(screen.getByText(/Supplier is late/)).toBeInTheDocument();
+  });
+
+  it('names the placing SERVICE when a hold was not placed by a person', () => {
+    renderTimeline({
+      ...base,
+      holds: [hold({ placedByUserId: null, placedByService: 'stock-monitor' })],
+    });
+
+    expect(screen.getByText('system · stock-monitor')).toBeInTheDocument();
+  });
+
+  it('adds a second entry once the hold is released, carrying the release note', () => {
+    renderTimeline({
+      ...base,
+      holds: [
+        hold({
+          releasedAt: '2026-08-21T08:00:00.000Z',
+          releasedByUserId: 'user_9',
+          releaseNote: 'Stock arrived',
+        }),
+      ],
+    });
+
+    expect(screen.getByText('Put on hold — Held by operator')).toBeInTheDocument();
+    expect(screen.getByText('Hold released')).toBeInTheDocument();
+    expect(screen.getByText(/Stock arrived/)).toBeInTheDocument();
+  });
+
+  it('renders a hold whose reason this build does not recognise rather than dropping it', () => {
+    // A hold the operator cannot see is worse than one labelled awkwardly.
+    renderTimeline({ ...base, holds: [hold({ reason: 'reason-from-a-newer-build' as never })] });
+
+    expect(screen.getByText('Put on hold — reason-from-a-newer-build')).toBeInTheDocument();
+  });
+
+  it('does NOT claim a person held the order when the payload names no placer', () => {
+    // The XOR that made "not a service ⇒ a human" total is a SQL CHECK this
+    // bundle cannot import (#591), so a payload with neither field rendered
+    // "Held by operator" — asserting a person acted, which the types file
+    // forbids by name, and contradicting the panel's own `placedBy()` on the
+    // same page.
+    renderTimeline({
+      ...base,
+      holds: [hold({ placedByUserId: null, placedByService: null })],
+    });
+
+    const title = screen.getByText('Put on hold — Held by operator');
+    // The actor eyebrow lives inside the entry's own title element, so scope the
+    // assertion there — the ingestion entry above legitimately carries one.
+    expect(title.querySelector('.order-activity__by')).toBeNull();
+  });
+
+  it('does NOT claim a system released the hold when no releasing user is recorded', () => {
+    // `order_holds` has no `releasedByService` column, so "no releasing user"
+    // does not mean a service did it — a service release is recorded by nobody.
+    renderTimeline({
+      ...base,
+      holds: [
+        hold({
+          placedByUserId: null,
+          placedByService: 'stock-monitor',
+          releasedAt: '2026-08-21T08:00:00.000Z',
+          releasedByUserId: null,
+        }),
+      ],
+    });
+
+    const title = screen.getByText('Hold released');
+    expect(title.querySelector('.order-activity__by')).toBeNull();
+  });
+
+  it('adds nothing when the payload carries no holds', () => {
+    // Absent and null mean the same on this optional wire field.
+    renderTimeline({ ...base, holds: undefined });
+    expect(screen.queryByText(/^Put on hold/)).not.toBeInTheDocument();
+
+    cleanup();
+    renderTimeline({ ...base, holds: null });
+    expect(screen.queryByText(/^Put on hold/)).not.toBeInTheDocument();
   });
 });

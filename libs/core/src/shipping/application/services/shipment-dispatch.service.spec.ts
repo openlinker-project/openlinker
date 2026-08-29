@@ -23,6 +23,8 @@ import { Shipment } from '../../domain/entities/shipment.entity';
 import type { ShipmentRepositoryPort } from '../../domain/ports/shipment-repository.port';
 import type { ShippingProviderManagerPort } from '../../domain/ports/shipping-provider-manager.port';
 import { UndispatchableResolutionException } from '../../domain/exceptions/undispatchable-resolution.exception';
+import type { IOrderHoldService, OrderHold } from '@openlinker/core/orders';
+import { OrderNotDispatchableHeldException } from '../../domain/exceptions/order-not-dispatchable-held.exception';
 import { OrderNotDispatchablePaymentStatusException } from '../../domain/exceptions/order-not-dispatchable-payment-status.exception';
 import { ShippingProviderRejectionException } from '../../domain/exceptions/shipping-provider-rejection.exception';
 import { ShipmentDispatchContendedException } from '../../domain/exceptions/shipment-dispatch-contended.exception';
@@ -123,6 +125,7 @@ describe('ShipmentDispatchService', () => {
   let adapter: jest.Mocked<ShippingProviderManagerPort>;
   let orders: jest.Mocked<IOrderRecordService>;
   let dispatchLock: jest.Mocked<SyncLockPort>;
+  let orderHolds: jest.Mocked<IOrderHoldService>;
   let service: ShipmentDispatchService;
 
   beforeEach(() => {
@@ -176,8 +179,18 @@ describe('ShipmentDispatchService', () => {
       getSalesAndChannelAnalytics: jest.fn(),
       getTopProducts: jest.fn(),
       findDispatchDeadlineCandidates: jest.fn(),
+      countOrdersWithOmsAttention: jest.fn(),
     };
     const fulfillmentProjection = { recompute: jest.fn() };
+    // Unheld by default (#2339): as with the lock below, every pre-existing test
+    // asserts the dispatch path itself, so the hold gate must not change their
+    // behaviour.
+    orderHolds = {
+      getOpenHold: jest.fn().mockResolvedValue(null),
+      place: jest.fn(),
+      release: jest.fn(),
+      listHolds: jest.fn(),
+    } as unknown as jest.Mocked<IOrderHoldService>;
     // Uncontended by default (#1917): every pre-existing test asserts the
     // dispatch path itself, so the lock must not change their behaviour.
     dispatchLock = {
@@ -192,24 +205,77 @@ describe('ShipmentDispatchService', () => {
       orders,
       fulfillmentProjection,
       dispatchLock,
+      orderHolds,
     );
   });
 
-  describe('payment-status dispatch gate (#938)', () => {
-    /** Arrange the ol_managed_carrier happy path so a permitted status dispatches. */
-    function arrangeHappyPath(): void {
-      routing.resolve.mockResolvedValue(
-        resolution({ processorKind: FULFILLMENT_PROCESSOR_KIND.OlManagedCarrier, processorConnectionId: INPOST }),
+  /**
+   * Arrange the `ol_managed_carrier` happy path so a permitted order dispatches.
+   * Shared by both gate suites — the two gates differ in what they refuse, not
+   * in what a permitted dispatch looks like.
+   */
+  function arrangeOlManagedCarrierHappyPath(): void {
+    routing.resolve.mockResolvedValue(
+      resolution({ processorKind: FULFILLMENT_PROCESSOR_KIND.OlManagedCarrier, processorConnectionId: INPOST }),
+    );
+    repository.findActiveByOrderId.mockResolvedValue(null);
+    repository.create.mockResolvedValue(makeShipment({ status: 'draft' }));
+    adapter.generateLabel.mockResolvedValue({
+      providerShipmentId: 'shipx-1',
+      trackingNumber: null,
+      labelPdfRef: 'shipx:label:shipx-1',
+    });
+    repository.update.mockResolvedValue(makeShipment({ status: 'generated', providerShipmentId: 'shipx-1' }));
+  }
+
+  describe('hold dispatch gate (#2339)', () => {
+    const openHold = { id: 'hold-1', reason: 'fraud-review' } as unknown as OrderHold;
+
+    it('should refuse dispatch terminally when the order carries an open hold', async () => {
+      routing.resolve.mockResolvedValue(resolution());
+      orderHolds.getOpenHold.mockResolvedValue(openHold);
+
+      await expect(service.dispatch(makeInput())).rejects.toBeInstanceOf(
+        OrderNotDispatchableHeldException,
       );
-      repository.findActiveByOrderId.mockResolvedValue(null);
-      repository.create.mockResolvedValue(makeShipment({ status: 'draft' }));
-      adapter.generateLabel.mockResolvedValue({
-        providerShipmentId: 'shipx-1',
-        trackingNumber: null,
-        labelPdfRef: 'shipx:label:shipx-1',
+
+      // No carrier work happens once the gate blocks — nothing was charged.
+      expect(repository.findActiveByOrderId).not.toHaveBeenCalled();
+      expect(repository.create).not.toHaveBeenCalled();
+      expect(adapter.generateLabel).not.toHaveBeenCalled();
+    });
+
+    it('should name the hold and its reason so the refusal is actionable', async () => {
+      routing.resolve.mockResolvedValue(resolution());
+      orderHolds.getOpenHold.mockResolvedValue(openHold);
+
+      await expect(service.dispatch(makeInput())).rejects.toMatchObject({
+        holdId: 'hold-1',
+        holdReason: 'fraud-review',
       });
-      repository.update.mockResolvedValue(makeShipment({ status: 'generated', providerShipmentId: 'shipx-1' }));
-    }
+    });
+
+    it('should dispatch once the hold is released, with no manual step', async () => {
+      arrangeOlManagedCarrierHappyPath();
+      orderHolds.getOpenHold.mockResolvedValue(null);
+
+      const result = await service.dispatch(makeInput());
+
+      expect(result.kind).toBe('dispatched');
+      expect(adapter.generateLabel).toHaveBeenCalled();
+    });
+
+    it('should fail closed when the hold read throws', async () => {
+      routing.resolve.mockResolvedValue(resolution());
+      orderHolds.getOpenHold.mockRejectedValue(new Error('db down'));
+
+      await expect(service.dispatch(makeInput())).rejects.toThrow('db down');
+      expect(adapter.generateLabel).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('payment-status dispatch gate (#938)', () => {
+    const arrangeHappyPath = arrangeOlManagedCarrierHappyPath;
 
     it.each(['awaiting', 'refunded'] as const)(
       'should reject dispatch with OrderNotDispatchablePaymentStatusException when payment status is %s',

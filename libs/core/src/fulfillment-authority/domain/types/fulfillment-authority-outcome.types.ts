@@ -23,10 +23,15 @@
  *    answer including `none`, which is what clears a reason once the
  *    misconfiguration is fixed.
  *
- * **Every member below is DECLARED AND NEVER WRITTEN in Wave 1a.** Nothing
- * imports this leaf yet; the consuming resolvers live in the owning contexts
- * (ADR-053) and land later. The vocabulary ships first so five contexts adopt
- * one spelling rather than inventing five.
+ * **Every member below is DECLARED AND NEVER WRITTEN.** The consuming resolvers
+ * live in the owning contexts (ADR-053) and land later; the vocabulary ships
+ * first so five contexts adopt one spelling rather than inventing five.
+ *
+ * The leaf ITSELF, however, is no longer unimported: `orders` and `returns` both
+ * value-import from it since #2352, and #2351 added its first computed answer.
+ * Those edges point inward, which is what the leaf property tolerates — do NOT
+ * read the paragraph above as licence to add an edge OUT of this directory,
+ * which is the thing `barrel-purity.spec.ts` fails the build on.
  *
  * @module libs/core/src/fulfillment-authority/domain/types
  * @see docs/architecture/adrs/052-independently-assignable-fulfillment-authorities.md

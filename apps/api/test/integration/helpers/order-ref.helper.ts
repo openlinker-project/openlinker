@@ -35,6 +35,8 @@ export function describeUnsuccessfulSync(result: OrderSyncResult): string {
   switch (result.status) {
     case 'failed':
       return `failed: ${result.error.message}${result.error.code ? ` (${result.error.code})` : ''}`;
+    case 'skipped_held':
+      return `skipped_held: order is on hold ${result.holdId} (${result.holdReason})`;
     case 'skipped_cancelled':
       return `skipped_cancelled: source cancellation recorded at ${result.cancelledAt.toISOString()}`;
     case 'success':

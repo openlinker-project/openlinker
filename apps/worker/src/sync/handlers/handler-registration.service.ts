@@ -40,6 +40,7 @@ import { MasterProductSyncAllHandler } from './master-product-sync-all.handler';
 import { MasterProductSyncDeltaHandler } from './master-product-sync-delta.handler';
 import { MasterProductReconcileHandler } from './master-product-reconcile.handler';
 import { InventoryProvenanceBackfillHandler } from './inventory-provenance-backfill.handler';
+import { OrdersHoldsReconcileHandler } from './orders-holds-reconcile.handler';
 import { PickupPointRefreshHandler } from './pickup-point-refresh.handler';
 import { ShopProductPublishHandler } from './shop-product-publish.handler';
 import { AutomationTriggerDeadlineSweepHandler } from './automation-trigger-deadline-sweep.handler';
@@ -58,6 +59,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly handlerRegistry: SyncJobHandlerRegistry,
     private readonly inventoryPropagateHandler: InventoryPropagateToMarketplacesHandler,
     private readonly inventoryProvenanceBackfillHandler: InventoryProvenanceBackfillHandler,
+    private readonly ordersHoldsReconcileHandler: OrdersHoldsReconcileHandler,
     private readonly marketplaceOrdersPollHandler: OrdersPollHandler,
     private readonly marketplaceOrderSyncHandler: MarketplaceOrderSyncHandler,
     private readonly marketplaceOrderFxStampHandler: MarketplaceOrderFxStampHandler,
@@ -108,7 +110,8 @@ export class HandlerRegistrationService implements OnModuleInit {
     // post-ADR (#2156), `inventory.provenance.backfill` joined `bulk` (#2317),
     // the three returns types joined realtime/bulk/fan-out (#2330),
     // `returns.orphan.reconcile` joined `bulk` (#2332), and
-    // `orders.taxRate.backfill` joined `bulk` (#2440). The
+    // `orders.taxRate.backfill` joined `bulk` (#2440), and
+    // `orders.holds.reconcile` joined `bulk` (#2340). The
     // tripwire in `handler-registration.service.spec.ts` is the authority on
     // these counts — this comment had drifted from it before #2330.
 
@@ -298,6 +301,14 @@ export class HandlerRegistrationService implements OnModuleInit {
     this.handlerRegistry.register(
       'inventory.provenance.backfill',
       this.inventoryProvenanceBackfillHandler,
+      'bulk'
+    );
+    // `bulk` (#2340): a periodic local-only repair of a DISPLAY cache. Nothing
+    // a buyer waits on, and the gates it does NOT feed read `order_holds`
+    // directly — so starving it costs a stale badge, never a wrong decision.
+    this.handlerRegistry.register(
+      'orders.holds.reconcile',
+      this.ordersHoldsReconcileHandler,
       'bulk'
     );
 

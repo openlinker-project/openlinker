@@ -130,8 +130,12 @@ describe('Order lifecycle phase (integration)', () => {
   }
 
   /**
-   * Classify every persisted row with the AUTHORITATIVE pure function, using the
-   * same placeholder inputs the controller's `toDto` passes in Wave 1a.
+   * Classify every persisted row with the AUTHORITATIVE pure function, reading
+   * the same inputs the controller's `toDto` passes.
+   *
+   * `activeHoldReason` is a REAL read since #2340 — hardcoding `null` here
+   * would silently exempt the one input whose SQL arm this spec exists to hold
+   * the TS ladder against.
    */
   async function classifyInTypescript(): Promise<Map<OrderLifecyclePhase, Set<string>>> {
     const { items } = await repository.findMany({}, PAGE);
@@ -142,7 +146,7 @@ describe('Order lifecycle phase (integration)', () => {
       const phase = deriveOrderLifecyclePhase({
         cancelledAt: order.cancelledAt ?? null,
         fulfillmentState: order.fulfillmentState,
-        activeHoldReason: null,
+        activeHoldReason: order.activeHoldReason,
         hasOpenAmendment: false,
         recordStatus: order.recordStatus,
         authority: DEFAULT_LIFECYCLE_AUTHORITY,

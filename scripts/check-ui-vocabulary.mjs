@@ -156,7 +156,7 @@ const SCAN_ROOTS = [
     // what builds this folder.
     dir: join('apps', 'web', 'src', 'features', 'fulfillment-authority'),
     owner: 'W2-17 (#2354)',
-    pending: true,
+    pending: false,
   },
   {
     // #2364 is "automations index and trigger list" — this folder's real owner.
@@ -171,6 +171,15 @@ const SCAN_ROOTS = [
     // Built by #2335 (the returns list), ahead of #2364's own returns surfaces.
     dir: join('apps', 'web', 'src', 'features', 'returns'),
     owner: 'W1c-8 (#2335)',
+    pending: false,
+  },
+  {
+    // #2342's hold copy (badge, dialogs, timeline) lives here, and the gate was
+    // scanning three folders none of which contained it. Added after a trial run
+    // proved the folder is already clean — widening a shared gate onto existing
+    // violations would be a wave-scoped decision, not a body-scoped one.
+    dir: join('apps', 'web', 'src', 'features', 'orders'),
+    owner: 'W2-A (#2342)',
     pending: false,
   },
 ];
