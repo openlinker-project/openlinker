@@ -9,7 +9,7 @@
 import type { OrderRecord } from '../entities/order-record.entity';
 import type { SlaState } from './order-sla.types';
 import type { FulfillmentRollupState } from './order-fulfillment.types';
-import type { OrderLifecyclePhase } from '@openlinker/core/order-lifecycle';
+import type { HoldReason, OrderLifecyclePhase } from '@openlinker/core/order-lifecycle';
 
 /**
  * Per-destination sync status values (#2284).
@@ -133,6 +133,21 @@ export interface OrderHealthSummary {
    * screen while making its badge unreachable (epic F1).
    */
   taxRateConflict: number;
+  /**
+   * Orders carrying at least one COUNTED OMS inert state (#2352/#2353).
+   *
+   * A THIRD orthogonal axis, beside `salesDocumentBlocked` and
+   * `taxRateConflict` and never inside either: an order can be invoicing-blocked
+   * AND short on stock, and printing one number under two labels is exactly what
+   * the separate fields avoid. Like both of those it deliberately carries no
+   * `notMappingOrDeleted` guard, so it is counted here AND in whichever health
+   * bucket the order belongs to - `total` still equals the sum of the five
+   * buckets.
+   *
+   * The ORDER half only. Return-scoped states (RB-L, OR-P) are counted on the
+   * returns side; a surface wanting both adds them.
+   */
+  omsAttention: number;
   /**
    * When the OLDEST still-held order was held (#2254), or `null` when nothing
    * is held. Lets the blocked chip carry an age inside its label rather than
@@ -316,6 +331,38 @@ export interface OrderRecordFilters {
    * every other view.
    */
   taxRateConflict?: boolean;
+  /**
+   * Restrict to orders carrying at least one COUNTED OMS inert state
+   * (#2352/#2353). `undefined` means "don't filter"; both `true` and `false`
+   * are meaningful predicates.
+   *
+   * **Not the `needs_attention` HEALTH bucket.** That bucket is a member of a
+   * partition and means a sync failure; this is an orthogonal axis over the
+   * `omsAttention` jsonb and means OpenLinker stopped deciding something. The
+   * two populations overlap freely and neither implies the other - which is why
+   * this is ANDed with `health` rather than folded into it (the #2100 trap).
+   *
+   * A reason this build does not recognise never matches, because the predicate
+   * is an explicit list built from `AuthorityAttentionCountedReasonValues`
+   * rather than "the column is not empty" (spec §4.4 S2-5).
+   */
+  omsAttention?: boolean;
+  /**
+   * Restrict to orders whose OPEN hold carries this reason (#2342).
+   * `undefined` means "don't filter".
+   *
+   * Reads `order_records.activeHoldReason`, #2340's denormalised projection —
+   * the same column the lifecycle `CASE`'s `held` arm already tests. That is
+   * legitimate here for the same reason it is there: a filter is a display
+   * query over a display cache with an hourly repair window, never a gate.
+   * Whether an order is really held is decided against `order_holds`, which is
+   * what `OrderHoldService` does on both write paths.
+   *
+   * A REASON axis, deliberately not a boolean: `lifecyclePhase: 'held'` already
+   * answers "is it held", so a boolean here would be the same predicate twice.
+   * ANDed with every other axis, like its neighbours.
+   */
+  activeHoldReason?: HoldReason;
   /**
    * Result ordering (#927/#944/#1108). Maps to a SQL `ORDER BY` by
    * `OrderRecordRepository.applySort`. `dispatchBy` (ship-by deadline, NULLs

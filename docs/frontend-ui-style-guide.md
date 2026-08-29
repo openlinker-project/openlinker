@@ -630,7 +630,7 @@ Defaults (FE-002):
 | `DataTable` rows | `36 px` | Dense-but-readable. Hover highlights whole row. |
 | Listings identity row | auto, ~60 px | Documented `DataTable` exception (#2023) — 32 px thumbnail + name/badges line + meta line + optional validator message. See the carve-out below. |
 | Shared identity row (`OrderIdentityCell` / `ConnectionCell`) | auto, ~60 px | Documented `DataTable` exception (#2086) — 24 px thumbnail + identity line + meta line. See the carve-out below. |
-| Orders Status cell | auto, ~72 px | Documented `DataTable` exception (#2310) — health badge + lifecycle-phase badge + optional failure reason, up to three stacked lines. See the carve-out below. |
+| Orders Status cell | auto, ~88 px | Documented `DataTable` exception (#2310, extended #2356) — health badge + lifecycle-phase badge + optional OMS attention badge(s) + optional failure reason, up to four stacked lines. See the carve-out below. |
 | Nav items | `28 px` | 6 px vertical padding, icon + label + optional count. |
 | Toolbar / filter chip | `28 px` | Same height as nav items for alignment. |
 | Button `sm` | `28 px` | Default for toolbar buttons, table actions. |
@@ -640,6 +640,7 @@ Defaults (FE-002):
 | Analytics KPI card (`.status-strip--analytics .kpi-card`, #1990) | auto, ~152 px | Documented carve-out — the six-card sales strip stacks a headline+metric+delta block on top of one-or-more qualifier rows pinned to the card floor by a hairline, provably taller than the ~96 px default. See the carve-out note below. |
 | Status banner | auto, ~64 px | Icon + title + message + actions. |
 | Analytics trust-header row (`.trust-header__row`) | auto, ~52 px | `var(--space-3) var(--space-4)` padding. Per-connection freshness list, denser than a status banner because it repeats per row. Collapses to one column, auto height on mobile. |
+| Who-decides question row (`.who-decides-row`, #2354) | auto, ~76 px | Documented **non-`DataTable`** carve-out — question + answer + why-line + optional extras + badge. See the carve-out below. |
 
 Never introduce a row height that isn't on this list without updating the guide first. Variability across surfaces is the primary way a cockpit feels amateur.
 
@@ -656,7 +657,9 @@ Two mechanical consequences worth knowing before copying the pattern:
 
 This entry exists because the listings carve-out explicitly refuses to cover a second table. It is deliberately **one entry for all five lists** (Shipments #2089, Invoices #2090, Orders #2091, Products #2092, Customers #2093) rather than one per page — the whole point of #2086 is that these rows are the same row.
 
-**Documented carve-out — the orders Status cell (#2310).** The #2086 entry above covers the *identity* column; this one covers a different column on the same table, which is why it is a separate entry rather than a widening of that one. `.orders-cell-stack` in the orders Status cell is a vertical stack, and the ADR-059 lifecycle phase is appended **inside** it, so a row that carries both a phase and a sync-failure reason renders health badge / phase badge / reason — three lines where two was previously the worst case, and the column can now set the row height on its own rather than only the identity cell doing so. Kept as a stack rather than nesting the phase inline beside the health badge (a `ds-row`): the two are orthogonal partitions, and putting them on one line reads as one compound status, which is precisely the reading ADR-059 exists to prevent. The three lines are each a fact an operator triages on, so the row takes its height from content in the usual way. Note this interacts with the vertical-alignment rule below — `.orders-table td` already top-aligns every cell, so no further change is needed for the taller column.
+**Documented carve-out — the orders Status cell (#2310, extended #2356).** The #2086 entry above covers the *identity* column; this one covers a different column on the same table, which is why it is a separate entry rather than a widening of that one. `.orders-cell-stack` in the orders Status cell is a vertical stack, and the ADR-059 lifecycle phase is appended **inside** it, so a row that carries both a phase and a sync-failure reason renders health badge / phase badge / reason — three lines where two was previously the worst case, and the column can now set the row height on its own rather than only the identity cell doing so.
+
+**#2356 makes four the worst case**: the OMS inert-state badge (§ 4 of the Wave-2 spec — *what OpenLinker stopped deciding*) is appended into the same stack between the phase badge and the failure reason, so a row carrying a phase, an inert state and a sync failure renders health / phase / attention / reason. That is the ceiling by construction, not by convention, and the mechanism is worth naming because `.orders-cell-stack` is `flex-direction: column`: the attention entries are keyed by producer and an order can carry more than one, so `OmsAttentionBadges` renders them inside its own `.data-table__badge-row` (a wrapping flex ROW). Returning bare sibling spans into that column would make each producer its own line and the ceiling five, not four. No alignment change is needed and none was made: `.orders-table td` already top-aligns every cell (see the bullet below), so the taller column lands on line 1 at any row height. Anything that would add a **fifth** line needs its own entry here. Kept as a stack rather than nesting the phase inline beside the health badge (a `ds-row`): the two are orthogonal partitions, and putting them on one line reads as one compound status, which is precisely the reading ADR-059 exists to prevent. The three lines are each a fact an operator triages on, so the row takes its height from content in the usual way. Note this interacts with the vertical-alignment rule below — `.orders-table td` already top-aligns every cell, so no further change is needed for the taller column.
 
 Mechanics that differ from the listings carve-out, and why:
 
@@ -686,6 +689,10 @@ Mechanics that differ from the listings carve-out, and why:
 - **Hosting one of these cells in a card `title` slot** (the mobile branch) puts it inside `<strong>`, so the meta line must not inherit the emphasis — `.orders-cell-sub, .orders-more-count` pin `font-weight: 400` (the `+N` chip inherits the emphasis too).
 
 Known gap: `DataTableSkeleton` still renders `36 px` rows, so a table with these cells grows on load. It predates this epic (listings ships the same mismatch) and is not owned by any of the five sub-issues. Tracked as #2152.
+
+**Documented carve-out — the who-decides question row (#2354).** `/settings/who-decides` renders its seven rows as a CSS-grid definition list (`.who-decides-row`), not a `DataTable`, and that is the carve-out: the only column cheap enough to hide at a breakpoint is the **why-line**, which spec § 3.3 calls "the whole point of the table" — an answer with no reason is a configuration dump. A `hideBelow` on it would delete the feature on mobile, so the row reflows to a single column at ≤ 768 px instead and never drops a fact. The other reasons `DataTable` is the wrong primitive here are secondary but real: seven fixed rows with no sort, no pagination and no row link, carrying per-row content a table cell does not model well (a link out for A7, a locked note for A6, a list of named connections on an ambiguous row).
+
+Height is content-derived like the identity-cell carve-outs above — question line, answer line, why-line, an optional extras line, and a badge — and the density posture is unchanged: every line is a fact an operator scans for. **This entry is for the who-decides row specifically**; another page wanting a non-`DataTable` list needs its own entry rather than a silent reuse.
 
 **Selection-list rows are governed separately.** Multi-select picker rows inside a modal (e.g. the offer-creation product picker, `.offer-product-picker__prow-main` / `.offer-product-picker__vrow`, #1754/#1779) are *not* `DataTable` rows and are intentionally taller than 36 px: the whole-product checkbox carries a ≥ 44 px tap target (touch parity with the full-width variant-row hit area) and each row pairs a thumbnail with two text lines. They inherit the density posture but pick their own height from content + the tap-target floor rather than the table default; don't force them onto the `36 px` row.
 
@@ -813,7 +820,7 @@ The orders list carries several signals per row. They are organised into **three
 
 | Group | Primary | Subordinate |
 |---|---|---|
-| **Status** | order health | **lifecycle phase** (#2310, ADR-059); failure reason; **exceptions** (e.g. an open return) |
+| **Status** | order health | **lifecycle phase** (#2310, ADR-059); **OMS inert state** (#2356); failure reason; **exceptions** (e.g. an open return) |
 | **Shipment** | fulfillment state | packed, ship-by SLA + countdown, delivery owner, carrier |
 | **Money** | total | payment, invoice clearance, created |
 
@@ -841,6 +848,23 @@ Four rules govern anything added to a row:
    other non-exceptional value, so on an ordinary row exactly one badge carries colour and the
    phase reads as a label beside it. A phase that ever renders a warning/error tone alongside a
    non-`healthy` health badge is the shape this rule was written to prevent.
+
+   **The OMS inert-state badge is the sixth vocabulary, and it is taken here as its own decision
+   (#2356).** The paragraph above closed the exception to further growth and required a decision
+   rather than an inheritance; this is that decision. It qualifies on the same ground the phase did
+   — it adds an **axis**, it is not a refinement of one. Health answers *did something fail*, the
+   phase *what stage is this at*, fulfillment *where is the parcel*; an inert state answers
+   **what OpenLinker stopped deciding**, which is orthogonal to all three (an order OpenLinker
+   refused to route is routinely `synced` and `ready`). It is also a *vocabulary*, not a tick: four
+   values (`Stopped` / `At risk` / `Blocked` / `Not matched`, spec § 4.2), each pointing at a
+   different remedy, so a binary affordance cannot carry it.
+
+   **It does NOT inherit the phase's tonal mitigation, and that difference is the point.** An
+   attention badge is **never neutral** — it exists to say something is wrong — so a row carrying
+   one deliberately shows two coloured pills. That is not the crowding the rule guards against; it
+   is the signal. The cost is bounded by how rare the state is: the badge renders only where a
+   producer wrote one, and a healthy install shows none at all. **The count is now six, and the
+   exception is closed again**: a seventh needs its own decision, not this paragraph.
 3. **The list displays; the detail page acts.** Every row affordance is a link (`Generate label`,
    `Issue invoice`), never an in-place mutation. Introducing in-place editing to this table is a new
    interaction pattern and needs its own decision — it is not a styling choice.

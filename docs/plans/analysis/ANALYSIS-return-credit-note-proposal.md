@@ -19,7 +19,7 @@
 | `InvoiceRecordRepositoryPort.findAllByOrderId` | **ALREADY EXISTS → reuse** | `invoice-record.repository.ts:97`, already ordered `createdAt DESC, id DESC`. **No repository-port change needed**, as the plan assumes |
 | `assertAttributedForTrigger('invoice_correction')` | **ALREADY EXISTS → reuse** | already a member of `ReturnDownstreamTriggerValues`, with no caller until now |
 | `IOrderChangeService` (`openOrReuse` / `abandon` / `confirm` / `findLatestByTarget`) | **ALREADY EXISTS → reuse** | `ReturnAuthorizeService` is a working template for the whole cycle |
-| `order_changes` table + `kind` column | **ALREADY EXISTS → reuse** | `varchar(64)`, no PG enum, no CHECK (migration `1847000000000` confirms) |
+| `order_changes` table + `kind` column | **ALREADY EXISTS → reuse** | `varchar(64)`, no PG enum, no CHECK (migration `1849000000009` confirms) |
 | Migration slot `1863000000000` | **NOT NEEDED** | confirmed: no schema change in this slice |
 | `assertNever` | **ALREADY EXISTS → reuse** | `@openlinker/shared/types` |
 | `domain-services/` pure-function precedent | **ALREADY EXISTS → reuse** | `return-custody-transitions.domain-service.ts` argues the exact "pure, deliberately not a service" position the plan adopts |
@@ -70,7 +70,7 @@ worst of the available options.
 Every consumer: `order-change.types.ts` (definition), `order-change.service.{ts,interface.ts}`,
 `order-change.repository.ts`, `order-change.orm-entity.ts` (comment only),
 `order-change-repository.port.ts`, `order-change.entity.ts`, `orders/index.ts` (re-export), the returns
-spec above, and migration `1847000000000`.
+spec above, and migration `1849000000009`.
 
 **No exhaustive `switch`, no `Record<OrderChangeKind, …>`, no `apps/web` mirror, and no
 `scripts/check-*.mjs` invariant guards this union** (explicitly grepped for `Record<OrderChangeKind`

@@ -7,6 +7,7 @@
  * @module libs/core/src/orders/application/interfaces
  * @see {@link OrderSyncService} for the implementation
  */
+import type { HoldReason } from '@openlinker/core/order-lifecycle';
 import type { Order } from '../../domain/types/order.types';
 
 /**
@@ -42,6 +43,13 @@ export interface OrderSyncRequest {
  * `status: 'skipped_cancelled'` (#2284) is a THIRD, terminal arm rather than a
  * `'failed'` with a code: nothing went wrong, and a distinct arm is what stops
  * any consumer routing the skip into a retry.
+ *
+ * `status: 'skipped_held'` (#2339) is a FOURTH arm and is the one that is NOT
+ * terminal. An open hold is a state an operator removes; the moment they do,
+ * the next provisioning run proceeds with no manual repair. So it must never be
+ * collapsed into `'skipped_cancelled'` (which asserts the order is over) nor
+ * into `'failed'` (which asserts something broke and invites a retry loop
+ * against a condition retrying cannot change).
  */
 export type OrderSyncResult =
   | {
@@ -65,6 +73,13 @@ export type OrderSyncResult =
       status: 'skipped_cancelled';
       /** When the source cancellation was first recorded (first-write-wins). */
       cancelledAt: Date;
+    }
+  | {
+      destinationConnectionId: string;
+      status: 'skipped_held';
+      /** The hold that withheld provisioning, for the operator-facing reason. */
+      holdId: string;
+      holdReason: HoldReason;
     };
 
 /**

@@ -44,7 +44,7 @@ import type {
 } from '../../../domain/types/order-record.types';
 import type { SlaState, OrderSlaSummary } from '../../../domain/types/order-sla.types';
 import type { OrderLifecyclePhase } from '@openlinker/core/order-lifecycle';
-import { OrderLifecyclePhaseValues } from '@openlinker/core/order-lifecycle';
+import { isHoldReason, OrderLifecyclePhaseValues } from '@openlinker/core/order-lifecycle';
 import { SLA_AT_RISK_WINDOW_MS } from '../../../domain/types/order-sla.types';
 import type { FulfillmentRollupState } from '../../../domain/types/order-fulfillment.types';
 import {
@@ -52,6 +52,16 @@ import {
   netSalesOrderNetEligibleSql,
 } from '../../../domain/types/net-sales-tax-rate.types';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
+import {
+  AuthorityAttentionCountedReasonValues,
+  buildAuthorityAttentionPayload,
+  buildAuthorityAttentionUpsertSql,
+  readAuthorityAttentionEntries,
+} from '@openlinker/core/fulfillment-authority';
+import type {
+  AuthorityAttentionOutcome,
+  AuthorityAttentionProducer,
+} from '@openlinker/core/fulfillment-authority';
 import {
   SalesDocumentAttentionReasonValues,
   isSalesDocumentGateBlockReason,
@@ -281,6 +291,33 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       );
     }
 
+    if (filters.omsAttention !== undefined) {
+      // #2353 - the OMS inert-state axis, ANDed with `health` exactly like
+      // `salesDocumentBlocked` and `taxRateConflict`. It is NOT the
+      // `needs_attention` health bucket: that bucket partitions the set and
+      // means a sync failure, this means OpenLinker stopped deciding something,
+      // and an order is routinely one, the other, or both.
+      qb.andWhere(
+        filters.omsAttention
+          ? OrderRecordRepository.HAS_OMS_ATTENTION
+          : `NOT (${OrderRecordRepository.HAS_OMS_ATTENTION})`,
+      );
+    }
+
+    if (filters.activeHoldReason) {
+      // #2342 — the hold REASON axis, ANDed with the others. It reads the same
+      // #2340 projection column the lifecycle `CASE`'s `held` arm tests, which
+      // is what keeps `?phase=held` and `?hold=<reason>` consistent with each
+      // other: the second is a strict subset of the first, by construction.
+      //
+      // A bound parameter, never interpolated: the value reaches here from a
+      // request DTO, unlike the phase literals the `CASE` composes, which are
+      // compile-time constants off a frozen vocabulary.
+      qb.andWhere('rec."activeHoldReason" = :activeHoldReason', {
+        activeHoldReason: filters.activeHoldReason,
+      });
+    }
+
     this.applySort(qb, filters.sort, filters.dir);
 
     const [entities, total] = await qb.getManyAndCount();
@@ -347,6 +384,15 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       // #2254 — the oldest still-held order, so the chip label can carry an age
       // rather than a bare count. MIN over the held population only; NULL when
       // nothing is held, which the caller renders as no age clause at all.
+      // #2353 - the OMS inert-state count, folded here so the chip's number is
+      // scoped by the same filters as the rows beneath it. `countOrdersWithOmsAttention`
+      // is retained beside it and is NOT redundant: it answers the unscoped
+      // question the who-decides page asks, which has no filter scope to pass.
+      // Both read HAS_OMS_ATTENTION, so there is one predicate and no drift.
+      .addSelect(
+        `COUNT(*) FILTER (WHERE ${OrderRecordRepository.HAS_OMS_ATTENTION})`,
+        'oms_attention'
+      )
       .addSelect(
         `MIN(rec."salesDocumentBlockedAt") FILTER (WHERE ${OrderRecordRepository.IS_SALES_DOCUMENT_BLOCKED})`,
         'sales_document_blocked_oldest_at'
@@ -363,6 +409,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       awaiting_dispatch: string;
       sales_document_blocked: string;
       tax_rate_conflict: string;
+      oms_attention: string;
       sales_document_blocked_oldest_at: Date | null;
     }>();
 
@@ -375,6 +422,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       awaitingDispatch: Number(raw?.awaiting_dispatch ?? 0),
       salesDocumentBlocked: Number(raw?.sales_document_blocked ?? 0),
       taxRateConflict: Number(raw?.tax_rate_conflict ?? 0),
+      omsAttention: Number(raw?.oms_attention ?? 0),
       salesDocumentBlockedOldestAt: raw?.sales_document_blocked_oldest_at ?? null,
     };
   }
@@ -744,6 +792,45 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   ).join(', ')})`;
 
   /**
+   * Does this order carry at least one COUNTED OMS inert state (#2352)?
+   *
+   * Like {@link IS_SALES_DOCUMENT_BLOCKED} this is an explicit list of
+   * attention-worthy reasons rather than "the column is not empty", for the same
+   * two reasons: a routine state must never be counted, and a reason string
+   * written by a newer release and then rolled back must not contribute a number
+   * with no reachable explanation (`readAuthorityAttentionEntries` already drops
+   * such an entry on read, so `jsonb_array_length(…) > 0` would count rows that
+   * then render no badge anywhere — spec §4.4 S2-5).
+   *
+   * Built from `AuthorityAttentionCountedReasonValues` at class-definition time,
+   * so a state added to the union is attention-worthy by default and opting one
+   * out is a deliberate edit in the leaf. Literal-only — the values are
+   * compile-time constants, never request data.
+   *
+   * `jsonb_path_exists` (the `HAS_TAX_RATE_CONFLICT` precedent) rather than an
+   * `IN` over an unnested column: the negation is then TOTAL by construction on
+   * a NULL column, which is the trap `IS_SALES_DOCUMENT_BLOCKED` needs its
+   * `COALESCE(…, '')` for — `jsonb_path_exists(NULL, …)` yields NULL, so the
+   * column is coalesced to an empty array before the test rather than after.
+   */
+  private static readonly HAS_OMS_ATTENTION =
+    AuthorityAttentionCountedReasonValues.length === 0
+      ? // An empty counted set means nothing is attention-worthy, so the honest
+        // predicate is `false`. Unreachable today (all eight members are
+        // `counted: true`), but interpolating an empty array yields the
+        // jsonpath `$[*].reason ? ()`, which Postgres rejects at PARSE time —
+        // taking down the orders list, the summary aggregate and
+        // `countOrdersWithOmsAttention` together. `IS_SALES_DOCUMENT_BLOCKED`
+        // already carries the `IN ()` guard for the same class of defect.
+        'false'
+      : `jsonb_path_exists(
+    COALESCE(rec."omsAttention", '[]'::jsonb),
+    '$[*].reason ? (${AuthorityAttentionCountedReasonValues.map(
+      (reason) => `@ == "${reason}"`,
+    ).join(' || ')})'
+  )`;
+
+  /**
    * Per-row earliest **failed sync attempt** timestamp, read from the
    * append-only `syncAttempts` history rather than `rec."createdAt"` (the
    * record's creation time, not a failure time) — `getFailedSyncValueSummary`'s
@@ -1056,9 +1143,16 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     delivered: `${OrderRecordRepository.LIFECYCLE_FULFILLMENT} = 'delivered'`,
     in_transit: `${OrderRecordRepository.LIFECYCLE_FULFILLMENT} = 'dispatched'`,
     fulfillment_failed: `${OrderRecordRepository.LIFECYCLE_FULFILLMENT} = 'failed'`,
-    // 6. A hold is a DECISION; no persisted source until Wave 2 (`order_holds`
-    //    plus its denormalised column).
-    held: 'FALSE',
+    // 6. A hold is a DECISION. Reads the #2340 projection, never `order_holds`
+    //    directly: this `CASE` backs the phase-summary buckets and `?phase=`,
+    //    and a correlated join per bucket over an already non-sargable
+    //    expression is not a cost the list can carry. The column is a cache and
+    //    `orders.holds.reconcile` repairs it; the hold GATES still read the
+    //    table. Note this arm is deliberately WIDER than the TS ladder's, which
+    //    coerces via `isHoldReason` - an unrecognised persisted value derives
+    //    `ready` there and `held` here. Unreachable while `OrderHoldService` is
+    //    the only writer, and the reconcile clears such a value.
+    held: `rec."activeHoldReason" IS NOT NULL`,
     // 7. An OL-authored intention in flight; no persisted source until Wave 2
     //    widens `order_changes.kind`.
     amending: 'FALSE',
@@ -1317,6 +1411,64 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         block?.unresolvedReason ?? null,
         block?.detail ?? null,
         internalOrderId,
+      ]
+    );
+  }
+
+  /**
+   * How many orders carry at least one COUNTED OMS inert state (#2352)?
+   *
+   * The `Needs attention (N)` count's order half. Deliberately a COUNT of ORDERS
+   * rather than of entries: the surface renders one row per affected order, and
+   * an order carrying two states is one thing for the operator to look at, not two.
+   *
+   * Unrecognised reasons are excluded by {@link HAS_OMS_ATTENTION}'s explicit
+   * list, so a value from a newer release that was then rolled back cannot become
+   * a red number with no badge anywhere to explain it (spec §4.4 S2-5).
+   */
+  async countOrdersWithOmsAttention(): Promise<number> {
+    const rows = (await this.repository.query(
+      `SELECT COUNT(*)::int AS count
+         FROM "order_records" rec
+        WHERE ${OrderRecordRepository.HAS_OMS_ATTENTION}`
+    )) as Array<{ count: number }>;
+    return rows[0]?.count ?? 0;
+  }
+
+  /**
+   * Set — or clear — ONE producer's OMS inert state (#2352).
+   *
+   * The statement itself is `buildAuthorityAttentionUpsertSql`, shared with
+   * `ReturnRepository.updateOmsAttention`: its correctness rests on four
+   * clauses — a `FOR UPDATE` read that closes the lost-update window, the
+   * producer-scoped removal and replacement, `since` carried forward, and a
+   * deterministic order that makes the no-op guard exact — and two
+   * hand-maintained copies of that is the drift hazard the repo's mirror scripts
+   * exist for. Its docblock carries the reasoning; this method owns only the
+   * outcome-to-payload mapping and the error posture.
+   */
+  async updateOmsAttention<P extends AuthorityAttentionProducer>(
+    internalOrderId: string,
+    producer: P,
+    outcome: AuthorityAttentionOutcome<P>
+  ): Promise<void> {
+    if (outcome.kind === 'indeterminate') {
+      // Leave the stored entry alone. Clearing on a transient failure would
+      // erase a true reason and replace it with silence (#2100).
+      return;
+    }
+
+    await this.repository.query(
+      buildAuthorityAttentionUpsertSql({
+        table: 'order_records',
+        idColumn: 'internalOrderId',
+        alias: 'rec',
+      }),
+      [
+        internalOrderId,
+        producer,
+        buildAuthorityAttentionPayload(producer, outcome.kind === 'blocked' ? outcome : null),
+        new Date().toISOString(),
       ]
     );
   }
@@ -1666,7 +1818,10 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // `exchangeRateId` / `fxRule` / `fxStampedAt` / `fxIntendedCurrency`
     // (#2124), `packedAt` / `packedByUserId` (#2287), `lastAmendedAt` /
     // `lastAmendmentChanges` (#2283), `salesDocumentBlockedAt` /
-    // `salesDocumentBlockReleasedAt`, `taxRateEra`, and the four #1985
+    // `salesDocumentBlockReleasedAt`, `taxRateEra`, `omsAttention` (#2352 -
+    // sole writer `updateOmsAttention`, whose whole contract is that it edits
+    // ONE producer's entry; a round-trip here would drop every producer's entry
+    // on every ingestion and then re-add none), and the four #1985
     // analytics scalars (`placedAt` / `currency` / `taxTreatment` /
     // `totalAmount`, which only `upsertWithLineItems` writes). Do not add one
     // of them to either half of this statement - each has a narrow, atomic
@@ -2057,7 +2212,16 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       // reason columns above are: the column is a plain `varchar`, and a value
       // this build does not recognise must read as "no era" - i.e. the tax-rate
       // guard applies - rather than silently exempting the order from it.
-      isTaxRateEra(entity.taxRateEra) ? entity.taxRateEra : null
+      isTaxRateEra(entity.taxRateEra) ? entity.taxRateEra : null,
+      // #2340 - coerced, never defaulted: an unrecognised persisted reason must
+      // read as "not a hold reason" rather than becoming `operator`.
+      isHoldReason(entity.activeHoldReason) ? entity.activeHoldReason : null,
+      // Coerced at the mapping boundary rather than at every consumer, so an
+      // entry written by a newer release and then rolled back is ABSENT from
+      // the domain record instead of present-and-unrenderable. That is spec
+      // §4.4 S2-5 ("an unrecognised state degrades safely") held once, and it
+      // is the same call the two reason guards above make.
+      readAuthorityAttentionEntries(entity.omsAttention)
     );
   }
 
@@ -2100,6 +2264,14 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    *   ingestion, so round-tripping them here would null the columns and then
    *   immediately re-set them - a visible flicker for any concurrent read, and
    *   a stomp against a reason a peer transition just wrote.
+   * - `omsAttention` (#2352) - sole writer `updateOmsAttention`. It carries the
+   *   sharpest version of the same hazard: the column is an ARRAY shared by
+   *   three unrelated producers, and its writer's entire contract is that it
+   *   edits exactly ONE producer's entry. Round-tripping it here would drop
+   *   every producer's entry on every ingestion and re-add none of them, so a
+   *   reservation shortfall would silently disappear the next time the order
+   *   was re-polled - and nothing would ever put it back, because the ledger
+   *   only writes when its own answer CHANGES.
    * - The six FX snapshot columns (#2124) - sole writers `claimFxIntentIfAbsent`
    *   + `stampFxIfAbsent` (both guarded, both single-statement). Mapping them
    *   here would let a re-poll of an already-stamped order overwrite a
@@ -2111,6 +2283,14 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    *   re-poll, and the operator would have no way to tell the un-pack from a
    *   colleague's deliberate one.
    *
+   * - `activeHoldReason` (#2340) - sole writer
+   *   `OrderHoldProjectionRepository.setActiveHoldReason`, reached from
+   *   `OrderHoldService.place`/`.release` and the `orders.holds.reconcile`
+   *   repair. Same shared reason, with the `salesDocument*` sharpening: an
+   *   ingestion carries no hold knowledge at all, so round-tripping it would
+   *   null a peer's reason on every re-poll and leave the order reading `ready`
+   *   while a hold is open. **It is excluded from `upsert()`'s raw column tuple
+   *   too** - the `toOrm` exclusion alone is only half the job there.
    * - `lastAmendedAt` / `lastAmendmentChanges` (#2283) - sole writer
    *   {@link recordAmendment}. The sharpest case of the shared reason: the write
    *   is triggered BY an ingestion, from a diff taken against the snapshot this

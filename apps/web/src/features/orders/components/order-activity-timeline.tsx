@@ -21,7 +21,9 @@ import {
   type SalesDocumentGateBlockReasonValue,
   type SalesDocumentUnresolvedReasonValue,
   type OrderAmendmentChange,
+  type OrderHold,
 } from '../api/orders.types';
+import { holdReasonLabel } from '../lib/order-hold.types';
 import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
 import type { ParsedOrderInvoice } from '../api/order-snapshot.schema';
 import { invoicingBlockedBadge } from '../lib/order-row';
@@ -133,6 +135,16 @@ interface OrderActivityTimelineProps {
    * rendered order identical to before the prop existed.
    */
   extraEvents?: DatedTimelineEvent[];
+  /**
+   * Every ORDER hold this order has carried, open and released (#2341/#2342).
+   * Unrelated to the sales-document hold above, which is an invoicing fact.
+   *
+   * DATED in both directions — `placedAt` is always persisted and `releasedAt`
+   * is persisted once the hold ends — so these sort into the history rather than
+   * sitting undated beside it. Detail-only and optional on the wire, so absent
+   * and `null` mean the same thing.
+   */
+  holds?: OrderHold[] | null;
 }
 
 const STATUS_PAST_TENSE: Record<OrderSyncStatusValue, string> = {
@@ -200,6 +212,87 @@ function describeAmendment(changes?: OrderAmendmentChange[] | null): string {
     : 'The source changed this order after ingestion.';
 }
 
+/**
+ * Timeline entries for the order's holds (#2342) — one `held` per hold and one
+ * `released` per hold that has ended.
+ *
+ * Extracted as a pure function so it is testable on its own, but its result is
+ * pushed INSIDE `buildEvents` at the right rung rather than appended by the
+ * caller: `buildEvents` sorts only `syncAttempts`, so the returned list is
+ * otherwise in push order and position carries meaning. Appending at the call
+ * site would render every hold entry after the entire history regardless of
+ * when it happened.
+ *
+ * `warning` for the hold (outstanding work) and `default` for the release — a
+ * release is not a failure, and it is not progress through the workflow either.
+ * An unrecognised reason renders its raw value rather than vanishing: a hold the
+ * operator cannot see is worse than one labelled awkwardly (the
+ * `describeAmendment` precedent).
+ */
+/**
+ * Who placed this hold, or `undefined` when the payload does not say.
+ *
+ * `undefined` omits the actor eyebrow entirely — `TimelineEvent.by` is optional
+ * precisely so a surface can decline to name one, and matching
+ * `OrderHoldPanel`'s `placedBy()` (which returns `null` in the same case) is
+ * what keeps two surfaces on one page from disagreeing.
+ */
+function describePlacer(hold: OrderHold): string | undefined {
+  if (hold.placedByService) return `system · ${hold.placedByService}`;
+  if (hold.placedByUserId) return 'operator';
+  return undefined;
+}
+
+/** Who released it. See {@link describePlacer} — same rule, same reason. */
+function describeReleaser(hold: OrderHold): string | undefined {
+  return hold.releasedByUserId ? 'operator' : undefined;
+}
+
+function buildHoldEvents(holds: OrderHold[]): TimelineEvent[] {
+  const events: TimelineEvent[] = [];
+
+  for (const hold of holds) {
+    const label = holdReasonLabel(hold.reason);
+    const actor = hold.placedByService ?? hold.placedByUserId;
+
+    events.push({
+      id: `hold-placed-${hold.id}`,
+      timestamp: hold.placedAt,
+      title: `Put on hold — ${label}`,
+      // THREE ways, not two. The XOR that makes "not a service ⇒ a human" total
+      // is a SQL `CHECK` this bundle cannot import (#591), so a payload carrying
+      // neither placer used to render "Held by operator" — asserting a person
+      // held the order, which `order-hold.types.ts`'s own docblock forbids by
+      // name, and disagreeing with the panel's `placedBy()` on the same page.
+      // An unreadable placer omits the eyebrow rather than naming one.
+      by: describePlacer(hold),
+      description: hold.note
+        ? `${hold.note}${actor && !hold.placedByService ? ` (${actor})` : ''}`
+        : 'OpenLinker stopped sending this order on and stopped dispatching it.',
+      tone: 'warning',
+    });
+
+    if (hold.releasedAt) {
+      events.push({
+        id: `hold-released-${hold.id}`,
+        timestamp: hold.releasedAt,
+        title: 'Hold released',
+        // Same rule on the release arm. `order_holds` carries no
+        // `releasedByService` column, so "no releasing user" does NOT mean a
+        // service did it — a service release is recorded by nobody. Claiming
+        // `system` there named an actor the schema cannot identify.
+        by: describeReleaser(hold),
+        description: hold.releaseNote
+          ? `${hold.releaseNote}${hold.releasedByUserId ? ` (${hold.releasedByUserId})` : ''}`
+          : 'OpenLinker started sending this order on again.',
+        tone: 'default',
+      });
+    }
+  }
+
+  return events;
+}
+
 function buildEvents(
   createdAt: string,
   recordStatus: string,
@@ -216,6 +309,7 @@ function buildEvents(
   packedByUserId?: string | null,
   salesDocumentBlockedAt?: string | null,
   salesDocumentBlockReleasedAt?: string | null,
+  holds?: OrderHold[] | null,
 ): TimelineEvent[] {
   const events: TimelineEvent[] = [];
 
@@ -358,6 +452,11 @@ function buildEvents(
     });
   }
 
+  // #2342 — the order's own holds, dated and therefore part of the history.
+  // Pushed here, after the packed entry and BEFORE the undated invoicing-block
+  // row below, so the current-state row stays last.
+  events.push(...buildHoldEvents(holds ?? []));
+
   // #2100 — appended last. It used to be DELIBERATELY UNDATED, because the block
   // is a current-state fact re-decided on every transition and no instant was
   // persisted for it; dating it with `createdAt` or `updatedAt` would have
@@ -480,6 +579,7 @@ export function OrderActivityTimeline({
   salesDocumentBlockedAt,
   salesDocumentBlockReleasedAt,
   extraEvents,
+  holds,
 }: OrderActivityTimelineProps): ReactElement {
   const authored = useMemo(
     () =>
@@ -499,6 +599,7 @@ export function OrderActivityTimeline({
         packedByUserId,
         salesDocumentBlockedAt,
         salesDocumentBlockReleasedAt,
+        holds,
       ),
     [
       createdAt,
@@ -516,6 +617,7 @@ export function OrderActivityTimeline({
       packedByUserId,
       salesDocumentBlockedAt,
       salesDocumentBlockReleasedAt,
+      holds,
     ],
   );
 

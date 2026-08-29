@@ -37,6 +37,9 @@ export const CORE_CAPABILITY_VALUES = [
   // Fiscalization (ADR-042) - registering a completed sale with a provider that
   // performs or brokers its fiscal registration. Distinct from 'Invoicing'.
   'Fiscalization',
+  // Returns disposition authority (ADR-052) - who decides what happens to goods
+  // a customer sends back. Operator-enabled, so it must be writable here.
+  'ReturnsAuthority',
 ] as const;
 
 /**

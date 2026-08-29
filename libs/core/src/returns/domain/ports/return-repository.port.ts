@@ -42,6 +42,10 @@ import type {
 } from '../types/return-query.types';
 import type { ReturnSegmentCounts } from '../types/return-segment.types';
 import type { ReturnTimelineEntriesForOrder } from '../types/return-timeline-entry.types';
+import type {
+  AuthorityAttentionOutcome,
+  AuthorityAttentionProducer,
+} from '@openlinker/core/fulfillment-authority';
 
 export interface ReturnRepositoryPort {
   /**
@@ -214,6 +218,35 @@ export interface ReturnRepositoryPort {
    * OpenLinker, unlike `claimDeclinedAt`, which must carry the SOURCE's instant.
    */
   claimAuthorizedAt(id: string, at: Date): Promise<boolean>;
+
+  /**
+   * Set — or clear — ONE producer's OMS inert state on this return (#2352).
+   *
+   * Level-triggered PER PRODUCER: `{ kind: 'none' }` means *"I have nothing to
+   * report"* and removes only this producer's entry, never the row's, because
+   * several unrelated producers share the column and each one's clear is honest
+   * only about its own question. `{ kind: 'indeterminate' }` leaves the stored
+   * entry alone — clearing on a transient failure erases a true reason and
+   * replaces it with silence (#2100).
+   *
+   * `since` is preserved across a change of reason within one episode, so the
+   * operator-facing age does not reset when a reason is refined.
+   *
+   * Never used for the ORPHAN state: that is derived from `internalOrderId IS
+   * NULL` (`ReturnRecord.isOrphan()`) and must have exactly one definition.
+   *
+   * No-op (no throw) when the return row does not exist.
+   *
+   * `outcome` is generic in the producer, so a producer can persist only the state
+   * {@link AUTHORITY_ATTENTION_PRODUCER_REASONS} assigns it: a DERIVED state (one the
+   * read model recomputes from config on every read) and a peer producer's state are
+   * both unrepresentable here rather than merely discouraged.
+   */
+  updateOmsAttention<P extends AuthorityAttentionProducer>(
+    id: string,
+    producer: P,
+    outcome: AuthorityAttentionOutcome<P>
+  ): Promise<void>;
 
   /**
    * One page of returns worth re-reading at the source (#2330, pass 2).

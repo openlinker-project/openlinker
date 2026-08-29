@@ -109,6 +109,7 @@ describe('ShipmentDispatchNotificationService', () => {
       getEarliestOrderDateByConnection: jest.fn(),
       getSalesAndChannelAnalytics: jest.fn(),
       getTopProducts: jest.fn(),
+      countOrdersWithOmsAttention: jest.fn(),
     };
 
     integrations = {

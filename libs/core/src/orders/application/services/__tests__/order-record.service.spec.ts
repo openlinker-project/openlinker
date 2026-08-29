@@ -46,6 +46,8 @@ describe('OrderRecordService', () => {
       updateItemResolutionFailure: jest.fn(),
       markCancelled: jest.fn(),
       updateSalesDocumentBlock: jest.fn(),
+      updateOmsAttention: jest.fn(),
+      countOrdersWithOmsAttention: jest.fn(),
       getDailyOrderAggregates: jest.fn(),
       getMedianOrderValue: jest.fn(),
       getNetMedianOrderValue: jest.fn(),

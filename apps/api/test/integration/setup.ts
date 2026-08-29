@@ -146,6 +146,14 @@ const harness = createIntegrationTestHarness({
     // never reach it; truncate explicitly or a proposal from one case still
     // holds its target's slot in the next.
     'order_changes',
+    // order_holds (#2338) — the OL-owned hold record. Same shape as
+    // order_changes above: no FK to order_records (the refund_records precedent
+    // of an indexed reference by value), so nothing cascades in and
+    // `truncateTables`' CASCADE walk would never reach it. Truncate explicitly
+    // or a hold from one case still holds its order's slot in the next — and
+    // because the unique index is partial on OPEN rows, that leak surfaces as a
+    // spurious `OrderAlreadyOnHoldError` in an unrelated spec.
+    'order_holds',
     // destination_categories (#1979) — the taxonomy projection. Marketplace
     // rows are owner-keyed with NO connectionId, so nothing cascades from
     // connections; truncate explicitly or an owner tree leaks between cases.

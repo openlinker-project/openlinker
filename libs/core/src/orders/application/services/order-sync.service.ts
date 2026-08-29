@@ -36,7 +36,8 @@ import { NoOrderDestinationsAvailableException } from '../../domain/exceptions/n
 import { OrderCreateContendedException } from '../../domain/exceptions/order-create-contended.exception';
 import { ORDER_CREATE_LOCK_TTL_MS, orderCreateLockKey } from './order-create-lock';
 import { IOrderRecordService } from '../interfaces/order-record.service.interface';
-import { ORDER_RECORD_SERVICE_TOKEN } from '../../orders.tokens';
+import { IOrderHoldService } from '../interfaces/order-hold.service.interface';
+import { ORDER_HOLD_SERVICE_TOKEN, ORDER_RECORD_SERVICE_TOKEN } from '../../orders.tokens';
 
 @Injectable()
 export class OrderSyncService implements IOrderSyncService {
@@ -52,7 +53,9 @@ export class OrderSyncService implements IOrderSyncService {
     @Inject(IDENTIFIER_MAPPING_SERVICE_TOKEN)
     private readonly identifierMapping: IIdentifierMappingService,
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
-    private readonly orderRecordService: IOrderRecordService
+    private readonly orderRecordService: IOrderRecordService,
+    @Inject(ORDER_HOLD_SERVICE_TOKEN)
+    private readonly orderHoldService: IOrderHoldService
   ) {}
 
   async syncOrder(request: OrderSyncRequest): Promise<OrderSyncResult[]> {
@@ -89,6 +92,38 @@ export class OrderSyncService implements IOrderSyncService {
         destinationConnectionId: connectionId,
         status: 'skipped_cancelled' as const,
         cancelledAt,
+      }));
+    }
+
+    // #2339 — the hold gate, story L4: "a held order never reaches the
+    // destination shop". It sits beside the cancellation predicate above and
+    // reads the SAME way — a re-read at the choke point, not a value threaded
+    // from a caller who may have looked before the hold was placed.
+    //
+    // Deliberately reads `order_holds` through `IOrderHoldService`, never
+    // #2340's denormalised `order_records.activeHoldReason`: the projection is
+    // a cache that loses on drift, and a gate that trusts a stale cache lets a
+    // held order ship. That is the epic's L4 exit criterion.
+    //
+    // Unlike the cancellation skip, this one is NOT terminal: the next run
+    // after a release provisions the order with no manual step, which is why no
+    // per-destination sync status is persisted for it (see the ingestion
+    // handler) and why it has its own result arm.
+    //
+    // A read failure PROPAGATES, for the same reason cancellation's does:
+    // provisioning a possibly-held order because a read blipped is the worse
+    // outcome.
+    const openHold = await this.orderHoldService.getOpenHold(order.id);
+    if (openHold) {
+      this.logger.warn(
+        `Order ${order.id} is on hold (${openHold.id}, reason '${openHold.reason}'); ` +
+          `withholding destination provisioning for ${destinations.length} destination(s)`
+      );
+      return destinations.map(({ connectionId }) => ({
+        destinationConnectionId: connectionId,
+        status: 'skipped_held' as const,
+        holdId: openHold.id,
+        holdReason: openHold.reason,
       }));
     }
 

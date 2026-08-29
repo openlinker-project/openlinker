@@ -54,7 +54,10 @@ export const SHIPMENT_DISPATCH_LOCK_TTL_MS = resolveShipmentDispatchLockTtlMs();
 
 /**
  * Build the lock key for dispatching one order.
+ *
+ * The definition MOVED to `@openlinker/core/sync` and is re-exported here so
+ * every existing caller is unchanged. It moved because `OrderHoldService`
+ * (`orders`) needs the identical key to detect an in-flight dispatch, and
+ * `orders` may not value-import `shipping` — see that file's docblock.
  */
-export function shipmentDispatchLockKey(orderId: string): string {
-  return `shipment:dispatch:${orderId}`;
-}
+export { shipmentDispatchLockKey } from '@openlinker/core/sync';

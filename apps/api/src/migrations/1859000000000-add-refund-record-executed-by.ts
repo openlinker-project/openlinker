@@ -15,7 +15,7 @@
  * `RefundExecutedByValues` never needs an `ALTER TYPE`.
  *
  * Note `refund_records.returnId` is NOT touched here: that column has existed
- * since #2327 (`1846000000000-create-returns.ts`) as persistence-only, and
+ * since #2327 (`1849000000008-create-returns.ts`) as persistence-only, and
  * #2371 supplies its first writer in the domain/repository layer only.
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
