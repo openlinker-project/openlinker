@@ -66,6 +66,7 @@ function makeBranchOneShipment(overrides: Partial<Shipment> = {}): Shipment {
     overrides.deliveryIntent ?? null,
     overrides.providerCode ?? null,
     overrides.waybillRelayedAt ?? null,
+    overrides.direction ?? 'outbound',
     overrides.reservationConsumedAt ?? null,
   );
 }

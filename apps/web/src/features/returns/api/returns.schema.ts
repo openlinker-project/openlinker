@@ -26,7 +26,42 @@ import {
   RETURN_ORIGIN_VALUES,
   type ReturnBucketCounts,
   type ReturnListItem,
+  type ReturnStageCounts,
 } from './returns.types';
+import { RETURN_STAGE_VALUES, type ReturnStage } from '../lib/return-stage.types';
+import {
+  RETURN_SEGMENT_VALUES,
+  type ReturnSegment,
+  type ReturnSegmentCounts,
+} from '../lib/return-segments';
+
+/**
+ * The counter rollup the derived stage reads (#2377).
+ *
+ * Defaulted rather than optional: a row from a server that predates #2377 is
+ * still a readable row, and dropping it would lose a return over a missing
+ * projection. Zeroes derive `awaiting_parcel`, which is the honest reading of
+ * "this build was told nothing about its counters".
+ */
+const returnCountersSchema = z.object({
+  lineCount: z.number().nullish(),
+  notReturnedLineCount: z.number().nullish(),
+  quantityAdvised: z.number().nullish(),
+  notReturnedQuantityAdvised: z.number().nullish(),
+  quantityReceived: z.number().nullish(),
+  quantityRestocked: z.number().nullish(),
+  quantityScrapped: z.number().nullish(),
+});
+
+const returnStageCountsSchema = z.object({
+  total: z.number(),
+  byStage: z.record(z.string(), z.number()),
+});
+
+const returnSegmentCountsSchema = z.object({
+  total: z.number(),
+  bySegment: z.record(z.string(), z.number()),
+});
 
 /**
  * `bucket` and `origin` are closed unions the backend validates before it
@@ -49,6 +84,8 @@ const returnListItemSchema = z.object({
   closedAt: z.string().nullish(),
   createdAt: z.string(),
   updatedAt: z.string(),
+  counters: returnCountersSchema.nullish(),
+  restockBlocked: z.boolean().nullish(),
 });
 
 const returnBucketCountsSchema = z.object({
@@ -91,6 +128,10 @@ export interface ParsedReturnList {
    * evidence for a positive claim. The caller drops the numbers instead.
    */
   counts: ReturnBucketCounts | null;
+  /** The derived-stage partition, scoped with `stage` removed. */
+  stageCounts: ReturnStageCounts | null;
+  /** The worklist-strip counts, scoped with `segment` removed. Segments OVERLAP. */
+  segmentCounts: ReturnSegmentCounts | null;
   /**
    * The paging the server ACTUALLY applied, which is not always what was asked
    * for — the controller fills its own defaults when a param is absent. Null
@@ -118,6 +159,46 @@ function orNull<T>(value: T | null | undefined): T | null {
  * reported drop count, which is strictly more informative than an error state
  * that says nothing about how much was lost.
  */
+/**
+ * Narrow the server's stage-count map to the vocabulary THIS build knows.
+ *
+ * A stage added server-side that this bundle has never heard of is dropped
+ * rather than rendered as an unlabelled chip; one this build knows and the
+ * server omitted reads 0. Neither is an error — the mirror script is what stops
+ * the two vocabularies diverging in the first place, and a deployed-mid-rollout
+ * bundle should degrade rather than blank the page.
+ */
+function normalizeStageCounts(
+  raw: { total: number; byStage: Record<string, number> } | null | undefined
+): ReturnStageCounts | null {
+  if (raw === null || raw === undefined) return null;
+
+  const byStage = Object.fromEntries(
+    RETURN_STAGE_VALUES.map((stage) => [stage, raw.byStage[stage] ?? 0])
+  ) as Record<ReturnStage, number>;
+
+  return { total: raw.total, byStage };
+}
+
+/**
+ * Narrow the server's segment-count map to the vocabulary THIS build knows.
+ *
+ * Same degrade-don't-blank rule as {@link normalizeStageCounts}: a segment this
+ * bundle has never heard of is dropped rather than rendered as an unlabelled
+ * card; one it knows and the server omitted reads 0.
+ */
+function normalizeSegmentCounts(
+  raw: { total: number; bySegment: Record<string, number> } | null | undefined
+): ReturnSegmentCounts | null {
+  if (raw === null || raw === undefined) return null;
+
+  const bySegment = Object.fromEntries(
+    RETURN_SEGMENT_VALUES.map((segment) => [segment, raw.bySegment[segment] ?? 0])
+  ) as Record<ReturnSegment, number>;
+
+  return { total: raw.total, bySegment };
+}
+
 export function parseReturnList(raw: unknown): ParsedReturnList {
   const envelope = z
     .object({
@@ -126,6 +207,8 @@ export function parseReturnList(raw: unknown): ParsedReturnList {
       limit: z.number().nullish(),
       offset: z.number().nullish(),
       counts: returnBucketCountsSchema.nullish(),
+      stageCounts: returnStageCountsSchema.nullish(),
+      segmentCounts: returnSegmentCountsSchema.nullish(),
     })
     .safeParse(raw);
 
@@ -136,6 +219,8 @@ export function parseReturnList(raw: unknown): ParsedReturnList {
       envelopeUnreadable: true,
       total: 0,
       counts: null,
+      stageCounts: null,
+      segmentCounts: null,
       limit: null,
       offset: null,
     };
@@ -166,6 +251,21 @@ export function parseReturnList(raw: unknown): ParsedReturnList {
       closedAt: orNull(parsed.data.closedAt),
       createdAt: parsed.data.createdAt,
       updatedAt: parsed.data.updatedAt,
+      counters: {
+        lineCount: parsed.data.counters?.lineCount ?? 0,
+        notReturnedLineCount: parsed.data.counters?.notReturnedLineCount ?? 0,
+        quantityAdvised: parsed.data.counters?.quantityAdvised ?? 0,
+        notReturnedQuantityAdvised: parsed.data.counters?.notReturnedQuantityAdvised ?? 0,
+        quantityReceived: parsed.data.counters?.quantityReceived ?? 0,
+        quantityRestocked: parsed.data.counters?.quantityRestocked ?? 0,
+        quantityScrapped: parsed.data.counters?.quantityScrapped ?? 0,
+      },
+      // `null`, NOT `false`, when the server did not report it (#2381). The two
+      // are different claims: `false` says the operator's stock is fine, which
+      // an absent field is no evidence for. `null` renders no badge — and the
+      // row itself is still returned, because a missing flag is not a reason to
+      // drop a return the operator needs to see.
+      restockBlocked: parsed.data.restockBlocked ?? null,
     });
   }
 
@@ -175,6 +275,8 @@ export function parseReturnList(raw: unknown): ParsedReturnList {
     envelopeUnreadable: false,
     total: envelope.data.total ?? items.length,
     counts: envelope.data.counts ?? null,
+    stageCounts: normalizeStageCounts(envelope.data.stageCounts),
+    segmentCounts: normalizeSegmentCounts(envelope.data.segmentCounts),
     limit: envelope.data.limit ?? null,
     offset: envelope.data.offset ?? null,
   };

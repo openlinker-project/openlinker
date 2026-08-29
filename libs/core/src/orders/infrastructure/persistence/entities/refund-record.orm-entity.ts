@@ -84,12 +84,26 @@ export class RefundRecordOrmEntity {
    * No FK to `returns` — the `internalOrderId` precedent directly above (an
    * indexed reference by value, no cross-table lock coupling).
    *
-   * **Persistence-only in this slice.** The domain `RefundRecord` entity, its
-   * create-input and every read projection are deliberately unchanged: nothing
-   * writes or reads this column until Wave 2 wires the return-to-refund link,
-   * and projecting a field no writer populates would put a permanently-null
-   * property on an API response. Wave 2 adds the domain half.
+   * **Persistence-only until #2371**, which is the Wave-2 writer #2327 named:
+   * the domain `RefundRecord`, its create-input and the repository mapping now
+   * carry the field. Still nullable, and still no FK — a refund legitimately
+   * exists without a return (goodwill, price correction), which is why
+   * `RefundRecord` was LINKED to returns rather than extended by them (ADR-060).
    */
   @Column({ type: 'text', nullable: true })
   returnId: string | null = null;
+
+  /**
+   * WHO moved the buyer's money (#2371, ADR-056).
+   *
+   * `NOT NULL DEFAULT 'operator_out_of_band'`, and the default IS the backfill:
+   * OpenLinker has never shipped a refund write, so every row that predates
+   * this column was recorded by a human who moved the money elsewhere. The
+   * default states that truthfully rather than leaving it unknown.
+   *
+   * Stored as `varchar` rather than a DB enum — the house convention, so
+   * widening `RefundExecutedByValues` never needs an `ALTER TYPE`.
+   */
+  @Column({ type: 'varchar', length: 32, default: 'operator_out_of_band' })
+  executedBy!: string;
 }

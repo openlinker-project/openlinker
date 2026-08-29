@@ -15,6 +15,7 @@
  */
 
 import type { Shipment } from '../entities/shipment.entity';
+import type { ShipmentDirection } from '../types/shipment-direction.types';
 import type {
   PaginatedShipments,
   ShipmentFilters,
@@ -44,18 +45,30 @@ export interface ShipmentRepositoryPort {
   findById(id: string): Promise<Shipment | null>;
 
   /**
-   * All shipments for an order, ordered by `createdAt ASC`. Returns `[]`
-   * when the order has no shipments yet. Multiple rows happen on AC-7
-   * cancel + re-issue (and on future multi-package shipments).
+   * All shipments for an order IN ONE DIRECTION, ordered by `createdAt ASC`.
+   * Returns `[]` when the order has no shipments in that cohort. Multiple rows
+   * happen on AC-7 cancel + re-issue (and on future multi-package shipments).
+   *
+   * `direction` is REQUIRED and deliberately not defaulted (#2373). A default
+   * is a silent decline: a later call site would read the outbound cohort
+   * while believing it read every shipment, and nothing would say otherwise.
+   * Required, it is a compile error to omit — the same reasoning that widened
+   * `SalesDocumentOrderFacts.buyerHasTaxId` to `boolean | undefined` rather
+   * than defaulting it. Do not "simplify" this back to an optional parameter.
    */
-  findByOrderId(orderId: string): Promise<readonly Shipment[]>;
+  findByOrderId(orderId: string, direction: ShipmentDirection): Promise<readonly Shipment[]>;
 
   /**
-   * Most-recent non-terminal shipment for an order, or null if every row
-   * is terminal (`delivered` / `failed` / `cancelled`) or no shipments
-   * exist. This is the row the order-detail "Shipment" panel renders.
+   * Most-recent non-terminal shipment for an order IN ONE DIRECTION, or null
+   * if every row in that cohort is terminal (`delivered` / `failed` /
+   * `cancelled`) or none exists. This is the row the order-detail "Shipment"
+   * panel renders, and the dispatch-claim read.
+   *
+   * `direction` is REQUIRED for the reason given on `findByOrderId` above — an
+   * outbound dispatch must not be blocked by an in-flight return label, nor
+   * the reverse.
    */
-  findActiveByOrderId(orderId: string): Promise<Shipment | null>;
+  findActiveByOrderId(orderId: string, direction: ShipmentDirection): Promise<Shipment | null>;
 
   findByProviderShipmentId(providerShipmentId: string): Promise<Shipment | null>;
 
@@ -63,9 +76,13 @@ export interface ShipmentRepositoryPort {
    * Branch-1 (#834) idempotency gate. Returns the existing branch-1
    * Shipment for `(orderId, connectionId)` if one is already projected,
    * or `null` to greenlight `create()`. Matches the persisted-shape
-   * predicate `orderId = ? AND connectionId = ? AND providerShipmentId
-   * IS NULL` — the same predicate the partial-unique index
-   * `UQ_shipments_branch_one_per_order_conn` enforces at the DB.
+   * predicate `orderId = ? AND connectionId = ? AND direction = ? AND
+   * providerShipmentId IS NULL` — the same key the partial-unique index
+   * `UQ_shipments_branch_one_per_order_conn` enforces at the DB (#2373 added
+   * `direction` to that index's KEY columns, so the lookup must carry it too
+   * or it would match a sibling row the index deliberately permits).
+   *
+   * `direction` is REQUIRED for the reason given on `findByOrderId` above.
    *
    * Returns `null` when the order has only non-null-`providerShipmentId`
    * rows (branches 2/3 — the order is being shipped by InPost / Allegro
@@ -76,6 +93,7 @@ export interface ShipmentRepositoryPort {
   findBranchOneByOrderAndConnection(
     orderId: string,
     connectionId: string,
+    direction: ShipmentDirection,
   ): Promise<Shipment | null>;
 
   /**

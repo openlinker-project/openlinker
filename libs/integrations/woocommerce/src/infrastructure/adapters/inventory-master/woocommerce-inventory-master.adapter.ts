@@ -10,6 +10,11 @@
  * Write semantics: WC REST exposes no delta primitive — adjustInventory uses
  * a non-atomic read-current → compute → PUT pattern. Documented limitation at v1.
  *
+ * Idempotency (#2368): WC exposes no conditional stock write either, so a
+ * repeated adjustment is de-duplicated adapter-side by remembering the caller's
+ * key in the shared cache for a bounded window. See `adjustInventory` for what
+ * that does and does not guarantee.
+ *
  * @module libs/integrations/woocommerce/src/infrastructure/adapters/inventory-master
  * @implements {InventoryMasterPort}
  */
@@ -17,11 +22,15 @@ import type {
   InventoryMasterPort,
   Inventory,
   InventoryAdjustment,
+  InventoryAdjustmentResult,
+  InventoryAdjustmentOutcome,
+  InventoryIdempotencySupport,
 } from '@openlinker/core/inventory';
 import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { MasterProductNotFoundError } from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
+import type { CachePort } from '@openlinker/shared/cache';
 import type { IWooCommerceHttpClient } from '../../http/woocommerce-http-client.interface';
 import { WooCommerceHttpResponseException } from '../../http/woocommerce-http-response.exception';
 import { WooCommerceResourceNotFoundException } from '../../../domain/exceptions/woocommerce-resource-not-found.exception';
@@ -53,6 +62,16 @@ export class WooCommerceInventoryMasterAdapter implements InventoryMasterPort {
     private readonly httpClient: IWooCommerceHttpClient,
     private readonly identifierMapping: IdentifierMappingPort,
     private readonly connection: Connection,
+    /**
+     * Optional shared cache backing the #2368 idempotency window.
+     *
+     * Optional because `HostServices.cache` is — a host wired without one gets
+     * an adapter that applies every adjustment and REPORTS
+     * `idempotency: 'unsupported'`, rather than one that silently pretends to
+     * dedupe. Trailing and optional so the existing construction site stays
+     * source-compatible.
+     */
+    private readonly cache?: CachePort,
   ) {
     const config = (connection.config ?? {}) as Partial<WooCommerceConnectionConfig>;
     this.unmanagedStockQuantity =
@@ -136,25 +155,106 @@ export class WooCommerceInventoryMasterAdapter implements InventoryMasterPort {
     return inv.available;
   }
 
-  // Non-atomic read-modify-write: reads current stock, computes new value, PUTs.
-  // Race condition possible under concurrent updates. WC REST v3 has no atomic increment endpoint.
-  async adjustInventory(adjustment: InventoryAdjustment): Promise<Inventory> {
+  /**
+   * Non-atomic read-modify-write: reads current stock, computes new value, PUTs.
+   * Race condition possible under concurrent updates — WC REST v3 has no atomic
+   * increment endpoint.
+   *
+   * ## What the idempotency key buys, and what it does not (#2368)
+   *
+   * A key already seen inside the window means this adjustment was applied
+   * before, so nothing is written and the CURRENT master stock is returned with
+   * `disposition: 'deduplicated'`. The returned figure is what the master holds
+   * now, not a replay of the earlier response — reporting a stale number would
+   * be a worse lie than reporting no number.
+   *
+   * The guarantee is bounded and honest about its bound: {@link CachePort}
+   * exposes no atomic set-if-absent, so two GENUINELY CONCURRENT calls carrying
+   * the same key can both miss and both apply. That is not the threat this
+   * closes. The threat is a SEQUENTIAL job retry minutes or hours after a
+   * failure — which this does close — and #2370 mints one key per disposition
+   * sequence, so two concurrent operators never share one. Making the window
+   * race-proof needs a primitive the shared cache does not have.
+   *
+   * With no cache wired the adjustment is applied and reported
+   * `idempotency: 'unsupported'`. Never `'honoured'` — a caller that believes a
+   * key was honoured stops defending against the double-increment itself.
+   */
+  async adjustInventory(adjustment: InventoryAdjustment): Promise<InventoryAdjustmentResult> {
     this.logger.debug(`Adjusting inventory for product: ${adjustment.productId} (connection: ${this.connection.id})`);
+
+    if (adjustment.reason) {
+      // WC REST carries no stock-adjustment reason field, so the reason reaches
+      // the operator's own log rather than the master's audit trail.
+      this.logger.log(
+        `Inventory adjustment reason=${adjustment.reason} product=${adjustment.productId} ` +
+          `quantity=${String(adjustment.quantity)} connection=${this.connection.id}`,
+      );
+    }
+
+    const idempotency = this.resolveIdempotencySupport(adjustment);
+    const alreadyApplied =
+      idempotency === 'honoured' ? await this.hasAppliedKey(adjustment.idempotencyKey) : false;
 
     const wcId = await this.resolveWcProductId(adjustment.productId);
     const product = await this.httpClient.get<WooCommerceProduct>(`/wp-json/wc/v3/products/${wcId}`);
 
-    if (product.type === 'variable') {
-      if (!adjustment.variantId) {
-        throw new WooCommerceNotSupportedException(
-          'adjustInventory without variantId on a variable product',
-          'Specify adjustment.variantId to target a specific variation.',
-        );
-      }
-      return await this.adjustVariationInventory(adjustment, wcId, adjustment.variantId);
+    const result =
+      product.type === 'variable'
+        ? await this.adjustVariationInventory(
+            adjustment,
+            wcId,
+            this.requireVariantId(adjustment),
+            alreadyApplied,
+          )
+        : await this.adjustSimpleInventory(adjustment, wcId, product, alreadyApplied);
+
+    if (idempotency === 'honoured' && !alreadyApplied) {
+      // Recorded only AFTER the write succeeded. Recording first would suppress
+      // the retry of an adjustment that never landed — the exact failure the key
+      // exists to prevent, inverted.
+      await this.rememberAppliedKey(adjustment.idempotencyKey);
     }
 
-    return await this.adjustSimpleInventory(adjustment, wcId, product);
+    const outcome: InventoryAdjustmentOutcome = {
+      disposition: alreadyApplied ? 'deduplicated' : 'applied',
+      idempotency,
+      appliedAt: result.appliedAt,
+    };
+
+    return { ...result.inventory, adjustmentOutcome: outcome };
+  }
+
+  private requireVariantId(adjustment: InventoryAdjustment): string {
+    if (!adjustment.variantId) {
+      throw new WooCommerceNotSupportedException(
+        'adjustInventory without variantId on a variable product',
+        'Specify adjustment.variantId to target a specific variation.',
+      );
+    }
+    return adjustment.variantId;
+  }
+
+  private resolveIdempotencySupport(
+    adjustment: InventoryAdjustment,
+  ): InventoryIdempotencySupport {
+    if (!adjustment.idempotencyKey) return 'not_requested';
+    if (!this.cache) return 'unsupported';
+    return 'honoured';
+  }
+
+  private idempotencyCacheKey(key: string): string {
+    return `wc:inventory-adjust:${this.connection.id}:${key}`;
+  }
+
+  private async hasAppliedKey(key: string | undefined): Promise<boolean> {
+    if (!key || !this.cache) return false;
+    return (await this.cache.get<true>(this.idempotencyCacheKey(key))) === true;
+  }
+
+  private async rememberAppliedKey(key: string | undefined): Promise<void> {
+    if (!key || !this.cache) return;
+    await this.cache.set(this.idempotencyCacheKey(key), true, ADJUSTMENT_IDEMPOTENCY_TTL_SEC);
   }
 
   reserveInventory(_productId: string, _quantity: number, _orderId: string): Promise<void> {
@@ -333,14 +433,24 @@ export class WooCommerceInventoryMasterAdapter implements InventoryMasterPort {
     adjustment: InventoryAdjustment,
     wcId: number,
     product: WooCommerceProduct,
-  ): Promise<Inventory> {
+    alreadyApplied: boolean,
+  ): Promise<AppliedAdjustment> {
     const current = this.resolveStockQuantity(product.stock_quantity, product.manage_stock, product.stock_status);
-    const newQuantity = Math.max(0, current + adjustment.quantity);
+    const newQuantity = alreadyApplied ? current : Math.max(0, current + adjustment.quantity);
+    let appliedAt: Date | null = null;
 
-    await this.httpClient.put(`/wp-json/wc/v3/products/${wcId}`, {
-      stock_quantity: newQuantity,
-      manage_stock: true,
-    });
+    if (alreadyApplied) {
+      this.logger.log(
+        `Skipping already-applied inventory adjustment key=${String(adjustment.idempotencyKey)} ` +
+          `product=${adjustment.productId} connection=${this.connection.id}`,
+      );
+    } else {
+      const updated = await this.httpClient.put<WooCommerceProduct>(`/wp-json/wc/v3/products/${wcId}`, {
+        stock_quantity: newQuantity,
+        manage_stock: true,
+      });
+      appliedAt = parseWcGmtInstant(updated?.date_modified_gmt);
+    }
 
     // Idempotent — returns existing mapping if already created by listInventory
     const [variantId, inventoryId] = await Promise.all([
@@ -358,14 +468,18 @@ export class WooCommerceInventoryMasterAdapter implements InventoryMasterPort {
       ),
     ]);
 
-    return mapToInventory(newQuantity, adjustment.productId, variantId, inventoryId);
+    return {
+      inventory: mapToInventory(newQuantity, adjustment.productId, variantId, inventoryId),
+      appliedAt,
+    };
   }
 
   private async adjustVariationInventory(
     adjustment: InventoryAdjustment,
     wcId: number,
     variantId: string,
-  ): Promise<Inventory> {
+    alreadyApplied: boolean,
+  ): Promise<AppliedAdjustment> {
     const variantExternalIds = await this.identifierMapping.getExternalIds(
       CORE_ENTITY_TYPE.ProductVariant,
       variantId,
@@ -412,12 +526,21 @@ export class WooCommerceInventoryMasterAdapter implements InventoryMasterPort {
     }
 
     const current = this.resolveStockQuantity(variation.stock_quantity, variation.manage_stock, variation.stock_status);
-    const newQuantity = Math.max(0, current + adjustment.quantity);
+    const newQuantity = alreadyApplied ? current : Math.max(0, current + adjustment.quantity);
+    let appliedAt: Date | null = null;
 
-    await this.httpClient.put(`/wp-json/wc/v3/products/${wcId}/variations/${wcVariationId}`, {
-      stock_quantity: newQuantity,
-      manage_stock: true,
-    });
+    if (alreadyApplied) {
+      this.logger.log(
+        `Skipping already-applied inventory adjustment key=${String(adjustment.idempotencyKey)} ` +
+          `variant=${variantId} connection=${this.connection.id}`,
+      );
+    } else {
+      const updated = await this.httpClient.put<WooCommerceProductVariation>(
+        `/wp-json/wc/v3/products/${wcId}/variations/${wcVariationId}`,
+        { stock_quantity: newQuantity, manage_stock: true },
+      );
+      appliedAt = parseWcGmtInstant(updated?.date_modified_gmt);
+    }
 
     // Idempotent — returns existing mapping if already created by listInventory
     const inventoryId = await this.identifierMapping.getOrCreateInternalId(
@@ -427,11 +550,45 @@ export class WooCommerceInventoryMasterAdapter implements InventoryMasterPort {
       { parentEntityType: CORE_ENTITY_TYPE.Product, parentInternalId: adjustment.productId },
     );
 
-    return mapToInventory(newQuantity, adjustment.productId, variantId, inventoryId);
+    return {
+      inventory: mapToInventory(newQuantity, adjustment.productId, variantId, inventoryId),
+      appliedAt,
+    };
   }
 }
 
 // ─── Module-level helpers (not exported) ─────────────────────────────────────
+
+/**
+ * How long a honoured idempotency key is remembered (#2368).
+ *
+ * Seven days, matching the `jobdedup:*` TTL: the retry ladder backs off to six
+ * hours over ten attempts, so a shorter window would let the last retry of a
+ * genuinely stuck job land as a fresh increment.
+ */
+const ADJUSTMENT_IDEMPOTENCY_TTL_SEC = 7 * 24 * 60 * 60;
+
+/**
+ * What one adjust helper reports back: the post-adjustment inventory plus the
+ * MASTER's own instant for the change (`null` when WC reported none, and always
+ * `null` on the deduplicated path — this call changed nothing, so it has no
+ * instant of its own to report and must not borrow one).
+ */
+interface AppliedAdjustment {
+  inventory: Inventory;
+  appliedAt: Date | null;
+}
+
+/**
+ * Parses WC's UTC modification timestamp. Only `*_gmt` is read: `date_modified`
+ * is site-local with no offset, so treating it as an instant silently shifts it
+ * by the store's timezone.
+ */
+function parseWcGmtInstant(raw: string | undefined): Date | null {
+  if (!raw) return null;
+  const parsed = new Date(`${raw}Z`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
 
 function parseStockQuantity(raw: number | null | undefined): number {
   if (raw === null || raw === undefined) return 0;

@@ -103,7 +103,8 @@ import { RequestPriorityModule } from './http/request-priority.module';
     AnalyticsTrustApiModule, // GET /analytics/trust — data-trust snapshot for the /analytics page (#1982)
     CatalogTrustApiModule, // GET /connections/:id/catalog-trust — master rung + reconcile recency (#2258)
     FulfillmentAuthorityApiModule, // /fulfillment-authority — who decides what + presets (#2353)
-    ReturnActionsApiModule, // POST /returns/:id/decline — the one return write (#2333)
+    ReturnActionsApiModule, // Every return WRITE: decline (#2333) plus the custody,
+    // money and correction-proposal routes (#2376)
     ReturnsReadApiModule, // GET /returns[, /:id, /ingestion-availability] — returns reads (#2334)
     // /automations — rule CRUD, the closed vocabulary, the §5.6a dry run and the
     // per-rule fired log (#2363). Imports OrdersModule as well as AutomationModule:

@@ -114,8 +114,9 @@ async function seed(
 
   await dataSource.query(
     `INSERT INTO "shipments"
-       ("id", "orderId", "connectionId", "shippingMethod", "status", "reservationConsumedAt")
-     VALUES ($1, $2, $3, 'kurier', $4, $5)`,
+       ("id", "orderId", "connectionId", "shippingMethod", "status", "direction",
+        "reservationConsumedAt")
+     VALUES ($1, $2, $3, 'kurier', $4, 'outbound', $5)`,
     [
       shipmentId,
       orderId,

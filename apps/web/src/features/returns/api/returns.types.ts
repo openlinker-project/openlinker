@@ -9,6 +9,8 @@
  *
  * @module apps/web/src/features/returns/api
  */
+import type { ReturnStage } from '../lib/return-stage.types';
+import type { ReturnSegment, ReturnSegmentCounts } from '../lib/return-segments';
 
 /**
  * The attribution partition. FE mirror of the backend `ReturnBucketValues`
@@ -58,6 +60,24 @@ export const RETURNS_MAX_LIMIT = 100;
  * `lines: []` here would be a promise the query never fills and a consumer
  * would render it as "this return has no lines".
  */
+/**
+ * The per-return counter rollup the derived stage is computed from (#2377).
+ *
+ * Mirrors `ReturnCountersDto`. Always present on a parsed row — a server that
+ * omits it yields zeroes rather than dropping the return, because losing a row
+ * over a missing projection is worse than showing it as `Awaiting parcel`.
+ */
+export interface ReturnCounters {
+  lineCount: number;
+  notReturnedLineCount: number;
+  quantityAdvised: number;
+  /** Advised units on lines written off as never arriving. Subtracted to give "still expected". */
+  notReturnedQuantityAdvised: number;
+  quantityReceived: number;
+  quantityRestocked: number;
+  quantityScrapped: number;
+}
+
 export interface ReturnListItem {
   id: string;
   sourceConnectionId: string;
@@ -76,6 +96,30 @@ export interface ReturnListItem {
   closedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** The rollup `deriveReturnStage` reads. See {@link ReturnCounters}. */
+  counters: ReturnCounters;
+  /**
+   * Does this return hold a restock the master refused that nobody attested
+   * (#2381)?
+   *
+   * A SIBLING of `counters`, never a member — the derived stage computes from
+   * counters alone (#2377). **`null` means NOT REPORTED**, and is the only
+   * honest third state: `false` asserts the operator's stock is fine, and
+   * `true` would cry wolf on every row of an unreadable page. `null` renders no
+   * badge and is counted through the list's `droppedCount`.
+   */
+  restockBlocked: boolean | null;
+}
+
+/**
+ * How many returns sit in each derived stage (#2377), scoped with `stage`
+ * REMOVED from the caller's filters — the same rule {@link ReturnBucketCounts}
+ * states for `bucket`, so the chip for the stage you are not looking at stays
+ * truthful.
+ */
+export interface ReturnStageCounts {
+  total: number;
+  byStage: Record<ReturnStage, number>;
 }
 
 /**
@@ -100,6 +144,8 @@ export interface PaginatedReturns {
   limit: number;
   offset: number;
   counts: ReturnBucketCounts;
+  stageCounts: ReturnStageCounts | null;
+  segmentCounts: ReturnSegmentCounts | null;
 }
 
 /**
@@ -118,6 +164,43 @@ export interface ReturnFilters {
   bucket?: ReturnBucket;
   createdFrom?: string;
   createdTo?: string;
+  /** #2378 — the worklist strip. One dimension; never translated into `bucket`. */
+  segment?: ReturnSegment;
+  stage?: ReturnStage;
+  money?: ReturnMoneyState;
+  reason?: ReturnLineReason;
+  /** The SOURCE's own opened instant — never OpenLinker's ingestion clock. */
+  openedFrom?: string;
+  openedTo?: string;
+}
+
+/** Coercion for an UNTRUSTED money-state param. */
+export function isReturnMoneyState(
+  value: string | null | undefined
+): value is ReturnMoneyState {
+  return (
+    value !== null &&
+    value !== undefined &&
+    (RETURN_MONEY_STATE_VALUES as readonly string[]).includes(value)
+  );
+}
+
+/**
+ * Coercion for an UNTRUSTED reason param.
+ *
+ * Reuses `RETURN_LINE_REASON_VALUES` — the vocabulary already mirrored for the
+ * line chips — rather than declaring a second copy. Returns-by-reason and
+ * refunds-by-reason report on ONE axis by construction, and two FE copies of it
+ * would be exactly the drift that promise exists to prevent.
+ */
+export function isReturnLineReason(
+  value: string | null | undefined
+): value is ReturnLineReason {
+  return (
+    value !== null &&
+    value !== undefined &&
+    (RETURN_LINE_REASON_VALUES as readonly string[]).includes(value)
+  );
 }
 
 export interface ReturnPagination {
@@ -233,11 +316,258 @@ export interface ReturnDeclineAvailability {
 }
 
 /** The hydrated aggregate: the list header, its lines, and the decline fact. */
+/**
+ * Where a restock WOULD land, mirror of core's `ReturnRestockTargetStatus`.
+ *
+ * The three non-resolved values are the same vocabulary a blocked restock
+ * records, deliberately. `ambiguous-inventory-master` means the restock will be
+ * BLOCKED, not routed to a first candidate — so it must never be rendered as a
+ * destination.
+ */
+export const RETURN_RESTOCK_TARGET_STATUS_VALUES = [
+  'resolved',
+  'ambiguous-inventory-master',
+  'no-inventory-master',
+  'adapter-unresolved',
+] as const;
+export type ReturnRestockTargetStatus = (typeof RETURN_RESTOCK_TARGET_STATUS_VALUES)[number];
+
+export interface ReturnRestockTarget {
+  status: ReturnRestockTargetStatus;
+  /** Set only when `status` is `resolved`. `null` is "not reported", never a name. */
+  connectionId: string | null;
+  connectionName: string | null;
+  /** Set only on `ambiguous-inventory-master`. */
+  candidateCount: number | null;
+}
+
+/** A refused restock, keyed to its LINE — see `returnLineId`. */
+export interface ReturnRestockBlock {
+  eventId: string;
+  /**
+   * NOT derivable from `sku`: two lines of one return can share one, and keying
+   * a per-line notice by sku would render one line's block under another's.
+   */
+  returnLineId: string;
+  quantity: number;
+  sku: string | null;
+  reason: string;
+  detail: string | null;
+  connectionId: string | null;
+  connectionName: string | null;
+  state: string;
+}
+
+/**
+ * A recorded operator attestation.
+ *
+ * `actorUserId` is an ID and must never render as a name — nothing resolves one.
+ * A surface says "by you" when it matches the session user, "by another
+ * operator" otherwise.
+ */
+export interface ReturnRestockAttestation {
+  eventId: string;
+  returnLineId: string;
+  quantity: number;
+  actorUserId: string | null;
+  occurredAt: string;
+  note: string | null;
+}
+
+/** A refund recorded against this return. */
+export interface ReturnRefund {
+  id: string;
+  /** A decimal STRING — money never round-trips through a float. */
+  amount: string;
+  currency: string;
+  reason: string;
+  note: string | null;
+  recordedAt: string;
+  /**
+   * Who moved the money. `operator_out_of_band` means OpenLinker did not, and
+   * the panel must say so rather than implying a transfer.
+   */
+  executedBy: string;
+}
+
+/** One invoice line a returned line might have come from (#2382). */
+export interface ReturnCorrectionCandidate {
+  /** A 1-based ARRAY POSITION into the issued-line snapshot, not an id. */
+  originalLineNumber: number;
+  name: string;
+  quantity: number;
+  unitPriceGross: number;
+  taxRate: string;
+}
+
+export interface ReturnCorrectionProposalLine {
+  returnLineId: string;
+  lineIndex: number;
+  name: string | null;
+  sku: string | null;
+  quantityDisposed: number;
+  status: string;
+  /** Every candidate, on an ambiguous line. None is preselected. */
+  candidates: ReturnCorrectionCandidate[];
+  selectedOriginalLineNumber: number | null;
+  newQuantity: number | null;
+  noMatchReason: string | null;
+  noMatchExplanation: string | null;
+  /** Evidence that the choice changes the amount — never a tie-break. */
+  candidatesPriceOrRateDiffer: boolean;
+}
+
+export interface ReturnCorrectionProposal {
+  returnId: string;
+  internalOrderId: string;
+  invoiceRecordId: string;
+  invoiceConnectionId: string;
+  invoiceDocumentNumber: string | null;
+  currency: string;
+  lines: ReturnCorrectionProposalLine[];
+}
+
+export interface ReturnCorrectionProposalResult {
+  /** `proposed`, or a named reason there is nothing to correct. */
+  outcome: string;
+  proposal: ReturnCorrectionProposal | null;
+}
+
 export interface ReturnDetail extends ReturnListItem {
   lines: ReturnLine[];
   declineAvailability: ReturnDeclineAvailability;
+  /**
+   * Where a restock would land (#2380). Never derived client-side: the
+   * resolver's candidate ordering is not reproducible here, so a local pick
+   * could name a connection the write never touches.
+   */
+  restockTarget: ReturnRestockTarget;
+  /**
+   * Refused restocks nobody has attested yet (#2381). The source for the
+   * persistent per-line notice — NOT the dispose response, which describes an
+   * ACTION and vanishes on reload.
+   */
+  restockBlocks: ReturnRestockBlock[];
+  /**
+   * Attestations already recorded — the terminal state of the remediation loop.
+   *
+   * Disjoint from `restockBlocks` by construction: attesting flips the act out
+   * of the blocked set, so a line appears in at most one at a time.
+   */
+  restockAttestations: ReturnRestockAttestation[];
+  /**
+   * Refunds linked to THIS return, newest first (#2382).
+   *
+   * Read by return id, never by order id: an orphan return has no order to
+   * filter by, and an order carrying two returns would cross-attribute.
+   */
+  refunds: ReturnRefund[];
+  /**
+   * The ORDER's currency, so the refund form can lock its input to a real value.
+   *
+   * `null` on an orphan. The form then REFUSES rather than accepting a typed
+   * currency — nothing downstream catches a wrong one, so the lock is the whole
+   * protection.
+   */
+  orderCurrency: string | null;
   /** Lines the server sent that this build could not read. Reported, never hidden. */
   droppedLineCount: number;
+}
+
+/** The counters and states a custody write reports back for the line it moved. */
+export interface ReturnLineCounters {
+  id: string;
+  quantityAdvised: number;
+  quantityReceived: number;
+  quantityRestocked: number;
+  quantityScrapped: number;
+  custodyState: string;
+  moneyState: string;
+  disposition: string | null;
+  receivedAt: string | null;
+  disposedAt: string | null;
+}
+
+export interface ReceiveReturnLineInput {
+  quantity: number;
+  note?: string;
+}
+
+export interface DisposeReturnLineInput {
+  quantity: number;
+  disposition: ReturnDisposition;
+  note?: string;
+}
+
+export interface ConfirmReturnRefundInput {
+  amount: string;
+  currency: string;
+  reason: string;
+  note?: string;
+}
+
+export interface ConfirmReturnRefundResult {
+  moneyState: string;
+  claimedLineIds: string[];
+  moneyMoved: boolean;
+  /**
+   * Whether the linked `RefundRecord` was written.
+   *
+   * **`false` on a 2xx is a real outcome, not a failure** (#2376): the money
+   * state settled durably and reporting an error would send the operator into a
+   * retry that answers 409. The panel renders the distinction rather than a
+   * plain success.
+   */
+  refundRecordWritten: boolean;
+  refundRecordId: string | null;
+}
+
+export interface AttestReturnLineStockInput {
+  note?: string;
+}
+
+export interface AttestReturnLineStockResult {
+  line: ReturnLineCounters;
+  /** One attestation act per outstanding act it resolved. */
+  eventIds: string[];
+}
+
+export interface MarkReturnLineNotReturnedInput {
+  note?: string;
+}
+
+/**
+ * What the master write did, when it did not land.
+ *
+ * **Never an error** — the disposition succeeded and is recorded; it is the
+ * stock write that did not. Present only on a refused or unobserved restock,
+ * `null` on every scrap and every applied one.
+ */
+export interface ReturnRestockBlocked {
+  eventId: string;
+  quantity: number;
+  sku: string | null;
+  reason: string;
+  detail: string | null;
+  connectionId: string | null;
+  connectionName: string | null;
+  state: string;
+}
+
+export interface ReceiveReturnLineResult {
+  line: ReturnLineCounters;
+  eventId: string;
+}
+
+export interface DisposeReturnLineResult {
+  line: ReturnLineCounters;
+  eventId: string;
+  restockBlocked: ReturnRestockBlocked | null;
+}
+
+export interface MarkReturnLineNotReturnedResult {
+  line: ReturnLineCounters;
+  eventId: string;
 }
 
 /**
@@ -274,4 +604,32 @@ export interface DeclineReturnResult {
   declinedAt: string | null;
   /** Present only for `refused`. The source's own words, rendered verbatim. */
   refusalReason: string | null;
+}
+
+/**
+ * One entry on the order timeline's returns half (#2383).
+ *
+ * `source` says WHERE it came from (`custody_act` | `record_status` | `refund`),
+ * `kind` says what happened in that source's own vocabulary. Both are plain
+ * strings so a value this build predates still renders.
+ */
+export interface ReturnTimelineEntry {
+  id: string;
+  source: string;
+  kind: string;
+  /** ISO-8601. Never null — every source supplies an instant. */
+  occurredAt: string;
+  returnId: string;
+  externalReturnId: string | null;
+  returnOrigin: string;
+  /** Resolved server-side. `null` renders the unknown-connection copy, never an id. */
+  sourceConnectionName: string | null;
+  actorUserId: string | null;
+  quantity: number | null;
+  restockState: string | null;
+  disposition: string | null;
+  /** WHAT moved the money (ADR-056), never who. */
+  refundExecutedBy: string | null;
+  amount: string | null;
+  currency: string | null;
 }

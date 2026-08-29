@@ -220,9 +220,10 @@ describe('Cancellation release-then-restore against the real ledger (#2348)', ()
 
     await dataSource.query(
       `INSERT INTO "shipments"
-         ("id", "orderId", "connectionId", "shippingMethod", "status", "reservationConsumedAt")
-       VALUES ($1, $2, $3, 'kurier', 'dispatched', $4),
-              ($5, $6, $3, 'kurier', 'dispatched', NULL)`,
+         ("id", "orderId", "connectionId", "shippingMethod", "status", "direction",
+          "reservationConsumedAt")
+       VALUES ($1, $2, $3, 'kurier', 'dispatched', 'outbound', $4),
+              ($5, $6, $3, 'kurier', 'dispatched', 'outbound', NULL)`,
       [
         `ol_shipment_cx_shipped`,
         shipped.orderId,

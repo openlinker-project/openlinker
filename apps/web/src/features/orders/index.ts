@@ -61,3 +61,29 @@ export type { OrderReservationShortfall } from './api/orders.types';
 export { ConnectionDot } from './components/connection-dot';
 export { OrderIdentityCell, formatOrderRef } from './components/order-identity-cell';
 export type { OrderIdentityCellProps } from './components/order-identity-cell';
+
+// #2382 — the refund confirmation form and its vocabulary live in `orders`
+// because `refund_records` and `IOrderRefundService` do; the returns money panel
+// is the first consumer and the order-level capture path is the second. The
+// barrel is the only route: eslint hard-blocks deep imports of `features/orders/**`.
+// They could not live in `shared/` — that layer must not import features and must
+// stay domain-agnostic (frontend-architecture.md § Dependency Rules).
+export { RefundConfirmationForm } from './components/refund-confirmation-form';
+export type { RefundConfirmationSubmission } from './components/refund-confirmation-form';
+export {
+  REFUND_REASON_LABELS,
+  REFUND_REASON_VALUES,
+  describeRefundReason,
+  isRefundReason,
+} from './lib/refund-reason';
+export type { RefundReason } from './lib/refund-reason';
+export { REFUND_CONFIRMATION_COPY } from './lib/refund-confirmation.copy';
+
+// #2383 — the returns feature maps its own acts into the orders timeline's row
+// shape. Exported as a TYPE only: the timeline component itself stays a deep
+// import for the one page that mounts it, and no sibling gains the ability to
+// render an orders timeline of its own.
+export type {
+  TimelineEvent,
+  DatedTimelineEvent,
+} from './components/order-activity-timeline';

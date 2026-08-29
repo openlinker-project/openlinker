@@ -23,6 +23,7 @@
  * @module libs/core/src/shipping/domain/types
  */
 
+import type { ShipmentDirection } from './shipment-direction.types';
 import type { ShipmentStatus } from './shipment-status.types';
 import type { ShippingMethod } from './shipping-method.types';
 import type { DeliveryIntent } from './delivery-intent.types';
@@ -33,6 +34,13 @@ export interface CreateShipmentInput {
   /** Shipping-provider connection that will issue the label, or the OMP
    * connection for branch-1 projection rows. */
   connectionId: string;
+  /**
+   * Which way the goods travel (#2373, ADR-060). Defaults to `'outbound'` in
+   * the repository's entity builder — the ONE application-side default, and
+   * the reason the DB column carries none. Omitting it therefore preserves
+   * every pre-#2373 caller byte for byte; a return label states `'return'`.
+   */
+  direction?: ShipmentDirection;
   /** Which shipping shape this attempt produces (the carrier-specific method
    * the seam resolved from `deliveryIntent`). */
   shippingMethod: ShippingMethod;

@@ -430,6 +430,243 @@ decision 3 (#2165, epic #2162)
 **Applies to**: `libs/core/src/orders/infrastructure/persistence/repositories/order-line-item.repository.ts` (`unconvertedOrZeroTotal`); any raw-SQL-builder helper anywhere that stores a boolean sub-expression as a string constant for reuse across `FILTER (WHERE ...)`/`CASE WHEN ...` clauses.
 **Source**: #2172/#2191 (`top-products-ranking.int-spec.ts`, "labels a channel's own unconvertedCurrency...").
 
+## TypeORM `ORDER BY` must use property paths, not raw quoted SQL — `take`/`skip` plus any join resolves every term back to column metadata
+
+**Context**: `ReturnRepository.listReturns` had ordered by the raw string `'r."createdAt"'` since #2334 and worked in production for three slices. #2377 added a `stage` filter that `leftJoin`s a counters subquery, and every paged returns read began throwing `TypeError: Cannot read properties of undefined (reading 'databaseName')`.
+
+**Problem**: `.take()`/`.skip()` with **no** join emits a plain `LIMIT`/`OFFSET` and never inspects the `ORDER BY` terms, so a raw quoted string passes through untouched. Add *any* join and TypeORM switches to its **distinct-pagination** path — a two-query plan that first selects the distinct primary keys, which requires promoting every `ORDER BY` term into that inner select, which requires resolving each term back to its `ColumnMetadata`. `'r."createdAt"'` is a string TypeORM cannot map to a property, so the lookup returns `undefined` and the `.databaseName` read throws.
+
+The shape is the reason this is here rather than in a style guide: **the defect was latent and armed by a change somewhere else.** Nothing about the failing line changed — the ordering had been written that way for months, and the commit that broke it added a `leftJoin` fifty lines away for an unrelated feature. The stack trace points into TypeORM internals and names neither the join nor the `ORDER BY`, so the trigger is not guessable from the failure.
+
+**Rule**: write `ORDER BY` terms as **property paths** — `orderBy('r.createdAt', 'DESC')`, never `orderBy('r."createdAt"', 'DESC')`. The property form works on both pagination paths; the raw-string form works only until someone adds a join. When reviewing a change that adds a join to a query builder, check whether that builder also calls `take`/`skip`, and if so read its `ORDER BY` terms — the join is the trigger, but the ordering is the defect. An int-spec catches this and a unit spec with a mocked builder cannot, because the failure lives in TypeORM's SQL generation.
+
+**Applies to**: every `createQueryBuilder(...).take()/.skip()` call in the tree; especially any shared `buildListQuery`-style helper where a filter arm can conditionally add a join that the paged read then inherits.
+
+**Source**: #2377 (found by `returns-stage-projection.int-spec.ts` + `returns-read-api.int-spec.ts`; `libs/core/src/returns/infrastructure/persistence/repositories/return.repository.ts`).
+
+## A guard ordered behind a broader one is dead — and a unit test can keep it looking alive by constructing a state the real path never produces
+
+**Context**: `markReturnCustodyNotReturned` (#2367) carried two refusals: `illegal-transition` for a line not in `advised`/`in_transit`, and the more specific `partially-received` for a line that had already received units. The state check ran first. But receiving units is exactly what moves a line to `received` — so by the time `quantityReceived > 0`, the state check has already thrown, and `partially-received` was unreachable through every real path.
+
+**Problem**: the reason was not merely dead, it was replaced by a **wrong** one. An operator whose parcel arrived half-empty was told the line was *"already finished"* — false, and it points at the wrong remedy (the line is mid-flight and its shortfall is exactly what they were trying to record). The closed reason union, the exception filter's 409 mapping and the frontend copy map all carried an arm nothing could ever emit.
+
+The unit test covering it passed, and that is the part worth remembering: it constructed `line({ custodyState: 'in_transit', quantityReceived: 2 })` directly — a combination the receipt transition **cannot** produce, since a receipt sets both fields together. Hand-built fixtures let a test assert against a state the state machine forbids, so the test proved the branch worked *if reached* while saying nothing about whether anything reaches it. It was an integration test driving the real `POST /receive` then `POST /mark-not-returned` that produced `illegal-transition` where the code claimed `partially-received`.
+
+**Rule**: when a function has several refusal branches, check the **order** against the transitions that actually produce each state — a specific guard placed behind a broader one that subsumes it is dead code that type-checks and tests green. In a domain-rule test, build the "before" state by running the transition that produces it (`applyReturnCustodyReceipt(...)`) rather than by hand-constructing the fields; a fixture that assigns `custodyState` and its counters independently can describe a state the machine never enters. Where a closed reason union exists, treat each member as a claim that something can emit it, and pin the reachable ones through the real path.
+
+**Applies to**: `libs/core/src/returns/domain/domain-services/return-custody-transitions.domain-service.ts`; any pure rule engine with an ordered guard chain over a closed reason/refusal union — `checkRequiredToSell`, `checkParameterRestrictions`, `resolveSalesDocumentRouting` and the custody/lifecycle transitions all have this shape.
+
+**Source**: #2380 (found by `returns-write-api.int-spec.ts`, "should refuse a partially received line with an actionable 409 code").
+
+## A tsconfig with `"files": []` and only project references type-checks NOTHING — `tsc -p` on it exits 0 having compiled zero files
+
+**Context**: while gating #2380's frontend work, `npx tsc -p apps/web/tsconfig.json --noEmit` reported `EXIT=0` on code that did not compile — it passed `messages` to a `FormErrorSummary` whose prop is `errors`, which the component test then caught at runtime with `Cannot read properties of undefined (reading 'length')`.
+
+**Problem**: `apps/web/tsconfig.json` is a **solution-style** config — `"files": []` plus `"references"` to `tsconfig.app.json` and `tsconfig.node.json`. `tsc -p` on such a file has no inputs, so it succeeds instantly and reports success about nothing. Pointing at the referenced config directly is no better: `tsconfig.app.json` is written to be built through the reference graph, and invoking it standalone produced ~40 pre-existing errors across unrelated features (`downlevelIteration`, `AbortSignal.any`), i.e. a false RED to match the false GREEN. Compounding it, `tsc -b` **is** correct but incremental — a first run passed against stale `.tsbuildinfo` and only `tsc -b --force` surfaced the real errors.
+
+**Rule**: never invent a type-check invocation — run the command the package itself declares (`pnpm --filter <pkg> type-check`, here `tsc -b`). Before trusting any green type-check on a package you have just edited, confirm it actually compiled your files: a zero-input config and a clean build are indistinguishable from the exit code alone. When a build is incremental, pass `--force` for a gate you intend to rely on.
+
+**Applies to**: `apps/web/tsconfig.json` (and any other solution-style config in the tree); every ad-hoc `npx tsc -p <path>` used as a pre-commit gate.
+
+**Source**: #2380.
+
+## `pgrep -f <pattern>` from a shell whose own command line contains that pattern matches ITSELF — a watcher keyed that way reports on the watcher, never on the work
+
+**Context**: waiting for a long `pnpm test` gate to finish, I backgrounded `until ! pgrep -f "pnpm test" >/dev/null; do sleep 10; done`. The loop never exited. A second, identical watcher started later did not exit either.
+
+**Problem**: `pgrep -f` matches against the **full command line**, and the watcher's own command line contains the literal string `pnpm test` — as does every other watcher spawned the same way. So each loop matched itself and its sibling, the condition stayed true after the real `pnpm test` had long since exited, and `pgrep -f "pnpm test"` from any *other* shell then reported `RUNNING` about two sleep loops and nothing else. The failure has **no symptom other than a wrong answer delivered confidently**: no error, no hang in the thing being watched, just a monitor that says "still going" forever and a monitor-of-the-monitor that agrees. It also produced a second-order mistake — a detached PID doing real work was read as "nothing in flight", because the only evidence being consulted was the poisoned `pgrep`.
+
+**The mirror failure — a pattern that matches TOO LITTLE.** The same session then missed a *running* jest twice with `pgrep -f "jest --config ./test/jest-integration"`, because the real command line is `node /path/to/jest.js …` — the binary name never appears. That reported "not running" about a process consuming 13 containers. So the trap has two directions and both yield a confident wrong answer about whether work is in flight: a pattern matching too much (the self-matching watcher above) and one matching too little (the cmdline is not what you assume). The second was hit twice with the first already written down, which is the argument for consulting the ledger over trusting recollection.
+
+**Rule**: never key a wait loop on a pattern that appears in the loop's own command line. Wait on the **PID** (`while kill -0 "$PID" 2>/dev/null; do sleep 15; done`), or on a **marker the watcher cannot produce** — a sentinel line the watched command appends on exit, or its exit-code file. If a pattern really is the only handle available, exclude self and siblings (`pgrep -f "pattern" | grep -v $$`), and treat a non-empty result as evidence only after confirming what those PIDs actually are (`pgrep -fl`). More generally: **a check that can satisfy itself proves nothing** — the same shape as a mock easier to satisfy than the thing it replaces, or a `tsconfig` with no inputs exiting 0.
+
+**Applies to**: any backgrounded `until`/`while` poll used to serialise against a long build, test or migration run; `pgrep`/`pkill -f` used anywhere near a process whose name is a substring of the polling command.
+
+**Source**: #2380 (two stale watchers kept each other alive across several turns while the real gate ran undetected).
+
+## `getMany()` materialises entities and silently DROPS raw `addSelect` columns — a raw column needs `getRawMany` or its own aggregate query
+
+**Context**: planning a `restockBlocked` boolean for the returns list row (#2381), the obvious step was to `addSelect` the existing `RESTOCK_BLOCKED_EXISTS` SQL onto `ReturnRepository.listReturns`' paged query. That query ends in `.getMany()`.
+
+**Problem**: `getMany()` returns hydrated **entities**, built only from columns TypeORM knows as entity metadata. A raw expression added with `addSelect('<sql>', 'alias')` has no metadata, so it is computed by Postgres, returned on the wire, and then **thrown away** during hydration — no error, no warning, no log. The field is simply `undefined` forever.
+
+What makes it worth an entry is the shape of the resulting failure. It type-checks (the DTO field exists and is typed). It passes a unit test with a stubbed repository (the stub returns whatever the test author wrote). It reaches production as **a badge that never renders — for the one state whose entire purpose is to be impossible to miss**, on a surface whose whole job is to stop an operator believing stock came back when it did not. A silent no-op is the worst available outcome for a warning surface, and this is a silent no-op that every cheap gate reports as green.
+
+**Rule**: `getMany()` / `getOne()` return entities; **any raw or computed column needs `getRawMany()` / `getRawAndEntities()`**, or belongs in a separate aggregate query whose results are merged by id in application code. Before adding an `addSelect` of an expression, read how the query terminates. Prefer the separate-aggregate form when one already exists (in `ReturnRepository`, `aggregateCounters` is that query): it keeps the paged query free of joins, which also avoids the distinct-pagination trap in the entry above, and it correlates on the GROUP BY key so no `COUNT(*)` is fanned out — a `LEFT JOIN` to the child table would silently multiply every other counter instead. Pin the value with an int-spec against real Postgres; a mocked-repository unit spec cannot observe hydration at all.
+
+**Corollary — sharing a predicate across two scopes.** If the constant you want to reuse correlates on a different alias than the query you are adding it to (`r.id` vs `l."returnId"`), do **not** copy the SQL. Make it a function of the correlating expression and call it from both sites: two copies that agree today are two rules, which is the same defect `orphans` cost a round in #2378.
+
+**Applies to**: every `createQueryBuilder(...).addSelect('<raw sql>', 'alias')` in the tree; especially list reads that end in `.getMany()` and feed a DTO field a UI branches on.
+
+**Source**: #2381 (found by the `/pre-implement` readiness gate before any code was written; `libs/core/src/returns/infrastructure/persistence/repositories/return.repository.ts`).
+
+## Audit a plan's ONE-LINERS, not its paragraphs — and for each, ask what supplies it
+
+**Context**: `/tech-review` on the #2381 plan returned four findings. Every one of them was a step the plan stated in a **single line** and never traced to a data source. Every part the plan had reasoned hardest about — the `getMany()` correction, the parameterised correlating predicate, the event-vs-state split between a mutation response and a read — was sound.
+
+The four, and what each was missing:
+
+| One-liner | What was missing |
+|---|---|
+| *"Post-attestation row"* | No read supplies it. Attesting flips the act out of the outstanding set, so the read the plan added returns `[]` exactly when the row must render. |
+| *"the `ReturnRecord`/counters projection"* | Ambiguous placement. A boolean fact would have landed inside a published `ReturnCounters` type whose whole contract is that a derived stage is computed from it. |
+| *"an unreadable value degrades to the safe direction"* | Stated for one surface, unspecified for the other — and the other's answer is harder, because `false` asserts the operator's stock is fine while `true` cries wolf page-wide. |
+| *"Stock added manually by `{user}`"* | No name is obtainable. `actorUserId` is written everywhere and resolved nowhere; there is no `IUsersService`. |
+
+**Problem**: a one-line step reads as settled precisely because it is short. Prose invites scrutiny; a bullet that names a UI element sounds like a rendering detail, so a reviewer's eye skips it and the author never asked the question either. The failure surfaces mid-implementation, when the tempting fix is whatever is nearest to hand — the mutation's own response for the row, the raw UUID for the name — and that is how a placeholder ships.
+
+**The harder variant — a parenthetical that NAMES an additional source is not a design for reading it, and is more dangerous than saying nothing.** #2383's plan described its read as *"an order-scoped read of return events (acts — receive, dispose, attestation — plus record-level facts)"*, then designed a single query over `return_line_events`. That ledger has four kinds and supplies only the acts: `opened` and `declined` are header COLUMNS on `returns`, `refund confirmed` is a money state, and `credit note issued` lives in another bounded context entirely. The hedge is what let it through review — it reads as already thought through, so it **satisfies the audit it should have failed**. **Naming a thing is not sourcing it.** When a step names more than one source, the audit is per SOURCE, not per step.
+
+**Rule**: when reviewing a plan (your own especially), **list every step stated in one line and ask of each: what supplies this?** A field needs a read, a control needs a write, a badge needs a flag on the wire, and **a copy string is a contract too** — `{user}` in a spec is a promise that a name is obtainable, exactly as a button is a promise that a write exists. If the answer is "the response of the action that caused it", check what happens on reload. It is a cheap pass and it would have caught all four here before a review round.
+
+**Applies to**: every `docs/plans/implementation-plan-*.md`; the `/pre-implement` and `/tech-review` gates when the target is a plan rather than a diff.
+
+**Source**: #2381 (four findings, four one-liners, zero from the reasoned paragraphs).
+
+## "Would pass the demo / would pass the harness" is a reliable marker for a whole family of defects — ask what the state is when nobody is looking on purpose
+
+**Context**: #2380/#2381 produced four defects with one shape, found at four different stages:
+
+| Defect | Why it looked fine |
+|---|---|
+| A persistent inline error rendered inside a **collapsed** `DataTable` expansion | A demo expands the row. |
+| The same notice fed from a mutation **response** rather than a read | Nobody reloads mid-demo. |
+| A row badge from a raw `addSelect` on a `getMany()` query | Type-checks; passes a stubbed unit test. |
+| `earliest-order-date.int-spec` asserting the host timezone | Passes in UTC CI. |
+
+**Problem**: each is a surface whose entire purpose is to be **noticed**, failing in exactly the state where nobody is deliberately looking at it — collapsed, reloaded, unmocked, in another timezone. That state is never the one a demo, a review, or a hand-written test exercises, because all three involve someone attending to the thing on purpose. So the defect survives every cheap check and reaches an operator who was not attending, which is the only audience the surface was built for.
+
+The inline-error case is the sharpest: a persistent error behind a disclosure is **not a weaker version of the requirement** — it is precisely the silent no-op the requirement exists to prevent, shipped under the requirement's own name.
+
+**Rule**: for any surface whose job is to be noticed — an alarm, a badge, a warning, a blocked state — ask **"what is this in the state where nobody is looking at it on purpose?"** Collapsed. Reloaded. Filtered out. On a page that was already open. In a locale that is not yours. If the answer is "absent", it does not meet the requirement however good it looks when attended to. This is the same check as the one-liner audit above, applied from the other end: that one asks *what supplies this*; this one asks *who sees it when nobody is trying to*.
+
+**The sharpest instance — "is this MOUNTED?"** #2382 built a credit-note proposal panel with nine passing component tests, exported from nothing and rendered by nothing. Every gate went green: it type-checked, it linted, its tests passed. A component test **renders the component itself**, so it can only prove the panel *would* render if something rendered it — a true statement about a counterfactual that says nothing about the product. The check and the subject were the same object, exactly as with the mock easier to satisfy than the thing it replaced, and with `pgrep` matching its own watcher.
+
+So **mounting needs an assertion one level up** — a page test that finds the surface on the page, not a component test that renders it directly. And expect the repair to be bigger than a re-export: in #2382 the panel read a *separate* `GET`, so nothing was fetching it and the fix was a query, a query key, a parse module, a barrel export and a mount. A missing export looks like a one-line oversight; a missing seam does not. The better of the two closing tests was not the one asserting it renders — it was the one asserting the proposal is **not requested for an orphan**, because that pins a decision (the route answers 409, and asking anyway renders an error for a state the page already explains) rather than pinning wiring.
+
+**A scoped lint run does not stand in for `pnpm lint`.** #2382 fixed two ESLint errors, verified with `npx eslint src/features/returns src/features/orders`, got a clean result — and the full gate stayed red. The remaining failure was `check-ui-vocabulary`, which runs from `pnpm check:invariants` and **is not ESLint at all**, so no folder-scoped ESLint invocation can ever surface it. The narrower check answered truthfully; it just answered a different question than the one being asked. Verify a gate with the gate's own command, and remember that `pnpm lint` chains the invariant scripts — a targeted run is a debugging aid, never a substitute.
+
+**A long gate needs its RESULT to outlive the process — and use the harness's own background mechanism to get that, not a hand-rolled one.** #2382's integration run was cut short three times, each time leaving no exit code and only a fragment of output; a fragment is not a result, and reporting one as a result is how a partial red gets remembered as a real one. Writing the exit code to a file is right on its own merits. But a hand-rolled `nohup setsid bash -c '…' &` from inside a tool call produced **no log file at all**, while the harness's own background flag carried complete 126-suite runs in the same session — so the property that matters is the result outliving the process, not the detachment trick. Prune orphaned containers before relaunching: a killed run leaves its Testcontainers behind (9 and 13 of them here), and a long session degrading the Docker daemon is a far likelier cause of a cut-short run than any lifecycle limit.
+
+**Corollary — a promised test that was never written is indistinguishable from a passing one.** #2381's plan specified a toast/notice overlap test; the implementation did not write it, and nothing failed, because nothing compares a plan's test list against a diff's. When a plan names a test, check it exists by name before calling the work done.
+
+**Corollary, same shape — a cited SAFEGUARD that does not exist.** #2382's plan justified an editable-currency decision by pointing at an "existing refund-currency-mismatch guard". There is none; the only `currency-mismatch` in the tree belongs to `sales-documents`' threshold evaluator, an unrelated rule. A claim about a protection nothing verifies is load-bearing until somebody greps for it — and it is worse than a missing test, because it makes a reviewer *relax*. When a plan or a docblock leans on a guard, check the guard exists by name.
+
+**Applies to**: any operator-facing alarm/badge/notice; any plan whose acceptance criteria name specific tests, or whose reasoning rests on a named guard.
+
+**Source**: #2380 / #2381.
+
+### An int-spec that cannot reach the route proves nothing — and it will say so as a business failure
+
+**#2383.** A new `GET /returns/events` route was added, correctly declared before
+`@Get(':returnId')`, and its integration spec failed **every** assertion with
+`404 Not Found`. Read at face value that is a routing-order defect, and the
+obvious "fix" is to move a decorator that was already in the right place.
+
+The route was fine. The **spec** was requesting `/returns/events` while the
+harness enables URI versioning, so every path needs `/v1`. Two details made this
+worth an entry rather than a shrug:
+
+1. **The 404 was indistinguishable from the real defect the test exists to
+   catch.** A literal segment swallowed by a parameter route ALSO returns 404 —
+   via `ReturnNotFoundError` → the global filter — so the symptom pointed
+   straight at the hypothesis that was wrong. Debugging by hypothesis would have
+   churned the controller indefinitely.
+2. **The cheap discriminator is to probe a route you did not write.** One
+   throwaway spec hitting `/returns` and `/returns/ingestion-availability` — both
+   long-shipped, both passing in their own spec — returned 404 too. That
+   collapses the search instantly: *nothing* on the controller is reachable, so
+   the fault is in the request, not the routing. `Cannot GET /returns/events` in
+   the body (Nest's own 404) versus a domain-shaped body is the same tell, one
+   layer cheaper.
+
+**When a new test fails in a way that indicts your new code, first check whether
+it also indicts code you did not touch.** If it does, the test is wrong.
+
+### A test expectation written before the seed path was read is a guess
+
+**#2383, same spec.** Two assertions expected `['dispose', 'receive']` and got
+`['opened', 'opened', 'dispose', 'receive']`. The extra entries were **correct** —
+`upsertFromObservation` stamps `openedAt` from the observation, so a seeded
+return really does contribute an `opened` fact. The expectations had been written
+from the plan's source table rather than from what the seed helper actually
+writes.
+
+Harmless here because the surplus was visible. The dangerous direction is the
+same mistake with a *narrower* expectation that happens to pass — `toContain`
+where `toEqual` was meant, or a filter that quietly drops the rows a defect would
+have produced. **Write the assertion against what the seed path writes, not
+against what the design says it should.** And when a test's actual output is
+richer than expected, establish whether the surplus is a defect or a fact before
+editing either side — here it was the feature working.
+
+### A barrel import and a module edge are different facts — "the edge already exists" must name which
+
+**#2383.** A plan justified a new cross-context read with *"`orders` is an edge
+`returns` **already has** — this is a new method on it, not a new edge."* That
+was **true of the TypeScript barrel** (`libs/core/src/returns/**` really does
+import `@openlinker/core/orders`) and **false of the NestJS module graph**, which
+is the level dependency injection actually runs on: `ReturnsModule` deliberately
+excludes `OrdersModule` and says so in three separate docblocks (*"NOT
+`OrdersModule`, which imports seven siblings this context has no business
+pulling in"*), reaching `orders` only through the leaf `OrderChangesModule` and a
+report-don't-persist seam.
+
+Injecting the service into `ReturnsService` would therefore have added exactly
+the edge that module was designed to avoid — and the claim would have survived
+review, because a reviewer checking "does returns import orders?" gets `yes`.
+
+**The claim survives review precisely because it is true in one sense.** That is
+the tell: a dependency assertion that does not name its LEVEL is not yet a fact.
+There are at least three, and they disagree routinely:
+
+1. **Barrel/type import** — `import type { X } from '@openlinker/core/orders'`.
+   Costs nothing at runtime, so a context can carry dozens.
+2. **NestJS module edge** — `imports: [OrdersModule]`. Pulls that module's whole
+   transitive provider graph into this one, which is what the exclusion above is
+   protecting against.
+3. **Constructor DI on an injected token** — needs (2) to be satisfied
+   *somewhere*, which is why "the interface layer already holds it" can be a
+   complete answer while "the context already imports it" is not.
+
+**Check the module file, not the import list.** And when the answer is that the
+edge exists one layer up, that is usually the better place for the code: here it
+moved the refund read to a controller whose module already imported
+`OrdersModule`, which produced **strictly less coupling than the plan
+described** — the rare direction for a mid-implementation correction.
+
+### A safe fallback beside a confident wrong one is worse than two loud failures
+
+**#2645 review, #2383's mapper.** One module authored the rule *"an act whose
+actor is unknown gets NO eyebrow rather than a guessed one: an omitted
+attribution is silent, a wrong one is a claim"* — and two functions below it,
+`resolveBy` used a ternary that sent every `executedBy` value except one to
+`"an operator"`. `null` included, and every future member.
+
+Unreachable today (the column is `NOT NULL` with two members), so it would have
+survived indefinitely. But `refundExecutedBy` is an **open string on the wire**,
+so the day a `MasterRefundExecutor` writes a third value, every such row reads
+`Refund confirmed · an operator` — OpenLinker attributing to a human a refund a
+machine made, silently, on a surface built to be auditable.
+
+**The tell was the asymmetry, not the ternary.** `resolveTitle`, twelve lines
+down, already had an honest `unknownKind` arm. So the title failed safe while
+the attribution failed loud and wrong, and *that combination is the dangerous
+one*: **a safe title beside a confident wrong actor is more dangerous than both
+failing, because the safe half makes the row look checked.** A reader who sees
+`Refund confirmed` rendered correctly has no reason to doubt the `an operator`
+beside it.
+
+Two rules follow.
+
+1. **Where one arm of a shape degrades honestly, every arm must.** When you write
+   an unknown-value fallback, grep the same file for its siblings — the one that
+   guesses is rarely the one you were editing.
+2. **A closed-looking ternary over an open string is a default arm in
+   disguise.** `x === 'a' ? A : B` is a total map only if the type is `'a' | 'b'`.
+   Over `string`, it silently claims every future value is `b`. Use a
+   `Record<string, T>` lookup and let the miss be `undefined`.
+
 ## A denormalised counter that sums two semantic classes must be scoped by EVERY reader, and "the published quantity is unaffected" is only half the blast radius
 
 **Context**: ADR-061's advisory reservation ledger. A hold carries an immutable `atpEffect` stamp —

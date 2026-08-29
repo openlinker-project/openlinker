@@ -94,6 +94,11 @@
       "require": "./dist/returns/index.js",
       "default": "./dist/returns/index.js"
     },
+    "./returns/testing": {
+      "types": "./dist/returns/testing/index.d.ts",
+      "require": "./dist/returns/testing/index.js",
+      "default": "./dist/returns/testing/index.js"
+    },
     "./returns/orm-entities": {
       "types": "./dist/returns/orm-entities.d.ts",
       "require": "./dist/returns/orm-entities.js",

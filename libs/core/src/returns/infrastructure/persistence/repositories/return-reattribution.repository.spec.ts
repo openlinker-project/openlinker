@@ -45,6 +45,8 @@ describe('ReturnRepository — orphan re-attribution', () => {
     repository = new ReturnRepository(
       { createQueryBuilder: jest.fn(() => builder) } as never,
       { find: jest.fn() } as never,
+      // #2370's act-ledger repository — unused by the re-attribution reads.
+      {} as never,
       { transaction: jest.fn() } as never
     );
   });

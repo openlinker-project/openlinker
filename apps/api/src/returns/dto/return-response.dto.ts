@@ -30,13 +30,22 @@ import {
   ReturnDispositionValues,
   ReturnMoneyStateValues,
   ReturnOriginValues,
+  ReturnRestockTargetStatusValues,
+  ReturnRestockBlockReasonValues,
+  ReturnRestockStateValues,
+  ReturnTimelineSourceValues,
   type ReturnBucket,
   type ReturnCustodyState,
   type ReturnDeclineUnsupportedReason,
   type ReturnDisposition,
   type ReturnMoneyState,
   type ReturnOrigin,
+  type ReturnRestockTargetStatus,
+  type ReturnRestockBlockReason,
+  type ReturnRestockState,
+  type ReturnTimelineSource,
 } from '@openlinker/core/returns';
+import type { ReturnSegment, ReturnStage } from '@openlinker/core/returns';
 import { RefundReasonValues, type RefundReason } from '@openlinker/core/orders/types';
 
 export class ReturnLineResponseDto {
@@ -115,6 +124,50 @@ export class ReturnLineResponseDto {
 }
 
 /**
+ * The per-return counter rollup the derived stage reads (#2377).
+ *
+ * Aggregated in SQL over the return's lines — the list projection carries no
+ * lines, and hydrating every line of every row to compute six integers is not
+ * what a header-shaped read is for.
+ *
+ * The frontend derives the stage from these with `deriveReturnStage`, the SAME
+ * rule the backend's `RETURN_STAGE_PREDICATES` runs in SQL for the counts and
+ * the filter. Two implementations of one rule, pinned by
+ * `scripts/check-return-stage-mirror.mjs`.
+ */
+export class ReturnCountersDto {
+  @ApiProperty({ description: "The return's line count." })
+  lineCount!: number;
+
+  @ApiProperty({
+    description:
+      'Lines written off as never arriving. `not_returned` is "every line", which no combination of quantity sums can express — hence the two line counts.',
+  })
+  notReturnedLineCount!: number;
+
+  @ApiProperty({ description: 'Units the source announced, across every line.' })
+  quantityAdvised!: number;
+
+  @ApiProperty({
+    description:
+      'Advised units sitting on lines written off as never arriving. Subtracted from `quantityAdvised` to give the units STILL EXPECTED — without which a return with one line disposed and one written off reads as "partially received" forever.',
+  })
+  notReturnedQuantityAdvised!: number;
+
+  @ApiProperty() quantityReceived!: number;
+  @ApiProperty() quantityRestocked!: number;
+  @ApiProperty() quantityScrapped!: number;
+}
+
+/**
+ * How many returns sit in each derived operator stage (#2377).
+ *
+ * **Scoped with `stage` REMOVED from the caller's filters** (every other
+ * dimension applied), for the reason `ReturnBucketCountsDto` gives about
+ * `bucket`: the count for the dimension you are not looking at must stay
+ * truthful, or every chip reports the count of the stage already selected.
+ */
+/**
  * The return header, as a list row.
  *
  * Carries no `lines`, because the list read hydrates none — a DTO promising an
@@ -133,6 +186,23 @@ export class ReturnListItemResponseDto {
 
   @ApiProperty({ nullable: true, description: "The source's own return id, when it mints one." })
   externalReturnId!: string | null;
+
+  @ApiProperty({
+    type: ReturnCountersDto,
+    description:
+      'The counter rollup the derived operator stage is computed from. Always present on THIS read — a return with no lines reports zeroes, which is a fact about the return rather than about the query.',
+  })
+  counters!: ReturnCountersDto;
+
+  @ApiProperty({
+    nullable: true,
+    description:
+      'Does this return hold a restock the master refused that nobody has attested (#2381)? ' +
+      'A SIBLING of `counters`, never a member — the derived stage computes from counters alone. ' +
+      '`null` means NOT REPORTED, never `false`: `false` asserts the operator\'s stock is fine, ' +
+      'which is a claim OpenLinker cannot make about a read that did not ask.',
+  })
+  restockBlocked!: boolean | null;
 
   @ApiProperty({
     nullable: true,
@@ -202,6 +272,125 @@ export class ReturnDeclineAvailabilityDto {
   reason!: ReturnDeclineUnsupportedReason | null;
 }
 
+/**
+ * Where a restock on this deployment WOULD land, resolved before anything is
+ * disposed of (spec § 5.3: *"Stock will be added in {connection name}"*).
+ *
+ * Answered by the SAME resolver the dispose write uses, so the name shown and
+ * the book written cannot disagree. It is on the read for that reason: the
+ * resolver's candidate ordering is not reproducible in a browser, so a
+ * client-side pick over `enabledCapabilities` could confidently name a
+ * connection the write never touches — and a UI asserting a fact the backend
+ * never stated costs the operator a manual reconciliation.
+ *
+ * `ambiguous-inventory-master` means the restock will be BLOCKED, not routed to
+ * a first candidate: OpenLinker refuses to guess which book to write to.
+ */
+export class ReturnRestockTargetDto {
+  @ApiProperty({
+    enum: ReturnRestockTargetStatusValues,
+    description:
+      'The three non-resolved values are the same vocabulary a blocked restock records in ' +
+      '`restockBlockedReason`, deliberately — a disclosure naming its states differently from the ' +
+      'block it predicts would be a second, drifting answer to one question.',
+  })
+  status!: ReturnRestockTargetStatus;
+
+  @ApiProperty({ nullable: true, description: 'Set only when `status` is `resolved`.' })
+  connectionId!: string | null;
+
+  @ApiProperty({ nullable: true, description: 'Set only when `status` is `resolved`.' })
+  connectionName!: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    description: 'How many connections claim the capability. Set only on `ambiguous-inventory-master`.',
+  })
+  candidateCount!: number | null;
+}
+
+/**
+ * A refused restock nobody has attested yet (#2381, spec § 5.4).
+ *
+ * Every field the remediation copy interpolates travels with it — the copy names
+ * the quantity, the sku and the system that refused, and a UI that had to fetch
+ * those separately would render the alarm a beat late.
+ */
+export class ReturnRestockBlockDto {
+  @ApiProperty({ description: 'The act to attest to.' }) eventId!: string;
+
+  @ApiProperty({
+    description:
+      'The line these units belong to. NOT derivable from `sku` — two lines of one return can ' +
+      'share one, and keying a per-line notice by sku would render one line\'s block under another\'s.',
+  })
+  returnLineId!: string;
+
+  @ApiProperty() quantity!: number;
+  @ApiProperty({ nullable: true }) sku!: string | null;
+  @ApiProperty({ enum: ReturnRestockBlockReasonValues }) reason!: ReturnRestockBlockReason;
+
+  @ApiProperty({ nullable: true, description: "The adapter's own sentence." })
+  detail!: string | null;
+
+  @ApiProperty({ nullable: true }) connectionId!: string | null;
+  @ApiProperty({ nullable: true }) connectionName!: string | null;
+
+  @ApiProperty({ enum: ReturnRestockStateValues })
+  state!: ReturnRestockState;
+}
+
+/**
+ * A recorded operator attestation — the TERMINAL STATE of the remediation loop.
+ *
+ * Disjoint from {@link ReturnRestockBlockDto} by construction: attesting flips
+ * the act out of the blocked set, so a surface needs both reads — one to raise
+ * the alarm and one to show it was answered. Without this the only observable
+ * result of *"I handled this myself"* is that the alarm disappears, and the next
+ * reader sees a line that was never blocked.
+ */
+export class ReturnRestockAttestationDto {
+  @ApiProperty() eventId!: string;
+  @ApiProperty() returnLineId!: string;
+  @ApiProperty() quantity!: number;
+
+  @ApiProperty({
+    nullable: true,
+    description:
+      'Who attested, as an ID. OpenLinker resolves no display name for it, so a surface renders ' +
+      '"by you" when it matches the session user and "by another operator" otherwise — never a ' +
+      'raw id, and never a name it cannot verify.',
+  })
+  actorUserId!: string | null;
+
+  @ApiProperty({ description: 'ISO-8601.' }) occurredAt!: string;
+  @ApiProperty({ nullable: true }) note!: string | null;
+}
+
+/**
+ * A refund recorded against this return (#2382).
+ *
+ * `executedBy` is projected and rendered, not dropped: `'operator_out_of_band'`
+ * is the honesty device that lets the panel say OpenLinker did not move the
+ * money. `idempotencyKey` is deliberately NOT projected — it is a write-path
+ * concern and means nothing to an operator.
+ */
+export class ReturnRefundDto {
+  @ApiProperty() id!: string;
+  @ApiProperty({ description: 'Decimal string, never a float.' }) amount!: string;
+  @ApiProperty({ description: 'ISO 4217.' }) currency!: string;
+  @ApiProperty({ enum: RefundReasonValues }) reason!: RefundReason;
+  @ApiProperty({ nullable: true }) note!: string | null;
+  @ApiProperty({ description: 'ISO-8601.' }) recordedAt!: string;
+
+  @ApiProperty({
+    description:
+      "Who moved the money. `operator_out_of_band` means OpenLinker did not — it recorded what the " +
+      'operator says they did, and the panel must say so rather than implying a transfer.',
+  })
+  executedBy!: string;
+}
+
 /** The hydrated aggregate: the header above, plus its lines and the decline fact. */
 export class ReturnResponseDto extends ReturnListItemResponseDto {
   @ApiProperty({ type: [ReturnLineResponseDto], description: 'Ordered by lineIndex.' })
@@ -209,6 +398,39 @@ export class ReturnResponseDto extends ReturnListItemResponseDto {
 
   @ApiProperty({ type: ReturnDeclineAvailabilityDto })
   declineAvailability!: ReturnDeclineAvailabilityDto;
+
+  @ApiProperty({ type: ReturnRestockTargetDto })
+  restockTarget!: ReturnRestockTargetDto;
+
+  @ApiProperty({
+    type: [ReturnRestockBlockDto],
+    description: 'Refused restocks nobody has attested yet. Empty means none outstanding.',
+  })
+  restockBlocks!: ReturnRestockBlockDto[];
+
+  @ApiProperty({
+    type: [ReturnRestockAttestationDto],
+    description: 'Attestations already recorded. Disjoint from `restockBlocks`.',
+  })
+  restockAttestations!: ReturnRestockAttestationDto[];
+
+  @ApiProperty({
+    type: [ReturnRefundDto],
+    description:
+      'Refunds linked to THIS return, newest first. Read by return id, never by order id: an orphan ' +
+      'return has no order to filter by, and an order carrying two returns would cross-attribute.',
+  })
+  refunds!: ReturnRefundDto[];
+
+  @ApiProperty({
+    nullable: true,
+    description:
+      "The ORDER's currency, so the refund form can lock its currency input to a real value. It is " +
+      'carried because that lock is the only protection against a wrong currency reaching ' +
+      '`RefundRecord` — there is no refund-side mismatch guard anywhere. `null` on an orphan return, ' +
+      'which has no order.',
+  })
+  orderCurrency!: string | null;
 }
 
 export class ReturnBucketCountsDto {
@@ -223,6 +445,41 @@ export class ReturnBucketCountsDto {
 
   @ApiProperty({ description: 'The remainder. Derived, never separately counted.' })
   attributed!: number;
+}
+
+/**
+ * How many returns sit in each operator-facing segment (#2378, spec § 4.1).
+ *
+ * **`total` is NOT the sum of `bySegment`.** Segments OVERLAP by design — a
+ * return can be `needs_disposition` and `money_pending` and `orphans` at once,
+ * and `all_open` deliberately overlaps almost everything. `total` is the row
+ * count of the segment-less scope, which is what the strip's `All returns` card
+ * renders. The sibling `ReturnStageCountsDto` below IS a partition and does sum;
+ * do not copy its assertion here.
+ *
+ * Scoped with `segment` REMOVED from the caller's filters (every other dimension
+ * applied), or every card would report the count of the segment already selected.
+ */
+export class ReturnSegmentCountsDto {
+  @ApiProperty({ description: 'Rows in the segment-less scope. NOT the sum of `bySegment`.' })
+  total!: number;
+
+  @ApiProperty({
+    description: 'One count per segment. Segments overlap, so these do not sum to `total`.',
+    additionalProperties: { type: 'number' },
+  })
+  bySegment!: Record<ReturnSegment, number>;
+}
+
+export class ReturnStageCountsDto {
+  @ApiProperty({ description: 'Rows in the stage-less scope. Equal to the sum of `byStage`.' })
+  total!: number;
+
+  @ApiProperty({
+    description: 'One count per derived stage. The six are exhaustive, so they sum to `total`.',
+    additionalProperties: { type: 'number' },
+  })
+  byStage!: Record<ReturnStage, number>;
 }
 
 export class PaginatedReturnsResponseDto {
@@ -240,6 +497,20 @@ export class PaginatedReturnsResponseDto {
 
   @ApiProperty()
   offset!: number;
+
+  @ApiProperty({
+    type: ReturnSegmentCountsDto,
+    description:
+      "The worklist-strip partition — scoped with `segment` REMOVED from this request's filters. Segments overlap; these do not sum to `total`.",
+  })
+  segmentCounts!: ReturnSegmentCountsDto;
+
+  @ApiProperty({
+    type: ReturnStageCountsDto,
+    description:
+      'The derived-stage partition, scoped with `stage` REMOVED from this request\'s filters so the chip for the stage you are not looking at stays truthful.',
+  })
+  stageCounts!: ReturnStageCountsDto;
 
   @ApiProperty({
     type: ReturnBucketCountsDto,
@@ -261,4 +532,90 @@ export class ReturnIngestionAvailabilityResponseDto {
     description: 'The connections that declare it. Empty exactly when configured is false.',
   })
   connectionIds!: string[];
+}
+
+/**
+ * One entry on the order-detail timeline's returns half (#2383).
+ *
+ * `source` says WHERE the entry came from, `kind` says what happened in that
+ * source's own vocabulary. The two are separate because a consumer that does
+ * not recognise a `kind` must render it rather than drop it, while an
+ * unrecognised `source` is a different problem — and one union covering both
+ * would let the first arm quietly absorb the second.
+ *
+ * No connection id is exposed: the operator reads a channel NAME, and the
+ * browser is never asked to resolve one.
+ */
+export class ReturnTimelineEntryDto {
+  @ApiProperty({ description: 'Stable within one read — the timeline row key.' })
+  id!: string;
+
+  @ApiProperty({
+    enum: ReturnTimelineSourceValues,
+    description: 'Where this entry came from — not what kind of act it was.',
+  })
+  source!: ReturnTimelineSource;
+
+  @ApiProperty({
+    description:
+      "What happened, in the reporting source's own words. A plain string, not a closed enum: an " +
+      'unrecognised value is rendered rather than dropped.',
+  })
+  kind!: string;
+
+  @ApiProperty({ description: 'ISO-8601. Never null — every source supplies an instant.' })
+  occurredAt!: string;
+
+  @ApiProperty() returnId!: string;
+
+  @ApiProperty({ nullable: true, description: "The source's own id for the return." })
+  externalReturnId!: string | null;
+
+  @ApiProperty({ enum: ReturnOriginValues })
+  returnOrigin!: ReturnOrigin;
+
+  @ApiProperty({
+    nullable: true,
+    description:
+      'Display name of the return\'s SOURCE connection, resolved server-side. `null` when it could ' +
+      'not be resolved — the UI renders its unknown-connection copy, never an id.',
+  })
+  sourceConnectionName!: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    description:
+      'The operator who performed an OpenLinker-owned act. `null` on every source claim — `opened` ' +
+      'and `declined` have no actor column, so they are a source claim or nothing.',
+  })
+  actorUserId!: string | null;
+
+  @ApiProperty({ nullable: true, description: 'Custody acts only.' })
+  quantity!: number | null;
+
+  @ApiProperty({ nullable: true, description: 'Custody acts only.' })
+  restockState!: string | null;
+
+  @ApiProperty({ nullable: true, description: 'Custody `dispose` acts only.' })
+  disposition!: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    description:
+      'Refund entries only: WHAT moved the money (ADR-056), never who — `RefundRecord` carries no ' +
+      'actor column, and inventing one would let OpenLinker claim a transfer it did not make.',
+  })
+  refundExecutedBy!: string | null;
+
+  @ApiProperty({ nullable: true, description: 'Refund entries only. Decimal string.' })
+  amount!: string | null;
+
+  @ApiProperty({ nullable: true, description: 'Refund entries only. ISO 4217.' })
+  currency!: string | null;
+}
+
+/** Envelope for the order-scoped returns-events read. */
+export class ReturnTimelineResponseDto {
+  @ApiProperty({ type: [ReturnTimelineEntryDto], description: 'Oldest first. `[]` when none.' })
+  entries!: ReturnTimelineEntryDto[];
 }

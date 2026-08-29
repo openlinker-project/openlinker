@@ -29,6 +29,13 @@ const buildRecord = (
     new Date('2026-08-01T00:00:00Z'),
     new Date('2026-08-01T00:00:00Z'),
     [],
+    // #2372 match provenance, #2377 counters and #2381 restock flag all sit
+    // between `lines` and `omsAttention`, which is last in the positional
+    // constructor. None is a fact this spec is about.
+    null,
+    null,
+    null,
+    null,
     omsAttention
   );
 

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  RETURN_FILTER_PARAMS,
   clearReturnFilters,
   hasActiveReturnFilters,
   readReturnFilters,
@@ -151,5 +152,58 @@ describe('setReturnOffsetParam', () => {
   it('should preserve the active filters while paging', () => {
     const next = setReturnOffsetParam(new URLSearchParams({ bucket: 'orphan' }), 20);
     expect(next.get('bucket')).toBe('orphan');
+  });
+});
+
+describe('returns filters — the #2378 dimensions', () => {
+  it('should narrow every new closed union by its guard', () => {
+    const filters = readReturnFilters(
+      new URLSearchParams(
+        'segment=restock_blocked&stage=disposed&money=in_doubt&reason=defective&openedFrom=2026-01-01&openedTo=2026-02-01'
+      )
+    );
+
+    expect(filters.segment).toBe('restock_blocked');
+    expect(filters.stage).toBe('disposed');
+    expect(filters.money).toBe('in_doubt');
+    expect(filters.reason).toBe('defective');
+    expect(filters.openedFrom).toBe('2026-01-01');
+    expect(filters.openedTo).toBe('2026-02-01');
+  });
+
+  it.each([
+    ['segment'],
+    ['stage'],
+    ['money'],
+    ['reason'],
+  ])('should IGNORE an unrecognised %s rather than forwarding it', (param) => {
+    // The API validates each with `@IsIn`, so forwarding junk would 400 the
+    // whole page over a typo in the URL bar.
+    const filters = readReturnFilters(new URLSearchParams(`${param}=nonsense`));
+
+    expect(filters[param as 'segment' | 'stage' | 'money' | 'reason']).toBeUndefined();
+  });
+
+  it('should treat every new param as an active filter', () => {
+    for (const param of ['segment=orphans', 'money=pending', 'reason=other', 'openedFrom=2026-01-01']) {
+      expect(hasActiveReturnFilters(readReturnFilters(new URLSearchParams(param)))).toBe(true);
+    }
+  });
+
+  it('should clear every new param in one call', () => {
+    const cleared = clearReturnFilters(
+      new URLSearchParams('segment=orphans&stage=disposed&money=pending&reason=other&openedFrom=2026-01-01&openedTo=2026-02-01&offset=40')
+    );
+
+    for (const param of ['segment', 'stage', 'money', 'reason', 'openedFrom', 'openedTo']) {
+      expect(cleared.get(param)).toBeNull();
+    }
+  });
+
+  it('should NOT carry an `attention` or `orphan` param', () => {
+    // Deliberate deviation from spec § 4.3: both are SEGMENTS, not value
+    // filters, and two spellings of one filter is drift by construction.
+    expect([...RETURN_FILTER_PARAMS]).not.toContain('attention');
+    expect([...RETURN_FILTER_PARAMS]).not.toContain('orphan');
   });
 });

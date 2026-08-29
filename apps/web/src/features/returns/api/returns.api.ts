@@ -12,15 +12,36 @@
  */
 import { parseReturnIngestionAvailability, parseReturnList } from './returns.schema';
 import { parseDeclineReturnResult, parseReturnDetail } from './return-detail.schema';
+import { parseCorrectionProposal } from './return-proposal.schema';
+import { parseReturnTimeline } from './return-timeline.schema';
+import {
+  parseAttestReturnLineStockResult,
+  parseConfirmReturnRefundResult,
+  parseDisposeReturnLineResult,
+  parseMarkNotReturnedResult,
+  parseReceiveReturnLineResult,
+} from './return-custody.schema';
 import { RETURNS_MAX_LIMIT } from './returns.types';
 import type {
+  AttestReturnLineStockInput,
+  ReturnCorrectionProposalResult,
+  AttestReturnLineStockResult,
+  ConfirmReturnRefundInput,
+  ConfirmReturnRefundResult,
   DeclineReturnInput,
   DeclineReturnResult,
+  DisposeReturnLineInput,
+  DisposeReturnLineResult,
+  MarkReturnLineNotReturnedInput,
+  MarkReturnLineNotReturnedResult,
+  ReceiveReturnLineInput,
+  ReceiveReturnLineResult,
   PaginatedReturns,
   ReturnDetail,
   ReturnFilters,
   ReturnIngestionAvailability,
   ReturnPagination,
+  ReturnTimelineEntry,
 } from './returns.types';
 
 /**
@@ -79,6 +100,98 @@ export interface ReturnsApi {
    * whether a second request went out.
    */
   decline: (returnId: string, input: DeclineReturnInput) => Promise<DeclineReturnResult>;
+
+  /**
+   * `POST /returns/:returnId/lines/:lineId/receive` — record that more units
+   * arrived (spec § 5.2).
+   *
+   * **Not idempotent, and must not be treated as such**: each call is a fresh
+   * arrival act and a second one records a second receipt. The caller guards
+   * against a double submit; there is no server-side dedup to fall back on,
+   * because a return arriving in three parcels legitimately receives three
+   * times.
+   *
+   * Refused with 409 + a `reason` — `over-receipt` when it would push past the
+   * advised quantity.
+   */
+  receiveLine: (
+    returnId: string,
+    lineId: string,
+    input: ReceiveReturnLineInput
+  ) => Promise<ReceiveReturnLineResult>;
+
+  /**
+   * `POST /returns/:returnId/lines/:lineId/dispose` — record what became of
+   * received units (spec § 5.3).
+   *
+   * A refused inventory-master write comes back on a **2xx** as
+   * `restockBlocked`, never as an error: the disposition succeeded and is
+   * recorded; the units simply stay in `quantityReceived` until an operator
+   * attests.
+   */
+  disposeLine: (
+    returnId: string,
+    lineId: string,
+    input: DisposeReturnLineInput
+  ) => Promise<DisposeReturnLineResult>;
+
+  /**
+   * `POST /returns/:returnId/lines/:lineId/mark-not-returned` — record that the
+   * parcel is not coming.
+   *
+   * Applies only where NOTHING arrived. Despite spec § 5.2's *"Mark remainder
+   * not returned"* phrasing this is not a shortfall write — the model refuses a
+   * partially received line, since custody is single-valued and no counter
+   * exists for a shortfall to move into. Refused with 409 +
+   * `partially-received` or `nothing-advised`.
+   */
+  markLineNotReturned: (
+    returnId: string,
+    lineId: string,
+    input: MarkReturnLineNotReturnedInput
+  ) => Promise<MarkReturnLineNotReturnedResult>;
+
+  /**
+   * `POST /returns/:returnId/lines/:lineId/mark-stock-handled` — the § 5.4
+   * attestation.
+   *
+   * It records that a HUMAN added the stock and **never claims OpenLinker did**.
+   * Settles every outstanding block on the line at once, which is why the result
+   * carries a list of event ids rather than one.
+   */
+  markStockHandled: (
+    returnId: string,
+    lineId: string,
+    input: AttestReturnLineStockInput
+  ) => Promise<AttestReturnLineStockResult>;
+
+  /**
+   * `POST /returns/:returnId/refund` — record that the operator refunded the
+   * buyer (spec § 5.7).
+   *
+   * It writes `triggered`, never `refunded`: only an OBSERVATION from the source
+   * writes `refunded`, and a button that set it would be OpenLinker asserting a
+   * money movement it did not witness.
+   */
+  confirmRefund: (
+    returnId: string,
+    input: ConfirmReturnRefundInput
+  ) => Promise<ConfirmReturnRefundResult>;
+
+  /**
+   * `GET /returns/:returnId/correction-proposal` — PREVIEW only.
+   *
+   * A read, deliberately: it computes what a credit note WOULD correct and
+   * persists nothing. Issuing is a separate act on the invoice, and this surface
+   * never performs it.
+   */
+  getCorrectionProposal: (returnId: string) => Promise<ReturnCorrectionProposalResult>;
+
+  /**
+   * One order's return activity, oldest first (#2383) — the order timeline's
+   * returns half. `[]` for an order with no returns.
+   */
+  listReturnEventsForOrder: (internalOrderId: string) => Promise<ReturnTimelineEntry[]>;
 }
 
 interface ApiRequest {
@@ -104,6 +217,22 @@ function buildQuery(filters?: ReturnFilters, pagination?: ReturnPagination): str
   return qs.length > 0 ? `?${qs}` : '';
 }
 
+/** One per-line custody route, with both ids encoded exactly once. */
+function linePath(returnId: string, lineId: string, action: string): string {
+  return `/returns/${encodeURIComponent(returnId)}/lines/${encodeURIComponent(lineId)}/${action}`;
+}
+
+/**
+ * Omit an absent or empty note rather than sending `""`.
+ *
+ * The same rule the decline body follows: the backend treats the field as
+ * optional, so an empty string would persist a comment the operator did not
+ * write — and it would then render on the timeline as if they had.
+ */
+function noteBody(note: string | undefined): { note?: string } {
+  return note !== undefined && note.trim() !== '' ? { note: note.trim() } : {};
+}
+
 export function createReturnsApi(request: ApiRequest): ReturnsApi {
   return {
     async list(filters, pagination): Promise<ReturnListResult> {
@@ -118,6 +247,8 @@ export function createReturnsApi(request: ApiRequest): ReturnsApi {
         // used 20. The request is only the fallback.
         limit: parsed.limit ?? pagination?.limit ?? 0,
         offset: parsed.offset ?? pagination?.offset ?? 0,
+        stageCounts: parsed.stageCounts,
+        segmentCounts: parsed.segmentCounts,
         counts: parsed.counts,
         droppedCount: parsed.droppedCount,
         envelopeUnreadable: parsed.envelopeUnreadable,
@@ -152,6 +283,73 @@ export function createReturnsApi(request: ApiRequest): ReturnsApi {
         },
       );
       return parseDeclineReturnResult(raw);
+    },
+
+    async receiveLine(returnId, lineId, input): Promise<ReceiveReturnLineResult> {
+      const raw = await request<unknown>(linePath(returnId, lineId, 'receive'), {
+        method: 'POST',
+        body: JSON.stringify({ quantity: input.quantity, ...noteBody(input.note) }),
+      });
+      return parseReceiveReturnLineResult(raw);
+    },
+
+    async disposeLine(returnId, lineId, input): Promise<DisposeReturnLineResult> {
+      const raw = await request<unknown>(linePath(returnId, lineId, 'dispose'), {
+        method: 'POST',
+        body: JSON.stringify({
+          quantity: input.quantity,
+          disposition: input.disposition,
+          ...noteBody(input.note),
+        }),
+      });
+      return parseDisposeReturnLineResult(raw);
+    },
+
+    async markLineNotReturned(
+      returnId,
+      lineId,
+      input
+    ): Promise<MarkReturnLineNotReturnedResult> {
+      const raw = await request<unknown>(linePath(returnId, lineId, 'mark-not-returned'), {
+        method: 'POST',
+        body: JSON.stringify({ ...noteBody(input.note) }),
+      });
+      return parseMarkNotReturnedResult(raw);
+    },
+
+    async markStockHandled(returnId, lineId, input): Promise<AttestReturnLineStockResult> {
+      const raw = await request<unknown>(linePath(returnId, lineId, 'mark-stock-handled'), {
+        method: 'POST',
+        body: JSON.stringify({ ...noteBody(input.note) }),
+      });
+      return parseAttestReturnLineStockResult(raw);
+    },
+
+    async confirmRefund(returnId, input): Promise<ConfirmReturnRefundResult> {
+      const raw = await request<unknown>(`/returns/${encodeURIComponent(returnId)}/refund`, {
+        method: 'POST',
+        body: JSON.stringify({
+          amount: input.amount,
+          currency: input.currency,
+          reason: input.reason,
+          ...noteBody(input.note),
+        }),
+      });
+      return parseConfirmReturnRefundResult(raw);
+    },
+
+    async listReturnEventsForOrder(internalOrderId): Promise<ReturnTimelineEntry[]> {
+      const raw = await request<unknown>(
+        `/returns/events?internalOrderId=${encodeURIComponent(internalOrderId)}`
+      );
+      return parseReturnTimeline(raw);
+    },
+
+    async getCorrectionProposal(returnId): Promise<ReturnCorrectionProposalResult> {
+      const raw = await request<unknown>(
+        `/returns/${encodeURIComponent(returnId)}/correction-proposal`
+      );
+      return parseCorrectionProposal(raw);
     },
   };
 }

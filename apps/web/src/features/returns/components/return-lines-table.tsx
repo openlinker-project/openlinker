@@ -20,7 +20,7 @@
  *
  * @module apps/web/src/features/returns/components
  */
-import { useMemo, type ReactElement } from 'react';
+import { useMemo, type ReactElement, type ReactNode } from 'react';
 import { DataTable, type DataTableColumn } from '../../../shared/ui/data-table';
 import { KeyValueList } from '../../../shared/ui/key-value-list';
 import { RETURN_LINES_COPY, describeLineQuantity } from '../lib/return-detail.copy';
@@ -28,7 +28,19 @@ import { ReturnLineStateChip } from './return-line-state-chips';
 import type { ReturnLine } from '../api/returns.types';
 
 interface ReturnLinesTableProps {
+  /** The source's display name, for the money rail's `refunded` attribution. */
+  sourceName?: string | null;
   lines: ReturnLine[];
+  /**
+   * The inline custody flow for one line (#2380), rendered in the table's own
+   * expansion panel.
+   *
+   * Optional so the table stays usable as a pure read — an operator without
+   * write access, and any surface that only reports what came back, renders the
+   * same table with no expander at all rather than an expander onto disabled
+   * controls.
+   */
+  renderCustody?: (line: ReturnLine) => ReactNode;
 }
 
 /** The item's own identity, name-first with SKU beneath. */
@@ -53,7 +65,11 @@ function OrderLineCell({ line }: { line: ReturnLine }): ReactElement {
   return <span className="mono-text">{line.resolvedOrderLineId}</span>;
 }
 
-export function ReturnLinesTable({ lines }: ReturnLinesTableProps): ReactElement {
+export function ReturnLinesTable({
+  lines,
+  sourceName = null,
+  renderCustody,
+}: ReturnLinesTableProps): ReactElement {
   const columns = useMemo<DataTableColumn<ReturnLine>[]>(
     () => [
       {
@@ -61,20 +77,41 @@ export function ReturnLinesTable({ lines }: ReturnLinesTableProps): ReactElement
         header: RETURN_LINES_COPY.itemLabel,
         cell: (line) => <LineItemCell line={line} />,
       },
+      // Advised alone, now that `Received` has a column of its own (#2380). The
+      // derived "3 of 5 received" wording said both at once, which read as a
+      // contradiction sitting beside the counter it was derived from.
       {
         id: 'quantity',
         header: RETURN_LINES_COPY.quantityLabel,
-        cell: (line) => (
-          <span className="tabular">
-            {describeLineQuantity(line.quantityAdvised, line.quantityReceived)}
-          </span>
-        ),
+        cell: (line) => <span className="tabular">{line.quantityAdvised}</span>,
+      },
+      // The three counters the custody flow moves. Present at 768 px — this is
+      // the tablet the receiving work is done on, and an operator typing a
+      // received quantity has to see what is already recorded against the line.
+      {
+        id: 'received',
+        header: RETURN_LINES_COPY.receivedLabel,
+        cell: (line) => <span className="tabular">{line.quantityReceived}</span>,
+      },
+      {
+        id: 'restocked',
+        header: RETURN_LINES_COPY.restockedLabel,
+        cell: (line) => <span className="tabular">{line.quantityRestocked}</span>,
+        hideBelow: 768,
+      },
+      {
+        id: 'scrapped',
+        header: RETURN_LINES_COPY.scrappedLabel,
+        cell: (line) => <span className="tabular">{line.quantityScrapped}</span>,
+        hideBelow: 768,
       },
       {
         id: 'reason',
         header: RETURN_LINES_COPY.reasonLabel,
         cell: (line) => <span>{line.reason}</span>,
-        hideBelow: 768,
+        // Dropped first at tablet width: the reason is context, whereas the
+        // counters above are what the operator is acting on.
+        hideBelow: 1024,
       },
       {
         id: 'custody',
@@ -85,7 +122,7 @@ export function ReturnLinesTable({ lines }: ReturnLinesTableProps): ReactElement
       {
         id: 'money',
         header: RETURN_LINES_COPY.moneyLabel,
-        cell: (line) => <ReturnLineStateChip axis="money" value={line.moneyState} />,
+        cell: (line) => <ReturnLineStateChip axis="money" value={line.moneyState} sourceName={sourceName} />,
         hideBelow: 1024,
       },
       {
@@ -94,7 +131,7 @@ export function ReturnLinesTable({ lines }: ReturnLinesTableProps): ReactElement
         cell: (line) => <OrderLineCell line={line} />,
       },
     ],
-    [],
+    [sourceName, renderCustody],
   );
 
   return (
@@ -103,6 +140,17 @@ export function ReturnLinesTable({ lines }: ReturnLinesTableProps): ReactElement
       columns={columns}
       rows={lines}
       rowKey={(line) => line.id}
+      expandable={
+        renderCustody === undefined
+          ? undefined
+          : {
+              renderDetail: (line) => renderCustody(line),
+              toggleLabel: (line, expanded) =>
+                `${expanded ? RETURN_LINES_COPY.collapseLine : RETURN_LINES_COPY.expandLine} ${
+                  line.name ?? RETURN_LINES_COPY.unnamedItem
+                }`,
+            }
+      }
       emptyState={<p className="text-muted">{RETURN_LINES_COPY.empty}</p>}
       cardView={{
         // Same renderers as the columns above, so the mobile card and the
@@ -124,7 +172,7 @@ export function ReturnLinesTable({ lines }: ReturnLinesTableProps): ReactElement
               {
                 id: 'money',
                 label: RETURN_LINES_COPY.moneyLabel,
-                value: <ReturnLineStateChip axis="money" value={line.moneyState} />,
+                value: <ReturnLineStateChip axis="money" value={line.moneyState} sourceName={sourceName} />,
               },
               {
                 id: 'orderLine',

@@ -19397,6 +19397,63 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
    SKU ("Blue ShirtSKU-1"), and the identity cell butts its badge against the
    id. Tokens only — no raw colour or spacing values. */
 
+/* The worklist strip (#2378). Mirrors the orders segment row: a button wrapping
+   a MetricCard, with the active card outlined. Tokens only. */
+.returns-segments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.returns-segment {
+  flex: 1 1 12rem;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.returns-segment--active {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 2px;
+  border-radius: var(--radius-md);
+}
+
+/* The two rails (#2378). Horizontal: a label, its chip and any note read as one
+   statement, and wrap as a unit. */
+.returns-rail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.returns-rail__label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.returns-rail__note {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.returns-rail__note--warning {
+  color: var(--status-warning-fg);
+}
+
+.returns-rails__note {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  margin: 0 0 var(--space-3);
+}
+
+.returns-stage-cell,
 .returns-identity-cell,
 .returns-order-cell,
 .returns-line-item {
@@ -19405,6 +19462,14 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   align-items: flex-start;
   gap: var(--space-1);
   min-width: 0;
+}
+
+/* The counter line under the derived stage (#2377). Muted and smaller than the
+   badge above it: the stage is the glanceable signal and the counters are the
+   evidence for it, so they must not compete. Tokens only. */
+.returns-stage-cell__counters {
+  font-size: 0.75rem;
+  color: var(--text-muted);
 }
 
 /* The one horizontal member of the family: a chip and the sentence that says
@@ -19441,6 +19506,252 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .returns-decline > .alert,
 .returns-decline > p {
   justify-self: stretch;
+}
+
+/* --------------------------------------------------------------------------
+   Return custody flows (#2380) — the inline per-line receive and dispose forms.
+
+   DECLARED DEPARTURE from the style guide's tablet treatment, per returns spec
+   § 5.2: these editors carry no "open on desktop" hint and stay fully
+   interactive at 768 px, because the tablet IS the primary device for receiving
+   work. The desktop an operator would be redirected to is in another room.
+
+   The ≥44 px touch floor here is EXPLICIT and unconditional rather than
+   inherited from the global `@media (hover: none) and (pointer: coarse)` rule
+   near the top of this file. That rule keys on POINTER TYPE, while both the
+   acceptance criterion and § 5.2 frame the guarantee in terms of WIDTH — so a
+   768 px desktop window, and any component test, would get no floor at all from
+   it. Do not "simplify" these declarations away into that media query: it would
+   turn the ≥44 px guarantee into a claim nothing proves.
+   -------------------------------------------------------------------------- */
+
+.return-custody-panel__bulk {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: var(--space-3);
+}
+
+.return-custody-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.return-custody-detail__switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.return-custody-form__fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.return-custody-form__disposition {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.return-custody-form__help {
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
+.return-custody-form__destination {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+/* Not an error tone: "no master resolves" is a configuration state the operator
+   can act on, and colouring it red beside a form they can still submit as a
+   scrap would misreport which part is wrong. */
+.return-custody-form__destination--unavailable {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.return-custody-form__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.returns-line-hint {
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
+/* The width-keyed touch floor. Applies at every width, so it holds on the
+   768 px tablet the work is done on and is assertable in a component test. */
+.return-custody-form input,
+.return-custody-form textarea,
+.return-custody-form button,
+.return-custody-detail__switch button,
+.return-custody-panel__bulk button {
+  min-height: 44px;
+}
+
+.return-custody-form button,
+.return-custody-detail__switch button,
+.return-custody-panel__bulk button {
+  min-width: 44px;
+}
+
+.return-custody-form .segmented-control__option {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Rendered but refusing selection — the option stays visible with its reason
+   beside it, because a missing option reads as a missing feature. */
+.segmented-control__option--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* --------------------------------------------------------------------------
+   Restock-blocked surfacing (#2381, returns spec § 5.4).
+
+   The highest-severity surface in the returns spec: a restock that silently
+   no-ops is worse than none. The notice is PERSISTENT and read from the server,
+   never from a mutation response — a red box that vanishes on reload is the
+   toast § 5.4 forbids by name.
+
+   Usable at 375 px: the action row wraps rather than scrolling, and the
+   remediation sentence is never truncated — it names the quantity, the sku and
+   the system that refused, which is the whole instruction.
+   -------------------------------------------------------------------------- */
+
+.returns-restock-blocked__body,
+.returns-restock-blocked__remedy {
+  margin: 0 0 var(--space-2);
+}
+
+.returns-restock-blocked__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.returns-restock-blocked__explainer {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-size: 0.8125rem;
+}
+
+.returns-restock-blocked__explainer p {
+  margin: 0;
+}
+
+/* Neutral, deliberately — not success (OpenLinker succeeded at nothing; a human
+   did the work) and not error (nothing is outstanding). No actions. */
+.returns-restock-attested {
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
+/* One per affected line, ABOVE the table — see the panel's docblock. */
+.returns-restock-notice {
+  margin-bottom: var(--space-3);
+}
+
+.returns-restock-notice__line {
+  margin: 0 0 var(--space-1);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+/* Refund confirmation (#2382) — the first RefundRecord surface. */
+.refund-confirmation-form__fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.refund-confirmation-form__preamble {
+  margin: 0 0 var(--space-3);
+  font-size: 0.8125rem;
+}
+
+/* Context beside the amount, never a value in it — see the form's docblock. */
+.refund-confirmation-form__context {
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
+.refund-confirmation-form__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.returns-money-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* Credit-note proposal review (#2382, spec 5.8). */
+.returns-proposal-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.returns-proposal-panel__lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.returns-proposal-line {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.returns-proposal-line__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Every candidate, none preselected — the operator picks. */
+.returns-proposal-line__candidates {
+  margin: 0;
+  padding-left: var(--space-4);
+  font-size: 0.8125rem;
+}
+
+.returns-proposal-panel__footer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-size: 0.8125rem;
+}
+
+.returns-proposal-panel__footer p {
+  margin: 0;
 }
 
 /* -------------------------------------------------------------------------

@@ -11,4 +11,9 @@ export const returnsQueryKeys = {
     ['returns', 'list', filters ?? {}, pagination ?? {}] as const,
   ingestionAvailability: () => ['returns', 'ingestion-availability'] as const,
   detail: (returnId: string) => ['returns', 'detail', returnId] as const,
+  correctionProposal: (returnId: string) =>
+    ['returns', 'correction-proposal', returnId] as const,
+  // #2383 — keyed by ORDER, not by return: one order spans many returns.
+  orderEvents: (internalOrderId: string) =>
+    ['returns', 'order-events', internalOrderId] as const,
 };

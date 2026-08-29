@@ -579,3 +579,69 @@ describe('OrderDetailPage — lifecycle phase (#2310)', () => {
     expect(screen.queryByText(/waiting to be dispatched/i)).toBeNull();
   });
 });
+
+describe('OrderDetailPage — returns activity on the timeline (#2383)', () => {
+  afterEach(cleanup);
+
+  const returnEvent = {
+    id: 'ev1',
+    source: 'custody_act',
+    kind: 'receive',
+    occurredAt: '2026-04-20T09:30:00.000Z',
+    returnId: 'ol_return_1',
+    externalReturnId: 'RMA-9',
+    returnOrigin: 'source_ingested',
+    sourceConnectionName: 'Allegro PL',
+    actorUserId: null,
+    quantity: 2,
+    restockState: null,
+    disposition: null,
+    refundExecutedBy: null,
+    amount: null,
+    currency: null,
+  };
+
+  // A component test renders the component itself and cannot prove anything
+  // MOUNTS it. This asserts the events reach the PAGE.
+  it('renders return activity in the order timeline', async () => {
+    const api = createMockApiClient({
+      orders: { getById: vi.fn().mockResolvedValue(sampleOrder) },
+      connections: { getById: vi.fn().mockResolvedValue(sampleConnection) },
+      returns: { listReturnEventsForOrder: vi.fn().mockResolvedValue([returnEvent]) },
+    });
+
+    renderDetail(api);
+
+    expect(await screen.findByText('Return received')).toBeInTheDocument();
+    expect(api.returns.listReturnEventsForOrder).toHaveBeenCalledWith('ol_order_abc123');
+  });
+
+  it('renders the order timeline unchanged when the order has no returns', async () => {
+    const api = createMockApiClient({
+      orders: { getById: vi.fn().mockResolvedValue(sampleOrder) },
+      connections: { getById: vi.fn().mockResolvedValue(sampleConnection) },
+      returns: { listReturnEventsForOrder: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderDetail(api);
+
+    expect(await screen.findByText('Activity')).toBeInTheDocument();
+    expect(screen.queryByText('Return received')).not.toBeInTheDocument();
+  });
+
+  it('still renders the order timeline when the returns read FAILS', async () => {
+    // Non-fatal by design: a returns read that could not answer must not take
+    // the order's own history down with it.
+    const api = createMockApiClient({
+      orders: { getById: vi.fn().mockResolvedValue(sampleOrder) },
+      connections: { getById: vi.fn().mockResolvedValue(sampleConnection) },
+      returns: {
+        listReturnEventsForOrder: vi.fn().mockRejectedValue(new Error('unreadable')),
+      },
+    });
+
+    renderDetail(api);
+
+    expect(await screen.findByText('Activity')).toBeInTheDocument();
+  });
+});

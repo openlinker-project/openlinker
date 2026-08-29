@@ -81,12 +81,17 @@ export const RETURN_LINES_COPY = {
   empty: 'The channel reported no lines for this return.',
   itemLabel: 'Item',
   reasonLabel: 'Reason',
-  quantityLabel: 'Quantity',
+  quantityLabel: 'Advised',
+  receivedLabel: 'Received',
+  restockedLabel: 'Restocked',
+  scrappedLabel: 'Scrapped',
   custodyLabel: 'Goods',
   moneyLabel: 'Refund',
   orderLineLabel: 'Order line',
   noteLabel: 'Note',
   unnamedItem: 'Unnamed item',
+  expandLine: 'Record what happened to',
+  collapseLine: 'Close',
   /**
    * `resolvedOrderLineId === null` is a real state, not missing data: OpenLinker
    * has no order-lines table to point at, so it says so instead of rendering a
@@ -223,3 +228,21 @@ export function describeLineQuantity(advised: number, received: number): string 
     ? `${advised} ${RETURN_LINES_COPY.advisedOnly}`
     : `${received} of ${advised} received`;
 }
+
+/**
+ * The two rails (#2378, spec § 5).
+ *
+ * The independence sentence is COPY, not a comment: custody and money moving
+ * independently is the single most misread thing about the model, and a reader
+ * of the screen needs it as much as a reader of the code.
+ */
+export const RETURN_RAIL_COPY = {
+  custodyLabel: 'Parcel',
+  moneyLabel: 'Money',
+  independenceNote:
+    'These two move independently. A marketplace can refund the buyer before the parcel arrives, and a parcel can arrive with no refund owed.',
+  inDoubtNote:
+    'OpenLinker asked for this refund but could not confirm what happened. Do not refund again — check with the source first.',
+  refundedBy: (sourceName: string | null): string =>
+    sourceName === null ? 'Confirmed by the source' : `Confirmed by ${sourceName}`,
+} as const;

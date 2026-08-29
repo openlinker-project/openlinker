@@ -28,6 +28,7 @@
  * @module domain/entities
  */
 import type { ReturnOrigin } from '../types/return.types';
+import type { ReturnStageCounters } from '../types/return-stage.types';
 import type { ReturnLine } from './return-line.entity';
 import type {
   AuthorityAttentionEntry,
@@ -63,6 +64,57 @@ export class ReturnRecord {
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
     public readonly lines: readonly ReturnLine[],
+    /**
+     * When an OPERATOR matched this orphan to an order, and who (#2372).
+     *
+     * NULL for a return attributed at ingestion and for one the #2332 reconcile
+     * resolved — see the ORM column's docblock for why the distinction is worth a
+     * column at all.
+     *
+     * **Appended after `lines`, and defaulted, deliberately.** This constructor is
+     * positional with six call sites, and the docblock above warns that adjacent
+     * `string | null` parameters make a mis-ordered call type-check. Appending after
+     * the one non-nullable trailing parameter means a missing argument cannot bind to
+     * the wrong slot; inserting these beside the four timestamps would be exactly that
+     * silent mis-binding. Extend this constructor the same way.
+     */
+    public readonly matchedAt: Date | null = null,
+    public readonly matchedByUserId: string | null = null,
+    /**
+     * Per-return counter rollup, for the derived stage (#2377, spec § 3.2).
+     *
+     * **`null` means "this read did not load counters", never "all zero".** The
+     * LIST projection carries no lines (loading every line of every row to
+     * compute six integers is not what a header-shaped read is for), so it
+     * aggregates them in SQL and populates this. The DETAIL read carries real
+     * `lines` and derives its stage from those, so it leaves this `null`.
+     *
+     * A zeroed default would claim "nothing advised, nothing received" for a
+     * fully-disposed return and render `Awaiting parcel` over it.
+     *
+     * *Alternative considered and rejected*: a `ReturnListRow { record, counters }`
+     * projection. Cleaner in the abstract, but it forces
+     * `IReturnsService.listReturns` to change its return type and the controller
+     * to zip two collections.
+     */
+    public readonly counters: ReturnStageCounters | null = null,
+    /**
+     * Does this return hold a restock the master refused and nobody attested
+     * (#2381, spec § 5.4)?
+     *
+     * **A SIBLING of `counters`, deliberately never a member of it.** It is
+     * fetched by the same aggregate query, but the fetch mechanism must not
+     * dictate the projection shape: `ReturnStageCounters` is the input
+     * `deriveReturnStage` computes from, and #2377 was deliberate that the stage
+     * derives from counters ALONE. A boolean fact living inside that type would
+     * silently widen the input to a derivation that must not see it.
+     *
+     * **`null` means "this read did not report it", never `false`.** `false`
+     * asserts the operator's stock is fine; on an unreadable or
+     * counters-less read that is a claim OpenLinker is not entitled to make.
+     * The detail read leaves it `null` and surfaces the blocks themselves.
+     */
+    public readonly restockBlocked: boolean | null = null,
     /**
      * The OMS inert states reported against this return (#2352), one entry per
      * reporting producer. Empty when nothing is reported.

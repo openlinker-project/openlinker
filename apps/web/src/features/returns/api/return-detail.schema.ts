@@ -34,9 +34,12 @@ import { z } from 'zod/v4';
 import {
   RETURN_BUCKET_VALUES,
   RETURN_ORIGIN_VALUES,
+  RETURN_RESTOCK_TARGET_STATUS_VALUES,
   type ReturnDeclineAvailability,
   type ReturnDetail,
   type ReturnLine,
+  type ReturnRestockTarget,
+  type ReturnRestockTargetStatus,
   type DeclineReturnResult,
 } from './returns.types';
 
@@ -77,13 +80,63 @@ const returnLineSchema = z.object({
   note: z.string().nullish(),
 });
 
+const restockBlockSchema = z.object({
+  eventId: z.string(),
+  returnLineId: z.string(),
+  quantity: z.number(),
+  sku: z.string().nullish(),
+  reason: z.string(),
+  detail: z.string().nullish(),
+  connectionId: z.string().nullish(),
+  connectionName: z.string().nullish(),
+  state: z.string(),
+});
+
+const restockAttestationSchema = z.object({
+  eventId: z.string(),
+  returnLineId: z.string(),
+  quantity: z.number(),
+  actorUserId: z.string().nullish(),
+  occurredAt: z.string(),
+  note: z.string().nullish(),
+});
+
+const refundSchema = z.object({
+  id: z.string(),
+  amount: z.string(),
+  currency: z.string(),
+  reason: z.string(),
+  note: z.string().nullish(),
+  recordedAt: z.string(),
+  executedBy: z.string(),
+});
+
+const restockTargetSchema = z.object({
+  status: z.string(),
+  connectionId: z.string().nullish(),
+  connectionName: z.string().nullish(),
+  candidateCount: z.number().nullish(),
+});
+
 const declineAvailabilitySchema = z.object({
   supported: z.boolean(),
   reason: z.string().nullish(),
 });
 
+/** #2377 — the counter rollup, mirroring the list schema's own defaulted shape. */
+const returnCountersSchema = z.object({
+  lineCount: z.number().nullish(),
+  notReturnedLineCount: z.number().nullish(),
+  quantityAdvised: z.number().nullish(),
+  notReturnedQuantityAdvised: z.number().nullish(),
+  quantityReceived: z.number().nullish(),
+  quantityRestocked: z.number().nullish(),
+  quantityScrapped: z.number().nullish(),
+});
+
 const returnDetailSchema = z.object({
   id: z.string(),
+  counters: returnCountersSchema.nullish(),
   sourceConnectionId: z.string(),
   externalReturnId: z.string().nullish(),
   internalOrderId: z.string().nullish(),
@@ -99,6 +152,13 @@ const returnDetailSchema = z.object({
   updatedAt: z.string(),
   lines: z.array(z.unknown()).nullish(),
   declineAvailability: declineAvailabilitySchema.nullish(),
+  restockTarget: restockTargetSchema.nullish(),
+  // `z.unknown()` per element, parsed row by row below, so ONE unreadable block
+  // does not discard the rest — the list schema's own rule.
+  restockBlocks: z.array(z.unknown()).nullish(),
+  restockAttestations: z.array(z.unknown()).nullish(),
+  refunds: z.array(z.unknown()).nullish(),
+  orderCurrency: z.string().nullish(),
 });
 
 const declineResultSchema = z.object({
@@ -108,9 +168,58 @@ const declineResultSchema = z.object({
   refusalReason: z.string().nullish(),
 });
 
+/**
+ * Parse an array element-by-element, dropping only what it cannot read.
+ *
+ * One malformed block must not discard the others: each is an independent alarm
+ * about a different line's goods.
+ */
+function parseList<T>(
+  raw: unknown,
+  schema: { safeParse: (value: unknown) => { success: boolean; data?: T } }
+): T[] {
+  if (!Array.isArray(raw)) return [];
+  const out: T[] = [];
+  for (const item of raw) {
+    const parsed = schema.safeParse(item);
+    if (parsed.success && parsed.data !== undefined) out.push(parsed.data);
+  }
+  return out;
+}
+
 /** Collapse `undefined` and `null` — both mean "not reported" — onto `null`. */
 function orNull<T>(value: T | null | undefined): T | null {
   return value === undefined || value === null ? null : value;
+}
+
+/**
+ * The fallback when the server sent no readable `restockTarget`.
+ *
+ * `adapter-unresolved` rather than `no-inventory-master`, deliberately: an
+ * unreadable response is not evidence that the operator has configured no
+ * master, and telling them they have not sends them to fix something that is
+ * not broken. This value says only "OpenLinker cannot tell you right now",
+ * which is exactly what is true.
+ */
+const UNREADABLE_RESTOCK_TARGET: ReturnRestockTarget = {
+  status: 'adapter-unresolved',
+  connectionId: null,
+  connectionName: null,
+  candidateCount: null,
+};
+
+/**
+ * Narrow the wire status, degrading an unknown value rather than trusting it.
+ *
+ * A status this build does not know must NOT reach the copy map, which would
+ * render nothing where a destination sentence belongs. Degrading to
+ * `adapter-unresolved` states the honest thing — this build cannot say where
+ * stock would land — instead of a blank.
+ */
+function toRestockTargetStatus(raw: string): ReturnRestockTargetStatus {
+  return (RETURN_RESTOCK_TARGET_STATUS_VALUES as readonly string[]).includes(raw)
+    ? (raw as ReturnRestockTargetStatus)
+    : 'adapter-unresolved';
 }
 
 /**
@@ -173,9 +282,24 @@ export function parseReturnDetail(raw: unknown, returnId: string): ReturnDetail 
   }
 
   const availability = parsed.data.declineAvailability;
+  const target = parsed.data.restockTarget;
 
   return {
     id: parsed.data.id,
+    // #2377 — the detail response spreads the same list-item projection, so the
+    // counters are present. Defaulted rather than required for the same reason
+    // the list schema defaults them: a response predating #2377 is still a
+    // readable return, and losing it over a missing projection is worse than
+    // deriving `Awaiting parcel`.
+    counters: {
+      lineCount: parsed.data.counters?.lineCount ?? 0,
+      notReturnedLineCount: parsed.data.counters?.notReturnedLineCount ?? 0,
+      quantityAdvised: parsed.data.counters?.quantityAdvised ?? 0,
+      notReturnedQuantityAdvised: parsed.data.counters?.notReturnedQuantityAdvised ?? 0,
+      quantityReceived: parsed.data.counters?.quantityReceived ?? 0,
+      quantityRestocked: parsed.data.counters?.quantityRestocked ?? 0,
+      quantityScrapped: parsed.data.counters?.quantityScrapped ?? 0,
+    },
     sourceConnectionId: parsed.data.sourceConnectionId,
     externalReturnId: orNull(parsed.data.externalReturnId),
     internalOrderId: orNull(parsed.data.internalOrderId),
@@ -197,6 +321,55 @@ export function parseReturnDetail(raw: unknown, returnId: string): ReturnDetail 
       availability === undefined || availability === null
         ? UNREADABLE_DECLINE_AVAILABILITY
         : { supported: availability.supported, reason: orNull(availability.reason) },
+    // An unreadable or absent array degrades to EMPTY, and that is safe ONLY
+    // here: the row flag is what claims "this return has a problem", and it
+    // degrades to `null` (not reported) rather than to `false`. If the detail's
+    // blocks were the only signal, an empty-on-unreadable would assert the
+    // operator's stock is fine — which is why the two degrade differently.
+    // The DETAIL read reports the blocks themselves, so the row-level summary
+    // flag is `null` here — "not reported by this read", never `false`.
+    restockBlocked: null,
+    refunds: parseList(parsed.data.refunds, refundSchema).map((refund) => ({
+      id: refund.id,
+      amount: refund.amount,
+      currency: refund.currency,
+      reason: refund.reason,
+      note: orNull(refund.note),
+      recordedAt: refund.recordedAt,
+      executedBy: refund.executedBy,
+    })),
+    orderCurrency: orNull(parsed.data.orderCurrency),
+    restockBlocks: parseList(parsed.data.restockBlocks, restockBlockSchema).map((block) => ({
+      eventId: block.eventId,
+      returnLineId: block.returnLineId,
+      quantity: block.quantity,
+      sku: orNull(block.sku),
+      reason: block.reason,
+      detail: orNull(block.detail),
+      connectionId: orNull(block.connectionId),
+      connectionName: orNull(block.connectionName),
+      state: block.state,
+    })),
+    restockAttestations: parseList(
+      parsed.data.restockAttestations,
+      restockAttestationSchema
+    ).map((attestation) => ({
+      eventId: attestation.eventId,
+      returnLineId: attestation.returnLineId,
+      quantity: attestation.quantity,
+      actorUserId: orNull(attestation.actorUserId),
+      occurredAt: attestation.occurredAt,
+      note: orNull(attestation.note),
+    })),
+    restockTarget:
+      target === undefined || target === null
+        ? UNREADABLE_RESTOCK_TARGET
+        : {
+            status: toRestockTargetStatus(target.status),
+            connectionId: orNull(target.connectionId),
+            connectionName: orNull(target.connectionName),
+            candidateCount: orNull(target.candidateCount),
+          },
   };
 }
 

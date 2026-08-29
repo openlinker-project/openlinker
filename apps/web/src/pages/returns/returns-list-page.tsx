@@ -51,7 +51,9 @@ import {
   ReturnOpenedCell,
   ReturnOrderCell,
   ReturnSourceStatus,
-  ReturnStatusCell,
+  ReturnSegmentStrip,
+  ReturnStageCell,
+  type ReturnSegment,
   clearReturnFilters,
   describeRange,
   describeUnreadableRows,
@@ -131,9 +133,14 @@ export function ReturnsListPage(): ReactElement {
         hideBelow: 768,
       },
       {
-        id: 'status',
-        header: RETURNS_ROW_COPY.statusLabel,
-        cell: (item) => <ReturnStatusCell item={item} />,
+        // #2377 — replaces the Wave-1c `status` column. Not a sibling of it: the
+        // two are renderings of the SAME lifecycle fact (`declined` is stage #1),
+        // and two competing lifecycle signals in one row is exactly what the
+        // #2100 three-independent-parts rule is NOT about — that rule is for
+        // different facts (money, attention, action).
+        id: 'stage',
+        header: RETURNS_ROW_COPY.stageLabel,
+        cell: (item) => <ReturnStageCell item={item} />,
       },
     ],
     [connectionNameById],
@@ -160,6 +167,19 @@ export function ReturnsListPage(): ReactElement {
   function selectBucket(choice: BucketChoice): void {
     setSearchParams((prev) =>
       setReturnFilterParam(new URLSearchParams(prev), 'bucket', choice === 'all' ? '' : choice),
+    );
+  }
+
+  /**
+   * Select a segment, or clear it (`null` — the `All returns` card).
+   *
+   * Writes ONLY `segment`. It must never touch `bucket`: the bucket chips are a
+   * separate, independently-usable surface, and two surfaces fighting over one
+   * param is how they start disagreeing about what is filtered.
+   */
+  function selectSegment(segment: ReturnSegment | null): void {
+    setSearchParams((prev) =>
+      setReturnFilterParam(new URLSearchParams(prev), 'segment', segment ?? ''),
     );
   }
 
@@ -212,6 +232,12 @@ export function ReturnsListPage(): ReactElement {
       title={RETURNS_PAGE_COPY.title}
       description={RETURNS_PAGE_COPY.description}
     >
+      <ReturnSegmentStrip
+        counts={query.data?.segmentCounts ?? null}
+        selected={filters.segment ?? null}
+        onSelect={selectSegment}
+      />
+
       <div className="toolbar">
         <div className="toolbar__group" role="group" aria-label={RETURNS_FILTER_COPY.bucketGroupLabel}>
           <Chip active={bucketChoice === 'all'} onClick={() => { selectBucket('all'); }}>
@@ -325,7 +351,7 @@ export function ReturnsListPage(): ReactElement {
               // two layouts cannot drift (#2091).
               title: (item) => returnIdentitySummary(item),
               subtitle: (item) => returnOrderSummary(item),
-              meta: (item) => <ReturnStatusCell item={item} />,
+              meta: (item) => <ReturnStageCell item={item} />,
               // `KeyValueList`, not a hand-rolled `<dl>`: the peer lists
               // (`listings`, `orders`) render their card detail through the same
               // primitive, and a bare `<dl>` under a class no stylesheet defines

@@ -143,6 +143,13 @@ const harness = createIntegrationTestHarness({
     // precedent), so nothing cascades in from connections or order_records and
     // `truncateTables`' CASCADE walk would never reach either table. Listed
     // child-first for readability — the cascade makes the order immaterial.
+    // return_line_events (#2370) — the append-only per-line act ledger. It
+    // carries NO FK to `return_lines` (this context's posture: the one FK is
+    // return_lines -> returns), so `truncateTables`' CASCADE walk cannot reach
+    // it from either table below and it must be listed in its own right —
+    // otherwise acts leak between cases and collide on
+    // UQ_return_line_events_line_seq.
+    'return_line_events',
     'return_lines',
     'returns',
     // order_changes (#2333) — the ADR-044 change-proposal record. No FK to

@@ -10,9 +10,12 @@
  * @module domain/types
  */
 import {
+  REFUND_ATTEMPTABLE_MONEY_STATES,
   ReturnCustodyStateValues,
   ReturnDispositionValues,
   ReturnMoneyStateValues,
+  blocksRefundAttempt,
+  isRefundAttemptable,
 } from './return-line.types';
 import { ReturnOriginValues } from './return.types';
 
@@ -77,5 +80,32 @@ describe('return line vocabularies (#2327)', () => {
       (ReturnMoneyStateValues as readonly string[]).includes(value)
     );
     expect(overlap).toEqual([]);
+  });
+});
+
+describe('refund attemptability (#2371)', () => {
+  it('should permit an attempt only from the three non-crossing states', () => {
+    expect(REFUND_ATTEMPTABLE_MONEY_STATES).toEqual(['not_refundable', 'pending', 'denied']);
+  });
+
+  it.each(['not_refundable', 'pending', 'denied'] as const)(
+    'should treat %s as attemptable',
+    (state) => {
+      expect(isRefundAttemptable(state)).toBe(true);
+      expect(blocksRefundAttempt(state)).toBe(false);
+    }
+  );
+
+  it.each(['triggered', 'refunded', 'in_doubt'] as const)('should block from %s', (state) => {
+    // Each means a boundary was crossed or a settlement stands; a second
+    // attempt from any of them risks refunding the buyer twice.
+    expect(isRefundAttemptable(state)).toBe(false);
+    expect(blocksRefundAttempt(state)).toBe(true);
+  });
+
+  it('should partition the whole money union with no value left undecided', () => {
+    for (const state of ReturnMoneyStateValues) {
+      expect(isRefundAttemptable(state)).toBe(!blocksRefundAttempt(state));
+    }
   });
 });

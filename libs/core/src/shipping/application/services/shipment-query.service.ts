@@ -42,7 +42,8 @@ export class ShipmentQueryService implements IShipmentQueryService {
   }
 
   async getActiveByOrderId(orderId: string): Promise<Shipment | null> {
-    return this.shipments.findActiveByOrderId(orderId);
+    // Outbound only (#2373) — this backs the order-detail "Shipment" panel.
+    return this.shipments.findActiveByOrderId(orderId, 'outbound');
   }
 
   /**
@@ -51,7 +52,11 @@ export class ShipmentQueryService implements IShipmentQueryService {
    * {@link IShipmentQueryService.hasConsumedReservations}.
    */
   async hasConsumedReservations(orderId: string): Promise<boolean> {
-    const shipments = await this.shipments.findByOrderId(orderId);
+    // Outbound only (#2373). Reservation consumption is an outbound concept —
+    // a return label brings goods back and never consumes a hold — and since
+    // #2373 an inbound row shares this table, so an unscoped read would fold
+    // over a cohort that can never carry the marker.
+    const shipments = await this.shipments.findByOrderId(orderId, 'outbound');
     return shipments.some((shipment) => shipment.reservationConsumedAt !== null);
   }
 }

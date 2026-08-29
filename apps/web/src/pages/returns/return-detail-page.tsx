@@ -48,8 +48,12 @@ import {
   RETURN_DETAIL_HEADER_COPY,
   RETURN_LINES_COPY,
   RETURN_SOURCE_PANEL_COPY,
+  ReturnCustodyPanel,
+  ReturnMoneyPanel,
+  ReturnProposalPanel,
+  useReturnProposalQuery,
   ReturnDeclineAction,
-  ReturnLinesTable,
+  ReturnRailsNote,
   ReturnOrphanBanner,
   ReturnSourceStatus,
   ReturnDetailUnreadableError,
@@ -172,6 +176,12 @@ export function ReturnDetailPage(): ReactElement {
   const writeAccess = useWriteAccess('orders:write', demoMode);
 
   const query = useReturnQuery(returnId);
+  // Gated on attribution: the proposal route answers 409 for an orphan, and the
+  // page already explains that state with its own banner.
+  const proposalQuery = useReturnProposalQuery(
+    returnId,
+    query.data !== undefined && query.data.bucket !== 'orphan'
+  );
   const connectionsQuery = useConnectionsQuery();
   const detail = query.data ?? null;
 
@@ -276,11 +286,33 @@ export function ReturnDetailPage(): ReactElement {
 
       <section className="returns-detail__lines">
         <h2 className="section-title">{RETURN_LINES_COPY.sectionTitle}</h2>
-        <ReturnLinesTable lines={detail.lines} />
+        {/* Once, above the table: the two rails move independently, and that is
+            the single most misread thing about the model. */}
+        <ReturnRailsNote />
+        {/* The table plus its inline receive/dispose flows (#2380). The panel
+            owns the write posture, so a read-only session gets the same table
+            with no expander rather than an expander onto disabled controls. */}
+        <ReturnCustodyPanel
+          detail={detail}
+          sourceName={connection?.name ?? null}
+          writeAccess={writeAccess}
+        />
         {detail.droppedLineCount > 0 ? (
           <p className="text-muted">{describeUnreadableLines(detail.droppedLineCount)}</p>
         ) : null}
       </section>
+
+      <ReturnMoneyPanel detail={detail} writeAccess={writeAccess} />
+
+      {/* Not fetched for an ORPHAN — the backend answers 409 (attribute it
+          first), and asking anyway would render an error for a state the page
+          already explains with its own banner. */}
+      {proposalQuery.data !== undefined ? (
+        <ReturnProposalPanel
+          outcome={proposalQuery.data.outcome}
+          proposal={proposalQuery.data.proposal}
+        />
+      ) : null}
 
       <section className="returns-detail__source">
         <h2 className="section-title">{RETURN_SOURCE_PANEL_COPY.sectionTitle}</h2>

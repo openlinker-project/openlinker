@@ -48,9 +48,16 @@
  * `import type` that erases at build time.
  *
  * `returns` is therefore still NOT registered as a zero-sibling-edge leaf in
- * `libs/core/src/__tests__/barrel-purity.spec.ts`: it now has four real outbound
+ * `libs/core/src/__tests__/barrel-purity.spec.ts`: it now has five real outbound
  * edges rather than one, so the property that table asserts is further from
  * true, not closer.
+ *
+ * #2374 adds the fifth, `returns -> invoicing` (`InvoiceServiceToken` for the
+ * credit-note correction proposal's read of the issued-line snapshot). Acyclic
+ * like the rest: `InvoicingModule` imports IntegrationsModule /
+ * IdentifierMappingModule / SyncModule / SalesDocumentsModule, and none of them
+ * reaches this context. The edge is READ-ONLY — nothing on that path issues a
+ * document, which `__tests__/proposal-never-issues.spec.ts` asserts by grep.
  *
  * @module libs/core/src/returns
  */
@@ -58,18 +65,29 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { IntegrationsModule } from '@openlinker/core/integrations';
+import { InvoicingModule } from '@openlinker/core/invoicing';
 import { OrderChangesModule } from '@openlinker/core/orders';
+import { ProductsModule } from '@openlinker/core/products';
 import { SyncModule } from '@openlinker/core/sync';
 import { ReturnIngestionService } from './application/services/return-ingestion.service';
 import { ReturnReattributionService } from './application/services/return-reattribution.service';
 import { ReturnStatusSyncService } from './application/services/return-status-sync.service';
+import { ReturnAuthorizeService } from './application/services/return-authorize.service';
+import { ReturnCorrectionProposalService } from './application/services/return-correction-proposal.service';
 import { ReturnDeclineService } from './application/services/return-decline.service';
+import { ReturnCustodyService } from './application/services/return-custody.service';
+import { ReturnRefundService } from './application/services/return-refund.service';
 import { ReturnsService } from './application/services/returns.service';
 import { ReturnOrmEntity } from './infrastructure/persistence/entities/return.orm-entity';
 import { ReturnLineOrmEntity } from './infrastructure/persistence/entities/return-line.orm-entity';
+import { ReturnLineEventOrmEntity } from './infrastructure/persistence/entities/return-line-event.orm-entity';
 import { ReturnRepository } from './infrastructure/persistence/repositories/return.repository';
 import {
+  RETURN_AUTHORIZE_SERVICE_TOKEN,
+  RETURN_CORRECTION_PROPOSAL_SERVICE_TOKEN,
+  RETURN_CUSTODY_SERVICE_TOKEN,
   RETURN_DECLINE_SERVICE_TOKEN,
+  RETURN_REFUND_SERVICE_TOKEN,
   RETURN_INGESTION_SERVICE_TOKEN,
   RETURN_REATTRIBUTION_SERVICE_TOKEN,
   RETURN_REPOSITORY_TOKEN,
@@ -79,7 +97,7 @@ import {
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ReturnOrmEntity, ReturnLineOrmEntity]),
+    TypeOrmModule.forFeature([ReturnOrmEntity, ReturnLineOrmEntity, ReturnLineEventOrmEntity]),
     // #2328 order attribution: `IIdentifierMappingService.getInternalId`.
     // Acyclic — IdentifierMappingModule does not import ReturnsModule.
     IdentifierMappingModule,
@@ -95,6 +113,18 @@ import {
     // real cycle rather than a documented rule. Acyclic: `OrderChangesModule`
     // imports nothing but its own `TypeOrmModule.forFeature`.
     OrderChangesModule,
+    // #2370 restock: a return line carries no product id (`resolvedOrderLineId`
+    // is a by-value reference INTO the order snapshot's jsonb and nothing
+    // populates it yet), so the sku is resolved to a variant through
+    // `IProductsService`. Acyclic — `ProductsModule` does not import this one.
+    ProductsModule,
+    // #2374 the credit-note correction proposal: reads the invoice projection
+    // (`IInvoiceService.getLatestIssuedInvoiceForOrder` + its #1297 line
+    // snapshot). The FIFTH outbound edge, and acyclic — `InvoicingModule`
+    // imports only IntegrationsModule / IdentifierMappingModule / SyncModule /
+    // SalesDocumentsModule, none of which reaches this one. Read-only: nothing
+    // on this path issues a document.
+    InvoicingModule,
   ],
   providers: [
     ReturnRepository,
@@ -111,6 +141,33 @@ import {
     // the repository and `IIdentifierMappingService`, both already imported above.
     ReturnReattributionService,
     { provide: RETURN_REATTRIBUTION_SERVICE_TOKEN, useExisting: ReturnReattributionService },
+    // #2370 the custody writes. Adds ONE module edge (`ProductsModule`, above);
+    // `IntegrationsModule` and `SyncModule` were already imported.
+    ReturnCustodyService,
+    { provide: RETURN_CUSTODY_SERVICE_TOKEN, useExisting: ReturnCustodyService },
+    // #2371 the refund trigger. Adds NO module edge: it reaches only the
+    // repository, `IReturnsService`, `IIntegrationsService` and `SyncLockPort`,
+    // all already imported above. It does NOT write the linked `RefundRecord` —
+    // it REPORTS the intent for #2376's controller to write (the #2100
+    // report-don't-persist seam), which is exactly what keeps `OrdersModule` out
+    // of this graph and the `returns -> orders` edge one-way.
+    ReturnRefundService,
+    { provide: RETURN_REFUND_SERVICE_TOKEN, useExisting: ReturnRefundService },
+    // #2372 the authorize WRITE. Adds NO module edge: it reaches only the
+    // repository, `IReturnsService` and `IOrderChangeService`, all already imported
+    // above — and it resolves no adapter at all, because an operator-authored
+    // return has no source to ask.
+    ReturnAuthorizeService,
+    { provide: RETURN_AUTHORIZE_SERVICE_TOKEN, useExisting: ReturnAuthorizeService },
+    // #2374 the credit-note correction PROPOSAL. Adds ONE module edge
+    // (`InvoicingModule`, above). It issues nothing: it reads the invoice
+    // projection, classifies, and records through `IOrderChangeService` — no
+    // adapter is resolved and `issueCorrection` is never referenced.
+    ReturnCorrectionProposalService,
+    {
+      provide: RETURN_CORRECTION_PROPOSAL_SERVICE_TOKEN,
+      useExisting: ReturnCorrectionProposalService,
+    },
   ],
   exports: [
     RETURN_REPOSITORY_TOKEN,
@@ -119,6 +176,10 @@ import {
     RETURN_STATUS_SYNC_SERVICE_TOKEN,
     RETURN_DECLINE_SERVICE_TOKEN,
     RETURN_REATTRIBUTION_SERVICE_TOKEN,
+    RETURN_CUSTODY_SERVICE_TOKEN,
+    RETURN_REFUND_SERVICE_TOKEN,
+    RETURN_AUTHORIZE_SERVICE_TOKEN,
+    RETURN_CORRECTION_PROPOSAL_SERVICE_TOKEN,
   ],
 })
 export class ReturnsModule {}

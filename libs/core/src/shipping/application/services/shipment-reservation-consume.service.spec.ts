@@ -44,6 +44,10 @@ function shipment(id: string, orderId: string, status: ShipmentStatus = 'dispatc
     null,
     null,
     null,
+    // #2373 direction. Outbound: this sweep's candidate query excludes inbound
+    // return labels, so an inbound fixture here would not represent a row the
+    // service can ever be handed.
+    'outbound',
     null,
   );
 }

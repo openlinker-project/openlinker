@@ -1170,6 +1170,20 @@ export class InvoiceService implements IInvoiceService {
     return this.repo.findLatestByOrderId(orderId);
   }
 
+  async getLatestIssuedInvoiceForOrder(orderId: string): Promise<InvoiceRecord | null> {
+    // `findAllByOrderId` is already `createdAt DESC, id DESC`, so the first
+    // `issued` row IS the newest issued document — and because a successful
+    // correction is itself an `InvoiceRecord`, that is automatically the prior
+    // correction's own snapshot rather than the original's (#1297's
+    // correction-of-a-correction rule, satisfied by construction).
+    //
+    // Deliberately NOT `findLatestByOrderId`: a newer `failed` or `pending` row
+    // would mask the document that actually exists, and a correction proposed
+    // against a row the provider never issued corrects nothing.
+    const records = await this.repo.findAllByOrderId(orderId);
+    return records.find((record) => record.status === 'issued') ?? null;
+  }
+
   async findBlockingInvoiceForOrder(orderId: string): Promise<InvoiceRecord | null> {
     // Same predicate `assertNotInvoicedElsewhere` uses, exposed as a projection
     // read for cross-context consumption (#2157) — `FiscalRegistrationService`

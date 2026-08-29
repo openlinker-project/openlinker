@@ -39,6 +39,7 @@ import type {
   ShipmentFilters,
   ShipmentPagination,
 } from '../../../domain/types/shipment-query.types';
+import type { ShipmentDirection } from '../../../domain/types/shipment-direction.types';
 import type {
   CreateShipmentInput,
   UpdateShipmentInput,
@@ -77,18 +78,25 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
     return entity ? this.toDomain(entity) : null;
   }
 
-  async findByOrderId(orderId: string): Promise<readonly Shipment[]> {
+  async findByOrderId(
+    orderId: string,
+    direction: ShipmentDirection,
+  ): Promise<readonly Shipment[]> {
     const entities = await this.repository.find({
-      where: { orderId },
+      where: { orderId, direction },
       order: { createdAt: 'ASC' },
     });
     return entities.map((entity) => this.toDomain(entity));
   }
 
-  async findActiveByOrderId(orderId: string): Promise<Shipment | null> {
+  async findActiveByOrderId(
+    orderId: string,
+    direction: ShipmentDirection,
+  ): Promise<Shipment | null> {
     const entity = await this.repository.findOne({
       where: {
         orderId,
+        direction,
         status: Not(In([...TerminalShipmentStatusValues])),
       },
       order: { createdAt: 'DESC' },
@@ -104,14 +112,18 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
   async findBranchOneByOrderAndConnection(
     orderId: string,
     connectionId: string,
+    direction: ShipmentDirection,
   ): Promise<Shipment | null> {
-    // Matches the partial-unique-index predicate
-    // `UQ_shipments_branch_one_per_order_conn` so the lookup hits exactly
-    // the row the index protects against — at most one row by construction.
+    // Matches the partial-unique index `UQ_shipments_branch_one_per_order_conn`
+    // key-for-key — including `direction`, which #2373 added to its KEY columns
+    // — so the lookup hits exactly the row the index protects against: at most
+    // one row by construction. Dropping `direction` here would match a sibling
+    // row the index deliberately permits.
     const entity = await this.repository.findOne({
       where: {
         orderId,
         connectionId,
+        direction,
         providerShipmentId: IsNull(),
       },
     });
@@ -148,6 +160,13 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
     // `createdAt ASC` so the longest-outstanding shipment is examined first.
     const entities = await this.repository.find({
       where: {
+        // Outbound only. #2347 was written when every row in this table was a
+        // seller-to-buyer dispatch; #2373 put return labels in the same table,
+        // and they reach the very statuses this predicate selects on. An
+        // inbound parcel arriving would otherwise become a consume candidate
+        // and close the order's holds — concluding "the goods left the
+        // building" from one coming back.
+        direction: 'outbound',
         status: In([...ReservationConsumeCandidateStatusValues]),
         reservationConsumedAt: IsNull(),
       },
@@ -180,6 +199,10 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
     entity.id = formatInternalId('Shipment');
     entity.orderId = input.orderId;
     entity.connectionId = input.connectionId;
+    // The ONE application-side default for `direction` (#2373). The DB column
+    // carries none, so an insert that bypasses this builder fails loudly
+    // rather than silently acquiring a cohort.
+    entity.direction = input.direction ?? 'outbound';
     entity.shippingMethod = input.shippingMethod;
     entity.deliveryIntent = input.deliveryIntent ?? null;
     // Atomic-terminal mode (#834): when `initialStatus` is supplied (the
@@ -211,6 +234,7 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
   private buildWhere(filters: ShipmentFilters): FindOptionsWhere<ShipmentOrmEntity> {
     const where: FindOptionsWhere<ShipmentOrmEntity> = {};
     if (filters.orderId !== undefined) where.orderId = filters.orderId;
+    if (filters.direction !== undefined) where.direction = filters.direction;
     // `statuses` (multi-status IN) takes precedence over `status` when both
     // are set (#838 — see ShipmentFilters jsdoc).
     if (filters.statuses !== undefined && filters.statuses.length > 0) {
@@ -284,6 +308,7 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
       entity.deliveryIntent,
       entity.providerCode,
       entity.waybillRelayedAt,
+      entity.direction,
       entity.reservationConsumedAt,
     );
   }

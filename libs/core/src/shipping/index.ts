@@ -25,6 +25,9 @@ export type {
   TerminalShipmentStatus,
 } from './domain/types/shipment-status.types';
 
+export { ShipmentDirectionValues } from './domain/types/shipment-direction.types';
+export type { ShipmentDirection } from './domain/types/shipment-direction.types';
+
 export { ShippingMethodValues, SHIPPING_METHOD } from './domain/types/shipping-method.types';
 export type { ShippingMethod } from './domain/types/shipping-method.types';
 export { DeliveryIntentValues, DELIVERY_INTENT } from './domain/types/delivery-intent.types';

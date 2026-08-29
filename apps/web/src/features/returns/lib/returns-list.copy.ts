@@ -127,7 +127,7 @@ export const RETURNS_ROW_COPY = {
   sourceLabel: 'Source',
   orderLabel: 'Order',
   returnLabel: 'Return',
-  statusLabel: 'Status',
+  stageLabel: 'Stage',
   sourceStatusLabel: 'Source status',
   noExternalId: 'No channel reference',
 } as const;
@@ -152,3 +152,15 @@ export function describeUnreadableRows(count: number): string {
 export function describeRange(from: number, to: number, total: number): string {
   return `Showing ${from}–${to} of ${total}`;
 }
+
+/**
+ * The worklist strip (#2378, spec § 4.1).
+ *
+ * `All returns` is the CLEARED state and is deliberately not called "All open" —
+ * `All open` is one of the six segments and carries a real predicate. Labelling
+ * the clear card "All open" would promise open work and list closed returns.
+ */
+export const RETURNS_SEGMENT_COPY = {
+  stripLabel: 'Filter returns by what needs doing',
+  allReturnsLabel: 'All returns',
+} as const;

@@ -19,7 +19,14 @@
  *
  * @module apps/web/src/features/returns/lib
  */
-import { isReturnBucket, type ReturnFilters } from '../api/returns.types';
+import {
+  isReturnBucket,
+  isReturnLineReason,
+  isReturnMoneyState,
+  type ReturnFilters,
+} from '../api/returns.types';
+import { isReturnSegment } from './return-segments';
+import { isReturnStage } from './return-stage.types';
 
 /**
  * Every param this page owns. `offset` is listed so a filter change can clear
@@ -31,6 +38,18 @@ export const RETURN_FILTER_PARAMS = [
   'sourceConnectionId',
   'createdFrom',
   'createdTo',
+  // #2378. `attention` and `orphan` are deliberately ABSENT: spec § 4.3 names
+  // them, but they are SEGMENTS, not value filters, and two spellings of one
+  // filter is drift by construction. Three of § 4.3's own six segments span two
+  // states each, so no single-valued param can name them — hence one `segment`
+  // param with six values. Recorded here so the deviation is not reconstructed
+  // from a diff later.
+  'segment',
+  'stage',
+  'money',
+  'reason',
+  'openedFrom',
+  'openedTo',
 ] as const;
 
 export const RETURN_OFFSET_PARAM = 'offset';
@@ -41,12 +60,27 @@ export function readReturnFilters(params: URLSearchParams): ReturnFilters {
   const sourceConnectionId = params.get('sourceConnectionId');
   const createdFrom = params.get('createdFrom');
   const createdTo = params.get('createdTo');
+  const segment = params.get('segment');
+  const stage = params.get('stage');
+  const money = params.get('money');
+  const reason = params.get('reason');
+  const openedFrom = params.get('openedFrom');
+  const openedTo = params.get('openedTo');
 
   return {
     bucket: isReturnBucket(bucket) ? bucket : undefined,
     sourceConnectionId: sourceConnectionId ?? undefined,
     createdFrom: createdFrom ?? undefined,
     createdTo: createdTo ?? undefined,
+    // Every closed union is NARROWED by its guard, never cast: an unrecognised
+    // value is dropped rather than forwarded, because the API validates each
+    // with `@IsIn` and a URL typo would otherwise 400 the whole page.
+    segment: isReturnSegment(segment) ? segment : undefined,
+    stage: isReturnStage(stage) ? stage : undefined,
+    money: isReturnMoneyState(money) ? money : undefined,
+    reason: isReturnLineReason(reason) ? reason : undefined,
+    openedFrom: openedFrom ?? undefined,
+    openedTo: openedTo ?? undefined,
   };
 }
 
@@ -73,7 +107,16 @@ export function hasActiveReturnFilters(filters: ReturnFilters): boolean {
     filters.bucket !== undefined ||
     filters.sourceConnectionId !== undefined ||
     filters.createdFrom !== undefined ||
-    filters.createdTo !== undefined
+    filters.createdTo !== undefined ||
+    // #2378. A dimension missing from this list leaves `Clear filters` hidden
+    // while the list is filtered — the operator sees a short list and no way to
+    // widen it, which reads as "you have no returns".
+    filters.segment !== undefined ||
+    filters.stage !== undefined ||
+    filters.money !== undefined ||
+    filters.reason !== undefined ||
+    filters.openedFrom !== undefined ||
+    filters.openedTo !== undefined
   );
 }
 

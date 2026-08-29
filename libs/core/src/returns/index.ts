@@ -27,7 +27,12 @@ export * from './domain/types/return.types';
 export * from './domain/types/return-line.types';
 export { ReturnRecord } from './domain/entities/return-record.entity';
 export { ReturnLine } from './domain/entities/return-line.entity';
-export type { ReturnRepositoryPort } from './domain/ports/return-repository.port';
+export type {
+  ReturnRepositoryPort,
+  // #2370: the shape a `runLineWrite` callback returns. Exported alongside the
+  // port because anyone typing an implementation of it needs the decision type.
+  ReturnLineWriteDecision,
+} from './domain/ports/return-repository.port';
 export { ReturnsModule } from './returns.module';
 export * from './returns.tokens';
 
@@ -119,3 +124,221 @@ export type { IReturnReattributionService } from './application/services/return-
 // offered for this return". `ReturnDeclineUnsupportedReasonValues` is exported
 // as a value because it is the reason vocabulary a response DTO enumerates.
 export * from './domain/types/return-query.types';
+
+// Custody transitions (#2367, `W2-30`): the rules that MOVE
+// `ReturnLine.custodyState`, which Wave 1c declared and left undriven. Pure
+// functions, no service — see the domain-service's header for why, and for the
+// clock rule that keeps `in_transit` a source-reported fact. #2370 (`W2-33`)
+// is the consumer: it persists the returned outcome inside its own transaction
+// rather than assigning the column itself.
+export {
+  advanceReturnCustodyToInTransit,
+  applyReturnCustodyReceipt,
+  applyReturnCustodyDisposition,
+  markReturnCustodyNotReturned,
+  isReturnCustodyFinished,
+} from './domain/domain-services/return-custody-transitions.domain-service';
+export type {
+  ReturnCustodyLineFacts,
+  ReturnCustodyOutcome,
+} from './domain/domain-services/return-custody-transitions.domain-service';
+export {
+  ReturnCustodyTransitionError,
+  ReturnCustodyRefusalReasonValues,
+} from './domain/exceptions/return-custody-transition.error';
+export type { ReturnCustodyRefusalReason } from './domain/exceptions/return-custody-transition.error';
+
+// Custody WRITES (#2370, `W2-33`): receive, dispose, and the operator
+// attestation that resolves a refused restock — plus the append-only per-line
+// ACT LEDGER those writes record themselves in. The ledger exists because a
+// COUNTER cannot key an idempotent trigger firing: #2360 needs a three-parcel
+// return to fire `return.received` three times, and `1 -> 2 -> 3` carries no
+// per-arrival identity and is indistinguishable from a correction. The counters
+// remain the invariant, still guarded by `CHK_return_lines_quantity_ordering`.
+export * from './domain/types/return-line-event.types';
+export * from './domain/types/return-timeline-entry.types';
+export { ReturnLineEvent } from './domain/entities/return-line-event.entity';
+export {
+  classifyRestockSuccess,
+  classifyRestockFailure,
+  blockedBeforeMaster,
+} from './domain/domain-services/restock-outcome.domain-service';
+export type { RestockOutcome } from './domain/domain-services/restock-outcome.domain-service';
+export { ReturnLineNotFoundError } from './domain/exceptions/return-line-not-found.error';
+export { ReturnRestockAttestationInvalidError } from './domain/exceptions/return-restock-attestation-invalid.error';
+export { ReturnCustodyContendedError } from './domain/exceptions/return-custody-contended.error';
+export {
+  returnCustodyLockKey,
+  RETURN_CUSTODY_LOCK_TTL_MS,
+} from './application/services/return-custody-lock';
+export { ReturnRestockTargetStatusValues } from './application/services/return-custody.service.interface';
+export type {
+  IReturnCustodyService,
+  ReceiveLineInput,
+  ReceiveLineResult,
+  DisposeLineInput,
+  DisposeLineResult,
+  AttestStockResult,
+  RestockBlockedDetail,
+  RestockAttestationDetail,
+  MarkNotReturnedInput,
+  MarkNotReturnedResult,
+  ReturnRestockTarget,
+  ReturnRestockTargetStatus,
+} from './application/services/return-custody.service.interface';
+
+// The money WRITE (#2371, `W2-34`, ADR-056): the refund trigger, the
+// `in_doubt` block, and the observation that is the only path to `refunded`.
+//
+// Two properties a consumer must not undo. The attempted-predicate is persisted
+// BEFORE the provider call and the persist IS the block (a single conditional
+// UPDATE, so a lost lock cannot double-refund); and `in_doubt` is written only
+// where a boundary was ACTUALLY crossed — the no-executor path, the only one
+// reachable today, claims straight to `triggered` because asserting doubt about
+// a call that never happened is a false statement about the operator's money.
+//
+// This service writes no `RefundRecord`: it REPORTS a `ReturnRefundRecordIntent`
+// for the caller to write through `IOrderRefundService` (the #2100
+// report-don't-persist seam), which is what keeps `OrdersModule` out of this
+// context's graph.
+export {
+  REFUND_ATTEMPTABLE_MONEY_STATES,
+  isRefundAttemptable,
+  blocksRefundAttempt,
+} from './domain/types/return-line.types';
+export {
+  classifyRefundOutcome,
+  classifyRefundFailure,
+  refundConfirmedOutOfBand,
+} from './domain/domain-services/refund-outcome.domain-service';
+export type { RefundOutcome } from './domain/domain-services/refund-outcome.domain-service';
+export {
+  ReturnRefundBlockedError,
+  ReturnRefundBlockReasonValues,
+} from './domain/exceptions/return-refund-blocked.error';
+export type { ReturnRefundBlockReason } from './domain/exceptions/return-refund-blocked.error';
+export { ReturnRefundContendedError } from './domain/exceptions/return-refund-contended.error';
+export { ReturnRefundObservationInvalidError } from './domain/exceptions/return-refund-observation-invalid.error';
+export {
+  returnRefundLockKey,
+  RETURN_REFUND_LOCK_TTL_MS,
+} from './application/services/return-refund-lock';
+export type {
+  IReturnRefundService,
+  TriggerRefundInput,
+  TriggerRefundResult,
+  ReturnRefundRecordIntent,
+  RecordRefundObservationInput,
+} from './application/services/return-refund.service.interface';
+
+// The authorize WRITE, the orphan MATCH and the operator-authored CREATE
+// (#2372, `W2-35`, ADR-060/ADR-044).
+//
+// Three rules a consumer must not undo. `return.authorize` is restricted to
+// `origin: 'operator_authored'` — OL must never pretend to decide what a
+// marketplace already decided, which is why the refusal is a named error rather
+// than a no-op. Attribution is MONOTONIC and there is no unmatch, so a match is an
+// irreversible operator act. And an operator-authored return writes
+// `externalReturnId: null` — core never synthesises a source key, because the row
+// would then claim a source it has not got (a source ADAPTER minting a
+// deterministic key for its own platform is a different, established thing).
+export {
+  ReturnAuthorizeRefusedError,
+  ReturnAuthorizeRefusalReasonValues,
+} from './domain/exceptions/return-authorize-refused.error';
+export type { ReturnAuthorizeRefusalReason } from './domain/exceptions/return-authorize-refused.error';
+export {
+  ReturnMatchRefusedError,
+  ReturnMatchRefusalReasonValues,
+} from './domain/exceptions/return-match-refused.error';
+export type { ReturnMatchRefusalReason } from './domain/exceptions/return-match-refused.error';
+export {
+  ReturnRecordRefusedError,
+  ReturnRecordRefusalReasonValues,
+} from './domain/exceptions/return-record-refused.error';
+export type { ReturnRecordRefusalReason } from './domain/exceptions/return-record-refused.error';
+export { AuthorizeReturnOutcomeValues } from './application/services/return-authorize.service.interface';
+export type {
+  IReturnAuthorizeService,
+  AuthorizeReturnInput,
+  AuthorizeReturnOutcome,
+  AuthorizeReturnResult,
+} from './application/services/return-authorize.service.interface';
+export type {
+  MatchOrphanToOrderInput,
+  RecordReturnInput,
+  RecordReturnLineInput,
+} from './application/services/returns.service.interface';
+export type { ReturnAttributionMatch } from './domain/ports/return-repository.port';
+
+// The credit-note correction PROPOSAL (#2374, `W2-38`, ADR-060/ADR-044).
+//
+// A proposal is DATA. Nothing behind this surface issues a correction, contacts
+// a provider, or confers authority to issue one — auto-issue stays gated on
+// `InvoiceLine` gaining a stable reference, which it has not got. The positional
+// ambiguity is SHOWN (`ambiguous` lists every candidate and selects none) rather
+// than resolved, because a correction transmitted to a tax authority cannot be
+// withdrawn.
+export {
+  ReturnCorrectionLineStatusValues,
+  ReturnCorrectionNoMatchReasonValues,
+  ReturnCorrectionProposalOutcomeValues,
+} from './domain/types/return-correction-proposal.types';
+export type {
+  ReturnCorrectionCandidate,
+  ReturnCorrectionLineStatus,
+  ReturnCorrectionNoMatchReason,
+  ReturnCorrectionProposal,
+  ReturnCorrectionProposalLine,
+  ReturnCorrectionProposalOutcome,
+  ReturnCorrectionProposalResult,
+} from './domain/types/return-correction-proposal.types';
+export {
+  classifyReturnCorrectionLines,
+  describeCorrectionNoMatchReason,
+  normalizeCorrectionLineName,
+} from './domain/domain-services/return-correction-matching.domain-service';
+export type {
+  CorrectionReturnLineInput,
+  CorrectionSnapshotLine,
+} from './domain/domain-services/return-correction-matching.domain-service';
+export type {
+  BuildReturnCorrectionProposalInput,
+  IReturnCorrectionProposalService,
+} from './application/services/return-correction-proposal.service.interface';
+
+// The derived operator STAGE (#2377, `W2-40`, returns spec § 3.2).
+//
+// A presentation projection, never a persisted column — if a future wave wants
+// to persist it, that is a model change needing its own ADR. The array order IS
+// the ordinal: the SQL `CASE` is built by iterating `ReturnStageValues`, so a
+// reorder changes behaviour and `scripts/check-return-stage-mirror.mjs` treats
+// one as a hard failure. The shared fixture table lives on the
+// `@openlinker/core/returns/testing` subpath, NOT here — it is test data.
+export {
+  ReturnStageValues,
+  deriveReturnStage,
+  expectedQuantity,
+  isReturnStage,
+  undisposedQuantity,
+} from './domain/types/return-stage.types';
+export type {
+  ReturnStage,
+  ReturnStageCounters,
+  ReturnStageFacts,
+} from './domain/types/return-stage.types';
+
+// The operator-facing SEGMENTS of the returns list (#2378, `W2-41`, spec § 4.1).
+//
+// Segments OVERLAP; stages PARTITION. `ReturnSegmentCounts.total` is NOT the sum
+// of `bySegment` and no assertion says it is — the type's own docblock carries
+// that warning, because the sibling stage shape asserts exactly the opposite.
+export {
+  ReturnSegmentValues,
+  ATTENTION_WORTHY_RETURN_SEGMENTS,
+  isReturnSegment,
+} from './domain/types/return-segment.types';
+export type {
+  ReturnSegment,
+  ReturnSegmentCounts,
+} from './domain/types/return-segment.types';

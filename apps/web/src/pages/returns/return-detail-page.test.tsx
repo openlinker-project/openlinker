@@ -56,6 +56,15 @@ function makeLine(overrides: Partial<ReturnLine> = {}): ReturnLine {
 function makeDetail(overrides: Partial<ReturnDetail> = {}): ReturnDetail {
   return {
     id: RETURN_ID,
+    counters: {
+      lineCount: 1,
+      notReturnedLineCount: 0,
+      quantityAdvised: 5,
+      notReturnedQuantityAdvised: 0,
+      quantityReceived: 0,
+      quantityRestocked: 0,
+      quantityScrapped: 0,
+    },
     sourceConnectionId: 'conn_1',
     externalReturnId: 'RET-1',
     internalOrderId: 'ol_order_bbbbbbbb2222',
@@ -72,6 +81,17 @@ function makeDetail(overrides: Partial<ReturnDetail> = {}): ReturnDetail {
     lines: [makeLine()],
     droppedLineCount: 0,
     declineAvailability: { supported: true, reason: null },
+    restockBlocked: null,
+    restockBlocks: [],
+    restockAttestations: [],
+    refunds: [],
+    orderCurrency: 'PLN',
+    restockTarget: {
+      status: 'resolved',
+      connectionId: 'conn_master',
+      connectionName: 'Warehouse PrestaShop',
+      candidateCount: null,
+    },
     ...overrides,
   };
 }
@@ -81,12 +101,17 @@ interface SetupOptions {
   getError?: unknown;
   declineFn?: Mock;
   getFn?: Mock;
+  receiveLine?: Mock;
+  disposeLine?: Mock;
+  getCorrectionProposal?: Mock;
   authenticated?: boolean;
 }
 
 interface SetupResult extends RenderResult {
   getFn: Mock;
   declineFn: Mock;
+  receiveLine: Mock;
+  disposeLine: Mock;
 }
 
 function setup(options: SetupOptions = {}): SetupResult {
@@ -97,8 +122,21 @@ function setup(options: SetupOptions = {}): SetupResult {
       : vi.fn().mockResolvedValue(options.detail ?? makeDetail()));
   const declineFn = options.declineFn ?? vi.fn();
 
+  const receiveLine = options.receiveLine ?? vi.fn().mockResolvedValue({ line: {}, eventId: 'e1' });
+  const disposeLine =
+    options.disposeLine ??
+    vi.fn().mockResolvedValue({ line: {}, eventId: 'e2', restockBlocked: null });
+
   const apiClient = createMockApiClient({
-    returns: { get: getFn, decline: declineFn },
+    returns: {
+      get: getFn,
+      decline: declineFn,
+      receiveLine,
+      disposeLine,
+      getCorrectionProposal:
+        options.getCorrectionProposal ??
+        vi.fn().mockResolvedValue({ outcome: 'no-invoice', proposal: null }),
+    },
     connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
   });
 
@@ -115,7 +153,7 @@ function setup(options: SetupOptions = {}): SetupResult {
     },
   );
 
-  return { ...result, getFn, declineFn };
+  return { ...result, getFn, declineFn, receiveLine, disposeLine };
 }
 
 describe('ReturnDetailPage', () => {
@@ -359,6 +397,209 @@ describe('ReturnDetailPage', () => {
       // unauthorized session), distinct from the record's own state.
       expect(await screen.findByText(/Allegro Main: COMMISSION_REFUND_CLAIMED/)).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Decline return' })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('money and proposal panels (#2382)', () => {
+    it('should render a recorded refund, attributed so it never implies OL moved money', async () => {
+      setup({
+        detail: makeDetail({
+          refunds: [
+            {
+              id: 'ref-1',
+              amount: '25.00',
+              currency: 'PLN',
+              reason: 'withdrawal',
+              note: null,
+              recordedAt: '2026-08-20T10:00:00.000Z',
+              executedBy: 'operator_out_of_band',
+            },
+          ],
+        }),
+      });
+
+      expect(await screen.findByText('25.00 PLN')).toBeInTheDocument();
+      // The honesty device: OpenLinker ships no refund write.
+      expect(
+        screen.getByText(/OpenLinker did not move the money/),
+      ).toBeInTheDocument();
+    });
+
+    it('should offer no refund control on an orphan, and say why', async () => {
+      setup({ detail: makeDetail({ bucket: 'orphan', internalOrderId: null }) });
+
+      expect(
+        await screen.findByText(/not matched to an order, so a refund cannot be recorded/),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Confirm refund' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('should MOUNT the proposal panel — a tested component nobody can reach is dead code', async () => {
+      setup({
+        getCorrectionProposal: vi
+          .fn()
+          .mockResolvedValue({ outcome: 'no-invoice', proposal: null }),
+      });
+
+      expect(await screen.findByText(/No invoice has been issued/)).toBeInTheDocument();
+    });
+
+    it('should NOT ask for a proposal on an orphan — the route answers 409', async () => {
+      const getCorrectionProposal = vi.fn();
+      setup({
+        detail: makeDetail({ bucket: 'orphan', internalOrderId: null }),
+        getCorrectionProposal,
+      });
+
+      expect(await screen.findByText('What came back')).toBeInTheDocument();
+      expect(getCorrectionProposal).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('restock-blocked surfacing (#2381)', () => {
+    it('should render the persistent notice from the SERVER READ, not a mutation response', async () => {
+      setup({
+        detail: makeDetail({
+          lines: [makeLine({ quantityReceived: 2, custodyState: 'received' })],
+          restockBlocks: [
+            {
+              eventId: 'evt-1',
+              returnLineId: 'ol_line_1',
+              quantity: 2,
+              sku: 'SKU-1',
+              reason: 'master-refused',
+              detail: null,
+              connectionId: 'conn-master',
+              connectionName: 'Warehouse PrestaShop',
+              state: 'blocked',
+            },
+          ],
+        }),
+      });
+
+      // Nothing was clicked in this test. The notice is present purely because
+      // the read reported it, which is what makes it survive a reload — the
+      // property spec § 5.4 requires and #2380's session state could not give.
+      expect(await screen.findByText('Stock was not added.')).toBeInTheDocument();
+      // Named in the body, the remedy and the Open action — all three are
+      // deliberate, so assert presence rather than uniqueness.
+      expect(screen.getAllByText(/Warehouse PrestaShop/).length).toBeGreaterThan(0);
+    });
+
+    it('should render the attested row, and no alarm, once handled', async () => {
+      setup({
+        detail: makeDetail({
+          lines: [makeLine({ quantityReceived: 2, custodyState: 'received' })],
+          restockBlocks: [],
+          restockAttestations: [
+            {
+              eventId: 'evt-a',
+              returnLineId: 'ol_line_1',
+              quantity: 2,
+              actorUserId: 'someone',
+              occurredAt: '2026-08-20T10:00:00.000Z',
+              note: null,
+            },
+          ],
+        }),
+      });
+
+      expect(
+        await screen.findByText(/OpenLinker did not change your stock/),
+      ).toBeInTheDocument();
+      // A resolution that leaves the alarm ringing trains the operator to ignore
+      // the alarm; one that leaves no trace trains them to distrust the click.
+      expect(screen.queryByText('Stock was not added.')).not.toBeInTheDocument();
+    });
+
+    it('should never render blocked units as restocked — the acceptance criterion', async () => {
+      setup({
+        detail: makeDetail({
+          lines: [
+            makeLine({ quantityAdvised: 2, quantityReceived: 2, quantityRestocked: 0, custodyState: 'received' }),
+          ],
+          restockBlocks: [
+            {
+              eventId: 'evt-1',
+              returnLineId: 'ol_line_1',
+              quantity: 2,
+              sku: 'SKU-1',
+              reason: 'master-refused',
+              detail: null,
+              connectionId: 'conn-master',
+              connectionName: 'Warehouse PrestaShop',
+              state: 'blocked',
+            },
+          ],
+        }),
+      });
+
+      expect(await screen.findByText('What came back')).toBeInTheDocument();
+      // The units are counted as RECEIVED and nowhere reported as restocked —
+      // the counter column and every rendered string agree on that.
+      expect(document.body.textContent).not.toMatch(/2 restocked/i);
+    });
+  });
+
+  describe('the receive flow (#2380)', () => {
+    it('should NOT record anything until the bulk pre-fill is explicitly confirmed', async () => {
+      const user = userEvent.setup();
+      const { receiveLine } = setup();
+
+      await user.click(await screen.findByRole('button', { name: 'Receive all as advised' }));
+
+      // The dialog is open and nothing has been recorded yet. This is the whole
+      // point of the confirm: it records real arrivals on every outstanding
+      // line, and that is not undoable from this screen.
+      expect(
+        await screen.findByText('Record every line as fully arrived?'),
+      ).toBeInTheDocument();
+      expect(receiveLine).not.toHaveBeenCalled();
+
+      await user.click(screen.getByRole('button', { name: 'Record all arrivals' }));
+
+      await waitFor(() => expect(receiveLine).toHaveBeenCalledTimes(1));
+      // The full outstanding quantity, which is what "as advised" means.
+      expect(receiveLine).toHaveBeenCalledWith(
+        RETURN_ID,
+        'ol_line_1',
+        expect.objectContaining({ quantity: 2 }),
+      );
+    });
+
+    it('should record nothing when the confirm is dismissed', async () => {
+      const user = userEvent.setup();
+      const { receiveLine } = setup();
+
+      await user.click(await screen.findByRole('button', { name: 'Receive all as advised' }));
+      await user.click(await screen.findByRole('button', { name: 'Go back' }));
+
+      expect(receiveLine).not.toHaveBeenCalled();
+    });
+
+    it('should offer no bulk action when every line has already arrived', async () => {
+      setup({
+        detail: makeDetail({
+          lines: [makeLine({ quantityReceived: 2, custodyState: 'received' })],
+        }),
+      });
+
+      expect(await screen.findByText("What came back")).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Receive all as advised' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('should offer no inline custody flow to a session without write access', async () => {
+      setup({ authenticated: false });
+
+      expect(await screen.findByText("What came back")).toBeInTheDocument();
+      // No expander onto controls the session cannot use.
+      expect(
+        screen.queryByRole('button', { name: 'Receive all as advised' }),
+      ).not.toBeInTheDocument();
     });
   });
 });

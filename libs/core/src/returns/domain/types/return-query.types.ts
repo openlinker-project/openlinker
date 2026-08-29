@@ -32,6 +32,10 @@
  * @see docs/architecture/adrs/060-returns-aggregate-above-source-projection.md
  */
 import type { ReturnBucket } from './return-bucket.types';
+import type { ReturnStage } from './return-stage.types';
+import type { ReturnSegment } from './return-segment.types';
+import type { ReturnMoneyState } from './return-line.types';
+import type { RefundReason } from '@openlinker/core/orders/types';
 
 /**
  * What a returns list read is narrowed by. Every field is optional; see rule 1.
@@ -50,6 +54,56 @@ export interface ReturnListFilter {
   createdFrom?: Date;
   /** Inclusive upper bound on `createdAt`. */
   createdTo?: Date;
+  /**
+   * One derived operator stage (#2377, spec § 4.3). Absent = every stage.
+   *
+   * Matched against `RETURN_STAGE_EXPR` — the SAME single expression the stage
+   * counts bucket on, so no per-arm predicate can drift from its own count.
+   */
+  stage?: ReturnStage;
+  /**
+   * One operator-facing segment (#2378, spec § 4.1). Absent = every segment.
+   *
+   * A SEPARATE dimension from `bucket`, deliberately. `orphans` is an ordinary
+   * segment predicate here — it is NOT translated into `bucket: 'orphan'` at any
+   * boundary, because the segment counts strip the `segment` dimension and a
+   * translated value would leave `bucket` applied, making the orphans card report
+   * the count of the scope it is already in. `bucket` remains independently
+   * usable behind the existing bucket chips; a segment click never writes it.
+   */
+  segment?: ReturnSegment;
+  /** One money state (#2378, spec § 4.3). Absent = every state. */
+  money?: ReturnMoneyState;
+  /** One return reason (#2378, spec § 4.3). Absent = every reason. */
+  reason?: RefundReason;
+  /**
+   * Inclusive lower bound on `openedAt` — the SOURCE's own instant.
+   *
+   * Deliberately NOT `createdAt`, which is OpenLinker's ingestion clock. Wiring
+   * the spec's `openedFrom` to the existing `createdFrom` arm would answer a
+   * question about the marketplace's timeline with OL's.
+   */
+  openedFrom?: Date;
+  /** Inclusive upper bound on `openedAt`. See {@link ReturnListFilter.openedFrom}. */
+  openedTo?: Date;
+}
+
+/**
+ * How many returns sit in each derived stage, over one filter scope (#2377).
+ *
+ * Read from ONE scan alongside the total, so the six numbers and the total
+ * cannot disagree because of a concurrent write.
+ *
+ * **Scoping rule, and it is the easy thing to get wrong**: these are computed
+ * with `stage` REMOVED from the caller's filter (and every other dimension
+ * applied), for the reason `ReturnBucketCounts` states about `bucket` — the
+ * count for the dimension you are NOT looking at must stay truthful. Applied
+ * with `stage` still in the filter, every chip would show the count of the
+ * stage already selected.
+ */
+export interface ReturnStageCounts {
+  total: number;
+  byStage: Record<ReturnStage, number>;
 }
 
 /**

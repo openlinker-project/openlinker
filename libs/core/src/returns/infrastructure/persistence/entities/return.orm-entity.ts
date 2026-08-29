@@ -130,6 +130,27 @@ export class ReturnOrmEntity {
   closedAt!: Date | null;
 
   /**
+   * When an OPERATOR matched this orphan to an order, and who (#2372).
+   *
+   * Both are NULL for a return attributed at ingestion and for one the #2332
+   * background reconcile resolved — which is the point: OL's order timeline is
+   * DERIVED from persisted facts (there is no order-event table), and
+   * `internalOrderId` becoming non-null carries no *when* and no *who*. These two
+   * columns are what make "an operator matched this" a distinguishable, renderable
+   * fact rather than an inference.
+   *
+   * OL's own clock is authoritative here: the match is an act an operator performs
+   * inside OpenLinker, with OL as the sensor — the other side of the rule that
+   * keeps a channel-reported instant (#2336's `declinedAt`, #2367's `in_transit`)
+   * out of OL's hands.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  matchedAt!: Date | null;
+
+  @Column({ type: 'text', nullable: true })
+  matchedByUserId!: string | null;
+
+  /**
    * The OMS inert states reported against this return (#2352) — an array of
    * `AuthorityAttentionEntry`, or NULL when nothing is reported.
    *

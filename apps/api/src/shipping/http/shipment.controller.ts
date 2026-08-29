@@ -126,6 +126,7 @@ export class ShipmentController {
     const filters: ShipmentFilters = {
       orderId: query.orderId,
       status: query.status,
+      direction: query.direction,
       connectionId: query.connectionId,
       shippingMethod: query.shippingMethod,
       hasTracking: query.hasTracking,

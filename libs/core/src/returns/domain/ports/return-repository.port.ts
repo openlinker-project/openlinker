@@ -23,14 +23,25 @@
  * @module domain/ports
  */
 import type { ReturnRecord } from '../entities/return-record.entity';
+import type { ReturnLine } from '../entities/return-line.entity';
+import type { ReturnLineEvent } from '../entities/return-line-event.entity';
+import type { ReturnCustodyOutcome } from '../domain-services/return-custody-transitions.domain-service';
+import type {
+  CreateReturnLineEventInput,
+  SettleReturnLineEventInput,
+} from '../types/return-line-event.types';
+import type { ReturnMoneyState } from '../types/return-line.types';
 import type { CreateReturnRecordInput } from '../types/return.types';
 import type { UpsertReturnRecordInput, UpsertReturnResult } from '../types/return-upsert.types';
-import type {
-  ReturnSourceSweepFilter,
-  ReturnSweepCandidate,
-} from '../types/return-sweep.types';
+import type { ReturnSourceSweepFilter, ReturnSweepCandidate } from '../types/return-sweep.types';
 import type { ReturnReattributionCandidate } from '../types/return-reattribution.types';
-import type { ReturnBucketCounts, ReturnListFilter } from '../types/return-query.types';
+import type {
+  ReturnBucketCounts,
+  ReturnListFilter,
+  ReturnStageCounts,
+} from '../types/return-query.types';
+import type { ReturnSegmentCounts } from '../types/return-segment.types';
+import type { ReturnTimelineEntriesForOrder } from '../types/return-timeline-entry.types';
 import type {
   AuthorityAttentionOutcome,
   AuthorityAttentionProducer,
@@ -178,7 +189,35 @@ export interface ReturnRepositoryPort {
    * return is attributed, just not by this call) and the pass counts it
    * `alreadyAttributed`, never `unresolved` and never `failed`.
    */
-  claimAttribution(id: string, internalOrderId: string): Promise<boolean>;
+  claimAttribution(
+    id: string,
+    internalOrderId: string,
+    /**
+     * OPTIONAL operator provenance (#2372). Supplied by
+     * `IReturnsService.matchOrphanToOrder`, omitted by the #2332 background
+     * reconcile — which is exactly the distinction the two columns exist to make.
+     * Optional so the reconcile's existing two-argument call is source-compatible
+     * (the `listExternalIdsByConnection` page-argument precedent, #2219); with it
+     * absent the emitted statement is byte-identical to the pre-#2372 one.
+     */
+    match?: ReturnAttributionMatch
+  ): Promise<boolean>;
+
+  /**
+   * Stamp `authorizedAt` at most once (#2372).
+   *
+   * Conditional on `"authorizedAt" IS NULL` — the `claimDeclinedAt` /
+   * `claimWaybillRelay` shape — and **this single statement is the whole
+   * at-most-once guarantee**, not the ADR-044 proposal slot and not a lock, in the
+   * same way `claimRefundAttempt` is for money. Reports `affected > 0`.
+   *
+   * Claim-only, no release: an authorization does not become untrue.
+   *
+   * The caller passes OL's OWN clock here, and that is correct — an operator
+   * authorizing a return OL itself authored is an act performed inside
+   * OpenLinker, unlike `claimDeclinedAt`, which must carry the SOURCE's instant.
+   */
+  claimAuthorizedAt(id: string, at: Date): Promise<boolean>;
 
   /**
    * Set — or clear — ONE producer's OMS inert state on this return (#2352).
@@ -293,11 +332,7 @@ export interface ReturnRepositoryPort {
    * See {@link ReturnListFilter} for the rule that an absent filter field adds
    * no arm.
    */
-  listReturns(
-    filter: ReturnListFilter,
-    limit: number,
-    offset: number
-  ): Promise<ReturnRecord[]>;
+  listReturns(filter: ReturnListFilter, limit: number, offset: number): Promise<ReturnRecord[]>;
 
   /**
    * The attribution partition over the same filter scope (#2334).
@@ -321,4 +356,251 @@ export interface ReturnRepositoryPort {
    * field would make the two reads disagree about what the filter means.
    */
   countReturnsByBucket(filter: ReturnListFilter): Promise<ReturnBucketCounts>;
+
+  /**
+   * How many returns sit in each derived operator stage (#2377), over one
+   * filter scope.
+   *
+   * The implementation strips `stage` from the filter itself — the count for the
+   * dimension you are NOT looking at must stay truthful, and enforcing that here
+   * rather than at each caller is what stops every chip reporting the count of
+   * the stage already selected.
+   */
+  countReturnsByStage(filter: ReturnListFilter): Promise<ReturnStageCounts>;
+
+  /**
+   * How many returns sit in each operator-facing segment (#2378), over one
+   * filter scope.
+   *
+   * Segments OVERLAP — `total` is not their sum, and no assertion says it is.
+   * Strips `segment` from the filter itself, for the reason
+   * {@link countReturnsByStage} strips `stage`.
+   */
+  countReturnsBySegment(filter: ReturnListFilter): Promise<ReturnSegmentCounts>;
+
+  /**
+   * One line plus its parent return, WITHOUT a row lock (#2370).
+   *
+   * For reads that write nothing and for the validation pass the dispose path
+   * runs before it crosses the inventory-master boundary. Every write path uses
+   * {@link ReturnRepositoryPort.runLineWrite} instead, which locks.
+   */
+  findLine(lineId: string): Promise<{ line: ReturnLine; record: ReturnRecord } | null>;
+
+  /**
+   * Run a custody write against a line held under `SELECT … FOR UPDATE` (#2370).
+   *
+   * **The lock is the point, and the DB CHECK cannot replace it.** Every custody
+   * transition computes `quantityReceived + n` from a value read beforehand, so
+   * two concurrent receipts of 3 against `advised: 5` both read 0, both compute
+   * 3, and the second write wins — the line records 3, not 6.
+   * `CHK_return_lines_quantity_ordering` is silent, because `3 <= 5` is legal:
+   * the constraint guarantees no IMPOSSIBLE line is persisted, never that no
+   * update is lost. So the read and the write happen inside one transaction with
+   * the row locked, and the callback receives the locked state.
+   *
+   * The callback returns the act to append and, optionally, the custody outcome
+   * to apply — optional because a blocked restock IS a disposition that must be
+   * recorded while its counters must NOT move (spec § 5.4: the units stay in
+   * `quantityReceived`, and the attestation is what later moves them).
+   */
+  runLineWrite<T>(
+    lineId: string,
+    /**
+     * Decides the write from the LOCKED row. May be synchronous — the decision
+     * is a pure transition over state the repository has already read, so
+     * nothing inside it needs to await; the implementation awaits the result
+     * either way, so an async callback stays legal for a future caller that
+     * genuinely needs one.
+     */
+    write: (locked: {
+      line: ReturnLine;
+      record: ReturnRecord;
+    }) => ReturnLineWriteDecision<T> | Promise<ReturnLineWriteDecision<T>>
+  ): Promise<{ event: ReturnLineEvent; result: T }>;
+
+  /**
+   * Settle an already-persisted act once the master has answered (#2370).
+   *
+   * Split from the append because the act is written BEFORE the adapter call —
+   * the ADR-056 attempted-predicate ordering — so that a process dying mid-call
+   * leaves an `in_doubt` row rather than silence. This is the second half.
+   *
+   * Takes an OPTIONAL custody outcome for the same reason
+   * {@link ReturnRepositoryPort.runLineWrite} does: a success moves the
+   * counters, a block does not, and both settle the same act.
+   */
+  settleLineRestock(
+    eventId: string,
+    lineId: string,
+    patch: SettleReturnLineEventInput,
+    /**
+     * Computes the custody move from the row as it stands under the lock, or
+     * returns `null` to settle the act WITHOUT moving any counter (the blocked
+     * branch, spec § 5.4).
+     *
+     * **A callback rather than a precomputed outcome, and that is the whole
+     * point.** A `ReturnCustodyOutcome` carries ABSOLUTE counter values, so one
+     * computed from an unlocked read before the master call would write a stale
+     * `quantityReceived` back — silently clobbering a `receiveLine` that landed
+     * in the meantime. The per-line distributed lock does not cover that case,
+     * because receiving takes no lock (it crosses no boundary), so the read and
+     * the write have to be inside one locked transaction.
+     */
+    computeOutcome: (line: ReturnLine) => ReturnCustodyOutcome | null,
+    disposition: ReturnLine['disposition']
+  ): Promise<ReturnLineEvent>;
+
+  /**
+   * Every act on a line whose master write is still unresolved — `blocked` or
+   * `in_doubt` (#2370).
+   *
+   * The attestation's input set, and the derivation behind the operator-facing
+   * block flag. Spec § 5.4 requires the badge and its segment to count
+   * UNHANDLED blocks only, so this predicate — not "has ever been blocked" — is
+   * the one both read through. Rides
+   * `IDX_return_line_events_outstanding_restock`.
+   */
+  findOutstandingRestockEvents(lineId: string): Promise<ReturnLineEvent[]>;
+
+  /**
+   * The same question asked of a whole return, for the read surfaces #2376 and
+   * #2381 render. One indexed lookup rather than a fan-out over its lines.
+   */
+  findOutstandingRestockEventsForReturn(returnId: string): Promise<ReturnLineEvent[]>;
+
+  /**
+   * Every stock attestation on a return, oldest first (#2381).
+   *
+   * The counterpart to the outstanding read, and NOT derivable from it: attesting
+   * FLIPS the blocked act's `restockState` to `handled_manually`, so an attested
+   * act leaves the outstanding set entirely. Without this, spec § 5.4's
+   * post-attestation row — the terminal state of the whole remediation loop —
+   * has no source, and the only observable result of *"I handled this myself"*
+   * is that the alarm disappears.
+   *
+   * One indexed lookup, mirroring its sibling. `listLineEvents` is deliberately
+   * NOT reused: it is per-line and unfiltered, so rendering one sentence per line
+   * would cost N calls returning every act.
+   */
+  findAttestationsForReturn(returnId: string): Promise<ReturnLineEvent[]>;
+
+  /**
+   * Every act on a line, oldest first — the audit narrative #2376's timeline
+   * renders, and the proof-of-work a spec sums against the counters.
+   */
+  listLineEvents(lineId: string): Promise<ReturnLineEvent[]>;
+
+  /**
+   * Every return act on ONE order, oldest first (#2383) — the order timeline's
+   * source for the returns half.
+   *
+   * **One query over TWO of the four sources**, not one. The custody acts come
+   * from `return_line_events`; `opened` / `declined` are COLUMNS on the very
+   * `returns` rows the join already touches, so sourcing them costs a wider
+   * projection rather than a second round trip. The header rows are read
+   * regardless — `origin`, `externalReturnId` and the source connection are
+   * needed by every entry, custody acts included, to say who did a thing.
+   *
+   * The refund half is deliberately absent: `RefundRecord` lives in `orders`
+   * and is read by the service through `IOrderRefundService`, never joined
+   * here. `sourceConnectionName` is likewise left `null` for the service to
+   * resolve — a repository does not know how to turn a connection id into a
+   * display name.
+   *
+   * Returns empty collections for an order with no returns; never null, never
+   * throws on absence.
+   */
+  findTimelineEntriesForOrder(internalOrderId: string): Promise<ReturnTimelineEntriesForOrder>;
+
+  /**
+   * Claim the return's refundable lines for ONE refund attempt (#2371, ADR-056).
+   *
+   * **This single statement is the whole guard.** A conditional UPDATE over the
+   * return's lines, restricted to `isRefundAttemptable` states — the
+   * `claimAttribution` / `claimWaybillRelay` shape. Two concurrent attempts
+   * cannot both claim the same line, so a double refund is impossible even if
+   * the surrounding lock expired mid-provider-call; the lock only decides which
+   * caller gets a clean answer (see `return-refund-lock.ts`).
+   *
+   * **Zero claimed ids is the refusal**, and it is deliberately ambiguous
+   * between "no lines", "already attempted" and "in doubt" — the caller runs one
+   * classifying read on that path to name the cause, which keeps the hot path a
+   * single statement.
+   *
+   * @param targetState what to claim INTO, and the caller decides it from
+   *   whether a provider boundary will actually be crossed: `in_doubt` when a
+   *   `RefundExecutor` was resolved (the ADR-056 attempted-predicate), or
+   *   `triggered` when none exists — because `in_doubt` asserts *boundary
+   *   crossed, outcome unobserved*, and claiming it for a call that will never
+   *   happen is a false statement about the operator's money. Restricted at the
+   *   type level to the two states a claim may legally write.
+   */
+  claimRefundAttempt(
+    returnId: string,
+    targetState: Extract<ReturnMoneyState, 'in_doubt' | 'triggered'>,
+    at: Date
+  ): Promise<string[]>;
+
+  /**
+   * Settle the lines an attempt claimed, once the executor has answered (#2371).
+   *
+   * The second half of the attempted-predicate ordering, mirroring
+   * {@link ReturnRepositoryPort.settleLineRestock}.
+   *
+   * **`fromStates` is REQUIRED and the caller states it explicitly**, because
+   * the two callers guard against opposite mistakes and a shared default would
+   * silently be wrong for one of them. The trigger's settle passes
+   * `['in_doubt']` — it may only resolve the attempt it just claimed, never a
+   * line a peer has since OBSERVED. The observation passes
+   * `['triggered', 'in_doubt']` — every state in which an attempt stands and a
+   * source answer is meaningful — and deliberately excludes `refunded` (already
+   * settled; re-stating it would let a stale webhook un-refund a buyer) and the
+   * attemptable states (nothing was attempted, so there is nothing to observe).
+   *
+   * Returns the number of rows actually moved, so a caller can notice a settle
+   * that lost its race rather than assuming it landed.
+   */
+  settleRefundState(
+    returnId: string,
+    lineIds: readonly string[],
+    moneyState: ReturnMoneyState,
+    fromStates: readonly ReturnMoneyState[]
+  ): Promise<number>;
+
+  /**
+   * The money states currently on a return's lines, for naming a refusal
+   * (#2371). Read only on the refusal path — see
+   * {@link ReturnRepositoryPort.claimRefundAttempt}.
+   */
+  listLineMoneyStates(returnId: string): Promise<ReturnMoneyState[]>;
+}
+
+/**
+ * What a {@link ReturnRepositoryPort.runLineWrite} callback decides: the act to
+ * append, and — optionally — the custody move to apply alongside it.
+ *
+ * `outcome` is nullable because a BLOCKED restock is a disposition that must be
+ * recorded while its counters must NOT move: the goods really were disposed of,
+ * but the inventory master's book did not take them, so the units stay counted
+ * in `quantityReceived` until an operator attests (returns spec § 5.4).
+ */
+/**
+ * Who matched an orphan return to an order, and when (#2372).
+ *
+ * `actorUserId` is nullable so a future non-interactive writer stays expressible —
+ * the `CreateReturnLineEventInput.actorUserId` / `CreateOrderChangeInput.requestedBy`
+ * precedent.
+ */
+export interface ReturnAttributionMatch {
+  at: Date;
+  actorUserId: string | null;
+}
+
+export interface ReturnLineWriteDecision<T> {
+  event: CreateReturnLineEventInput;
+  outcome: ReturnCustodyOutcome | null;
+  /** Written onto `return_lines.disposition` when the outcome applies. */
+  disposition: ReturnLine['disposition'];
+  result: T;
 }

@@ -33,6 +33,101 @@ import type { InventoryItem } from '../entities/inventory-item.entity';
 export const LEGACY_SOURCE_CONNECTION_ID = 'legacy';
 
 /**
+ * Why OpenLinker is adjusting the master's stock (#2368, ADR-060 / design § 7.3).
+ *
+ * Deliberately CLOSED and deliberately small. It exists so a master's own audit
+ * trail can say what OL did rather than showing an unexplained delta, and so a
+ * mismatch between OL's books and the shop's can be attributed afterwards. Only
+ * values a shipped or imminent caller actually writes are members: adding one
+ * later is additive, and every consumer switch closes with `assertNever`, so the
+ * addition surfaces as a compile error rather than a silent fallthrough.
+ *
+ * `return_restock` is #2370's (`W2-33`) sole value — the units an operator put
+ * back on the shelf after a return. `manual_correction` is the operator-driven
+ * stock-take correction named in #2368.
+ *
+ * **Narrowed from `string` (#2368).** The field already existed as free text and
+ * was written by nobody and read by nobody in this tree. An audit-bearing value
+ * that any caller may spell however it likes cannot be attributed or aggregated,
+ * which is the whole point of carrying it, so the vocabulary is closed. This is
+ * the one source-compatibility cost of #2368 and it lands on CALLERS, never on
+ * implementers: an adapter reading `adjustment.reason` as a string still
+ * compiles, because a narrower type is still assignable to a string read.
+ */
+export const InventoryAdjustmentReasonValues = ['return_restock', 'manual_correction'] as const;
+
+/**
+ * Reason type derived from {@link InventoryAdjustmentReasonValues}.
+ */
+export type InventoryAdjustmentReason = (typeof InventoryAdjustmentReasonValues)[number];
+
+/**
+ * What the master actually DID with an adjustment (#2368).
+ *
+ * `deduplicated` means the adapter recognised the caller's
+ * {@link InventoryAdjustment.idempotencyKey} as one it had already applied and
+ * therefore applied NOTHING this time. It is a SUCCESS, not a refusal: the units
+ * are already in the master's book. A caller must not count them twice.
+ */
+export const InventoryAdjustmentDispositionValues = ['applied', 'deduplicated'] as const;
+
+/**
+ * Disposition type derived from {@link InventoryAdjustmentDispositionValues}.
+ */
+export type InventoryAdjustmentDisposition =
+  (typeof InventoryAdjustmentDispositionValues)[number];
+
+/**
+ * What the adapter did with the caller's idempotency key (#2368).
+ *
+ * `unsupported` is the load-bearing member: an adapter that CANNOT dedupe says so
+ * rather than pretending. A caller retrying against such a master is retrying a
+ * write that will double-apply, and it can only know that if the adapter admits
+ * it — silence would read exactly like a honoured key.
+ *
+ * `not_requested` distinguishes "the caller supplied no key" from "the caller
+ * supplied one and I ignored it". Collapsing the two would make every keyless
+ * adjustment look like a dedupe failure and drown the real signal.
+ */
+export const InventoryIdempotencySupportValues = [
+  'honoured',
+  'unsupported',
+  'not_requested',
+] as const;
+
+/**
+ * Idempotency-support type derived from {@link InventoryIdempotencySupportValues}.
+ */
+export type InventoryIdempotencySupport =
+  (typeof InventoryIdempotencySupportValues)[number];
+
+/**
+ * The adapter's report on one adjustment (#2368).
+ *
+ * Carried on {@link InventoryAdjustmentResult}, which is what
+ * `InventoryMasterPort.adjustInventory` returns. **Absent means "not reported"**
+ * — a pre-#2368 adapter — and a caller MUST treat that exactly as
+ * `idempotency: 'unsupported'`, never as a honoured dedupe.
+ */
+export interface InventoryAdjustmentOutcome {
+  /** Whether the delta was applied, or recognised as an already-applied repeat. */
+  disposition: InventoryAdjustmentDisposition;
+
+  /** Whether the caller's idempotency key was honoured, unsupported, or absent. */
+  idempotency: InventoryIdempotencySupport;
+
+  /**
+   * When the MASTER says the stock changed.
+   *
+   * The master's own instant, never `new Date()` — this is a claim about what
+   * happened in another system, and OL's clock is not a witness to it (the #2336
+   * `declinedAt` rule, restated by #2367's custody transitions). `null` means the
+   * master reported no instant, which is an honest absence rather than "now".
+   */
+  appliedAt: Date | null;
+}
+
+/**
  * Inventory adjustment
  *
  * Represents an inventory adjustment operation (increase or decrease).
@@ -61,9 +156,35 @@ export interface InventoryAdjustment {
   quantity: number;
 
   /**
-   * Reason for adjustment (optional)
+   * Why OpenLinker is making this adjustment (optional, #2368).
+   *
+   * Carried to the master where the master can hold it, and logged where it
+   * cannot — see {@link InventoryAdjustmentReason} for why the vocabulary is
+   * closed.
    */
-  reason?: string;
+  reason?: InventoryAdjustmentReason;
+
+  /**
+   * Caller-minted key identifying THIS adjustment (optional, #2368).
+   *
+   * A retried restock must not double-increment the master's stock, and no
+   * shipped master exposes a conditional or compare-and-set stock write, so the
+   * de-duplication has to be the adapter's own. An adapter that can dedupe
+   * recognises a repeat of this key and applies nothing, reporting
+   * `disposition: 'deduplicated'`; one that cannot reports
+   * `idempotency: 'unsupported'` rather than pretending.
+   *
+   * **Deterministic, never wall-clock** — #2370 mints
+   * `return:{returnId}:{lineId}:{seq}`, so a job retry recomputes the same key.
+   * A timestamped key makes every retry a fresh adjustment, which is precisely
+   * the double-increment this field exists to prevent.
+   *
+   * Optional, because making it required would break every out-of-tree
+   * `InventoryMaster` implementer's callers for a Wave-2 feature (the same
+   * discipline `listExternalIdsByConnection`'s page argument was added under,
+   * #2219).
+   */
+  idempotencyKey?: string;
 
   /**
    * Additional metadata (optional)

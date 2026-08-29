@@ -72,9 +72,18 @@ const buildRecord = (overrides: Record<string, unknown> = {}): ReturnRecord => {
 
 describe('ReturnsController', () => {
   let controller: ReturnsController;
+  let custody: {
+    getRestockTarget: jest.Mock;
+    listOutstandingRestockBlocks: jest.Mock;
+    listRestockAttestations: jest.Mock;
+  };
+  let refunds: { getRefundsForReturn: jest.Mock };
+  let orderRecords: { getOrderRecord: jest.Mock };
   let returnsService: {
     listReturns: jest.Mock;
     countReturnsByBucket: jest.Mock;
+    countReturnsByStage: jest.Mock;
+    countReturnsBySegment: jest.Mock;
     getReturn: jest.Mock;
     getReturnIngestionAvailability: jest.Mock;
     getDeclineAvailability: jest.Mock;
@@ -86,6 +95,31 @@ describe('ReturnsController', () => {
       countReturnsByBucket: jest
         .fn()
         .mockResolvedValue({ total: 10, orphan: 3, attributed: 7 }),
+      // #2377 — the derived-stage partition, scoped with `stage` REMOVED.
+      countReturnsByStage: jest.fn().mockResolvedValue({
+        total: 10,
+        byStage: {
+          declined: 0,
+          not_returned: 0,
+          partially_received: 0,
+          received_awaiting_disposition: 0,
+          disposed: 0,
+          awaiting_parcel: 10,
+        },
+      }),
+      // #2378 — the worklist strip. Segments OVERLAP, so these deliberately do
+      // not sum to `total`.
+      countReturnsBySegment: jest.fn().mockResolvedValue({
+        total: 10,
+        bySegment: {
+          needs_receiving: 4,
+          needs_disposition: 3,
+          restock_blocked: 1,
+          money_pending: 5,
+          orphans: 3,
+          all_open: 8,
+        },
+      }),
       getReturn: jest.fn().mockResolvedValue(null),
       getReturnIngestionAvailability: jest
         .fn()
@@ -93,7 +127,31 @@ describe('ReturnsController', () => {
       getDeclineAvailability: jest.fn().mockResolvedValue({ supported: true, reason: null }),
     };
 
-    controller = new ReturnsController(returnsService as never);
+    custody = {
+      // The read's default posture: one master resolves, and the detail can
+      // name it. Arms are overridden per-test.
+      getRestockTarget: jest.fn().mockResolvedValue({
+        status: 'resolved',
+        connectionId: 'conn-1',
+        connectionName: 'Warehouse PrestaShop',
+      }),
+      // #2381 — disjoint by construction: attesting flips an act out of the
+      // blocked set, so a line is in at most one of these at a time.
+      listOutstandingRestockBlocks: jest.fn().mockResolvedValue([]),
+      listRestockAttestations: jest.fn().mockResolvedValue([]),
+    };
+
+    refunds = { getRefundsForReturn: jest.fn().mockResolvedValue([]) };
+    orderRecords = {
+      getOrderRecord: jest.fn().mockResolvedValue({ currency: 'PLN' }),
+    };
+
+    controller = new ReturnsController(
+      returnsService as never,
+      custody as never,
+      refunds as never,
+      orderRecords as never
+    );
   });
 
   const query = (overrides: Partial<ListReturnsQueryDto> = {}): ListReturnsQueryDto =>
@@ -169,6 +227,11 @@ describe('ReturnsController', () => {
           'authorizedAt',
           'bucket',
           'closedAt',
+          // #2377 — the counter rollup the browser derives the stage from.
+          // Deliberate: it is the ONE field this projection gained, and adding
+          // it here is what makes the allowlist a decision rather than a rubber
+          // stamp. Carries no PII and no lines.
+          'counters',
           'createdAt',
           'declinedAt',
           'externalOrderId',
@@ -178,6 +241,7 @@ describe('ReturnsController', () => {
           'openedAt',
           'origin',
           'rawStatus',
+          'restockBlocked',
           'sourceConnectionId',
           'updatedAt',
         ].sort()
@@ -214,6 +278,62 @@ describe('ReturnsController', () => {
   });
 
   describe('GET /returns/:returnId', () => {
+    /**
+     * The exact-key allowlist the detail ENVELOPE has never had (#2382).
+     *
+     * The sibling assertions cover the list ROW and the LINE; nothing covered
+     * the envelope, and three fields landed on it unguarded across three
+     * consecutive issues — `restockTarget` (#2380), `restockBlocks` and
+     * `restockAttestations` (#2381). Nobody noticed, which is the evidence it
+     * would keep happening. This read is where money- and buyer-adjacent data
+     * lands, and #2382 puts refund amounts on it.
+     *
+     * **Written from what the response ACTUALLY returned**, discovered by
+     * asserting a wrong value and reading the diff — never derived from
+     * `ReturnResponseDto`. An allowlist generated from the type it polices
+     * cannot catch a field arriving that nobody decided to expose.
+     *
+     * The most load-bearing entry is the one that is ABSENT: `rawPayload` is on
+     * the record and is documented as PII-bearing, and it must never reach this
+     * response. A future spread that pulls it in fails here.
+     */
+    it('should project the detail envelope to the exact allowlist, with no rawPayload', async () => {
+      returnsService.getReturn.mockResolvedValue(buildRecord());
+      returnsService.getDeclineAvailability.mockResolvedValue({
+        supported: true,
+        reason: null,
+      });
+
+      const result = await controller.getReturn('ol_return_1');
+
+      expect(Object.keys(result).sort()).toEqual([
+        'authorizedAt',
+        'bucket',
+        'closedAt',
+        'counters',
+        'createdAt',
+        'declineAvailability',
+        'declinedAt',
+        'externalOrderId',
+        'externalReturnId',
+        'id',
+        'internalOrderId',
+        'lines',
+        'openedAt',
+        'orderCurrency',
+        'origin',
+        'rawStatus',
+        'refunds',
+        'restockAttestations',
+        'restockBlocked',
+        'restockBlocks',
+        'restockTarget',
+        'sourceConnectionId',
+        'updatedAt',
+      ]);
+      expect(result).not.toHaveProperty('rawPayload');
+    });
+
     it('should throw the DOMAIN not-found error, not a Nest exception', async () => {
       returnsService.getReturn.mockResolvedValue(null);
 

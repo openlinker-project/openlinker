@@ -298,9 +298,12 @@ export class FulfillmentStatusSyncService implements IFulfillmentStatusSyncServi
           continue;
         }
 
+        // Outbound only (#2373): branch-1 projection mirrors what the
+        // marketplace reports about the SELLER shipping.
         const existing = await this.shipments.findBranchOneByOrderAndConnection(
           record.internalOrderId,
           connectionId,
+          'outbound',
         );
 
         if (!existing) {

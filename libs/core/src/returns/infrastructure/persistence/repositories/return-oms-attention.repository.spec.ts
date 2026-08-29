@@ -24,6 +24,9 @@ describe('ReturnRepository.updateOmsAttention (#2352)', () => {
     repository = new ReturnRepository(
       { query } as never,
       { find: jest.fn() } as never,
+      // The line-event repository (#2380) — unused by this write, but a
+      // positional constructor argument since the returns-custody body.
+      { find: jest.fn() } as never,
       { transaction: jest.fn() } as never
     );
   });

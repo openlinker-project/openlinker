@@ -27,11 +27,34 @@ export type { ReturnListResult, ReturnsApi } from './api/returns.api';
 export { returnsQueryKeys } from './api/returns.query-keys';
 export { useReturnsQuery } from './hooks/use-returns-query';
 export { useReturnIngestionAvailabilityQuery } from './hooks/use-return-ingestion-availability-query';
+export { ReturnCustodyPanel } from './components/return-custody-panel';
+export { ReturnMoneyPanel } from './components/return-money-panel';
+export { ReturnProposalPanel } from './components/return-proposal-panel';
+export { useReturnProposalQuery } from './hooks/use-return-proposal-query';
+// #2381 — the single home for every refused-restock string (returns spec § 5.4).
+// Exported here because the barrel is the ONLY way a cross-feature consumer can
+// reach it: `.eslintrc.js` hard-blocks deep imports of `features/returns/lib/**`.
+// #2357 (`W2-20`) and the split-out order-panel issue both consume it from here.
+export {
+  RETURN_RESTOCK_ATTESTED_COPY,
+  RETURN_RESTOCK_BLOCKED_COPY,
+  RETURN_RESTOCK_BLOCKED_EXPLAINER,
+} from './lib/restock-blocked.copy';
 export { ReturnIdentityCell, returnIdentitySummary } from './components/return-identity-cell';
 export { ReturnOrderCell, returnOrderSummary } from './components/return-order-cell';
 export { ReturnOpenedCell } from './components/return-opened-cell';
 export { ReturnSourceStatus } from './components/return-source-status';
-export { ReturnStatusCell } from './components/return-status-cell';
+// #2377 replaced `ReturnStatusCell` (which could render only `Declined`, for
+// want of counters) with the derived stage. `declined` survives as stage #1.
+export { ReturnStageCell } from './components/return-stage-cell';
+export {
+  RETURN_STAGE_LABELS,
+  RETURN_STAGE_TONES,
+  deriveReturnStage,
+  returnCounterLine,
+} from './lib/return-row';
+export { RETURN_STAGE_VALUES, isReturnStage } from './lib/return-stage.types';
+export type { ReturnStage } from './lib/return-stage.types';
 
 // ── Return detail (#2336) ────────────────────────────────────────────────────
 export type {
@@ -100,3 +123,27 @@ export {
   setReturnFilterParam,
   setReturnOffsetParam,
 } from './lib/returns-filters';
+
+// The worklist strip and the two rails (#2378, `W2-41`).
+//
+// Segments OVERLAP — their counts do not sum to `All returns`, and the strip has
+// SEVEN cards because `All open` is a filter, not the cleared state.
+export { ReturnSegmentStrip } from './components/return-segment-strip';
+export { ReturnRailsNote } from './components/return-line-state-chips';
+export {
+  RETURN_SEGMENT_VALUES,
+  RETURN_SEGMENT_LABELS,
+  RETURN_SEGMENT_TONES,
+  ATTENTION_WORTHY_RETURN_SEGMENTS,
+  isReturnSegment,
+} from './lib/return-segments';
+export type { ReturnSegment, ReturnSegmentCounts } from './lib/return-segments';
+
+// Returns activity on the ORDER timeline (#2383, `W2-45`).
+//
+// The mapper is exported, the timeline component is not: `features/orders` owns
+// the timeline and this feature only contributes rows to it.
+export { useOrderReturnEventsQuery } from './hooks/use-order-return-events-query';
+export { mapReturnEventsToTimeline } from './lib/return-timeline-events';
+export { RETURN_TIMELINE_COPY } from './lib/return-timeline.copy';
+export type { ReturnTimelineEntry } from './api/returns.types';

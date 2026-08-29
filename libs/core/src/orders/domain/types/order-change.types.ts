@@ -38,11 +38,34 @@
  * vocabulary would cost a migration per kind and would turn an out-of-tree kind
  * into a hard write failure instead of a coercion miss.
  *
- * `return.authorize` is deliberately ABSENT: ADR-060 reserves it for
- * operator-authored returns, which do not exist until Wave 2 (#2372). Shipping
- * the value now would be a vocabulary member with no writer.
+ * `return.authorize` arrived with #2372, and its RESTRICTION is the point: ADR-060
+ * reserves it for `origin: 'operator_authored'` returns, because OL must not pretend
+ * to decide what a marketplace already decided. Unlike `return.decline` it crosses
+ * NO adapter boundary — for a return OL itself authored there is no source to ask,
+ * so OL is the authority and the row here is the audit record of the operator's act
+ * rather than a request awaiting an answer. That is also why it reuses this table
+ * instead of growing a second proposal mechanism.
+ *
+ * `return.invoice_correction` arrived with #2374, and it is the first kind whose
+ * `targetRef` is NOT a bare entity id — which is a constraint the shared index
+ * imposes, not a stylistic choice. `UQ_order_changes_open_target` is
+ * `(internalOrderId, targetRef)` and **does not include `kind`**, so every kind
+ * sharing an order competes for one slot per `targetRef`. The bare `ReturnRecord.id`
+ * namespace is already taken by the two kinds above; and keying on the invoice
+ * record id instead would collide across RETURNS, because an order legitimately
+ * produces several (partial returns arriving in waves) each proposing against the
+ * same document — the second build would find the first return's open row and
+ * terminalise a proposal an operator was mid-review on. The key is therefore
+ * `correction:{returnId}:{invoiceRecordId}`: unique per (return, document), and
+ * namespaced so it cannot intrude on a sibling kind's. **A kind added after this
+ * one faces the identical question** — check the namespace before picking a
+ * `targetRef`, because the index will not.
  */
-export const OrderChangeKindValues = ['return.decline'] as const;
+export const OrderChangeKindValues = [
+  'return.decline',
+  'return.authorize',
+  'return.invoice_correction',
+] as const;
 
 export type OrderChangeKind = (typeof OrderChangeKindValues)[number];
 
@@ -83,24 +106,17 @@ export type OrderChangeStatus = (typeof OrderChangeStatusValues)[number];
  * Exported so no consumer — SQL predicate, service branch or test — ever
  * hand-lists them and drifts from the index's `WHERE` clause.
  */
-export const OPEN_ORDER_CHANGE_STATUSES: readonly OrderChangeStatus[] = [
-  'pending',
-  'requested',
-];
+export const OPEN_ORDER_CHANGE_STATUSES: readonly OrderChangeStatus[] = ['pending', 'requested'];
 
 /** Pure coercion. No default — an unrecognised kind must never become another. */
 export function isOrderChangeKind(value: unknown): value is OrderChangeKind {
-  return (
-    typeof value === 'string' &&
-    (OrderChangeKindValues as readonly string[]).includes(value)
-  );
+  return typeof value === 'string' && (OrderChangeKindValues as readonly string[]).includes(value);
 }
 
 /** Pure coercion. No default — see {@link isOrderChangeKind}. */
 export function isOrderChangeStatus(value: unknown): value is OrderChangeStatus {
   return (
-    typeof value === 'string' &&
-    (OrderChangeStatusValues as readonly string[]).includes(value)
+    typeof value === 'string' && (OrderChangeStatusValues as readonly string[]).includes(value)
   );
 }
 

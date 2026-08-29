@@ -53,6 +53,12 @@ export { isReturnSourceReader } from './domain/ports/capabilities/return-source-
 // method on the read-only `ReturnSourceReader`. See the capability's docblock.
 export type { ReturnDecliner } from './domain/ports/capabilities/return-decliner.capability';
 export { isReturnDecliner } from './domain/ports/capabilities/return-decliner.capability';
+
+// The refund WRITE (#2371, ADR-056) — implemented by NOBODY today, deliberately.
+// UNDECLARED rather than advertised-without-dispatch: there is no adapter to
+// advertise. See the capability's docblock.
+export type { RefundExecutor } from './domain/ports/capabilities/refund-executor.capability';
+export { isRefundExecutor } from './domain/ports/capabilities/refund-executor.capability';
 export type {
   FulfillmentStatus,
   FulfillmentStatusSnapshot,
@@ -166,13 +172,25 @@ export type {
   ProductChannelBreakdownRow,
 } from './domain/types/top-products.types';
 
-// Refund record capture (#2036).
+// Refund record capture (#2036); `RefundExecutedBy` + the `returnId` link (#2371).
 export {
   RefundReason,
   RefundReasonValues,
   RefundSummary,
   CreateRefundRecordInput,
+  RefundExecutedBy,
 } from './domain/types/refund-record.types';
+export { RefundExecutedByValues } from './domain/types/refund-record.types';
+
+// Refund EXECUTION (#2371, ADR-056) — the command/result a `RefundExecutor`
+// speaks. Declared here rather than in `returns` because the vocabulary is
+// orders' own and a refund is not inherently about a return.
+export type {
+  ExecuteRefundCommand,
+  RefundExecutionResult,
+  RefundExecutionOutcome,
+} from './domain/types/refund-execution.types';
+export { RefundExecutionOutcomeValues } from './domain/types/refund-execution.types';
 
 // Services
 export { IOrderSyncService, OrderSyncRequest, OrderSyncResult } from './application/interfaces/order-sync.service.interface';

@@ -11,10 +11,20 @@
  */
 import type { ArgumentsHost } from '@nestjs/common';
 import {
+  ReturnAuthorizeRefusedError,
+  ReturnCustodyContendedError,
+  ReturnCustodyTransitionError,
   ReturnDeclineInvalidRequestError,
   ReturnDeclineUnsupportedError,
+  ReturnLineNotFoundError,
+  ReturnMatchRefusedError,
   ReturnNotAttributedError,
   ReturnNotFoundError,
+  ReturnRecordRefusedError,
+  ReturnRefundBlockedError,
+  ReturnRefundContendedError,
+  ReturnRefundObservationInvalidError,
+  ReturnRestockAttestationInvalidError,
 } from '@openlinker/core/returns';
 import { ReturnsExceptionFilter } from './returns-exception.filter';
 
@@ -110,5 +120,133 @@ describe('ReturnsExceptionFilter', () => {
       error: 'ReturnDeclineInvalidRequestError',
     });
     expect('trigger' in body).toBe(false);
+  });
+});
+
+/**
+ * The #2376 additions, table-driven.
+ *
+ * Nine more of this context's refusals become reachable with the write API, and
+ * an unmapped one is a 500 for a state the service raised deliberately — the
+ * failure this filter exists to prevent. Each row pins the status AND whether a
+ * `reason` field is on the wire, because the acceptance criterion is *"409 with
+ * an actionable code"* and a client branches on the field, never the message.
+ */
+describe('ReturnsExceptionFilter — the #2376 write-API refusals', () => {
+  const filter = new ReturnsExceptionFilter();
+
+  const cases: ReadonlyArray<[string, Error, number, string | null]> = [
+    // 404 — the addressed resource does not exist.
+    ['ReturnLineNotFoundError', new ReturnLineNotFoundError('line-1'), 404, null],
+
+    // 409 — it exists and its STATE refuses.
+    [
+      'ReturnCustodyTransitionError(over-receipt)',
+      new ReturnCustodyTransitionError('received', 'received', 'over-receipt'),
+      409,
+      'over-receipt',
+    ],
+    [
+      'ReturnCustodyTransitionError(over-disposition)',
+      new ReturnCustodyTransitionError('received', 'disposed', 'over-disposition'),
+      409,
+      'over-disposition',
+    ],
+    [
+      // Reads like a validation fault, but the DTO's `@IsInt() @Min(1)` catches
+      // every malformed request first — so reaching the domain check means the
+      // value was well formed and the state refused.
+      'ReturnCustodyTransitionError(non-positive-quantity)',
+      new ReturnCustodyTransitionError('advised', 'received', 'non-positive-quantity'),
+      409,
+      'non-positive-quantity',
+    ],
+    ['ReturnCustodyContendedError', new ReturnCustodyContendedError('line-1'), 409, null],
+    [
+      'ReturnRestockAttestationInvalidError',
+      new ReturnRestockAttestationInvalidError('line-1'),
+      409,
+      null,
+    ],
+    [
+      'ReturnAuthorizeRefusedError',
+      new ReturnAuthorizeRefusedError('ret-1', 'source-ingested'),
+      409,
+      'source-ingested',
+    ],
+    [
+      'ReturnMatchRefusedError(already-attributed)',
+      new ReturnMatchRefusedError('ret-1', 'already-attributed'),
+      409,
+      'already-attributed',
+    ],
+    ['ReturnRefundBlockedError', new ReturnRefundBlockedError('ret-1', 'no-lines'), 409, 'no-lines'],
+    ['ReturnRefundContendedError', new ReturnRefundContendedError('ret-1'), 409, null],
+
+    // 400 — the request PAYLOAD was inapplicable.
+    [
+      // The one reason on this error that is NOT a state conflict: the return is
+      // fine and the order id the operator supplied names nothing OL minted.
+      'ReturnMatchRefusedError(unknown-order)',
+      new ReturnMatchRefusedError('ret-1', 'unknown-order'),
+      400,
+      'unknown-order',
+    ],
+    ['ReturnRecordRefusedError', new ReturnRecordRefusedError('no-lines'), 400, 'no-lines'],
+    [
+      'ReturnRefundObservationInvalidError',
+      new ReturnRefundObservationInvalidError('ret-1'),
+      400,
+      null,
+    ],
+  ];
+
+  it.each(cases)('should map %s', (_label, exception, expectedStatus, expectedReason) => {
+    const { host, captured } = createHost();
+
+    filter.catch(exception as never, host);
+
+    expect(captured.status).toHaveBeenCalledWith(expectedStatus);
+    expect(captured.body?.error).toBe(exception.name);
+    if (expectedReason === null) {
+      expect(captured.body).not.toHaveProperty('reason');
+    } else {
+      expect(captured.body?.reason).toBe(expectedReason);
+    }
+  });
+
+  it('should split ReturnMatchRefusedError by reason, not by class', () => {
+    // The whole point of the split: answering 409 for both would tell an
+    // operator the return was in a bad state when their typo was the problem.
+    const conflict = createHost();
+    filter.catch(new ReturnMatchRefusedError('r', 'already-attributed') as never, conflict.host);
+
+    const badRequest = createHost();
+    filter.catch(new ReturnMatchRefusedError('r', 'unknown-order') as never, badRequest.host);
+
+    expect(conflict.captured.status).toHaveBeenCalledWith(409);
+    expect(badRequest.captured.status).toHaveBeenCalledWith(400);
+  });
+
+  it('should map every returns exception the write API can raise', () => {
+    // A coverage assertion, so the NEXT domain error added to `returns` cannot
+    // silently become a 500. Every class the write controller's services declare
+    // as thrown must appear above.
+    const mapped = new Set(cases.map(([, exception]) => exception.name));
+
+    expect([...mapped].sort()).toEqual(
+      [
+        'ReturnAuthorizeRefusedError',
+        'ReturnCustodyContendedError',
+        'ReturnCustodyTransitionError',
+        'ReturnLineNotFoundError',
+        'ReturnMatchRefusedError',
+        'ReturnRecordRefusedError',
+        'ReturnRefundBlockedError',
+        'ReturnRefundContendedError',
+        'ReturnRefundObservationInvalidError',
+        'ReturnRestockAttestationInvalidError',
+      ].sort()
+    );
   });
 });
