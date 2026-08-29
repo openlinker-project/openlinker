@@ -30,7 +30,7 @@
  * `text`, not `uuid`, and **no FK to `connections`**. Step (ii) writes the
  * `'legacy'` sentinel (DESIGN §4.1), which a `uuid` column could not represent
  * at all. The missing FK mirrors `packedByUserId` in
- * `1842000000000-add-order-record-packed.ts`: provenance is an audit fact, so
+ * `1849000000004-add-order-record-packed.ts`: provenance is an audit fact, so
  * it must survive deletion of the connection it names — the alternatives are
  * blocking the delete or silently erasing who synced the position.
  *
@@ -54,8 +54,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddInventoryItemSourceConnectionId1844000000000 implements MigrationInterface {
-  name = 'AddInventoryItemSourceConnectionId1844000000000';
+export class AddInventoryItemSourceConnectionId1849000000006 implements MigrationInterface {
+  name = 'AddInventoryItemSourceConnectionId1849000000006';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(

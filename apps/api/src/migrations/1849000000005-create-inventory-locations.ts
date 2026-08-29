@@ -29,8 +29,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateInventoryLocations1843000000000 implements MigrationInterface {
-  name = 'CreateInventoryLocations1843000000000';
+export class CreateInventoryLocations1849000000005 implements MigrationInterface {
+  name = 'CreateInventoryLocations1849000000005';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`

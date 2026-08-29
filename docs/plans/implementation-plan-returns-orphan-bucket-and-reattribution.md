@@ -170,8 +170,8 @@ a real column.
    - **Acceptance**: `synchronize`-built test schema and the migration agree on the index
      name (the #2327 rule).
 
-2. **Migration `1848000000000-add-return-external-order-id.ts`**
-   - **File**: `apps/api/src/migrations/1848000000000-add-return-external-order-id.ts`
+2. **Migration `1849000000010-add-return-external-order-id.ts`**
+   - **File**: `apps/api/src/migrations/1849000000010-add-return-external-order-id.ts`
    - **Action**: `ADD COLUMN IF NOT EXISTS "externalOrderId" text`; `CREATE INDEX IF NOT
      EXISTS "IDX_returns_orphan_reattribution" ON "returns" ("sourceConnectionId",
      "createdAt" DESC) WHERE "internalOrderId" IS NULL AND "externalOrderId" IS NOT
