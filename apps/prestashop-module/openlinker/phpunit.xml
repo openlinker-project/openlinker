@@ -4,10 +4,16 @@
          bootstrap="vendor/autoload.php"
          colors="true"
          failOnWarning="true"
+         defaultTestSuite="Unit"
 >
     <testsuites>
         <testsuite name="Unit">
             <directory>tests/Unit</directory>
+        </testsuite>
+        <!-- Needs a real MySQL server, so it is not part of the default run.
+             See tests/Integration/OutboxDedupSqlTest.php for how to start one. -->
+        <testsuite name="Integration">
+            <directory>tests/Integration</directory>
         </testsuite>
     </testsuites>
     <source>

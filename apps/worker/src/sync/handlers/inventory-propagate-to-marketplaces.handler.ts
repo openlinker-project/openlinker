@@ -218,7 +218,8 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
               promisableQuantity,
               // Include write-event token to avoid suppressing legitimate
               // quantity oscillations (e.g. 5->6->5).
-              `inventory:${mapping.connectionId}:${payload.productId}:${payload.variantId || 'base'}:${promisableQuantity}:${writeEventToken}`
+              `inventory:${mapping.connectionId}:${payload.productId}:${payload.variantId || 'base'}:${promisableQuantity}:${writeEventToken}`,
+              payload.inventoryUpdatedAt
             )
           )
         );
@@ -278,7 +279,8 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
               // + external id: the Offer key omits the target id, so reusing it
               // verbatim would dedupe an Offer update against a ShopProduct
               // update for the same connection/variant/quantity.
-              `inventory:${mapping.connectionId}:${payload.productId}:${payload.variantId || 'base'}:${promisableQuantity}:${writeEventToken}:shop:${mapping.externalId}`
+              `inventory:${mapping.connectionId}:${payload.productId}:${payload.variantId || 'base'}:${promisableQuantity}:${writeEventToken}:shop:${mapping.externalId}`,
+              payload.inventoryUpdatedAt
             )
           )
         );
@@ -309,13 +311,18 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
   private async enqueueQuantityUpdate(
     mapping: ExternalIdMapping,
     quantity: number,
-    idempotencyKey: string
+    idempotencyKey: string,
+    observedAt: string | null | undefined
   ): Promise<void> {
     const updatePayload = {
       schemaVersion: 1 as const,
       offerId: mapping.externalId,
       quantity,
       idempotencyKey,
+      // The inventory row's own write stamp orders two concurrent writes for one
+      // offer (#2617). Absent on a legacy propagation payload, which writes
+      // unguarded exactly as before.
+      ...(observedAt ? { observedAt } : {}),
     };
 
     const updateJobRequest: SyncJobRequest = {

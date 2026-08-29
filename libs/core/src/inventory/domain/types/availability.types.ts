@@ -128,9 +128,14 @@ export interface PromisableQuantity {
 export function computeAtp(
   totalAvailable: number,
   olReservedPublished: number,
-  buffer: number
+  buffer: number,
+  zeroThreshold = 0
 ): number {
-  return applyStockSafetyBuffer(Math.max(0, totalAvailable - olReservedPublished), buffer);
+  return applyStockSafetyBuffer(
+    Math.max(0, totalAvailable - olReservedPublished),
+    buffer,
+    zeroThreshold
+  );
 }
 
 /**
@@ -161,6 +166,17 @@ export interface ScopedAtpResult {
 }
 
 /**
+ * The per-scope publish policy the availability seam resolves once and applies
+ * to every quantity in a batch: the stock safety buffer (#1844) and the zero
+ * threshold (#2610). Both are Controls (ADR-061 decision 3) — the operator's
+ * cushions on top of a computed promise, never part of the promise itself.
+ */
+export interface PublishControls {
+  readonly buffer: number;
+  readonly zeroThreshold: number;
+}
+
+/**
  * The scoped-subtraction rule (#2345, design §4.2).
  *
  * **OpenLinker subtracts its own ledger only for scopes where OpenLinker
@@ -172,7 +188,14 @@ export interface ScopedAtpResult {
  *
  * Two properties are load-bearing rather than incidental.
  *
- * **The buffer applies on BOTH arms.** ADR-061 decision 3 makes it a Control —
+ * **Both Controls apply on BOTH arms.** ADR-061 decision 3 makes the buffer a
+ * Control, and the zero threshold (#2610) is the second knob of the same
+ * publish policy — applied after the buffer, exactly as `applyStockSafetyBuffer`
+ * orders them, so this seam publishes the same number the four pre-#2323
+ * publish sites did. `zeroThreshold` defaults to `0` (off), which keeps every
+ * caller that resolved only a buffer byte-identical.
+ *
+ * ADR-061 decision 3 makes the buffer a Control —
  * the operator's own cushion on top of whatever produced the promise, not part
  * of the promise. Reconciling it against a future
  * `AvailabilityAnswer.controlsApplied` (an authority that already applied its
@@ -187,17 +210,22 @@ export interface ScopedAtpResult {
 export function applyScopedLedgerSubtraction(
   answer: AtpAnswer,
   olReservedPublished: number,
-  buffer: number
+  buffer: number,
+  zeroThreshold = 0
 ): ScopedAtpResult {
   if (answer.answeredBy === 'authority') {
     return {
-      quantity: applyStockSafetyBuffer(Math.max(0, answer.availableToPromise), buffer),
+      quantity: applyStockSafetyBuffer(
+        Math.max(0, answer.availableToPromise),
+        buffer,
+        zeroThreshold
+      ),
       olHeldNotReflected: olReservedPublished,
     };
   }
 
   return {
-    quantity: computeAtp(answer.totalAvailable, olReservedPublished, buffer),
+    quantity: computeAtp(answer.totalAvailable, olReservedPublished, buffer, zeroThreshold),
     olHeldNotReflected: null,
   };
 }

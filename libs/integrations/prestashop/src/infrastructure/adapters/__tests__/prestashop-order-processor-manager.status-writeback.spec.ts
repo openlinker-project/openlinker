@@ -18,15 +18,11 @@ const STATE_ID: Record<string, number> = { shipped: 4, delivered: 5, cancelled: 
 describe('PrestashopOrderProcessorManagerAdapter — OrderStatusWriteback.write', () => {
   let adapter: OrderProcessorHarness['adapter'];
   let mockHttpClient: OrderProcessorHarness['mockHttpClient'];
-  let mockOrderMapper: OrderProcessorHarness['mockOrderMapper'];
 
   const PS_ORDER_ID = '5001';
 
   beforeEach(() => {
-    ({ adapter, mockHttpClient, mockOrderMapper } = createOrderProcessorManagerHarness());
-    mockOrderMapper.mapStatusToPrestashopStateId = jest
-      .fn()
-      .mockImplementation((status: string) => STATE_ID[status] ?? 0);
+    ({ adapter, mockHttpClient } = createOrderProcessorManagerHarness());
   });
 
   describe('dispatched', () => {

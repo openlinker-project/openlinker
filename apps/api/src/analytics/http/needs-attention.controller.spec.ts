@@ -17,7 +17,16 @@ describe('NeedsAttentionController', () => {
       ],
       coverageGapsTotalCount: 3,
       stockAtRisk: [
-        { variantId: 'v2', productId: 'p2', connectionId: 'conn-a', masterStock: 0, stockSafetyBuffer: 5, availableToPromise: 0, shortfall: 0 },
+        {
+          variantId: 'v2',
+          productId: 'p2',
+          connectionId: 'conn-a',
+          masterStock: 0,
+          stockSafetyBuffer: 5,
+          stockZeroThreshold: 0,
+          availableToPromise: 0,
+          shortfall: 0,
+        },
       ],
       stockAtRiskTotalCount: 6,
       failedSyncValue: {
@@ -46,6 +55,7 @@ describe('NeedsAttentionController', () => {
         connectionId: item.connectionId,
         masterStock: item.masterStock,
         stockSafetyBuffer: item.stockSafetyBuffer,
+        stockZeroThreshold: item.stockZeroThreshold,
       }))
     );
     expect(result.stockAtRiskTotalCount).toBe(6);

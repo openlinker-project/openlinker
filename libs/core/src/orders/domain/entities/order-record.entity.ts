@@ -13,6 +13,8 @@ import type { OrderSyncStatus, SyncAttempt } from '../types/order-sync.types';
 import { PaymentStatusValues } from '../types/payment-status.types';
 import type { PaymentStatus } from '../types/payment-status.types';
 import type { CodToCollect } from '../types/cod-to-collect.types';
+import { decodeBuyerTaxIdColumn } from '../types/buyer-tax-id.types';
+import type { BuyerTaxId } from '../types/buyer-tax-id.types';
 import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
 import type { OrderDispatchWindow, PriceTaxTreatment } from '../types/order.types';
 import type { OrderAmendmentChange } from '../order-amendment-diff';
@@ -316,8 +318,35 @@ export class OrderRecord {
      * positional constructor, so a field inserted in the middle would silently
      * shift every caller's argument by one.
      */
-    public readonly omsAttention: readonly AuthorityAttentionEntry[] = []
+    public readonly omsAttention: readonly AuthorityAttentionEntry[] = [],
+    /**
+     * Buyer tax identifier as the source reported it (#2599), in the column's
+     * three-state encoding: `null` = the source asserted nothing, `''` = the
+     * source asserted the buyer has none, otherwise the id.
+     *
+     * Read through {@link buyerTaxIdState}, never bare: a `!== null` test on
+     * this field reports true for the asserted-none row, which is the one
+     * reading the three-state encoding exists to prevent.
+     *
+     * Appended at the end of this positional constructor, like every field
+     * before it - inserting mid-list would shift every argument after it at
+     * each call site.
+     */
+    public readonly buyerTaxId: string | null = null
   ) {}
+
+  /**
+   * The buyer tax id in its three domain states, decoded from the column's
+   * encoding. Pure derivation of an already-loaded field (ADR-011).
+   *
+   * This is the only intended read of {@link buyerTaxId}. It exists so no
+   * consumer has to remember that `''` is a value rather than an absence, and
+   * so the encoding stays a detail of this context: nothing outside it needs to
+   * know which sentinel means what.
+   */
+  get buyerTaxIdState(): BuyerTaxId {
+    return decodeBuyerTaxIdColumn(this.buyerTaxId);
+  }
 
   /**
    * Typed, fail-safe read of the order's neutral payment status (#928) from the

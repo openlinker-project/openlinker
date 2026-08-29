@@ -77,3 +77,5 @@ export type {
 export type { OrderRecordStatus } from './domain/types/order-record.types';
 export { RefundReasonValues } from './domain/types/refund-record.types';
 export type { RefundReason } from './domain/types/refund-record.types';
+export type { BuyerTaxId } from './domain/types/buyer-tax-id.types';
+export { readBuyerTaxId, buyerHasTaxId } from './domain/types/buyer-tax-id.types';

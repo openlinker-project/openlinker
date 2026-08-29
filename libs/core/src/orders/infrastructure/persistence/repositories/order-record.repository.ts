@@ -1892,15 +1892,16 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * - `sourceEventId` follows *same-source advances, cross-source frozen*.
    * - `createdAt` is never updated: it records the first write.
    *
-   * `includeAnalyticsColumns` adds the four #1985 scalars that only
-   * `upsertWithLineItems` resolves (`persistIncomingSnapshot`, which reaches
-   * `upsert`, has no figure to offer yet and must not null them out). They are
-   * appended after the shared tuple so the shared placeholders — including the
+   * `includeReadyPathColumns` adds the columns only `upsertWithLineItems`
+   * resolves — the four #1985 analytics scalars and the #2599 `buyerTaxId`.
+   * `persistIncomingSnapshot`, which reaches `upsert`, has no figure or resolved
+   * billing address to offer yet and must not null them out. They are appended
+   * after the shared tuple so the shared placeholders — including the
    * `$5::jsonb` cast — keep their positions.
    */
   private buildFrozenAttributionUpsert(
     entity: OrderRecordOrmEntity,
-    includeAnalyticsColumns: boolean
+    includeReadyPathColumns: boolean
   ): { sql: string; params: unknown[]; writeSet: ReadonlySet<string> } {
     const insertColumns: string[] = [];
     const insertValues: string[] = [];
@@ -1958,11 +1959,19 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     add('createdAt', entity.createdAt, { update: null });
     add('updatedAt', entity.updatedAt);
 
-    if (includeAnalyticsColumns) {
+    if (includeReadyPathColumns) {
       add('placedAt', entity.placedAt ?? null);
       add('currency', entity.currency ?? null);
       add('taxTreatment', entity.taxTreatment ?? null);
       add('totalAmount', entity.totalAmount ?? null);
+      // #2599, and it MUST be added here rather than left to the caller's
+      // `entity.buyerTaxId = ...`: this statement enumerates its columns, so a
+      // column the caller stamps on the entity but never adds here is simply
+      // not written. It belongs to the ready path for the same reason the four
+      // scalars do — `persistIncomingSnapshot` has no resolved billing address
+      // to read a tax id off, and writing it there would NULL a value a
+      // previous ready-path write settled.
+      add('buyerTaxId', entity.buyerTaxId ?? null);
     }
 
     const sql = `INSERT INTO "order_records" (
@@ -2053,6 +2062,11 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     entity.currency = orderRecord.currency;
     entity.taxTreatment = orderRecord.taxTreatment;
     entity.totalAmount = orderRecord.totalAmount;
+    // Same reason the four scalars above are stamped here rather than in the
+    // shared toOrm: `upsert()` is also reached by `persistIncomingSnapshot`,
+    // which has no resolved billing address to read a tax id off, so mapping
+    // the column there would NULL a value a previous ready-path write settled.
+    entity.buyerTaxId = orderRecord.buyerTaxId;
     const { sql, params, writeSet } = this.buildFrozenAttributionUpsert(entity, true);
     const savedRecord = await this.dataSource.transaction(async (manager: EntityManager) => {
       // Same statement as `upsert`, one parameter apart (#2282): a full-object
@@ -2255,7 +2269,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       // the domain record instead of present-and-unrenderable. That is spec
       // §4.4 S2-5 ("an unrecognised state degrades safely") held once, and it
       // is the same call the two reason guards above make.
-      readAuthorityAttentionEntries(entity.omsAttention)
+      readAuthorityAttentionEntries(entity.omsAttention),
+      entity.buyerTaxId ?? null
     );
   }
 

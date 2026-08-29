@@ -88,15 +88,17 @@ Optional right utility rail
 
 ### Left Navigation
 
-The left navigation is persistent and grouped into **three sections by frequency of use**, with a disabled **Planned** footer for IA-anticipated modules that are not yet shipped. This structure was finalized during the FE-002 refactor.
+The left navigation is persistent and grouped **by frequency of use**, with two admin-only groups and a disabled **Planned** footer for IA-anticipated modules that are not yet shipped. This structure was finalized during the FE-002 refactor; the shipped composition lives in `apps/web/src/app/nav-registry.ts`, which is the source of truth.
 
 **Operations** (daily surfaces):
+- Analytics
 - Dashboard
 - Orders
 - Products
-- Inventory
 - Customers
 - Listings
+- Shipments
+- Invoices
 
 **Diagnostics** (debugging surfaces):
 - Jobs & Logs
@@ -104,9 +106,16 @@ The left navigation is persistent and grouped into **three sections by frequency
 - Cursors
 
 **Platform** (configuration):
-- Integrations
+- Connections
 - Adapters
 - Settings
+
+**AI** (admin only):
+- Prompt templates
+- Provider settings
+
+**Administration** (admin only):
+- Users
 
 **Planned** — retired as of #2364. `Automations` was its last remaining item (Shipments and
 Invoices had already gone live), and promoting it emptied the group, so the group was removed
@@ -662,7 +671,7 @@ This entry exists because the listings carve-out explicitly refuses to cover a s
 
 **#2356 makes four the worst case**: the OMS inert-state badge (§ 4 of the Wave-2 spec — *what OpenLinker stopped deciding*) is appended into the same stack between the phase badge and the failure reason, so a row carrying a phase, an inert state and a sync failure renders health / phase / attention / reason. That is the ceiling by construction, not by convention, and the mechanism is worth naming because `.orders-cell-stack` is `flex-direction: column`: the attention entries are keyed by producer and an order can carry more than one, so `OmsAttentionBadges` renders them inside its own `.data-table__badge-row` (a wrapping flex ROW). Returning bare sibling spans into that column would make each producer its own line and the ceiling five, not four. No alignment change is needed and none was made: `.orders-table td` already top-aligns every cell (see the bullet below), so the taller column lands on line 1 at any row height. Anything that would add a **fifth** line needs its own entry here. Kept as a stack rather than nesting the phase inline beside the health badge (a `ds-row`): the two are orthogonal partitions, and putting them on one line reads as one compound status, which is precisely the reading ADR-059 exists to prevent. The three lines are each a fact an operator triages on, so the row takes its height from content in the usual way. Note this interacts with the vertical-alignment rule below — `.orders-table td` already top-aligns every cell, so no further change is needed for the taller column.
 
-**Extended by #2350 — a fourth line.** The reservation-shortfall badge (§ Order-row signal placement, the sixth badge vocabulary) is appended to the same `.orders-cell-stack`, so the worst case is now health / phase / stock-at-risk / reason: four stacked lines, ~96 px. Recorded here rather than left to be discovered because this section's standing instruction is to update the guide before the row height moves. It needs **no CSS change** — the stack and the `.orders-table td` top-alignment already handle it, and the badge is `compact`. The worst case stays rare by construction: a shortfall badge only appears on an order the master has actually gone short on, and the phase renders neutral on an ordinary row, so a four-line Status cell means four genuine facts rather than decoration.
+**Extended by #2350 — a fourth line.** The reservation-shortfall badge (§ Order-row signal placement) is appended to the same `.orders-cell-stack`, so the worst case is now health / phase / stock-at-risk / reason: four stacked lines, ~96 px. Recorded here rather than left to be discovered because this section's standing instruction is to update the guide before the row height moves. It needs **no CSS change** — the stack and the `.orders-table td` top-alignment already handle it, and the badge is `compact`. The worst case stays rare by construction: a shortfall badge only appears on an order the master has actually gone short on, and the phase renders neutral on an ordinary row, so a four-line Status cell means four genuine facts rather than decoration.
 
 **Wave-2 composition note (#2342 / #2350 / #2356) — the ceiling is six, not four.** The two paragraphs
 above were written on separate branches and each measured its own worst case honestly *in isolation*; body A's
@@ -677,9 +686,10 @@ rather than one per producer.
 Two caveats, stated rather than buried. The **~144 px is extrapolated, not measured**: this table's own two
 data points for the cell (three lines ~72 px, four lines ~96 px) give a 24 px cadence, and six lines at that
 cadence is 144 px — confirm it against a real six-line row before relying on the figure. And #2350 and #2356
-each described *itself* as "the sixth badge vocabulary", which cannot both be true; in the merged row the
-attention badge is the seventh, and the ordinal has been dropped from its call-site comment rather than left
-asserting a count that is now wrong. The worst case stays rare by construction — it needs an order that is
+each described *itself* as "the sixth badge vocabulary", which cannot both be true. The ordinals have since
+been dropped from this section's prose entirely, rather than renumbered: an ordinal written into a sentence is
+a count that goes stale the next time a body adds a vocabulary, which is exactly how two bodies came to claim
+the same one. Each decision now names itself and its reasoning; nothing counts them. The worst case stays rare by construction — it needs an order that is
 simultaneously short on stock, on hold, carrying an inert state and failing to sync — but it is reachable, so
 it is documented.
 
@@ -860,8 +870,8 @@ Four rules govern anything added to a row:
    → carrier* — so the column scans as a sequence rather than a list of unrelated facts. A new
    shipment-related signal is inserted at its chronological position, not appended.
 2. **A workflow position is a tick; an exception is a badge.** Packed is binary and renders as a
-   tick, because the row already carries four distinct badge vocabularies and a fifth pill makes
-   them compete. Exceptions (returns) are badges, and they belong in the **Status** group where
+   tick, because the row already carries several distinct badge vocabularies and another pill
+   makes them compete. Exceptions (returns) are badges, and they belong in the **Status** group where
    failure reasons already live.
 
    **The ADR-059 lifecycle phase is the standing exception, and it is a badge (#2310).** The rule
@@ -869,11 +879,11 @@ Four rules govern anything added to a row:
    add one — it is a deliberate **second orthogonal partition** beside health, not a refinement of
    it (a held order is usually also `synced`), and it is a **vocabulary of nine values, not a
    workflow tick**, so a tick cannot express it and a subordinate line would bury the one word that
-   says where the order actually is. Approved as such at the #2310 gate. The count in the sentence
-   above is therefore now five badge vocabularies on the row, and the exception is closed to
-   further growth: a sixth needs its own decision, not this paragraph.
+   says where the order actually is. Approved as such at the #2310 gate. The exception is
+   therefore closed to further growth: each further vocabulary needs its own decision, not this
+   paragraph.
 
-   **The sixth vocabulary is the reservation shortfall, and it is a badge in the Status group
+   **The reservation shortfall is one such vocabulary, and it is a badge in the Status group
    (#2350).** This is the "own decision" the sentence above demands, taken at the #2628 gate rather
    than assumed by the paragraph. Three things settle it. It is an **exception**, not a workflow
    position, so the tick form cannot carry it. It is an exception about *this order's own line* —
@@ -890,8 +900,8 @@ Four rules govern anything added to a row:
    rows never have — the same objection that keeps returns in the Status group.
 
    Tonally it is `warning`, never `error`: the order is at risk, not broken, and reserving red for
-   real failures is what keeps a red row meaning outstanding work. The count is now **six**, and
-   the exception remains closed: a seventh needs its own decision, not this paragraph.
+   real failures is what keeps a red row meaning outstanding work. The exception remains closed:
+   each further vocabulary needs its own decision, not this paragraph.
 
    The mitigation that keeps the pills from competing is **tonal**, and it is load-bearing rather
    than incidental: the dominant `ready` phase renders **neutral**, as do `cancelled` and every
@@ -899,7 +909,7 @@ Four rules govern anything added to a row:
    phase reads as a label beside it. A phase that ever renders a warning/error tone alongside a
    non-`healthy` health badge is the shape this rule was written to prevent.
 
-   **The OMS inert-state badge is the sixth vocabulary, and it is taken here as its own decision
+   **The OMS inert-state badge is a further vocabulary, and it is taken here as its own decision
    (#2356).** The paragraph above closed the exception to further growth and required a decision
    rather than an inheritance; this is that decision. It qualifies on the same ground the phase did
    — it adds an **axis**, it is not a refinement of one. Health answers *did something fail*, the
@@ -913,8 +923,8 @@ Four rules govern anything added to a row:
    attention badge is **never neutral** — it exists to say something is wrong — so a row carrying
    one deliberately shows two coloured pills. That is not the crowding the rule guards against; it
    is the signal. The cost is bounded by how rare the state is: the badge renders only where a
-   producer wrote one, and a healthy install shows none at all. **The count is now six, and the
-   exception is closed again**: a seventh needs its own decision, not this paragraph.
+   producer wrote one, and a healthy install shows none at all. **The exception is closed again**:
+   each further vocabulary needs its own decision, not this paragraph.
 3. **The list displays; the detail page acts.** Every row affordance is a link (`Generate label`,
    `Issue invoice`), never an in-place mutation. Introducing in-place editing to this table is a new
    interaction pattern and needs its own decision — it is not a styling choice.

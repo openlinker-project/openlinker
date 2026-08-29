@@ -13,6 +13,7 @@ import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { ProductsModule } from '@openlinker/core/products';
 import { InventoryModule } from '@openlinker/core/inventory';
 import { AutomationModule } from '@openlinker/core/automation';
+import { OperationalSettingsModule } from '@openlinker/core/operational-settings';
 import { OrdersModule } from '@openlinker/core/orders';
 import { ReturnsModule } from '@openlinker/core/returns';
 import { ListingsModule } from '@openlinker/core/listings/services';
@@ -47,7 +48,9 @@ import { MarketplaceShipmentStatusSyncHandler } from './handlers/marketplace-shi
 import { MarketplaceShipmentSyncByExternalIdHandler } from './handlers/marketplace-shipment-sync-by-external-id.handler';
 import { MarketplaceFulfillmentStatusSyncHandler } from './handlers/marketplace-fulfillment-status-sync.handler';
 import { MasterProductSyncHandler } from './handlers/master-product-sync.handler';
+import { MasterProductSyncBatchHandler } from './handlers/master-product-sync-batch.handler';
 import { MasterInventorySyncHandler } from './handlers/master-inventory-sync.handler';
+import { MasterInventorySyncBatchHandler } from './handlers/master-inventory-sync-batch.handler';
 import { AutoMatchVariantsHandler } from './handlers/auto-match-variants.handler';
 import { MasterInventorySyncAllHandler } from './handlers/master-inventory-sync-all.handler';
 import { MasterProductSyncAllHandler } from './handlers/master-product-sync-all.handler';
@@ -78,6 +81,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     IdentifierMappingModule, // Import IdentifierMappingModule to access IDENTIFIER_MAPPING_SERVICE_TOKEN
     ProductsModule, // Import ProductsModule to access PRODUCTS_SERVICE_TOKEN
     InventoryModule, // Import InventoryModule to access INVENTORY_SERVICE_TOKEN
+    OperationalSettingsModule, // #2651 — operator-settable sweep budgets, read per tick by the sweep handlers
     OrdersModule, // Import OrdersModule to access ORDER_SYNC_SERVICE_TOKEN
     ListingsModule, // Import ListingsModule to access OFFER_MAPPING_SYNC_SERVICE_TOKEN
     ReturnsModule, // #2330 — exposes RETURN_INGESTION_SERVICE_TOKEN + RETURN_STATUS_SYNC_SERVICE_TOKEN
@@ -118,7 +122,9 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     MarketplaceShipmentSyncByExternalIdHandler,
     MarketplaceFulfillmentStatusSyncHandler,
     MasterProductSyncHandler,
+    MasterProductSyncBatchHandler,
     MasterInventorySyncHandler,
+    MasterInventorySyncBatchHandler,
     AutoMatchVariantsHandler,
     MasterInventorySyncAllHandler,
     MasterProductSyncAllHandler,

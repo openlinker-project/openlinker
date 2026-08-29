@@ -18,6 +18,17 @@ import type { ProductVariant } from '../entities/product-variant.entity';
  */
 export interface ProductFilters {
   /**
+   * Restrict the read to these EXTERNAL product ids.
+   *
+   * External, not internal, because this is the master's own vocabulary and the
+   * caller that needs it - the catalogue sweep - already holds the ids the
+   * master enumerated. An adapter that cannot express an id list ignores it and
+   * returns its ordinary page, so a caller must not read the result as
+   * pre-filtered.
+   */
+  externalIds?: string[];
+
+  /**
    * Filter by category IDs
    */
   categoryIds?: string[];
@@ -173,6 +184,14 @@ export interface ProductListFilters {
    *  - `known` - a rate is on record (including a deliberate zero).
    */
   taxRateState?: 'missing' | 'not-checked' | 'known';
+
+  /**
+   * Hide products where EVERY variant is stale — deleted at the master
+   * (#1599) and never replaced (#2447). A product with at least one live
+   * variant is kept regardless of how many siblings are stale; a product
+   * with zero variants is also kept (staleness is not what that means).
+   */
+  hideFullyStale?: boolean;
 }
 
 /**

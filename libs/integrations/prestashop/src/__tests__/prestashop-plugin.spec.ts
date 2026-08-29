@@ -32,10 +32,10 @@ import type { PrestashopAddressProvisioner } from '../infrastructure/provisioner
 import type { PrestashopWebhookProvisioningAdapter } from '../infrastructure/adapters/prestashop-webhook-provisioning.adapter';
 
 function makeDeps(): Parameters<typeof createPrestashopPlugin>[0] {
-  // The plugin descriptor's `createCapabilityAdapter` constructs a fresh
-  // `PrestashopAdapterFactory(deps...)` per call but the factory is fully
-  // stubbed below via `jest.spyOn`. The deps only need to satisfy the type;
-  // their runtime values are never reached.
+  // The plugin descriptor constructs one `PrestashopAdapterFactory(deps...)` in
+  // its closure (#2592) and the factory is fully stubbed below via
+  // `jest.spyOn`. The deps only need to satisfy the type; their runtime values
+  // are never reached.
   return {
     customerProvisioner: {} as PrestashopCustomerProvisioner,
     addressProvisioner: {} as PrestashopAddressProvisioner,
@@ -105,6 +105,30 @@ describe('createPrestashopPlugin → createCapabilityAdapter', () => {
     await plugin.createCapabilityAdapter(connection, 'ProductMaster', host);
 
     expect(host.http.forConnection).toHaveBeenCalledWith(connection, prestashopAdapterManifest.defaultRateLimit);
+  });
+
+  // The factory holds every per-connection resolver cache (shop currency, tax
+  // rate, features, category paths). Building one per capability resolution
+  // threw all of them away on every child job - measured at 2 of 7.96 requests
+  // per SKU for the shop-currency pair alone (#2592). One factory for the
+  // lifetime of the plugin is the fix, and this pins it: two resolutions must
+  // run on the SAME instance.
+  it('reuses one adapter factory across capability resolutions (#2592)', async () => {
+    const createAdapters = jest
+      .spyOn(PrestashopAdapterFactory.prototype, 'createAdapters')
+      .mockResolvedValue({
+        productMaster: {},
+        inventoryMaster: {},
+        orderSource: {},
+        orderProcessorManager: undefined,
+      } as unknown as PrestashopAdapters);
+
+    const plugin = createPrestashopPlugin(makeDeps());
+    await plugin.createCapabilityAdapter(makeConnection(), 'ProductMaster', makeHost());
+    await plugin.createCapabilityAdapter(makeConnection(), 'InventoryMaster', makeHost());
+
+    expect(createAdapters).toHaveBeenCalledTimes(2);
+    expect(new Set(createAdapters.mock.instances).size).toBe(1);
   });
 
   it('throws when OrderProcessorManager is requested but the factory wired up no OPM adapter', async () => {

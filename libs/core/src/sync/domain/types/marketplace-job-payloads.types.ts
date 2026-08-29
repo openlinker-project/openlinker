@@ -90,7 +90,9 @@ export interface MarketplaceOfferQuantityUpdatePayloadV1 {
   idempotencyKey?: string;
   /**
    * ISO-8601 observation token for the state this write expresses (#2285) — never
-   * wall-clock `now()`. Optional, so payloads enqueued before #2285 stay valid.
+   * wall-clock `now()`. It both versions the derived idempotency key and orders
+   * two concurrent writes for one offer (#2617). Optional, so a payload enqueued
+   * before it existed stays valid and writes unguarded, exactly as before.
    */
   observedAt?: string;
 }

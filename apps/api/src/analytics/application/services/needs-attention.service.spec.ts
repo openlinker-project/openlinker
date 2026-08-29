@@ -37,6 +37,7 @@ describe('NeedsAttentionService', () => {
       stockSafetyBuffer: 5,
       availableToPromise: 0,
       shortfall: 0,
+      stockZeroThreshold: 0,
     };
     const failedSyncValue = {
       count: 3,

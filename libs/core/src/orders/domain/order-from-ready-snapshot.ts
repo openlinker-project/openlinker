@@ -164,6 +164,14 @@ function readAddress(value: unknown): Address | undefined {
   if (typeof raw.firstName === 'string') address.firstName = raw.firstName;
   if (typeof raw.lastName === 'string') address.lastName = raw.lastName;
   if (typeof raw.company === 'string') address.company = raw.company;
+  // Three states, so `null` is admitted alongside a string: the snapshot key
+  // being absent means the source asserted nothing, while a stored `null` means
+  // it asserted the buyer has none. Collapsing them here would hand the
+  // manual-issuance path a different answer than the auto-issue path gets from
+  // the live Order.
+  if (typeof raw.taxId === 'string' || raw.taxId === null) {
+    address.taxId = raw.taxId;
+  }
   if (typeof raw.address2 === 'string') address.address2 = raw.address2;
   if (typeof raw.state === 'string') address.state = raw.state;
   if (typeof raw.phone === 'string') address.phone = raw.phone;

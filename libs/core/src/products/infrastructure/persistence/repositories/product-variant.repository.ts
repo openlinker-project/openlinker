@@ -67,14 +67,31 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
   }
 
   async countByProductIds(productIds: readonly string[]): Promise<Map<string, number>> {
+    return this.countByProductIdsWithFilter(productIds, false);
+  }
+
+  async countStaleByProductIds(productIds: readonly string[]): Promise<Map<string, number>> {
+    return this.countByProductIdsWithFilter(productIds, true);
+  }
+
+  private async countByProductIdsWithFilter(
+    productIds: readonly string[],
+    staleOnly: boolean
+  ): Promise<Map<string, number>> {
     const result = new Map<string, number>();
     if (productIds.length === 0) return result;
 
-    const rows = await this.repository
+    const queryBuilder = this.repository
       .createQueryBuilder('variant')
       .select('variant.productId', 'productId')
       .addSelect('COUNT(*)', 'count')
-      .where('variant.productId IN (:...productIds)', { productIds: [...productIds] })
+      .where('variant.productId IN (:...productIds)', { productIds: [...productIds] });
+
+    if (staleOnly) {
+      queryBuilder.andWhere('variant.isStale = true');
+    }
+
+    const rows = await queryBuilder
       .groupBy('variant.productId')
       .getRawMany<{ productId: string; count: string }>();
 

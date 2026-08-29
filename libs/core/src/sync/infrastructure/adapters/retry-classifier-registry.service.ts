@@ -22,7 +22,15 @@
  * @see {@link RetryClassifierPort} for the port interface.
  */
 import { Injectable } from '@nestjs/common';
-import type { RetryClassifierPort } from '../../domain/ports/retry-classifier.port';
+import type { RetryClassifierPort, RetryDeferral } from '../../domain/ports/retry-classifier.port';
+
+/**
+ * Hard ceiling on a single classifier-reported deferral (#2613 review).
+ * One hour is already longer than any destination's own `Retry-After` in the
+ * tree; past that the job should come back and be re-classified rather than
+ * disappear from view.
+ */
+const MAX_DEFERRAL_DELAY_SECONDS = 3600;
 
 @Injectable()
 export class RetryClassifierRegistryService {
@@ -53,5 +61,34 @@ export class RetryClassifierRegistryService {
       }
     }
     return false;
+  }
+
+  /**
+   * Resolve a retry deferral across registered classifiers (#2613). First
+   * usable answer wins - classifiers own disjoint exception hierarchies, so at
+   * most one can recognise the cause. Classifiers that do not implement the
+   * optional method are skipped.
+   *
+   * The delay is coerced here rather than trusted, because the value crosses a
+   * plugin boundary: a non-positive or non-finite delay is ignored so a
+   * miscomputed zero cannot turn a deferral into a hot requeue loop, and a
+   * delay longer than the cap is clamped down so a buggy plugin returning
+   * 10^9 cannot park a job for decades.
+   */
+  resolveRetryDeferral(cause: unknown): RetryDeferral | null {
+    for (const classifier of this.classifiers.values()) {
+      const deferral = classifier.getRetryDeferral?.(cause) ?? null;
+      if (deferral === null) {
+        continue;
+      }
+      if (!Number.isFinite(deferral.delaySeconds) || deferral.delaySeconds <= 0) {
+        continue;
+      }
+      if (deferral.delaySeconds > MAX_DEFERRAL_DELAY_SECONDS) {
+        return { reason: deferral.reason, delaySeconds: MAX_DEFERRAL_DELAY_SECONDS };
+      }
+      return deferral;
+    }
+    return null;
   }
 }

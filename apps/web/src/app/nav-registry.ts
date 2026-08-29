@@ -32,8 +32,8 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
     kind: 'live',
     label: 'Operations',
     items: [
-      { to: '/', label: 'Dashboard', end: true },
       { to: '/analytics', label: 'Analytics' },
+      { to: '/', label: 'Dashboard', end: true },
       { to: '/orders', label: 'Orders', countKey: 'orders' },
       { to: '/products', label: 'Products' },
       { to: '/customers', label: 'Customers', countKey: 'customers' },

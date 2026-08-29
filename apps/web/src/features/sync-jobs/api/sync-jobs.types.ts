@@ -60,8 +60,12 @@ export const JOB_TYPE_VALUES = [
   'master.product.syncDelta', // Internal job — not user-triggerable; listed here so an operator can filter the incremental pass (#2220).
   'master.product.reconcile', // Internal job — not user-triggerable; listed here so an operator can filter the deletion-reconciliation pass (#2222).
   'master.product.syncByExternalId',
+  'master.product.syncFromSweep', // Internal job — the sweep-triggered per-product child, listed so an operator can tell catalogue work apart from webhook work (#2594). Still the delta and deletion-reconcile child after #2593; the full sweep now enqueues master.product.syncBatch.
+  'master.product.syncBatch', // Internal job - not user-triggerable; listed here so an operator can filter the batched catalogue pass (#2593).
   'master.inventory.syncAll',
   'master.inventory.syncByExternalId',
+  'master.inventory.syncFromSweep', // Internal job — sweep-triggered per-product inventory child (#2594). Still the per-product fallback for a failed batch member after #2648.
+  'master.inventory.syncBatch', // Internal job - not user-triggerable; listed here so an operator can filter the batched stock pass (#2648).
   'master.variants.autoMatch',
   'inventory.propagateToMarketplaces',
   'inventory.provenance.backfill', // Internal job — not user-triggerable; listed here so an operator can watch the one-time provenance backfill drain (#2317).
@@ -85,6 +89,14 @@ export interface SyncJob {
   idempotencyKey: string | null;
   lockedAt: string | null;
   lockedBy: string | null;
+  /**
+   * Milliseconds the most recently completed execution attempt took (#2611) -
+   * one attempt, not a total across retries, and not queue wait. `null` when
+   * no attempt has completed, when the job was killed without executing, or
+   * for a row predating the column. Never render or aggregate it as zero.
+   */
+  lastAttemptDurationMs: number | null;
+  deferredTotalMs: number | null;
   createdAt: string;
   updatedAt: string;
 }

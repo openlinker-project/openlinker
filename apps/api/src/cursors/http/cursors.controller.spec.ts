@@ -26,9 +26,11 @@ describe('CursorsController', () => {
     const mockRepository: jest.Mocked<ConnectionCursorRepositoryPort> = {
       get: jest.fn(),
       set: jest.fn(),
+      advanceIfGreater: jest.fn(),
       delete: jest.fn(),
       findMany: jest.fn(),
       findOne: jest.fn(),
+      findMostRecentUpdate: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({

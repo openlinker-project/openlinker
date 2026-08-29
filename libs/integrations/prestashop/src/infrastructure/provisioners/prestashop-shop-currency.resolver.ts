@@ -13,14 +13,13 @@
  * neither a read blip nor a missing `PS_CURRENCY_DEFAULT` survives the operator
  * fixing it (see `UNRESOLVED_CACHE_TTL_MS`).
  *
- * In the wiring as it ships, that TTL split is not yet observable: this resolver
- * is a field on `PrestashopAdapterFactory`, and `prestashop-plugin.ts`
- * constructs a new factory per `createCapabilityAdapter`, so the cache is
- * discarded after the single `resolveDefaultCurrencyIso` call each adapter build
- * makes. Every build re-reads regardless of TTL. The short unresolved TTL is
- * kept as a defensive default - it costs nothing while the cache is per-build,
- * and it is the correct value the moment the factory is genuinely held as a
- * process singleton, which the field placement already assumes.
+ * That TTL split is observable since #2592. Until then the owning
+ * `PrestashopAdapterFactory` was constructed once per `createCapabilityAdapter`,
+ * so the cache was discarded after the single `resolveDefaultCurrencyIso` call
+ * each adapter build made and every build re-read regardless of TTL - two
+ * requests (`GET /configurations` + `GET /currencies/{id}`) on every child job.
+ * The factory is now held in the plugin closure, which is the lifetime this
+ * field placement always assumed.
  *
  * Robust by design: any failure (missing/malformed config, ambiguous result,
  * WS error) returns `null` and never throws into product sync — the mapper then
@@ -37,10 +36,20 @@ import type { PrestashopConfiguration } from './prestashop-provisioner.types';
 const DEFAULT_CURRENCY_CONFIG_KEY = 'PS_CURRENCY_DEFAULT';
 
 /**
- * Cache TTL (24h). The shop default currency changes rarely, but the cache
- * expires so a back-office change eventually surfaces without a restart.
+ * Cache TTL (1h). The shop default currency changes rarely, but the cache
+ * expires so a back-office change surfaces without a restart.
+ *
+ * It was 24h while the resolver was rebuilt per adapter resolution, so the TTL
+ * never actually applied - the cache was thrown away long before an entry could
+ * age. Since #2592 the resolver lives for the process, and 24h would mean an
+ * operator switching the shop's default currency waited a day for OL to notice,
+ * with every product stamped in the old denomination in the meantime. A
+ * back-office currency change leaves the connection config untouched, so the
+ * factory's shop-identity check cannot see it and the TTL is the only signal.
+ * One hour costs 2 requests per connection per hour, which is inside the noise
+ * of any sweep, and is the shortest of the shop-level caches for that reason.
  */
-const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const CACHE_TTL_MS = 60 * 60 * 1000;
 
 /**
  * Short TTL (60s) for ANY unresolved (`null`) answer — a transient read failure

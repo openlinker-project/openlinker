@@ -4,14 +4,14 @@
  * Handles jobs of type 'master.product.syncDelta'. The INCREMENTAL half of the
  * catalog pass (#2220, ADR-048 decisions 1/3): it enumerates only the products a
  * master reports as changed since a stored watermark, and fans out the same
- * per-product 'master.product.syncByExternalId' children the full sweep does.
+ * per-product 'master.product.syncFromSweep' children the full sweep does.
  *
  * It is additive, not a replacement. `master.product.syncAll` keeps running on its
  * own cadence and remains the bootstrap and reconciliation path; only that pass may
  * ever conclude a product DISAPPEARED (ADR-048 decision 2 — a modified-since query
  * cannot observe a deletion, the record simply stops appearing). This handler must
  * therefore never grow a catalog-level prune. A spec pins that it enqueues nothing
- * but `master.product.syncByExternalId`.
+ * but `master.product.syncFromSweep`.
  *
  * What it does NOT skip is the per-product variant prune. `markVariantsStaleExcept`
  * runs inside `syncByExternalId` against the variants of the one product the master
@@ -238,7 +238,8 @@ export class MasterProductSyncDeltaHandler implements SyncJobHandler {
             pageBudget,
             this.getPageSize()
           ),
-        enqueue: (externalId, cycleId) => this.enqueueChild(job, externalId, cycleId),
+        // One id per child: this sweep keeps the per-item fan-out.
+        enqueue: (externalIds, cycleId) => this.enqueueChild(job, externalIds[0], cycleId),
         newCycleId: () => randomUUID(),
       });
 
@@ -319,7 +320,10 @@ export class MasterProductSyncDeltaHandler implements SyncJobHandler {
 
   private async enqueueChild(job: SyncJob, externalId: string, cycleId: string): Promise<unknown> {
     const jobRequest: SyncJobRequest = {
-      jobType: 'master.product.syncByExternalId',
+      // Sweep-triggered child: same handler and payload as the
+      // webhook-driven `master.product.syncByExternalId`, distinct type so
+      // ADR-050 can lane it by its own cost of starvation (#2594).
+      jobType: 'master.product.syncFromSweep',
       connectionId: job.connectionId,
       payload: {
         schemaVersion: 1,

@@ -23,6 +23,7 @@ import type { CustomerProjectionRepositoryPort, AddressType } from '@openlinker/
 import { DestinationAddressMapping } from '@openlinker/core/customers';
 import type { Address, OrderPickupPoint } from '@openlinker/core/orders';
 import type { PrestashopAddress, PrestashopAddressCreate } from './prestashop-provisioner.types';
+import { readAllPrestashopResourcePages } from '../http/prestashop-paged-read';
 
 /**
  * Lock TTL in seconds (30 seconds is sufficient for PrestaShop API calls)
@@ -260,16 +261,16 @@ export class PrestashopAddressProvisioner {
 
       // Step 5: Fallback - Query PrestaShop addresses for the customer
       // Note: PrestashopWebserviceClient must generate filter[id_customer]=[value]&display=[id,address1,city,postcode] format
-      // Note: Limit of 100 addresses. If customer has more addresses, matching may fail.
-      // This is acceptable for MVP since mapping table is primary reuse mechanism.
-      // Future: Implement pagination for customers with many addresses.
-      const addresses = await webserviceClient.listResources<PrestashopAddress>(
+      // Paged: the hard 100 here meant a customer past that count silently lost
+      // the match and got a duplicate address created every order (#2608).
+      const addresses = await readAllPrestashopResourcePages<PrestashopAddress>(
+        webserviceClient,
         'addresses',
+        { custom: { id_customer: prestashopCustomerId } },
         {
-          custom: { id_customer: prestashopCustomerId },
-        },
-        100, // limit (reasonable for address list, but may miss addresses if customer has >100)
-        0 // offset
+          connectionId: destinationConnectionId,
+          detail: `id_customer=${String(prestashopCustomerId)}`,
+        }
       );
 
       // Step 6: Match by hash (best effort - compare hashes of fetched addresses)

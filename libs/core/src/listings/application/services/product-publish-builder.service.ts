@@ -184,6 +184,9 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
       destinationCategoryIds,
       // `price` is guaranteed defined here — `issues` would have caught it above.
       price: price as { amount: number; currency: string },
+      // Both publish knobs — the #1844 reserve and the #2610 zero threshold —
+      // are applied inside `applyPublishControls`, which resolves the whole
+      // policy for the scope and warns on either knob being present-but-invalid.
       stock: stockControl.quantity,
       status: input.status,
       // Thread the variant SKU so shop products publish with a reference the

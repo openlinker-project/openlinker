@@ -78,6 +78,7 @@ import {
   STOCK_STATUS_BADGE_TONE,
   STOCK_STATUS_LABEL,
 } from './product-stock-status';
+import { deriveProductStaleness } from '../../features/products/lib/product-staleness';
 import { ListingsCoveragePills } from './listings-coverage-pills';
 import { ProductRowDetail } from './product-row-detail';
 import { OfferProductPickerModal } from '../../features/listings/components/offer-product-picker-modal';
@@ -204,6 +205,10 @@ export function ProductsListPage(): ReactElement {
     [unlistedOnParam],
   );
   const sourceConnectionId = searchParams.get('connectionId') ?? undefined;
+  // #2447 — opt-in: hides only a product whose variants are ALL deleted at
+  // the master (a "phantom" row, #1689). Default off so an install's
+  // existing view is unchanged until the operator asks for it.
+  const hideFullyStale = searchParams.get('hideStale') === '1';
   const rawSort = searchParams.get('sort');
   const sortField = isSortField(rawSort) ? rawSort : DEFAULT_SORT;
   const rawDir = searchParams.get('dir');
@@ -337,6 +342,7 @@ export function ProductsListPage(): ReactElement {
     taxRateState,
     unlistedOn,
     connectionId: sourceConnectionId,
+    hideFullyStale: hideFullyStale || undefined,
   };
   const sort: ProductListSort = { field: sortField, dir: sortDir };
   const pagination = { limit: PAGE_SIZE, offset };
@@ -422,6 +428,11 @@ export function ProductsListPage(): ReactElement {
     [setFilterParam, unlistedOnParam],
   );
 
+  /** #2447 — the "Hide deleted at source" toggle. */
+  const toggleHideStale = useCallback((): void => {
+    setFilterParam('hideStale', hideFullyStale ? '' : '1');
+  }, [setFilterParam, hideFullyStale]);
+
   const handleSearchChange = useCallback(
     (value: string): void => {
       setSearchInput(value);
@@ -482,12 +493,15 @@ export function ProductsListPage(): ReactElement {
   );
 
   const anyFilterActive = Boolean(
-    debouncedSearch || stock || unlistedOnParam || sourceConnectionId,
+    debouncedSearch || stock || unlistedOnParam || sourceConnectionId || hideFullyStale,
   );
   // Count badge on the narrow-viewport "Filters" toggle - non-default filter
   // axes only (search stays visible outside the panel).
   const activeFilterCount =
-    (stock ? 1 : 0) + (unlistedOnParam ? 1 : 0) + (sourceConnectionId ? 1 : 0);
+    (stock ? 1 : 0) +
+    (unlistedOnParam ? 1 : 0) +
+    (sourceConnectionId ? 1 : 0) +
+    (hideFullyStale ? 1 : 0);
 
   const clearFilters = useCallback((): void => {
     setSearchInput('');
@@ -497,6 +511,7 @@ export function ProductsListPage(): ReactElement {
       next.delete('stock');
       next.delete('unlistedOn');
       next.delete('connectionId');
+      next.delete('hideStale');
       next.delete('offset');
       return next;
     });
@@ -694,6 +709,21 @@ export function ProductsListPage(): ReactElement {
     [coveragePillConnections],
   );
 
+  /**
+   * #2447 — deleted-at-source flag, shared by the desktop row and the mobile
+   * card meta. "some" (warning) vs "all" (error) so a partially-live
+   * multi-variant product doesn't read as fully gone.
+   */
+  const renderStalenessBadge = useCallback((product: Product): ReactNode => {
+    const staleness = deriveProductStaleness(product);
+    if (!staleness) return null;
+    return (
+      <StatusBadge tone={staleness.tone} withDot compact>
+        {staleness.label}
+      </StatusBadge>
+    );
+  }, []);
+
   const columns: DataTableColumn<Product>[] = useMemo(
     () => [
       {
@@ -732,6 +762,7 @@ export function ProductsListPage(): ReactElement {
                       {product.variantCount} variants
                     </StatusBadge>
                   ) : null}
+                  {renderStalenessBadge(product)}
                 </span>
                 {/* Labelled, not a bare mono string (#2092): unlabelled, an
                     identifier under the product name reads as "some id" and the
@@ -877,6 +908,7 @@ export function ProductsListPage(): ReactElement {
       renderSelectCheckbox,
       renderStockCell,
       renderCoveragePills,
+      renderStalenessBadge,
       connectionById,
       connectionsQuery.isLoading,
       platformLabel,
@@ -1153,6 +1185,11 @@ export function ProductsListPage(): ReactElement {
               Unlisted on {c.name}
             </Chip>
           ))}
+          {/* #2447 — opt-in: a phantom (fully-deleted-at-source) row is a rare,
+              cleanup-shaped need, not a default-view change. */}
+          <Chip tone="error" active={hideFullyStale} onClick={toggleHideStale}>
+            Hide deleted at source
+          </Chip>
           {query.data ? (
             <span
               className="text-muted mono tabular"
@@ -1209,6 +1246,14 @@ export function ProductsListPage(): ReactElement {
               </div>
             </div>
           ) : null}
+          <div className="products-filter-panel__group">
+            <span className="products-filter-panel__label">Deleted at source</span>
+            <div className="ds-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+              <Chip tone="error" active={hideFullyStale} onClick={toggleHideStale}>
+                Hide deleted at source
+              </Chip>
+            </div>
+          </div>
           <div className="products-filter-panel__group">
             <span className="products-filter-panel__label">Source</span>
             <Select
@@ -1413,6 +1458,7 @@ export function ProductsListPage(): ReactElement {
                     </StatusBadge>
                   ) : null}
                   {renderCoveragePills(product)}
+                  {renderStalenessBadge(product)}
                 </span>
               ),
               detail: (product) => {

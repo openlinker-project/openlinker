@@ -47,6 +47,7 @@ function buildQuery(
     params.set('unlistedOn', filters.unlistedOn.join(','));
   }
   if (filters?.connectionId) params.set('connectionId', filters.connectionId);
+  if (filters?.hideFullyStale) params.set('hideFullyStale', 'true');
   if (sort) {
     params.set('sort', sort.field);
     params.set('dir', sort.dir);

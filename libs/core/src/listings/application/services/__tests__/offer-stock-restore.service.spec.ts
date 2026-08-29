@@ -23,6 +23,7 @@ import type {
   IInventoryQueryService,
   IReservationService,
   VariantAvailability,
+  IAvailabilityService,
 } from '@openlinker/core/inventory';
 import type { IShipmentQueryService } from '@openlinker/core/shipping';
 import { OfferStockRestoreReleaseIncompleteError } from '@openlinker/core/listings';
@@ -79,6 +80,7 @@ describe('OfferStockRestoreService', () => {
     failed: 0,
     ...over,
   });
+  let availabilityService: jest.Mocked<IAvailabilityService>;
 
   beforeEach(() => {
     callOrder = [];
@@ -111,6 +113,20 @@ describe('OfferStockRestoreService', () => {
       listCapabilityAdapters: jest.fn(),
     } as unknown as jest.Mocked<IIntegrationsService>;
 
+    // #2610 via #2323 — the restore asks the availability seam for the
+    // connection's publish Controls rather than reading the buffer helpers.
+    // Default: pass-through (no reserve, no threshold).
+    availabilityService = {
+      applyPublishControlsBatch: jest.fn((input: { quantities: readonly number[] }) =>
+        Promise.resolve(
+          input.quantities.map((quantity) => ({ quantity, provenance: 'computed' as const }))
+        )
+      ),
+      applyPublishControls: jest.fn(),
+      getPromisableQuantities: jest.fn(),
+      getAppliedReserve: jest.fn().mockResolvedValue(0),
+    } as unknown as jest.Mocked<IAvailabilityService>;
+
     orderRecordService = {
       getOrderRecord: jest.fn(),
       findByIds: jest.fn(),
@@ -134,6 +150,7 @@ describe('OfferStockRestoreService', () => {
       orderRecordService,
       offerMappings,
       inventoryQuery,
+      availabilityService,
       reservations,
       shipments
     );
@@ -427,5 +444,43 @@ describe('OfferStockRestoreService', () => {
       expect(restorer.restoreStockOnCancellation).not.toHaveBeenCalled();
       expect(result.outcome).toBe('skipped-no-targets');
     });
+  });
+
+  it('should hold back the connection stock safety buffer when restoring (#2610)', async () => {
+    // The seam applies the Controls; a reserve of 2 over a master 5 publishes 3.
+    availabilityService.applyPublishControlsBatch.mockResolvedValue([
+      { quantity: 3, provenance: 'computed' },
+    ]);
+    orderRecordService.getOrderRecord.mockResolvedValue(orderRecord([{ variantId: VARIANT_A }]));
+    offerMappings.findMappingPage.mockResolvedValue({
+      items: [mapping(VARIANT_A, OFFER_A)],
+      total: 1,
+    });
+    inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue(availability([[VARIANT_A, 5]]));
+
+    await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
+
+    expect(restorer.restoreStockOnCancellation).toHaveBeenCalledWith([
+      { externalOfferId: OFFER_A, quantity: 3 },
+    ]);
+  });
+
+  it('should publish 0 when the restored quantity is below the zero threshold (#2610)', async () => {
+    // A threshold of 4 over a master 3 publishes 0 — the seam's arithmetic.
+    availabilityService.applyPublishControlsBatch.mockResolvedValue([
+      { quantity: 0, provenance: 'computed' },
+    ]);
+    orderRecordService.getOrderRecord.mockResolvedValue(orderRecord([{ variantId: VARIANT_A }]));
+    offerMappings.findMappingPage.mockResolvedValue({
+      items: [mapping(VARIANT_A, OFFER_A)],
+      total: 1,
+    });
+    inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue(availability([[VARIANT_A, 3]]));
+
+    await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
+
+    expect(restorer.restoreStockOnCancellation).toHaveBeenCalledWith([
+      { externalOfferId: OFFER_A, quantity: 0 },
+    ]);
   });
 });

@@ -244,6 +244,28 @@ export class OrderRecordOrmEntity {
   totalAmount!: number | null;
 
   /**
+   * Buyer tax identifier as the source reported it (#2599), denormalized off
+   * the snapshot's billing address so a routing or gating query never has to
+   * expand JSONB - and so the value survives `OL_STORE_PII=false`, under which
+   * the snapshot address is replaced by `[REDACTED]`.
+   *
+   * THREE states in one column, and a bare `IS NOT NULL` reads the middle one
+   * wrong: `NULL` = the source asserted nothing, `''` = the source asserted the
+   * buyer has none, otherwise the id. Round-trip it through
+   * `encodeBuyerTaxIdColumn` / `decodeBuyerTaxIdColumn`.
+   *
+   * Written only on the `'ready'` path (`upsertWithLineItems`), like the four
+   * analytics scalars above: the awaiting-mapping snapshot has no resolved
+   * order to read a billing address off yet.
+   *
+   * PII-gated at persistence. For a sole trader the tax id identifies a natural
+   * person, so hash-only mode stores nothing rather than keeping the one buyer
+   * identifier that survived the address redaction.
+   */
+  @Column({ type: 'text', nullable: true })
+  buyerTaxId!: string | null;
+
+  /**
    * Per-order reporting-currency snapshot (#2124, ADR-040) — six columns
    * written ONLY by the two narrow, conditional UPDATEs on the repository
    * (`claimFxIntentIfAbsent`, `stampFxIfAbsent`). The ingestion upsert

@@ -30,4 +30,16 @@ export class ProductVariantSummaryResponseDto {
     description: 'Display label assembled from variant attributes (e.g. "Red / 42")',
   })
   name?: string;
+
+  @ApiProperty({
+    description:
+      'Whether this variant was deleted at the master (absent from the master catalog, or the product 404s). Its offers are auto-paused.',
+  })
+  isStale!: boolean;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Timestamp of the most recent stale-marking; null while the variant is live.',
+  })
+  staleAt!: string | null;
 }

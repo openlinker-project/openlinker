@@ -5,7 +5,17 @@
  * reservation ledger by #2348). The `OrderIngestionService` observe hook
  * enqueues one `marketplace.offer.stockRestore` job per `→ cancelled`
  * transition — for EVERY marketplace, not just restorer-capable ones — and the
- * worker handler delegates here.
+ * worker handler delegates here. This service:
+ *   1. loads the order record (`IOrderRecordService`) → resolved variant ids;
+ *   2. resolves the distinct external offer ids for those variants on the source
+ *      connection (`OfferMappingRepositoryPort.findMany`);
+ *   3. reads the absolute master-inventory target per variant
+ *      (`IInventoryQueryService.getAvailabilityByVariantIds`, #823) — master is
+ *      authoritative, including 0 — and applies the connection's stock publish
+ *      policy to it (reserve #1844, zero threshold #2610), so a cancellation
+ *      restores the buffered quantity rather than wiping the reserve (#2610);
+ *   4. builds `OfferStockRestoreTarget[]` and dispatches the destination
+ *      `OfferStockRestorer` capability (no-op when honestly absent).
  *
  * ORDERING IS THE POINT, and it is enforced three ways:
  *
@@ -59,6 +69,8 @@ import {
   INTEGRATIONS_SERVICE_TOKEN,
 } from '@openlinker/core/integrations';
 import {
+  AVAILABILITY_SERVICE_TOKEN,
+  IAvailabilityService,
   IInventoryQueryService,
   INVENTORY_QUERY_SERVICE_TOKEN,
   IReservationService,
@@ -101,6 +113,8 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
     private readonly offerMappings: OfferMappingRepositoryPort,
     @Inject(INVENTORY_QUERY_SERVICE_TOKEN)
     private readonly inventoryQuery: IInventoryQueryService,
+    @Inject(AVAILABILITY_SERVICE_TOKEN)
+    private readonly availabilityService: IAvailabilityService,
     @Inject(RESERVATION_SERVICE_TOKEN)
     private readonly reservations: IReservationService,
     @Inject(SHIPMENT_QUERY_SERVICE_TOKEN)
@@ -202,6 +216,12 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
       return this.skipped(release, 'skipped-no-restorer');
     }
 
+    // #2610 — the restore writes an ABSOLUTE quantity, so it has to reproduce
+    // the same publish policy the ordinary write-back applies. Without this the
+    // first cancellation replaced the buffered quantity with the raw master
+    // count, silently removing the operator's oversell reserve until the next
+    // full sync. Read once per order (single connection); an unconfigured
+    // connection resolves 0/0 and the restore is byte-identical to before.
     const record = await this.orderRecordService.getOrderRecord(internalOrderId);
     if (!record) {
       this.logger.debug(
@@ -245,15 +265,39 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
     );
 
     const targets: OfferStockRestoreTarget[] = [];
+    const restorable: { externalOfferId: string; masterQuantity: number }[] = [];
     for (const [variantId, externalOfferId] of externalOfferIdByVariant) {
-      const quantity = targetByVariant.get(variantId);
+      const masterQuantity = targetByVariant.get(variantId);
       // OMITTED, not zeroed, when availability is unknown. `getAvailability
       // ByVariantIds` zero-fills every id it can answer for, so an absent entry
       // means OL does not know — and writing 0 there would DEACTIVATE a live
       // offer (#1689 uses exactly that primitive to pause one) on the strength
-      // of a failed read.
-      if (quantity === undefined) continue;
-      targets.push({ externalOfferId, quantity });
+      // of a failed read. This is why the read is not defaulted to 0.
+      if (masterQuantity === undefined) continue;
+      restorable.push({ externalOfferId, masterQuantity });
+    }
+
+    // Master is authoritative including 0, but what the destination is TOLD is
+    // the master figure under the connection's publish Controls — so a
+    // cancellation restores the buffered quantity rather than wiping the
+    // reserve (#2610). The threshold's 0 is a deliberate operator choice about
+    // what the destination may sell, not a post-sale hold: the same Controls
+    // produced the quantity published before the order arrived.
+    //
+    // Asked of the availability seam, never of the buffer helpers: #2323 made
+    // `IAvailabilityService` their one reader precisely so a second Control
+    // cannot be added in one place and missed here.
+    const controls = await this.availabilityService.applyPublishControlsBatch({
+      quantities: restorable.map((entry) => entry.masterQuantity),
+      scope: { kind: 'channel', connectionId },
+    });
+    for (const [index, entry] of restorable.entries()) {
+      const quantity = controls[index]?.quantity;
+      // Same rule as an unknown availability, one term further along: publishing
+      // the unbuffered figure would restore straight through the operator's
+      // cushion, and publishing 0 would deactivate a live offer.
+      if (typeof quantity !== 'number') continue;
+      targets.push({ externalOfferId: entry.externalOfferId, quantity });
     }
 
     if (targets.length === 0) {
@@ -288,6 +332,7 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
       outcome,
     };
   }
+
 
   /**
    * Resolve the connection's `OfferManager` adapter and narrow it to an

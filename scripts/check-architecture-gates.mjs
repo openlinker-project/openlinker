@@ -232,8 +232,16 @@ const KNOWN_RUNGS = new Set(['modified-product-lister.capability.ts']);
  * `product-tax-rate-reader.capability.ts` (#2054, ADR-063) reports the tax rate
  * a product carries, not when the master last changed it, so it says nothing
  * about freshness and must not count toward ADR-048's third-rung gate.
+ *
+ * `bulk-product-reader.capability.ts` (#2593, ADR-048) says the adapter can
+ * hydrate many products in one read. That is a cost claim, not a freshness one -
+ * it answers "how cheaply", never "what changed since" - so the sweep still has
+ * to enumerate everything and it must not count toward the third-rung gate.
  */
-const NON_RUNGS = new Set(['product-tax-rate-reader.capability.ts']);
+const NON_RUNGS = new Set([
+  'product-tax-rate-reader.capability.ts',
+  'bulk-product-reader.capability.ts',
+]);
 
 /** ADR-048: "a third rung appearing is the signal to revisit the ladder." */
 const RUNG_THRESHOLD = 3;

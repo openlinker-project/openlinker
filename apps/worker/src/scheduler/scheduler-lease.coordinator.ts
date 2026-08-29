@@ -52,7 +52,16 @@ export class SchedulerLeaseCoordinator implements OnApplicationBootstrap, OnModu
       lockKey: LEASE_KEY,
       ttlMs: this.resolveTtlMs(),
       syncLock: this.syncLock,
-      onAcquired: () => this.schedulerService.start(),
+      onAcquired: async () => {
+        // Snapshot the operator-settable cadences BEFORE registering the cron
+        // jobs (#2651) — a CronJob's expression is fixed at construction, so
+        // this is the point at which the deletion audit's cadence is decided.
+        // The refresh never throws; a failed read leaves every task on its env
+        // var. `onAcquired` is awaited by `SingletonRoleLease`, so the ordering
+        // holds.
+        await this.schedulerService.refreshOperationalSettings();
+        this.schedulerService.start();
+      },
       onLost: () => this.schedulerService.stop(),
     });
     this.lease.start();

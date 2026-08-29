@@ -161,6 +161,9 @@ export class OrderSyncService implements IOrderSyncService {
       shipping: order.shipping,
       pickupPoint: order.pickupPoint,
       source: { connectionId: sourceConnectionId, eventId: sourceEventId },
+      // Threaded so a destination can record what the buyer has paid apart from
+      // what the order is worth (#2600). Passed through, never derived.
+      paymentStatus: order.paymentStatus,
       metadata: {
         // Required by destination adapters (e.g. WooCommerce) for idempotency checks.
         internalOrderId: order.id,

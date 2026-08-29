@@ -12,6 +12,12 @@
  * carries `published` holds, the predicate WIDENS to include variants whose
  * remaining stock is fully spoken for, which is the intended Wave-2 behaviour.
  *
+ * The availability seam applies BOTH publish knobs, so the zero threshold
+ * (#2610) is inside `availableToPromise` too: a variant silenced by the
+ * threshold still publishes nothing, and still belongs in this count. Both
+ * knobs are reported as display fields so the operator can see which one
+ * silenced the line.
+ *
  * @module libs/core/src/listings/domain/types
  */
 
@@ -47,6 +53,13 @@ export interface StockAtRiskItem {
    * aggregate could not tell apart.
    */
   shortfall: number;
+  /**
+   * The connection's zero threshold, for DISPLAY (#2610). `0` means the
+   * threshold is off and the buffer alone accounts for the variant being at
+   * risk. Never applied here — like the buffer, it is already inside
+   * `availableToPromise`.
+   */
+  stockZeroThreshold: number;
 }
 
 /**

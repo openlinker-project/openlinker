@@ -44,6 +44,10 @@ export { PrestashopNotSupportedException } from './domain/exceptions/prestashop-
 export { PrestashopParseException } from './domain/exceptions/prestashop-parse.exception';
 export { PrestashopCountryNotFoundException } from './domain/exceptions/prestashop-country-not-found.exception';
 export { PrestashopProvisioningException } from './domain/exceptions/prestashop-provisioning.exception';
+export { PrestashopInvalidFilterException } from './domain/exceptions/prestashop-invalid-filter.exception';
+export { PrestashopTruncatedReadException } from './domain/exceptions/prestashop-truncated-read.exception';
+export { PrestashopPackFilterIgnoredException } from './domain/exceptions/prestashop-pack-filter-ignored.exception';
+export { PrestashopOrFilterIgnoredException } from './domain/exceptions/prestashop-or-filter-ignored.exception';
 // #2052 — raised when a gross→net conversion needs a tax rate the shop's tax
 // configuration cannot supply. Exported because it is the input the retry
 // classifier keys on (a configuration error must not be retried).
@@ -53,6 +57,7 @@ export { PrestashopTaxRateUnknownException } from './domain/exceptions/prestasho
 // Exported for the same reason as the tax-rate class: the retry classifier keys
 // on it, and a shop-configuration gap must not be retried.
 export { PrestashopCurrencyUnknownException } from './domain/exceptions/prestashop-currency-unknown.exception';
+export { PrestashopOrderStateUnresolvedException } from './domain/exceptions/prestashop-order-state-unresolved.exception';
 
 // Retry classification (#581 / #2052) — registered by the plugin descriptor;
 // exported so specs can exercise the real classifier instead of a mock.

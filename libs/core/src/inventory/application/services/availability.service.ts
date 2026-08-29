@@ -22,7 +22,9 @@ import {
   ConnectionPort,
   applyStockSafetyBuffer,
   isPresentButInvalidStockSafetyBuffer,
+  isPresentButInvalidStockZeroThreshold,
   readStockSafetyBuffer,
+  readStockZeroThreshold,
 } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 import {
@@ -34,6 +36,7 @@ import { ReservationLedgerReaderPort } from '../../domain/ports/reservation-ledg
 import type {
   AvailabilityScope,
   PromisableQuantity,
+  PublishControls,
 } from '../../domain/types/availability.types';
 import {
   applyScopedLedgerSubtraction,
@@ -77,9 +80,9 @@ export class AvailabilityService implements IAvailabilityService {
     // 'unknown' this method already implements for a ledger failure was
     // unreachable for the OTHER of its two dependencies — and the callers'
     // stock-at-risk arm with it.
-    let buffer: number;
+    let controls: PublishControls;
     try {
-      buffer = await this.resolveBuffer(scope);
+      controls = await this.resolvePublishControls(scope);
     } catch (error) {
       // An unsupported scope is a CALLER BUG and must keep throwing (see
       // `applyPublishControls` and UnsupportedAvailabilityScopeError).
@@ -134,7 +137,8 @@ export class AvailabilityService implements IAvailabilityService {
           // `toPromisableQuantity` for why that is a known zero, not an unknown.
           { answeredBy: 'computed', totalAvailable: row?.totalAvailable ?? 0 },
           reserved.get(id) ?? 0,
-          buffer
+          controls.buffer,
+          controls.zeroThreshold
         ),
         observedAt: row?.stockUpdatedAt ?? null,
         now,
@@ -145,9 +149,9 @@ export class AvailabilityService implements IAvailabilityService {
   async applyPublishControls(input: ApplyPublishControlsInput): Promise<PublishControlResult> {
     const { quantity, scope } = input;
 
-    let buffer: number;
+    let controls: PublishControls;
     try {
-      buffer = await this.resolveBuffer(scope);
+      controls = await this.resolvePublishControls(scope);
     } catch (error) {
       // An unsupported scope is a CALLER BUG and must keep throwing — dressing
       // it as `'unknown'` would send an operator hunting a healthy integration
@@ -165,7 +169,11 @@ export class AvailabilityService implements IAvailabilityService {
 
     // Byte-identical to what the four shipped publish sites did before #2323.
     return {
-      quantity: applyStockSafetyBuffer(Math.max(0, quantity), buffer),
+      quantity: applyStockSafetyBuffer(
+        Math.max(0, quantity),
+        controls.buffer,
+        controls.zeroThreshold
+      ),
       provenance: 'computed',
     };
   }
@@ -175,9 +183,9 @@ export class AvailabilityService implements IAvailabilityService {
   ): Promise<readonly ControlledQuantity[]> {
     const { quantities, scope } = input;
 
-    let buffer: number;
+    let controls: PublishControls;
     try {
-      buffer = await this.resolveBuffer(scope);
+      controls = await this.resolvePublishControls(scope);
     } catch (error) {
       if (error instanceof UnsupportedAvailabilityScopeError) throw error;
       this.logger.error(
@@ -195,24 +203,34 @@ export class AvailabilityService implements IAvailabilityService {
     // did one per BATCH — a batch of N offers reading the same connection N
     // times for a value that cannot change within the batch.
     return quantities.map((quantity) => ({
-      quantity: applyStockSafetyBuffer(Math.max(0, quantity), buffer),
+      quantity: applyStockSafetyBuffer(
+        Math.max(0, quantity),
+        controls.buffer,
+        controls.zeroThreshold
+      ),
       provenance: 'computed' as const,
     }));
   }
 
   async getAppliedReserve(scope: AvailabilityScope): Promise<number> {
-    return this.resolveBuffer(scope);
+    return (await this.resolvePublishControls(scope)).buffer;
   }
 
   /**
-   * The buffer term, per scope (ADR-061 decision 3 — the buffer is a Control).
+   * The connection's publish policy, per scope (ADR-061 decision 3 — both knobs
+   * are Controls).
    *
-   * `channel` reads the destination connection's own `stockSafetyBuffer`, which
-   * is exactly what the four shipped publish sites do today; `global` applies
-   * none, because the buffer is a per-destination cushion and there is no
-   * defensible way to pick one connection's value to stand for every scope.
+   * `channel` reads the destination connection's own `stockSafetyBuffer` AND its
+   * `stockZeroThreshold` (#2610), which together are exactly what the four
+   * shipped publish sites applied before #2323 centralised them here. Resolving
+   * only the buffer would leave the threshold configurable and inert on every
+   * publish path — the knob would be in the UI and change nothing.
+   *
+   * `global` applies neither, because both are per-destination cushions and
+   * there is no defensible way to pick one connection's value to stand for
+   * every scope.
    */
-  private async resolveBuffer(scope: AvailabilityScope): Promise<number> {
+  private async resolvePublishControls(scope: AvailabilityScope): Promise<PublishControls> {
     switch (scope.kind) {
       case 'channel': {
         const connection = await this.connectionPort.get(scope.connectionId);
@@ -223,10 +241,20 @@ export class AvailabilityService implements IAvailabilityService {
               `reserve is applied. Set a positive integer to enable oversell protection.`
           );
         }
-        return readStockSafetyBuffer(connection.config);
+        if (isPresentButInvalidStockZeroThreshold(connection.config)) {
+          this.logger.warn(
+            `Connection ${scope.connectionId} has a stockZeroThreshold that is present but invalid ` +
+              `(non-numeric, negative, or non-finite) — it coerces to 0, so the threshold is off ` +
+              `and low stock is published as its real number. Set a positive integer to enable it.`
+          );
+        }
+        return {
+          buffer: readStockSafetyBuffer(connection.config),
+          zeroThreshold: readStockZeroThreshold(connection.config),
+        };
       }
       case 'global':
-        return 0;
+        return { buffer: 0, zeroThreshold: 0 };
       case 'location':
       case 'order':
       case 'work':

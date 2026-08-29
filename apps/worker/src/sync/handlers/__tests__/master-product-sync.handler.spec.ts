@@ -27,6 +27,7 @@ describe('MasterProductSyncHandler', () => {
   beforeEach(() => {
     masterProductSync = {
       syncFromMasterByExternalId: jest.fn(),
+      syncFromMasterByExternalIds: jest.fn(),
       markProductDeletedAtMaster: jest.fn(),
     };
     jobEnqueue = { enqueueJob: jest.fn().mockResolvedValue({ jobId: 'child-1' }) };

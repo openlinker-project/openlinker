@@ -24,10 +24,7 @@ import type {
   OrderLifecycleEvent,
   OrderWritebackResult,
 } from '@openlinker/core/orders';
-import type {
-  FulfillmentStatusReader,
-  FulfillmentStatusSnapshot,
-} from '@openlinker/core/orders';
+import type { FulfillmentStatusReader, FulfillmentStatusSnapshot } from '@openlinker/core/orders';
 import {
   extractTrackingFromCarriers,
   extractTrackingFromOrder,
@@ -37,7 +34,10 @@ import type { IdentifierMappingPort, Connection } from '@openlinker/core/identif
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import type { IMappingConfigService } from '@openlinker/core/mappings';
 import type { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
-import type { IPrestashopOpenLinkerModuleClient } from '../http/prestashop-openlinker-module.client.interface';
+import type {
+  IPrestashopOpenLinkerModuleClient,
+  ImportOrderLinePrice,
+} from '../http/prestashop-openlinker-module.client.interface';
 import type {
   IPrestashopOrderMapper,
   PrestashopOrder,
@@ -62,10 +62,13 @@ import type { PrestashopCurrencyResolver } from '../provisioners/prestashop-curr
 import type { PrestashopTaxRateResolver } from '../provisioners/prestashop-tax-rate.resolver';
 import type { PrestashopTaxRateUnknown } from '../provisioners/prestashop-tax-rate.types';
 import { allocateByLargestRemainder } from '@openlinker/shared/money';
+import { isTruthyStateFlag } from '../mappers/prestashop-order-state-semantics';
 import { toPrestashopProductAttributeId } from '../mappers/prestashop-variant-id';
 import type { CustomerProjectionRepositoryPort } from '@openlinker/core/customers';
 import type { PrestashopConnectionConfig } from '../../domain/types/prestashop-config.types';
 import { PrestashopOlCarrierMissingException } from '../../domain/exceptions/prestashop-ol-module.exception';
+import { PrestashopOrderStateUnresolvedException } from '../../domain/exceptions/prestashop-order-state-unresolved.exception';
+import { PrestashopOrderStateCatalog } from '../provisioners/prestashop-order-state.catalog';
 import { hashEmail } from '@openlinker/shared/config';
 
 /**
@@ -103,24 +106,24 @@ export class PrestashopOrderProcessorManagerAdapter
   private readonly logger = new Logger(PrestashopOrderProcessorManagerAdapter.name);
 
   /**
-   * Per-instance lazy cache of `GET /api/order_states` rows keyed by id —
-   * used by `getFulfillmentStatus` to look up the order's current state
-   * row by `current_state` (#834). One PS WS list call per adapter
-   * instance.
+   * Per-instance cache of the shop's own `order_states` rows (#2607), used in
+   * both directions: reading what an order's `current_state` means (#834) and
+   * choosing which state to write for a neutral status. No default-install id
+   * is assumed in either direction.
    *
    * Lifetime contract (verified against
    * `libs/core/src/integrations/application/services/integrations.service.ts`):
    * `IntegrationsService.getCapabilityAdapter` constructs a fresh adapter
-   * via the factory resolver on every call — no instance cache. The
+   * via the factory resolver on every call - no instance cache. The
    * branch-1 sync service (#834) resolves this adapter once per page and
    * reuses it for every record in the page, so this cache amortises one
    * `order_states` WS call across the whole page and is discarded when
    * the sync invocation returns. If a future refactor of
    * `getCapabilityAdapter` introduces adapter-instance caching across
-   * ticks, revisit this cache — operator-added PS states would persist
+   * ticks, revisit this cache - operator-added PS states would persist
    * stale here.
    */
-  private orderStatesById: Map<string, PrestashopOrderState> | null = null;
+  private readonly orderStates: PrestashopOrderStateCatalog;
 
   constructor(
     private readonly httpClient: IPrestashopWebserviceClient,
@@ -137,7 +140,9 @@ export class PrestashopOrderProcessorManagerAdapter
     // prices can be pinned net via `specific_prices` (#895 / ADR-014).
     private readonly taxRateResolver: PrestashopTaxRateResolver,
     private readonly mappingConfigService?: IMappingConfigService
-  ) {}
+  ) {
+    this.orderStates = new PrestashopOrderStateCatalog(httpClient, connection.id);
+  }
 
   async createOrder(order: OrderCreate): Promise<OrderRef> {
     this.logger.log(
@@ -442,23 +447,33 @@ export class PrestashopOrderProcessorManagerAdapter
         );
       }
 
-      // Step 6.6: Pin line prices to the buyer-paid (source-authoritative)
-      // amount via cart-scoped `specific_prices` BEFORE POST /orders (#895 /
-      // ADR-014). PS prices the order's `order_detail` from the cart; without
+      // Step 6.6: Resolve every line's buyer-paid (source-authoritative) net
+      // unit price, to be pinned as cart-scoped `specific_prices` before the
+      // order is created (#895 / ADR-014). PS prices the order's
+      // `order_detail` from the cart; without
       // this it would use the catalog price and land the order in
       // `Payment error`. Per the createOrder invariant, a line we cannot pin
       // MUST fail (throw) rather than silently mis-price — `pinLinePrices`
       // records created ids into `pinnedPriceIds` as it goes, so the outer
       // catch cleans up any partial pins before the error propagates.
-      await this.pinLinePrices(
-        order,
-        externalCartId,
-        externalCustomerId,
-        externalCurrencyId,
-        externalProductIds,
-        externalVariantIds,
-        pinnedPriceIds
-      );
+      const linePins = await this.resolveLinePins(order, externalProductIds, externalVariantIds);
+
+      // A module that advertises `line_prices` pins the whole set inside the
+      // order-import request below, which is two fewer Webservice calls per
+      // line - sixteen of twenty-seven on an eight-line order (#2597). The
+      // capability is learned from a previous import response, so the first
+      // order after a restart still takes this path.
+      const moduleWritesLinePins =
+        linePins.length > 0 && this.openlinkerModuleClient.supportsLinePrices();
+      if (linePins.length > 0 && !moduleWritesLinePins) {
+        await this.postLinePins(
+          linePins,
+          externalCartId,
+          externalCustomerId,
+          externalCurrencyId,
+          pinnedPriceIds
+        );
+      }
 
       // Step 7+8: Create the order through PrestaShop's canonical flow —
       // PaymentModule::validateOrder via the OL module's `importorder` endpoint
@@ -469,6 +484,7 @@ export class PrestashopOrderProcessorManagerAdapter
       // already in place; the module sets the cart's delivery_option then calls
       // validateOrder with $dont_touch_amount so OL's total is authoritative.
       const stateId = await this.resolveStateId(order.status);
+      await this.warnIfUnpaidOrderBooksAsSettled(order, stateId);
       let externalOrderId: string;
       let resolvedReference: string;
 
@@ -531,6 +547,7 @@ export class PrestashopOrderProcessorManagerAdapter
             // delegates to ps_checkpayment::validateOrder.
             paymentMethod: 'Check payment',
             orderReference: order.orderNumber ?? '',
+            ...(moduleWritesLinePins ? { linePrices: linePins } : {}),
           });
           externalOrderId = String(imported.idOrder);
           resolvedReference = imported.reference;
@@ -540,7 +557,9 @@ export class PrestashopOrderProcessorManagerAdapter
           );
         } catch (createError) {
           const msg = createError instanceof Error ? createError.message : String(createError);
-          this.logger.error(`Failed to create order via OL module importOrder: ${formatBodyForLog(msg)}`);
+          this.logger.error(
+            `Failed to create order via OL module importOrder: ${formatBodyForLog(msg)}`
+          );
           throw createError;
         }
       }
@@ -573,6 +592,9 @@ export class PrestashopOrderProcessorManagerAdapter
         // characters and push the product identity out of every truncated
         // surface that renders it (#2052 — see `taxRateUnknownError`).
         error instanceof PrestashopTaxRateUnknownException ||
+        // Same reason as in `updateFulfillment`: the classifier keys on the
+        // class, so wrapping it would cost the refusal its terminal handling.
+        error instanceof PrestashopOrderStateUnresolvedException ||
         // Same contract for the currency refusal (#2139). What it buys today is
         // the operator-facing message: wrapping prepends 35 characters and
         // pushes the currency identity out of the truncated surfaces. It also
@@ -615,23 +637,25 @@ export class PrestashopOrderProcessorManagerAdapter
    * largest-remainder allocation so the pinned lines sum exactly to the
    * authoritative total under rounding.
    *
-   * Records created `specific_prices` ids into `createdIds` (for caller-side
-   * cleanup). Per the createOrder invariant (ADR-014), a line that cannot be
-   * pinned throws — a silently-unpinned line would be priced from the catalog
-   * and land the order in `Payment error`, which is the bug this fixes.
+   * This resolves the net unit price of every line and returns it. Who writes
+   * it depends on the shop's module: a build that advertises `line_prices`
+   * takes the whole set inside the order-import request it already receives
+   * (#2597), and only an older one needs the two Webservice calls per line that
+   * {@link postLinePins} makes. Per the createOrder invariant (ADR-014), a line
+   * whose price cannot be resolved throws either way — a silently-unpinned line
+   * would be priced from the catalog and land the order in `Payment error`,
+   * which is the bug this fixes.
    */
-  private async pinLinePrices(
+  private async resolveLinePins(
     order: OrderCreate,
-    externalCartId: string | number,
-    externalCustomerId: string | number,
-    externalCurrencyId: number | undefined,
     externalProductIds: Map<string, string | number>,
-    externalVariantIds: Map<string, string | number>,
-    createdIds: Array<string | number>
-  ): Promise<void> {
+    externalVariantIds: Map<string, string | number>
+  ): Promise<ImportOrderLinePrice[]> {
     if (order.items.length === 0) {
-      return;
+      return [];
     }
+
+    const pins: ImportOrderLinePrice[] = [];
 
     // `exclusive` → already net; everything else (`inclusive`/unset) → gross,
     // convert to net. Marketplace orders are gross, so unset defaults to gross.
@@ -639,7 +663,6 @@ export class PrestashopOrderProcessorManagerAdapter
     // tracked as the deferred `tax?`/treatment hardening in ADR-014.
     const convertGrossToNet = order.totals.taxTreatment !== 'exclusive';
     const deliveryCountryIso = order.shippingAddress?.country;
-    const toExpiry = this.formatPsDateTime(new Date(Date.now() + ONE_DAY_MS));
 
     // Apportion the gross product subtotal across lines (minor units) so the
     // pinned lines sum exactly to the authoritative total. NOTE: the pinned
@@ -695,12 +718,47 @@ export class PrestashopOrderProcessorManagerAdapter
       }
       const netUnit = grossUnit / (1 + rate);
 
+      pins.push({
+        idProduct: Number(externalProductId),
+        idProductAttribute: Number(externalVariantId),
+        // Six decimals, the same precision the Webservice path pinned with, so
+        // the module and the fallback price a line identically.
+        price: netUnit.toFixed(6),
+      });
+      this.logger.debug(
+        `Resolved line price: product=${externalProductId} variant=${externalVariantId} ` +
+          `grossUnit=${grossUnit.toFixed(4)} rate=${rate} netUnit=${netUnit.toFixed(6)}`
+      );
+    }
+
+    return pins;
+  }
+
+  /**
+   * Write the resolved pins as cart-scoped `specific_prices` over the
+   * Webservice — the fallback for a shop whose module predates #2597, and two
+   * requests per line.
+   *
+   * Records created ids into `createdIds` so the caller can delete them.
+   */
+  private async postLinePins(
+    pins: ImportOrderLinePrice[],
+    externalCartId: string | number,
+    externalCustomerId: string | number,
+    externalCurrencyId: number | undefined,
+    createdIds: Array<string | number>
+  ): Promise<void> {
+    const toExpiry = this.formatPsDateTime(new Date(Date.now() + ONE_DAY_MS));
+
+    for (const pin of pins) {
       try {
         const createdPrice = await this.httpClient.createResource<{ id: string | number }>(
           'specific_prices',
           {
-            id_product: externalProductId,
-            id_product_attribute: externalVariantId,
+            // Stringified because that is the shape this resource has always
+            // been sent, and the Webservice XML is untyped either way.
+            id_product: String(pin.idProduct),
+            id_product_attribute: pin.idProductAttribute,
             id_shop: 0,
             id_shop_group: 0,
             id_cart: externalCartId,
@@ -709,7 +767,7 @@ export class PrestashopOrderProcessorManagerAdapter
             id_group: 0,
             id_customer: externalCustomerId,
             from_quantity: 1,
-            price: netUnit.toFixed(6),
+            price: pin.price,
             reduction: '0',
             reduction_type: 'amount',
             reduction_tax: '0',
@@ -720,10 +778,6 @@ export class PrestashopOrderProcessorManagerAdapter
         if (createdPrice?.id !== undefined) {
           createdIds.push(createdPrice.id);
         }
-        this.logger.debug(
-          `Pinned line price: product=${externalProductId} variant=${externalVariantId} ` +
-            `grossUnit=${grossUnit.toFixed(4)} rate=${rate} netUnit=${netUnit.toFixed(6)}`
-        );
       } catch (error) {
         // Fail loudly (createOrder invariant, ADR-014): do NOT let the order be
         // created at the catalog price. Throw so the idempotency-guarded retry
@@ -737,7 +791,7 @@ export class PrestashopOrderProcessorManagerAdapter
               ? error.message
               : String(error);
         throw new PrestashopApiException(
-          `Failed to pin source-authoritative price for product ${externalProductId}: ${detail}`,
+          `Failed to pin source-authoritative price for product ${pin.idProduct}: ${detail}`,
           undefined,
           undefined
         );
@@ -888,7 +942,11 @@ export class PrestashopOrderProcessorManagerAdapter
     } catch (error) {
       if (
         error instanceof PrestashopResourceNotFoundException ||
-        error instanceof PrestashopApiException
+        error instanceof PrestashopApiException ||
+        // The shop has no state for the requested status (#2607). Wrapping it
+        // made the retry classifier see a generic API failure and spend the
+        // whole retry ladder on a refusal only an operator can clear.
+        error instanceof PrestashopOrderStateUnresolvedException
       ) {
         throw error;
       }
@@ -939,12 +997,14 @@ export class PrestashopOrderProcessorManagerAdapter
             event.externalOrderId
           );
           const currentStateId = Number(order.current_state);
-          const [shippedStateId, deliveredStateId, cancelledStateId] = await Promise.all([
-            this.resolveStateId('shipped'),
-            this.resolveStateId('delivered'),
-            this.resolveStateId('cancelled'),
-          ]);
-          if (currentStateId === shippedStateId || currentStateId === deliveredStateId) {
+          // Compared by what the shop's current state MEANS, not against one id
+          // (#2607). A shop may well carry several states that ship - "Handed to
+          // courier" beside "Shipped" - and an id equality check would refuse the
+          // cancel on only one of them and happily cancel a parcel already gone.
+          const states = await this.orderStates.load();
+          const currentStatus = states.statusOf(order.current_state);
+          const cancelledStateId = await this.resolveStateId('cancelled');
+          if (currentStatus === 'shipped' || currentStatus === 'delivered') {
             this.logger.warn(
               `PrestaShop order ${event.externalOrderId} already in state ${currentStateId} ` +
                 `(shipped/delivered) — refusing cancel writeback (connection: ${this.connection.id})`
@@ -1034,10 +1094,7 @@ export class PrestashopOrderProcessorManagerAdapter
   }): Promise<FulfillmentStatusSnapshot> {
     const { externalOrderId } = input;
     try {
-      const order = await this.httpClient.getResource<PrestashopOrder>(
-        'orders',
-        externalOrderId,
-      );
+      const order = await this.httpClient.getResource<PrestashopOrder>('orders', externalOrderId);
       const stateId = order.current_state !== undefined ? String(order.current_state) : null;
       const state = stateId !== null ? await this.lookupOrderState(stateId) : null;
       // Lazy carriers fetch: most PS configurations populate `shipping_number`
@@ -1047,10 +1104,11 @@ export class PrestashopOrderProcessorManagerAdapter
       // scale without changing observable behaviour.
       const trackingFromOrder = extractTrackingFromOrder(order);
       const trackingNumber =
-        trackingFromOrder ?? extractTrackingFromCarriers(
+        trackingFromOrder ??
+        extractTrackingFromCarriers(
           await this.httpClient.listResources<PrestashopOrderCarrier>('order_carriers', {
             custom: { id_order: externalOrderId },
-          }),
+          })
         );
       return mapToFulfillmentStatusSnapshot(order, state, trackingNumber);
     } catch (error) {
@@ -1061,7 +1119,7 @@ export class PrestashopOrderProcessorManagerAdapter
         // order through the dispatch-notify failure path (#871) if any
         // branch-2/3 sibling exists.
         this.logger.warn(
-          `PrestaShop order ${externalOrderId} not found during fulfillment-status read (connection: ${this.connection.id})`,
+          `PrestaShop order ${externalOrderId} not found during fulfillment-status read (connection: ${this.connection.id})`
         );
         return { status: null, trackingNumber: null, deliveredAt: null };
       }
@@ -1070,25 +1128,13 @@ export class PrestashopOrderProcessorManagerAdapter
   }
 
   /**
-   * Look up an `order_state` row by id, lazy-loading the full map on first
-   * call. Returns `null` for unknown ids (orphaned `current_state` — treat
-   * as "not yet acted" per the mapper's `state === null` branch).
+   * Look up an `order_state` row by id. Returns `null` for unknown ids
+   * (orphaned `current_state` - treat as "not yet acted" per the mapper's
+   * `state === null` branch).
    */
   private async lookupOrderState(stateId: string): Promise<PrestashopOrderState | null> {
-    if (this.orderStatesById === null) {
-      const rows = await this.httpClient.listResources<PrestashopOrderState>(
-        'order_states',
-        { custom: { deleted: '0' } },
-        1000,
-        0,
-      );
-      const map = new Map<string, PrestashopOrderState>();
-      for (const row of rows) {
-        map.set(String(row.id), row);
-      }
-      this.orderStatesById = map;
-    }
-    return this.orderStatesById.get(stateId) ?? null;
+    const states = await this.orderStates.load();
+    return states.find(stateId);
   }
 
   /**
@@ -1294,8 +1340,9 @@ export class PrestashopOrderProcessorManagerAdapter
    * Resolution chain (mirrors `resolveExternalCarrierId`):
    *   1. `MappingConfigService.resolveOrderStateMapping(this.connection.id, status)`
    *      — operator override for THIS destination connection.
-   *   2. `orderMapper.mapStatusToPrestashopStateId(status)` — the hardcoded
-   *      default-install map (#858 tier); vanilla shops need no config.
+   *   2. the shop's own order-state catalogue, matched on what each state
+   *      MEANS (#2607) - so a vanilla shop needs no config and a shop with
+   *      custom states is no longer written a default-install id.
    *
    * Destination-scoped: the override belongs to this PrestaShop connection's
    * customised state catalogue (`this.connection.id`), NOT the source — unlike
@@ -1324,7 +1371,68 @@ export class PrestashopOrderProcessorManagerAdapter
         );
       }
     }
-    return this.orderMapper.mapStatusToPrestashopStateId(status);
+    const states = await this.orderStates.load();
+    const derived = states.stateIdFor(status);
+    if (derived === null) {
+      // Refusing beats writing a guessed id. A state write moves a real order
+      // and can send the buyer an email, so the wrong state is worse than a
+      // failed job the operator can see and fix (#2607).
+      throw new PrestashopOrderStateUnresolvedException(status, this.connection.id);
+    }
+    this.logger.debug(
+      `Derived order state from the shop's catalogue: status='${status}' -> ` +
+        `id_order_state=${derived} (connection=${this.connection.id})`
+    );
+    return derived;
+  }
+
+  /**
+   * Warn when the source says the buyer has not paid yet but the state the
+   * order is about to be imported into makes PrestaShop book it as settled
+   * (#2600 review).
+   *
+   * `amount_paid` cannot express "nothing has arrived". PrestaShop starts
+   * `total_paid_real` at 0 and raises it only from `addOrderPayment`, which
+   * `PaymentModule::validateOrder` calls only for a `logable` state. So on a
+   * non-logable state the figure is already 0 whatever OpenLinker sends, and on
+   * a logable state an amount that differs from the cart total makes
+   * validateOrder discard the requested state and use "Payment error" instead.
+   * Sending 0 therefore never records an unpaid order correctly; it only turns
+   * a correct state into a wrong one.
+   *
+   * What actually decides the outcome is the state, and the state is the
+   * operator's to choose - it comes from their own order-state mapping, or from
+   * the shop's catalogue when they have not mapped it. OpenLinker will not
+   * silently move an order somewhere else than asked, so it reports the
+   * mismatch instead of hiding it.
+   */
+  private async warnIfUnpaidOrderBooksAsSettled(
+    order: OrderCreate,
+    stateId: number
+  ): Promise<void> {
+    if (order.paymentStatus !== 'cod' && order.paymentStatus !== 'awaiting') {
+      return;
+    }
+    let state: PrestashopOrderState | null;
+    try {
+      state = await this.lookupOrderState(String(stateId));
+    } catch {
+      // The catalogue read is already logged where it fails, and an
+      // observability warning must never be the thing that fails an import.
+      return;
+    }
+    if (state === null || !isTruthyStateFlag(state.logable)) {
+      return;
+    }
+    this.logger.warn(
+      `Order will be booked as settled although the source reports it unpaid: ` +
+        `paymentStatus='${order.paymentStatus}' orderNumber=${order.orderNumber ?? 'N/A'} ` +
+        `id_order_state=${stateId} value=${order.totals.total}. That state counts as a real ` +
+        `sale in PrestaShop, so the shop records the full value as received. Map this status to ` +
+        `a state that does not count as a sale (for example "Awaiting cash on delivery ` +
+        `validation") on this connection to record it as outstanding ` +
+        `(connection: ${this.connection.id}).`
+    );
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -1361,17 +1469,34 @@ export class PrestashopOrderProcessorManagerAdapter
     });
   }
 
+  /**
+   * Every order state the shop has, each carrying the neutral status OpenLinker
+   * derives for it (#2607).
+   *
+   * `derivedValue` is what makes this list actionable rather than decorative.
+   * A state with none is a state OpenLinker cannot read, so an order sitting in
+   * it reads `pending` and a status write will never target it - which is
+   * precisely the row an operator needs to map by hand. Reading through the
+   * catalogue also guarantees the list agrees with what the write path does,
+   * instead of describing it from a second copy of the rules.
+   */
   async listOrderStatuses(): Promise<MappingOption[]> {
-    const rows = await this.httpClient.listResources<PrestashopOrderState>(
-      'order_states',
-      { custom: { deleted: '0' } },
-      1000,
-      0
-    );
-    return rows.map((row) => ({
-      value: String(row.id),
-      label: this.flattenLanguageField(row.name),
-    }));
+    const states = await this.orderStates.load();
+    // `active`, not `all`: the catalogue reads soft-deleted states too so an
+    // order sitting in one can still be understood (#2627 review), but a state
+    // the merchant retired must not be offered as something to map TO -
+    // `stateIdFor` will never target it.
+    return states.active().map((row) => {
+      const option: MappingOption = {
+        value: String(row.id),
+        label: this.flattenLanguageField(row.name),
+      };
+      const derived = states.statusOf(row.id);
+      if (derived !== null) {
+        option.derivedValue = derived;
+      }
+      return option;
+    });
   }
 
   // PS Webservice keys are not granted access to `/api/modules` by default

@@ -10,6 +10,13 @@
  * exactly (`max(0, totalAvailable − buffer)` with an empty ledger), so no row
  * moves; the predicate widens as intended once `published` holds exist.
  *
+ * The availability seam applies the connection's WHOLE publish policy, so the
+ * zero threshold (#2610) is inside that number too — a second way to publish
+ * nothing, and leaving it out would under-report exactly the lines the
+ * threshold had silenced, which is the one place an operator would look for
+ * them. The threshold is reported alongside the buffer as a display field so
+ * the operator can see which knob silenced the line.
+ *
  * Lives in the `listings` context (not `inventory`) so it can inject the two
  * listing-mapping repository ports intra-context while reaching `inventory`
  * for the master-stock read via the already-established one-directional
@@ -22,6 +29,7 @@
  * @implements {IStockAtRiskReadService}
  */
 import { Inject, Injectable } from '@nestjs/common';
+import { readStockZeroThreshold } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 import { INTEGRATIONS_SERVICE_TOKEN, type IIntegrationsService } from '@openlinker/core/integrations';
 import {
@@ -73,6 +81,7 @@ export class StockAtRiskReadService implements IStockAtRiskReadService {
 
   private async findAtRiskForConnection(connection: {
     connectionId: string;
+    zeroThreshold: number;
   }): Promise<StockAtRiskItem[]> {
     const [offerRows, shopRows] = await Promise.all([
       this.offerMappingRepository.findRecentlyListedVariantIds({
@@ -136,6 +145,7 @@ export class StockAtRiskReadService implements IStockAtRiskReadService {
         connectionId: connection.connectionId,
         masterStock,
         stockSafetyBuffer: buffer,
+        stockZeroThreshold: connection.zeroThreshold,
         availableToPromise: entry.quantity,
         shortfall: Math.max(0, masterStock - buffer - entry.quantity),
       });
@@ -144,15 +154,19 @@ export class StockAtRiskReadService implements IStockAtRiskReadService {
   }
 
   /**
-   * Every active connection with `OfferManager` or `ProductPublisher` enabled.
+   * Every active connection with `OfferManager` or `ProductPublisher` enabled,
+   * carrying its zero threshold for DISPLAY only.
    *
    * Carries no buffer of its own since #2323 — the cushion is a Control the
    * availability seam owns, resolved per connection in
-   * `findAtRiskForConnection`. A connection with no configured buffer is still
+   * `findAtRiskForConnection`, and the threshold is applied by that same seam.
+   * Neither is applied here. A connection with no configured policy is still
    * included: per `checkRequiredToSell`'s `OUT_OF_STOCK` rule (#1842), zero
-   * available-to-promise is unsellable regardless of the cushion.
+   * available-to-promise is unsellable whatever the policy says.
    */
-  private async resolveBufferedConnections(): Promise<Array<{ connectionId: string }>> {
+  private async resolveBufferedConnections(): Promise<
+    Array<{ connectionId: string; zeroThreshold: number }>
+  > {
     const [offerManagerAdapters, productPublisherAdapters] = await Promise.all([
       this.integrationsService.listCapabilityAdapters({ capability: 'OfferManager', lazy: true }),
       this.integrationsService.listCapabilityAdapters({
@@ -161,9 +175,12 @@ export class StockAtRiskReadService implements IStockAtRiskReadService {
       }),
     ]);
 
-    const byConnectionId = new Map<string, { connectionId: string }>();
+    const byConnectionId = new Map<string, { connectionId: string; zeroThreshold: number }>();
     for (const entry of [...offerManagerAdapters, ...productPublisherAdapters]) {
-      byConnectionId.set(entry.connectionId, { connectionId: entry.connectionId });
+      byConnectionId.set(entry.connectionId, {
+        connectionId: entry.connectionId,
+        zeroThreshold: readStockZeroThreshold(entry.connection.config),
+      });
     }
     return [...byConnectionId.values()];
   }

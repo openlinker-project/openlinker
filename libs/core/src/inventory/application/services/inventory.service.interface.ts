@@ -24,9 +24,13 @@ export interface IInventoryService {
    * If productVariantId is null, uses base inventory constraint.
    *
    * @param item - Inventory item domain entity with internal IDs
+   * @param sourceConnectionId - the master connection this stock was read from.
+   *   Carried onto the marketplace-propagation job so the runner's per-scope
+   *   lane accounting can isolate one master's burst from another's (#2609).
+   *   Omitted, propagation falls back to a synthetic install-wide scope.
    * @returns Upserted inventory item domain entity
    */
-  setInventory(item: InventoryItem): Promise<InventoryItem>;
+  setInventory(item: InventoryItem, sourceConnectionId?: string): Promise<InventoryItem>;
 
   /**
    * Get inventory (optional but recommended)

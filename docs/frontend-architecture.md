@@ -398,6 +398,20 @@ Components that wrap headless libraries (Radix, TanStack) sit on the same footin
 
 **Live reference**: navigate to `/dev/ui` in a running app (admin tree, hidden from nav) for the brandbook + primitives gallery + composed patterns. Source under `apps/web/src/pages/dev-ui/`. The standalone HTML mockup at `docs/plans/ui-overhaul-mockup.html` is the offline reference.
 
+## UX Mockups (`docs/plans/mockups/`)
+
+A high-fidelity, interactive HTML mockup produced while designing a non-trivial feature (via the `artifact-design` skill or equivalent) **must be committed to the repo** under `docs/plans/mockups/{feature-name}.html`, not left as an ephemeral Claude Artifact link. The Artifact URL is for live iteration with the requester during design; the repo copy is the durable spec that implementation and E2E tasks reference for the life of the feature.
+
+Rules:
+
+- Use real design tokens (`apps/web/src/index.css` custom properties) and real component conventions (`docs/frontend-ui-style-guide.md`) so the mockup reads as "this app," not a generic prototype.
+- Every distinct UI state the mockup demonstrates (a dialog, a panel state, a row status) gets a stable `data-state` (or equivalent) attribute value and a corresponding button in an in-page state switcher. Task descriptions and E2E specs reference these values by name — never by a free-text description of "the screen where X happens" — so there is exactly one unambiguous way to find the state.
+- Backend and frontend implementation tickets for the feature must cite the specific mockup file path and `data-state` value(s) they implement, in their issue description.
+- The final E2E task for the feature takes its comparison screenshots from the **repo-committed** mockup file (e.g. via a local static server or `file://`), never from the Artifact URL — the Artifact can be edited or expire independently of the repo, and a screenshot baseline must be reproducible from a clean checkout.
+- Keep the mockup in sync with implementation decisions made after the mockup was drawn (a `/tech-review` finding, a scope cut); a stale mockup is worse than none, because it actively misleads. **This obligation is reviewer-enforced only** - nothing under `pnpm check:invariants` can observe whether a mockup still matches shipped UI, unlike the repo's `check-*-mirror.mjs` contracts. So an implementing PR for a feature that has a committed mockup must either touch the mockup file, or say in its description why the mockup is still accurate without a change; a reviewer treats a PR that does neither as incomplete.
+
+**Example**: `docs/plans/mockups/analytics-display-currency-picker.html` — the Analytics Settings + Data Coverage feature (display-currency picker, tax-rate confirmation, remediation panel).
+
 ## Internationalization (i18n)
 
 The frontend ships a **no-op i18n seam** at `apps/web/src/shared/i18n/` (#612). The seam is the contract plugin authors bind against and the migration target for future per-feature string-migration PRs.

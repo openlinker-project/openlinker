@@ -47,6 +47,21 @@ export interface SalesDocumentStarterTemplate {
   readonly rules: readonly SalesDocumentTemplateRule[];
 }
 
+/**
+ * ## What these rules do and do not fire on (#2599 review, finding 2)
+ *
+ * All three rules test `buyerHasTaxId`, which is a three-state fact: unknown,
+ * known-absent, or a value. A rule testing `eq false` matches only the
+ * known-absent state, never the unknown one, so an order whose source said
+ * nothing about the buyer's tax id keeps falling through to the country
+ * default exactly as it did before the fact was wired.
+ *
+ * That is what makes the wiring safe for an operator who already adopted this
+ * template: a PrestaShop consumer order leaves `ps_address.vat_number` blank,
+ * blank reads as unknown, and rule 1 does not fire. A B2B order carrying a
+ * real tax id now matches rule 2 or 3, which is the behaviour an operator
+ * adopting a template with these labels asked for.
+ */
 const POLAND_TEMPLATE: SalesDocumentStarterTemplate = {
   country: 'PL',
   sourceLabel: 'ksef.podatki.gov.pl',

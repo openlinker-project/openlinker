@@ -24,6 +24,7 @@ import { ITaxRateJournalService } from './tax-rate-journal.service.interface';
 import { IProductsService } from './products.service.interface';
 import type { ProductMasterPort } from '../../domain/ports/product-master.port';
 import { isProductTaxRateReader } from '../../domain/ports/capabilities/product-tax-rate-reader.capability';
+import { isBulkProductReader } from '../../domain/ports/capabilities/bulk-product-reader.capability';
 import type { TaxRateResolution, TaxRateUnknownReason } from '../../domain/types/tax-rate.types';
 import { isPersistableTaxRateRead } from '../../domain/types/tax-rate.types';
 import type { Product } from '../../domain/entities/product.entity';
@@ -39,6 +40,8 @@ import {
 import { normalizeBarcode, normalizeToEan13 } from '../../domain/utils/barcode-normalization';
 import type {
   IMasterProductSyncService,
+  MasterProductBatchSyncFailure,
+  MasterProductBatchSyncResult,
   MasterProductSyncResult,
   MasterTaxRateChange,
   PruneSkippedReason,
@@ -69,6 +72,73 @@ export class MasterProductSyncService implements IMasterProductSyncService {
     connectionId: string,
     externalId: string
   ): Promise<MasterProductSyncResult> {
+    const productAdapter = await this.integrationsService.getCapabilityAdapter<ProductMasterPort>(
+      connectionId,
+      'ProductMaster'
+    );
+    return this.syncOneFromMaster(connectionId, externalId, productAdapter);
+  }
+
+  /**
+   * Sync a page of products through one adapter instance (#2593).
+   *
+   * The adapter is resolved ONCE and passed into every iteration, which is the
+   * whole mechanism: `getCapabilityAdapter` constructs a fresh adapter per call,
+   * so a per-product resolution throws away whatever that adapter cached. With
+   * one instance, a master declaring `BulkProductReader` can hydrate the page up
+   * front and the loop below - unchanged, guards included - reads from that.
+   *
+   * The prefetch is best-effort in both directions: a master declaring nothing
+   * is skipped, and one whose prefetch throws is logged and then treated as if
+   * it declared nothing. Neither can change the outcome of a single product,
+   * only the number of requests spent on it.
+   */
+  async syncFromMasterByExternalIds(
+    connectionId: string,
+    externalIds: readonly string[]
+  ): Promise<MasterProductBatchSyncResult> {
+    const productAdapter = await this.integrationsService.getCapabilityAdapter<ProductMasterPort>(
+      connectionId,
+      'ProductMaster'
+    );
+
+    let prefetched = false;
+    if (isBulkProductReader(productAdapter) && externalIds.length > 0) {
+      try {
+        await productAdapter.prefetchProducts(externalIds);
+        prefetched = true;
+      } catch (error) {
+        this.logger.warn(
+          `[master-sync] bulk prefetch failed, falling back to per-product reads: ` +
+            `connectionId=${connectionId} products=${String(externalIds.length)} ` +
+            `error=${(error as Error).message}`
+        );
+      }
+    }
+
+    const results: MasterProductSyncResult[] = [];
+    const failures: MasterProductBatchSyncFailure[] = [];
+    for (const externalId of externalIds) {
+      // Per product, so one failure costs one product rather than the page. The
+      // caller re-enqueues what failed as an ordinary per-product job.
+      try {
+        results.push(await this.syncOneFromMaster(connectionId, externalId, productAdapter));
+      } catch (error) {
+        failures.push({
+          externalId,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    return { results, failures, prefetched };
+  }
+
+  private async syncOneFromMaster(
+    connectionId: string,
+    externalId: string,
+    productAdapter: ProductMasterPort
+  ): Promise<MasterProductSyncResult> {
     // One correlation id per sync run — ties log lines, the deletion event,
     // and (downstream, #1689) the stale-offer-pause job together.
     const correlationId = randomUUID();
@@ -78,12 +148,6 @@ export class MasterProductSyncService implements IMasterProductSyncService {
       CORE_ENTITY_TYPE.Product,
       externalId,
       connectionId
-    );
-
-    // Resolve ProductMaster adapter
-    const productAdapter = await this.integrationsService.getCapabilityAdapter<ProductMasterPort>(
-      connectionId,
-      'ProductMaster'
     );
 
     // Pull product and variants from adapter. A master-side deletion surfaces

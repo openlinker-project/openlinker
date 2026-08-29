@@ -277,6 +277,9 @@ export class OfferBuilderService implements IOfferBuilderService {
       connectionId: input.connectionId,
       // `price` is guaranteed defined here because `issues` would have caught it above.
       price: price as { amount: number; currency: string },
+      // Both publish knobs — the #1844 reserve and the #2610 zero threshold —
+      // are applied inside `applyPublishControls`, which resolves the whole
+      // policy for the scope and warns on either knob being present-but-invalid.
       stock: stockControl.quantity,
       publishImmediately: input.publishImmediately ?? false,
       overrides: Object.keys(cleanedOverrides).length > 0 ? cleanedOverrides : undefined,
