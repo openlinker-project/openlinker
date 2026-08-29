@@ -27,6 +27,7 @@ import { MappingsModule } from '@openlinker/core/mappings';
 import { OrdersModule } from '@openlinker/core/orders';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { SyncModule } from '@openlinker/core/sync';
+import { InventoryModule } from '@openlinker/core/inventory';
 
 import { ShipmentOrmEntity } from './infrastructure/persistence/entities/shipment.orm-entity';
 import { ShipmentRepository } from './infrastructure/persistence/repositories/shipment.repository';
@@ -44,6 +45,7 @@ import { ShipmentStatusSyncService } from './application/services/shipment-statu
 import { FulfillmentStatusSyncService } from './application/services/fulfillment-status-sync.service';
 import { ShipmentLabelService } from './application/services/shipment-label.service';
 import { OrderFulfillmentProjectionService } from './application/services/order-fulfillment-projection.service';
+import { ShipmentReservationConsumeService } from './application/services/shipment-reservation-consume.service';
 import {
   BULK_SHIPMENT_DISPATCH_SERVICE_TOKEN,
   FULFILLMENT_STATUS_SYNC_SERVICE_TOKEN,
@@ -59,6 +61,7 @@ import {
   SHIPMENT_LABEL_SERVICE_TOKEN,
   SHIPMENT_QUERY_SERVICE_TOKEN,
   SHIPMENT_REPOSITORY_TOKEN,
+  SHIPMENT_RESERVATION_CONSUME_SERVICE_TOKEN,
   SHIPMENT_STATUS_SYNC_SERVICE_TOKEN,
 } from './shipping.tokens';
 
@@ -79,6 +82,16 @@ import {
     // #1917 per-order dispatch serialization: SYNC_LOCK_TOKEN / SyncLockPort.
     // Acyclic — SyncModule depends on events/listings/orders, never on shipping.
     SyncModule,
+    // #2347 reservation consume: the shipped-goods half of the advisory ledger.
+    // ShipmentReservationConsumeService injects IReservationService to close an
+    // order's holds once its shipment has actually shipped.
+    //
+    // STANDING CONSTRAINT, stated because this edge creates it: `inventory` must
+    // never import `shipping`. That holds today only by accident (there is not a
+    // single `@openlinker/core/shipping` import under libs/core/src/inventory),
+    // and this import is what would turn a future one into a real cycle rather
+    // than an unused possibility.
+    InventoryModule,
   ],
   providers: [
     ShipmentRepository,
@@ -166,6 +179,13 @@ import {
       provide: ORDER_FULFILLMENT_PROJECTION_SERVICE_TOKEN,
       useExisting: OrderFulfillmentProjectionService,
     },
+    // #2347 reservation consume sweep: closes an order's held reservations once
+    // its shipment shipped, claimed at-most-once via Shipment.reservationConsumedAt.
+    ShipmentReservationConsumeService,
+    {
+      provide: SHIPMENT_RESERVATION_CONSUME_SERVICE_TOKEN,
+      useExisting: ShipmentReservationConsumeService,
+    },
   ],
   exports: [
     SHIPMENT_REPOSITORY_TOKEN,
@@ -173,6 +193,7 @@ import {
     BULK_SHIPMENT_DISPATCH_SERVICE_TOKEN,
     SHIPMENT_QUERY_SERVICE_TOKEN,
     SHIPMENT_CANCELLATION_SERVICE_TOKEN,
+    SHIPMENT_RESERVATION_CONSUME_SERVICE_TOKEN,
     PICKUP_POINT_CACHE_TOKEN,
     PICKUP_POINT_LOOKUP_SERVICE_TOKEN,
     PICKUP_POINT_SEARCH_CACHE_TOKEN,

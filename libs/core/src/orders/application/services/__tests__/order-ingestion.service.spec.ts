@@ -25,6 +25,9 @@ import type { IOrderItemRefResolverService } from '../../interfaces/order-item-r
 import type { IOrderLifecycleRelayService } from '../../interfaces/order-lifecycle-relay.service.interface';
 import type { IAutoIssueTriggerService } from '@openlinker/core/invoicing';
 import type { IProductsService, ITaxRateJournalService } from '@openlinker/core/products';
+import type { IReservationService } from '@openlinker/core/inventory';
+import { AmbiguousReservationPositionError } from '@openlinker/core/inventory';
+import type { IFulfillmentRoutingService } from '@openlinker/core/mappings';
 import type { IncomingOrder } from '../../../domain/types/incoming-order.types';
 import { MissingOrderItemMappingError } from '../../../domain/exceptions/missing-order-item-mapping.error';
 import type { OrderRecord } from '../../../domain/entities/order-record.entity';
@@ -49,6 +52,8 @@ describe('OrderIngestionService', () => {
   let autoIssueTrigger: jest.Mocked<IAutoIssueTriggerService>;
   let productsService: jest.Mocked<IProductsService>;
   let taxRateJournal: jest.Mocked<ITaxRateJournalService>;
+  let reservationService: jest.Mocked<IReservationService>;
+  let fulfillmentRouting: jest.Mocked<IFulfillmentRoutingService>;
 
   const connectionId = 'connection-123';
   const cursorKey = 'allegro.orders.lastEventId';
@@ -147,6 +152,22 @@ describe('OrderIngestionService', () => {
       getLatestPerConnection: jest.fn().mockResolvedValue([]),
     };
 
+    // #2344: the advisory reservation ledger. Defaults grant nothing and skip
+    // nothing, so every pre-existing spec asserts the pre-reservation behaviour.
+    reservationService = {
+      reserveForOrder: jest.fn().mockResolvedValue({ granted: [], skipped: [] }),
+    } as unknown as jest.Mocked<IReservationService>;
+    // #2344: the default topology is `omp_fulfilled` — the marketplace ships —
+    // so a hold is recorded diagnostically and subtracted from nothing.
+    fulfillmentRouting = {
+      resolve: jest.fn().mockResolvedValue({
+        processorKind: 'omp_fulfilled',
+        processorConnectionId: null,
+        source: 'default',
+        processorAvailable: true,
+      }),
+    } as unknown as jest.Mocked<IFulfillmentRoutingService>;
+
     service = new OrderIngestionService(
       integrationsService,
       syncCursors as unknown as ISyncCursorsService,
@@ -161,8 +182,210 @@ describe('OrderIngestionService', () => {
       orderLifecycleRelay,
       autoIssueTrigger,
       productsService,
-      taxRateJournal
+      taxRateJournal,
+      reservationService,
+      fulfillmentRouting
     );
+  });
+
+  describe('advisory reservations (#2344)', () => {
+    const externalOrderId = 'checkout-res';
+    const reservableIncoming = {
+      externalOrderId,
+      orderNumber: externalOrderId,
+      status: 'BOUGHT',
+      items: [
+        {
+          id: 'line-1',
+          productRef: { type: 'variant' as const, externalId: 'ext-v1' },
+          quantity: 2,
+          price: 10,
+        },
+      ],
+      totals: { subtotal: 20, tax: 0, shipping: 0, total: 20, currency: 'PLN' },
+      createdAt: '2024-01-01T00:00:00Z',
+      updatedAt: '2024-01-01T00:00:00Z',
+    };
+
+    const ambiguityFor = (orderLineIds: string[]) =>
+      new AmbiguousReservationPositionError(
+        orderLineIds.map((orderLineId) => ({
+          orderLineId,
+          productId: 'ol_product_1',
+          productVariantId: 'ol_variant_1',
+          candidateInventoryItemIds: ['inv-1', 'inv-2'],
+        }))
+      );
+
+    beforeEach(() => {
+      identifierMapping.getOrCreateInternalId.mockResolvedValue('ol_order_res');
+      orderSource.getOrder.mockResolvedValue(reservableIncoming);
+      integrationsService.getCapabilityAdapter.mockResolvedValue(orderSource);
+      orderSyncService.syncOrder.mockResolvedValue([]);
+      orderItemRefResolver.tryResolve.mockResolvedValue({
+        resolved: true,
+        internalProductId: 'ol_product_1',
+        internalVariantId: 'ol_variant_1',
+      });
+    });
+
+    it('should reserve the order lines after persistOrder and before destination dispatch', async () => {
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(reservationService.reserveForOrder).toHaveBeenCalledTimes(1);
+      const input = reservationService.reserveForOrder.mock.calls[0][0];
+      expect(input.orderRecordId).toBe('ol_order_res');
+      expect(input.lines).toEqual([
+        expect.objectContaining({
+          orderLineId: 'line-1',
+          productId: 'ol_product_1',
+          productVariantId: 'ol_variant_1',
+          quantity: 2,
+        }),
+      ]);
+      expect(orderRecordService.persistOrder.mock.invocationCallOrder[0]).toBeLessThan(
+        reservationService.reserveForOrder.mock.invocationCallOrder[0]
+      );
+      expect(reservationService.reserveForOrder.mock.invocationCallOrder[0]).toBeLessThan(
+        orderSyncService.syncOrder.mock.invocationCallOrder[0]
+      );
+    });
+
+    it('should stamp diagnostic on the omp_fulfilled topology', async () => {
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(reservationService.reserveForOrder.mock.calls[0][0].atpEffect).toBe('diagnostic');
+    });
+
+    it('should stamp published when OL executes fulfillment', async () => {
+      fulfillmentRouting.resolve.mockResolvedValue({
+        processorKind: 'ol_managed_carrier',
+        processorConnectionId: 'carrier-1',
+        source: 'rule',
+        processorAvailable: true,
+      });
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(reservationService.reserveForOrder.mock.calls[0][0].atpEffect).toBe('published');
+    });
+
+    it('should stamp diagnostic when the resolved processor is unavailable', async () => {
+      // `published` asserts OL executes this order; claiming that over a route
+      // OL cannot drive would be false, and the stamp is insert-only.
+      fulfillmentRouting.resolve.mockResolvedValue({
+        processorKind: 'ol_managed_carrier',
+        processorConnectionId: 'carrier-1',
+        source: 'rule',
+        processorAvailable: false,
+      });
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(reservationService.reserveForOrder.mock.calls[0][0].atpEffect).toBe('diagnostic');
+    });
+
+    it('should stamp diagnostic — never published — when routing cannot be resolved', async () => {
+      fulfillmentRouting.resolve.mockRejectedValue(new Error('routing store unreachable'));
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(reservationService.reserveForOrder.mock.calls[0][0].atpEffect).toBe('diagnostic');
+    });
+
+    it('should not fail ingestion when the reservation throws', async () => {
+      // An advisory hold must never cost a paid order.
+      reservationService.reserveForOrder.mockRejectedValue(
+        new Error('insufficient available-to-promise')
+      );
+
+      const results = await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(results).toEqual([]);
+      expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
+    });
+
+    it('should skip the retry entirely when every line was ambiguous', async () => {
+      // One line, and it is the ambiguous one — so there is nothing left to
+      // claim and no empty second call is issued.
+      reservationService.reserveForOrder.mockRejectedValueOnce(
+        ambiguityFor(['line-1'])
+      );
+
+      const results = await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(results).toEqual([]);
+      expect(reservationService.reserveForOrder).toHaveBeenCalledTimes(1);
+    });
+
+    it('should retry once with only the unambiguous lines rather than losing the order\'s holds', async () => {
+      orderSource.getOrder.mockResolvedValue({
+        ...reservableIncoming,
+        items: [
+          reservableIncoming.items[0],
+          { ...reservableIncoming.items[0], id: 'line-2' },
+        ],
+      });
+      reservationService.reserveForOrder
+        .mockRejectedValueOnce(ambiguityFor(['line-1']))
+        .mockResolvedValue({ granted: [], skipped: [] });
+
+      const results = await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(results).toEqual([]);
+      expect(reservationService.reserveForOrder).toHaveBeenCalledTimes(2);
+      expect(reservationService.reserveForOrder.mock.calls[1][0].lines).toEqual([
+        expect.objectContaining({ orderLineId: 'line-2' }),
+      ]);
+    });
+
+    it('should not fail ingestion when the retry itself throws', async () => {
+      // The retry is single-pass by construction: a second refusal falls into
+      // the outer catch rather than looping.
+      orderSource.getOrder.mockResolvedValue({
+        ...reservableIncoming,
+        items: [
+          reservableIncoming.items[0],
+          { ...reservableIncoming.items[0], id: 'line-2' },
+        ],
+      });
+      reservationService.reserveForOrder
+        .mockRejectedValueOnce(ambiguityFor(['line-1']))
+        .mockRejectedValueOnce(new Error('insufficient available-to-promise'));
+
+      const results = await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(results).toEqual([]);
+      expect(reservationService.reserveForOrder).toHaveBeenCalledTimes(2);
+      expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
+    });
+
+    it('should record no hold when the kill switch is off', async () => {
+      const previous = process.env.OL_RESERVATIONS_ENABLED;
+      process.env.OL_RESERVATIONS_ENABLED = 'false';
+      try {
+        const results = await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(results).toEqual([]);
+        expect(reservationService.reserveForOrder).not.toHaveBeenCalled();
+        // Ingestion is otherwise byte-identical to its pre-#2344 behaviour.
+        expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
+      } finally {
+        if (previous === undefined) delete process.env.OL_RESERVATIONS_ENABLED;
+        else process.env.OL_RESERVATIONS_ENABLED = previous;
+      }
+    });
+
+    it('should not reserve for an order that arrived already cancelled', async () => {
+      orderSource.getOrder.mockResolvedValue({
+        ...reservableIncoming,
+        status: 'cancelled',
+      });
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(reservationService.reserveForOrder).not.toHaveBeenCalled();
+    });
   });
 
   describe('auto-issue trigger (OL #1120)', () => {

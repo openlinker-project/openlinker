@@ -106,6 +106,61 @@ export interface ShipmentRepositoryPort {
   claimWaybillRelay(id: string, at: Date): Promise<boolean>;
 
   /**
+   * One page of shipments that have shipped but whose order's reservations have
+   * not yet been consumed (#2347) — oldest first, capped at `limit`.
+   *
+   * **Frontier-as-query, deliberately NOT offset-paged.** The predicate IS the
+   * cursor: a successfully consumed shipment gets its marker stamped and leaves
+   * the candidate set, so every page consumes its own selection. An offset
+   * advancing over a shrinking set steps over shipments silently — and here
+   * that means a hold that is never consumed and ATP understated forever. The
+   * #2346 expiry sweep and #2317's provenance backfill record the same shape.
+   *
+   * **Why this is not `findMany`**, given `ShipmentFilters` already carries the
+   * tri-state null-predicate idiom (`hasTracking`, `hasProviderShipmentId`) —
+   * three concrete reasons, each disqualifying on its own:
+   * - it takes an explicit `offset`, i.e. exactly the shape rejected above;
+   * - it orders `createdAt DESC`, so a persistently failing row would sit at
+   *   the head of every page and starve the oldest work, the reverse of what
+   *   this pass needs;
+   * - it runs `findAndCount`, spending a COUNT nothing reads on every tick.
+   *
+   * Ordered `createdAt ASC` so the longest-outstanding shipment is always
+   * examined first.
+   *
+   * Candidate statuses are `dispatched` / `in-transit` / `delivered`: the
+   * latter two both imply a dispatch happened and are reachable without this
+   * pass having caught the row at `dispatched` (a branch-1 projection row is
+   * born terminal, #834). `draft` / `generated` have not shipped; `cancelled` /
+   * `failed` must never consume.
+   */
+  listDispatchedAwaitingReservationConsume(limit: number): Promise<readonly Shipment[]>;
+
+  /**
+   * Atomically claim the right to record that this shipment's reservations were
+   * consumed (#2347). Stamps `reservationConsumedAt` only if it is still NULL,
+   * and reports whether THIS caller won.
+   *
+   * **Claim AFTER consuming, never before** — the inverse of
+   * {@link claimWaybillRelay}'s ordering, and the difference is load-bearing.
+   * This marker is not the guard against a double decrement; the ledger's own
+   * `status = 'held'` predicate is. Claiming first would mean a process kill
+   * between the claim and the ledger write leaves the marker set, the shipment
+   * permanently out of the candidate set, and its reservations `held` forever —
+   * with no catch block able to compensate, because a kill runs no code.
+   * Consuming first makes that crash converge instead: the next tick re-runs
+   * the consume (a no-op against terminal rows) and claims.
+   *
+   * There is deliberately **no `releaseReservationConsume`** counterpart: the
+   * claim is only ever taken once the work has succeeded, so no caller can hold
+   * a claim it needs to give back.
+   *
+   * @returns `true` when the claim was won, `false` when another caller already
+   *          holds it or the row does not exist.
+   */
+  claimReservationConsume(id: string, at: Date): Promise<boolean>;
+
+  /**
    * Release a claim taken by {@link claimWaybillRelay} so a later tick can
    * retry. Idempotent: releasing an already-released row is a no-op.
    */

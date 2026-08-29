@@ -383,6 +383,12 @@ export type {
 } from './application/services/offer-status-sync.service.interface';
 export type { IOfferStatusReadService } from './application/services/offer-status-read.service.interface';
 export type { IOfferStockRestoreService } from './application/interfaces/offer-stock-restore.service.interface';
+export type {
+  OfferStockRestoreOutcome,
+  OfferStockRestoreResult,
+} from './application/types/offer-stock-restore.types';
+export { OfferStockRestoreOutcomeValues } from './application/types/offer-stock-restore.types';
+export { OfferStockRestoreReleaseIncompleteError } from './domain/exceptions/offer-stock-restore-release-incomplete.error';
 export type { IStaleOfferPauseService } from './application/interfaces/stale-offer-pause.service.interface';
 export type { StaleOfferPauseResult } from './domain/types/stale-offer-pause.types';
 export { OfferPollNotSupportedException } from './domain/exceptions/offer-poll-not-supported.exception';

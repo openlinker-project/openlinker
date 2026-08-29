@@ -205,6 +205,37 @@ export interface OrderAmendmentChange {
   fields?: string[];
 }
 
+/**
+ * One still-open reservation shortfall episode on an order (#2349/#2350).
+ *
+ * OpenLinker promised more of this sku than the stock master now has, and this
+ * order is one the shortfall lands on. Nothing was silently reduced — that is
+ * the whole point of the episode existing.
+ *
+ * `sku` and `productVariantId` are `T | null` rather than optional: the API
+ * serialises an absent value as JSON `null`, so `null` must be a representable
+ * value rather than a parse gap (#939). There is no Zod schema over
+ * `OrderRecord` — only the opaque `orderSnapshot` sub-tree is parsed — so the
+ * S3 `.nullish()` rule has nothing to attach to here; this is its equivalent in
+ * the file's own convention.
+ */
+export interface OrderReservationShortfall {
+  /**
+   * Stable occurrence id. Opened once on the transition into shortfall and
+   * closed by an explicit write, so it survives re-detection unchanged — which
+   * is what lets a downstream automation key on it (#2349).
+   */
+  episodeId: string;
+  inventoryItemId: string;
+  productVariantId: string | null;
+  sku: string | null;
+  /** This order's attributed share of the shortfall. */
+  shortQuantity: number;
+  /** The whole position's shortfall, so a share can be told from the total. */
+  positionShortfall: number;
+  openedAt: string;
+}
+
 export interface OrderRecord {
   internalOrderId: string;
   customerId: string | null;
@@ -313,6 +344,16 @@ export interface OrderRecord {
    * is the one case the phase badge renders nothing.
    */
   lifecyclePhase?: OrderLifecyclePhaseValue;
+  /**
+   * Still-open reservation shortfall episodes (#2350).
+   *
+   * **An absent or empty value is NOT a positive claim that this order is
+   * fine.** Both the detail loader and the list's batched read catch to
+   * empty on failure, so absence and failure are indistinguishable here by
+   * design. Only the PRESENCE of an episode is a claim — never render a
+   * "no shortfalls" reassurance from this field.
+   */
+  reservationShortfalls?: OrderReservationShortfall[];
   /**
    * When the current sales-document hold started (ISO 8601), or null (#2248).
    * The only clock an operator-facing age can run on: the reason itself is

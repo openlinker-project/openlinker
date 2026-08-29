@@ -631,7 +631,7 @@ Defaults (FE-002):
 | `DataTable` rows | `36 px` | Dense-but-readable. Hover highlights whole row. |
 | Listings identity row | auto, ~60 px | Documented `DataTable` exception (#2023) — 32 px thumbnail + name/badges line + meta line + optional validator message. See the carve-out below. |
 | Shared identity row (`OrderIdentityCell` / `ConnectionCell`) | auto, ~60 px | Documented `DataTable` exception (#2086) — 24 px thumbnail + identity line + meta line. See the carve-out below. |
-| Orders Status cell | auto, ~88 px | Documented `DataTable` exception (#2310, extended #2356) — health badge + lifecycle-phase badge + optional OMS attention badge(s) + optional failure reason, up to four stacked lines. See the carve-out below. |
+| Orders Status cell | auto, ~144 px | Documented `DataTable` exception (#2310, extended #2342 / #2350 / #2356) — health badge + lifecycle-phase badge + optional stock-at-risk badge + optional hold badge + optional OMS attention badge(s) + optional failure reason, up to six stacked lines. See the carve-out below, including the Wave-2 composition note. |
 | Nav items | `28 px` | 6 px vertical padding, icon + label + optional count. |
 | Toolbar / filter chip | `28 px` | Same height as nav items for alignment. |
 | Button `sm` | `28 px` | Default for toolbar buttons, table actions. |
@@ -661,6 +661,27 @@ This entry exists because the listings carve-out explicitly refuses to cover a s
 **Documented carve-out — the orders Status cell (#2310, extended #2356).** The #2086 entry above covers the *identity* column; this one covers a different column on the same table, which is why it is a separate entry rather than a widening of that one. `.orders-cell-stack` in the orders Status cell is a vertical stack, and the ADR-059 lifecycle phase is appended **inside** it, so a row that carries both a phase and a sync-failure reason renders health badge / phase badge / reason — three lines where two was previously the worst case, and the column can now set the row height on its own rather than only the identity cell doing so.
 
 **#2356 makes four the worst case**: the OMS inert-state badge (§ 4 of the Wave-2 spec — *what OpenLinker stopped deciding*) is appended into the same stack between the phase badge and the failure reason, so a row carrying a phase, an inert state and a sync failure renders health / phase / attention / reason. That is the ceiling by construction, not by convention, and the mechanism is worth naming because `.orders-cell-stack` is `flex-direction: column`: the attention entries are keyed by producer and an order can carry more than one, so `OmsAttentionBadges` renders them inside its own `.data-table__badge-row` (a wrapping flex ROW). Returning bare sibling spans into that column would make each producer its own line and the ceiling five, not four. No alignment change is needed and none was made: `.orders-table td` already top-aligns every cell (see the bullet below), so the taller column lands on line 1 at any row height. Anything that would add a **fifth** line needs its own entry here. Kept as a stack rather than nesting the phase inline beside the health badge (a `ds-row`): the two are orthogonal partitions, and putting them on one line reads as one compound status, which is precisely the reading ADR-059 exists to prevent. The three lines are each a fact an operator triages on, so the row takes its height from content in the usual way. Note this interacts with the vertical-alignment rule below — `.orders-table td` already top-aligns every cell, so no further change is needed for the taller column.
+
+**Extended by #2350 — a fourth line.** The reservation-shortfall badge (§ Order-row signal placement, the sixth badge vocabulary) is appended to the same `.orders-cell-stack`, so the worst case is now health / phase / stock-at-risk / reason: four stacked lines, ~96 px. Recorded here rather than left to be discovered because this section's standing instruction is to update the guide before the row height moves. It needs **no CSS change** — the stack and the `.orders-table td` top-alignment already handle it, and the badge is `compact`. The worst case stays rare by construction: a shortfall badge only appears on an order the master has actually gone short on, and the phase renders neutral on an ordinary row, so a four-line Status cell means four genuine facts rather than decoration.
+
+**Wave-2 composition note (#2342 / #2350 / #2356) — the ceiling is six, not four.** The two paragraphs
+above were written on separate branches and each measured its own worst case honestly *in isolation*; body A's
+hold badge (#2342) never updated this table at all. `.orders-cell-stack` is `flex-direction: column`, so every
+direct child is its own line, and the merged cell has six of them: health / phase / stock-at-risk / hold /
+attention / reason. Neither paragraph's "four is the ceiling by construction" survives the composition, and
+#2356's own standing instruction — *anything that would add a fifth line needs its own entry here* — is what
+this note discharges. The mechanism #2356 describes still holds and is what stops it being worse: multiple
+attention producers wrap inside `OmsAttentionBadges`' own `.data-table__badge-row`, so they contribute one line
+rather than one per producer.
+
+Two caveats, stated rather than buried. The **~144 px is extrapolated, not measured**: this table's own two
+data points for the cell (three lines ~72 px, four lines ~96 px) give a 24 px cadence, and six lines at that
+cadence is 144 px — confirm it against a real six-line row before relying on the figure. And #2350 and #2356
+each described *itself* as "the sixth badge vocabulary", which cannot both be true; in the merged row the
+attention badge is the seventh, and the ordinal has been dropped from its call-site comment rather than left
+asserting a count that is now wrong. The worst case stays rare by construction — it needs an order that is
+simultaneously short on stock, on hold, carrying an inert state and failing to sync — but it is reachable, so
+it is documented.
 
 Mechanics that differ from the listings carve-out, and why:
 
@@ -851,6 +872,26 @@ Four rules govern anything added to a row:
    says where the order actually is. Approved as such at the #2310 gate. The count in the sentence
    above is therefore now five badge vocabularies on the row, and the exception is closed to
    further growth: a sixth needs its own decision, not this paragraph.
+
+   **The sixth vocabulary is the reservation shortfall, and it is a badge in the Status group
+   (#2350).** This is the "own decision" the sentence above demands, taken at the #2628 gate rather
+   than assumed by the paragraph. Three things settle it. It is an **exception**, not a workflow
+   position, so the tick form cannot carry it. It is an exception about *this order's own line* —
+   "we promised more of this sku than the master now has, and this order is the one at risk" —
+   which is exactly what the Status group means, so it goes there beside the failure reasons. And
+   it sits **beside order health, never inside it**: `OrderHealthValues` is a partition whose values
+   must sum to the KPI cards, so adding a shortfall value would either double-count or hide a sync
+   failure behind a stock one — the same reason #2100 declined a sixth `OrderHealth` bucket and
+   shipped a non-partitioning field instead.
+
+   Two placements were rejected. The **Money group** is about amounts, and a shortfall is about
+   units the buyer may not receive; putting it there would make a currency column mean two things.
+   A **new column** would cost every row permanent width for a state the overwhelming majority of
+   rows never have — the same objection that keeps returns in the Status group.
+
+   Tonally it is `warning`, never `error`: the order is at risk, not broken, and reserving red for
+   real failures is what keeps a red row meaning outstanding work. The count is now **six**, and
+   the exception remains closed: a seventh needs its own decision, not this paragraph.
 
    The mitigation that keeps the pills from competing is **tonal**, and it is load-bearing rather
    than incidental: the dominant `ready` phase renders **neutral**, as do `cancelled` and every

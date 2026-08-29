@@ -47,6 +47,7 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     overrides.deliveryIntent ?? null,
     overrides.providerCode ?? null,
     overrides.waybillRelayedAt ?? null,
+    overrides.reservationConsumedAt ?? null,
   );
 }
 
@@ -68,6 +69,8 @@ describe('ShipmentCancellationService', () => {
       update: jest.fn(),
       claimWaybillRelay: jest.fn(),
       releaseWaybillRelay: jest.fn(),
+      listDispatchedAwaitingReservationConsume: jest.fn(),
+      claimReservationConsume: jest.fn(),
     };
     cancellerAdapter = {
       generateLabel: jest.fn(),

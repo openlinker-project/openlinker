@@ -40,6 +40,9 @@ import { MasterProductSyncAllHandler } from './master-product-sync-all.handler';
 import { MasterProductSyncDeltaHandler } from './master-product-sync-delta.handler';
 import { MasterProductReconcileHandler } from './master-product-reconcile.handler';
 import { InventoryProvenanceBackfillHandler } from './inventory-provenance-backfill.handler';
+import { ReservationExpiryHandler } from './reservation-expiry.handler';
+import { ReservationShortfallHandler } from './reservation-shortfall.handler';
+import { ReservationConsumeHandler } from './reservation-consume.handler';
 import { OrdersHoldsReconcileHandler } from './orders-holds-reconcile.handler';
 import { PickupPointRefreshHandler } from './pickup-point-refresh.handler';
 import { ShopProductPublishHandler } from './shop-product-publish.handler';
@@ -59,6 +62,9 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly handlerRegistry: SyncJobHandlerRegistry,
     private readonly inventoryPropagateHandler: InventoryPropagateToMarketplacesHandler,
     private readonly inventoryProvenanceBackfillHandler: InventoryProvenanceBackfillHandler,
+    private readonly reservationExpiryHandler: ReservationExpiryHandler,
+    private readonly reservationShortfallHandler: ReservationShortfallHandler,
+    private readonly reservationConsumeHandler: ReservationConsumeHandler,
     private readonly ordersHoldsReconcileHandler: OrdersHoldsReconcileHandler,
     private readonly marketplaceOrdersPollHandler: OrdersPollHandler,
     private readonly marketplaceOrderSyncHandler: MarketplaceOrderSyncHandler,
@@ -106,13 +112,15 @@ export class HandlerRegistrationService implements OnModuleInit {
     // Every registration declares its ADR-050 concurrency lane (#2278). The
     // lane is chosen by cost-of-starvation, never by I/O shape or bounded
     // context — the authoritative table is ADR-050 decision 1, now 13 realtime /
-    // 16 bulk / 5 fiscal / 7 fan-out: `fiscalization.register` joined `fiscal`
+    // 21 bulk / 5 fiscal / 7 fan-out: `fiscalization.register` joined `fiscal`
     // post-ADR (#2156), `inventory.provenance.backfill` joined `bulk` (#2317),
     // the three returns types joined realtime/bulk/fan-out (#2330),
-    // `returns.orphan.reconcile` joined `bulk` (#2332), and
-    // `orders.taxRate.backfill` joined `bulk` (#2440), and
-    // `orders.holds.reconcile` joined `bulk` (#2340). The
-    // tripwire in `handler-registration.service.spec.ts` is the authority on
+    // `returns.orphan.reconcile` joined `bulk` (#2332),
+    // `orders.taxRate.backfill` joined `bulk` (#2440),
+    // `orders.holds.reconcile` joined `bulk` (#2340, Wave 2 body A), and the
+    // three reservation sweeps joined `bulk` (#2346 / #2347 / #2349, Wave 2
+    // body B), and `automation.trigger.deadlineSweep` joined `bulk` (#2360,
+    // Wave 2 body D). The tripwire in `handler-registration.service.spec.ts` is the authority on
     // these counts — this comment had drifted from it before #2330.
 
     // Register generic marketplace handlers (Option B)
@@ -309,6 +317,50 @@ export class HandlerRegistrationService implements OnModuleInit {
     this.handlerRegistry.register(
       'orders.holds.reconcile',
       this.ordersHoldsReconcileHandler,
+      'bulk'
+    );
+
+    // Register the reservation expiry sweep (#2346, REVIEW C1).
+    //
+    // `bulk`, for the same reason the provenance backfill is: it enqueues no
+    // children and does its work in bounded local writes, so `fan-out` — whose
+    // subject is a job whose cost is the wave it emits — would be the wrong
+    // profile. Nothing a buyer waits on, so it must never share `realtime`'s
+    // slots; and a saturated `bulk` lane delaying it is harmless, because a hold
+    // examined a tick later is a hold that stayed held, which is the safe
+    // direction.
+    this.handlerRegistry.register(
+      'inventory.reservations.expire',
+      this.reservationExpiryHandler,
+      'bulk'
+    );
+
+    // Register the reservation SHORTFALL reconciler (#2349).
+    //
+    // `bulk`, for the same reason as its two reservation siblings: it enqueues
+    // no children and does its work in bounded local writes, so `fan-out` —
+    // whose subject is a job whose cost is the wave it emits — would be the
+    // wrong profile. And a saturated `bulk` lane delaying it is harmless in the
+    // safe direction: this pass REPAIRS nothing and PUBLISHES nothing, so a
+    // tick's delay costs only the latency of naming a shortfall an operator
+    // cannot act on any faster anyway.
+    this.handlerRegistry.register(
+      'inventory.reservations.shortfall',
+      this.reservationShortfallHandler,
+      'bulk'
+    );
+
+    // Register the reservation consume sweep (#2347, REVIEW C8).
+    //
+    // `bulk`, for the same reason as its expiry sibling: it enqueues no children
+    // and does its work in bounded local writes, so `fan-out` — whose subject is
+    // a job whose cost is the wave it emits — would be the wrong profile. And a
+    // saturated `bulk` lane delaying it is harmless in the safe direction: a
+    // shipment consumed a tick later is stock released a tick later, never stock
+    // oversold.
+    this.handlerRegistry.register(
+      'inventory.reservations.consume',
+      this.reservationConsumeHandler,
       'bulk'
     );
 

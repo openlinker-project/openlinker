@@ -100,6 +100,17 @@ export const JobTypeValues = [
   // platform calls and reads only OL's own table — `inventory.propagateToMarketplaces`
   // is the naming precedent for a core-owned internal pass.
   'inventory.provenance.backfill',
+  // #2346 — the state-dependent reservation expiry sweep. Reads and writes only
+  // OL's own ledger; no platform call.
+  'inventory.reservations.expire',
+  // #2347 — the reservation CONSUME sweep: closes an order's held reservations
+  // once its shipment shipped, claimed at-most-once via
+  // `Shipment.reservationConsumedAt`. Reads and writes only OL's own tables.
+  'inventory.reservations.consume',
+  // #2349 — the reservation SHORTFALL reconciler: names the orders a master's
+  // stock drop puts at risk, as persisted episodes. Reads OL's own tables and
+  // repairs nothing; no platform call.
+  'inventory.reservations.shortfall',
   // Repairs the `order_records.activeHoldReason` cache against `order_holds`
   // (#2340). Deliberately NOT named `marketplace.*`: it makes zero platform
   // calls and reads only OL's own tables - `inventory.provenance.backfill` is

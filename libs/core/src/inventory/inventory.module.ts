@@ -11,19 +11,34 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { InventoryItemOrmEntity } from './infrastructure/persistence/entities/inventory-item.orm-entity';
 import { InventoryLocationOrmEntity } from './infrastructure/persistence/entities/inventory-location.orm-entity';
+import { ReservationOrmEntity } from './infrastructure/persistence/entities/reservation.orm-entity';
+import { ReservationShortfallEpisodeOrmEntity } from './infrastructure/persistence/entities/reservation-shortfall-episode.orm-entity';
 import { InventoryRepository } from './infrastructure/persistence/repositories/inventory.repository';
 import { LocationRepository } from './infrastructure/persistence/repositories/location.repository';
+import { ReservationRepository } from './infrastructure/persistence/repositories/reservation.repository';
+import { ReservationShortfallRepository } from './infrastructure/persistence/repositories/reservation-shortfall.repository';
 import { InventoryService } from './application/services/inventory.service';
 import { InventorySyncService } from './application/services/inventory-sync.service';
 import { MasterInventorySyncService } from './application/services/master-inventory-sync.service';
 import { InventoryQueryService } from './application/services/inventory-query.service';
 import { LocationService } from './application/services/location.service';
 import { AvailabilityService } from './application/services/availability.service';
-import { EmptyReservationLedgerReader } from './infrastructure/reservations/empty-reservation-ledger.reader';
+import { ReservationService } from './application/services/reservation.service';
+import { ReservationExpiryService } from './application/services/reservation-expiry.service';
+import { ReservationShortfallService } from './application/services/reservation-shortfall.service';
+import { UnavailableOrderHoldReader } from './infrastructure/reservations/unavailable-order-hold.reader';
+import type { ObligationReaders } from './domain/types/reservation-obligation.types';
+import { ReservationLedgerReader } from './infrastructure/reservations/reservation-ledger.reader';
 import { InventoryProvenanceBackfillService } from './application/services/inventory-provenance-backfill.service';
 import {
   AVAILABILITY_SERVICE_TOKEN,
+  RESERVATION_EXPIRY_SERVICE_TOKEN,
   RESERVATION_LEDGER_READER_TOKEN,
+  RESERVATION_OBLIGATION_READERS_TOKEN,
+  RESERVATION_REPOSITORY_TOKEN,
+  RESERVATION_SERVICE_TOKEN,
+  RESERVATION_SHORTFALL_REPOSITORY_TOKEN,
+  RESERVATION_SHORTFALL_SERVICE_TOKEN,
   INVENTORY_REPOSITORY_TOKEN,
   INVENTORY_SERVICE_TOKEN,
   INVENTORY_SYNC_SERVICE_TOKEN,
@@ -42,7 +57,11 @@ import { EventsModule } from '@openlinker/core/events';
 // Re-export tokens for convenience
 export {
   AVAILABILITY_SERVICE_TOKEN,
+  RESERVATION_EXPIRY_SERVICE_TOKEN,
   RESERVATION_LEDGER_READER_TOKEN,
+  RESERVATION_OBLIGATION_READERS_TOKEN,
+  RESERVATION_REPOSITORY_TOKEN,
+  RESERVATION_SERVICE_TOKEN,
   INVENTORY_REPOSITORY_TOKEN,
   INVENTORY_SERVICE_TOKEN,
   INVENTORY_SYNC_SERVICE_TOKEN,
@@ -55,7 +74,12 @@ export {
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([InventoryItemOrmEntity, InventoryLocationOrmEntity]),
+    TypeOrmModule.forFeature([
+      InventoryItemOrmEntity,
+      InventoryLocationOrmEntity,
+      ReservationOrmEntity,
+      ReservationShortfallEpisodeOrmEntity,
+    ]),
     ProductsModule, // Required for FK relationship to ProductOrmEntity
     IntegrationsModule, // Required for INTEGRATIONS_SERVICE_TOKEN (marketplace adapter resolution)
     IdentifierMappingModule, // Required for IDENTIFIER_MAPPING_SERVICE_TOKEN and CONNECTION_PORT_TOKEN (per-connection stock safety buffer, #1844/#2321)
@@ -71,10 +95,23 @@ export {
     InventoryQueryService,
     LocationRepository,
     LocationService,
-    // #2321 — the computed availability seam. `EmptyReservationLedgerReader` is
-    // the Wave-1b stand-in: Wave 2 swaps this one binding for a real ledger
-    // repository, which is why the ATP formula already carries the term.
-    EmptyReservationLedgerReader,
+    // #2343 — the advisory reservation ledger's write half.
+    ReservationRepository,
+    ReservationShortfallRepository,
+    ReservationShortfallService,
+    ReservationService,
+    // #2346 — the state-dependent expiry sweep. The obligation readers map is
+    // bound as a VALUE rather than a class so its mapped type over
+    // `ReservationObligationKindValues` is checked here: a kind added without a
+    // reader fails to compile at this binding.
+    UnavailableOrderHoldReader,
+    ReservationExpiryService,
+    // #2345 — the read half, now real. #2321's `EmptyReservationLedgerReader`
+    // was the Wave-1b stand-in that let the ATP formula carry the ledger term
+    // before the table existed; it survives only as a test fixture on the
+    // `@openlinker/core/inventory/testing` sub-barrel and must never be bound
+    // here again — binding it would silently switch ATP subtraction off.
+    ReservationLedgerReader,
     AvailabilityService,
     InventoryProvenanceBackfillService,
     // Then provide token bindings using useExisting
@@ -108,7 +145,74 @@ export {
     },
     {
       provide: RESERVATION_LEDGER_READER_TOKEN,
-      useExisting: EmptyReservationLedgerReader,
+      useExisting: ReservationLedgerReader,
+    },
+    {
+      provide: RESERVATION_REPOSITORY_TOKEN,
+      useExisting: ReservationRepository,
+    },
+    {
+      provide: RESERVATION_SERVICE_TOKEN,
+      useExisting: ReservationService,
+    },
+    {
+      provide: RESERVATION_OBLIGATION_READERS_TOKEN,
+      // WHAT IS INERT: while `UnavailableOrderHoldReader` is bound here the
+      // expiry sweep extends every candidate and releases NOTHING (#2346) — the
+      // reader answers `'indeterminate'` unconditionally and the obligation fold
+      // is fail-closed.
+      //
+      // WHY IT MATTERS MORE THAN IT READS: the sweep is the designed close path
+      // for an order OpenLinker does not fulfil itself. The other two closers
+      // need an OL-side event that never happens there — `closeForOrder` fires on
+      // a cancellation (`OfferStockRestoreService`) and on an OL-owned
+      // `Shipment` shipping (`ShipmentReservationConsumeService`) — and on the
+      // DEFAULT `omp_fulfilled` topology the marketplace ships, so OL creates no
+      // `Shipment`. A normally-fulfilled, never-cancelled order's holds
+      // therefore stay `held` for the life of the install while this stand-in is
+      // bound. That is contained rather than harmful because every reader of
+      // `inventory_items.olReservedQuantity` is now `atpEffect`-scoped (#2628
+      // review — `publishedReservedSum`), so accumulating `diagnostic` holds
+      // refuse no reservation and open no shortfall episode; but the rows do
+      // accumulate, and a `published`-stamped install would hold real ATP.
+      //
+      // WHAT UNBLOCKS IT: neither the table nor the branch, any more. Body A
+      // (PR #2588) merged into `oms-programme-wave-2` and this branch now
+      // CONTAINS it: `order_holds`, `OrderHoldsModule` and
+      // `IOrderHoldService.getOpenHold` are all reachable from here. The real
+      // reader is therefore bindable today — it takes importing the leaf
+      // `OrderHoldsModule` (deliberately narrow: it pulls in nothing resembling
+      // `OrdersModule`'s graph), injecting `ORDER_HOLD_SERVICE_TOKEN` from
+      // `@openlinker/core/orders`, and mapping a non-null `getOpenHold` to
+      // `'present'` and a confirmed null to `'absent'`. It adds one new
+      // cross-context edge, `inventory -> orders`, which is acyclic because
+      // `orders` does not import `inventory`.
+      //
+      // The remaining blocker is SEQUENCING, not topology: flipping this
+      // binding turns the expiry sweep from inert to live, and that behaviour
+      // change is a deliberate wave-level step (#2339) that must not ride
+      // inside a merge commit, where it would be invisible to review.
+      //
+      // THE ONE CONSTRAINT ON THAT READER: it must answer `'absent'` only on a
+      // positively confirmed absence — never as a default, never as the fallback
+      // arm of a failed read, and never for an order it could not find. That
+      // single shortcut converts the fail-closed design into a silent oversell.
+      useFactory: (holds: UnavailableOrderHoldReader): ObligationReaders => ({
+        'open-order-hold': (orderRecordId) => holds.read(orderRecordId),
+      }),
+      inject: [UnavailableOrderHoldReader],
+    },
+    {
+      provide: RESERVATION_EXPIRY_SERVICE_TOKEN,
+      useExisting: ReservationExpiryService,
+    },
+    {
+      provide: RESERVATION_SHORTFALL_REPOSITORY_TOKEN,
+      useExisting: ReservationShortfallRepository,
+    },
+    {
+      provide: RESERVATION_SHORTFALL_SERVICE_TOKEN,
+      useExisting: ReservationShortfallService,
     },
     {
       provide: AVAILABILITY_SERVICE_TOKEN,
@@ -128,6 +232,12 @@ export {
     LOCATION_REPOSITORY_TOKEN,
     LOCATION_SERVICE_TOKEN,
     RESERVATION_LEDGER_READER_TOKEN,
+    RESERVATION_REPOSITORY_TOKEN,
+    RESERVATION_SERVICE_TOKEN,
+    RESERVATION_EXPIRY_SERVICE_TOKEN,
+    RESERVATION_OBLIGATION_READERS_TOKEN,
+    RESERVATION_SHORTFALL_REPOSITORY_TOKEN,
+    RESERVATION_SHORTFALL_SERVICE_TOKEN,
     AVAILABILITY_SERVICE_TOKEN,
     INVENTORY_PROVENANCE_BACKFILL_SERVICE_TOKEN,
   ],

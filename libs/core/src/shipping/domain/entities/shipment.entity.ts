@@ -100,5 +100,29 @@ export class Shipment {
     // the first row of that model, not a competing half-measure.
     // Appended last for the same anti-collision rationale as the fields above.
     public readonly waybillRelayedAt: Date | null,
+    // When this shipment's order had its held reservations consumed (#2347).
+    // The second claim marker on this entity, and the same shape as
+    // `waybillRelayedAt` above one concern over: claimed conditionally
+    // (`WHERE reservation_consumed_at IS NULL`), so at-most-once is a database
+    // fact rather than a convention.
+    //
+    // It exists because `ShipmentDispatchService` SHORT-CIRCUITS on an already
+    // active shipment (the same early return that made #1947 necessary), so
+    // hanging "consume the reservation" off the dispatch call loses it on any
+    // retry and the hold sits `held` until the expiry sweep — which, per
+    // #2346's fail-closed posture, extends rather than releases. Understated
+    // ATP, indefinitely.
+    //
+    // What this marker is NOT: the guard against a double decrement. That is
+    // the ledger's own `status = 'held'` predicate, which is why the sweep
+    // consumes FIRST and claims SECOND — a process kill between the two then
+    // converges on the next tick instead of stranding the hold forever. See
+    // `IShipmentReservationConsumeService`.
+    //
+    // Also the durable answer to "did this order already consume?", which is
+    // what #2348's cancelled-after-dispatch path needs so it cannot double
+    // restore.
+    // Appended last for the same anti-collision rationale as every field above.
+    public readonly reservationConsumedAt: Date | null,
   ) {}
 }

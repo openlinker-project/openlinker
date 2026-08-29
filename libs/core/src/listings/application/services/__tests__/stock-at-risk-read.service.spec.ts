@@ -112,6 +112,7 @@ describe('StockAtRiskReadService', () => {
         provenance: input.availableToPromise === null ? 'unknown' : 'computed',
         observedAt: null,
         stalenessMs: null,
+        olHeldNotReflected: null,
       },
     ]);
   }
