@@ -30,6 +30,7 @@ import type {
   SalesDocumentUnresolvedReason,
 } from '@openlinker/core/sales-documents';
 import { OrderAmendmentChangeDto } from './order-amendment-change.dto';
+import { OrderOmsAttentionEntryDto } from './order-oms-attention-entry.dto';
 import { OrderSyncStatusResponseDto } from './order-sync-status-response.dto';
 import { SyncAttemptResponseDto } from './sync-attempt-response.dto';
 import type { OrderInvoiceProjectionDto } from './order-invoice-projection.dto';
@@ -119,6 +120,17 @@ export class OrderRecordResponseDto {
       'connections, none marked primary"), rendered to the operator verbatim.',
   })
   salesDocumentBlockDetail!: string | null;
+
+  @ApiProperty({
+    type: [OrderOmsAttentionEntryDto],
+    description:
+      'Inert states this order carries (#2352/#2356) — what OpenLinker STOPPED deciding about it. ' +
+      'Empty for an ordinary order, and empty on every install until a producer writes the column. ' +
+      'This is NOT the `needs_attention` health bucket: that bucket is a member of a partition and ' +
+      'means a sync failure, while this is an orthogonal axis, so an order is routinely one, the ' +
+      'other, or both. Keyed by PRODUCER, so an order can carry several at once.',
+  })
+  omsAttention!: OrderOmsAttentionEntryDto[];
 
   @ApiPropertyOptional({
     nullable: true,

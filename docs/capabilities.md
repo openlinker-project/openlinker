@@ -34,20 +34,43 @@ invoking, and degrade gracefully when an adapter doesn't implement it.
 | `ShippingProviderManagerPort` | shipping | `ShippingProviderManager` *(open-world — see note)* | Generate shipping labels, read tracking, and list supported shipping methods. | `generateLabel` · `getTracking` · `getSupportedMethods` |
 | `InvoicingPort` | invoicing | `Invoicing` | Issue fiscal documents, fetch them, upsert a customer, and report supported document types. | `issueInvoice` · `getInvoice` · `upsertCustomer` · `getSupportedDocumentTypes` |
 | `FiscalizationPort` | fiscalization | `Fiscalization` | Hand a completed sale to a provider that performs or brokers its fiscal registration (never OL itself). | `registerTransaction` |
+| *(no port yet — Wave 3a)* | fulfillment-authority | `ReturnsAuthority` | Decide the disposition of returned goods — A5 of the [ADR-052](./architecture/adrs/052-independently-assignable-fulfillment-authorities.md) authority matrix. Resolved from a connection's capability declarations plus its `Connection.config` claim, not by narrowing a dispatched adapter, so it carries no `*Port` yet. | — |
 | `ContentPublisherPort` | content | *(internal — not registry-resolved)* | Publish a content field (e.g. a product description) to a channel or the master. | `publish` |
 
 **Open-world capability vocabulary (#576).** The closed, well-known set is
-`CoreCapabilityValues` = `ProductMaster`, `InventoryMaster`, `OrderSource`,
-`OrderProcessorManager`, `OfferManager`, `ProductPublisher`,
-`CategoryProvisioner`, `Invoicing`, `Fiscalization`. `Fiscalization` joins the
-closed set rather than the open-world escape (#1908) because the connection
-DTOs validate `enabledCapabilities` against it with a strict `@IsIn`. Adapters
+`CoreCapabilityValues`, reproduced in full in the fenced table below — one list,
+not a second restatement that can drift from it. `Fiscalization` (#1908) and
+`ReturnsAuthority` (#2351) join the closed set rather than the open-world escape
+because the connection DTOs validate `enabledCapabilities` against it with a
+strict `@IsIn`, so a name kept out of the array is a name an operator cannot
+write. Adapters
 may register **additional**
 capability strings at runtime without a core change — `ShippingProviderManager`
 is the live example (declared in the InPost / DPD / Allegro manifests, resolved
 through the registry, but intentionally *not* a member of the closed set). The
 runtime gate validates a connection's request against the adapter's
 `supportedCapabilities`, not against the closed union.
+
+<!-- core-capabilities:start -->
+
+<!-- Mirrored by scripts/check-core-capability-mirror.mjs against
+     libs/core/src/integrations/domain/types/adapter.types.ts and the two
+     frontend mirrors. Edit the core array first; this table follows it. -->
+
+| Capability | What it does |
+|---|---|
+| `ProductMaster` | Source of truth for the product catalog. |
+| `InventoryMaster` | Source of truth for stock levels. |
+| `OrderProcessorManager` | Create orders on a destination shop. |
+| `OrderSource` | Cursor-based, read-only ingestion of orders. |
+| `OfferManager` | Manage marketplace offers and listings. |
+| `ProductPublisher` | Publish a product as a native shop listing. |
+| `CategoryProvisioner` | Mirror or create a destination category tree. |
+| `Invoicing` | Issue fiscal documents through a provider. |
+| `Fiscalization` | Hand a completed sale to a provider that registers it fiscally. |
+| `ReturnsAuthority` | Decide the disposition of goods a customer sends back (A5, ADR-052). |
+
+<!-- core-capabilities:end -->
 
 > **Which integration implements what** is each adapter's own declaration: its
 > `supportedCapabilities` manifest (`libs/integrations/<p>/src/<p>-plugin.ts`) is
@@ -243,6 +266,13 @@ the vocabulary leaf itself imports nothing from those contexts, and two of them
 | A6 | `refund-trigger` | `config-only` | `refundTrigger` | `orders` |
 
 <!-- authority-kinds:end -->
+
+**Seven questions, six kinds.** `AuthorityKindValues` above enumerates what can
+be *assigned*; the operator-facing surface asks one more question — "who issues
+invoices and receipts?" — whose answer is owned by the `sales-documents` context
+(ADR-041) and is therefore reached by a link, never mirrored here. The question
+space is its own vocabulary, `AuthorityQuestionValues` (#2351), and a spec pins
+its six non-null kinds to this table's six, in order.
 
 **A6 is never assignable away from OL** ([ADR-056](./architecture/adrs/056-refund-and-fiscal-authority-never-leave-ol.md)).
 Its config key is read so an operator's claim is *observable*, never so it can be

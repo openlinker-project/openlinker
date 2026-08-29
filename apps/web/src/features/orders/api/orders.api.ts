@@ -95,6 +95,14 @@ function buildQuery(filters?: OrderFilters, pagination?: OrderPagination): strin
   if (filters?.cancelled !== undefined) {
     params.set('cancelled', String(filters.cancelled));
   }
+  // #2353 - boolean, so it needs the `!== undefined` guard for the same reason
+  // its two neighbours do: `false` ("exclude orders with an inert state") is a
+  // real predicate the backend honours, and a truthy check would silently drop
+  // it. The param is the operator-facing `attention`; the repository filter
+  // names the full `omsAttention` axis.
+  if (filters?.attention !== undefined) {
+    params.set('attention', String(filters.attention));
+  }
   if (pagination?.limit !== undefined) params.set('limit', String(pagination.limit));
   if (pagination?.offset !== undefined) params.set('offset', String(pagination.offset));
   const qs = params.toString();

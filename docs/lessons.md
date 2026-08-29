@@ -498,3 +498,39 @@ non-exemption*, since nothing in the type system marks one.
 **Source**: PR #2628 review (ADR-061) — `diagnostic-holds-are-inert.int-spec.ts`, where the guard's
 subtrahend was scoped by `atpEffect` but a `diagnostic` claim still needs headroom the size of the
 claim.
+
+## A merge that drops a closing brace leaves no marker — check the seam, in a language a gate parses
+
+**Context**: integrating OMS Wave 2 bodies A and C into body B. Both sides had appended a new block
+at the same place in two files, so git produced a textbook additive conflict and the union looked
+obviously right. In `orders.controller.ts` it aligned body A's trailing `};`/`}` with the closing
+braces of body B's `toReservationShortfallDto`, silently truncating that method. In
+`apps/web/src/index.css` it did the identical thing to `.stock-at-risk-callout__items`.
+
+**Problem**: the two defects were caught by completely different luck. The controller is TypeScript,
+so `pnpm type-check` failed loudly — but only because a resolution one line different would have
+compiled and been *wrong* rather than unparseable. The CSS was not caught at all: it shipped through
+lint, type-check, 4142 web unit tests and 130 integration suites in the previous merge round and was
+only found a round later, by eye. **Nothing in the pipeline parses `index.css`**, so an unclosed rule
+is invisible to every gate — and under CSS nesting it does not even error, it silently re-scopes the
+following rules as descendants, so the styles are still "there" and simply never apply. Absent
+conflict markers are not evidence of a correct merge; a green suite is not evidence either, for any
+artefact no gate parses.
+
+**Rule**: after resolving a conflict, re-read the **seam itself** — the last lines of the first block
+and the first lines of the second — and confirm the first block still *closes*. Do it structurally,
+not by eye: strip comments and compare `{` / `}` counts for the whole file, which takes seconds and
+catches the whole class. Prefer this specifically where both sides append to one list and the
+resolution is "obviously" a union, because that is exactly the shape whose closing punctuation is
+identical on both sides and therefore eligible to be treated as shared context. And when the file is
+one no gate parses (CSS, YAML, JSON fixtures), treat the structural check as **mandatory** rather
+than a double-check, since nothing downstream will do it for you.
+
+**Applies to**: any merge or rebase touching an append-heavy file — a stylesheet, a barrel, a job-type
+union, a DI provider list, a long positional constructor. Sharpest when several parallel bodies of
+work land in one integration branch, because every one of them appends at the same seam.
+
+**Source**: PR #2628 Wave-2 integration merges (bodies A and C). Also surfaced two stale counts of
+the same family: the ADR-050 lane tripwire's dummy-handler count was wrong on *both* sides and its
+test could not fail (surplus constructor args become `undefined`), and the orders Status-cell row
+height was documented as four lines by two bodies independently when the composition is six.

@@ -29,6 +29,10 @@
  */
 import type { ReturnOrigin } from '../types/return.types';
 import type { ReturnLine } from './return-line.entity';
+import type {
+  AuthorityAttentionEntry,
+  AuthorityAttentionReason,
+} from '@openlinker/core/fulfillment-authority';
 
 export class ReturnRecord {
   constructor(
@@ -58,7 +62,22 @@ export class ReturnRecord {
     public readonly closedAt: Date | null,
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
-    public readonly lines: readonly ReturnLine[]
+    public readonly lines: readonly ReturnLine[],
+    /**
+     * The OMS inert states reported against this return (#2352), one entry per
+     * reporting producer. Empty when nothing is reported.
+     *
+     * Carries only the states that are FACTS — today `restock-blocked` (RB-L),
+     * whose producer is the returns-custody body. It deliberately does NOT carry
+     * the orphan state (OR-P): that is derived from `internalOrderId IS NULL` by
+     * {@link isOrphan}, and this entity's own docblock says in terms that there
+     * must not be a second definition of it. A persisted OR-P entry would be
+     * exactly that second definition, free to disagree with the bucket and the
+     * trigger block about one row.
+     *
+     * Appended last — positional constructor.
+     */
+    public readonly omsAttention: readonly AuthorityAttentionEntry[] = []
   ) {}
 
   /**
@@ -76,5 +95,20 @@ export class ReturnRecord {
    */
   isOrphan(): boolean {
     return this.internalOrderId === null;
+  }
+
+  /**
+   * Every OMS inert state this return currently carries, persisted AND derived.
+   *
+   * The single place the two mechanisms are joined, so no consumer has to
+   * remember that OR-P is derived while RB-L is stored — the distinction is an
+   * implementation fact about where a state can be recomputed from, never
+   * something an operator surface should encode.
+   *
+   * Pure and synchronous, a function of already-loaded fields (ADR-011).
+   */
+  attentionReasons(): readonly AuthorityAttentionReason[] {
+    const reasons = this.omsAttention.map((entry) => entry.reason);
+    return this.isOrphan() ? [...reasons, 'return-unmatched'] : reasons;
   }
 }

@@ -47,6 +47,7 @@ import { useOrdersQuery } from '../../features/orders/hooks/use-orders-query';
 import { useOrderStatusSummaryQuery } from '../../features/orders/hooks/use-order-status-summary-query';
 import { useOrderSlaSummaryQuery } from '../../features/orders/hooks/use-order-sla-summary-query';
 import { useOrderLifecycleSummaryQuery } from '../../features/orders/hooks/use-order-lifecycle-summary-query';
+import { OmsAttentionBadges } from '../../features/fulfillment-authority';
 import { OrderPhaseBadge } from '../../features/orders/components/order-phase-badge';
 import { OrderHoldBadge } from '../../features/orders/components/order-hold-badge';
 import {
@@ -281,6 +282,7 @@ const NARROWING_FILTER_URL_PARAM: Record<NarrowingOrderFilterKey, string> = {
   phase: 'phase',
   taxRateConflict: 'taxRate',
   holdReason: 'hold',
+  attention: 'attention',
 };
 
 /**
@@ -422,6 +424,13 @@ export function OrdersListPage(): ReactElement {
   // and an operator with a stale bookmark should see their orders, not an error.
   const rawHoldReason = searchParams.get('hold');
   const holdReason = isHoldReason(rawHoldReason) ? rawHoldReason : undefined;
+  // #2353 — a FOURTH axis, present-only like its two neighbours. The URL never
+  // carries `attention=false`, which would mean "hide orders OpenLinker stopped
+  // deciding about" and is not something the UI offers. Deliberately not
+  // `health=needs_attention`: that bucket means a sync failure and partitions
+  // the set, this means OpenLinker stopped deciding, and an order is routinely
+  // both.
+  const omsAttention = searchParams.get('attention') === 'true';
   const offset = Number(searchParams.get('offset') ?? '0');
 
   // "Breaching soon / overdue" cutoff — stable per toggle (not recomputed each
@@ -452,6 +461,8 @@ export function OrdersListPage(): ReactElement {
     taxRateConflict: rateConflict ? true : undefined,
     // #2342 — composes with `phase` and `health` server-side, like every other axis.
     holdReason,
+    // Present-only (#2353): `true` when the chip is on, `undefined` otherwise.
+    attention: omsAttention ? true : undefined,
   };
   const pagination = { limit: PAGE_SIZE, offset };
 
@@ -911,6 +922,13 @@ export function OrdersListPage(): ReactElement {
                   beside the failure reasons (style guide § Order-row signal
                   placement rule 2), never in Shipment or Money. */}
               <OrderHoldBadge reason={order.activeHoldReason} compact />
+              {/* #2356 — an inert state is an EXCEPTION, and rule 2 of the style
+                  guide's order-row signal placement puts exceptions in the
+                  Status group beside failure reasons. It is another badge
+                  vocabulary in that group; the ordinal it originally carried was
+                  dropped on the Wave-2 merge, where #2350's badge claimed the
+                  same one. The guide's composition note is the authority. */}
+              <OmsAttentionBadges entries={order.omsAttention ?? []} compact />
               {h.reason ? (
                 <span className="orders-status-reason" title={h.reason}>
                   {h.reason}
@@ -1224,6 +1242,24 @@ export function OrdersListPage(): ReactElement {
     });
   }
 
+  /** #2353 — the OMS inert-state axis, same present-only shape as its neighbours. */
+  function toggleOmsAttention(): void {
+    captureDemoEvent('demo_orders_filtered', {
+      filter: 'oms_attention',
+      value: String(!omsAttention),
+    });
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      if (omsAttention) {
+        p.delete('attention');
+      } else {
+        p.set('attention', 'true');
+      }
+      p.delete('offset');
+      return p;
+    });
+  }
+
   /** #2100 — mirrors `toggleBreaching`: an independent, present-only chip filter. */
   function toggleInvoicingBlocked(): void {
     captureDemoEvent('demo_orders_filtered', {
@@ -1498,6 +1534,21 @@ export function OrdersListPage(): ReactElement {
           <Chip active={rateConflict} onClick={toggleRateConflict}>
             Rate conflict
             {summary?.taxRateConflict === undefined ? '' : ` ${summary.taxRateConflict}`}
+          </Chip>
+        ) : null}
+        {/* #2356 — the OMS inert-state axis. Mounts on `filterActive || count`
+            for the same nine-line reason its two neighbours do: gating on the
+            count alone unmounts the only way to clear the filter the moment the
+            remediation succeeds, leaving an applied filter and an empty state
+            that claims nothing has synced. `error` tone follows the invoicing
+            chip rather than the untoned rate-conflict one — that neighbour is
+            untoned because `.chip--active` overrides `.chip--conflict` and an
+            inactive conflict chip reads as pressed; `error` does not have that
+            problem, and this axis is genuinely error-toned. */}
+        {omsAttention || summary?.omsAttention ? (
+          <Chip tone="error" active={omsAttention} onClick={toggleOmsAttention}>
+            OpenLinker stopped
+            {summary?.omsAttention === undefined ? '' : ` ${summary.omsAttention}`}
           </Chip>
         ) : null}
         {/* SLA KPI affordance (#1108) — at-a-glance overdue / at-risk counts.
@@ -1973,6 +2024,7 @@ export function OrdersListPage(): ReactElement {
                     </StatusBadge>
                     <OrderPhaseBadge phase={order.lifecyclePhase} compact />
                     <OrderHoldBadge reason={order.activeHoldReason} compact />
+                    <OmsAttentionBadges entries={order.omsAttention ?? []} compact />
                     <StatusBadge tone={fulfillment.tone} withDot compact>
                       {fulfillment.label}
                     </StatusBadge>

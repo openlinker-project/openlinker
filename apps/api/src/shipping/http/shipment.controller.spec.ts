@@ -139,6 +139,7 @@ describe('ShipmentController', () => {
       getEarliestOrderDateByConnection: jest.fn(),
       getSalesAndChannelAnalytics: jest.fn(),
       getTopProducts: jest.fn(),
+      countOrdersWithOmsAttention: jest.fn(),
     };
     controller = new ShipmentController(
       query,

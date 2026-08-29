@@ -46,8 +46,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateReturns1846000000000 implements MigrationInterface {
-  name = 'CreateReturns1846000000000';
+export class CreateReturns1849000000008 implements MigrationInterface {
+  name = 'CreateReturns1849000000008';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     // `return_lines.id` defaults to uuid_generate_v4() — same guard the

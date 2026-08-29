@@ -16,6 +16,7 @@ import type { CodToCollect } from '../types/cod-to-collect.types';
 import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
 import type { OrderDispatchWindow, PriceTaxTreatment } from '../types/order.types';
 import type { OrderAmendmentChange } from '../order-amendment-diff';
+import type { AuthorityAttentionEntry } from '@openlinker/core/fulfillment-authority';
 import type {
   SalesDocumentGateBlockReason,
   SalesDocumentUnresolvedReason,
@@ -285,12 +286,37 @@ export class OrderRecord {
      * persisted value must surface as "not a hold reason" rather than silently
      * becoming `operator`, which would attribute a machine's hold to a human.
      *
-     * **Appended LAST, and it must stay last.** This constructor is positional
-     * with defaulted parameters; inserting a field anywhere else silently
-     * retypes a positional argument at every construction site, `toDomain`'s
-     * own call included.
+     * **Appended at the tail, and its position must not move.** This
+     * constructor is positional with defaulted parameters; inserting a field
+     * anywhere before it silently retypes a positional argument at every
+     * construction site, `toDomain`'s own call included. It was last when
+     * #2340 landed; `omsAttention` (#2352) was appended after it when the two
+     * Wave-2 bodies merged, so the pair must now be passed in this order.
      */
-    public readonly activeHoldReason: HoldReason | null = null
+    public readonly activeHoldReason: HoldReason | null = null,
+    /**
+     * The OMS inert states currently reported against this order (#2352), one
+     * entry per reporting producer. Empty when nothing is reported.
+     *
+     * Read-only projection of the `omsAttention` jsonb, already coerced through
+     * `readAuthorityAttentionEntries` — so an entry written by a newer release
+     * and then rolled back is absent here rather than present-and-unrenderable,
+     * which is spec §4.4 S2-5 ("an unrecognised state degrades safely") held at
+     * the mapping boundary instead of at every consumer.
+     *
+     * Unlike `ReturnRecord`, this entity exposes NO `attentionReasons()`
+     * accessor joining a derived half, because an order has no derived half —
+     * every order-scoped state (A3-X, UF-L, RS-S) is a work-object fact that
+     * must be stored. Adding one for symmetry would create an accessor whose
+     * body can only ever be `this.omsAttention.map(...)`, and a consumer would
+     * reasonably read its existence as evidence that some order state IS
+     * derived.
+     *
+     * Appended LAST for the same reason every field above it was: this is a
+     * positional constructor, so a field inserted in the middle would silently
+     * shift every caller's argument by one.
+     */
+    public readonly omsAttention: readonly AuthorityAttentionEntry[] = []
   ) {}
 
   /**

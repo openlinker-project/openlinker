@@ -31,6 +31,8 @@ describe('adapter.types', () => {
         'Invoicing',
         // Fiscalization (#1908, ADR-042)
         'Fiscalization',
+        // Returns disposition authority (#2351, ADR-052)
+        'ReturnsAuthority',
       ]);
     });
   });

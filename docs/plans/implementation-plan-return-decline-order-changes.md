@@ -74,7 +74,7 @@ machine are a **contract** other slices build on, not an implementation detail.
 | CORE / `returns` domain | three refusal exceptions; one repository-port method |
 | Integration / `allegro` | `declineReturn` on `AllegroOrderSourceAdapter`; manifest capability |
 | App / `apps/api` | `POST /returns/:returnId/decline` |
-| App / `apps/api/src/migrations` | `1847000000000-create-order-changes.ts` |
+| App / `apps/api/src/migrations` | `1849000000009-create-order-changes.ts` |
 
 ### Why `order_changes` lives in `orders`, but not in `OrdersModule`
 
@@ -307,7 +307,7 @@ row, one adapter call. A per-target lock would buy nothing here and is deliberat
 7. **`order-changes.module.ts`** — leaf module (§3). Add `ORDER_CHANGE_REPOSITORY_TOKEN` and
    `ORDER_CHANGE_SERVICE_TOKEN` to `orders.tokens.ts`; export the module + service interface + types
    from `libs/core/src/orders/index.ts` and the entity from `orm-entities.ts`.
-8. **Migration `apps/api/src/migrations/1847000000000-create-order-changes.ts`** — synthetic
+8. **Migration `apps/api/src/migrations/1849000000009-create-order-changes.ts`** — synthetic
    sequential prefix, next free after 1846 (#2327). `up()` creates the table + three indexes;
    `down()` drops them. `CREATE EXTENSION IF NOT EXISTS "uuid-ossp"` guard, matching 1846.
    Register `order_changes` in `apps/api/test/integration/setup.ts` `tablesToTruncate`.

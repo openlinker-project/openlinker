@@ -64,6 +64,10 @@ import {
   type SalesDocumentRulesApi,
 } from '../../features/sales-documents/api/sales-document-rules.api';
 import {
+  createFulfillmentAuthorityApi,
+  type FulfillmentAuthorityApi,
+} from '../../features/fulfillment-authority/api/who-decides.api';
+import {
   createPosthogSettingsApi,
   type PosthogSettingsApi,
 } from '../../features/posthog-settings/api/posthog-settings.api';
@@ -183,6 +187,7 @@ export interface CoreApiClient {
   requestStream: ApiStreamRequest;
   returns: ReturnsApi;
   salesDocumentRules: SalesDocumentRulesApi;
+  fulfillmentAuthority: FulfillmentAuthorityApi;
   shipments: ShipmentsApi;
   syncJobs: SyncJobsApi;
   system: SystemApi;
@@ -403,6 +408,7 @@ export function createApiClient({
     requestBlob,
     requestStream,
     salesDocumentRules: createSalesDocumentRulesApi(request),
+    fulfillmentAuthority: createFulfillmentAuthorityApi(request),
     returns: createReturnsApi(request),
     shipments: createShipmentsApi(request, requestBlob),
     syncJobs: createSyncJobsApi(request),
