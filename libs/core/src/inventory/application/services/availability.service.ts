@@ -36,7 +36,7 @@ import type {
   PromisableQuantity,
 } from '../../domain/types/availability.types';
 import {
-  computeAtp,
+  applyScopedLedgerSubtraction,
   toPromisableQuantity,
   unknownPromisableQuantity,
 } from '../../domain/types/availability.types';
@@ -123,9 +123,19 @@ export class AvailabilityService implements IAvailabilityService {
       const row = byVariantId.get(id);
       return toPromisableQuantity({
         productVariantId: id,
-        quantity: computeAtp(row?.totalAvailable ?? 0, reserved.get(id) ?? 0, buffer),
-        // A variant with no positions observed nothing — see
-        // `toPromisableQuantity` for why that is a known zero, not an unknown.
+        // `'computed'` is the ONLY value Wave 2 can produce: no dispatched
+        // `AvailabilityAuthority` adapter exists. This is the single Wave-3 flip
+        // point — resolving an authority for the scope, passing `'authority'`
+        // with its answer, and letting `applyScopedLedgerSubtraction` report
+        // OL's holds as `olHeldNotReflected` instead of subtracting them.
+        provenance: 'computed',
+        atp: applyScopedLedgerSubtraction(
+          // A variant with no positions observed nothing — see
+          // `toPromisableQuantity` for why that is a known zero, not an unknown.
+          { answeredBy: 'computed', totalAvailable: row?.totalAvailable ?? 0 },
+          reserved.get(id) ?? 0,
+          buffer
+        ),
         observedAt: row?.stockUpdatedAt ?? null,
         now,
       });

@@ -72,6 +72,7 @@ import { deriveOrderHealth, slaBadge, fulfillmentBadge } from '../../features/or
 import { paymentBadge } from '../../features/orders/lib/order-row';
 import { OrderIdentityCell } from '../../features/orders';
 import { OrderInvoicingCell } from '../../features/orders/components/order-invoicing-cell';
+import { StockAtRiskBadge } from '../../features/orders/components/stock-at-risk-badge';
 import { OrderPackedTick } from '../../features/orders/components/order-packed-tick';
 import { deriveDeliveryOutcome, hasLiveOlCarrierRoute } from '../../features/orders/lib/delivery-outcome';
 import { DeliveryOutcomeChip } from '../../features/orders/components/delivery-chip';
@@ -909,14 +910,24 @@ export function OrdersListPage(): ReactElement {
                   says "is something wrong", the phase says "what stage is it
                   at" (ADR-059). */}
               <OrderPhaseBadge phase={order.lifecyclePhase} compact />
+              {/* #2350 — an exception, so a badge, and it belongs in the STATUS
+                  group beside failure reasons (style guide § order-row signal
+                  placement). BESIDE health for the same reason the phase is:
+                  `OrderHealthValues` is a partition whose values sum to the KPI
+                  cards, so a shortfall value there would double-count or hide a
+                  sync failure behind a stock one. Shared verbatim with the
+                  mobile card. */}
+              <StockAtRiskBadge shortfalls={order.reservationShortfalls} />
               {/* #2342 — the STATUS group: an exception is a badge and belongs
                   beside the failure reasons (style guide § Order-row signal
                   placement rule 2), never in Shipment or Money. */}
               <OrderHoldBadge reason={order.activeHoldReason} compact />
               {/* #2356 — an inert state is an EXCEPTION, and rule 2 of the style
                   guide's order-row signal placement puts exceptions in the
-                  Status group beside failure reasons. It is the sixth badge
-                  vocabulary on the row; that decision is recorded in the guide. */}
+                  Status group beside failure reasons. It is another badge
+                  vocabulary in that group; the ordinal it originally carried was
+                  dropped on the Wave-2 merge, where #2350's badge claimed the
+                  same one. The guide's composition note is the authority. */}
               <OmsAttentionBadges entries={order.omsAttention ?? []} compact />
               {h.reason ? (
                 <span className="orders-status-reason" title={h.reason}>
@@ -1898,6 +1909,19 @@ export function OrdersListPage(): ReactElement {
                           ) : (
                             '—'
                           )}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Stock</dt>
+                        <dd>
+                          {/* SAME component as the desktop status cell. An
+                              absent value renders an em dash, never a "fine"
+                              claim — see `stock-at-risk-copy.ts`. */}
+                          <StockAtRiskBadge
+                            shortfalls={order.reservationShortfalls}
+                            layout="row"
+                            emptyFallback="—"
+                          />
                         </dd>
                       </div>
                       <div>

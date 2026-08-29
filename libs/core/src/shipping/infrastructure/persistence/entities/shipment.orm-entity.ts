@@ -58,6 +58,16 @@ import type { DeliveryIntent } from '../../../domain/types/delivery-intent.types
   unique: true,
   where: '"providerShipmentId" IS NULL',
 })
+// Reservation-consume sweep candidate predicate (#2347). Partial, because the
+// unclaimed set shrinks to ~nothing in steady state — every shipment leaves it
+// permanently once marked, so a full index would be almost entirely dead rows.
+// Status is deliberately NOT in the predicate: it changes over a shipment's
+// life (`dispatched → in-transit → delivered`), and a partial index whose
+// predicate references a mutable column makes rows enter and leave the index on
+// ordinary updates. The marker alone is monotone (NULL → set, never back).
+@Index('IDX_shipments_reservation_consume_pending', ['createdAt'], {
+  where: '"reservationConsumedAt" IS NULL',
+})
 export class ShipmentOrmEntity {
   @PrimaryColumn({ type: 'text' })
   id!: string;
@@ -135,6 +145,13 @@ export class ShipmentOrmEntity {
   // serialization point between the status-sync poll and the carrier webhook.
   @Column({ type: 'timestamp', nullable: true })
   waybillRelayedAt!: Date | null;
+
+  // Reservation-consume claim marker (#2347) — see the domain entity for why
+  // this is a dedicated column and why the sweep consumes before claiming it.
+  // Claimed conditionally (`WHERE reservation_consumed_at IS NULL`); the
+  // partial index above serves the sweep's candidate predicate.
+  @Column({ type: 'timestamp', nullable: true })
+  reservationConsumedAt!: Date | null;
 
   @CreateDateColumn()
   createdAt!: Date;

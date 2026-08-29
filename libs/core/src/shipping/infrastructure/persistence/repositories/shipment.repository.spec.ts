@@ -45,6 +45,7 @@ describe('ShipmentRepository', () => {
     errorMessage: null,
     providerCode: null,
     waybillRelayedAt: null,
+    reservationConsumedAt: null,
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -422,6 +423,79 @@ describe('ShipmentRepository', () => {
     });
   });
 
+  describe('reservation-consume claim (#2347)', () => {
+    const ID = 'ol_shipment_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const at = new Date('2026-08-26T10:00:00Z');
+
+    it('should claim conditionally on the marker still being NULL', async () => {
+      ormRepository.update.mockResolvedValue(buildUpdateResult(1));
+
+      const won = await repository.claimReservationConsume(ID, at);
+
+      expect(won).toBe(true);
+      expect(ormRepository.update).toHaveBeenCalledWith(
+        { id: ID, reservationConsumedAt: IsNull() },
+        { reservationConsumedAt: at },
+      );
+    });
+
+    it('should report the claim lost when another caller already holds it', async () => {
+      ormRepository.update.mockResolvedValue(buildUpdateResult(0));
+
+      await expect(repository.claimReservationConsume(ID, at)).resolves.toBe(false);
+    });
+
+    it('should report the claim lost when affected is undefined', async () => {
+      // node-postgres returns `[rows, affectedCount]`, and an `undefined`
+      // affected count coercing to a truthy claim is the silent double-consume
+      // shape. `?? 0` is what keeps that from happening.
+      ormRepository.update.mockResolvedValue({
+        raw: [],
+        generatedMaps: [],
+      } as unknown as UpdateResult);
+
+      await expect(repository.claimReservationConsume(ID, at)).resolves.toBe(false);
+    });
+
+    it('should read candidates by the shipped statuses and a NULL marker, oldest first', async () => {
+      // Frontier-as-query: no offset, because a consumed shipment leaves the
+      // set. `createdAt ASC` so the longest-outstanding row is examined first
+      // and a failing tail cannot starve it.
+      ormRepository.find.mockResolvedValue([buildOrm({ status: 'dispatched' })]);
+
+      const result = await repository.listDispatchedAwaitingReservationConsume(50);
+
+      expect(result).toHaveLength(1);
+      expect(ormRepository.find).toHaveBeenCalledWith({
+        where: {
+          direction: 'outbound',
+          status: In(['dispatched', 'in-transit', 'delivered']),
+          reservationConsumedAt: IsNull(),
+        },
+        order: { createdAt: 'ASC' },
+        take: 50,
+      });
+    });
+
+    it('should never offer an inbound return label as a consume candidate', async () => {
+      // #2347 was written when every row here was a seller-to-buyer dispatch.
+      // #2373 put return labels in the same table and they reach the very
+      // statuses this predicate selects on, so without the direction arm an
+      // arriving return would close the order's holds — "the goods left the
+      // building", concluded from a parcel coming back. Asserted separately
+      // from the shape test above so the reason survives a future edit to it.
+      ormRepository.find.mockResolvedValue([]);
+
+      await repository.listDispatchedAwaitingReservationConsume(50);
+
+      expect(ormRepository.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ direction: 'outbound' }),
+        }),
+      );
+    });
+  });
+
   describe('waybill-relay claim (#1947)', () => {
     const ID = 'ol_shipment_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
     const at = new Date('2026-05-19T11:00:00Z');
@@ -470,6 +544,9 @@ describe('ShipmentRepository', () => {
         failedAt: null,
         errorMessage: null,
         providerCode: 'preflight.missing-parcel-template',
+        // Non-null so the round-trip proves the marker is actually carried,
+        // rather than passing on a `null === null` coincidence (#2347).
+        reservationConsumedAt: new Date('2026-05-21T16:00:00Z'),
         status: 'delivered',
       });
       ormRepository.findOne.mockResolvedValue(fullyPopulated);
@@ -497,6 +574,7 @@ describe('ShipmentRepository', () => {
         providerCode: fullyPopulated.providerCode,
         waybillRelayedAt: fullyPopulated.waybillRelayedAt,
         direction: fullyPopulated.direction,
+        reservationConsumedAt: fullyPopulated.reservationConsumedAt,
         createdAt: fullyPopulated.createdAt,
         updatedAt: fullyPopulated.updatedAt,
       });

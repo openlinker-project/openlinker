@@ -30,7 +30,10 @@ import { formatInternalId } from '@openlinker/core/identifier-mapping';
 import { Shipment } from '../../../domain/entities/shipment.entity';
 import { ShipmentNotFoundException } from '../../../domain/exceptions/shipment-not-found.exception';
 import type { ShipmentRepositoryPort } from '../../../domain/ports/shipment-repository.port';
-import { TerminalShipmentStatusValues } from '../../../domain/types/shipment-status.types';
+import {
+  ReservationConsumeCandidateStatusValues,
+  TerminalShipmentStatusValues,
+} from '../../../domain/types/shipment-status.types';
 import type {
   PaginatedShipments,
   ShipmentFilters,
@@ -152,6 +155,39 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
     return (result.affected ?? 0) > 0;
   }
 
+  async listDispatchedAwaitingReservationConsume(limit: number): Promise<readonly Shipment[]> {
+    // Frontier-as-query: the predicate IS the cursor (see the port docblock).
+    // `createdAt ASC` so the longest-outstanding shipment is examined first.
+    const entities = await this.repository.find({
+      where: {
+        // Outbound only. #2347 was written when every row in this table was a
+        // seller-to-buyer dispatch; #2373 put return labels in the same table,
+        // and they reach the very statuses this predicate selects on. An
+        // inbound parcel arriving would otherwise become a consume candidate
+        // and close the order's holds — concluding "the goods left the
+        // building" from one coming back.
+        direction: 'outbound',
+        status: In([...ReservationConsumeCandidateStatusValues]),
+        reservationConsumedAt: IsNull(),
+      },
+      order: { createdAt: 'ASC' },
+      take: limit,
+    });
+    return entities.map((entity) => this.toDomain(entity));
+  }
+
+  async claimReservationConsume(id: string, at: Date): Promise<boolean> {
+    // Conditional write — `IsNull()` in the WHERE is what makes this atomic:
+    // exactly one UPDATE can affect the row. `?? 0` matters, not style: an
+    // `undefined` affected count coercing to a truthy claim is the silent
+    // double-consume shape.
+    const result = await this.repository.update(
+      { id, reservationConsumedAt: IsNull() },
+      { reservationConsumedAt: at },
+    );
+    return (result.affected ?? 0) > 0;
+  }
+
   async releaseWaybillRelay(id: string): Promise<void> {
     // Unconditional: only the claim holder calls this, and re-releasing an
     // already-NULL row is harmless.
@@ -189,6 +225,9 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
     // Unclaimed at birth (#1947) — even on the atomic-terminal branch-1 path,
     // which is born with a `trackingNumber` but has told no source yet.
     entity.waybillRelayedAt = null;
+    // Unclaimed at birth (#2347) — even a branch-1 row born terminal has not had
+    // its order's reservations consumed yet; the sweep is what does that.
+    entity.reservationConsumedAt = null;
     return entity;
   }
 
@@ -270,6 +309,7 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
       entity.providerCode,
       entity.waybillRelayedAt,
       entity.direction,
+      entity.reservationConsumedAt,
     );
   }
 }

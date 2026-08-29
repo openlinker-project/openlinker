@@ -107,9 +107,37 @@ export class Shipment {
     // waybill, same tracking poll), so the discriminator is what keeps the
     // branch-1 duplicate guard and every read predicate honest.
     //
-    // Appended last for the same anti-collision rationale as the fields above
-    // — do not splice it into the middle. Required (no default) so every
+    // Appended at the END of the parameter list for the same anti-collision
+    // rationale as the fields above — do not splice it into the middle. It is
+    // no longer the final parameter: #2347's `reservationConsumedAt` was
+    // appended after it when the reservations ledger merged, which is the
+    // correct way to extend this constructor and is why this comment says
+    // "appended at the end" rather than "last". Required (no default) so every
     // construction site is forced to state its cohort.
     public readonly direction: ShipmentDirection,
+    // When this shipment's order had its held reservations consumed (#2347).
+    // The second claim marker on this entity, and the same shape as
+    // `waybillRelayedAt` above one concern over: claimed conditionally
+    // (`WHERE reservation_consumed_at IS NULL`), so at-most-once is a database
+    // fact rather than a convention.
+    //
+    // It exists because `ShipmentDispatchService` SHORT-CIRCUITS on an already
+    // active shipment (the same early return that made #1947 necessary), so
+    // hanging "consume the reservation" off the dispatch call loses it on any
+    // retry and the hold sits `held` until the expiry sweep — which, per
+    // #2346's fail-closed posture, extends rather than releases. Understated
+    // ATP, indefinitely.
+    //
+    // What this marker is NOT: the guard against a double decrement. That is
+    // the ledger's own `status = 'held'` predicate, which is why the sweep
+    // consumes FIRST and claims SECOND — a process kill between the two then
+    // converges on the next tick instead of stranding the hold forever. See
+    // `IShipmentReservationConsumeService`.
+    //
+    // Also the durable answer to "did this order already consume?", which is
+    // what #2348's cancelled-after-dispatch path needs so it cannot double
+    // restore.
+    // Appended last for the same anti-collision rationale as every field above.
+    public readonly reservationConsumedAt: Date | null,
   ) {}
 }

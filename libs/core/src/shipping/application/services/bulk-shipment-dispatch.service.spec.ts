@@ -51,6 +51,7 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     overrides.providerCode ?? null,
     overrides.waybillRelayedAt ?? null,
     overrides.direction ?? 'outbound',
+    overrides.reservationConsumedAt ?? null,
   );
 }
 
@@ -95,6 +96,8 @@ describe('BulkShipmentDispatchService', () => {
       update: jest.fn(),
       claimWaybillRelay: jest.fn(),
       releaseWaybillRelay: jest.fn(),
+      listDispatchedAwaitingReservationConsume: jest.fn(),
+      claimReservationConsume: jest.fn(),
     };
     protocolAdapter = {
       generateLabel: jest.fn(),

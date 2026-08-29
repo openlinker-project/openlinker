@@ -25,6 +25,7 @@ import { InventoryLocationExceptionFilter } from '../../src/common/filters/inven
 import { TaxonomySourceUnavailableFilter } from '../../src/common/filters/taxonomy-source-unavailable.filter';
 import { AvailabilityUnknownFilter } from '../../src/common/filters/availability-unknown.filter';
 import { ReturnsExceptionFilter } from '../../src/common/filters/returns-exception.filter';
+import { AutomationExceptionFilter } from '../../src/common/filters/automation-exception.filter';
 
 const harness = createIntegrationTestHarness({
   imports: [AppModule],
@@ -40,7 +41,8 @@ const harness = createIntegrationTestHarness({
       new TaxonomySourceUnavailableFilter(),
       new InventoryLocationExceptionFilter(),
       new AvailabilityUnknownFilter(),
-      new ReturnsExceptionFilter()
+      new ReturnsExceptionFilter(),
+      new AutomationExceptionFilter()
     );
     // Mirror main.ts's URI versioning (#1133) so int-specs exercise the same
     // `/v1` routing prod serves. Only the version-neutral routes (the `/webhooks`
@@ -75,6 +77,16 @@ const harness = createIntegrationTestHarness({
     // the rest but listing in dependency order keeps intent clear).
     'identifier_mappings',
     'sync_jobs',
+    // reservations (#2343) — OL's advisory reservation ledger. Listed BEFORE
+    // `inventory_items` in keeping with the child-first note above: it is the
+    // only table here holding a real ORM FK to it (ON DELETE RESTRICT, so a
+    // position carrying live reservations cannot vanish). Listing it also keeps
+    // each case's `olReservedQuantity` starting point honest.
+    'reservations',
+    // #2349 — shortfall episodes carry NO foreign key (an episode is evidence
+    // about a position and must outlive it), so they are invisible to the
+    // CASCADE closure walk and must be listed explicitly.
+    'reservation_shortfall_episodes',
     'inventory_items',
     // inventory_locations (#2313) — operator-authored locations. Like
     // category_mappings and fulfillment_routing_rules, its FK lives in the
@@ -154,6 +166,18 @@ const harness = createIntegrationTestHarness({
     // because the unique index is partial on OPEN rows, that leak surfaces as a
     // spurious `OrderAlreadyOnHoldError` in an unrelated spec.
     'order_holds',
+    // automation_* (#2358) — the OMS automation v1 storage. NOTHING here
+    // carries an FK: not runs/firings -> automation_rules (a deleted rule must
+    // neither destroy its history nor be blocked by it), and not subjectId ->
+    // order_records (the order_changes precedent of an indexed reference by
+    // value). `truncateTables`' CASCADE walk therefore reaches none of the
+    // three; truncate explicitly, or a firing recorded by one case still
+    // suppresses that (rule, subject) pair for the next — which is exactly the
+    // at-most-once behaviour the table exists to provide, and exactly the
+    // wrong behaviour between test cases.
+    'automation_runs',
+    'automation_trigger_firings',
+    'automation_rules',
     // destination_categories (#1979) — the taxonomy projection. Marketplace
     // rows are owner-keyed with NO connectionId, so nothing cascades from
     // connections; truncate explicitly or an owner tree leaks between cases.

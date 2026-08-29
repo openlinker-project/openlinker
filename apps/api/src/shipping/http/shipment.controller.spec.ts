@@ -83,6 +83,7 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     overrides.providerCode ?? null,
     overrides.waybillRelayedAt ?? null,
     overrides.direction ?? 'outbound',
+    overrides.reservationConsumedAt ?? null,
   );
 }
 
@@ -112,6 +113,7 @@ describe('ShipmentController', () => {
       list: jest.fn(),
       getById: jest.fn(),
       getActiveByOrderId: jest.fn(),
+      hasConsumedReservations: jest.fn(),
     };
     dispatch = { dispatch: jest.fn() };
     bulkDispatch = { dispatchBulk: jest.fn(), generateProtocol: jest.fn() };
@@ -138,6 +140,7 @@ describe('ShipmentController', () => {
       getEarliestOrderDateByConnection: jest.fn(),
       getSalesAndChannelAnalytics: jest.fn(),
       getTopProducts: jest.fn(),
+      findDispatchDeadlineCandidates: jest.fn(),
       countOrdersWithOmsAttention: jest.fn(),
     };
     controller = new ShipmentController(

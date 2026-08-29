@@ -443,3 +443,25 @@ export interface DuplicatePositionReport {
   /** True when `groups.length < groupCount` — detail was capped, totals were not. */
   truncated: boolean;
 }
+
+/**
+ * One live inventory position a reservation could be taken against (#2344).
+ *
+ * The resolution counterpart to {@link VariantStockRow}, and deliberately NOT a
+ * sum: a reserve's guarded `UPDATE … WHERE id = $1` acts on exactly ONE row, so
+ * the caller has to see the positions individually in order to notice that a
+ * variant resolved to several of them (ANALYSIS-1032 § 6I's multi-position
+ * guard). Summing here would hide precisely the condition the guard exists to
+ * catch.
+ *
+ * Only live (`isStale = false`) rows are ever reported — a stale position must
+ * not accept new promises, matching § 6I's claim predicate.
+ */
+export interface InventoryPositionCandidate {
+  productId: string;
+  /** `null` for a product-level position (no variant). */
+  productVariantId: string | null;
+  /** The `inventory_items.id` a reservation would name. */
+  inventoryItemId: string;
+  locationId: string | null;
+}

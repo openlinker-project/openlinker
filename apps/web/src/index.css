@@ -9466,6 +9466,7 @@ a.kpi-card:focus-visible {
 .orders-card-facts dd { margin: 0; font-size: 0.8125rem; color: var(--text-secondary); }
 
 .data-table__card-summary { margin-top: var(--space-3); }
+.data-table__card-actions { margin-top: var(--space-3); display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
 .data-table__card-disclosure {
   display: inline-flex;
   align-items: center;
@@ -19753,6 +19754,20 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   margin: 0;
 }
 
+/* -------------------------------------------------------------------------
+ * Stock-at-risk callout (#2350)
+ *
+ * The order-detail list of short items inside the shared `Alert`. Tokens only —
+ * no literal colours or spacings, per the style guide's token rule.
+ * ---------------------------------------------------------------------- */
+.stock-at-risk-callout__items {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
 /* ------------------------------------------------------------------
  * Who decides what (#2354)
  *
@@ -20211,4 +20226,324 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   .order-hold-dialog__summary dd {
     margin-bottom: var(--space-2);
   }
+}
+/* ── Automations (#2364) ──────────────────────────────────────────────────── */
+
+/*
+ * No new row height: the trigger index uses `DataTable`'s documented 36 px
+ * rows, and its mobile card layout comes from `cardView`. Everything below is
+ * spacing and stacking only.
+ */
+
+.automation-index__trigger {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.automation-suggestion__rule {
+  font-weight: 600;
+  margin: var(--space-2) 0 var(--space-1);
+}
+
+.automation-suggestion__caveat {
+  margin-top: var(--space-2);
+}
+
+.automation-suggestion__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.automation-availability__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.automation-availability__head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.automation-availability__reason {
+  margin-top: var(--space-1);
+}
+
+.automation-rules__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.automation-rules__state {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.automation-rule-notice__reasons {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-4);
+}
+
+/*
+ * At phone width the on/off control stops sharing a line with the badges, so it
+ * spans the row and clears the 44 px touch target the 28/32 px desktop button
+ * heights do not reach on their own.
+ */
+@media (max-width: 640px) {
+  .automation-rules__state {
+    width: 100%;
+  }
+
+  .automation-rules__state .button {
+    flex: 1 1 100%;
+    min-height: 44px;
+  }
+
+  .automation-suggestion__actions .button {
+    flex: 1 1 100%;
+    min-height: 44px;
+  }
+}
+
+/* ── Automation composer (#2365) ─────────────────────────────────────────── */
+
+/*
+ * A DEPARTURE from "complex editors go read-only below 1024 px" — see the
+ * § Responsive note in docs/frontend-ui-style-guide.md. Single column, ≥ 44 px
+ * targets, fully interactive at 375 px.
+ */
+
+.automation-composer__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.automation-composer__section {
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+}
+
+.automation-composer__row,
+.automation-composer__action {
+  background: var(--bg-surface-muted);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+}
+
+.automation-composer__action-head {
+  align-items: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.automation-composer__action-head .form-field {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.automation-composer__remove {
+  margin-left: auto;
+}
+
+.automation-composer__dates {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: 1fr 1fr;
+}
+
+.automation-composer__footer {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+.automation-merge-fields__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: var(--space-1) 0;
+}
+
+@media (min-width: 768px) {
+  .automation-composer__row {
+    align-items: flex-end;
+    display: grid;
+    gap: var(--space-2);
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  }
+}
+
+@media (max-width: 767px) {
+  .automation-composer__dates {
+    grid-template-columns: 1fr;
+  }
+
+  .automation-composer__footer {
+    flex-direction: column-reverse;
+  }
+
+  .automation-composer__footer .button,
+  .automation-composer__row .button,
+  .automation-composer__action-head .button {
+    min-height: 44px;
+    width: 100%;
+  }
+
+  .automation-composer__remove {
+    margin-left: 0;
+  }
+}
+
+/* ── Automation dry run + fired log (#2366) ──────────────────────────────── */
+
+.automation-dry-run {
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+}
+
+.automation-dry-run__controls {
+  align-items: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.automation-dry-run__controls .form-field {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.automation-dry-run__result,
+.automation-dry-run__verdict {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.automation-dry-run__traces,
+.automation-dry-run__steps,
+.automation-dry-run__siblings,
+.automation-run-log,
+.automation-run-log__steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.automation-dry-run__traces > li,
+.automation-dry-run__steps > li,
+.automation-dry-run__siblings > li,
+.automation-run-log__steps > li {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.automation-run-log__run {
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-top: var(--space-2);
+}
+
+.automation-run-log__head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+@media (max-width: 767px) {
+  .automation-dry-run__controls .button {
+    min-height: 44px;
+    width: 100%;
+  }
+}
+
+/* ── Automation activity log (#2386) ─────────────────────────────────────── */
+
+.automation-activity__filters {
+  align-items: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.automation-activity__filters .form-field {
+  flex: 1 1 10rem;
+  min-width: 0;
+}
+
+.automation-activity__steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.automation-activity__step {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.automation-activity__pager {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+  margin-top: var(--space-3);
+}
+
+@media (max-width: 767px) {
+  .automation-activity__filters .form-field {
+    flex: 1 1 100%;
+  }
+
+  .automation-activity__filters .button,
+  .automation-activity__pager .button {
+    min-height: 44px;
+    width: 100%;
+  }
+}
+
+.automation-activity__active-rule {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
 }

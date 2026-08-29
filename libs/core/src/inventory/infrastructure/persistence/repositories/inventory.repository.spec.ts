@@ -643,11 +643,12 @@ describe('InventoryRepository', () => {
       for (const column of INVENTORY_OL_OWNED_COLUMNS) {
         expect(payload).not.toHaveProperty(column);
       }
-      // The loop above is vacuous today, and deliberately so: the group is empty
-      // until `olReservedQuantity` lands (ADR-061, Wave 2). Pinning the emptiness
-      // makes this assertion start doing real work on the same commit that fills
-      // the group, rather than passing silently forever.
-      expect(INVENTORY_OL_OWNED_COLUMNS).toEqual([]);
+      // The loop above stopped being vacuous with #2343, which filled the group
+      // with `olReservedQuantity` (ADR-061). The pin moved from "the group is
+      // empty" to "the group contains the column the master must never write" —
+      // deleting it would let a future refactor drop the member and silently
+      // return the loop to doing nothing.
+      expect(INVENTORY_OL_OWNED_COLUMNS).toContain('olReservedQuantity');
     });
 
     it('should keep the four column groups disjoint', () => {

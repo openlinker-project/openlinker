@@ -36,6 +36,7 @@ import type {
   OrderHold,
 } from '@openlinker/core/orders';
 import { INVOICE_SERVICE_TOKEN } from '@openlinker/core/invoicing';
+import { RESERVATION_SHORTFALL_SERVICE_TOKEN } from '@openlinker/core/inventory';
 import type { IInvoiceService } from '@openlinker/core/invoicing';
 import { InvoiceRecord } from '@openlinker/core/invoicing';
 import {
@@ -110,6 +111,7 @@ describe('OrdersController', () => {
       getMedianOrderValue: jest.fn(),
       patchSnapshotTaxRates: jest.fn(),
       getNetMedianOrderValue: jest.fn(),
+      findDispatchDeadlineCandidates: jest.fn(),
     };
 
     const mockOrderRecordService = {
@@ -156,6 +158,12 @@ describe('OrdersController', () => {
         ),
     };
 
+    // #2349 — the order-detail read projects still-open shortfall episodes.
+    // Default: none, so every pre-existing expectation is unaffected.
+    const mockReservationShortfalls = {
+      detectShortfalls: jest.fn(),
+      listOpenForOrder: jest.fn().mockResolvedValue([]),
+    };
     const mockHoldService = {
       place: jest.fn(),
       release: jest.fn(),
@@ -203,6 +211,10 @@ describe('OrdersController', () => {
         {
           provide: DELIVERY_RIDER_SERVICE_TOKEN,
           useValue: mockDeliveryRider,
+        },
+        {
+          provide: RESERVATION_SHORTFALL_SERVICE_TOKEN,
+          useValue: mockReservationShortfalls,
         },
       ],
     }).compile();

@@ -1,0 +1,161 @@
+/**
+ * Automation Run Repository Port (#2363, write path added by #2385)
+ *
+ * The persistence contract for `automation_runs`. #2363 declared it read-only
+ * on the grounds that #2385 owns the write path and therefore owns what a run
+ * row looks like when it is written; #2385 EXTENDED it here, as instructed. Two run-persistence contracts is
+ * how a firing renders one way in the run log and another in the timeline, which
+ * §5.6's "one record, four readings" exists to prevent.
+ *
+ * Consumed only from INSIDE this context, by `AutomationRunsReadService` — a
+ * `*RepositoryPort` is an intra-context contract, and cross-context callers (the
+ * #2363 controller included) go through `I*Service`
+ * (`architecture-overview.md § Cross-context dependencies in core`).
+ *
+ * @module libs/core/src/automation/domain/ports
+ * @see docs/specs/product-spec-oms-wave2-operator-experience.md §5.6
+ */
+import type { AutomationRun } from '../entities/automation-run.entity';
+import type { AutomationRunOutcome, AutomationRunSubjectKind } from '../types/automation-run.types';
+import type { AutomationTrigger } from '../types/automation-trigger.types';
+
+/**
+ * A run about to be written (#2385).
+ *
+ * **Deliberately NOT `AutomationRun`.** The entity's constructor requires `id`
+ * and `createdAt`, but `automation_runs.id` is `@PrimaryGeneratedColumn('uuid')`
+ * and `createdAt` is DB-defaulted — so accepting the entity would force the
+ * caller to invent two values the database owns, and the `createdAt` would be
+ * the application's clock standing in for the row's.
+ *
+ * `firedAt` is different and IS supplied: it is when the firing happened, which
+ * only the dispatcher knows.
+ *
+ * `ruleName` is denormalised on purpose (#2358): the id alone would make a
+ * DELETED rule's history unreadable, which is precisely when it is most needed.
+ * It is frozen at write time, so renaming a rule never rewrites history.
+ */
+export interface NewAutomationRun {
+  readonly ruleId: string;
+  readonly ruleName: string;
+  readonly trigger: AutomationTrigger;
+  readonly subjectKind: AutomationRunSubjectKind;
+  readonly subjectId: string;
+  readonly outcome: AutomationRunOutcome;
+  /** Persisted verbatim into the existing `steps` jsonb — widened, never forked. */
+  readonly steps: readonly unknown[];
+  readonly blockedByRuleIds: readonly string[] | null;
+  readonly firedAt: Date;
+  /**
+   * The failed run this one retries (#2387), or `null` for an ordinary firing.
+   *
+   * It is what lets the derived AF-X state clear on a successful retry WITHOUT
+   * clearing on a later unrelated firing of the same rule — the distinction the
+   * spec draws and that latest-run-wins cannot express.
+   */
+  readonly retryOfRunId?: string | null;
+}
+
+/**
+ * Narrowing filters for the activity feed (#2386).
+ *
+ * Every field is optional and every absent field means "do not narrow on this".
+ * There is deliberately NO "match nothing" state: a filter the caller could not
+ * express is dropped before it reaches here, so an unrecognised value widens the
+ * result rather than emptying it — visible to the operator, and recoverable.
+ *
+ * The subject pair is the exception and is validated at the boundary instead:
+ * an unresolvable SCOPE would return other subjects' rows, which an operator
+ * cannot detect by looking. See the controller.
+ */
+export interface AutomationRunFilters {
+  readonly ruleId?: string;
+  readonly trigger?: AutomationTrigger;
+  readonly outcome?: AutomationRunOutcome;
+  readonly subjectKind?: AutomationRunSubjectKind;
+  readonly subjectId?: string;
+  /** Inclusive lower bound on `firedAt`. */
+  readonly from?: Date;
+  /** Inclusive upper bound on `firedAt`. */
+  readonly to?: Date;
+  /**
+   * Narrow to firings that need an operator's attention (#2387) — `failed`, not
+   * dismissed, and not superseded by a successful retry.
+   *
+   * A narrowing filter like every other here: absent means "do not narrow", and
+   * `false` is treated as absent rather than as "only the routine ones", because
+   * no surface asks that question and a second meaning for `false` would be a
+   * second vocabulary.
+   */
+  readonly attentionOnly?: boolean;
+}
+
+export interface AutomationRunRepositoryPort {
+  /**
+   * Persist one firing and return the row as written.
+   *
+   * Returns the persisted entity rather than `void` so the caller reads the
+   * database-assigned `id` and `createdAt` back instead of guessing them.
+   */
+  save(run: NewAutomationRun): Promise<AutomationRun>;
+
+  /**
+   * Recent runs against one subject (an order, a return), newest first.
+   *
+   * Served by `IDX_automation_runs_subject` (`subjectKind, subjectId, firedAt`),
+   * which #2358 shipped for exactly this read — the order timeline's source.
+   */
+  findRecentBySubject(
+    subjectKind: AutomationRunSubjectKind,
+    subjectId: string,
+    limit: number,
+  ): Promise<AutomationRun[]>;
+
+  /** One run by id, or `null`. */
+  findById(id: string): Promise<AutomationRun | null>;
+
+  /** Recent runs across every rule, newest first — the activity list. */
+  findRecent(filters: AutomationRunFilters, limit: number, offset: number): Promise<AutomationRun[]>;
+
+  /**
+   * How many firings currently need attention (#2387).
+   *
+   * Shares its predicate with the `attentionOnly` filter through one private
+   * expression in the implementation. **They must never each grow their own
+   * `NOT EXISTS`**: a count whose rows do not match it is the divergence class
+   * that produces "4 need attention" above an empty table.
+   */
+  countAttention(): Promise<number>;
+
+  /**
+   * Of these run ids, which have been superseded by a retry that did NOT fail.
+   *
+   * ONE batched read for a whole page — never per row. This is the second half
+   * of the AF-X predicate that a single row cannot answer about itself: a
+   * derived state is only self-clearing if the derivation can see the thing that
+   * clears it, and the retry lives in a different row.
+   */
+  findSupersededRunIds(runIds: readonly string[]): Promise<Set<string>>;
+
+  /**
+   * Record that an operator handled a failed firing themselves (#2387).
+   *
+   * A conditional UPDATE (`WHERE id = ? AND "dismissedAt" IS NULL`, the
+   * `claimWaybillRelay` shape), so two operators cannot fight over the
+   * attribution and the first one is the one recorded.
+   *
+   * **The return is deliberately indistinguishable** between a fresh claim and
+   * an already-dismissed row: both return the row, and neither is a failure an
+   * operator can act on. Do not grow a `wasAlreadyDismissed` flag to branch UI
+   * on — there is no second sentence to say. `null` means no such run exists.
+   */
+  dismiss(id: string, userId: string, now: Date): Promise<AutomationRun | null>;
+
+  /**
+   * This rule's most recent runs, newest first, capped at `limit`.
+   *
+   * Served by `IDX_automation_runs_rule` (`ruleId, firedAt`), which #2358 shipped
+   * with the table for exactly this read.
+   */
+  findRecentByRuleId(ruleId: string, limit: number): Promise<AutomationRun[]>;
+}

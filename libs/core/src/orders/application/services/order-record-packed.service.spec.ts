@@ -14,6 +14,7 @@ import { OrderRecordNotFoundException } from '../../domain/exceptions/order-reco
 import type { IOrderFxStampService } from '../interfaces/order-fx-stamp.service.interface';
 import type { OrderLineItemRepositoryPort } from '../../domain/ports/order-line-item-repository.port';
 import type { IReportingCurrencySettingsService } from '@openlinker/core/currency';
+import type { IAutomationTriggerEmissionService } from '@openlinker/core/automation';
 
 const ORDER_ID = 'ol_order_packed_001';
 
@@ -54,6 +55,7 @@ function buildRecord(packedAt: Date | null, packedByUserId: string | null): Orde
 describe('OrderRecordService — packed fact (#2287)', () => {
   let repository: jest.Mocked<Pick<OrderRecordRepositoryPort, 'markPacked' | 'clearPacked' | 'findById'>>;
   let service: OrderRecordService;
+  let automationEmission: IAutomationTriggerEmissionService;
 
   beforeEach(() => {
     repository = {
@@ -71,12 +73,20 @@ describe('OrderRecordService — packed fact (#2287)', () => {
     // without implying they participate.
     const lineItemRepository = {} as unknown as OrderLineItemRepositoryPort;
     const reportingCurrencySettings = {} as unknown as IReportingCurrencySettingsService;
+    automationEmission = {
+      emit: jest.fn().mockResolvedValue({
+        firedRuleIds: [],
+        alreadyFiredRuleIds: [],
+        evaluatedRuleCount: 0,
+      }),
+    } as unknown as IAutomationTriggerEmissionService;
 
     service = new OrderRecordService(
       repository as unknown as OrderRecordRepositoryPort,
       fxStamp,
       lineItemRepository,
-      reportingCurrencySettings
+      reportingCurrencySettings,
+      automationEmission
     );
   });
 
@@ -159,6 +169,37 @@ describe('OrderRecordService — packed fact (#2287)', () => {
       await expect(service.clearPacked(ORDER_ID)).rejects.toBeInstanceOf(
         OrderRecordNotFoundException
       );
+    });
+  });
+
+  describe('T5 automation emission (#2360)', () => {
+    it('should emit order.packed exactly once, on the transition', async () => {
+      repository.markPacked.mockResolvedValue(true);
+      repository.findById.mockResolvedValue(buildRecord(new Date(), 'user-op-001'));
+      await service.markPacked(ORDER_ID, 'user-op-001');
+      expect(automationEmission.emit).toHaveBeenCalledTimes(1);
+      expect(automationEmission.emit).toHaveBeenCalledWith(
+        expect.objectContaining({ trigger: 'order.packed' })
+      );
+    });
+
+    it('should NOT re-emit when an already-set packedAt is re-written', async () => {
+      // Spec §5.2: re-buying a label because someone fixed a typo is exactly the
+      // failure this prevents. The repository guard reports `false`; that IS the
+      // signal, and no new state is needed to honour it.
+      repository.markPacked.mockResolvedValue(false);
+      repository.findById.mockResolvedValue(buildRecord(new Date(), 'user-op-001'));
+      await service.markPacked(ORDER_ID, 'user-op-001');
+      expect(automationEmission.emit).not.toHaveBeenCalled();
+    });
+
+    it('should never let an emission failure fail the pack', async () => {
+      // The operator physically packed a box; an automation that cannot run is
+      // not a reason to refuse to record that.
+      repository.markPacked.mockResolvedValue(true);
+      repository.findById.mockResolvedValue(buildRecord(new Date(), 'user-op-001'));
+      (automationEmission.emit as jest.Mock).mockRejectedValue(new Error('automation down'));
+      await expect(service.markPacked(ORDER_ID, 'user-op-001')).resolves.toBeDefined();
     });
   });
 });

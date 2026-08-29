@@ -104,6 +104,7 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     overrides.providerCode ?? null,
     overrides.waybillRelayedAt ?? null,
     overrides.direction ?? 'outbound',
+    overrides.reservationConsumedAt ?? null,
   );
 }
 
@@ -141,6 +142,8 @@ describe('ShipmentDispatchService', () => {
       update: jest.fn(),
       claimWaybillRelay: jest.fn(),
       releaseWaybillRelay: jest.fn(),
+      listDispatchedAwaitingReservationConsume: jest.fn(),
+      claimReservationConsume: jest.fn(),
     };
     routing = {
       getRules: jest.fn(),
@@ -179,6 +182,7 @@ describe('ShipmentDispatchService', () => {
       getEarliestOrderDateByConnection: jest.fn(),
       getSalesAndChannelAnalytics: jest.fn(),
       getTopProducts: jest.fn(),
+      findDispatchDeadlineCandidates: jest.fn(),
       countOrdersWithOmsAttention: jest.fn(),
     };
     const fulfillmentProjection = { recompute: jest.fn() };

@@ -193,6 +193,14 @@ export function CommandPaletteProvider({ children }: PropsWithChildren): ReactEl
       // Admins keep full access in every mode (#1379).
       if (demoMode && !isAdmin && liveGroup.requiresRole !== undefined) continue;
       for (const item of liveGroup.items) {
+        // Same per-item permission gate the sidebar applies (#2358 review I5):
+        // otherwise ⌘K is a way around it into a page that 403s.
+        if (
+          item.requiresPermission !== undefined &&
+          !(session.user?.permissions ?? []).includes(item.requiresPermission)
+        ) {
+          continue;
+        }
         if (
           searchTerm.length === 0 ||
           item.label.toLowerCase().includes(searchTerm) ||
@@ -209,7 +217,7 @@ export function CommandPaletteProvider({ children }: PropsWithChildren): ReactEl
       }
     }
     return items;
-  }, [searchTerm, handleSelect, demoMode, isAdmin]);
+  }, [searchTerm, handleSelect, demoMode, isAdmin, session.user?.permissions]);
 
   // ── Connection source ─────────────────────────────────────────────
 

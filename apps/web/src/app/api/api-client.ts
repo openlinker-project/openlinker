@@ -72,6 +72,7 @@ import {
   type PosthogSettingsApi,
 } from '../../features/posthog-settings/api/posthog-settings.api';
 import { createProductsApi, type ProductsApi } from '../../features/products/api/products.api';
+import { createAutomationsApi, type AutomationsApi } from '../../features/automation';
 import { createReturnsApi, type ReturnsApi } from '../../features/returns';
 import { createShipmentsApi, type ShipmentsApi } from '../../features/shipments/api/shipments.api';
 import {
@@ -176,6 +177,7 @@ export interface CoreApiClient {
   invoicing: InvoicingApi;
   listings: ListingsApi;
   mailerSettings: MailerSettingsApi;
+  automations: AutomationsApi;
   mcpTokens: McpTokensApi;
   orders: OrdersApi;
   posthogSettings: PosthogSettingsApi;
@@ -408,6 +410,7 @@ export function createApiClient({
     requestBlob,
     requestStream,
     salesDocumentRules: createSalesDocumentRulesApi(request),
+    automations: createAutomationsApi(request),
     fulfillmentAuthority: createFulfillmentAuthorityApi(request),
     returns: createReturnsApi(request),
     shipments: createShipmentsApi(request, requestBlob),

@@ -12,8 +12,14 @@
  * the `apps/api` byte-identity integration test and the core unit specs assert
  * against the *same* cells, which is the whole reason the rewire is safe.
  *
+ * It also publishes `EmptyReservationLedgerReader` (#2345): the zero-ledger
+ * stand-in #2321 shipped, moved off the production barrel when the real
+ * `ReservationLedgerReader` took its binding. It is the fixture the parity
+ * matrix needs and must never be bound in a module again.
+ *
  * @module libs/core/src/inventory/testing
  */
+export { EmptyReservationLedgerReader } from './empty-reservation-ledger.reader';
 export {
   AVAILABILITY_PARITY_CASES,
   toConnectionConfig,

@@ -25,6 +25,12 @@ import {
 } from '../api/orders.types';
 import { holdReasonLabel } from '../lib/order-hold.types';
 import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
+import {
+  AUTOMATION_FAILURE_COPY,
+  AUTOMATION_RUN_OUTCOME_COPY,
+  type AutomationRun,
+} from '../../automation';
+import { buildAutomationTimelineEvents } from '../lib/automation-timeline';
 import type { ParsedOrderInvoice } from '../api/order-snapshot.schema';
 import { invoicingBlockedBadge } from '../lib/order-row';
 
@@ -145,6 +151,12 @@ interface OrderActivityTimelineProps {
    * and `null` mean the same thing.
    */
   holds?: OrderHold[] | null;
+  /**
+   * Automation firings against this order (#2385) — the fourth of §5.6's "four
+   * readings" of one `automation_runs` row, never a second write. Optional so
+   * every existing caller compiles untouched and renders no automation events.
+   */
+  automationRuns?: readonly AutomationRun[];
 }
 
 const STATUS_PAST_TENSE: Record<OrderSyncStatusValue, string> = {
@@ -310,6 +322,7 @@ function buildEvents(
   salesDocumentBlockedAt?: string | null,
   salesDocumentBlockReleasedAt?: string | null,
   holds?: OrderHold[] | null,
+  automationRuns?: readonly AutomationRun[],
 ): TimelineEvent[] {
   const events: TimelineEvent[] = [];
 
@@ -506,6 +519,45 @@ function buildEvents(
     });
   }
 
+  // #2385 — one event per automation STEP, plus the "Skipped:" event. A
+  // rendering of `automation_runs`, never a second write: see
+  // `lib/automation-timeline.ts`. Firings only, so an order no rule acted on
+  // contributes nothing.
+  for (const event of buildAutomationTimelineEvents(automationRuns ?? [])) {
+    events.push({
+      id: event.id,
+      timestamp: event.timestamp,
+      title: event.title,
+      by:
+        event.runOutcome === undefined
+          ? event.by
+          : `${event.by} · ${(AUTOMATION_RUN_OUTCOME_COPY as Record<string, string>)[event.runOutcome] ?? event.runOutcome}`,
+      description: event.description,
+      tone: event.tone,
+      // The rule name in `by` is text; the LINK is what makes turning the rule
+      // off reachable from the order without knowing which rule to suspect (S3-8).
+      //
+      // `isRetry` / `handledByOperator` ride here rather than in `title` or
+      // `description`: the title is the action's own verb and the description is
+      // the failure's own words (never paraphrased), so a note ABOUT the firing
+      // belongs beside the trigger sentence. Both were computed and read by
+      // nothing, which meant a retry chain rendered as two unrelated firings the
+      // operator had to correlate by timestamp, and a failure someone had
+      // already handled stayed indistinguishable from one nobody had touched.
+      footer: (
+        <>
+          <Link to={`/automations/${encodeURIComponent(event.trigger)}`}>{event.footer}</Link>
+          {event.isRetry ? (
+            <span className="muted-text"> · {AUTOMATION_FAILURE_COPY.isRetryOf}</span>
+          ) : null}
+          {event.handledByOperator ? (
+            <span className="muted-text"> · {AUTOMATION_FAILURE_COPY.dismissed}</span>
+          ) : null}
+        </>
+      ),
+    });
+  }
+
   return events;
 }
 
@@ -580,6 +632,7 @@ export function OrderActivityTimeline({
   salesDocumentBlockReleasedAt,
   extraEvents,
   holds,
+  automationRuns,
 }: OrderActivityTimelineProps): ReactElement {
   const authored = useMemo(
     () =>
@@ -600,6 +653,7 @@ export function OrderActivityTimeline({
         salesDocumentBlockedAt,
         salesDocumentBlockReleasedAt,
         holds,
+        automationRuns,
       ),
     [
       createdAt,
@@ -618,6 +672,7 @@ export function OrderActivityTimeline({
       salesDocumentBlockedAt,
       salesDocumentBlockReleasedAt,
       holds,
+      automationRuns,
     ],
   );
 

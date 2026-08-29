@@ -228,6 +228,11 @@
       "types": "./dist/catalog-trust/index.d.ts",
       "require": "./dist/catalog-trust/index.js",
       "default": "./dist/catalog-trust/index.js"
+    },
+    "./automation": {
+      "types": "./dist/automation/index.d.ts",
+      "require": "./dist/automation/index.js",
+      "default": "./dist/automation/index.js"
     }
   },
   "files": [

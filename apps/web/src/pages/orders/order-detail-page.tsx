@@ -14,6 +14,7 @@ import { useCallback, useEffect, useRef, type ReactElement } from 'react';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Alert } from '../../shared/ui/alert';
+import { StockAtRiskCallout } from '../../features/orders/components/stock-at-risk-callout';
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
 import { KeyValueList, type KeyValueItem } from '../../shared/ui/key-value-list';
@@ -35,6 +36,7 @@ import {
 } from '../../features/shipments';
 import { OrderCustomerCard } from '../../features/orders/components/order-customer-card';
 import { OrderActivityTimeline } from '../../features/orders/components/order-activity-timeline';
+import { useSubjectAutomationRunsQuery } from '../../features/automation';
 import { OrderPackedControl } from '../../features/orders/components/order-packed-control';
 import { OrderHoldPanel } from '../../features/orders/components/order-hold-panel';
 import { OrderShipmentPanel } from '../../features/orders/components/order-shipment-panel';
@@ -83,6 +85,10 @@ export function OrderDetailPage(): ReactElement {
   // order's own timeline down with it — the page renders one section shorter.
   const returnEventsQuery = useOrderReturnEventsQuery(internalOrderId || null);
   const { session } = useSession();
+  // The order timeline's automation half (#2385). Its own read rather than a
+  // field on `GET /orders/:id`: every order-detail load would otherwise pay for
+  // it, and `OrderRecord` is already a large projection.
+  const automationRunsQuery = useSubjectAutomationRunsQuery('order', internalOrderId);
   const retry = useRetryOrderDestinationMutation();
   const { showToast } = useToast();
   const location = useLocation();
@@ -381,6 +387,14 @@ export function OrderDetailPage(): ReactElement {
         </Alert>
       ) : null}
 
+      {/* #2350 — the shortfall callout, in the same full-width Alert slot as the
+          failed-destinations callout. `warning`, not `error`: the order is at
+          risk, not broken. Renders nothing when there is nothing to report and
+          NEVER a "no shortfalls" reassurance — the loader catches to `[]` on
+          failure, so absence and failure are indistinguishable and only the
+          presence of an episode is a claim. */}
+      <StockAtRiskCallout shortfalls={order.reservationShortfalls} />
+
       {snapshot.items.length > 0 || snapshot.totals ? (
         <section className="detail-section">
           <h3 className="detail-section__title">Pricing &amp; tax</h3>
@@ -523,6 +537,7 @@ export function OrderDetailPage(): ReactElement {
           salesDocumentBlockReleasedAt={order.salesDocumentBlockReleasedAt}
           extraEvents={returnTimelineEvents}
           holds={order.holdHistory}
+          automationRuns={automationRunsQuery.data?.runs ?? []}
         />
       </section>
 

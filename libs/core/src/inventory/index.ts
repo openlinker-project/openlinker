@@ -21,6 +21,12 @@ export {
 } from './domain/ports/inventory-master.port';
 export { InventoryRepositoryPort } from './domain/ports/inventory-repository.port';
 export { LocationRepositoryPort } from './domain/ports/location-repository.port';
+// `ReservationRepositoryPort` (#2343) is deliberately NOT exported here. A
+// `*RepositoryPort` is an intra-context contract — `check-cross-context-imports`
+// denies the shape, and rightly: its consumers (#2344's ReservationService,
+// #2345's ATP subtraction, #2349's reconciler) all live inside `inventory` and
+// import it relatively. Anything outside this context reaches the ledger through
+// an `I*Service`, never through the repository.
 export {
   ReservationLedgerReaderPort,
   SumReservedInput,
@@ -31,6 +37,8 @@ export {
 // Domain Entities
 export { InventoryItem as InventoryItemEntity } from './domain/entities/inventory-item.entity';
 export { InventoryLocation } from './domain/entities/inventory-location.entity';
+export { Reservation } from './domain/entities/reservation.entity';
+export { ReservationShortfallEpisode } from './domain/entities/reservation-shortfall-episode.entity';
 
 // Domain exceptions
 export { InventoryReturningUnsupportedError } from './domain/exceptions/inventory-returning-unsupported.error';
@@ -41,6 +49,14 @@ export { LocationNotFoundException } from './domain/exceptions/location-not-foun
 export { LocationInUseError } from './domain/exceptions/location-in-use.error';
 export { LocationOwnerConnectionNotFoundError } from './domain/exceptions/location-owner-connection-not-found.error';
 export { UnsupportedAvailabilityScopeError } from './domain/exceptions/unsupported-availability-scope.error';
+export { InsufficientAvailabilityError } from './domain/exceptions/insufficient-availability.error';
+export { ReservationPositionUnavailableError } from './domain/exceptions/reservation-position-unavailable.error';
+export { ReservationNotHeldError } from './domain/exceptions/reservation-not-held.error';
+export { ReservationLedgerConstraintError } from './domain/exceptions/reservation-ledger-constraint.error';
+export {
+  AmbiguousReservationPositionError,
+  AmbiguousReservationPosition,
+} from './domain/exceptions/ambiguous-reservation-position.error';
 
 // Application Services
 export { IInventoryService } from './application/services/inventory.service.interface';
@@ -69,9 +85,41 @@ export {
   PublishControlResult,
 } from './application/services/availability.service.interface';
 export { AvailabilityService } from './application/services/availability.service';
-export { EmptyReservationLedgerReader } from './infrastructure/reservations/empty-reservation-ledger.reader';
+export { IReservationService } from './application/services/reservation.service.interface';
+export {
+  IReservationExpiryService,
+  ExpireReservationsInput,
+  ExpireReservationsResult,
+} from './application/services/reservation-expiry.service.interface';
+export { ReservationExpiryService } from './application/services/reservation-expiry.service';
+export {
+  ReservationObligationKindValues,
+  ReservationObligationKind,
+  ObligationVerdictValues,
+  ObligationVerdict,
+  ObligationReader,
+  ObligationReaders,
+  foldObligationVerdicts,
+  resolveObligation,
+} from './domain/types/reservation-obligation.types';
+export { ReservationService } from './application/services/reservation.service';
+export {
+  IReservationShortfallService,
+  DetectShortfallsInput,
+} from './application/services/reservation-shortfall.service.interface';
+export { ReservationShortfallService } from './application/services/reservation-shortfall.service';
 
 // Application Types
+export {
+  ReserveOrderLineInput,
+  ReserveForOrderInput,
+  ReserveForOrderResult,
+  CloseForOrderInput,
+  CloseForOrderResult,
+  SkippedReservationLine,
+  SkippedReservationReason,
+  SkippedReservationReasonValues,
+} from './application/types/reservation-service.types';
 export {
   InventoryItemView,
   InventoryViewProduct,
@@ -99,6 +147,7 @@ export {
   DuplicatePositionRow,
   DuplicatePositionGroup,
   DuplicatePositionReport,
+  InventoryPositionCandidate,
 } from './domain/types/inventory.types';
 export { LEGACY_SOURCE_CONNECTION_ID } from './domain/types/inventory.types';
 export {
@@ -106,10 +155,48 @@ export {
   AvailabilityProvenance,
   AvailabilityProvenanceValues,
   PromisableQuantity,
+  AtpAnswer,
+  AtpAnsweredBy,
+  ScopedAtpResult,
   computeAtp,
+  applyScopedLedgerSubtraction,
   toPromisableQuantity,
   unknownPromisableQuantity,
 } from './domain/types/availability.types';
+export {
+  ReservationStatusValues,
+  ReservationStatus,
+  ReservationTerminalStatusValues,
+  ReservationTerminalStatus,
+  ReservationKey,
+  ReservationClaimInput,
+  ReservationClaimOutcome,
+  ReleaseReservationInput,
+  ExtendReservationExpiryInput,
+  ReservationPositionUnavailableReasonValues,
+  ReservationPositionUnavailableReason,
+} from './domain/types/reservation.types';
+export {
+  ReservationShortfallCloseReasonValues,
+  ReservationShortfallCloseReason,
+  ShortfallPositionRow,
+  ShortfallAttribution,
+  OpenShortfallEpisodeInput,
+  DetectShortfallsResult,
+} from './domain/types/reservation-shortfall.types';
+export {
+  RESERVATION_TTL_MS_DEFAULT,
+  RESERVATION_TTL_MS_MIN,
+  RESERVATION_TTL_MS_MAX,
+  RESERVATION_TTL_ENV_KEY,
+  readReservationTtlMs,
+  resolveReservationExpiry,
+  RESERVATION_OBLIGATION_MAX_AGE_MS_DEFAULT,
+  RESERVATION_OBLIGATION_MAX_AGE_MS_MIN,
+  RESERVATION_OBLIGATION_MAX_AGE_MS_MAX,
+  RESERVATION_OBLIGATION_MAX_AGE_ENV_KEY,
+  readReservationObligationMaxAgeMs,
+} from './domain/types/reservation-expiry.types';
 export {
   InventoryLocationKindValues,
   InventoryLocationKind,

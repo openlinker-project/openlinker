@@ -19,6 +19,7 @@ import { HealthModule } from './health/health.module';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { CustomersModule } from '@openlinker/core/customers';
 import { ReturnsModule } from '@openlinker/core/returns';
+import { AutomationModule } from '@openlinker/core/automation';
 import { ContentModule } from '@openlinker/core/content';
 import { InvoicingModule } from '@openlinker/core/invoicing';
 import { FiscalizationModule } from '@openlinker/core/fiscalization';
@@ -52,6 +53,7 @@ import { CatalogTrustApiModule } from './catalog-trust/catalog-trust.module';
 import { FulfillmentAuthorityApiModule } from './fulfillment-authority/fulfillment-authority.module';
 import { ReturnActionsApiModule } from './returns/return-actions.module';
 import { ReturnsReadApiModule } from './returns/returns-read.module';
+import { AutomationApiModule } from './automation/automation-api.module';
 import { CurrencyApiModule } from './currency/currency.module';
 import { RequestPriorityModule } from './http/request-priority.module';
 
@@ -73,6 +75,11 @@ import { RequestPriorityModule } from './http/request-priority.module';
     // yet (#2334) — imported so the provider graph is proven at boot rather
     // than first exercised by whichever wave adds the first consumer.
     ReturnsModule,
+    // #2358: registers the automation ORM entities + rule repository. No API
+    // surface yet (#2363) — imported so the provider graph is proven at boot,
+    // and so the two writer-less tables (#2360's firings, #2385's runs) are
+    // built by the integration harness rather than only by the migration.
+    AutomationModule,
     CustomersModule, // Import CustomersModule for customer identity resolution and projections
     IntegrationsModule,
     WebhooksModule,
@@ -99,6 +106,10 @@ import { RequestPriorityModule } from './http/request-priority.module';
     ReturnActionsApiModule, // Every return WRITE: decline (#2333) plus the custody,
     // money and correction-proposal routes (#2376)
     ReturnsReadApiModule, // GET /returns[, /:id, /ingestion-availability] — returns reads (#2334)
+    // /automations — rule CRUD, the closed vocabulary, the §5.6a dry run and the
+    // per-rule fired log (#2363). Imports OrdersModule as well as AutomationModule:
+    // the dry run composes both, and only an app-level module may.
+    AutomationApiModule,
     ContentApiModule, // REST surface for product content editor + AI suggest (#339 + #342)
     ShippingApiModule, // Shipment read + command HTTP API (#846); imports core ShippingModule (#763/#835)
     UsersApiModule, // User management: list, approve/reject pending, role + status ops (#1125)

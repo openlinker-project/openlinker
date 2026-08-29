@@ -29,6 +29,7 @@ function makeShipment(): Shipment {
     null,
     null,
     'outbound',
+    null,
   );
 }
 

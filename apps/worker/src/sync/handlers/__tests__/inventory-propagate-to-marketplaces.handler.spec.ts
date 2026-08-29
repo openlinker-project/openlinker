@@ -56,6 +56,8 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
           provenance,
           observedAt,
           stalenessMs: observedAt === null ? null : 0,
+          // #2345: the computed path reflects its holds inside `quantity`.
+          olHeldNotReflected: null,
         }))
       )
     );

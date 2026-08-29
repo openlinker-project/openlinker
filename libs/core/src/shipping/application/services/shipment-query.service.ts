@@ -45,4 +45,18 @@ export class ShipmentQueryService implements IShipmentQueryService {
     // Outbound only (#2373) — this backs the order-detail "Shipment" panel.
     return this.shipments.findActiveByOrderId(orderId, 'outbound');
   }
+
+  /**
+   * The contract — why the marker and not the ledger, why ANY shipment, and why
+   * the fold rather than a repository `EXISTS` — is documented once on
+   * {@link IShipmentQueryService.hasConsumedReservations}.
+   */
+  async hasConsumedReservations(orderId: string): Promise<boolean> {
+    // Outbound only (#2373). Reservation consumption is an outbound concept —
+    // a return label brings goods back and never consumes a hold — and since
+    // #2373 an inbound row shares this table, so an unscoped read would fold
+    // over a cohort that can never carry the marker.
+    const shipments = await this.shipments.findByOrderId(orderId, 'outbound');
+    return shipments.some((shipment) => shipment.reservationConsumedAt !== null);
+  }
 }

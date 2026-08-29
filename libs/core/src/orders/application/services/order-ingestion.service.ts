@@ -60,6 +60,18 @@ import {
   type StoredTaxRate,
   type TaxRateSource,
 } from '@openlinker/core/products';
+import {
+  RESERVATION_SERVICE_TOKEN,
+  type IReservationService,
+  type ReserveOrderLineInput,
+  AmbiguousReservationPositionError,
+} from '@openlinker/core/inventory';
+import {
+  FULFILLMENT_ROUTING_SERVICE_TOKEN,
+  type IFulfillmentRoutingService,
+  FULFILLMENT_PROCESSOR_KIND,
+} from '@openlinker/core/mappings';
+import type { ReservationAtpEffect } from '@openlinker/core/inventory';
 import type { Order } from '../../domain/types/order.types';
 import type { OrderFeedEventType } from '../../domain/types/order-feed.types';
 import { withheldOnHoldError } from '../../domain/types/order-hold.types';
@@ -116,7 +128,17 @@ export class OrderIngestionService implements IOrderIngestionService {
     // its own voice, so it is where the `channel` half of the provenance
     // journal is fed. Token/interface edge into `products`, like the read above.
     @Inject(TAX_RATE_JOURNAL_SERVICE_TOKEN)
-    private readonly taxRateJournal: ITaxRateJournalService
+    private readonly taxRateJournal: ITaxRateJournalService,
+    // #2344: OL's own advisory reservation ledger. Appended last, like every
+    // dependency added since. One-way edge — `inventory` never imports `orders`.
+    @Inject(RESERVATION_SERVICE_TOKEN)
+    private readonly reservationService: IReservationService,
+    // #2344: the routing outcome the reservation's `atpEffect` is stamped from.
+    // Read HERE rather than inside the reservation service, because resolving it
+    // there would create the `inventory -> fulfillment` read ADR-061 decision 1
+    // exists to eliminate.
+    @Inject(FULFILLMENT_ROUTING_SERVICE_TOKEN)
+    private readonly fulfillmentRouting: IFulfillmentRoutingService
   ) {}
 
   async ingestOrders(
@@ -415,6 +437,10 @@ export class OrderIngestionService implements IOrderIngestionService {
       sourceEventId ?? null,
       incoming.externalUrl ?? null
     );
+
+    // #2344: record OL's own advisory holds. Placed after `persistOrder` so the
+    // order row exists, and before destination provisioning.
+    await this.reserveOrderInventory(order, connectionId);
 
     // Cancellation-observe hook (#1146): on the `→ cancelled` transition, enqueue
     // a marketplace.offer.stockRestore job so the destination marketplace's
@@ -971,6 +997,134 @@ export class OrderIngestionService implements IOrderIngestionService {
     // asked, so a reader can tell "the shop has no rate for this" apart from
     // "nothing has ever looked" - the distinction #2245 F3 exists for.
     return shopRate?.readAt ? { taxRateReadAt: shopRate.readAt.toISOString() } : {};
+  }
+
+  /**
+   * Record OpenLinker's own advisory holds for this order (#2344, ADR-061).
+   *
+   * **Best-effort by design — this never fails the ingestion.** An advisory hold
+   * is exactly that: the order is the fact, the hold is OL's accounting of it, so
+   * losing an order because OL could not record its own optimistic promise
+   * inverts the priority. `InsufficientAvailabilityError` in particular is the
+   * routine, expected refusal of an oversell, and turning it into a failed job
+   * would burn the whole retry ladder against a condition retrying cannot change.
+   * Surfacing a shortfall as a named fact ON the order is #2349's work; until
+   * then the signal is this error-level log.
+   */
+  private async reserveOrderInventory(order: Order, connectionId: string): Promise<void> {
+    try {
+      // A kill switch, default ON (#2344 review). The ledger is additive and
+      // nothing subtracts from it until #2345, but this is new unconditional
+      // work on the hottest path in the system — a routing resolve plus two
+      // reads and a write transaction, re-run on every re-poll — so an operator
+      // whose ingestion latency regresses needs an escape hatch that is not a
+      // redeploy. Default ON rather than opt-in, because #2345 cannot subtract
+      // from a ledger nothing populated.
+      if (!getEnvBoolean('OL_RESERVATIONS_ENABLED', true)) return;
+
+      // Holding stock for an order that arrived already dead is pure noise.
+      if (order.status === 'cancelled') return;
+
+      const lines: ReserveOrderLineInput[] = order.items
+        .filter((item) => Boolean(item.productId) && item.quantity > 0)
+        .map((item) => ({
+          orderLineId: item.id,
+          productId: item.productId,
+          productVariantId: item.variantId ?? null,
+          quantity: item.quantity,
+        }));
+
+      if (lines.length === 0) return;
+
+      const atpEffect = await this.resolveReservationAtpEffect(order, connectionId);
+
+      let result;
+      try {
+        result = await this.reservationService.reserveForOrder({
+          orderRecordId: order.id,
+          atpEffect,
+          lines,
+        });
+      } catch (error) {
+        if (!(error instanceof AmbiguousReservationPositionError)) throw error;
+        // One ambiguous line must not cost the order every other line's hold.
+        // The throw is exhaustive (it names every ambiguous line), so ONE retry
+        // without them suffices — never a loop.
+        this.logger.error(
+          `Ambiguous inventory positions while reserving order ${order.id}; ` +
+            `re-reserving without ${error.ambiguities.length} affected line(s): ${error.message}`
+        );
+        const ambiguous = new Set(error.ambiguities.map((a) => a.orderLineId));
+        const remaining = lines.filter((line) => !ambiguous.has(line.orderLineId));
+        if (remaining.length === 0) return;
+        result = await this.reservationService.reserveForOrder({
+          orderRecordId: order.id,
+          atpEffect,
+          lines: remaining,
+        });
+      }
+
+      if (result.skipped.length > 0) {
+        this.logger.warn(
+          `Reserved ${result.granted.length} line(s) for order ${order.id}; ` +
+            `skipped ${result.skipped.length}: ${result.skipped
+              .map((s) => `${s.orderLineId}=${s.reason}`)
+              .join(', ')}`
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        `Failed to reserve inventory for order ${order.id} [connectionId=${connectionId}]; ` +
+          'the order is unaffected and no hold was recorded',
+        (error as Error).stack
+      );
+    }
+  }
+
+  /**
+   * Which reservations reduce published ATP, for THIS order (ADR-061 decision 1).
+   *
+   * `published` is written only where OpenLinker itself executes fulfillment. On
+   * the default `omp_fulfilled` topology the marketplace or destination ships, so
+   * the hold is recorded for visibility and subtracted from nothing.
+   *
+   * Two arms resolve `diagnostic` for the same reason. A rule pointing at a
+   * non-`active` processor still matches but reports `processorAvailable: false`,
+   * and stamping `published` there would assert OL executes an order over a route
+   * OL demonstrably cannot drive — immutably, since the stamp is insert-only. And
+   * a routing failure is not a licence to guess: over-subtraction is the harm
+   * ANALYSIS-1032 calls worse than shipping nothing (a seller with 3 units
+   * publishing 0 after selling 1, for the whole TTL), so the unknown case takes
+   * the arm that subtracts from nothing.
+   */
+  private async resolveReservationAtpEffect(
+    order: Order,
+    connectionId: string
+  ): Promise<ReservationAtpEffect> {
+    try {
+      const resolution = await this.fulfillmentRouting.resolve({
+        sourceConnectionId: connectionId,
+        sourceDeliveryMethodId: order.shipping?.methodId ?? null,
+      });
+
+      if (resolution.processorKind === FULFILLMENT_PROCESSOR_KIND.OmpFulfilled) {
+        return 'diagnostic';
+      }
+      if (!resolution.processorAvailable) {
+        this.logger.warn(
+          `Fulfillment route for order ${order.id} names an unavailable processor; ` +
+            'recording the reservation as diagnostic rather than claiming OL executes it'
+        );
+        return 'diagnostic';
+      }
+      return 'published';
+    } catch (error) {
+      this.logger.warn(
+        `Could not resolve fulfillment routing for order ${order.id}; ` +
+          `recording the reservation as diagnostic: ${(error as Error).message}`
+      );
+      return 'diagnostic';
+    }
   }
 
   private buildUnifiedOrder(
