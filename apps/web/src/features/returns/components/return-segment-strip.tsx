@@ -45,7 +45,7 @@ export function ReturnSegmentStrip({
     <div className="returns-segments" role="group" aria-label={RETURNS_SEGMENT_COPY.stripLabel}>
       <button
         type="button"
-        className={['returns-segment', selected === null ? 'returns-segment--active' : '']
+        className={['card-button-reset', 'returns-segment', selected === null ? 'returns-segment--active' : '']
           .filter(Boolean)
           .join(' ')}
         aria-pressed={selected === null}
@@ -61,7 +61,7 @@ export function ReturnSegmentStrip({
         <button
           key={segment}
           type="button"
-          className={['returns-segment', selected === segment ? 'returns-segment--active' : '']
+          className={['card-button-reset', 'returns-segment', selected === segment ? 'returns-segment--active' : '']
             .filter(Boolean)
             .join(' ')}
           aria-pressed={selected === segment}

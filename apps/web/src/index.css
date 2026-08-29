@@ -646,6 +646,62 @@ button:disabled,
   box-shadow: none;
 }
 
+/* ── Card-button reset (#2675) ────────────────────────────────────────
+ * For a `<button>` that exists only as a click target around a card: the
+ * card does the drawing, the button must get out of its way.
+ *
+ * The global `button, .button` rule above is written for an ordinary
+ * control, and every property it sets is wrong here — most of all
+ * `height: 2rem`, which pins the wrapper to 32px while a `.metric-card`
+ * is 5.5rem. A wrapper that resets only `padding`/`border`/`background`
+ * still carries that pin, and the card overflows its own button.
+ *
+ * That is not hypothetical and it is not one surface. `.returns-segment`
+ * showed it outright: with `inline-flex` + `align-items: center` still in
+ * force the card overflowed 28px in EACH direction and ran through the
+ * page description above the strip. `.orders-segment` and
+ * `.products-segment` carried the identical pin and merely hid it —
+ * `display: block` sent the overflow downward, and their grid's
+ * `grid-auto-rows: minmax(5.5rem, auto)` happened to equal the card's own
+ * `min-height`, so the rows lined up by coincidence. Grow one card past
+ * that floor (a description, or a label that wraps at a narrow width) and
+ * the grid keeps measuring the 32px button, so the row does not follow
+ * and the cards collide.
+ *
+ * `box-shadow: none` matters on its own: the button's drop shadow and
+ * inset highlight paint a rounded rectangle at the wrapper's size, which
+ * on Returns read as a "ghost" outline offset from the card.
+ *
+ * `white-space: normal` restores wrapping (#1646) — `nowrap` inherits
+ * into `.metric-card__label` and forces labels like "Awaiting mapping"
+ * onto one unbreakable line, which at narrow widths grows the track until
+ * the card overflows the viewport, clipped invisibly by
+ * `.shell-content`'s `overflow-x: hidden` rather than producing a
+ * scrollbar.
+ *
+ * Guarded by `shared/ui/card-button-reset-styles.test.ts` — `index.css`
+ * has no parser in the pipeline (#2674), so that test is the only gate
+ * this rule can have.
+ */
+.card-button-reset {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  border: none;
+  background: none;
+  box-shadow: none;
+  white-space: normal;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Let the card fill the wrapper so sibling cards in a grid row line up. */
+.card-button-reset > .metric-card {
+  height: 100%;
+}
+
 /* ── Button sizes (#775) ─────────────────────────────────────────── */
 .button--xs {
   height: 1.5rem;
@@ -1601,12 +1657,16 @@ textarea,
   color: var(--text-secondary);
 }
 
-/* Panel / list-card / form-card / empty-state / metric-card shared chrome */
+/* Panel / list-card / form-card / empty-state shared chrome.
+   `.metric-card` is deliberately NOT in this group: it declares its own
+   border, radius, background and box-shadow later in the file at equal
+   specificity, so every property here was overridden for it. Listing it
+   read as though `--shadow-soft` and `--border-default` applied when
+   neither did. */
 .panel,
 .list-card,
 .form-card,
-.empty-state,
-.metric-card {
+.empty-state {
   border: 1px solid var(--border-default);
   border-radius: 0.5rem;
   background: var(--bg-surface);
@@ -9226,25 +9286,11 @@ a.kpi-card:focus-visible {
    render 88px and overflowed downward, colliding with the filter bar below.
    5.5rem matches `.metric-card`'s own `min-height`. */
 .orders-segments { margin-bottom: var(--space-4); grid-auto-rows: minmax(5.5rem, auto); }
+/* Layout only — the button reset itself lives in `.card-button-reset`,
+   which this element also carries (including the #1646 `white-space`
+   fix that used to be restated here). */
 .orders-segment {
-  display: block;
-  width: 100%;
-  min-width: 0;
-  padding: 0;
-  border: none;
-  background: none;
-  text-align: left;
-  cursor: pointer;
   border-radius: var(--radius-lg);
-  /* Undo the global `button { white-space: nowrap }` (#1646) — it inherits
-     into `.metric-card__label`, forcing labels like "Awaiting mapping" onto
-     one unbreakable line. At narrow widths the bare `1fr` grid-column
-     fallback (≤480px) has no `minmax(0, …)` floor, so the track grows to fit
-     that unbroken label and the whole segment card silently overflows past
-     the viewport — clipped invisibly by `.shell-content`'s `overflow-x:
-     hidden` rather than producing a scrollbar. Restoring wrap here lets the
-     label break across lines instead. */
-  white-space: normal;
 }
 .orders-segment > .metric-card { height: 100%; }
 .orders-segment:focus-visible {
@@ -17462,19 +17508,9 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
    segment gets the chip-active accent treatment). Kept page-namespaced like
    the orders section; generalizing the pattern is out of scope for #1720. */
 .products-segments { margin-bottom: var(--space-4); grid-auto-rows: minmax(5.5rem, auto); }
+/* Layout only — see `.card-button-reset`, which this element also carries. */
 .products-segment {
-  display: block;
-  width: 100%;
-  min-width: 0;
-  padding: 0;
-  border: none;
-  background: none;
-  text-align: left;
-  cursor: pointer;
   border-radius: var(--radius-lg);
-  /* Undo the global `button { white-space: nowrap }` so multi-word tile
-     labels ("Out of stock") can wrap instead of overflowing the track. */
-  white-space: normal;
 }
 .products-segment > .metric-card { height: 100%; }
 .products-segment:focus-visible {
@@ -19451,14 +19487,12 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   margin-bottom: var(--space-4);
 }
 
+/* Layout only — see `.card-button-reset`, which this element also carries.
+   Unlike the orders/products strips this one is a flex child, so it sets its
+   own basis rather than relying on a grid track. */
 .returns-segment {
   flex: 1 1 12rem;
-  min-width: 0;
-  padding: 0;
-  border: none;
-  background: none;
-  text-align: left;
-  cursor: pointer;
+  border-radius: var(--radius-lg);
 }
 
 .returns-segment--active {

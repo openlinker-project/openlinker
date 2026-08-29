@@ -943,7 +943,7 @@ export function ProductsListPage(): ReactElement {
       <div className="ds-grid ds-grid--4 products-segments">
         <button
           type="button"
-          className={['products-segment', noKpiFilterActive ? 'products-segment--active' : '']
+          className={['card-button-reset', 'products-segment', noKpiFilterActive ? 'products-segment--active' : '']
             .filter(Boolean)
             .join(' ')}
           aria-pressed={noKpiFilterActive}
@@ -961,7 +961,7 @@ export function ProductsListPage(): ReactElement {
         </button>
         <button
           type="button"
-          className={['products-segment', stock === 'out' ? 'products-segment--active' : '']
+          className={['card-button-reset', 'products-segment', stock === 'out' ? 'products-segment--active' : '']
             .filter(Boolean)
             .join(' ')}
           aria-pressed={stock === 'out'}
@@ -977,7 +977,7 @@ export function ProductsListPage(): ReactElement {
         </button>
         <button
           type="button"
-          className={['products-segment', stock === 'low' ? 'products-segment--active' : '']
+          className={['card-button-reset', 'products-segment', stock === 'low' ? 'products-segment--active' : '']
             .filter(Boolean)
             .join(' ')}
           aria-pressed={stock === 'low'}
@@ -994,7 +994,7 @@ export function ProductsListPage(): ReactElement {
         {offerCreatorIds.length > 0 ? (
           <button
             type="button"
-            className={['products-segment', gapsActive ? 'products-segment--active' : '']
+            className={['card-button-reset', 'products-segment', gapsActive ? 'products-segment--active' : '']
               .filter(Boolean)
               .join(' ')}
             aria-pressed={gapsActive}
@@ -1020,6 +1020,7 @@ export function ProductsListPage(): ReactElement {
           <button
             type="button"
             className={[
+              'card-button-reset',
               'products-segment',
               taxRateState === 'missing' ? 'products-segment--active' : '',
             ]

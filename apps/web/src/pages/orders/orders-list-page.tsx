@@ -1374,7 +1374,7 @@ export function OrdersListPage(): ReactElement {
       <div className="ds-grid ds-grid--5 orders-segments">
         <button
           type="button"
-          className={['orders-segment', health === undefined ? 'orders-segment--active' : '']
+          className={['card-button-reset', 'orders-segment', health === undefined ? 'orders-segment--active' : '']
             .filter(Boolean)
             .join(' ')}
           aria-pressed={health === undefined}
@@ -1389,7 +1389,7 @@ export function OrdersListPage(): ReactElement {
           <button
             key={segment.key}
             type="button"
-            className={['orders-segment', health === segment.key ? 'orders-segment--active' : '']
+            className={['card-button-reset', 'orders-segment', health === segment.key ? 'orders-segment--active' : '']
               .filter(Boolean)
               .join(' ')}
             aria-pressed={health === segment.key}
