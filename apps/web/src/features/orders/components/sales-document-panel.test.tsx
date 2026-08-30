@@ -15,6 +15,8 @@ import {
   createMockApiClient,
   sampleConnection,
   createAuthenticatedSessionAdapter,
+  findToastTitle,
+  findToastDescription,
 } from '../../../test/test-utils';
 import { ApiError } from '../../../shared/api/api-error';
 import { formatAmount } from '../../../shared/format/format-amount';
@@ -316,6 +318,70 @@ describe('SalesDocumentPanel — manual actions when nothing is blocked', () => 
     await waitFor(() =>
       expect(register).toHaveBeenCalledWith({ connectionId: FISCAL_CONN_ID, orderId: ORDER_ID }),
     );
+  });
+});
+
+describe('SalesDocumentPanel - reconcile outcomes (#2522/#2583)', () => {
+  const inDoubt = makeFiscalRecord({
+    status: 'failed',
+    failureMode: 'in-doubt',
+    failureReason: 'The provider did not confirm the registration.',
+    registeredAt: null,
+    documentReference: null,
+  });
+
+  function renderInDoubt(reconcile: ReturnType<typeof vi.fn>) {
+    return renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([fiscalConnection]) },
+        fiscalization: {
+          listForOrder: vi.fn().mockResolvedValue([inDoubt]),
+          reconcile,
+        },
+      }),
+      ...adminSession,
+    });
+  }
+
+  it('states that the provider has the sale when the check comes back still-unknown', async () => {
+    // Before this branch existed, `still-unknown` fell through to the
+    // "cannot be looked up automatically" arm and told the operator the
+    // provider cannot be queried. The check worked; it simply did not settle.
+    const reconcile = vi
+      .fn()
+      .mockResolvedValue({ outcome: 'still-unknown', record: inDoubt });
+    const user = userEvent.setup();
+    renderInDoubt(reconcile);
+
+    await user.click(await screen.findByRole('button', { name: 'Look it up' }));
+
+    expect(await findToastTitle('Still not confirmed')).toBeInTheDocument();
+    await findToastDescription(/has the sale and has not registered it yet/i);
+    expect(screen.queryByText(/cannot be queried by OpenLinker/i)).toBeNull();
+  });
+
+  it('does not say the provider holds nothing when it reports no registration', async () => {
+    // `not-found` also answers for an eparagony document the provider HOLDS and
+    // reports failed, so the copy is about the registration and nothing else.
+    const reconcile = vi.fn().mockResolvedValue({ outcome: 'not-found', record: inDoubt });
+    const user = userEvent.setup();
+    renderInDoubt(reconcile);
+
+    await user.click(await screen.findByRole('button', { name: 'Look it up' }));
+
+    expect(await findToastTitle('No registration found')).toBeInTheDocument();
+    // The literal string this epic names as its motivating defect.
+    expect(screen.queryByText('Still not found')).toBeNull();
+  });
+
+  it('keeps the cannot-be-queried copy for `unsupported` alone', async () => {
+    const reconcile = vi.fn().mockResolvedValue({ outcome: 'unsupported', record: inDoubt });
+    const user = userEvent.setup();
+    renderInDoubt(reconcile);
+
+    await user.click(await screen.findByRole('button', { name: 'Look it up' }));
+
+    expect(await findToastTitle('Cannot be looked up automatically')).toBeInTheDocument();
   });
 });
 

@@ -434,10 +434,24 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
           } else if (result.outcome === 'not-found') {
             showToast({
               tone: 'info',
-              title: t('fiscalReceipt.reconcile.notFound', 'Still not found'),
+              title: t('fiscalReceipt.reconcile.notFound', 'No registration found'),
               description: t(
                 'fiscalReceipt.reconcile.notFoundBody',
-                'The provider has no matching registration yet. This will keep checking.',
+                'The provider reports no registration for this sale. Nothing changed here, and OpenLinker will not register it again on its own.',
+              ),
+            });
+          } else if (result.outcome === 'still-unknown') {
+            // INTERIM (#2522/#2583). Before this branch existed `still-unknown`
+            // fell into the `else` below and told the operator the provider
+            // cannot be queried, which is false: the check worked and simply did
+            // not settle. Copy states only what the backend reports - no timing,
+            // no progress, no estimate. M9 owns how this panel presents it.
+            showToast({
+              tone: 'info',
+              title: t('fiscalReceipt.reconcile.stillUnknown', 'Still not confirmed'),
+              description: t(
+                'fiscalReceipt.reconcile.stillUnknownBody',
+                'The provider has the sale and has not registered it yet. Nothing changed here. You can check again.',
               ),
             });
           } else {
