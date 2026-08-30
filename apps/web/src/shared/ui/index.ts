@@ -56,6 +56,7 @@ export { Dialog } from './dialog';
 export { ConfirmDialog } from './confirm-dialog';
 export { DropdownMenu } from './dropdown-menu';
 export { Popover, PopoverTrigger, PopoverContent } from './popover';
+export type { PopoverProps } from './popover';
 export { Tooltip } from './tooltip';
 
 // ── Data surfaces ──────────────────────────────────────────────────
