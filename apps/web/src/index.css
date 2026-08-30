@@ -19809,3 +19809,104 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   color: var(--status-warning-fg);
   font-weight: 600;
 }
+
+/* ── Sales-document glyph + headline (#2535) ───────────────────────────
+   The kind is an entity axis, so the glyph inherits `currentColor` and takes
+   no tone of its own. On the headline, colour marks exceptions only: `done`
+   and `idle` stay plain ink, and every tinted state carries a second
+   non-colour signal (a tick, a live dot, or the state word itself). */
+
+.document-glyph {
+  flex: none;
+  color: inherit;
+}
+
+.document-headline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.document-headline__main {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-primary);
+}
+
+.document-headline__main .document-glyph {
+  width: 20px;
+  height: 20px;
+}
+
+.document-headline__word {
+  min-width: 0;
+}
+
+.document-headline__sep {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.document-headline__main--idle {
+  color: var(--text-muted);
+}
+
+.document-headline__main--warning {
+  color: var(--status-warning-fg);
+}
+
+.document-headline__main--error {
+  color: var(--status-error-fg);
+}
+
+/* A finished or in-flight document is not an exception, so its glyph recedes
+   and the words stay in ordinary ink. */
+.document-headline__main--done .document-glyph,
+.document-headline__main--progress .document-glyph {
+  color: var(--text-muted);
+}
+
+.document-headline__tick {
+  flex: none;
+  color: var(--status-success);
+}
+
+.document-headline__live {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--status-info);
+  animation: document-headline-pulse 1.6s var(--ease-out) infinite;
+}
+
+@keyframes document-headline-pulse {
+  0% {
+    opacity: 0.95;
+  }
+  70% {
+    opacity: 0.45;
+  }
+  100% {
+    opacity: 0.95;
+  }
+}
+
+/* The dot's tint already says "in flight"; the animation is decorative. */
+@media (prefers-reduced-motion: reduce) {
+  .document-headline__live {
+    animation: none;
+  }
+}
+
+.document-headline__sub {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}

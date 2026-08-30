@@ -67,6 +67,12 @@ export { TimeDisplay } from './time-display';
 export { MetricCard } from './metric-card';
 export { KpiCard } from './kpi-card';
 
+// ── Sales documents (#2535) ────────────────────────────────────────
+export { DocumentKindGlyph, DOCUMENT_KIND_LABEL, NO_DOCUMENT_LABEL } from './document-kind-glyph';
+export type { DocumentKind, DocumentKindGlyphProps } from './document-kind-glyph';
+export { DocumentHeadline } from './document-headline';
+export type { DocumentHeadlineProps, DocumentHeadlineTone } from './document-headline';
+
 // ── Identity / labels ──────────────────────────────────────────────
 export { EntityLabel, shortenId } from './entity-label';
 export { ProductThumbnail } from './product-thumbnail';
