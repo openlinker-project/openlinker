@@ -23,7 +23,10 @@ import { formatAmount } from '../../../shared/format/format-amount';
 import type { Connection } from '../../connections';
 import type { OrderRecord } from '../api/orders.types';
 import type { InvoiceRecord } from '../../invoicing';
-import type { FiscalRegistrationRecord } from '../../fiscalization';
+import type {
+  FiscalRegistrationRecord,
+  ReconcileFiscalRegistrationResult,
+} from '../../fiscalization';
 import { SalesDocumentPanel } from './sales-document-panel';
 
 afterEach(cleanup);
@@ -330,8 +333,10 @@ describe('SalesDocumentPanel - reconcile outcomes (#2522/#2583)', () => {
     documentReference: null,
   });
 
-  function renderInDoubt(reconcile: ReturnType<typeof vi.fn>) {
-    return renderWithProviders(<SalesDocumentPanel order={order} />, {
+  type ReconcileFn = (id: string) => Promise<ReconcileFiscalRegistrationResult>;
+
+  function renderInDoubt(reconcile: ReconcileFn): void {
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
       apiClient: createMockApiClient({
         connections: { list: vi.fn().mockResolvedValue([fiscalConnection]) },
         fiscalization: {
