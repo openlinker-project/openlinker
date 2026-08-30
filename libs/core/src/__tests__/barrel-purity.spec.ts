@@ -35,6 +35,7 @@ const CONTEXT_BARRELS = [
   'content',
   'customers',
   'events',
+  'fulfillment',
   'fulfillment-authority',
   'identifier-mapping',
   'integrations',
@@ -101,7 +102,8 @@ describe('@openlinker/core/<context> barrel purity (#598)', () => {
    * and `orders` both value-import it, and `invoicing` would close a CJS
    * module-load cycle the moment the leaf grew a VALUE edge back into either.
    * ADR-053 then adopted that posture deliberately for the OMS vocabulary
-   * leaves, so there are three. Before this assertion nothing enforced the
+   * leaves; `fulfillment` (#2391) joins them, so after that change there are
+   * four. Before this assertion nothing enforced the
    * property, so a future `import` would have been caught only by a Nest boot
    * failure in some unrelated suite.
    *
@@ -127,8 +129,8 @@ describe('@openlinker/core/<context> barrel purity (#598)', () => {
    *
    * A type-only import ERASES at compile time — there is no `require()` call in
    * the emitted JS, so it adds no runtime edge and cannot close the cycle this
-   * spec exists to forbid. Two leaves hold such a carve-out today and both name
-   * the same specifier — but they are registered SEPARATELY on purpose. A
+   * spec exists to forbid. Three leaves hold such a carve-out — two naming the
+   * same specifier — but they are registered SEPARATELY on purpose. A
    * single shared constant would silently authorise one leaf's future exception
    * for every other leaf; each entry is a statement about its own leaf.
    *
@@ -144,17 +146,36 @@ describe('@openlinker/core/<context> barrel purity (#598)', () => {
    *   is a positive assertion.** It reaches no sibling at all today, and its
    *   first type-only import must be a deliberate one-line registration here,
    *   never a free ride on a neighbour's carve-out.
+   * - `fulfillment` (#2391, ADR-053/054): `FulfillmentWork.cancellationReason`
+   *   is typed by `FulfillmentCancellationReason`, which already ships in the
+   *   `fulfillment-authority` leaf (#2304). Restating that union locally is the
+   *   duplication ADR-053 § Alternatives rejects by name.
    *
-   * In every case the authorized specifier is a `…/types` cycle-breaker
-   * sub-barrel — never a main `@openlinker/core/<ctx>` barrel, which re-exports
+   * Two of the three authorized specifiers are a `…/types` cycle-breaker
+   * sub-barrel. `fulfillment`'s is the first **main** `@openlinker/core/<ctx>`
+   * barrel authorized here, and it is admissible only because BOTH of the
+   * following hold — a main barrel is otherwise forbidden, since it re-exports
    * the context's NestJS module and would reintroduce exactly the cycle risk
    * this table exists to avoid if such an import were ever (incorrectly) turned
-   * into a value import.
+   * into a value import:
+   *
+   *   1. the import is type-only, so it erases and creates no runtime edge; and
+   *   2. the TARGET is itself registered in this table as a zero-sibling-edge
+   *      leaf that exports no NestJS module.
+   *
+   * Condition 2 is a fact about `fulfillment-authority` TODAY, and ADR-053 calls
+   * its framework-freedom a starting posture rather than a vow. If that leaf
+   * ever gains a module, this authorization's stated reason expires: re-derive
+   * it, or give that leaf a `…/types` sub-barrel and point this entry at it.
    */
   const ZERO_SIBLING_EDGE_LEAVES = [
     { context: 'sales-documents', authorizedTypeOnlySpecifiers: ['@openlinker/core/orders/types'] },
     { context: 'fulfillment-authority', authorizedTypeOnlySpecifiers: [] },
     { context: 'order-lifecycle', authorizedTypeOnlySpecifiers: ['@openlinker/core/orders/types'] },
+    {
+      context: 'fulfillment',
+      authorizedTypeOnlySpecifiers: ['@openlinker/core/fulfillment-authority'],
+    },
   ] as const;
 
   it.each(ZERO_SIBLING_EDGE_LEAVES)(
