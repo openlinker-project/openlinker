@@ -19,6 +19,21 @@ import type { ConnectionRateLimit } from '@openlinker/core/identifier-mapping';
  * `AdapterMetadata.supportedCapabilities`, which is the source of truth for
  * "is this capability supported?", regardless of whether the name appears
  * in `CoreCapabilityValues`.
+ *
+ * A name enters this array iff a call site resolves it BY CONNECTION ID through
+ * `getCapabilityAdapter`. That rule is why `'FulfillmentRouter'` (ADR-052 A2,
+ * sourcing) is deliberately absent: A2 is declared `capability: 'config-only'`
+ * in `fulfillment-authority/domain/types/authority-kind.types.ts`, because
+ * ADR-054/ADR-055 ship the router as a connection-backed plugin — candidacy is
+ * configuration rather than a narrowed capability, and `resolveAuthorities`
+ * skips the `supportedCapabilities` gate entirely for it. Landing the name
+ * early would not be merely inert: an advertised name INVITES a later gate, and
+ * because `enabledCapabilities` is stamped at connection-create and never
+ * retro-filled (#2085), that gate would silently drain nothing for every
+ * connection that already exists. This is exactly why #2220 kept
+ * `ModifiedProductLister` out of this array and out of every manifest. The name
+ * is re-admitted by whichever wave takes A2 off `'config-only'`; #2403 is the
+ * record until then.
  */
 export const CoreCapabilityValues = [
   'ProductMaster',
@@ -49,6 +64,16 @@ export const CoreCapabilityValues = [
   // `ReturnsAuthority` yet, so A5 cannot resolve to a non-OpenLinker holder until an
   // adapter declares it.
   'ReturnsAuthority',
+  // Availability read authority (ADR-052 A1 / #2403): who answers "how many can
+  // I sell?" for a connection. `AUTHORITY_KIND_DESCRIPTORS.availability.capability`
+  // names this string as A1's gate, so it is resolved by narrowing a dispatched
+  // adapter — a dispatch name, not an advertised-without-dispatch one. No shipped
+  // manifest advertises it yet, so it stays unassignable until one does.
+  'AvailabilityAuthority',
+  // Fulfilment execution authority (ADR-052 A3 / #2403): who holds a work object
+  // and is allowed to act on it. `AUTHORITY_KIND_DESCRIPTORS['fulfillment-execution']
+  // .capability` names this string as A3's gate. Same posture as A1 above.
+  'FulfillmentExecutor',
 ] as const;
 
 /**

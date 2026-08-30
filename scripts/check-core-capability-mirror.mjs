@@ -97,10 +97,19 @@ export function parseCapabilityValues(content, name) {
   if (!declMatch) return null;
 
   const openBracket = declMatch.index + declMatch[0].length - 1;
-  const closeBracket = content.indexOf(']', openBracket);
+
+  // Comments are stripped BEFORE the closing bracket is located, not after.
+  // Locating it first (`indexOf(']', openBracket)` on raw text) truncated the
+  // array at any `]` that appeared inside an entry's comment — and an annotated
+  // entry legitimately carries one, e.g. `AUTHORITY_KIND_DESCRIPTORS['x']`. The
+  // members after that point vanished from the parse, so the script reported
+  // every mirror as carrying a value "MISSING from core" and pointed the reader
+  // at three innocent mirrors instead of the one comment at fault (#2403).
+  const strippedRest = stripComments(content.slice(openBracket + 1));
+  const closeBracket = strippedRest.indexOf(']');
   if (closeBracket === -1) return null;
 
-  const body = stripComments(content.slice(openBracket + 1, closeBracket));
+  const body = strippedRest.slice(0, closeBracket);
 
   const values = [];
   const literalRe = /'([^']*)'|"([^"]*)"/g;
@@ -385,6 +394,32 @@ function selfCheck() {
     'ProductMaster,ReturnsAuthority'
   );
   expect('reports the declaration line', parsed?.line, 2);
+
+  // Regression: a `]` inside an entry's comment must not truncate the parse.
+  // Before #2403 this returned 'ProductMaster' only, and the resulting error
+  // blamed every mirror for a value that core "lacked".
+  expect(
+    'is not truncated by a bracket inside a comment',
+    parseCapabilityValues(
+      arrayFile(
+        CORE_DECLARATION,
+        "  'ProductMaster',\n  // gated by DESCRIPTORS['fulfillment-execution']\n  'FulfillmentExecutor',"
+      ),
+      CORE_DECLARATION
+    )?.values.join(','),
+    'ProductMaster,FulfillmentExecutor'
+  );
+
+  // ...and an array with no closing bracket ANYWHERE AFTER IT returns null.
+  // Note the honest limit: neither this parser nor its predecessor tracks
+  // nesting, so an unclosed array followed later in the file by an unrelated
+  // `]` still mis-parses rather than returning null. That is unchanged
+  // behaviour, and no declaration in this repo has a nested array.
+  expect(
+    'unclosed array with nothing after it → null',
+    parseCapabilityValues("export const " + CORE_DECLARATION + " = [\n  'ProductMaster',\n", CORE_DECLARATION),
+    null
+  );
   expect(
     'selects the requested declaration, not the first one',
     parseCapabilityValues(

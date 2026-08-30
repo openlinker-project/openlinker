@@ -33,6 +33,12 @@ describe('adapter.types', () => {
         'Fiscalization',
         // Returns disposition authority (#2351, ADR-052)
         'ReturnsAuthority',
+        // Availability read authority — ADR-052 A1 (#2403)
+        'AvailabilityAuthority',
+        // Fulfilment execution authority — ADR-052 A3 (#2403)
+        'FulfillmentExecutor',
+        // NOTE: 'FulfillmentRouter' (A2) is deliberately absent while A2 is
+        // `config-only` — see the declaration's own comment for why.
       ]);
     });
   });
