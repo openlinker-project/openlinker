@@ -23,6 +23,7 @@ import { SyncJobRetryService } from './application/services/sync-job-retry.servi
 import { SyncJobBulkRetryService } from './application/services/sync-job-bulk-retry.service';
 import { SyncJobsService } from './application/services/sync-jobs.service';
 import { SyncCursorsService } from './application/services/sync-cursors.service';
+import { ConnectionSyncStatusService } from './application/services/connection-sync-status.service';
 import {
   JOB_ENQUEUE_TOKEN,
   SYNC_JOB_REPOSITORY_TOKEN,
@@ -36,6 +37,7 @@ import {
   SCHEDULER_TASK_REGISTRY_TOKEN,
   SYNC_JOBS_SERVICE_TOKEN,
   SYNC_CURSORS_SERVICE_TOKEN,
+  CONNECTION_SYNC_STATUS_SERVICE_TOKEN,
 } from './sync.tokens';
 
 // Re-export tokens for convenience
@@ -52,6 +54,7 @@ export {
   SCHEDULER_TASK_REGISTRY_TOKEN,
   SYNC_JOBS_SERVICE_TOKEN,
   SYNC_CURSORS_SERVICE_TOKEN,
+  CONNECTION_SYNC_STATUS_SERVICE_TOKEN,
 } from './sync.tokens';
 
 @Module({
@@ -147,6 +150,11 @@ export {
       provide: SYNC_CURSORS_SERVICE_TOKEN,
       useExisting: SyncCursorsService,
     },
+    ConnectionSyncStatusService,
+    {
+      provide: CONNECTION_SYNC_STATUS_SERVICE_TOKEN,
+      useExisting: ConnectionSyncStatusService,
+    },
   ],
   exports: [
     JOB_ENQUEUE_TOKEN,
@@ -171,6 +179,7 @@ export {
     SchedulerTaskRegistryService,
     SYNC_JOBS_SERVICE_TOKEN,
     SYNC_CURSORS_SERVICE_TOKEN,
+    CONNECTION_SYNC_STATUS_SERVICE_TOKEN,
   ],
 })
 export class SyncModule {}

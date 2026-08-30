@@ -121,7 +121,7 @@ describe('AnalyticsNeedsAttention', () => {
             ],
             coverageGapsTotalCount: 1,
             stockAtRisk: [
-              { variantId: 'v2', productId: 'p2', connectionId: 'conn-1', masterStock: 0, stockSafetyBuffer: 2 },
+              { variantId: 'v2', productId: 'p2', connectionId: 'conn-1', masterStock: 0, stockSafetyBuffer: 2, stockZeroThreshold: 0 },
             ],
             stockAtRiskTotalCount: 1,
             failedSyncValue: { count: 2, totalValue: 100, mixedCurrency: false, oldestFailedAt: null },
@@ -134,7 +134,7 @@ describe('AnalyticsNeedsAttention', () => {
     renderWithProviders(<AnalyticsNeedsAttention />, { apiClient });
 
     expect(await screen.findByText('1 variant missing from Allegro')).toBeInTheDocument();
-    expect(screen.getByText('1 variant at or below the safety buffer on Allegro')).toBeInTheDocument();
+    expect(screen.getByText('1 variant publishing no stock on Allegro')).toBeInTheDocument();
     expect(screen.getByText('2 orders never reached a destination')).toBeInTheDocument();
 
     expect(screen.getAllByText('Action')).toHaveLength(2);

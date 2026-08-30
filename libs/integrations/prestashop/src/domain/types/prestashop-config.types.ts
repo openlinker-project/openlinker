@@ -118,8 +118,11 @@ export interface PrestashopConnectionConfig {
 
   /**
    * Default ISO 4217 currency code for products synced from this PrestaShop
-   * connection (e.g. 'PLN', 'EUR'). When unset, products persist `currency=null`
-   * and the FE renders a muted "Currency unknown" fallback.
+   * connection (e.g. 'PLN', 'EUR'). When unset, `PrestashopAdapterFactory` falls
+   * back to the shop's own default currency via `PrestashopShopCurrencyResolver`
+   * (cached per connection for 24h since #2592, 60s for an unresolved answer).
+   * Only when THAT also fails to resolve do products persist `currency=null`,
+   * with the FE rendering a muted "Currency unknown" fallback.
    *
    * @see {@link Product.currency} in `@openlinker/core`
    */

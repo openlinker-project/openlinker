@@ -83,28 +83,57 @@ After installation, the OpenLinker module is accessible in two ways:
 - **Batch Size**: Number of events to process per cron run (default: 50)
 - **Max Retry Attempts**: Maximum delivery attempts before marking as failed (default: 25)
 - **Retry Backoff Multiplier**: Exponential backoff multiplier (default: 2.0)
+- **Keep Delivered Events (days)**: retention horizon for delivered rows (default: 7, range 1-365). See Outbox Retention below.
+- **Delivery Run Budget (seconds)**: how long one delivery run may spend sending, before it stops and leaves the rest for the next run (default: 120, range 30-280). See Run Budget below.
+- **Recover Stuck Events After (minutes)**: how long an event may sit half-sent before another run takes it over (default: 5). The lowest value the form accepts is derived from the run budget above and rises with it. See Run Budget below.
 
 ## Event Deduplication
 
 PrestaShop's hooks (especially `actionProductSave`) can fire **multiple times** during a single operation (e.g., 6 times when saving a product). This is expected PrestaShop behavior.
 
-The module implements **automatic deduplication**:
-- Event IDs are generated deterministically based on product ID + event type + time window (1 minute)
-- Database unique constraint on `event_id` prevents duplicates
-- `INSERT IGNORE` handles duplicate attempts gracefully
+The module implements **automatic deduplication**, keyed on queue state rather than on a clock:
+- Every outbox row carries a `dedup_key` derived from connection + event type + object type + object ID. No timestamp goes into it.
+- A unique index on `dedup_key` makes `INSERT IGNORE` drop a repeat fire while the first row is still waiting to be sent.
+- The key is set to `NULL` the moment the row leaves the queue - when the cron claims it for delivery, when it is delivered, and when it fails for good. A `NULL` never collides in MySQL.
+- The key covers the event's subject, not its payload. Two `order.status_changed` fires while a row is queued deliver only the first `newStatusId`. That is correct: the webhook is a trigger and the sync job re-reads current shop state.
 
-**Result**: Only 1 event is created per product save, even if the hook fires 6+ times.
+**Result**: only 1 event is created per product save, even if the hook fires 6+ times - and a *later* change to the same product always gets its own row, whatever the cron cadence. There is no deduplication-window setting to tune; the earlier one could silently drop real changes when the cron ran faster than the window (#2603).
 
 ## Cron Setup
 
-Set up a system cron to trigger webhook delivery:
+Nothing is delivered to OpenLinker until something triggers a delivery pass on a
+schedule. The module ships a file that does the whole job with no arguments and
+no token: `cron/openlinker-cron.php`.
 
 ```bash
-# Every 2 minutes
-*/2 * * * * curl -s "https://your-shop.com/index.php?fc=module&module=openlinker&controller=cron&token=YOUR_CRON_TOKEN" > /dev/null 2>&1
+# Every 2 minutes, on a host that lets you write a cron command
+*/2 * * * * /usr/bin/php /path/to/shop/modules/openlinker/cron/openlinker-cron.php > /dev/null 2>&1
 ```
 
-**Recommended frequency**: Every 1-5 minutes
+On a host where the schedule is the file's name and no arguments can be passed
+(home.pl, AZ.pl), copy that file into the host's cron directory and rename it to
+whatever name means the interval you want, for example `cron-5min.php`. Set
+`OPENLINKER_PS_ROOT` if the copy lives outside the shop's directory tree.
+
+Where a PHP file cannot be scheduled, POST to the endpoint instead and send the
+token in a header. The token is never read from the address, because an address
+ends up in server logs and browser history:
+
+```bash
+*/2 * * * * curl -s -X POST -H "X-OpenLinker-Cron-Token: YOUR_CRON_TOKEN" \
+  "https://your-shop.com/index.php?fc=module&module=openlinker&controller=cron" > /dev/null 2>&1
+```
+
+**Recommended frequency**: every 1-5 minutes. Once an hour is the least some
+hosting tiers allow; it works, but stock and price changes then take up to an
+hour to reach a marketplace, and every retry waits a full hour too.
+
+**Do not use `cron.prestashop.com`.** The service was switched off in December
+2025 and now answers with a success code while doing nothing, so a shop relying
+on it looks healthy and delivers nothing.
+
+The config page's **Delivery Last Ran** row is how you check any of this is
+actually happening.
 
 ## Webhook Endpoint
 
@@ -122,6 +151,12 @@ With headers:
 
 ### `product.saved`
 Triggered when a product is created or updated.
+
+### `product.deleted`
+Triggered when a product is deleted. Shares the product-events toggle with
+`product.saved`. OpenLinker treats it as a trigger to re-read the product: the
+shop answering "no such product" is what pauses the listings, so a rolled-back
+delete costs one redundant re-sync and nothing more.
 
 ### `order.created`
 Triggered when a new order is validated/created.
@@ -154,9 +189,9 @@ Triggered when product stock quantity changes.
 
 ### Multiple Events for Single Action
 
-This is normal PrestaShop behavior. The module automatically deduplicates events within the same time window (1 minute). If you see duplicates:
-- Verify `event_id` column has unique constraint
-- Check events are created in different time windows (this is correct behavior)
+This is normal PrestaShop behavior. The module coalesces repeat fires while the event is still queued. If you see duplicates:
+- Verify the `dedup_key` column exists and has a unique index
+- Check whether the rows describe genuinely different changes - once an event has been delivered, the next change is a new event and a new row (this is correct behavior)
 
 ## Architecture
 
@@ -168,12 +203,64 @@ The module uses an **outbox pattern** to ensure reliable webhook delivery:
 2. **Cron** periodically claims batches from outbox and delivers via HTTP
 3. **Retry logic** handles failures with exponential backoff
 4. **Stale row recovery** prevents stuck events if cron crashes
+5. **Retention** deletes finished rows so the table cannot grow without bound
 
 This ensures:
 - Hooks never block (checkout/admin operations remain fast)
 - Events survive OpenLinker downtime (retry later)
 - No duplicate deliveries (atomic claiming by runId)
 - No lost events (durable outbox table)
+- No unbounded table (retention prunes finished rows)
+
+### Outbox Retention
+
+Only **finished** rows are ever deleted:
+
+| Status | Meaning | Deleted? |
+|---|---|---|
+| `pending` | queued, or waiting on a retry backoff | never |
+| `processing` | leased by a cron run in flight | never |
+| `delivered` | OpenLinker has the event | after the configured horizon (default 7 days) |
+| `failed` | gave up after the maximum attempts | after 30 days, so the evidence outlives the success history |
+
+A pass runs from the cron controller, at most once an hour, after delivery so
+it can never delay an event. It deletes in batches of 1000 and stops after
+10000 rows; whatever is left is picked up by the next pass, so an outbox that is
+already enormous drains gradually instead of locking the table in one statement.
+"Run delivery now" in the module configuration forces a pass immediately.
+
+There is also a hard cap of 100000 rows. Over the cap, the oldest delivered and
+failed rows are deleted even if they are inside their horizon. **The cap never
+deletes queued or in-flight rows and never refuses a new event** - dropping a
+hook fire would be silent data loss. So if the table is still over the cap once
+every finished row is gone, the excess is genuinely undelivered work: the
+statistics panel says so, the cron logs an error, and webhook delivery needs
+fixing.
+
+### Run Budget and Stuck-Event Recovery
+
+Shared hosting kills a long-running PHP process - 300 seconds on the tightest
+tier we know of - and the worst delivery path is a full batch of events each
+waiting out a 10-second HTTP timeout. A killed run does not stop cleanly: the
+events it had claimed stay `processing`, and nothing sends them until they are
+recovered.
+
+So a run watches its own clock. Before each event it asks whether the *worst
+case* of that one delivery still fits inside the budget; when it does not, the
+run stops, puts everything it did not reach back to `pending`, and returns. The
+next run picks up where it left off. The budget costs latency, never events.
+
+Recovery covers the case where the process was killed anyway. A run that has
+been holding an event for longer than the **Recover Stuck Events After**
+threshold is treated as gone, and the next run takes its events over.
+
+The two settings are linked, which is why the form derives the threshold's lower
+bound from the budget. A live run can hold an event for at most its budget plus
+one delivery; a threshold shorter than that would let a second run take over
+events the first is still sending, and the buyer's shop would receive the same
+event twice. Reclaiming also never touches the reclaiming run's own events, and
+"Run delivery now" only takes over events whose owner is provably gone - so
+pressing it during a scheduled run is safe.
 
 ### State Machine
 
@@ -182,11 +269,14 @@ Events flow through these states:
 - `pending` → `processing` → `pending` (retry with backoff)
 - `pending` → `processing` → `failed` (max attempts reached)
 
+`delivered` and `failed` are terminal. Retention deletes them once they are past
+their horizon; nothing else in the table is ever deleted.
+
 ### Concurrency Safety
 
 - **Deterministic claiming**: Each cron run uses unique `runId` to claim events
 - **Processing lease**: `processing_owner` and `processing_started_at` prevent overlap
-- **Stale recovery**: Rows stuck in `processing` for >15 minutes are automatically requeued
+- **Stale recovery**: Rows held by a run that is provably gone are automatically requeued, after the configured **Recover Stuck Events After** threshold (default 5 minutes). A run never reclaims its own rows.
 
 ## Dynamic Shipping Carrier
 
@@ -290,6 +380,12 @@ vendor/bin/phpunit
 
 ### PHP version
 
+Classes are found through a Composer classmap that is generated on install, not
+committed. If the suite reports `Class ... not found`, the classmap predates the
+classes: run `composer dump-autoload` and run it again. The module runtime does
+not use Composer at all - it loads its classes with explicit `require_once`
+calls - so this only ever affects the test run.
+
 The module **runtime** targets PHP `>=7.4` (PrestaShop 1.7 baseline). The **dev/test** toolchain (PHPUnit 10) requires PHP `>=8.1`. CI uses 8.1 to run tests; production deploys are unaffected. Contributors on PHP 7.4 can edit module classes but cannot run `composer install` for the dev dependencies — install PHP 8.1+ locally to run the unit suite.
 
 ### Scope and non-goals
@@ -299,11 +395,26 @@ The PHPUnit harness covers **pure-function classes only** — those with no Pres
 | Class | Tests |
 |---|---|
 | `HmacRequestVerifier` | Happy path + all documented failure modes (missing headers, bad format, replay, tampered body/timestamp) |
-| `EventIdGenerator` | Determinism, window grouping, UUID-like output format, per-entity uniqueness |
+| `EventIdGenerator` | Per-call event-id uniqueness, dedup-key determinism per subject, discrimination on connection / object type / event type / external id, UUID-like output format |
 
 **Out of scope (explicit non-goals)**:
-- `OutboxRepository`, `CartShippingRepository`, `WebhookSender`, install/uninstall hooks, and controllers all depend on PS globals — they are **not** tested here and require a real PrestaShop (see issue #506).
+- `CartShippingRepository`, `WebhookSender`, install/uninstall hooks, and controllers all depend on PS globals — they are **not** tested here and require a real PrestaShop (see issue #506).
 - No PHPStan / Psalm / phpcs — static analysis is a separate concern.
+
+### Optional MySQL suite
+
+`tests/Integration/OutboxDedupSqlTest.php` covers `OutboxRepository`'s coalescing against a real server, because the rule is a unique index over a nullable column and no unit test can reach it. It stubs the small PrestaShop surface the repository calls (`Db`, `pSQL`, `Configuration`, `PrestaShopLogger`) and points it at a throwaway MySQL. It is **not** part of `vendor/bin/phpunit`, so the default run stays dependency-free:
+
+```bash
+docker run -d --rm --name ol-outbox-mysql -e MYSQL_ROOT_PASSWORD=root \
+  -e MYSQL_DATABASE=outbox -p 3399:3306 mysql:8.0
+
+OPENLINKER_TEST_MYSQL_DSN='mysql:host=127.0.0.1;port=3399;dbname=outbox' \
+OPENLINKER_TEST_MYSQL_USER=root OPENLINKER_TEST_MYSQL_PASSWORD=root \
+  vendor/bin/phpunit --testsuite Integration
+```
+
+Without the DSN the suite skips. This is not the full real-PrestaShop harness (#506) - it exercises SQL semantics only.
 
 ### Adding new pure-function tests
 

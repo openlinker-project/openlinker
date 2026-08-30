@@ -87,36 +87,53 @@ describe('deriveCoverageHeadline', () => {
 describe('deriveStockHeadline', () => {
   it('should name the connection and buffer when every item shares both', () => {
     const items: StockAtRiskItem[] = [
-      { variantId: 'v1', productId: 'p1', connectionId: 'conn-1', masterStock: 1, stockSafetyBuffer: 2 },
-      { variantId: 'v2', productId: 'p1', connectionId: 'conn-1', masterStock: 0, stockSafetyBuffer: 2 },
+      { variantId: 'v1', productId: 'p1', connectionId: 'conn-1', masterStock: 1, stockSafetyBuffer: 2, stockZeroThreshold: 0 },
+      { variantId: 'v2', productId: 'p1', connectionId: 'conn-1', masterStock: 0, stockSafetyBuffer: 2, stockZeroThreshold: 0 },
     ];
 
     const result = deriveStockHeadline(items, items.length, connectionName);
 
-    expect(result.headline).toBe('2 variants at or below the safety buffer on Allegro');
+    expect(result.headline).toBe('2 variants publishing no stock on Allegro');
     expect(result.sub).toContain('buffer 2');
   });
 
   it('should fall back to the ambiguous headline when connections differ', () => {
     const items: StockAtRiskItem[] = [
-      { variantId: 'v1', productId: 'p1', connectionId: 'conn-1', masterStock: 1, stockSafetyBuffer: 2 },
-      { variantId: 'v2', productId: 'p1', connectionId: 'conn-2', masterStock: 1, stockSafetyBuffer: 2 },
+      { variantId: 'v1', productId: 'p1', connectionId: 'conn-1', masterStock: 1, stockSafetyBuffer: 2, stockZeroThreshold: 0 },
+      { variantId: 'v2', productId: 'p1', connectionId: 'conn-2', masterStock: 1, stockSafetyBuffer: 2, stockZeroThreshold: 0 },
     ];
 
     const result = deriveStockHeadline(items, 2, connectionName);
 
-    expect(result.headline).toBe("2 variants are at or below their channel's safety buffer");
+    expect(result.headline).toBe('2 variants are publishing no stock to their channel');
+  });
+
+  it('should name the low-stock floor when that is what silenced the line (#2610)', () => {
+    const items: StockAtRiskItem[] = [
+      {
+        variantId: 'v1',
+        productId: 'p1',
+        connectionId: 'conn-1',
+        masterStock: 3,
+        stockSafetyBuffer: 0,
+        stockZeroThreshold: 5,
+      },
+    ];
+
+    const result = deriveStockHeadline(items, 1, connectionName);
+
+    expect(result.sub).toContain('low-stock floor 5');
   });
 
   it('should fall back to the ambiguous headline when buffers differ on the same connection', () => {
     const items: StockAtRiskItem[] = [
-      { variantId: 'v1', productId: 'p1', connectionId: 'conn-1', masterStock: 1, stockSafetyBuffer: 1 },
-      { variantId: 'v2', productId: 'p1', connectionId: 'conn-1', masterStock: 1, stockSafetyBuffer: 2 },
+      { variantId: 'v1', productId: 'p1', connectionId: 'conn-1', masterStock: 1, stockSafetyBuffer: 1, stockZeroThreshold: 0 },
+      { variantId: 'v2', productId: 'p1', connectionId: 'conn-1', masterStock: 1, stockSafetyBuffer: 2, stockZeroThreshold: 0 },
     ];
 
     const result = deriveStockHeadline(items, 2, connectionName);
 
-    expect(result.headline).toBe("2 variants are at or below their channel's safety buffer");
+    expect(result.headline).toBe('2 variants are publishing no stock to their channel');
   });
 
   it('should NOT name a connection/buffer when the sample shares both but the sample is smaller than the total (#2120 BLOCKING)', () => {
@@ -126,11 +143,12 @@ describe('deriveStockHeadline', () => {
       connectionId: 'conn-1',
       masterStock: 1,
       stockSafetyBuffer: 2,
+      stockZeroThreshold: 0,
     }));
 
     const result = deriveStockHeadline(items, 300, connectionName);
 
-    expect(result.headline).toBe("300 variants are at or below their channel's safety buffer");
+    expect(result.headline).toBe('300 variants are publishing no stock to their channel');
     expect(result.headline).not.toContain('Allegro');
   });
 });

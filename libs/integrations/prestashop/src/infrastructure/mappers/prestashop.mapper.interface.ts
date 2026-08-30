@@ -9,7 +9,7 @@
  */
 import type { Product, ProductVariant } from '@openlinker/core/products';
 import type { Inventory } from '@openlinker/core/inventory';
-import type { Order, OrderCreate, OrderStatus, OrderTotals } from '@openlinker/core/orders';
+import type { Order, OrderCreate, OrderTotals } from '@openlinker/core/orders';
 import type { OptionValueResolver } from '../../domain/types/prestashop-product-option.types';
 
 /**
@@ -27,6 +27,14 @@ export interface PrestashopProduct {
   active?: string | number;
   /** Default leaf category id, used as the start of the F3 breadcrumb walk (#1096). */
   id_category_default?: string | number;
+  /**
+   * Tax rules group the product belongs to. Optional because PrestaShop omits
+   * it for a "No tax" product, which the tax-rate resolver reads as a
+   * deliberate 0 rather than a gap - declared here so the already-fetched
+   * product can be handed to that resolver instead of it fetching the same
+   * resource again (#2592).
+   */
+  id_tax_rules_group?: string | number;
   associations?: {
     // PrestaShop serializes associations in one of two shapes depending on the
     // response format (see PrestashopProductMapper.unwrapAssociationEntries):
@@ -235,6 +243,12 @@ export interface IPrestashopInventoryMapper {
 /**
  * What `mapOrder` can answer without I/O (#2277).
  *
+ * `status` is deliberately absent for the same reason (#2607). A PrestaShop
+ * order carries an `id_order_state`, and what that id MEANS is a row on
+ * `ps_order_state` that only a WebService read can supply - which is exactly
+ * how this mapper came to carry a hardcoded table of default-install ids 1-7.
+ * `PrestashopOrderStateCatalog` answers it in the adapter.
+ *
  * `totals.currency` is deliberately absent. Resolving an order's denomination
  * needs a `GET /currencies/{id}` read, and this mapper is synchronous and does
  * no I/O by contract - which is exactly how it came to emit a hardcoded
@@ -243,7 +257,7 @@ export interface IPrestashopInventoryMapper {
  * it from `PrestashopOrderCurrencyResolver` before the order leaves the
  * adapter, and `IncomingOrderTotals.currency` stays a required string.
  */
-export type MappedPrestashopOrder = Omit<Order, 'id' | 'totals'> & {
+export type MappedPrestashopOrder = Omit<Order, 'id' | 'status' | 'totals'> & {
   totals: Omit<OrderTotals, 'currency'>;
 };
 
@@ -293,11 +307,4 @@ export interface IPrestashopOrderMapper {
      */
     externalCarrierId?: number
   ): Record<string, unknown>;
-
-  /**
-   * Map an OpenLinker `OrderStatus` to its PrestaShop order-state id
-   * (e.g. `'shipped' → 4`). Single source of truth for the status→state-id
-   * table, used by the order-fulfillment update (#858 capability B).
-   */
-  mapStatusToPrestashopStateId(status: OrderStatus): number;
 }

@@ -1,8 +1,8 @@
 /**
  * Allegro Seller Defaults Types
  *
- * Connection-level seller defaults persisted on `Connection.config.allegro
- * .sellerDefaults`. Three fields make `POST /sale/product-offers` succeed
+ * Connection-level seller defaults persisted on `Connection.config
+ * .sellerDefaults` - at the config ROOT, not under an `allegro` key. Three fields make `POST /sale/product-offers` succeed
  * on the inline-product path (when smart-link to an existing product card
  * misses) — `location` is required for every offer regardless of path
  * (#430).
@@ -70,8 +70,8 @@ export interface AllegroSellerLocation {
 }
 
 /**
- * Connection-level seller defaults persisted in `Connection.config.allegro
- * .sellerDefaults`. All three sub-fields are required when present;
+ * Connection-level seller defaults persisted in `Connection.config
+ * .sellerDefaults` (config ROOT). All three sub-fields are required when present;
  * partial configurations fail validation at the API DTO layer.
  */
 export interface AllegroSellerDefaultsConfig {
