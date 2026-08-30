@@ -36,6 +36,9 @@
  * | `FulfillmentRequestStatus` | what has been asked of a holder, and their answer (negotiation axis) |
  * | `FulfillmentWorkAction` | the closed set of things that can be done to a work object |
  * | `FulfillmentWork` / `FulfillmentWorkLine` / `FulfillmentWorkRef` | the aggregate, its counter-bearing lines, and the ref an executor is handed |
+ * | `FulfillmentRouterPort` | how a router is asked where an order is sourced from |
+ * | `RoutingInput` / `RoutingShipTo` | what a router is told — an explicit PII allowlist projection (ADR-062) |
+ * | `RoutingPlan` / `RoutingEvaluation` | the committing answer, and the non-committing one |
  *
  * ## What consumes this
  *
@@ -53,5 +56,11 @@ export * from './domain/types/fulfillment-work-status.types';
 export * from './domain/types/fulfillment-request-status.types';
 export * from './domain/types/fulfillment-work-action.types';
 export * from './domain/types/fulfillment-work.types';
+export * from './domain/types/routing-ship-to.types';
+export * from './domain/types/routing.types';
+
+export * from './domain/ports/fulfillment-router.port';
+
+export * from './domain/exceptions/pending-routing-plan-not-supported.error';
 
 export * from './fulfillment.tokens';
