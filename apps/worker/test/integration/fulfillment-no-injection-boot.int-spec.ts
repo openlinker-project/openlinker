@@ -27,13 +27,25 @@
  * provider written for the test and then deleted — a green suite whose sole red
  * demonstration is against code that never merges.
  *
- * So the test asserts the fact that IS true today and is the reason the graph
- * assertion is empty: **no Nest decorator exists anywhere under
- * `libs/core/src/fulfillment/`**, therefore no container path to this context
- * can exist. And it ARMS ITSELF: the moment #2392 adds the first `@Injectable`
- * repository, `describesNestProviders` flips true, the structural claim is
- * retired, and the provider-graph assertion below runs for real against a
- * booted container. It cannot pass vacuously after that point.
+ * #2391 therefore asserted the fact that WAS true then — no Nest decorator
+ * anywhere under `libs/core/src/fulfillment/`, so no container path could exist
+ * — and armed itself: the moment a provider appeared, `describesNestProviders`
+ * flipped true and the placeholder arm threw, naming this replacement.
+ *
+ * ## Since #2392, the boundary is proved three ways against a real container
+ *
+ * That arm is gone and the graph assertion runs for real:
+ *
+ *  1. the container BOOTS and `FULFILLMENT_WORK_REPOSITORY_TOKEN` resolves —
+ *     which catches a missing export, an unprovided repository, or a CommonJS
+ *     require cycle, none of which any unit suite or static scan can see;
+ *  2. `FulfillmentModule`'s `imports` metadata names neither `OrdersModule` nor
+ *     `InventoryModule` — a module edge is how a service would actually become
+ *     injectable, and no import statement need exist for one;
+ *  3. no provider `FulfillmentModule` declares injects a token whose name
+ *     mentions Order or Inventory, read from the metadata Nest itself recorded.
+ *
+ * Each asserts a non-empty subject, so none can pass vacuously.
  *
  * The forbidden-token list is deliberately the SAME two barrels the invariant
  * script forbids, so the two halves cannot drift into disagreeing about what
@@ -43,13 +55,15 @@
  * @see docs/architecture/adrs/053-fulfillment-authority-vocabulary-leaf.md
  * @see scripts/check-no-injection-contracts.mjs
  */
+import 'reflect-metadata';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-const FULFILLMENT_DIR = resolve(
-  __dirname,
-  '../../../../libs/core/src/fulfillment',
-);
+import { FULFILLMENT_WORK_REPOSITORY_TOKEN, FulfillmentModule } from '@openlinker/core/fulfillment';
+
+import { getTestHarness, teardownTestHarness } from './setup';
+
+const FULFILLMENT_DIR = resolve(__dirname, '../../../../libs/core/src/fulfillment');
 
 /** The exact specifiers `scripts/check-no-injection-contracts.mjs` forbids. */
 const FORBIDDEN_BARRELS = ['@openlinker/core/orders', '@openlinker/core/inventory'] as const;
@@ -71,6 +85,21 @@ const collectSourceFiles = (dir: string): string[] => {
 };
 
 describe('fulfillment context — ADR-053 no-injection boundary (#2391)', () => {
+  beforeAll(() => {
+    // Set BEFORE the container boots, and set here rather than relying on a
+    // sibling spec — a boot gate that is run-order dependent is a boot gate you
+    // cannot run to diagnose the boot it guards (the `oms-module-boot` /
+    // `automation-dispatch-boot` precedent). Running this file alone via
+    // `--runTestsByPath` is exactly the diagnostic path that matters for this
+    // boundary, and without this it dies in `getPiiConfig` before reaching
+    // anything this spec is about.
+    process.env.OL_PII_HASH_SALT ??= 'test-salt-for-integration-tests';
+  });
+
+  afterAll(async () => {
+    await teardownTestHarness();
+  });
+
   const files = collectSourceFiles(FULFILLMENT_DIR);
   // Strip comments before matching, in the same spirit as
   // `barrel-purity.spec.ts` and for its documented reason (#2441): doc prose in
@@ -90,7 +119,7 @@ describe('fulfillment context — ADR-053 no-injection boundary (#2391)', () => 
   }));
 
   const describesNestProviders = sources.some(({ text }) =>
-    NEST_PROVIDER_DECORATORS.some((decorator) => text.includes(decorator)),
+    NEST_PROVIDER_DECORATORS.some((decorator) => text.includes(decorator))
   );
 
   it('should find the fulfillment context on disk', () => {
@@ -100,51 +129,83 @@ describe('fulfillment context — ADR-053 no-injection boundary (#2391)', () => 
 
   it('should not import a forbidden sibling barrel from any file in the context', () => {
     const offenders = sources.flatMap(({ file, text }) =>
-      FORBIDDEN_BARRELS.filter((barrel) =>
-        // Quote-terminated so `@openlinker/core/orders/types` — the escape hatch
-        // ADR-053 itself names — is not mistaken for `@openlinker/core/orders`.
-        text.includes(`'${barrel}'`) || text.includes(`"${barrel}"`),
-      ).map((barrel) => `${file}: ${barrel}`),
+      FORBIDDEN_BARRELS.filter(
+        (barrel) =>
+          // Quote-terminated so `@openlinker/core/orders/types` — the escape hatch
+          // ADR-053 itself names — is not mistaken for `@openlinker/core/orders`.
+          text.includes(`'${barrel}'`) || text.includes(`"${barrel}"`)
+      ).map((barrel) => `${file}: ${barrel}`)
     );
 
     expect(offenders).toEqual([]);
   });
 
-  it('should hold the structural no-provider claim until a Nest provider exists', () => {
-    const filesDeclaringProviders = sources
-      .filter(({ text }) => NEST_PROVIDER_DECORATORS.some((d) => text.includes(d)))
-      .map(({ file }) => file);
+  it('should resolve the fulfillment repository token from the real container', async () => {
+    // #2392 landed the first provider, so the structural claim above has
+    // retired and the boundary is now proved against a booted container — the
+    // ADR-041 F3 shape (`invoicing-auto-issue-boot.int-spec.ts`). Resolving the
+    // token at all is the half a unit suite cannot do: a missing export, an
+    // unprovided repository, or a CommonJS require cycle between this context
+    // and a sibling all fail here and nowhere else.
+    expect(describesNestProviders).toBe(true);
 
-    if (describesNestProviders) {
-      // #2392 (or later) added a provider. The structural claim no longer holds
-      // and the provider-graph assertion in the next test takes over — that
-      // test, not this one, owns the failure.
-      expect(filesDeclaringProviders.length).toBeGreaterThan(0);
-      return;
-    }
-
-    // Asserted as a list rather than a boolean so a failure names the file.
-    expect(filesDeclaringProviders).toEqual([]);
+    const harness = await getTestHarness();
+    const repository = harness.get(FULFILLMENT_WORK_REPOSITORY_TOKEN);
+    expect(repository).toBeDefined();
+    expect(typeof (repository as { placeHold?: unknown }).placeHold).toBe('function');
   });
 
-  it('should resolve no orders/inventory service through any fulfillment provider once one exists', async () => {
-    if (!describesNestProviders) {
-      // Nothing of this context is in the DI graph yet, so there is no provider
-      // whose dependencies could be inspected. This arm disappears on its own
-      // the day #2392 lands a provider — it is not a permanent skip.
-      expect(describesNestProviders).toBe(false);
-      return;
-    }
+  it('should declare no orders/inventory module in the fulfillment module graph', () => {
+    // The static scan cannot see a module edge, only an import statement, and a
+    // module edge is how a service would actually become injectable here.
+    const imported = (Reflect.getMetadata('imports', FulfillmentModule) ?? []) as unknown[];
+    // A `DynamicModule` is a PLAIN OBJECT, not a class — `TypeOrmModule.forFeature`
+    // is one, and this module's only import is exactly that. Rendering entries
+    // with `String()` alone would turn every dynamic entry into
+    // `"[object Object]"`, so `OrdersModule.forFeature(...)` or
+    // `{ module: OrdersModule, ... }` would slip through the two assertions
+    // below while a bare class import was caught.
+    const importedNames = imported.map((entry) => {
+      if (typeof entry === 'function') return entry.name;
+      const dynamic = entry as { module?: { name?: string } } | null;
+      return dynamic?.module?.name ?? String(entry);
+    });
 
-    // From #2392 onward the boundary must be proved against the real container,
-    // the ADR-041 F3 way: boot the worker graph and assert that no provider
-    // reachable from this context resolves an `orders` / `inventory` service.
-    // Failing loudly here is correct — a provider exists and this assertion has
-    // not been written yet, which must not read as a pass.
-    throw new Error(
-      'libs/core/src/fulfillment now declares a Nest provider. Replace this arm with the ' +
-        'ADR-041 F3 provider-graph assertion (see apps/worker/test/integration/' +
-        'invoicing-auto-issue-boot.int-spec.ts) before merging #2392.',
+    // Non-vacuity: an empty `imports` would satisfy both `not.toContain`s while
+    // asserting nothing about a module that had been emptied by accident.
+    expect(importedNames.length).toBeGreaterThan(0);
+    expect(importedNames).not.toContain('OrdersModule');
+    expect(importedNames).not.toContain('InventoryModule');
+  });
+
+  it('should inject no orders/inventory service into any fulfillment provider', () => {
+    // The complement to `check-no-injection-contracts.mjs`: this reads the
+    // RESOLVED INJECTION METADATA Nest itself recorded, so it sees a dependency
+    // acquired without a matching import statement — which a source-text scan
+    // cannot. (`ModuleRef.get(TOKEN, { strict: false })` remains outside the
+    // reach of both; the module-edge assertion above is what bounds it.)
+    const providers = (Reflect.getMetadata('providers', FulfillmentModule) ?? []) as unknown[];
+    const classProviders = providers.filter(
+      (p): p is new (...args: never[]) => unknown => typeof p === 'function'
     );
+
+    // A vacuous pass is the failure mode this whole file exists to avoid.
+    expect(classProviders.length).toBeGreaterThan(0);
+
+    const injected = classProviders.flatMap((provider) => {
+      const custom = (Reflect.getMetadata('self:paramtypes', provider) ?? []) as {
+        param: unknown;
+      }[];
+      const positional = (Reflect.getMetadata('design:paramtypes', provider) ?? []) as unknown[];
+      return [...custom.map((entry) => entry.param), ...positional].map((token) => {
+        if (typeof token === 'symbol') return token.description ?? String(token);
+        if (typeof token === 'function') return token.name;
+        return String(token);
+      });
+    });
+
+    const forbidden = injected.filter((name) => /Order|Inventory/i.test(name));
+    // Asserted as a list rather than a boolean so a failure names the token.
+    expect(forbidden).toEqual([]);
   });
 });

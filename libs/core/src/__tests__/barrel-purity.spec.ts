@@ -150,6 +150,15 @@ describe('@openlinker/core/<context> barrel purity (#598)', () => {
    *   is typed by `FulfillmentCancellationReason`, which already ships in the
    *   `fulfillment-authority` leaf (#2304). Restating that union locally is the
    *   duplication ADR-053 § Alternatives rejects by name.
+   *   **Second specifier (#2392)**: `FulfillmentHold.reason` is typed by
+   *   `HoldReason` from the `order-lifecycle` leaf (#2305). Design adjudication
+   *   #4 keeps ONE hold-reason vocabulary across the two hold grains (order and
+   *   work), so this is the same anti-duplication argument, not a widening of
+   *   it — each specifier is registered on its own merits. Note the leaf can
+   *   borrow the TYPE but not the `isHoldReason` GUARD: a guard is a value
+   *   import, which the assertion below forbids unconditionally, so
+   *   `FulfillmentWorkRepository` casts that column at the boundary (the
+   *   `ReturnLine.custodyState` precedent) rather than narrowing it.
    *
    * Two of the three authorized specifiers are a `…/types` cycle-breaker
    * sub-barrel. `fulfillment`'s is the first **main** `@openlinker/core/<ctx>`
@@ -174,7 +183,10 @@ describe('@openlinker/core/<context> barrel purity (#598)', () => {
     { context: 'order-lifecycle', authorizedTypeOnlySpecifiers: ['@openlinker/core/orders/types'] },
     {
       context: 'fulfillment',
-      authorizedTypeOnlySpecifiers: ['@openlinker/core/fulfillment-authority'],
+      authorizedTypeOnlySpecifiers: [
+        '@openlinker/core/fulfillment-authority',
+        '@openlinker/core/order-lifecycle',
+      ],
     },
   ] as const;
 

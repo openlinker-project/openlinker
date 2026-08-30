@@ -143,6 +143,31 @@ export interface FulfillmentWork {
    */
   readonly cancellationReason: FulfillmentCancellationReason | null;
 
+  /**
+   * Optimistic-concurrency token (#2392, ADR-054; consumed by #2406).
+   *
+   * Counts **state changes, not writes**: each transition carries
+   * `version = version + 1` in its `SET`, so a conditional UPDATE that matched
+   * no row does not bump it. That is what makes an idempotent retry safe — a
+   * caller replaying an already-applied action sees "not applied" against an
+   * UNCHANGED version, which must not be reported as a stale-token 409.
+   *
+   * Declared here rather than left to #2406 because DESIGN §5.2 makes the read
+   * model "actionable only with an optimistic-concurrency token", and a token
+   * the aggregate cannot expose is a contract with no mechanism.
+   */
+  readonly version: number;
+
+  /** When the work ended. `null` unless `status` is `cancelled`. Written by #2392's `cancel`. */
+  readonly cancelledAt: Date | null;
+
+  /**
+   * At-most-once marker for the dispatch relay. Claimed by #2401 (`W3a-12`)
+   * with the `ShipmentRepository.claimWaybillRelay` conditional-write shape;
+   * #2392 creates the column and never writes it.
+   */
+  readonly dispatchRelayedAt: Date | null;
+
   readonly lines: readonly FulfillmentWorkLine[];
   readonly createdAt: Date;
   readonly updatedAt: Date;
@@ -165,7 +190,8 @@ export function readFulfillmentWorkLineRemainingQuantity(line: FulfillmentWorkLi
 }
 
 /**
- * Whether a line satisfies `fulfilled + cancelled <= total`.
+ * Whether a line satisfies `fulfilled + cancelled <= total` **and** carries no
+ * negative counter.
  *
  * `check*` rather than `is*` on purpose: the `is*` prefix in this repo is
  * load-bearing for **type guards** (union narrowers, capability guards), and a
@@ -173,7 +199,23 @@ export function readFulfillmentWorkLineRemainingQuantity(line: FulfillmentWorkLi
  * `checkRequiredToSell` / `checkParameterRestrictions`.
  *
  * #2392 mirrors this as the DB `CHECK`; the two must move together.
+ *
+ * ## Why the non-negativity clauses were added (#2392)
+ *
+ * As first shipped this tested only `remaining >= 0`, which let
+ * `{total: 5, fulfilled: -1, cancelled: 0}` pass (remaining = 6) — a line that
+ * is not "within capacity" under any reading. #2392 persists this rule as
+ * `CHK_fulfillment_work_lines_capacity`, and a DB constraint that rejected a
+ * row this function accepts would have falsified the sentence directly above on
+ * the day it was first exercised. Widening the function rather than weakening
+ * the constraint keeps ONE rule under ONE name, which is the whole reason the
+ * rule lives in a vocabulary leaf instead of being restated per consumer.
  */
 export function checkFulfillmentWorkLineCapacity(line: FulfillmentWorkLine): boolean {
-  return readFulfillmentWorkLineRemainingQuantity(line) >= 0;
+  return (
+    line.totalQuantity >= 0 &&
+    line.fulfilledQuantity >= 0 &&
+    line.cancelledQuantity >= 0 &&
+    readFulfillmentWorkLineRemainingQuantity(line) >= 0
+  );
 }

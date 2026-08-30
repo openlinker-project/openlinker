@@ -69,6 +69,11 @@
       "require": "./dist/fulfillment/index.js",
       "default": "./dist/fulfillment/index.js"
     },
+    "./fulfillment/orm-entities": {
+      "types": "./dist/fulfillment/orm-entities.d.ts",
+      "require": "./dist/fulfillment/orm-entities.js",
+      "default": "./dist/fulfillment/orm-entities.js"
+    },
     "./fulfillment-authority": {
       "types": "./dist/fulfillment-authority/index.d.ts",
       "require": "./dist/fulfillment-authority/index.js",
