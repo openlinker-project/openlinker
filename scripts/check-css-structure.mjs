@@ -228,7 +228,7 @@ export function scan(source, options = {}) {
       if (char === '\n') {
         // CSS strings do not span raw newlines. Report and recover at the line
         // break rather than swallowing the rest of the file.
-        defects.push({ kind: 'unterminated-string', ...openedAt });
+        defects.push({ kind: 'unterminated-string', ...(openedAt ?? { line, column }) });
         state = 'code';
         openedAt = null;
         advance(char);
@@ -290,11 +290,16 @@ export function scan(source, options = {}) {
     i += 1;
   }
 
+  // `openedAt` is set on every transition into `comment`/`string` and cleared on
+  // every exit, so it is non-null here by construction. The fallback is not
+  // defensive noise: without it, a future path into either state that forgot the
+  // assignment would report `path:undefined:undefined` - a location worse than
+  // none, in the one field this guard is judged on.
   if (state === 'comment') {
-    defects.push({ kind: 'unclosed-comment', ...openedAt });
+    defects.push({ kind: 'unclosed-comment', ...(openedAt ?? { line, column }) });
   }
   if (state === 'string') {
-    defects.push({ kind: 'unterminated-string', ...openedAt });
+    defects.push({ kind: 'unterminated-string', ...(openedAt ?? { line, column }) });
   }
   // Outermost first: the earliest divergence is where the file went wrong, and
   // every location after it is a consequence. `openBlocks` is already in that
@@ -307,7 +312,10 @@ export function scan(source, options = {}) {
 }
 
 /**
- * Defects only - the shape `--self-check` asserts against.
+ * Defects only. This exists for `--self-check`, whose assertion table compares
+ * defect arrays and would otherwise repeat `.defects` on every row; `main()`
+ * calls `scan` directly because it needs the block count too. No production
+ * caller - do not go looking for one.
  *
  * @param {string} source
  * @param {{ allowLineComments?: boolean }} [options]
@@ -315,6 +323,48 @@ export function scan(source, options = {}) {
  */
 export function scanCssStructure(source, options = {}) {
   return scan(source, options).defects;
+}
+
+/**
+ * The defects to PRINT, in file order, with every defect KIND guaranteed a slot.
+ *
+ * Two separate requirements, and file order alone satisfies only one of them.
+ *
+ * `scan` appends unclosed blocks after the encounter-ordered defects (its
+ * contract is outermost-first, which the self-check pins). That is right for the
+ * scanner and wrong for a capped report: a file with more than
+ * `MAX_DEFECTS_PER_FILE` stray `}` truncates away every `unclosed-block` - the
+ * defect this guard exists for - on exactly the duplicated-chunk merge shape
+ * that motivated #2674. So the guard would have been least useful on its own
+ * motivating input.
+ *
+ * Sorting into file order does NOT fix that by itself: in that same shape the
+ * stray closes occupy the early lines and the unclosed block is last, so it
+ * falls off the end again. The cap must therefore reserve a slot for the first
+ * occurrence of each kind, then spend what is left on file order. A cap that can
+ * silently drop a whole defect class is worse than no cap - it reports
+ * confidently and omits the line that mattered.
+ *
+ * Lives in the reporter, not in `scan`, so the pure function's contract is
+ * untouched.
+ */
+export function selectForReport(defects, max = MAX_DEFECTS_PER_FILE) {
+  const inFileOrder = [...defects].sort((a, b) => a.line - b.line || a.column - b.column);
+  if (inFileOrder.length <= max) return inFileOrder;
+
+  const chosen = new Set();
+  const kindsSeen = new Set();
+  for (const defect of inFileOrder) {
+    if (!kindsSeen.has(defect.kind)) {
+      kindsSeen.add(defect.kind);
+      chosen.add(defect);
+    }
+  }
+  for (const defect of inFileOrder) {
+    if (chosen.size >= max) break;
+    chosen.add(defect);
+  }
+  return inFileOrder.filter((defect) => chosen.has(defect));
 }
 
 async function* walk(dir) {
@@ -407,7 +457,12 @@ async function main() {
     ]);
   }
 
-  // The success line is a verified claim, not an assumption.
+  // Backstop only, and unreachable today: every selected file either parses or
+  // lands in `unreadable`, and the check above already exited. The property
+  // "the success line never overstates coverage" is enforced THERE, by treating
+  // an unreadable file as fatal. Kept because it costs nothing and would catch a
+  // future third outcome, but it is not the mechanism - saying otherwise would
+  // be the reported-versus-enforced gap this guard exists to close.
   if (parsed !== files.length) {
     fail([
       `parsed ${parsed} of ${files.length} stylesheets - refusing to report success over a gap.`,
@@ -417,13 +472,14 @@ async function main() {
   if (violations.length > 0) {
     console.error('✗ check-css-structure: structurally damaged stylesheet(s).\n');
     for (const { file, defects } of violations.sort((a, b) => a.file.localeCompare(b.file))) {
-      for (const defect of defects.slice(0, MAX_DEFECTS_PER_FILE)) {
+      const shown = selectForReport(defects);
+      for (const defect of shown) {
         console.error(
           `  ${file}:${defect.line}:${defect.column} — ${DEFECT_DETAIL[defect.kind] ?? defect.kind}`
         );
       }
-      if (defects.length > MAX_DEFECTS_PER_FILE) {
-        console.error(`  ${file}: … and ${defects.length - MAX_DEFECTS_PER_FILE} more.`);
+      if (defects.length > shown.length) {
+        console.error(`  ${file}: … and ${defects.length - shown.length} more.`);
       }
     }
     console.error('');
@@ -505,6 +561,33 @@ function selfCheck() {
 
   // Multi-line location accuracy.
   expect('defect on line 3 → line 3', '.a { }\n.b { }\n.c {\n', ['unclosed-block@3:4']);
+
+  // Report ordering: the cap must never truncate away a whole defect class.
+  // 25 stray closes then one unclosed block is the duplicated-chunk merge shape.
+  {
+    let src = '';
+    for (let n = 0; n < 25; n += 1) src += '}\n';
+    src += '.dropped-brace {\n  color: red;\n';
+    const all = scan(src, {}).defects;
+    const shown = selectForReport(all);
+    if (!shown.some((d) => d.kind === 'unclosed-block')) {
+      failures.push(
+        '  selectForReport: the unclosed-block must survive the report cap (it is the point of the guard)'
+      );
+    }
+    for (const kind of new Set(all.map((d) => d.kind))) {
+      if (!shown.some((d) => d.kind === kind)) {
+        failures.push(`  selectForReport: kind '${kind}' was truncated away entirely`);
+      }
+    }
+    const lines = shown.map((d) => d.line);
+    if (lines.some((l, idx) => idx > 0 && l < lines[idx - 1])) {
+      failures.push('  selectForReport: defects must be reported in file order');
+    }
+    if (shown.length > MAX_DEFECTS_PER_FILE) {
+      failures.push('  selectForReport: must respect the cap');
+    }
+  }
 
   // The measured figure in the success line, from the same single pass.
   if (scan('.a { } .b { }', {}).blockCount !== 2) {
