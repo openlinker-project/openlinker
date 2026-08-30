@@ -72,6 +72,12 @@ export { DocumentKindGlyph, DOCUMENT_KIND_LABEL, NO_DOCUMENT_LABEL } from './doc
 export type { DocumentKind, DocumentKindGlyphProps } from './document-kind-glyph';
 export { DocumentHeadline } from './document-headline';
 export type { DocumentHeadlineProps, DocumentHeadlineTone } from './document-headline';
+export { DocumentLifecycle } from './document-lifecycle';
+export type {
+  DocumentLifecycleProps,
+  DocumentLifecycleStep,
+  DocumentLifecycleStepState,
+} from './document-lifecycle';
 
 // ── Identity / labels ──────────────────────────────────────────────
 export { EntityLabel, shortenId } from './entity-label';

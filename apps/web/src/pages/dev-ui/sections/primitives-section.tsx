@@ -26,6 +26,7 @@ import {
   Select,
   DocumentHeadline,
   DocumentKindGlyph,
+  DocumentLifecycle,
   StatusBadge,
   Textarea,
 } from '../../../shared/ui';
@@ -155,6 +156,30 @@ export function PrimitivesSection(): ReactElement {
           <DocumentHeadline kind="fiscal-receipt" state="Not registered" tone="idle" />
           <DocumentHeadline kind={null} state="No routing" tone="error" />
         </div>
+      </Group>
+
+      <Group
+        title="DocumentLifecycle"
+        description="An invoice has two persisted axes, the document and the authority answer, so the trail walks them. One step per stage the system stores, with the time it stores for it and an explicit marker where it stores none. A fiscal receipt has no authority axis and gets no trail at all, which the component enforces rather than trusting each caller. State is carried by the marker's shape and an announced word, not by tint alone."
+      >
+        <DocumentLifecycle
+          kind="invoice"
+          label="Invoice lifecycle, issued and awaiting the authority"
+          steps={[
+            { id: 'issued', label: 'Issued', state: 'done', at: '2026-08-26T09:12:00.000Z' },
+            { id: 'sent', label: 'Sent to the authority', state: 'done', at: '2026-08-26T09:12:00.000Z' },
+            { id: 'answer', label: 'Authority answer', state: 'active', at: null },
+          ]}
+        />
+        <DocumentLifecycle
+          kind="invoice"
+          label="Invoice lifecycle, refused by the authority"
+          steps={[
+            { id: 'issued', label: 'Issued', state: 'done', at: '2026-08-25T16:04:00.000Z' },
+            { id: 'sent', label: 'Sent to the authority', state: 'done', at: '2026-08-25T16:04:00.000Z' },
+            { id: 'answer', label: 'Refused', state: 'error', at: '2026-08-25T16:07:00.000Z' },
+          ]}
+        />
       </Group>
 
       <Group
