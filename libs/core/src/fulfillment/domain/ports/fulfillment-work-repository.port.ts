@@ -19,6 +19,15 @@
  * The only methods that throw are the ones where the two zero-row causes are
  * genuinely different facts an operator must tell apart (`releaseHold`).
  *
+ * ## Only `create` is transaction-composable today
+ *
+ * The axis transitions open no transaction and accept none, so a caller cannot
+ * join `cancel` or `transitionStatus` to its own unit of work. That is
+ * sufficient for this slice — ADR-054 R1's requirement is about CREATING N work
+ * rows alongside the order's terminalisation — but #2395 sits one transition
+ * away from wanting the same seam, so the asymmetry is stated rather than left
+ * to be discovered at implementation time. Widening it is #2395's call.
+ *
  * ## Input shapes are objects, deliberately
  *
  * No method takes positional arguments beyond the id. #2406 will add an
@@ -28,13 +37,13 @@
  * @module libs/core/src/fulfillment/domain/ports
  * @see docs/architecture/adrs/054-fulfillment-work-unit-of-assignment.md
  */
+import type { FulfillmentCancellationReason } from '@openlinker/core/fulfillment-authority';
 import type { HoldReason } from '@openlinker/core/order-lifecycle';
 
 import type { FulfillmentHold } from '../types/fulfillment-hold.types';
 import type { FulfillmentRequestStatus } from '../types/fulfillment-request-status.types';
 import type { FulfillmentWork } from '../types/fulfillment-work.types';
 import type { FulfillmentWorkStatus } from '../types/fulfillment-work-status.types';
-import type { FulfillmentCancellationReason } from '@openlinker/core/fulfillment-authority';
 
 /** One line of a work object at creation time. Counters start at zero. */
 export interface CreateFulfillmentWorkLineInput {
@@ -51,8 +60,14 @@ export interface CreateFulfillmentWorkLineInput {
  * whose signature mentions TypeORM makes every future implementer a TypeORM
  * implementer — and an in-memory fake for #2395's tests impossible to type. The
  * repository narrows it internally; no caller inspects it.
+ *
+ * A structural minimum rather than `object`: `object` accepts `{}`, so passing
+ * the wrong handle would fail at runtime inside `save` instead of at the call
+ * site. This keeps the port framework-free AND the mistake unrepresentable.
  */
-export type FulfillmentWorkTransaction = object;
+export interface FulfillmentWorkTransaction {
+  readonly save: (...args: never[]) => Promise<unknown>;
+}
 
 /**
  * The router's create.

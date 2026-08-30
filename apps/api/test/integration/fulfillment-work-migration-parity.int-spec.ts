@@ -26,6 +26,17 @@
  * Scoped deliberately to the three `fulfillment_*` tables: a whole-schema diff
  * would fail on pre-existing drift this issue neither caused nor can fix.
  *
+ * **Known dependency**: the `column_default` comparison assumes BOTH databases
+ * carry `uuid-ossp`. TypeORM's Postgres driver picks `uuid_generate_v4()` or
+ * `gen_random_uuid()` for a generated uuid PK based on what the target database
+ * has, so if the harness database ever lacked the extension the two sides would
+ * emit different defaults and this file would fail for a reason unrelated to
+ * #2392. Stated so that failure is diagnosable rather than mystifying.
+ *
+ * **Cost**: this runs the FULL migration chain once per integration run, which
+ * is why `beforeAll` carries a 180 s budget — the honest price of being the only
+ * automated check of a migration anywhere in this repository.
+ *
  * @module apps/api/test/integration
  */
 import { DataSource } from 'typeorm';
@@ -172,17 +183,38 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
       { table_name: string; conname: string; contype: string; definition: string }[],
     ];
 
-    const checksOf = (rows: { conname: string; contype: string }[]): string[] =>
+    // NAME **AND** DEFINITION. Comparing names alone was the first version of
+    // this, and it is the one comparison in this file carrying a domain
+    // invariant rather than an identifier: dropping `"cancelledQuantity" >= 0`
+    // from one side leaves both names intact and both schemas "matching" — the
+    // exact drift the widened `checkFulfillmentWorkLineCapacity` and this whole
+    // spec exist to prevent.
+    const checksOf = (rows: { conname: string; contype: string; definition: string }[]): string[] =>
       rows
         .filter((r) => r.contype === 'c')
-        .map((r) => r.conname)
+        .map((r) => `${r.conname} ${r.definition}`)
         .sort();
+
     // CHECKs come from the entity decorators, so both schemas must carry them.
     expect(checksOf(fromMigration)).toEqual(checksOf(synchronized));
-    expect(checksOf(fromMigration)).toEqual([
+    expect(checksOf(fromMigration).map((entry) => entry.split(' ')[0])).toEqual([
       'CHK_fulfillment_holds_actor',
       'CHK_fulfillment_work_lines_capacity',
     ]);
+
+    // The capacity predicate spelled out clause by clause, so a weakening
+    // applied to BOTH sides at once still fails here.
+    const capacity = checksOf(fromMigration).find((entry) =>
+      entry.startsWith('CHK_fulfillment_work_lines_capacity')
+    );
+    for (const clause of [
+      '"totalQuantity" >= 0',
+      '"fulfilledQuantity" >= 0',
+      '"cancelledQuantity" >= 0',
+      '"totalQuantity"',
+    ]) {
+      expect(capacity).toContain(clause);
+    }
 
     const foreignKeys = fromMigration.filter((r) => r.contype === 'f');
     expect(foreignKeys.map((r) => r.conname).sort()).toEqual([

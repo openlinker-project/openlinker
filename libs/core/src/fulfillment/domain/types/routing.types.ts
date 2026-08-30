@@ -35,7 +35,6 @@ import type { HoldReason } from '@openlinker/core/order-lifecycle';
 import type { RoutingShipTo } from './routing-ship-to.types';
 
 /** One order line's participation in a routing question. */
-
 export interface RoutingInputLine {
   readonly orderLineId: string;
   readonly productVariantId: string;

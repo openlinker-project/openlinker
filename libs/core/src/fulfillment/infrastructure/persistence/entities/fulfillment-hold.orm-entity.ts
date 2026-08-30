@@ -15,7 +15,9 @@
  *
  * `fulfillmentWorkId` carries a real FK — `fulfillment_works(id) ON DELETE
  * CASCADE`, migration-only, no `@ManyToOne` — for the same reason the line table
- * does: a hold is meaningless without its work.
+ * does: a hold is meaningless without its work. Unlike that table, this one
+ * carries a dedicated unconditional index for the cascade (see below): its only
+ * other index is partial, and a partial index cannot serve a referential check.
  *
  * @module libs/core/src/fulfillment/infrastructure/persistence/entities
  */
@@ -35,6 +37,10 @@ import {
 @Index('IDX_fulfillment_holds_work_active', ['fulfillmentWorkId'], {
   where: '"releasedAt" IS NULL',
 })
+// Unconditional, and NOT redundant with the partial index above: Postgres
+// cannot use a partial index for the `ON DELETE CASCADE` referential check, so
+// without this a work deletion seq-scans this table for its released holds.
+@Index('IDX_fulfillment_holds_work', ['fulfillmentWorkId'])
 // EXACTLY one actor (`<>`, i.e. XOR), not at least one. A row claiming both a
 // human and a service placed it is not a richer record, it is an unanswerable
 // audit question. Copied in shape and in name-discipline from

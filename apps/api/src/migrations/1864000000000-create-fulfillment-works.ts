@@ -164,9 +164,20 @@ export class CreateFulfillmentWorks1864000000000 implements MigrationInterface {
         ON "fulfillment_holds" ("fulfillmentWorkId")
         WHERE "releasedAt" IS NULL
     `);
+    // UNCONDITIONAL, and not redundant with the partial index above. Postgres
+    // cannot use a partial index to satisfy the ON DELETE CASCADE referential
+    // check, so without this, deleting a work seq-scans `fulfillment_holds` for
+    // its RELEASED rows. `fulfillment_work_lines` needs no equivalent: its
+    // UNIQUE index is unconditional and its leading column already serves the
+    // check.
+    await queryRunner.query(`
+      CREATE INDEX IF NOT EXISTS "IDX_fulfillment_holds_work"
+        ON "fulfillment_holds" ("fulfillmentWorkId")
+    `);
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_fulfillment_holds_work"`);
     await queryRunner.query(`DROP INDEX IF EXISTS "IDX_fulfillment_holds_work_active"`);
     await queryRunner.query(`DROP INDEX IF EXISTS "UQ_fulfillment_work_lines_work_order_line"`);
     await queryRunner.query(`DROP INDEX IF EXISTS "IDX_fulfillment_works_request_status"`);

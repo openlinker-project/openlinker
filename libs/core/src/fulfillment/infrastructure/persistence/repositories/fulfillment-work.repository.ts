@@ -24,6 +24,7 @@
  * | `cancelledAt` / `cancellationReason` | `cancel` | the `order_records.cancelledAt` precedent |
  * | `version` | every applied HEADER transition | computed in SQL (`version + 1`), never from a caller's read |
  * | `fulfilledQuantity` / `cancelledQuantity` | `recordLineProgress` (#2400) | a create carries zeros and would erase real progress |
+ * | `updatedAt` | every applied transition | written IMPLICITLY by TypeORM's `@UpdateDateColumn` injection, and explicitly by `recordLineProgress`. Named here because it has a real downstream consumer — `IDX_fulfillment_works_request_status` and ADR-054's timeout sweep both read it — and a column whose writer is a framework default is exactly the one a writer table must not omit |
  *
  * **`recordLineProgress` deliberately does NOT bump the header's `version`.**
  * It writes `fulfillment_work_lines`, a different row, and the token guards
@@ -217,11 +218,16 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
       return { savedHeader, savedLines };
     };
 
+    let saved: {
+      savedHeader: FulfillmentWorkOrmEntity;
+      savedLines: FulfillmentWorkLineOrmEntity[];
+    };
     try {
-      const { savedHeader, savedLines } = manager
-        ? await run(manager)
-        : await this.dataSource.transaction(run);
-      return this.toDomain(savedHeader, savedLines);
+      const persisted = manager ? await run(manager) : await this.dataSource.transaction(run);
+      // Mapped OUTSIDE the try: a bug in `toDomain` is not a persistence
+      // failure, and reporting it as one would make
+      // `FulfillmentPersistenceError('create', …)` mean two different things.
+      saved = persisted;
     } catch (error) {
       // Narrowed to the LINE uniqueness constraint by name. Catching every
       // `23505` here would report a header-table collision as a duplicate line
@@ -238,6 +244,8 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
       }
       throw new FulfillmentPersistenceError('create', error);
     }
+
+    return this.toDomain(saved.savedHeader, saved.savedLines);
   }
 
   async findById(workId: string): Promise<FulfillmentWork | null> {

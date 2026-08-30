@@ -526,12 +526,12 @@ precedent).
     - **`create` atomicity** — a line violating the capacity CHECK must leave **no** header row.
     - **`version`** — an applied transition bumps it; a not-applied one does not.
 
-16. **CASCADE is NOT verifiable in CI, and the plan says so rather than implying otherwise.** The
-    `synchronize`-built test schema has no FKs at all, so neither int-spec can prove
-    `ON DELETE CASCADE`. It is exercised by hand against the throwaway migration-built Postgres
-    (`information_schema.table_constraints` + a real delete), and the command and its output are
-    recorded in the PR. Every other AC in § 9 is machine-checked; this one is not, and that is
-    stated.
+16. **CASCADE is verified in CI after all — the plan's assumption here was wrong and was
+    corrected during review.** The plan originally recorded CASCADE as manually verified, on the
+    grounds that the `synchronize`-built test schema has no FKs. That is true of the *harness*, not
+    of what a spec can build: `fulfillment-work-migration-parity.int-spec.ts` stands up the
+    migration's schema in a second database and diffs it against the `synchronize`-built one, then
+    exercises the delete. Every AC in § 9 is machine-checked, including this one.
 
 ### Phase 6 — Docs
 
@@ -561,8 +561,10 @@ union would need an `ALTER TYPE` plus a coordinated deploy.
 ## 8. Validation & Risks
 
 - **Risk — the entity/migration pair drifts.** Mitigation: every index and CHECK is named
-  identically on both sides and asserted behaviourally by the int-spec; verified by hand before
-  commit.
+  identically on both sides and asserted behaviourally by the int-spec, and — since review —
+  compared mechanically by `fulfillment-work-migration-parity.int-spec.ts`, which diffs the
+  migration-built schema against the `synchronize`-built one. That check found a real instance of
+  this risk on its first run (named PKs vs hash-named PKs).
 - **Risk — the module is not imported by a host app**, so the tables never enter the int-test schema
   and the schema int-spec asserts against nothing. Mitigation: the int-spec's column assertion fails
   loudly on a missing table (it cannot pass vacuously).

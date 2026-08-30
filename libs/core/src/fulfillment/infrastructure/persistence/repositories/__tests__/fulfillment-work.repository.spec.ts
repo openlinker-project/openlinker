@@ -208,7 +208,8 @@ describe('FulfillmentWorkRepository', () => {
       // Each of these was previously interpolated straight into the SET clause.
       // `NaN` renders as a bare word Postgres reads as a COLUMN REFERENCE; a
       // negative delta is valid SQL that silently runs the counter backwards.
-      const { repo } = makeRepository({ lines: { createQueryBuilder: jest.fn() } });
+      const createQueryBuilder = jest.fn();
+      const { repo } = makeRepository({ lines: { createQueryBuilder } });
 
       await expect(
         repo.recordLineProgress({
@@ -218,6 +219,9 @@ describe('FulfillmentWorkRepository', () => {
           cancelledDelta: 0,
         })
       ).rejects.toBeInstanceOf(RangeError);
+      // Explicit rather than implied: the guard must run BEFORE any I/O, and
+      // relying on RangeError-vs-TypeError to prove that is indirect.
+      expect(createQueryBuilder).not.toHaveBeenCalled();
     });
   });
 

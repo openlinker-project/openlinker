@@ -303,13 +303,28 @@ describe('Fulfillment Work Transitions Integration', () => {
       ).resolves.toBe(false);
     });
 
-    it('should return every work for an order, with its lines', async () => {
-      await createWork();
-      await createWork();
+    it('should return every work for an order with ITS OWN lines', async () => {
+      // The two works are given DISTINGUISHABLE lines on purpose. With identical
+      // ones, an implementation that swapped the lines between headers passes a
+      // cardinality check — so `lines.filter(l => l.fulfillmentWorkId === header.id)`
+      // would be untested for the property that matters. #2395 leans on this read.
+      const first = await createWork();
+      const second = await repository.create({
+        orderId: 'ol_order_transitions',
+        locationId: 'ol_location_2',
+        deliveryMethod: 'pickup',
+        assignedConnectionId: null,
+        lines: [{ orderLineId: 'line-2', productVariantId: 'ol_variant_2', totalQuantity: 7 }],
+      });
 
       const found = await repository.findByOrderId('ol_order_transitions');
       expect(found).toHaveLength(2);
-      expect(found.every((w) => w.lines.length === 1)).toBe(true);
+      expect(found.find((w) => w.id === first.id)?.lines.map((l) => l.orderLineId)).toEqual([
+        'line-1',
+      ]);
+      expect(found.find((w) => w.id === second.id)?.lines.map((l) => l.orderLineId)).toEqual([
+        'line-2',
+      ]);
     });
 
     it('should refuse a duplicate order line within one create', async () => {
@@ -480,7 +495,16 @@ describe('Fulfillment Work Transitions Integration', () => {
         releasedAt: new Date(),
         releasedByUserId: 'user-2',
       });
+      // `releaseHold` maps a RAW `RETURNING *` driver row through `toHoldDomain`
+      // — the one place in the repository where a column/property mismatch
+      // yields `undefined` silently rather than throwing. Asserting a single
+      // field would not catch that.
       expect(released.releasedAt).not.toBeNull();
+      expect(released.id).toBe(hold.id);
+      expect(released.fulfillmentWorkId).toBe(work.id);
+      expect(released.reason).toBe('operator');
+      expect(released.placedByUserId).toBe('user-1');
+      expect(released.releasedByUserId).toBe('user-2');
 
       // The two zero-row causes asserted APART — distinguishing them is the
       // entire reason this method throws instead of returning a boolean, so

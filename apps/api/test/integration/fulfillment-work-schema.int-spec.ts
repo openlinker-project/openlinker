@@ -24,8 +24,9 @@
  * NAMES the migration uses — otherwise these assertions would hold against one
  * of the two schemas, and the wrong one. It is also why the two `ON DELETE
  * CASCADE` foreign keys are NOT asserted here: `synchronize` builds no FKs at
- * all, so CASCADE is exercised by hand against a migration-built database and
- * recorded in the PR, not by this file.
+ * all. CASCADE is covered by `fulfillment-work-migration-parity.int-spec.ts`,
+ * which builds the migration's schema for real and exercises the delete against
+ * it — automated, not manual.
  *
  * @module apps/api/test/integration
  */
@@ -107,20 +108,28 @@ describe('Fulfillment Work Schema Integration', () => {
     const rows = await query<{
       column_name: string;
       data_type: string;
+      character_maximum_length: number | null;
       is_nullable: string;
       column_default: string | null;
     }>(
-      `SELECT column_name, data_type, is_nullable, column_default
+      `SELECT column_name, data_type, character_maximum_length, is_nullable, column_default
        FROM information_schema.columns
        WHERE table_schema = 'public' AND table_name = $1
        ORDER BY column_name`,
       [table]
     );
-    return rows.map(
-      (r) =>
-        `${r.column_name} ${r.data_type} ${r.is_nullable === 'YES' ? 'NULL' : 'NOT NULL'}` +
+    return rows.map((r) => {
+      // `data_type` alone renders `character varying`, losing the length — so a
+      // varchar(32) widened to varchar(255) would pass the snapshot.
+      const type =
+        r.character_maximum_length === null
+          ? r.data_type
+          : `${r.data_type}(${r.character_maximum_length})`;
+      return (
+        `${r.column_name} ${type} ${r.is_nullable === 'YES' ? 'NULL' : 'NOT NULL'}` +
         `${r.column_default === null ? '' : ` DEFAULT ${r.column_default}`}`
-    );
+      );
+    });
   };
 
   describe('column sets', () => {
@@ -128,7 +137,7 @@ describe('Fulfillment Work Schema Integration', () => {
       expect(await columnsOf('fulfillment_works')).toEqual([
         'assignedConnectionId uuid NULL',
         'assignmentAttempt integer NOT NULL DEFAULT 0',
-        'cancellationReason character varying NULL',
+        'cancellationReason character varying(64) NULL',
         'cancelledAt timestamp with time zone NULL',
         'createdAt timestamp with time zone NOT NULL DEFAULT now()',
         'deliveryMethod text NULL',
@@ -136,8 +145,8 @@ describe('Fulfillment Work Schema Integration', () => {
         'id text NOT NULL',
         'locationId text NULL',
         'orderId text NOT NULL',
-        "requestStatus character varying NOT NULL DEFAULT 'unsubmitted'::character varying",
-        "status character varying NOT NULL DEFAULT 'open'::character varying",
+        "requestStatus character varying(32) NOT NULL DEFAULT 'unsubmitted'::character varying",
+        "status character varying(32) NOT NULL DEFAULT 'open'::character varying",
         'updatedAt timestamp with time zone NOT NULL DEFAULT now()',
         'version integer NOT NULL DEFAULT 0',
       ]);
@@ -166,7 +175,7 @@ describe('Fulfillment Work Schema Integration', () => {
         'placedAt timestamp with time zone NOT NULL',
         'placedByService text NULL',
         'placedByUserId text NULL',
-        'reason character varying NOT NULL',
+        'reason character varying(64) NOT NULL',
         'releaseNote text NULL',
         'releasedAt timestamp with time zone NULL',
         'releasedByUserId text NULL',
