@@ -806,3 +806,57 @@ height was documented as four lines by two bodies independently when the composi
 **Applies to**: `apps/worker/src/sync/handlers/handler-registration.service.ts` (every `register(jobType, handler, lane)` call); any enqueue site supplying a `connectionId` that is not a real connection.
 
 **Source**: #2594 (the split + the first measured `bulk` caps), #2609 (the scope), [ADR-050](./architecture/adrs/050-workload-isolation-concurrency-lanes.md) § Amendment (#2594) and § Amendment (#2609).
+
+---
+
+## `overflow` only clips a descendant the box is a containing block for — a `position: static` scroller clips nothing absolute
+
+**Context**: the Wave-2 responsive audit (#2388), measuring `/orders` at 768 px.
+
+**Problem**: `.data-table__container` declared `overflow-x: auto` and was believed to bound its
+contents. It does not bound an **absolutely-positioned** descendant, because an element only clips a
+descendant for which it is in that descendant's containing-block chain, and a `position: static` box
+never is. `.sr-only` is `position: absolute`, so every screen-reader label sat at its static x —
+inside the 1176 px-wide table — escaped the container entirely, and extended the **document's** own
+scroll area: `documentElement.scrollWidth` 947 against `clientWidth` 768, with the page really
+scrolling ~180 px sideways onto blank space.
+
+It was invisible to the obvious diagnostic. Scanning for elements whose `right` exceeded the viewport
+and excluding the allowed scroll containers returned **zero** offenders, because the only offenders
+were 1 px and `clip`ped — visually absent, structurally load-bearing. `document.body.scrollWidth`
+also read a clean 768; only `documentElement` disagreed.
+
+**Rule**: a scroll container that must actually bound its contents needs `position: relative` as well
+as `overflow`. When `documentElement.scrollWidth > clientWidth` but nothing visible overflows, look
+for absolutely-positioned descendants — `.sr-only` first — and check whether their nearest scrolling
+ancestor is positioned. Confirm a page really scrolls by assigning `scrollLeft` and reading it back;
+`scrollWidth` alone does not prove a user can reach it, and `body.scrollWidth` can disagree with
+`documentElement`'s.
+
+**Applies to**: `apps/web/src/index.css` — any rule pairing `overflow` with content that may contain
+absolutely-positioned descendants.
+
+**Source**: PR #2676 (#2388).
+
+## A `max-width` breakpoint must be the fractional complement of its `min-width` partner, or the two bands overlap by one pixel
+
+**Context**: same audit; `/settings/who-decides` at exactly 768 px.
+
+**Problem**: `.who-decides-row` was guarded by `@media (max-width: 768px)`, which **matches at
+768 px**, while `DataTable`'s own card/table switch and all three `hide-below` queries use
+`767.98px`, which does not. At that one width `matchMedia('(max-width: 767.98px)')` was `false` while
+`matchMedia('(max-width: 768px)')` was `true`, so the authority row rendered its single-column mobile
+layout while every table on the page was still in its desktop branch — two components disagreeing
+about which band they were in, at one of the three audited widths.
+
+**Rule**: the house complement of a `min-width: N` band is `max-width: (N - 0.02)`, not
+`max-width: N`. `apps/web/src/index.css` uses `479.98` / `767.98` / `1023.98`, and
+`data-table.tsx` reads `(max-width: 767.98px)` — match those exactly rather than rounding. Test the
+boundary AT the breakpoint, not one pixel either side, and read the branch off `matchMedia` rather
+than inferring it from a rect: a classic scrollbar makes `clientWidth` ~15 px narrower than the width
+media queries evaluate against, which at a boundary inverts the reading.
+
+**Applies to**: `apps/web/src/index.css`; any component pairing its own media query with
+`DataTable`'s card/table switch.
+
+**Source**: PR #2676 (#2388), asserted by `who-decides-styles.test.ts`.
