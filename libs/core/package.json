@@ -64,6 +64,11 @@
       "require": "./dist/mappings/index.js",
       "default": "./dist/mappings/index.js"
     },
+    "./fulfillment": {
+      "types": "./dist/fulfillment/index.d.ts",
+      "require": "./dist/fulfillment/index.js",
+      "default": "./dist/fulfillment/index.js"
+    },
     "./fulfillment-authority": {
       "types": "./dist/fulfillment-authority/index.d.ts",
       "require": "./dist/fulfillment-authority/index.js",
