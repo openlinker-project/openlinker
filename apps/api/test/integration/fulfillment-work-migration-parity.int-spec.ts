@@ -43,7 +43,19 @@ import { DataSource } from 'typeorm';
 
 import { getTestHarness, IntegrationTestHarness, teardownTestHarness } from './setup';
 
-const TABLES = ['fulfillment_works', 'fulfillment_work_lines', 'fulfillment_holds'] as const;
+// `routing_decisions` (#2394) joins the three #2392 tables rather than getting a
+// sibling spec: this file already runs the FULL migration chain once per
+// integration run — the expensive part — so a fourth table costs one more row
+// in three cheap catalogue queries. Its PARTIAL UNIQUE index is exactly what
+// `indexdef` comparison exists to catch, since a predicate that differs between
+// the migration and the entity would let the guard hold in production and
+// silently not in tests.
+const TABLES = [
+  'fulfillment_works',
+  'fulfillment_work_lines',
+  'fulfillment_holds',
+  'routing_decisions',
+] as const;
 
 const COLUMNS_SQL = `
   SELECT table_name, column_name, data_type, is_nullable, column_default
@@ -141,7 +153,7 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
     (await migrated.query(sql, [[...TABLES]])) as unknown[],
   ];
 
-  it('should build all three tables from the migration alone', async () => {
+  it('should build every declared table from the migration alone', async () => {
     const rows = (await migrated.query(
       `SELECT table_name FROM information_schema.tables
        WHERE table_schema = 'public' AND table_name = ANY($1) ORDER BY table_name`,
@@ -151,11 +163,13 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
     // Non-vacuity for every comparison below: if the migration built nothing,
     // two empty result sets would compare equal and this file would assert
     // nothing at all.
-    expect(rows.map((r) => r.table_name)).toEqual([
-      'fulfillment_holds',
-      'fulfillment_work_lines',
-      'fulfillment_works',
-    ]);
+    //
+    // DERIVED from `TABLES` rather than restated as literals (#2394). The
+    // hardcoded three-name list was a trap: extending `TABLES` left this
+    // assertion silently claiming the old set, so the FIRST thing adding a
+    // fourth table did was fail here for a reason unrelated to the schema it
+    // was checking. Deriving it means the next table costs one line, not two.
+    expect(rows.map((r) => r.table_name)).toEqual([...TABLES].sort());
   });
 
   it('should agree on every column, type, nullability and default', async () => {

@@ -100,6 +100,19 @@ export { FulfillmentHoldNotFoundError } from './domain/exceptions/fulfillment-ho
 export { FulfillmentPersistenceError } from './domain/exceptions/fulfillment-persistence.error';
 export { FulfillmentWorkNotFoundError } from './domain/exceptions/fulfillment-work-not-found.error';
 
+export * from './domain/types/routing-decision.types';
+export { RoutingDecision } from './domain/entities/routing-decision.entity';
+export { RoutingDecisionAlreadyLiveError } from './domain/exceptions/routing-decision-already-live.error';
+// The INPUT shapes are exported; `RoutingDecisionRepositoryPort` itself is
+// deliberately NOT — a `*RepositoryPort` is an intra-context persistence
+// contract that `check-cross-context-imports` rejects by deny pattern (the
+// `ReservationRepositoryPort` precedent). #2395 injects it by token from
+// inside this context.
+export type {
+  ClaimRoutingIntentInput,
+  TerminaliseRoutingDecisionInput,
+} from './domain/ports/routing-decision-repository.port';
+
 export { FulfillmentModule } from './fulfillment.module';
 
 export * from './fulfillment.tokens';

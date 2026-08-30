@@ -109,12 +109,19 @@ naming a decision of its own.
 implicitly and the other three `null`. There is no `save(decision)`. A row is inserted once and
 mutated exactly once, by one narrow conditional UPDATE.
 
-**`abandonReason` is included rather than deferred.** A terminal `abandoned` row with no reason is
-unactionable — the silent decline this repository forbids by name (ADR-041 §54) — and #2395 sits
-directly behind, producing at least four distinguishable abandons (`route-threw`,
-`plan-pending`, `plan-not-conserving`, `lock-lost`). Shipping the column now avoids a second
-migration one issue later. **Flagged for `/tech-review`**: the alternative is to defer it to
-#2395, which owns the values.
+**`abandonReason` ships as a COLUMN; its union declares only what is already grounded.**
+A terminal `abandoned` row with no reason is unactionable — the silent decline this repository
+forbids by name (ADR-041 §54) — and #2100 is the precedent for shipping reason vocabulary ahead of
+its writer (`'missing-required-tax-id'` / `'tax-rate-conflict'` ship declared and never written).
+So the column lands now, avoiding a second migration one issue later.
+
+The union, however, declares only values that correspond to **shipped code**:
+`'plan-pending'` (#2393's `PendingRoutingPlanNotSupportedError`) and `'plan-not-conserving'`
+(#2393's `checkRoutingPlanConservesQuantities`). Candidates like `route-threw` and `lock-lost` are
+guesses about #2395's internals and are deliberately NOT declared — the column is `varchar(64)`, so
+#2395 adds its own members with no migration. The read guard coerces an unrecognised value to
+`null` (the #2100 rule), so a value written by a newer build is read as absent rather than
+crashing an older one.
 
 ### 4.3 The index, and exactly why it is that wide
 
@@ -133,6 +140,14 @@ CREATE UNIQUE INDEX "UQ_routing_decisions_live_order"
 - **Predicate is `state = 'live'` only** — a terminal row must leave the index so a fresh decision
   can claim.
 
+**The index is necessary, not sufficient — and #2395 must not assume otherwise.**
+It enforces "at most one live DECISION per order". DESIGN §5.3 requires refusing when a live
+decision **or non-cancelled work** exists. Those are different sets: a `committed` decision with
+live work leaves the index free, so a second `claimIntent` succeeds — which is correct, because the
+`short_picked` re-route needs exactly that. The work-existence half of the guard is **#2395's**, and
+nothing in this slice refuses it. Stated here so the guard is not built believing the database
+already covers it.
+
 **On the mutable-predicate tension.** `shipments.orm-entity.ts` carries an explicit warning
 against putting a mutable column in a partial-index predicate (rows enter and leave the index on
 ordinary updates) and keys on the monotone `providerShipmentId IS NULL` marker instead. That
@@ -143,7 +158,8 @@ side effect. The governing precedents are `UQ_order_changes_open_target`
 this does. Stated in the entity docblock so the next reader does not "fix" it toward the shipments
 shape.
 
-A second, **unconditional** `IDX_routing_decisions_order` on `("orderId")` serves the history read
+A second, **unconditional** `IDX_routing_decisions_order` on `("orderId", "createdAt")` — mirroring
+`IDX_order_changes_order`, since a history read is ordered — serves the history read
 (every decision for an order, whatever its state) — the partial index cannot, for the same reason
 `IDX_fulfillment_holds_work` sits beside its partial sibling.
 
@@ -159,11 +175,13 @@ a new id and therefore a new key — which is correct, because a genuinely new d
 dedup against the previous one. This is the #2039 `reconcileId` lesson: a retrying or resuming job
 is a different job, so the key must never come from the job id.
 
-Not stored, deliberately: a column would be a second copy of a value the row already determines,
-and the two could drift. *Alternative considered*: persist it for audit, so a later change to the
-derivation still lets an operator correlate what crossed the vendor boundary. Rejected because
-changing the derivation is breaking regardless, and one source of truth beats an audit copy that
-can disagree with it. **Flagged for `/tech-review`.**
+Not stored, deliberately, and the reason is structural rather than merely tidy: a stored column
+can be written with a value that is **not** the derivation, whereas derive-only makes "the key is a
+function of the row" true by construction instead of by convention.
+
+*Reversal condition*: if a router ever echoes a key back, or an operator needs to correlate against
+a vendor's own log, persist it then — an additive nullable column, cheap later, so there is no cost
+to deferring it now.
 
 ### 4.5 Unique-violation handling
 
@@ -177,7 +195,9 @@ naming a row that is fine, about a table that did not fail". A hit raises
 **It throws rather than re-selecting.** The `exchange_rates` `insertIfAbsent` shape recovers by
 re-selecting the winner because the caller wants *a* rate; here the caller must **not** proceed —
 a live decision existing is the refusal — so returning the winner would invite a caller to route
-against someone else's intent. The error carries the order id so #2395 can report the block.
+against someone else's intent. The error carries the order id **only** — enriching it with the incumbent's `routerConnectionId`
+would cost a second query on the refusal path, and `findLiveByOrderId` is already on the port for a
+caller that wants to name the holder.
 
 ### 4.6 Transaction placement — the sharp point
 
@@ -187,6 +207,11 @@ boundary is crossed; enrolling the claim in the caller's transaction would let i
 together with the work rows, which is the ordering the lock could not supply and this table
 exists to supply. `terminalise` is the participant in #2395's one-transaction commit (ADR-054 R1:
 N work rows + terminalisation together).
+
+**The default is already safe, which is worth stating so nobody "fixes" it.** A TypeORM repository
+uses the default entity manager, not any ambient transaction the caller opened — so `claimIntent`
+commits independently even if #2395 later wraps its work creation in `dataSource.transaction(...)`.
+That is exactly the behaviour the design needs; threading the manager through would break it.
 
 ### 4.7 FK decisions
 
@@ -233,6 +258,10 @@ N work rows + terminalisation together).
     `CreateRoutingDecisions1865000000000`, `name` property matching. Copies #2392's structure:
     `CREATE TABLE IF NOT EXISTS` with the inline named PK, indexes issued separately with the
     partial `WHERE` on its own line, `down()` dropping indexes in reverse then the table.
+    **No `CREATE EXTENSION "uuid-ossp"`** — #2392 needs it because its line and hold PKs default to
+    `uuid_generate_v4()`; this table's PK is `text` minted in code and no column takes a uuid
+    default, so copying that statement would propagate the #2684 workaround to a migration that
+    does not need it.
     *Acceptance*: `migration:show` reports 0 pending; the chain runs from an empty database.
 
 ### Phase 4 — Tests

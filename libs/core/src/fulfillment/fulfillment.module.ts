@@ -24,11 +24,16 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
-import { FULFILLMENT_WORK_REPOSITORY_TOKEN } from './fulfillment.tokens';
+import {
+  FULFILLMENT_WORK_REPOSITORY_TOKEN,
+  ROUTING_DECISION_REPOSITORY_TOKEN,
+} from './fulfillment.tokens';
 import { FulfillmentHoldOrmEntity } from './infrastructure/persistence/entities/fulfillment-hold.orm-entity';
 import { FulfillmentWorkLineOrmEntity } from './infrastructure/persistence/entities/fulfillment-work-line.orm-entity';
 import { FulfillmentWorkOrmEntity } from './infrastructure/persistence/entities/fulfillment-work.orm-entity';
+import { RoutingDecisionOrmEntity } from './infrastructure/persistence/entities/routing-decision.orm-entity';
 import { FulfillmentWorkRepository } from './infrastructure/persistence/repositories/fulfillment-work.repository';
+import { RoutingDecisionRepository } from './infrastructure/persistence/repositories/routing-decision.repository';
 
 @Module({
   imports: [
@@ -36,12 +41,15 @@ import { FulfillmentWorkRepository } from './infrastructure/persistence/reposito
       FulfillmentWorkOrmEntity,
       FulfillmentWorkLineOrmEntity,
       FulfillmentHoldOrmEntity,
+      RoutingDecisionOrmEntity,
     ]),
   ],
   providers: [
     FulfillmentWorkRepository,
     { provide: FULFILLMENT_WORK_REPOSITORY_TOKEN, useExisting: FulfillmentWorkRepository },
+    RoutingDecisionRepository,
+    { provide: ROUTING_DECISION_REPOSITORY_TOKEN, useExisting: RoutingDecisionRepository },
   ],
-  exports: [FULFILLMENT_WORK_REPOSITORY_TOKEN],
+  exports: [FULFILLMENT_WORK_REPOSITORY_TOKEN, ROUTING_DECISION_REPOSITORY_TOKEN],
 })
 export class FulfillmentModule {}

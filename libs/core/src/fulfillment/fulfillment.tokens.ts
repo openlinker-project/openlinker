@@ -26,3 +26,5 @@
  */
 
 export const FULFILLMENT_WORK_REPOSITORY_TOKEN = Symbol('FulfillmentWorkRepositoryPort');
+
+export const ROUTING_DECISION_REPOSITORY_TOKEN = Symbol('RoutingDecisionRepositoryPort');
