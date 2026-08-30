@@ -19,6 +19,8 @@ import type {
   PaginatedInvoiceRecords,
   RegulatoryClearanceResult,
 } from '../../domain/types/invoicing.types';
+import type { SalesDocumentInFlight } from '@openlinker/core/sales-documents';
+
 import type { InvoiceRecord } from '../../domain/entities/invoice-record.entity';
 
 export interface IInvoiceService {
@@ -117,6 +119,34 @@ export interface IInvoiceService {
    * when no record exists for the order. Backs the order-detail invoice projection.
    */
   getLatestInvoiceForOrder(orderId: string): Promise<InvoiceRecord | null>;
+
+  /**
+   * Is an invoice for this order being issued RIGHT NOW (#2521, ADR-042
+   * amendment #2502 decision 2)?
+   *
+   * The invoicing half of the same readable signal `IFiscalRegistrationService`
+   * exposes, answering in the shared neutral shape so a per-order surface
+   * covering both document kinds does not branch on which context replied.
+   *
+   * A pure READ over persisted state - no lock, no provider call, nothing
+   * attempted. Answers from `InvoiceRecord.isLeaseLive`, the same predicate the
+   * write path claims against, so what an operator is shown and what a second
+   * attempt would hit cannot drift. `null` means no live claim, INCLUDING an
+   * expired one: an expired lease means the previous attempt died, not that one
+   * is running.
+   *
+   * VISIBILITY ONLY. The lease semantics, the exactly-once guarantee and the
+   * 409 a concurrent write receives are all unchanged.
+   *
+   * Consumed by the per-order sales-document projection, which reports both
+   * kinds through this one shape. It is deliberately not surfaced on the
+   * invoicing HTTP reads: a second field there would be superseded by that
+   * projection rather than complement it. Until the projection lands this method
+   * has no production caller, which is why its spec asserts the negative
+   * properties - no lock, no adapter, no write - rather than only its return
+   * shape.
+   */
+  getInFlightIssuance(orderId: string): Promise<SalesDocumentInFlight | null>;
 
   /**
    * Distinct invoicing connection ids that hold ANY `InvoiceRecord` for this

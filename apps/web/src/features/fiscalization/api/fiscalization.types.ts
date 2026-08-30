@@ -44,7 +44,25 @@ export interface FiscalRegistrationRecord {
   updatedAt: string;
 }
 
-export type FiscalReconcileOutcome = 'resolved' | 'not-found' | 'unsupported';
+/**
+ * Mirrors `FiscalReconcileOutcomeValues` in
+ * `libs/core/src/fiscalization/domain/types/fiscalization.types.ts`.
+ *
+ * The browser bundle cannot import `@openlinker/core`, so this is a hand-written
+ * copy and it drifts silently in both directions - a value added only to core
+ * never reaches the browser, and one added only here type-checks against
+ * something the API will never send. `scripts/check-fiscal-reconcile-outcome-mirror.mjs`
+ * enforces the equality under `pnpm check:invariants`; this comment is not the
+ * enforcement.
+ *
+ * Only `resolved` changes the record. The other three leave it exactly as it
+ * was, and none of them licenses a resend.
+ */
+export type FiscalReconcileOutcome =
+  | 'resolved'
+  | 'not-found'
+  | 'unsupported'
+  | 'still-unknown';
 
 export interface ReconcileFiscalRegistrationResult {
   outcome: FiscalReconcileOutcome;

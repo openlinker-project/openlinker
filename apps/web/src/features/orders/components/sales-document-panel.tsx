@@ -434,10 +434,31 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
           } else if (result.outcome === 'not-found') {
             showToast({
               tone: 'info',
-              title: t('fiscalReceipt.reconcile.notFound', 'Still not found'),
+              title: t('fiscalReceipt.reconcile.notFound', 'No registration found'),
               description: t(
                 'fiscalReceipt.reconcile.notFoundBody',
-                'The provider has no matching registration yet. This will keep checking.',
+                'The provider reports no registration for this sale. Nothing changed here, and OpenLinker will not register it again on its own.',
+              ),
+            });
+          } else if (result.outcome === 'still-unknown') {
+            // INTERIM (#2522/#2583). Before this branch existed `still-unknown`
+            // fell into the `else` below and told the operator the provider
+            // cannot be queried, which is false: the check worked and simply did
+            // not settle.
+            //
+            // The copy names the OUTCOME and never its cause. The usual cause is
+            // a provider holding the sale, but the same outcome also covers an
+            // answer OpenLinker could not read, where nothing about the provider
+            // is known - so saying "the provider has the sale" would assert what
+            // no adapter reported, which is the defect this branch exists to
+            // stop. The backend distinguishes the two on the record's `detail`;
+            // whether to surface that is M9's call, not this branch's.
+            showToast({
+              tone: 'info',
+              title: t('fiscalReceipt.reconcile.stillUnknown', 'Still not confirmed'),
+              description: t(
+                'fiscalReceipt.reconcile.stillUnknownBody',
+                'The check did not confirm a registration, and did not find that one is missing either. Nothing changed here. You can check again.',
               ),
             });
           } else {
