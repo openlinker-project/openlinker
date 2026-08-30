@@ -19910,3 +19910,111 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   color: var(--text-muted);
   overflow-wrap: anywhere;
 }
+
+/* ── Document lifecycle trail (#2536) ──────────────────────────────────
+   One step per persisted stage of an invoice. State is carried by the
+   marker's SHAPE as well as its tint, and each step announces its state in
+   words, so the trail survives without colour. */
+
+.document-lifecycle {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.document-lifecycle__step {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto auto auto;
+  gap: 2px;
+  padding-top: var(--space-3);
+}
+
+/* The connector runs from the previous marker to this one, so the first step
+   has none to its left and the last none to its right. */
+.document-lifecycle__step::before {
+  content: '';
+  position: absolute;
+  top: 5px;
+  left: 0;
+  right: 50%;
+  height: 2px;
+  background: var(--border-subtle);
+}
+
+.document-lifecycle__step:first-child::before {
+  left: 50%;
+}
+
+.document-lifecycle__step--done::before {
+  background: var(--status-success-border);
+}
+
+.document-lifecycle__marker {
+  position: absolute;
+  top: 0;
+  left: calc(50% - 6px);
+  display: inline-grid;
+  place-items: center;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--border-strong);
+  background: var(--bg-surface);
+  color: var(--text-inverse);
+}
+
+.document-lifecycle__step--done .document-lifecycle__marker {
+  border-color: var(--status-success);
+  background: var(--status-success);
+}
+
+.document-lifecycle__step--error .document-lifecycle__marker {
+  border-color: var(--status-error);
+  background: var(--status-error);
+}
+
+.document-lifecycle__step--active .document-lifecycle__marker {
+  border-color: var(--status-info);
+  animation: document-lifecycle-pulse 1.6s var(--ease-out) infinite;
+}
+
+@keyframes document-lifecycle-pulse {
+  0% {
+    opacity: 1;
+  }
+  70% {
+    opacity: 0.45;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* The marker's shape and the announced state word both survive without it. */
+@media (prefers-reduced-motion: reduce) {
+  .document-lifecycle__step--active .document-lifecycle__marker {
+    animation: none;
+  }
+}
+
+.document-lifecycle__label {
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.document-lifecycle__step--todo .document-lifecycle__label {
+  color: var(--text-muted);
+}
+
+.document-lifecycle__time {
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
