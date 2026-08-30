@@ -157,8 +157,10 @@ The repo has four existing CSS/geometry contract tests, all reading `src/index.c
 3. **For each surface × {375, 768, 1024}**, via Chrome DevTools MCP: resize, navigate, then evaluate and record
    `document.documentElement.scrollWidth` vs `clientWidth` (and the same on `document.body`), plus `getBoundingClientRect()` for elements where overlap or clipping is plausible.
    - Horizontal page scroll is a defect **except** inside `.data-table__container` and `RawPayloadPanel` (style guide § Responsive).
-   - *Acceptance*: a table of measured numbers covering every surface in § 2, at all three widths.
+   - **Also record `window.innerWidth` and the two `matchMedia` verdicts** — `matchMedia('(max-width: 767.98px)').matches` and `matchMedia('(max-width: 768px)').matches` — at every width. A classic vertical scrollbar makes `documentElement.clientWidth` ~15 px narrower than the width media queries evaluate against, which at the 768 px boundary (the whole subject of F1) can invert the reading. Recording both verdicts **observes** which branch each rule took instead of inferring it from a rect.
+   - *Acceptance*: a table of measured numbers covering every surface in § 2, at all three widths, each row carrying both `matchMedia` verdicts.
 4. **Open every dialog and measure it too** — `place-order-hold`, `release-order-hold`, `automation-composer-dialog`, return custody/decline/dispose, the who-decides `ConfirmDialog`. At 375 px specifically: every control reachable (scroll within the dialog is acceptable; clipped/unreachable is not), no control cut off horizontally, footer buttons not pushed off-screen.
+   - **Vertical scroll inside a dialog is by design, not a finding.** `.dialog__content` is `width: min(520px, 92vw); max-height: min(90vh, 720px); overflow-y: auto` (index.css:5241-5244), so at 375 px it is 345 px wide and scrolls internally on purpose. What to look for is **horizontal** clipping, or a footer rendered outside the scroll container so it cannot be reached at all.
    - *Acceptance*: per dialog, at 375 px, a recorded rect for the dialog and for its footer actions, and an explicit statement that each control is reachable.
 5. **Re-verify the returns segment strip at 375 px** (F4) — measure each `.returns-segment` rect and assert no vertical overlap between consecutive rows.
    - *Acceptance*: recorded rects; no overlap.
@@ -169,10 +171,15 @@ The repo has four existing CSS/geometry contract tests, all reading `src/index.c
 
 **Goal**: minimal, local repairs for what Phase 1 measured. Each fix is justified by a recorded number.
 
+**If a surface measures clean, nothing is changed for it, and that is a complete result.** The deliverable of this issue is the recorded geometry; a surface with no defect owes no fix and no CSS test, and the PR says so per surface. Stated explicitly because an audit that finds little creates quiet pressure to manufacture a change to justify the issue — which would add unmeasured risk to surfaces that are working.
+
 7. **F1 — normalise the who-decides breakpoint** if the 768 px measurement shows the mobile layout firing in the tablet band. Change `max-width: 768px` → the `767.98px` spelling already in the file.
    - *File*: `apps/web/src/index.css` (the `.who-decides-row` block, ~L20097)
    - *Acceptance*: at 768 px the row renders its multi-column grid; at 375 px it renders single-column; both measured.
 8. **F2 — surface the returns orphan signal in the mobile card** (per Q1's default), reusing the existing badge rendering rather than a new component.
+   - **Use the `summary` slot**, not `meta` and not `detail`. `data-table.tsx` documents `summary` as the *"always-visible summary block … the handful of facts worth showing before expanding"* — an orphan flag is a fact. `meta` already carries `<ReturnStageCell>` (a different fact, and stacking two status signals in one slot is what #2100's independent-parts rule warns against), and `detail` can be collapsed behind `collapsibleDetail`, which would re-hide the badge the fix exists to reveal.
+   - **Reuse the existing copy constants** (`RETURNS_ORPHAN_COPY.badge` / `.explanation`, `features/returns/lib/returns-list.copy.ts`). `features/returns` is a live `check-ui-vocabulary` scan root; reused copy is gate-clean by construction, and a new string is not.
+   - **Prefer an existing class.** `returns-styles.test.ts` asserts every rendered `returns-*` class has a rule in `index.css`, so a NEW `returns-*` class obliges a CSS rule in the same commit. Reusing `StatusBadge`'s own markup avoids the obligation entirely.
    - *Files*: `apps/web/src/pages/returns/returns-list-page.tsx` (the `cardView` config), possibly `apps/web/src/features/returns/components/return-order-cell.tsx`
    - *Acceptance*: at 375 px an orphan return's card carries the same error-tone badge the desktop cell carries; the existing `returns-list-page.test.tsx` still passes; a new assertion covers the card branch.
 9. **Any horizontal-overflow fix Phase 1 surfaced**, scoped to the offending rule. Use `.card-button-reset` for any card-in-button; never a fresh partial reset.
@@ -182,9 +189,13 @@ The repo has four existing CSS/geometry contract tests, all reading `src/index.c
 
 **Goal**: nothing in the pipeline parses `index.css`, so any CSS invariant introduced or changed here gets a test.
 
-10. **Add or extend a CSS contract test** for each CSS invariant this issue introduces or changes. Follow `card-button-reset-styles.test.ts`: strip comments, match rule bodies, compare selectors as **whole tokens** (never `css.includes('.' + name)` — the #2589 trap, which has already produced a false pass on this branch), and include a **guard-of-the-guard** (a deliberately-truncated selector must return no rules).
-    - Candidate: a breakpoint-consistency assertion — every Wave-2 mobile-bound media query uses one spelling — with the guard-of-the-guard being a fabricated selector.
-    - *File*: extend `who-decides-styles.test.ts` for the breakpoint, or add a focused sibling.
+10. **Add or extend a CSS contract test** for each CSS invariant this issue introduces or changes. Combine the two in-tree precedents:
+    - **Finding the right rule** — `ConnectionFold.test.tsx:105` (`queryFor`): brace-match each `@media` block so only that block's OWN body is searched. Its comments record why the naive approaches fail (a `split('@media ')` sweeps up every rule following a block, and the selector also appears outside any media query in a comma group).
+    - **Anchoring the selector** — `card-button-reset-styles.test.ts`: strip comments, match rule bodies, compare selectors as **whole tokens** (never `css.includes('.' + name)` — the #2589 trap, which has already produced a false pass on this branch), plus a **guard-of-the-guard** (a deliberately-truncated selector must return no rules).
+
+    **The assertion is per-selector, never file-wide.** An earlier draft proposed *"every Wave-2 mobile-bound media query uses one spelling"*; that is **unimplementable** and must not be attempted. `index.css` is one global 21k-line stylesheet with no provenance marker, so a test cannot know which rules are Wave-2 — written literally it fails on `.error-list__row` (index.css:10458, `max-width: 768px`, **pre-existing**) and on the `640px` automation block that R3 deliberately leaves alone. The only outcomes are a permanently-red test or one quietly narrowed to an unstated hardcoded list, and a test weakened after it failed is the #2589 shape in a new costume.
+    - **Concrete form**: assert that the media query guarding `.who-decides-row` is exactly `(max-width: 767.98px)`. One selector, one expected string, honest about its scope, and it still catches the regression.
+    - *File*: extend `who-decides-styles.test.ts`, or add a focused sibling.
 11. **See every new assertion fail first.** Temporarily break the CSS (or the markup), observe red, restore, observe green. State in the PR, per test, that it was seen red. An assertion nobody has seen fail is a claim, not a guard.
     - *Acceptance*: an explicit red-then-green statement for every new assertion.
 
