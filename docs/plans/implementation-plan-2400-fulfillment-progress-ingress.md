@@ -7,6 +7,86 @@
 
 ---
 
+## 0-bis. Amendment after `/tech-review` (2026-08-31) — READ BEFORE §0
+
+The plan below was reviewed and four findings were accepted by the coordinator. **Where this
+section and the sections below disagree, this section wins.** The originals are left intact
+because their reasoning is still the record of why the alternatives were weighed.
+
+### A1 (was BLOCKING) — `record()` ships with NO production caller
+
+§4 declares webhook-as-trigger / authoritative pull; §9 Phase 4 then built a
+`FulfillmentProgressEvent` — line deltas included — out of the trigger payload, which
+`CanonicalInboundEvent.payload` documents as *"Non-authoritative payload hint; never source of
+truth."* Two facts make that unshippable rather than merely untidy. The specified
+`FulfillmentWorkStatusSyncPayloadV1` carries **no deltas**, so the handler as described cannot
+compile; and closing that by widening the payload would move counters off an unauthenticated
+hint — exactly what the #904 discipline exists to prevent, and what the `master.*` arms
+deliberately decline to do.
+
+**Resolution.** The handler resolves nothing, records nothing, and returns `{ outcome: 'ok' }`
+after a `log`. `IFulfillmentProgressService.record()` is exercised by specs only.
+
+This is the repo's established posture, not a consolation prize: `FulfillmentRouterPort` (#2393)
+ships with no implementer, and all four vocabulary leaves shipped ahead of their consumers so
+that the contexts adopting them adopt one spelling. The adjacent precedent is ADR-042, which
+records that eparagony's fiscalization webhook was deliberately **not** wired because a
+registered decoder would authenticate every delivery and then dead-letter it. This change is the
+inverse — add the domain member so the delivery *routes* — and stops short of a progress write
+nothing can authorise yet.
+
+**Consequences for the ACs, to be stated plainly in the PR body rather than left to inference:**
+AC1 is **fully discharged** (a fulfillment-domain webhook routes instead of dead-lettering, proven
+through the real ingress). AC2 and AC3 are **spec-level**: the dedup and the claim-before-intent
+ordering are asserted against `record()` directly, because no production path reaches it yet.
+
+### A2 (was IMPORTANT) — `externalWorkId` is deferred to #2399 entirely
+
+D3 chose a `fulfillment_works.externalWorkId` column, and flagged itself open for #2399. With A1
+applied, the argument that decided it — "`record()` stays self-sufficient" — largely evaporates,
+since `record()` has no production caller to be self-sufficient *for*. A migration is also the
+single hardest artefact to unship, and guessing the shape hands #2399 a schema it must migrate
+away from.
+
+**Dropped from this PR**: the `externalWorkId` column, its partial unique index, that half of the
+migration, and the read path in `record()`. **`record()` therefore takes a `workId`** — an
+internal id, entering as an argument. That is the better fit for ADR-053's *"order data enters as
+ARGUMENTS"* discipline the context already follows, which is why `FulfillmentWork.orderId` is a
+plain internal-id string and not an `Order`.
+
+**#2399 inherits the choice** between D3's alternatives (a) `IIdentifierMappingService` resolution
+in the handler and (c) the column, and is the party that knows, because it owns the writer and
+therefore knows whether the vendor reference is per-connection (mapping-shaped) or intrinsic to
+the row (column-shaped).
+
+The `unknown-work` outcome status is **retained** — `record()` still reads the work to validate it
+exists before claiming, and a `workId` naming no row is a real, nameable outcome.
+
+**This PR still ships ONE migration**, for `fulfillment_progress_claims`, and it is still covered
+by a migration-parity spec — that spec remains the only automated check of a migration anywhere in
+this repo (the harness sets `migrationsRun: false` and builds by `synchronize`).
+
+### A3 (was IMPORTANT) — the `'return'` arm's over-permissive gate needs a terminal outcome
+
+Gating on `OrderSource` rather than `ReturnSourceReader` is correct (§3's #2085 reasoning stands),
+but it is over-permissive in the other direction: a plain `OrderSource` connection with no
+`ReturnSourceReader` (PrestaShop, WooCommerce) passes the gate and enqueues
+`marketplace.return.sync`, which then fails at the guard narrowing. That must be a **named
+terminal `business_failure`** (ADR-007), never ten attempts against a structural condition no
+retry can change, and it needs its own spec case beside the `ungated` one.
+
+### A4 (was SUGGESTION x2) — name the command that produces each RED
+
+- `apps/worker/test/integration/fulfillment-no-injection-boot.int-spec.ts` needs an **explicit**
+  `pnpm --dir apps/worker exec jest --runTestsByPath <file>` run: the root `test:integration`
+  script is `@openlinker/api` only (#2670), so listing it as "must stay green" without saying so
+  leaves it unexercised.
+- The `assertFullLaneCoverage()` red lands at worker **boot**, not in `pnpm test`. Record which
+  command produced it — an unlabelled red is how a false pass gets written down.
+
+
+---
+
 ## 0. The Three Decisions (read this first)
 
 ### D1 — `IFulfillmentProgressService` lives in `libs/core/src/fulfillment/`, and returns a relay INTENT rather than firing a relay
