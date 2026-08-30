@@ -388,6 +388,8 @@ export type TokenName = keyof typeof tokens;
 
 **Adding a token**: declare it in `index.css` first, then add an entry to `tokens.ts` matching the name verbatim, then re-run `pnpm lint` to confirm the drift check passes. **Removing a token**: drop both sides in the same PR.
 
+**Structural guarantee (#2674)**: the token check reads `index.css` by regex and says nothing about whether the file is *well-formed*, so a second guard covers that — `scripts/check-css-structure.mjs`, also chained into `check:invariants`, parses every stylesheet in the repo and fails on an unclosed block, a stray `}`, an unclosed comment or an unterminated string, reporting `file:line:column`. It exists because a merge resolution once dropped a closing brace in `index.css` and the result passed lint, type-check, 4142 web tests and 130 integration suites: under CSS nesting a missing `}` does not error, it silently re-scopes every following rule as a descendant, so the styles are still present in the file and simply never apply. Class-presence assertions cannot catch that — the class still appears.
+
 ## Shared UI catalog (`shared/ui/index.ts`)
 
 The frontend's public component catalog lives at `apps/web/src/shared/ui/index.ts` (#611). Anything re-exported there is part of the contract plugin authors and host code can compose against. Anything not in the catalog is internal — renaming, moving, or deleting it shouldn't break consumers.
