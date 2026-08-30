@@ -232,6 +232,29 @@ describe('SalesDocumentViewService', () => {
     expect(view?.blockDetail).toBe('2 invoicing connections, none marked primary');
   });
 
+  it.each([
+    ['not asserted by the source', null, undefined],
+    ['asserted to have none', '', false],
+    ['asserted verbatim', '1234567890', true],
+  ])(
+    'should carry the buyer tax id state %s into the routing facts (#2599)',
+    async (_label, column, expected) => {
+      orderRecords.findByIds.mockResolvedValue([orderRecord({ buyerTaxId: column })]);
+      rules.resolveRoutingBatch.mockResolvedValue([
+        { kind: 'unresolved', reason: 'no-configuration-for-country' },
+      ]);
+
+      await service.getForOrders(['ol_order_1']);
+
+      // Must match `toSalesDocumentOrderFacts` exactly: a rule keying on
+      // `buyerHasTaxId` that the gate matches and the projection does not
+      // would make the row promise a document the gate never issues.
+      expect(rules.resolveRoutingBatch).toHaveBeenCalledWith([
+        expect.objectContaining({ buyerHasTaxId: expected }),
+      ]);
+    },
+  );
+
   it('should keep an order with no document in the map, with the kind routing resolves', async () => {
     orderRecords.findByIds.mockResolvedValue([orderRecord()]);
     connections.list.mockResolvedValue([connection()]);
