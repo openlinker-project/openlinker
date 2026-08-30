@@ -763,6 +763,15 @@ identical on both sides and therefore eligible to be treated as shared context. 
 one no gate parses (CSS, YAML, JSON fixtures), treat the structural check as **mandatory** rather
 than a double-check, since nothing downstream will do it for you.
 
+**Partly graduated (#2674)**: the stylesheet half of this lesson is now a gate.
+`scripts/check-css-structure.mjs` runs under `pnpm lint` (chained into `check:invariants`) and fails
+on an unclosed block, a stray `}`, an unclosed comment or an unterminated string in any `.css` /
+`.scss` / `.sass` / `.less` file, reporting `file:line:column`. Two things it deliberately does not
+do, so the manual habit above still matters everywhere else: it does not parse **YAML or JSON
+fixtures**, and it does not check **parenthesis balance** (a dropped `)` in `@media (min-width: 700px {`
+leaves braces balanced and still kills the block - deferred as #2677). The seam re-read remains the rule for every
+artefact the gate does not cover.
+
 **Applies to**: any merge or rebase touching an append-heavy file — a stylesheet, a barrel, a job-type
 union, a DI provider list, a long positional constructor. Sharpest when several parallel bodies of
 work land in one integration branch, because every one of them appends at the same seam.
