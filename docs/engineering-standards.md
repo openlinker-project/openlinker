@@ -810,7 +810,7 @@ export class ProductService {
 
 1. **Every context owns a `<ctx>/<ctx>.tokens.ts` file.** All Symbol tokens for the context live there — `libs/core/src/inventory/inventory.tokens.ts`, `libs/core/src/listings/listings.tokens.ts`, etc.
 2. **The context sub-barrel does `export * from './<ctx>.tokens';`** — never cherry-pick a subset. A new token added to `<ctx>.tokens.ts` is automatically available on `@openlinker/core/<ctx>`; the sub-barrel needs no second edit.
-3. **External consumers import tokens only from the top-level barrel** `@openlinker/core/<ctx>`. Deep paths like `@openlinker/core/<ctx>/<ctx>.tokens` are ESLint-blocked in `libs/integrations/**`, `libs/core/**/domain/ports/**`, and `apps/{api,worker}/**`.
+3. **External consumers import tokens only from the top-level barrel** `@openlinker/core/<ctx>`. Deep paths like `@openlinker/core/<ctx>/<ctx>.tokens` are ESLint-blocked in `libs/integrations/**`, `libs/oms/**`, `libs/core/**/domain/ports/**`, and `apps/{api,worker}/**`.
 4. **Same-context relative imports stay relative.** Inside `libs/core/src/<ctx>/**`, importing `../../<ctx>.tokens` (depth ≤ `../..`) is permitted; the deep-path ESLint rule above matches against the `@openlinker/core/*` prefix and doesn't fire on relative paths.
 5. **Token-naming convention**: `{CONTEXT}_{INTERFACE}_TOKEN` — e.g. `INVENTORY_REPOSITORY_TOKEN`, `OFFER_LINKING_SERVICE_TOKEN`, `IDENTIFIER_MAPPING_PORT_TOKEN`. Symbol description matches the underlying interface name (`Symbol('InventoryRepositoryPort')`).
 6. **`<ctx>.tokens.ts` files must contain only `export const <NAME>_TOKEN = Symbol(...);` declarations.** Non-Symbol exports (types, helpers, constants) belong in `<ctx>.types.ts` or another dedicated file — `export *` from the tokens file in the sub-barrel would otherwise widen the public surface unintentionally.
@@ -1300,8 +1300,9 @@ function processData(data: unknown): void {
 - `@openlinker/core/*` - Core library modules (top-level barrels only — see below)
 - `@openlinker/shared/*` - Shared utilities
 - `@openlinker/api/*` - API application modules
+- `@openlinker/oms` - The first-party OMS product package (#2390, ADR-055). Barrel-only: its `exports` map publishes the root entry point and nothing else, exactly as `libs/core` does.
 
-**The runtime constraint** (#591, #594): `libs/core/package.json` `exports` exposes only the top-level context barrels (`@openlinker/core/<ctx>`) plus two explicit sub-barrels — `@openlinker/core/listings/services` (Nest wiring, #337/#359) and `@openlinker/core/<ctx>/orm-entities` (host-only ORM-entity access, #594). Deep paths like `@openlinker/core/<ctx>/domain/...`, `.../application/...`, `.../infrastructure/...` are **not exported** — they fail at Node runtime with `ERR_PACKAGE_PATH_NOT_EXPORTED`. ESLint guards this in `libs/integrations/**` and `apps/{api,worker}/**`; the `orm-entities` sub-barrels carry an additional ban in `libs/integrations/**` and core port files so plugins never see TypeORM types.
+**The runtime constraint** (#591, #594): `libs/core/package.json` `exports` exposes only the top-level context barrels (`@openlinker/core/<ctx>`) plus two explicit sub-barrels — `@openlinker/core/listings/services` (Nest wiring, #337/#359) and `@openlinker/core/<ctx>/orm-entities` (host-only ORM-entity access, #594). Deep paths like `@openlinker/core/<ctx>/domain/...`, `.../application/...`, `.../infrastructure/...` are **not exported** — they fail at Node runtime with `ERR_PACKAGE_PATH_NOT_EXPORTED`. ESLint guards this in `libs/integrations/**`, `libs/oms/**` (#2390) and `apps/{api,worker}/**`; the `orm-entities` sub-barrels carry an additional ban in `libs/integrations/**`, `libs/oms/**` and core port files so plugins never see TypeORM types.
 
 **Rules**:
 

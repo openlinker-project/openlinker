@@ -53,6 +53,7 @@
     "@openlinker/integrations-prestashop": "workspace:*",
     "@openlinker/integrations-subiekt": "workspace:*",
     "@openlinker/integrations-woocommerce": "workspace:*",
+    "@openlinker/oms": "workspace:*",
     "@openlinker/plugin-sdk": "workspace:*",
     "@openlinker/shared": "workspace:*",
     "bcryptjs": "^3.0.3",

@@ -61,6 +61,11 @@ const SCAN_ROOTS = [
   'libs/integrations/ksef',
   'libs/integrations/subiekt',
   'libs/integrations/woocommerce',
+  // #2390 / ADR-055: the OL-OMS answers from OpenLinker's own tables, not a
+  // vendor API — there is no network boundary to adapt across, and adding one
+  // would put an HTTP hop on the ATP publish hot path for an in-process
+  // consumer (DESIGN §9). Scanned so that stays an enforced fact.
+  'libs/oms',
 ];
 
 const SKIP_DIRS = new Set([

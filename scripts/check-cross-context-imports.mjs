@@ -7,7 +7,7 @@
  *
  * Rule. When a file imports from `@openlinker/core/<ctx>` and the file
  * is in a scope this script walks (`libs/core/src/<ctx>/**`,
- * `libs/integrations/**`, `apps/{api,worker}/**`), the imported symbols
+ * `libs/integrations/**`, `libs/oms/src/**`, `apps/{api,worker}/**`), the imported symbols
  * MUST be on the published-contract surface:
  *
  *   - `I*Service` service interfaces                  (e.g. IIntegrationsService)
@@ -38,10 +38,11 @@
  * Scope. The walker descends into:
  *   - `libs/core/src/<ctx>/**`                          (#713/#721)
  *   - `libs/integrations/<plugin>/**`                   (#719)
+ *   - `libs/oms/src/**`                                 (#2390)
  *   - `apps/{api,worker}/**` (covers src + integration tests)  (#719)
  *
  * Same-context skip applies ONLY when the importer is under
- * `libs/core/src/<ctx>/` — plugins and host apps have no "context" they
+ * `libs/core/src/<ctx>/` — plugins, `libs/oms` and host apps have no "context" they
  * could match against, so every `@openlinker/core/<ctx>` import from
  * those scopes is by definition cross-context and is always checked.
  *
@@ -74,6 +75,7 @@ const repoRoot = join(__dirname, '..');
 const WALKER_ROOTS = [
   ['libs', 'core', 'src'],
   ['libs', 'integrations'],
+  ['libs', 'oms', 'src'],
   ['apps', 'api'],
   ['apps', 'worker'],
 ];
@@ -687,6 +689,7 @@ async function walk(dir) {
  * Classify the importer's scope. Returns:
  *   - `{ kind: 'core', ctx }`         — `libs/core/src/<ctx>/...`
  *   - `{ kind: 'integration', plugin }` — `libs/integrations/<plugin>/...`
+ *   - `{ kind: 'product', pkg }`      — `libs/oms/...`
  *   - `{ kind: 'app', app }`          — `apps/api/...` or `apps/worker/...`
  *   - `null`                          — file is outside any walked scope
  *
@@ -699,6 +702,15 @@ function importerScope(repoRelPath) {
   }
   if (parts.length >= 3 && parts[0] === 'libs' && parts[1] === 'integrations') {
     return { kind: 'integration', plugin: parts[2] };
+  }
+  // `libs/oms` is a first-party product package, not an entry under
+  // `libs/integrations/` (ADR-055) — but it is an integration-SHAPED
+  // consumer of core and is held to the identical contract. It has no
+  // counterpart core context, so, exactly like a plugin, every
+  // `@openlinker/core/<ctx>` import from it is cross-context and is
+  // always checked (the same-context skip is gated on `kind === 'core'`).
+  if (parts.length >= 2 && parts[0] === 'libs' && parts[1] === 'oms') {
+    return { kind: 'product', pkg: 'oms' };
   }
   if (parts.length >= 2 && parts[0] === 'apps' && (parts[1] === 'api' || parts[1] === 'worker')) {
     return { kind: 'app', app: parts[1] };

@@ -1616,11 +1616,12 @@ The rule applies to every consumer of `@openlinker/core/<ctx>` barrels under the
 
 - `libs/core/src/<ctx>/**` — core-to-core seam (#713/#721).
 - `libs/integrations/<plugin>/**` — every plugin's runtime, fixtures, and `__tests__/` (#719).
+- `libs/oms/src/**` — the first-party OMS product package (#2390). Not under `libs/integrations/` (ADR-055 — the `integrations-*` prefix would read as "an adapter to somebody else's OMS"), but an integration-*shaped* consumer of core and held to the identical contract, so the walker classifies it `kind: 'product'` and, exactly like a plugin, never applies the same-context skip.
 - `apps/{api,worker}/**` — host apps, including `src/**` and `test/integration/**` (#719).
 
 `libs/plugin-sdk/src/**` is currently out of scope (no deny-pattern violations) but follows the same contract; if a violation surfaces a one-line walker addition closes the gap. `apps/web/**`, `libs/shared/**`, and `libs/test-kit/**` don't import from `@openlinker/core/*` and stay outside the walker.
 
-Same-context skip applies only when the importer is under `libs/core/src/<ctx>/` — plugins and apps have no counterpart context, so every `@openlinker/core/<ctx>` import from those scopes is by definition cross-context.
+Same-context skip applies only when the importer is under `libs/core/src/<ctx>/` — plugins, `libs/oms` and apps have no counterpart context, so every `@openlinker/core/<ctx>` import from those scopes is by definition cross-context.
 
 ---
 
@@ -1662,6 +1663,9 @@ openlinker/
 │   │   │   └── events/
 │   │   └── package.json
 │   │
+│   ├── oms/                         # @openlinker/oms — the first-party OMS
+│   │                                 #   product package (ADR-055). Peer of
+│   │                                 #   core, NOT an integrations entry.
 │   ├── shared/                      # Shared Utilities
 │   │   ├── src/
 │   │   │   ├── logging/

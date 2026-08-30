@@ -39,6 +39,7 @@ import { SubiektIntegrationModule } from '@openlinker/integrations-subiekt';
 import { InfaktIntegrationModule } from '@openlinker/integrations-infakt';
 import { EparagonyIntegrationModule } from '@openlinker/integrations-eparagony';
 import { FxIntegrationModule } from '@openlinker/integrations-fx';
+import { OmsModule } from '@openlinker/oms';
 
 export const apiPlugins: PluginEntry[] = [
   PrestashopIntegrationModule,
@@ -64,4 +65,10 @@ export const apiPlugins: PluginEntry[] = [
   // Registered API-side as well as worker-side so a future API restamp
   // endpoint fails at boot rather than at runtime against an empty registry.
   FxIntegrationModule,
+  // #2390 / ADR-055: OpenLinker's own OMS. Empty at this stage — the plugin
+  // descriptor and its credential-less connection arrive with #2405. Registered
+  // now because the import from `apps/*` is what makes the rest of the #2390
+  // wiring load-bearing: the jest mappers, the tsconfig paths and the Dockerfile
+  // COPY lines are unexercised, and therefore unverifiable, without it.
+  OmsModule,
 ];

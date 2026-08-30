@@ -571,7 +571,8 @@ integration job builds `dist` first). This bit #916 (api missing `inpost`) and
 `scripts/check-jest-integration-mappers.mjs` (run from `pnpm lint` via
 `pnpm check:invariants`) guards it: for `apps/api` and `apps/worker`, every
 `@openlinker/integrations-*` package imported in `plugins.ts` — plus the base set
-`@openlinker/core` / `@openlinker/shared` / `@openlinker/plugin-sdk` — must have
+`@openlinker/core` / `@openlinker/shared` / `@openlinker/plugin-sdk` /
+`@openlinker/oms` — must have
 **both** a `^<pkg>$` and a `^<pkg>/(.*)$` entry in that app's
 `jest-integration.cjs`, and the bare entry's target file must exist (catches a
 typo'd `src` path). A failure names the app, the package, and the fix (the exact

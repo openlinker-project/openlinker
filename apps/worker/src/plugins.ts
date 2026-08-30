@@ -40,6 +40,7 @@ import { SubiektIntegrationModule } from '@openlinker/integrations-subiekt';
 import { InfaktIntegrationModule } from '@openlinker/integrations-infakt';
 import { EparagonyIntegrationModule } from '@openlinker/integrations-eparagony';
 import { FxIntegrationModule } from '@openlinker/integrations-fx';
+import { OmsModule } from '@openlinker/oms';
 
 export const workerPlugins: PluginEntry[] = [
   PrestashopIntegrationModule,
@@ -68,4 +69,10 @@ export const workerPlugins: PluginEntry[] = [
   // FX retry / reconcile-sweep handlers are worker-side. NOT a plugin - no
   // manifest, no capability, no getCapabilityAdapter path.
   FxIntegrationModule,
+  // #2390 / ADR-055: OpenLinker's own OMS. Empty at this stage — the plugin
+  // descriptor and its credential-less connection arrive with #2405. Registered
+  // now because the import from `apps/*` is what makes the rest of the #2390
+  // wiring load-bearing: the jest mappers, the tsconfig paths and the Dockerfile
+  // COPY lines are unexercised, and therefore unverifiable, without it.
+  OmsModule,
 ];
