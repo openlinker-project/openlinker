@@ -19,6 +19,10 @@
  * @module libs/integrations/prestashop/src/infrastructure/provisioners
  */
 import { Logger } from '@openlinker/shared/logging';
+import {
+  PRESTASHOP_UNNARROWED_MAX_ROWS,
+  readAllPrestashopResourcePages,
+} from '../http/prestashop-paged-read';
 import type { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
 import type {
   PrestashopProductOption,
@@ -71,13 +75,22 @@ export class PrestashopAttributeResolver {
     // Field-selection keeps this per-connection bootstrap lean — we only read
     // id/name (+ id_attribute_group for values), not full option bodies. Uses
     // the same `display` override `listExternalIds` relies on.
+    // Both reads enumerate a whole shop-wide collection with no narrowing filter,
+    // so they get the wide page budget. An option value missing from this map
+    // silently loses a variant's attribute name (#2608).
     const [options, values] = await Promise.all([
-      client.listResources<PrestashopProductOption>('product_options', {
-        display: '[id,name]',
-      }),
-      client.listResources<PrestashopProductOptionValue>('product_option_values', {
-        display: '[id,name,id_attribute_group]',
-      }),
+      readAllPrestashopResourcePages<PrestashopProductOption>(
+        client,
+        'product_options',
+        { display: '[id,name]' },
+        { connectionId, maxRows: PRESTASHOP_UNNARROWED_MAX_ROWS }
+      ),
+      readAllPrestashopResourcePages<PrestashopProductOptionValue>(
+        client,
+        'product_option_values',
+        { display: '[id,name,id_attribute_group]' },
+        { connectionId, maxRows: PRESTASHOP_UNNARROWED_MAX_ROWS }
+      ),
     ]);
 
     const groupNameById = new Map<string, string>();

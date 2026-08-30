@@ -1,7 +1,9 @@
 /**
  * PrestaShop Provisioning Exception
  *
- * Thrown when customer or address provisioning fails in PrestaShop.
+ * Thrown when provisioning a PrestaShop resource fails - customers and addresses,
+ * and since #2616 also catalogue nodes (a category or feature level that cannot be
+ * scanned to the end, where reporting a miss would create a duplicate).
  * Used for provisioning-specific errors like lock acquisition failures,
  * concurrent provisioning conflicts, or missing required data.
  *

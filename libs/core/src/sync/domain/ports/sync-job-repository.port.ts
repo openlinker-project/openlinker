@@ -10,6 +10,7 @@
  * @see {@link SyncJobRepository} for the TypeORM implementation
  */
 import type { SyncJob } from '../entities/sync-job.entity';
+import type { ConnectionBacklogStats } from '../types/connection-sync-status.types';
 import type {
   JobOutcome,
   JobOutcomeReason,
@@ -20,6 +21,7 @@ import type {
   SyncJobGroupFilters,
   SyncJobGroupsResult,
   BulkRetryResult,
+  PenaltyFreeRequeuePatch,
 } from '../types/sync-job.types';
 
 /**
@@ -112,28 +114,58 @@ export interface SyncJobRepositoryPort {
    * validation failed on `marketplace.offer.create`). It is written
    * atomically with the status flip — see issue #400 (Plan B for #391).
    *
+   * `lastAttemptDurationMs` is written in the same UPDATE for the same
+   * reason (#2611): the number must describe the very attempt whose outcome
+   * is being recorded, so it cannot be a second write that could land
+   * separately or not at all.
+   *
    * @param id - Job ID
    * @param outcome - Business outcome of the run (`'ok' | 'business_failure'`)
    * @param outcomeReason - Optional stable code further classifying `outcome` (#1689)
+   * @param lastAttemptDurationMs - Duration of the attempt just completed, in
+   *   milliseconds (#2611). Omit when the caller did not measure an attempt -
+   *   the column is then left untouched rather than set to zero.
    */
-  markSucceeded(id: string, outcome: JobOutcome, outcomeReason?: JobOutcomeReason): Promise<void>;
+  markSucceeded(
+    id: string,
+    outcome: JobOutcome,
+    outcomeReason?: JobOutcomeReason,
+    lastAttemptDurationMs?: number
+  ): Promise<void>;
 
   /**
    * Mark job as failed and schedule retry
    *
+   * A retry wave overwrites `lastAttemptDurationMs` rather than accumulating
+   * into it, so the column means the same thing on a first-attempt row and on
+   * a five-attempt one (#2611). Total time across attempts is deliberately not
+   * persisted: it would mix execution with hours of backoff.
+   *
    * @param id - Job ID
    * @param error - Error message
    * @param nextRunAt - Next retry timestamp
+   * @param lastAttemptDurationMs - Duration of the failed attempt, in milliseconds (#2611)
    */
-  markFailed(id: string, error: string, nextRunAt: Date): Promise<void>;
+  markFailed(
+    id: string,
+    error: string,
+    nextRunAt: Date,
+    lastAttemptDurationMs?: number
+  ): Promise<void>;
 
   /**
    * Mark job as dead (max attempts reached)
    *
    * @param id - Job ID
    * @param error - Final error message
+   * @param lastAttemptDurationMs - Duration of the attempt that died, in
+   *   milliseconds (#2611). Omitted by callers that kill a job which never
+   *   executed and never could (e.g. an unroutable intake message), leaving the
+   *   column as it was. Pass an explicit `null` to CLEAR a number an earlier
+   *   attempt of the SAME job recorded, so the column cannot describe a
+   *   different attempt than this status does (#2611 review).
    */
-  markDead(id: string, error: string): Promise<void>;
+  markDead(id: string, error: string, lastAttemptDurationMs?: number | null): Promise<void>;
 
   /**
    * Requeue a job WITHOUT counting it against `maxAttempts` (#1810 review
@@ -150,8 +182,19 @@ export interface SyncJobRepositoryPort {
    * @param id - Job ID
    * @param error - Informational message (not counted as a failure reason for retry-budget purposes)
    * @param nextRunAt - Next pickup timestamp
+   * @param patch - Optional columns to write in the same UPDATE (#2613/#2611).
+   *   `lastAttemptDurationMs: null` CLEARS a previous attempt's number, which a
+   *   caller must pass whenever the requeue it is recording did not execute -
+   *   leaving the old value beside a new state would describe a different
+   *   attempt than the row's own `lastError`. `deferredTotalMs` carries the
+   *   running deferral budget, so the bound survives a worker restart.
    */
-  requeueWithoutPenalty(id: string, error: string, nextRunAt: Date): Promise<void>;
+  requeueWithoutPenalty(
+    id: string,
+    error: string,
+    nextRunAt: Date,
+    patch?: PenaltyFreeRequeuePatch
+  ): Promise<void>;
 
   /**
    * Find jobs matching filters with offset pagination.
@@ -300,4 +343,39 @@ export interface SyncJobRepositoryPort {
    * @param workerId - Worker instance ID that must currently hold the lock
    */
   heartbeat(id: string, workerId: string): Promise<void>;
+
+  /**
+   * Aggregate one connection's queue facts (#2615): the DUE and deferred
+   * queued counts, running and dead counts, arrivals and successes inside
+   * `windowStart..now`, when the connection last succeeded, the mean attempt
+   * duration over the window, and the creation time of the oldest DUE job.
+   *
+   * Queue depth counts only jobs whose `nextRunAt` has arrived. A job in
+   * retry backoff is queued but nothing is holding it up.
+   *
+   * Historical figures are bounded by `historyStart`. `sync_jobs` has no
+   * retention, so an unbounded aggregate would read every row the connection
+   * ever had; the bound is what keeps the read cost proportional to recent
+   * activity rather than to the whole history.
+   *
+   * The mean EXCLUDES rows whose `lastAttemptDurationMs` is null and reports
+   * the non-null sample size alongside it (#2611) - the column is null on
+   * every row predating its migration, so counting those as zero would
+   * understate every real duration. The value describes one attempt, so this
+   * method deliberately offers no sum: total time spent syncing cannot be
+   * built from it.
+   *
+   * Aggregate-only, so the result size is independent of the number of jobs.
+   *
+   * @param connectionId - Connection UUID
+   * @param windowStart - Start of the observation window
+   * @param historyStart - Lower bound on the rows the historical figures read
+   * @param now - Reference instant deciding which queued jobs are due
+   */
+  getConnectionBacklogStats(
+    connectionId: string,
+    windowStart: Date,
+    historyStart: Date,
+    now: Date
+  ): Promise<ConnectionBacklogStats>;
 }

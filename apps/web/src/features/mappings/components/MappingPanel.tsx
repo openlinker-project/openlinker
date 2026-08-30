@@ -84,6 +84,15 @@ const DEFAULT_EMPTY_STATE_MESSAGE =
  * values (like PrestaShop carrier ids `5`, `12`) render verbatim — the
  * length guard short-circuits anything ≤ 9 chars (#474).
  */
+/**
+ * The muted cue for a derived option (#2607). Says what OpenLinker reads the
+ * option as, so a state that reads as something unexpected is visible before
+ * an order lands in it rather than after.
+ */
+function derivedCue(derivedValue: string): string {
+  return ` - reads as ${derivedValue}`;
+}
+
 function shortValue(value: string): string {
   return value.length <= 9 ? value : `${value.slice(0, 8)}…`;
 }
@@ -104,12 +113,17 @@ function renderOptionLabel(option: MappingOption, suffix: string): ReactNode {
     option.kind === 'dynamic' ? (
       <span className="mapping-option__dynamic-suffix">{suffix}</span>
     ) : null;
+  const derivedSuffix =
+    option.derivedValue === undefined ? null : (
+      <span className="mapping-option__derived-suffix">{derivedCue(option.derivedValue)}</span>
+    );
 
   if (option.label === option.value) {
     return (
       <>
         {option.label}
         {dynamicSuffix}
+        {derivedSuffix}
       </>
     );
   }
@@ -118,6 +132,7 @@ function renderOptionLabel(option: MappingOption, suffix: string): ReactNode {
       {option.label}{' '}
       <span className="mapping-id-hint mono-text">{shortValue(option.value)}</span>
       {dynamicSuffix}
+      {derivedSuffix}
     </>
   );
 }
@@ -133,7 +148,9 @@ function toComboOptions(options: MappingOption[], suffix: string): ComboboxOptio
   return options
     .map((o) => ({
       id: o.value,
-      label: o.kind === 'dynamic' ? `${o.label}${suffix}` : o.label,
+      label:
+        (o.kind === 'dynamic' ? `${o.label}${suffix}` : o.label) +
+        (o.derivedValue === undefined ? '' : derivedCue(o.derivedValue)),
       hint: o.value === o.label ? undefined : shortValue(o.value),
     }))
     .sort((a, b) => a.label.localeCompare(b.label));

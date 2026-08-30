@@ -6,7 +6,9 @@
  *
  * @module libs/integrations/prestashop/src/infrastructure/http/__tests__
  */
+import type { PrestashopSort } from '../prestashop-query.builder';
 import { PrestashopQueryBuilder } from '../prestashop-query.builder';
+import { PrestashopInvalidFilterException } from '../../../domain/exceptions/prestashop-invalid-filter.exception';
 import type { PrestashopConnectionConfig } from '@openlinker/integrations-prestashop';
 
 describe('PrestashopQueryBuilder', () => {
@@ -34,13 +36,45 @@ describe('PrestashopQueryBuilder', () => {
       expect(query).toContain('filter[date_add]');
     });
 
-    it('should add date=1 when updatedSince is provided', () => {
+    it('should add date=1 when updatedAfter is provided', () => {
       const filters = {
-        updatedSince: new Date('2024-01-01'),
+        updatedAfter: '2024-01-01 00:00:00',
       };
       const query = PrestashopQueryBuilder.buildQuery('orders', filters);
       expect(query).toContain('date=1');
       expect(query).toContain('filter[date_upd]');
+    });
+
+    it('should emit updatedAfter verbatim so the worker clock is never an input (#2605)', () => {
+      const original = process.env.TZ;
+      const buildIn = (tz: string): string => {
+        process.env.TZ = tz;
+        return PrestashopQueryBuilder.buildQuery('orders', {
+          updatedAfter: '2024-01-15 10:30:00',
+        });
+      };
+      try {
+        expect(buildIn('UTC')).toContain('filter[date_upd]=>[2024-01-15 10:30:00]');
+        expect(buildIn('Pacific/Kiritimati')).toContain('filter[date_upd]=>[2024-01-15 10:30:00]');
+      } finally {
+        process.env.TZ = original;
+      }
+    });
+
+    it('should emit a sort clause in the order given', () => {
+      const query = PrestashopQueryBuilder.buildQuery('orders', {
+        sort: ['date_upd_ASC', 'id_ASC'],
+      });
+      expect(query).toContain('sort=[date_upd_ASC,id_ASC]');
+    });
+
+    it('should reject a sort entry that is not a bare column plus direction', () => {
+      expect(() =>
+        PrestashopQueryBuilder.buildQuery('orders', { sort: ['date_upd'] as unknown as PrestashopSort[] })
+      ).toThrow(PrestashopInvalidFilterException);
+      expect(() =>
+        PrestashopQueryBuilder.buildQuery('orders', { sort: ['date_upd_ASC,id_DESC'] as unknown as PrestashopSort[] })
+      ).toThrow(PrestashopInvalidFilterException);
     });
 
     it('should format dates correctly for PrestaShop', () => {
@@ -57,7 +91,21 @@ describe('PrestashopQueryBuilder', () => {
         ids: [1, 2, 3],
       };
       const query = PrestashopQueryBuilder.buildQuery('products', filters);
-      expect(query).toContain('filter[id]=[1,2,3]');
+      // Pipe, not comma: PrestaShop reads `[1,3]` as the RANGE 1 to 3 and
+      // `[1|3]` as the OR list of exactly those ids (#2593).
+      expect(query).toContain('filter[id]=[1|2|3]');
+    });
+
+    it('should emit an ordering when one is asked for', () => {
+      const query = PrestashopQueryBuilder.buildQuery('products', {
+        sort: ['date_upd_DESC'],
+      });
+      expect(query).toContain('sort=[date_upd_DESC]');
+    });
+
+    it('should emit no ordering by default', () => {
+      const query = PrestashopQueryBuilder.buildQuery('products', {});
+      expect(query).not.toContain('sort=');
     });
 
     it('should handle status filters', () => {
@@ -73,7 +121,18 @@ describe('PrestashopQueryBuilder', () => {
         status: ['pending', 'processing'],
       };
       const query = PrestashopQueryBuilder.buildQuery('orders', filters);
-      expect(query).toContain('filter[current_state]=[pending,processing]');
+      expect(query).toContain('filter[current_state]=[pending|processing]');
+    });
+
+    it('should pipe-join a custom filter list so PrestaShop reads it as an OR list', () => {
+      const query = PrestashopQueryBuilder.buildQuery('combinations', {
+        custom: { id_product: ['3', '9', '41'] },
+      });
+
+      // A comma is a RANGE in PrestaShop, so `[3,41]` would return every product
+      // between 3 and 41 and nothing for the ids outside that span (#2593).
+      expect(query).toContain('filter[id_product]=[3|9|41]');
+      expect(query).not.toContain('filter[id_product]=[3,9,41]');
     });
 
     it('should handle custom filters', () => {
@@ -86,6 +145,44 @@ describe('PrestashopQueryBuilder', () => {
       const query = PrestashopQueryBuilder.buildQuery('products', filters);
       expect(query).toContain('filter[active]=[1]');
       expect(query).toContain('filter[category_id]=[5]');
+    });
+
+    it('should build a single filter envelope when the custom key is a bare field name', () => {
+      const query = PrestashopQueryBuilder.buildQuery('products', {
+        custom: { reference: 'ol_variant_aaaa' },
+      });
+
+      expect(query).toContain('filter[reference]=[ol_variant_aaaa]');
+      expect(query).not.toContain('filter[filter[');
+    });
+
+    it('should throw when a custom filter key is already wrapped in filter[...]', () => {
+      expect(() =>
+        PrestashopQueryBuilder.buildQuery('products', {
+          custom: { 'filter[reference]': 'ol_variant_aaaa' },
+        })
+      ).toThrow(PrestashopInvalidFilterException);
+    });
+
+    it('should name the offending key and the envelope hint when the filter is wrapped', () => {
+      try {
+        PrestashopQueryBuilder.buildQuery('products', {
+          custom: { 'filter[reference]': 'ol_variant_aaaa' },
+        });
+        fail('expected a PrestashopInvalidFilterException');
+      } catch (error) {
+        const invalid = error as PrestashopInvalidFilterException;
+        expect(invalid.filterKey).toBe('filter[reference]');
+        expect(invalid.message).toContain('filter[...] envelope');
+      }
+    });
+
+    it('should throw when a custom filter key is not a bare field name', () => {
+      expect(() =>
+        PrestashopQueryBuilder.buildQuery('products', {
+          custom: { 'reference&display': 'x' },
+        })
+      ).toThrow(PrestashopInvalidFilterException);
     });
   });
 

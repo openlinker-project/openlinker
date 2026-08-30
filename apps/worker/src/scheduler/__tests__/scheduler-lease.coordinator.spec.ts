@@ -15,7 +15,9 @@ import { SchedulerLeaseCoordinator } from '../scheduler-lease.coordinator';
 import type { SchedulerService } from '../scheduler.service';
 
 describe('SchedulerLeaseCoordinator', () => {
-  let schedulerService: jest.Mocked<Pick<SchedulerService, 'start' | 'stop'>>;
+  let schedulerService: jest.Mocked<
+    Pick<SchedulerService, 'start' | 'stop' | 'refreshOperationalSettings'>
+  >;
   let syncLock: jest.Mocked<SyncLockPort>;
 
   const makeConfig = (overrides: Record<string, string | undefined> = {}): ConfigService =>
@@ -35,7 +37,13 @@ describe('SchedulerLeaseCoordinator', () => {
     );
 
   beforeEach(() => {
-    schedulerService = { start: jest.fn(), stop: jest.fn() };
+    schedulerService = {
+      start: jest.fn(),
+      stop: jest.fn(),
+      // Awaited before start() so the operator-settable cadences are in hand
+      // when the cron jobs are constructed (#2651).
+      refreshOperationalSettings: jest.fn().mockResolvedValue(undefined),
+    };
     syncLock = {
       acquire: jest.fn().mockResolvedValue('tok-1'),
       release: jest.fn().mockResolvedValue(true),

@@ -6,8 +6,15 @@
  * The PS module emits these `objectType`/`eventType` pairs:
  *   - `order`   + `order.created` / `order.status_changed`
  *   - `stock`   + `stock.changed`      → canonical domain `inventory`
- *   - `product` + `product.saved`
+ *   - `product` + `product.saved` / `product.deleted`
  * (`test.ping` is short-circuited by the dispatcher before translation.)
+ *
+ * A deletion is the `product` domain like any other product event (#2647): the
+ * routed `master.product.syncByExternalId` re-reads the product and the
+ * resulting `MasterProductNotFoundError` is the authoritative deletion signal
+ * that stales the variants and pauses the offers (#1599 / #1688 / #1689). The
+ * webhook only says "look at this product now"; it never asserts the deletion
+ * itself, so a rolled-back delete costs one redundant re-sync and nothing more.
  *
  * This is the only place that holds PrestaShop's webhook vocabulary — the
  * core routing policy maps `domain → job` with zero platform knowledge.

@@ -95,6 +95,42 @@ export const prestashopAdapterManifest: AdapterMetadata = {
 const PRESTASHOP_BRAND = 'PrestaShop';
 
 export function createPrestashopPlugin(deps: CreatePrestashopPluginDeps): AdapterPlugin {
+  // One factory for the lifetime of the plugin, not one per capability
+  // resolution (#2592).
+  //
+  // The factory's resolver fields (shop currency, features, product tax rate,
+  // order currency) each carry a per-connection cache and each says in its own
+  // docblock that it is a "process-singleton" so the cache survives the adapter
+  // instances the master sweep builds per product. Constructing the factory
+  // inside `createCapabilityAdapter` discarded every one of those caches on the
+  // next job, so the code described a lifetime it did not have: measured, the
+  // shop's default currency was re-read on EVERY child job, two requests each
+  // (`GET /api/configurations` + `GET /api/currencies/<id>`), which was 2 of
+  // 7.96 requests per SKU on a catalogue sweep and 2 of 3.00 on an inventory
+  // sweep.
+  //
+  // Hoisting is safe because the factory holds no per-connection state: its
+  // constructor takes only connection-independent collaborators, and the
+  // connection is a parameter of `createAdapters`, not a field.
+  //
+  // Every one of those caches is now process-lifetime, so each entry has to be
+  // safe to serve to a later job, and the TTLs on them are real for the first
+  // time. Two things follow, both handled where the caches live rather than
+  // here. The factory drops a connection's caches when the shop identity in its
+  // config changes, so repointing a connection at another shop does not keep
+  // serving the old shop's answers under the same key - see
+  // `PrestashopAdapterFactory.dropCachesOnShopIdentityChange`. And the tax-rate
+  // cache, the one whose key space grows with SKU count, sweeps expired entries
+  // under a cap, because a sweep never reads an entry again and so never evicts
+  // one.
+  const factory = new PrestashopAdapterFactory(
+    deps.customerProvisioner,
+    deps.addressProvisioner,
+    deps.customerProjectionRepository,
+    deps.mappingConfigService,
+    deps.webhookSecretProvider,
+  );
+
   return {
     manifest: prestashopAdapterManifest,
 
@@ -152,13 +188,6 @@ export function createPrestashopPlugin(deps: CreatePrestashopPluginDeps): Adapte
       capability: string,
       host: HostServices,
     ): Promise<T> {
-      const factory = new PrestashopAdapterFactory(
-        deps.customerProvisioner,
-        deps.addressProvisioner,
-        deps.customerProjectionRepository,
-        deps.mappingConfigService,
-        deps.webhookSecretProvider,
-      );
       const adapters = await factory.createAdapters(
         connection,
         host.identifierMapping,

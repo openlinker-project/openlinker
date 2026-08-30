@@ -395,6 +395,86 @@ describe('OrderIngestionService', () => {
       expect(result.committed).toBe(false);
       expect(syncCursors.advanceCursor).not.toHaveBeenCalled();
     });
+
+    const feedWithCursor = (nextCursor: string) => ({
+      items: [
+        {
+          externalOrderId: 'order-1',
+          eventType: 'updated' as const,
+          occurredAt: '2026-01-15T10:30:00Z',
+          eventKey: 'event-1',
+        },
+      ],
+      nextCursor,
+    });
+
+    const ingestWithCursors = async (fromCursor: string, nextCursor: string) => {
+      lock.acquire.mockResolvedValueOnce('token-1');
+      lock.release.mockResolvedValueOnce(true);
+      syncCursors.getCursor.mockResolvedValueOnce(fromCursor);
+      orderSource.listOrderFeed.mockResolvedValueOnce(feedWithCursor(nextCursor));
+      jobQueue.enqueueBulk.mockResolvedValueOnce([]);
+      return service.ingestOrders(connectionId, { cursorKey, limit: 10 });
+    };
+
+    it('does not commit when a timestamp watermark cursor moves backwards', async () => {
+      const result = await ingestWithCursors('2026-01-15T10:30:00Z', '2026-01-15T09:30:00Z');
+
+      expect(result.committed).toBe(false);
+      expect(syncCursors.advanceCursor).not.toHaveBeenCalled();
+    });
+
+    it('commits when a timestamp watermark cursor moves forward', async () => {
+      const result = await ingestWithCursors('2026-01-15T09:30:00Z', '2026-01-15T10:30:00Z');
+
+      expect(result.committed).toBe(true);
+      expect(syncCursors.advanceCursor).toHaveBeenCalledWith(
+        connectionId,
+        cursorKey,
+        '2026-01-15T10:30:00Z'
+      );
+    });
+
+    it('commits when a naive wall-clock watermark cursor moves forward', async () => {
+      const result = await ingestWithCursors('2026-01-15 09:30:00', '2026-01-15 10:30:00');
+
+      expect(result.committed).toBe(true);
+      expect(syncCursors.advanceCursor).toHaveBeenCalledWith(
+        connectionId,
+        cursorKey,
+        '2026-01-15 10:30:00'
+      );
+    });
+
+    it('commits an opaque cursor core cannot order rather than wedging ingestion', async () => {
+      // A base64 event id that sorts backwards as text. Blocking here would halt
+      // this connection permanently on a legitimate forward move.
+      const result = await ingestWithCursors('ZXZlbnQtMjAw', 'ZXZlbnQtMTAw');
+
+      expect(result.committed).toBe(true);
+      expect(syncCursors.advanceCursor).toHaveBeenCalledWith(
+        connectionId,
+        cursorKey,
+        'ZXZlbnQtMTAw'
+      );
+    });
+
+    it('commits a shorter numeric cursor that is lexicographically larger', async () => {
+      const result = await ingestWithCursors('99', '100');
+
+      expect(result.committed).toBe(true);
+      expect(syncCursors.advanceCursor).toHaveBeenCalledWith(connectionId, cursorKey, '100');
+    });
+
+    it('warns once per connection and cursor key about an unorderable cursor shape', async () => {
+      const warn = jest.spyOn(service['logger'], 'warn');
+
+      await ingestWithCursors('ZXZlbnQtMjAw', 'ZXZlbnQtMTAw');
+      await ingestWithCursors('ZXZlbnQtMTAw', 'ZXZlbnQtMzAw');
+
+      expect(warn).toHaveBeenCalledTimes(1);
+      warn.mockRestore();
+    });
   });
 
   describe('syncOrderFromMarketplace – order record persistence', () => {

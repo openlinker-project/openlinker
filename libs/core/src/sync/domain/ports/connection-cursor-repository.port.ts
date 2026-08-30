@@ -49,6 +49,24 @@ export interface ConnectionCursorRepositoryPort {
   set(connectionId: string, cursorKey: string, value: string): Promise<void>;
 
   /**
+   * Set the cursor only when the new value sorts strictly after the stored one.
+   *
+   * For a cursor used as a freshness MARK, a plain `set` is the wrong write: a
+   * caller whose lock expired mid-call can move the mark backwards and admit a
+   * stale write behind it (#2609 review of #2617). One statement decides, so
+   * two concurrent advances cannot both win.
+   *
+   * PRECONDITION: values are fixed-width, same-format strings that sort in
+   * chronological order - ISO-8601 UTC timestamps as produced by
+   * `Date.toISOString()`. The comparison is textual, so it never throws on an
+   * unexpected value; it simply refuses.
+   *
+   * @returns true when the stored value moved, false when it was already at or
+   *          ahead of `value`
+   */
+  advanceIfGreater(connectionId: string, cursorKey: string, value: string): Promise<boolean>;
+
+  /**
    * Delete cursor for a connection and cursor key
    *
    * Useful for resetting sync state or cleanup.
@@ -81,7 +99,15 @@ export interface ConnectionCursorRepositoryPort {
    * @returns Full cursor object or null if not found
    */
   findOne(connectionId: string, cursorKey: string): Promise<ConnectionCursor | null>;
+
+  /**
+   * When any of this connection's cursors last advanced, or null when it
+   * holds none.
+   *
+   * A dedicated read rather than a limit-1 page of `findMany`, which pays a
+   * `COUNT(*)` over every cursor row and discards it.
+   *
+   * @param connectionId - Connection UUID
+   */
+  findMostRecentUpdate(connectionId: string): Promise<Date | null>;
 }
-
-
-

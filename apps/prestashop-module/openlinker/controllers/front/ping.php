@@ -16,6 +16,7 @@
  *   - Success:       200 with `{ ok: true }` after the synchronous webhook
  *                    delivery returns 2xx.
  *   - Auth failure:  401 with `{ error: "<reason>" }`.
+ *   - Wrong method:  405 with `{ error: "method-not-allowed" }`.
  *   - Send failure:  502 with `{ error: "<sanitized message>" }`.
  *
  * The endpoint deliberately bypasses the outbox (skips the cron tick latency)
@@ -39,6 +40,13 @@ class OpenLinkerPingModuleFrontController extends ModuleFrontController
 
     public function postProcess()
     {
+        // Reject the wrong method before reading a body or touching the secret,
+        // so a plain GET cannot enter the verification path at all (#2619).
+        if (!isset($_SERVER['REQUEST_METHOD']) || $_SERVER['REQUEST_METHOD'] !== 'POST') {
+            $this->respond(405, ['error' => 'method-not-allowed']);
+            return;
+        }
+
         require_once _PS_MODULE_DIR_ . 'openlinker/classes/HmacRequestVerifier.php';
         require_once _PS_MODULE_DIR_ . 'openlinker/classes/WebhookSender.php';
         require_once _PS_MODULE_DIR_ . 'openlinker/classes/OutboxEvent.php';

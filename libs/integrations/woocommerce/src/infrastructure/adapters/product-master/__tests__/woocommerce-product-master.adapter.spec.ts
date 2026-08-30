@@ -110,6 +110,50 @@ describe('WooCommerceProductMasterAdapter', () => {
       expect(result).toEqual(['1', '3']);
     });
 
+    // WooCommerce's REST layer caps `per_page` at 100 on every list endpoint.
+    // This is a real platform wall, unlike the advisory ceilings in
+    // OPERATIONAL_SETTING_BOUNDS, so it is enforced where the request is built
+    // — the only place that knows WooCommerce is the adapter about to send it.
+    //
+    // It REFUSES rather than clamping (#2660 review): this method feeds the
+    // worker's `readPagedIds`, which treats a page shorter than the REQUESTED
+    // size as the end of the collection. A clamped page is always short, so
+    // clamping made every sweep cycle "complete" after 100 products and sweep
+    // the same 100 on every tick for ever, behind one warn line.
+    it('should refuse a page size above the WooCommerce maximum of 100', async () => {
+      const httpClient = makeHttpClient();
+      httpClient.get.mockResolvedValue([]);
+      const adapter = makeAdapter(httpClient, makeIdentifierMapping(), makeMapper());
+
+      await expect(adapter.listExternalIds({ limit: 250, offset: 0 })).rejects.toThrow(
+        /100/,
+      );
+      expect(httpClient.get).not.toHaveBeenCalled();
+    });
+
+    it('should name the offending value so the refusal says what to change', async () => {
+      const httpClient = makeHttpClient();
+      httpClient.get.mockResolvedValue([]);
+      const adapter = makeAdapter(httpClient, makeIdentifierMapping(), makeMapper());
+
+      await expect(adapter.listExternalIds({ limit: 250, offset: 0 })).rejects.toThrow(
+        /250/,
+      );
+    });
+
+    it('should send a page size the platform accepts unchanged', async () => {
+      const httpClient = makeHttpClient();
+      httpClient.get.mockResolvedValue([]);
+      const adapter = makeAdapter(httpClient, makeIdentifierMapping(), makeMapper());
+
+      await adapter.listExternalIds({ limit: 100, offset: 0 });
+
+      expect(httpClient.get).toHaveBeenCalledWith(
+        '/wp-json/wc/v3/products',
+        expect.objectContaining({ per_page: 100 }),
+      );
+    });
+
     it('should translate offset to page correctly (offset=100, limit=100 → page=2)', async () => {
       const httpClient = makeHttpClient();
       httpClient.get.mockResolvedValue([]);
