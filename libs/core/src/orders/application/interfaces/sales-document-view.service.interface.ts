@@ -44,4 +44,17 @@ export interface ISalesDocumentViewService {
    * Duplicate ids are collapsed. Returns an empty map for an empty input.
    */
   getForOrders(orderIds: readonly string[]): Promise<Map<string, SalesDocumentView>>;
+
+  /**
+   * The same projection for one order, or `null` when no `order_records` row
+   * exists for it (#2517).
+   *
+   * Deliberately the batched read applied to one id rather than a second
+   * assembly path: the order-detail panel and the `/orders` row must agree
+   * about the same order, and two code paths building one shape is exactly how
+   * they stop agreeing. `null` is the caller's 404, never an all-null
+   * projection - an order OpenLinker has never seen has no document state to
+   * describe.
+   */
+  getForOrder(orderId: string): Promise<SalesDocumentView | null>;
 }

@@ -78,6 +78,11 @@ const VALUE_EXPORT_ALLOWED = new Map([
         '#2155 - InvoicingModule value-imports it, which is the cycle this seam was created to break.',
       ],
       ['PaymentStatusValues', '#2155 - the runtime array beside PAYMENT_STATUS, same consumer.'],
+      [
+        'readBuyerTaxId',
+        '#2599 - `toSalesDocumentOrderFacts` (invoicing) value-imports it, which is the same cycle this seam breaks: the main barrel re-exports OrdersModule, whose module file value-imports @openlinker/core/invoicing.',
+      ],
+      ['buyerHasTaxId', '#2599 - the three-state predicate beside readBuyerTaxId, same consumer.'],
     ]),
   ],
 ]);

@@ -65,6 +65,7 @@ import type { OrderRecord } from '../../domain/entities/order-record.entity';
 import { OrderRecordRepositoryPort } from '../../domain/ports/order-record-repository.port';
 import { ORDER_RECORD_REPOSITORY_TOKEN } from '../../orders.tokens';
 import { PriceTaxTreatmentValues } from '../../domain/types/order.types';
+import { buyerHasTaxId } from '../../domain/types/buyer-tax-id.types';
 
 /** Capability names a connection must enable to be a routing candidate at all. */
 const INVOICING_CAPABILITY = 'Invoicing';
@@ -139,6 +140,10 @@ export class SalesDocumentViewService implements ISalesDocumentViewService {
       });
     }
     return views;
+  }
+
+  async getForOrder(orderId: string): Promise<SalesDocumentView | null> {
+    return (await this.getForOrders([orderId])).get(orderId) ?? null;
   }
 
   /**
@@ -254,9 +259,13 @@ function toDocumentKind(decision: SalesDocumentDecision | null): SalesDocumentKi
  * country survives PII redaction (`sanitizeAddress` keeps it: a country code
  * is not PII), so this does not vary with `OL_STORE_PII`.
  *
- * `buyerHasTaxId` stays `undefined` for the same reason the gate's mapper
- * leaves it undefined: the order contract carries no such field, and
- * "unknown" must not collapse into "known to have none".
+ * `buyerHasTaxId` is read off the record's own three-state buyer tax id
+ * (#2599) through the SAME `buyerHasTaxId` helper the gate's mapper uses, so
+ * the projection and the gate answer a `buyerHasTaxId` rule identically.
+ * `undefined` (the source asserted nothing) never collapses into `false` (the
+ * source asserted the buyer has none) - `buyerTaxIdState` is the only intended
+ * read of the column, because a bare `!== null` test reports true for the
+ * asserted-none row.
  */
 function toOrderFacts(record: OrderRecord): SalesDocumentOrderFacts | null {
   const country = readDeliveryCountry(record.orderSnapshot);
@@ -268,7 +277,7 @@ function toOrderFacts(record: OrderRecord): SalesDocumentOrderFacts | null {
     totalGross: record.totalAmount,
     currency: record.currency,
     ...(isTaxTreatment(record.taxTreatment) ? { taxTreatment: record.taxTreatment } : {}),
-    buyerHasTaxId: undefined,
+    buyerHasTaxId: buyerHasTaxId(record.buyerTaxIdState),
   };
 }
 
