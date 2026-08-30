@@ -108,23 +108,31 @@ export function deriveStockHeadline(
   const variantWord = totalCount === 1 ? 'variant' : 'variants';
   const connectionIds = uniqueValues(items.map((item) => item.connectionId));
   const buffers = uniqueValues(items.map((item) => item.stockSafetyBuffer));
+  const thresholds = uniqueValues(items.map((item) => item.stockZeroThreshold));
 
-  const sharesOneConnectionAndBuffer =
+  const sharesOneConnectionAndPolicy =
     items.length > 0 &&
     items.length === totalCount &&
     connectionIds.length === 1 &&
-    buffers.length === 1;
+    buffers.length === 1 &&
+    thresholds.length === 1;
 
-  if (sharesOneConnectionAndBuffer) {
+  if (sharesOneConnectionAndPolicy) {
+    // Naming the knob that actually silenced the line, since the two are
+    // different fixes: raise the master stock, or lower the threshold.
+    const sub =
+      thresholds[0] > 0
+        ? `buffer ${buffers[0]}, low-stock floor ${thresholds[0]} — below the floor the channel is told 0`
+        : `buffer ${buffers[0]} — published stock is master stock minus the buffer`;
     return {
-      headline: `${totalCount} ${variantWord} at or below the safety buffer on ${connectionName(connectionIds[0])}`,
-      sub: `buffer ${buffers[0]} — published stock is master stock minus the buffer`,
+      headline: `${totalCount} ${variantWord} publishing no stock on ${connectionName(connectionIds[0])}`,
+      sub,
     };
   }
 
   return {
-    headline: `${totalCount} ${variantWord} are at or below their channel's safety buffer`,
-    sub: 'buffers vary by channel — open each variant to see the arithmetic',
+    headline: `${totalCount} ${variantWord} are publishing no stock to their channel`,
+    sub: 'each channel has its own buffer and low-stock floor — open a variant to see the arithmetic',
   };
 }
 

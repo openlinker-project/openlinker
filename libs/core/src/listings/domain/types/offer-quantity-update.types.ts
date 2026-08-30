@@ -20,6 +20,18 @@ export interface UpdateOfferQuantityCommand {
    * Optional idempotency key. If absent, core orchestration should generate one deterministically.
    */
   idempotencyKey?: string;
+
+  /**
+   * ISO timestamp of the inventory observation this quantity was derived from
+   * (#2617). Core orchestration refuses a write whose observation is older than
+   * the newest one already written for the offer, so two concurrent writes
+   * resolve to the newer quantity whatever order they arrive in.
+   *
+   * Optional: a caller with no observation to quote (the stale-offer pause,
+   * which zeroes a listing on its own authority) writes unguarded, exactly as
+   * before.
+   */
+  observedAt?: string;
 }
 
 /**

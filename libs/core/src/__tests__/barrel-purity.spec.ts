@@ -167,4 +167,63 @@ describe('@openlinker/core/<context> barrel purity (#598)', () => {
       }
     }
   });
+
+  /**
+   * The mirror of the assertion above, for the OTHER half of the same cycle.
+   *
+   * `orders.module.ts` value-imports `@openlinker/core/invoicing`, and the main
+   * `@openlinker/core/orders` barrel re-exports `OrdersModule`. So a VALUE
+   * import of that main barrel from anywhere inside `invoicing` closes
+   * `invoicing -> orders -> invoicing` at module-load time. This is not
+   * hypothetical: #2599 shipped exactly that import, having already added both
+   * functions it needed to the `orders/types` cycle-breaker sub-barrel, and no
+   * invariant in the repo objected. `check-cross-context-imports.mjs` allows
+   * `is*` / entity / pure-constant shapes without looking at whether the import
+   * is a value import of a module-exporting barrel, and the leaf assertion above
+   * only walks `sales-documents`.
+   *
+   * Type-only imports of the main barrel stay allowed: they erase, so they add
+   * no runtime edge. A value import must come from `@openlinker/core/orders/types`.
+   */
+  it('invoicing never VALUE-imports the main @openlinker/core/orders barrel (#2599)', () => {
+    const root = join(__dirname, '..', 'invoicing');
+    const files: string[] = [];
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (entry.name.endsWith('.ts') && !entry.name.endsWith('.spec.ts')) files.push(full);
+      }
+    };
+    walk(root);
+
+    expect(files.length).toBeGreaterThan(0);
+
+    const offenders: string[] = [];
+    for (const file of files) {
+      const withoutComments = readFileSync(file, 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, ' ')
+        .replace(/\/\/.*$/gm, '');
+      const statements = [
+        ...withoutComments.matchAll(/import\s+(type\s+)?([^'";]*?)from\s+['"]([^'"]+)['"]/g),
+      ];
+      for (const [, typeOnly, clause, specifier] of statements) {
+        if (specifier !== '@openlinker/core/orders') continue;
+        if (typeOnly) continue;
+        // `import { type Order } from ...` — an inline-type-only clause also
+        // erases entirely, so it is as safe as a statement-level `import type`.
+        const bindings = (clause.match(/\{([\s\S]*)\}/)?.[1] ?? '')
+          .split(',')
+          .map((b) => b.trim())
+          .filter((b) => b.length > 0);
+        const hasValueBinding =
+          bindings.length === 0 || bindings.some((b) => !b.startsWith('type '));
+        if (hasValueBinding) {
+          offenders.push(`${file}: import ${clause.trim()} from '${specifier}'`);
+        }
+      }
+    }
+
+    expect(offenders).toEqual([]);
+  });
 });

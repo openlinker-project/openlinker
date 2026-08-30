@@ -21,7 +21,10 @@ import {
   CONNECTION_CURSOR_REPOSITORY_TOKEN,
 } from '@openlinker/core/sync';
 import { IOfferStatusSyncService, OFFER_STATUS_SYNC_SERVICE_TOKEN } from '@openlinker/core/listings';
+import { ConfigService } from '@nestjs/config';
+import { SYNC_LOCK_TOKEN, type SyncLockPort } from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
+import { resolveScanSweepLockTtlMs, runExclusiveScanSweep } from '../scan-sweep-lock';
 
 type SyncJob = SyncJobEntity;
 
@@ -36,10 +39,34 @@ export class MarketplaceOfferStatusSyncHandler implements SyncJobHandler {
     @Inject(OFFER_STATUS_SYNC_SERVICE_TOKEN)
     private readonly offerStatusSync: IOfferStatusSyncService,
     @Inject(CONNECTION_CURSOR_REPOSITORY_TOKEN)
-    private readonly cursorRepository: ConnectionCursorRepositoryPort
+    private readonly cursorRepository: ConnectionCursorRepositoryPort,
+    @Inject(SYNC_LOCK_TOKEN)
+    private readonly syncLock: SyncLockPort,
+    private readonly configService: ConfigService
   ) {}
 
+  /**
+   * One page per run, and at most one run per connection (#2594 review).
+   *
+   * The page below reads the scan cursor and writes it back, so two runs for
+   * one connection would race it and skip a whole cycle of rows. The `bulk`
+   * lane used to serialise them at `perScope: 1`; it no longer does.
+   */
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
+    return runExclusiveScanSweep({
+      syncLock: this.syncLock,
+      kind: 'offer-status',
+      connectionId: job.connectionId,
+      lockTtlMs: resolveScanSweepLockTtlMs(
+        this.configService.get<string>('OL_SCAN_SWEEP_LOCK_TTL_MS')
+      ),
+      jobType: 'marketplace.offer.statusSync',
+      logger: this.logger,
+      run: () => this.syncPage(job),
+    });
+  }
+
+  private async syncPage(job: SyncJob): Promise<SyncJobHandlerResult> {
     const payload = this.getPayload(job);
     const cursorKey = payload.cursorKey ?? DEFAULT_CURSOR_KEY;
     const storedOffset = await this.cursorRepository.get(job.connectionId, cursorKey);

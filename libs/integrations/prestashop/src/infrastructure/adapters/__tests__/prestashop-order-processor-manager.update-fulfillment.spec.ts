@@ -15,19 +15,14 @@ import { PrestashopApiException } from '@openlinker/integrations-prestashop';
 describe('PrestashopOrderProcessorManagerAdapter — updateFulfillment', () => {
   let adapter: OrderProcessorHarness['adapter'];
   let mockHttpClient: OrderProcessorHarness['mockHttpClient'];
-  let mockOrderMapper: OrderProcessorHarness['mockOrderMapper'];
 
   beforeEach(() => {
-    ({ adapter, mockHttpClient, mockOrderMapper } = createOrderProcessorManagerHarness());
+    ({ adapter, mockHttpClient } = createOrderProcessorManagerHarness());
   });
 
   describe('updateFulfillment (#858)', () => {
     const PS_ORDER_ID = '5001';
     const SHIPPED_STATE_ID = 4;
-
-    beforeEach(() => {
-      mockOrderMapper.mapStatusToPrestashopStateId = jest.fn().mockReturnValue(SHIPPED_STATE_ID);
-    });
 
     it('should transition state via POST order_histories with sendmail when not in the target state', async () => {
       mockHttpClient.getResource = jest
@@ -36,7 +31,6 @@ describe('PrestashopOrderProcessorManagerAdapter — updateFulfillment', () => {
 
       await adapter.updateFulfillment({ externalOrderId: PS_ORDER_ID, status: 'shipped' });
 
-      expect(mockOrderMapper.mapStatusToPrestashopStateId).toHaveBeenCalledWith('shipped');
       // sendmail=1 (the buyer "shipped" email) is requested via the typed option.
       expect(mockHttpClient.createResource).toHaveBeenCalledWith(
         'order_histories',

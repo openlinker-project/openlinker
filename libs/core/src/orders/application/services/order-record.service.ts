@@ -10,6 +10,10 @@
  */
 import { Injectable, Inject } from '@nestjs/common';
 import type { Order, OrderDispatchWindow } from '../../domain/types/order.types';
+import {
+  encodeBuyerTaxIdColumn,
+  readBuyerTaxId,
+} from '../../domain/types/buyer-tax-id.types';
 import { OrderRecordRepositoryPort } from '../../domain/ports/order-record-repository.port';
 import { OrderLineItemRepositoryPort } from '../../domain/ports/order-line-item-repository.port';
 import { OrderRecord } from '../../domain/entities/order-record.entity';
@@ -182,6 +186,19 @@ export class OrderRecordService implements IOrderRecordService {
     // dispatchByAt above, from the same already-resolved Order. See ADR-039.
     const analyticsScalars = deriveOrderAnalyticsScalars(order);
 
+    // Buyer tax id (#2599) - denormalized so routing and gating never expand
+    // JSONB, and so the value outlives the snapshot's PII redaction.
+    //
+    // PII-gated exactly like `customerEmail` above, and for the same reason: a
+    // sole trader's tax id identifies a natural person, and `sanitizeAddress`
+    // already drops it from the snapshot under hash-only mode. Keeping the
+    // scalar would leave the one buyer identifier the redaction was meant to
+    // remove. Not-stored reads back as "the source asserted nothing", which is
+    // the honest answer for a deployment that chose not to keep it.
+    const buyerTaxId = piiConfig.storePii
+      ? encodeBuyerTaxIdColumn(readBuyerTaxId(order))
+      : null;
+
     const orderRecord = new OrderRecord(
       order.id,
       order.customerId || null,
@@ -199,7 +216,26 @@ export class OrderRecordService implements IOrderRecordService {
       analyticsScalars.placedAt,
       analyticsScalars.currency,
       analyticsScalars.taxTreatment,
-      analyticsScalars.totalAmount
+      analyticsScalars.totalAmount,
+      // The thirteen columns between here and `buyerTaxId` all default to
+      // `null` and are owned by their own narrow UPDATEs (cancellation, the
+      // three salesDocument* reasons, the six FX snapshot columns, the two
+      // block-episode timestamps, taxRateEra). Restated explicitly only because
+      // this is a positional constructor and the new argument sits past them.
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      buyerTaxId
     );
 
     // #1985: persist the order record AND its order_line_items rows in one

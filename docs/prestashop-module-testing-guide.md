@@ -899,20 +899,21 @@ After trying these solutions, refresh the module manager page and try installing
 
 **Solution**: The module implements **automatic deduplication** to prevent duplicate events:
 
-1. **Deterministic Event IDs**: Event IDs are generated based on product ID + event type + time window (same minute)
-2. **Database-Level Deduplication**: Uses `INSERT IGNORE` with unique constraint on `event_id`
-3. **Result**: Only 1 event is created even if the hook fires 6+ times
+1. **Deterministic dedup key**: each row carries a `dedup_key` derived from connection + event type + object type + object ID, with no timestamp in it
+2. **Database-Level Deduplication**: uses `INSERT IGNORE` with a unique index on `dedup_key`, and the key is set to `NULL` once the row is delivered or fails for good
+3. **Result**: only 1 event is created even if the hook fires 6+ times, while a later change to the same product still gets its own row (#2603)
 
 **Verification**: Check that deduplication is working:
 
 ```sql
--- Should return 0 rows (no duplicates)
-SELECT event_id, COUNT(*) as count
+-- Should return 0 rows (no two queued rows for the same subject)
+SELECT dedup_key, COUNT(*) as count
 FROM ps_openlinker_webhook_outbox
-GROUP BY event_id
+WHERE dedup_key IS NOT NULL
+GROUP BY dedup_key
 HAVING count > 1;
 
--- Should see only 1 event per product save (within same minute)
+-- Should see only 1 event per product save
 SELECT id, event_type, external_id, created_at
 FROM ps_openlinker_webhook_outbox
 WHERE external_id = '23' AND event_type = 'product.saved'
@@ -920,8 +921,8 @@ ORDER BY created_at DESC;
 ```
 
 **If you still see duplicates**:
-1. Check `event_id` column has unique constraint: `SHOW CREATE TABLE ps_openlinker_webhook_outbox;`
-2. Verify `EventIdGenerator::generateEventId()` uses deterministic logic (not random UUIDs)
+1. Check the `dedup_key` column has a unique index: `SHOW CREATE TABLE ps_openlinker_webhook_outbox;`
+2. Verify `EventIdGenerator::generateDedupKey()` is deterministic over the subject
 3. Verify `OutboxRepository::enqueueEvent()` uses `INSERT IGNORE`
 
 **Note**: Events created in different minutes are correctly treated as separate events (this is expected behavior).
@@ -983,6 +984,7 @@ ORDER BY created_at DESC;
 - **Processing Events**: Events currently being delivered (should be temporary)
 - **Failed Events**: Events that reached max retry attempts
 - **Delivered (Last 24h)**: Successfully delivered events in the last 24 hours
+- **Total Rows in Outbox**: every row, next to the hard cap. Red means over the cap.
 
 **Why you might see many "Processing Events"**:
 - Events were claimed for delivery but the HTTP request timed out or failed
@@ -1013,6 +1015,111 @@ WHERE status='processing';
 ```
 
 **Note**: The "Run Delivery Now" button should automatically requeue all processing events before claiming new ones. If you still see processing events after clicking it, there may be an issue with the HTTP delivery (timeout, connection error, etc.).
+
+### Test Outbox Retention (#2604)
+
+Retention deletes finished rows only. It runs from the cron controller at most
+once an hour, and "Run Delivery Now" forces a pass.
+
+```sql
+-- Age a delivered row past the 7-day default horizon
+UPDATE ps_openlinker_webhook_outbox
+SET updated_at = DATE_SUB(NOW(), INTERVAL 10 DAY)
+WHERE status = 'delivered'
+LIMIT 1;
+```
+
+Then click "Run Delivery Now". The confirmation message reports `1 old event(s)
+pruned`, and the row is gone. Repeat with `status = 'pending'` aged the same way:
+that row must still be there afterwards. Queued and in-flight rows are never
+deleted, whatever their age.
+
+The cron response carries the same report:
+
+```bash
+curl -s "http://localhost:8080/index.php?fc=module&module=openlinker&controller=cron&token=YOUR_TOKEN" | jq .retention
+# {"ran":true,"deleted_delivered":1,"deleted_failed":0,"deleted_over_cap":0,"rows":42,"rows_capped":false,"backlog_over_cap":false,"drain_pending":false}
+```
+
+`"ran": false` on a second call within the hour is the interval gate, not a
+failure. `"backlog_over_cap": true` means the table is over its 100000-row cap
+with no finished rows left to prune, so the excess is undelivered events -
+check webhook delivery rather than expecting retention to clear it.
+
+`"drain_pending": true` means the pass spent its whole 10000-row budget, so the
+hourly gate is rewound and the next cron tick continues instead of waiting. On a
+per-minute cron that is up to 600000 rows an hour, which is what lets a legacy
+table of millions clear in minutes of ticks rather than weeks. `"rows_capped":
+true` means the row count stopped at its probe bound, so the figure is a floor
+and an operator-facing count reads as `110001+`.
+
+The `DELETE` statements are covered by
+`apps/prestashop-module/openlinker/tests/Integration/OutboxRetentionSqlTest.php`
+against real MySQL 8:
+
+```bash
+docker run -d --rm --name ol-outbox-mysql -e MYSQL_ROOT_PASSWORD=root \
+  -e MYSQL_DATABASE=outbox -p 3399:3306 mysql:8.0
+cd apps/prestashop-module/openlinker
+OPENLINKER_TEST_MYSQL_DSN='mysql:host=127.0.0.1;port=3399;dbname=outbox' \
+OPENLINKER_TEST_MYSQL_USER=root OPENLINKER_TEST_MYSQL_PASSWORD=root \
+  vendor/bin/phpunit --testsuite Integration
+```
+
+Queued, retryable and leased rows survive every pass; a failed row outlives a
+delivered row of the same age; the oldest finished rows go first; and a pass
+stops at its budget so the next one resumes. The statement builder itself is
+pinned without a database in `tests/Unit/OutboxRetentionTest.php`, which asserts
+that a retention `DELETE` can only ever name `delivered` or `failed` and never
+mentions `pending` or `processing`.
+
+### Retry backoff: reset on recovery and jitter
+
+The retry delay is the longer of two exponential curves, then jittered down.
+
+- The row's own curve, `60 s * 2^attempts`, capped at 6 hours. A row that keeps
+  failing on its own account backs off hard.
+- The endpoint's curve, driven by a counter of consecutive failing delivery runs
+  (`OPENLINKER_OUTBOX_FAILURE_STREAK`), capped at 15 minutes. This is what stops
+  a dead endpoint being retried from scratch by every new row: each hook fire
+  during an outage enqueues a row at `attempts = 0`, so without it retry
+  pressure grew with the number of changes the shop made.
+- Jitter is uniform over `[delay / 2, delay]`. Fifty rows that failed in the
+  same second no longer retry in the same second, and the delay is never near
+  zero, so a still-dead endpoint is not hammered.
+
+The first successful delivery clears the streak and sets `next_attempt_at` back
+to `NULL` for every waiting row, so a backlog queued during an outage drains as
+soon as the endpoint answers instead of waiting out delays computed while it was
+down. "Test connection" goes through the same path, so a successful probe also
+releases the backlog. A row's own `attempts` is never reset - it is the bound
+that lets a genuinely undeliverable row reach `failed` rather than retrying
+forever.
+
+To see it by hand: point the base URL at a dead host, click "Run Delivery Now"
+a few times, and watch `next_attempt_at` move out while
+`OPENLINKER_OUTBOX_FAILURE_STREAK` climbs by one per run. Point it back at a
+live OpenLinker, run once, and every pending row's `next_attempt_at` is `NULL`
+again.
+
+The bounds are pinned without a database in
+`tests/Unit/OutboxRetryBackoffTest.php` (the randomness is a parameter, so
+nothing is flaky), and the state around them in
+`tests/Integration/OutboxBackoffSqlTest.php` against real MySQL 8.
+
+### Upgrading an install whose outbox is already in the millions
+
+The 1.4.0 upgrade adds the `(status, updated_at)` index the deletes read. It
+runs `ALGORITHM=INPLACE, LOCK=NONE` so the shop keeps writing to the outbox
+while the index builds, lifts the PHP time limit, and takes a named MySQL lock
+so a re-run of the upgrade reports and returns instead of queueing a second
+`ALTER` behind the first. On a very large table, add the index by hand before
+upgrading and the guard will skip it:
+
+```sql
+ALTER TABLE ps_openlinker_webhook_outbox
+ADD KEY status_updated (status, updated_at), ALGORITHM=INPLACE, LOCK=NONE;
+```
 
 ## Quick Test Script
 

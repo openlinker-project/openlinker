@@ -598,6 +598,38 @@ describe('SyncJobRepository', () => {
       expect(ormRepository.findOne).not.toHaveBeenCalled();
     });
 
+    it('should write the deferral budget and the attempt duration when supplied (#2613)', async () => {
+      const jobId = randomUUID();
+      const nextRunAt = new Date();
+
+      ormRepository.update.mockResolvedValue({ affected: 1, generatedMaps: [], raw: [] });
+
+      await repository.requeueWithoutPenalty(jobId, 'deferred', nextRunAt, {
+        lastAttemptDurationMs: 1234,
+        deferredTotalMs: 300_000,
+      });
+
+      expect(ormRepository.update).toHaveBeenCalledWith(
+        jobId,
+        expect.objectContaining({ lastAttemptDurationMs: 1234, deferredTotalMs: 300_000 })
+      );
+    });
+
+    it('should clear a stale attempt duration on an explicit null (#2611 review)', async () => {
+      const jobId = randomUUID();
+
+      ormRepository.update.mockResolvedValue({ affected: 1, generatedMaps: [], raw: [] });
+
+      await repository.requeueWithoutPenalty(jobId, 'waited for a slot', new Date(), {
+        lastAttemptDurationMs: null,
+      });
+
+      expect(ormRepository.update).toHaveBeenCalledWith(
+        jobId,
+        expect.objectContaining({ lastAttemptDurationMs: null })
+      );
+    });
+
     it('should truncate error message if longer than 1000 characters', async () => {
       const jobId = randomUUID();
       const longErrorMessage = 'x'.repeat(2000);
@@ -749,6 +781,114 @@ describe('SyncJobRepository', () => {
     });
   });
 
+  describe('lastAttemptDurationMs (#2611)', () => {
+    beforeEach(() => {
+      ormRepository.update.mockResolvedValue({ affected: 1, generatedMaps: [], raw: [] });
+    });
+
+    it('should write the duration in the same update as the succeeded status flip when a measurement is supplied', async () => {
+      const jobId = randomUUID();
+
+      await repository.markSucceeded(jobId, 'ok', undefined, 1234);
+
+      expect(ormRepository.update).toHaveBeenCalledTimes(1);
+      expect(ormRepository.update).toHaveBeenCalledWith(jobId, {
+        status: 'succeeded',
+        outcome: 'ok',
+        outcomeReason: null,
+        lockedAt: null,
+        lockedBy: null,
+        lastError: null,
+        lastAttemptDurationMs: 1234,
+      });
+    });
+
+    it('should write the duration in the same update as the dead status flip when a job dies', async () => {
+      const jobId = randomUUID();
+
+      await repository.markDead(jobId, 'boom', 9876);
+
+      expect(ormRepository.update).toHaveBeenCalledTimes(1);
+      expect(ormRepository.update).toHaveBeenCalledWith(
+        jobId,
+        expect.objectContaining({ status: 'dead', lastAttemptDurationMs: 9876 })
+      );
+    });
+
+    it('should overwrite the duration on each retry so it always describes the latest attempt', async () => {
+      const jobId = randomUUID();
+      ormRepository.findOne.mockResolvedValue(
+        createMockOrmEntity({ id: jobId, attempts: 3, status: 'running', lastAttemptDurationMs: 50 })
+      );
+
+      await repository.markFailed(jobId, 'boom', new Date(), 700);
+
+      expect(ormRepository.update).toHaveBeenCalledWith(
+        jobId,
+        expect.objectContaining({ attempts: 4, lastAttemptDurationMs: 700 })
+      );
+    });
+
+    it('should leave the column untouched when no measurement is supplied', async () => {
+      const jobId = randomUUID();
+
+      await repository.markSucceeded(jobId, 'ok');
+      await repository.markDead(jobId, 'never ran');
+
+      for (const call of ormRepository.update.mock.calls) {
+        expect(call[1]).not.toHaveProperty('lastAttemptDurationMs');
+      }
+    });
+
+    // #2611 review: an earlier attempt may have recorded a number, so a caller
+    // that knows nothing ran clears the column rather than omitting it.
+    it('should clear the column on an explicit null', async () => {
+      const jobId = randomUUID();
+
+      await repository.markDead(jobId, 'no handler registered', null);
+
+      expect(ormRepository.update).toHaveBeenCalledWith(
+        jobId,
+        expect.objectContaining({ lastAttemptDurationMs: null })
+      );
+    });
+
+    it('should drop a negative or non-finite measurement rather than persisting it as a duration', async () => {
+      const jobId = randomUUID();
+
+      await repository.markSucceeded(jobId, 'ok', undefined, -1);
+      await repository.markSucceeded(jobId, 'ok', undefined, Number.NaN);
+
+      for (const call of ormRepository.update.mock.calls) {
+        expect(call[1]).not.toHaveProperty('lastAttemptDurationMs');
+      }
+    });
+
+    it('should persist a zero measurement, which is a real answer and not an absence', async () => {
+      const jobId = randomUUID();
+
+      await repository.markSucceeded(jobId, 'ok', undefined, 0);
+
+      expect(ormRepository.update).toHaveBeenCalledWith(
+        jobId,
+        expect.objectContaining({ lastAttemptDurationMs: 0 })
+      );
+    });
+
+    it('should map a null column to null on the domain entity, never to zero', () => {
+      const withDuration = createMockOrmEntity({ lastAttemptDurationMs: 4200 });
+      const withoutDuration = createMockOrmEntity({ lastAttemptDurationMs: null });
+
+      // toDomain is private; exercised through the public findById path.
+      const toDomain = (
+        repository as unknown as { toDomain: (e: SyncJobOrmEntity) => SyncJob }
+      ).toDomain.bind(repository);
+
+      expect(toDomain(withDuration).lastAttemptDurationMs).toBe(4200);
+      expect(toDomain(withoutDuration).lastAttemptDurationMs).toBeNull();
+    });
+  });
+
   describe('toDomain', () => {
     it('should convert ORM entity to domain entity', () => {
       const ormEntity = createMockOrmEntity({
@@ -803,6 +943,138 @@ describe('SyncJobRepository', () => {
       expect(() => (repository as any).toDomain(ormEntity)).toThrow('Invalid sync job status');
     });
   });
+
+  describe('getConnectionBacklogStats', () => {
+    const connectionId = randomUUID();
+    const windowStart = new Date('2026-08-27T09:00:00.000Z');
+    const historyStart = new Date('2026-08-20T10:00:00.000Z');
+    const now = new Date('2026-08-27T10:00:00.000Z');
+
+    function mockRows(live: Record<string, unknown>, history: Record<string, unknown>): void {
+      dataSource.query = jest.fn().mockImplementation((sql: string) => {
+        return Promise.resolve(sql.includes('due_count') ? [live] : [history]);
+      });
+    }
+
+    it('should exclude rows with no recorded attempt duration from both the mean and its sample size', async () => {
+      mockRows(
+        {
+          due_count: 15066,
+          deferred_count: 3,
+          running_count: 2,
+          oldest_due_at: new Date('2026-08-24T10:00:00.000Z'),
+        },
+        {
+          dead_count: 4,
+          arrived_in_window: 200,
+          succeeded_in_window: 55,
+          dead_in_window: 0,
+          last_succeeded_at: new Date('2026-08-27T09:30:00.000Z'),
+          avg_attempt_duration_ms: '4200.5',
+          attempt_duration_sample_size: 40,
+        }
+      );
+
+      const result = await repository.getConnectionBacklogStats(
+        connectionId,
+        windowStart,
+        historyStart,
+        now
+      );
+
+      // 55 jobs succeeded, only 40 carried a duration - the sample size is the
+      // non-null count, never the completed count.
+      expect(result.attemptDurationSampleSize).toBe(40);
+      expect(result.averageAttemptDurationMs).toBe(4200.5);
+
+      const sqlTexts = (dataSource.query as jest.Mock).mock.calls.map(
+        (call) => (call as [string, unknown[]])[0]
+      );
+      const historySql = sqlTexts.find((sql) => sql.includes('AVG("lastAttemptDurationMs")'));
+      expect(historySql).toBeDefined();
+      expect(historySql).toContain('"lastAttemptDurationMs" IS NOT NULL');
+      // No SUM anywhere: the column describes one attempt, so a total time
+      // spent syncing must not be derivable from this read.
+      expect(historySql).not.toContain('SUM("lastAttemptDurationMs")');
+    });
+
+    it('should report a null mean rather than zero when no row carried a duration', async () => {
+      mockRows(
+        { due_count: 0, deferred_count: 0, running_count: 0, oldest_due_at: null },
+        {
+          dead_count: 0,
+          arrived_in_window: 0,
+          succeeded_in_window: 3,
+          dead_in_window: 0,
+          last_succeeded_at: null,
+          avg_attempt_duration_ms: null,
+          attempt_duration_sample_size: 0,
+        }
+      );
+
+      const result = await repository.getConnectionBacklogStats(
+        connectionId,
+        windowStart,
+        historyStart,
+        now
+      );
+
+      expect(result.averageAttemptDurationMs).toBeNull();
+      expect(result.attemptDurationSampleSize).toBe(0);
+    });
+
+    it('should count only due jobs as queue depth and report backing-off jobs separately', async () => {
+      mockRows(
+        { due_count: 4, deferred_count: 11, running_count: 1, oldest_due_at: null },
+        {
+          dead_count: 0,
+          arrived_in_window: 0,
+          succeeded_in_window: 0,
+          dead_in_window: 0,
+          last_succeeded_at: null,
+          avg_attempt_duration_ms: null,
+          attempt_duration_sample_size: 0,
+        }
+      );
+
+      const result = await repository.getConnectionBacklogStats(
+        connectionId,
+        windowStart,
+        historyStart,
+        now
+      );
+
+      expect(result.queuedCount).toBe(4);
+      expect(result.deferredCount).toBe(11);
+
+      const liveSql = ((dataSource.query as jest.Mock).mock.calls as Array<[string, unknown[]]>)
+        .map((call) => call[0])
+        .find((sql) => sql.includes('due_count'));
+      expect(liveSql).toContain('"nextRunAt" <= $2');
+      expect(liveSql).toContain("status IN ('queued', 'running')");
+    });
+
+    it('should bound the historical aggregate so it does not read the whole job history', async () => {
+      dataSource.query = jest.fn().mockResolvedValue([]);
+
+      const result = await repository.getConnectionBacklogStats(
+        connectionId,
+        windowStart,
+        historyStart,
+        now
+      );
+
+      const calls = (dataSource.query as jest.Mock).mock.calls as Array<[string, unknown[]]>;
+      const history = calls.find((call) => call[0].includes('arrived_in_window'));
+      expect(history).toBeDefined();
+      expect(history?.[0]).toContain('"createdAt" >= $2');
+      expect(history?.[1]).toEqual([connectionId, historyStart, windowStart]);
+      expect(result.queuedCount).toBe(0);
+      expect(result.oldestQueuedAt).toBeNull();
+    });
+
+  });
+
 });
 
 /**
@@ -823,6 +1095,7 @@ function createMockOrmEntity(overrides?: Partial<SyncJobOrmEntity>): SyncJobOrmE
     lockedAt: null,
     lockedBy: null,
     lastError: null,
+    lastAttemptDurationMs: null,
     createdAt: now,
     updatedAt: now,
     ...overrides,

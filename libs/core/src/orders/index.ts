@@ -72,6 +72,14 @@ export {
   OrderDispatchWindow,
 } from './domain/types/order.types';
 export { OrderPickupPointTypeValues } from './domain/types/order.types';
+export type { BuyerTaxId } from './domain/types/buyer-tax-id.types';
+export {
+  readBuyerTaxId,
+  buyerHasTaxId,
+  encodeBuyerTaxIdColumn,
+  decodeBuyerTaxIdColumn,
+  readSourceBuyerTaxId,
+} from './domain/types/buyer-tax-id.types';
 export { PaymentStatusValues, PAYMENT_STATUS } from './domain/types/payment-status.types';
 export type { PaymentStatus } from './domain/types/payment-status.types';
 export type { CodToCollect } from './domain/types/cod-to-collect.types';

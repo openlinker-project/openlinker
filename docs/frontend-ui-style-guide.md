@@ -88,15 +88,17 @@ Optional right utility rail
 
 ### Left Navigation
 
-The left navigation is persistent and grouped into **three sections by frequency of use**, with a disabled **Planned** footer for IA-anticipated modules that are not yet shipped. This structure was finalized during the FE-002 refactor.
+The left navigation is persistent and grouped **by frequency of use**, with two admin-only groups and a disabled **Planned** footer for IA-anticipated modules that are not yet shipped. This structure was finalized during the FE-002 refactor; the shipped composition lives in `apps/web/src/app/nav-registry.ts`, which is the source of truth.
 
 **Operations** (daily surfaces):
+- Analytics
 - Dashboard
 - Orders
 - Products
-- Inventory
 - Customers
 - Listings
+- Shipments
+- Invoices
 
 **Diagnostics** (debugging surfaces):
 - Jobs & Logs
@@ -104,14 +106,19 @@ The left navigation is persistent and grouped into **three sections by frequency
 - Cursors
 
 **Platform** (configuration):
-- Integrations
+- Connections
 - Adapters
 - Settings
 
+**AI** (admin only):
+- Prompt templates
+- Provider settings
+
+**Administration** (admin only):
+- Users
+
 **Planned** (disabled, `--text-disabled` opacity, non-clickable, tooltip "Coming in a future release"):
 - Automations
-- Shipping
-- Invoices
 
 Rules:
 - No "Live" pills on any live nav item.

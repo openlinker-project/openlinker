@@ -2,8 +2,11 @@
  * Master Inventory Sync All Handler
  *
  * Handles jobs of type 'master.inventory.syncAll'. Enumerates known product
- * external IDs for a connection and enqueues per-product
- * 'master.inventory.syncByExternalId' sub-jobs.
+ * external IDs for a connection and enqueues 'master.inventory.syncBatch'
+ * sub-jobs, each covering a page of products (#2648 - it used to fan out one
+ * 'master.inventory.syncFromSweep' per product, which built a fresh adapter
+ * instance per product and so could never share a bulk stock read; measured at
+ * 100 requests per 100 stock positions).
  *
  * BOUNDED AND RESUMABLE since #2219 (ADR-048 decisions 4-6) — same shape as the
  * product sweep (`runBoundedSweep`), with one difference that matters: this sweep
@@ -45,15 +48,23 @@ import {
   ISyncCursorsService,
   SyncLockPort} from '@openlinker/core/sync';
 import {
+  OPERATIONAL_SETTING_BOUNDS,
+  OPERATIONAL_SETTINGS_SERVICE_TOKEN,
+  type IOperationalSettingsService,
+  type OperationalSettingsView,
+} from '@openlinker/core/operational-settings';
+import {
   IdentifierMappingQueryPort,
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
   CORE_ENTITY_TYPE,
 } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 import {
+  SWEEP_BATCH_SIZE_DEFAULT,
+  SWEEP_BATCH_SIZE_MAX,
   formatSweepCursor,
   parseSweepCursor,
-  resolveSweepBudget,
+  resolveRunBudget,
   resolveSweepLockTtlMs,
   runBoundedSweep,
   sweepCursorKey,
@@ -76,11 +87,30 @@ export class MasterInventorySyncAllHandler implements SyncJobHandler {
     private readonly cursors: ISyncCursorsService,
     @Inject(SYNC_LOCK_TOKEN)
     private readonly syncLock: SyncLockPort,
+    @Inject(OPERATIONAL_SETTINGS_SERVICE_TOKEN)
+    private readonly operationalSettings: IOperationalSettingsService,
     private readonly configService: ConfigService
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
-    const budget = resolveSweepBudget(this.getPayload(job).pageLimit);
+    // Deliberately still the per-item budget (100), NOT the product sweep's
+    // batched 500. #2648 makes the CHILD cheap; choosing what the run may then
+    // afford is a separate decision, taken together with the same question for
+    // the deletion audit and with a measurement to back it. So this run still
+    // covers the same 100 products it covered before - in one child issuing a
+    // handful of requests instead of a hundred children issuing one each.
+    //
+    // What the run may afford is now the OPERATOR's answer rather than a
+    // constant (#2651), resolved per tick so a change needs no restart. The
+    // default is unchanged at 100, so an install that sets nothing sweeps
+    // exactly the same 100 products it swept before.
+    const settings = await this.operationalSettings.resolve();
+    const budget = resolveRunBudget(
+      this.getPayload(job).pageLimit,
+      settings.inventorySweepBudget.value,
+      OPERATIONAL_SETTING_BOUNDS.inventorySweepBudget
+    );
+    const batchSize = this.getBatchSize(settings);
     const lockKey = sweepLockKey('inventory', job.connectionId);
     const lockTtlMs = resolveSweepLockTtlMs(
       this.configService.get<string>('OL_MASTER_SWEEP_LOCK_TTL_MS')
@@ -112,7 +142,8 @@ export class MasterInventorySyncAllHandler implements SyncJobHandler {
             offset,
             pageBudget
           ),
-        enqueue: (externalId, cycleId) => this.enqueueChild(job, externalId, cycleId),
+        groupSize: batchSize,
+        enqueue: (externalIds, cycleId) => this.enqueueChild(job, externalIds, cycleId),
         newCycleId: () => randomUUID(),
       });
 
@@ -155,19 +186,64 @@ export class MasterInventorySyncAllHandler implements SyncJobHandler {
     }
   }
 
-  private async enqueueChild(job: SyncJob, externalId: string, cycleId: string): Promise<unknown> {
+  /**
+   * Enqueue one child covering a whole batch of products (#2648).
+   *
+   * The child is `master.inventory.syncBatch`, not one
+   * `master.inventory.syncFromSweep` per id: a per-product child builds its own
+   * adapter instance, so it cannot benefit from a bulk read no matter how cheap
+   * the read is. The per-product job survives as the fallback for a failed
+   * batch member and as the webhook-driven path's sweep twin.
+   */
+  private async enqueueChild(
+    job: SyncJob,
+    externalIds: readonly string[],
+    cycleId: string
+  ): Promise<unknown> {
     const jobRequest: SyncJobRequest = {
-      jobType: 'master.inventory.syncByExternalId',
+      jobType: 'master.inventory.syncBatch',
       connectionId: job.connectionId,
       payload: {
         schemaVersion: 1,
-        externalId,
-        objectType: CORE_ENTITY_TYPE.Product,
+        externalIds: [...externalIds],
       },
-      // Cycle-scoped, not job-scoped — see the product sweep's note.
-      idempotencyKey: `master:${job.connectionId}:inventory:sync:${externalId}:${cycleId}`,
+      // Keyed on the CYCLE and on the batch's FIRST id, exactly as the product
+      // sweep is: a resuming tick is a different job, so a job-scoped key would
+      // re-enqueue the same child under a fresh key on every overlapping page.
+      // Cycle-scoping also makes a crash between enqueue and cursor write safe -
+      // the retry produces identical keys, since the same offset yields the
+      // same batch boundaries.
+      idempotencyKey: `master:${job.connectionId}:inventory:syncBatch:${externalIds[0]}:${cycleId}`,
     };
     return this.jobEnqueue.enqueueJob(jobRequest);
+  }
+
+  /**
+   * Products per batch child.
+   *
+   * Precedence, and the reason for each step:
+   *
+   * 1. The shared setting when a row OR `OL_SWEEP_PAGE_SIZE` supplied it - used
+   *    VERBATIM. It has already been clamped to the setting's absolute ceiling,
+   *    and narrowing it again here would silently undo a value the operator was
+   *    shown and acknowledged.
+   * 2. Otherwise `OL_INVENTORY_SYNC_BATCH_SIZE`, which survives as a narrower,
+   *    sweep-specific override and keeps its own legacy clamp so an install
+   *    that had tuned only this one is unchanged. Collapsing it into the shared
+   *    setting would silently move the other sweep's page size too.
+   * 3. Otherwise the built-in default.
+   */
+  private getBatchSize(settings: OperationalSettingsView): number {
+    if (settings.sweepPageSize.source !== 'default') {
+      return settings.sweepPageSize.value;
+    }
+    const raw = this.configService.get<string>('OL_INVENTORY_SYNC_BATCH_SIZE');
+    if (raw === undefined) {
+      return settings.sweepPageSize.value;
+    }
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed <= 0) return SWEEP_BATCH_SIZE_DEFAULT;
+    return Math.min(Math.floor(parsed), SWEEP_BATCH_SIZE_MAX);
   }
 
   /**

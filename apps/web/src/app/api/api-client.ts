@@ -60,6 +60,10 @@ import {
 import { createMcpTokensApi, type McpTokensApi } from '../../features/mcp-tokens';
 import { createOrdersApi, type OrdersApi } from '../../features/orders/api/orders.api';
 import {
+  createOperationalSettingsApi,
+  type OperationalSettingsApi,
+} from '../../features/settings/api/operational-settings.api';
+import {
   createSalesDocumentRulesApi,
   type SalesDocumentRulesApi,
 } from '../../features/sales-documents/api/sales-document-rules.api';
@@ -172,6 +176,7 @@ export interface CoreApiClient {
   listings: ListingsApi;
   mailerSettings: MailerSettingsApi;
   mcpTokens: McpTokensApi;
+  operationalSettings: OperationalSettingsApi;
   orders: OrdersApi;
   posthogSettings: PosthogSettingsApi;
   products: ProductsApi;
@@ -393,6 +398,7 @@ export function createApiClient({
     mailerSettings: createMailerSettingsApi(request),
     mcpTokens: createMcpTokensApi(request),
     mappings: createMappingsApi(request),
+    operationalSettings: createOperationalSettingsApi(request),
     orders: createOrdersApi(request),
     posthogSettings: createPosthogSettingsApi(request),
     products: createProductsApi(request),

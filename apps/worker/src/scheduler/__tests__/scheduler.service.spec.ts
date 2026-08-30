@@ -19,9 +19,11 @@ import { SchedulerTaskRegistryService } from '@openlinker/core/sync';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { SchedulerRegistry } from '@nestjs/schedule';
 import type { ConfigService } from '@nestjs/config';
+import { FakeOperationalSettingsService } from '../../testing/operational-settings.double';
 
 describe('SchedulerService', () => {
   let service: SchedulerService;
+  let operationalSettings: FakeOperationalSettingsService;
   let connectionPort: jest.Mocked<ConnectionPort>;
   let jobEnqueue: jest.Mocked<JobEnqueuePort>;
   let integrationsService: jest.Mocked<IIntegrationsService>;
@@ -94,13 +96,16 @@ describe('SchedulerService', () => {
 
     schedulerTaskRegistry = new SchedulerTaskRegistryService();
 
+    operationalSettings = new FakeOperationalSettingsService();
+
     service = new SchedulerService(
       connectionPort,
       jobEnqueue,
       integrationsService,
       configService,
       schedulerRegistry,
-      schedulerTaskRegistry
+      schedulerTaskRegistry,
+      operationalSettings
     );
   });
 
@@ -142,6 +147,60 @@ describe('SchedulerService', () => {
 
       const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
       expect(registeredJobs).toContain('master-inventory-sync');
+    });
+
+    // #2651 — the deletion-audit cadence is operator-settable. A CronJob's
+    // expression is fixed at construction, so the settings snapshot has to be
+    // taken BEFORE start(); the lease coordinator awaits
+    // refreshOperationalSettings() for exactly this reason, and the API
+    // response says `cadenceAppliesAt: 'next-scheduler-start'` rather than
+    // pretending a mid-flight change applies.
+    it('should register the deletion audit at the operator-set cadence (#2651)', async () => {
+      configService.get.mockImplementation(defaultConfigGet);
+      operationalSettings.setValues({
+        deletionAuditCadence: {
+          value: '*/10 * * * *',
+          source: 'setting',
+          workerMayDiffer: false,
+        },
+      });
+
+      await service.refreshOperationalSettings();
+      service.start();
+
+      const call = schedulerRegistry.addCronJob.mock.calls.find(
+        (c) => c[0] === 'master-product-reconcile'
+      );
+      expect(call).toBeDefined();
+      // CronTime normalises the expression it was constructed from.
+      expect(String((call?.[1] as { cronTime: unknown }).cronTime)).toBe(
+        '0 0,10,20,30,40,50 * * * *'
+      );
+    });
+
+    it('should fall back to the env var when no settings snapshot was taken (#2651)', () => {
+      configService.get.mockImplementation((key: string, defaultValue?: unknown) => {
+        if (key === 'OL_MASTER_PRODUCT_RECONCILE_CRON') return '7,37 * * * *';
+        return defaultConfigGet(key, defaultValue);
+      });
+
+      // No refreshOperationalSettings() — a database hiccup while acquiring the
+      // lease must leave every task on its pre-#2651 env-var resolution rather
+      // than stopping the crons registering at all.
+      service.start();
+
+      const call = schedulerRegistry.addCronJob.mock.calls.find(
+        (c) => c[0] === 'master-product-reconcile'
+      );
+      expect(String((call?.[1] as { cronTime: unknown }).cronTime)).toBe('0 7,37 * * * *');
+    });
+
+    it('should never throw from refreshOperationalSettings — the fleet must still get a scheduler (#2651)', async () => {
+      jest
+        .spyOn(operationalSettings, 'resolve')
+        .mockRejectedValue(new Error('database unavailable'));
+
+      await expect(service.refreshOperationalSettings()).resolves.toBeUndefined();
     });
 
     it('is idempotent — a second start does not re-register the same tasks (#2279 lease re-acquire)', () => {

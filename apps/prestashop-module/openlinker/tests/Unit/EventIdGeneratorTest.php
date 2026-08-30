@@ -5,7 +5,7 @@ use PHPUnit\Framework\TestCase;
 /**
  * Unit tests for EventIdGenerator.
  *
- * No PS globals required — window is injected as a parameter.
+ * No PS globals required.
  *
  * @see EventIdGenerator
  */
@@ -17,9 +17,10 @@ class EventIdGeneratorTest extends TestCase
     private const OBJECT_TYPE   = 'product';
     private const EXTERNAL_ID   = '42';
 
-    private function generate(
-        string $occurredAt,
-        int $windowMinutes = 1,
+    private const UUID_LIKE = '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/';
+
+    private function generateEventId(
+        string $occurredAt = '2024-01-15 10:00:30',
         string $externalId = self::EXTERNAL_ID
     ): string {
         return EventIdGenerator::generateEventId(
@@ -28,72 +29,86 @@ class EventIdGeneratorTest extends TestCase
             self::EVENT_TYPE,
             self::OBJECT_TYPE,
             $externalId,
-            $occurredAt,
-            $windowMinutes
+            $occurredAt
         );
     }
 
-    // ── Determinism ───────────────────────────────────────────────────────────
-
-    public function testSameInputsProduceSameOutput(): void
-    {
-        $id1 = $this->generate('2024-01-15 10:00:30');
-        $id2 = $this->generate('2024-01-15 10:00:30');
-
-        $this->assertSame($id1, $id2);
-    }
-
-    public function testTimestampsWithinSameWindowProduceSameOutput(): void
-    {
-        // Both within the same 1-minute window (10:00:00–10:00:59)
-        $id1 = $this->generate('2024-01-15 10:00:05');
-        $id2 = $this->generate('2024-01-15 10:00:55');
-
-        $this->assertSame($id1, $id2);
-    }
-
-    // ── Window boundary ───────────────────────────────────────────────────────
-
-    public function testTimestampsInDifferentWindowsProduceDifferentOutputs(): void
-    {
-        // 10:00:30 is in window 10:00; 10:01:05 is in window 10:01
-        $id1 = $this->generate('2024-01-15 10:00:30');
-        $id2 = $this->generate('2024-01-15 10:01:05');
-
-        $this->assertNotSame($id1, $id2);
-    }
-
-    public function testCustomWindowGroupsTimestampsCorrectly(): void
-    {
-        // 5-minute window: 10:00–10:04 should all be the same window
-        $id1 = $this->generate('2024-01-15 10:00:00', 5);
-        $id2 = $this->generate('2024-01-15 10:04:59', 5);
-        $id3 = $this->generate('2024-01-15 10:05:00', 5); // next window
-
-        $this->assertSame($id1, $id2, 'Timestamps within 5-min window should match');
-        $this->assertNotSame($id1, $id3, 'Timestamps in different 5-min windows should differ');
-    }
-
-    // ── Output format ─────────────────────────────────────────────────────────
-
-    public function testOutputMatchesUuidLikeFormat(): void
-    {
-        $id = $this->generate('2024-01-15 10:00:00');
-
-        // xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx (8-4-4-4-12 hex chars)
-        $this->assertMatchesRegularExpression(
-            '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/',
-            $id
+    private function generateDedupKey(
+        string $externalId = self::EXTERNAL_ID,
+        string $eventType = self::EVENT_TYPE,
+        string $connectionId = self::CONNECTION_ID,
+        string $objectType = self::OBJECT_TYPE
+    ): string {
+        return EventIdGenerator::generateDedupKey(
+            self::PROVIDER,
+            $connectionId,
+            $eventType,
+            $objectType,
+            $externalId
         );
     }
 
-    // ── Uniqueness ────────────────────────────────────────────────────────────
+    // Event id: unique per call
 
-    public function testDistinctExternalIdsInSameWindowProduceDistinctOutputs(): void
+    public function testEventIdIsUniquePerCallEvenForIdenticalInputs(): void
     {
-        $id1 = $this->generate('2024-01-15 10:00:00', 1, '42');
-        $id2 = $this->generate('2024-01-15 10:00:00', 1, '99');
+        // OL's intake keys replay protection on the event id, so two outbox rows
+        // must never share one (#2603).
+        $ids = [];
+        for ($i = 0; $i < 100; $i++) {
+            $ids[] = $this->generateEventId();
+        }
 
-        $this->assertNotSame($id1, $id2);
+        $this->assertCount(100, array_unique($ids));
+    }
+
+    public function testEventIdMatchesUuidLikeFormat(): void
+    {
+        $this->assertMatchesRegularExpression(self::UUID_LIKE, $this->generateEventId());
+    }
+
+    // Dedup key: deterministic over the subject, with no time component
+
+    public function testDedupKeyIsStableForTheSameSubject(): void
+    {
+        // The key carries no timestamp, so it stays the same across windows and
+        // coalesces only while a row is still queued.
+        $this->assertSame($this->generateDedupKey(), $this->generateDedupKey());
+    }
+
+    public function testDistinctExternalIdsProduceDistinctDedupKeys(): void
+    {
+        $this->assertNotSame($this->generateDedupKey('42'), $this->generateDedupKey('99'));
+    }
+
+    public function testDistinctEventTypesProduceDistinctDedupKeys(): void
+    {
+        $this->assertNotSame(
+            $this->generateDedupKey(self::EXTERNAL_ID, 'product.saved'),
+            $this->generateDedupKey(self::EXTERNAL_ID, 'stock.updated')
+        );
+    }
+
+    public function testDistinctConnectionsProduceDistinctDedupKeys(): void
+    {
+        // Two shops mapped to the same product id must not coalesce onto one row.
+        $this->assertNotSame(
+            $this->generateDedupKey(self::EXTERNAL_ID, self::EVENT_TYPE, 'conn-a'),
+            $this->generateDedupKey(self::EXTERNAL_ID, self::EVENT_TYPE, 'conn-b')
+        );
+    }
+
+    public function testDistinctObjectTypesProduceDistinctDedupKeys(): void
+    {
+        // A product change and a stock change can share a product id.
+        $this->assertNotSame(
+            $this->generateDedupKey(self::EXTERNAL_ID, self::EVENT_TYPE, self::CONNECTION_ID, 'product'),
+            $this->generateDedupKey(self::EXTERNAL_ID, self::EVENT_TYPE, self::CONNECTION_ID, 'stock')
+        );
+    }
+
+    public function testDedupKeyMatchesUuidLikeFormat(): void
+    {
+        $this->assertMatchesRegularExpression(self::UUID_LIKE, $this->generateDedupKey());
     }
 }

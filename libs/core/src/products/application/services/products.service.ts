@@ -165,6 +165,13 @@ export class ProductsService implements IProductsService {
     return this.variantRepository.countByProductIds(productIds);
   }
 
+  async getStaleVariantCountsByProductIds(
+    productIds: readonly string[]
+  ): Promise<Map<string, number>> {
+    if (productIds.length === 0) return new Map();
+    return this.variantRepository.countStaleByProductIds(productIds);
+  }
+
   async listVariants(
     filters: ProductVariantListFilters,
     pagination: ProductPagination
