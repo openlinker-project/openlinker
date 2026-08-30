@@ -51,6 +51,7 @@ export * from './domain/types/sales-document-condition.types';
 export * from './domain/types/sales-document-order-facts.types';
 export * from './domain/types/sales-document-rule-write.types';
 export * from './domain/types/sales-document-country-summary.types';
+export * from './domain/types/sales-document-market-discovery.types';
 export * from './domain/types/sales-document-view.types';
 export * from './domain/ports/capabilities/self-routing-document-kind.capability';
 export * from './domain/domain-services/resolve-sales-document-routing';
