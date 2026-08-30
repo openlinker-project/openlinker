@@ -8,6 +8,7 @@ import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { Button } from '../../shared/ui/button';
 import { Select } from '../../shared/ui/select';
 import { TimeDisplay } from '../../shared/ui/time-display';
+import { formatDurationMs } from '../../shared/format/format-duration-ms';
 import { SyncJobStatusBadge } from '../../features/sync-jobs/components/SyncJobStatusBadge';
 import { useSyncJobsQuery } from '../../features/sync-jobs/hooks/use-sync-jobs-query';
 import { useConnectionsQuery } from '../../features/connections/hooks/use-connections-query';
@@ -60,8 +61,40 @@ const COLUMNS: DataTableColumn<SyncJob>[] = [
     id: 'attempts',
     header: 'Attempts',
     align: 'right',
-    cell: (job) => `${job.attempts} / ${job.maxAttempts}`,
+    cell: (job) => {
+      const deferred = formatDurationMs(job.deferredTotalMs);
+      return (
+        <>
+          {job.attempts} / {job.maxAttempts}
+          {deferred !== null ? (
+            // A deferred job consumes no attempt, so its counter stands still
+            // while it waits. Without this an operator reads a row parked on a
+            // throttling shop as simply stuck (#2613).
+            <span className="text-muted" title={`Deferred for ${deferred} so far`}>
+              {' '}
+              · deferred
+            </span>
+          ) : null}
+        </>
+      );
+    },
     accessor: (job) => job.attempts,
+    sortable: true,
+    hideBelow: 768,
+  },
+  {
+    id: 'lastAttemptDurationMs',
+    header: 'Duration',
+    align: 'right',
+    // Unmeasured rows sort as -1, so they group together and land first on an
+    // ascending sort - ahead of a genuine 0 ms row. Stated rather than dressed
+    // up: the cell renders an em-dash, so the group is identifiable, and this
+    // page sorts only the visible page anyway.
+    cell: (job) => {
+      const formatted = formatDurationMs(job.lastAttemptDurationMs);
+      return formatted ?? <span className="text-muted">—</span>;
+    },
+    accessor: (job) => job.lastAttemptDurationMs ?? -1,
     sortable: true,
     hideBelow: 768,
   },

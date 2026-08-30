@@ -49,15 +49,32 @@ export interface BoundedSweepInput {
   budget: number;
   /** Reads up to `budget` items starting at `offset`. */
   readPage: (offset: number, budget: number) => Promise<SweepPage>;
-  /** Enqueues one child. Rejects on failure; the sweep stops the cursor there. */
-  enqueue: (externalId: string, cycleId: string) => Promise<unknown>;
+  /**
+   * How many items one child covers. Defaults to 1, i.e. the per-item fan-out
+   * every sweep had before #2593.
+   *
+   * A value above 1 changes what a child IS, not what the sweep guarantees: the
+   * budget still bounds items, the cursor still advances by items READ, and a
+   * group whose enqueue fails still holds the cursor for the whole page. It
+   * exists because a master that hydrates a page in a handful of requests is
+   * paying for one adapter instance per product otherwise.
+   */
+  groupSize?: number;
+  /**
+   * Enqueues one child covering `externalIds` - a single-element array on the
+   * per-item fan-out. Rejects on failure; the sweep stops the cursor there.
+   */
+  enqueue: (externalIds: readonly string[], cycleId: string) => Promise<unknown>;
   /** Mints a fresh cycle id. Injected so specs are deterministic. */
   newCycleId: () => string;
 }
 
 export interface BoundedSweepResult {
   cycleId: string;
-  /** Children successfully enqueued this run. */
+  /**
+   * Children successfully enqueued this run - children, not items, so with a
+   * `groupSize` above 1 this is the number of BATCHES.
+   */
   enqueued: number;
   /** Enqueues that rejected this run. */
   failed: number;

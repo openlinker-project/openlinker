@@ -14,6 +14,7 @@ export const productsQueryKeys = {
       filters?.unlistedOn?.join(',') ?? '',
       filters?.taxRateState ?? '',
       filters?.connectionId ?? 'all',
+      filters?.hideFullyStale ?? false,
       sort?.field ?? 'default',
       sort?.dir ?? 'default',
       pagination ?? {},

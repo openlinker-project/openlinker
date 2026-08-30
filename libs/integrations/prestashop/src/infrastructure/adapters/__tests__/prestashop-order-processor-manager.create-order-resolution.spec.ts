@@ -681,25 +681,31 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder resolution', ()
     });
 
     describe('listOrderStatuses', () => {
-      it('returns non-deleted order_states keyed by id', async () => {
-        mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([
-          { id: '1', name: 'Awaiting check payment', deleted: '0' },
-          { id: '2', name: 'Payment accepted', deleted: '0' },
-          { id: '5', name: 'Delivered', deleted: '0' },
+      it('returns non-deleted order_states with the status OpenLinker derives for each', async () => {
+        mockHttpClient.listResources = jest.fn().mockResolvedValue([
+          { id: '1', name: 'Awaiting check payment', deleted: '0', paid: '0' },
+          { id: '2', name: 'Payment accepted', deleted: '0', paid: '1' },
+          { id: '5', name: 'Delivered', deleted: '0', paid: '1', shipped: '1', delivered: '1' },
         ]);
 
         const result = await adapter.listOrderStatuses();
 
         expect(mockHttpClient.listResources).toHaveBeenCalledWith(
           'order_states',
-          { custom: { deleted: '0' } },
-          1000,
+          // No `deleted` filter: the catalogue reads soft-deleted states too so
+          // an order sitting in one is still understood (#2627 review). The
+          // flag is applied to the OUTBOUND direction and to this list, in the
+          // adapter, not to the read.
+          { sort: ['id_ASC'] },
+          100,
           0
         );
+        // `derivedValue` is read through the same catalogue the write path uses
+        // (#2607), so the list cannot describe a mapping the writes do not do.
         expect(result).toEqual([
-          { value: '1', label: 'Awaiting check payment' },
-          { value: '2', label: 'Payment accepted' },
-          { value: '5', label: 'Delivered' },
+          { value: '1', label: 'Awaiting check payment', derivedValue: 'pending' },
+          { value: '2', label: 'Payment accepted', derivedValue: 'processing' },
+          { value: '5', label: 'Delivered', derivedValue: 'delivered' },
         ]);
       });
     });
@@ -817,7 +823,6 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder resolution', ()
     }
 
     beforeEach(() => {
-      mockOrderMapper.mapStatusToPrestashopStateId = jest.fn().mockReturnValue(DEFAULT_SHIPPED_ID);
       mockHttpClient.getResource = jest
         .fn()
         .mockResolvedValue({ id: PS_ORDER_ID, current_state: '2', id_carrier: 7 });
@@ -838,12 +843,11 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder resolution', ()
       );
     });
 
-    it('falls back to the hardcoded default-install map when no override is configured', async () => {
+    it("falls back to the shop's own state catalogue when no override is configured", async () => {
       const adapterWithMapping = buildAdapterWithStateMapping(jest.fn().mockResolvedValue(null));
 
       await adapterWithMapping.updateFulfillment({ externalOrderId: PS_ORDER_ID, status: 'shipped' });
 
-      expect(mockOrderMapper.mapStatusToPrestashopStateId).toHaveBeenCalledWith('shipped');
       expect(mockHttpClient.createResource).toHaveBeenCalledWith(
         'order_histories',
         { id_order: PS_ORDER_ID, id_order_state: DEFAULT_SHIPPED_ID },

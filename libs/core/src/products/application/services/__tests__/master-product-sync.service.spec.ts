@@ -587,4 +587,78 @@ describe('MasterProductSyncService', () => {
       expect(result.taxRateChanges).toEqual([]);
     });
   });
+
+  describe('syncFromMasterByExternalIds (#2593)', () => {
+    beforeEach(() => {
+      identifierMapping.getOrCreateInternalId = jest
+        .fn()
+        .mockImplementation((_type: string, id: string) => Promise.resolve(`ol_product_${id}`));
+    });
+
+    it('resolves the adapter ONCE for the whole page', async () => {
+      // The whole mechanism: `getCapabilityAdapter` builds a fresh adapter per
+      // call, so a per-product resolution throws away whatever it cached.
+      await service.syncFromMasterByExternalIds(connectionId, ['1', '2', '3']);
+
+      expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledTimes(1);
+      expect(adapter.getProduct).toHaveBeenCalledTimes(3);
+    });
+
+    it('prefetches the page when the master declares the bulk-read rung', async () => {
+      const prefetchProducts = jest.fn().mockResolvedValue(undefined);
+      Object.assign(adapter, { prefetchProducts });
+
+      const result = await service.syncFromMasterByExternalIds(connectionId, ['1', '2']);
+
+      expect(prefetchProducts).toHaveBeenCalledTimes(1);
+      expect(prefetchProducts).toHaveBeenCalledWith(['1', '2']);
+      expect(result.prefetched).toBe(true);
+      expect(result.results).toHaveLength(2);
+    });
+
+    it('still syncs every product when the master declares no bulk rung', async () => {
+      const result = await service.syncFromMasterByExternalIds(connectionId, ['1', '2']);
+
+      expect(result.prefetched).toBe(false);
+      expect(result.results).toHaveLength(2);
+      expect(result.failures).toEqual([]);
+    });
+
+    it('syncs the rest of the page when the prefetch fails', async () => {
+      Object.assign(adapter, {
+        prefetchProducts: jest.fn().mockRejectedValue(new Error('shop down')),
+      });
+
+      const result = await service.syncFromMasterByExternalIds(connectionId, ['1', '2']);
+
+      expect(result.prefetched).toBe(false);
+      expect(result.results).toHaveLength(2);
+    });
+
+    it('reports a failed product instead of failing the page', async () => {
+      adapter.getProduct.mockImplementation((productId: string) =>
+        productId === 'ol_product_2'
+          ? Promise.reject(new Error('read timeout'))
+          : Promise.resolve(makeProduct())
+      );
+
+      const result = await service.syncFromMasterByExternalIds(connectionId, ['1', '2', '3']);
+
+      expect(result.results).toHaveLength(2);
+      expect(result.failures).toEqual([{ externalId: '2', message: 'read timeout' }]);
+    });
+
+    it('keeps the deletion signal per product', async () => {
+      adapter.getProduct.mockImplementation((productId: string) =>
+        productId === 'ol_product_2'
+          ? Promise.reject(new MasterProductNotFoundError('ol_product_2', connectionId))
+          : Promise.resolve(makeProduct())
+      );
+
+      const result = await service.syncFromMasterByExternalIds(connectionId, ['1', '2']);
+
+      expect(result.failures).toEqual([]);
+      expect(result.results.filter((one) => one.masterDeleted)).toHaveLength(1);
+    });
+  });
 });

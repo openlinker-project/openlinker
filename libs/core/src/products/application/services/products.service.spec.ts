@@ -63,6 +63,7 @@ describe('ProductsService', () => {
     findByProductId: jest.fn(),
     findByProductIds: jest.fn(),
     countByProductIds: jest.fn(),
+    countStaleByProductIds: jest.fn(),
     findBySku: jest.fn(),
     findBySkuIn: jest.fn(),
     findByIdIn: jest.fn(),
@@ -272,6 +273,25 @@ describe('ProductsService', () => {
       const result = await service.getVariantCountsByProductIds(['ol_product_1', 'ol_product_2']);
 
       expect(variantRepo.countByProductIds).toHaveBeenCalledWith(['ol_product_1', 'ol_product_2']);
+      expect(result).toBe(counts);
+    });
+  });
+
+  describe('getStaleVariantCountsByProductIds (#2447)', () => {
+    it('should return an empty Map on empty input without hitting the repository', async () => {
+      const result = await service.getStaleVariantCountsByProductIds([]);
+
+      expect(result).toEqual(new Map());
+      expect(variantRepo.countStaleByProductIds).not.toHaveBeenCalled();
+    });
+
+    it('should delegate to the variant repository and return its Map verbatim', async () => {
+      const counts = new Map([['ol_product_1', 1]]);
+      variantRepo.countStaleByProductIds.mockResolvedValue(counts);
+
+      const result = await service.getStaleVariantCountsByProductIds(['ol_product_1']);
+
+      expect(variantRepo.countStaleByProductIds).toHaveBeenCalledWith(['ol_product_1']);
       expect(result).toBe(counts);
     });
   });

@@ -58,11 +58,16 @@ import {
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
   CORE_ENTITY_TYPE,
 } from '@openlinker/core/identifier-mapping';
+import {
+  OPERATIONAL_SETTING_BOUNDS,
+  OPERATIONAL_SETTINGS_SERVICE_TOKEN,
+  type IOperationalSettingsService,
+} from '@openlinker/core/operational-settings';
 import { Logger } from '@openlinker/shared/logging';
 import {
   formatSweepCursor,
   parseSweepCursor,
-  resolveSweepBudget,
+  resolveRunBudget,
   resolveSweepLockTtlMs,
   runBoundedSweep,
   sweepCompletedAtCursorKey,
@@ -87,11 +92,21 @@ export class MasterProductReconcileHandler implements SyncJobHandler {
     private readonly cursors: ISyncCursorsService,
     @Inject(SYNC_LOCK_TOKEN)
     private readonly syncLock: SyncLockPort,
+    @Inject(OPERATIONAL_SETTINGS_SERVICE_TOKEN)
+    private readonly operationalSettings: IOperationalSettingsService,
     private readonly configService: ConfigService
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
-    const budget = resolveSweepBudget(this.getPayload(job).pageLimit);
+    // Per tick, never cached (#2651). This is the budget #2644 measured at a
+    // 41.7-day audit cycle on 100k products, and it is the one an operator is
+    // most likely to want to raise - so it must not need a restart.
+    const settings = await this.operationalSettings.resolve();
+    const budget = resolveRunBudget(
+      this.getPayload(job).pageLimit,
+      settings.deletionAuditBudget.value,
+      OPERATIONAL_SETTING_BOUNDS.deletionAuditBudget
+    );
     const lockKey = sweepLockKey('product-reconcile', job.connectionId);
     const lockTtlMs = resolveSweepLockTtlMs(
       this.configService.get<string>('OL_MASTER_SWEEP_LOCK_TTL_MS')
@@ -123,7 +138,8 @@ export class MasterProductReconcileHandler implements SyncJobHandler {
             offset,
             pageBudget
           ),
-        enqueue: (externalId, cycleId) => this.enqueueChild(job, externalId, cycleId),
+        // One id per child: this sweep keeps the per-item fan-out.
+        enqueue: (externalIds, cycleId) => this.enqueueChild(job, externalIds[0], cycleId),
         newCycleId: () => randomUUID(),
       });
 
@@ -201,7 +217,9 @@ export class MasterProductReconcileHandler implements SyncJobHandler {
       // The SAME child the sweeps enqueue. A live product simply re-syncs
       // (idempotent); a deleted one raises MasterProductNotFoundError and flows
       // into the deletion authority. This handler never writes staleness itself.
-      jobType: 'master.product.syncByExternalId',
+      // Sweep-triggered type, so ADR-050 lanes it as `bulk` rather than behind
+      // the webhook child's realtime cap (#2594).
+      jobType: 'master.product.syncFromSweep',
       connectionId: job.connectionId,
       payload: {
         schemaVersion: 1,

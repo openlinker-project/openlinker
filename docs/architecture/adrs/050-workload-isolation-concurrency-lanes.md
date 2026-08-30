@@ -37,14 +37,18 @@ its I/O shape or its bounded context.** Four lanes:
   `marketplace.offer.pollCreationStatus`, `marketplace.offer.refreshSnapshot`,
   `marketplace.offer.stockRestore`, `marketplace.offer.pauseStale`,
   `marketplace.shipment.syncByExternalId`, `master.product.syncByExternalId`,
-  `master.inventory.syncByExternalId`, `invoicing.paymentStatus.refreshByExternalId` (12).
+  `master.inventory.syncByExternalId`, `invoicing.paymentStatus.refreshByExternalId` (12). The two
+  `master.*.syncByExternalId` entries are the **webhook-triggered** children only — see the #2594
+  amendment below.
 - **`bulk`** — paged/cursored sweeps *plus the operator-wave children*: `marketplace.offers.sync`,
   `marketplace.offer.statusSync`, `marketplace.offer.pauseStaleSweep`,
   `marketplace.order.fxStampSweep`, `marketplace.shipment.statusSync`,
   `marketplace.fulfillment.statusSync`, `master.variants.autoMatch`,
   `shipping.pickupPoint.refreshFrequent`, `shop.product.statusSync`, `destination.taxonomy.sync`,
+  `orders.taxRate.backfill` (#2440), the two sweep-triggered master children
+  `master.product.syncFromSweep` / `master.inventory.syncFromSweep` (#2594),
   and — the rule's most consequential application — `marketplace.offer.create` and
-  `shop.product.publish` (12). The last two are single-unit work, but they arrive in
+  `shop.product.publish` (15). The last two are single-unit work, but they arrive in
   operator-triggered waves up to 1000 wide; starving one costs a slower batch an operator tolerates,
   while letting the wave monopolise slots is exactly the measured 35–80-minute failure above.
 - **`fiscal`** — deadline-bearing, at-most-once: `invoicing.issue`,
@@ -100,6 +104,185 @@ any number in a Wave 3 implementation is treated as more than a default, per-lan
 oldest-queued age, and pulls/min must be observable (#1134). *Reversal gate (prose-only):* not
 applicable — this is a precondition, recorded so cap-tuning PRs cite measurements, not taste.
 
+## Amendment (#2594) — the sweep child's lane, and the first measured cap
+
+Two things this ADR got wrong in practice, both found by measuring a real PrestaShop catalogue.
+
+**1. A job's lane depends on its trigger, not only on its type.** `master.product.syncByExternalId`
+was placed in `realtime` because a webhook-driven single-product sync is work someone waits on. It
+is also the child the catalogue sweeps enqueue, a budget (100) wide per tick. Decision 1's own rule
+already covers that case — it is exactly why `marketplace.offer.create` sits in `bulk` — but the
+mapping missed it, because one job type served two triggers with two costs of starvation. The
+consequences were both directions of wrong at once: a catalogue cycle filled the realtime lane's
+per-scope slots ahead of a buyer's order, *and* the catalogue was throttled to
+`OL_LANE_REALTIME_SCOPE_CAP` (default 2), a cap sized for waited-on work.
+
+The fix keeps the lane declared per job type at registration, and splits the type instead:
+`master.product.syncFromSweep` and `master.inventory.syncFromSweep` are the sweep-triggered children,
+registered in `bulk` against the SAME handler instances as their `…syncByExternalId` twins. A fifth
+lane was rejected: decision 1 makes that a reversal gate, and nothing about the axis is wrong here.
+Both types stay registered, so a child already queued under the old type at deploy time still runs,
+and the boot-time full-union coverage assertion still holds. A visible side benefit: an operator can
+now tell catalogue work from webhook work on the Jobs surface, which was previously impossible.
+
+**2. `bulk`'s cap values are no longer illustrative.** Decision 6 asks that cap-tuning cite
+measurements. An interleaved A/B run against a live PrestaShop shop, with the catalogue sweep running
+against it:
+
+| Run | req/min | p95 idle | p95 under load | ratio |
+|---|---|---|---|---|
+| Default lanes | ~50 | *withdrawn* | *withdrawn* | *withdrawn* |
+| Default lanes, after the adapter fix | ~50 | *withdrawn* | *withdrawn* | *withdrawn* |
+| Raised per-scope cap (~12 concurrent children) | **~277** | *withdrawn* | *withdrawn* | *withdrawn* |
+
+**The p95 columns are withdrawn** ([ADR-066](./066-prestashop-request-reduction-without-a-module.md) correction 1, applied here by the #2627 review): the probe that produced them never checked the HTTP status code, so a fast error under load counted as a fast sample - which is why two of the three ratios were below 1.0, asserting the shop answered faster while being swept. They must not be quoted as evidence anywhere, including here, and this table quoted them while ADR-066 forbade it. ADR-066 correction 2 adds that store impact tracks cursor DEPTH rather than catalogue size, so a single ratio could not have justified the cap even if it had been measured correctly.
+
+**What survives is the throughput column**, which is a count of requests OL issued and does not depend on the probe: the raised cap sustained ~277 req/min against ~50. Applied to the catalogue: 39 700 requests goes from ~26.5 h
+to ~2.4 h. Raising the connection's own rate limit from 60 to 300/min, by contrast, moved traffic
+from 50 to 63 req/min — the limiter was never the ceiling.
+
+`bulk` therefore defaults to `total: 12, perScope: 8`, from `2 / 1`. `perScope` sits below the
+measured ceiling on purpose: decision 4 deliberately ships no round-robin fairness between scopes, so
+at `perScope === total` one connection's catalogue cycle could hold the whole lane while a second
+connection's sweep made no progress at all.
+
+Three limits on that number, all load-bearing:
+
+- **It covers the PrestaShop catalogue read path only.** No other destination was measured. An
+  operator on a slower shop or constrained hosting lowers `OL_LANE_BULK_SCOPE_CAP`.
+- **It affects every other `bulk` job type**, not just the sweep children — the offer-create and
+  shop-publish waves, the status-sync sweeps, the fx-stamp and tax-rate backfills all drain faster
+  now. That is intended (those waves are the 35–80-minute failure this ADR was written about), but it
+  is a global change and is stated as one.
+- **It bounds one worker PROCESS.** Slot accounting is in-process, so N replicas multiply every
+  effective cap by N. Size per replica.
+
+`realtime`, `fiscal` and `fan-out` keep their untuned defaults. Nothing about the buyer-facing path
+changed: the point of moving the sweep child out is that `realtime` did not need raising.
+
+## Amendment (#2609) — the scope was the bug, not the lane
+
+`inventory.propagateToMarketplaces` was serialised across the whole installation. Measured on the
+demo stack, the queue grew about **145 jobs/h faster than it drained**, and the 15 066 backlogged
+rows found there were days of ordinary operation rather than an incident.
+
+**Decision 3's scope was never populated for this job.** Every enqueue used a synthetic
+`00000000-0000-0000-0000-000000000000` connection id, so all propagation in the install shared one
+scope, and the `fan-out` per-scope cap of 1 then made each stock write wait for the previous one -
+however many connections the operator had. The job now carries **the master connection the stock was
+read from**: `IInventoryService.setInventory` takes an optional `sourceConnectionId`, and
+`MasterInventorySyncService` passes the connection it is syncing. Per-scope accounting now isolates
+one master's burst from another's, which is what decision 3 says it is for.
+
+**The lane is confirmed, not changed, and #2594's precedent does not apply here.** Propagation reads
+stock and enqueues one `realtime` quantity write per mapped destination; it makes no marketplace call
+itself, so `fan-out` is right. #2594 split a job type because one type served two triggers with two
+different costs of starvation. Propagation has two triggers as well - a stock webhook and the
+inventory sweep - but **one cost**: both discover real stock drift, and on a master with no stock
+webhook the sweep is the *only* thing that discovers it (see § Inventory, `master.inventory.syncAll`).
+Sweep-triggered propagation is therefore not tolerable-slow background work, so there is nothing to
+separate and the job type stays single. The lane tally is unchanged at 12 / 15 / 5 / 6.
+
+**`fan-out` defaults to `total: 8, perScope: 4`, from `1 / 1`.** A cap of 1 fitted the lane's other
+members, which are **cron-paced** - one tick per connection, each additionally serialised one level
+down, so raising the cap cannot multiply catalogue fan-out. Precisely: the four catalogue enumerators
+take a per-(kind, connection) `SyncLockPort` lock in the handler, while `marketplace.orders.poll` has
+no handler lock and is instead serialised inside `OrderIngestionService`, which takes its own
+per-connection lock and reports `skippedDueToLock` as a success.
+Propagation is **event-paced**: one job per changed stock row, thousands per sweep. Three notes:
+
+- The raise is not backed by a per-destination measurement the way `bulk`'s is, and decision 6 still
+  applies. It does not need one in the same sense: a `fan-out` job's work is database reads plus
+  child enqueues, so the cap bounds queue fan-out rather than a shop's request budget. The outbound
+  pacing stays where it already was, on `marketplace.offerQuantity.update` in `realtime`.
+- It also lets two connections poll orders or enumerate a catalogue concurrently. The old cap
+  prevented that across the whole install, which was a second, quieter instance of the same defect.
+- `perScope` sits below `total` for decision 4's reason: with no round-robin fairness, one scope must
+  not be able to hold the lane.
+
+**Consequence for the out-of-order quantity-write guard (#2617).** More propagation in flight means
+more often two writes for one offer, so the guard fires more. It still holds: it takes a per-(connection,
+offer) lock, compares the quoted observation against the mark, and advances the mark only after a
+successful write, so a refusal always means a strictly newer quantity is already live. That advance is
+a **compare-and-set** (`ISyncCursorsService.advanceCursorIfNewer`, one `ON CONFLICT ... WHERE` statement),
+so monotonicity does not depend on the 30 s write lock surviving the marketplace call: a call that
+outran its TTL could otherwise set the mark BACK to its own older observation after a peer had written
+a newer quantity, and admit a stale write behind it - the very defect the guard exists to prevent. The **ceiling**
+on concurrent writes to one offer is unchanged, because `realtime`'s per-scope cap was not raised -
+what changes is frequency. What that frequency exposes is the guard's known cost: a contended write is
+reported as a failure, so it consumes a retry attempt and could eventually dead-letter under sustained
+contention. That is a defect in the retry classification, not in the ordering rule, and it is why this
+change and that fix belong in the same release.
+
+## Amendment (#2594 review) - the rolling scan sweeps needed the lock the caps used to give them
+
+Raising `bulk`'s per-scope cap from 1 to 8 removed an implicit serialisation. At 1, two ticks of one
+connection's rolling scan sweep could never overlap. Eight `bulk` sweeps were relying on that without
+owning a lock: the offer status sync, the offer-mapping sync, the shop product status sync, the
+shipment and fulfillment status syncs, the fx stamp sweep, the tax-rate backfill and
+`marketplace.offer.pauseStaleSweep`. Only `destination.taxonomy.sync` and the four catalogue
+enumerators held one.
+
+**Six of them are locked, and the split is by whether the sweep keeps a cursor.** A sweep that reads a
+scan cursor, does a page, then writes the cursor back is a read-modify-write: two overlapping runs
+race it, one advances past the page the other is still reading, and a whole cycle of rows is skipped
+with no error anywhere. The offer status sync, offer-mapping sync, shop product status sync, shipment
+status sync, fulfillment status sync and tax-rate backfill all have that shape and now take a
+per-(kind, connection) lock through one shared helper (`apps/worker/src/sync/scan-sweep-lock.ts`),
+in the shape the catalogue enumerators already prove: contention is not a failure, the run reports
+`ok` without touching the cursor, and the TTL bounds a lost release
+(`OL_SCAN_SWEEP_LOCK_TTL_MS`). One helper rather than six copies, because a per-handler copy is six
+places for the release to be forgotten.
+
+**Two are deliberately left unlocked.** `marketplace.order.fxStampSweep` and
+`marketplace.offer.pauseStaleSweep` keep no cursor. Each re-derives its work from a predicate on every
+run - the unstamped-order predicate, and `product_variants.isStale` - and each write is conditional or
+idempotent: the FX stamp is a narrow `WHERE reportingCurrency IS NULL` update, and the pause re-asserts
+quantity 0. Two overlapping runs therefore duplicate reads and converge on the same state; they cannot
+skip work, because there is no position to advance past. Locking them would buy nothing and would add
+a second thing to reason about on the one path (#1689's pause) whose whole point is that it re-asserts
+what an event may have lost.
+
+## Amendment (#2594 / #2609 review) - the pool sizes with the caps
+
+Both raises left the database connection pool where it was. `libs/shared/src/database/database.module.ts`
+set no `extra.max`, so pg's default of **10** applied while concurrent handler capacity in one process
+went from 9 to **26** (4 + 12 + 2 + 8). That is a real ceiling and it fails quietly: pg's
+`connectionTimeoutMillis` also defaults to 0, so an over-subscribed pool queues without erroring and
+the symptom is "the raised caps did nothing". A handler holding a transaction connection while
+awaiting a second pooled query - the order read model's `upsertWithLineItems`, the webhook gate - can
+also deadlock the pool once every connection is held that way.
+
+The pool is therefore **derived from the lane caps, not picked**: at least one connection per
+concurrent handler slot, plus headroom for that nesting and for the runner's own claim and heartbeat
+queries. `OL_DB_POOL_MAX` defaults to **40** against the caps' 26, and `OL_DB_POOL_CONNECTION_TIMEOUT_MS`
+defaults to 10 s so exhaustion surfaces as a job failure on the retry ladder rather than a stall. The
+rule for a future raise is written beside the caps in `apps/worker/.env.example`: keep the pool at or
+above the sum of the four TOTAL caps, plus headroom.
+
+Two limits. The pool, like the caps, bounds **one process** - N worker replicas and the api each hold
+their own, so the deployment total is this value times the process count and must stay under the
+server's `max_connections`. And a fourth limit belongs beside the three in the #2594 amendment: some
+`bulk` work reaches a public API that the per-connection rate limiter does not cover.
+`marketplace.order.fxStampSweep`'s NBP/ECB reads have no connection to key a bucket on (see § Currency),
+so lane concurrency was the only thing bounding them. Low risk today - one job per tick, its per-order
+children stayed in `realtime` - but it is the constraint a future raise has to argue against.
+
+## Amendment (#2613 / #2617) - a deferred job is queued, not running, and what that costs a lane
+
+[ADR-007](./007-syncjob-status-vs-outcome-split.md) § Amendment (#2613) records the retry-ladder half of penalty-free deferral: a failure that is neither the job's fault nor a terminal platform answer requeues without consuming an attempt, bounded by a cumulative `sync_jobs.deferredTotalMs` budget. This amendment records what it does to lane occupancy, because that is this ADR's subject and it is easy to state wrongly.
+
+**The precise claim.** A deferred job sits at `status: 'queued'` with a future `nextRunAt`. Slot accounting here is in-process and counts **started** jobs, so a job parked on its `nextRunAt` holds **no** lane slot while it waits. What it does hold is queue depth, and it re-consumes a `(lane, scope)` slot on every re-pickup - so a destination that keeps deferring turns one job into an indefinite sequence of short occupancies in its own scope. **That recycling is what the budget bounds**, and it is the reason the deferral could not ship without one: an unbounded penalty-free requeue is a job that can never leave the lane's rotation.
+
+The scope cap is what keeps that bounded in the meantime. Deferral is per-job and the cap is per-(lane, scope), so a throttling destination's jobs recycle inside their own connection's slice and cannot crowd out another connection's work in the same lane - the property decision 3 exists for, doing its job on a failure mode decision 3 did not anticipate.
+
+**Contention is the second source of deferral, and it is this ADR's own doing.** Decision 2 made a lane run jobs concurrently and #2609 removed the last accidental serialisation, which is what made a per-target write guard necessary ([ADR-067](./067-freshness-token-write-ordering.md)). A write refused because a peer holds that guard's lock is reported as `write_contended` and reaches the runner as a neutral `ContendedWriteError` with a fixed short grant. Retrying it under the ordinary ladder would spend attempts - and eventually a `dead` row - on the guard **working**, which would make the concurrency this ADR chose look like a defect in the very path it protects.
+
+**Two things are deliberately not done.** No lane is exempt from deferral, and no lane gets its own budget: the grant is a property of the destination's answer, not of the workload profile, and a per-lane budget would be a second pacing knob with no measurement behind it ([ADR-069](./069-operator-settable-sweep-pacing.md) covers the pacing knobs that do have one). And nothing counts deferred jobs against a cap - a parked job consumes no worker, and charging it a slot would idle capacity to model a job that is not running.
+
+*Reversal gate (prose-only):* a lane whose queue depth is dominated by deferred jobs. That is the signal that deferral has become a pacing mechanism rather than an exception, and the destination in question needs a real rate-limit configuration rather than a retry policy.
+
+
 ## Alternatives considered
 
 - **Strict priority ordering** (realtime first): starves `bulk` under sustained realtime load — the
@@ -140,9 +323,10 @@ applicable — this is a precondition, recorded so cap-tuning PRs cite measureme
 
 ## References
 
-- Related issues: #2167, #2162, #1134, #2169
+- Related issues: #2167, #2162, #1134, #2169, #2594, #2609, #2613, #2617
 - Related ADRs: [ADR-005](./005-postgres-authoritative-job-dedup.md),
   [ADR-007](./007-syncjob-status-vs-outcome-split.md),
   [ADR-049](./049-durability-spine-and-domain-event-contract.md),
-  [ADR-051](./051-worker-topology-one-artifact-roles.md)
+  [ADR-051](./051-worker-topology-one-artifact-roles.md),
+  [ADR-067](./067-freshness-token-write-ordering.md)
 - Primary doc section: [docs/architecture-overview.md](../../architecture-overview.md) § Sync Manager

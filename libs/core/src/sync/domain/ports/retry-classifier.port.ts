@@ -22,6 +22,18 @@
  * @see {@link RetryClassifierRegistryService} for the registry that
  *   aggregates implementations.
  */
+/**
+ * A platform's answer to "this failure is not the job's own fault, wait".
+ *
+ * `delaySeconds` is how long to wait before the next attempt; `reason` is a
+ * short label the runner prefixes onto the persisted error so an operator can
+ * tell a deferral apart from a genuine failure in the job record.
+ */
+export interface RetryDeferral {
+  readonly delaySeconds: number;
+  readonly reason: string;
+}
+
 export interface RetryClassifierPort {
   /**
    * Returns `true` if the cause is a deterministic, non-retryable failure
@@ -32,4 +44,20 @@ export interface RetryClassifierPort {
    * implementations see the original platform exception directly.
    */
   isNonRetryable(cause: unknown): boolean;
+
+  /**
+   * Returns a deferral when the cause says the destination is unable to serve
+   * us right now for a reason that is not this job's own failure - the shop
+   * throttling us (429) or being unavailable (503). The runner then requeues
+   * penalty-free instead of consuming an attempt, reusing the path
+   * `RateLimitTimeoutError` already takes (#1810). Returning `null`, or not
+   * implementing the method at all, keeps the pre-existing behaviour: the
+   * failure consumes an attempt and walks the backoff ladder.
+   *
+   * Optional so every existing classifier stays source-compatible. A deferral
+   * must never be reported for a deterministic failure: a job that always
+   * defers never reaches `dead`, so the answer has to come from a signal the
+   * destination itself sent.
+   */
+  getRetryDeferral?(cause: unknown): RetryDeferral | null;
 }
