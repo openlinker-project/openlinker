@@ -72,10 +72,15 @@ const collectSourceFiles = (dir: string): string[] => {
 
 describe('fulfillment context — ADR-053 no-injection boundary (#2391)', () => {
   const files = collectSourceFiles(FULFILLMENT_DIR);
-  // Strip block and line comments before matching, exactly as
-  // `barrel-purity.spec.ts` does and for its documented reason (#2441): doc
-  // prose in this repo narrates the very import rules being checked, so a
-  // docblock quoting a forbidden specifier must not fail the suite.
+  // Strip comments before matching, in the same spirit as
+  // `barrel-purity.spec.ts` and for its documented reason (#2441): doc prose in
+  // this repo narrates the very import rules being checked, so a docblock
+  // quoting a forbidden specifier must not fail the suite.
+  //
+  // Deliberately NARROWER than that sibling: only FULL-LINE `//` comments are
+  // stripped, so a `//` inside a string literal is never truncated. The cost is
+  // that a trailing `// '@openlinker/core/orders'` fails here and would pass
+  // there — a false positive, which is the safe direction for a prohibition.
   const stripComments = (text: string): string =>
     text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
@@ -106,14 +111,20 @@ describe('fulfillment context — ADR-053 no-injection boundary (#2391)', () => 
   });
 
   it('should hold the structural no-provider claim until a Nest provider exists', () => {
+    const filesDeclaringProviders = sources
+      .filter(({ text }) => NEST_PROVIDER_DECORATORS.some((d) => text.includes(d)))
+      .map(({ file }) => file);
+
     if (describesNestProviders) {
-      // #2392 (or later) added a provider. The structural claim below no longer
-      // holds and the provider-graph assertion in the next test takes over.
-      expect(describesNestProviders).toBe(true);
+      // #2392 (or later) added a provider. The structural claim no longer holds
+      // and the provider-graph assertion in the next test takes over — that
+      // test, not this one, owns the failure.
+      expect(filesDeclaringProviders.length).toBeGreaterThan(0);
       return;
     }
 
-    expect(describesNestProviders).toBe(false);
+    // Asserted as a list rather than a boolean so a failure names the file.
+    expect(filesDeclaringProviders).toEqual([]);
   });
 
   it('should resolve no orders/inventory service through any fulfillment provider once one exists', async () => {
