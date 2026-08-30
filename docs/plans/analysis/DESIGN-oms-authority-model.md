@@ -538,7 +538,7 @@ export interface FulfillmentExecutorPort {
 }
 // Progress INGESTION is core-side (R1) - see below. The executor-side read for polling vendors:
 export interface FulfillmentStatusSource {                                           // sub-capability, is* guard co-located
-  getFulfillmentStatus(workRef: FulfillmentWorkRef): Promise<FulfillmentProgressSnapshot>;
+  getWorkFulfillmentStatus(workRef: FulfillmentWorkRef): Promise<FulfillmentProgressSnapshot>;   // renamed in #2398, see below
 }
 // Core-side seam (not an adapter method): IFulfillmentProgressService.record(event)
 //   event: picked | short_picked | packed | shipped | closed  (+ mandatory vendor-scoped idempotencyKey)
@@ -558,7 +558,19 @@ ingestion point. A vendor webhook reaches it through the shipped ingress: decode
 `'return'` for §7) — → a routing-policy arm gated on `FulfillmentExecutor` → a
 `fulfillment.work.statusSync` job (webhook-as-trigger, authoritative pull, keyed by the
 documented inbound idempotency shape). A polling vendor is served by the pull-shaped
-`FulfillmentStatusSource.getFulfillmentStatus(workRef)` sub-capability instead.
+`FulfillmentStatusSource.getWorkFulfillmentStatus(workRef)` sub-capability instead.
+
+**Amendment (#2398): the method is `getWorkFulfillmentStatus`, not `getFulfillmentStatus`.**
+This section originally spelled it `getFulfillmentStatus`, which is unsafe against a structural
+probe already in the tree. `orders` ships `FulfillmentStatusReader.getFulfillmentStatus({
+externalOrderId })`, whose guard is nothing but `typeof adapter.getFulfillmentStatus ===
+'function'` — so an adapter implementing `FulfillmentStatusSource` under the original name would
+satisfy that guard with **no dual-port class involved**, be narrowed to `FulfillmentStatusReader`,
+and be called by `FulfillmentStatusSyncService` with `{ externalOrderId }` while expecting a
+`FulfillmentWorkRef`. That is the ADR-046 (`isOfferFieldUpdater`) and #2229
+(`isEanCategoryMatcherStreaming`) failure shape; both were fixed by probing more narrowly, and
+neither was fixable by documentation. The rename is free while nothing implements the port and
+stops being free once #2400 / #2402 land adapters, so it was taken in #2398.
 `FulfillmentProgressEvent.idempotencyKey` is mandatory and vendor-scoped, deduped by a
 `(workId, key)` claim before any relay fires, with `dispatchRelayedAt` as the relay's own claim
 column. New events are union members; outcomes live in results; adapters are never widened.

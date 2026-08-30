@@ -39,6 +39,10 @@
  * | `FulfillmentRouterPort` | how a router is asked where an order is sourced from |
  * | `RoutingInput` / `RoutingShipTo` | what a router is told — an explicit PII allowlist projection (ADR-062) |
  * | `RoutingPlan` / `RoutingEvaluation` | the committing answer, and the non-committing one |
+ * | `FulfillmentExecutorPort` | how a holder is offered work, and asked to give it back |
+ * | `FulfillmentRequest` / `FulfillmentCancellationRequest` | what an executor is told — the same ADR-062 allowlist discipline, reusing `RoutingShipTo` |
+ * | `FulfillmentRequestResult` | `accepted` or `rejected{reason, blocking}` — `blocking` is what stops re-sourcing looping |
+ * | `FulfillmentStatusSource` | the optional pull a POLLING holder is served by (guard-narrowed, never dispatched) |
  *
  * ## What consumes this
  *
@@ -59,9 +63,14 @@ export * from './domain/types/fulfillment-work.types';
 export * from './domain/types/routing-ship-to.types';
 export * from './domain/types/routing.types';
 
+export * from './domain/types/fulfillment-execution.types';
+
 export * from './domain/ports/fulfillment-router.port';
+export * from './domain/ports/fulfillment-executor.port';
+export * from './domain/ports/capabilities/fulfillment-status-source.capability';
 
 export * from './domain/exceptions/pending-routing-plan-not-supported.error';
+export * from './domain/exceptions/unrecognised-fulfillment-request-result.error';
 
 export * from './domain/types/fulfillment-hold.types';
 
