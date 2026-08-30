@@ -131,11 +131,24 @@ export interface RoutingExplanationStep {
   readonly detail: string | null;
 }
 
-/** Where a quantity of a line is to be sourced from. */
+/**
+ * Where a quantity of a line is to be sourced from.
+ *
+ * `locationId` and `connectionId` are NULLABLE, and deliberately so: they mirror
+ * `FulfillmentWork.locationId` / `assignedConnectionId`, whose own docblocks read
+ * `null` as **not yet assigned** rather than "no location applies" — a router
+ * mints work before it has necessarily resolved a location, and an
+ * observation-only work object on an `omp_fulfilled` topology may never acquire
+ * one. #2395 creates work FROM this shape, so a non-nullable field here would
+ * force it to fabricate a sentinel or widen a published port one slice later,
+ * which is breaking for any implementer. `inventory_locations.ownerConnectionId`
+ * is likewise nullable (`ON DELETE SET NULL`), so an operator-owned warehouse has
+ * no legal connection to name.
+ */
 export interface RoutingAssignment {
   readonly orderLineId: string;
-  readonly locationId: string;
-  readonly connectionId: string;
+  readonly locationId: string | null;
+  readonly connectionId: string | null;
   readonly deliveryMethod: string | null;
   readonly quantity: number;
 }
@@ -227,4 +240,48 @@ export interface RoutingEvaluation {
   readonly candidates: readonly RoutingAssignment[];
   readonly unfulfillable: readonly RoutingUnfulfillableLine[];
   readonly explanation: readonly RoutingExplanationStep[];
+}
+
+/**
+ * Whether a plan accounts for every unit it was asked about.
+ *
+ * Per `orderLineId`, assigned + unfulfillable + held must equal the input line's
+ * quantity, and the plan may name no line the input did not. A plan that
+ * silently drops a line is unfulfilled stock with every surface reporting
+ * success — the failure mode nothing downstream can detect on its own.
+ *
+ * Pure, and here rather than in #2395 for the reason `checkFulfillmentWorkLineCapacity`
+ * is: the rule exists once, before the code that depends on it. `check*` rather
+ * than `is*` because it narrows nothing (`checkRequiredToSell` precedent).
+ */
+export function checkRoutingPlanConservesQuantities(
+  input: RoutingInput,
+  plan: ResolvedRoutingPlan,
+): boolean {
+  const expected = new Map<string, number>();
+  for (const line of input.lines) {
+    expected.set(line.orderLineId, (expected.get(line.orderLineId) ?? 0) + line.quantity);
+  }
+
+  const accounted = new Map<string, number>();
+  const add = (orderLineId: string, quantity: number): void => {
+    accounted.set(orderLineId, (accounted.get(orderLineId) ?? 0) + quantity);
+  };
+  plan.assignments.forEach((a) => add(a.orderLineId, a.quantity));
+  plan.unfulfillable.forEach((u) => add(u.orderLineId, u.quantity));
+  plan.holds.forEach((h) => add(h.orderLineId, h.quantity));
+
+  for (const orderLineId of accounted.keys()) {
+    if (!expected.has(orderLineId)) {
+      return false;
+    }
+  }
+
+  for (const [orderLineId, quantity] of expected) {
+    if ((accounted.get(orderLineId) ?? 0) !== quantity) {
+      return false;
+    }
+  }
+
+  return true;
 }

@@ -42,13 +42,44 @@ export class PendingRoutingPlanNotSupportedError extends Error {
 }
 
 /**
+ * Raised when a router answers with a status this build does not recognise.
+ *
+ * Distinct from the `pending` refusal because the two are different facts: one
+ * is a declared arm deferred to `W4-3`, the other is a value core has no reading
+ * for at all.
+ */
+export class UnrecognisedRoutingPlanStatusError extends Error {
+  constructor(public readonly status: string) {
+    super(
+      `Router returned an unrecognised routing plan status: ${JSON.stringify(status)}. ` +
+        'Only "resolved" can be acted on in this build.',
+    );
+    this.name = 'UnrecognisedRoutingPlanStatusError';
+    Error.captureStackTrace(this, this.constructor);
+  }
+}
+
+/**
  * Narrow a `RoutingPlan` to the arm this build can act on.
  *
  * Pure; the rule for the type it sits with. An assertion signature rather than a
  * boolean so a caller cannot read the result and carry on regardless.
+ *
+ * **It tests for `resolved` rather than against `pending`, and that is the whole
+ * point.** A plan crosses this boundary from a plugin (ADR-055) and core
+ * validates nothing a plugin returns, so a router answering some third status —
+ * a future arm, a typo, a different vendor's vocabulary — would be silently
+ * narrowed to `ResolvedRoutingPlan` and read as "decided, no assignments, no
+ * unfulfillable lines, no holds": exactly the successful-looking do-nothing
+ * outcome this file exists to refuse. Failing closed costs nothing; failing open
+ * loses the order quietly.
  */
 export function assertRoutingPlanResolved(plan: RoutingPlan): asserts plan is ResolvedRoutingPlan {
   if (plan.status === 'pending') {
     throw new PendingRoutingPlanNotSupportedError(plan.decisionId);
+  }
+
+  if (plan.status !== 'resolved') {
+    throw new UnrecognisedRoutingPlanStatusError((plan as { status: string }).status);
   }
 }

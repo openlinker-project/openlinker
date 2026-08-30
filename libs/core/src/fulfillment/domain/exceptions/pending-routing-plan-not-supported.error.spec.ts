@@ -1,11 +1,12 @@
-import { readFileSync } from 'fs';
-import { join } from 'path';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
-import type { PendingRoutingPlan, ResolvedRoutingPlan } from '../types/routing.types';
+import type { PendingRoutingPlan, ResolvedRoutingPlan, RoutingPlan } from '../types/routing.types';
 
 import {
   assertRoutingPlanResolved,
   PendingRoutingPlanNotSupportedError,
+  UnrecognisedRoutingPlanStatusError,
 } from './pending-routing-plan-not-supported.error';
 
 describe('assertRoutingPlanResolved', () => {
@@ -30,6 +31,25 @@ describe('assertRoutingPlanResolved', () => {
       expect(error).toBeInstanceOf(PendingRoutingPlanNotSupportedError);
       expect((error as PendingRoutingPlanNotSupportedError).decisionId).toBe('decision-2');
       expect((error as Error).name).toBe('PendingRoutingPlanNotSupportedError');
+    }
+  });
+
+  /**
+   * A plan crosses this boundary from a plugin, and core validates nothing a
+   * plugin returns — so an unknown status must fail closed rather than be
+   * narrowed into a resolved plan with nothing in it.
+   */
+  it('should refuse an unrecognised status rather than narrowing it to resolved', () => {
+    const rogue = { status: 'queued', decisionId: 'decision-3' } as unknown as RoutingPlan;
+
+    expect(() => assertRoutingPlanResolved(rogue)).toThrow(UnrecognisedRoutingPlanStatusError);
+
+    try {
+      assertRoutingPlanResolved(rogue);
+      throw new Error('expected a rejection');
+    } catch (error) {
+      expect(error).toBeInstanceOf(UnrecognisedRoutingPlanStatusError);
+      expect((error as UnrecognisedRoutingPlanStatusError).status).toBe('queued');
     }
   });
 

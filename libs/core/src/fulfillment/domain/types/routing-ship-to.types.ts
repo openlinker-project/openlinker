@@ -7,8 +7,9 @@
  * filter on, and it is `OL_STORE_PII`-aware with a degraded hash-only shape.
  *
  * **What is bounded here, and what is not.** The SHAPE is bounded by
- * construction — no arm can carry a field the allowlist does not name, and a
- * `tsc` error says so. The FIDELITY of the hashed arm is not: both `storePii`
+ * construction — no arm can carry a field its allowlist does not name, and a
+ * `tsc` error says so (`Exclude` over each arm's keys, in the spec beside this
+ * file; the forbidden-name list is a readability aid on top, never the guard). The FIDELITY of the hashed arm is not: both `storePii`
  * and `addressHash` are supplied by the caller and neither is validated here,
  * because core cannot tell a genuine address hash from any other string. So a
  * caller that resolves the flag wrongly emits a postcode it should not, and one
@@ -148,7 +149,10 @@ export function buildRoutingShipTo(
     return {
       mode: 'hashed',
       countryIso2: source.countryIso2,
-      locationHash: source.addressHash ?? null,
+      // `||`, not `??`: an empty string is not a hash, and forwarding one would
+      // group every order that carried it — the very defect this arm's design
+      // exists to prevent.
+      locationHash: source.addressHash?.trim() || null,
     };
   }
 

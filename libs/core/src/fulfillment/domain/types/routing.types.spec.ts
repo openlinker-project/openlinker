@@ -1,11 +1,13 @@
-import { readFileSync } from 'fs';
-import { join } from 'path';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import {
   ROUTING_INPUT_ALLOWED_KEYS,
   ROUTING_INPUT_FORBIDDEN_KEYS,
   ROUTING_INPUT_LINE_ALLOWED_KEYS,
   RoutingUnfulfillableResolutionValues,
+  checkRoutingPlanConservesQuantities,
+  type ResolvedRoutingPlan,
   type RoutingEvaluation,
   type RoutingInput,
   type RoutingInputLine,
@@ -91,12 +93,29 @@ describe('routing.types', () => {
      * The allowlist is only a guard while it is a SECOND place to edit. This
      * catches a field added to the interface and not to the array.
      */
-    it('should not declare a forbidden key as a property in the source', () => {
+    /**
+     * Scoped to the two INPUT-carrying interfaces, not the whole file: `name` is
+     * a forbidden key on an input and a perfectly legitimate one on
+     * `RoutingRuleRef`, where it is the vendor's own rule name. A file-wide scan
+     * would fail on that, which is how a guard gets weakened to make it pass.
+     */
+    it('should not declare a forbidden key on RoutingInput or RoutingInputLine', () => {
       const source = readFileSync(join(__dirname, 'routing.types.ts'), 'utf8');
       const withoutComments = source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/.*$/gm, ' ');
 
-      for (const forbidden of ['buyerEmail', 'customerEmail', 'buyerPhone', 'billingAddress']) {
-        expect(withoutComments).not.toContain(`readonly ${forbidden}`);
+      const blocks = ['RoutingInput', 'RoutingInputLine'].map((name) => {
+        const match = withoutComments.match(
+          new RegExp(`export interface ${name} \\{([\\s\\S]*?)\\n\\}`),
+        );
+        expect(match).not.toBeNull();
+        return match?.[1] ?? '';
+      });
+
+      for (const block of blocks) {
+        for (const forbidden of ROUTING_INPUT_FORBIDDEN_KEYS) {
+          expect(block).not.toContain(`readonly ${forbidden}:`);
+          expect(block).not.toContain(`readonly ${forbidden}?:`);
+        }
       }
     });
   });
@@ -104,6 +123,57 @@ describe('routing.types', () => {
   describe('unfulfillable resolution', () => {
     it('should be closed at line-scoped refund and return', () => {
       expect(RoutingUnfulfillableResolutionValues).toEqual(['refund', 'return']);
+    });
+  });
+
+  describe('checkRoutingPlanConservesQuantities', () => {
+    const plan = (over: Partial<ResolvedRoutingPlan>): ResolvedRoutingPlan => ({
+      status: 'resolved',
+      decisionId: 'd1',
+      assignments: [],
+      unfulfillable: [],
+      holds: [],
+      explanation: [],
+      ...over,
+    });
+
+    const assign = (orderLineId: string, quantity: number) => ({
+      orderLineId,
+      locationId: 'loc-1',
+      connectionId: 'conn-1',
+      deliveryMethod: null,
+      quantity,
+    });
+
+    it('should accept a plan that accounts for every unit', () => {
+      expect(checkRoutingPlanConservesQuantities(input, plan({ assignments: [assign('line-1', 2)] }))).toBe(true);
+    });
+
+    it('should accept units split across assignment, unfulfillable and hold', () => {
+      const split = plan({
+        assignments: [assign('line-1', 1)],
+        unfulfillable: [
+          { orderLineId: 'line-1', quantity: 1, resolution: 'refund', reason: 'no stock' },
+        ],
+      });
+
+      expect(checkRoutingPlanConservesQuantities(input, split)).toBe(true);
+    });
+
+    it('should reject a plan that silently drops a line', () => {
+      expect(checkRoutingPlanConservesQuantities(input, plan({}))).toBe(false);
+    });
+
+    it('should reject a plan that over-accounts a line', () => {
+      expect(
+        checkRoutingPlanConservesQuantities(input, plan({ assignments: [assign('line-1', 3)] })),
+      ).toBe(false);
+    });
+
+    it('should reject a plan naming a line the input never carried', () => {
+      const stray = plan({ assignments: [assign('line-1', 2), assign('line-9', 1)] });
+
+      expect(checkRoutingPlanConservesQuantities(input, stray)).toBe(false);
     });
   });
 });

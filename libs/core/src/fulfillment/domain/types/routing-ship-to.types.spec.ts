@@ -1,10 +1,12 @@
-import { readFileSync } from 'fs';
-import { join } from 'path';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import {
   buildRoutingShipTo,
   ROUTING_SHIP_TO_ALLOWED_KEYS,
   ROUTING_SHIP_TO_FORBIDDEN_KEYS,
+  type HashedRoutingShipTo,
+  type PlainRoutingShipTo,
   type RoutingShipTo,
   type RoutingShipToSource,
 } from './routing-ship-to.types';
@@ -18,7 +20,28 @@ import {
  */
 type KeysOf<T> = T extends unknown ? keyof T : never;
 
-/** Compile-time half of the allowlist: fails `tsc` / ts-jest, not at runtime. */
+/**
+ * The allowlist guard proper, per arm.
+ *
+ * `Exclude` over the declared keys is what makes "no arm can carry a field its
+ * allowlist does not name" true — ANY unlisted field is a `tsc` error, not just
+ * one whose name someone thought to enumerate. The `Extract` check below is a
+ * readability aid naming the fields this exists to keep out; it is not the guard,
+ * and on its own it would pass for a `street` or a `company` nobody listed.
+ */
+type UnallowedPlainKeys = Exclude<
+  keyof PlainRoutingShipTo,
+  (typeof ROUTING_SHIP_TO_ALLOWED_KEYS.plain)[number]
+>;
+const _noUnallowedPlainKeys: UnallowedPlainKeys extends never ? true : never = true;
+
+type UnallowedHashedKeys = Exclude<
+  keyof HashedRoutingShipTo,
+  (typeof ROUTING_SHIP_TO_ALLOWED_KEYS.hashed)[number]
+>;
+const _noUnallowedHashedKeys: UnallowedHashedKeys extends never ? true : never = true;
+
+/** Names the forbidden fields explicitly, on top of the allowlist above. */
 type ForbiddenShipToKeys = Extract<
   KeysOf<RoutingShipTo>,
   'name' | 'email' | 'phone' | 'address1' | 'address2'
@@ -33,8 +56,10 @@ describe('buildRoutingShipTo', () => {
     addressHash: 'a'.repeat(64),
   };
 
-  it('should keep the compile-time allowlist assertion referenced', () => {
+  it('should keep the compile-time allowlist assertions referenced', () => {
     expect(_noForbiddenShipToKeys).toBe(true);
+    expect(_noUnallowedPlainKeys).toBe(true);
+    expect(_noUnallowedHashedKeys).toBe(true);
   });
 
   describe('when the deployment stores PII', () => {
@@ -124,6 +149,17 @@ describe('buildRoutingShipTo', () => {
       expect((first as { locationHash: string }).locationHash).not.toBe(
         (second as { locationHash: string }).locationHash,
       );
+    });
+
+    it('should treat a blank hash as absent rather than as a shared grouping key', () => {
+      for (const blank of ['', '   ']) {
+        const result = buildRoutingShipTo(
+          { countryIso2: 'PL', addressHash: blank },
+          { storePii: false },
+        );
+
+        expect(result).toEqual({ mode: 'hashed', countryIso2: 'PL', locationHash: null });
+      }
     });
 
     it('should report a missing hash as null rather than fabricating a grouping key', () => {
