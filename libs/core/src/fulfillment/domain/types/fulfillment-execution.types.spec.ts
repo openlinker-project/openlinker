@@ -5,6 +5,7 @@ import {
   FULFILLMENT_REQUEST_ALLOWED_KEYS,
   FULFILLMENT_REQUEST_FORBIDDEN_KEYS,
   FULFILLMENT_REQUEST_LINE_ALLOWED_KEYS,
+  FULFILLMENT_REQUEST_RESULT_ALLOWED_KEYS,
   type AcceptedFulfillmentRequest,
   type FulfillmentProgressSnapshot,
   type FulfillmentRequest,
@@ -83,6 +84,38 @@ type ForbiddenResultKeys = Extract<KeysOf<FulfillmentRequestResult>, 'name' | 'e
 const _noForbiddenResultKeys: ForbiddenResultKeys extends never ? true : never = true;
 
 /**
+ * The RESULT allowlist guard, per arm.
+ *
+ * The request is an outbound PII projection; this is about PERSISTENCE — #2399 stamps
+ * `FulfillmentWork.requestStatus` from this result, so an unreviewed field a plugin returns is
+ * a field core may write (the #2327 `rawPayload` class). A bare `Exclude<keyof
+ * FulfillmentRequestResult, ...>` would be VACUOUS: `keyof` over a union is the intersection,
+ * so it would see only `status` and stay green whatever either arm grew. `KeysOf<T>` above
+ * distributes; each arm is excluded against its own list.
+ */
+type UnallowedAcceptedKeys = Exclude<
+  keyof AcceptedFulfillmentRequest,
+  (typeof FULFILLMENT_REQUEST_RESULT_ALLOWED_KEYS.accepted)[number]
+>;
+const _noUnallowedAcceptedKeys: UnallowedAcceptedKeys extends never ? true : never = true;
+
+type UnallowedRejectedKeys = Exclude<
+  keyof RejectedFulfillmentRequest,
+  (typeof FULFILLMENT_REQUEST_RESULT_ALLOWED_KEYS.rejected)[number]
+>;
+const _noUnallowedRejectedKeys: UnallowedRejectedKeys extends never ? true : never = true;
+
+/**
+ * And no arm may carry a forbidden buyer-identifying field, derived from the same constant the
+ * request side uses so the two cannot disagree about what is forbidden.
+ */
+type ForbiddenResultKeysDerived = Extract<
+  KeysOf<FulfillmentRequestResult>,
+  (typeof FULFILLMENT_REQUEST_FORBIDDEN_KEYS)[number]
+>;
+const _noForbiddenResultKeysDerived: ForbiddenResultKeysDerived extends never ? true : never = true;
+
+/**
  * The progress snapshot must carry NO negotiation status.
  *
  * #2399 owns the accept handshake and stamps `FulfillmentWork.requestStatus`; a second,
@@ -146,6 +179,9 @@ describe('fulfillment-execution.types', () => {
     expect(_blockingIsRequired).toBe(true);
     expect(_noForbiddenResultKeys).toBe(true);
     expect(_noNegotiationKeysOnSnapshot).toBe(true);
+    expect(_noUnallowedAcceptedKeys).toBe(true);
+    expect(_noUnallowedRejectedKeys).toBe(true);
+    expect(_noForbiddenResultKeysDerived).toBe(true);
   });
 
   it('should keep the typed fixtures referenced so their annotations are checked', () => {
@@ -214,6 +250,22 @@ describe('fulfillment-execution.types', () => {
     it('should spell its two statuses exactly as the negotiation axis does', () => {
       expect(FulfillmentRequestStatusValues).toContain(accepted.status);
       expect(FulfillmentRequestStatusValues).toContain(rejected.status);
+    });
+
+    it('should carry exactly the allowlisted keys on each arm', () => {
+      expect(Object.keys(accepted).sort()).toEqual(
+        [...FULFILLMENT_REQUEST_RESULT_ALLOWED_KEYS.accepted].sort(),
+      );
+      expect(Object.keys(rejected).sort()).toEqual(
+        [...FULFILLMENT_REQUEST_RESULT_ALLOWED_KEYS.rejected].sort(),
+      );
+    });
+
+    it('should never list a forbidden buyer-identifying key as allowed on either arm', () => {
+      for (const forbidden of FULFILLMENT_REQUEST_FORBIDDEN_KEYS) {
+        expect(FULFILLMENT_REQUEST_RESULT_ALLOWED_KEYS.accepted).not.toContain(forbidden);
+        expect(FULFILLMENT_REQUEST_RESULT_ALLOWED_KEYS.rejected).not.toContain(forbidden);
+      }
     });
   });
 });

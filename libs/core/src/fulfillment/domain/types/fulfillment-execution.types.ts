@@ -203,6 +203,25 @@ export const FULFILLMENT_REQUEST_ALLOWED_KEYS = [
   'idempotencyKey',
 ] as const;
 
+/**
+ * The RESULT allowlist, per arm.
+ *
+ * **Inbound needs this too, and the inbound/outbound distinction is the wrong axis here.**
+ * That distinction is real for PII EXPOSURE — a result hands no buyer data out — but the risk
+ * on this side is PERSISTENCE: #2399 stamps `FulfillmentWork.requestStatus` from this result,
+ * so a field a plugin adds is a field core may write. That is the same class as the returns
+ * `rawPayload` gap (#2327), recorded as a known gap precisely because nothing bounded what a
+ * source could put there.
+ *
+ * Per ARM, because `keyof (A | B)` is the INTERSECTION: a single list checked against the
+ * union would examine only `status` and pass whatever either arm grew. The guard beside this
+ * file distributes with `KeysOf<T>` and `Exclude`s each arm against its own entry.
+ */
+export const FULFILLMENT_REQUEST_RESULT_ALLOWED_KEYS = {
+  accepted: ['status', 'externalWorkId', 'acceptedAt'],
+  rejected: ['status', 'reason', 'blocking', 'detail'],
+} as const;
+
 export const FULFILLMENT_REQUEST_LINE_ALLOWED_KEYS = [
   'workLineId',
   'productVariantId',

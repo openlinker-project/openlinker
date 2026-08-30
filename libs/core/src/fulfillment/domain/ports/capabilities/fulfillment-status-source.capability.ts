@@ -22,21 +22,32 @@
  * rather than throw. A manifest test would also stop recognising an adapter that implements
  * the method and declares nothing, which is the failure mode the probe exists to avoid.
  *
- * ## Known blind spot: the method name is shared with a DIFFERENT port
+ * ## The method is `getWorkFulfillmentStatus`, DIVERGING from DESIGN §5.4's `getFulfillmentStatus`
  *
- * `orders`' `FulfillmentStatusReader.getFulfillmentStatus({ externalOrderId })` — a
- * sub-capability of `OrderProcessorManagerPort` — uses this exact method name, keyed by
- * external ORDER id and answering a status-shaped `FulfillmentStatusSnapshot`. There is no
- * TypeScript conflict (different interfaces, different contexts), but a runtime probe tests
- * only that the property is a function: a single class implementing both ports and dispatched
- * as the `FulfillmentExecutor` would pass this guard and then be called with a
- * `FulfillmentWorkRef` where it expects `{ externalOrderId }`.
+ * The design text spells this `getFulfillmentStatus(workRef)`. That name is **unsafe against a
+ * structural probe already in the tree**, so the signature diverges and the design has been
+ * updated to match rather than the other way round.
  *
- * The name is kept because it is the signature in both #2398 and DESIGN §5.4, and the hazard
- * requires one class to implement two ports from two contexts — already a design smell. It is
- * named HERE rather than left to be met at runtime, because a guard whose failure mode is
- * invisible is what ADR-055's probe rule exists to bound. If a real adapter ever does need
- * both ports, `getWorkFulfillmentStatus` is the structurally safe rename.
+ * `orders` ships `FulfillmentStatusReader.getFulfillmentStatus({ externalOrderId })` — a
+ * sub-capability of `OrderProcessorManagerPort` — whose guard is nothing but
+ * `typeof adapter.getFulfillmentStatus === 'function'`. The hazard is **one-directional and
+ * needs no class implementing both ports deliberately**: any adapter implementing THIS
+ * capability under the old name would satisfy THAT guard, be narrowed to
+ * `FulfillmentStatusReader`, and be called by `FulfillmentStatusSyncService`
+ * (`libs/core/src/shipping/application/services/fulfillment-status-sync.service.ts`) with
+ * `{ externalOrderId }` while expecting a `FulfillmentWorkRef`. Adapters routinely implement
+ * several ports on one class, so this is reachable rather than contrived.
+ *
+ * This is the exact failure ADR-046 records — `isOfferFieldUpdater` tests only
+ * `updateOfferFields`, so a plugin compiled against an older `libs/core` satisfies it and
+ * throws at publish time — and #2229 repeats it for `isEanCategoryMatcherStreaming`. Both were
+ * fixed by probing more narrowly. **Neither could have been fixed by a comment**, which is why
+ * the earlier decision to keep the name and document the collision was wrong: a distinct name
+ * makes the mis-narrowing impossible, where a docblock only asks the next author to notice it.
+ *
+ * Renaming is free precisely NOW: nothing implements or calls this port, and #2399 / #2400 /
+ * #2402 are not yet written. It stops being free the moment an adapter exists to be
+ * mis-narrowed.
  *
  * @module libs/core/src/fulfillment/domain/ports/capabilities
  * @see docs/plans/analysis/DESIGN-oms-authority-model.md §5.4
@@ -47,11 +58,11 @@ import type { FulfillmentWorkRef } from '../../types/fulfillment-work.types';
 import type { FulfillmentExecutorPort } from '../fulfillment-executor.port';
 
 export interface FulfillmentStatusSource {
-  getFulfillmentStatus(workRef: FulfillmentWorkRef): Promise<FulfillmentProgressSnapshot>;
+  getWorkFulfillmentStatus(workRef: FulfillmentWorkRef): Promise<FulfillmentProgressSnapshot>;
 }
 
 export function isFulfillmentStatusSource(
   adapter: FulfillmentExecutorPort,
 ): adapter is FulfillmentExecutorPort & FulfillmentStatusSource {
-  return typeof (adapter as Partial<FulfillmentStatusSource>).getFulfillmentStatus === 'function';
+  return typeof (adapter as Partial<FulfillmentStatusSource>).getWorkFulfillmentStatus === 'function';
 }

@@ -16,7 +16,7 @@ const acceptedResult = {
 
 /**
  * An adapter compiled against a `libs/core` that predates this sub-capability: a complete,
- * valid `FulfillmentExecutorPort` that simply has no `getFulfillmentStatus`.
+ * valid `FulfillmentExecutorPort` that simply has no `getWorkFulfillmentStatus`.
  *
  * This is the AC's "older-shaped fake adapter". It is what the probe must classify as
  * NOT a status source without throwing — ADR-055's R1 forward-compat rule.
@@ -32,10 +32,20 @@ class OlderShapedExecutorAdapter implements FulfillmentExecutorPort {
 }
 
 class PollingExecutorAdapter extends OlderShapedExecutorAdapter implements FulfillmentStatusSource {
-  getFulfillmentStatus(workRef: FulfillmentWorkRef): Promise<FulfillmentProgressSnapshot> {
+  getWorkFulfillmentStatus(workRef: FulfillmentWorkRef): Promise<FulfillmentProgressSnapshot> {
     return Promise.resolve({ work: workRef, externalWorkId: null, lines: [], observedAt: null });
   }
 }
+
+/**
+ * The rename, pinned at the type level.
+ *
+ * `getFulfillmentStatus` is the method name `orders`' `FulfillmentStatusReader` structurally
+ * probes for. This capability must never declare it, or an adapter implementing this port
+ * becomes mis-narrowable by that foreign guard. Reads the interface, not a fixture.
+ */
+type ForeignProbeCollision = Extract<keyof FulfillmentStatusSource, 'getFulfillmentStatus'>;
+const _noForeignProbeCollision: ForeignProbeCollision extends never ? true : never = true;
 
 describe('isFulfillmentStatusSource', () => {
   it('should narrow an adapter that implements the method', () => {
@@ -45,7 +55,7 @@ describe('isFulfillmentStatusSource', () => {
 
     if (isFulfillmentStatusSource(adapter)) {
       // The narrowing is the point: this line does not compile without the guard.
-      expect(typeof adapter.getFulfillmentStatus).toBe('function');
+      expect(typeof adapter.getWorkFulfillmentStatus).toBe('function');
     }
   });
 
@@ -87,9 +97,38 @@ describe('isFulfillmentStatusSource', () => {
     expect(CoreCapabilityValues).not.toContain('FulfillmentStatusSource');
   });
 
+  /**
+   * The reason this method is `getWorkFulfillmentStatus` and not DESIGN §5.4's
+   * `getFulfillmentStatus`.
+   *
+   * `orders` ships `FulfillmentStatusReader`, whose guard is a bare
+   * `typeof adapter.getFulfillmentStatus === 'function'`. Under the design's original name an
+   * adapter implementing THIS capability would satisfy that foreign guard — no dual-port class
+   * required — and `FulfillmentStatusSyncService`
+   * (`libs/core/src/shipping/application/services/fulfillment-status-sync.service.ts:293`)
+   * would call it with `{ externalOrderId }` where it expects a `FulfillmentWorkRef`. The
+   * ADR-046 / #2229 shape, unfixable by a comment.
+   *
+   * Asserted WITHOUT importing that guard: ADR-053's no-injection contract forbids
+   * `@openlinker/core/orders` anywhere under this leaf, specs included, and
+   * `check-no-injection-contracts.mjs` enforces it. The property that makes mis-narrowing
+   * impossible is local anyway — this capability declares no method by the foreign name — so
+   * it is asserted directly rather than by coupling to the thing being avoided.
+   *
+   * The compile-time half is authoritative and cannot be tautological: it reads the INTERFACE,
+   * so renaming the method back fails `tsc` here.
+   */
+  it('should declare no method under the name orders FulfillmentStatusReader probes for', () => {
+    const adapter: FulfillmentStatusSource = new PollingExecutorAdapter();
+
+    expect(_noForeignProbeCollision).toBe(true);
+    expect(typeof adapter.getWorkFulfillmentStatus).toBe('function');
+    expect('getFulfillmentStatus' in adapter).toBe(false);
+  });
+
   it('should reject a non-function property of the same name', () => {
     const stringValued = Object.assign(new OlderShapedExecutorAdapter(), {
-      getFulfillmentStatus: 'not-a-function',
+      getWorkFulfillmentStatus: 'not-a-function',
     }) as unknown as FulfillmentExecutorPort;
 
     expect(isFulfillmentStatusSource(stringValued)).toBe(false);
