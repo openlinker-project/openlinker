@@ -21,6 +21,11 @@ export type ConnectionStatus = 'active' | 'disabled' | 'error' | 'needs_reauth';
  * Well-known core capabilities — mirrors `CoreCapabilityValues` on the backend.
  * Plugin adapters can register additional capability names; FE accepts those
  * as plain strings without runtime narrowing failures (#576).
+ *
+ * `'FulfillmentRouter'` (ADR-052 A2) is deliberately absent on both sides: A2 is
+ * `config-only`, so nothing resolves it by connection id. The backend
+ * declaration carries the full reasoning — do not add it here first, or
+ * `check-core-capability-mirror.mjs` fails with this file named as the drift.
  */
 export const CORE_CAPABILITY_VALUES = [
   'ProductMaster',
@@ -44,8 +49,6 @@ export const CORE_CAPABILITY_VALUES = [
   'AvailabilityAuthority',
   // Fulfilment execution authority (ADR-052 A3) - who holds a work object and may act on it.
   'FulfillmentExecutor',
-  // 'FulfillmentRouter' (A2) is deliberately absent - A2 is config-only, so nothing
-  // resolves it by connection id. See the backend declaration's comment.
 ] as const;
 
 /**

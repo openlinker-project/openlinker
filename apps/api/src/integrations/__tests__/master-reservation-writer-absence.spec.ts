@@ -24,6 +24,13 @@
  * no-op. Do not convert this into a text scan. If a future reader wants wider
  * coverage, widen the MANIFEST list below, never the matching strategy.
  *
+ * That list is hand-maintained, so it can go stale: a NEW integration package
+ * added without an entry here is simply not swept, and the `>= 10` floor below
+ * is a guard against an accidentally-emptied list, not a completeness proof.
+ * Deriving it from the filesystem was rejected — it would reintroduce the
+ * text-scanning this spec exists to avoid — so the honest mitigation is to add
+ * the manifest here when a new integration lands.
+ *
  * ## It reads BUILT output, and that fails OPEN
  *
  * These manifests resolve through each package's `dist`, so editing a manifest

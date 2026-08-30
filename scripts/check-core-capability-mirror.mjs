@@ -410,9 +410,13 @@ function selfCheck() {
     'ProductMaster,FulfillmentExecutor'
   );
 
-  // ...and an array that is genuinely never closed still returns null.
+  // ...and an array with no closing bracket ANYWHERE AFTER IT returns null.
+  // Note the honest limit: neither this parser nor its predecessor tracks
+  // nesting, so an unclosed array followed later in the file by an unrelated
+  // `]` still mis-parses rather than returning null. That is unchanged
+  // behaviour, and no declaration in this repo has a nested array.
   expect(
-    'unclosed array → null',
+    'unclosed array with nothing after it → null',
     parseCapabilityValues("export const " + CORE_DECLARATION + " = [\n  'ProductMaster',\n", CORE_DECLARATION),
     null
   );
