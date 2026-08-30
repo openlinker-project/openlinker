@@ -2814,6 +2814,22 @@ a.delivery-rider-banner__button:focus-visible {
 
 .data-table__container {
   overflow-x: auto;
+  /* Containing block for absolutely-positioned descendants, so this container's
+     `overflow-x` actually CLIPS them (#2388).
+
+     An element with `overflow` only clips a descendant for which it is in the
+     containing-block chain, and a `position: static` box never is. `.sr-only`
+     is `position: absolute`, so every screen-reader label inside a row sat at
+     its static x — INSIDE the wide table — and escaped this clip entirely,
+     extending the document's own scroll area.
+
+     Measured on `/orders` at 768 px: `documentElement.scrollWidth` 947 vs
+     `clientWidth` 768, and the page really scrolled ~180 px sideways onto empty
+     space, against the style guide's "no horizontal scrolling at any
+     breakpoint". With this line the page reports 768/768 while the container
+     keeps scrolling its own columns (1151/718) — which is the one overflow the
+     guide does allow. */
+  position: relative;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   background: var(--bg-surface);
@@ -5092,6 +5108,39 @@ a.kpi-card:focus-visible {
   color: var(--text-primary);
   font-size: 0.8125rem;
   word-break: break-word;
+}
+
+/* `grid-template-columns: 1fr` above is `minmax(auto, 1fr)`, and that `auto`
+   minimum floors the track at the widest item's MIN-CONTENT. A value carrying
+   an inline-flex child that cannot wrap — `ConnectionEntityLabel` is the one
+   that surfaced it — therefore pushes the track past the list's own box, and
+   `.key-value-list`'s `overflow: hidden` then CLIPS it: no ellipsis, no
+   scrollbar, no way to read the rest.
+
+   Measured on `/returns` at 375 px before this rule (#2388): 3 of 8 lists had a
+   434 px track inside a 311 px box, cutting a 58-character connection name
+   mid-word AND hiding the id beside it. The page itself never scrolled — the
+   shell clips — so the loss was silent, which is worse than a scrollbar.
+
+   `min-width: 0` releases only the floor the `1fr` already intended, so the
+   child's own `text-overflow: ellipsis` (and its `title`) can finally do their
+   job. Nothing widens; the only change is that an over-wide value now shrinks
+   instead of being cut off. */
+.key-value-list__label,
+.key-value-list__value {
+  min-width: 0;
+}
+
+/* The host half of the same rule. `min-width: 0` lets the TRACK shrink, but an
+   inline-level child in a block value box still sizes to its own max-content
+   and overflows — `.entity-label` is `inline-flex`, so it did exactly that
+   (402 px inside a 309 px value). This is the containment pattern the #2094
+   connection fold already documents: a definite width on the host plus
+   `> * { max-width: 100% }`, without which a child's own ellipsis can never
+   fire. `.entity-label__name` already carries `text-overflow: ellipsis` and the
+   full string stays reachable through its `title`. */
+.key-value-list__value > * {
+  max-width: 100%;
 }
 
 .key-value-list__value--mono {
@@ -20094,7 +20143,7 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   color: var(--text-muted);
 }
 
-@media (max-width: 768px) {
+@media (max-width: 767.98px) {
   .who-decides-row {
     grid-template-areas:
       'question'

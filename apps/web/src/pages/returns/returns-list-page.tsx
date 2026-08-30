@@ -50,6 +50,7 @@ import {
   ReturnIdentityCell,
   ReturnOpenedCell,
   ReturnOrderCell,
+  ReturnOrphanBadge,
   ReturnSourceStatus,
   ReturnSegmentStrip,
   ReturnStageCell,
@@ -352,6 +353,21 @@ export function ReturnsListPage(): ReactElement {
               title: (item) => returnIdentitySummary(item),
               subtitle: (item) => returnOrderSummary(item),
               meta: (item) => <ReturnStageCell item={item} />,
+              // The orphan flag rides in `summary`, not `subtitle` (#2388).
+              //
+              // `subtitle` takes `returnOrderSummary`, a plain STRING — so the
+              // desktop cell's red badge degraded to the word "Unmatched" in
+              // running text below 767.98 px. Measured on this list: 2
+              // error-tone badges at 1024 px, 0 at 375 px, while the operator's
+              // most urgent signal is precisely the one that vanished.
+              //
+              // `summary` is the documented home for it: `data-table.tsx` calls
+              // that slot the "always-visible" facts block, while `detail` can
+              // be collapsed behind `collapsibleDetail` — which would re-hide
+              // the badge — and `meta` already carries the stage, a different
+              // fact. `ReturnOrphanBadge` is the SAME renderer `ReturnOrderCell`
+              // uses, so the two layouts cannot drift.
+              summary: (item) => (item.bucket === 'orphan' ? <ReturnOrphanBadge /> : null),
               // `KeyValueList`, not a hand-rolled `<dl>`: the peer lists
               // (`listings`, `orders`) render their card detail through the same
               // primitive, and a bare `<dl>` under a class no stylesheet defines

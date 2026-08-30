@@ -2,6 +2,7 @@ import { cleanup, screen, waitFor, within, type RenderResult } from '@testing-li
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, it, expect, vi, type Mock } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
+import { mockMobileViewport } from '../../test/viewport';
 import { ReturnsListPage } from './returns-list-page';
 import type { ReturnListItem, ReturnListResult } from '../../features/returns';
 import type { Connection } from '../../features/connections/api/connections.types';
@@ -289,6 +290,37 @@ describe('ReturnsListPage', () => {
       // Independent parts, never one ternary — the badge must not hide the
       // reference the re-attribution pass resolves the orphan by.
       expect(table.getByText('ORD-999')).toBeInTheDocument();
+    });
+
+    it('should badge an orphan return in the MOBILE CARD too, not only the desktop cell', async () => {
+      // #2388. `DataTable` renders the card view solely from `cardView` — there
+      // is no `columns` fallback — so before this the orphan badge existed only
+      // in the desktop cell and simply did not render below 767.98 px. The card
+      // still said "Unmatched", but as plain text inside `subtitle`, because
+      // `returnOrderSummary` returns a STRING. Measured on the running app:
+      // 2 error-tone badges at 1024 px, 0 at 375 px — the operator's most
+      // urgent signal was the one the phone dropped.
+      const viewport = mockMobileViewport();
+      try {
+        setup({
+          list: listResult({
+            items: [
+              makeReturn({ bucket: 'orphan', internalOrderId: null, externalOrderId: 'ORD-999' }),
+            ],
+            counts: { total: 1, orphan: 1, attributed: 0 },
+          }),
+        });
+
+        await screen.findByText('RET-1');
+        // No <table> at this width, so the desktop-scoped query above cannot be
+        // reused; scope to the card list instead, since the filter chip renders
+        // the word "Orphan" as well and an unscoped query would match it.
+        const cards = document.querySelector('.data-table__cards');
+        expect(cards).not.toBeNull();
+        expect(within(cards as HTMLElement).getByText('Orphan')).toBeInTheDocument();
+      } finally {
+        viewport.restore();
+      }
     });
 
     it('should render the source status verbatim and attributed', async () => {

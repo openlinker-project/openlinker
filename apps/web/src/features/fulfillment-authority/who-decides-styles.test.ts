@@ -157,4 +157,61 @@ describe('who-decides stylesheet coverage', () => {
     expect(candidates.length).toBeGreaterThan(0);
     expect(inactive.filter((area) => candidates.includes(area))).toEqual([]);
   });
+
+  /**
+   * The row's mobile reflow must land on the SAME breakpoint as the shared list
+   * primitive (#2388).
+   *
+   * `.who-decides-row` shipped guarded by `max-width: 768px`, which MATCHES at
+   * exactly 768 px — while `DataTable`'s own card/table switch and all three
+   * `hide-below` queries use `max-width: 767.98px`, which does not. Measured on
+   * `/settings/who-decides` at innerWidth 768 before the fix: `matchMedia`
+   * reported `767.98px` false and `768px` true, so this row rendered its
+   * single-column mobile layout while every table on the page was still in its
+   * desktop branch — two components disagreeing about which band they are in,
+   * at one of the three audited widths.
+   *
+   * Asserted against `.data-table__cell--hide-below-768` rather than against a
+   * hardcoded string, so the row follows the primitive if the house breakpoint
+   * ever moves, instead of pinning a number that would then be wrong.
+   */
+  it('reflows on the same breakpoint the shared table primitive uses', () => {
+    const css = readFileSync(join(WEB_SRC, 'index.css'), 'utf8');
+
+    // Brace-matched, so only a media block's OWN body is searched — the
+    // `ConnectionFold.test.tsx` primitive. A naive `split('@media ')` sweeps up
+    // every rule that follows a block until the next one, and these selectors
+    // also appear outside any media query, so a looser guard finds the wrong
+    // block and passes by luck.
+    const queryFor = (selector: string): string | undefined => {
+      for (let at = css.indexOf('@media '); at !== -1; at = css.indexOf('@media ', at + 1)) {
+        const open = css.indexOf('{', at);
+        let depth = 0;
+        let close = open;
+        for (; close < css.length; close += 1) {
+          if (css[close] === '{') depth += 1;
+          else if (css[close] === '}') {
+            depth -= 1;
+            if (depth === 0) break;
+          }
+        }
+        if (css.slice(open + 1, close).includes(`${selector} {`)) {
+          return css.slice(at + '@media '.length, open).trim();
+        }
+      }
+      return undefined;
+    };
+
+    const rowQuery = queryFor('.who-decides-row');
+    const primitiveQuery = queryFor('.data-table__cell--hide-below-768');
+
+    expect(rowQuery).toBeDefined();
+    expect(primitiveQuery).toBeDefined();
+    expect(rowQuery).toBe(primitiveQuery);
+
+    // Guard of the guard: a selector that appears in NO media block must return
+    // undefined, or `queryFor` has decayed into a substring scan and the
+    // equality above would be comparing two accidental hits.
+    expect(queryFor('.who-decides-row__nonexistent-leaf')).toBeUndefined();
+  });
 });
