@@ -197,12 +197,6 @@ export const SALES_DOCUMENT_GATE_REASON_COPY = {
   },
 } satisfies Record<SalesDocumentGateBlockReasonValue, SalesDocumentGateReasonCopy>;
 
-/** What a surface renders for one persisted block. */
-export interface ResolvedSalesDocumentReasonCopy extends SalesDocumentGateReasonCopy {
-  /** True when the copy came from the paired routing reason rather than the gate. */
-  fromUnresolvedReason: boolean;
-}
-
 /**
  * Resolve the copy for one persisted block.
  *
@@ -219,9 +213,13 @@ export interface ResolvedSalesDocumentReasonCopy extends SalesDocumentGateReason
 export function resolveSalesDocumentReasonCopy(
   reason: SalesDocumentGateBlockReasonValue | null | undefined,
   unresolvedReason?: SalesDocumentUnresolvedReasonValue | null
-): ResolvedSalesDocumentReasonCopy | null {
+): SalesDocumentGateReasonCopy | null {
   if (!reason) return null;
 
+  // Both lookups are cast wider than the index signature: the value arrives from
+  // an API payload, so a newer backend can hand this build a reason outside the
+  // union it was compiled against, and the type would otherwise promise an entry
+  // that is not there.
   const gate = SALES_DOCUMENT_GATE_REASON_COPY[reason] as SalesDocumentGateReasonCopy | undefined;
   if (!gate) return null;
 
@@ -230,15 +228,11 @@ export function resolveSalesDocumentReasonCopy(
       | SalesDocumentReasonCopy
       | undefined;
     if (routing) {
-      return {
-        short: routing.short,
-        detail: routing.detail,
-        tone: gate.tone,
-        keepsAction: gate.keepsAction,
-        fromUnresolvedReason: true,
-      };
+      // The routing reason supplies the words; the gate supplies the tone and
+      // whether an action remains.
+      return { ...gate, short: routing.short, detail: routing.detail };
     }
   }
 
-  return { ...gate, fromUnresolvedReason: false };
+  return gate;
 }

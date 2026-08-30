@@ -56,7 +56,6 @@ describe('sales-document reason copy', () => {
     expect(copy?.short).toBe(
       SALES_DOCUMENT_UNRESOLVED_REASON_COPY['conflicting-rules-equal-priority'].short
     );
-    expect(copy?.fromUnresolvedReason).toBe(true);
     // Tone and action stay the gate's: the routing reason says what happened,
     // the gate says how serious it is and whether an action remains.
     expect(copy?.tone).toBe('error');
@@ -66,7 +65,6 @@ describe('sales-document reason copy', () => {
   it('should fall back to the generic routing copy when no routing reason travelled along', () => {
     const copy = resolveSalesDocumentReasonCopy('unresolved-routing', null);
     expect(copy?.short).toBe(SALES_DOCUMENT_GATE_REASON_COPY['unresolved-routing'].short);
-    expect(copy?.fromUnresolvedReason).toBe(false);
   });
 
   it('should return null when no reason is persisted', () => {

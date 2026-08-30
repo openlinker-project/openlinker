@@ -34,5 +34,4 @@ export type {
   SalesDocumentReasonCopy,
   SalesDocumentGateReasonCopy,
   SalesDocumentReasonTone,
-  ResolvedSalesDocumentReasonCopy,
 } from './lib/sales-document-reason-copy';
