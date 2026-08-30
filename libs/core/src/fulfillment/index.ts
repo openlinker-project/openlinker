@@ -63,4 +63,34 @@ export * from './domain/ports/fulfillment-router.port';
 
 export * from './domain/exceptions/pending-routing-plan-not-supported.error';
 
+export * from './domain/types/fulfillment-hold.types';
+
+// The INPUT shapes are exported; `FulfillmentWorkRepositoryPort` itself is
+// deliberately NOT — a `*RepositoryPort` is an intra-context persistence
+// contract, and `check-cross-context-imports` rejects it by deny pattern (the
+// `ReservationRepositoryPort` / `OrderHoldRepositoryPort` precedent). A sibling
+// context reaches this aggregate through an `I*Service`; a host-side test
+// resolves the token against a local structural type (the
+// `diagnostic-holds-are-inert.int-spec.ts` shape).
+export type {
+  CancelFulfillmentWorkInput,
+  CreateFulfillmentWorkInput,
+  CreateFulfillmentWorkLineInput,
+  FulfillmentWorkTransaction,
+  PlaceFulfillmentHoldInput,
+  RecordFulfillmentLineProgressInput,
+  ReleaseFulfillmentHoldInput,
+  TransitionFulfillmentRequestStatusInput,
+  TransitionFulfillmentWorkStatusInput,
+} from './domain/ports/fulfillment-work-repository.port';
+
+export { DuplicateFulfillmentWorkLineError } from './domain/exceptions/duplicate-fulfillment-work-line.error';
+export { FulfillmentHoldAlreadyReleasedError } from './domain/exceptions/fulfillment-hold-already-released.error';
+export { FulfillmentHoldLimitExceededError } from './domain/exceptions/fulfillment-hold-limit-exceeded.error';
+export { FulfillmentHoldNotFoundError } from './domain/exceptions/fulfillment-hold-not-found.error';
+export { FulfillmentPersistenceError } from './domain/exceptions/fulfillment-persistence.error';
+export { FulfillmentWorkNotFoundError } from './domain/exceptions/fulfillment-work-not-found.error';
+
+export { FulfillmentModule } from './fulfillment.module';
+
 export * from './fulfillment.tokens';

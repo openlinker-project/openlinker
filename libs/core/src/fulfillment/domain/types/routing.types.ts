@@ -31,6 +31,7 @@
  * @see docs/plans/analysis/DESIGN-oms-authority-model.md §5.3
  * @see docs/architecture/adrs/053-fulfillment-authority-vocabulary-leaf.md
  */
+import type { HoldReason } from '@openlinker/core/order-lifecycle';
 import type { RoutingShipTo } from './routing-ship-to.types';
 
 /** One order line's participation in a routing question. */
@@ -185,24 +186,36 @@ export interface RoutingUnfulfillableLine {
 /**
  * A hold the router placed rather than assigning.
  *
- * `reason` is an OPAQUE string here, not `HoldReason` from
- * `@openlinker/core/order-lifecycle`, and that is a decision rather than an
- * oversight. Design adjudication #4 keeps one hold vocabulary across both
- * grains, but importing it would spend this leaf's SECOND `ZERO_SIBLING_EDGE_LEAVES`
- * entry for a field with no writer — holds become first-class rows in #2392, and
- * the vocabulary choice is genuinely theirs.
+ * `reason` is `HoldReason` from `@openlinker/core/order-lifecycle`, imported
+ * type-only. **#2393 shipped this as an opaque `string` and asked #2392 to take
+ * the decision rather than tidy it up; #2392 took it, and narrowed.**
  *
- * Note the asymmetry with `RoutingUnfulfillableLine.resolution`, which IS a
- * closed union: the design closes that one explicitly, whereas a hold reason is
- * a cross-grain vocabulary another context owns.
+ * #2393's reasoning was sound on the facts available then: importing the union
+ * would spend this leaf's SECOND `ZERO_SIBLING_EDGE_LEAVES` entry for a field
+ * with no writer. **That premise has since expired** — #2392 spends that entry
+ * anyway for `FulfillmentHold.reason`, the first-class hold row, so the
+ * narrowing is now free of architectural cost.
  *
- * Narrowing this to `HoldReason` later is a BREAKING change for any implementer,
- * so #2392 should treat it as a decision and not a tidy-up.
+ * It is also load-bearing rather than cosmetic. `RoutingPlan.holds` is what the
+ * router hands to `FulfillmentWorkRepositoryPort.placeHold`, whose input is
+ * typed `HoldReason`. Left as a `string`, #2395 would have to narrow it at that
+ * boundary — and it CANNOT: narrowing needs `isHoldReason`, a value import the
+ * leaf walker forbids from a registered leaf unconditionally. So the opaque
+ * version does not merely lose type safety, it strands the only consumer.
+ *
+ * Design adjudication #4 (one hold vocabulary across both grains) is what makes
+ * this the right union rather than a new one. `RoutingUnfulfillableLine.reason`
+ * is deliberately left opaque by contrast: a router's why-not-sourced
+ * explanation is the router's own vocabulary, owned by no other context, so
+ * there is nothing to converge it with.
+ *
+ * Narrowing is BREAKING for an implementer, which is precisely why it happens
+ * now, while there is none, rather than later.
  */
 export interface RoutingHold {
   readonly orderLineId: string;
   readonly quantity: number;
-  readonly reason: string;
+  readonly reason: HoldReason;
 }
 
 /** A router that decided. */

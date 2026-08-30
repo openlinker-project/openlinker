@@ -226,6 +226,14 @@ const harness = createIntegrationTestHarness({
     // — without this a mapping written by one case is still there for the
     // next, and the MCP write-refusal assertion (#1488) counts rows.
     'category_mappings',
+    // fulfillment_work_lines / fulfillment_holds / fulfillment_works (#2392) —
+    // the OL-owned work aggregate. Its two FKs (lines -> works, holds -> works,
+    // both ON DELETE CASCADE) live in the MIGRATION rather than the ORM
+    // decorators, so the synchronize-built test schema has nothing to cascade
+    // from and the closure walk cannot reach these tables. Children first.
+    'fulfillment_work_lines',
+    'fulfillment_holds',
+    'fulfillment_works',
     // fulfillment_routing_rules is connection-scoped config (#832). Listed
     // explicitly because — like connection_carrier_mappings — its FKs live in
     // the migration, not the ORM decorators, so the synchronize-built test
