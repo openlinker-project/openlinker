@@ -348,10 +348,12 @@ describe('SalesDocumentPanel - reconcile outcomes (#2522/#2583)', () => {
     });
   }
 
-  it('states that the provider has the sale when the check comes back still-unknown', async () => {
-    // Before this branch existed, `still-unknown` fell through to the
-    // "cannot be looked up automatically" arm and told the operator the
-    // provider cannot be queried. The check worked; it simply did not settle.
+  it('reports still-unknown as an unsettled check, naming no cause for it', async () => {
+    // Two things must both hold. It must not fall through to the "cannot be
+    // looked up automatically" arm, which is false - the check worked and
+    // simply did not settle. And it must not claim the provider holds the
+    // sale: the same outcome covers an answer OpenLinker could not read,
+    // where nothing about the provider is known.
     const reconcile = vi
       .fn()
       .mockResolvedValue({ outcome: 'still-unknown', record: inDoubt });
@@ -361,8 +363,10 @@ describe('SalesDocumentPanel - reconcile outcomes (#2522/#2583)', () => {
     await user.click(await screen.findByRole('button', { name: 'Look it up' }));
 
     expect(await findToastTitle('Still not confirmed')).toBeInTheDocument();
-    await findToastDescription(/has the sale and has not registered it yet/i);
+    await findToastDescription(/did not confirm a registration/i);
     expect(screen.queryByText(/cannot be queried by OpenLinker/i)).toBeNull();
+    expect(screen.queryByText(/has the sale/i)).toBeNull();
+    expect(screen.queryByText(/has not registered it yet/i)).toBeNull();
   });
 
   it('does not say the provider holds nothing when it reports no registration', async () => {

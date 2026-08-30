@@ -444,14 +444,21 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
             // INTERIM (#2522/#2583). Before this branch existed `still-unknown`
             // fell into the `else` below and told the operator the provider
             // cannot be queried, which is false: the check worked and simply did
-            // not settle. Copy states only what the backend reports - no timing,
-            // no progress, no estimate. M9 owns how this panel presents it.
+            // not settle.
+            //
+            // The copy names the OUTCOME and never its cause. The usual cause is
+            // a provider holding the sale, but the same outcome also covers an
+            // answer OpenLinker could not read, where nothing about the provider
+            // is known - so saying "the provider has the sale" would assert what
+            // no adapter reported, which is the defect this branch exists to
+            // stop. The backend distinguishes the two on the record's `detail`;
+            // whether to surface that is M9's call, not this branch's.
             showToast({
               tone: 'info',
               title: t('fiscalReceipt.reconcile.stillUnknown', 'Still not confirmed'),
               description: t(
                 'fiscalReceipt.reconcile.stillUnknownBody',
-                'The provider has the sale and has not registered it yet. Nothing changed here. You can check again.',
+                'The check did not confirm a registration, and did not find that one is missing either. Nothing changed here. You can check again.',
               ),
             });
           } else {

@@ -79,9 +79,14 @@ export function parseConstArray(source, name) {
  * Extract the string literals of `export type <name> = 'a' | 'b';`, single or
  * multi line, with or without a leading `|`.
  *
- * Terminated on the first `;` after the `=`, which is what keeps the parser
- * from running on into the next declaration when the union is malformed - it
- * returns a short list that fails the diff rather than a long one that
+ * Comments are stripped BEFORE the terminator is located, not after: a comment
+ * carrying a `;` would otherwise end the slice early and yield a short list,
+ * which fails closed but reports "could not read the union" about a union that
+ * is perfectly fine.
+ *
+ * Terminated on the first surviving `;` after the `=`, which is what keeps the
+ * parser from running on into the next declaration when the union is malformed -
+ * it returns a short list that fails the diff rather than a long one that
  * accidentally passes.
  */
 export function parseTypeUnion(source, name) {
@@ -90,13 +95,12 @@ export function parseTypeUnion(source, name) {
   if (!decl) {
     return null;
   }
-  const from = decl.index + decl[0].length;
-  const end = source.indexOf(';', from);
+  const rest = stripComments(source.slice(decl.index + decl[0].length));
+  const end = rest.indexOf(';');
   if (end === -1) {
     return null;
   }
-  const body = stripComments(source.slice(from, end));
-  return [...body.matchAll(/'([^']*)'|"([^"]*)"/g)].map((m) => m[1] ?? m[2]);
+  return [...rest.slice(0, end).matchAll(/'([^']*)'|"([^"]*)"/g)].map((m) => m[1] ?? m[2]);
 }
 
 /** Pure differ. `null` means the two lists are identical, order included. */
@@ -146,6 +150,12 @@ function selfCheck() {
     'strips comments in a union',
     parseTypeUnion("export type U =\n  // 'ghost'\n  | 'a';", 'U')?.join(','),
     'a',
+  );
+  // A comment carrying a semicolon must not end the slice early.
+  expect(
+    'strips a comment containing the terminator',
+    parseTypeUnion("export type U =\n  // note; here\n  | 'a'\n  | 'b';", 'U')?.join(','),
+    'a,b',
   );
   // A union must not swallow the declaration after it, or a malformed mirror
   // could pick up unrelated literals and pass.
