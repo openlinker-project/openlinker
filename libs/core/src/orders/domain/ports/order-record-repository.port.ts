@@ -68,6 +68,27 @@ export interface OrderRecordRepositoryPort {
   findEarliestOrderDateByConnection(connectionIds: string[]): Promise<Map<string, Date>>;
 
   /**
+   * Orders per routing country since `since`, most orders first (#2518,
+   * ADR-066). ONE grouped query, never one per country.
+   *
+   * The country read is the order's DELIVERY address country in the snapshot -
+   * the SAME field `toSalesDocumentOrderFacts` builds the rule engine's facts
+   * from. ADR-066 requires that: discovery reading a different address would
+   * name markets the evaluator never sees, and an operator configuring one of
+   * them would change nothing.
+   *
+   * Rows with no country, or a blank one, are excluded rather than grouped
+   * under an empty key: the evaluator cannot route such an order either, so
+   * reporting it as a market would name something an operator cannot act on.
+   *
+   * Every record in the window counts, whatever its `recordStatus` and whether
+   * or not it was cancelled - this is a coverage fact about where orders
+   * arrive from, not a health or revenue figure, matching the reasoning on
+   * {@link findEarliestOrderDateByConnection}.
+   */
+  countOrdersByRoutingCountrySince(since: Date): Promise<{ country: string; orderCount: number }[]>;
+
+  /**
    * Upsert order record (create or update)
    * Uses internalOrderId as the primary key.
    *
