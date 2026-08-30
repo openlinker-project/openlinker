@@ -41,7 +41,7 @@ export {
   RETURN_RESTOCK_BLOCKED_EXPLAINER,
 } from './lib/restock-blocked.copy';
 export { ReturnIdentityCell, returnIdentitySummary } from './components/return-identity-cell';
-export { ReturnOrderCell, returnOrderSummary } from './components/return-order-cell';
+export { ReturnOrderCell, ReturnOrphanBadge, returnOrderSummary } from './components/return-order-cell';
 export { ReturnOpenedCell } from './components/return-opened-cell';
 export { ReturnSourceStatus } from './components/return-source-status';
 // #2377 replaced `ReturnStatusCell` (which could render only `Declined`, for

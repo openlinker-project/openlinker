@@ -749,6 +749,20 @@ Breakpoints (defined in `index.css`):
 @media (min-width: 1024px) { /* desktop */ }
 ```
 
+**A `max-width` complement is fractional, and the `.02` is load-bearing (#2388).** Where a rule has to
+be written as the *lower* half of a band, its bound is `max-width: (N - 0.02)` — the spellings already
+in `index.css` are `479.98px` / `767.98px` / `1023.98px`, and `DataTable`'s own card/table switch
+reads `(max-width: 767.98px)`. A rounded `max-width: 768px` **matches at 768 px**, so it overlaps the
+tablet `min-width: 768px` band by exactly one pixel: at that width the rounded rule is in its mobile
+branch while every table on the page is in its desktop one. `.who-decides-row` shipped that way and
+was measured doing it, which is why `who-decides-styles.test.ts` now asserts the row's query equals
+`.data-table__cell--hide-below-768`'s rather than a hardcoded string — a component follows the
+primitive if the house breakpoint ever moves.
+
+When checking a boundary, read the branch off `matchMedia` rather than inferring it from a rect: a
+classic scrollbar makes `documentElement.clientWidth` ~15 px narrower than the width media queries
+evaluate against (768 vs 753 measured), which at a boundary inverts the answer.
+
 Parity matrix — what changes across sizes:
 
 | Surface | Mobile (≤ 767) | Tablet (768–1023) | Desktop (≥ 1024) |
@@ -777,7 +791,7 @@ desktop" hint, because there is nothing it refuses to do at that width.
 
 Rules:
 
-- **No horizontal scrolling** at any breakpoint except inside `RawPayloadPanel` and a table's own column-overflow area (`.data-table__container`, `overflow-x: auto` — both the virtualized scroller and the plain container). Dense tables (e.g. an 8-column invoices list) grow to their natural content width and scroll horizontally within that container rather than crushing columns; simple 2–4 column tables stay at `100%` width with no scrollbar since their natural width never exceeds the container. `RawPayloadPanel` also scrolls vertically when content exceeds its `max-height` cap (#390).
+- **No horizontal scrolling** at any breakpoint except inside `RawPayloadPanel` and a table's own column-overflow area (`.data-table__container`, `overflow-x: auto` — both the virtualized scroller and the plain container). That container also carries **`position: relative`**, and it is not decorative: `overflow` clips only a descendant the box is a containing block for, so while the container was `static` every `position: absolute` descendant — `.sr-only` labels, sitting at their static x inside the wide table — escaped it and extended the *document's* scroll area (#2388, measured on `/orders` at 768 px: `scrollWidth` 947 vs `clientWidth` 768, the page really scrolling ~180 px onto blank space, with **no visible element** overflowing to point at it). Dense tables (e.g. an 8-column invoices list) grow to their natural content width and scroll horizontally within that container rather than crushing columns; simple 2–4 column tables stay at `100%` width with no scrollbar since their natural width never exceeds the container. `RawPayloadPanel` also scrolls vertically when content exceeds its `max-height` cap (#390).
 - **Tap targets ≥ 44 px** on mobile for every interactive element (`.btn--sm` grows to 36 px min on touch; icon buttons to 40 px).
 - Text must remain readable at `13 px` body — no shrinking below that on mobile.
 - Status banners stack their action buttons below the body on mobile instead of pushing off-screen.
