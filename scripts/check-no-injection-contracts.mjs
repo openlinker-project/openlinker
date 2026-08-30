@@ -18,6 +18,28 @@
  * A guard added *after* the context exists is a guard someone has to
  * remember to add.
  *
+ * ## READ THIS IF YOU ARE CREATING `libs/core/src/fulfillment/` (#2391)
+ *
+ * This script fails your build until you add a contract for it. That is
+ * intentional, and the fix is NOT to delete the watch or to register an empty
+ * list — R2 below refuses that explicitly. Add an entry to
+ * `NO_INJECTION_CONTRACTS` with a NON-EMPTY `forbidden` list, naming the
+ * barrels the context may not import:
+ *
+ *     {
+ *       dir: 'libs/core/src/fulfillment',
+ *       forbidden: ['@openlinker/core/orders', '@openlinker/core/inventory'],
+ *       reason: 'ADR-053 / epic #2412: order data enters as arguments.',
+ *     }
+ *
+ * Why those two, and why the rule exists at all: ADR-053 places each
+ * fulfilment-authority resolution in the context that owns its write, and
+ * epic #2412 makes this particular placement a hard boundary — the
+ * `fulfillment` context injects NO `orders` / `inventory` service. Type needs
+ * go through `@openlinker/core/orders/types`, which is a different specifier
+ * and therefore allowed automatically (R3 matches exact specifiers). Pair this
+ * with the boot integration test #2391 owns; see "What this guard cannot see".
+ *
  * Three rules, all total — there is deliberately no state that reads as a
  * pass while meaning "pending":
  *
@@ -81,13 +103,27 @@ const EPIC_REF = 'epic #2412 (Wave 3a) § Boundary rule';
  * moment they exist. Absence is not a pass and not a skip — it is simply the
  * antecedent of R1 being false, which is a fact about the tree, not a
  * suppressed check.
+ *
+ * `libs/core/src/fulfillment` is watched from #2390 and does not exist yet.
+ * **#2391 creates it and owes this file a contract entry** (see the header
+ * block for the exact shape). Removing the watch instead of registering the
+ * contract silently retires the ADR-053 boundary rule.
  */
 const WATCHED_CONTEXTS = ['libs/core/src/fulfillment'];
 
 /**
  * The contracts themselves. EMPTY TODAY, on purpose: the only watched
  * context does not exist yet (#2391 creates it), and no other directory in
- * the tree carries this rule. See the header for why `libs/oms` is not here.
+ * the tree carries this rule.
+ *
+ * **Do not "fix" the emptiness by registering `libs/oms`.** That is the
+ * tempting and wrong move, and it inverts the design: ADR-053 constrains a
+ * CORE CONTEXT, whereas ADR-055 designs the `libs/oms` plugin to *receive*
+ * exactly those services as factory deps —
+ * `createOmsPlugin({inventoryQuery, orderRecords, products, shipping,
+ * mappingConfig})`, all `I*Service`. A contract here would forbid what the
+ * design of record mandates, and #2405 would have to delete it in its first
+ * commit. An empty list is the correct state until #2391 lands.
  *
  * Shape: `{ dir, forbidden: string[], reason }` — `forbidden` holds EXACT
  * module specifiers, so a subpath such as `@openlinker/core/orders/types` is
