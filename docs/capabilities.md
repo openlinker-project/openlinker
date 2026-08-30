@@ -69,6 +69,8 @@ runtime gate validates a connection's request against the adapter's
 | `Invoicing` | Issue fiscal documents through a provider. |
 | `Fiscalization` | Hand a completed sale to a provider that registers it fiscally. |
 | `ReturnsAuthority` | Decide the disposition of goods a customer sends back (A5, ADR-052). |
+| `AvailabilityAuthority` | Decide how much of each product is sellable (A1, ADR-052). |
+| `FulfillmentExecutor` | Hold a piece of fulfilment work and act on it (A3, ADR-052). |
 
 <!-- core-capabilities:end -->
 

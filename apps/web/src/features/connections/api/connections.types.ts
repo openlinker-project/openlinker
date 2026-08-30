@@ -40,6 +40,12 @@ export const CORE_CAPABILITY_VALUES = [
   // Returns disposition authority (ADR-052) - who decides what happens to goods
   // a customer sends back. Operator-enabled, so it must be writable here.
   'ReturnsAuthority',
+  // Availability read authority (ADR-052 A1) - who answers "how many can I sell?".
+  'AvailabilityAuthority',
+  // Fulfilment execution authority (ADR-052 A3) - who holds a work object and may act on it.
+  'FulfillmentExecutor',
+  // 'FulfillmentRouter' (A2) is deliberately absent - A2 is config-only, so nothing
+  // resolves it by connection id. See the backend declaration's comment.
 ] as const;
 
 /**
