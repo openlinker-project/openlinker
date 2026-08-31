@@ -10,7 +10,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';
-import { BulkDispatchDialog } from './bulk-dispatch-dialog';
+import { BulkDispatchDialog, splitIdForWrap } from './bulk-dispatch-dialog';
 import type { OrderRecord } from '../api/orders.types';
 import type { Shipment } from '../../shipments';
 
@@ -191,5 +191,43 @@ describe('BulkDispatchDialog', () => {
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByText(/None of the selected orders can be bulk-dispatched/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Dispatch 0 orders/ })).toBeDisabled();
+  });
+
+  describe('splitIdForWrap (#2669)', () => {
+    it('splits the `ol_{type}_` prefix from the opaque id and chunks the rest', () => {
+      expect(splitIdForWrap('ol_order_fce2df4d853f4499b955a6bb1a212bd1')).toEqual([
+        'ol_order_',
+        'fce2df',
+        '4d853f',
+        '4499b9',
+        '55a6bb',
+        '1a212bd1',
+      ]);
+    });
+
+    it('falls back to chunking the whole string when there is no recognisable prefix', () => {
+      expect(splitIdForWrap('abcdefghijkl', 4)).toEqual(['abcd', 'efgh', 'ijkl']);
+    });
+
+    it('returns the id as a single chunk when it is shorter than one chunk', () => {
+      expect(splitIdForWrap('ol_order_1')).toEqual(['ol_order_', '1']);
+    });
+  });
+
+  it('renders a long order id wrapped in chunks while keeping the full value queryable and hoverable', () => {
+    const longId = 'ol_order_fce2df4d853f4499b955a6bb1a212bd1';
+    const orders = [order({ internalOrderId: longId })];
+
+    renderWithProviders(
+      <BulkDispatchDialog open orders={orders} onOpenChange={noop} channelLabelFor={() => 'Allegro'} onComplete={noop} />,
+    );
+
+    // The visible text still reads as the complete, unbroken id (wrap points
+    // are `<wbr>` elements, which contribute no text of their own).
+    const idEl = screen.getByText(longId);
+    expect(idEl).toHaveAttribute('title', longId);
+    // At least one controlled wrap point was inserted (not left to
+    // `overflow-wrap: anywhere`).
+    expect(idEl.querySelectorAll('wbr').length).toBeGreaterThan(0);
   });
 });
