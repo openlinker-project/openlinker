@@ -58,7 +58,7 @@
  */
 import { useState, type ReactElement, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Dialog, DialogContent, DialogFooter, DialogTitle } from '../../../shared/ui/dialog';
+import { Dialog, DialogClose, DialogContent, DialogFooter, DialogTitle } from '../../../shared/ui/dialog';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
@@ -248,6 +248,9 @@ export function SalesDocumentCountryRoutingDialog({
           ) : null}
 
           <DialogTitle>Sales-document routing · {displayName}</DialogTitle>
+          <p className="muted-text sales-document-country-routing-dialog__save-note">
+            Every control here saves as you change it — there is nothing to submit.
+          </p>
 
           <div className="sales-document-country-routing-dialog__body">
             {isEmptyCountry ? (
@@ -316,18 +319,29 @@ export function SalesDocumentCountryRoutingDialog({
             ))}
 
             {resetError ? <Alert tone="error">{resetError}</Alert> : null}
+
+            <div className="sales-document-country-routing-dialog__danger-zone">
+              <p className="muted-text">
+                Resetting deletes every rule and default configured for {displayName} here in
+                OpenLinker. It does not touch anything at the provider — no invoice or receipt
+                already issued is affected.
+              </p>
+              <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                <Button
+                  tone="danger"
+                  disabled={!write.canWrite || isSummaryLoading || hasNothingToReset || isResetting}
+                  onClick={() => setConfirmResetOpen(true)}
+                >
+                  Reset country
+                </Button>
+              </ReadOnlyLock>
+            </div>
           </div>
 
           <DialogFooter>
-            <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
-              <Button
-                tone="danger"
-                disabled={!write.canWrite || isSummaryLoading || hasNothingToReset || isResetting}
-                onClick={() => setConfirmResetOpen(true)}
-              >
-                Reset country
-              </Button>
-            </ReadOnlyLock>
+            <DialogClose asChild>
+              <Button tone="primary">Done</Button>
+            </DialogClose>
           </DialogFooter>
         </DialogContent>
       </Dialog>
