@@ -15,9 +15,20 @@
  * the string here instead of deriving it would reopen exactly that risk
  * the moment either copy changes.
  *
+ * Renders on top of the shared `Chip` primitive (`shared/ui/chip.tsx`)
+ * rather than a one-off styled `<button>` — `tone="warning"` already gives
+ * the exact pill treatment this note needs
+ * (`docs/frontend-ui-style-guide.md` § CSS Implementation Standard: "add
+ * or extend shared primitives before introducing page-specific one-off
+ * styling"). `Chip`'s `aria-pressed` toggle semantics don't fit a
+ * fire-and-navigate action, so it's explicitly cleared here; the `excl-note`
+ * class only ADDS the truncation behavior a table cell needs on top of
+ * `Chip`'s own tone/spacing/border, never re-declares them.
+ *
  * @module apps/web/src/features/analytics/components
  */
 import type { ReactElement } from 'react';
+import { Chip } from '../../../shared/ui/chip';
 import { deriveCoverageRowCopy } from '../lib/data-coverage-copy.lib';
 import type { CoverageCategory } from '../api/analytics-coverage.types';
 
@@ -36,8 +47,13 @@ export function AnalyticsExclusionNote({
   const copy = deriveCoverageRowCopy({ category, status: 'open', affectedCount, sampleOrderIds: [] });
 
   return (
-    <button type="button" className="excl-note" onClick={() => onOpenCategory(category)}>
+    <Chip
+      tone="warning"
+      className="excl-note"
+      aria-pressed={undefined}
+      onClick={() => onOpenCategory(category)}
+    >
       {copy.headline}
-    </button>
+    </Chip>
   );
 }

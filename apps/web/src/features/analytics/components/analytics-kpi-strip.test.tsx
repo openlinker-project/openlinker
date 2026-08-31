@@ -1,11 +1,25 @@
 import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 import type { ConnectionIngestionTrust } from '../api/analytics-trust.types';
 import type { SalesAndChannelAnalytics, SalesAnalyticsFilters } from '../api/sales-analytics.types';
+import type { AnalyticsCoverage } from '../api/analytics-coverage.types';
 import { AnalyticsKpiStrip } from './analytics-kpi-strip';
 
 const FILTERS = { from: '2026-08-01', to: '2026-08-14' };
+
+function coverage(overrides: Partial<Record<string, number>> = {}): AnalyticsCoverage {
+  return {
+    categories: [
+      { category: 'currency', status: 'open', affectedCount: overrides.currency ?? 0, sampleOrderIds: [] },
+      { category: 'tax-a', status: 'open', affectedCount: overrides['tax-a'] ?? 0, sampleOrderIds: [] },
+      { category: 'tax-b', status: 'open', affectedCount: overrides['tax-b'] ?? 0, sampleOrderIds: [] },
+      { category: 'tax-c', status: 'open', affectedCount: overrides['tax-c'] ?? 0, sampleOrderIds: [] },
+      { category: 'product-matching', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+    ],
+  };
+}
 
 function connectionWithEarliestOrder(earliestOrderDate: string | null): ConnectionIngestionTrust {
   return {
@@ -236,5 +250,97 @@ describe('AnalyticsKpiStrip', () => {
     expect(
       screen.getAllByTitle('No order history yet — nothing to compare against.').length
     ).toBeGreaterThan(0);
+  });
+
+  // #2480 — GapMark becomes a real, category-specific, clickable affordance
+  // once `coverage` + `onOpenCategory` are wired, instead of the generic
+  // pre-Phase-8 tooltip-only text.
+  describe('coverage-aware GapMarks (#2480)', () => {
+    it('opens the currency category on the GMV GapMark when the currency row is genuinely open', async () => {
+      const user = userEvent.setup();
+      const onOpenCategory = vi.fn();
+      const apiClient = createMockApiClient({
+        analytics: { getSales: vi.fn().mockResolvedValue(analytics({ unconvertedCount: 5 })) },
+      });
+
+      renderWithProviders(
+        <AnalyticsKpiStrip
+          filters={FILTERS}
+          connections={[]}
+          coverage={coverage({ currency: 5 })}
+          onOpenCategory={onOpenCategory}
+        />,
+        { apiClient }
+      );
+
+      // The same currency GapMark renders on BOTH the Revenue card's GMV
+      // qualifier and the Order value card's Average qualifier — clicking
+      // either must open the same 'currency' category.
+      const buttons = await screen.findAllByRole('button', {
+        name: 'The reporting currency changed — these orders are still tagged with the old one.',
+      });
+      expect(buttons).toHaveLength(2);
+      await user.click(buttons[0]);
+
+      expect(onOpenCategory).toHaveBeenCalledWith('currency');
+    });
+
+    it("picks the tax category with the LARGEST affectedCount for the Net Sales GapMark, never just tax-a", async () => {
+      const user = userEvent.setup();
+      const onOpenCategory = vi.fn();
+      const apiClient = createMockApiClient({
+        analytics: { getSales: vi.fn().mockResolvedValue(analytics({ netExcludedCount: 10 })) },
+      });
+
+      renderWithProviders(
+        <AnalyticsKpiStrip
+          filters={FILTERS}
+          connections={[]}
+          // tax-b (7) is the largest of the three — must win over tax-a/tax-c
+          // despite tax-a being the "remediable" fallback category.
+          coverage={coverage({ 'tax-a': 2, 'tax-b': 7, 'tax-c': 1 })}
+          onOpenCategory={onOpenCategory}
+        />,
+        { apiClient }
+      );
+
+      const button = await screen.findByRole('button', {
+        name: 'The product has no tax rate set at the source — fix it there, not here.',
+      });
+      await user.click(button);
+
+      expect(onOpenCategory).toHaveBeenCalledWith('tax-b');
+    });
+
+    it('renders no Net Sales GapMark at all when netExcludedCount disagrees with a stale/zeroed coverage read', async () => {
+      const onOpenCategory = vi.fn();
+      const apiClient = createMockApiClient({
+        analytics: { getSales: vi.fn().mockResolvedValue(analytics({ netExcludedCount: 5 })) },
+      });
+
+      renderWithProviders(
+        <AnalyticsKpiStrip
+          filters={FILTERS}
+          connections={[]}
+          // Every tax category reads 0 despite netExcludedCount > 0 — a data
+          // mismatch. `resolveNetExcludedTaxCategory` must not paper over
+          // that by pointing a clickable button at an empty category — the
+          // component falls back to the plain, gap-mark-free "Net sales"
+          // label instead (the caveat is still available in the info-tip
+          // popover via the coverage-independent `netExcludedVisible` gate).
+          coverage={coverage()}
+          onOpenCategory={onOpenCategory}
+        />,
+        { apiClient }
+      );
+
+      await screen.findByText('Net sales');
+      expect(
+        screen.queryByTitle(
+          '5 order(s) predate per-line tax rates or carry a line with an unresolvable rate, and are excluded from NOV.'
+        )
+      ).not.toBeInTheDocument();
+      expect(onOpenCategory).not.toHaveBeenCalled();
+    });
   });
 });

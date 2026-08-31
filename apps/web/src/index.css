@@ -19249,32 +19249,14 @@ legend.analytics-settings-dialog__label {
 
 /* ── Analytics exclusion note (#2481) — per-row `.excl-note` annotation on
    ChannelSalesTable when a row is under-counted by an open Data Coverage
-   category. Opens the same detail modal the Data Coverage panel uses. */
+   category. Opens the same detail modal the Data Coverage panel uses.
+   Renders on the shared `.chip`/`.chip--warning` primitive (tone, border,
+   background, padding, font already come from there) — this only ADDS the
+   truncation behavior a table cell needs, never re-declares the pill. */
 .excl-note {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 1px 6px;
-  border: 1px solid var(--status-warning-border);
-  border-radius: var(--radius-pill);
-  background: var(--status-warning-soft);
-  color: var(--status-warning-fg);
-  font-size: 0.6875rem;
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.excl-note:hover {
-  background: color-mix(in oklab, var(--status-warning) 15%, var(--status-warning-soft));
-}
-
-.excl-note:focus-visible {
-  outline: none;
-  box-shadow: var(--shadow-focus);
 }
 
 .coverage-detail__table-wrap {

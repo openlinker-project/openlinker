@@ -56,16 +56,17 @@
  * in the first place, so it was never counted anywhere to be silently
  * missing from) gets one `AnalyticsExclusionNote` per affected category.
  * The cross-reference is exact: each open category's *full* affected-order
- * list (not the Data Coverage aggregate's 10-id sample — `useCoverageCrossReferenceQuery`
+ * list (not the Data Coverage aggregate's 10-id sample —
+ * `useCoverageCrossReferenceQuery`, `hooks/use-coverage-cross-reference-query.ts`,
  * drains every page via the same paginated endpoints Phase 7's detail
- * modals use) is grouped by `sourceConnectionId`, since that field is on
- * every affected-order row and matches this table's own row key exactly —
- * unlike a product, a channel has no ambiguity to approximate.
+ * modals use) is grouped by `sourceConnectionId` (`buildChannelExclusionMap`,
+ * `lib/channel-exclusion-map.lib.ts`), since that field is on every
+ * affected-order row and matches this table's own row key exactly — unlike
+ * a product, a channel has no ambiguity to approximate.
  *
  * @module features/analytics/components
  */
-import type { ReactElement } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMemo, type ReactElement } from 'react';
 import { DataTable, type DataTableColumn } from '../../../shared/ui/data-table';
 import { Chip } from '../../../shared/ui/chip';
 import { Button } from '../../../shared/ui/button';
@@ -74,10 +75,10 @@ import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import { Sparkline } from '../../../shared/ui/sparkline';
 import { formatAmount } from '../../../shared/format/format-amount';
 import { useNumberFormat } from '../../../shared/i18n/use-number-format';
-import { useApiClient } from '../../../app/api/api-client-provider';
 import { ConnectionCell, useConnectionsQuery, type Connection } from '../../connections';
 import { ConnectionDot } from '../../orders';
 import { useSalesAnalyticsQuery } from '../hooks/use-sales-analytics-query';
+import { useCoverageCrossReferenceQuery } from '../hooks/use-coverage-cross-reference-query';
 import type { ChannelSalesAnalytics, SalesAnalyticsFilters } from '../api/sales-analytics.types';
 import type { AnalyticsCoverage, AnalyticsCoverageFilters, CoverageCategory } from '../api/analytics-coverage.types';
 import {
@@ -87,77 +88,12 @@ import {
   trendTone,
   type ChannelCurrencyTotal,
 } from '../lib/sales-analytics-view-model';
+import {
+  buildChannelExclusionMap,
+  CROSS_REFERENCEABLE_CATEGORIES,
+  type ChannelExclusionMap,
+} from '../lib/channel-exclusion-map.lib';
 import { AnalyticsExclusionNote } from './analytics-exclusion-note';
-
-/** Tax categories, plus currency — the categories a channel total can be under-counted by. `product-matching` is deliberately excluded, see the file header. */
-type CrossReferenceableCategory = Extract<CoverageCategory, 'currency' | 'tax-a' | 'tax-b' | 'tax-c'>;
-const CROSS_REFERENCEABLE_CATEGORIES: readonly CrossReferenceableCategory[] = ['currency', 'tax-a', 'tax-b', 'tax-c'];
-const CROSS_REF_PAGE_LIMIT = 100;
-
-interface CoverageOrderLite {
-  internalOrderId: string;
-  sourceConnectionId: string;
-}
-
-/**
- * Pages through one category's *complete* affected-order list (never the
- * 10-id sample) for the current range, grouped by `sourceConnectionId`.
- * One `useQuery` per category — a fixed set (`CROSS_REFERENCEABLE_CATEGORIES`),
- * so the number of hook calls never varies with how many categories happen
- * to be open, and each drains its own pages inside one `queryFn` rather
- * than as separate `useQuery` calls per page (a per-page-load, non-hot-path
- * read — see the implementation plan's own risk note on this bound).
- */
-function useCoverageCrossReferenceQuery(
-  category: CrossReferenceableCategory,
-  coverageFilters: AnalyticsCoverageFilters,
-  enabled: boolean
-): { data: CoverageOrderLite[] | undefined } {
-  const apiClient = useApiClient();
-
-  const { data } = useQuery({
-    queryKey: ['analytics', 'coverage-cross-reference', category, coverageFilters],
-    queryFn: async (): Promise<CoverageOrderLite[]> => {
-      const all: CoverageOrderLite[] = [];
-      let offset = 0;
-      for (;;) {
-        const page =
-          category === 'currency'
-            ? await apiClient.analytics.getCurrencyMismatchOrders({ ...coverageFilters, limit: CROSS_REF_PAGE_LIMIT, offset })
-            : await apiClient.analytics.getTaxCoverageOrders({
-                category,
-                ...coverageFilters,
-                limit: CROSS_REF_PAGE_LIMIT,
-                offset,
-              });
-        all.push(...page.items);
-        offset += page.items.length;
-        if (page.items.length < CROSS_REF_PAGE_LIMIT || offset >= page.total) break;
-      }
-      return all;
-    },
-    enabled,
-  });
-
-  return { data };
-}
-
-/** `connectionId -> category -> this channel's own affected-order count for it`. */
-type ChannelExclusionMap = Map<string, Map<CrossReferenceableCategory, number>>;
-
-function buildChannelExclusionMap(
-  ordersByCategory: Partial<Record<CrossReferenceableCategory, CoverageOrderLite[] | undefined>>
-): ChannelExclusionMap {
-  const map: ChannelExclusionMap = new Map();
-  for (const category of CROSS_REFERENCEABLE_CATEGORIES) {
-    for (const order of ordersByCategory[category] ?? []) {
-      const byCategory = map.get(order.sourceConnectionId) ?? new Map<CrossReferenceableCategory, number>();
-      byCategory.set(category, (byCategory.get(category) ?? 0) + 1);
-      map.set(order.sourceConnectionId, byCategory);
-    }
-  }
-  return map;
-}
 
 const PERCENT_FORMAT_OPTIONS: Intl.NumberFormatOptions = {
   style: 'percent',
@@ -296,8 +232,9 @@ export function ChannelSalesTable({
   // variable count derived from which categories happen to be open — see
   // `useCoverageCrossReferenceQuery`'s own doc comment on why). Each is
   // `enabled` only when its own category is genuinely open.
-  const openCategoryCodes = new Set(
-    (coverage?.categories ?? []).filter((row) => row.affectedCount > 0).map((row) => row.category)
+  const openCategoryCodes = useMemo(
+    () => new Set((coverage?.categories ?? []).filter((row) => row.affectedCount > 0).map((row) => row.category)),
+    [coverage]
   );
   const crossRefFilters: AnalyticsCoverageFilters = coverageFilters ?? { from: '', to: '' };
   const crossRefEnabled = Boolean(coverageFilters) && Boolean(onOpenCategory);
