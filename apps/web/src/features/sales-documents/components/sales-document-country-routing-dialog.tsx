@@ -187,11 +187,17 @@ export function SalesDocumentCountryRoutingDialog({
           <SalesDocumentCountryDefaults country={country} />
           {hasDualDefault ? (
             <Alert tone="warning" title="Both an Invoice and a Receipt default are set">
-              {displayName} has both an Invoice default and a Receipt default configured. Which one
-              applies depends entirely on which rule (or manual action) decides the document kind
-              for a given order — confirm this is the intended configuration, since nothing here
-              decides between them automatically.
+              A default only applies when no rule above matched. With two defaults set for{' '}
+              {displayName}, that step is disabled entirely — an order that matches no rule is
+              held rather than taking either default. Remove one of the two to restore a working
+              fallback.
             </Alert>
+          ) : (hasInvoiceDefault || hasReceiptDefault) ? (
+            <p className="muted-text">
+              This default applies only when no rule above matches this order. Setting a default
+              for the other document kind too disables this fallback — one default, not two, keeps
+              it working.
+            </p>
           ) : null}
         </>
       ),
