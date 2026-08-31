@@ -36,7 +36,20 @@ export class RedisSyncLockService implements SyncLockPort {
       PX: Math.floor(ttlMs),
     });
 
-    return result === 'OK' ? token : null;
+    if (result === 'OK') {
+      return token;
+    }
+
+    // NX failing usually means genuine contention, but a transport-level
+    // resend of THIS SAME request (a slow/lost ack under load, retried by the
+    // caller or the client) can also land here after our own SET already won
+    // — the key holds a value we ourselves minted moments ago. Recognizing
+    // that avoids raising a spurious OrderCreateContendedException-style
+    // failure against our own successful acquisition (#2716). Token
+    // collision with an unrelated holder is a UUIDv4-collision-level
+    // probability, so this stays as safe as a plain equality check gets.
+    const holder = await this.redisClient.get(key);
+    return holder === token ? token : null;
   }
 
   async release(key: string, token: SyncLockToken): Promise<boolean> {
