@@ -19166,6 +19166,11 @@ legend.analytics-settings-dialog__label {
   align-items: center;
   gap: var(--space-3);
   width: 100%;
+  /* Opt out of the global `button, .button { height: 2rem }` (line ~541) —
+     this row's two-line headline+sub body needs its real content height,
+     not a fixed 32px that clips it and collapses the visual gap between
+     rows (mirrors .orders-sortbtn's identical fix, #1747). */
+  height: auto;
   padding: var(--space-3) var(--space-4);
   border: none;
   background: none;
