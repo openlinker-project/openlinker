@@ -48,6 +48,7 @@ import {
   IFiscalRegistrationService,
   InvalidFiscalLineError,
   MissingIdempotencyKeyException,
+  fiscalRegistrationIdempotencyKey,
   OrderAlreadyHasInvoiceException,
   OrderAlreadyRegisteredException,
   UnsupportedFiscalPriceTreatmentError,
@@ -55,6 +56,7 @@ import {
 } from '@openlinker/core/fiscalization';
 import type {
   FiscalRegistrationRecord,
+  FiscalRegistrationRequestAccepted,
   RegisterTransactionCommand,
 } from '@openlinker/core/fiscalization';
 import {
@@ -66,25 +68,27 @@ import {
 import type { Order, OrderRecord } from '@openlinker/core/orders';
 
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { AcceptedFiscalRegistrationResponseDto } from './dto/accepted-fiscal-registration-response.dto';
 import { FiscalRegistrationResponseDto } from './dto/fiscal-registration-response.dto';
 import { ReconcileFiscalRegistrationResponseDto } from './dto/reconcile-fiscal-registration-response.dto';
 import { RegisterFiscalTransactionRequestDto } from './dto/register-fiscal-transaction-request.dto';
 
 /**
- * The exactly-once key for this surface. One connection registering one order is
- * one sale, so this makes a repeated request - a double click, a retried fetch, a
- * duplicated job - idempotent BY CONSTRUCTION rather than by the caller
- * remembering to send a key.
+ * The exactly-once key for this surface.
+ *
+ * One connection registering one order is one sale, so a repeated request - a
+ * double click, a retried fetch, a duplicated job - is idempotent BY
+ * CONSTRUCTION rather than by the caller remembering to send a key.
  *
  * It is the ONLY key this endpoint can produce: the request DTO deliberately
  * carries no `idempotencyKey`, because a caller-chosen key would bypass the read
  * gate and register the same sale a second time. See the DTO for the full
- * reasoning; the mandatory-key contract of ADR-042 decision 6 lives at the
- * service boundary, which this function satisfies.
+ * reasoning.
+ *
+ * The format itself lives in `@openlinker/core/fiscalization` (#2525) so this
+ * surface and the auto-issue gate cannot drift apart; two copies of a key format
+ * that must be byte-identical is how one sale ends up with two receipts.
  */
-function idempotencyKeyFor(connectionId: string, orderId: string): string {
-  return `fiscal:${connectionId}:${orderId}`;
-}
 
 @ApiTags('fiscalization')
 @ApiBearerAuth()
@@ -99,30 +103,35 @@ export class FiscalizationController {
 
   @Roles('admin')
   @Post('fiscal-registrations')
-  @HttpCode(HttpStatus.OK)
+  @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({
-    summary: 'Register an order`s sale with a fiscalization provider',
+    summary: 'Ask for an order`s sale to be registered with a fiscalization provider',
     description:
-      'Composes the command server-side from the order and delegates to the core service, which ' +
-      'owns the exactly-once guarantee. The exactly-once key is derived from (connection, order) ' +
-      'and cannot be supplied by the caller, so a repeat resumes the existing record and can ' +
-      'never produce a second registration of the same sale; an order that already carries a ' +
-      'non-rejected registration is refused with 409 rather than registered again. ' +
-      'Returns 200 with the record even when the attempt FAILED - an indeterminate outcome must ' +
-      'be visibly indeterminate, and the caller needs the record id to reconcile against. Read ' +
-      '`status` / `failureMode`, never the status code, to decide whether the sale was registered.',
+      'ACCEPTS the registration; it does not perform it. The command is composed server-side ' +
+      'from the order and enqueued as a `fiscalization.register` job, which the worker runs. ' +
+      'A 202 therefore says the request was recorded and nothing more - never that the sale was ' +
+      'registered, and never that it will be. Read the order`s registration state to learn the ' +
+      'outcome. ' +
+      'The exactly-once key is derived from (connection, order) and cannot be supplied by the ' +
+      'caller, so a repeat joins the same job and can never produce a second registration of ' +
+      'the same sale; an order that already carries a non-rejected document is refused with 409 ' +
+      'at this point rather than by a job failing out of sight.',
   })
-  @ApiResponse({ status: 200, description: 'Registration record', type: FiscalRegistrationResponseDto })
+  @ApiResponse({
+    status: 202,
+    description: 'Registration accepted and enqueued',
+    type: AcceptedFiscalRegistrationResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Order not found' })
   @ApiResponse({
     status: 409,
-    description: 'The order already carries a fiscal registration that is not terminally rejected',
+    description: 'The order already carries a sales document that is not terminally rejected',
   })
   @ApiResponse({ status: 422, description: 'The order cannot be composed into a registrable sale' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async register(
     @Body() dto: RegisterFiscalTransactionRequestDto,
-  ): Promise<FiscalRegistrationResponseDto> {
+  ): Promise<AcceptedFiscalRegistrationResponseDto> {
     const record = await this.orders.getOrderRecord(dto.orderId);
     if (!record) {
       throw new NotFoundException(`Order not found: ${dto.orderId}`);
@@ -132,10 +141,14 @@ export class FiscalizationController {
 
     let command: RegisterTransactionCommand;
     try {
+      // Composed HERE, not in the worker, so a sale that cannot be expressed as
+      // a registrable command is refused while the operator is still looking at
+      // it. Deferring the composition would turn a 422 into an accepted request
+      // that fails later with nothing on screen to explain it.
       command = toRegisterTransactionCommand({
         order,
         connectionId: dto.connectionId,
-        idempotencyKey: idempotencyKeyFor(dto.connectionId, dto.orderId),
+        idempotencyKey: fiscalRegistrationIdempotencyKey(dto.connectionId, dto.orderId),
         // #2260 review: a manual registration of a pre-rollout order must reach
         // the same verdict the manual invoice path does, so the marker travels
         // with the command rather than being re-derived (or lost) downstream.
@@ -145,13 +158,15 @@ export class FiscalizationController {
       throw this.toHttpException(error);
     }
 
-    let registered: FiscalRegistrationRecord;
+    let accepted: FiscalRegistrationRequestAccepted;
     try {
-      registered = await this.fiscalRegistrations.register(command);
+      accepted = await this.fiscalRegistrations.requestRegistration(command, {
+        sourceConnectionId: record.sourceConnectionId,
+      });
     } catch (error) {
       throw this.toHttpException(error);
     }
-    return this.toDto(registered);
+    return accepted;
   }
 
   @Get('fiscal-registrations')
