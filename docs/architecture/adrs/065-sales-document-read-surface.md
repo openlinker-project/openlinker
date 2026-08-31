@@ -47,5 +47,5 @@ Two rules follow, and they are the load-bearing half:
 
 - Related issues: #2501, #2513, #2514, #2515, #2516, #2517
 - Related ADRs: [ADR-041](./041-sales-document-routing-policy.md), [ADR-042](./042-fiscalization-capability.md), [ADR-036](./036-cross-context-read-model-joins.md)
-- Vocabulary source of truth: `apps/web/src/features/invoicing/components/invoice-status-badge.tsx`, `.../regulatory-status-badge.tsx`, `apps/web/src/features/fiscalization/components/fiscal-receipt-status-badge.tsx`
+- Vocabulary source of truth: `InvoiceStatus` / `RegulatoryStatus` in `libs/core/src/invoicing/domain/types/invoicing.types.ts`, and `FiscalRegistrationStatus` in `libs/core/src/fiscalization/domain/types/fiscalization.types.ts` — the three `apps/web/**/*-status-badge.tsx` components are consumers/mirrors of that vocabulary, not its source.
 - UX mockup: [`docs/plans/mockups/sales-document-routing.html`](../../plans/mockups/sales-document-routing.html)
