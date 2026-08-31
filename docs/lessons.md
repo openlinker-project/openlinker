@@ -64,7 +64,7 @@ them.
 
 **Source**: #2508, from the four review passes on #2513; the decisions they produced are
 [ADR-065](./architecture/adrs/065-sales-document-read-surface.md),
-[ADR-066](./architecture/adrs/066-sales-document-market-discovery.md), and the amendments to
+[ADR-070](./architecture/adrs/070-sales-document-market-discovery.md), and the amendments to
 [ADR-041](./architecture/adrs/041-sales-document-routing-policy.md) and
 [ADR-042](./architecture/adrs/042-fiscalization-capability.md).
 
