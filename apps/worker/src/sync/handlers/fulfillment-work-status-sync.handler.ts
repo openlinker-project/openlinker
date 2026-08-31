@@ -84,6 +84,13 @@ export class FulfillmentWorkStatusSyncHandler implements SyncJobHandler {
         job.connectionId
       );
     }
+    // Only `externalWorkId` is guarded, deliberately. It is the one field that
+    // IDENTIFIES the subject — without it the job has nothing to act on, now or
+    // once #2398 wires the authoritative read. `sourceEventId` and `eventType`
+    // are advisory: they reach only the log line below, and the routing policy
+    // always populates both, so failing the job over a missing one would turn a
+    // cosmetic gap into a dead row. They default to '' rather than being
+    // asserted, and that asymmetry is a choice rather than an omission.
     return {
       schemaVersion: 1,
       externalWorkId: payload.externalWorkId,

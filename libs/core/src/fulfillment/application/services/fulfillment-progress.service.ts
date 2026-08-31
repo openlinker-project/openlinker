@@ -34,12 +34,14 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 
+// The two PORTS are value imports, not `import type`, and that is required
+// rather than stylistic: both appear as constructor-parameter types under
+// `@Inject`, so `emitDecoratorMetadata` reads them at runtime and
+// `@typescript-eslint/consistent-type-imports` rejects the type-only form.
+// `RecordFulfillmentLineProgressInput` is a pure type and stays type-only.
 import { FulfillmentProgressClaimRepositoryPort } from '../../domain/ports/fulfillment-progress-claim-repository.port';
-import {
-  FulfillmentWorkRepositoryPort} from '../../domain/ports/fulfillment-work-repository.port';
-import type {
-  RecordFulfillmentLineProgressInput,
-} from '../../domain/ports/fulfillment-work-repository.port';
+import { FulfillmentWorkRepositoryPort } from '../../domain/ports/fulfillment-work-repository.port';
+import type { RecordFulfillmentLineProgressInput } from '../../domain/ports/fulfillment-work-repository.port';
 import type {
   FulfillmentProgressEvent,
   FulfillmentProgressOutcome,
@@ -149,6 +151,11 @@ export class FulfillmentProgressService implements IFulfillmentProgressService {
       }
 
       case 'packed': {
+        // NOTE the deliberate asymmetry with `picked` above, which makes the
+        // IDENTICAL call best-effort. It is not an oversight to be reconciled:
+        // `picked` has already recorded counters, so a refused transition costs
+        // nothing observable, whereas `packed` records nothing else — the
+        // transition IS the whole event, so a refusal has to be reported.
         const moved = await this.workRepository.transitionStatus({
           workId: event.workId,
           from: IN_PROGRESS_FROM,

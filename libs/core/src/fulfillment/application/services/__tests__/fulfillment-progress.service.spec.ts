@@ -68,18 +68,29 @@ describe('FulfillmentProgressService', () => {
     );
   });
 
-  it('should REPORT the reroute rather than perform it, since re-entry needs the orders context', async () => {
-    // ADR-053: performing this means importing `@openlinker/core/orders`, which
-    // both guards forbid under this directory. #2401 composes the intent.
+  it('should REPORT the reroute as an intent and perform no work beyond its own two repositories', async () => {
+    // ADR-053: performing the re-route means importing `@openlinker/core/orders`,
+    // which both guards forbid under this directory. What is assertable HERE is
+    // the observable half — the intent is handed back for #2401 to compose, and
+    // the service touches nothing but the counters and the status.
+    //
+    // The structural half (no sibling-context import exists at all) is owned by
+    // `check-no-injection-contracts.mjs` and `barrel-purity.spec.ts`; an earlier
+    // version of this test asserted `Object.keys(service)` lacked a 'router'
+    // key, which could never have been present under any spelling and so could
+    // not fail — it is removed rather than reworded.
     const outcome = await service.record({
       ...base,
       kind: 'short_picked',
       lines: [{ orderLineId: 'line-1', fulfilledDelta: 0, cancelledDelta: 3 }],
     });
 
-    expect(outcome.status).toBe('recorded');
-    // No router, no order read — the service has neither dependency to call.
-    expect(Object.keys(service)).not.toContain('router');
+    expect(outcome).toEqual({
+      status: 'recorded',
+      intents: [{ kind: 'reroute', workId: 'ol_work_1', blockedHolderId: 'conn-1' }],
+    });
+    expect(workRepository.recordLineProgress).toHaveBeenCalledTimes(1);
+    expect(workRepository.transitionStatus).toHaveBeenCalledTimes(1);
   });
 
   it('should report a dispatch intent when shipped', async () => {
