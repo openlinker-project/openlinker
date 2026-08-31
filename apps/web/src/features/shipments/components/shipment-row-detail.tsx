@@ -60,6 +60,7 @@ import {
   type Shipment,
 } from '../api/shipments.types';
 import { buildCarrierTrackingUrl, getCarrierDisplayName } from '../lib/carrier-tracking-url';
+import { resolveLabelDownloadError } from '../lib/label-download-error';
 import { deriveRetryabilityClass, RETRYABILITY_LABEL } from '../lib/shipment-retryability';
 import { useCancelShipmentMutation } from '../hooks/use-cancel-shipment-mutation';
 import { useLabelDownload } from '../hooks/use-label-download';
@@ -187,9 +188,10 @@ export function ShipmentRowDetail({
   );
 
   const handleDownloadLabel = (): void => {
-    void labelDownload.download(shipment.id).then((ok) => {
-      if (!ok) {
-        showToast({ tone: 'error', description: 'Could not download the label. Try again.' });
+    void labelDownload.download(shipment.id).then((result) => {
+      if (!result.ok) {
+        const mapped = resolveLabelDownloadError(result.error);
+        showToast({ tone: mapped.tone, title: mapped.title, description: mapped.description });
       }
     });
   };
