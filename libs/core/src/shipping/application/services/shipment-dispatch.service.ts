@@ -438,7 +438,25 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
           deliveryIntent: intent,
           paczkomatId: input.paczkomatId,
           sourceDeliveryMethodId: input.sourceDeliveryMethodId ?? undefined,
+          // Work linkage (#2402). Stamped at birth on the create branch.
+          fulfillmentWorkId: input.fulfillmentWorkId,
         });
+
+    // The retry branch above REUSED a prior row rather than creating one, so it
+    // never passed through `CreateShipmentInput` and carries whatever link it
+    // was born with — none, if it was a branch-1 row minted by the status poll
+    // before this order was routed. Claim it here, conditionally: the write only
+    // lands when the row is still unlinked, so a re-dispatch under a DIFFERENT
+    // work can never rewrite the provenance of a parcel that already shipped.
+    //
+    // Note the returned `shipment` object still carries its pre-claim
+    // `fulfillmentWorkId`. Nothing downstream reads that field today, and
+    // re-reading the row purely to refresh a column no caller consults would be
+    // an extra query for nothing — stated so a future reader of `shipment` here
+    // knows it can disagree with the row.
+    if (priorBranchOne && input.fulfillmentWorkId !== undefined) {
+      await this.shipments.claimFulfillmentWorkLink(shipment.id, input.fulfillmentWorkId);
+    }
 
     // Lost-response recovery (#1917). A prior attempt may have committed at the
     // carrier and had its response lost (timeout / socket reset / 5xx after

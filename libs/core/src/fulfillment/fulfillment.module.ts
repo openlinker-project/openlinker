@@ -34,6 +34,7 @@ import {
   FULFILLMENT_RELAY_GATE_SERVICE_TOKEN,
   FULFILLMENT_WORK_REPOSITORY_TOKEN,
   ROUTING_DECISION_REPOSITORY_TOKEN,
+  FULFILLMENT_WORK_QUERY_SERVICE_TOKEN,
 } from './fulfillment.tokens';
 import { FulfillmentProgressClaimOrmEntity } from './infrastructure/persistence/entities/fulfillment-progress-claim.orm-entity';
 import { FulfillmentProgressClaimRepository } from './infrastructure/persistence/repositories/fulfillment-progress-claim.repository';
@@ -43,6 +44,7 @@ import { FulfillmentWorkRejectionOrmEntity } from './infrastructure/persistence/
 import { FulfillmentWorkOrmEntity } from './infrastructure/persistence/entities/fulfillment-work.orm-entity';
 import { RoutingDecisionOrmEntity } from './infrastructure/persistence/entities/routing-decision.orm-entity';
 import { FulfillmentWorkRepository } from './infrastructure/persistence/repositories/fulfillment-work.repository';
+import { FulfillmentWorkQueryService } from './application/services/fulfillment-work-query.service';
 import { RoutingDecisionRepository } from './infrastructure/persistence/repositories/routing-decision.repository';
 
 @Module({
@@ -72,6 +74,11 @@ import { RoutingDecisionRepository } from './infrastructure/persistence/reposito
     { provide: ROUTING_DECISION_REPOSITORY_TOKEN, useExisting: RoutingDecisionRepository },
     FulfillmentRelayGateService,
     { provide: FULFILLMENT_RELAY_GATE_SERVICE_TOKEN, useExisting: FulfillmentRelayGateService },
+    FulfillmentWorkQueryService,
+    {
+      provide: FULFILLMENT_WORK_QUERY_SERVICE_TOKEN,
+      useExisting: FulfillmentWorkQueryService,
+    },
   ],
   exports: [
     FULFILLMENT_WORK_REPOSITORY_TOKEN,
@@ -79,6 +86,9 @@ import { RoutingDecisionRepository } from './infrastructure/persistence/reposito
     FULFILLMENT_PROGRESS_SERVICE_TOKEN,
     FULFILLMENT_RELAY_GATE_SERVICE_TOKEN,
     ROUTING_DECISION_REPOSITORY_TOKEN,
+    // Exported for `ShippingModule` (#2402): the shipment bridge resolves an
+    // order's work through this interface, never through the repository port.
+    FULFILLMENT_WORK_QUERY_SERVICE_TOKEN,
   ],
 })
 export class FulfillmentModule {}

@@ -23,6 +23,17 @@ import type { DeliveryIntent } from '../../domain/types/delivery-intent.types';
 import type { ShippingMethod } from '../../domain/types/shipping-method.types';
 
 export type ShipmentDispatchInput = {
+  /**
+   * The `FulfillmentWork` this dispatch satisfies (#2402), when the caller knows
+   * it. Optional, so every pre-#2402 caller is byte-identical and an unrouted
+   * order dispatches exactly as before.
+   *
+   * Threaded to the created row, and — on the retry branch, which reuses a prior
+   * branch-1 row rather than creating one — claimed via
+   * `claimFulfillmentWorkLink`, so a row that predates its order's routing can
+   * still acquire its link exactly once.
+   */
+  fulfillmentWorkId?: string;
   /** Order source connection (the routing rule's scope). */
   sourceConnectionId: string;
   /** Source-side delivery method id; `null` resolves to the omp_fulfilled default. */

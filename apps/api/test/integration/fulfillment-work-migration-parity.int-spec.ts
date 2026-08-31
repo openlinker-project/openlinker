@@ -293,4 +293,74 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
     await migrated.query(`DELETE FROM "fulfillment_works" WHERE "id" = 'w-parity'`);
     expect(await countChildren()).toBe(0);
   });
+
+  /**
+   * `shipments.fulfillmentWorkId` (#2402) — a TARGETED assertion, deliberately
+   * not an entry in `TABLES`.
+   *
+   * `shipments` is not a table this slice creates: **13 migrations** touch it,
+   * and `1862000000000-add-shipment-direction` adds a column default and drops
+   * it in the same statement — exactly the shape that diverges between a
+   * migration-built and a `synchronize`-built schema. Adding it to `TABLES`
+   * would therefore diff pre-existing legacy drift that this issue neither
+   * caused nor can fix, which is what this file's own header disclaims
+   * ("a whole-schema diff would fail on pre-existing drift").
+   *
+   * So the honest instrument is to assert the two objects #2402 actually adds,
+   * on BOTH databases. Do not "complete" the `TABLES` list with `'shipments'`
+   * — that reopens the drift this scoping avoids.
+   */
+  describe('shipments.fulfillmentWorkId (#2402)', () => {
+    const COLUMN_SQL = `
+      SELECT column_name, data_type, is_nullable, column_default
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'shipments'
+        AND column_name = 'fulfillmentWorkId'
+    `;
+
+    const INDEX_SQL = `
+      SELECT indexname, indexdef
+      FROM pg_indexes
+      WHERE schemaname = 'public'
+        AND tablename = 'shipments'
+        AND indexname = 'IDX_shipments_fulfillmentWorkId'
+    `;
+
+    it('should declare the same column in the migration and the entity', async () => {
+      const [fromEntity, fromMigration] = (await Promise.all([
+        harness.getDataSource().query(COLUMN_SQL),
+        migrated.query(COLUMN_SQL),
+      ])) as Record<string, unknown>[][];
+
+      // Non-vacuity first: an empty pair would otherwise "match" and pass.
+      expect(fromMigration).toHaveLength(1);
+      expect(fromEntity).toEqual(fromMigration);
+
+      // Nullable with NO default: `NULL` is the ordinary state (pre-OMS and
+      // unrouted orders), and a default would silently link nothing to
+      // something.
+      expect(fromMigration[0]).toMatchObject({
+        data_type: 'text',
+        is_nullable: 'YES',
+        column_default: null,
+      });
+    });
+
+    it('should declare the same index in the migration and the entity', async () => {
+      const [fromEntity, fromMigration] = (await Promise.all([
+        harness.getDataSource().query(INDEX_SQL),
+        migrated.query(INDEX_SQL),
+      ])) as { indexname: string; indexdef: string }[][];
+
+      expect(fromMigration).toHaveLength(1);
+      expect(fromEntity).toEqual(fromMigration);
+
+      // FULL, not partial — unlike the sibling reservation-consume index on
+      // this same table. That set shrinks to nothing; this one grows to the
+      // majority as OMS routing is adopted, and a partial predicate would also
+      // refuse to serve the `IS NULL` scan the fill-in-when-NULL repair needs.
+      expect(fromMigration[0].indexdef).not.toContain('WHERE');
+    });
+  });
 });
