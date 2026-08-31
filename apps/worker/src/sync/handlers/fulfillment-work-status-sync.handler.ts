@@ -49,8 +49,27 @@ type SyncJob = SyncJobEntity;
 export class FulfillmentWorkStatusSyncHandler implements SyncJobHandler {
   private readonly logger = new Logger(FulfillmentWorkStatusSyncHandler.name);
 
+  /**
+   * Returns a REJECTED promise on a malformed payload rather than throwing
+   * synchronously.
+   *
+   * `execute` is not `async` (there is nothing to await — see the class
+   * docblock), so a bare `throw` from `getPayload` would propagate
+   * synchronously even though the signature promises a `Promise`. Every sibling
+   * handler is `async` and therefore rejects, so a caller that does
+   * `handler.execute(job).catch(…)` without also wrapping the call in a
+   * `try` would be safe with all of them and crash on this one. The
+   * `SyncJobRunner` happens to `await` inside a `try`, so this is a contract
+   * inconsistency rather than a live bug — which is exactly why it is worth
+   * closing now rather than after something else starts calling handlers.
+   */
   execute(job: SyncJob): Promise<SyncJobHandlerResult> {
-    const payload = this.getPayload(job);
+    let payload: FulfillmentWorkStatusSyncPayloadV1;
+    try {
+      payload = this.getPayload(job);
+    } catch (error) {
+      return Promise.reject(error);
+    }
 
     // `log`, not `warn`: this is the designed behaviour of the current slice,
     // not a degradation. A `warn` on every delivery would train an operator to

@@ -242,7 +242,7 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
     expect(synchronized.filter((r) => r.contype === 'f')).toEqual([]);
   });
 
-  it('should delete lines and holds when their parent work is deleted', async () => {
+  it('should delete lines, holds and progress claims when their parent work is deleted', async () => {
     // CASCADE exercised for real, against the schema that actually ships.
     await migrated.query(
       `INSERT INTO "fulfillment_works"("id","orderId") VALUES ('w-parity','ol_order_parity')`
@@ -255,18 +255,26 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
       `INSERT INTO "fulfillment_holds"("fulfillmentWorkId","reason","placedByService","placedAt")
        VALUES ('w-parity','operator','svc',now())`
     );
+    // #2400's claim table is a child too, and its CASCADE matters for a reason
+    // the others' does not: an orphaned claim would let a re-created work id
+    // inherit a stale suppression and silently discard its first real event.
+    await migrated.query(
+      `INSERT INTO "fulfillment_progress_claims"("workId","idempotencyKey","connectionId","eventKind","claimedAt")
+       VALUES ('w-parity','vendor-key-1','11111111-1111-1111-1111-111111111111','shipped',now())`
+    );
 
     const countChildren = async (): Promise<number> => {
       const [{ total }] = (await migrated.query(
         `SELECT (
            (SELECT count(*) FROM "fulfillment_work_lines" WHERE "fulfillmentWorkId" = 'w-parity') +
-           (SELECT count(*) FROM "fulfillment_holds" WHERE "fulfillmentWorkId" = 'w-parity')
+           (SELECT count(*) FROM "fulfillment_holds" WHERE "fulfillmentWorkId" = 'w-parity') +
+           (SELECT count(*) FROM "fulfillment_progress_claims" WHERE "workId" = 'w-parity')
          )::int AS total`
       )) as { total: number }[];
       return total;
     };
 
-    expect(await countChildren()).toBe(2);
+    expect(await countChildren()).toBe(3);
     await migrated.query(`DELETE FROM "fulfillment_works" WHERE "id" = 'w-parity'`);
     expect(await countChildren()).toBe(0);
   });

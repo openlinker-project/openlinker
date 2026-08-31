@@ -12,8 +12,8 @@
  *
  * RED-FIRST EVIDENCE: written first against a variant of the service that
  * called `recordLineProgress` before `claim`. It failed on
- * `expect(calls[0]).toBe('claim')` with `Received: "recordLineProgress"` — the
- * assertion, not a compile error. A `TS6133` red reporting `Tests: 0 total`
+ * `expect(claimIndex).toBeLessThan(firstMutation)` with `Expected: < 1,
+ * Received: 3` — the assertion, not a compile error. A `TS6133` red reporting `Tests: 0 total`
  * would have been a false pass.
  */
 import type { FulfillmentProgressClaimRepositoryPort } from '../../../domain/ports/fulfillment-progress-claim-repository.port';

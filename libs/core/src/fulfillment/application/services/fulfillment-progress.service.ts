@@ -44,6 +44,7 @@ import { FulfillmentWorkRepositoryPort } from '../../domain/ports/fulfillment-wo
 import type { RecordFulfillmentLineProgressInput } from '../../domain/ports/fulfillment-work-repository.port';
 import type {
   FulfillmentProgressEvent,
+  FulfillmentProgressLineDelta,
   FulfillmentProgressOutcome,
   FulfillmentRelayIntent,
 } from '../../domain/types/fulfillment-progress-event.types';
@@ -214,7 +215,7 @@ export class FulfillmentProgressService implements IFulfillmentProgressService {
    */
   private async applyLineDeltas(
     workId: string,
-    lines: readonly { orderLineId: string; fulfilledDelta: number; cancelledDelta: number }[]
+    lines: readonly FulfillmentProgressLineDelta[]
   ): Promise<FulfillmentProgressOutcome | null> {
     for (const line of lines) {
       const input: RecordFulfillmentLineProgressInput = {

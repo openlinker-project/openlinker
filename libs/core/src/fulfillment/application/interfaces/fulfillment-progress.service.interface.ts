@@ -25,7 +25,8 @@
  *
  * ## Nothing calls this in production yet, and that is deliberate
  *
- * `fulfillment.work.statusSync` resolves its reference and completes; it does
+ * `fulfillment.work.statusSync` READS its reference, logs, and completes — it
+ * resolves nothing (resolution to an OL `workId` is #2399's) and it does
  * NOT construct an event, because there is no authoritative source to construct
  * one from. The only thing an inbound webhook can offer is
  * `CanonicalInboundEvent.payload`, which core documents as *"Non-authoritative
