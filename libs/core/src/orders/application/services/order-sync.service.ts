@@ -5,6 +5,25 @@
  * Routes unified orders (with internal IDs) to every active connection whose adapter
  * supports the `OrderProcessorManager` capability, with per-destination error isolation.
  *
+ * ## Router-filtered fan-out (#2397, design §5.5)
+ *
+ * This service is RETAINED, not reinterpreted. Destination-mirror creation is a
+ * commercial/catalogue act, distinct from fulfilment assignment — so under a
+ * router the fan-out is merely NARROWED, by the optional
+ * `OrderSyncRequest.destinationConnectionIds`. Absent ⇒ today's behaviour.
+ *
+ * **A filtered-out destination gets no `syncStatus[]` entry, by design, and
+ * that is safe** because nothing downstream derives correctness from one:
+ * for routed orders `fulfillmentState` is fed by work-progress-derived
+ * shipments through `ShipmentDispatchService`, and the reservation
+ * publish-subtraction never consults `fulfillmentState` at all (design §3
+ * adjudication #1). The cost is presentational and is stated at the branch.
+ *
+ * This service resolves NO router and imports nothing from
+ * `@openlinker/core/fulfillment` — the ids arrive as caller-supplied data, so
+ * ADR-053's no-injection direction is preserved for free rather than merely
+ * respected. Populating them at ingestion is #2400's.
+ *
  * @module libs/core/src/orders/application/services
  * @implements {IOrderSyncService}
  * @see {@link IOrderSyncService} for the service interface
@@ -65,10 +84,66 @@ export class OrderSyncService implements IOrderSyncService {
       `Syncing order ${order.id} from source connection ${sourceConnectionId}${sourceEventId ? ` (event: ${sourceEventId})` : ''}`
     );
 
-    const destinations = await this.resolveDestinations(sourceConnectionId);
+    const requestedDestinations = request.destinationConnectionIds;
+    const { destinations, unresolvedRequestedIds } = await this.resolveDestinations(
+      sourceConnectionId,
+      requestedDestinations
+    );
 
+    // #2397 — an empty destination list now conflates THREE conditions, and
+    // only one of them is a non-event. `listCapabilityAdapters` is active-only,
+    // so they must be told apart here:
+    //
+    //   (a) nothing configured / everything inactive  -> throw, as today
+    //   (b) the router deliberately named NOBODY      -> warn, return []
+    //   (c) the router named ids none of which are
+    //       currently eligible                        -> throw, naming them
     if (destinations.length === 0) {
-      throw new NoOrderDestinationsAvailableException(order.id, sourceConnectionId);
+      if (requestedDestinations !== undefined && requestedDestinations.length === 0) {
+        // (b) Ruling 1 — a deliberate empty routing decision is a NON-EVENT and
+        // must not throw. `MarketplaceOrderSyncHandler` wraps any throw in
+        // `SyncJobExecutionError`, and `isNonRetryableError` consults the
+        // PER-PLUGIN retry-classifier registry where a core `orders` exception
+        // is registered nowhere — so it is retryable. That would re-run the
+        // whole of `syncOrderFromSource` (a live marketplace `getOrder`,
+        // `persistOrder`, identity resolution, projection updates) ~10 times
+        // with backoff and end in a dead job whose `lastError` blames
+        // connection configuration for what the ROUTER chose. Loud, and
+        // pointing the wrong way.
+        //
+        // Returning [] makes ingestion's `results.map(...)` a no-op, matching
+        // this file's own philosophy: `skipped_cancelled` and `skipped_held`
+        // exist precisely so "nothing went wrong" cannot be routed into a retry.
+        //
+        // KNOWN COST (recorded, not hidden): no `syncStatus` row is written, so
+        // on `/orders` today such an order is indistinguishable from one with
+        // nothing configured — both render "No destinations". That is a real
+        // operator-facing gap in the surface, not a reason to throw here.
+        this.logger.warn(
+          `Order ${order.id}: the routing decision named no destination for source connection ` +
+            `${sourceConnectionId}; no destination provisioning and no sync-status rows written`
+        );
+        return [];
+      }
+
+      // (a) and (c). The exception distinguishes them by whether it carries the
+      // unresolved ids. (c) is a genuine NEW regression: an order whose only
+      // routed destination is momentarily disabled becomes a total failure,
+      // where an unfiltered fan-out would still have reached its siblings. It
+      // throws rather than returning [] because the router asked for a
+      // destination and OpenLinker could not reach it — and the retry that
+      // follows is appropriate, since a disabled connection can be re-enabled.
+      //
+      // The ids handed over are the SOURCE-ECHO-EXCLUDED set, never the raw
+      // request: naming the source connection as "not an eligible destination"
+      // would be a false statement about the operator's configuration. An
+      // empty set with a non-empty request therefore means every named id WAS
+      // the source — a distinct router misconfiguration the message names.
+      throw new NoOrderDestinationsAvailableException(
+        order.id,
+        sourceConnectionId,
+        unresolvedRequestedIds
+      );
     }
 
     // #2284 — the `WHERE cancelledAt IS NULL` provisioning predicate. A source
@@ -370,17 +445,83 @@ export class OrderSyncService implements IOrderSyncService {
     }
   }
 
+  /**
+   * Resolve the destinations to dispatch to, applying the optional router
+   * filter (#2397).
+   *
+   * `unresolvedRequestedIds` is `undefined` when no filter was supplied, and
+   * otherwise the requested ids that resolved to no eligible destination —
+   * source echoes already removed, deduped. It is reported by exactly one
+   * consumer per call: the partial-narrowing warn here, or the exception in
+   * `syncOrder` when nothing resolved at all.
+   */
   private async resolveDestinations(
-    sourceConnectionId: string
-  ): Promise<Array<{ connectionId: string; adapter: OrderProcessorManagerPort }>> {
+    sourceConnectionId: string,
+    destinationConnectionIds?: readonly string[]
+  ): Promise<{
+    destinations: Array<{ connectionId: string; adapter: OrderProcessorManagerPort }>;
+    unresolvedRequestedIds?: readonly string[];
+  }> {
+    // The listing argument is deliberately UNCHANGED and carries exactly one
+    // key. The router filter is applied to the RESULT below, never pushed down
+    // into this call: narrowing here would put the filter beneath the
+    // capability gate, where the three conditions behind an empty list stop
+    // being distinguishable from one another.
     const resolved =
       await this.integrationsService.listCapabilityAdapters<OrderProcessorManagerPort>({
         capability: 'OrderProcessorManager',
       });
 
-    return resolved
+    const eligible = resolved
       .filter(({ connectionId }) => connectionId !== sourceConnectionId)
       .map(({ connectionId, adapter }) => ({ connectionId, adapter }));
+
+    // #2397 ruling 4 — DEGRADE TO UNFILTERED, NEVER TO FILTERED-EMPTY.
+    //
+    // A caller with no routing answer must omit this field, never pass `[]`.
+    // `undefined` degrades to the unfiltered fan-out every install has today;
+    // `[]` is a router that positively selected nobody. Get that backwards and
+    // provisioning silently stops on every install that exists.
+    //
+    // Note the deliberate asymmetry with #2393's `assertRoutingPlanResolved`,
+    // which RAISES on an *unrecognised* plan status: that is a programming
+    // error. An ABSENT router is the normal state — the state of every install
+    // today — and must pass straight through.
+    if (destinationConnectionIds === undefined) {
+      return { destinations: eligible };
+    }
+
+    const requested = new Set(destinationConnectionIds);
+    const filtered = eligible.filter(({ connectionId }) => requested.has(connectionId));
+    const resolvedIds = new Set(filtered.map(({ connectionId }) => connectionId));
+
+    // Source-echo ids are excluded from the unresolved set, and that exclusion
+    // is load-bearing rather than cosmetic: source exclusion runs BEFORE the
+    // filter, so an id naming the source was dropped BY DESIGN and is not an
+    // unreachable connection. Reporting it as one — in the warn or in the
+    // exception message — would tell an operator a connection is unreachable
+    // when the router in fact routed the order back to where it came from.
+    //
+    // Deduped through the requested Set, so a repeated id is named once.
+    const unresolved = [...requested].filter(
+      (id) => id !== sourceConnectionId && !resolvedIds.has(id)
+    );
+
+    // #2397 ruling 6 — a narrowed fan-out is never silent. Without this an
+    // operator cannot tell a working router from a broken connection.
+    //
+    // Only the PARTIAL narrowing is warned here; a fully-unresolved decision
+    // carries the same ids into the exception instead, so it is reported
+    // exactly once rather than warned and thrown about.
+    if (unresolved.length > 0 && filtered.length > 0) {
+      this.logger.warn(
+        `Routing decision for source connection ${sourceConnectionId} named ` +
+          `${requested.size} destination(s); ${filtered.length} resolved. Unresolved ` +
+          `(unknown, inactive, or not OrderProcessorManager-capable): [${unresolved.join(', ')}]`
+      );
+    }
+
+    return { destinations: filtered, unresolvedRequestedIds: unresolved };
   }
 
   /**
