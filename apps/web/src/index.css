@@ -19231,6 +19231,167 @@ legend.analytics-settings-dialog__label {
   }
 }
 
+/* ── Data coverage panel (#2474) — reuses .attention-list/.panel above;
+   this block is only the pieces that section didn't already have: a
+   clickable row wrapping the badge/body/action, the row's own action
+   pill, the dismissible success banner, and the detail-modal row list. */
+.row-trigger {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.row-trigger:hover {
+  background: var(--bg-surface-hover);
+}
+
+.row-trigger:focus-visible {
+  outline: none;
+  box-shadow: inset var(--shadow-focus);
+}
+
+.attention-list__action {
+  flex: none;
+  pointer-events: none;
+}
+
+.coverage-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  margin: 0 var(--space-4) var(--space-3);
+  background: var(--status-success-soft);
+  border: 1px solid var(--status-success-border);
+  border-left: 3px solid var(--status-success);
+  border-radius: var(--radius-md);
+}
+
+.coverage-alert__icon {
+  flex: none;
+  color: var(--status-success-strong);
+  font-weight: 700;
+}
+
+.coverage-alert__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.coverage-alert__title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--status-success-strong);
+}
+
+.coverage-alert__sub {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.coverage-alert__close {
+  flex: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--status-success-strong);
+  font-size: 1rem;
+  line-height: 1;
+  padding: 2px;
+  border-radius: var(--radius-xs);
+}
+
+.coverage-alert__close:hover {
+  background: color-mix(in oklab, var(--status-success) 15%, transparent);
+}
+
+.coverage-detail__table-wrap {
+  max-height: 21rem;
+  overflow-y: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.coverage-detail-row-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.coverage-detail-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.coverage-detail-row:last-child {
+  border-bottom: none;
+}
+
+.coverage-detail-row__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.coverage-detail-row__title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.coverage-detail-row__meta {
+  font-size: 0.72rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.coverage-detail-row__trail {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.coverage-detail-row__tag {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--status-warning-soft);
+  color: var(--status-warning-strong);
+  border: 1px solid var(--status-warning-border);
+  white-space: nowrap;
+}
+
+.coverage-detail-row__tag--neutral {
+  background: var(--bg-surface-muted);
+  color: var(--text-muted);
+  border-color: var(--border-subtle);
+}
+
 /* ── Rich text editor + view (ADR-046 / #2199) ──────────────────────────────
    Tiptap ships no stylesheet, so every pixel here is ours. The first three
    declarations on `.rich-text__surface .ProseMirror` are the functional half of
