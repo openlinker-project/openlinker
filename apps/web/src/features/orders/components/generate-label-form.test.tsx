@@ -513,6 +513,39 @@ describe('GenerateLabelForm — happy path', () => {
     vi.restoreAllMocks();
   });
 
+  it('should surface a distinct failure when the post-generation auto-download fails, without implying generation itself failed (#2671)', async () => {
+    const downloadLabel = vi
+      .fn()
+      .mockRejectedValue(new ApiError('Bad Gateway', 502, { message: 'Bad Gateway', error: 'Bad Gateway' }));
+    const apiClient = createMockApiClient({
+      shipments: {
+        generateLabel: vi.fn().mockResolvedValue({
+          kind: 'dispatched',
+          shipment: { id: 'ol_shipment_99', labelPdfRef: 'shipx:label:99' },
+        }),
+        downloadLabel,
+      },
+    });
+
+    renderWithProviders(
+      <GenerateLabelForm order={makeOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+
+    fireEvent.change(screen.getByLabelText(/Length in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Width in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Height in millimetres/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/^Weight \(g\)$/i), { target: { value: '500' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /^Generate label$/ }));
+
+    // The success toast ("Label generated") still fires - the label WAS
+    // bought - and the download failure is a SECOND, separate toast.
+    expect(await screen.findByText('Label generated')).toBeInTheDocument();
+    expect(await screen.findByText("Couldn't fetch the label file")).toBeInTheDocument();
+    expect(screen.queryByText(/Could not download the label\. Try again\./i)).not.toBeInTheDocument();
+  });
+
   it('captures demo_label_generate_attempted with the routed carrier on submit (#1788)', async () => {
     const generateLabel = vi.fn().mockResolvedValue({ kind: 'dispatched', shipment: null });
     const apiClient = createMockApiClient({ shipments: { generateLabel } });

@@ -20,6 +20,7 @@ import {
   useCancelShipmentMutation,
   useNotifyDispatchedMutation,
   useLabelDownload,
+  resolveLabelDownloadError,
   getCarrierDisplayName,
   canRegenerateLabel,
   CAN_GENERATE,
@@ -180,9 +181,10 @@ export function ShipmentActionButtons({
 
   const handleDownloadLabel = (): void => {
     if (!shipment) return;
-    void labelDownload.download(shipment.id).then((ok) => {
-      if (!ok) {
-        showToast({ tone: 'error', description: 'Could not download the label. Try again.' });
+    void labelDownload.download(shipment.id).then((result) => {
+      if (!result.ok) {
+        const mapped = resolveLabelDownloadError(result.error);
+        showToast({ tone: mapped.tone, title: mapped.title, description: mapped.description });
       }
     });
   };
