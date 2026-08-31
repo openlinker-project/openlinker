@@ -31,6 +31,7 @@ import { MarketplaceOrderFxStampHandler } from './handlers/marketplace-order-fx-
 import { MarketplaceOrderFxStampSweepHandler } from './handlers/marketplace-order-fx-stamp-sweep.handler';
 import { OrdersTaxRateBackfillHandler } from './handlers/orders-tax-rate-backfill.handler';
 import { MarketplaceOfferQuantityUpdateHandler } from './handlers/marketplace-offer-quantity-update.handler';
+import { MarketplaceOfferQuantityReconcileHandler } from './handlers/marketplace-offer-quantity-reconcile.handler';
 import { MarketplaceOfferFieldUpdateHandler } from './handlers/marketplace-offer-field-update.handler';
 import { MarketplaceOfferCreateHandler } from './handlers/marketplace-offer-create.handler';
 import { MarketplaceOfferPollCreationStatusHandler } from './handlers/marketplace-offer-poll-creation-status.handler';
@@ -94,6 +95,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     OrdersTaxRateBackfillHandler,
     AnalyticsCurrencyRecalculateHandler,
     MarketplaceOfferQuantityUpdateHandler,
+    MarketplaceOfferQuantityReconcileHandler,
     MarketplaceOfferFieldUpdateHandler,
     MarketplaceOfferCreateHandler,
     MarketplaceOfferPollCreationStatusHandler,

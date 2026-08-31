@@ -21,6 +21,10 @@ export const BULK_LISTING_SUBMIT_SERVICE_TOKEN = Symbol('IBulkListingSubmitServi
 export const BULK_LISTING_RETRY_SERVICE_TOKEN = Symbol('IBulkListingRetryService');
 export const OFFER_STATUS_POLL_SERVICE_TOKEN = Symbol('IOfferStatusPollService');
 export const OFFER_STATUS_SYNC_SERVICE_TOKEN = Symbol('IOfferStatusSyncService');
+// Async quantity-ack reconciliation (#2621)
+export const OFFER_QUANTITY_ACK_RECONCILE_SERVICE_TOKEN = Symbol(
+  'IOfferQuantityAckReconcileService'
+);
 export const OFFER_STATUS_READ_SERVICE_TOKEN = Symbol('IOfferStatusReadService');
 export const OFFER_STATUS_SNAPSHOT_REPOSITORY_TOKEN = Symbol('OfferStatusSnapshotRepositoryPort');
 // Channel-side price/quantity snapshot (#2024)

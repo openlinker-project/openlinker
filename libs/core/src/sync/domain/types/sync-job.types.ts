@@ -25,6 +25,11 @@ export const JobTypeValues = [
   'marketplace.order.fxStampSweep',
   'marketplace.offers.sync',
   'marketplace.offerQuantity.update',
+  // Steady-state reconcile of outstanding asynchronously-acknowledged
+  // quantity writes — the "confirm later" half of #2621's non-blocking
+  // quantity ack. Separate from `marketplace.offerQuantity.update`, which
+  // dispatches the write and never itself waits on platform confirmation.
+  'marketplace.offerQuantity.reconcile',
   'marketplace.offer.updateFields',
   'marketplace.offer.create',
   'marketplace.offer.pollCreationStatus',
