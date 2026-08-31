@@ -204,16 +204,35 @@ export function SalesDocumentCountryRoutingDialog({
     },
   ];
 
+  // A country with ANY rule or ANY default is "configured", and a configured
+  // country never falls through — `evaluateSalesDocumentRules` only reaches
+  // ★ Rest of world when `countryConfigured` is false (rules.length === 0 &&
+  // defaults.length === 0). A configured country whose rule/default simply
+  // didn't match resolves `unresolved`/`no-matching-rule` (or
+  // `ambiguous-connection-no-primary`) — the order is HELD, never passed to
+  // ★ Rest of world. The tier title and body below must say which one is
+  // true for THIS country, not a general claim that fall-through always
+  // applies once nothing above matches.
+  const isCountryConfigured = rules.length > 0 || defaults.length > 0;
+
   if (!isRestOfWorld) {
     tiers.push({
       key: 'rest-of-world',
-      title: 'Falls through to ★ Rest of world',
-      content: (
+      title: isCountryConfigured
+        ? 'An unmatched order is held'
+        : 'Falls through to ★ Rest of world',
+      content: isCountryConfigured ? (
+        <p className="muted-text">
+          {displayName} has its own routing, so an order that matches nothing here is{' '}
+          <strong>held</strong>. It does <strong>not</strong> go to{' '}
+          <span className="mono-text">★ Rest of world</span> — only a market with no rules and no
+          default at all falls through there.
+        </p>
+      ) : (
         <div>
           <p className="muted-text">
-            An order billed to {displayName} that matches no rule above and has no country default
-            here falls through to <span className="mono-text">★ Rest of world</span>
-            &apos;s own rules and defaults.
+            {displayName} has no rules and no default, so an order billed here goes to{' '}
+            <span className="mono-text">★ Rest of world</span>&apos;s own rules and defaults.
           </p>
           <Button
             tone="secondary"
@@ -234,7 +253,9 @@ export function SalesDocumentCountryRoutingDialog({
       <p className="muted-text">
         {isRestOfWorld
           ? 'If nothing above matches, the order has no configured fallback left and is reported unresolved.'
-          : `If ★ Rest of world also has no matching rule or default, the order is reported unresolved.`}
+          : isCountryConfigured
+            ? 'The order is held, as stated above — it is never passed to ★ Rest of world once this country has any rule or default of its own.'
+            : 'If ★ Rest of world also has no matching rule or default, the order is reported unresolved.'}
       </p>
     ),
   });

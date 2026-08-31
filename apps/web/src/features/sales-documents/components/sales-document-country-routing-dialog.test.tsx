@@ -696,4 +696,80 @@ describe('SalesDocumentCountryRoutingDialog — Reset country (#2189)', () => {
     // its title) is still there, not replaced by a full-dialog error state.
     expect(screen.getByText(/Sales-document routing · DE/i)).toBeInTheDocument();
   });
+
+  it('should state that an unmatched order falls through when the country has no rule and no default', async () => {
+    const apiClient = createMockApiClient({
+      salesDocumentRules: {
+        listRules: vi.fn().mockResolvedValue([]),
+        listCountryDefaults: vi.fn().mockResolvedValue([]),
+      },
+    });
+    renderWithProviders(
+      <SalesDocumentCountryRoutingDialog
+        open
+        country="DE"
+        cameFrom={null}
+        onOpenChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+      { apiClient },
+    );
+
+    expect(await screen.findByText(/Falls through to ★ Rest of world/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/DE has no rules and no default, so an order billed here goes to/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/An unmatched order is held/i)).toBeNull();
+  });
+
+  it('should state that an unmatched order is held, and never falls through, once the country carries a rule', async () => {
+    const rules = [makeRule('r1', { country: 'DE' })];
+    const apiClient = createMockApiClient({
+      salesDocumentRules: {
+        listRules: vi.fn().mockResolvedValue(rules),
+        listCountryDefaults: vi.fn().mockResolvedValue([]),
+      },
+    });
+    renderWithProviders(
+      <SalesDocumentCountryRoutingDialog
+        open
+        country="DE"
+        cameFrom={null}
+        onOpenChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+      { apiClient },
+    );
+
+    expect(await screen.findByText(/An unmatched order is held/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/DE has its own routing, so an order that matches nothing here is/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Falls through to ★ Rest of world/i)).toBeNull();
+    expect(screen.queryByRole('button', { name: /Open ★ Rest of world/i })).toBeNull();
+  });
+
+  it('should state that an unmatched order is held once the country carries a default, even with no rules', async () => {
+    const defaults: SalesDocumentCountryDefault[] = [
+      { id: 'd1', country: 'DE', documentKind: 'invoice', connectionId: 'conn_1' },
+    ];
+    const apiClient = createMockApiClient({
+      salesDocumentRules: {
+        listRules: vi.fn().mockResolvedValue([]),
+        listCountryDefaults: vi.fn().mockResolvedValue(defaults),
+      },
+    });
+    renderWithProviders(
+      <SalesDocumentCountryRoutingDialog
+        open
+        country="DE"
+        cameFrom={null}
+        onOpenChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+      { apiClient },
+    );
+
+    expect(await screen.findByText(/An unmatched order is held/i)).toBeInTheDocument();
+  });
 });
