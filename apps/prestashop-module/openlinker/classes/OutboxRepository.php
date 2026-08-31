@@ -537,14 +537,27 @@ class OutboxRepository
      *
      * @param int $limit Maximum number of events to claim
      * @param string $runId Unique run identifier for this cron execution
+     * @param string[]|null $objectTypes Restrict the claim to these
+     *        `object_type` values (e.g. `['stock', 'order']`). Null (default)
+     *        claims any type — the cron path's behaviour is unchanged. Used
+     *        by the response-flush fast path (#2624) so a catalogue import's
+     *        thousands of `product.saved` rows can never be claimed there.
      * @return array Array of OutboxEvent objects
      */
-    public function claimBatchDueForDelivery($limit, $runId)
+    public function claimBatchDueForDelivery($limit, $runId, $objectTypes = null)
     {
         // Ensure OutboxEvent class is loaded
         if (!class_exists('OutboxEvent')) {
             $classesDir = dirname(__FILE__) . '/';
             require_once($classesDir . 'OutboxEvent.php');
+        }
+
+        $objectTypeFilter = '';
+        if (!empty($objectTypes)) {
+            $quoted = array_map(function ($type) {
+                return '"' . pSQL($type) . '"';
+            }, $objectTypes);
+            $objectTypeFilter = 'AND `object_type` IN (' . implode(',', $quoted) . ')';
         }
 
         // Step 1: Atomically claim rows with this runId
@@ -565,6 +578,7 @@ class OutboxRepository
                     `updated_at` = NOW()
                 WHERE `status` = "pending"
                 AND (`next_attempt_at` IS NULL OR `next_attempt_at` <= NOW())
+                ' . $objectTypeFilter . '
                 ORDER BY `created_at` ASC
                 LIMIT ' . (int)$limit;
 

@@ -64,6 +64,19 @@ class OpenLinker extends CarrierModule
     // horizon and the pass bounds are OutboxRepository's - only this one is an
     // operator dial.
     const DEFAULT_OUTBOX_RETENTION_DAYS = 7;
+    // Response-flush fast path (#2624): deliberately small and fixed (not
+    // the operator-configurable BATCH_SIZE) - this runs inside every urgent
+    // request's PHP-FPM worker, so it must stay a handful of rows, not the
+    // cron path's full page. Unlike DeliveryRunner::run, this batch has no
+    // wall-clock budget check between events - the bound here is coarse but
+    // fixed by construction: FAST_PATH_BATCH_LIMIT events, each capped at
+    // WebhookSender::FAST_PATH_TIMEOUT_SECONDS, so one shutdown-function run
+    // can hold its PHP-FPM worker for at most
+    // (5 * 3s =) 15 seconds even if every delivery times out. Keep this
+    // comment's arithmetic in sync with either constant if either changes -
+    // that worst case is what an operator's FPM `pm.max_children` sizing has
+    // to absorb under concurrent urgent requests.
+    const FAST_PATH_BATCH_LIMIT = 5;
 
     // Dynamic shipping carrier — display name shown in PS admin carrier list.
     const DYNAMIC_CARRIER_NAME = 'OpenLinker Dynamic';
@@ -91,6 +104,14 @@ class OpenLinker extends CarrierModule
      * request — share it; PHP resets it per request.
      */
     public static $suppressImportMail = false;
+
+    /**
+     * Request-scoped guard so a request that fires several urgent hooks
+     * (e.g. a multi-line order touching several products' stock) registers
+     * the response-flush fast-path shutdown drain once, not once per hook
+     * call (#2624).
+     */
+    public static $fastPathDrainScheduled = false;
 
     public function __construct()
     {
@@ -251,6 +272,14 @@ class OpenLinker extends CarrierModule
             $output .= $this->processManualDelivery();
         }
 
+        // #2624: whether this host can actually run the response-flush fast
+        // path — an operator believing they have seconds when they in fact
+        // have the cron interval is the same silence-instead-of-error
+        // failure the epic exists to remove, so the panel states it plainly.
+        if (!class_exists('WebhookSender')) {
+            require_once(dirname(__FILE__) . '/classes/WebhookSender.php');
+        }
+
         // Render configuration template
         $this->context->smarty->assign([
             'module_dir' => $this->_path,
@@ -296,6 +325,7 @@ class OpenLinker extends CarrierModule
             'outbox_stale_minutes_default' => OutboxRepository::defaultStaleThresholdMinutes(
                 OutboxRepository::readRunBudgetSeconds()
             ),
+            'fast_path_active' => WebhookSender::fastPathAvailable(),
             'statistics' => $this->getStatistics(),
             // Whether delivery is actually running at all (#2618). Without
             // this a dead cron is indistinguishable from an empty queue.
@@ -1906,6 +1936,10 @@ class OpenLinker extends CarrierModule
                 $orderId
             );
         }
+
+        // Urgent event type (#2624): try to flush the buyer's response now
+        // and deliver it invisibly, instead of waiting for the next cron tick.
+        self::scheduleFastPathDrain();
     }
 
     /**
@@ -2001,6 +2035,9 @@ class OpenLinker extends CarrierModule
                 $orderId
             );
         }
+
+        // Urgent event type (#2624): see hookActionValidateOrderAfter.
+        self::scheduleFastPathDrain();
     }
 
     /**
@@ -2087,5 +2124,84 @@ class OpenLinker extends CarrierModule
                 $productId
             );
         }
+
+        // Urgent event type (#2624): see hookActionValidateOrderAfter.
+        self::scheduleFastPathDrain();
+    }
+
+    /**
+     * Response-flush fast path (#2624): flush the buyer's response now, then
+     * deliver a small batch of urgent (stock/order) outbox events invisibly
+     * to them. Registers a `register_shutdown_function` callback that runs
+     * AFTER PrestaShop finishes rendering the page, mirroring the pattern
+     * PrestaShop's own `cronjobs` module uses.
+     *
+     * Never runs when `WebhookSender::fastPathAvailable()` is false (no
+     * `fastcgi_finish_request`/`ignore_user_abort` on this host, e.g. plain
+     * mod_php or CLI) — those installs keep delivering exclusively via the
+     * cron controller, unchanged.
+     *
+     * @return void
+     */
+    public static function scheduleFastPathDrain()
+    {
+        if (self::$fastPathDrainScheduled) {
+            return;
+        }
+        self::$fastPathDrainScheduled = true;
+
+        if (!WebhookSender::fastPathAvailable()) {
+            return;
+        }
+
+        $classesDir = dirname(__FILE__) . '/classes/';
+
+        register_shutdown_function(function () use ($classesDir) {
+            // Flush and close the buyer's connection now. Everything below
+            // this line runs invisibly to them, however long it takes.
+            ignore_user_abort(true);
+            fastcgi_finish_request();
+
+            try {
+                if (!class_exists('OutboxEvent')) {
+                    require_once($classesDir . 'OutboxEvent.php');
+                }
+                if (!class_exists('OutboxRepository')) {
+                    require_once($classesDir . 'OutboxRepository.php');
+                }
+                if (!class_exists('WebhookSender')) {
+                    require_once($classesDir . 'WebhookSender.php');
+                }
+                if (!class_exists('OutboxDrainer')) {
+                    require_once($classesDir . 'OutboxDrainer.php');
+                }
+
+                $repository = new OutboxRepository();
+                $sender = new WebhookSender(
+                    WebhookSender::FAST_PATH_TIMEOUT_SECONDS,
+                    WebhookSender::FAST_PATH_CONNECT_TIMEOUT_SECONDS
+                );
+
+                OutboxDrainer::drainBatch(
+                    $repository,
+                    $sender,
+                    OpenLinker::FAST_PATH_BATCH_LIMIT,
+                    uniqid('fastpath_', true),
+                    ['stock', 'order'],
+                    (int)Configuration::get('MAX_RETRY_ATTEMPTS') ?: 25
+                );
+            } catch (Throwable $e) {
+                // The buyer is long gone and the cron path still owns these
+                // rows either way - never let a fast-path failure surface
+                // anywhere but the log.
+                PrestaShopLogger::addLog(
+                    'OpenLinker: response-flush fast-path drain failed: ' . WebhookSender::getErrorMessage($e),
+                    2,
+                    null,
+                    'Module',
+                    null
+                );
+            }
+        });
     }
 }

@@ -54,6 +54,7 @@ import {
   extractShippingTraceId,
   useGenerateLabelMutation,
   useLabelDownload,
+  resolveLabelDownloadError,
   type GenerateLabelInput,
 } from '../../shipments';
 import {
@@ -415,7 +416,22 @@ export function GenerateLabelForm({
         // returned result so it fires exactly once per issuance — NOT a reactive
         // effect, which would re-fire on the post-success query invalidation.
         if (result.shipment?.labelPdfRef) {
-          void labelDownload.download(result.shipment.id);
+          const shipmentId = result.shipment.id;
+          void labelDownload.download(shipmentId).then((downloadResult) => {
+            if (!downloadResult.ok) {
+              // The label WAS bought (the toast above already said so) - only
+              // the fetch failed. The title must never suggest generation
+              // itself failed, or the operator will retry the whole form and
+              // risk a second dispatch. The mapper's description carries the
+              // actual "what next" (retry / not now / needs admin).
+              const mapped = resolveLabelDownloadError(downloadResult.error);
+              showToast({
+                tone: mapped.tone,
+                title: "Couldn't fetch the label file",
+                description: mapped.description,
+              });
+            }
+          });
         }
       } else {
         // omp_fulfilled (#953): the destination store fulfils this order — no OL
