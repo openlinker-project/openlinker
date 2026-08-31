@@ -150,6 +150,7 @@ export type { PaymentStatusRefreshByExternalIdPayloadV1 } from './domain/types/i
 export type { FiscalizationRegisterPayloadV1 } from './domain/types/fiscalization-job-payloads.types';
 export type { OrdersTaxRateBackfillPayloadV1 } from './domain/types/orders-job-payloads.types';
 export type { OrdersHoldsReconcilePayloadV1 } from './domain/types/orders-job-payloads.types';
+export type { FulfillmentWorkStatusSyncPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
 
 // Exceptions
 export { SyncJobExecutionError } from './domain/exceptions/sync-job-execution.error';

@@ -826,6 +826,29 @@ describe('OrderIngestionService', () => {
       );
     });
 
+    // #2397 — the consumer half of "a deliberate empty routing decision returns
+    // []". `OrderSyncService` refuses to throw for that case precisely so this
+    // is a no-op; asserted HERE, at the caller, because the claim is about what
+    // ingestion does with an empty array, not about what the service returns.
+    it('should write no sync-status row when the routing decision named no destination', async () => {
+      orderSyncService.syncOrder.mockResolvedValue([]);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.updateSyncStatus).not.toHaveBeenCalled();
+    });
+
+    it('should still run the downstream sales-document gate on an empty routing decision', async () => {
+      // The empty array must be a no-op for sync status WITHOUT short-circuiting
+      // the rest of ingestion — an order that was routed nowhere is still an
+      // order, and its document gate must still decide.
+      orderSyncService.syncOrder.mockResolvedValue([]);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(autoIssueTrigger.onOrderTransition).toHaveBeenCalledTimes(1);
+    });
+
     it('should call updateSyncStatus with failed when syncOrder returns a failure result', async () => {
       orderSyncService.syncOrder.mockResolvedValue([
         {

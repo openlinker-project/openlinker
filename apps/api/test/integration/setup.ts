@@ -233,6 +233,10 @@ const harness = createIntegrationTestHarness({
     // from and the closure walk cannot reach these tables. Children first.
     'fulfillment_work_lines',
     'fulfillment_holds',
+    // fulfillment_progress_claims (#2400) — the at-most-once progress gate. Its
+    // FK to fulfillment_works is migration-only too, so it is likewise
+    // unreachable by the closure walk. Before `fulfillment_works`, being a child.
+    'fulfillment_progress_claims',
     'fulfillment_works',
     // fulfillment_routing_rules is connection-scoped config (#832). Listed
     // explicitly because — like connection_carrier_mappings — its FKs live in

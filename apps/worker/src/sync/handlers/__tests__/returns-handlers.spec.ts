@@ -12,7 +12,10 @@ import { MarketplaceReturnSyncHandler } from '../marketplace-return-sync.handler
 import { MarketplaceReturnsStatusSyncHandler } from '../marketplace-returns-status-sync.handler';
 import { ReturnsOrphanReconcileHandler } from '../returns-orphan-reconcile.handler';
 import { SyncJobExecutionError } from '@openlinker/core/sync';
-import { ReturnObservationMissingExternalIdError } from '@openlinker/core/returns';
+import {
+  ReturnObservationMissingExternalIdError,
+  ReturnSourceNotReadableError,
+} from '@openlinker/core/returns';
 import type { SyncJob } from '@openlinker/core/sync';
 
 const connectionId = 'conn-1';
@@ -119,6 +122,25 @@ describe('MarketplaceReturnSyncHandler', () => {
     // to invent one — so retrying would burn the ladder and leave a dead row.
     ingestion.syncReturnFromSource.mockRejectedValue(
       new ReturnObservationMissingExternalIdError(connectionId, 'order-1')
+    );
+
+    const result = await handler.execute(
+      job('marketplace.return.sync', { schemaVersion: 1, externalReturnId: 'r-1' })
+    );
+
+    expect(result).toEqual({ outcome: 'business_failure' });
+  });
+
+  it('should report a TERMINAL business_failure when the connection cannot read returns (#2400)', async () => {
+    // The `marketplace.return.sync` gate is `OrderSource` — correctly, since
+    // `ReturnSourceReader` is guard-only and `enabledCapabilities` can never
+    // carry it (#2085). That makes the gate over-permissive the OTHER way: a
+    // plain `OrderSource` connection with no return reader passes it and then
+    // fails at the narrow. Reachable from the poll fan-out and, since #2400,
+    // from an inbound `'return'` webhook. Retrying cannot make an adapter grow
+    // a capability, so this must not spend the ladder and a dead row.
+    ingestion.syncReturnFromSource.mockRejectedValue(
+      new ReturnSourceNotReadableError(connectionId, 'r-1')
     );
 
     const result = await handler.execute(

@@ -55,6 +55,22 @@ export const JobTypeValues = [
   'marketplace.shipment.statusSync',
   'marketplace.shipment.syncByExternalId',
   'marketplace.fulfillment.statusSync',
+  // OMS fulfilment progress ingress (#2400, ADR-054).
+  //
+  // **NOT the same job as `marketplace.fulfillment.statusSync` one line above,
+  // and the two must never be conflated.** That one is the shipping context's
+  // branch-1 OMP read-back (#834, `MarketplaceFulfillmentStatusSyncHandler`,
+  // `IFulfillmentStatusSyncService` from `@openlinker/core/shipping`) — a
+  // marketplace telling us how IT fulfilled an order. This one is an executor
+  // reporting progress on a `FulfillmentWork` OL's own router created. Reusing
+  // the older name would have routed OMS traffic straight into the shipping
+  // handler.
+  //
+  // Namespaced `fulfillment.work.*` on the core-owned-internal-pass precedent
+  // set by `inventory.reservations.*` and `orders.holds.reconcile`, rather than
+  // `marketplace.*`, because the trigger is an executor and not necessarily a
+  // marketplace at all.
+  'fulfillment.work.statusSync',
   'master.product.syncByExternalId',
   // The SAME work as `master.product.syncByExternalId`, reached from a sweep
   // instead of a webhook (#2594). It exists as its own type because the two

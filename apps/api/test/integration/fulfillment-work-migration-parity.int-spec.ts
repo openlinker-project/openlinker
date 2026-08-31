@@ -1,5 +1,5 @@
 /**
- * Fulfillment Work — migration/entity parity (#2392)
+ * Fulfillment Work — migration/entity parity (#2392, extended #2400)
  *
  * ## The gap this closes
  *
@@ -23,8 +23,12 @@
  * reverse. That is the failure mode this whole slice's naming discipline exists
  * to prevent, and it is the plan's stated top risk.
  *
- * Scoped deliberately to the three `fulfillment_*` tables: a whole-schema diff
- * would fail on pre-existing drift this issue neither caused nor can fix.
+ * Scoped deliberately to the `fulfillment_*` tables: a whole-schema diff would
+ * fail on pre-existing drift this issue neither caused nor can fix. #2400 added
+ * `fulfillment_progress_claims` to the list — in particular this is what proves
+ * its composite PRIMARY KEY `(workId, idempotencyKey)` really ships, which the
+ * claim repository's bare `ON CONFLICT DO NOTHING` depends on being the table's
+ * ONLY uniqueness declaration.
  *
  * **Known dependency**: the `column_default` comparison assumes BOTH databases
  * carry `uuid-ossp`. TypeORM's Postgres driver picks `uuid_generate_v4()` or
@@ -47,10 +51,14 @@ const TABLES = [
   'fulfillment_works',
   'fulfillment_work_lines',
   'fulfillment_holds',
-  // #2399's append-only rejection ledger. Added here AND to the four hardcoded
+  // #2399's append-only rejection ledger. Added here AND to the hardcoded
   // assertions below — the `TABLES` array alone does not make this spec
   // generic, which is the trap the #2399 pre-implement gate caught.
   'fulfillment_work_rejections',
+  // #2400. Extended here rather than given its own parity spec: this file's
+  // machinery is already table-driven, and a second file would be a second
+  // place for the migration chain to be run (the expensive part) for no gain.
+  'fulfillment_progress_claims',
 ] as const;
 
 const COLUMNS_SQL = `
@@ -149,7 +157,7 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
     (await migrated.query(sql, [[...TABLES]])) as unknown[],
   ];
 
-  it('should build all three tables from the migration alone', async () => {
+  it('should build every fulfillment table from the migration alone', async () => {
     const rows = (await migrated.query(
       `SELECT table_name FROM information_schema.tables
        WHERE table_schema = 'public' AND table_name = ANY($1) ORDER BY table_name`,
@@ -161,6 +169,7 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
     // nothing at all.
     expect(rows.map((r) => r.table_name)).toEqual([
       'fulfillment_holds',
+      'fulfillment_progress_claims',
       'fulfillment_work_lines',
       'fulfillment_work_rejections',
       'fulfillment_works',
@@ -182,7 +191,7 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
     expect(fromMigration.length).toBeGreaterThan(0);
   });
 
-  it('should carry the two CASCADE foreign keys ONLY in the migration-built schema', async () => {
+  it('should carry the CASCADE foreign keys ONLY in the migration-built schema', async () => {
     // Deliberately an asymmetry assertion rather than a parity one. The FKs are
     // migration-only by design (no `@ManyToOne`), so `synchronize` builds none —
     // which is exactly why CASCADE cannot be exercised by the other int-specs
@@ -228,6 +237,7 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
     const foreignKeys = fromMigration.filter((r) => r.contype === 'f');
     expect(foreignKeys.map((r) => r.conname).sort()).toEqual([
       'FK_fulfillment_holds_work',
+      'FK_fulfillment_progress_claims_work',
       'FK_fulfillment_work_lines_work',
       'FK_fulfillment_work_rejections_work',
     ]);
@@ -238,7 +248,7 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
     expect(synchronized.filter((r) => r.contype === 'f')).toEqual([]);
   });
 
-  it('should delete lines, holds and rejections when their parent work is deleted', async () => {
+  it('should delete lines, holds, rejections and progress claims when their parent work is deleted', async () => {
     // CASCADE exercised for real, against the schema that actually ships.
     await migrated.query(
       `INSERT INTO "fulfillment_works"("id","orderId") VALUES ('w-parity','ol_order_parity')`
@@ -256,19 +266,27 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
          ("fulfillmentWorkId","orderId","connectionId","assignmentAttempt","reason","blocking","rejectedAt")
        VALUES ('w-parity','ol_order_parity','11111111-1111-1111-1111-111111111111',1,'no-stock',true,now())`
     );
+    // #2400's claim table is a child too, and its CASCADE matters for a reason
+    // the others' does not: an orphaned claim would let a re-created work id
+    // inherit a stale suppression and silently discard its first real event.
+    await migrated.query(
+      `INSERT INTO "fulfillment_progress_claims"("workId","idempotencyKey","connectionId","eventKind","claimedAt")
+       VALUES ('w-parity','vendor-key-1','11111111-1111-1111-1111-111111111111','shipped',now())`
+    );
 
     const countChildren = async (): Promise<number> => {
       const [{ total }] = (await migrated.query(
         `SELECT (
            (SELECT count(*) FROM "fulfillment_work_lines" WHERE "fulfillmentWorkId" = 'w-parity') +
            (SELECT count(*) FROM "fulfillment_holds" WHERE "fulfillmentWorkId" = 'w-parity') +
-           (SELECT count(*) FROM "fulfillment_work_rejections" WHERE "fulfillmentWorkId" = 'w-parity')
+           (SELECT count(*) FROM "fulfillment_work_rejections" WHERE "fulfillmentWorkId" = 'w-parity') +
+           (SELECT count(*) FROM "fulfillment_progress_claims" WHERE "workId" = 'w-parity')
          )::int AS total`
       )) as { total: number }[];
       return total;
     };
 
-    expect(await countChildren()).toBe(3);
+    expect(await countChildren()).toBe(4);
     await migrated.query(`DELETE FROM "fulfillment_works" WHERE "id" = 'w-parity'`);
     expect(await countChildren()).toBe(0);
   });
