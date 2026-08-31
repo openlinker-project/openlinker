@@ -37,18 +37,56 @@ export interface ClaimRoutingIntentInput {
   readonly routerConnectionId: string;
 }
 
-export interface TerminaliseRoutingDecisionInput {
+interface TerminaliseRoutingDecisionBase {
   readonly decisionId: string;
-  /** Terminal only — `live` is the state being left, never one to write. */
-  readonly state: Exclude<RoutingDecisionState, 'live'>;
+  /**
+   * What the ROUTER called its own decision, when it named one. Legal on BOTH
+   * arms: #2393's `plan-not-conserving` describes a router that answered with a
+   * `RoutingPlan` — and therefore with a `decisionId` — which OpenLinker then
+   * refused, so an abandoned decision may legitimately quote the vendor's own
+   * reference. Dropping it there would discard the one value that lets an
+   * operator correlate the refusal against the vendor's log.
+   */
   readonly routerDecisionRef?: string | null;
-  readonly abandonReason?: RoutingDecisionAbandonReason | null;
   /**
    * #2395 commits this together with the N work rows it created. Absent means
    * "commit on its own", which is what every caller outside that flow wants.
    */
   readonly transaction?: FulfillmentWorkTransaction;
 }
+
+/** Every state that is not `live` — the only states `terminalise` may write. */
+type TerminalRoutingDecisionState = Exclude<RoutingDecisionState, 'live'>;
+
+/**
+ * Terminal only — `live` is the state being left, never one to write.
+ *
+ * A DISCRIMINATED UNION rather than a flat interface, so that
+ * `{state: 'committed', abandonReason: …}` does not type-check. The repository
+ * already applies this reasoning one field over ("a choice that does not exist
+ * must not be offered" — there is no `expectedState` parameter, because `live`
+ * is the only legal precondition); the same rule governs here. A committed
+ * decision has no abandon reason by definition, and a flat shape would let a
+ * caller persist one — writing a row whose two columns contradict each other,
+ * which nothing downstream could then interpret.
+ *
+ * The asymmetry is deliberate: `abandonReason` is refused on the `committed`
+ * arm, while `routerDecisionRef` is legal on both — see the base interface.
+ *
+ * The arms are DERIVED from `RoutingDecisionState` rather than written out, so
+ * a fourth terminal state cannot silently become unwritable through this port:
+ * it gets an arm automatically, and one that must opt IN to carrying a reason.
+ * Spelling the arms as literals would have needed a separate exhaustiveness
+ * assertion, which `noUnusedLocals` rejects as an unused type alias.
+ */
+type TerminaliseArm<S extends TerminalRoutingDecisionState> = TerminaliseRoutingDecisionBase & {
+  readonly state: S;
+  readonly abandonReason?: S extends 'abandoned' ? RoutingDecisionAbandonReason | null : never;
+};
+
+export type TerminaliseRoutingDecisionInput = {
+  [S in TerminalRoutingDecisionState]: TerminaliseArm<S>;
+}[TerminalRoutingDecisionState];
 
 export interface RoutingDecisionRepositoryPort {
   /**

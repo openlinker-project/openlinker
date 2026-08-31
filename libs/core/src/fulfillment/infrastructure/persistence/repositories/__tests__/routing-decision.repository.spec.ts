@@ -91,6 +91,29 @@ describe('RoutingDecisionRepository', () => {
       expect(clauses.some((clause) => clause.includes(`"state" = 'live'`))).toBe(true);
     });
 
+    it('should carry the abandon reason and the router reference into the UPDATE', async () => {
+      // Without this, a `set()` that simply omitted either column passed every
+      // other test in this file: the only DB-level check of `abandonReason`
+      // writes the column with raw SQL, so nothing exercised the write path.
+      const qb = updateQueryBuilder({ affected: 1 });
+      const repo = new RoutingDecisionRepository({
+        createQueryBuilder: () => qb,
+      } as never);
+
+      await repo.terminalise({
+        decisionId: 'd1',
+        state: 'abandoned',
+        abandonReason: 'plan-not-conserving',
+        routerDecisionRef: 'vendor-1',
+      });
+
+      const setCalls = (qb.set as jest.Mock).mock.calls as unknown[][];
+      const assigned = setCalls[0][0] as Record<string, unknown>;
+      expect(assigned.abandonReason).toBe('plan-not-conserving');
+      expect(assigned.routerDecisionRef).toBe('vendor-1');
+      expect(assigned.state).toBe('abandoned');
+    });
+
     it('should treat an undefined affected count as NOT applied', async () => {
       // The `?? 0` is load-bearing: a truthy coercion here is the silent
       // double-apply shape.

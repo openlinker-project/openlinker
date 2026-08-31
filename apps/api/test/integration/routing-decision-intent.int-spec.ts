@@ -180,6 +180,29 @@ describe('Routing decision intent row (#2394)', () => {
     expect(await repo.findLiveByOrderId(orderId)).toBeNull();
   });
 
+  it('should round-trip a recognised abandon reason through terminalise', async () => {
+    // The sibling case below writes the column with raw SQL, so it proves the
+    // READ coerces and says nothing about the WRITE. Without this, a
+    // `terminalise` that dropped `abandonReason` entirely would leave every
+    // test in this file green while #2395's refusal reason vanished silently.
+    const orderId = `ol_order_${randomUUID().replace(/-/g, '')}`;
+    const claimed = await repo.claimIntent({ orderId, routerConnectionId: randomUUID() });
+
+    await repo.terminalise({
+      decisionId: claimed.id,
+      state: 'abandoned',
+      abandonReason: 'plan-not-conserving',
+      routerDecisionRef: 'vendor-decision-refused',
+    });
+
+    const stored = await repo.findById(claimed.id);
+    expect(stored?.abandonReason).toBe('plan-not-conserving');
+    // Legal on the abandoned arm too: #2393's `plan-not-conserving` describes a
+    // router that DID name a decision, which OpenLinker then refused.
+    expect(stored?.routerDecisionRef).toBe('vendor-decision-refused');
+    expect(stored?.state).toBe('abandoned');
+  });
+
   it('should read an abandon reason this build does not recognise as absent', async () => {
     // #2395 widens the union with no migration, so an older build must read a
     // newer value as absent rather than crash on it (the #2100 rule).
