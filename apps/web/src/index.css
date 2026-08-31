@@ -3326,8 +3326,35 @@ a.delivery-rider-banner__button:focus-visible {
   background: transparent;
 }
 
+/* A floor, not a fixed height (#2538): the stacked bars a multi-line column
+   declares are what make the row as tall as the loaded one. Pinning `height`
+   was what made a two-line table grow on load. */
 .data-table-skeleton__row {
-  height: 36px;
+  min-height: 36px;
+}
+
+/* Reserved on every row, because a table where only some rows carry an action
+   must not resize when it turns out that they do. */
+.data-table-skeleton__row--action td {
+  padding-bottom: 20px;
+}
+
+.data-table-skeleton__stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* The second and further lines of a cell are the meta line: shorter, matching
+   the identity cells this reserves room for. */
+.data-table-skeleton__bar--meta {
+  width: 60%;
+}
+
+.data-table-skeleton__bar--action {
+  height: 24px;
+  width: 30%;
+  border-radius: var(--radius-sm);
 }
 
 .data-table-skeleton__bar {

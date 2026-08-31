@@ -186,6 +186,8 @@ export function CustomersListPage(): ReactElement {
       },
       {
         id: 'lastSourceConnectionId',
+        // #2538 - ConnectionCell stacks the connection name over its status (#2093).
+        lines: 2,
         header: 'Last connection source',
         cell: (c): ReactNode =>
           c.lastSourceConnectionId ? (
@@ -282,7 +284,7 @@ export function CustomersListPage(): ReactElement {
       </div>
 
       {query.isLoading ? (
-        <DataTableSkeleton columns={columns} />
+        <DataTableSkeleton columns={columns} label="Loading customers…" />
       ) : query.error ? (
         <ErrorState
           title="Unable to load customers"

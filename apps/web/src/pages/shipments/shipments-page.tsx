@@ -299,6 +299,8 @@ export function ShipmentsPage(): ReactElement {
     },
     {
       id: 'orderId',
+      // #2538 - OrderIdentityCell stacks the order number over a meta line.
+      lines: 2,
       header: 'Order',
       // Position 2 so the frozen pane is Status + row IDENTITY (#1905),
       // matching `/orders` (select + order). Frozen on Status alone, a
@@ -547,7 +549,7 @@ export function ShipmentsPage(): ReactElement {
       </div>
 
       {query.isLoading ? (
-        <DataTableSkeleton columns={columns} />
+        <DataTableSkeleton columns={columns} rowAction label="Loading shipments…" />
       ) : query.error ? (
         <ErrorState
           title="Unable to load shipments"
