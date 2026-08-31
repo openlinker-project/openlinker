@@ -16,6 +16,12 @@
  * mid-request — the same reasoning `OrderRecordService.
  * getSalesAndChannelAnalytics` documents for its own single resolve.
  *
+ * `IAnalyticsRemediationRunService.getOpenRun` (#2475) is the fourth read in
+ * the `Promise.all` below — cheap (a single indexed row lookup) and makes
+ * the `'currency'` row's `status` honest about an in-flight repair. See
+ * `CoverageCategoryRowDto`'s own header for why this is load-bearing rather
+ * than cosmetic.
+ *
  * @module apps/api/src/analytics/http
  */
 import { BadRequestException, Controller, Get, Inject, Query } from '@nestjs/common';
@@ -33,7 +39,10 @@ import {
 } from '@openlinker/core/currency';
 import {
   ANALYTICS_DISPLAY_SETTINGS_SERVICE_TOKEN,
+  ANALYTICS_REMEDIATION_RUN_SERVICE_TOKEN,
+  CURRENCY_REMEDIATION_CATEGORY,
   type IAnalyticsDisplaySettingsService,
+  type IAnalyticsRemediationRunService,
 } from '@openlinker/core/analytics';
 import { AnalyticsCoverageQueryDto } from './dto/analytics-coverage-query.dto';
 import {
@@ -64,7 +73,9 @@ export class AnalyticsCoverageController {
     @Inject(REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN)
     private readonly reportingCurrencySettings: IReportingCurrencySettingsService,
     @Inject(ANALYTICS_DISPLAY_SETTINGS_SERVICE_TOKEN)
-    private readonly displaySettings: IAnalyticsDisplaySettingsService
+    private readonly displaySettings: IAnalyticsDisplaySettingsService,
+    @Inject(ANALYTICS_REMEDIATION_RUN_SERVICE_TOKEN)
+    private readonly remediationRuns: IAnalyticsRemediationRunService
   ) {}
 
   @Get('coverage')
@@ -103,7 +114,7 @@ export class AnalyticsCoverageController {
     // on an order that has none.
     const { includeBackfilledTaxRatesInNetSales } = await this.displaySettings.getSettings();
 
-    const [currencyPage, taxPages, productMatchingPage] = await Promise.all([
+    const [currencyPage, taxPages, productMatchingPage, activeCurrencyRun] = await Promise.all([
       this.orderRecordService.getCurrencyMismatchOrders(
         salesFilters,
         currentReportingCurrency,
@@ -116,13 +127,15 @@ export class AnalyticsCoverageController {
         includeBackfilledTaxRatesInNetSales
       ),
       this.orderRecordService.getProductMatchingErrorOrders(healthFilters, pagination),
+      this.remediationRuns.getOpenRun(CURRENCY_REMEDIATION_CATEGORY),
     ]);
 
     const categories: CoverageCategoryRowDto[] = [
       CoverageCategoryRowDto.of(
         'currency',
         currencyPage.total,
-        currencyPage.items.map((item) => item.internalOrderId)
+        currencyPage.items.map((item) => item.internalOrderId),
+        activeCurrencyRun?.id ?? null
       ),
       ...TaxCoverageCategoryValues.map((category) =>
         CoverageCategoryRowDto.of(

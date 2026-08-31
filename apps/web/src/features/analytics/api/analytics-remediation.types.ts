@@ -2,7 +2,9 @@
  * Analytics Remediation types
  *
  * Mirrors `AnalyticsRemediationRunResponseDto` (#2468) — the run created by
- * `POST /analytics/coverage/currency/recalculate`.
+ * `POST /analytics/coverage/currency/recalculate` — plus the paginated
+ * `GET /analytics/coverage/currency/orders` drill-down consumed by the
+ * `detail-currency` modal (#2474, Phase 7).
  *
  * @module features/analytics/api
  */
@@ -25,4 +27,24 @@ export interface RecalculateCurrencyInput {
   /** ISO 8601, exclusive. */
   to: string;
   sourceConnectionId?: string;
+}
+
+export interface CurrencyMismatchOrder {
+  internalOrderId: string;
+  sourceConnectionId: string;
+  /** The order's own native currency; `null` for a row predating that column. */
+  nativeCurrency: string | null;
+  /** The reporting currency the order is stamped in; `null` when never stamped. */
+  stampedCurrency: string | null;
+  stampedAt: string | null;
+}
+
+export interface CurrencyMismatchOrdersPage {
+  items: CurrencyMismatchOrder[];
+  total: number;
+}
+
+export interface GetCurrencyMismatchOrdersInput extends RecalculateCurrencyInput {
+  limit?: number;
+  offset?: number;
 }

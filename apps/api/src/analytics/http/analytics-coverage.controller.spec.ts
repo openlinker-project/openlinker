@@ -13,7 +13,7 @@ import type {
   TaxCoverageCategory,
 } from '@openlinker/core/orders';
 import type { IReportingCurrencySettingsService } from '@openlinker/core/currency';
-import type { IAnalyticsDisplaySettingsService } from '@openlinker/core/analytics';
+import type { IAnalyticsDisplaySettingsService, IAnalyticsRemediationRunService } from '@openlinker/core/analytics';
 import { AnalyticsCoverageController } from './analytics-coverage.controller';
 import type { AnalyticsCoverageQueryDto } from './dto/analytics-coverage-query.dto';
 
@@ -49,6 +49,10 @@ describe('AnalyticsCoverageController (#2466)', () => {
     }),
   });
 
+  const createRemediationRuns = (): jest.Mocked<Pick<IAnalyticsRemediationRunService, 'getOpenRun'>> => ({
+    getOpenRun: jest.fn().mockResolvedValue(null),
+  });
+
   const emptyPage = { items: [], total: 0 };
 
   const emptyTaxPages = (): Record<TaxCoverageCategory, PaginatedTaxCoverageOrders> => ({
@@ -61,19 +65,22 @@ describe('AnalyticsCoverageController (#2466)', () => {
     orderRecordService = createOrderRecordService(),
     taxCoverageDetectionService = createTaxCoverageDetectionService(),
     reportingCurrencySettings = createReportingCurrencySettings(),
-    displaySettings = createDisplaySettings()
+    displaySettings = createDisplaySettings(),
+    remediationRuns = createRemediationRuns()
   ): {
     controller: AnalyticsCoverageController;
     orderRecordService: ReturnType<typeof createOrderRecordService>;
     taxCoverageDetectionService: ReturnType<typeof createTaxCoverageDetectionService>;
     reportingCurrencySettings: ReturnType<typeof createReportingCurrencySettings>;
     displaySettings: ReturnType<typeof createDisplaySettings>;
+    remediationRuns: ReturnType<typeof createRemediationRuns>;
   } {
     const controller = new AnalyticsCoverageController(
       orderRecordService as unknown as IOrderRecordService,
       taxCoverageDetectionService as unknown as ITaxCoverageDetectionService,
       reportingCurrencySettings as unknown as IReportingCurrencySettingsService,
-      displaySettings as unknown as IAnalyticsDisplaySettingsService
+      displaySettings as unknown as IAnalyticsDisplaySettingsService,
+      remediationRuns as unknown as IAnalyticsRemediationRunService
     );
     return {
       controller,
@@ -81,6 +88,7 @@ describe('AnalyticsCoverageController (#2466)', () => {
       taxCoverageDetectionService,
       reportingCurrencySettings,
       displaySettings,
+      remediationRuns,
     };
   }
 
@@ -230,6 +238,41 @@ describe('AnalyticsCoverageController (#2466)', () => {
       affectedCount: 2,
       sampleOrderIds: ['order-tax-c-1'],
     });
+  });
+
+  it('reports the currency row as in-progress with its activeRunId when a run is open (#2475)', async () => {
+    const { controller, orderRecordService, taxCoverageDetectionService, reportingCurrencySettings, remediationRuns } =
+      buildController();
+    reportingCurrencySettings.resolve.mockResolvedValue('EUR');
+    orderRecordService.getCurrencyMismatchOrders.mockResolvedValue(
+      emptyPage as PaginatedCurrencyMismatchOrders
+    );
+    orderRecordService.getProductMatchingErrorOrders.mockResolvedValue(
+      emptyPage as PaginatedProductMatchingErrorOrders
+    );
+    taxCoverageDetectionService.getAllCategoryPages.mockResolvedValue(emptyTaxPages());
+    remediationRuns.getOpenRun.mockResolvedValue({
+      id: 'ol_remrun_reload',
+      category: 'currency',
+      status: 'in-progress',
+      detail: null,
+      affectedCount: 5,
+      triggeredByUserId: 'user-1',
+      createdAt: new Date('2026-08-26T09:00:00Z'),
+      updatedAt: new Date('2026-08-26T09:00:00Z'),
+    });
+
+    const result = await controller.getCoverage(query);
+
+    expect(remediationRuns.getOpenRun).toHaveBeenCalledWith('currency');
+    const currencyRow = result.categories.find((row) => row.category === 'currency');
+    expect(currencyRow).toMatchObject({ status: 'in-progress', activeRunId: 'ol_remrun_reload' });
+    // Every other category is unaffected by a currency-only run.
+    for (const row of result.categories) {
+      if (row.category === 'currency') continue;
+      expect(row.status).toBe('open');
+      expect(row.activeRunId).toBeUndefined();
+    }
   });
 
   it('throws BadRequestException when to is not after from', async () => {

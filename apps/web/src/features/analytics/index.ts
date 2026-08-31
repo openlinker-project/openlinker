@@ -43,6 +43,7 @@ export type {
 export { useAnalyticsCoverageQuery } from './hooks/use-analytics-coverage-query';
 export { useRecalculateCurrencyMutation } from './hooks/use-recalculate-currency-mutation';
 export { AnalyticsSettingsDialog } from './components/analytics-settings-dialog';
+export { AnalyticsDataCoveragePanel } from './components/analytics-data-coverage-panel';
 export type { AnalyticsCoverage, AnalyticsCoverageFilters, CoverageCategoryRow } from './api/analytics-coverage.types';
 export type { AnalyticsRemediationRun, RecalculateCurrencyInput } from './api/analytics-remediation.types';
 

@@ -34,6 +34,14 @@ import {
   type AnalyticsRemediationApi,
 } from '../../features/analytics/api/analytics-remediation.api';
 import {
+  createAnalyticsTaxCoverageApi,
+  type AnalyticsTaxCoverageApi,
+} from '../../features/analytics/api/analytics-tax-coverage.api';
+import {
+  createAnalyticsMatchingCoverageApi,
+  type AnalyticsMatchingCoverageApi,
+} from '../../features/analytics/api/analytics-matching-coverage.api';
+import {
   createAnalyticsSettingsApi,
   type AnalyticsSettingsApi,
 } from '../../features/analytics/api/analytics-settings.api';
@@ -183,7 +191,12 @@ export interface PluginApiNamespaces {}
 export interface CoreApiClient {
   adapters: AdaptersApi;
   aiProviderSettings: AiProviderSettingsApi;
-  analytics: AnalyticsApi & TopProductsApi & AnalyticsCoverageApi & AnalyticsRemediationApi;
+  analytics: AnalyticsApi &
+    TopProductsApi &
+    AnalyticsCoverageApi &
+    AnalyticsRemediationApi &
+    AnalyticsTaxCoverageApi &
+    AnalyticsMatchingCoverageApi;
   analyticsSettings: AnalyticsSettingsApi;
   analyticsTrust: AnalyticsTrustApi;
   auth: AuthApi;
@@ -414,6 +427,8 @@ export function createApiClient({
       ...createTopProductsApi(request),
       ...createAnalyticsCoverageApi(request),
       ...createAnalyticsRemediationApi(request),
+      ...createAnalyticsTaxCoverageApi(request),
+      ...createAnalyticsMatchingCoverageApi(request),
     },
     analyticsSettings: createAnalyticsSettingsApi(request),
     analyticsTrust: createAnalyticsTrustApi(request),

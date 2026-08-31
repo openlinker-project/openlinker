@@ -17,6 +17,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import {
   AnalyticsConvertNote,
   AnalyticsCurrencyPicker,
+  AnalyticsDataCoveragePanel,
   AnalyticsDateRangeToolbar,
   AnalyticsDegradationBanner,
   AnalyticsKpiStrip,
@@ -195,6 +196,7 @@ export function AnalyticsPage(): ReactElement {
               section and the data-coverage header below it render
               unconditionally, after the order-derived figures above. */}
           <AnalyticsNeedsAttention />
+          <AnalyticsDataCoveragePanel filters={coverageFilters} onOpenSettings={() => setSettingsDialogOpen(true)} />
           <AnalyticsTrustHeader connections={trustQuery.data.connections} />
         </>
       ) : null}
