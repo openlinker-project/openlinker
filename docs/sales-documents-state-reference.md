@@ -70,7 +70,7 @@ These states mean OpenLinker chose not to issue, and each one has a different fi
 | State | What it means | What to do |
 |---|---|---|
 | **Issued on request** | This provider only issues when you ask. Nothing is wrong | Issue it when you are ready, or change when the provider issues |
-| **Waiting for the batch** | This provider issues in batches | Nothing. It goes out on the next run |
+| **Waiting for the batch** | This connection is set to issue in batches, and OpenLinker does not collect batches yet, so nothing will pick this order up on its own | Issue it by hand, or set the connection to issue automatically |
 | **No buyer tax ID** | The document needs the buyer's tax ID and the order has none | Add it at the source, or route this order to a document that does not need one |
 | **Tax rate missing** | A line has no tax rate. Nothing is guessed | Set the rate in your shop catalogue, then try again |
 | **Tax rate conflict** | Your shop and the sales channel disagree on a line's rate | Review it. The shop's rate is used |
