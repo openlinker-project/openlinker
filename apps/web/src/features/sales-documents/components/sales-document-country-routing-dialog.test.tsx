@@ -633,4 +633,60 @@ describe('SalesDocumentCountryRoutingDialog — Reset country (#2189)', () => {
       expect(screen.getByRole('button', { name: 'Reset country' })).toBeDisabled();
     });
   });
+
+  it('should offer an explicit "Done" close action so the operator does not rely on Escape or a backdrop click', async () => {
+    const onOpenChange = vi.fn();
+    const apiClient = createMockApiClient({
+      salesDocumentRules: {
+        listRules: vi.fn().mockResolvedValue([]),
+        listCountryDefaults: vi.fn().mockResolvedValue([]),
+      },
+    });
+    renderWithProviders(
+      <SalesDocumentCountryRoutingDialog
+        open
+        country="DE"
+        cameFrom={null}
+        onOpenChange={onOpenChange}
+        onNavigate={vi.fn()}
+      />,
+      { apiClient },
+    );
+
+    await screen.findByText(/Rules for DE/i);
+    const doneButton = screen.getByRole('button', { name: 'Done' });
+    await userEvent.click(doneButton);
+
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('should surface a per-rule delete failure without hiding the rest of the dialog', async () => {
+    const rules = [makeRule('r1')];
+    const deleteRule = vi.fn().mockRejectedValue(new Error('Rule is referenced elsewhere'));
+    const apiClient = createMockApiClient({
+      salesDocumentRules: {
+        listRules: vi.fn().mockResolvedValue(rules),
+        listCountryDefaults: vi.fn().mockResolvedValue([]),
+        deleteRule,
+      },
+    });
+    renderWithProviders(
+      <SalesDocumentCountryRoutingDialog
+        open
+        country="DE"
+        cameFrom={null}
+        onOpenChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+      { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() },
+    );
+
+    const deleteButton = await screen.findByRole('button', { name: 'Delete' });
+    await userEvent.click(deleteButton);
+
+    await screen.findByText('Rule is referenced elsewhere');
+    // The failure is scoped to the rule row — the rest of the dialog (e.g.
+    // its title) is still there, not replaced by a full-dialog error state.
+    expect(screen.getByText(/Sales-document routing · DE/i)).toBeInTheDocument();
+  });
 });
