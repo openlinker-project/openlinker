@@ -253,7 +253,13 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
     // enqueue would keep reporting success and nothing would ever run.
     // Re-driving re-runs the SAME key against the SAME record, which the write
     // path treats as a resume, so it can never become a second registration.
-    const redrivenFromDead = await this.syncJobs.requeueDeadByIdempotencyKey(key);
+    //
+    // Asked only of a job that IS dead. The re-drive is itself guarded on that
+    // status, so calling it unconditionally was merely a wasted write on the
+    // ordinary path - but it also read as though every request re-drove
+    // something, which is not what happens.
+    const redrivenFromDead =
+      job.status === 'dead' ? await this.syncJobs.requeueDeadByIdempotencyKey(key) : false;
 
     this.logger.log(
       `Fiscal registration requested: orderId=${cmd.orderId} connectionId=${cmd.connectionId} ` +

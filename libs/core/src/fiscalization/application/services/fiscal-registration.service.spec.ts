@@ -1533,9 +1533,21 @@ describe('FiscalRegistrationService', () => {
       expect(syncJobs.schedule).not.toHaveBeenCalled();
     });
 
+    it('should not ask to re-drive a job that is not dead', async () => {
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.findAllByOrderId.mockResolvedValue([]);
+      syncJobs.schedule.mockResolvedValue({ id: 'job-1', status: 'queued' } as never);
+
+      const accepted = await service.requestRegistration(command(), { sourceConnectionId: 'src' });
+
+      expect(syncJobs.requeueDeadByIdempotencyKey).not.toHaveBeenCalled();
+      expect(accepted.redrivenFromDead).toBe(false);
+    });
+
     it('should report a re-driven dead job so a repeated request is not silently inert', async () => {
       repo.findByIdempotencyKey.mockResolvedValue(record('pending'));
       repo.findAllByOrderId.mockResolvedValue([record('pending')]);
+      syncJobs.schedule.mockResolvedValue({ id: 'job-1', status: 'dead' } as never);
       syncJobs.requeueDeadByIdempotencyKey.mockResolvedValue(true);
 
       const accepted = await service.requestRegistration(command(), { sourceConnectionId: 'src' });
@@ -1602,6 +1614,19 @@ describe('FiscalRegistrationService', () => {
         documentKind: 'fiscal-receipt',
         recordId: claimed.id,
       });
+    });
+
+    it('should report a crashed attempt as interrupted, never as stalled', async () => {
+      // `stalled` is renderable as "nothing reached the provider"; this state is
+      // not, so the two must not collapse into one value.
+      const crashed = record('registering');
+      repo.findByIdempotencyKey.mockResolvedValue(crashed);
+      repo.findAllByOrderId.mockResolvedValue([crashed]);
+      syncJobs.findJobByIdempotencyKey.mockResolvedValue({ status: 'dead' } as never);
+
+      const view = await service.getRegistrationProgress(ORDER_ID, CONNECTION_ID);
+
+      expect(view.progress).toBe('interrupted');
     });
 
     it('should report an intent nothing will pick up as stalled', async () => {

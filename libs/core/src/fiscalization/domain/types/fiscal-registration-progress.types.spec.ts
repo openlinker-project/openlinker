@@ -88,6 +88,27 @@ describe('resolveFiscalRegistrationProgress', () => {
     ).toBe('queued');
   });
 
+  it('should not report a crashed attempt as work that never reached the provider', () => {
+    // The distinction the two values exist for. A `pending` row was written
+    // before any outbound call; a `registering` row whose claim expired is an
+    // attempt that may already have crossed the boundary, and nothing may state
+    // an absence for it.
+    const crashed = { status: 'registering' as const, failureMode: null, leaseLive: false };
+    expect(resolveFiscalRegistrationProgress({ record: crashed, job: 'none' })).toBe('interrupted');
+    expect(resolveFiscalRegistrationProgress({ record: crashed, job: 'dead' })).toBe('interrupted');
+  });
+
+  it('should rank a settled record above a live claim flag', () => {
+    // Unreachable in practice, and the ordering still has to match what the
+    // docblock says: a record that reached its outcome is never still running.
+    expect(
+      resolveFiscalRegistrationProgress({
+        record: { status: 'registered', failureMode: null, leaseLive: true },
+        job: 'live',
+      }),
+    ).toBe('registered');
+  });
+
   it('should only ever answer with a published value', () => {
     const answers = [
       resolveFiscalRegistrationProgress({ record: null, job: 'none' }),

@@ -38,9 +38,9 @@ export function fiscalPollInterval(status: FiscalRegistrationStatus | undefined)
  * job running, which is precisely the window the operator is watching and the
  * one the record cannot describe.
  *
- * `stalled` does NOT poll. Nothing is running, so refetching would describe
- * something that is not happening; only asking again moves it. The three
- * terminal states need no poll either.
+ * `stalled` and `interrupted` do NOT poll. Nothing is running in either, so
+ * refetching would describe something that is not happening; only asking again
+ * moves them. The three terminal states need no poll either.
  *
  * An absent progress value (not yet loaded) does not poll.
  */

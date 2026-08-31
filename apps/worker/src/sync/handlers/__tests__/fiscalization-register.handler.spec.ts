@@ -62,6 +62,12 @@ describe('FiscalizationRegisterHandler', () => {
   beforeEach(() => {
     fiscalRegistrations = {
       register: jest.fn().mockResolvedValue({} as never),
+      // The three reads added with asynchronous registration (#2525/#2526).
+      // This handler is the path that PERFORMS the work, so none of them is
+      // exercised here; they are present because the interface has them.
+      requestRegistration: jest.fn(),
+      assertRegistrable: jest.fn(),
+      getRegistrationProgress: jest.fn(),
       getByOrderId: jest.fn(),
       getByOrderIds: jest.fn().mockResolvedValue([]),
       getById: jest.fn(),

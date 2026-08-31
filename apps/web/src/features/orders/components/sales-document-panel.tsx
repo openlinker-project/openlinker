@@ -891,6 +891,9 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
             </>
           ) : null}
 
+          {/* Nothing is running. Two states, two sentences, because they differ
+              on whether the provider can already have been called - and an
+              absence is not something this surface may assert on a guess. */}
           {fiscalProgress === 'stalled' ? (
             <Alert
               tone="warning"
@@ -898,7 +901,27 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
             >
               {t(
                 'fiscalReceipt.stalled.body',
-                'The registration was requested and stopped before it finished. Nothing was registered with the provider. Asking again picks it up where it stopped.',
+                'The registration was requested and stopped before it reached the provider, so nothing was registered. Asking again picks it up.',
+              )}{' '}
+              <Button
+                tone="secondary"
+                className="button--sm"
+                disabled={registerMutation.isPending || !fiscalProgressConnectionId}
+                onClick={() => handleRegister(fiscalProgressConnectionId)}
+              >
+                {t('fiscalReceipt.action.retry', 'Register receipt')}
+              </Button>
+            </Alert>
+          ) : null}
+
+          {fiscalProgress === 'interrupted' ? (
+            <Alert
+              tone="warning"
+              title={t('fiscalReceipt.interrupted.title', 'An attempt stopped without an answer')}
+            >
+              {t(
+                'fiscalReceipt.interrupted.body',
+                'The attempt had started, so OpenLinker cannot tell whether the provider registered this sale. Asking again resumes the same registration rather than starting a new one.',
               )}{' '}
               <Button
                 tone="secondary"

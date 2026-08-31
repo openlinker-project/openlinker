@@ -35,10 +35,11 @@ describe('fiscalProgressPollInterval', () => {
     expect(fiscalProgressPollInterval('running')).toBe(FISCAL_POLL_MS);
   });
 
-  it('should not poll a stalled registration, because nothing is running', () => {
+  it('should not poll where nothing is running', () => {
     // Refetching would describe something that is not happening. Only asking
-    // again moves it.
+    // again moves either of them.
     expect(fiscalProgressPollInterval('stalled')).toBe(false);
+    expect(fiscalProgressPollInterval('interrupted')).toBe(false);
   });
 
   it('should not poll a settled outcome or an unasked sale', () => {

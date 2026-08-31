@@ -700,7 +700,7 @@ describe('SalesDocumentPanel — asynchronous registration (#2527)', () => {
     expect(screen.queryByText(/close/i)).toBeNull();
   });
 
-  it('says nothing is running, and offers to ask again, when the work stalled', async () => {
+  it('says nothing reached the provider only where that is true', async () => {
     renderWithProviders(<SalesDocumentPanel order={order} />, {
       apiClient: createMockApiClient({
         connections: { list: vi.fn().mockResolvedValue([fiscalConnection]) },
@@ -717,7 +717,35 @@ describe('SalesDocumentPanel — asynchronous registration (#2527)', () => {
     });
 
     expect(await screen.findByText('Nothing is running for this receipt')).toBeInTheDocument();
-    expect(screen.getByText(/Nothing was registered with the provider/)).toBeInTheDocument();
+    // A `pending` record was written before any outbound call and never
+    // claimed, so the absence is provable here.
+    expect(screen.getByText(/stopped before it reached the provider/)).toBeInTheDocument();
+  });
+
+  it('never claims an absence for an attempt that may already have reached the provider', async () => {
+    // A `registering` record whose claim expired is a crashed attempt: the
+    // process died, and a dead socket says nothing about whether the request
+    // was processed. This is the one path into "nothing is running" where an
+    // absence cannot be asserted.
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([fiscalConnection]) },
+        fiscalization: {
+          listForOrder: vi.fn().mockResolvedValue([makeFiscalRecord({ status: 'registering' })]),
+          getProgress: vi.fn().mockResolvedValue({
+            progress: 'interrupted',
+            record: makeFiscalRecord({ status: 'registering' }),
+            inFlight: null,
+          }),
+        },
+      }),
+      ...adminSession,
+    });
+
+    expect(await screen.findByText('An attempt stopped without an answer')).toBeInTheDocument();
+    expect(screen.getByText(/cannot tell whether the provider registered/)).toBeInTheDocument();
+    expect(screen.queryByText(/nothing was registered/i)).toBeNull();
+    expect(screen.queryByText(/before it reached the provider/i)).toBeNull();
   });
 
   it('polls the progress read for the (order, connection) pair the key is built from', async () => {

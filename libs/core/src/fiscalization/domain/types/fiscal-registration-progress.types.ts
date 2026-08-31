@@ -31,11 +31,21 @@ import type {
  * The closed set of answers.
  *
  * `stalled` is the one that earns its place by being uncomfortable: intent was
- * recorded and nothing is running - a job that exhausted its retries, or a
- * record whose attempt died. Folding it into `queued` would tell an operator the
- * work is waiting its turn when nothing will ever pick it up, and folding it into
- * a failure would assert an outcome the provider never gave. It is the state a
- * repeat of the request resolves, by re-driving the dead job.
+ * recorded and nothing is running. Folding it into `queued` would tell an
+ * operator the work is waiting its turn when nothing will ever pick it up, and
+ * folding it into a failure would assert an outcome the provider never gave. It
+ * is the state a repeat of the request resolves, by re-driving the dead job.
+ *
+ * `interrupted` is `stalled`'s twin and is kept apart from it BECAUSE OF WHAT
+ * MAY ALREADY HAVE HAPPENED. Both mean nothing is running, but they differ on
+ * the one question that matters for a fiscal document: whether the provider was
+ * ever called. A `pending` record was written before any outbound call and never
+ * claimed, and no record at all means the call was never reached, so on both of
+ * those paths nothing crossed the boundary and a surface may say so. A
+ * `registering` record whose lease expired is a crashed attempt that MAY have
+ * reached the provider - the process died and a dead socket says nothing about
+ * whether the request was processed - so nothing may state an absence there.
+ * One word cannot carry both without being false on one of them.
  *
  * `rejected` and `in-doubt` are kept apart because only one of them may be
  * re-attempted. A rejection means the provider definitely created nothing; an
@@ -47,6 +57,7 @@ export const FiscalRegistrationProgressValues = [
   'queued',
   'running',
   'stalled',
+  'interrupted',
   'registered',
   'rejected',
   'in-doubt',
@@ -99,9 +110,9 @@ export function resolveFiscalRegistrationProgress(
   const { record, job } = input;
 
   if (record !== null) {
-    if (record.leaseLive) {
-      return 'running';
-    }
+    // A settled record is settled whatever else is true of it. Checked before
+    // the claim so the ranking matches what this function's docblock says: a
+    // record that reached its outcome is never reported as still running.
     if (record.status === 'registered') {
       return 'registered';
     }
@@ -110,10 +121,17 @@ export function resolveFiscalRegistrationProgress(
       // included: an unreadable failure is not evidence that nothing landed.
       return record.failureMode === 'rejected' ? 'rejected' : 'in-doubt';
     }
-    // `pending`, or `registering` with an expired lease: intent exists and no
-    // attempt is running. Whether that is waiting or abandoned is the job's
-    // answer, not the record's.
-    return job === 'live' ? 'queued' : 'stalled';
+    if (record.leaseLive) {
+      return 'running';
+    }
+    if (job === 'live') {
+      // Intent exists and a job will pick it up. True of a never-sent `pending`
+      // row and of an abandoned claim alike, and neither needs the operator.
+      return 'queued';
+    }
+    // Nothing is running. The two shapes part company here, on whether the
+    // provider can already have been called.
+    return record.status === 'registering' ? 'interrupted' : 'stalled';
   }
 
   if (job === 'live') {

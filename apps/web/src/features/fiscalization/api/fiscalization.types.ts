@@ -99,16 +99,19 @@ export interface RegisterFiscalTransactionInput {
  * `scripts/check-fiscal-registration-progress-mirror.mjs` enforces the equality
  * under `pnpm check:invariants`; this comment is not the enforcement.
  *
- * `stalled` is not a failure: intent was recorded and nothing is running, and
- * asking again is what moves it. `rejected` and `in-doubt` must stay apart -
- * only a rejection may be re-attempted, because an in-doubt outcome means the
- * sale may already be registered.
+ * `stalled` and `interrupted` both mean nothing is running, and they must not be
+ * rendered with the same words: `stalled` is work that never reached the
+ * provider, `interrupted` is an attempt that stopped without answering and may
+ * already have reached it. Only the first may be described as having registered
+ * nothing. `rejected` and `in-doubt` stay apart for the same reason - only a
+ * rejection may be re-attempted freely.
  */
 export type FiscalRegistrationProgress =
   | 'not-requested'
   | 'queued'
   | 'running'
   | 'stalled'
+  | 'interrupted'
   | 'registered'
   | 'rejected'
   | 'in-doubt';
