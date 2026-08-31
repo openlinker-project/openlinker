@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { usePlatform, usePlatforms } from '../../../shared/plugins';
@@ -32,7 +32,7 @@ const DEFAULT_CONFIG = JSON.stringify(
     baseUrl: 'https://example.com',
   },
   null,
-  2,
+  2
 );
 
 const DEFAULT_VALUES: CreateConnectionFormValues = {
@@ -59,11 +59,17 @@ export function CreateConnectionForm(): ReactElement {
   const platformOptions = plugins.map((p) => ({ value: p.platformType, label: p.displayName }));
   // The schema depends on the SELECTED platform's adapter, which is only known
   // after the operator picks one — so the resolver delegates through a ref
-  // rather than being captured once at first render.
+  // rather than being captured once at first render. Passing
+  // `zodResolver(credentialSchema)` directly relies on RHF re-reading
+  // `_options.resolver` every render, which is undocumented; moving the
+  // assignment into an effect would make it stale for a submit in the same
+  // tick as the platform change. Neither alternative is an improvement — do
+  // not "simplify" this back.
   const schemaRef = useRef(buildCreateConnectionSchema());
   const form = useForm<CreateConnectionFormValues, undefined, CreateConnectionFormSubmission>({
     defaultValues: DEFAULT_VALUES,
-    resolver: (values, context, options) => zodResolver(schemaRef.current)(values, context, options),
+    resolver: (values, context, options) =>
+      zodResolver(schemaRef.current)(values, context, options),
   });
 
   const watchedPlatformType = form.watch('platformType');
@@ -83,18 +89,36 @@ export function CreateConnectionForm(): ReactElement {
   // `true`, mirroring the backend default: the pre-arrival state shows the
   // credential fields rather than briefly hiding them.
   const adaptersQuery = useAdaptersQuery();
-  const selectedAdapter = adaptersQuery.data?.find(
-    (adapter) => adapter.platformType === watchedPlatformType,
-  );
+  // Prefer the platform DEFAULT, because that is what the backend resolves when
+  // the form omits `adapterKey` (`getDefaultAdapterKey`). First-match-wins would
+  // read a non-default sibling if a platform ever ships two adapters.
+  const platformAdapters =
+    adaptersQuery.data?.filter((adapter) => adapter.platformType === watchedPlatformType) ?? [];
+  const selectedAdapter =
+    platformAdapters.find((adapter) => adapter.isDefault === true) ?? platformAdapters[0];
   const requiresCredentials = selectedAdapter?.requiresCredentials !== false;
   const credentialSchema = useMemo(
     () => buildCreateConnectionSchema({ requiresCredentials }),
-    [requiresCredentials],
+    [requiresCredentials]
   );
   schemaRef.current = credentialSchema;
 
+  // Clear any credential the operator typed for a PREVIOUS platform when the
+  // selection changes. RHF keeps values across unmount, so without this a
+  // credentials JSON typed for PrestaShop survives a switch to a
+  // credential-less destination and is submitted invisibly — the inputs are no
+  // longer on screen to show it. `toCreateConnectionInput` also drops them,
+  // deliberately: this keeps the form state honest, that keeps the request
+  // honest, and neither alone covers the other's caller.
+  useEffect(() => {
+    form.setValue('credentialsRef', '');
+    form.setValue('credentialsJson', '');
+    // Keyed on the platform change alone. `form` is a stable RHF instance, so
+    // omitting it cannot go stale.
+  }, [watchedPlatformType]);
+
   const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
-    error?.message ? [String(error.message)] : [],
+    error?.message ? [String(error.message)] : []
   );
 
   const onSubmit = form.handleSubmit(async (values) => {
@@ -103,7 +127,9 @@ export function CreateConnectionForm(): ReactElement {
     // submission would fail silently without visible feedback.
     if (requiresExternalAuthRedirect) return;
     try {
-      const created = await createConnection.mutateAsync(toCreateConnectionInput(values));
+      const created = await createConnection.mutateAsync(
+        toCreateConnectionInput(values, { requiresCredentials })
+      );
       showToast({
         tone: 'success',
         title: 'Connection created',
@@ -134,8 +160,16 @@ export function CreateConnectionForm(): ReactElement {
         ) : null}
 
         <div className="form-grid">
-          <FormField label="Connection name" name="name" error={form.formState.errors.name?.message}>
-            <Input {...form.register('name')} placeholder="Main PrestaShop Store" invalid={Boolean(form.formState.errors.name)} />
+          <FormField
+            label="Connection name"
+            name="name"
+            error={form.formState.errors.name?.message}
+          >
+            <Input
+              {...form.register('name')}
+              placeholder="Main PrestaShop Store"
+              invalid={Boolean(form.formState.errors.name)}
+            />
           </FormField>
 
           <FormField
@@ -144,7 +178,10 @@ export function CreateConnectionForm(): ReactElement {
             error={form.formState.errors.platformType?.message}
             description="Use the platform family this connection will integrate with."
           >
-            <Select {...form.register('platformType')} invalid={Boolean(form.formState.errors.platformType)}>
+            <Select
+              {...form.register('platformType')}
+              invalid={Boolean(form.formState.errors.platformType)}
+            >
               <option value="">Select a platform</option>
               {platformOptions.map((platform) => (
                 <option key={platform.value} value={platform.value}>
@@ -181,7 +218,7 @@ export function CreateConnectionForm(): ReactElement {
               label="Credentials JSON"
               name="credentialsJson"
               error={form.formState.errors.credentialsJson?.message}
-              description="Raw credential payload (e.g. { &quot;bridgeToken&quot;: &quot;…&quot; } for Subiekt). Encrypted server-side. Use instead of a reference."
+              description='Raw credential payload (e.g. { "bridgeToken": "…" } for Subiekt). Encrypted server-side. Use instead of a reference.'
             >
               <Textarea
                 {...form.register('credentialsJson')}
@@ -242,7 +279,11 @@ export function CreateConnectionForm(): ReactElement {
             error={form.formState.errors.configText?.message}
             description="Provide only safe connection configuration values. Secrets must remain outside the browser."
           >
-            <Textarea {...form.register('configText')} rows={10} invalid={Boolean(form.formState.errors.configText)} />
+            <Textarea
+              {...form.register('configText')}
+              rows={10}
+              invalid={Boolean(form.formState.errors.configText)}
+            />
           </FormField>
         )}
 
@@ -252,14 +293,20 @@ export function CreateConnectionForm(): ReactElement {
               active={write.demoReadOnly}
               message={DEMO_READ_ONLY_ACTION_MESSAGE}
               onLockedClick={() =>
-                captureDemoEvent('demo_connection_create_attempted', { platform: watchedPlatformType })
+                captureDemoEvent('demo_connection_create_attempted', {
+                  platform: watchedPlatformType,
+                })
               }
             >
               <Button type="submit" disabled={createConnection.isPending || write.demoReadOnly}>
                 {createConnection.isPending ? 'Creating...' : 'Create connection'}
               </Button>
             </ReadOnlyLock>
-            <Button tone="secondary" onClick={() => setIsResetDialogOpen(true)} disabled={createConnection.isPending}>
+            <Button
+              tone="secondary"
+              onClick={() => setIsResetDialogOpen(true)}
+              disabled={createConnection.isPending}
+            >
               Reset draft
             </Button>
           </div>

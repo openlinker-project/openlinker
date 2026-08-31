@@ -15,6 +15,12 @@
  * has no runtime representation to enumerate, and generating a value to
  * inspect would pin the generator instead of the contract.
  *
+ * Note the path below reaches OUT of `libs/oms` into a sibling package. ADR-055
+ * forbids in-repo relative escapes for this package's *shipped* code; this is a
+ * test file, excluded by the `files` whitelist, so it does not affect
+ * publishability — but it is the one file here that would not survive package
+ * extraction, and it would need to move to `libs/plugin-sdk` at that point.
+ *
  * @module libs/oms/src/__tests__
  */
 import { readFileSync } from 'node:fs';
@@ -50,23 +56,24 @@ const EXPECTED_HOST_SERVICES_MEMBERS = [
 ];
 
 /** The five services the OMS takes through its own closure instead. */
-const OMS_PLUGIN_DEPS = [
-  'inventoryQuery',
-  'orderRecords',
-  'products',
-  'shipping',
-  'mappingConfig',
-];
+const OMS_PLUGIN_DEPS = ['inventoryQuery', 'orderRecords', 'products', 'shipping', 'mappingConfig'];
 
 function readHostServicesMembers(): string[] {
   const source = readFileSync(
     join(__dirname, '..', '..', '..', 'plugin-sdk', 'src', 'host-services.ts'),
-    'utf8',
+    'utf8'
   );
   const start = source.indexOf('export interface HostServices');
   expect(start).toBeGreaterThanOrEqual(0);
   const body = source.slice(start);
-  return [...body.matchAll(/^\s{2}readonly\s+([A-Za-z0-9_]+)\??:/gm)].map((m) => m[1]);
+  // `readonly` is OPTIONAL in the pattern on purpose. Requiring it left a hole
+  // in exactly the case this file guards: a member added WITHOUT `readonly`
+  // would be invisible to the scan, the 18 existing members would keep the
+  // non-vacuity check green, `toEqual` would still match and
+  // `not.toContain('inventoryQuery')` would still pass — while `HostServices`
+  // had in fact been widened. Dropping one word is the likeliest shape a
+  // hurried widening takes, so it must not be the shape that slips through.
+  return [...body.matchAll(/^\s{2}(?:readonly\s+)?([A-Za-z0-9_]+)\??:/gm)].map((m) => m[1]);
 }
 
 describe('HostServices is not widened for the OMS', () => {
