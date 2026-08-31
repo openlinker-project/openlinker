@@ -40,6 +40,7 @@ export {
 } from './lib/resolve-fiscalization-connection';
 export {
   deriveFiscalReceiptDisplayStatus,
+  deriveFiscalReceiptBadgeStatus,
   canRetryFiscalReceipt,
   resolveFiscalFailureCopy,
 } from './lib/derive-fiscal-receipt-display';

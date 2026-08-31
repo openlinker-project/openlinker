@@ -196,21 +196,6 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
   ) {}
 
   /**
-   * Register a completed sale, serialized per ORDER under the SAME per-order
-   * lock `InvoiceService.issueInvoice` acquires (#2157, `invoiceIssueLockKey` —
-   * imported verbatim from `@openlinker/core/invoicing` rather than
-   * reimplemented, so both write paths key on the byte-identical string). Two
-   * concurrent attempts on the same order — one issuing an invoice, one
-   * registering a receipt, on different connections — must not both succeed;
-   * that is exactly the read-then-act race #2047's lock exists to close,
-   * generalized cross-KIND by ADR-041 §3a/3b.
-   *
-   * Mirrors `InvoiceService.issueInvoice`'s lock shape: acquired here, released
-   * in `finally`; a failed acquisition answers from PERSISTED STATE ONLY
-   * ({@link registerContended}), never crossing the provider boundary while a
-   * peer holds the lock.
-   */
-  /**
    * Enqueue a registration instead of performing one (#2525). See the interface
    * for the contract; what follows is why each step is where it is.
    */
@@ -285,6 +270,21 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
     await this.assertNotAlreadyRegistered(orderId, requestedConnectionId);
   }
 
+  /**
+   * Register a completed sale, serialized per ORDER under the SAME per-order
+   * lock `InvoiceService.issueInvoice` acquires (#2157, `invoiceIssueLockKey` —
+   * imported verbatim from `@openlinker/core/invoicing` rather than
+   * reimplemented, so both write paths key on the byte-identical string). Two
+   * concurrent attempts on the same order — one issuing an invoice, one
+   * registering a receipt, on different connections — must not both succeed;
+   * that is exactly the read-then-act race #2047's lock exists to close,
+   * generalized cross-KIND by ADR-041 §3a/3b.
+   *
+   * Mirrors `InvoiceService.issueInvoice`'s lock shape: acquired here, released
+   * in `finally`; a failed acquisition answers from PERSISTED STATE ONLY
+   * ({@link registerContended}), never crossing the provider boundary while a
+   * peer holds the lock.
+   */
   async register(cmd: RegisterTransactionCommand): Promise<FiscalRegistrationRecord> {
     const key = cmd.idempotencyKey?.trim() ?? '';
     if (key.length === 0) {

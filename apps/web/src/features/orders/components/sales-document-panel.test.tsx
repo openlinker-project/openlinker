@@ -763,3 +763,46 @@ describe('SalesDocumentPanel — asynchronous registration (#2527)', () => {
     await waitFor(() => expect(getProgress).toHaveBeenCalledWith(ORDER_ID, FISCAL_CONN_ID));
   });
 });
+
+describe('SalesDocumentPanel — header agrees with body (#2527)', () => {
+  it('should not badge a queued registration as not registered', async () => {
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([fiscalConnection]) },
+        fiscalization: {
+          listForOrder: vi.fn().mockResolvedValue([]),
+          getProgress: vi
+            .fn()
+            .mockResolvedValue({ progress: 'queued', record: null, inFlight: null }),
+        },
+      }),
+      ...adminSession,
+    });
+
+    expect(await screen.findByText(/Registering with the provider/)).toBeInTheDocument();
+    // The header used to read "Not registered" over that body, because the
+    // badge derived from a record that does not exist yet.
+    expect(screen.getByText('Queued')).toBeInTheDocument();
+    expect(screen.queryByText('Not registered')).toBeNull();
+  });
+
+  it('should still report a request that stopped before any record existed', async () => {
+    // A job that gave up before `register` wrote a row. Without the slot
+    // opening on this the panel falls through to the empty state and says
+    // nothing about the stopped request at all.
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([fiscalConnection]) },
+        fiscalization: {
+          listForOrder: vi.fn().mockResolvedValue([]),
+          getProgress: vi
+            .fn()
+            .mockResolvedValue({ progress: 'stalled', record: null, inFlight: null }),
+        },
+      }),
+      ...adminSession,
+    });
+
+    expect(await screen.findByText('Nothing is running for this receipt')).toBeInTheDocument();
+  });
+});

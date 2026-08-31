@@ -130,6 +130,7 @@ import {
   useReconcileFiscalRegistrationMutation,
   selectFiscalizationCandidates,
   deriveFiscalReceiptDisplayStatus,
+  deriveFiscalReceiptBadgeStatus,
   canRetryFiscalReceipt,
   resolveFiscalFailureCopy,
   FiscalReceiptStatusBadge,
@@ -283,6 +284,9 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   // describe: the request has been accepted and the job has not run yet, so
   // there is nothing but the job to read.
   const fiscalWorkOutstanding = fiscalProgress === 'queued' || fiscalProgress === 'running';
+  // The header badge takes the four states the record cannot express from
+  // progress, so it can never contradict the body beneath it.
+  const fiscalBadgeStatus = deriveFiscalReceiptBadgeStatus(fiscalRecord, fiscalProgress);
 
   // Loading skeleton while connections settle — matches the pre-#2160 panels.
   if (connectionsQuery.isLoading) {
@@ -326,7 +330,13 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   // Outstanding work opens the slot even with no record. Without that, an order
   // reopened in the window right after the operator asked would fall through to
   // the empty state and offer to register the sale again.
-  const showFiscalSlot = !showInvoiceSlot && (fiscalRecord !== null || fiscalWorkOutstanding);
+  // `stalled` with no record is a real state - a job that gave up before
+  // `register` ever wrote a row - and it is the one state whose whole purpose is
+  // to say a previous request stopped. Without it here the panel falls through
+  // to the empty state and says nothing at all.
+  const showFiscalSlot =
+    !showInvoiceSlot &&
+    (fiscalRecord !== null || fiscalWorkOutstanding || fiscalProgress === 'stalled');
   const showEmptyState = !showInvoiceSlot && !showFiscalSlot;
 
   // ── Invoicing connection resolution (verbatim from the pre-#2160 panel) ──
@@ -575,7 +585,9 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
               ) : null}
             </>
           ) : null}
-          {showFiscalSlot ? <FiscalReceiptStatusBadge status={fiscalDisplayStatus} /> : null}
+          {showFiscalSlot ? (
+            <FiscalReceiptStatusBadge status={fiscalBadgeStatus} />
+          ) : null}
         </div>
       </header>
 
