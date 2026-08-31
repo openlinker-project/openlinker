@@ -14,6 +14,7 @@ import { useConnectionsQuery } from '../../connections';
 import { selectInvoicingCandidates } from '../../invoicing';
 import { selectFiscalizationCandidates } from '../../fiscalization';
 import { Select } from '../../../shared/ui/select';
+import { Alert } from '../../../shared/ui/alert';
 import { LoadingState, ErrorState } from '../../../shared/ui/feedback-state';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
@@ -74,24 +75,36 @@ export function SalesDocumentCountryDefaults({
               ? selectInvoicingCandidates(connections)
               : selectFiscalizationCandidates(connections);
           const current = defaults.find((d) => d.documentKind === documentKind) ?? null;
+          const isSavingThisKind =
+            upsert.isPending && upsert.variables?.documentKind === documentKind;
+          const isRemovingThisKind =
+            remove.isPending && current !== null && remove.variables === current.id;
+          const isPendingThisKind = isSavingThisKind || isRemovingThisKind;
+          const saveFailedForThisKind =
+            upsert.isError && upsert.variables?.documentKind === documentKind ? upsert.error : null;
+          const removeFailedForThisKind =
+            remove.isError && current !== null && remove.variables === current.id
+              ? remove.error
+              : null;
 
           return (
             <div key={documentKind} className="page-section">
               <label className="eyebrow" htmlFor={`sd-default-${documentKind}`} style={{ marginBottom: 2 }}>
                 {label}
+                {isPendingThisKind ? ' — Saving…' : null}
               </label>
               <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
                 <Select
                   id={`sd-default-${documentKind}`}
                   value={current?.connectionId ?? ''}
-                  disabled={!write.canWrite || candidates.length === 0}
+                  disabled={!write.canWrite || candidates.length === 0 || isPendingThisKind}
                   onChange={(event) => {
                     const connectionId = event.target.value;
                     if (connectionId === '') {
-                      if (current) void remove.mutateAsync(current.id);
+                      if (current) void remove.mutateAsync(current.id).catch(() => {});
                       return;
                     }
-                    void upsert.mutateAsync({ country, documentKind, connectionId });
+                    void upsert.mutateAsync({ country, documentKind, connectionId }).catch(() => {});
                   }}
                 >
                   <option value="">Not set</option>
@@ -106,6 +119,10 @@ export function SalesDocumentCountryDefaults({
                 Filtered to connections with <span className="chip mono-text">{capability}</span>.
                 {candidates.length === 0 ? ' No eligible connection yet.' : null}
               </p>
+              {saveFailedForThisKind ? <Alert tone="error">{saveFailedForThisKind.message}</Alert> : null}
+              {removeFailedForThisKind ? (
+                <Alert tone="error">{removeFailedForThisKind.message}</Alert>
+              ) : null}
             </div>
           );
         })}
