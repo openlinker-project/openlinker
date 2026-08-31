@@ -1027,8 +1027,15 @@ describe('OrderSyncService', () => {
         destinationConnectionIds: ['dest-a', 'source-1'],
       });
 
+      // Assert on the ID, not on the word: the warn emits a capital-U
+      // "Unresolved (unknown, inactive, ...", and `toContain` is
+      // case-sensitive — so a lowercase match could never fail and would be a
+      // check that cannot fail, which is worse than no check at all.
       const messages = warn.mock.calls.map((c) => String(c[0])).join(' | ');
-      expect(messages).not.toContain('unresolved');
+      expect(messages).not.toContain('source-1');
+      // And no warn should fire at all: everything the router named resolved,
+      // once the deliberate source exclusion is accounted for.
+      expect(warn).not.toHaveBeenCalled();
     });
 
     // Surfaced by the diff review: the exception must never name the SOURCE

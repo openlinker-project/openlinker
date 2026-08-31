@@ -449,11 +449,14 @@ export class OrderSyncService implements IOrderSyncService {
    * Resolve the destinations to dispatch to, applying the optional router
    * filter (#2397).
    *
-   * `unresolvedRequestedIds` is `undefined` when no filter was supplied, and
-   * otherwise the requested ids that resolved to no eligible destination —
-   * source echoes already removed, deduped. It is reported by exactly one
-   * consumer per call: the partial-narrowing warn here, or the exception in
-   * `syncOrder` when nothing resolved at all.
+   * `unresolvedRequestedIds` is present ONLY when a filter was supplied AND
+   * nothing resolved — it is then the requested ids that named no eligible
+   * destination, source echoes already removed and deduped, and is EMPTY when
+   * every id named the source itself. `undefined` otherwise, so the field
+   * never has to be read together with `destinations` to be understood.
+   *
+   * Each narrowing is reported exactly once: partially here as a warn, fully
+   * by the exception `syncOrder` raises from these ids.
    */
   private async resolveDestinations(
     sourceConnectionId: string,
@@ -521,7 +524,14 @@ export class OrderSyncService implements IOrderSyncService {
       );
     }
 
-    return { destinations: filtered, unresolvedRequestedIds: unresolved };
+    // Reported ONLY when nothing resolved. With a non-empty `filtered` the
+    // partial-narrowing warn above has already said everything there is to
+    // say, and returning `[]` there would make one value mean two different
+    // things — "everything resolved" and "only the source was named" — which
+    // is exactly the conflation this change exists to remove one level up.
+    return filtered.length > 0
+      ? { destinations: filtered }
+      : { destinations: filtered, unresolvedRequestedIds: unresolved };
   }
 
   /**
