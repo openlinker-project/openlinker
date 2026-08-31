@@ -50,6 +50,13 @@
  *    resolution early for a selected set of orders. No run ledger and no
  *    polling, because a backfill attempt is idempotent; see the controller's
  *    own header for why tax categories A and B have no endpoint at all.
+ * 9. **`/analytics/coverage/matching/orders`**
+ *    (`AnalyticsMatchingCoverageController`, #2474 Phase 7) — the
+ *    `'product-matching'` category's paginated drill-down, added alongside
+ *    the FE Data Coverage panel for the same reason as item 8's `GET
+ *    orders`: `GET /analytics/coverage` only ever samples 10 ids, and the
+ *    mockup's `detail-mapping` modal needs a real page. Read-only — this
+ *    category has no remediation action, see the controller's own header.
  *
  * The concerns share nothing except the URL prefix. If a future
  * `/analytics` route (#1986 route shell, KPI strip, etc.) needs its own
@@ -84,6 +91,7 @@ import { AnalyticsSettingsController } from './http/analytics-settings.controlle
 import { AnalyticsCoverageController } from './http/analytics-coverage.controller';
 import { AnalyticsRemediationController } from './http/analytics-remediation.controller';
 import { AnalyticsTaxRemediationController } from './http/analytics-tax-remediation.controller';
+import { AnalyticsMatchingCoverageController } from './http/analytics-matching-coverage.controller';
 import { NeedsAttentionService } from './application/services/needs-attention.service';
 import { NEEDS_ATTENTION_SERVICE_TOKEN } from './application/services/needs-attention.service.interface';
 import { TopProductsService } from './application/services/top-products.service';
@@ -110,6 +118,7 @@ import { TOP_PRODUCTS_SERVICE_TOKEN } from './application/services/top-products.
     AnalyticsCoverageController,
     AnalyticsRemediationController,
     AnalyticsTaxRemediationController,
+    AnalyticsMatchingCoverageController,
   ],
   providers: [
     NeedsAttentionService,
