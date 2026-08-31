@@ -26,6 +26,22 @@
  * a degenerate pass-through: no work objects, today's path byte-identical — the
  * property that survives the Wave-5 kill."*
  *
+ * ## Nothing enqueues this job type yet, and no outcome is surfaced yet
+ *
+ * There is no producer in the tree: #2396 owns the ingestion intercept that will
+ * enqueue it. Combined with the `null` router above, every arm below except the
+ * two `ok` short-circuits is unreachable on any installation this slice ships.
+ *
+ * More importantly, **every non-routed outcome here is log-only**. An order that
+ * will never ship because two connections claim A2 currently reads as a healthy
+ * `ok` job. That is the shape ADR-041 §54 / #2100 forbid for sales documents,
+ * where the gate REPORTS and `OrderIngestionService` PERSISTS the reason onto
+ * the order. Routing is designed the same way — DESIGN §5.3's
+ * "gate-reports / caller-persists", the one-way edge that keeps
+ * `fulfillment -> orders` from becoming a DI cycle — and the caller in question
+ * is #2396. So the persistence half lands there, not here; until it does, an
+ * ambiguity is visible only in this log line.
+ *
  * ## Outcome contract (ADR-007)
  *
  * | Result | Outcome |
@@ -55,7 +71,7 @@ import {
   type RoutingShipTo,
 } from '@openlinker/core/fulfillment';
 import {
-  isFulfillmentRouterAmbiguity,
+  isFulfillmentRouterUnroutable,
   selectPrimaryFulfillmentRouter,
   type AuthorityClaimantInput,
 } from '@openlinker/core/fulfillment-authority';
@@ -103,7 +119,7 @@ export class FulfillmentWorkRouteHandler implements SyncJobHandler {
       // `no-claimant` is the pass-through. An ambiguity commits NOTHING and is
       // reported — silence-and-pick-one is forbidden, because an unrouted order
       // is recoverable by hand and two shipments of one order are not.
-      const level = isFulfillmentRouterAmbiguity(selection.reason) ? 'warn' : 'log';
+      const level = isFulfillmentRouterUnroutable(selection.reason) ? 'warn' : 'log';
       this.logger[level](
         `Not routing order ${payload.orderId}: reason=${selection.reason} ` +
           `candidates=[${selection.candidateConnectionIds.join(',')}]`
@@ -138,7 +154,10 @@ export class FulfillmentWorkRouteHandler implements SyncJobHandler {
       // value from a moment that has already passed (REVIEW C10).
       isCancelled: async () => {
         const record = await this.orderRecords.getOrderRecord(payload.orderId);
-        return record?.cancelledAt != null;
+        // `isCancelled` is the ENTITY's own pure derivation (ADR-011's allowed
+        // shape), so the predicate has one definition rather than a second copy
+        // here. It is a getter, not a method.
+        return record?.isCancelled === true;
       },
     });
 

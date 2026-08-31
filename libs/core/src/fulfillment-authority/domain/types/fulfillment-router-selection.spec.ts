@@ -21,7 +21,7 @@
  */
 import {
   FulfillmentRouterSelectionReasonValues,
-  isFulfillmentRouterAmbiguity,
+  isFulfillmentRouterUnroutable,
   resolveAuthorities,
   selectPrimaryFulfillmentRouter,
   type AuthorityClaimantInput,
@@ -56,9 +56,7 @@ describe('selectPrimaryFulfillmentRouter', () => {
     it('should report no-claimant when the only claimant is inactive', () => {
       // An inactive claimant is REPORTED elsewhere but never eligible, so it can
       // neither hold A2 nor manufacture an ambiguity that blocks routing.
-      const selection = selectPrimaryFulfillmentRouter([
-        claimant('c-1', { enabled: true }, false),
-      ]);
+      const selection = selectPrimaryFulfillmentRouter([claimant('c-1', { enabled: true }, false)]);
 
       expect(selection.holder).toBeNull();
       expect(selection.reason).toBe('no-claimant');
@@ -178,11 +176,14 @@ describe('selectPrimaryFulfillmentRouter', () => {
       expect(new Set(arms.map((a) => a.reason)).size).toBe(4);
     });
 
-    it('should classify a legitimate compound as needing attention, and a lone holder as not', () => {
-      expect(isFulfillmentRouterAmbiguity('claimed-by-connection')).toBe(false);
-      expect(isFulfillmentRouterAmbiguity('no-claimant')).toBe(false);
-      expect(isFulfillmentRouterAmbiguity('multiple-scoped-holders')).toBe(true);
-      expect(isFulfillmentRouterAmbiguity('multiple-primaries')).toBe(true);
+    it('should report a legitimate compound as unroutable without calling it a misconfiguration', () => {
+      // `multiple-scoped-holders` blocks the COMMIT and is still a routine
+      // answer for the read model — which is why the predicate is named for
+      // committability rather than for ambiguity.
+      expect(isFulfillmentRouterUnroutable('claimed-by-connection')).toBe(false);
+      expect(isFulfillmentRouterUnroutable('no-claimant')).toBe(false);
+      expect(isFulfillmentRouterUnroutable('multiple-scoped-holders')).toBe(true);
+      expect(isFulfillmentRouterUnroutable('multiple-primaries')).toBe(true);
     });
   });
 
@@ -224,10 +225,7 @@ describe('selectPrimaryFulfillmentRouter', () => {
     });
 
     it('should report a real misconfiguration as cannot-tell', () => {
-      const row = a2([
-        claimant('c-1', { enabled: true }),
-        claimant('c-2', { enabled: true }),
-      ]);
+      const row = a2([claimant('c-1', { enabled: true }), claimant('c-2', { enabled: true })]);
 
       expect(row?.answer.kind).toBe('cannot-tell');
       expect(row?.state).toBe('ambiguous');

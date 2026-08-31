@@ -569,10 +569,18 @@ export interface FulfillmentRouterSelection {
 
 const AMBIGUITY_REASONS: readonly string[] = AuthorityAmbiguityReasonValues;
 
-/** Is this reason a misconfiguration, as opposed to a legitimate compound? */
-export const isFulfillmentRouterAmbiguity = (
-  reason: FulfillmentRouterSelectionReason
-): boolean => AMBIGUITY_REASONS.includes(reason) || reason === 'multiple-scoped-holders';
+/**
+ * Does this reason stop the routing commit?
+ *
+ * Deliberately NOT named `…Ambiguity`: it answers `true` for
+ * `multiple-scoped-holders`, which is expressly NOT a misconfiguration — two
+ * routers scoped to different channels is a routine compound the A2 row renders
+ * without complaint. It is simply not something the commit path can act on,
+ * because that path needs ONE router for one order. So the predicate is about
+ * committability, not about correctness of the operator's config.
+ */
+export const isFulfillmentRouterUnroutable = (reason: FulfillmentRouterSelectionReason): boolean =>
+  AMBIGUITY_REASONS.includes(reason) || reason === 'multiple-scoped-holders';
 
 /**
  * Which connection's router decides where an order is sourced from (#2395).
@@ -645,7 +653,6 @@ export function selectPrimaryFulfillmentRouter(
     holders: resolved.holders,
   };
 }
-
 
 /** Claimants that claim `kind` but are not active — reported, never eligible. */
 function inactiveClaimants(

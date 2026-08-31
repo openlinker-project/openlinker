@@ -471,6 +471,15 @@ export class OrderRecordService implements IOrderRecordService {
    * ship-by stays `null` by design. The source of truth is the source adapter;
    * this method never fabricates a window.
    */
+  private deriveDispatchByAt(window: OrderDispatchWindow | undefined): Date | null {
+    const to = window?.to;
+    if (!to) {
+      return null;
+    }
+    const parsed = new Date(to);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
   /**
    * Hash the order's shipping address (#2395) for `RoutingShipTo`'s degraded
    * arm. Field mapping mirrors `OrderCustomerProjectionUpdaterService`
@@ -494,15 +503,6 @@ export class OrderRecordService implements IOrderRecordService {
       })
     );
     return hash.trim() === '' ? null : hash;
-  }
-
-  private deriveDispatchByAt(window: OrderDispatchWindow | undefined): Date | null {
-    const to = window?.to;
-    if (!to) {
-      return null;
-    }
-    const parsed = new Date(to);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
 
   /**

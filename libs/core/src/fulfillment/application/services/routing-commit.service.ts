@@ -109,12 +109,12 @@ export class RoutingCommitService implements IRoutingCommitService {
     const token = await input.lock.acquire(lockKey, FULFILLMENT_ROUTE_LOCK_TTL_MS);
 
     if (token === null) {
-      // A peer is mid-flight. Answer from persisted state ONLY — crossing the
-      // router boundary here is the double-ship, so this branch must never do
-      // anything that could produce a second plan.
-      this.logger.log(
-        `Routing contended, answering from persisted state: orderId=${input.orderId}`
-      );
+      // A peer is mid-flight. This branch answers WITHOUT crossing the router
+      // boundary — that is the property that matters, and it is sufficient: a
+      // second call into the router is the double-ship. It deliberately reads no
+      // persisted state either, because there is nothing it would do with it;
+      // the peer owns the outcome.
+      this.logger.log(`Routing contended; not calling the router: orderId=${input.orderId}`);
       return { status: 'contended' };
     }
 
@@ -214,7 +214,9 @@ export class RoutingCommitService implements IRoutingCommitService {
    */
   private async claimOrResume(
     input: RouteOrderInput
-  ): Promise<{ decision: RoutingDecision; outcome: null } | { decision: null; outcome: RoutingCommitOutcome }> {
+  ): Promise<
+    { decision: RoutingDecision; outcome: null } | { decision: null; outcome: RoutingCommitOutcome }
+  > {
     const live = await this.decisions.findLiveByOrderId(input.orderId);
     if (live !== null) {
       return this.resumeOrRefuse(live, input);
@@ -228,10 +230,13 @@ export class RoutingCommitService implements IRoutingCommitService {
     }
 
     try {
-      return { decision: await this.decisions.claimIntent({
-        orderId: input.orderId,
-        routerConnectionId: input.routerConnectionId,
-      }), outcome: null };
+      return {
+        decision: await this.decisions.claimIntent({
+          orderId: input.orderId,
+          routerConnectionId: input.routerConnectionId,
+        }),
+        outcome: null,
+      };
     } catch (error) {
       if (error instanceof RoutingDecisionAlreadyLiveError) {
         // The partial-unique index refused us — a peer won the race between our
@@ -251,7 +256,9 @@ export class RoutingCommitService implements IRoutingCommitService {
   private resumeOrRefuse(
     live: RoutingDecision,
     input: RouteOrderInput
-  ): { decision: RoutingDecision; outcome: null } | { decision: null; outcome: RoutingCommitOutcome } {
+  ):
+    | { decision: RoutingDecision; outcome: null }
+    | { decision: null; outcome: RoutingCommitOutcome } {
     if (live.routerConnectionId !== input.routerConnectionId) {
       return { decision: null, outcome: { status: 'skipped', reason: 'already-live-elsewhere' } };
     }

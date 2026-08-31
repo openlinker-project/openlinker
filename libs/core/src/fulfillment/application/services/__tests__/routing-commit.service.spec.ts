@@ -48,7 +48,13 @@ const resolvedPlan = (overrides: Partial<Extract<RoutingPlan, { status: 'resolve
   status: 'resolved' as const,
   decisionId: 'vendor-1',
   assignments: overrides.assignments ?? [
-    { orderLineId: 'l1', locationId: 'loc-1', connectionId: 'c1', deliveryMethod: null, quantity: 2 },
+    {
+      orderLineId: 'l1',
+      locationId: 'loc-1',
+      connectionId: 'c1',
+      deliveryMethod: null,
+      quantity: 2,
+    },
   ],
   unfulfillable: overrides.unfulfillable ?? [],
   holds: overrides.holds ?? [],
@@ -92,15 +98,17 @@ describe('RoutingCommitService', () => {
       // Runs `fn` for real so the commit body is genuinely exercised; the
       // rollback property itself is pinned by the int-spec, which needs a real
       // database to mean anything.
-      runInTransaction: jest.fn(async (fn: (t: unknown) => Promise<unknown>) => fn({ save: jest.fn() })),
+      runInTransaction: jest.fn(async (fn: (t: unknown) => Promise<unknown>) =>
+        fn({ save: jest.fn() })
+      ),
     };
-    lock = { acquire: jest.fn().mockResolvedValue('token'), release: jest.fn().mockResolvedValue(true) };
+    lock = {
+      acquire: jest.fn().mockResolvedValue('token'),
+      release: jest.fn().mockResolvedValue(true),
+    };
     router = { route: jest.fn().mockResolvedValue(resolvedPlan()), evaluate: jest.fn() };
 
-    service = new RoutingCommitService(
-      decisions as never,
-      works as never
-    );
+    service = new RoutingCommitService(decisions as never, works as never);
   });
 
   describe('the declared timeout', () => {
@@ -168,9 +176,7 @@ describe('RoutingCommitService', () => {
 
     it('should refuse a live decision held by a DIFFERENT router', async () => {
       // Router-agnostic by design: the guard refuses regardless of identity.
-      decisions.findLiveByOrderId.mockResolvedValue(
-        decision({ routerConnectionId: 'conn_other' })
-      );
+      decisions.findLiveByOrderId.mockResolvedValue(decision({ routerConnectionId: 'conn_other' }));
 
       const outcome = await service.route(input());
 
@@ -203,10 +209,9 @@ describe('RoutingCommitService', () => {
 
       expect(outcome.status).toBe('routed');
       expect(decisions.claimIntent).not.toHaveBeenCalled();
-      expect(router.route).toHaveBeenCalledWith(
-        expect.anything(),
-        { idempotencyKey: 'route:ol_routingdecision_9' }
-      );
+      expect(router.route).toHaveBeenCalledWith(expect.anything(), {
+        idempotencyKey: 'route:ol_routingdecision_9',
+      });
     });
 
     it('should resume when the INDEX refuses the insert after a clean guard read', async () => {
@@ -220,10 +225,9 @@ describe('RoutingCommitService', () => {
       const outcome = await service.route(input());
 
       expect(outcome.status).toBe('routed');
-      expect(router.route).toHaveBeenCalledWith(
-        expect.anything(),
-        { idempotencyKey: 'route:ol_routingdecision_7' }
-      );
+      expect(router.route).toHaveBeenCalledWith(expect.anything(), {
+        idempotencyKey: 'route:ol_routingdecision_7',
+      });
     });
   });
 
@@ -296,9 +300,17 @@ describe('RoutingCommitService', () => {
   describe('refusing a plan', () => {
     it('should abandon a non-conserving plan', async () => {
       router.route.mockResolvedValue(
-        resolvedPlan({ assignments: [
-          { orderLineId: 'l1', locationId: null, connectionId: null, deliveryMethod: null, quantity: 1 },
-        ] })
+        resolvedPlan({
+          assignments: [
+            {
+              orderLineId: 'l1',
+              locationId: null,
+              connectionId: null,
+              deliveryMethod: null,
+              quantity: 1,
+            },
+          ],
+        })
       );
 
       const outcome = await service.route(input());
@@ -313,7 +325,13 @@ describe('RoutingCommitService', () => {
       router.route.mockResolvedValue(
         resolvedPlan({
           assignments: [
-            { orderLineId: 'l1', locationId: 'loc-1', connectionId: 'c1', deliveryMethod: null, quantity: 1 },
+            {
+              orderLineId: 'l1',
+              locationId: 'loc-1',
+              connectionId: 'c1',
+              deliveryMethod: null,
+              quantity: 1,
+            },
           ],
           holds: [{ orderLineId: 'l1', quantity: 1, reason: 'awaiting_stock' as never }],
         })
@@ -329,7 +347,13 @@ describe('RoutingCommitService', () => {
       router.route.mockResolvedValue(
         resolvedPlan({
           assignments: [
-            { orderLineId: 'l1', locationId: 'loc-1', connectionId: 'c1', deliveryMethod: null, quantity: 1 },
+            {
+              orderLineId: 'l1',
+              locationId: 'loc-1',
+              connectionId: 'c1',
+              deliveryMethod: null,
+              quantity: 1,
+            },
           ],
           unfulfillable: [
             { orderLineId: 'l1', quantity: 1, resolution: 'refund' as const, reason: 'oos' },
@@ -355,9 +379,7 @@ describe('RoutingCommitService', () => {
     });
 
     it('should keep the vendor reference on an abandoned decision', async () => {
-      router.route.mockResolvedValue(
-        resolvedPlan({ assignments: [] })
-      );
+      router.route.mockResolvedValue(resolvedPlan({ assignments: [] }));
 
       await service.route(input());
 
@@ -398,8 +420,20 @@ describe('RoutingCommitService', () => {
       router.route.mockResolvedValue(
         resolvedPlan({
           assignments: [
-            { orderLineId: 'l1', locationId: 'loc-1', connectionId: 'c1', deliveryMethod: null, quantity: 1 },
-            { orderLineId: 'l1', locationId: 'loc-2', connectionId: 'c1', deliveryMethod: null, quantity: 1 },
+            {
+              orderLineId: 'l1',
+              locationId: 'loc-1',
+              connectionId: 'c1',
+              deliveryMethod: null,
+              quantity: 1,
+            },
+            {
+              orderLineId: 'l1',
+              locationId: 'loc-2',
+              connectionId: 'c1',
+              deliveryMethod: null,
+              quantity: 1,
+            },
           ],
         })
       );
@@ -414,14 +448,52 @@ describe('RoutingCommitService', () => {
       expect(works.create).toHaveBeenCalledTimes(2);
     });
 
+    it('should SUM two assignments that share a target and an order line', async () => {
+      // The one branch that decides a written quantity, and the only one the
+      // other multi-assignment tests do not reach (they differ by target).
+      // Getting it wrong inserts the same `(work, orderLine)` twice, which
+      // raises `DuplicateFulfillmentWorkLineError` and aborts the whole
+      // transaction — so a silent regression here fails the entire commit.
+      router.route.mockResolvedValue(
+        resolvedPlan({
+          assignments: [
+            {
+              orderLineId: 'l1',
+              locationId: 'loc-1',
+              connectionId: 'c1',
+              deliveryMethod: null,
+              quantity: 1,
+            },
+            {
+              orderLineId: 'l1',
+              locationId: 'loc-1',
+              connectionId: 'c1',
+              deliveryMethod: null,
+              quantity: 1,
+            },
+          ],
+        })
+      );
+
+      const outcome = await service.route(input());
+
+      expect(outcome.status).toBe('routed');
+      // ONE work object, ONE line, quantities added — never two lines.
+      expect(works.create).toHaveBeenCalledTimes(1);
+      expect(works.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          lines: [{ orderLineId: 'l1', productVariantId: 'ol_variant_1', totalQuantity: 2 }],
+        }),
+        expect.anything()
+      );
+    });
+
     it('should resolve the work line variant from the routing input, never a sentinel', async () => {
       await service.route(input());
 
       expect(works.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          lines: [
-            { orderLineId: 'l1', productVariantId: 'ol_variant_1', totalQuantity: 2 },
-          ],
+          lines: [{ orderLineId: 'l1', productVariantId: 'ol_variant_1', totalQuantity: 2 }],
         }),
         expect.anything()
       );
@@ -449,8 +521,20 @@ describe('RoutingCommitService', () => {
             // Both render `a|b|c|d` under a `|`-joined template. All three
             // fields must be populated for the collision to exist — with a null
             // in either, the keys differ and the test would prove nothing.
-            { orderLineId: 'l1', locationId: 'a', connectionId: 'b|c', deliveryMethod: 'd', quantity: 1 },
-            { orderLineId: 'l1', locationId: 'a|b', connectionId: 'c', deliveryMethod: 'd', quantity: 1 },
+            {
+              orderLineId: 'l1',
+              locationId: 'a',
+              connectionId: 'b|c',
+              deliveryMethod: 'd',
+              quantity: 1,
+            },
+            {
+              orderLineId: 'l1',
+              locationId: 'a|b',
+              connectionId: 'c',
+              deliveryMethod: 'd',
+              quantity: 1,
+            },
           ],
         })
       );
@@ -468,8 +552,20 @@ describe('RoutingCommitService', () => {
       router.route.mockResolvedValue(
         resolvedPlan({
           assignments: [
-            { orderLineId: 'l1', locationId: null, connectionId: null, deliveryMethod: null, quantity: 1 },
-            { orderLineId: 'l1', locationId: '', connectionId: null, deliveryMethod: null, quantity: 1 },
+            {
+              orderLineId: 'l1',
+              locationId: null,
+              connectionId: null,
+              deliveryMethod: null,
+              quantity: 1,
+            },
+            {
+              orderLineId: 'l1',
+              locationId: '',
+              connectionId: null,
+              deliveryMethod: null,
+              quantity: 1,
+            },
           ],
         })
       );
