@@ -1,23 +1,32 @@
 /**
- * Poland Starter Template — Sales-Document Rules (#2170)
+ * Sales-Document Starter-Template Catalogue (#2170, #2529)
  *
- * Poland-only curated seed content: sourced public guidance, an amount, and
- * the three rule SHAPES the mockup's "Review & adopt" screen previews. Ships
- * as DATA in `apps/api` — never as a literal string inside
- * `libs/core/src/sales-documents/**`, which is the acceptance criterion this
- * file exists to satisfy. No other country has a curated template yet; the
- * mechanism (`SalesDocumentTemplatesController`) is generic — a second
- * country's template is additive (another exported constant + one more
- * `TEMPLATES_BY_COUNTRY` entry), never a core code change.
+ * Country-keyed curated seed content: for each market we have researched
+ * public guidance for, a citable source and the rule SHAPES the "Review &
+ * adopt" screen previews. Poland is the only entry today.
+ *
+ * **Absence is a first-class answer, not silence** (ADR-066 decision 2). A
+ * country with no entry resolves `null` from
+ * {@link getSalesDocumentStarterTemplate} and is simply missing from
+ * {@link listSalesDocumentTemplateCountries}, so a surface can state "we have
+ * no guidance for this market" rather than presenting an empty template as
+ * though one existed. Nothing here recommends, applies or activates anything:
+ * reading the catalogue has no effect, and adoption is a separate explicit
+ * write (`POST /sales-documents/templates/:country/adopt`).
+ *
+ * Ships as DATA in `apps/api` - never as a literal string inside
+ * `libs/core/src/sales-documents/**`, which stays a zero-outbound-core-context
+ * -edge leaf and carries no market-specific content. A second country's
+ * template is additive: another exported constant plus one more
+ * `TEMPLATES_BY_COUNTRY` entry, never a core code change.
  *
  * Each template rule names a `requiredCapability` rather than a fixed
- * `connectionId` — the operator has not chosen a connection yet at preview
+ * `connectionId` - the operator has not chosen a connection yet at preview
  * time. "Review & adopt" resolves each slot against the operator's own
- * connections (client-side, from the same connections list the rest of this
- * feature already fetches) and POSTs the resolved `connectionId` per slot to
- * `/sales-documents/templates/PL/adopt`.
+ * connections and POSTs the resolved `connectionId` per slot.
  *
  * @module apps/api/src/sales-documents/data
+ * @see docs/architecture/adrs/066-sales-document-market-discovery.md
  */
 
 export interface SalesDocumentTemplateCondition {
@@ -119,3 +128,36 @@ export function getSalesDocumentStarterTemplate(country: string): SalesDocumentS
 export const SALES_DOCUMENT_TEMPLATE_PROVENANCE_BY_COUNTRY: Readonly<Record<string, string>> = {
   PL: 'PL starter template',
 };
+
+/** One catalogue entry, reduced to what a listing surface needs. */
+export interface SalesDocumentTemplateSummary {
+  readonly country: string;
+  readonly sourceLabel: string;
+  readonly sourceUrl: string;
+}
+
+/**
+ * Every country a curated starter template exists for, alphabetically.
+ *
+ * The list is the whole answer: a country missing from it has no guidance,
+ * which is a fact a surface may state. It never implies the market is
+ * unsupported or misconfigured.
+ */
+export function listSalesDocumentTemplateCountries(): SalesDocumentTemplateSummary[] {
+  return Object.values(TEMPLATES_BY_COUNTRY)
+    .map((template) => ({
+      country: template.country,
+      sourceLabel: template.sourceLabel,
+      sourceUrl: template.sourceUrl,
+    }))
+    .sort((a, b) => a.country.localeCompare(b.country));
+}
+
+/**
+ * Whether a curated starter template exists for `country`. Case-insensitive on
+ * the input, like {@link getSalesDocumentStarterTemplate}, so a country code
+ * read off an order matches the catalogue's canonical upper-case keys.
+ */
+export function hasSalesDocumentStarterTemplate(country: string): boolean {
+  return getSalesDocumentStarterTemplate(country) !== null;
+}

@@ -29,7 +29,11 @@ import type {
   PaginatedOrderRecords,
 } from '../../domain/types/order-record.types';
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
-import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
+import { SALES_DOCUMENT_MARKET_DISCOVERY_WINDOW_DAYS } from '@openlinker/core/sales-documents';
+import type {
+  SalesDocumentBlock,
+  SalesDocumentMarketDiscovery,
+} from '@openlinker/core/sales-documents';
 import type {
   SalesAnalyticsFilters,
   SalesAndChannelAnalytics,
@@ -50,6 +54,9 @@ import { deriveOrderAnalyticsScalars, deriveOrderLineItems } from '../../domain/
 import { buildSalesAndChannelAnalytics } from '../../domain/order-sales-aggregation';
 import { buildTopProducts } from '../../domain/top-products-aggregation';
 import type { TopProductFilters, TopProductsResult } from '../../domain/types/top-products.types';
+
+/** One day in milliseconds, for the market-discovery window arithmetic (#2518). */
+const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class OrderRecordService implements IOrderRecordService {
@@ -526,6 +533,27 @@ export class OrderRecordService implements IOrderRecordService {
 
   async getEarliestOrderDateByConnection(connectionIds: string[]): Promise<Map<string, Date>> {
     return this.repository.findEarliestOrderDateByConnection(connectionIds);
+  }
+
+  /**
+   * Which markets the operator has orders from, and how many (#2518, ADR-066).
+   *
+   * One grouped repository read plus the window arithmetic. It writes nothing
+   * and classifies nothing - see the interface for both rules. The resolved
+   * window travels back with the counts so no surface has to hold its own copy
+   * of the number and drift from it.
+   */
+  async discoverSalesDocumentMarkets(now: Date = new Date()): Promise<SalesDocumentMarketDiscovery> {
+    const since = new Date(
+      now.getTime() - SALES_DOCUMENT_MARKET_DISCOVERY_WINDOW_DAYS * MILLISECONDS_PER_DAY
+    );
+    const markets = await this.repository.countOrdersByRoutingCountrySince(since);
+
+    return {
+      windowDays: SALES_DOCUMENT_MARKET_DISCOVERY_WINDOW_DAYS,
+      since: since.toISOString(),
+      markets,
+    };
   }
 
   /**

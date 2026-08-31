@@ -12,6 +12,13 @@ export interface SalesDocumentCountryDefaultRepositoryPort {
   /** All defaults for one country (or `*`) — at most one per documentKind. */
   findByCountry(country: string): Promise<SalesDocumentCountryDefault[]>;
 
+  /**
+   * Batch counterpart of {@link findByCountry} (#2516) — see the identically
+   * shaped `SalesDocumentRuleRepositoryPort.findByCountries` for why it
+   * exists. Returns `[]` for an empty input.
+   */
+  findByCountries(countries: readonly string[]): Promise<SalesDocumentCountryDefault[]>;
+
   /** Every country default across every country — the countries-listing read's (#2186) merge input. */
   findAll(): Promise<SalesDocumentCountryDefault[]>;
 

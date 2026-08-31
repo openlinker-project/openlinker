@@ -19,6 +19,8 @@ import type {
   PaginatedInvoiceRecords,
   RegulatoryClearanceResult,
 } from '../../domain/types/invoicing.types';
+import type { SalesDocumentInFlight } from '@openlinker/core/sales-documents';
+
 import type { InvoiceRecord } from '../../domain/entities/invoice-record.entity';
 
 export interface IInvoiceService {
@@ -119,6 +121,34 @@ export interface IInvoiceService {
   getLatestInvoiceForOrder(orderId: string): Promise<InvoiceRecord | null>;
 
   /**
+   * Is an invoice for this order being issued RIGHT NOW (#2521, ADR-042
+   * amendment #2502 decision 2)?
+   *
+   * The invoicing half of the same readable signal `IFiscalRegistrationService`
+   * exposes, answering in the shared neutral shape so a per-order surface
+   * covering both document kinds does not branch on which context replied.
+   *
+   * A pure READ over persisted state - no lock, no provider call, nothing
+   * attempted. Answers from `InvoiceRecord.isLeaseLive`, the same predicate the
+   * write path claims against, so what an operator is shown and what a second
+   * attempt would hit cannot drift. `null` means no live claim, INCLUDING an
+   * expired one: an expired lease means the previous attempt died, not that one
+   * is running.
+   *
+   * VISIBILITY ONLY. The lease semantics, the exactly-once guarantee and the
+   * 409 a concurrent write receives are all unchanged.
+   *
+   * Consumed by the per-order sales-document projection, which reports both
+   * kinds through this one shape. It is deliberately not surfaced on the
+   * invoicing HTTP reads: a second field there would be superseded by that
+   * projection rather than complement it. Until the projection lands this method
+   * has no production caller, which is why its spec asserts the negative
+   * properties - no lock, no adapter, no write - rather than only its return
+   * shape.
+   */
+  getInFlightIssuance(orderId: string): Promise<SalesDocumentInFlight | null>;
+
+  /**
    * Distinct invoicing connection ids that hold ANY `InvoiceRecord` for this
    * order, in newest-record-first order (#2047). Projection read — NEVER queries
    * the provider/adapter. Returns `[]` for an order with no records.
@@ -140,6 +170,19 @@ export interface IInvoiceService {
    * are absent from the result; returns `[]` for an empty input.
    */
   getLatestInvoicesForOrders(orderIds: string[]): Promise<InvoiceRecord[]>;
+
+  /**
+   * EVERY `InvoiceRecord` held by any of the given orders, across ALL
+   * connections, newest-first within each order (#2516). Projection read -
+   * NEVER queries the provider/adapter. One query for a whole page of orders.
+   *
+   * The batch counterpart of {@link listInvoiceConnectionIdsForOrder} rather
+   * than of {@link getLatestInvoicesForOrders}: the per-order sales-document
+   * projection (ADR-065) reports a second record on another connection instead
+   * of hiding it behind the newest row, so it needs the record set, not the
+   * winner. Orders with no record are absent; returns `[]` for an empty input.
+   */
+  listInvoicesForOrders(orderIds: string[]): Promise<InvoiceRecord[]>;
 
   /**
    * Read-only AC-6 list (#1119) of OL's OWN `InvoiceRecord` projection, filtered

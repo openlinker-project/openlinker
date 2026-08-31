@@ -51,9 +51,12 @@ export * from './domain/types/sales-document-condition.types';
 export * from './domain/types/sales-document-order-facts.types';
 export * from './domain/types/sales-document-rule-write.types';
 export * from './domain/types/sales-document-country-summary.types';
+export * from './domain/types/sales-document-market-discovery.types';
+export * from './domain/types/sales-document-view.types';
 export * from './domain/ports/capabilities/self-routing-document-kind.capability';
 export * from './domain/domain-services/resolve-sales-document-routing';
 export * from './domain/domain-services/evaluate-sales-document-rules';
+export * from './domain/domain-services/choose-sales-document-decision';
 export { SalesDocumentRule } from './domain/entities/sales-document-rule.entity';
 export { SalesDocumentCountryDefault } from './domain/entities/sales-document-country-default.entity';
 export { SalesDocumentThreshold } from './domain/entities/sales-document-threshold.entity';
@@ -78,3 +81,9 @@ export * from './domain/types/shipping-tax-split.types';
 // split is: both document contexts and both channel adapters need one answer,
 // and this leaf imports nothing so any of them can value-import it.
 export * from './domain/types/tax-rate-enforcement.types';
+// The readable in-flight signal (#2521, ADR-042 amendment #2502 decision 2).
+// Here for the same reason the two vocabularies above are: a per-order surface
+// covering both kinds must not branch on which context answered, and a fiscal
+// receipt is not an invoice, so neither context could own the shape for the
+// other. Visibility only - it changes no lease and no guarantee.
+export * from './domain/types/sales-document-in-flight.types';

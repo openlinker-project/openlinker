@@ -101,6 +101,78 @@ export interface FiscalArtefact {
 }
 
 /**
+ * What a registration PRODUCED, without what it produced (#2523).
+ *
+ * A registered receipt may carry artefacts and it may carry none. Until this
+ * projection existed a surface could not offer "open the receipt document"
+ * without inventing what exists, so the summary carries exactly the four fields
+ * an affordance needs - the FORM, the adapter's HINT, a LABEL, and the MIME type
+ * qualifying the form where the adapter knows one - and never the payload.
+ *
+ * Content is excluded on purpose rather than for economy. An artefact payload
+ * is a customer-facing document: it can be large, it can carry buyer-identifying
+ * detail, and a per-order projection is read to decide what to OFFER, not to
+ * deliver. A caller that genuinely needs the bytes reads the registration record
+ * itself; the summary exists so a surface can decide there is something to
+ * offer at all.
+ *
+ * **Nothing here says anything was DELIVERED, and no reading of it can.**
+ * `disposition` is what the adapter suggests a caller might do - not what
+ * happened, not what will happen, and not a record of an attempt. No shipped
+ * adapter reports whether a document reached a buyer, so a surface must never
+ * derive "sent to the customer" from a `send` disposition, and this type carries
+ * no timestamp, recipient, status or attempt count it could derive one from.
+ *
+ * An EMPTY list is a SUCCESSFUL registration (ADR-042 decision 2) - a pure
+ * reporting regime returns identifiers only - and is distinct from `null`, which
+ * means the registration never got far enough to produce anything.
+ */
+export interface FiscalArtefactSummary {
+  medium: FiscalArtefactMedium;
+  /** The adapter's suggestion. NEVER evidence that it happened. */
+  disposition: FiscalArtefactDisposition;
+  /** Short adapter-supplied label a surface can show; `null` when it supplied none. */
+  label: string | null;
+  /**
+   * MIME type when the adapter knows one (typically only for `document`).
+   * Carried because an affordance differs by file type - "open the PDF" is a
+   * different offer from "download the file" - and it describes the payload
+   * without being any of it.
+   */
+  contentType: string | null;
+}
+
+/**
+ * Project artefacts onto their summaries, dropping every payload.
+ *
+ * Pure, and co-located with the type it projects onto (the pure-rule exception
+ * in `engineering-standards.md`): a field added to {@link FiscalArtefactSummary}
+ * means editing this function in the same commit, so the two cannot drift.
+ *
+ * What keeps a payload out is the summary's FIELD SET, not this function: an
+ * object literal typed as {@link FiscalArtefactSummary} cannot carry `content`,
+ * so a summary assembled by hand elsewhere is bound by the same rule without
+ * having to route through here.
+ *
+ * `null` in, `null` out - a registration that never produced anything is not the
+ * same as one that produced nothing, and collapsing the two would report an
+ * unfinished attempt as a completed pure-reporting registration.
+ */
+export function summarizeFiscalArtefacts(
+  artefacts: FiscalArtefact[] | null | undefined,
+): FiscalArtefactSummary[] | null {
+  if (artefacts === null || artefacts === undefined) {
+    return null;
+  }
+  return artefacts.map((artefact) => ({
+    medium: artefact.medium,
+    disposition: artefact.disposition,
+    label: artefact.label,
+    contentType: artefact.contentType,
+  }));
+}
+
+/**
  * One line of the sale being registered. Amounts are the buyer-paid GROSS
  * figures the source reported; a fiscal registration transmits amounts it must
  * not recompute.
@@ -232,8 +304,12 @@ export interface FiscalLocateCriteria {
 
 /**
  * A registration the provider confirms it holds. Mirrors the persisted identity
- * set so reconciliation writes it with no translation. `null` from the locator
- * means the provider holds NO match.
+ * set so reconciliation writes it with no translation.
+ *
+ * It is the payload of the `registered` arm of {@link FiscalLocateAnswer}, which
+ * is what a locator returns. `null` no longer carries meaning at this boundary:
+ * it survives only as the pre-#2502 shape {@link readFiscalLocateAnswer}
+ * coerces, where it did mean "the provider holds no match".
  */
 export interface FiscalLocateResult {
   /**
@@ -253,6 +329,166 @@ export interface FiscalLocateResult {
   registeredAt: Date | null;
   regimeExtras?: Record<string, string>;
   artefacts?: FiscalArtefact[];
+}
+
+/**
+ * What a {@link FiscalLocateCriteria} lookup answered (ADR-042 amendment #2502,
+ * decision 1).
+ *
+ * THREE outcomes, because two are not enough. Before this union a locator could
+ * only say "here is the registration" or "no match", so a provider that had
+ * ACCEPTED the sale and not yet registered it had to be reported as an absence -
+ * and the operator surface, having nothing else to say, reported it as one
+ * during what was in fact normal processing.
+ *
+ *   - `registered` - the provider confirms a completed registration and hands
+ *     back the neutral identity set. The ONLY outcome core may terminalise a
+ *     record on.
+ *   - `held`       - the check did NOT confirm a registration and did NOT
+ *     establish an absence either. It is not a failure, and the record stays
+ *     exactly as it was; asking again later is the whole point. Two different
+ *     situations land here and `detail` is what tells them apart: an adapter
+ *     reporting that its provider has the sale and has not registered it yet
+ *     stamps what it observed, while an answer core could not read carries
+ *     {@link FISCAL_LOCATE_DETAIL_UNREADABLE}. A surface must not state the
+ *     first when the second is what happened - OpenLinker has no evidence the
+ *     provider holds anything when no adapter said so.
+ *   - `not-found`  - the provider holds no registration for these coordinates.
+ *     Evidence, never authority to resend (decision 7): a resend of a
+ *     registration that already landed is the double registration the contract
+ *     exists to prevent.
+ */
+export const FiscalLocateStatusValues = ['registered', 'held', 'not-found'] as const;
+
+/**
+ * `detail` stamped when core could not read a locator's answer (#2583 review).
+ *
+ * It exists so the evidence-free fallback stays distinguishable from an adapter
+ * that genuinely reported its provider holding the sale. Both are `held`,
+ * because failing toward `held` is the fiscally safe direction, but only one of
+ * them is a statement about the provider - and a surface that renders the
+ * adapter's sentence for this case would assert something no adapter supplied.
+ */
+export const FISCAL_LOCATE_DETAIL_UNREADABLE = 'unreadable-answer';
+export type FiscalLocateStatus = (typeof FiscalLocateStatusValues)[number];
+
+export type FiscalLocateAnswer =
+  | { status: 'registered'; registration: FiscalLocateResult }
+  | {
+      status: 'held';
+      /**
+       * PII-free note about WHY the check did not confirm. Normally the
+       * adapter's own non-terminal status string, describing what its provider
+       * is holding; {@link FISCAL_LOCATE_DETAIL_UNREADABLE} when core could not
+       * read the answer at all, which is a fact about this build rather than
+       * about the provider. Carried for the log and for an operator surface;
+       * core never branches on it.
+       */
+      detail?: string | null;
+    }
+  | { status: 'not-found' };
+
+/**
+ * Coerce whatever a locator returned into a {@link FiscalLocateAnswer}.
+ *
+ * Pure, and deliberately co-located with the union it normalises (the
+ * pure-rule exception in `engineering-standards.md`): adding a member to the
+ * union means editing this function in the same commit.
+ *
+ * It exists because a plugin is third-party-shaped. An out-of-tree adapter
+ * compiled against a `libs/core` that predates this union still returns the old
+ * `FiscalLocateResult | null` shape, and reading `.status` off it would throw on
+ * an operator's reconcile click. The mapping is fail-safe in the fiscal
+ * direction:
+ *
+ *   - `null` / `undefined`             -> `not-found` (the legacy "no match").
+ *   - a legacy result object           -> `registered` (the legacy non-null
+ *     answer meant exactly that, and reading it as anything else would stop
+ *     resolving real registrations). Recognised by the identity keys
+ *     {@link FiscalLocateResult} declares non-optional, NOT by the mere absence
+ *     of a `status`: an untagged object carrying none of them - `{}`, `[]`, a
+ *     shape from a defective adapter - is not a locate result, and reading one
+ *     as `registered` would terminalise a record on a registration nothing
+ *     confirmed.
+ *   - anything else, including a
+ *     `status` this build does not
+ *     recognise                        -> `held`, never `registered`. An answer
+ *     core cannot interpret must not terminalise a record on a registration it
+ *     cannot confirm.
+ *
+ * Every `held` answer carries an explicit `detail` so a consumer never has to
+ * tell `undefined` from `null`.
+ */
+export function readFiscalLocateAnswer(raw: unknown): FiscalLocateAnswer {
+  if (raw === null || raw === undefined) {
+    return { status: 'not-found' };
+  }
+  if (typeof raw !== 'object') {
+    return unreadable();
+  }
+
+  const candidate = raw as { status?: unknown; registration?: unknown; detail?: unknown };
+  const status = typeof candidate.status === 'string' ? candidate.status : null;
+
+  if (status === null) {
+    return isFiscalLocateResultShape(raw)
+      ? { status: 'registered', registration: raw as FiscalLocateResult }
+      : unreadable();
+  }
+  if (status === 'not-found') {
+    return { status: 'not-found' };
+  }
+  if (status === 'registered') {
+    const registration = candidate.registration;
+    if (isFiscalLocateResultShape(registration)) {
+      return { status: 'registered', registration: registration as FiscalLocateResult };
+    }
+    // A `registered` answer carrying no identity set is not one core can write.
+    return unreadable();
+  }
+  if (status === 'held') {
+    // The adapter ASSERTED that its provider has the sale, so whatever it
+    // observed is real evidence and is passed through - including its absence,
+    // which is the adapter declining to say more rather than core guessing.
+    return {
+      status: 'held',
+      detail: typeof candidate.detail === 'string' ? candidate.detail : null,
+    };
+  }
+  // A status this build does not recognise. Safe direction, but nothing about
+  // the provider is known, so it is marked as unread rather than dressed up as
+  // one.
+  return unreadable();
+}
+
+/** The evidence-free `held`: safe, and honest about carrying no evidence. */
+function unreadable(): FiscalLocateAnswer {
+  return { status: 'held', detail: FISCAL_LOCATE_DETAIL_UNREADABLE };
+}
+
+/**
+ * Does this value look like a {@link FiscalLocateResult}?
+ *
+ * Keyed on the four fields the interface declares NON-OPTIONAL, so a real
+ * result - legacy or tagged - always passes, while an untagged object that
+ * declares none of them fails. Presence is what is tested, never the value: a
+ * result reporting `null` for every identity field is a legitimate answer from
+ * a regime that assigns few of them (see {@link FiscalLocateResult}), so
+ * testing truthiness would reject exactly that case.
+ *
+ * An array is excluded outright: no locate result is one, and letting one
+ * through would put an array where core expects an identity set.
+ */
+function isFiscalLocateResultShape(value: unknown): boolean {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+  return (
+    'providerReference' in value ||
+    'documentReference' in value ||
+    'signingIdentity' in value ||
+    'registeredAt' in value
+  );
 }
 
 /** Insert shape for a new registration record. */
@@ -288,9 +524,29 @@ export interface FiscalRegistrationOutcomePatch {
 export const FiscalReconcileOutcomeValues = [
   /** The provider confirmed a registration; the record advanced to `registered`. */
   'resolved',
-  /** The provider holds no match; the record stays `in-doubt` for an operator. */
+  /**
+   * No registration exists for these coordinates; the record stays `in-doubt`
+   * for an operator.
+   *
+   * NOT "the provider holds nothing" - it may hold a document it reports as
+   * failed, which is an absence of a REGISTRATION rather than of a document.
+   * Evidence either way, never authority to resend.
+   */
   'not-found',
   /** The adapter cannot be queried by business coordinates; operator handling only. */
   'unsupported',
+  /**
+   * The check did not confirm a registration and did not establish an absence
+   * either (ADR-042 amendment #2502, decisions 1 and 3). A legitimate answer,
+   * not a failure: the record is left exactly where it was and the same check
+   * can be repeated later. Distinct from `not-found`, which asserts the
+   * provider holds no registration.
+   *
+   * It deliberately does NOT assert that the provider is holding the sale. That
+   * is the usual cause and an adapter reporting it stamps what it observed, but
+   * the same outcome covers an answer core could not read, where nothing about
+   * the provider is known. See {@link FiscalLocateAnswer}'s `held` arm.
+   */
+  'still-unknown',
 ] as const;
 export type FiscalReconcileOutcome = (typeof FiscalReconcileOutcomeValues)[number];

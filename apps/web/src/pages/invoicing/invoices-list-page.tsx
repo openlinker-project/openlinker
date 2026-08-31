@@ -354,6 +354,8 @@ export function InvoicesListPage(): ReactElement {
     },
     {
       id: 'orderId',
+      // #2538 - OrderIdentityCell stacks the order number over a meta line.
+      lines: 2,
       header: t('invoice.column.orderId', 'Order'),
       // Was the raw 41-character `orderId` in a `mono-text` span: no truncation,
       // no Copy, no link. `orderSummary` has been on this response since #1995 /
@@ -582,7 +584,7 @@ export function InvoicesListPage(): ReactElement {
       </div>
 
       {query.isLoading ? (
-        <DataTableSkeleton columns={columns} />
+        <DataTableSkeleton columns={columns} label="Loading invoices…" />
       ) : query.error ? (
         <ErrorState
           title={t('invoice.list.error', 'Unable to load invoices')}

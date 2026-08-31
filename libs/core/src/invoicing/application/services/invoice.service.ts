@@ -26,6 +26,7 @@ import {
   INTEGRATIONS_SERVICE_TOKEN,
 } from '@openlinker/core/integrations';
 import { type SyncLockPort, SYNC_LOCK_TOKEN } from '@openlinker/core/sync';
+import type { SalesDocumentInFlight } from '@openlinker/core/sales-documents';
 import type { IFiscalRegistrationService } from '@openlinker/core/fiscalization';
 // Type-only NAMED import (never a wildcard — see
 // docs/architecture-overview.md#cross-context-dependencies-in-core) of just
@@ -1170,6 +1171,28 @@ export class InvoiceService implements IInvoiceService {
     return this.repo.findLatestByOrderId(orderId);
   }
 
+  async getInFlightIssuance(orderId: string): Promise<SalesDocumentInFlight | null> {
+    const now = new Date();
+    // Same predicate the write path claims against, so the operator-facing
+    // reading and the one a second attempt would hit cannot drift.
+    const claimed = (await this.repo.findAllByOrderId(orderId)).find((record) =>
+      record.isLeaseLive(now),
+    );
+    if (!claimed) {
+      return null;
+    }
+    return {
+      documentKind: 'invoice',
+      connectionId: claimed.connectionId,
+      recordId: claimed.id,
+      // The claim-holding record's last write - a LOWER BOUND on elapsed, never
+      // the attempt's start: nothing persists a claim-start instant, and a write
+      // inside a live lease (the invoicing numbering allocation) moves it
+      // forward. See `SalesDocumentInFlight.since`.
+      since: claimed.updatedAt,
+    };
+  }
+
   async findBlockingInvoiceForOrder(orderId: string): Promise<InvoiceRecord | null> {
     // Same predicate `assertNotInvoicedElsewhere` uses, exposed as a projection
     // read for cross-context consumption (#2157) — `FiscalRegistrationService`
@@ -1191,6 +1214,10 @@ export class InvoiceService implements IInvoiceService {
 
   async getLatestInvoicesForOrders(orderIds: string[]): Promise<InvoiceRecord[]> {
     return this.repo.findLatestByOrderIds(orderIds);
+  }
+
+  async listInvoicesForOrders(orderIds: string[]): Promise<InvoiceRecord[]> {
+    return this.repo.findAllByOrderIds(orderIds);
   }
 
   async listInvoices(
