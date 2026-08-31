@@ -246,6 +246,24 @@ export interface FulfillmentWorkRepositoryPort {
   /** At-most-once claim, `WHERE "dispatchRelayedAt" IS NULL`. #2401 is the caller. */
   claimDispatchRelay(workId: string, at: Date): Promise<boolean>;
 
+  /**
+   * Give the relay slot back, so a later progress event can re-drive it (#2401).
+   *
+   * **Conditional (`AND "dispatchRelayedAt" IS NOT NULL`), unlike the shipping
+   * precedent it is otherwise modelled on.** `ShipmentRepository.releaseWaybillRelay`
+   * is an unconditional `SET waybillRelayedAt = null`, and can afford to be: that
+   * table carries no optimistic-concurrency token. Here `version` counts STATE
+   * CHANGES, not writes, and `applyGuardedUpdate` bumps it on every applied header
+   * write — so an unconditional release would bump `version` on a row it did not
+   * change and hand #2406's consumer a spurious stale-token 409.
+   *
+   * `Promise<void>` rather than `boolean`: the only thing a boolean could
+   * distinguish is "already released", which no caller may branch on. A zero-row
+   * release is logged at debug instead, since a claim holder releasing nothing is
+   * worth seeing.
+   */
+  releaseDispatchRelay(workId: string): Promise<void>;
+
   cancel(input: CancelFulfillmentWorkInput): Promise<boolean>;
 
   recordLineProgress(input: RecordFulfillmentLineProgressInput): Promise<boolean>;

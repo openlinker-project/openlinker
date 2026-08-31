@@ -40,3 +40,6 @@ export const FULFILLMENT_PROGRESS_CLAIM_REPOSITORY_TOKEN = Symbol(
 
 /** Routing intent row (#2394). Intra-context; the PORT is not on the barrel. */
 export const ROUTING_DECISION_REPOSITORY_TOKEN = Symbol('RoutingDecisionRepositoryPort');
+
+/** Dispatch-relay at-most-once gate (#2401). `FulfillmentRelayGateService` binds here. */
+export const FULFILLMENT_RELAY_GATE_SERVICE_TOKEN = Symbol('IFulfillmentRelayGateService');

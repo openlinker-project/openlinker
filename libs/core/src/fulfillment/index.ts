@@ -118,6 +118,15 @@ export * from './domain/types/routing-decision.types';
 // `check-cross-context-imports` rejects by deny pattern.
 export type { IFulfillmentProgressService } from './application/interfaces/fulfillment-progress.service.interface';
 
+// `IFulfillmentRelayGateService` (#2401) — the at-most-once dispatch-relay gate.
+// Exported for the same reason as the progress service: a sibling context reaches
+// this aggregate through an `I*Service`, never through
+// `FulfillmentWorkRepositoryPort`, which stays off this barrel by deny pattern.
+// Its result type `FulfillmentDispatchRelayClaim` rides on the
+// `fulfillment-progress-event.types` star export above, which the `orders`
+// consumer needs in order to name it.
+export type { IFulfillmentRelayGateService } from './application/interfaces/fulfillment-relay-gate.service.interface';
+
 export { RoutingDecision } from './domain/entities/routing-decision.entity';
 export { RoutingDecisionAlreadyLiveError } from './domain/exceptions/routing-decision-already-live.error';
 // Same rule one table over: the INPUT shapes are exported, while
