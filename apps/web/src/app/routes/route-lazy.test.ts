@@ -51,7 +51,7 @@ const lazyRoutes = collectLazyRoutes([
  * the parameterized test below is meant to catch.
  *
  * Today's breakdown (55 total):
- *   - 38 authenticated children (under `coreChildren`, counting per-children-node
+ *   - 39 authenticated children (under `coreChildren`, counting per-children-node
  *     because grouped routes like orders/customers expose multiple
  *     lazy nodes — includes `/dev/ui` design-system page (#775), `/shipments` (#770),
  *     `/users` user-management page (#1125), `/invoices/:invoiceId` detail (#1240),
