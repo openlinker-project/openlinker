@@ -19,6 +19,7 @@ import {
   IReturnIngestionService,
   RETURN_INGESTION_SERVICE_TOKEN,
   ReturnObservationMissingExternalIdError,
+  ReturnSourceNotReadableError,
 } from '@openlinker/core/returns';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -52,6 +53,21 @@ export class MarketplaceReturnSyncHandler implements SyncJobHandler {
 
       return { outcome: 'ok' };
     } catch (error) {
+      if (error instanceof ReturnSourceNotReadableError) {
+        // TERMINAL, not retryable (ADR-007). The `marketplace.return.sync` gate
+        // is `OrderSource` — correctly, since `ReturnSourceReader` is guard-only
+        // and `enabledCapabilities` can never carry it (#2085) — which makes the
+        // gate over-permissive in the other direction: a plain `OrderSource`
+        // connection with no return reader passes it. Reachable from the poll
+        // fan-out and, since #2400, from an inbound `'return'` webhook too.
+        // Retrying cannot make an adapter grow a capability, so this must not
+        // spend the ten-attempt ladder and a dead row.
+        this.logger.warn(
+          `Connection ${job.connectionId} cannot read returns from its source — terminal, not retried: ${error.message}`
+        );
+        return { outcome: 'business_failure' };
+      }
+
       if (error instanceof ReturnObservationMissingExternalIdError) {
         // TERMINAL, not retryable (ADR-007). The source reported a return with
         // no usable key; no number of retries makes one appear, and core refuses

@@ -24,7 +24,14 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
-import { FULFILLMENT_WORK_REPOSITORY_TOKEN } from './fulfillment.tokens';
+import {
+  FULFILLMENT_PROGRESS_CLAIM_REPOSITORY_TOKEN,
+  FULFILLMENT_PROGRESS_SERVICE_TOKEN,
+  FULFILLMENT_WORK_REPOSITORY_TOKEN,
+} from './fulfillment.tokens';
+import { FulfillmentProgressService } from './application/services/fulfillment-progress.service';
+import { FulfillmentProgressClaimOrmEntity } from './infrastructure/persistence/entities/fulfillment-progress-claim.orm-entity';
+import { FulfillmentProgressClaimRepository } from './infrastructure/persistence/repositories/fulfillment-progress-claim.repository';
 import { FulfillmentHoldOrmEntity } from './infrastructure/persistence/entities/fulfillment-hold.orm-entity';
 import { FulfillmentWorkLineOrmEntity } from './infrastructure/persistence/entities/fulfillment-work-line.orm-entity';
 import { FulfillmentWorkOrmEntity } from './infrastructure/persistence/entities/fulfillment-work.orm-entity';
@@ -36,12 +43,20 @@ import { FulfillmentWorkRepository } from './infrastructure/persistence/reposito
       FulfillmentWorkOrmEntity,
       FulfillmentWorkLineOrmEntity,
       FulfillmentHoldOrmEntity,
+      FulfillmentProgressClaimOrmEntity,
     ]),
   ],
   providers: [
     FulfillmentWorkRepository,
     { provide: FULFILLMENT_WORK_REPOSITORY_TOKEN, useExisting: FulfillmentWorkRepository },
+    FulfillmentProgressClaimRepository,
+    {
+      provide: FULFILLMENT_PROGRESS_CLAIM_REPOSITORY_TOKEN,
+      useExisting: FulfillmentProgressClaimRepository,
+    },
+    FulfillmentProgressService,
+    { provide: FULFILLMENT_PROGRESS_SERVICE_TOKEN, useExisting: FulfillmentProgressService },
   ],
-  exports: [FULFILLMENT_WORK_REPOSITORY_TOKEN],
+  exports: [FULFILLMENT_WORK_REPOSITORY_TOKEN, FULFILLMENT_PROGRESS_SERVICE_TOKEN],
 })
 export class FulfillmentModule {}

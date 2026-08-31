@@ -48,6 +48,18 @@ import type {
   PaymentStatusRefreshByExternalIdPayloadV1,
   RegulatoryStatusReconcilePayloadV1,
 } from '../../domain/types/invoicing-job-payloads.types';
+import type { FulfillmentWorkStatusSyncPayloadV1 } from '../../domain/types/fulfillment-job-payloads.types';
+import type { MarketplaceReturnSyncPayloadV1 } from '../../domain/types/returns-job-payloads.types';
+
+/**
+ * Open-world OMS capability (#2403) — the `fulfillment` domain's gate (#2400).
+ *
+ * Named as a constant beside `SHIPPING_PROVIDER_MANAGER_CAPABILITY` rather than
+ * inlined, for the same reason: it is a capability STRING, and the routing
+ * table is the one place a typo in it would silently make every delivery
+ * `ungated` instead of failing loudly.
+ */
+const FULFILLMENT_EXECUTOR_CAPABILITY = 'FulfillmentExecutor';
 
 /**
  * Page size for the reconcile job a webhook-triggered `invoicing` event
@@ -218,6 +230,50 @@ export class InboundRoutingPolicyService implements IInboundRoutingPolicyService
             schemaVersion: 1,
             externalInvoiceId: event.externalId,
           } satisfies PaymentStatusRefreshByExternalIdPayloadV1,
+        };
+      case 'fulfillment':
+        // Webhook-as-trigger, authoritative pull (#904): the body is advisory,
+        // so the payload carries a REFERENCE and the job re-reads. See
+        // `FulfillmentWorkStatusSyncPayloadV1` for why it deliberately carries
+        // no deltas — writing counters from a non-authoritative hint is the
+        // failure this discipline exists to prevent.
+        //
+        // This arm resolves `ungated` on every shipped deployment today: no
+        // adapter manifest advertises `FulfillmentExecutor` yet. That is the
+        // honest current state, not a defect — the member exists so the
+        // delivery routes the day one does, rather than dead-lettering.
+        return {
+          jobType: 'fulfillment.work.statusSync',
+          requiredCapability: FULFILLMENT_EXECUTOR_CAPABILITY,
+          payload: {
+            schemaVersion: 1,
+            externalWorkId: event.externalId,
+            sourceEventId,
+            eventType: event.eventType,
+            occurredAt: event.occurredAt,
+          } satisfies FulfillmentWorkStatusSyncPayloadV1,
+        };
+      case 'return':
+        // Routes to the EXISTING per-return child (#2330); no new return job.
+        //
+        // Gated on `OrderSource`, never `ReturnSourceReader` — see the union
+        // member's comment for the #2085 reasoning. The cost of that correct
+        // choice is that this gate is over-permissive in the other direction: a
+        // plain `OrderSource` connection with no return reader passes it. That
+        // is handled where it can be handled honestly, at the point the narrow
+        // actually fails — `ReturnIngestionService` raises the named
+        // `ReturnSourceNotReadableError` and the handler answers a TERMINAL
+        // `business_failure` (ADR-007), rather than burning ten attempts on a
+        // structural condition no retry can change.
+        return {
+          jobType: 'marketplace.return.sync',
+          requiredCapability: 'OrderSource',
+          payload: {
+            schemaVersion: 1,
+            externalReturnId: event.externalId,
+            eventKey: sourceEventId,
+            occurredAt: event.occurredAt,
+          } satisfies MarketplaceReturnSyncPayloadV1,
         };
       default: {
         // Exhaustive — `domain` is a closed union; this guards future additions.

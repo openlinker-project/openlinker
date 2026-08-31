@@ -1,5 +1,5 @@
 /**
- * Fulfillment Work — migration/entity parity (#2392)
+ * Fulfillment Work — migration/entity parity (#2392, extended #2400)
  *
  * ## The gap this closes
  *
@@ -23,8 +23,12 @@
  * reverse. That is the failure mode this whole slice's naming discipline exists
  * to prevent, and it is the plan's stated top risk.
  *
- * Scoped deliberately to the three `fulfillment_*` tables: a whole-schema diff
- * would fail on pre-existing drift this issue neither caused nor can fix.
+ * Scoped deliberately to the `fulfillment_*` tables: a whole-schema diff would
+ * fail on pre-existing drift this issue neither caused nor can fix. #2400 added
+ * `fulfillment_progress_claims` to the list — in particular this is what proves
+ * its composite PRIMARY KEY `(workId, idempotencyKey)` really ships, which the
+ * claim repository's bare `ON CONFLICT DO NOTHING` depends on being the table's
+ * ONLY uniqueness declaration.
  *
  * **Known dependency**: the `column_default` comparison assumes BOTH databases
  * carry `uuid-ossp`. TypeORM's Postgres driver picks `uuid_generate_v4()` or
@@ -43,7 +47,15 @@ import { DataSource } from 'typeorm';
 
 import { getTestHarness, IntegrationTestHarness, teardownTestHarness } from './setup';
 
-const TABLES = ['fulfillment_works', 'fulfillment_work_lines', 'fulfillment_holds'] as const;
+const TABLES = [
+  'fulfillment_works',
+  'fulfillment_work_lines',
+  'fulfillment_holds',
+  // #2400. Extended here rather than given its own parity spec: this file's
+  // machinery is already table-driven, and a second file would be a second
+  // place for the migration chain to be run (the expensive part) for no gain.
+  'fulfillment_progress_claims',
+] as const;
 
 const COLUMNS_SQL = `
   SELECT table_name, column_name, data_type, is_nullable, column_default
@@ -141,7 +153,7 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
     (await migrated.query(sql, [[...TABLES]])) as unknown[],
   ];
 
-  it('should build all three tables from the migration alone', async () => {
+  it('should build every fulfillment table from the migration alone', async () => {
     const rows = (await migrated.query(
       `SELECT table_name FROM information_schema.tables
        WHERE table_schema = 'public' AND table_name = ANY($1) ORDER BY table_name`,
@@ -153,6 +165,7 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
     // nothing at all.
     expect(rows.map((r) => r.table_name)).toEqual([
       'fulfillment_holds',
+      'fulfillment_progress_claims',
       'fulfillment_work_lines',
       'fulfillment_works',
     ]);
@@ -173,7 +186,7 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
     expect(fromMigration.length).toBeGreaterThan(0);
   });
 
-  it('should carry the two CASCADE foreign keys ONLY in the migration-built schema', async () => {
+  it('should carry the CASCADE foreign keys ONLY in the migration-built schema', async () => {
     // Deliberately an asymmetry assertion rather than a parity one. The FKs are
     // migration-only by design (no `@ManyToOne`), so `synchronize` builds none —
     // which is exactly why CASCADE cannot be exercised by the other int-specs
@@ -219,6 +232,7 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
     const foreignKeys = fromMigration.filter((r) => r.contype === 'f');
     expect(foreignKeys.map((r) => r.conname).sort()).toEqual([
       'FK_fulfillment_holds_work',
+      'FK_fulfillment_progress_claims_work',
       'FK_fulfillment_work_lines_work',
     ]);
     for (const fk of foreignKeys) {

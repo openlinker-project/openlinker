@@ -91,6 +91,15 @@ export { FulfillmentHoldNotFoundError } from './domain/exceptions/fulfillment-ho
 export { FulfillmentPersistenceError } from './domain/exceptions/fulfillment-persistence.error';
 export { FulfillmentWorkNotFoundError } from './domain/exceptions/fulfillment-work-not-found.error';
 
+export * from './domain/types/fulfillment-progress-event.types';
+
+// `IFulfillmentProgressService` (#2400) — the single core-side progress ingress
+// seam. Its `FulfillmentProgressClaimRepositoryPort` is deliberately NOT here,
+// for the same reason `FulfillmentWorkRepositoryPort` is not: a
+// `*RepositoryPort` is an intra-context persistence contract that
+// `check-cross-context-imports` rejects by deny pattern.
+export type { IFulfillmentProgressService } from './application/interfaces/fulfillment-progress.service.interface';
+
 export { FulfillmentModule } from './fulfillment.module';
 
 export * from './fulfillment.tokens';
