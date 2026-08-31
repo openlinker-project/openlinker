@@ -48,9 +48,25 @@
  * shared cache entry (identical `queryKey`), without either component
  * needing to know the other's data shape.
  *
+ * `.excl-note` exclusion annotations (#2481, epic #2452 Phase 8): a row
+ * whose channel has orders in an open Data Coverage category's affected set
+ * (currency, or one of tax-a/b/c — never `product-matching`, which cannot
+ * under-count a channel total by definition: a `source_deleted`/
+ * `awaiting_mapping` order fails to resolve to *any* channel-scoped total
+ * in the first place, so it was never counted anywhere to be silently
+ * missing from) gets one `AnalyticsExclusionNote` per affected category.
+ * The cross-reference is exact: each open category's *full* affected-order
+ * list (not the Data Coverage aggregate's 10-id sample —
+ * `useCoverageCrossReferenceQuery`, `hooks/use-coverage-cross-reference-query.ts`,
+ * drains every page via the same paginated endpoints Phase 7's detail
+ * modals use) is grouped by `sourceConnectionId` (`buildChannelExclusionMap`,
+ * `lib/channel-exclusion-map.lib.ts`), since that field is on every
+ * affected-order row and matches this table's own row key exactly — unlike
+ * a product, a channel has no ambiguity to approximate.
+ *
  * @module features/analytics/components
  */
-import type { ReactElement } from 'react';
+import { useMemo, type ReactElement } from 'react';
 import { DataTable, type DataTableColumn } from '../../../shared/ui/data-table';
 import { Chip } from '../../../shared/ui/chip';
 import { Button } from '../../../shared/ui/button';
@@ -62,7 +78,9 @@ import { useNumberFormat } from '../../../shared/i18n/use-number-format';
 import { ConnectionCell, useConnectionsQuery, type Connection } from '../../connections';
 import { ConnectionDot } from '../../orders';
 import { useSalesAnalyticsQuery } from '../hooks/use-sales-analytics-query';
+import { useCoverageCrossReferenceQuery } from '../hooks/use-coverage-cross-reference-query';
 import type { ChannelSalesAnalytics, SalesAnalyticsFilters } from '../api/sales-analytics.types';
+import type { AnalyticsCoverage, AnalyticsCoverageFilters, CoverageCategory } from '../api/analytics-coverage.types';
 import {
   countUnconvertedOrders,
   groupChannelTotalsByCurrency,
@@ -70,6 +88,12 @@ import {
   trendTone,
   type ChannelCurrencyTotal,
 } from '../lib/sales-analytics-view-model';
+import {
+  buildChannelExclusionMap,
+  CROSS_REFERENCEABLE_CATEGORIES,
+  type ChannelExclusionMap,
+} from '../lib/channel-exclusion-map.lib';
+import { AnalyticsExclusionNote } from './analytics-exclusion-note';
 
 const PERCENT_FORMAT_OPTIONS: Intl.NumberFormatOptions = {
   style: 'percent',
@@ -130,18 +154,49 @@ function ChannelFlags({ row }: { row: ChannelDataRow }): ReactElement | null {
   return <>{flags}</>;
 }
 
+function ChannelExclusionNotes({
+  row,
+  exclusions,
+  onOpenCategory,
+}: {
+  row: ChannelDataRow;
+  exclusions: ChannelExclusionMap;
+  onOpenCategory?: (category: CoverageCategory) => void;
+}): ReactElement | null {
+  if (!onOpenCategory) return null;
+  const byCategory = exclusions.get(row.channel.sourceConnectionId);
+  if (!byCategory || byCategory.size === 0) return null;
+  return (
+    <>
+      {CROSS_REFERENCEABLE_CATEGORIES.filter((category) => byCategory.has(category)).map((category) => (
+        <AnalyticsExclusionNote
+          key={category}
+          category={category}
+          affectedCount={byCategory.get(category) ?? 0}
+          onOpenCategory={onOpenCategory}
+        />
+      ))}
+    </>
+  );
+}
+
 function ChannelName({
   connectionsLoading,
   row,
+  exclusions,
+  onOpenCategory,
 }: {
   connectionsLoading: boolean;
   row: ChannelDataRow;
+  exclusions: ChannelExclusionMap;
+  onOpenCategory?: (category: CoverageCategory) => void;
 }): ReactElement {
   return (
     <span className="data-table__stack">
       <ChannelIdentity connectionsLoading={connectionsLoading} row={row} />
       <span>
         <ChannelFlags row={row} />
+        <ChannelExclusionNotes row={row} exclusions={exclusions} onOpenCategory={onOpenCategory} />
       </span>
     </span>
   );
@@ -149,13 +204,66 @@ function ChannelName({
 
 interface ChannelSalesTableProps {
   filters: SalesAnalyticsFilters;
+  /**
+   * The Data Coverage aggregate (#2474 Phase 7) — same query key
+   * `AnalyticsDataCoveragePanel` fetches, no extra request. `undefined`
+   * (still loading, or the caller never wired coverage in) renders every
+   * row exactly as before Phase 8 — no exclusion notes.
+   */
+  coverage?: AnalyticsCoverage;
+  /** ISO-instant range for the cross-reference reads — distinct shape from `filters` (#2474's DTOs, not the sales-analytics one). Required together with `coverage`/`onOpenCategory`. */
+  coverageFilters?: AnalyticsCoverageFilters;
+  /** Opens the matching Data Coverage detail modal — omit to keep every row's notes absent. */
+  onOpenCategory?: (category: CoverageCategory) => void;
 }
 
-export function ChannelSalesTable({ filters }: ChannelSalesTableProps): ReactElement {
+export function ChannelSalesTable({
+  filters,
+  coverage,
+  coverageFilters,
+  onOpenCategory,
+}: ChannelSalesTableProps): ReactElement {
   const query = useSalesAnalyticsQuery(filters);
   const connectionsQuery = useConnectionsQuery();
   const pctFormat = useNumberFormat(PERCENT_FORMAT_OPTIONS);
   const intFormat = useNumberFormat();
+
+  // Fixed set of hooks, one per cross-referenceable category (never a
+  // variable count derived from which categories happen to be open — see
+  // `useCoverageCrossReferenceQuery`'s own doc comment on why). Each is
+  // `enabled` only when its own category is genuinely open.
+  const openCategoryCodes = useMemo(
+    () => new Set((coverage?.categories ?? []).filter((row) => row.affectedCount > 0).map((row) => row.category)),
+    [coverage]
+  );
+  const crossRefFilters: AnalyticsCoverageFilters = coverageFilters ?? { from: '', to: '' };
+  const crossRefEnabled = Boolean(coverageFilters) && Boolean(onOpenCategory);
+  const currencyOrders = useCoverageCrossReferenceQuery(
+    'currency',
+    crossRefFilters,
+    crossRefEnabled && openCategoryCodes.has('currency')
+  );
+  const taxAOrders = useCoverageCrossReferenceQuery(
+    'tax-a',
+    crossRefFilters,
+    crossRefEnabled && openCategoryCodes.has('tax-a')
+  );
+  const taxBOrders = useCoverageCrossReferenceQuery(
+    'tax-b',
+    crossRefFilters,
+    crossRefEnabled && openCategoryCodes.has('tax-b')
+  );
+  const taxCOrders = useCoverageCrossReferenceQuery(
+    'tax-c',
+    crossRefFilters,
+    crossRefEnabled && openCategoryCodes.has('tax-c')
+  );
+  const exclusions = buildChannelExclusionMap({
+    currency: currencyOrders.data,
+    'tax-a': taxAOrders.data,
+    'tax-b': taxBOrders.data,
+    'tax-c': taxCOrders.data,
+  });
 
   if (query.isLoading) {
     return (
@@ -221,7 +329,12 @@ export function ChannelSalesTable({ filters }: ChannelSalesTableProps): ReactEle
         row.kind === 'total' ? (
           <strong>Total · {row.total.currency}</strong>
         ) : (
-          <ChannelName connectionsLoading={connectionsQuery.isLoading} row={row} />
+          <ChannelName
+            connectionsLoading={connectionsQuery.isLoading}
+            row={row}
+            exclusions={exclusions}
+            onOpenCategory={onOpenCategory}
+          />
         ),
     },
     {
