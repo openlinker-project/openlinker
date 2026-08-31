@@ -84,7 +84,7 @@ describe('invoicingBlockedBadge (#2100)', () => {
     // here — and the aggregate count has no invoice awareness. Suppressing on the
     // FE would leave a counted, filterable block that no surface explains.
     expect(invoicingBlockedBadge('unresolved-routing', undefined, invoice(false))).toEqual(
-      expect.objectContaining({ label: 'Not routed' }),
+      expect.objectContaining({ label: 'No routing' }),
     );
   });
 
@@ -99,33 +99,56 @@ describe('invoicingBlockedBadge (#2100)', () => {
 
   it('keys on the routing reason paired with the unresolved-routing bridge value', () => {
     const badge = invoicingBlockedBadge('unresolved-routing', 'ambiguous-connection-no-primary');
-    // "Routing was unresolved" is not actionable; "no primary" is.
-    expect(badge).toMatchObject({ label: 'No primary', tone: 'error', keepIssueAction: false });
+    // "Routing was unresolved" is not actionable; "two setups apply" is.
+    expect(badge).toMatchObject({
+      label: 'Two setups apply',
+      tone: 'error',
+      keepIssueAction: false,
+    });
   });
 
-  it('falls back to a generic label for a routing reason the router cannot produce yet', () => {
-    const badge = invoicingBlockedBadge('unresolved-routing', 'no-matching-rule');
-    expect(badge).toMatchObject({ label: 'Not routed', tone: 'error' });
+  it('labels every routing reason from the shared copy map', () => {
+    // #2534 - before the shared map only `ambiguous-connection-no-primary` had
+    // words of its own; every other routing reason collapsed into one generic
+    // label that told the operator nothing about their own configuration.
+    expect(invoicingBlockedBadge('unresolved-routing', 'no-matching-rule')).toMatchObject({
+      label: 'No rule matched',
+      tone: 'error',
+    });
+    expect(invoicingBlockedBadge('unresolved-routing', 'net-priced-order')).toMatchObject({
+      label: 'Order is net-priced',
+    });
+  });
+
+  it('falls back to the generic routing label when no routing reason travelled along', () => {
+    expect(invoicingBlockedBadge('unresolved-routing')).toMatchObject({
+      label: 'No routing',
+      tone: 'error',
+    });
   });
 
   it('renders manual quietly and keeps the Issue invoice action', () => {
     const badge = invoicingBlockedBadge('trigger-model-manual');
     // A deliberate operator setting must not read as a fault, and issuing by hand
     // IS the configured workflow here — so the CTA stays.
-    expect(badge).toMatchObject({ label: 'Manual only', tone: 'neutral', keepIssueAction: true });
+    expect(badge).toMatchObject({
+      label: 'Issued on request',
+      tone: 'neutral',
+      keepIssueAction: true,
+    });
   });
 
-  it('warns on batched and drops the action', () => {
+  it('warns on batched and keeps the action, because nothing collects the order otherwise', () => {
     expect(invoicingBlockedBadge('trigger-model-batched')).toMatchObject({
       label: 'Batched',
       tone: 'warning',
-      keepIssueAction: false,
+      keepIssueAction: true,
     });
   });
 
   it('carries copy for the declared-but-unwritten reasons so they render correctly the day they ship', () => {
-    expect(invoicingBlockedBadge('missing-required-tax-id')?.tone).toBe('error');
-    expect(invoicingBlockedBadge('tax-rate-conflict')?.tone).toBe('error');
+    expect(invoicingBlockedBadge('missing-required-tax-id')?.label).toBe('No buyer tax ID');
+    expect(invoicingBlockedBadge('tax-rate-conflict')?.label).toBe('Tax rate conflict');
   });
 
   it('returns null for an unrecognised value rather than an unlabelled pill', () => {

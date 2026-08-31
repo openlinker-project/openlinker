@@ -172,6 +172,7 @@ describe('ShipmentDispatchService', () => {
       getEarliestOrderDateByConnection: jest.fn(),
       getSalesAndChannelAnalytics: jest.fn(),
       getTopProducts: jest.fn(),
+      discoverSalesDocumentMarkets: jest.fn(),
     };
     const fulfillmentProjection = { recompute: jest.fn() };
     // Uncontended by default (#1917): every pre-existing test asserts the

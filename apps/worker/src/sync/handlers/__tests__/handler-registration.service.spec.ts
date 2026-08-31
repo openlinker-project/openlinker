@@ -3,16 +3,18 @@
  *
  * Pins the ADR-050 lane partition (#2278): every `JobTypeValues` member is
  * registered with exactly one lane, the per-lane counts match the ADR's
- * table (12 realtime / 16 bulk / 5 fiscal / 6 fan-out — `fiscalization.register`
+ * table (12 realtime / 18 bulk / 5 fiscal / 6 fan-out — `fiscalization.register`
  * joined `fiscal` post-ADR, #2156; `orders.taxRate.backfill` joined `bulk`,
  * #2440; the two sweep-triggered master children joined `bulk`, #2594;
  * `master.product.syncBatch` joined `bulk` as another catalogue-sweep child,
- * #2593; #2609 changed no assignment at all), and
- * the consequential assignments the ADR calls out cannot silently churn.
+ * #2593; `master.inventory.syncBatch` joined `bulk` the same way, #2648;
+ * #2609 changed no assignment at all; `marketplace.offerQuantity.reconcile`
+ * joined `bulk`, #2621), and the consequential assignments the ADR calls out
+ * cannot silently churn.
  *
  * @module apps/worker/src/sync/handlers
  */
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call -- test constructs the service with 36 interchangeable dummy handlers */
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call -- test constructs the service with 39 interchangeable dummy handlers */
 import type { SyncJobHandler } from '@openlinker/core/sync';
 import { JobTypeValues, SyncJobLaneValues } from '@openlinker/core/sync';
 import { SyncJobHandlerRegistry } from '../sync-job-handler.registry';
@@ -23,11 +25,11 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
 
   beforeEach(() => {
     registry = new SyncJobHandlerRegistry();
-    // The constructor takes the registry followed by 36 handler instances.
+    // The constructor takes the registry followed by 39 handler instances.
     // The dummies are DISTINCT objects so that "these two job types share one
     // handler instance" (#2594) is a real assertion rather than a tautology.
     const handlers = Array.from(
-      { length: 36 },
+      { length: 39 },
       () => ({ execute: jest.fn() }) as unknown as SyncJobHandler
     );
     const service = new (HandlerRegistrationService as any)(registry, ...handlers);
@@ -39,12 +41,14 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     expect(() => registry.assertFullLaneCoverage()).not.toThrow();
   });
 
-  it('should partition the 40 job types 12/17/5/6 per ADR-050 decision 1', () => {
-    // 17 bulk since #2648 added `master.inventory.syncBatch` beside #2593's
-    // `master.product.syncBatch` - both sweep children, so they land beside the
-    // two sweep-triggered master children #2594 moved out of `realtime`.
+  it('should partition the 41 job types 12/18/5/6 per ADR-050 decision 1', () => {
+    // 18 bulk: #2648's `master.inventory.syncBatch` and #2593's
+    // `master.product.syncBatch` sit beside the two sweep-triggered master
+    // children #2594 moved out of `realtime`, and #2621's
+    // `marketplace.offerQuantity.reconcile` joins the same lane as a
+    // scan-style pass over adapter-internal pending state.
     expect(registry.getJobTypesByLane('realtime')).toHaveLength(12);
-    expect(registry.getJobTypesByLane('bulk')).toHaveLength(17);
+    expect(registry.getJobTypesByLane('bulk')).toHaveLength(18);
     expect(registry.getJobTypesByLane('fiscal')).toHaveLength(5);
     expect(registry.getJobTypesByLane('fan-out')).toHaveLength(6);
   });

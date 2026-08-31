@@ -42,6 +42,13 @@ export interface DataTableColumn<Row> {
    */
   accessor?: (row: Row) => string | number | boolean | null | undefined;
   sortable?: boolean;
+  /**
+   * How many text lines this column's cell renders at its tallest (#2538).
+   * Read only by `DataTableSkeleton`, so a two-line identity cell reserves its
+   * real height and the table does not grow on load. Defaults to 1; declare it
+   * on the column that SETS the row's height, not on every column.
+   */
+  lines?: number;
 }
 
 export interface DataTableCardView<Row> {

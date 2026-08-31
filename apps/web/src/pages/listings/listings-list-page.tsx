@@ -538,6 +538,8 @@ export function ListingsListPage(): ReactElement {
     () => [
       {
         id: 'listing',
+        // #2538 - Thumbnail, title and a meta line.
+        lines: 2,
         header: 'Listing',
         cell: (row): ReactNode => <ListingCell row={row} activeLifecycle={activeTabDef.lifecycle} />,
       },
@@ -548,6 +550,8 @@ export function ListingsListPage(): ReactElement {
       },
       {
         id: 'connection',
+        // #2538 - ConnectionCell stacks the name over its status.
+        lines: 2,
         header: 'Connection',
         // `.get()` returns undefined on a miss, which ConnectionCell reads as
         // "resolve it yourself" and would turn back into a per-row fetch -
@@ -828,7 +832,7 @@ export function ListingsListPage(): ReactElement {
               skeleton on it would still blank the table on every one of
               them - the exact symptom this fix removes. */}
           {query.isPending ? (
-            <DataTableSkeleton columns={columns} />
+            <DataTableSkeleton columns={columns} label="Loading listings…" />
           ) : query.error ? (
             <ErrorState
               title="Unable to load listings"

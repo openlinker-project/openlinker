@@ -15,7 +15,7 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { QueryFailedError, Repository } from 'typeorm';
+import { In, QueryFailedError, Repository } from 'typeorm';
 
 import { FiscalRegistrationRecord } from '../../../domain/entities/fiscal-registration-record.entity';
 import { DuplicateFiscalRegistrationRecordException } from '../../../domain/exceptions/duplicate-fiscal-registration-record.exception';
@@ -79,6 +79,17 @@ export class FiscalRegistrationRecordRepository
     const entities = await this.repository.find({
       where: { orderId },
       order: { createdAt: 'DESC', id: 'DESC' },
+    });
+    return entities.map((entity) => this.toDomain(entity));
+  }
+
+  async findAllByOrderIds(orderIds: readonly string[]): Promise<FiscalRegistrationRecord[]> {
+    if (orderIds.length === 0) {
+      return [];
+    }
+    const entities = await this.repository.find({
+      where: { orderId: In([...orderIds]) },
+      order: { orderId: 'ASC', createdAt: 'DESC', id: 'DESC' },
     });
     return entities.map((entity) => this.toDomain(entity));
   }

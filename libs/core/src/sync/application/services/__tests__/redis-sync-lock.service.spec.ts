@@ -6,17 +6,21 @@
  * holder's lease after expiry-and-reacquisition), reports loss as `false`
  * rather than an error, and validates its inputs like acquire/release do.
  *
+ * Also pins the #2716 self-recognition fix: `acquire` distinguishes genuine
+ * contention (a different holder's token) from a transport-level resend of
+ * the SAME request landing after its own SET already won.
+ *
  * @module libs/core/src/sync/application/services
  */
 import type { RedisClientType } from 'redis';
 import { RedisSyncLockService } from '../redis-sync-lock.service';
 
 describe('RedisSyncLockService', () => {
-  let redisClient: { set: jest.Mock; eval: jest.Mock };
+  let redisClient: { set: jest.Mock; get: jest.Mock; eval: jest.Mock };
   let service: RedisSyncLockService;
 
   beforeEach(() => {
-    redisClient = { set: jest.fn(), eval: jest.fn() };
+    redisClient = { set: jest.fn(), get: jest.fn(), eval: jest.fn() };
     service = new RedisSyncLockService(redisClient as unknown as RedisClientType);
   });
 
@@ -28,12 +32,31 @@ describe('RedisSyncLockService', () => {
 
       expect(token).toEqual(expect.any(String));
       expect(redisClient.set).toHaveBeenCalledWith('lock:a', token, { NX: true, PX: 5_000 });
+      expect(redisClient.get).not.toHaveBeenCalled();
     });
 
-    it('returns null when the key is already held', async () => {
+    it('returns null when NX fails and a different holder owns the key', async () => {
       redisClient.set.mockResolvedValue(null);
+      redisClient.get.mockResolvedValue('someone-elses-token');
 
       await expect(service.acquire('lock:a', 5_000)).resolves.toBeNull();
+      expect(redisClient.get).toHaveBeenCalledWith('lock:a');
+    });
+
+    it('#2716: recognizes its own resent request instead of reporting contention against itself', async () => {
+      let mintedToken: string | undefined;
+      redisClient.set.mockImplementation((_key: string, value: string) => {
+        mintedToken = value;
+        // Simulates the SET's own OK response being lost/delayed while the
+        // key was in fact written — the caller observes NX failure.
+        return Promise.resolve(null);
+      });
+      redisClient.get.mockImplementation(() => Promise.resolve(mintedToken));
+
+      const token = await service.acquire('lock:a', 5_000);
+
+      expect(token).toBe(mintedToken);
+      expect(token).not.toBeNull();
     });
   });
 

@@ -160,6 +160,23 @@ export function resolveSalesDocumentRouting(
   _order: Order,
   connections: readonly SalesDocumentRoutingCandidate[],
 ): SalesDocumentDecision {
+  return resolveSalesDocumentRoutingFromCandidates(connections);
+}
+
+/**
+ * The same resolve, without the unused `Order` parameter (#2516).
+ *
+ * `resolveSalesDocumentRouting` has never read the order - decision 2 keeps
+ * the parameter in its signature so a future order-sensitive mode stays
+ * additive - but a READ-side caller composing this projection holds an
+ * `OrderRecord` snapshot rather than a clean `Order`, and fabricating one just
+ * to satisfy a parameter the function ignores would be a cast dressed up as a
+ * value. This is the one function; the order-taking signature above delegates
+ * to it, so the two can never answer differently.
+ */
+export function resolveSalesDocumentRoutingFromCandidates(
+  connections: readonly SalesDocumentRoutingCandidate[],
+): SalesDocumentDecision {
   const eligible = connections.filter(isEligibleCandidate);
 
   let selected: SalesDocumentRoutingCandidate | undefined;

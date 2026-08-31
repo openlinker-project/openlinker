@@ -21,8 +21,10 @@ import {
 } from '@openlinker/core/sales-documents';
 import {
   getSalesDocumentStarterTemplate,
+  listSalesDocumentTemplateCountries,
   SALES_DOCUMENT_TEMPLATE_PROVENANCE_BY_COUNTRY,
-} from '../data/pl-starter-template';
+  type SalesDocumentTemplateSummary,
+} from '../data/sales-document-template-catalogue';
 import { AdoptSalesDocumentTemplateDto } from './dto/adopt-sales-document-template.dto';
 import { SalesDocumentRuleResponseDto } from './dto/sales-document-rule-response.dto';
 import { SalesDocumentCapabilityGuardService } from '../sales-document-capability-guard.service';
@@ -37,6 +39,20 @@ export class SalesDocumentTemplatesController {
     private readonly service: ISalesDocumentRulesService,
     private readonly capabilityGuard: SalesDocumentCapabilityGuardService,
   ) {}
+
+  @Get()
+  @ApiOperation({
+    summary: 'List every market a curated starter template exists for',
+    description:
+      'The catalogue, as data. A country missing from this list has no researched guidance, which a ' +
+      'surface may state as such rather than offering a recommendation it cannot back. Poland is the ' +
+      'only entry today. Read-only: listing the catalogue creates no rule and no routing, and nothing ' +
+      'is applied until the operator adopts a template explicitly.',
+  })
+  @ApiResponse({ status: 200 })
+  listTemplates(): { countries: SalesDocumentTemplateSummary[] } {
+    return { countries: listSalesDocumentTemplateCountries() };
+  }
 
   @Get(':country')
   @ApiOperation({ summary: 'Preview the curated starter template for one country, if any exists' })

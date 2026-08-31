@@ -13,6 +13,16 @@ export interface SalesDocumentRuleRepositoryPort {
   findByCountry(country: string): Promise<SalesDocumentRule[]>;
 
   /**
+   * Batch counterpart of {@link findByCountry} (#2516): every rule targeting
+   * any of `countries`, in no particular order. Backs the batched routing
+   * resolve behind the per-order sales-document projection, which evaluates a
+   * whole page of orders and must not issue one query per country. Returns
+   * `[]` for an empty input; a country with no rules is simply absent from the
+   * result.
+   */
+  findByCountries(countries: readonly string[]): Promise<SalesDocumentRule[]>;
+
+  /**
    * Existing rules sharing `(country, conditionsHash)` — the conflict guard's
    * candidate pool, before the caller applies the effective-date-overlap +
    * different-connection check.

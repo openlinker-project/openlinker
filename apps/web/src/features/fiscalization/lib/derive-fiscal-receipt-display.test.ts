@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   canRetryFiscalReceipt,
   deriveFiscalReceiptDisplayStatus,
+  deriveFiscalReceiptBadgeStatus,
 } from './derive-fiscal-receipt-display';
 import type { FiscalRegistrationRecord } from '../api/fiscalization.types';
 
@@ -79,5 +80,32 @@ describe('canRetryFiscalReceipt', () => {
 
   it('is false for a registered record', () => {
     expect(canRetryFiscalReceipt(makeRecord({ status: 'registered' }))).toBe(false);
+  });
+});
+
+describe('deriveFiscalReceiptBadgeStatus (#2527)', () => {
+  it('should never say not registered while a registration is in flight', () => {
+    // The defect this exists for: with no record yet, the record-only
+    // derivation answers `not-registered`, so the panel header contradicted a
+    // body that said a registration was running.
+    expect(deriveFiscalReceiptBadgeStatus(null, 'queued')).toBe('pending');
+    expect(deriveFiscalReceiptBadgeStatus(null, 'running')).toBe('registering');
+  });
+
+  it('should not claim work is waiting when nothing will pick it up', () => {
+    expect(deriveFiscalReceiptBadgeStatus(null, 'stalled')).toBe('not-registered');
+  });
+
+  it('should report an interrupted attempt as unconfirmed, never as running', () => {
+    // The attempt stopped without answering, so whether the sale is registered
+    // is unknown. `registering` would claim an attempt is still running.
+    expect(deriveFiscalReceiptBadgeStatus(null, 'interrupted')).toBe('in-doubt');
+  });
+
+  it('should defer to the record for every state the record already carries', () => {
+    const registered = { status: 'registered', failureMode: null } as never;
+    expect(deriveFiscalReceiptBadgeStatus(registered, 'registered')).toBe('registered');
+    expect(deriveFiscalReceiptBadgeStatus(registered, undefined)).toBe('registered');
+    expect(deriveFiscalReceiptBadgeStatus(null, 'not-requested')).toBe('not-registered');
   });
 });

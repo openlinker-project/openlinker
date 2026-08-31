@@ -204,6 +204,7 @@ describe('InvoiceService', () => {
       findLatestByOrderId: jest.fn(),
       findAllByOrderId: jest.fn(),
       findLatestByOrderIds: jest.fn(),
+      findAllByOrderIds: jest.fn(),
       findByProviderInvoiceId: jest.fn(),
       findByIdempotencyKey: jest.fn(),
       updateOutcome: jest.fn(),
@@ -1179,6 +1180,75 @@ describe('InvoiceService', () => {
       repo.findAllByOrderId.mockResolvedValue([]);
 
       expect(await service.listInvoiceConnectionIdsForOrder('order-1')).toEqual([]);
+    });
+  });
+
+  describe('getInFlightIssuance (#2521)', () => {
+    it('should report a live claim so a SECOND READER learns it without attempting anything', async () => {
+      // Before this, "someone is issuing this right now" was reachable only by
+      // attempting an issuance and reading the 409 back - which a panel cannot
+      // tell apart from an error.
+      const claimed = makeRecord({
+        id: 'inv-live',
+        status: 'issuing',
+        leaseExpiresAt: new Date(Date.now() + 60_000),
+      });
+      repo.findAllByOrderId.mockResolvedValue([claimed]);
+
+      const inFlight = await service.getInFlightIssuance(ORDER);
+
+      expect(inFlight).toEqual({
+        documentKind: 'invoice',
+        connectionId: CONNECTION,
+        recordId: 'inv-live',
+        since: claimed.updatedAt,
+      });
+      // Read-only: no lock, no provider, no write.
+      expect(syncLock.acquire).not.toHaveBeenCalled();
+      expect(repo.claimForIssue).not.toHaveBeenCalled();
+    });
+
+    it('should report `since` as the record`s last write, which is a LOWER BOUND on elapsed', async () => {
+      // The numbering allocation writes the record row inside the live lease, so
+      // `updatedAt` advances mid-attempt and is NOT the claim instant. The
+      // contract promises `elapsed >= now - since` and nothing stronger; a
+      // surface that reads it as a start time would under-report the wait on the
+      // provider where the wait is longest.
+      const movedOn = new Date('2026-06-22T10:05:00.000Z');
+      repo.findAllByOrderId.mockResolvedValue([
+        makeRecord({
+          status: 'issuing',
+          createdAt: new Date('2026-06-22T10:00:00.000Z'),
+          updatedAt: movedOn,
+          leaseExpiresAt: new Date(Date.now() + 60_000),
+        }),
+      ]);
+
+      const inFlight = await service.getInFlightIssuance(ORDER);
+
+      expect(inFlight?.since).toBe(movedOn);
+    });
+
+    it('should report nothing when the claim has EXPIRED', async () => {
+      // An expired lease means the previous attempt died, not that one is
+      // running.
+      repo.findAllByOrderId.mockResolvedValue([
+        makeRecord({ status: 'issuing', leaseExpiresAt: new Date(Date.now() - 1_000) }),
+      ]);
+
+      await expect(service.getInFlightIssuance(ORDER)).resolves.toBeNull();
+    });
+
+    it('should report nothing for an order with no records, and none for settled ones', async () => {
+      repo.findAllByOrderId.mockResolvedValue([]);
+      await expect(service.getInFlightIssuance(ORDER)).resolves.toBeNull();
+
+      repo.findAllByOrderId.mockResolvedValue([
+        makeRecord({ status: 'issued' }),
+        makeRecord({ status: 'failed', failureMode: 'in-doubt' }),
+        makeRecord({ status: 'pending' }),
+      ]);
+      await expect(service.getInFlightIssuance(ORDER)).resolves.toBeNull();
     });
   });
 

@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { FISCAL_POLL_MS, fiscalPollInterval } from './fiscal-poll-interval';
+import {
+  FISCAL_POLL_MS,
+  fiscalPollInterval,
+  fiscalProgressPollInterval,
+} from './fiscal-poll-interval';
 import type { FiscalRegistrationStatus } from '../api/fiscalization.types';
 
 describe('fiscalPollInterval', () => {
@@ -22,5 +26,27 @@ describe('fiscalPollInterval', () => {
 
   it('should not poll when the order holds no record at all', () => {
     expect(fiscalPollInterval(undefined)).toBe(false);
+  });
+});
+
+describe('fiscalProgressPollInterval', () => {
+  it('should poll while work is outstanding', () => {
+    expect(fiscalProgressPollInterval('queued')).toBe(FISCAL_POLL_MS);
+    expect(fiscalProgressPollInterval('running')).toBe(FISCAL_POLL_MS);
+  });
+
+  it('should not poll where nothing is running', () => {
+    // Refetching would describe something that is not happening. Only asking
+    // again moves either of them.
+    expect(fiscalProgressPollInterval('stalled')).toBe(false);
+    expect(fiscalProgressPollInterval('interrupted')).toBe(false);
+  });
+
+  it('should not poll a settled outcome or an unasked sale', () => {
+    expect(fiscalProgressPollInterval('registered')).toBe(false);
+    expect(fiscalProgressPollInterval('rejected')).toBe(false);
+    expect(fiscalProgressPollInterval('in-doubt')).toBe(false);
+    expect(fiscalProgressPollInterval('not-requested')).toBe(false);
+    expect(fiscalProgressPollInterval(undefined)).toBe(false);
   });
 });

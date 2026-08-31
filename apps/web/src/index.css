@@ -3326,8 +3326,35 @@ a.delivery-rider-banner__button:focus-visible {
   background: transparent;
 }
 
+/* A floor, not a fixed height (#2538): the stacked bars a multi-line column
+   declares are what make the row as tall as the loaded one. Pinning `height`
+   was what made a two-line table grow on load. */
 .data-table-skeleton__row {
-  height: 36px;
+  min-height: 36px;
+}
+
+/* Reserved on every row, because a table where only some rows carry an action
+   must not resize when it turns out that they do. */
+.data-table-skeleton__row--action td {
+  padding-bottom: 20px;
+}
+
+.data-table-skeleton__stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* The second and further lines of a cell are the meta line: shorter, matching
+   the identity cells this reserves room for. */
+.data-table-skeleton__bar--meta {
+  width: 60%;
+}
+
+.data-table-skeleton__bar--action {
+  height: 24px;
+  width: 30%;
+  border-radius: var(--radius-sm);
 }
 
 .data-table-skeleton__bar {
@@ -19870,4 +19897,213 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .change__ceiling-label {
   color: var(--status-warning-fg);
   font-weight: 600;
+}
+
+/* ── Sales-document glyph + headline (#2535) ───────────────────────────
+   The kind is an entity axis, so the glyph inherits `currentColor` and takes
+   no tone of its own. On the headline, colour marks exceptions only: `done`
+   and `idle` stay plain ink, and every tinted state carries a second
+   non-colour signal (a tick, a live dot, or the state word itself). */
+
+.document-glyph {
+  flex: none;
+  color: inherit;
+}
+
+.document-headline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.document-headline__main {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-primary);
+}
+
+.document-headline__main .document-glyph {
+  width: 20px;
+  height: 20px;
+}
+
+.document-headline__word {
+  min-width: 0;
+}
+
+.document-headline__sep {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.document-headline__main--idle {
+  color: var(--text-muted);
+}
+
+.document-headline__main--warning {
+  color: var(--status-warning-fg);
+}
+
+.document-headline__main--error {
+  color: var(--status-error-fg);
+}
+
+/* A finished or in-flight document is not an exception, so its glyph recedes
+   and the words stay in ordinary ink. */
+.document-headline__main--done .document-glyph,
+.document-headline__main--progress .document-glyph {
+  color: var(--text-muted);
+}
+
+.document-headline__tick {
+  flex: none;
+  color: var(--status-success);
+}
+
+.document-headline__live {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--status-info);
+  animation: document-headline-pulse 1.6s var(--ease-out) infinite;
+}
+
+@keyframes document-headline-pulse {
+  0% {
+    opacity: 0.95;
+  }
+  70% {
+    opacity: 0.45;
+  }
+  100% {
+    opacity: 0.95;
+  }
+}
+
+/* The dot's tint already says "in flight"; the animation is decorative. */
+@media (prefers-reduced-motion: reduce) {
+  .document-headline__live {
+    animation: none;
+  }
+}
+
+.document-headline__sub {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+/* ── Document lifecycle trail (#2536) ──────────────────────────────────
+   One step per persisted stage of an invoice. State is carried by the
+   marker's SHAPE as well as its tint, and each step announces its state in
+   words, so the trail survives without colour. */
+
+.document-lifecycle {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.document-lifecycle__step {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto auto auto;
+  gap: 2px;
+  padding-top: var(--space-3);
+}
+
+/* The connector runs from the previous marker to this one, so the first step
+   has none to its left and the last none to its right. */
+.document-lifecycle__step::before {
+  content: '';
+  position: absolute;
+  top: 5px;
+  left: 0;
+  right: 50%;
+  height: 2px;
+  background: var(--border-subtle);
+}
+
+.document-lifecycle__step:first-child::before {
+  left: 50%;
+}
+
+.document-lifecycle__step--done::before {
+  background: var(--status-success-border);
+}
+
+.document-lifecycle__marker {
+  position: absolute;
+  top: 0;
+  left: calc(50% - 6px);
+  display: inline-grid;
+  place-items: center;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--border-strong);
+  background: var(--bg-surface);
+  color: var(--text-inverse);
+}
+
+.document-lifecycle__step--done .document-lifecycle__marker {
+  border-color: var(--status-success);
+  background: var(--status-success);
+}
+
+.document-lifecycle__step--error .document-lifecycle__marker {
+  border-color: var(--status-error);
+  background: var(--status-error);
+}
+
+.document-lifecycle__step--active .document-lifecycle__marker {
+  border-color: var(--status-info);
+  animation: document-lifecycle-pulse 1.6s var(--ease-out) infinite;
+}
+
+@keyframes document-lifecycle-pulse {
+  0% {
+    opacity: 1;
+  }
+  70% {
+    opacity: 0.45;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* The marker's shape and the announced state word both survive without it. */
+@media (prefers-reduced-motion: reduce) {
+  .document-lifecycle__step--active .document-lifecycle__marker {
+    animation: none;
+  }
+}
+
+.document-lifecycle__label {
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.document-lifecycle__step--todo .document-lifecycle__label {
+  color: var(--text-muted);
+}
+
+.document-lifecycle__time {
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
 }

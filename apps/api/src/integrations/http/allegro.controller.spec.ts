@@ -69,6 +69,7 @@ describe('AllegroController', () => {
       find: jest.fn(),
       create: jest.fn(),
       updateStatus: jest.fn(),
+      updateOfferStatus: jest.fn(),
     } as unknown as jest.Mocked<AllegroQuantityCommandRepositoryPort>;
 
     const mockIntegrationsService = {
@@ -422,7 +423,7 @@ describe('AllegroController', () => {
   });
 
   describe('getCommand', () => {
-    it('should return command by ID for connection', async () => {
+    it('should return command rows by ID for connection', async () => {
       const connectionId = 'connection-123';
       const commandId = 'cmd-123';
       const command = AllegroQuantityCommand.create(
@@ -433,20 +434,36 @@ describe('AllegroController', () => {
         'accepted'
       );
 
-      commandRepository.findByCommandId.mockResolvedValue(command);
+      commandRepository.findByCommandId.mockResolvedValue([command]);
 
       const result = await controller.getCommand(connectionId, commandId);
 
-      expect(result.commandId).toBe(commandId);
-      expect(result.connectionId).toBe(connectionId);
+      expect(result).toHaveLength(1);
+      expect(result[0].commandId).toBe(commandId);
+      expect(result[0].connectionId).toBe(connectionId);
       expect(commandRepository.findByCommandId).toHaveBeenCalledWith(commandId);
+    });
+
+    it('should return one row per offer for a batched command (#2622)', async () => {
+      const connectionId = 'connection-123';
+      const commandId = 'cmd-batch';
+      const commands = [
+        AllegroQuantityCommand.create(commandId, connectionId, 'offer-1', 10, 'succeeded'),
+        AllegroQuantityCommand.create(commandId, connectionId, 'offer-2', 10, 'failed', 'boom'),
+      ];
+
+      commandRepository.findByCommandId.mockResolvedValue(commands);
+
+      const result = await controller.getCommand(connectionId, commandId);
+
+      expect(result.map((r) => r.offerId).sort()).toEqual(['offer-1', 'offer-2']);
     });
 
     it('should throw NotFoundException when command not found', async () => {
       const connectionId = 'connection-123';
       const commandId = 'non-existent-cmd';
 
-      commandRepository.findByCommandId.mockResolvedValue(null);
+      commandRepository.findByCommandId.mockResolvedValue([]);
 
       await expect(controller.getCommand(connectionId, commandId)).rejects.toThrow(
         NotFoundException
@@ -467,7 +484,7 @@ describe('AllegroController', () => {
         'accepted'
       );
 
-      commandRepository.findByCommandId.mockResolvedValue(command);
+      commandRepository.findByCommandId.mockResolvedValue([command]);
 
       await expect(controller.getCommand(connectionId, commandId)).rejects.toThrow(
         NotFoundException
