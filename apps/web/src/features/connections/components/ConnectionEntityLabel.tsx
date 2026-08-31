@@ -40,6 +40,9 @@ export function ConnectionEntityLabel({
   // would always 404 and render "Unknown", indistinguishable from a genuinely
   // deleted/inaccessible connection. Render it as a system job instead.
   if (isSystem) {
+    // Deliberately ignores the caller's showId/showCopy props: the all-zero
+    // id is a placeholder, not a real connection id - there is nothing
+    // meaningful to show or copy.
     return (
       <EntityLabel
         id={connectionId}
