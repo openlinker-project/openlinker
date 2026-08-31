@@ -41,6 +41,25 @@ export interface OrderLifecycleRelayInput {
   internalOrderId: string;
   /** The participant that authored the event — excluded from the targets (self-echo suppression at the participant level). */
   originConnectionId: string;
+  /**
+   * The connection that AUTHORED the event, when the caller knows it and it is not
+   * the same thing as `originConnectionId` (#2401, DESIGN §5.5).
+   *
+   * **Absent reproduces today's exclusion set exactly** — origin only — so no
+   * existing caller changes behaviour. Present, it is UNIONED with the origin.
+   *
+   * It is not redundant with `originConnectionId`, because that field is not an
+   * authorship claim in practice: `ShipmentDispatchNotificationService` passes the
+   * CARRIER connection and `relay-status-to-source-executor` passes the sentinel
+   * `'openlinker:automation'`, both non-participants chosen precisely to exclude
+   * nothing. A caller that genuinely knows who authored the fact can now say so.
+   *
+   * The case this exists for: a fulfilment work dispatched by a 3PL that is ALSO a
+   * participant of the order (a marketplace that fulfils its own orders). Without
+   * this, a `dispatched` relay tells the 3PL that just shipped the parcel that the
+   * parcel shipped.
+   */
+  authoredByConnectionId?: string;
   event: OrderLifecycleRelayEvent;
 }
 
@@ -76,7 +95,15 @@ export interface OrderLifecycleRelayTargetResult {
   connectionId: string;
   outcome: OrderWritebackOutcome;
   detail?: string;
-  /** Present iff `outcome === 'unsupported'`. See the reason type's docs. */
+  /**
+   * Set only for an `unsupported` outcome — but **an `unsupported` outcome does
+   * not imply it is set** (corrected #2401). This field is populated by the
+   * RELAY, for the two conditions it can tell apart itself; `writeToTarget`
+   * passes an adapter's own `OrderWritebackResult` through verbatim, and several
+   * shipped adapters return a bare `unsupported` from their own `default:` arm.
+   * A consumer switching on this MUST handle `undefined` as its own case rather
+   * than assuming one of the two members. See the reason type's docs.
+   */
   unsupportedReason?: OrderWritebackUnsupportedReason;
 }
 

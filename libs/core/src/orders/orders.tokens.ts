@@ -59,3 +59,6 @@ export const ORDER_HOLD_PROJECTION_REPOSITORY_TOKEN = Symbol(
 export const ORDER_HOLD_PROJECTION_RECONCILE_SERVICE_TOKEN = Symbol(
   'IOrderHoldProjectionReconcileService'
 );
+
+/** Fulfilment dispatch relay (#2401). `FulfillmentDispatchRelayService` binds here. */
+export const FULFILLMENT_DISPATCH_RELAY_SERVICE_TOKEN = Symbol('IFulfillmentDispatchRelayService');

@@ -232,6 +232,13 @@ export type {
   OrderLifecycleRelayResult,
   OrderLifecycleRelayTargetResult,
 } from './application/interfaces/order-lifecycle-relay.service.interface';
+// #2401: the `dispatch` fulfilment-progress intent consumer.
+export type {
+  FulfillmentDispatchIntent,
+  FulfillmentDispatchRelayOutcome,
+  IFulfillmentDispatchRelayService,
+} from './application/interfaces/fulfillment-dispatch-relay.service.interface';
+export { FULFILLMENT_DISPATCH_RELAY_ORIGIN } from './application/services/fulfillment-dispatch-relay.service';
 export type { IOrderRefundService } from './application/interfaces/order-refund.service.interface';
 export { OrderRefundService } from './application/services/order-refund.service';
 export type {

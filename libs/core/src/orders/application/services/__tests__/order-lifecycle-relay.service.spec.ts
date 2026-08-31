@@ -257,4 +257,66 @@ describe('OrderLifecycleRelayService', () => {
       expect(adapter.write).not.toHaveBeenCalled();
     });
   });
+
+  // #2401 — author exclusion. Each case asserts the TARGET LIST, not a call count:
+  // a count can pass while the wrong participant was excluded.
+  describe('authoredByConnectionId (#2401)', () => {
+    it('excludes the event author from the targets', async () => {
+      // The author must be a participant AND distinct from the origin, or the
+      // assertion would pass with the new field ignored entirely.
+      identifierMapping.getExternalIds.mockResolvedValue([
+        mapping(origin, 'allegro-1'),
+        mapping('threepl-conn', '3pl-9'),
+        mapping('ps-conn', 'ps-7'),
+      ]);
+      const adapter = { write: jest.fn().mockResolvedValue({ outcome: 'applied' }) };
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+
+      const result = await service.relay({
+        internalOrderId: 'ol_order_1',
+        originConnectionId: origin,
+        authoredByConnectionId: 'threepl-conn',
+        event: { type: 'dispatched' },
+      });
+
+      expect(result.targets.map((t) => t.connectionId)).toEqual(['ps-conn']);
+    });
+
+    it('reproduces the origin-only exclusion set exactly when absent', async () => {
+      const participants = [
+        mapping(origin, 'allegro-1'),
+        mapping('threepl-conn', '3pl-9'),
+        mapping('ps-conn', 'ps-7'),
+      ];
+      identifierMapping.getExternalIds.mockResolvedValue(participants);
+      const adapter = { write: jest.fn().mockResolvedValue({ outcome: 'applied' }) };
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+
+      const result = await service.relay({
+        internalOrderId: 'ol_order_1',
+        originConnectionId: origin,
+        event: { type: 'dispatched' },
+      });
+
+      expect(result.targets.map((t) => t.connectionId)).toEqual(['threepl-conn', 'ps-conn']);
+    });
+
+    it('collapses to one exclusion when the author IS the origin', async () => {
+      identifierMapping.getExternalIds.mockResolvedValue([
+        mapping(origin, 'allegro-1'),
+        mapping('ps-conn', 'ps-7'),
+      ]);
+      const adapter = { write: jest.fn().mockResolvedValue({ outcome: 'applied' }) };
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+
+      const result = await service.relay({
+        internalOrderId: 'ol_order_1',
+        originConnectionId: origin,
+        authoredByConnectionId: origin,
+        event: { type: 'dispatched' },
+      });
+
+      expect(result.targets.map((t) => t.connectionId)).toEqual(['ps-conn']);
+    });
+  });
 });

@@ -26,10 +26,12 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { FulfillmentHandshakeService } from './application/services/fulfillment-handshake.service';
 import { FulfillmentProgressService } from './application/services/fulfillment-progress.service';
+import { FulfillmentRelayGateService } from './application/services/fulfillment-relay-gate.service';
 import {
   FULFILLMENT_HANDSHAKE_SERVICE_TOKEN,
   FULFILLMENT_PROGRESS_CLAIM_REPOSITORY_TOKEN,
   FULFILLMENT_PROGRESS_SERVICE_TOKEN,
+  FULFILLMENT_RELAY_GATE_SERVICE_TOKEN,
   FULFILLMENT_WORK_REPOSITORY_TOKEN,
   ROUTING_DECISION_REPOSITORY_TOKEN,
 } from './fulfillment.tokens';
@@ -68,11 +70,14 @@ import { RoutingDecisionRepository } from './infrastructure/persistence/reposito
     { provide: FULFILLMENT_PROGRESS_SERVICE_TOKEN, useExisting: FulfillmentProgressService },
     RoutingDecisionRepository,
     { provide: ROUTING_DECISION_REPOSITORY_TOKEN, useExisting: RoutingDecisionRepository },
+    FulfillmentRelayGateService,
+    { provide: FULFILLMENT_RELAY_GATE_SERVICE_TOKEN, useExisting: FulfillmentRelayGateService },
   ],
   exports: [
     FULFILLMENT_WORK_REPOSITORY_TOKEN,
     FULFILLMENT_HANDSHAKE_SERVICE_TOKEN,
     FULFILLMENT_PROGRESS_SERVICE_TOKEN,
+    FULFILLMENT_RELAY_GATE_SERVICE_TOKEN,
     ROUTING_DECISION_REPOSITORY_TOKEN,
   ],
 })

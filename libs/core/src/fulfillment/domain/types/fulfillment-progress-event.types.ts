@@ -202,3 +202,31 @@ export type FulfillmentProgressOutcome =
    * becomes the first caller.
    */
   | { readonly status: 'precondition-failed'; readonly reason: string };
+
+/**
+ * What `IFulfillmentRelayGateService.claimDispatch` answers (#2401).
+ *
+ * Three statuses rather than a boolean, because a caller must treat them
+ * differently: `already-relayed` is an ordinary race a peer won (success — the
+ * relay is somebody else's now), while `unknown-work` is a defect worth logging.
+ * A boolean conflates them, and the same honesty argument is why
+ * `FulfillmentProgressOutcome` above has four statuses instead of a throw.
+ *
+ * `holderConnectionId` is a SNAPSHOT, not a lock: `assignedConnectionId` moves on
+ * a re-route, so this is the holder as of the claim — which is exactly the
+ * connection to exclude from a relay about work that holder dispatched. It is
+ * `null` for work that is unassigned or whose holder was cleared by a rejection;
+ * a `null` must not silently become "no author", so the caller relays with no
+ * `authoredByConnectionId` and says so in a log line.
+ */
+export type FulfillmentDispatchRelayClaim =
+  /** The caller now holds the relay slot and must release it if the relay fails. */
+  | {
+      readonly status: 'claimed';
+      readonly orderId: string;
+      readonly holderConnectionId: string | null;
+    }
+  /** A peer already claimed it. Not an error, and NOT something to release. */
+  | { readonly status: 'already-relayed' }
+  /** No such work row. Named rather than silent, and never a throw. */
+  | { readonly status: 'unknown-work'; readonly workId: string };

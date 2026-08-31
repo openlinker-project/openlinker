@@ -21,7 +21,7 @@
  * | `requestStatus` | `create`, `transitionRequestStatus`, `claimDispatchAttempt`, `recordAcceptance`, `recordRejection` | the handshake (#2399) owns it; the router holds a stale copy by construction. A NAMED additional writer is this table's convention (`status` and `assignedConnectionId` each already list three); an UNNAMED one is the defect it guards against |
  * | `assignmentAttempt` | `claimDispatchAttempt` (#2399) | monotonic; a round-trip would reset the idempotency key's stability. #2392's `incrementAssignmentAttempt` is REPLACED, not supplemented: its `WHERE` was `"id" = :id` alone, so any caller could bump the counter out from under a live `submitted` dispatch and invalidate an in-flight key |
  * | `acceptedAt` / `externalWorkId` | `recordAcceptance` (#2399) | ADR-054's at-most-once acceptance CLAIM (`WHERE "acceptedAt" IS NULL`); round-tripping a `null` would re-open the claim |
- * | `dispatchRelayedAt` | `claimDispatchRelay` (#2401) | at-most-once marker; round-tripping a `null` re-opens the relay |
+ * | `dispatchRelayedAt` | `claimDispatchRelay`, `releaseDispatchRelay` (#2401) | at-most-once marker; round-tripping a `null` re-opens the relay. The release is a NAMED second writer — this table's convention (`status` and `requestStatus` each list several); it is the unnamed writer that is the defect |
  * | `cancelledAt` / `cancellationReason` | `cancel` | the `order_records.cancelledAt` precedent |
  * | `version` | every applied HEADER transition | computed in SQL (`version + 1`), never from a caller's read |
  * | `fulfilledQuantity` / `cancelledQuantity` | `recordLineProgress` (#2400) | a create carries zeros and would erase real progress |
@@ -60,6 +60,7 @@ import { DataSource, In, IsNull, QueryFailedError, Repository } from 'typeorm';
 import type { EntityManager, UpdateQueryBuilder } from 'typeorm';
 
 import type { HoldReason } from '@openlinker/core/order-lifecycle';
+import { Logger } from '@openlinker/shared/logging';
 
 import { DuplicateFulfillmentWorkLineError } from '../../../domain/exceptions/duplicate-fulfillment-work-line.error';
 import { FulfillmentHoldAlreadyReleasedError } from '../../../domain/exceptions/fulfillment-hold-already-released.error';
@@ -163,6 +164,8 @@ const assertCounterDelta = (field: string, value: number): void => {
 
 @Injectable()
 export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort {
+  private readonly logger = new Logger(FulfillmentWorkRepository.name);
+
   constructor(
     @InjectRepository(FulfillmentWorkOrmEntity)
     private readonly works: Repository<FulfillmentWorkOrmEntity>,
@@ -456,6 +459,26 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
         .where('"id" = :id', { id: workId })
         .andWhere('"dispatchRelayedAt" IS NULL')
     );
+  }
+
+  async releaseDispatchRelay(workId: string): Promise<void> {
+    // Conditional on `IS NOT NULL` — see the port's docblock. An unconditional
+    // release would bump `version` on a row it did not change; `version` counts
+    // state changes, not writes.
+    const released = await this.applyGuardedUpdate('releaseDispatchRelay', (qb) =>
+      qb
+        .set({ dispatchRelayedAt: null, version: () => '"version" + 1' })
+        .where('"id" = :id', { id: workId })
+        .andWhere('"dispatchRelayedAt" IS NOT NULL')
+    );
+    if (!released) {
+      // Not an error: re-releasing is harmless and the caller may not branch on
+      // it. But a claim HOLDER releasing nothing means the row moved underneath
+      // it, which is worth seeing.
+      this.logger.debug(
+        `releaseDispatchRelay: work ${workId} had no relay claim to release (already released or absent)`
+      );
+    }
   }
 
   async cancel(input: CancelFulfillmentWorkInput): Promise<boolean> {
