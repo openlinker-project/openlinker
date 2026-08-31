@@ -29,12 +29,25 @@ describe('RoutingDecisionState', () => {
 describe('RoutingDecisionAbandonReason', () => {
   it('should declare only reasons grounded in shipped code', () => {
     // #2393 ships `PendingRoutingPlanNotSupportedError` and
-    // `checkRoutingPlanConservesQuantities`; anything describing #2395's own
-    // internals would be a guess about code that does not exist yet.
+    // `checkRoutingPlanConservesQuantities`; #2395 adds the two Wave-3a
+    // refusals of a plan that cannot be committed whole.
     expect([...RoutingDecisionAbandonReasonValues]).toEqual([
       'plan-pending',
       'plan-not-conserving',
+      'plan-carries-holds',
+      'plan-carries-unfulfillable',
     ]);
+  });
+
+  it('should NOT declare a reason for a timeout or a throwing route()', () => {
+    // The finding of #2395, pinned so it cannot be undone by someone adding the
+    // "obviously missing" member. A timeout is IN-DOUBT, not nothing-happened:
+    // `abandoned` leaves the live partial-unique index, so a re-route mints a
+    // new decision id and therefore a NEW idempotency key that the vendor cannot
+    // dedup against a first call which may still be committing — two plans, two
+    // shipments. In-doubt leaves the decision `live` instead.
+    expect([...RoutingDecisionAbandonReasonValues]).not.toContain('router-timeout');
+    expect([...RoutingDecisionAbandonReasonValues]).not.toContain('router-failed');
   });
 
   it('should read an unrecognised persisted value as absent rather than throwing', () => {

@@ -135,6 +135,7 @@ export type { IFulfillmentWorkQueryService } from './application/interfaces/fulf
 
 export { RoutingDecision } from './domain/entities/routing-decision.entity';
 export { RoutingDecisionAlreadyLiveError } from './domain/exceptions/routing-decision-already-live.error';
+export { RoutingDecisionNoLongerLiveError } from './domain/exceptions/routing-decision-no-longer-live.error';
 // Same rule one table over: the INPUT shapes are exported, while
 // `RoutingDecisionRepositoryPort` itself is not. #2395 injects it by token from
 // inside this context.
@@ -142,6 +143,21 @@ export type {
   ClaimRoutingIntentInput,
   TerminaliseRoutingDecisionInput,
 } from './domain/ports/routing-decision-repository.port';
+
+// Routing commit (#2395). The SERVICE INTERFACE and its I/O cross the barrel;
+// `RoutingDecisionRepositoryPort` still does not, for the deny-pattern reason
+// stated above.
+export type { IRoutingCommitService } from './application/interfaces/routing-commit.service.interface';
+export type {
+  RouteOrderInput,
+  RoutingCommitOutcome,
+} from './application/types/routing-commit.types';
+export type { RoutingLockPort } from './domain/ports/routing-lock.port';
+export {
+  FULFILLMENT_ROUTE_LOCK_TTL_MS,
+  FULFILLMENT_ROUTE_TIMEOUT_MS,
+  fulfillmentRouteLockKey,
+} from './application/services/routing-commit-lock';
 
 export { FulfillmentModule } from './fulfillment.module';
 

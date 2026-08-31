@@ -62,11 +62,38 @@ export const isRoutingDecisionState = (value: unknown): value is RoutingDecision
  * that does not exist. The column is `varchar(64)`, so #2395 adds its own
  * members with no migration.
  *
+ * **#2395 added two, and deliberately did NOT add a third for a timeout or a
+ * throwing `route()`.** Those are IN-DOUBT outcomes, and abandoning on one would
+ * reopen the double-ship this whole table exists to prevent — see
+ * `RoutingCommitService`, where that transition is (not) made. Every reason
+ * below describes a router that DEFINITELY answered and whose answer OpenLinker
+ * refused.
+ *
  * `readRoutingDecisionAbandonReason` coerces an unrecognised value to `null`
  * (the #2100 rule) so a value written by a newer build reads as absent on an
  * older one rather than crashing it.
  */
-export const RoutingDecisionAbandonReasonValues = ['plan-pending', 'plan-not-conserving'] as const;
+export const RoutingDecisionAbandonReasonValues = [
+  'plan-pending',
+  'plan-not-conserving',
+  /**
+   * #2395: the plan places holds, which Wave 3a cannot commit.
+   *
+   * `FulfillmentWorkRepositoryPort.placeHold` is NOT transaction-composable —
+   * its own docblock says only `create` is — so a hold cannot join the ADR-054
+   * R1 single transaction that creates the work rows and terminalises the
+   * decision. Committing the plan minus its holds would silently drop
+   * quantities from a plan that PASSED `checkRoutingPlanConservesQuantities`,
+   * which is precisely the failure that guard exists to catch.
+   *
+   * So the whole plan is refused rather than partially applied. Inert today (no
+   * router exists until #2408/#2409) and real the moment a router first emits a
+   * hold — which is why the refusal message names the follow-up issue.
+   */
+  'plan-carries-holds',
+  /** #2395: same reasoning one field over — an unfulfillable line has no commit path yet. */
+  'plan-carries-unfulfillable',
+] as const;
 
 export type RoutingDecisionAbandonReason = (typeof RoutingDecisionAbandonReasonValues)[number];
 

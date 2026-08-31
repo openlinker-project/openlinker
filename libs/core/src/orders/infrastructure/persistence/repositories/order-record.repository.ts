@@ -1972,6 +1972,12 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       // to read a tax id off, and writing it there would NULL a value a
       // previous ready-path write settled.
       add('buyerTaxId', entity.buyerTaxId ?? null);
+      // #2395, added here for exactly the reason `buyerTaxId` is: this
+      // statement enumerates its own columns, so a column the caller stamps on
+      // the entity but never adds here is simply not written. Ready-path only -
+      // `persistIncomingSnapshot` has no resolved shipping address to hash, and
+      // writing it there would NULL a hash a previous ready-path write settled.
+      add('shippingAddressHash', entity.shippingAddressHash ?? null);
     }
 
     const sql = `INSERT INTO "order_records" (
@@ -2067,6 +2073,12 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // which has no resolved billing address to read a tax id off, so mapping
     // the column there would NULL a value a previous ready-path write settled.
     entity.buyerTaxId = orderRecord.buyerTaxId;
+    // #2395 - stamped here, NOT in the shared `toOrm`, for the same
+    // single-writer reason (`cancelledAt` / the `salesDocument*` columns,
+    // #2100): `persistOrder` runs on EVERY ingestion, and an
+    // `awaiting_mapping` re-ingestion reaching `toOrm` would write `null` over
+    // a hash a previous ready-path ingestion had settled.
+    entity.shippingAddressHash = orderRecord.shippingAddressHash;
     const { sql, params, writeSet } = this.buildFrozenAttributionUpsert(entity, true);
     const savedRecord = await this.dataSource.transaction(async (manager: EntityManager) => {
       // Same statement as `upsert`, one parameter apart (#2282): a full-object
@@ -2270,7 +2282,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       // §4.4 S2-5 ("an unrecognised state degrades safely") held once, and it
       // is the same call the two reason guards above make.
       readAuthorityAttentionEntries(entity.omsAttention),
-      entity.buyerTaxId ?? null
+      entity.buyerTaxId ?? null,
+      entity.shippingAddressHash ?? null
     );
   }
 

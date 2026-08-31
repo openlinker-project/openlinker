@@ -179,6 +179,40 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
     expect(rows.map((r) => r.table_name)).toEqual([...TABLES].sort());
   });
 
+  /**
+   * #2395's column, checked NARROWLY rather than by adding `order_records` to
+   * `TABLES`.
+   *
+   * That was tried first and is the better shape when it works — the list drives
+   * a derived assertion, so a new TABLE costs one line. It does not work here:
+   * `order_records` is a long-lived table whose INDEX and FOREIGN-KEY definitions
+   * already differ between the `synchronize`-built and migration-built schemas,
+   * so adding it fails two assertions for pre-existing drift this issue neither
+   * caused nor can fix — precisely the whole-schema-diff problem this file's
+   * header says it is scoped to avoid. Its COLUMN comparison passed, which is
+   * the half that matters for a new column, so that half is asserted directly.
+   *
+   * The check is still real: `1868000000000-add-order-shipping-address-hash.ts`
+   * is the only thing that creates this column in the migrated database, and
+   * nothing but the ORM entity creates it in the harness's.
+   */
+  it('should build order_records.shippingAddressHash identically from the migration (#2395)', async () => {
+    const sql = `
+      SELECT column_name, data_type, is_nullable
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'order_records'
+        AND column_name = 'shippingAddressHash'`;
+
+    const fromMigration = (await migrated.query(sql)) as unknown[];
+    const synchronized = (await harness.getDataSource().query(sql)) as unknown[];
+
+    // Non-vacuity: two empty result sets would compare equal and assert nothing.
+    expect(fromMigration).toHaveLength(1);
+    expect(fromMigration).toEqual(synchronized);
+    expect(fromMigration[0]).toMatchObject({ is_nullable: 'YES' });
+  });
+
   it('should agree on every column, type, nullability and default', async () => {
     const [synchronized, fromMigration] = await bothSides(COLUMNS_SQL);
     expect(fromMigration).toEqual(synchronized);

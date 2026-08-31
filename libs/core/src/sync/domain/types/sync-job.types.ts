@@ -182,6 +182,16 @@ export const JobTypeValues = [
   // synthetic id, which is #2609's defect exactly: a shared scope collapses
   // per-scope lane accounting for the whole installation.
   'fulfillment.work.dispatch',
+
+  // Routing commit (#2395, `W3a-6`, ADR-054 R1). Decides where ONE order is
+  // fulfilled from and commits the decision plus its work rows atomically.
+  //
+  // Core-owned and namespaced `fulfillment.work.*` on the same precedent as its
+  // two siblings above — the trigger is OpenLinker's own ingestion, not a
+  // marketplace. `connectionId` is the SELECTED ROUTER's connection, never a
+  // synthetic id: #2609 is the standing lesson that a shared scope collapses
+  // per-scope lane accounting for the whole installation.
+  'fulfillment.work.route',
 ] as const;
 
 /**

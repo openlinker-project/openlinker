@@ -332,7 +332,33 @@ export class OrderRecord {
      * before it - inserting mid-list would shift every argument after it at
      * each call site.
      */
-    public readonly buyerTaxId: string | null = null
+    public readonly buyerTaxId: string | null = null,
+    /**
+     * Stable hash of this order's SHIPPING address (#2395), stamped at
+     * ingestion from the live, un-redacted `Order`. `null` when the order
+     * carries no shipping address.
+     *
+     * It exists because `RoutingShipTo`'s degraded arm (`OL_STORE_PII=false`)
+     * needs a `locationHash`, and neither of the two things a consumer would
+     * reach for can supply one:
+     *
+     * - Hashing the persisted `orderSnapshot` address is WRONG under hash-only
+     *   mode: that address has already been through `redactAddress`, so the
+     *   hash collapses to ONE value per country, shared by every order in the
+     *   install. It looks correct - a plausible 64-hex string - while silently
+     *   grouping the whole catalogue of orders together.
+     * - `customer_address_projections` are keyed by CUSTOMER, not by order, so
+     *   they cannot answer "the address on THIS order".
+     *
+     * Deliberately NOT PII-gated (see the writer in `OrderRecordService`): it
+     * is a one-way hash, and gating it would null it exactly on the
+     * deployments the degraded arm exists to serve.
+     *
+     * Appended LAST for the same reason every field above it was: this is a
+     * positional constructor, so a field inserted mid-list would silently
+     * shift every argument after it at each construction site.
+     */
+    public readonly shippingAddressHash: string | null = null
   ) {}
 
   /**

@@ -59,6 +59,7 @@ import { OfflineResubmitHandler } from './offline-resubmit.handler';
 import { PendingRecoveryHandler } from './pending-recovery.handler';
 import { PaymentStatusRefreshHandler } from './payment-status-refresh.handler';
 import { FulfillmentWorkDispatchHandler } from './fulfillment-work-dispatch.handler';
+import { FulfillmentWorkRouteHandler } from './fulfillment-work-route.handler';
 
 @Injectable()
 export class HandlerRegistrationService implements OnModuleInit {
@@ -113,7 +114,8 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly offlineResubmitHandler: OfflineResubmitHandler,
     private readonly pendingRecoveryHandler: PendingRecoveryHandler,
     private readonly paymentStatusRefreshHandler: PaymentStatusRefreshHandler,
-    private readonly fulfillmentWorkDispatchHandler: FulfillmentWorkDispatchHandler
+    private readonly fulfillmentWorkDispatchHandler: FulfillmentWorkDispatchHandler,
+    private readonly fulfillmentWorkRouteHandler: FulfillmentWorkRouteHandler
   ) {}
 
   onModuleInit(): void {
@@ -516,6 +518,21 @@ export class HandlerRegistrationService implements OnModuleInit {
     this.handlerRegistry.register(
       'fulfillment.work.dispatch',
       this.fulfillmentWorkDispatchHandler,
+      'realtime'
+    );
+
+    // Routing commit (#2395, `W3a-6`).
+    //
+    // 'realtime', for the same ADR-050 reason its dispatch sibling is, and NOT
+    // 'bulk'. The core-owned-internal-pass instinct argues for `bulk` here, and
+    // that instinct is about who ENQUEUES the job; the lane is about who is hurt
+    // when it is late. Routing gates whether an order ships AT ALL, so starving
+    // it behind a catalogue sweep delays every order's fulfilment — and
+    // `bulk`'s per-scope cap is sized for work an operator tolerates being slow.
+    // A late route is a late shipment.
+    this.handlerRegistry.register(
+      'fulfillment.work.route',
+      this.fulfillmentWorkRouteHandler,
       'realtime'
     );
 

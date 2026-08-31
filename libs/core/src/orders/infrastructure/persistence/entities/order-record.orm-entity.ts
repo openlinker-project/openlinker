@@ -266,6 +266,24 @@ export class OrderRecordOrmEntity {
   buyerTaxId!: string | null;
 
   /**
+   * Stable hash of the order's shipping address (#2395), stamped at ingestion
+   * from the LIVE, un-redacted address - so it survives `OL_STORE_PII=false`,
+   * under which the snapshot address is replaced by `[REDACTED]` and hashing
+   * it back would yield one hash per country shared by every order.
+   *
+   * Written only on the `'ready'` path (`upsertWithLineItems`), like the four
+   * analytics scalars and `buyerTaxId` above: an `awaiting_mapping`
+   * re-ingestion routed through the shared `toOrm` would NULL a hash a
+   * previous ready-path write settled.
+   *
+   * NOT PII-gated, unlike its `buyerTaxId` neighbour: it is a one-way hash
+   * carrying no recoverable address, and gating it would remove it precisely
+   * on the hash-only deployments that need it.
+   */
+  @Column({ type: 'text', nullable: true })
+  shippingAddressHash!: string | null;
+
+  /**
    * Per-order reporting-currency snapshot (#2124, ADR-040) — six columns
    * written ONLY by the two narrow, conditional UPDATEs on the repository
    * (`claimFxIntentIfAbsent`, `stampFxIfAbsent`). The ingestion upsert
