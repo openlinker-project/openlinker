@@ -34,6 +34,23 @@
  * id, and a status-source executor reports base ∪ status. Absence is therefore a
  * checked fact, not a silence.
  *
+ * ## The suite observes the arm the subject CHOSE; it cannot force the other
+ *
+ * `requestFulfillment` answers `accepted` or `rejected` at the holder's
+ * discretion and this suite has no injection point to make it do either. So the
+ * two arm-shaped rules — `rejection-declares-blocking` and
+ * `holder-instant-not-invented` — each do real work on ONE arm and record only
+ * the arm check itself on the other. That is honest (a rule about a rejection
+ * has nothing to say about an acceptance) but it means **running the suite once
+ * does not prove both arms conform**: an executor that only ever accepts is
+ * never asked whether its rejections declare `blocking`.
+ *
+ * The mitigation is to run the suite against a subject per arm, which is why
+ * `__tests__/` ships `ConformingRejectingExecutor` beside `ConformingExecutor`
+ * rather than testing the happy path alone. An implementer whose executor can
+ * do both should do the same; a fixture is cheap and the alternative is a rule
+ * that has never once been evaluated against the shape it is about.
+ *
  * ## Every rule cites the declaration that supports it
  *
  * A rule with no source in `libs/core` is NOT shipped — a mirror stricter than
