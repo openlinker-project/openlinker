@@ -19476,6 +19476,65 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   }
 }
 
+/* Loading skeleton (#2543) — sized off the real row above so arrival never
+   reflows the section. */
+.sales-document-market-section__summary-skeleton {
+  display: block;
+  width: min(32rem, 80%);
+  height: 0.9375rem;
+  margin-bottom: var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-muted);
+}
+
+.sales-document-market-row--skeleton {
+  background: var(--bg-surface);
+}
+
+.sales-document-market-row .skeleton-bar {
+  display: block;
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-muted);
+  animation: sales-document-market-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+.sales-document-market-row .skeleton-bar--dot {
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: var(--radius-pill);
+}
+.sales-document-market-row .skeleton-bar--name {
+  width: 60%;
+  height: 0.875rem;
+}
+.sales-document-market-row .skeleton-bar--meta {
+  width: 40%;
+  height: 0.6875rem;
+  margin-top: var(--space-1);
+}
+.sales-document-market-row .skeleton-bar--outcome {
+  width: 70%;
+  height: 0.8125rem;
+}
+.sales-document-market-row .skeleton-bar--reason {
+  width: 50%;
+  height: 0.6875rem;
+  margin-top: var(--space-1);
+}
+.sales-document-market-row .skeleton-bar--action {
+  width: 6rem;
+  height: 1.75rem;
+}
+
+@keyframes sales-document-market-skeleton-shimmer {
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 /* ── Sales-document country index (#2187) ── */
 .sales-document-country-index__add-row {
   margin-top: var(--space-3);
