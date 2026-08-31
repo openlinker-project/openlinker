@@ -201,5 +201,35 @@ describe('SalesDocumentMarketsController', () => {
 
       expect(Object.keys(rules)).toEqual(['listConfiguredCountries', 'resolveRoutingBatch']);
     });
+
+    it('should never report an acknowledged market as unresolved (#2531)', async () => {
+      orderRecords.discoverSalesDocumentMarkets.mockResolvedValue({
+        windowDays: 30,
+        since: '2026-07-31T10:00:00.000Z',
+        markets: [],
+      });
+      rules.listConfiguredCountries.mockResolvedValue([
+        {
+          country: 'GB',
+          ruleCount: 0,
+          invoiceDefaultConnectionId: null,
+          receiptDefaultConnectionId: null,
+          acknowledgedNoDocumentAt: '2026-08-01T00:00:00.000Z',
+        },
+      ]);
+      // Acknowledgment and configuration are mutually exclusive by
+      // construction, so the evaluator's real answer for GB would be
+      // exactly this — proving the override, not a scenario that cannot
+      // happen.
+      rules.resolveRoutingBatch.mockResolvedValue([
+        { kind: 'unresolved', reason: 'no-configuration-for-country' },
+      ]);
+
+      const result = await controller.listMarkets();
+
+      expect(result.markets).toHaveLength(1);
+      expect(result.markets[0].acknowledgedNoDocumentAt).toBe('2026-08-01T00:00:00.000Z');
+      expect(result.markets[0].outcome).toEqual({ kind: 'acknowledged' });
+    });
   });
 });

@@ -142,7 +142,16 @@ export class SalesDocumentMarketsController {
       row.invoiceDefaultConnectionId = summary?.invoiceDefaultConnectionId ?? null;
       row.receiptDefaultConnectionId = summary?.receiptDefaultConnectionId ?? null;
       row.acknowledgedNoDocumentAt = summary?.acknowledgedNoDocumentAt ?? null;
-      row.outcome = SalesDocumentMarketOutcomeDto.fromDomain(outcomes[index]);
+      // An acknowledged market is never reported as unresolved (#2531) -
+      // acknowledgment and configuration are mutually exclusive by
+      // construction, so the evaluator's real answer here would always be
+      // 'unresolved'/'no-configuration-for-country', which is exactly the
+      // outstanding-problem reading #2186's acknowledgment exists to rule
+      // out.
+      row.outcome =
+        row.acknowledgedNoDocumentAt !== null
+          ? SalesDocumentMarketOutcomeDto.acknowledged()
+          : SalesDocumentMarketOutcomeDto.fromDomain(outcomes[index]);
       return row;
     });
 
