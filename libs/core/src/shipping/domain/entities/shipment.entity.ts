@@ -139,5 +139,33 @@ export class Shipment {
     // restore.
     // Appended last for the same anti-collision rationale as every field above.
     public readonly reservationConsumedAt: Date | null,
+    // The `FulfillmentWork` this shipment satisfies (#2402), or `null`.
+    //
+    // `null` is the ORDINARY state, not a migration artefact: every shipment
+    // predating the OMS, and every shipment for an order the router never
+    // touched, legitimately satisfies no work.
+    //
+    // Reference by VALUE with no foreign key — the cross-aggregate precedent
+    // (`order_changes`, `refund_records`, `returns.internalOrderId`). A
+    // shipment is not part of a work: it outlives it, is queried on its own,
+    // and its dispatch path already takes a per-order lock, so a real FK would
+    // buy referential tidiness at the cost of cross-table lock coupling on a
+    // hot write path. A real FK stays reserved for a part-of-its-parent child
+    // (`return_lines.returnId ON DELETE CASCADE`).
+    //
+    // ASSIGNED AT MOST ONCE — and note precisely what makes that structural.
+    // It is NOT write-once-at-creation: `claimFulfillmentWorkLink` writes it
+    // outside creation, to repair a branch-1 row minted before its order was
+    // routed. Its absence from `UpdateShipmentInput` therefore keeps the
+    // ORDINARY patch path away from the column, but it is the `WHERE
+    // "fulfillmentWorkId" IS NULL` guard on that claim — not the type — that
+    // makes at-most-once true against two concurrent writers. It carries NO
+    // `assignmentAttempt` companion — the attempt lives on the work row where
+    // #2399's conditional UPDATE claims it, and it legitimately advances after
+    // this shipment exists (a re-assignment does not un-ship a parcel), so a
+    // copy here would go stale with no writer able to correct it.
+    //
+    // Appended last for the same anti-collision rationale as every field above.
+    public readonly fulfillmentWorkId: string | null,
   ) {}
 }

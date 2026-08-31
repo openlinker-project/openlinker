@@ -127,6 +127,12 @@ export type { IFulfillmentProgressService } from './application/interfaces/fulfi
 // consumer needs in order to name it.
 export type { IFulfillmentRelayGateService } from './application/interfaces/fulfillment-relay-gate.service.interface';
 
+// `IFulfillmentWorkQueryService` (#2402) — the read seam a sibling context uses
+// to ask what work covers an order. The repository port stays off the barrel;
+// `check-cross-context-imports.mjs` denies a cross-context `*RepositoryPort`.
+export * from './domain/types/fulfillment-work-link.types';
+export type { IFulfillmentWorkQueryService } from './application/interfaces/fulfillment-work-query.service.interface';
+
 export { RoutingDecision } from './domain/entities/routing-decision.entity';
 export { RoutingDecisionAlreadyLiveError } from './domain/exceptions/routing-decision-already-live.error';
 // Same rule one table over: the INPUT shapes are exported, while

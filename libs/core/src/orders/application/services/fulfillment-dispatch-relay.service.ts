@@ -34,8 +34,9 @@ import type {
   FulfillmentDispatchRelayOutcome,
   IFulfillmentDispatchRelayService,
 } from '../interfaces/fulfillment-dispatch-relay.service.interface';
+import {
+  IOrderLifecycleRelayService} from '../interfaces/order-lifecycle-relay.service.interface';
 import type {
-  IOrderLifecycleRelayService,
   OrderLifecycleRelayTargetResult,
 } from '../interfaces/order-lifecycle-relay.service.interface';
 import { ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN } from '../../orders.tokens';

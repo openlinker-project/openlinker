@@ -38,6 +38,18 @@ export const FULFILLMENT_PROGRESS_CLAIM_REPOSITORY_TOKEN = Symbol(
   'FulfillmentProgressClaimRepositoryPort'
 );
 
+/**
+ * Cross-context work lookup (#2402). `FulfillmentWorkQueryService` binds here.
+ *
+ * Name checked against `shipping.tokens.ts` before adding it. Both barrels
+ * `export *` over their token files, so a Symbol declared under the same name
+ * in each would be ambiguous for any consumer importing both — and `shipping`
+ * does own a `FULFILLMENT_*` family of its own, for the older shipping-local
+ * sense of "fulfillment". The check is the point; this particular pair never
+ * collided.
+ */
+export const FULFILLMENT_WORK_QUERY_SERVICE_TOKEN = Symbol('IFulfillmentWorkQueryService');
+
 /** Routing intent row (#2394). Intra-context; the PORT is not on the barrel. */
 export const ROUTING_DECISION_REPOSITORY_TOKEN = Symbol('RoutingDecisionRepositoryPort');
 

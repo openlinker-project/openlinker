@@ -74,6 +74,12 @@ import type {
   FulfillmentStatusSyncResult,
 } from '../types/fulfillment-status-sync.types';
 import { DEFAULT_UPDATED_SINCE_DAYS } from '../types/fulfillment-status-sync.types';
+import {
+  FULFILLMENT_WORK_QUERY_SERVICE_TOKEN,
+  type FulfillmentWorkLinkResolution,
+  type IFulfillmentWorkQueryService,
+} from '@openlinker/core/fulfillment';
+
 import { ShipmentRepositoryPort } from '../../domain/ports/shipment-repository.port';
 import {
   SHIPMENT_STATUS,
@@ -180,6 +186,11 @@ export class FulfillmentStatusSyncService implements IFulfillmentStatusSyncServi
     // participant. Cross-context I*Service + Symbol token via the orders barrel.
     @Inject(ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN)
     private readonly orderLifecycleRelay: IOrderLifecycleRelayService,
+    // #2402: resolve the FulfillmentWork an observed shipment satisfies.
+    // Cross-context I*Service + Symbol token via the fulfillment barrel — the
+    // repository port may not cross a context boundary.
+    @Inject(FULFILLMENT_WORK_QUERY_SERVICE_TOKEN)
+    private readonly fulfillmentWorks: IFulfillmentWorkQueryService,
   ) {}
 
   async sync(
@@ -330,6 +341,28 @@ export class FulfillmentStatusSyncService implements IFulfillmentStatusSyncServi
         } else {
           const patch = this.diffPatch(existing, snapshot);
           if (Object.keys(patch).length > 0) {
+            // Repair the link on a row minted BEFORE this order was routed
+            // (#2402): it was born with no work to name, and the create path is
+            // the only other writer, so without this it would stay unlinked
+            // forever. Conditional (`WHERE ... IS NULL`), so it can never
+            // rewrite a link a dispatch already assigned.
+            //
+            // Deliberately INSIDE the changed-patch gate. On an install that
+            // never adopts routing `resolveLinkForOrder` answers `none` and
+            // writes nothing, so the `IS NULL` condition never clears — hanging
+            // this off the null check alone would issue one extra query per
+            // unlinked row per tick, for ever, with no effect. Gating on a real
+            // change bounds it to ticks where this shipment actually moved.
+            //
+            // The cost, stated rather than discovered later: a row that reaches
+            // a TERMINAL status before its order is routed is permanently
+            // unlinkable here, because `diffPatch` returns empty on every
+            // subsequent poll so this gate never opens again. That is free
+            // today — nothing reads the column — but #2727's rollup will, and
+            // whoever wires it needs a backfill rather than a surprise.
+            if (existing.fulfillmentWorkId === null) {
+              await this.linkFulfillmentWork(existing.id, record.internalOrderId);
+            }
             await this.shipments.update(existing.id, patch);
             updated += 1;
             if (patch.status) {
@@ -413,6 +446,13 @@ export class FulfillmentStatusSyncService implements IFulfillmentStatusSyncServi
     const fulfillmentStatus = snapshot.status;
     if (fulfillmentStatus === null) return;
     const shipmentStatus = projectStatus(fulfillmentStatus);
+    // Resolve the work by ORDER alone. Deliberately NOT by connection: the
+    // `connectionId` in scope here is the order-source / OMP marketplace
+    // connection whose status was just read, while a FulfillmentWork carries
+    // `assignedConnectionId` — the executor holder. Those coincide on an
+    // `omp_fulfilled` topology and diverge on a routed `ol_managed_carrier`
+    // one, so a connection-filtered lookup would silently match nothing.
+    const link = await this.resolveLinkSafely(orderId);
     await this.shipments.create({
       orderId,
       connectionId,
@@ -428,7 +468,49 @@ export class FulfillmentStatusSyncService implements IFulfillmentStatusSyncServi
           : undefined,
       cancelledAt:
         fulfillmentStatus === FULFILLMENT_STATUS.Cancelled ? new Date() : undefined,
+      // Only a UNIQUE resolution links. `ambiguous` deliberately leaves the
+      // column NULL — see `FulfillmentWorkLinkResolution` (#2727).
+      fulfillmentWorkId: link.kind === 'unique' ? link.workId : undefined,
     });
+  }
+
+  /**
+   * Link an already-persisted branch-1 row to its work, if that is now
+   * unambiguous. Best-effort: a failure here must never sink a status sync,
+   * because the link is provenance and the status is the operator-facing fact.
+   */
+  private async linkFulfillmentWork(shipmentId: string, orderId: string): Promise<void> {
+    try {
+      const link = await this.resolveLinkSafely(orderId);
+      if (link.kind !== 'unique') return;
+      await this.shipments.claimFulfillmentWorkLink(shipmentId, link.workId);
+    } catch (error) {
+      this.logger.warn(
+        `Could not link shipment ${shipmentId} to a fulfillment work: ` +
+          `${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  /**
+   * Resolve an order's work link, degrading to `none` on failure.
+   *
+   * Best-effort on BOTH paths, deliberately: the link is provenance, the
+   * shipment's status is the operator-facing fact, and a hiccup in the
+   * fulfilment context must not abort a status projection. Left unguarded on
+   * the create path this would fail the whole record — no shipment row, no
+   * rollup recompute, no dispatch relay — for a column nothing yet reads.
+   */
+  private async resolveLinkSafely(orderId: string): Promise<FulfillmentWorkLinkResolution> {
+    try {
+      return await this.fulfillmentWorks.resolveLinkForOrder(orderId);
+    } catch (error) {
+      this.logger.warn(
+        `Could not resolve a fulfillment work for order ${orderId}: ` +
+          `${error instanceof Error ? error.message : String(error)}`,
+      );
+      return { kind: 'none' };
+    }
   }
 
   /**

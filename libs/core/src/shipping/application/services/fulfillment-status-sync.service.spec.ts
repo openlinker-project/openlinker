@@ -68,6 +68,7 @@ function makeBranchOneShipment(overrides: Partial<Shipment> = {}): Shipment {
     overrides.waybillRelayedAt ?? null,
     overrides.direction ?? 'outbound',
     overrides.reservationConsumedAt ?? null,
+    overrides.fulfillmentWorkId ?? null,
   );
 }
 
@@ -78,6 +79,7 @@ describe('FulfillmentStatusSyncService', () => {
   let integrations: jest.Mocked<IIntegrationsService>;
   let getFulfillmentStatus: jest.Mock;
   let relay: jest.Mocked<IOrderLifecycleRelayService>;
+  let fulfillmentWorks: { resolveLinkForOrder: jest.Mock };
   let service: FulfillmentStatusSyncService;
 
   beforeEach(() => {
@@ -94,6 +96,7 @@ describe('FulfillmentStatusSyncService', () => {
       releaseWaybillRelay: jest.fn(),
       listDispatchedAwaitingReservationConsume: jest.fn(),
       claimReservationConsume: jest.fn(),
+      claimFulfillmentWorkLink: jest.fn(),
     };
 
     orderRecords = {
@@ -139,6 +142,9 @@ describe('FulfillmentStatusSyncService', () => {
 
     relay = { relay: jest.fn().mockResolvedValue({ targets: [] }) };
 
+    // #2402: by default the order is unrouted, so no work links — every
+    // pre-existing assertion in this file then holds byte for byte.
+    fulfillmentWorks = { resolveLinkForOrder: jest.fn().mockResolvedValue({ kind: 'none' }) };
     service = new FulfillmentStatusSyncService(
       shipments,
       orderRecords,
@@ -146,7 +152,184 @@ describe('FulfillmentStatusSyncService', () => {
       integrations,
       { recompute: jest.fn() },
       relay,
+      fulfillmentWorks,
     );
+  });
+
+  describe('work linkage (#2402)', () => {
+    const dispatchedSnapshot = {
+      status: FULFILLMENT_STATUS.Dispatched,
+      trackingNumber: 'PS-TRK-1',
+      deliveredAt: null,
+    };
+
+    const syncOne = async (): Promise<void> => {
+      orderRecords.findMany.mockResolvedValue({ items: [makeOrderRecord()], total: 1 });
+      getFulfillmentStatus.mockResolvedValue(dispatchedSnapshot);
+      await service.sync(PS, { limit: 100 });
+    };
+
+    it('REGRESSION PIN — never writes a providerShipmentId on an observed 3PL shipment (AC-2 is held by the TYPE)', async () => {
+      fulfillmentWorks.resolveLinkForOrder.mockResolvedValue({
+        kind: 'unique',
+        workId: 'ol_fulfillmentwork_1',
+      });
+
+      await syncOne();
+
+      // OL did not mint this label and holds no carrier reference for it.
+      // Fabricating one would make the row claim an identity no carrier issued.
+      //
+      // Note how strong the guarantee actually is: `CreateShipmentInput` has no
+      // `providerShipmentId` member AT ALL, so writing one on this path is not
+      // merely untested, it does not type-check — a stricter guard than any
+      // assertion. This runtime check pins the property against a future
+      // widening of that input type.
+      const createInput = shipments.create.mock.calls[0][0] as unknown as Record<string, unknown>;
+      expect(Object.keys(createInput)).not.toContain('providerShipmentId');
+      expect(createInput['providerShipmentId']).toBeUndefined();
+    });
+
+    it('should stamp the work id when exactly one work covers the order', async () => {
+      fulfillmentWorks.resolveLinkForOrder.mockResolvedValue({
+        kind: 'unique',
+        workId: 'ol_fulfillmentwork_1',
+      });
+
+      await syncOne();
+
+      expect(shipments.create.mock.calls[0][0].fulfillmentWorkId).toBe('ol_fulfillmentwork_1');
+    });
+
+    it('should resolve the work by ORDER alone, never by connection', async () => {
+      fulfillmentWorks.resolveLinkForOrder.mockResolvedValue({ kind: 'none' });
+
+      await syncOne();
+
+      // The connection in scope is the OMP/source connection; a work carries
+      // `assignedConnectionId` (the executor holder). On a routed topology those
+      // differ, so a connection-filtered lookup would silently link nothing.
+      expect(fulfillmentWorks.resolveLinkForOrder).toHaveBeenCalledWith('ol_order_1');
+    });
+
+    it('should leave the link unset when the order is covered by several works', async () => {
+      fulfillmentWorks.resolveLinkForOrder.mockResolvedValue({
+        kind: 'ambiguous',
+        workIds: ['ol_fulfillmentwork_1', 'ol_fulfillmentwork_2'],
+      });
+
+      await syncOne();
+
+      // Attributing one whole-order shipment across N works needs line grain
+      // (#2727). An unset link is recoverable; a wrong one is not.
+      expect(shipments.create.mock.calls[0][0].fulfillmentWorkId).toBeUndefined();
+    });
+
+    it('should REPAIR the link on an existing row minted before the order was routed', async () => {
+      // The row was created by an earlier tick, before routing existed, so it
+      // was born with no work to name. The create path is the only other
+      // writer, so without this repair it would stay unlinked forever.
+      shipments.findBranchOneByOrderAndConnection.mockResolvedValue(
+        makeBranchOneShipment({ status: 'generated', fulfillmentWorkId: null }),
+      );
+      fulfillmentWorks.resolveLinkForOrder.mockResolvedValue({
+        kind: 'unique',
+        workId: 'ol_fulfillmentwork_1',
+      });
+      orderRecords.findMany.mockResolvedValue({ items: [makeOrderRecord()], total: 1 });
+      getFulfillmentStatus.mockResolvedValue(dispatchedSnapshot);
+
+      await service.sync(PS, { limit: 100 });
+
+      expect(shipments.claimFulfillmentWorkLink).toHaveBeenCalledWith(
+        'ol_shipment_1',
+        'ol_fulfillmentwork_1',
+      );
+    });
+
+    it('should not even LOOK for a work on an unchanged-status re-poll', async () => {
+      // The N+1 bound: on an install that never adopts routing the link stays
+      // NULL for ever, so hanging the repair off the null check alone would
+      // issue one extra query per unlinked row per tick, for ever, with no
+      // effect. Gating on a real change is what stops that.
+      shipments.findBranchOneByOrderAndConnection.mockResolvedValue(
+        makeBranchOneShipment({
+          status: 'dispatched',
+          dispatchedAt: new Date('2026-05-27T10:00:00.000Z'),
+          trackingNumber: 'PS-TRK-1',
+          fulfillmentWorkId: null,
+        }),
+      );
+      orderRecords.findMany.mockResolvedValue({ items: [makeOrderRecord()], total: 1 });
+      getFulfillmentStatus.mockResolvedValue(dispatchedSnapshot);
+
+      await service.sync(PS, { limit: 100 });
+
+      expect(shipments.update).not.toHaveBeenCalled();
+      expect(fulfillmentWorks.resolveLinkForOrder).not.toHaveBeenCalled();
+      expect(shipments.claimFulfillmentWorkLink).not.toHaveBeenCalled();
+    });
+
+    it('should not fail the sync when the CLAIM itself throws on the repair path', async () => {
+      // `resolveLinkSafely` already swallows a lookup failure, so this covers
+      // the only way the repair's own catch can fire: the conditional UPDATE
+      // throwing. Without it the "best-effort, never sinks a sync" claim is an
+      // assertion rather than evidence.
+      shipments.findBranchOneByOrderAndConnection.mockResolvedValue(
+        makeBranchOneShipment({ status: 'generated', fulfillmentWorkId: null }),
+      );
+      fulfillmentWorks.resolveLinkForOrder.mockResolvedValue({
+        kind: 'unique',
+        workId: 'ol_fulfillmentwork_1',
+      });
+      shipments.claimFulfillmentWorkLink.mockRejectedValue(new Error('deadlock'));
+      orderRecords.findMany.mockResolvedValue({ items: [makeOrderRecord()], total: 1 });
+      getFulfillmentStatus.mockResolvedValue(dispatchedSnapshot);
+
+      const result = await service.sync(PS, { limit: 100 });
+
+      expect(shipments.update).toHaveBeenCalled();
+      expect(result).toMatchObject({ failed: 0 });
+    });
+
+    it('should not claim on the repair path when the order resolves to several works', async () => {
+      shipments.findBranchOneByOrderAndConnection.mockResolvedValue(
+        makeBranchOneShipment({ status: 'generated', fulfillmentWorkId: null }),
+      );
+      fulfillmentWorks.resolveLinkForOrder.mockResolvedValue({
+        kind: 'ambiguous',
+        workIds: ['ol_fulfillmentwork_1', 'ol_fulfillmentwork_2'],
+      });
+      orderRecords.findMany.mockResolvedValue({ items: [makeOrderRecord()], total: 1 });
+      getFulfillmentStatus.mockResolvedValue(dispatchedSnapshot);
+
+      await service.sync(PS, { limit: 100 });
+
+      expect(shipments.claimFulfillmentWorkLink).not.toHaveBeenCalled();
+    });
+
+    it('should not fail the record when the work lookup throws on the create path', async () => {
+      // Best-effort on BOTH paths: the link is provenance, the status is the
+      // operator-facing fact. Unguarded, a hiccup in the fulfilment context
+      // would abort the whole projection for this record.
+      fulfillmentWorks.resolveLinkForOrder.mockRejectedValue(new Error('db down'));
+      orderRecords.findMany.mockResolvedValue({ items: [makeOrderRecord()], total: 1 });
+      getFulfillmentStatus.mockResolvedValue(dispatchedSnapshot);
+
+      const result = await service.sync(PS, { limit: 100 });
+
+      expect(shipments.create).toHaveBeenCalledTimes(1);
+      expect(shipments.create.mock.calls[0][0].fulfillmentWorkId).toBeUndefined();
+      expect(result).toMatchObject({ created: 1, failed: 0 });
+    });
+
+    it('should leave the link unset when the order was never routed', async () => {
+      fulfillmentWorks.resolveLinkForOrder.mockResolvedValue({ kind: 'none' });
+
+      await syncOne();
+
+      expect(shipments.create.mock.calls[0][0].fulfillmentWorkId).toBeUndefined();
+    });
   });
 
   describe('happy path — branch-1, OMP has acted, no existing shipment', () => {

@@ -51,6 +51,7 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     overrides.waybillRelayedAt ?? null,
     overrides.direction ?? 'outbound',
     overrides.reservationConsumedAt ?? null,
+    overrides.fulfillmentWorkId ?? null,
   );
 }
 
@@ -91,6 +92,7 @@ describe('ShipmentStatusSyncService', () => {
       releaseWaybillRelay: jest.fn().mockResolvedValue(undefined),
       listDispatchedAwaitingReservationConsume: jest.fn(),
       claimReservationConsume: jest.fn(),
+      claimFulfillmentWorkLink: jest.fn(),
     } as unknown as jest.Mocked<ShipmentRepositoryPort>;
 
     relay = {
