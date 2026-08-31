@@ -118,6 +118,14 @@ describe('FiscalizationController', () => {
   beforeEach(async () => {
     service = {
       register: jest.fn(),
+      requestRegistration: jest.fn().mockResolvedValue({
+        orderId: ORDER_ID,
+        connectionId: CONNECTION_ID,
+        idempotencyKey: `fiscal:${CONNECTION_ID}:${ORDER_ID}`,
+        jobId: 'job-1',
+        redrivenFromDead: false,
+      }),
+      assertRegistrable: jest.fn(),
       getByOrderId: jest.fn(),
       getById: jest.fn(),
       reconcileInDoubt: jest.fn(),
@@ -155,12 +163,12 @@ describe('FiscalizationController', () => {
       // This is what makes a double click harmless without the client having to
       // remember to send a key.
       orders.getOrderRecord.mockResolvedValue(orderRecord());
-      service.register.mockResolvedValue(registrationRecord());
 
       await controller.register({ connectionId: CONNECTION_ID, orderId: ORDER_ID });
 
-      expect(service.register).toHaveBeenCalledWith(
+      expect(service.requestRegistration).toHaveBeenCalledWith(
         expect.objectContaining({ idempotencyKey: `fiscal:${CONNECTION_ID}:${ORDER_ID}` }),
+        expect.anything(),
       );
     });
 
@@ -171,7 +179,6 @@ describe('FiscalizationController', () => {
       // field is off the request DTO (so `forbidNonWhitelisted` 400s it at the
       // pipe), and the controller must not read one even if it arrives.
       orders.getOrderRecord.mockResolvedValue(orderRecord());
-      service.register.mockResolvedValue(registrationRecord());
 
       await controller.register({
         connectionId: CONNECTION_ID,
@@ -179,8 +186,9 @@ describe('FiscalizationController', () => {
         idempotencyKey: 'retry-1',
       } as unknown as RegisterFiscalTransactionRequestDto);
 
-      expect(service.register).toHaveBeenCalledWith(
+      expect(service.requestRegistration).toHaveBeenCalledWith(
         expect.objectContaining({ idempotencyKey: `fiscal:${CONNECTION_ID}:${ORDER_ID}` }),
+        expect.anything(),
       );
     });
 
@@ -188,7 +196,7 @@ describe('FiscalizationController', () => {
       // The service refuses a second ORIGINATING registration; the operator needs
       // that as a conflict naming the blocking record, not a 500.
       orders.getOrderRecord.mockResolvedValue(orderRecord());
-      service.register.mockRejectedValue(
+      service.requestRegistration.mockRejectedValue(
         new OrderAlreadyRegisteredException(
           ORDER_ID,
           'conn-other',
@@ -205,11 +213,10 @@ describe('FiscalizationController', () => {
 
     it('should compose the sale lines server-side from the order snapshot', async () => {
       orders.getOrderRecord.mockResolvedValue(orderRecord());
-      service.register.mockResolvedValue(registrationRecord());
 
       await controller.register({ connectionId: CONNECTION_ID, orderId: ORDER_ID });
 
-      expect(service.register).toHaveBeenCalledWith(
+      expect(service.requestRegistration).toHaveBeenCalledWith(
         expect.objectContaining({
           orderId: ORDER_ID,
           currency: 'PLN',
@@ -218,6 +225,7 @@ describe('FiscalizationController', () => {
             { name: 'Widget', quantity: 1, unitPriceGross: 100, taxRate: '', sku: null },
           ],
         }),
+        expect.anything(),
       );
     });
 
@@ -227,7 +235,7 @@ describe('FiscalizationController', () => {
       await expect(
         controller.register({ connectionId: CONNECTION_ID, orderId: 'nope' }),
       ).rejects.toBeInstanceOf(NotFoundException);
-      expect(service.register).not.toHaveBeenCalled();
+      expect(service.requestRegistration).not.toHaveBeenCalled();
     });
 
     it('should 422 when the order snapshot cannot be rehydrated', async () => {
@@ -247,7 +255,7 @@ describe('FiscalizationController', () => {
       await expect(
         controller.register({ connectionId: CONNECTION_ID, orderId: ORDER_ID }),
       ).rejects.toBeInstanceOf(UnprocessableEntityException);
-      expect(service.register).not.toHaveBeenCalled();
+      expect(service.requestRegistration).not.toHaveBeenCalled();
     });
 
     it('should register an order whose addresses are PII-redacted', async () => {
@@ -278,67 +286,77 @@ describe('FiscalizationController', () => {
         NOW,
       );
       orders.getOrderRecord.mockResolvedValue(redacted);
-      service.register.mockResolvedValue(registrationRecord());
 
       await controller.register({ connectionId: CONNECTION_ID, orderId: ORDER_ID });
 
-      expect(service.register).toHaveBeenCalledWith(
+      expect(service.requestRegistration).toHaveBeenCalledWith(
         expect.objectContaining({ totalGross: 100 }),
+        expect.anything(),
       );
-      expect(service.register.mock.calls[0]?.[0].recipient).toBeUndefined();
+      expect(service.requestRegistration.mock.calls[0]?.[0].recipient).toBeUndefined();
     });
 
-    it('should return a FAILED registration as a body, not an exception', async () => {
-      // An in-doubt outcome must stay visible and carry its record id; throwing
-      // would hide both.
+    it('should answer that the work was accepted, never that the sale was registered', async () => {
+      // The response of the request that ASKS cannot report an outcome: when it
+      // is sent, a job row exists and no provider has been called.
       orders.getOrderRecord.mockResolvedValue(orderRecord());
-      service.register.mockResolvedValue(
-        registrationRecord({
-          status: 'failed',
-          failureMode: 'in-doubt',
-          failureReason: 'The provider did not confirm the registration.',
+
+      const response = await controller.register({
+        connectionId: CONNECTION_ID,
+        orderId: ORDER_ID,
+      });
+
+      expect(response).toEqual({
+        orderId: ORDER_ID,
+        connectionId: CONNECTION_ID,
+        idempotencyKey: `fiscal:${CONNECTION_ID}:${ORDER_ID}`,
+        jobId: 'job-1',
+        redrivenFromDead: false,
+      });
+      // No status, no failure mode, no record id: there is nothing to read an
+      // outcome out of, deliberately.
+      expect(Object.keys(response)).not.toContain('status');
+      expect(Object.keys(response)).not.toContain('failureMode');
+    });
+
+    it('should enqueue rather than register inline', async () => {
+      orders.getOrderRecord.mockResolvedValue(orderRecord());
+
+      await controller.register({ connectionId: CONNECTION_ID, orderId: ORDER_ID });
+
+      expect(service.requestRegistration).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderId: ORDER_ID,
+          connectionId: CONNECTION_ID,
+          idempotencyKey: `fiscal:${CONNECTION_ID}:${ORDER_ID}`,
         }),
+        expect.objectContaining({ sourceConnectionId: 'conn_src' }),
+      );
+      // The inline path is gone; nothing here may perform the registration.
+      expect(service.register).not.toHaveBeenCalled();
+    });
+
+    it('should derive the same key on every repeat of one request', async () => {
+      orders.getOrderRecord.mockResolvedValue(orderRecord());
+
+      await controller.register({ connectionId: CONNECTION_ID, orderId: ORDER_ID });
+      await controller.register({ connectionId: CONNECTION_ID, orderId: ORDER_ID });
+
+      const keys = service.requestRegistration.mock.calls.map(
+        ([command]) => command.idempotencyKey,
+      );
+      expect(keys[0]).toBe(keys[1]);
+    });
+
+    it('should map a blocking document to 409 at the point of asking', async () => {
+      orders.getOrderRecord.mockResolvedValue(orderRecord());
+      service.requestRegistration.mockRejectedValue(
+        new OrderAlreadyRegisteredException(ORDER_ID, 'other-conn', CONNECTION_ID, 'registered', 'rec-9'),
       );
 
-      const response = await controller.register({
-        connectionId: CONNECTION_ID,
-        orderId: ORDER_ID,
-      });
-
-      expect(response.status).toBe('failed');
-      expect(response.failureMode).toBe('in-doubt');
-      expect(response.id).toBe('11111111-1111-1111-1111-111111111111');
-    });
-
-    it('should never expose the internal diagnostic', async () => {
-      orders.getOrderRecord.mockResolvedValue(orderRecord());
-      service.register.mockResolvedValue(registrationRecord({ status: 'failed' }));
-
-      const response = await controller.register({
-        connectionId: CONNECTION_ID,
-        orderId: ORDER_ID,
-      });
-
-      expect(JSON.stringify(response)).not.toContain('internal diagnostic');
-    });
-
-    it('should project the neutral identity set, extras included', async () => {
-      orders.getOrderRecord.mockResolvedValue(orderRecord());
-      service.register.mockResolvedValue(registrationRecord());
-
-      const response = await controller.register({
-        connectionId: CONNECTION_ID,
-        orderId: ORDER_ID,
-      });
-
-      expect(response).toMatchObject({
-        providerReference: 'p-1',
-        documentReference: 'd-1',
-        signingIdentity: 's-1',
-        regimeExtras: { someRegimeKey: 'value' },
-        artefacts: [],
-      });
-      expect(response.registeredAt).toBe(NOW.toISOString());
+      await expect(
+        controller.register({ connectionId: CONNECTION_ID, orderId: ORDER_ID }),
+      ).rejects.toBeInstanceOf(ConflictException);
     });
   });
 
@@ -380,7 +398,7 @@ describe('FiscalizationController', () => {
       const response = await controller.listForOrder(ORDER_ID);
 
       expect(response[0]?.inFlight).toBe(true);
-      expect(service.register).not.toHaveBeenCalled();
+      expect(service.requestRegistration).not.toHaveBeenCalled();
       expect(service.reconcileInDoubt).not.toHaveBeenCalled();
     });
 
