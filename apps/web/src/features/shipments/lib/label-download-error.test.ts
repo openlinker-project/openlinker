@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '../../../shared/api/api-error';
-import { canRetryLabelDownload, resolveLabelDownloadError } from './label-download-error';
+import { resolveLabelDownloadError } from './label-download-error';
 
 describe('resolveLabelDownloadError', () => {
   it('maps a network failure (status 0) to transient, with no server text echoed', () => {
@@ -126,14 +126,5 @@ describe('resolveLabelDownloadError', () => {
     const result = resolveLabelDownloadError(new Error('boom'));
     expect(result.retryable).toBe('unknown');
     expect(result.title).toBe('Something went wrong');
-  });
-});
-
-describe('canRetryLabelDownload', () => {
-  it('offers retry for transient and unknown only', () => {
-    expect(canRetryLabelDownload('transient')).toBe(true);
-    expect(canRetryLabelDownload('unknown')).toBe(true);
-    expect(canRetryLabelDownload('permanent')).toBe(false);
-    expect(canRetryLabelDownload('auth')).toBe(false);
   });
 });

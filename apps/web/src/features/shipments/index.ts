@@ -48,10 +48,7 @@ export { useCancelShipmentMutation } from './hooks/use-cancel-shipment-mutation'
 export { useNotifyDispatchedMutation } from './hooks/use-notify-dispatched-mutation';
 export { useLabelDownload } from './hooks/use-label-download';
 export type { LabelDownloadResult } from './hooks/use-label-download';
-export {
-  resolveLabelDownloadError,
-  canRetryLabelDownload,
-} from './lib/label-download-error';
+export { resolveLabelDownloadError } from './lib/label-download-error';
 export type { LabelDownloadError } from './lib/label-download-error';
 export { useBulkGenerateLabelsMutation } from './hooks/use-bulk-generate-labels-mutation';
 export { useProtocolDownload } from './hooks/use-protocol-download';

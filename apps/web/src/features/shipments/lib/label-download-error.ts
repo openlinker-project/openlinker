@@ -19,6 +19,13 @@
  * shipment field to key off (see that module's own header comment). The two
  * share only the vocabulary, not the derivation.
  *
+ * No call site renders a distinct "Try again" affordance today - the copy
+ * alone carries the retryable/not-retryable distinction (a `transient`
+ * network toast reads "try again"; a `permanent` 404/422 toast doesn't). A
+ * `retryable`-gated retry BUTTON would need a toast action slot the shared
+ * `ToastProvider` doesn't have yet; wiring one is future work, not something
+ * to half-build here as an unused export (PR #2700 review).
+ *
  * Discriminators below are pinned to
  * `apps/api/src/shipping/http/shipment.controller.ts`'s `toHttpException`
  * (read from source, not guessed):
@@ -165,12 +172,4 @@ export function resolveLabelDownloadError(error: unknown): LabelDownloadError {
   }
 
   return withTone(UNKNOWN_FALLBACK);
-}
-
-/** Whether the mapped failure's copy invites the operator to try again -
- *  the "Try again" affordance the issue's AC gates on. `transient`/`unknown`
- *  only: `permanent` never resolves by retrying, and `auth` needs an admin,
- *  not another click. */
-export function canRetryLabelDownload(retryable: RetryabilityClass): boolean {
-  return retryable === 'transient' || retryable === 'unknown';
 }
