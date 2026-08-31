@@ -48,8 +48,15 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     expect(() => registry.assertFullLaneCoverage()).not.toThrow();
   });
 
-  it('should partition the 50 job types 13/25/5/7 per ADR-050 decision 1', () => {
-    expect(registry.getJobTypesByLane('realtime')).toHaveLength(13);
+  it('should partition the 51 job types 14/25/5/7 per ADR-050 decision 1', () => {
+    // 14 since #2400 added `fulfillment.work.statusSync`. `realtime` by
+    // cost-of-starvation: an executor's progress report is WAITED ON — a picker
+    // is standing at a station and the worklist shows stale counters until it
+    // drains — the same argument that puts inbound order sync here. It outranks
+    // the "core-owned internal pass" instinct that would suggest `bulk`, because
+    // that instinct is about who ENQUEUES a job and the lane is about who is
+    // hurt when it is late.
+    expect(registry.getJobTypesByLane('realtime')).toHaveLength(14);
     // 25, and every one of the additions since the lane split shares one
     // profile: background catch-up work that enqueues no children, writes
     // locally, and whose lateness costs nobody a request — so `fan-out` (whose

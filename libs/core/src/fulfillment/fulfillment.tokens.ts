@@ -26,3 +26,11 @@
  */
 
 export const FULFILLMENT_WORK_REPOSITORY_TOKEN = Symbol('FulfillmentWorkRepositoryPort');
+
+/** Progress ingress (#2400). `FulfillmentProgressService` binds here. */
+export const FULFILLMENT_PROGRESS_SERVICE_TOKEN = Symbol('IFulfillmentProgressService');
+
+/** At-most-once progress claim (#2400). Intra-context; not on the barrel's port surface. */
+export const FULFILLMENT_PROGRESS_CLAIM_REPOSITORY_TOKEN = Symbol(
+  'FulfillmentProgressClaimRepositoryPort'
+);

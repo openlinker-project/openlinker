@@ -50,6 +50,7 @@ export * from './domain/types/return-upsert.types';
 export { narrowRefundReason, toRefundReasonOrOther } from './domain/return-reason.mapper';
 export { ReturnObservationMissingExternalIdError } from './domain/exceptions/return-observation-missing-external-id.error';
 export { ReturnPersistenceError } from './domain/exceptions/return-persistence.error';
+export { ReturnSourceNotReadableError } from './domain/exceptions/return-source-not-readable.error';
 export type {
   IReturnsService,
   UpsertReturnObservationResult,
