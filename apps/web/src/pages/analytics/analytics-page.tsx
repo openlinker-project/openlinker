@@ -28,8 +28,10 @@ import {
   ProductSalesTable,
   computePresetRange,
   toExclusiveEndInstant,
+  useAnalyticsCoverageQuery,
   useAnalyticsTrustQuery,
   useSalesAnalyticsQuery,
+  type CoverageCategory,
   type DisplayCurrencyRateBasis,
   type SalesAnalyticsFilters,
 } from '../../features/analytics';
@@ -122,6 +124,16 @@ export function AnalyticsPage(): ReactElement {
 
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
 
+  // Reads the SAME cache entry `AnalyticsDataCoveragePanel` populates
+  // internally (byte-identical query key) — no extra request, same pattern
+  // `salesQuery` above already establishes. Owning it at the page level is
+  // what lets the KPI strip's `GapMark`s and the channel table's
+  // `AnalyticsExclusionNote`s open the panel's own detail modals (#2474
+  // Phase 7 → #2480/#2481, epic #2452 Phase 8) without a second
+  // `CoverageDetailDialog` implementation.
+  const coverageQuery = useAnalyticsCoverageQuery(coverageFilters);
+  const [openCoverageCategory, setOpenCoverageCategory] = useState<CoverageCategory | null>(null);
+
   return (
     <PageLayout
       eyebrow="Operations"
@@ -184,8 +196,18 @@ export function AnalyticsPage(): ReactElement {
             />
           ) : (
             <>
-              <AnalyticsKpiStrip filters={salesFilters} connections={trustQuery.data.connections} />
-              <ChannelSalesTable filters={salesFilters} />
+              <AnalyticsKpiStrip
+                filters={salesFilters}
+                connections={trustQuery.data.connections}
+                coverage={coverageQuery.data}
+                onOpenCategory={setOpenCoverageCategory}
+              />
+              <ChannelSalesTable
+                filters={salesFilters}
+                coverage={coverageQuery.data}
+                coverageFilters={coverageFilters}
+                onOpenCategory={setOpenCoverageCategory}
+              />
               <ProductSalesTable filters={salesFilters} />
             </>
           )}
@@ -196,7 +218,12 @@ export function AnalyticsPage(): ReactElement {
               section and the data-coverage header below it render
               unconditionally, after the order-derived figures above. */}
           <AnalyticsNeedsAttention />
-          <AnalyticsDataCoveragePanel filters={coverageFilters} onOpenSettings={() => setSettingsDialogOpen(true)} />
+          <AnalyticsDataCoveragePanel
+            filters={coverageFilters}
+            onOpenSettings={() => setSettingsDialogOpen(true)}
+            openCategory={openCoverageCategory}
+            onOpenCategoryChange={setOpenCoverageCategory}
+          />
           <AnalyticsTrustHeader connections={trustQuery.data.connections} />
         </>
       ) : null}
