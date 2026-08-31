@@ -69,6 +69,11 @@
       "require": "./dist/fulfillment/index.js",
       "default": "./dist/fulfillment/index.js"
     },
+    "./fulfillment/testing": {
+      "types": "./dist/fulfillment/testing/index.d.ts",
+      "require": "./dist/fulfillment/testing/index.js",
+      "default": "./dist/fulfillment/testing/index.js"
+    },
     "./fulfillment-authority": {
       "types": "./dist/fulfillment-authority/index.d.ts",
       "require": "./dist/fulfillment-authority/index.js",
