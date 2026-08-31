@@ -347,22 +347,29 @@ export function SalesDocumentCountryRoutingDialog({
 
             {resetError ? <Alert tone="error">{resetError}</Alert> : null}
 
-            <div className="sales-document-country-routing-dialog__danger-zone">
-              <p className="muted-text">
-                Resetting deletes every rule and default configured for {displayName} here in
-                OpenLinker. It does not touch anything at the provider — no invoice or receipt
-                already issued is affected.
-              </p>
-              <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
-                <Button
-                  tone="danger"
-                  disabled={!write.canWrite || isSummaryLoading || hasNothingToReset || isResetting}
-                  onClick={() => setConfirmResetOpen(true)}
-                >
-                  Reset country
-                </Button>
-              </ReadOnlyLock>
-            </div>
+            {/* A genuinely unauthorized, non-demo session sees no reset
+                affordance at all rather than a disabled one — `visible` is
+                false only in that case (`useWriteAccess`'s own doc comment);
+                a demo viewer still sees it, disabled with a tooltip, via
+                `demoReadOnly` below. */}
+            {write.visible ? (
+              <div className="sales-document-country-routing-dialog__danger-zone">
+                <p className="muted-text">
+                  Resetting deletes every rule and default configured for {displayName} here in
+                  OpenLinker. It does not touch anything at the provider — no invoice or receipt
+                  already issued is affected.
+                </p>
+                <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                  <Button
+                    tone="danger"
+                    disabled={!write.canWrite || isSummaryLoading || hasNothingToReset || isResetting}
+                    onClick={() => setConfirmResetOpen(true)}
+                  >
+                    Reset country
+                  </Button>
+                </ReadOnlyLock>
+              </div>
+            ) : null}
           </div>
 
           <DialogFooter>
