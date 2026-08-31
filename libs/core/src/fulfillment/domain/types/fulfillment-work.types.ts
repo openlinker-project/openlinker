@@ -168,6 +168,25 @@ export interface FulfillmentWork {
    */
   readonly dispatchRelayedAt: Date | null;
 
+  /**
+   * The HOLDER's acceptance instant, and the at-most-once claim marker for
+   * acceptance (#2399, ADR-054).
+   *
+   * `null` covers two distinguishable-by-`requestStatus` cases and conflates
+   * neither: the work was never accepted, or it was accepted by a holder that
+   * reported no instant of its own (`FulfillmentRequestResult` property (e) —
+   * OL's clock never stands in for a third party's). Read `requestStatus` to
+   * tell them apart; a `null` here is never evidence that nobody accepted.
+   */
+  readonly acceptedAt: Date | null;
+
+  /**
+   * The accepting holder's own reference for the work, `null` when it assigns
+   * none. Stamped from the `accepted` arm's allowlist by #2399; read by #2400
+   * to correlate inbound progress.
+   */
+  readonly externalWorkId: string | null;
+
   readonly lines: readonly FulfillmentWorkLine[];
   readonly createdAt: Date;
   readonly updatedAt: Date;

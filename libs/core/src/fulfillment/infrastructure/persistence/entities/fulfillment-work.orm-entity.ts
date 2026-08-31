@@ -44,6 +44,17 @@ import { Column, CreateDateColumn, Entity, Index, PrimaryColumn, UpdateDateColum
 // forever — a defect that only appears under load. Created here although #2399
 // owns the sweep: an index is cheap now and a second migration is not.
 @Index('IDX_fulfillment_works_request_status', ['requestStatus', 'updatedAt'])
+// #2400's inbound-progress correlation read, deferred to #2399 because the
+// writer owns the shape (see the `externalWorkId` column docblock for the
+// per-connection-vs-intrinsic reasoning). Keyed `(assignedConnectionId,
+// externalWorkId)` and NOT `externalWorkId` alone: the value is a THIRD PARTY's
+// reference, so two holders may legitimately both mint `"1"`, and an unscoped
+// lookup would correlate a webhook from one holder onto another's work.
+// Partial: a work carrying no vendor reference is exactly the set this lookup
+// can never match. Deliberately NON-unique — see the column docblock.
+@Index('IDX_fulfillment_works_external_work_id', ['assignedConnectionId', 'externalWorkId'], {
+  where: '"externalWorkId" IS NOT NULL',
+})
 export class FulfillmentWorkOrmEntity {
   /**
    * `ol_fulfillmentwork_*`, minted by the repository's own
@@ -122,6 +133,64 @@ export class FulfillmentWorkOrmEntity {
   /** At-most-once relay marker. Claimed by #2401; #2392 never writes it. */
   @Column({ type: 'timestamptz', nullable: true })
   dispatchRelayedAt!: Date | null;
+
+  /**
+   * The HOLDER's acceptance instant — and the at-most-once CLAIM column for
+   * acceptance (#2399, ADR-054).
+   *
+   * `fulfillment-request-status.types.ts` states the contract verbatim: ADR-054
+   * makes acceptance a conditional claim (`WHERE "acceptedAt" IS NULL`), so at
+   * most one holder can accept. `recordAcceptance` carries that guard, and it is
+   * the guard that survives a future writer moving `requestStatus` without going
+   * through that method.
+   *
+   * Nullable because the VALUE is the holder's own instant and stays `null` when
+   * the holder reports none (`FulfillmentRequestResult` property (e) — OL's
+   * clock is not a witness to a third party's act). At-most-once therefore comes
+   * from the conditional UPDATE, never from the column being populated.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  acceptedAt!: Date | null;
+
+  /**
+   * The holder's own reference for the work, `null` when it assigns none.
+   *
+   * Persisted here because it arrives on the `accepted` arm of
+   * `FulfillmentRequestResult` and is on that arm's allowlist — #2398 states
+   * that a field an adapter adds there is a field core may persist, so this one
+   * is admitted deliberately rather than by spread. #2400 reads it to correlate
+   * inbound progress back to a work row.
+   *
+   * ## Intrinsic to the ROW, not a per-connection side table (#2400 deferred
+   * this shape here, because the writer knows)
+   *
+   * Acceptance is an at-most-once claim (`WHERE "acceptedAt" IS NULL`), so at
+   * any moment exactly ONE holder has accepted a given work. The reference is
+   * therefore a property of this row and needs no `(workId, connectionId)`
+   * child table — which would additionally have to answer "which of these is
+   * current?" on every read, a question the claim already answers.
+   *
+   * ## But the LOOKUP is per-connection, which is why the index is composite
+   *
+   * The value is minted by a third party. Two holders may legitimately both
+   * call their first job `"1"`, so a lookup on `externalWorkId` alone would
+   * correlate a webhook from one holder onto another holder's work — a
+   * cross-tenant misattribution with no error anywhere. `#2400` must therefore
+   * resolve `(assignedConnectionId, externalWorkId)`, which is what
+   * `IDX_fulfillment_works_external_work_id` serves.
+   *
+   * ## Non-unique, deliberately
+   *
+   * Uniqueness is not OL's to assert on a vendor's behalf: nothing in the
+   * contract stops a holder reusing a reference after a cancellation, and a
+   * unique index would then REFUSE a legitimate acceptance — failing the write
+   * that records a real-world commitment, which is the worse direction. The
+   * partial-uniqueness-on-live-states shape does not rescue it either, since
+   * OL cannot know the vendor retired the old reference. #2400 disambiguates on
+   * read by preferring the live row.
+   */
+  @Column({ type: 'text', nullable: true })
+  externalWorkId!: string | null;
 
   /**
    * Optimistic-concurrency token (#2406). Deliberately a plain integer column

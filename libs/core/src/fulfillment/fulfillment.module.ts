@@ -24,17 +24,20 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { FulfillmentHandshakeService } from './application/services/fulfillment-handshake.service';
+import { FulfillmentProgressService } from './application/services/fulfillment-progress.service';
 import {
+  FULFILLMENT_HANDSHAKE_SERVICE_TOKEN,
   FULFILLMENT_PROGRESS_CLAIM_REPOSITORY_TOKEN,
   FULFILLMENT_PROGRESS_SERVICE_TOKEN,
   FULFILLMENT_WORK_REPOSITORY_TOKEN,
   ROUTING_DECISION_REPOSITORY_TOKEN,
 } from './fulfillment.tokens';
-import { FulfillmentProgressService } from './application/services/fulfillment-progress.service';
 import { FulfillmentProgressClaimOrmEntity } from './infrastructure/persistence/entities/fulfillment-progress-claim.orm-entity';
 import { FulfillmentProgressClaimRepository } from './infrastructure/persistence/repositories/fulfillment-progress-claim.repository';
 import { FulfillmentHoldOrmEntity } from './infrastructure/persistence/entities/fulfillment-hold.orm-entity';
 import { FulfillmentWorkLineOrmEntity } from './infrastructure/persistence/entities/fulfillment-work-line.orm-entity';
+import { FulfillmentWorkRejectionOrmEntity } from './infrastructure/persistence/entities/fulfillment-work-rejection.orm-entity';
 import { FulfillmentWorkOrmEntity } from './infrastructure/persistence/entities/fulfillment-work.orm-entity';
 import { RoutingDecisionOrmEntity } from './infrastructure/persistence/entities/routing-decision.orm-entity';
 import { FulfillmentWorkRepository } from './infrastructure/persistence/repositories/fulfillment-work.repository';
@@ -46,6 +49,7 @@ import { RoutingDecisionRepository } from './infrastructure/persistence/reposito
       FulfillmentWorkOrmEntity,
       FulfillmentWorkLineOrmEntity,
       FulfillmentHoldOrmEntity,
+      FulfillmentWorkRejectionOrmEntity,
       FulfillmentProgressClaimOrmEntity,
       RoutingDecisionOrmEntity,
     ]),
@@ -53,6 +57,8 @@ import { RoutingDecisionRepository } from './infrastructure/persistence/reposito
   providers: [
     FulfillmentWorkRepository,
     { provide: FULFILLMENT_WORK_REPOSITORY_TOKEN, useExisting: FulfillmentWorkRepository },
+    FulfillmentHandshakeService,
+    { provide: FULFILLMENT_HANDSHAKE_SERVICE_TOKEN, useExisting: FulfillmentHandshakeService },
     FulfillmentProgressClaimRepository,
     {
       provide: FULFILLMENT_PROGRESS_CLAIM_REPOSITORY_TOKEN,
@@ -65,6 +71,7 @@ import { RoutingDecisionRepository } from './infrastructure/persistence/reposito
   ],
   exports: [
     FULFILLMENT_WORK_REPOSITORY_TOKEN,
+    FULFILLMENT_HANDSHAKE_SERVICE_TOKEN,
     FULFILLMENT_PROGRESS_SERVICE_TOKEN,
     ROUTING_DECISION_REPOSITORY_TOKEN,
   ],

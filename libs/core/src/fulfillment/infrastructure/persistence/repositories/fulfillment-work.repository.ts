@@ -18,8 +18,9 @@
  * | `locationId` / `deliveryMethod` | `create` | **insert-only** — the router is the single producer. If re-routing mints a NEW row these are never updated; if it ever updates in place, a round-trip from a stale read would silently revert the re-route. Insert-only forces #2395 to choose explicitly |
  * | `assignedConnectionId` | `create`, `assignHolder`, `clearHolder` | settable at insert (ADR-054 R1 creates work ALREADY ASSIGNED, in one transaction); afterwards only the two narrow claims move it |
  * | `status` | `create`, `transitionStatus`, `cancel` | |
- * | `requestStatus` | `create`, `transitionRequestStatus` | the handshake (#2399) owns it; the router holds a stale copy by construction |
- * | `assignmentAttempt` | `incrementAssignmentAttempt` (#2399) | monotonic; a round-trip would reset the idempotency key's stability |
+ * | `requestStatus` | `create`, `transitionRequestStatus`, `claimDispatchAttempt`, `recordAcceptance`, `recordRejection` | the handshake (#2399) owns it; the router holds a stale copy by construction. A NAMED additional writer is this table's convention (`status` and `assignedConnectionId` each already list three); an UNNAMED one is the defect it guards against |
+ * | `assignmentAttempt` | `claimDispatchAttempt` (#2399) | monotonic; a round-trip would reset the idempotency key's stability. #2392's `incrementAssignmentAttempt` is REPLACED, not supplemented: its `WHERE` was `"id" = :id` alone, so any caller could bump the counter out from under a live `submitted` dispatch and invalidate an in-flight key |
+ * | `acceptedAt` / `externalWorkId` | `recordAcceptance` (#2399) | ADR-054's at-most-once acceptance CLAIM (`WHERE "acceptedAt" IS NULL`); round-tripping a `null` would re-open the claim |
  * | `dispatchRelayedAt` | `claimDispatchRelay` (#2401) | at-most-once marker; round-tripping a `null` re-opens the relay |
  * | `cancelledAt` / `cancellationReason` | `cancel` | the `order_records.cancelledAt` precedent |
  * | `version` | every applied HEADER transition | computed in SQL (`version + 1`), never from a caller's read |
@@ -68,11 +69,14 @@ import { FulfillmentPersistenceError } from '../../../domain/exceptions/fulfillm
 import { FulfillmentWorkNotFoundError } from '../../../domain/exceptions/fulfillment-work-not-found.error';
 import type {
   CancelFulfillmentWorkInput,
+  ClaimFulfillmentDispatchInput,
   CreateFulfillmentWorkInput,
   FulfillmentWorkRepositoryPort,
   FulfillmentWorkTransaction,
   PlaceFulfillmentHoldInput,
+  RecordFulfillmentAcceptanceInput,
   RecordFulfillmentLineProgressInput,
+  RecordFulfillmentRejectionInput,
   ReleaseFulfillmentHoldInput,
   TransitionFulfillmentRequestStatusInput,
   TransitionFulfillmentWorkStatusInput,
@@ -89,12 +93,14 @@ import {
   isFulfillmentWorkStatus,
   type FulfillmentWorkStatus,
 } from '../../../domain/types/fulfillment-work-status.types';
+import type { FulfillmentWorkRejection } from '../../../domain/types/fulfillment-work-rejection.types';
 import type {
   FulfillmentWork,
   FulfillmentWorkLine,
 } from '../../../domain/types/fulfillment-work.types';
 import { FulfillmentHoldOrmEntity } from '../entities/fulfillment-hold.orm-entity';
 import { FulfillmentWorkLineOrmEntity } from '../entities/fulfillment-work-line.orm-entity';
+import { FulfillmentWorkRejectionOrmEntity } from '../entities/fulfillment-work-rejection.orm-entity';
 import { FulfillmentWorkOrmEntity } from '../entities/fulfillment-work.orm-entity';
 
 /**
@@ -164,6 +170,8 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
     private readonly lines: Repository<FulfillmentWorkLineOrmEntity>,
     @InjectRepository(FulfillmentHoldOrmEntity)
     private readonly holds: Repository<FulfillmentHoldOrmEntity>,
+    @InjectRepository(FulfillmentWorkRejectionOrmEntity)
+    private readonly rejections: Repository<FulfillmentWorkRejectionOrmEntity>,
     @InjectDataSource()
     private readonly dataSource: DataSource
   ) {}
@@ -188,6 +196,8 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
     header.cancellationReason = null;
     header.cancelledAt = null;
     header.dispatchRelayedAt = null;
+    header.acceptedAt = null;
+    header.externalWorkId = null;
     header.version = 0;
 
     const lineEntities = input.lines.map((line) => {
@@ -328,15 +338,106 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
     );
   }
 
-  async incrementAssignmentAttempt(workId: string): Promise<boolean> {
-    return this.applyGuardedUpdate('incrementAssignmentAttempt', (qb) =>
+  async claimDispatchAttempt(input: ClaimFulfillmentDispatchInput): Promise<number | null> {
+    // See `transitionStatus` — an empty `from` cannot match, and `IN ()` is a
+    // syntax error rather than an empty set.
+    if (input.from.length === 0) return null;
+
+    // ONE statement moves the status and mints the attempt, and the attempt
+    // reaches the caller only through this statement's `RETURNING`. Minting an
+    // idempotency key without the row already holding that value is therefore
+    // not expressible — stronger than asserting call order in a spec.
+    //
+    // `x = x + 1` in a single UPDATE is atomic at row level, so two concurrent
+    // claimants yield 1 and 2, never both 1. No unique index is involved and
+    // none would help: an attempt is a COLUMN, not an inserted row. The
+    // live-state uniqueness that matters here is the `requestStatus` guard, and
+    // at READ COMMITTED the loser blocks on the row lock, re-evaluates the
+    // WHERE against the committed row, and matches zero.
+    const rows = await this.applyGuardedUpdateReturning('claimDispatchAttempt', (qb) =>
       qb
         .set({
+          requestStatus: 'submitted' satisfies FulfillmentRequestStatus,
           assignmentAttempt: () => '"assignmentAttempt" + 1',
           version: () => '"version" + 1',
         })
-        .where('"id" = :id', { id: workId })
+        .where('"id" = :id', { id: input.workId })
+        .andWhere('"requestStatus" IN (:...from)', { from: [...input.from] })
+        .returning(['assignmentAttempt'])
     );
+
+    const claimed = rows[0]?.assignmentAttempt;
+    return claimed === undefined ? null : Number(claimed);
+  }
+
+  async recordAcceptance(input: RecordFulfillmentAcceptanceInput): Promise<boolean> {
+    // `acceptedAt IS NULL` is ADR-054's at-most-once acceptance claim, and it is
+    // not decoration beside the status guard: it is the conjunct that still
+    // holds if a future writer moves `requestStatus` without coming through
+    // here. All three columns move in one statement, so an accepted row can
+    // never lack the holder's reference.
+    return this.applyGuardedUpdate('recordAcceptance', (qb) =>
+      qb
+        .set({
+          requestStatus: 'accepted' satisfies FulfillmentRequestStatus,
+          acceptedAt: input.acceptedAt,
+          externalWorkId: input.externalWorkId,
+          version: () => '"version" + 1',
+        })
+        .where('"id" = :id', { id: input.workId })
+        .andWhere('"requestStatus" = :from', { from: 'submitted' })
+        .andWhere('"acceptedAt" IS NULL')
+    );
+  }
+
+  async recordRejection(input: RecordFulfillmentRejectionInput): Promise<boolean> {
+    // TWO writes, ONE transaction. If the guard does not apply, nothing is
+    // inserted — otherwise a lost race would leave a rejection row describing a
+    // transition that never happened, and the exclusion read would exclude a
+    // holder on the strength of an answer another writer had already superseded.
+    try {
+      return await this.dataSource.transaction(async (em) => {
+        const result = await em
+          .createQueryBuilder()
+          .update(FulfillmentWorkOrmEntity)
+          .set({
+            requestStatus: 'rejected' satisfies FulfillmentRequestStatus,
+            version: () => '"version" + 1',
+          })
+          .where('"id" = :id', { id: input.workId })
+          .andWhere('"requestStatus" = :from', { from: 'submitted' })
+          .execute();
+
+        if ((result.affected ?? 0) === 0) return false;
+
+        const rejection = new FulfillmentWorkRejectionOrmEntity();
+        rejection.fulfillmentWorkId = input.workId;
+        rejection.orderId = input.orderId;
+        rejection.connectionId = input.connectionId;
+        rejection.assignmentAttempt = input.assignmentAttempt;
+        rejection.reason = input.reason;
+        rejection.blocking = input.blocking;
+        rejection.detail = input.detail;
+        rejection.rejectedAt = input.rejectedAt;
+        await em.save(FulfillmentWorkRejectionOrmEntity, rejection);
+
+        return true;
+      });
+    } catch (error) {
+      throw new FulfillmentPersistenceError('recordRejection', error);
+    }
+  }
+
+  async listBlockingRejections(workId: string): Promise<FulfillmentWorkRejection[]> {
+    try {
+      const rows = await this.rejections.find({
+        where: { fulfillmentWorkId: workId, blocking: true },
+        order: { rejectedAt: 'DESC' },
+      });
+      return rows.map((row) => this.toRejectionDomain(row));
+    } catch (error) {
+      throw new FulfillmentPersistenceError('listBlockingRejections', error);
+    }
   }
 
   async claimDispatchRelay(workId: string, at: Date): Promise<boolean> {
@@ -558,6 +659,48 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
   }
 
   /**
+   * The RETURNING sibling of `applyGuardedUpdate`.
+   *
+   * A SEPARATE method rather than a widened signature on the shared helper:
+   * that one answers `boolean` and seven callers depend on it, and its docblock
+   * exists precisely so the `?? 0` and the error conversion cannot be forgotten
+   * per transition. Widening a discipline-carrying choke point so one caller can
+   * read a column back would erode the discipline for the other seven. The two
+   * share the shape and the error translation; only the projection differs.
+   */
+  private async applyGuardedUpdateReturning(
+    operation: string,
+    build: (
+      qb: UpdateQueryBuilder<FulfillmentWorkOrmEntity>
+    ) => UpdateQueryBuilder<FulfillmentWorkOrmEntity>
+  ): Promise<Array<Partial<FulfillmentWorkOrmEntity>>> {
+    try {
+      const base = this.works.createQueryBuilder().update(FulfillmentWorkOrmEntity);
+      const result = await build(base).execute();
+      // `raw` is `any` from TypeORM; an unapplied UPDATE returns an empty array
+      // rather than a row, which is what makes `rows[0]` the claim test.
+      const raw: unknown = result.raw;
+      return Array.isArray(raw) ? (raw as Array<Partial<FulfillmentWorkOrmEntity>>) : [];
+    } catch (error) {
+      throw new FulfillmentPersistenceError(operation, error);
+    }
+  }
+
+  private toRejectionDomain(entity: FulfillmentWorkRejectionOrmEntity): FulfillmentWorkRejection {
+    return {
+      id: entity.id,
+      fulfillmentWorkId: entity.fulfillmentWorkId,
+      orderId: entity.orderId,
+      connectionId: entity.connectionId,
+      assignmentAttempt: Number(entity.assignmentAttempt),
+      reason: entity.reason,
+      blocking: entity.blocking,
+      detail: entity.detail,
+      rejectedAt: entity.rejectedAt,
+    };
+  }
+
+  /**
    * Whether `error` is a unique violation on ONE named constraint.
    *
    * Constraint-scoped rather than code-scoped: a bare `23505` test would let a
@@ -611,6 +754,8 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
       version: Number(header.version),
       cancelledAt: header.cancelledAt,
       dispatchRelayedAt: header.dispatchRelayedAt,
+      acceptedAt: header.acceptedAt,
+      externalWorkId: header.externalWorkId,
       lines: lines.map((line) => this.toLineDomain(line)),
       createdAt: header.createdAt,
       updatedAt: header.updatedAt,

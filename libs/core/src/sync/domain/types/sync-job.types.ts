@@ -175,6 +175,13 @@ export const JobTypeValues = [
   // non-nullable, so the per-`OrderSource`-connection fan-out is also the
   // natural partition of the rate-less frontier.
   'orders.taxRate.backfill',
+
+  // Fulfilment executor handshake (#2399, `W3a-10`, ADR-054). Offers ONE routed
+  // `FulfillmentWork` to its assigned holder under a retry-stable idempotency
+  // key. `connectionId` is the work's own `assignedConnectionId` — never a
+  // synthetic id, which is #2609's defect exactly: a shared scope collapses
+  // per-scope lane accounting for the whole installation.
+  'fulfillment.work.dispatch',
 ] as const;
 
 /**

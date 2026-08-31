@@ -58,6 +58,8 @@ const TABLES = [
   'fulfillment_works',
   'fulfillment_work_lines',
   'fulfillment_holds',
+  // #2399's append-only rejection ledger.
+  'fulfillment_work_rejections',
   'fulfillment_progress_claims',
   'routing_decisions',
 ] as const;
@@ -240,6 +242,7 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
       'FK_fulfillment_holds_work',
       'FK_fulfillment_progress_claims_work',
       'FK_fulfillment_work_lines_work',
+      'FK_fulfillment_work_rejections_work',
     ]);
     for (const fk of foreignKeys) {
       expect(fk.definition).toContain('ON DELETE CASCADE');
@@ -248,7 +251,7 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
     expect(synchronized.filter((r) => r.contype === 'f')).toEqual([]);
   });
 
-  it('should delete lines, holds and progress claims when their parent work is deleted', async () => {
+  it('should delete lines, holds, rejections and progress claims when their parent work is deleted', async () => {
     // CASCADE exercised for real, against the schema that actually ships.
     await migrated.query(
       `INSERT INTO "fulfillment_works"("id","orderId") VALUES ('w-parity','ol_order_parity')`
@@ -260,6 +263,11 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
     await migrated.query(
       `INSERT INTO "fulfillment_holds"("fulfillmentWorkId","reason","placedByService","placedAt")
        VALUES ('w-parity','operator','svc',now())`
+    );
+    await migrated.query(
+      `INSERT INTO "fulfillment_work_rejections"
+         ("fulfillmentWorkId","orderId","connectionId","assignmentAttempt","reason","blocking","rejectedAt")
+       VALUES ('w-parity','ol_order_parity','11111111-1111-1111-1111-111111111111',1,'no-stock',true,now())`
     );
     // #2400's claim table is a child too, and its CASCADE matters for a reason
     // the others' does not: an orphaned claim would let a re-created work id
@@ -274,13 +282,14 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
         `SELECT (
            (SELECT count(*) FROM "fulfillment_work_lines" WHERE "fulfillmentWorkId" = 'w-parity') +
            (SELECT count(*) FROM "fulfillment_holds" WHERE "fulfillmentWorkId" = 'w-parity') +
+           (SELECT count(*) FROM "fulfillment_work_rejections" WHERE "fulfillmentWorkId" = 'w-parity') +
            (SELECT count(*) FROM "fulfillment_progress_claims" WHERE "workId" = 'w-parity')
          )::int AS total`
       )) as { total: number }[];
       return total;
     };
 
-    expect(await countChildren()).toBe(3);
+    expect(await countChildren()).toBe(4);
     await migrated.query(`DELETE FROM "fulfillment_works" WHERE "id" = 'w-parity'`);
     expect(await countChildren()).toBe(0);
   });

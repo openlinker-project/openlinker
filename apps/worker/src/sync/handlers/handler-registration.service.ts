@@ -58,6 +58,7 @@ import { RegulatoryStatusReconcileHandler } from './regulatory-status-reconcile.
 import { OfflineResubmitHandler } from './offline-resubmit.handler';
 import { PendingRecoveryHandler } from './pending-recovery.handler';
 import { PaymentStatusRefreshHandler } from './payment-status-refresh.handler';
+import { FulfillmentWorkDispatchHandler } from './fulfillment-work-dispatch.handler';
 
 @Injectable()
 export class HandlerRegistrationService implements OnModuleInit {
@@ -111,14 +112,15 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly regulatoryStatusReconcileHandler: RegulatoryStatusReconcileHandler,
     private readonly offlineResubmitHandler: OfflineResubmitHandler,
     private readonly pendingRecoveryHandler: PendingRecoveryHandler,
-    private readonly paymentStatusRefreshHandler: PaymentStatusRefreshHandler
+    private readonly paymentStatusRefreshHandler: PaymentStatusRefreshHandler,
+    private readonly fulfillmentWorkDispatchHandler: FulfillmentWorkDispatchHandler
   ) {}
 
   onModuleInit(): void {
     // Every registration declares its ADR-050 concurrency lane (#2278). The
     // lane is chosen by cost-of-starvation, never by I/O shape or bounded
-    // context — the authoritative table is ADR-050 decision 1, now 13 realtime /
-    // 25 bulk / 5 fiscal / 7 fan-out across 50 job types. Amendments since the
+    // context — the authoritative table is ADR-050 decision 1, now 15 realtime /
+    // 25 bulk / 5 fiscal / 7 fan-out across 52 job types. Amendments since the
     // ADR: `fiscalization.register` joined `fiscal` (#2156),
     // `inventory.provenance.backfill` joined `bulk` (#2317), the three returns
     // types joined realtime/bulk/fan-out (#2330), `returns.orphan.reconcile`
@@ -500,6 +502,21 @@ export class HandlerRegistrationService implements OnModuleInit {
       'orders.taxRate.backfill',
       this.ordersTaxRateBackfillHandler,
       'bulk'
+    );
+
+    // Fulfilment executor handshake (#2399, `W3a-10`).
+    //
+    // 'realtime' lane, chosen by ADR-050's rule — cost of starvation, never I/O
+    // shape. A dispatch is the outbound "tell the holder to ship" for an order
+    // that has just been routed: someone is waiting, and lateness costs a
+    // shipment. That is the same class as `marketplace.order.sync`, not a paced
+    // catalogue sweep. #2594's split-by-trigger has nothing to separate here —
+    // one trigger, one cost — so the type stays single rather than gaining a
+    // sweep-lane twin.
+    this.handlerRegistry.register(
+      'fulfillment.work.dispatch',
+      this.fulfillmentWorkDispatchHandler,
+      'realtime'
     );
 
     // Boot gate (ADR-050 D1 / ADR-051 D6): every JobTypeValues member must be

@@ -30,13 +30,13 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
 
   beforeEach(() => {
     registry = new SyncJobHandlerRegistry();
-    // The constructor takes the registry followed by 48 handler instances.
+    // The constructor takes the registry followed by 50 handler instances.
     // The dummies are DISTINCT objects so that "these two job types share one
     // handler instance" (#2594) is a real assertion rather than a tautology;
     // the partition under test keys on jobType, so they are otherwise
     // interchangeable.
     const handlers = Array.from(
-      { length: 48 },
+      { length: 50 },
       () => ({ execute: jest.fn() }) as unknown as SyncJobHandler
     );
     const service = new (HandlerRegistrationService as any)(registry, ...handlers);
@@ -48,15 +48,20 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     expect(() => registry.assertFullLaneCoverage()).not.toThrow();
   });
 
-  it('should partition the 51 job types 14/25/5/7 per ADR-050 decision 1', () => {
-    // 14 since #2400 added `fulfillment.work.statusSync`. `realtime` by
-    // cost-of-starvation: an executor's progress report is WAITED ON — a picker
-    // is standing at a station and the worklist shows stale counters until it
-    // drains — the same argument that puts inbound order sync here. It outranks
-    // the "core-owned internal pass" instinct that would suggest `bulk`, because
-    // that instinct is about who ENQUEUES a job and the lane is about who is
-    // hurt when it is late.
-    expect(registry.getJobTypesByLane('realtime')).toHaveLength(14);
+  it('should partition the 52 job types 15/25/5/7 per ADR-050 decision 1', () => {
+    // 15: the two fulfilment job types are the opposite directions of one
+    // negotiation and both are `realtime` by cost-of-starvation.
+    //
+    // #2399's `fulfillment.work.dispatch` is the outbound "tell the holder to
+    // ship" for a just-routed order, where lateness costs a shipment.
+    //
+    // #2400's `fulfillment.work.statusSync` is the inbound half: an executor's
+    // progress report is WAITED ON — a picker is standing at a station and the
+    // worklist shows stale counters until it drains — the same argument that
+    // puts inbound order sync here. It outranks the "core-owned internal pass"
+    // instinct that would suggest `bulk`, because that instinct is about who
+    // ENQUEUES a job and the lane is about who is hurt when it is late.
+    expect(registry.getJobTypesByLane('realtime')).toHaveLength(15);
     // 25, and every one of the additions since the lane split shares one
     // profile: background catch-up work that enqueues no children, writes
     // locally, and whose lateness costs nobody a request — so `fan-out` (whose

@@ -27,6 +27,9 @@
 
 export const FULFILLMENT_WORK_REPOSITORY_TOKEN = Symbol('FulfillmentWorkRepositoryPort');
 
+/** Executor handshake (#2399). `FulfillmentHandshakeService` binds here. */
+export const FULFILLMENT_HANDSHAKE_SERVICE_TOKEN = Symbol('IFulfillmentHandshakeService');
+
 /** Progress ingress (#2400). `FulfillmentProgressService` binds here. */
 export const FULFILLMENT_PROGRESS_SERVICE_TOKEN = Symbol('IFulfillmentProgressService');
 
