@@ -69,6 +69,22 @@ export interface ReconcileFiscalRegistrationResult {
   record: FiscalRegistrationRecord;
 }
 
+/**
+ * Mirrors `AcceptedFiscalRegistrationResponseDto`.
+ *
+ * The answer to asking for a registration. It carries no status and no record,
+ * because when it is sent a job exists and no provider has been called. Nothing
+ * may read an outcome out of it.
+ */
+export interface AcceptedFiscalRegistration {
+  orderId: string;
+  connectionId: string;
+  idempotencyKey: string;
+  jobId: string;
+  /** The request restarted a job that had given up, rather than joining a live one. */
+  redrivenFromDead: boolean;
+}
+
 export interface RegisterFiscalTransactionInput {
   connectionId: string;
   orderId: string;

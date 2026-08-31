@@ -651,3 +651,87 @@ describe('SalesDocumentPanel - receipt path, missing rate (#2255/#2252)', () => 
     expect(screen.queryByText(/has no tax rate/i)).toBeNull();
   });
 });
+
+describe('SalesDocumentPanel — asynchronous registration (#2527)', () => {
+  it('shows the in-flight state when the order is reopened before any record exists', async () => {
+    // The window between the request being accepted and the job running. It has
+    // no record in it, so before #2526 this fell through to the empty state and
+    // offered to register the sale a second time.
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([fiscalConnection]) },
+        fiscalization: {
+          listForOrder: vi.fn().mockResolvedValue([]),
+          getProgress: vi
+            .fn()
+            .mockResolvedValue({ progress: 'queued', record: null, inFlight: null }),
+        },
+      }),
+      ...adminSession,
+    });
+
+    expect(
+      await screen.findByText(/Registering with the provider/),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Register receipt' })).toBeNull();
+  });
+
+  it('states that the work continues, and never asks anyone to keep the page open', async () => {
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([fiscalConnection]) },
+        fiscalization: {
+          listForOrder: vi.fn().mockResolvedValue([makeFiscalRecord({ status: 'registering' })]),
+          getProgress: vi.fn().mockResolvedValue({
+            progress: 'running',
+            record: makeFiscalRecord({ status: 'registering' }),
+            inFlight: null,
+          }),
+        },
+      }),
+      ...adminSession,
+    });
+
+    const notice = await screen.findByText(/This continues if you leave the page/);
+    expect(notice).toBeInTheDocument();
+    // The claim that was true before the work moved off the request, and is now
+    // false in the other direction.
+    expect(screen.queryByText(/keep this page open/i)).toBeNull();
+    expect(screen.queryByText(/close/i)).toBeNull();
+  });
+
+  it('says nothing is running, and offers to ask again, when the work stalled', async () => {
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([fiscalConnection]) },
+        fiscalization: {
+          listForOrder: vi.fn().mockResolvedValue([makeFiscalRecord({ status: 'pending' })]),
+          getProgress: vi.fn().mockResolvedValue({
+            progress: 'stalled',
+            record: makeFiscalRecord({ status: 'pending' }),
+            inFlight: null,
+          }),
+        },
+      }),
+      ...adminSession,
+    });
+
+    expect(await screen.findByText('Nothing is running for this receipt')).toBeInTheDocument();
+    expect(screen.getByText(/Nothing was registered with the provider/)).toBeInTheDocument();
+  });
+
+  it('polls the progress read for the (order, connection) pair the key is built from', async () => {
+    const getProgress = vi
+      .fn()
+      .mockResolvedValue({ progress: 'queued', record: null, inFlight: null });
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([fiscalConnection]) },
+        fiscalization: { listForOrder: vi.fn().mockResolvedValue([]), getProgress },
+      }),
+      ...adminSession,
+    });
+
+    await waitFor(() => expect(getProgress).toHaveBeenCalledWith(ORDER_ID, FISCAL_CONN_ID));
+  });
+});
