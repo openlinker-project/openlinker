@@ -32,6 +32,20 @@
  * instead of asserting the routing "works" for a case the evaluator has never
  * actually been asked to decide.
  *
+ * `outcome.kind === 'acknowledged'` is a FOURTH state the evaluator itself
+ * cannot produce (#2531): an acknowledged market carries no rule and no
+ * default by construction (`acknowledgeNoDocument` / `createRule` /
+ * `upsertCountryDefault` mutually and automatically clear one another,
+ * `sales-document-rules.service.ts`), so `resolveRoutingBatch` would
+ * correctly-but-uselessly answer `unresolved`/`no-configuration-for-country`
+ * for it. Reporting that here would be a real regression, not a cosmetic
+ * one: it is exactly the state #2186's acknowledgment exists to distinguish
+ * from an outstanding problem, and this merged list is the one place that
+ * distinction has to survive into. The controller therefore overrides the
+ * evaluator's real answer with `acknowledged` whenever the row carries a
+ * `acknowledgedNoDocumentAt` - an acknowledged market is never reported as
+ * `unresolved`.
+ *
  * @module apps/api/src/sales-documents/http/dto
  * @see docs/architecture/adrs/066-sales-document-market-discovery.md
  */
@@ -39,8 +53,8 @@ import { ApiProperty } from '@nestjs/swagger';
 import type { SalesDocumentDecision } from '@openlinker/core/sales-documents';
 
 export class SalesDocumentMarketOutcomeDto {
-  @ApiProperty({ enum: ['route', 'aggregate', 'unresolved'] })
-  kind!: 'route' | 'aggregate' | 'unresolved';
+  @ApiProperty({ enum: ['route', 'aggregate', 'unresolved', 'acknowledged'] })
+  kind!: 'route' | 'aggregate' | 'unresolved' | 'acknowledged';
 
   @ApiProperty({ required: false, nullable: true, description: 'Set when kind is "route".' })
   documentKind?: string | null;
@@ -65,6 +79,13 @@ export class SalesDocumentMarketOutcomeDto {
     } else {
       dto.reason = decision.reason;
     }
+    return dto;
+  }
+
+  /** The market has been acknowledged as "no document, by design" (#2186 / #2531). */
+  static acknowledged(): SalesDocumentMarketOutcomeDto {
+    const dto = new SalesDocumentMarketOutcomeDto();
+    dto.kind = 'acknowledged';
     return dto;
   }
 }
