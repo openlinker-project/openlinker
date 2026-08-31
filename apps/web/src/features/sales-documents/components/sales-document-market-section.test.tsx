@@ -79,3 +79,89 @@ describe('SalesDocumentMarketSection — summary + empty state (#2541)', () => {
     expect(screen.getByText(/Nothing is lost/)).toBeInTheDocument();
   });
 });
+
+describe('SalesDocumentMarketSection — detected markets and suggested setup (#2542)', () => {
+  it('should render a detected market\'s order count alongside the discovery window', async () => {
+    const apiClient = createMockApiClient({
+      salesDocumentRules: {
+        listMarkets: vi.fn().mockResolvedValue({
+          windowDays: 30,
+          since: '2026-01-01T00:00:00.000Z',
+          markets: [
+            {
+              country: 'PL',
+              orderCount: 12,
+              hasTemplate: true,
+              ruleCount: 0,
+              invoiceDefaultConnectionId: null,
+              receiptDefaultConnectionId: null,
+              acknowledgedNoDocumentAt: null,
+              outcome: { kind: 'unresolved', reason: 'no-configuration-for-country' },
+            },
+          ],
+        }),
+      },
+    });
+    renderWithProviders(<SalesDocumentMarketSection onSelectCountry={vi.fn()} />, { apiClient });
+
+    await waitFor(() => expect(screen.getByText('PL')).toBeInTheDocument());
+    expect(screen.getByText(/12 orders in the last 30 days/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Use starter setup' })).toBeInTheDocument();
+    expect(screen.getByText(/the only market with guidance so far/)).toBeInTheDocument();
+  });
+
+  it('should give a detected market without a template a plain "Set up", never a recommendation', async () => {
+    const apiClient = createMockApiClient({
+      salesDocumentRules: {
+        listMarkets: vi.fn().mockResolvedValue({
+          windowDays: 30,
+          since: '2026-01-01T00:00:00.000Z',
+          markets: [
+            {
+              country: 'CZ',
+              orderCount: 3,
+              hasTemplate: false,
+              ruleCount: 0,
+              invoiceDefaultConnectionId: null,
+              receiptDefaultConnectionId: null,
+              acknowledgedNoDocumentAt: null,
+              outcome: { kind: 'unresolved', reason: 'no-configuration-for-country' },
+            },
+          ],
+        }),
+      },
+    });
+    renderWithProviders(<SalesDocumentMarketSection onSelectCountry={vi.fn()} />, { apiClient });
+
+    await waitFor(() => expect(screen.getByText('CZ')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Set up' })).toBeInTheDocument();
+    expect(screen.queryByText(/Starter setup available/)).not.toBeInTheDocument();
+  });
+
+  it('should not claim exclusivity when two markets in the same list both carry a template', async () => {
+    const templatedMarket = (country: string): Record<string, unknown> => ({
+      country,
+      orderCount: 5,
+      hasTemplate: true,
+      ruleCount: 0,
+      invoiceDefaultConnectionId: null,
+      receiptDefaultConnectionId: null,
+      acknowledgedNoDocumentAt: null,
+      outcome: { kind: 'unresolved' as const, reason: 'no-configuration-for-country' },
+    });
+    const apiClient = createMockApiClient({
+      salesDocumentRules: {
+        listMarkets: vi.fn().mockResolvedValue({
+          windowDays: 30,
+          since: '2026-01-01T00:00:00.000Z',
+          markets: [templatedMarket('PL'), templatedMarket('DE')],
+        }),
+      },
+    });
+    renderWithProviders(<SalesDocumentMarketSection onSelectCountry={vi.fn()} />, { apiClient });
+
+    await waitFor(() => expect(screen.getByText('PL')).toBeInTheDocument());
+    expect(screen.queryByText(/the only market with guidance/)).not.toBeInTheDocument();
+    expect(screen.getAllByText(/Starter setup available/)).toHaveLength(2);
+  });
+});
