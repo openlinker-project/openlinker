@@ -10,6 +10,8 @@
 import type { SalesDocumentInFlight } from '@openlinker/core/sales-documents';
 
 import type { FiscalRegistrationRecord } from '../../domain/entities/fiscal-registration-record.entity';
+import type { FiscalRegistrationRequestAccepted } from '../../domain/types/fiscal-registration-request.types';
+import type { FiscalRegistrationProgress } from '../../domain/types/fiscal-registration-progress.types';
 import type {
   FiscalReconcileOutcome,
   RegisterTransactionCommand,
@@ -31,6 +33,31 @@ import type {
 export interface FiscalReconcileResult {
   outcome: FiscalReconcileOutcome;
   record: FiscalRegistrationRecord;
+}
+
+/**
+ * Where one order's registration is on one connection, as a poll can read it
+ * (#2526).
+ *
+ * Three facts, each answering a different question, none derivable from another:
+ * the single progress value a surface renders, the record it renders the detail
+ * from, and the neutral in-flight signal shared with invoicing.
+ *
+ * `record` is `null` in exactly the states where none exists - `not-requested`,
+ * and the `queued` window before the job runs - which is the window this read
+ * exists for.
+ */
+export interface FiscalRegistrationProgressView {
+  progress: FiscalRegistrationProgress;
+  /** The record held under this (connection, order) key; `null` when none. */
+  record: FiscalRegistrationRecord | null;
+  /**
+   * The order's live claim, ACROSS connections - the M2 signal, unchanged. It is
+   * order-scoped where `progress` is connection-scoped, deliberately: an
+   * operator needs to know a document is being produced for this sale even when
+   * it is being produced somewhere they did not ask.
+   */
+  inFlight: SalesDocumentInFlight | null;
 }
 
 export interface IFiscalRegistrationService {
@@ -79,6 +106,69 @@ export interface IFiscalRegistrationService {
    */
   register(cmd: RegisterTransactionCommand): Promise<FiscalRegistrationRecord>;
 
+  /**
+   * ASK for a registration, without performing one (#2525).
+   *
+   * Writes a `fiscalization.register` job and returns. The sale is registered
+   * later, by {@link register} running inside that job, so this method never
+   * reaches a provider and never produces a record. Its answer says the request
+   * was accepted and nothing more; a caller learns the outcome by reading the
+   * order's registration state afterwards.
+   *
+   * This is the path an operator-initiated registration takes. Performing the
+   * work inline inside the HTTP request instead tied a fiscal act to a browser
+   * tab: the provider poll can outlast the request, and a closed tab cut the
+   * request off while the record it had already written stayed behind, so the
+   * operator lost sight of a registration that was still happening.
+   *
+   * EXACTLY-ONCE IS UNCHANGED, and is not weakened by there now being a queue in
+   * front of it. Three layers hold, and this method adds nothing of its own:
+   *   1. the job's `idempotencyKey` is the same deterministic
+   *      `(connectionId, orderId)` key the record uses, so two requests for one
+   *      sale produce ONE job row and the second joins the first;
+   *   2. the job payload carries that key into `register`, which applies the
+   *      read gate, the unique index and the in-flight claim exactly as before;
+   *   3. the order-level guard is re-applied under the per-order lock when the
+   *      job runs, so nothing decided here can license a second document.
+   *
+   * A job left `dead` after exhausting its retries is re-driven rather than
+   * ignored, because otherwise a lost job would leave an order permanently
+   * un-registrable from the UI: the enqueue would keep returning the dead row.
+   * Re-driving re-runs the SAME key against the SAME record, which is a resume,
+   * not a resend.
+   *
+   * Throws the same refusals {@link assertRegistrable} does when the order
+   * already carries a blocking document, so an operator is told at the point of
+   * asking rather than by a job that quietly fails later.
+   */
+  requestRegistration(
+    cmd: RegisterTransactionCommand,
+    provenance: { sourceConnectionId: string; sourceEventId?: string },
+  ): Promise<FiscalRegistrationRequestAccepted>;
+
+  /**
+   * Refuse, as a READ, an order that already carries a blocking sales document.
+   *
+   * The same predicate the write path enforces under the per-order lock, exposed
+   * so a caller that is only ASKING for a registration can be refused at that
+   * point instead of being told the request was accepted and then having a job
+   * fail out of sight. It takes no lock, writes nothing and calls no provider.
+   *
+   * ADVISORY BY CONSTRUCTION. Passing here does not license anything: the
+   * authoritative guard is the one {@link register} runs inside the lock, and a
+   * peer can persist a blocking record between this read and that write. Nothing
+   * may treat a clean answer here as permission.
+   *
+   * Throws `OrderAlreadyRegisteredException` for a blocking fiscal record on any
+   * connection, and `OrderAlreadyHasInvoiceException` for a blocking invoice.
+   *
+   * It is the guard for a NEW originating registration, so a caller resuming an
+   * existing attempt under the same key must not run it - a `pending` row and a
+   * `registering` row both block, correctly, and a resume is not a second
+   * document. {@link requestRegistration} makes that distinction itself.
+   */
+  assertRegistrable(orderId: string, requestedConnectionId: string): Promise<void>;
+
   /** Every registration record held by an order, across connections, newest-first. */
   getByOrderId(orderId: string): Promise<FiscalRegistrationRecord[]>;
 
@@ -121,6 +211,26 @@ export interface IFiscalRegistrationService {
    * order id and no records - which is the projection, not the list endpoint.
    */
   getInFlightRegistration(orderId: string): Promise<SalesDocumentInFlight | null>;
+
+  /**
+   * Where this order's registration is on this connection (#2526).
+   *
+   * The poll target for a registration that outlives the request which asked for
+   * it. A PURE READ: it takes no lock, writes nothing, calls no provider and
+   * cannot cause a registration. Polling it a thousand times is exactly as
+   * consequential as not polling it at all.
+   *
+   * Connection-scoped because the exactly-once key is, and because the answer is
+   * about one attempt. It resolves the record under the deterministic
+   * `(connection, order)` key together with the liveness of the job enqueued
+   * under that same key, which is the only way the window between enqueueing and
+   * the job running can be reported at all - in that window no record exists,
+   * and reading the record alone would report the sale as never requested.
+   */
+  getRegistrationProgress(
+    orderId: string,
+    connectionId: string,
+  ): Promise<FiscalRegistrationProgressView>;
 
   /**
    * Read one record by id. Throws `FiscalRegistrationRecordNotFoundException`

@@ -22,7 +22,12 @@ import {
   IIntegrationsService,
   INTEGRATIONS_SERVICE_TOKEN,
 } from '@openlinker/core/integrations';
-import { type SyncLockPort, SYNC_LOCK_TOKEN } from '@openlinker/core/sync';
+import {
+  type SyncLockPort,
+  SYNC_LOCK_TOKEN,
+  type ISyncJobsService,
+  SYNC_JOBS_SERVICE_TOKEN,
+} from '@openlinker/core/sync';
 import { IInvoiceService } from '@openlinker/core/invoicing';
 import {
   INVOICE_SERVICE_TOKEN,
@@ -32,6 +37,7 @@ import {
 
 import type {
   FiscalReconcileResult,
+  FiscalRegistrationProgressView,
   IFiscalRegistrationService,
 } from './fiscal-registration.service.interface';
 import type { FiscalRegistrationRecord } from '../../domain/entities/fiscal-registration-record.entity';
@@ -50,6 +56,15 @@ import { OrderAlreadyHasInvoiceException } from '../../domain/exceptions/order-a
 import { FiscalRegistrationContendedException } from '../../domain/exceptions/fiscal-registration-contended.exception';
 import { FiscalReconcileCheckFailedException } from '../../domain/exceptions/fiscal-reconcile-check-failed.exception';
 import { FISCAL_REGISTRATION_RECORD_REPOSITORY_TOKEN } from '../../fiscalization.tokens';
+import {
+  fiscalRegistrationIdempotencyKey,
+  type FiscalRegistrationRequestAccepted,
+} from '../../domain/types/fiscal-registration-request.types';
+import {
+  resolveFiscalRegistrationProgress,
+  type FiscalRegistrationJobLiveness,
+} from '../../domain/types/fiscal-registration-progress.types';
+import { toFiscalizationRegisterPayload } from '../mappers/register-transaction-command-to-payload.mapper';
 import type {
   FiscalRegistrationFailureMode,
   FiscalRegistrationOutcomePatch,
@@ -64,6 +79,16 @@ import { readFiscalLocateAnswer } from '../../domain/types/fiscalization.types';
  * against that list.
  */
 const FISCALIZATION_CAPABILITY = 'Fiscalization';
+
+/**
+ * Attempts a manually requested `fiscalization.register` job is given.
+ *
+ * Matches the auto-issue gate's budget, deliberately: the two paths enqueue the
+ * same job to perform the same act, and a manual request that gave up sooner (or
+ * later) than an automatic one would make the retry behaviour of a sale depend
+ * on who asked for it.
+ */
+export const MANUAL_REGISTRATION_RETRY_BUDGET = 3;
 
 /** Max persisted length of the INTERNAL-ONLY sanitized diagnostic. */
 const MAX_ERROR_MESSAGE_LENGTH = 500;
@@ -166,7 +191,84 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
     private readonly registrationLock: SyncLockPort,
     @Inject(INVOICE_SERVICE_TOKEN)
     private readonly invoiceService: IInvoiceService,
+    @Inject(SYNC_JOBS_SERVICE_TOKEN)
+    private readonly syncJobs: ISyncJobsService,
   ) {}
+
+  /**
+   * Enqueue a registration instead of performing one (#2525). See the interface
+   * for the contract; what follows is why each step is where it is.
+   */
+  async requestRegistration(
+    cmd: RegisterTransactionCommand,
+    provenance: { sourceConnectionId: string; sourceEventId?: string },
+  ): Promise<FiscalRegistrationRequestAccepted> {
+    const key = cmd.idempotencyKey?.trim() ?? '';
+    if (key.length === 0) {
+      // The same refusal `register` makes, made earlier: a request with no key
+      // would enqueue a job that can only fail, and the failure would surface
+      // in a log rather than to whoever asked.
+      throw new MissingIdempotencyKeyException(cmd.orderId);
+    }
+
+    // Read gate FIRST, exactly as `registerLocked` does it. A same-key row is a
+    // resume, not a second originating registration, so the order-level guard
+    // must not be applied to it - a `pending` row whose job died blocks
+    // `blocksFurtherRegistration`, and running the guard here would make the
+    // re-drive below unreachable for the one case it exists to fix.
+    const existing = await this.repo.findByIdempotencyKey(cmd.connectionId, key);
+    if (existing === null || !isResumableUnderSameKey(existing)) {
+      await this.assertRegistrable(cmd.orderId, cmd.connectionId);
+    }
+
+    const payload = toFiscalizationRegisterPayload({ ...cmd, idempotencyKey: key }, provenance);
+
+    const job = await this.syncJobs.schedule({
+      jobType: 'fiscalization.register',
+      connectionId: cmd.connectionId,
+      payload: payload as unknown as Record<string, unknown>,
+      idempotencyKey: key,
+      maxAttempts: MANUAL_REGISTRATION_RETRY_BUDGET,
+      runAfter: new Date(),
+    });
+
+    // A job that exhausted its retries is left `dead`, and `schedule` returns
+    // that dead row rather than a fresh one - the key is already taken. Without
+    // this the order would be un-registrable from any surface for good: the
+    // enqueue would keep reporting success and nothing would ever run.
+    // Re-driving re-runs the SAME key against the SAME record, which the write
+    // path treats as a resume, so it can never become a second registration.
+    //
+    // Asked only of a job that IS dead. The re-drive is itself guarded on that
+    // status, so calling it unconditionally was merely a wasted write on the
+    // ordinary path - but it also read as though every request re-drove
+    // something, which is not what happens.
+    const redrivenFromDead =
+      job.status === 'dead' ? await this.syncJobs.requeueDeadByIdempotencyKey(key) : false;
+
+    this.logger.log(
+      `Fiscal registration requested: orderId=${cmd.orderId} connectionId=${cmd.connectionId} ` +
+        `jobId=${job.id} redrivenFromDead=${String(redrivenFromDead)}`,
+    );
+
+    return {
+      orderId: cmd.orderId,
+      connectionId: cmd.connectionId,
+      idempotencyKey: key,
+      jobId: job.id,
+      redrivenFromDead,
+    };
+  }
+
+  /**
+   * Public, read-only form of the order-level guard (#2525). The private
+   * {@link assertNotAlreadyRegistered} is its implementation, so the advisory
+   * refusal an asking caller gets and the authoritative one the write path
+   * makes cannot be two different rules.
+   */
+  async assertRegistrable(orderId: string, requestedConnectionId: string): Promise<void> {
+    await this.assertNotAlreadyRegistered(orderId, requestedConnectionId);
+  }
 
   /**
    * Register a completed sale, serialized per ORDER under the SAME per-order
@@ -349,6 +451,38 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
       // forward. See `SalesDocumentInFlight.since`.
       since: claimed.updatedAt,
     };
+  }
+
+  async getRegistrationProgress(
+    orderId: string,
+    connectionId: string,
+  ): Promise<FiscalRegistrationProgressView> {
+    const now = new Date();
+    const key = fiscalRegistrationIdempotencyKey(connectionId, orderId);
+    // Two reads, because the answer genuinely needs two facts. The record is
+    // absent for the whole window between enqueueing and the job running, and
+    // the job is the only evidence in that window that anything was asked for.
+    const [record, job, inFlight] = await Promise.all([
+      this.repo.findByIdempotencyKey(connectionId, key),
+      this.syncJobs.findJobByIdempotencyKey(key),
+      this.getInFlightRegistration(orderId),
+    ]);
+
+    const progress = resolveFiscalRegistrationProgress({
+      record:
+        record === null
+          ? null
+          : {
+              status: record.status,
+              failureMode: record.failureMode,
+              // Evaluated once, here, so every field of one answer describes the
+              // same instant.
+              leaseLive: record.isLeaseLive(now),
+            },
+      job: readJobLiveness(job?.status),
+    });
+
+    return { progress, record, inFlight };
   }
 
   async getById(id: string): Promise<FiscalRegistrationRecord> {
@@ -801,4 +935,46 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
       MAX_FAILURE_REASON_LENGTH,
     );
   }
+}
+
+/**
+ * Is an existing same-key record one a repeat request RESUMES rather than
+ * duplicates?
+ *
+ * Mirrors the resume invariant `resumeExisting` enforces, from the outside: a
+ * `pending` row was never sent, a `registering` row is either in flight (the
+ * repeat is a no-op) or was abandoned by a dead process (the repeat re-claims it
+ * under the same key), and a terminally `rejected` failure means the provider
+ * definitely created nothing.
+ *
+ * `registered` and any other failure - `in-doubt` included - are excluded, so a
+ * repeat on those falls through to the order-level guard and is refused there.
+ * That is the point: a request must never be reported as accepted when the sale
+ * is already registered, or may be.
+ */
+function isResumableUnderSameKey(record: FiscalRegistrationRecord): boolean {
+  return (
+    record.status === 'pending' ||
+    record.status === 'registering' ||
+    record.isReattemptableFailure
+  );
+}
+
+
+/**
+ * Reduce a sync job's status to the liveness the progress rule needs.
+ *
+ * `succeeded` reads as `none`: a succeeded registration job says the handler
+ * ran, never that the sale was registered - the record carries that, and it is
+ * already the higher-ranked input. Reporting a succeeded job as live would keep
+ * a surface polling for an answer that has already arrived.
+ */
+function readJobLiveness(status: string | undefined): FiscalRegistrationJobLiveness {
+  if (status === 'queued' || status === 'running') {
+    return 'live';
+  }
+  if (status === 'dead') {
+    return 'dead';
+  }
+  return 'none';
 }
