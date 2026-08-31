@@ -10,6 +10,7 @@
  */
 import { useState, type ReactElement } from 'react';
 import { useConnectionsQuery } from '../../connections';
+import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { LoadingState, ErrorState } from '../../../shared/ui/feedback-state';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
@@ -68,6 +69,9 @@ export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps)
 
       {rules.map((rule) => {
         const connectionName = connections.find((c) => c.id === rule.connectionId)?.name ?? rule.connectionId;
+        const isDeletingThisRule = deleteRule.isPending && deleteRule.variables === rule.id;
+        const deleteFailedForThisRule =
+          deleteRule.isError && deleteRule.variables === rule.id ? deleteRule.error : null;
         return (
           <div key={rule.id} className="rule-card">
             <div className="rule-card__flow">
@@ -93,12 +97,15 @@ export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps)
                   tone="secondary"
                   className="button--sm"
                   disabled={!write.canWrite || deleteRule.isPending}
-                  onClick={() => void deleteRule.mutateAsync(rule.id)}
+                  onClick={() => void deleteRule.mutateAsync(rule.id).catch(() => {})}
                 >
-                  Delete
+                  {isDeletingThisRule ? 'Deleting…' : 'Delete'}
                 </Button>
               </ReadOnlyLock>
             </div>
+            {deleteFailedForThisRule ? (
+              <Alert tone="error">{deleteFailedForThisRule.message}</Alert>
+            ) : null}
           </div>
         );
       })}
