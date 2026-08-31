@@ -351,11 +351,17 @@ export function splitIdForWrap(id: string, chunkSize = 6): string[] {
   const prefix = prefixMatch?.[0] ?? '';
   const rest = id.slice(prefix.length);
   if (rest.length === 0) return prefix ? [prefix] : [id];
-  const chunks: string[] = prefix ? [prefix] : [];
+  const restChunks: string[] = [];
   for (let i = 0; i < rest.length; i += chunkSize) {
-    chunks.push(rest.slice(i, i + chunkSize));
+    restChunks.push(rest.slice(i, i + chunkSize));
   }
-  return chunks;
+  // Fold a dangling remainder shorter than chunkSize into the previous chunk
+  // instead of giving it its own wrap point.
+  if (restChunks.length > 1 && restChunks[restChunks.length - 1].length < chunkSize) {
+    const last = restChunks.pop()!;
+    restChunks[restChunks.length - 1] += last;
+  }
+  return prefix ? [prefix, ...restChunks] : restChunks;
 }
 
 /** Renders an order id with controlled wrap points and the full value as a
