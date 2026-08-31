@@ -6,7 +6,7 @@
  * picking a new primary clears the previous one (never leaving two primaries
  * set at once from this UI).
  */
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -180,5 +180,59 @@ describe('SalesDocumentsPanel', () => {
     });
 
     expect(await screen.findByText(/No sales-document connections yet/i)).toBeInTheDocument();
+  });
+
+  it('should state that a connection needing re-authentication cannot issue (#2550)', async () => {
+    const needsReauth: Connection = {
+      ...EPARAGONY,
+      status: 'needs_reauth',
+    };
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([INFAKT, needsReauth]) },
+    });
+
+    renderWithProviders(<SalesDocumentsPanel />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    await screen.findByText('eparagony.pl');
+    expect(screen.getByText('Cannot issue until reconnected')).toBeInTheDocument();
+    // The healthy row does not carry the same note.
+    const infaktRow = screen.getByText('inFakt').closest('tr');
+    expect(infaktRow ? within(infaktRow).queryByText(/Cannot issue/i) : null).toBeNull();
+  });
+
+  it('should mark a connection with nothing set as not a routing candidate (#2550)', async () => {
+    const unconfigured: Connection = {
+      ...EPARAGONY,
+      config: {},
+    };
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([INFAKT, unconfigured]) },
+    });
+
+    renderWithProviders(<SalesDocumentsPanel />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    await screen.findByText('eparagony.pl');
+    expect(screen.getByText('Not a routing candidate')).toBeInTheDocument();
+  });
+
+  it('should state where the primary rule applies, above the table', async () => {
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([INFAKT, EPARAGONY]) },
+    });
+
+    renderWithProviders(<SalesDocumentsPanel />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    expect(
+      await screen.findByText(/Only one connection may go first across ALL of them/i),
+    ).toBeInTheDocument();
   });
 });
