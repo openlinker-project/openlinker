@@ -11,6 +11,7 @@ import type { SalesDocumentInFlight } from '@openlinker/core/sales-documents';
 
 import type { FiscalRegistrationRecord } from '../../domain/entities/fiscal-registration-record.entity';
 import type { FiscalRegistrationRequestAccepted } from '../../domain/types/fiscal-registration-request.types';
+import type { FiscalRegistrationProgress } from '../../domain/types/fiscal-registration-progress.types';
 import type {
   FiscalReconcileOutcome,
   RegisterTransactionCommand,
@@ -32,6 +33,31 @@ import type {
 export interface FiscalReconcileResult {
   outcome: FiscalReconcileOutcome;
   record: FiscalRegistrationRecord;
+}
+
+/**
+ * Where one order's registration is on one connection, as a poll can read it
+ * (#2526).
+ *
+ * Three facts, each answering a different question, none derivable from another:
+ * the single progress value a surface renders, the record it renders the detail
+ * from, and the neutral in-flight signal shared with invoicing.
+ *
+ * `record` is `null` in exactly the states where none exists - `not-requested`,
+ * and the `queued` window before the job runs - which is the window this read
+ * exists for.
+ */
+export interface FiscalRegistrationProgressView {
+  progress: FiscalRegistrationProgress;
+  /** The record held under this (connection, order) key; `null` when none. */
+  record: FiscalRegistrationRecord | null;
+  /**
+   * The order's live claim, ACROSS connections - the M2 signal, unchanged. It is
+   * order-scoped where `progress` is connection-scoped, deliberately: an
+   * operator needs to know a document is being produced for this sale even when
+   * it is being produced somewhere they did not ask.
+   */
+  inFlight: SalesDocumentInFlight | null;
 }
 
 export interface IFiscalRegistrationService {
@@ -175,6 +201,26 @@ export interface IFiscalRegistrationService {
    * order id and no records - which is the projection, not the list endpoint.
    */
   getInFlightRegistration(orderId: string): Promise<SalesDocumentInFlight | null>;
+
+  /**
+   * Where this order's registration is on this connection (#2526).
+   *
+   * The poll target for a registration that outlives the request which asked for
+   * it. A PURE READ: it takes no lock, writes nothing, calls no provider and
+   * cannot cause a registration. Polling it a thousand times is exactly as
+   * consequential as not polling it at all.
+   *
+   * Connection-scoped because the exactly-once key is, and because the answer is
+   * about one attempt. It resolves the record under the deterministic
+   * `(connection, order)` key together with the liveness of the job enqueued
+   * under that same key, which is the only way the window between enqueueing and
+   * the job running can be reported at all - in that window no record exists,
+   * and reading the record alone would report the sale as never requested.
+   */
+  getRegistrationProgress(
+    orderId: string,
+    connectionId: string,
+  ): Promise<FiscalRegistrationProgressView>;
 
   /**
    * Read one record by id. Throws `FiscalRegistrationRecordNotFoundException`

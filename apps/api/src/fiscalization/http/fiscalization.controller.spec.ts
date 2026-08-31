@@ -126,6 +126,7 @@ describe('FiscalizationController', () => {
         redrivenFromDead: false,
       }),
       assertRegistrable: jest.fn(),
+      getRegistrationProgress: jest.fn(),
       getByOrderId: jest.fn(),
       getById: jest.fn(),
       reconcileInDoubt: jest.fn(),
@@ -519,6 +520,100 @@ describe('FiscalizationController', () => {
       await expect(
         controller.reconcile('11111111-1111-1111-1111-111111111111'),
       ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('GET /orders/:orderId/fiscal-registration', () => {
+    it('should report each state distinguishably', async () => {
+      const cases = [
+        { progress: 'not-requested' as const, record: null },
+        { progress: 'queued' as const, record: null },
+        { progress: 'running' as const, record: registrationRecord({ status: 'registering' }) },
+        { progress: 'stalled' as const, record: registrationRecord({ status: 'pending' }) },
+        { progress: 'registered' as const, record: registrationRecord() },
+        {
+          progress: 'rejected' as const,
+          record: registrationRecord({ status: 'failed', failureMode: 'rejected' }),
+        },
+        {
+          progress: 'in-doubt' as const,
+          record: registrationRecord({ status: 'failed', failureMode: 'in-doubt' }),
+        },
+      ];
+
+      for (const testCase of cases) {
+        service.getRegistrationProgress.mockResolvedValue({
+          progress: testCase.progress,
+          record: testCase.record,
+          inFlight: null,
+        });
+
+        const response = await controller.getRegistrationProgress(ORDER_ID, CONNECTION_ID);
+
+        expect(response.progress).toBe(testCase.progress);
+        expect(response.record === null).toBe(testCase.record === null);
+      }
+    });
+
+    it('should answer with a null record while the work is queued, not an error', async () => {
+      // The window between accepting the request and the job running has no
+      // record in it. That is the state this read exists for.
+      service.getRegistrationProgress.mockResolvedValue({
+        progress: 'queued',
+        record: null,
+        inFlight: null,
+      });
+
+      const response = await controller.getRegistrationProgress(ORDER_ID, CONNECTION_ID);
+
+      expect(response).toEqual({ progress: 'queued', record: null, inFlight: null });
+    });
+
+    it('should project the in-flight signal without inventing a start time', async () => {
+      const since = new Date('2026-08-30T10:00:00.000Z');
+      service.getRegistrationProgress.mockResolvedValue({
+        progress: 'running',
+        record: registrationRecord({ status: 'registering' }),
+        inFlight: {
+          documentKind: 'fiscal-receipt',
+          connectionId: CONNECTION_ID,
+          recordId: 'rec-1',
+          since,
+        },
+      });
+
+      const response = await controller.getRegistrationProgress(ORDER_ID, CONNECTION_ID);
+
+      expect(response.inFlight).toEqual({
+        documentKind: 'fiscal-receipt',
+        connectionId: CONNECTION_ID,
+        recordId: 'rec-1',
+        since: since.toISOString(),
+      });
+      // `since` is a lower bound on elapsed time. Nothing here may express a
+      // deadline, so no such field exists to be misread as one.
+      expect(Object.keys(response.inFlight ?? {})).not.toContain('expiresAt');
+    });
+
+    it('should never write or attempt anything', async () => {
+      service.getRegistrationProgress.mockResolvedValue({
+        progress: 'not-requested',
+        record: null,
+        inFlight: null,
+      });
+
+      await controller.getRegistrationProgress(ORDER_ID, CONNECTION_ID);
+
+      expect(service.register).not.toHaveBeenCalled();
+      expect(service.requestRegistration).not.toHaveBeenCalled();
+      expect(service.reconcileInDoubt).not.toHaveBeenCalled();
+    });
+
+    it('should require an orderId', async () => {
+      await expect(
+        controller.getRegistrationProgress('  ', CONNECTION_ID),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(service.getRegistrationProgress).not.toHaveBeenCalled();
     });
   });
 });

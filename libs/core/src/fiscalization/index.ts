@@ -14,6 +14,8 @@
 export * from './domain/types/fiscalization.types';
 // The exactly-once key format and the accepted-request shape (#2525).
 export * from './domain/types/fiscal-registration-request.types';
+// Where one order's registration is, as a poll reads it (#2526).
+export * from './domain/types/fiscal-registration-progress.types';
 export * from './domain/entities/fiscal-registration-record.entity';
 export * from './domain/ports/fiscalization.port';
 // Re-exports both `FiscalRegistrationLocator` and `isFiscalRegistrationLocator`.
@@ -43,6 +45,7 @@ export {
 export type {
   IFiscalRegistrationService,
   FiscalReconcileResult,
+  FiscalRegistrationProgressView,
 } from './application/services/fiscal-registration.service.interface';
 export { FiscalRegistrationService } from './application/services/fiscal-registration.service';
 export * from './fiscalization.tokens';

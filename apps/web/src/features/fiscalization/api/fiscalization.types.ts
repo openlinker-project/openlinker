@@ -73,3 +73,50 @@ export interface RegisterFiscalTransactionInput {
   connectionId: string;
   orderId: string;
 }
+
+/**
+ * Mirrors `FiscalRegistrationProgressValues` in
+ * `libs/core/src/fiscalization/domain/types/fiscal-registration-progress.types.ts`.
+ *
+ * The browser bundle cannot import `@openlinker/core` (#591), so this is a
+ * hand-written copy and it drifts silently in both directions.
+ * `scripts/check-fiscal-registration-progress-mirror.mjs` enforces the equality
+ * under `pnpm check:invariants`; this comment is not the enforcement.
+ *
+ * `stalled` is not a failure: intent was recorded and nothing is running, and
+ * asking again is what moves it. `rejected` and `in-doubt` must stay apart -
+ * only a rejection may be re-attempted, because an in-doubt outcome means the
+ * sale may already be registered.
+ */
+export type FiscalRegistrationProgress =
+  | 'not-requested'
+  | 'queued'
+  | 'running'
+  | 'stalled'
+  | 'registered'
+  | 'rejected'
+  | 'in-doubt';
+
+/**
+ * A sales document being produced for this order right now, on any connection.
+ *
+ * `since` is a LOWER BOUND on how long the attempt has been running, never its
+ * start: nothing persists a claim-start instant, and a write inside a live claim
+ * moves it forward. A surface may render an elapsed reading from it and must not
+ * render a start time, a countdown or an estimate - OpenLinker observes no steps
+ * between handing a sale to a provider and getting one answer back.
+ */
+export interface SalesDocumentInFlight {
+  documentKind: 'invoice' | 'fiscal-receipt';
+  connectionId: string;
+  recordId: string;
+  since: string;
+}
+
+/** Mirrors `FiscalRegistrationProgressResponseDto`. */
+export interface FiscalRegistrationProgressView {
+  progress: FiscalRegistrationProgress;
+  /** Null while the work is queued, which is normal rather than an error. */
+  record: FiscalRegistrationRecord | null;
+  inFlight: SalesDocumentInFlight | null;
+}
