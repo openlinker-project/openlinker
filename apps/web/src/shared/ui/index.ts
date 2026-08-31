@@ -56,6 +56,7 @@ export { Dialog } from './dialog';
 export { ConfirmDialog } from './confirm-dialog';
 export { DropdownMenu } from './dropdown-menu';
 export { Popover, PopoverTrigger, PopoverContent } from './popover';
+export type { PopoverProps } from './popover';
 export { Tooltip } from './tooltip';
 
 // ── Data surfaces ──────────────────────────────────────────────────
@@ -66,6 +67,18 @@ export { RawPayloadPanel } from './raw-payload-panel';
 export { TimeDisplay } from './time-display';
 export { MetricCard } from './metric-card';
 export { KpiCard } from './kpi-card';
+
+// ── Sales documents (#2535) ────────────────────────────────────────
+export { DocumentKindGlyph, DOCUMENT_KIND_LABEL, NO_DOCUMENT_LABEL } from './document-kind-glyph';
+export type { DocumentKind, DocumentKindGlyphProps } from './document-kind-glyph';
+export { DocumentHeadline } from './document-headline';
+export type { DocumentHeadlineProps, DocumentHeadlineTone } from './document-headline';
+export { DocumentLifecycle } from './document-lifecycle';
+export type {
+  DocumentLifecycleProps,
+  DocumentLifecycleStep,
+  DocumentLifecycleStepState,
+} from './document-lifecycle';
 
 // ── Identity / labels ──────────────────────────────────────────────
 export { EntityLabel, shortenId } from './entity-label';

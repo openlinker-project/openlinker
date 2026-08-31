@@ -65,20 +65,28 @@ describe('OrderInvoicingCell (#2100)', () => {
     });
 
     it('replaces the CTA with the badge for a blocking reason', () => {
+      renderCell({ blockReason: 'missing-tax-rate' });
+      expect(screen.getByText('Tax rate missing')).toBeInTheDocument();
+      expect(cta()).toBeNull();
+    });
+
+    it('keeps the CTA on a batched connection, because nothing else will issue it', () => {
+      // Batched issuing is not implemented, so no run will ever collect this
+      // order; removing the manual route would strand it (#2534).
       renderCell({ blockReason: 'trigger-model-batched' });
       expect(screen.getByText('Batched')).toBeInTheDocument();
-      expect(cta()).toBeNull();
+      expect(cta()).toBeInTheDocument();
     });
 
     it('keeps the CTA beside a manual-only badge — the click IS the workflow', () => {
       renderCell({ blockReason: 'trigger-model-manual' });
-      expect(screen.getByText('Manual only')).toBeInTheDocument();
+      expect(screen.getByText('Issued on request')).toBeInTheDocument();
       expect(cta()).toBeInTheDocument();
     });
 
     it('drops the manual CTA when no connection can issue', () => {
       renderCell({ blockReason: 'trigger-model-manual', hasInvoicingCapability: false });
-      expect(screen.getByText('Manual only')).toBeInTheDocument();
+      expect(screen.getByText('Issued on request')).toBeInTheDocument();
       expect(cta()).toBeNull();
     });
 
@@ -114,7 +122,7 @@ describe('OrderInvoicingCell (#2100)', () => {
         blockReason: 'unresolved-routing',
         unresolvedReason: 'ambiguous-connection-no-primary',
       });
-      expect(screen.queryByText('No primary')).toBeNull();
+      expect(screen.queryByText('Two setups apply')).toBeNull();
     });
 
     it('shows the badge BESIDE the pill for a terminal rejected failure', () => {
@@ -126,13 +134,13 @@ describe('OrderInvoicingCell (#2100)', () => {
         unresolvedReason: 'ambiguous-connection-no-primary',
       });
       expect(screen.getByText('Failed')).toBeInTheDocument();
-      expect(screen.getByText('No primary')).toBeInTheDocument();
+      expect(screen.getByText('Two setups apply')).toBeInTheDocument();
       expect(cta()).toBeNull();
     });
 
     it('does not resurrect the CTA for a rejected failure on a manual connection', () => {
       renderCell({ invoice: rejected, blockReason: 'trigger-model-manual' });
-      expect(screen.getByText('Manual only')).toBeInTheDocument();
+      expect(screen.getByText('Issued on request')).toBeInTheDocument();
       expect(cta()).toBeNull();
     });
 
@@ -143,7 +151,7 @@ describe('OrderInvoicingCell (#2100)', () => {
         unresolvedReason: 'ambiguous-connection-no-primary',
       });
       expect(
-        screen.getByLabelText(/No primary: Several connections can invoice/i),
+        screen.getByLabelText(/Two setups apply: More than one setup could issue/i),
       ).toBeInTheDocument();
     });
   });
