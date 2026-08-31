@@ -1,12 +1,18 @@
 /**
- * SalesDocumentMarketSection (#2540)
+ * SalesDocumentMarketSection (#2540/#2541)
  *
- * The settings page's scannable market list: one row per market, sorted so a
- * market needing a decision sorts above a settled one. Reads the single
- * merged `useSalesDocumentMarketsQuery` snapshot — the summary sentence
- * (#2541), the detected-market suggested-setup wording (#2542) and the
- * loading skeleton (#2543) build on this same query in later slices of the
- * same mini-epic.
+ * The settings page's headline half: one prose sentence answering "what does
+ * each market issue" (#2541), then a scannable market list (#2540) — both
+ * read the single merged `useSalesDocumentMarketsQuery` snapshot, so they
+ * can never disagree about what "right now" means. The detected-market
+ * suggested-setup wording (#2542) already renders inside each row; the
+ * loading skeleton (#2543) builds on this same query in a later slice of
+ * the same mini-epic.
+ *
+ * The summary and the empty state never both render (#2541 acceptance):
+ * `summarizeSalesDocumentMarkets` returns `null` for an empty row set, and
+ * the empty-state branch below returns before the summary would even be
+ * computed.
  *
  * `onSelectCountry` is the existing seam `SalesDocumentCountryIndex` already
  * uses (#2187) — this section's action buttons resolve to the same
@@ -20,6 +26,7 @@ import type { ReactElement } from 'react';
 import { EmptyState, ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import { useSalesDocumentMarketsQuery } from '../hooks/use-sales-document-markets-query';
 import { orderSalesDocumentMarkets } from '../lib/order-sales-document-markets';
+import { summarizeSalesDocumentMarkets } from '../lib/summarize-sales-document-markets';
 import { SalesDocumentMarketRow } from './sales-document-market-row';
 
 export interface SalesDocumentMarketSectionProps {
@@ -66,8 +73,18 @@ export function SalesDocumentMarketSection({
     );
   }
 
+  const summary = summarizeSalesDocumentMarkets(rows);
+
   return (
     <div className="page-section sales-document-market-section">
+      {summary ? (
+        <p
+          className={`sales-document-market-section__summary sales-document-market-section__summary--${summary.tone}`}
+        >
+          {summary.sentence}
+        </p>
+      ) : null}
+
       <ul className="sales-document-market-row-list" aria-label="Sales-document markets">
         {rows.map((row) => (
           <SalesDocumentMarketRow key={row.country} row={row} onSelect={onSelectCountry} />

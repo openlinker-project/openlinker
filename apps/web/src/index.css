@@ -19371,7 +19371,22 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   }
 }
 
-/* ── Sales-document market section (#2540) ── */
+/* ── Sales-document market section (#2540/#2541) ── */
+.sales-document-market-section__summary {
+  margin: 0 0 var(--space-4);
+  font-size: 0.9375rem;
+  color: var(--text-secondary);
+}
+.sales-document-market-section__summary--fresh-install {
+  color: var(--text-secondary);
+}
+.sales-document-market-section__summary--attention {
+  color: var(--status-warning-fg);
+}
+.sales-document-market-section__summary--all-set {
+  color: var(--status-success-fg);
+}
+
 .sales-document-market-row-list {
   display: flex;
   flex-direction: column;
