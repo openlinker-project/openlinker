@@ -227,11 +227,14 @@ describe('SalesDocumentCountryRoutingDialog', () => {
     );
 
     expect(
-      await screen.findByText(/both an Invoice default and a Receipt default/i),
+      await screen.findByText(/Both an Invoice and a Receipt default are set/i),
     ).toBeInTheDocument();
+    // The consequence is stated, never reassurance that something resolves it.
+    expect(screen.getByText(/that step is disabled entirely/i)).toBeInTheDocument();
+    expect(screen.getByText(/an order that matches no rule is\s*held/i)).toBeInTheDocument();
   });
 
-  it('should not show the dual-default warning when only one default is set', async () => {
+  it('should not show the dual-default warning when only one default is set, and should show the single-default hint instead', async () => {
     const defaults: SalesDocumentCountryDefault[] = [
       { id: 'd1', country: 'PL', documentKind: 'invoice', connectionId: 'conn_1' },
     ];
@@ -253,7 +256,10 @@ describe('SalesDocumentCountryRoutingDialog', () => {
     );
 
     await screen.findByText(/Rules for PL/i);
-    expect(screen.queryByText(/both an Invoice default and a Receipt default/i)).toBeNull();
+    expect(screen.queryByText(/Both an Invoice and a Receipt default are set/i)).toBeNull();
+    expect(
+      await screen.findByText(/applies only when no rule above matches/i),
+    ).toBeInTheDocument();
   });
 
   it('should not show the dual-default warning when neither default is set', async () => {
@@ -275,7 +281,8 @@ describe('SalesDocumentCountryRoutingDialog', () => {
     );
 
     await screen.findByText(/Rules for PL/i);
-    expect(screen.queryByText(/both an Invoice default and a Receipt default/i)).toBeNull();
+    expect(screen.queryByText(/Both an Invoice and a Receipt default are set/i)).toBeNull();
+    expect(screen.queryByText(/applies only when no rule above matches/i)).toBeNull();
   });
 
   it('should render the "+ Add rule" composer with the elevated dialog tier when opened from within this dialog', async () => {
