@@ -125,6 +125,7 @@ import {
 
 import {
   useOrderFiscalRegistrationsQuery,
+  useFiscalRegistrationProgressQuery,
   useRegisterFiscalReceiptMutation,
   useReconcileFiscalRegistrationMutation,
   selectFiscalizationCandidates,
@@ -267,6 +268,22 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   // a second connection is unusual but not this surface's concern to reconcile).
   const fiscalRecord = fiscalRecords[0] ?? null;
 
+  // ── Where the registration has got to (#2526) ──
+  // Scoped to the connection the record is on, or - before any record exists -
+  // the one an action here would register on, because that is the pair the
+  // exactly-once key is built from.
+  const fiscalProgressConnectionId =
+    fiscalRecord?.connectionId ?? pickedFiscalConnectionId ?? fiscalCandidates[0]?.id ?? '';
+  const fiscalProgressQuery = useFiscalRegistrationProgressQuery(
+    order.internalOrderId,
+    fiscalProgressConnectionId,
+  );
+  const fiscalProgress = fiscalProgressQuery.data?.progress;
+  // The two states with work outstanding. `queued` is the one no record can
+  // describe: the request has been accepted and the job has not run yet, so
+  // there is nothing but the job to read.
+  const fiscalWorkOutstanding = fiscalProgress === 'queued' || fiscalProgress === 'running';
+
   // Loading skeleton while connections settle — matches the pre-#2160 panels.
   if (connectionsQuery.isLoading) {
     return (
@@ -306,7 +323,10 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   const fiscalBlocks = fiscalRecord !== null && !canRetryFiscalReceipt(fiscalRecord);
 
   const showInvoiceSlot = invoice !== null;
-  const showFiscalSlot = !showInvoiceSlot && fiscalRecord !== null;
+  // Outstanding work opens the slot even with no record. Without that, an order
+  // reopened in the window right after the operator asked would fall through to
+  // the empty state and offer to register the sale again.
+  const showFiscalSlot = !showInvoiceSlot && (fiscalRecord !== null || fiscalWorkOutstanding);
   const showEmptyState = !showInvoiceSlot && !showFiscalSlot;
 
   // ── Invoicing connection resolution (verbatim from the pre-#2160 panel) ──
@@ -392,6 +412,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
 
   const fiscalSettled = !fiscalQuery.isError && !fiscalQuery.isLoading;
   const fiscalDisplayStatus = deriveFiscalReceiptDisplayStatus(fiscalRecord);
+
 
   const handleRegister = (connectionId: string): void => {
     if (!connectionId) return;
@@ -850,13 +871,44 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
             <div className="sales-document-panel__skeleton" aria-hidden="true" />
           ) : null}
 
-          {fiscalSettled && (fiscalDisplayStatus === 'pending' || fiscalDisplayStatus === 'registering') ? (
+          {fiscalWorkOutstanding ||
+          (fiscalProgress === undefined &&
+            fiscalSettled &&
+            (fiscalDisplayStatus === 'pending' || fiscalDisplayStatus === 'registering')) ? (
             <>
               <div className="sales-document-panel__skeleton" aria-hidden="true" />
               <p className="sales-document-panel__notice">
-                {t('fiscalReceipt.pending.body', 'Sent to the provider. This refreshes automatically when it responds.')}
+                {/* The work runs in the background since #2525, so this no
+                    longer asks anyone to wait with the page open. It says what
+                    is true and nothing more: it continues, and it will be here.
+                    There is deliberately no estimate - OpenLinker hands the sale
+                    over and waits for one answer, observing nothing in between. */}
+                {t(
+                  'fiscalReceipt.pending.body',
+                  'Registering with the provider. This continues if you leave the page, and the result will be here when you come back.',
+                )}
               </p>
             </>
+          ) : null}
+
+          {fiscalProgress === 'stalled' ? (
+            <Alert
+              tone="warning"
+              title={t('fiscalReceipt.stalled.title', 'Nothing is running for this receipt')}
+            >
+              {t(
+                'fiscalReceipt.stalled.body',
+                'The registration was requested and stopped before it finished. Nothing was registered with the provider. Asking again picks it up where it stopped.',
+              )}{' '}
+              <Button
+                tone="secondary"
+                className="button--sm"
+                disabled={registerMutation.isPending || !fiscalProgressConnectionId}
+                onClick={() => handleRegister(fiscalProgressConnectionId)}
+              >
+                {t('fiscalReceipt.action.retry', 'Register receipt')}
+              </Button>
+            </Alert>
           ) : null}
 
           {fiscalSettled && fiscalDisplayStatus === 'registered' && fiscalRecord ? (

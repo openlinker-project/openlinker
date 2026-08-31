@@ -14,7 +14,10 @@
  *
  * @module apps/web/src/features/fiscalization/lib
  */
-import type { FiscalRegistrationStatus } from '../api/fiscalization.types';
+import type {
+  FiscalRegistrationProgress,
+  FiscalRegistrationStatus,
+} from '../api/fiscalization.types';
 
 /** Poll cadence while a registration is genuinely in flight. */
 export const FISCAL_POLL_MS = 5000;
@@ -25,4 +28,24 @@ export const FISCAL_POLL_MS = 5000;
  */
 export function fiscalPollInterval(status: FiscalRegistrationStatus | undefined): number | false {
   return status === 'registering' ? FISCAL_POLL_MS : false;
+}
+
+/**
+ * Refetch interval for the per-order registration progress read (#2527).
+ *
+ * `queued` and `running` are the two states with work outstanding, and both must
+ * poll: `queued` covers the window between the request being accepted and the
+ * job running, which is precisely the window the operator is watching and the
+ * one the record cannot describe.
+ *
+ * `stalled` does NOT poll. Nothing is running, so refetching would describe
+ * something that is not happening; only asking again moves it. The three
+ * terminal states need no poll either.
+ *
+ * An absent progress value (not yet loaded) does not poll.
+ */
+export function fiscalProgressPollInterval(
+  progress: FiscalRegistrationProgress | undefined,
+): number | false {
+  return progress === 'queued' || progress === 'running' ? FISCAL_POLL_MS : false;
 }

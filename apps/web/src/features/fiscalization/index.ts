@@ -13,6 +13,10 @@
 export { createFiscalizationApi } from './api/fiscalization.api';
 export type { FiscalizationApi } from './api/fiscalization.api';
 export type {
+  AcceptedFiscalRegistration,
+  FiscalRegistrationProgress,
+  FiscalRegistrationProgressView,
+  SalesDocumentInFlight,
   FiscalArtefact,
   FiscalArtefactMedium,
   FiscalArtefactDisposition,
@@ -27,6 +31,7 @@ export { FiscalReceiptStatusBadge } from './components/fiscal-receipt-status-bad
 export type { FiscalReceiptDisplayStatus } from './components/fiscal-receipt-status-badge';
 export { FiscalArtefactList } from './components/fiscal-artefact-list';
 export { useOrderFiscalRegistrationsQuery } from './hooks/use-order-fiscal-registrations-query';
+export { useFiscalRegistrationProgressQuery } from './hooks/use-fiscal-registration-progress-query';
 export { useRegisterFiscalReceiptMutation } from './hooks/use-register-fiscal-receipt-mutation';
 export { useReconcileFiscalRegistrationMutation } from './hooks/use-reconcile-fiscal-registration-mutation';
 export {

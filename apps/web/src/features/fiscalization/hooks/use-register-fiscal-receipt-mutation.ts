@@ -1,11 +1,14 @@
 /**
- * useRegisterFiscalReceiptMutation (#1909)
+ * useRegisterFiscalReceiptMutation (#1909, reworked by #2527)
  *
- * Mutation for `POST /fiscal-registrations` — the manual, explicit-operator-
- * request trigger (ADR-042: v1 registers on nothing else). On success, seeds
- * the per-order list cache by upserting the returned record rather than
- * discarding the list, and invalidates only while the row is still in flight
- * so the poll takes over from there.
+ * Mutation for `POST /fiscal-registrations` - the manual, explicit-operator-
+ * request trigger (ADR-042: v1 registers on nothing else).
+ *
+ * Since #2525 the endpoint ACCEPTS the work rather than performing it, so there
+ * is no record in the answer to seed a cache with. What the mutation can do is
+ * make both per-order reads re-fetch, and the progress read then polls itself to
+ * the outcome. That is the whole reason the panel survives being closed: nothing
+ * about the result depends on this mutation's promise still being alive.
  *
  * @module apps/web/src/features/fiscalization/hooks
  */
@@ -13,38 +16,30 @@ import { useMutation, useQueryClient, type UseMutationResult } from '@tanstack/r
 import { useApiClient } from '../../../app/api/api-client-provider';
 import { fiscalizationQueryKeys } from '../api/fiscalization.query-keys';
 import type {
-  FiscalRegistrationRecord,
+  AcceptedFiscalRegistration,
   RegisterFiscalTransactionInput,
 } from '../api/fiscalization.types';
 
-function upsertRecord(
-  existing: FiscalRegistrationRecord[] | undefined,
-  record: FiscalRegistrationRecord,
-): FiscalRegistrationRecord[] {
-  const rest = (existing ?? []).filter((r) => r.id !== record.id);
-  return [record, ...rest];
-}
-
 export function useRegisterFiscalReceiptMutation(): UseMutationResult<
-  FiscalRegistrationRecord,
+  AcceptedFiscalRegistration,
   Error,
   RegisterFiscalTransactionInput
 > {
   const apiClient = useApiClient();
   const queryClient = useQueryClient();
 
-  return useMutation<FiscalRegistrationRecord, Error, RegisterFiscalTransactionInput>({
+  return useMutation<AcceptedFiscalRegistration, Error, RegisterFiscalTransactionInput>({
     mutationFn: (input) => apiClient.fiscalization.register(input),
-    onSuccess: async (record, input) => {
-      queryClient.setQueryData<FiscalRegistrationRecord[]>(
-        fiscalizationQueryKeys.forOrder(input.orderId),
-        (existing) => upsertRecord(existing, record),
-      );
-      if (record.status === 'pending' || record.status === 'registering') {
-        await queryClient.invalidateQueries({
-          queryKey: fiscalizationQueryKeys.forOrder(input.orderId),
-        });
-      }
+    onSuccess: async (_accepted, input) => {
+      // Both reads, and the progress one first in intent: it is the one that can
+      // report the accepted-but-not-yet-running window, which the record list
+      // renders as an order nobody asked to register.
+      await queryClient.invalidateQueries({
+        queryKey: fiscalizationQueryKeys.progressForOrder(input.orderId, input.connectionId),
+      });
+      await queryClient.invalidateQueries({
+        queryKey: fiscalizationQueryKeys.forOrder(input.orderId),
+      });
     },
   });
 }
