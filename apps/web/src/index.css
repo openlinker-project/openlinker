@@ -10668,6 +10668,17 @@ html[data-density='compact'] .status-badge {
   color: var(--text-disabled);
 }
 
+/* Weight sits behind its own divider - it's a different physical quantity
+ * from L x W x H, not a fourth dimension, so the rule reads it as its own
+ * fact rather than a continuation of the dims group (#2669). Deliberately
+ * NOT `display: flex` - this wraps two different internal layouts (a single
+ * input in a row, a stacked label+input in the profile bar) and must not
+ * impose a direction of its own on either. */
+.bulk-dispatch__weight {
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--border-default);
+}
+
 /* `input.bulk-dispatch__num` (not `.bulk-dispatch__num` alone) is required to
  * out-specificity the base `input[type='number'] { width: 100%; }` rule: that
  * rule combines an element-type selector with an attribute selector (0,1,1),
@@ -10675,16 +10686,30 @@ html[data-density='compact'] .status-badge {
  * the `input` element-type selector here brings this rule to the same
  * specificity tier so it wins on source order instead - otherwise these
  * compact dimension/weight fields silently stretch to share the row's flex
- * space instead of staying at their intended width (#1658). */
+ * space instead of staying at their intended width (#1658).
+ *
+ * Widths are sized for the agreed maximum value length plus the native
+ * number-input stepper: 4 digits of millimetres for dims, 5 digits of grams
+ * for weight (#2669 - the previous 52/68px clipped anything past 2-3 digits).
+ * `min-width` repeats the value so the input can never be squeezed below it
+ * even if a future layout change drops the explicit `width`. The base
+ * `.control` rule's 12px side padding is tightened to 4px here too - at the
+ * base padding a 64px input has ~40px left for digits + spinner, only
+ * ~3 digits, so widening the box alone was not enough to stop the clip
+ * (verified empirically: a 1500mm value rendered as "150" until the padding
+ * was cut down). */
 input.bulk-dispatch__num {
-  width: 52px;
+  width: 64px;
+  min-width: 64px;
   flex-shrink: 0;
+  padding: 0 var(--space-1);
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
 
 input.bulk-dispatch__num--wide {
-  width: 68px;
+  width: 84px;
+  min-width: 84px;
 }
 
 .bulk-dispatch__apply {
@@ -10713,11 +10738,16 @@ input.bulk-dispatch__num--wide {
   overflow-y: auto;
 }
 
+/* Flex-wrap, not a rigid grid (#2669): the id column no longer claims the
+ * whole flexible share, and the parcel-fields cluster (below) can drop to its
+ * own line as a group once the row runs out of width, instead of any input
+ * shrinking below its floor. */
 .bulk-dispatch__row {
-  display: grid;
-  grid-template-columns: minmax(140px, 1fr) auto auto auto auto;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-3);
+  column-gap: var(--space-3);
+  row-gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--border-subtle);
 }
@@ -10728,14 +10758,29 @@ input.bulk-dispatch__num--wide {
 
 .bulk-dispatch__row--ineligible {
   background: var(--bg-canvas);
-  grid-template-columns: minmax(140px, 1fr) auto auto;
 }
 
 .bulk-dispatch__row-id {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  /* Narrower than the old 140px grid track (#2669) - it no longer needs to
+   * carry the row's whole flexible share, just enough for the source pill +
+   * a couple of wrapped id lines + the buyer name. */
+  flex: 1 1 96px;
+  max-width: 168px;
   min-width: 0;
+}
+
+/* Groups dims + weight + the Ready badge as one unit so they wrap together
+ * onto their own line under the id/badge instead of each input shrinking
+ * (#2669). */
+.bulk-dispatch__parcel-fields {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-left: auto;
 }
 
 .bulk-dispatch__src {
@@ -10754,15 +10799,22 @@ input.bulk-dispatch__num--wide {
 .bulk-dispatch__ordid {
   font-size: 0.75rem;
   color: var(--text-primary);
+  line-height: 1.35;
+  /* Wraps only at the <wbr> break points `splitIdForWrap` inserts (the
+   * `ol_x_` prefix boundary, then every 6 hex chars) - never bare
+   * `overflow-wrap: anywhere` (inherited from `.mono`), which broke this
+   * unbroken internal id one character per line once its squeezed column ran
+   * low on width (#1658). `normal` respects only explicit break
+   * opportunities, so a narrow column gets sane multi-character chunks
+   * instead. Capped at 2 lines so a very long id still can't inflate the row
+   * (and, once clipped by `.bulk-dispatch__rows`' max-height, the whole
+   * dialog) the way the pre-#1658 unbounded wrap did (#2669). */
+  white-space: normal;
+  overflow-wrap: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  /* Without `nowrap`, `overflow-wrap: anywhere` (inherited from `.mono`)
-   * breaks this unbroken internal order id one character per line once its
-   * squeezed grid column runs low on width - inflating the row (and, once
-   * clipped by `.bulk-dispatch__rows`' max-height, the whole dialog) to
-   * hundreds of pixels of apparent empty space (#1658). `nowrap` lets the
-   * already-declared ellipsis truncate it on one line instead. */
-  white-space: nowrap;
 }
 
 .bulk-dispatch__buyer {
@@ -10770,19 +10822,15 @@ input.bulk-dispatch__num--wide {
 }
 
 .bulk-dispatch__row-error {
-  grid-column: 1 / -1;
+  flex-basis: 100%;
   font-size: 0.75rem;
   color: var(--status-error-fg);
-}
-
-.bulk-dispatch__row-spacer {
-  display: block;
 }
 
 .bulk-dispatch__row-hint {
   font-size: 0.75rem;
   color: var(--status-warning-fg);
-  grid-column: 1 / -1;
+  flex-basis: 100%;
 }
 
 .bulk-dispatch__link {
@@ -10831,11 +10879,25 @@ input.bulk-dispatch__num--wide {
 }
 
 @media (max-width: 767.98px) {
-  /* Stack each row's controls so dims/weight don't overflow on a phone. */
+  /* Stack each row's controls so dims/weight don't overflow on a phone -
+   * unchanged behaviour from before #2669, just expressed as a flex column
+   * instead of a single grid track (the row itself is flex-wrap now, not
+   * grid). Each control still lands on its own full-width line. */
   .bulk-dispatch__row,
   .bulk-dispatch__row--ineligible {
-    grid-template-columns: 1fr;
-    gap: var(--space-2);
+    flex-direction: column;
+    align-items: flex-start;
+    row-gap: var(--space-2);
+  }
+  .bulk-dispatch__row-id {
+    flex-basis: auto;
+    max-width: none;
+  }
+  .bulk-dispatch__parcel-fields {
+    flex-direction: column;
+    align-items: flex-start;
+    margin-left: 0;
+    width: 100%;
   }
   .bulk-dispatch__profile-fields {
     gap: var(--space-3);
