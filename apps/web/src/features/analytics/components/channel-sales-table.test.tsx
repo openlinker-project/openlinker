@@ -2,9 +2,23 @@ import { screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 import type { ChannelSalesAnalytics, SalesAndChannelAnalytics } from '../api/sales-analytics.types';
+import type { AnalyticsCoverage } from '../api/analytics-coverage.types';
 import { ChannelSalesTable } from './channel-sales-table';
 
 const FILTERS = { from: '2026-08-01', to: '2026-08-14' };
+const COVERAGE_FILTERS = { from: '2026-08-01T00:00:00.000Z', to: '2026-08-15T00:00:00.000Z' };
+
+function coverage(overrides: Partial<Record<string, number>> = {}): AnalyticsCoverage {
+  return {
+    categories: [
+      { category: 'currency', status: 'open', affectedCount: overrides.currency ?? 0, sampleOrderIds: [] },
+      { category: 'tax-a', status: 'open', affectedCount: overrides['tax-a'] ?? 0, sampleOrderIds: [] },
+      { category: 'tax-b', status: 'open', affectedCount: overrides['tax-b'] ?? 0, sampleOrderIds: [] },
+      { category: 'tax-c', status: 'open', affectedCount: overrides['tax-c'] ?? 0, sampleOrderIds: [] },
+      { category: 'product-matching', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+    ],
+  };
+}
 
 function channel(overrides: Partial<ChannelSalesAnalytics> = {}): ChannelSalesAnalytics {
   return {
@@ -263,5 +277,105 @@ describe('ChannelSalesTable', () => {
     expect(
       screen.getByLabelText('No Net sales figure can be given for this channel in range')
     ).toBeInTheDocument();
+  });
+
+  // #2481 regression guards — the mockup's own two found bugs: a row
+  // wrongly labeled with a *different* category's issue, and a row with
+  // orders in an open category's affected set missing its annotation
+  // entirely. Both fixtures cross-reference against the FULL affected-order
+  // list (never the 10-id sample), grouped by `sourceConnectionId`.
+  describe('.excl-note cross-reference (#2481)', () => {
+    it("should attribute each channel's exclusion note to its own category, never the other channel's", async () => {
+      const apiClient = createMockApiClient({
+        analytics: {
+          getSales: vi.fn().mockResolvedValue(
+            analytics([
+              channel({ sourceConnectionId: 'conn-1' }),
+              channel({ sourceConnectionId: 'conn-2' }),
+            ])
+          ),
+          getCurrencyMismatchOrders: vi.fn().mockResolvedValue({
+            items: [{ internalOrderId: 'ol_order_1', sourceConnectionId: 'conn-1', nativeCurrency: 'EUR', stampedCurrency: null, stampedAt: null }],
+            total: 1,
+          }),
+          getTaxCoverageOrders: vi.fn().mockResolvedValue({
+            items: [{ internalOrderId: 'ol_order_2', sourceConnectionId: 'conn-2', placedAt: null }],
+            total: 1,
+          }),
+        },
+        connections: {
+          list: vi.fn().mockResolvedValue([
+            { id: 'conn-1', name: 'Allegro — main', platformType: 'allegro' },
+            { id: 'conn-2', name: 'Sklep główny', platformType: 'prestashop' },
+          ]),
+        },
+      });
+
+      renderWithProviders(
+        <ChannelSalesTable
+          filters={FILTERS}
+          coverage={coverage({ currency: 1, 'tax-b': 1 })}
+          coverageFilters={COVERAGE_FILTERS}
+          onOpenCategory={() => {}}
+        />,
+        { apiClient }
+      );
+
+      const conn1Row = (await screen.findByRole('link', { name: 'Allegro — main' })).closest('tr');
+      const conn2Row = (await screen.findByRole('link', { name: 'Sklep główny' })).closest('tr');
+      expect(conn1Row).not.toBeNull();
+      expect(conn2Row).not.toBeNull();
+
+      // conn-1's own order is a currency exclusion — its note must say so,
+      // and must NOT carry conn-2's tax-B note (the exact mislabeling bug
+      // the mockup's own design review caught).
+      const conn1Notes = conn1Row!.querySelectorAll('.excl-note');
+      expect(conn1Notes).toHaveLength(1);
+      expect(conn1Notes[0]).toHaveTextContent('1 order counted in an outdated currency');
+
+      const conn2Notes = conn2Row!.querySelectorAll('.excl-note');
+      expect(conn2Notes).toHaveLength(1);
+      expect(conn2Notes[0]).toHaveTextContent('1 order have no tax rate at all');
+    });
+
+    it('should annotate a channel for every cross-referenceable category it has an excluded order in', async () => {
+      const apiClient = createMockApiClient({
+        analytics: {
+          getSales: vi.fn().mockResolvedValue(analytics([channel({ sourceConnectionId: 'conn-1' })])),
+          getCurrencyMismatchOrders: vi.fn().mockResolvedValue({
+            items: [{ internalOrderId: 'ol_order_1', sourceConnectionId: 'conn-1', nativeCurrency: 'EUR', stampedCurrency: null, stampedAt: null }],
+            total: 1,
+          }),
+          getTaxCoverageOrders: vi.fn((input: { category: string }) =>
+            Promise.resolve(
+              input.category === 'tax-a'
+                ? { items: [{ internalOrderId: 'ol_order_2', sourceConnectionId: 'conn-1', placedAt: null }], total: 1 }
+                : input.category === 'tax-b'
+                  ? { items: [{ internalOrderId: 'ol_order_3', sourceConnectionId: 'conn-1', placedAt: null }], total: 1 }
+                  : { items: [{ internalOrderId: 'ol_order_4', sourceConnectionId: 'conn-1', placedAt: null }], total: 1 }
+            )
+          ),
+        },
+        connections: {
+          list: vi.fn().mockResolvedValue([{ id: 'conn-1', name: 'Allegro — main', platformType: 'allegro' }]),
+        },
+      });
+
+      renderWithProviders(
+        <ChannelSalesTable
+          filters={FILTERS}
+          coverage={coverage({ currency: 1, 'tax-a': 1, 'tax-b': 1, 'tax-c': 1 })}
+          coverageFilters={COVERAGE_FILTERS}
+          onOpenCategory={() => {}}
+        />,
+        { apiClient }
+      );
+
+      const row = (await screen.findByRole('link', { name: 'Allegro — main' })).closest('tr');
+      expect(row).not.toBeNull();
+      // One note per open category this channel has an order in — every
+      // category is represented, none silently dropped.
+      expect(row!.querySelectorAll('.excl-note')).toHaveLength(4);
+    });
   });
 });
