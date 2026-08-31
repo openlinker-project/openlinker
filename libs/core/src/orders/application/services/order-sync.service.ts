@@ -3,7 +3,8 @@
  *
  * Application service for synchronizing orders from sources to destination processors.
  * Routes unified orders (with internal IDs) to every active connection whose adapter
- * supports the `OrderProcessorManager` capability, with per-destination error isolation.
+ * supports the `OrderProcessorManager` capability — narrowed by an optional routing
+ * filter, see below — with per-destination error isolation.
  *
  * ## Router-filtered fan-out (#2397, design §5.5)
  *

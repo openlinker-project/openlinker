@@ -1081,9 +1081,14 @@ describe('OrderSyncService', () => {
       }
 
       const exception = caught as NoOrderDestinationsAvailableException;
-      // Source echo excluded, duplicate deduped.
+      // Source echo excluded, duplicate deduped. The array IS the claim; the
+      // message assertions below are deliberately anchored on both possible
+      // render positions, because a bare `'source-1,'` would only catch an
+      // echo that is not last in the list.
       expect(exception.unresolvedDestinationConnectionIds).toEqual(['dest-offline']);
+      expect(exception.message).toContain('[dest-offline]');
       expect(exception.message).not.toContain('source-1,');
+      expect(exception.message).not.toContain('source-1]');
     });
 
     it('should treat duplicate ids idempotently and never fan out twice', async () => {
