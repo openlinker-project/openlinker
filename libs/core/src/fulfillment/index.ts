@@ -100,13 +100,20 @@ export { FulfillmentHoldNotFoundError } from './domain/exceptions/fulfillment-ho
 export { FulfillmentPersistenceError } from './domain/exceptions/fulfillment-persistence.error';
 export { FulfillmentWorkNotFoundError } from './domain/exceptions/fulfillment-work-not-found.error';
 
+export * from './domain/types/fulfillment-progress-event.types';
 export * from './domain/types/routing-decision.types';
+
+// `IFulfillmentProgressService` (#2400) — the single core-side progress ingress
+// seam. Its `FulfillmentProgressClaimRepositoryPort` is deliberately NOT here,
+// for the same reason `FulfillmentWorkRepositoryPort` is not: a
+// `*RepositoryPort` is an intra-context persistence contract that
+// `check-cross-context-imports` rejects by deny pattern.
+export type { IFulfillmentProgressService } from './application/interfaces/fulfillment-progress.service.interface';
+
 export { RoutingDecision } from './domain/entities/routing-decision.entity';
 export { RoutingDecisionAlreadyLiveError } from './domain/exceptions/routing-decision-already-live.error';
-// The INPUT shapes are exported; `RoutingDecisionRepositoryPort` itself is
-// deliberately NOT — a `*RepositoryPort` is an intra-context persistence
-// contract that `check-cross-context-imports` rejects by deny pattern (the
-// `ReservationRepositoryPort` precedent). #2395 injects it by token from
+// Same rule one table over: the INPUT shapes are exported, while
+// `RoutingDecisionRepositoryPort` itself is not. #2395 injects it by token from
 // inside this context.
 export type {
   ClaimRoutingIntentInput,

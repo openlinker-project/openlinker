@@ -47,6 +47,7 @@ import { MarketplaceOfferPauseStaleSweepHandler } from './handlers/marketplace-o
 import { MarketplaceShipmentStatusSyncHandler } from './handlers/marketplace-shipment-status-sync.handler';
 import { MarketplaceShipmentSyncByExternalIdHandler } from './handlers/marketplace-shipment-sync-by-external-id.handler';
 import { MarketplaceFulfillmentStatusSyncHandler } from './handlers/marketplace-fulfillment-status-sync.handler';
+import { FulfillmentWorkStatusSyncHandler } from './handlers/fulfillment-work-status-sync.handler';
 import { MasterProductSyncHandler } from './handlers/master-product-sync.handler';
 import { MasterProductSyncBatchHandler } from './handlers/master-product-sync-batch.handler';
 import { MasterInventorySyncHandler } from './handlers/master-inventory-sync.handler';
@@ -121,6 +122,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     MarketplaceShipmentStatusSyncHandler,
     MarketplaceShipmentSyncByExternalIdHandler,
     MarketplaceFulfillmentStatusSyncHandler,
+    FulfillmentWorkStatusSyncHandler,
     MasterProductSyncHandler,
     MasterProductSyncBatchHandler,
     MasterInventorySyncHandler,

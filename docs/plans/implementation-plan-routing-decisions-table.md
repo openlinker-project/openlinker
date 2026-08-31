@@ -29,7 +29,7 @@ right and is the shape being copied. Two routers producing two plans for one ord
 
 ### In scope
 
-- `routing_decisions` table + migration `1865000000000`.
+- `routing_decisions` table + migration `1866000000000`.
 - `RoutingDecisionOrmEntity` registered on `FulfillmentModule`'s `forFeature`.
 - The **live partial-unique index** `UQ_routing_decisions_live_order`.
 - `RoutingDecisionRepositoryPort` + `RoutingDecisionRepository` (`claimIntent`, `terminalise`,
@@ -254,8 +254,8 @@ That is exactly the behaviour the design needs; threading the manager through wo
 
 ### Phase 3 — Migration
 
-10. `apps/api/src/migrations/1865000000000-create-routing-decisions.ts`, class
-    `CreateRoutingDecisions1865000000000`, `name` property matching. Copies #2392's structure:
+10. `apps/api/src/migrations/1866000000000-create-routing-decisions.ts`, class
+    `CreateRoutingDecisions1866000000000`, `name` property matching. Copies #2392's structure:
     `CREATE TABLE IF NOT EXISTS` with the inline named PK, indexes issued separately with the
     partial `WHERE` on its own line, `down()` dropping indexes in reverse then the table.
     **No `CREATE EXTENSION "uuid-ossp"`** — #2392 needs it because its line and hold PKs default to

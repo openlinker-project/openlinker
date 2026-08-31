@@ -32,6 +32,7 @@ import { MarketplaceOfferPauseStaleSweepHandler } from './marketplace-offer-paus
 import { MarketplaceShipmentStatusSyncHandler } from './marketplace-shipment-status-sync.handler';
 import { MarketplaceShipmentSyncByExternalIdHandler } from './marketplace-shipment-sync-by-external-id.handler';
 import { MarketplaceFulfillmentStatusSyncHandler } from './marketplace-fulfillment-status-sync.handler';
+import { FulfillmentWorkStatusSyncHandler } from './fulfillment-work-status-sync.handler';
 import { MasterProductSyncHandler } from './master-product-sync.handler';
 import { MasterProductSyncBatchHandler } from './master-product-sync-batch.handler';
 import { MasterInventorySyncHandler } from './master-inventory-sync.handler';
@@ -90,6 +91,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly marketplaceShipmentStatusSyncHandler: MarketplaceShipmentStatusSyncHandler,
     private readonly marketplaceShipmentSyncByExternalIdHandler: MarketplaceShipmentSyncByExternalIdHandler,
     private readonly marketplaceFulfillmentStatusSyncHandler: MarketplaceFulfillmentStatusSyncHandler,
+    private readonly fulfillmentWorkStatusSyncHandler: FulfillmentWorkStatusSyncHandler,
     private readonly masterProductSyncHandler: MasterProductSyncHandler,
     private readonly masterProductSyncBatchHandler: MasterProductSyncBatchHandler,
     private readonly masterInventorySyncHandler: MasterInventorySyncHandler,
@@ -182,6 +184,21 @@ export class HandlerRegistrationService implements OnModuleInit {
       'returns.orphan.reconcile',
       this.returnsOrphanReconcileHandler,
       'bulk'
+    );
+    // OMS fulfilment progress ingress (#2400). `realtime`, by ADR-050's
+    // cost-of-starvation rule: an executor's progress report is WAITED ON — a
+    // picker is standing at a station and the worklist shows stale counters
+    // until it drains — which is the same argument that puts inbound order sync
+    // on this lane. It outranks the "core-owned internal pass" instinct that
+    // would suggest `bulk`, because that instinct is about who ENQUEUES the job,
+    // and the lane is about who is hurt when it is late.
+    //
+    // Distinct from `marketplace.fulfillment.statusSync` (#834) above, which is
+    // the shipping context's OMP read-back and shares nothing with this but a word.
+    this.handlerRegistry.register(
+      'fulfillment.work.statusSync',
+      this.fulfillmentWorkStatusSyncHandler,
+      'realtime'
     );
     this.handlerRegistry.register(
       'marketplace.offers.sync',

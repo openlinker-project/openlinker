@@ -41,12 +41,16 @@
  * `ALTER TYPE` plus a coordinated deploy.
  *
  * Generated: 2026-08-30 (synthetic sequential prefix per docs/migrations.md
- * rule 3; 1864000000000 is #2392's fulfillment-work tables).
+ * rule 3; 1864000000000 is #2392's fulfillment-work tables). Renumbered from
+ * 1865000000000 to 1866000000000: #2400 merged that prefix into
+ * `oms-programme-wave-3a` while this branch was in review, and TypeORM sorts
+ * by timestamp alone with no deterministic tie-breaker, so a collision can
+ * leave one `up()` body silently unapplied (#374).
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateRoutingDecisions1865000000000 implements MigrationInterface {
-  name = 'CreateRoutingDecisions1865000000000';
+export class CreateRoutingDecisions1866000000000 implements MigrationInterface {
+  name = 'CreateRoutingDecisions1866000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`

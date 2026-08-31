@@ -23,7 +23,7 @@ the plan's prose are listed below; none blocks implementation.
 | `@openlinker/core/fulfillment` subpath | **ALREADY EXISTS → reuse** | `libs/core/package.json:67-71`; no `exports` edit needed |
 | `FulfillmentModule` | **PARTIAL → extend** | add entity to `forFeature`, provider, token export |
 | `fulfillment.tokens.ts` | **PARTIAL → extend** | currently one binding |
-| Migration prefix `1865000000000` | **NEW / free** | max on `origin/oms-programme-wave-3a` is `1864000000000`; max on `origin/main` is `1849000000003`. `git grep 1865000000000` empty on both refs |
+| Migration prefix `1866000000000` | **NEW / free** | `1865000000000` was free when analysed but #2400 merged it into `oms-programme-wave-3a` during review, so this renumbered to `1866000000000`; max on `origin/main` is `1849000000003`. `git grep 1866000000000` empty on both refs |
 
 ### The adjacent stack that must NOT be reused — confirmed distinct
 
@@ -46,10 +46,10 @@ one into the other. **No reuse; no rename.** The new Symbol description is
 | Port method signatures | no existing `*Port` is modified; `FulfillmentRouterPort` untouched | none |
 | DTO shapes | none touched | none |
 | Symbol tokens | additive | none |
-| ORM schema | new table ⇒ migration required — planned as `1865000000000` | Warning (addressed) |
+| ORM schema | new table ⇒ migration required — planned as `1865000000000`, shipped as `1866000000000` after a #2400 collision | Warning (addressed) |
 | `check-cross-context-imports` | the port is **not** barrel-exported (the `ReservationRepositoryPort` precedent). Note the deny rule bites at the *import* site, not the barrel — inventory still exports two legacy repository ports — so omitting it is discipline, not a build requirement | none |
 | `barrel-purity.spec.ts` leaf allow-set | stays at **two** entries: every column is a primitive or a union declared in this leaf | none |
-| `check-migration-timestamps` rules 1-4 | filename prefix, class suffix and `name` property all move together at `1865000000000` | none |
+| `check-migration-timestamps` rules 1-4 | filename prefix, class suffix and `name` property all move together at `1866000000000` | none |
 
 ---
 
