@@ -10692,11 +10692,17 @@ html[data-density='compact'] .status-badge {
  * number-input stepper: 4 digits of millimetres for dims, 5 digits of grams
  * for weight (#2669 - the previous 52/68px clipped anything past 2-3 digits).
  * `min-width` repeats the value so the input can never be squeezed below it
- * even if a future layout change drops the explicit `width`. */
+ * even if a future layout change drops the explicit `width`. The base
+ * `.control` rule's 12px side padding is tightened to 4px here too - at the
+ * base padding a 64px input has ~40px left for digits + spinner, only
+ * ~3 digits, so widening the box alone was not enough to stop the clip
+ * (verified empirically: a 1500mm value rendered as "150" until the padding
+ * was cut down). */
 input.bulk-dispatch__num {
   width: 64px;
   min-width: 64px;
   flex-shrink: 0;
+  padding: 0 var(--space-1);
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
