@@ -14,8 +14,8 @@
  * @module apps/web/src/plugins/oms
  * @see docs/architecture/adrs/055-oms-as-credentialless-connection-plugin.md
  */
-import { definePlugin } from '../define-plugin';
 import type { OpenLinkerPlugin } from '../../shared/plugins';
+import { definePlugin } from '../define-plugin';
 
 export const omsPlugin: OpenLinkerPlugin = definePlugin({
   id: 'openlinker',

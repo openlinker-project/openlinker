@@ -48,10 +48,10 @@ import { erliPlugin } from './erli';
 import { infaktPlugin } from './infakt';
 import { inpostPlugin } from './inpost';
 import { ksefPlugin } from './ksef';
+import { omsPlugin } from './oms';
 import { prestashopPlugin } from './prestashop';
 import { subiektPlugin } from './subiekt';
 import { woocommercePlugin } from './woocommerce';
-import { omsPlugin } from './oms';
 
 export const plugins: readonly OpenLinkerPlugin[] = [
   prestashopPlugin,

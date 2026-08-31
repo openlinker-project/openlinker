@@ -115,6 +115,13 @@ export function toCreateConnectionInput(
   // reporting `credentialsBacked: true` for a connection that holds none.
   // The form also clears both fields on platform change; this is the belt to
   // that pair of braces, and the one that survives a future caller.
+  //
+  // Note the deliberate asymmetry with `buildCreateConnectionSchema`, which
+  // still ACCEPTS a `db:` ref for a credential-less adapter (a ref is not
+  // invalid, merely unnecessary) while this drops it. Unreachable through the
+  // form, whose credential inputs are not rendered for such an adapter — but
+  // if they ever are, the schema must refuse the value rather than let this
+  // discard it silently.
   const credentialLess = options?.requiresCredentials === false;
   const hasJson =
     !credentialLess && Boolean(values.credentialsJson && values.credentialsJson.length > 0);

@@ -65,10 +65,16 @@ function readHostServicesMembers(): string[] {
   );
   const start = source.indexOf('export interface HostServices');
   expect(start).toBeGreaterThanOrEqual(0);
-  const body = source.slice(start);
+  // Bounded to THIS interface. Slicing to EOF would sweep in any later
+  // 2-space-indented declaration (a future `HostServicesV2`, an options type)
+  // and fail both assertions for a reason that has nothing to do with
+  // widening — a red that misdirects is barely better than a green that lies.
+  const end = source.indexOf('\n}', start);
+  expect(end).toBeGreaterThan(start);
+  const body = source.slice(start, end);
   // `readonly` is OPTIONAL in the pattern on purpose. Requiring it left a hole
   // in exactly the case this file guards: a member added WITHOUT `readonly`
-  // would be invisible to the scan, the 18 existing members would keep the
+  // would be invisible to the scan, the existing members would keep the
   // non-vacuity check green, `toEqual` would still match and
   // `not.toContain('inventoryQuery')` would still pass — while `HostServices`
   // had in fact been widened. Dropping one word is the likeliest shape a

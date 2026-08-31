@@ -338,10 +338,10 @@ describe('ConnectionService', () => {
         // input at every setting: letting it through would encrypt and persist
         // a credential row nothing ever reads, silently discard the caller's
         // own ref, and hand `updateCredentials` its db-backed branch.
-        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce(
-          credentialLessMetadata as never
-        );
-
+        //
+        // Deliberately NO metadata mock: this guard runs ABOVE the adapter
+        // lookup, so the manifest is never consulted and queueing one would
+        // suggest this case exercises the credential-less path when it cannot.
         await expect(
           service.create({
             ...payload,
@@ -354,10 +354,7 @@ describe('ConnectionService', () => {
       });
 
       it('should STILL reject a raw-key credentialsRef', async () => {
-        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce(
-          credentialLessMetadata as never
-        );
-
+        // Also pre-lookup, and for the same reason — see above.
         await expect(
           service.create({ ...payload, platformType: 'openlinker', credentialsRef: 'RAW_KEY_XYZ' })
         ).rejects.toThrow(/must start with "db:"/);
