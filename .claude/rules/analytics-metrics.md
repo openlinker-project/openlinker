@@ -8,8 +8,8 @@ paths:
 
 # Analytics Metric Rules
 
-These rules apply to every figure rendered on the `/analytics` dashboard — in the mockup and in the
-shipped page alike.
+These rules apply to every figure rendered on the Analytics page (`/`, also reachable at `/analytics`)
+— in the mockup and in the shipped page alike.
 
 ## The definitions are not yours to write
 

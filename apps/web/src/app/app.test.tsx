@@ -50,7 +50,7 @@ describe('App', () => {
     const { view } = renderApp(['/']);
 
     expect(
-      await screen.findByRole('heading', { name: 'Operations overview' }, { timeout: 10000 }),
+      await screen.findByRole('heading', { name: 'Analytics' }, { timeout: 10000 }),
     ).toBeInTheDocument();
     const primaryNavigation = within(view.container).getByRole('navigation', {
       name: 'Primary',

@@ -19,7 +19,7 @@ Enter your admin credentials. On first boot the API prints a one-time default pa
 
 If you've lost your password, click **Forgot password?** — the API logs the reset link to its console output.
 
-After a successful login you land on the **Dashboard**.
+After a successful login you land on **Analytics**.
 
 ---
 
@@ -35,7 +35,8 @@ The admin UI follows a fixed shell: persistent left sidebar, top utility bar, an
 The sidebar is always visible and organized into groups, separated by frequency of use:
 
 **Operations** — the surfaces you touch daily:
-- **Dashboard** — system health overview, connection status, and job activity at a glance
+- **Analytics** — the landing page; sales and channel figures at a glance
+- **Insights** — system health overview, connection status, and job activity at a glance
 - **Orders** — every order ingested from any connected source
 - **Products** — the synced product catalog from your master shop
 - **Inventory** — per-variant stock levels pulled from your master shop
@@ -70,11 +71,13 @@ The top bar carries:
 
 ---
 
-## Dashboard
+## Insights
 
-The Dashboard is your at-a-glance view of system and integration health.
+The Insights page is your at-a-glance view of system and integration health. Find it in the sidebar
+under **Operations → Insights** (`/insights`).
 
-![Dashboard overview](./images/01-dashboard-2.png)
+<!-- TODO(#2740): re-capture screenshot — filename below still reflects the pre-rename page -->
+![Insights overview](./images/01-dashboard-2.png)
 
 ### Summary cards
 
