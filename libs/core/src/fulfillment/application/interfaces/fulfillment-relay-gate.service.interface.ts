@@ -47,6 +47,13 @@ export interface IFulfillmentRelayGateService {
    * Un-burning that key is disqualified — it is permanent memory, and re-honouring
    * it would let a replayed event re-move counters, trading a missed relay for
    * corrupted quantities.
+   *
+   * The window is narrower than "the next event recovers it", and the difference
+   * is worth stating: a second, differently-keyed event arriving WHILE the first
+   * relay is still failing sees the claim held, answers `already-relayed` and
+   * returns — so after the first releases, neither has relayed and recovery needs
+   * a THIRD event. The reconcile sweep filed alongside this issue is the closure
+   * for that, which is why it is a sweep rather than a retry.
    */
   releaseDispatch(workId: string): Promise<void>;
 }

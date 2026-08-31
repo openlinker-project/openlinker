@@ -12,8 +12,14 @@
  * succeeds for one participant and fails transiently for another cannot record
  * the asymmetry — retry stays all-or-nothing. #861 stays open for that half.
  *
+ * **Nothing calls this in production yet**, consistent with the wave:
+ * `IFulfillmentProgressService.record` — which produces the intent this consumes
+ * — has no production caller either. #2398's poller is the first for both, so a
+ * reader grepping for the consumer today finds only the specs.
+ *
  * @module libs/core/src/orders/application/services
  * @implements {IFulfillmentDispatchRelayService}
+ * @see #2398 for the first production caller of the progress ingress
  */
 import { Inject, Injectable } from '@nestjs/common';
 
@@ -77,6 +83,19 @@ export class FulfillmentDispatchRelayService implements IFulfillmentDispatchRela
         // The holder that dispatched. Without this, the relay tells the 3PL that
         // just shipped the parcel that the parcel shipped (DESIGN §5.5).
         authoredByConnectionId: claim.holderConnectionId ?? undefined,
+        // NO WAYBILL, AND THE CLAIM MAKES THAT PERMANENT — a named limitation.
+        // `FulfillmentShippedEvent` carries no tracking number (a 3PL reports
+        // that the parcel left; the shipment is #2402's), so this relay tells a
+        // participant only THAT the work dispatched. Burning `dispatchRelayedAt`
+        // then means a waybill arriving later can never be relayed by this path,
+        // and #1947's late-waybill backfill does NOT cover it: that one claims
+        // `Shipment.waybillRelayedAt`, a different row, so a router-fulfilled
+        // work has no shipment for it to key on. The operator-visible cost is
+        // the one #1947 was opened about, one grain over — a marketplace still
+        // asking the seller for a tracking number. Closing it belongs with the
+        // reconcile sweep (filed separately), not here: relaying a waybill needs
+        // a second, waybill-scoped claim, because re-driving THIS one would
+        // re-send the dispatch fact the claim exists to send exactly once.
         event: { type: 'dispatched' },
       });
 

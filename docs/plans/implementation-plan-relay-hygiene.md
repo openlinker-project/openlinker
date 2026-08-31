@@ -103,6 +103,15 @@ routing convenience, not an authorship claim. The new field names authorship exp
 a caller with both facts can state both. **This is the plan's one genuine judgement call
 and is flagged to the requester before implementation** (§ 10).
 
+> **Superseded during implementation (#2401).** The paragraph above is kept as the
+> record of what was planned, but the shipped consumer does NOT pass the holder as
+> `originConnectionId`. Following the shipped `AUTOMATION_RELAY_ORIGIN` precedent it
+> passes a non-participant sentinel `'openlinker:fulfillment'` as origin — excluding
+> nothing — and the holder as `authoredByConnectionId`. The two are therefore
+> genuinely distinct in this consumer, which makes the new field load-bearing in
+> production rather than only in specs, and dissolves the judgement call §10 flagged.
+> The code and `architecture-overview.md` are the record for this point, not §4.1.
+
 ### 4.2 Router-filtered destinations get no relay — deliberate, and said so
 
 DESIGN §5.5: a router-filtered destination gets no `syncStatus[]` entry, so it is not an
