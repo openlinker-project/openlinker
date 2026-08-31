@@ -10,7 +10,7 @@ A clean OpenLinker instance has **no sales-document routing at all**, and it sho
 
 The consequence today is silence. Orders arrive, no document is issued, and nothing on any screen says which markets the operator would need to configure. The failure is invisible until someone notices no documents exist - which on the live demo is exactly what happened for Poland, where three configured rules key on a buyer tax ID that OpenLinker never records, so every Polish order resolves to no document while the settings page presents the configuration as working.
 
-OpenLinker does already know where orders are billed: every `order_records` row carries its country. So the set of markets that need a decision is derivable, and leaving it underived is a choice, not a limitation.
+OpenLinker does already know where orders are delivered: every `order_records` row carries its delivery-address country - the same field [ADR-041](./041-sales-document-routing-policy.md) decision 5 routes on. So the set of markets that need a decision is derivable, and leaving it underived is a choice, not a limitation.
 
 Separately, we have researched starter rules for exactly **one** market (Poland, sourced from public guidance) and none for any other. A generic "suggested setup" affordance would therefore imply guidance we do not have.
 
@@ -18,7 +18,7 @@ Separately, we have researched starter rules for exactly **one** market (Poland,
 
 **Two decisions, and the second bounds the first.**
 
-1. **A country that orders are billed to is surfaced as a first-class market, whether or not it is configured.** The settings page lists detected markets alongside configured ones, each with its order count over a window. The count is what makes an operator act; "not configured" alone does not. This is a **read**: discovery never creates a rule, a default, or any routing on its own.
+1. **A country that orders are delivered to is surfaced as a first-class market, whether or not it is configured.** The settings page lists detected markets alongside configured ones, each with its order count over a window. The count is what makes an operator act; "not configured" alone does not. This is a **read**: discovery never creates a rule, a default, or any routing on its own.
 
 2. **A suggested setup is offered only where researched guidance exists, and its scarcity is stated.** Templates are country-keyed data with a citable source. Poland is the only entry. A detected market without one gets a plain *set up* affordance, never a recommendation we cannot back, and the UI says which markets we have guidance for rather than implying every market has some.
 
@@ -29,7 +29,7 @@ One presentational rule follows and is load-bearing: **a detected, unconfigured 
 - **Ask the operator to enumerate their markets by hand.** Rejected: it asks for information the system already holds, and a forgotten market fails silently, which is the exact defect this closes.
 - **Auto-apply the Poland template when Polish orders are detected.** Rejected outright. Issuing a fiscal document nobody chose is a legal act taken on the operator's behalf, and ADR-041 forbids OpenLinker deciding what a sale requires.
 - **A generic "suggested setup" for every market, generated from the routing model.** Rejected: it would present a shape as advice. We have guidance for one market; saying so is the honest surface.
-- **Detect by shipping address rather than billing country.** Rejected: routing evaluates on the billing/delivery country the rules are written against, so discovery must use the same field or it would name markets the evaluator never sees.
+- **Detect by billing address rather than delivery country.** Rejected: routing evaluates on the delivery country the rules are written against ([ADR-041](./041-sales-document-routing-policy.md) decision 5), so discovery must use the same field or it would name markets the evaluator never sees - a billing-address order that ships elsewhere would surface a market routing never matches.
 
 ## Consequences
 
