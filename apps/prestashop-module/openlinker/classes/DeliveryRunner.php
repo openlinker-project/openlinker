@@ -38,7 +38,7 @@ class DeliveryRunner
     public static function run($source = 'unknown')
     {
         $classesDir = dirname(__FILE__) . '/';
-        foreach (['EventIdGenerator', 'OutboxEvent', 'OutboxRepository', 'WebhookSender'] as $class) {
+        foreach (['EventIdGenerator', 'OutboxEvent', 'OutboxRepository', 'WebhookSender', 'OutboxDrainer'] as $class) {
             if (!class_exists($class)) {
                 require_once($classesDir . $class . '.php');
             }
@@ -67,6 +67,7 @@ class DeliveryRunner
             $failed = 0;
             $attempted = 0;
             $budgetExhausted = false;
+            $maxAttempts = (int) Configuration::get('MAX_RETRY_ATTEMPTS') ?: 25;
 
             foreach ($events as $event) {
                 if (!OutboxRepository::hasBudgetForAnotherDelivery(
@@ -81,7 +82,7 @@ class DeliveryRunner
 
                 $attempted++;
 
-                if (self::deliverOne($repository, $sender, $event)) {
+                if (OutboxDrainer::deliverOne($repository, $sender, $event, $maxAttempts)) {
                     $delivered++;
                 } else {
                     $failed++;
@@ -142,41 +143,6 @@ class DeliveryRunner
             }
 
             throw $e;
-        }
-    }
-
-    /**
-     * Deliver one event, applying the retry ladder on failure.
-     *
-     * @param OutboxRepository $repository
-     * @param WebhookSender    $sender
-     * @param OutboxEvent      $event
-     * @return bool true when delivered.
-     */
-    private static function deliverOne($repository, $sender, $event)
-    {
-        try {
-            if ($sender->sendEvent($event)) {
-                $repository->markDelivered($event->id);
-
-                return true;
-            }
-
-            // sendEvent throws on failure, so this is defensive only.
-            $repository->scheduleRetry($event->id, $event->attempts, 'Webhook sender returned false');
-
-            return false;
-        } catch (Throwable $e) {
-            $errorMessage = WebhookSender::getErrorMessage($e);
-            $maxAttempts = (int) Configuration::get('MAX_RETRY_ATTEMPTS') ?: 25;
-
-            if ($event->attempts >= $maxAttempts) {
-                $repository->markFailed($event->id, $errorMessage);
-            } else {
-                $repository->scheduleRetry($event->id, $event->attempts, $errorMessage);
-            }
-
-            return false;
         }
     }
 
