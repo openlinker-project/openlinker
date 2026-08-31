@@ -24,6 +24,9 @@ import {
   MetricCard,
   RawPayloadPanel,
   Select,
+  DocumentHeadline,
+  DocumentKindGlyph,
+  DocumentLifecycle,
   StatusBadge,
   Textarea,
 } from '../../../shared/ui';
@@ -124,6 +127,59 @@ export function PrimitivesSection(): ReactElement {
           <StatusBadge tone="review" withDot>Needs review</StatusBadge>
           <StatusBadge solid>Draft</StatusBadge>
         </div>
+      </Group>
+
+      <Group
+        title="DocumentKindGlyph and DocumentHeadline"
+        description="The kind is a silhouette, not a word: a folded page for an invoice, a till slip for a receipt, a struck circle where routing named neither. The glyph inherits ink and carries no tone, because kind is an entity axis and not health. On the headline colour marks exceptions only, and never alone: a finished document gets a tick, an in-flight one a live dot."
+      >
+        <div className="ds-row">
+          <DocumentKindGlyph kind="invoice" />
+          <DocumentKindGlyph kind="fiscal-receipt" />
+          <DocumentKindGlyph kind={null} />
+        </div>
+        <div className="ds-stack">
+          <DocumentHeadline
+            kind="invoice"
+            state="Issued"
+            tone="done"
+            identity="FA/2026/08/0144 · KSeF Demo"
+          />
+          <DocumentHeadline
+            kind="fiscal-receipt"
+            state="Registering"
+            tone="progress"
+            identity="e-paragony Sandbox"
+          />
+          <DocumentHeadline kind="fiscal-receipt" state="Unconfirmed" tone="warning" />
+          <DocumentHeadline kind="invoice" state="KSeF rejected" tone="error" />
+          <DocumentHeadline kind="fiscal-receipt" state="Not registered" tone="idle" />
+          <DocumentHeadline kind={null} state="No routing" tone="error" />
+        </div>
+      </Group>
+
+      <Group
+        title="DocumentLifecycle"
+        description="An invoice has two persisted axes, the document and the authority answer, so the trail walks them. One step per stage the system stores, with the time it stores for it and an explicit marker where it stores none. A fiscal receipt has no authority axis and gets no trail at all, which the component enforces rather than trusting each caller. State is carried by the marker's shape and an announced word, not by tint alone."
+      >
+        <DocumentLifecycle
+          kind="invoice"
+          label="Invoice lifecycle, issued and awaiting the authority"
+          steps={[
+            { id: 'issued', label: 'Issued', state: 'done', at: '2026-08-26T09:12:00.000Z' },
+            { id: 'sent', label: 'Sent to the authority', state: 'done', at: '2026-08-26T09:12:00.000Z' },
+            { id: 'answer', label: 'Authority answer', state: 'active', at: null },
+          ]}
+        />
+        <DocumentLifecycle
+          kind="invoice"
+          label="Invoice lifecycle, refused by the authority"
+          steps={[
+            { id: 'issued', label: 'Issued', state: 'done', at: '2026-08-25T16:04:00.000Z' },
+            { id: 'sent', label: 'Sent to the authority', state: 'done', at: '2026-08-25T16:04:00.000Z' },
+            { id: 'answer', label: 'Refused', state: 'error', at: '2026-08-25T16:07:00.000Z' },
+          ]}
+        />
       </Group>
 
       <Group

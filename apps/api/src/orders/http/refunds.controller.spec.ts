@@ -49,6 +49,7 @@ describe('RefundsController', () => {
       getFailedSyncValueSummary: jest.fn(),
       getSalesAndChannelAnalytics: jest.fn(),
       getTopProducts: jest.fn(),
+      discoverSalesDocumentMarkets: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({

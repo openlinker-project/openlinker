@@ -173,6 +173,16 @@ export interface IFiscalRegistrationService {
   getByOrderId(orderId: string): Promise<FiscalRegistrationRecord[]>;
 
   /**
+   * Batch counterpart of {@link getByOrderId} (#2516): every registration
+   * record held by any of the given orders, across ALL connections,
+   * newest-first within each order. Projection read - NEVER queries the
+   * provider/adapter. One query for a whole page of orders, which is what the
+   * per-order sales-document projection (ADR-065) needs. Orders with no record
+   * are absent; returns `[]` for an empty input.
+   */
+  getByOrderIds(orderIds: readonly string[]): Promise<FiscalRegistrationRecord[]>;
+
+  /**
    * Is a registration for this order being attempted RIGHT NOW (#2521, ADR-042
    * amendment #2502 decision 2)?
    *

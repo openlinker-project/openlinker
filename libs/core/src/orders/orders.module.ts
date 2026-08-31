@@ -12,6 +12,7 @@ import { OrderSyncService } from './application/services/order-sync.service';
 import { OrderIngestionService } from './application/services/order-ingestion.service';
 import { OrderItemRefResolverService } from './application/services/order-item-ref-resolver.service';
 import { OrderRecordService } from './application/services/order-record.service';
+import { SalesDocumentViewService } from './application/services/sales-document-view.service';
 import { OrderFxStampService } from './application/services/order-fx-stamp.service';
 import { OrderFxReadService } from './application/services/order-fx-read.service';
 import { OrderDestinationRetryService } from './application/services/order-destination-retry.service';
@@ -38,6 +39,7 @@ import {
   ORDER_FX_READ_SERVICE_TOKEN,
   ORDER_LINE_ITEM_REPOSITORY_TOKEN,
   TAX_RATE_BACKFILL_SERVICE_TOKEN,
+  SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
 } from './orders.tokens';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
@@ -47,6 +49,16 @@ import { MappingsModule } from '@openlinker/core/mappings';
 import { CustomersModule } from '@openlinker/core/customers';
 import { InvoicingModule } from '@openlinker/core/invoicing';
 import { CurrencyModule } from '@openlinker/core/currency';
+// #2516: the per-order sales-document projection reads the fiscal-registration
+// records through `IFiscalRegistrationService`. FiscalizationModule imports
+// InvoicingModule (never the reverse) and imports no orders module, so this
+// edge adds no DI cycle - the same direction OrdersModule already takes into
+// InvoicingModule above.
+import { FiscalizationModule } from '@openlinker/core/fiscalization';
+// #2516: the projection resolves the prospective document kind through
+// `ISalesDocumentRulesService`. `sales-documents` is a sink with zero outbound
+// edges to sibling core contexts, so importing it cannot close a cycle.
+import { SalesDocumentsModule } from '@openlinker/core/sales-documents';
 
 // Re-export tokens for convenience
 export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
@@ -71,6 +83,8 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     // The module is deliberately static (never `forRoot`) so the provider
     // registry `@openlinker/integrations-fx` writes into is the one read here.
     CurrencyModule,
+    FiscalizationModule,
+    SalesDocumentsModule,
   ],
   providers: [
     // Provide classes directly first
@@ -78,6 +92,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     OrderIngestionService,
     OrderItemRefResolverService,
     OrderRecordService,
+    SalesDocumentViewService,
     OrderFxStampService,
     OrderDestinationRetryService,
     OrderLifecycleRelayService,
@@ -140,6 +155,10 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
       provide: TAX_RATE_BACKFILL_SERVICE_TOKEN,
       useExisting: TaxRateBackfillService,
     },
+    {
+      provide: SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
+      useExisting: SalesDocumentViewService,
+    },
   ],
   exports: [
     OrderRecordService, // Export service class for direct injection
@@ -158,6 +177,9 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     // Exported so the worker's `orders.taxRate.backfill` handler can inject
     // the backfill seam (#2440).
     TAX_RATE_BACKFILL_SERVICE_TOKEN,
+    // Exported so the API's orders controller can compose the per-order
+    // sales-document projection for the list and the detail panel (#2516).
+    SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
   ],
 })
 export class OrdersModule {}

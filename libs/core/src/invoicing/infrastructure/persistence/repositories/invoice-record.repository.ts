@@ -124,6 +124,22 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
     return entities.map((entity) => this.toDomain(entity));
   }
 
+  async findAllByOrderIds(orderIds: string[]): Promise<InvoiceRecord[]> {
+    if (orderIds.length === 0) {
+      return [];
+    }
+    // No DISTINCT ON - unlike `findLatestByOrderIds`, this read is about the
+    // whole record set per order (the #2047 duplicate an operator must see).
+    const entities = await this.repository
+      .createQueryBuilder('record')
+      .where('record.orderId IN (:...orderIds)', { orderIds })
+      .orderBy('record.orderId', 'ASC')
+      .addOrderBy('record.createdAt', 'DESC')
+      .addOrderBy('record.id', 'DESC')
+      .getMany();
+    return entities.map((entity) => this.toDomain(entity));
+  }
+
   async findByProviderInvoiceId(
     connectionId: string,
     providerInvoiceId: string,

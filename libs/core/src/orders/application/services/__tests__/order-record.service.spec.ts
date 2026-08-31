@@ -40,6 +40,7 @@ describe('OrderRecordService', () => {
       findById: jest.fn(),
       findByIds: jest.fn(),
       findEarliestOrderDateByConnection: jest.fn(),
+      countOrdersByRoutingCountrySince: jest.fn(),
       upsert: jest.fn(),
       upsertWithLineItems: jest.fn(),
       updateSyncStatus: jest.fn(),
@@ -1113,6 +1114,71 @@ describe('OrderRecordService', () => {
 
       expect(result).toBe(records);
       expect(repository.findByIds).toHaveBeenCalledWith(['order-123', 'order-456']);
+    });
+  });
+
+  describe('discoverSalesDocumentMarkets (#2518, ADR-066)', () => {
+    it('reports the window it applied and derives `since` from it', async () => {
+      repository.countOrdersByRoutingCountrySince.mockResolvedValue([]);
+
+      const result = await service.discoverSalesDocumentMarkets(
+        new Date('2026-08-30T10:00:00.000Z'),
+      );
+
+      expect(result.windowDays).toBe(30);
+      expect(result.since).toBe('2026-07-31T10:00:00.000Z');
+      expect(repository.countOrdersByRoutingCountrySince).toHaveBeenCalledWith(
+        new Date('2026-07-31T10:00:00.000Z'),
+      );
+    });
+
+    it('returns configured and unconfigured markets alike, most orders first', async () => {
+      repository.countOrdersByRoutingCountrySince.mockResolvedValue([
+        { country: 'PL', orderCount: 47 },
+        { country: 'DE', orderCount: 12 },
+        { country: 'CZ', orderCount: 6 },
+      ]);
+
+      const result = await service.discoverSalesDocumentMarkets(new Date());
+
+      // No `configured` / `hasTemplate` flag: classification is the caller's
+      // job, so this read cannot become a second source of truth for it.
+      expect(result.markets).toEqual([
+        { country: 'PL', orderCount: 47 },
+        { country: 'DE', orderCount: 12 },
+        { country: 'CZ', orderCount: 6 },
+      ]);
+    });
+
+    it('reports no markets on an instance with no orders in the window', async () => {
+      repository.countOrdersByRoutingCountrySince.mockResolvedValue([]);
+
+      const result = await service.discoverSalesDocumentMarkets(new Date());
+
+      // A brand-new install is a legitimate state, not an error.
+      expect(result.markets).toEqual([]);
+    });
+
+    it('issues ONE read, never one per country', async () => {
+      repository.countOrdersByRoutingCountrySince.mockResolvedValue([
+        { country: 'PL', orderCount: 47 },
+        { country: 'DE', orderCount: 12 },
+      ]);
+
+      await service.discoverSalesDocumentMarkets(new Date());
+
+      expect(repository.countOrdersByRoutingCountrySince).toHaveBeenCalledTimes(1);
+    });
+
+    it('writes nothing', async () => {
+      repository.countOrdersByRoutingCountrySince.mockResolvedValue([]);
+
+      await service.discoverSalesDocumentMarkets(new Date());
+
+      // Discovery must never create routing on its own (ADR-066 decision 1).
+      expect(repository.upsert).not.toHaveBeenCalled();
+      expect(repository.upsertWithLineItems).not.toHaveBeenCalled();
+      expect(repository.updateSalesDocumentBlock).not.toHaveBeenCalled();
     });
   });
 

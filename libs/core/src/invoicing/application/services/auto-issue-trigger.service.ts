@@ -144,8 +144,8 @@ import {
 import {
   ISalesDocumentRulesService,
   SALES_DOCUMENT_RULES_SERVICE_TOKEN,
+  chooseSalesDocumentDecision,
   readSalesDocumentRouting,
-  resolveSalesDocumentRouting,
 } from '@openlinker/core/sales-documents';
 import type {
   SalesDocumentBlock,
@@ -436,7 +436,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
 
     const eligibleCount = candidates.filter((candidate) => candidate.documentKind !== null).length;
 
-    const decision = await this.resolveSalesDocumentDecision(order, candidates, eligibleCount);
+    const decision = await this.resolveSalesDocumentDecision(order, candidates);
     if (decision === null) {
       // Neither the rule engine nor the operator-configured resolver has
       // anything to route with — mirrors the pre-#2173 zero-eligible-candidate
@@ -492,44 +492,25 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
    *     operator never touched the rule-engine UI for this order's country —
    *     or when no order facts could be built at all (no delivery address),
    *     fall back to the pre-#2170 `resolveSalesDocumentRouting`. That
-   *     resolver's own zero-eligible-candidate short-circuit (mirrored here
-   *     via `eligibleCount === 0 → null`) is preserved verbatim, so an
+   *     resolver's own zero-eligible-candidate short-circuit (since #2516
+   *     inside `chooseSalesDocumentDecision`) is preserved verbatim, so an
    *     untouched install's behaviour is byte-identical to before #2170
    *     shipped its authoring surface.
    */
   private async resolveSalesDocumentDecision(
     order: Order,
     candidates: readonly SalesDocumentRoutingCandidate[],
-    eligibleCount: number,
   ): Promise<SalesDocumentDecision | null> {
     const orderFacts = toSalesDocumentOrderFacts(order);
-    if (orderFacts !== null) {
-      const ruleDecision = await this.salesDocumentRules.resolveRouting(orderFacts);
-      if (!this.isNoConfigurationForCountry(ruleDecision)) {
-        return ruleDecision;
-      }
-    }
+    const ruleDecision =
+      orderFacts === null ? null : await this.salesDocumentRules.resolveRouting(orderFacts);
 
-    // Fallback: the pre-#2170, `operator-configured` single-primary model.
-    if (eligibleCount === 0) {
-      // resolveSalesDocumentRouting's own doc: a caller that already knows it
-      // has zero ELIGIBLE candidates (none carries a configured
-      // `documentKind`) is expected to short-circuit before calling the
-      // resolver — its zero-candidate branch is a defensive fallback, not the
-      // common path. Without this, a perfectly ordinary "not configured yet"
-      // install (capability enabled, but no `config.salesDocument.documentKind`
-      // set) would error-log 'ambiguous-connection-no-primary' on every order,
-      // which is a materially different and less actionable signal than "no
-      // candidate at all". Mirrors the pre-#2156 `selection.kind === 'none'`
-      // short-circuit.
-      return null;
-    }
-    return resolveSalesDocumentRouting(order, candidates);
-  }
-
-  /** Narrow a rule-engine decision to "the engine has no configuration at all for this order's country". */
-  private isNoConfigurationForCountry(decision: SalesDocumentDecision): boolean {
-    return decision.kind === 'unresolved' && decision.reason === 'no-configuration-for-country';
+    // The precedence itself lives in `sales-documents` (#2516) because the
+    // per-order sales-document projection (ADR-065) states which document an
+    // order that has none yet is routed to, and a surface that answered
+    // differently from this gate would promise something the system will not
+    // do. One function, two callers - never two copies of the rule.
+    return chooseSalesDocumentDecision({ ruleDecision, candidates });
   }
 
   /**
