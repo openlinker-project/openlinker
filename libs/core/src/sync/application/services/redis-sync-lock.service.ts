@@ -40,13 +40,16 @@ export class RedisSyncLockService implements SyncLockPort {
       return token;
     }
 
-    // NX failing usually means genuine contention, but a transport-level
-    // resend of THIS SAME request (a slow/lost ack under load, retried by the
-    // caller or the client) can also land here after our own SET already won
-    // — the key holds a value we ourselves minted moments ago. Recognizing
-    // that avoids raising a spurious OrderCreateContendedException-style
-    // failure against our own successful acquisition (#2716). Token
-    // collision with an unrelated holder is a UUIDv4-collision-level
+    // NX failing usually means genuine contention, but the redis client can
+    // also resend this exact SET command bytes after a lost/slow ack on
+    // reconnect, landing here after our own SET already won - the key holds
+    // a value we ourselves minted moments ago. This does NOT cover a
+    // caller-level retry: token is minted fresh per acquire() call, so a
+    // caller retrying acquire() gets a different token and null as before.
+    // Recognizing the resend case avoids raising a spurious
+    // OrderCreateContendedException-style failure against our own successful
+    // acquisition (#2716). Token collision with an unrelated holder is a
+    // UUIDv4-collision-level
     // probability, so this stays as safe as a plain equality check gets.
     const holder = await this.redisClient.get(key);
     return holder === token ? token : null;
