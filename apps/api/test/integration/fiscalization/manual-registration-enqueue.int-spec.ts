@@ -92,7 +92,9 @@ describe('manual fiscal registration enqueue (integration)', () => {
 
     // The record the job writes is held under the payload's key. If the two
     // could differ, the job row would dedupe one thing and the record another.
-    expect((row.payload as { idempotencyKey?: string }).idempotencyKey).toBe(row.idempotencyKey);
+    expect((row.payloadJson as { idempotencyKey?: string }).idempotencyKey).toBe(
+      row.idempotencyKey
+    );
     expect(row.idempotencyKey).toBe(`fiscal:${CONNECTION_ID}:${ORDER_ID}`);
   });
 });
