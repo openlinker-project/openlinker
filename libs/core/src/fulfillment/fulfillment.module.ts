@@ -24,9 +24,14 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
-import { FULFILLMENT_WORK_REPOSITORY_TOKEN } from './fulfillment.tokens';
+import { FulfillmentHandshakeService } from './application/services/fulfillment-handshake.service';
+import {
+  FULFILLMENT_HANDSHAKE_SERVICE_TOKEN,
+  FULFILLMENT_WORK_REPOSITORY_TOKEN,
+} from './fulfillment.tokens';
 import { FulfillmentHoldOrmEntity } from './infrastructure/persistence/entities/fulfillment-hold.orm-entity';
 import { FulfillmentWorkLineOrmEntity } from './infrastructure/persistence/entities/fulfillment-work-line.orm-entity';
+import { FulfillmentWorkRejectionOrmEntity } from './infrastructure/persistence/entities/fulfillment-work-rejection.orm-entity';
 import { FulfillmentWorkOrmEntity } from './infrastructure/persistence/entities/fulfillment-work.orm-entity';
 import { FulfillmentWorkRepository } from './infrastructure/persistence/repositories/fulfillment-work.repository';
 
@@ -36,12 +41,15 @@ import { FulfillmentWorkRepository } from './infrastructure/persistence/reposito
       FulfillmentWorkOrmEntity,
       FulfillmentWorkLineOrmEntity,
       FulfillmentHoldOrmEntity,
+      FulfillmentWorkRejectionOrmEntity,
     ]),
   ],
   providers: [
     FulfillmentWorkRepository,
     { provide: FULFILLMENT_WORK_REPOSITORY_TOKEN, useExisting: FulfillmentWorkRepository },
+    FulfillmentHandshakeService,
+    { provide: FULFILLMENT_HANDSHAKE_SERVICE_TOKEN, useExisting: FulfillmentHandshakeService },
   ],
-  exports: [FULFILLMENT_WORK_REPOSITORY_TOKEN],
+  exports: [FULFILLMENT_WORK_REPOSITORY_TOKEN, FULFILLMENT_HANDSHAKE_SERVICE_TOKEN],
 })
 export class FulfillmentModule {}

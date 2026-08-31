@@ -43,6 +43,7 @@ import type { HoldReason } from '@openlinker/core/order-lifecycle';
 import type { FulfillmentHold } from '../types/fulfillment-hold.types';
 import type { FulfillmentRequestStatus } from '../types/fulfillment-request-status.types';
 import type { FulfillmentWork } from '../types/fulfillment-work.types';
+import type { FulfillmentWorkRejection } from '../types/fulfillment-work-rejection.types';
 import type { FulfillmentWorkStatus } from '../types/fulfillment-work-status.types';
 
 /** One line of a work object at creation time. Counters start at zero. */
@@ -139,6 +140,35 @@ export interface ReleaseFulfillmentHoldInput {
   readonly releaseNote?: string | null;
 }
 
+export interface ClaimFulfillmentDispatchInput {
+  readonly workId: string;
+  /**
+   * `unsubmitted` is a first dispatch; `rejected` is a router-driven RE-REQUEST,
+   * the only thing that legitimately bumps the counter. An empty list can never
+   * match and reports "not claimed" rather than raising on `IN ()`.
+   */
+  readonly from: readonly FulfillmentRequestStatus[];
+}
+
+export interface RecordFulfillmentAcceptanceInput {
+  readonly workId: string;
+  /** The HOLDER's instant, `null` when it reported none. Never `new Date()`. */
+  readonly acceptedAt: Date | null;
+  readonly externalWorkId: string | null;
+}
+
+export interface RecordFulfillmentRejectionInput {
+  readonly workId: string;
+  readonly orderId: string;
+  readonly connectionId: string;
+  readonly assignmentAttempt: number;
+  readonly reason: string;
+  readonly blocking: boolean;
+  readonly detail: string | null;
+  /** OL's observation instant — this one IS ours, unlike `acceptedAt`. */
+  readonly rejectedAt: Date;
+}
+
 export interface FulfillmentWorkRepositoryPort {
   /**
    * Header + lines in ONE transaction; `transaction` lets a caller compose it
@@ -165,8 +195,53 @@ export interface FulfillmentWorkRepositoryPort {
   /** Clear the holder after a rejection. */
   clearHolder(workId: string): Promise<boolean>;
 
-  /** Monotonic; #2399's re-request. Written before the outbound call (ADR-054 R1). */
-  incrementAssignmentAttempt(workId: string): Promise<boolean>;
+  /**
+   * Claim a dispatch: move `requestStatus` to `submitted` and increment
+   * `assignmentAttempt`, in ONE conditional UPDATE, returning the attempt the
+   * statement persisted — or `null` when the guard did not hold.
+   *
+   * **The attempt reaches the caller only via `RETURNING` from the statement
+   * that wrote it**, so minting an idempotency key without the row already
+   * holding that value is not expressible. That is stronger than asserting call
+   * order in a spec, and it is the whole point: `work:{workId}:{attempt}` must
+   * be stable across a job retry, and a key minted ahead of its row is a second
+   * fulfilment request to a 3PL — a double-ship.
+   *
+   * This REPLACES #2392's `incrementAssignmentAttempt`, whose `WHERE` was
+   * `"id" = :id` alone: with no state guard, any caller could bump the counter
+   * out from under a live `submitted` dispatch and invalidate an in-flight key.
+   * It had no production callers.
+   */
+  claimDispatchAttempt(input: ClaimFulfillmentDispatchInput): Promise<number | null>;
+
+  /**
+   * Record a holder's acceptance: `requestStatus`, `acceptedAt` and
+   * `externalWorkId` in one guarded UPDATE.
+   *
+   * Guarded on `"requestStatus" = 'submitted' AND "acceptedAt" IS NULL`. The
+   * second conjunct is ADR-054's at-most-once acceptance claim, and it is not
+   * decoration: it is the guard that still holds if a future writer moves
+   * `requestStatus` without coming through here.
+   *
+   * `false` = a peer recorded the answer first. An ordinary outcome, not an error.
+   */
+  recordAcceptance(input: RecordFulfillmentAcceptanceInput): Promise<boolean>;
+
+  /**
+   * Record a holder's refusal: the guarded `submitted -> rejected` transition
+   * and the rejection row, in ONE transaction.
+   *
+   * If the guard does not apply, nothing is inserted — durability and rollback
+   * are different assertions and each is pinned by its own spec.
+   */
+  recordRejection(input: RecordFulfillmentRejectionInput): Promise<boolean>;
+
+  /**
+   * The holders excluded from re-sourcing this work, most recent first.
+   *
+   * This slice RECORDS and EXPOSES the exclusion; selecting on it is #2395's.
+   */
+  listBlockingRejections(workId: string): Promise<FulfillmentWorkRejection[]>;
 
   /** At-most-once claim, `WHERE "dispatchRelayedAt" IS NULL`. #2401 is the caller. */
   claimDispatchRelay(workId: string, at: Date): Promise<boolean>;

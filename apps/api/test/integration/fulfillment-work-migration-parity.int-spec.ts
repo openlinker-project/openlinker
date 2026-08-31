@@ -43,7 +43,15 @@ import { DataSource } from 'typeorm';
 
 import { getTestHarness, IntegrationTestHarness, teardownTestHarness } from './setup';
 
-const TABLES = ['fulfillment_works', 'fulfillment_work_lines', 'fulfillment_holds'] as const;
+const TABLES = [
+  'fulfillment_works',
+  'fulfillment_work_lines',
+  'fulfillment_holds',
+  // #2399's append-only rejection ledger. Added here AND to the four hardcoded
+  // assertions below — the `TABLES` array alone does not make this spec
+  // generic, which is the trap the #2399 pre-implement gate caught.
+  'fulfillment_work_rejections',
+] as const;
 
 const COLUMNS_SQL = `
   SELECT table_name, column_name, data_type, is_nullable, column_default
@@ -154,6 +162,7 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
     expect(rows.map((r) => r.table_name)).toEqual([
       'fulfillment_holds',
       'fulfillment_work_lines',
+      'fulfillment_work_rejections',
       'fulfillment_works',
     ]);
   });
@@ -220,6 +229,7 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
     expect(foreignKeys.map((r) => r.conname).sort()).toEqual([
       'FK_fulfillment_holds_work',
       'FK_fulfillment_work_lines_work',
+      'FK_fulfillment_work_rejections_work',
     ]);
     for (const fk of foreignKeys) {
       expect(fk.definition).toContain('ON DELETE CASCADE');
@@ -228,7 +238,7 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
     expect(synchronized.filter((r) => r.contype === 'f')).toEqual([]);
   });
 
-  it('should delete lines and holds when their parent work is deleted', async () => {
+  it('should delete lines, holds and rejections when their parent work is deleted', async () => {
     // CASCADE exercised for real, against the schema that actually ships.
     await migrated.query(
       `INSERT INTO "fulfillment_works"("id","orderId") VALUES ('w-parity','ol_order_parity')`
@@ -241,18 +251,24 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
       `INSERT INTO "fulfillment_holds"("fulfillmentWorkId","reason","placedByService","placedAt")
        VALUES ('w-parity','operator','svc',now())`
     );
+    await migrated.query(
+      `INSERT INTO "fulfillment_work_rejections"
+         ("fulfillmentWorkId","orderId","connectionId","assignmentAttempt","reason","blocking","rejectedAt")
+       VALUES ('w-parity','ol_order_parity','11111111-1111-1111-1111-111111111111',1,'no-stock',true,now())`
+    );
 
     const countChildren = async (): Promise<number> => {
       const [{ total }] = (await migrated.query(
         `SELECT (
            (SELECT count(*) FROM "fulfillment_work_lines" WHERE "fulfillmentWorkId" = 'w-parity') +
-           (SELECT count(*) FROM "fulfillment_holds" WHERE "fulfillmentWorkId" = 'w-parity')
+           (SELECT count(*) FROM "fulfillment_holds" WHERE "fulfillmentWorkId" = 'w-parity') +
+           (SELECT count(*) FROM "fulfillment_work_rejections" WHERE "fulfillmentWorkId" = 'w-parity')
          )::int AS total`
       )) as { total: number }[];
       return total;
     };
 
-    expect(await countChildren()).toBe(2);
+    expect(await countChildren()).toBe(3);
     await migrated.query(`DELETE FROM "fulfillment_works" WHERE "id" = 'w-parity'`);
     expect(await countChildren()).toBe(0);
   });

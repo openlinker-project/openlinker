@@ -73,6 +73,10 @@ export * from './domain/exceptions/pending-routing-plan-not-supported.error';
 export * from './domain/exceptions/unrecognised-fulfillment-request-result.error';
 
 export * from './domain/types/fulfillment-hold.types';
+export * from './domain/types/fulfillment-work-rejection.types';
+
+export type { IFulfillmentHandshakeService } from './application/services/fulfillment-handshake.service.interface';
+export * from './application/types/fulfillment-handshake.types';
 
 // The INPUT shapes are exported; `FulfillmentWorkRepositoryPort` itself is
 // deliberately NOT — a `*RepositoryPort` is an intra-context persistence
@@ -83,11 +87,14 @@ export * from './domain/types/fulfillment-hold.types';
 // `diagnostic-holds-are-inert.int-spec.ts` shape).
 export type {
   CancelFulfillmentWorkInput,
+  ClaimFulfillmentDispatchInput,
   CreateFulfillmentWorkInput,
   CreateFulfillmentWorkLineInput,
   FulfillmentWorkTransaction,
   PlaceFulfillmentHoldInput,
+  RecordFulfillmentAcceptanceInput,
   RecordFulfillmentLineProgressInput,
+  RecordFulfillmentRejectionInput,
   ReleaseFulfillmentHoldInput,
   TransitionFulfillmentRequestStatusInput,
   TransitionFulfillmentWorkStatusInput,
@@ -99,6 +106,7 @@ export { FulfillmentHoldLimitExceededError } from './domain/exceptions/fulfillme
 export { FulfillmentHoldNotFoundError } from './domain/exceptions/fulfillment-hold-not-found.error';
 export { FulfillmentPersistenceError } from './domain/exceptions/fulfillment-persistence.error';
 export { FulfillmentWorkNotFoundError } from './domain/exceptions/fulfillment-work-not-found.error';
+export { FulfillmentWorkUnassignedError } from './domain/exceptions/fulfillment-work-unassigned.error';
 
 export { FulfillmentModule } from './fulfillment.module';
 

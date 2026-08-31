@@ -252,3 +252,42 @@ export const FULFILLMENT_REQUEST_FORBIDDEN_KEYS = [
   'order',
   'price',
 ] as const;
+
+/**
+ * Mint the dispatch idempotency key for one work object at one attempt.
+ *
+ * The format is property (d)'s, stated once above and produced once here so the
+ * contract and its only producer cannot drift. `assignmentAttempt` is the
+ * PERSISTED counter read back from the statement that incremented it — never a
+ * job-runner attempt, which changes on exactly the retries the key must survive.
+ *
+ * Pure; the rule for the type it sits with (`engineering-standards.md` § the
+ * pure-rule exception to "types only").
+ */
+export function buildFulfillmentDispatchIdempotencyKey(
+  workId: string,
+  assignmentAttempt: number
+): string {
+  return `work:${workId}:${assignmentAttempt}`;
+}
+
+/**
+ * Mint the CANCELLATION key, in a namespace of its own.
+ *
+ * **It must never equal the dispatch key for the same work and attempt**, and
+ * that is a correctness requirement rather than tidiness. Property (d)
+ * guarantees that a repeat under one key returns the ORIGINAL outcome, so a
+ * cancellation sent under the dispatch key would be answered with the
+ * dispatch's cached `accepted` — and OL would record `cancellation_accepted`
+ * for a cancellation the holder never saw. The suffix is what keeps the two
+ * negotiations distinguishable to an executor that is honouring the contract
+ * correctly.
+ *
+ * Pure; same exception as above.
+ */
+export function buildFulfillmentCancellationIdempotencyKey(
+  workId: string,
+  assignmentAttempt: number
+): string {
+  return `${buildFulfillmentDispatchIdempotencyKey(workId, assignmentAttempt)}:cancel`;
+}

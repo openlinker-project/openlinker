@@ -26,3 +26,5 @@
  */
 
 export const FULFILLMENT_WORK_REPOSITORY_TOKEN = Symbol('FulfillmentWorkRepositoryPort');
+
+export const FULFILLMENT_HANDSHAKE_SERVICE_TOKEN = Symbol('IFulfillmentHandshakeService');

@@ -124,6 +124,36 @@ export class FulfillmentWorkOrmEntity {
   dispatchRelayedAt!: Date | null;
 
   /**
+   * The HOLDER's acceptance instant — and the at-most-once CLAIM column for
+   * acceptance (#2399, ADR-054).
+   *
+   * `fulfillment-request-status.types.ts` states the contract verbatim: ADR-054
+   * makes acceptance a conditional claim (`WHERE "acceptedAt" IS NULL`), so at
+   * most one holder can accept. `recordAcceptance` carries that guard, and it is
+   * the guard that survives a future writer moving `requestStatus` without going
+   * through that method.
+   *
+   * Nullable because the VALUE is the holder's own instant and stays `null` when
+   * the holder reports none (`FulfillmentRequestResult` property (e) — OL's
+   * clock is not a witness to a third party's act). At-most-once therefore comes
+   * from the conditional UPDATE, never from the column being populated.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  acceptedAt!: Date | null;
+
+  /**
+   * The holder's own reference for the work, `null` when it assigns none.
+   *
+   * Persisted here because it arrives on the `accepted` arm of
+   * `FulfillmentRequestResult` and is on that arm's allowlist — #2398 states
+   * that a field an adapter adds there is a field core may persist, so this one
+   * is admitted deliberately rather than by spread. #2400 reads it to correlate
+   * inbound progress back to a work row.
+   */
+  @Column({ type: 'text', nullable: true })
+  externalWorkId!: string | null;
+
+  /**
    * Optimistic-concurrency token (#2406). Deliberately a plain integer column
    * and NOT TypeORM's `@VersionColumn`: that decorator only increments on a
    * full-entity `save()`, and this aggregate is written exclusively by narrow

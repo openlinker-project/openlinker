@@ -42,6 +42,7 @@ import type {
   TransitionFulfillmentRequestStatusInput,
   TransitionFulfillmentWorkStatusInput,
   CancelFulfillmentWorkInput,
+  ClaimFulfillmentDispatchInput,
 } from '@openlinker/core/fulfillment';
 
 /**
@@ -62,7 +63,7 @@ interface FulfillmentWorkRepositoryView {
   findByOrderId(orderId: string): Promise<FulfillmentWork[]>;
   assignHolder(workId: string, connectionId: string): Promise<boolean>;
   clearHolder(workId: string): Promise<boolean>;
-  incrementAssignmentAttempt(workId: string): Promise<boolean>;
+  claimDispatchAttempt(input: ClaimFulfillmentDispatchInput): Promise<number | null>;
   claimDispatchRelay(workId: string, at: Date): Promise<boolean>;
   cancel(input: CancelFulfillmentWorkInput): Promise<boolean>;
   recordLineProgress(input: RecordFulfillmentLineProgressInput): Promise<boolean>;
@@ -286,21 +287,63 @@ describe('Fulfillment Work Transitions Integration', () => {
       expect((await repository.findById(work.id))?.assignedConnectionId).toBeNull();
     });
 
-    it('should increment the assignment attempt monotonically', async () => {
-      // The one "transition" with no precondition beyond the id — worth a test
-      // precisely because it is the odd one out.
+    it('should increment the assignment attempt monotonically as it claims', async () => {
+      // #2392's `incrementAssignmentAttempt` was the one "transition" with no
+      // precondition beyond the id. #2399 REPLACED it: an unguarded bump could
+      // move the counter out from under a live `submitted` dispatch and
+      // invalidate an in-flight idempotency key — a re-minted key being a second
+      // fulfilment request to a 3PL. The claim now carries the state guard, and
+      // the attempt comes back from the statement that wrote it.
       const work = await createWork();
       expect(work.assignmentAttempt).toBe(0);
 
-      await expect(repository.incrementAssignmentAttempt(work.id)).resolves.toBe(true);
-      await expect(repository.incrementAssignmentAttempt(work.id)).resolves.toBe(true);
-      expect((await repository.findById(work.id))?.assignmentAttempt).toBe(2);
+      await expect(
+        repository.claimDispatchAttempt({ workId: work.id, from: ['unsubmitted'] })
+      ).resolves.toBe(1);
+      // The second claim is the RE-REQUEST arm: only a rejected work may be
+      // re-offered, which is what stops a bump landing on a live dispatch.
+      await expect(
+        repository.transitionRequestStatus({
+          workId: work.id,
+          from: ['submitted'],
+          to: 'rejected',
+        })
+      ).resolves.toBe(true);
+      await expect(
+        repository.claimDispatchAttempt({ workId: work.id, from: ['rejected'] })
+      ).resolves.toBe(2);
+
+      const reloaded = await repository.findById(work.id);
+      expect(reloaded?.assignmentAttempt).toBe(2);
+      expect(reloaded?.requestStatus).toBe('submitted');
     });
 
-    it('should report not-applied when incrementing an unknown work', async () => {
+    it('should refuse to claim a work already submitted, leaving the counter alone', async () => {
+      const work = await createWork();
       await expect(
-        repository.incrementAssignmentAttempt('ol_fulfillmentwork_missing')
-      ).resolves.toBe(false);
+        repository.claimDispatchAttempt({ workId: work.id, from: ['unsubmitted'] })
+      ).resolves.toBe(1);
+
+      // The guard that keeps ONE dispatch per attempt: a second claim from the
+      // same `from` set matches nothing, and must not bump the counter.
+      await expect(
+        repository.claimDispatchAttempt({ workId: work.id, from: ['unsubmitted', 'rejected'] })
+      ).resolves.toBeNull();
+      expect((await repository.findById(work.id))?.assignmentAttempt).toBe(1);
+    });
+
+    it('should report not-claimed for an unknown work, and for an empty from-set', async () => {
+      await expect(
+        repository.claimDispatchAttempt({
+          workId: 'ol_fulfillmentwork_missing',
+          from: ['unsubmitted'],
+        })
+      ).resolves.toBeNull();
+      // `IN ()` is a syntax error, not an empty set — a transition FROM nothing
+      // can never apply, so the honest answer is "not claimed".
+      await expect(
+        repository.claimDispatchAttempt({ workId: 'ol_fulfillmentwork_missing', from: [] })
+      ).resolves.toBeNull();
     });
 
     it('should return every work for an order with ITS OWN lines', async () => {

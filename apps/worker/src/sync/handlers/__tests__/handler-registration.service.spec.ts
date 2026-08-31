@@ -30,13 +30,13 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
 
   beforeEach(() => {
     registry = new SyncJobHandlerRegistry();
-    // The constructor takes the registry followed by 48 handler instances.
+    // The constructor takes the registry followed by 49 handler instances.
     // The dummies are DISTINCT objects so that "these two job types share one
     // handler instance" (#2594) is a real assertion rather than a tautology;
     // the partition under test keys on jobType, so they are otherwise
     // interchangeable.
     const handlers = Array.from(
-      { length: 48 },
+      { length: 49 },
       () => ({ execute: jest.fn() }) as unknown as SyncJobHandler
     );
     const service = new (HandlerRegistrationService as any)(registry, ...handlers);
@@ -48,8 +48,10 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     expect(() => registry.assertFullLaneCoverage()).not.toThrow();
   });
 
-  it('should partition the 50 job types 13/25/5/7 per ADR-050 decision 1', () => {
-    expect(registry.getJobTypesByLane('realtime')).toHaveLength(13);
+  it('should partition the 51 job types 14/25/5/7 per ADR-050 decision 1', () => {
+    // 14 since #2399's `fulfillment.work.dispatch` — the outbound "tell the
+    // holder to ship" for a just-routed order, where lateness costs a shipment.
+    expect(registry.getJobTypesByLane('realtime')).toHaveLength(14);
     // 25, and every one of the additions since the lane split shares one
     // profile: background catch-up work that enqueues no children, writes
     // locally, and whose lateness costs nobody a request — so `fan-out` (whose
