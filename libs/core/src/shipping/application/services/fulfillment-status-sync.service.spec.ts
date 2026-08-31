@@ -270,6 +270,44 @@ describe('FulfillmentStatusSyncService', () => {
       expect(shipments.claimFulfillmentWorkLink).not.toHaveBeenCalled();
     });
 
+    it('should not fail the sync when the CLAIM itself throws on the repair path', async () => {
+      // `resolveLinkSafely` already swallows a lookup failure, so this covers
+      // the only way the repair's own catch can fire: the conditional UPDATE
+      // throwing. Without it the "best-effort, never sinks a sync" claim is an
+      // assertion rather than evidence.
+      shipments.findBranchOneByOrderAndConnection.mockResolvedValue(
+        makeBranchOneShipment({ status: 'generated', fulfillmentWorkId: null }),
+      );
+      fulfillmentWorks.resolveLinkForOrder.mockResolvedValue({
+        kind: 'unique',
+        workId: 'ol_fulfillmentwork_1',
+      });
+      shipments.claimFulfillmentWorkLink.mockRejectedValue(new Error('deadlock'));
+      orderRecords.findMany.mockResolvedValue({ items: [makeOrderRecord()], total: 1 });
+      getFulfillmentStatus.mockResolvedValue(dispatchedSnapshot);
+
+      const result = await service.sync(PS, { limit: 100 });
+
+      expect(shipments.update).toHaveBeenCalled();
+      expect(result).toMatchObject({ failed: 0 });
+    });
+
+    it('should not claim on the repair path when the order resolves to several works', async () => {
+      shipments.findBranchOneByOrderAndConnection.mockResolvedValue(
+        makeBranchOneShipment({ status: 'generated', fulfillmentWorkId: null }),
+      );
+      fulfillmentWorks.resolveLinkForOrder.mockResolvedValue({
+        kind: 'ambiguous',
+        workIds: ['ol_fulfillmentwork_1', 'ol_fulfillmentwork_2'],
+      });
+      orderRecords.findMany.mockResolvedValue({ items: [makeOrderRecord()], total: 1 });
+      getFulfillmentStatus.mockResolvedValue(dispatchedSnapshot);
+
+      await service.sync(PS, { limit: 100 });
+
+      expect(shipments.claimFulfillmentWorkLink).not.toHaveBeenCalled();
+    });
+
     it('should not fail the record when the work lookup throws on the create path', async () => {
       // Best-effort on BOTH paths: the link is provenance, the status is the
       // operator-facing fact. Unguarded, a hiccup in the fulfilment context

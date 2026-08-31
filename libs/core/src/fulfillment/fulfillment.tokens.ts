@@ -41,11 +41,12 @@ export const FULFILLMENT_PROGRESS_CLAIM_REPOSITORY_TOKEN = Symbol(
 /**
  * Cross-context work lookup (#2402). `FulfillmentWorkQueryService` binds here.
  *
- * Named `..._WORK_QUERY_...` and checked against `shipping.tokens.ts`, which
- * already owns a `FULFILLMENT_STATUS_SYNC_SERVICE_TOKEN` for the older
- * shipping-local sense of "fulfillment": both barrels `export *` over their
- * token files, so a same-named Symbol in each would be ambiguous for any
- * consumer importing both.
+ * Name checked against `shipping.tokens.ts` before adding it. Both barrels
+ * `export *` over their token files, so a Symbol declared under the same name
+ * in each would be ambiguous for any consumer importing both — and `shipping`
+ * does own a `FULFILLMENT_*` family of its own, for the older shipping-local
+ * sense of "fulfillment". The check is the point; this particular pair never
+ * collided.
  */
 export const FULFILLMENT_WORK_QUERY_SERVICE_TOKEN = Symbol('IFulfillmentWorkQueryService');
 

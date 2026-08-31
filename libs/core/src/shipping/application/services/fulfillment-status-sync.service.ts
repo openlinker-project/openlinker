@@ -353,6 +353,13 @@ export class FulfillmentStatusSyncService implements IFulfillmentStatusSyncServi
             // this off the null check alone would issue one extra query per
             // unlinked row per tick, for ever, with no effect. Gating on a real
             // change bounds it to ticks where this shipment actually moved.
+            //
+            // The cost, stated rather than discovered later: a row that reaches
+            // a TERMINAL status before its order is routed is permanently
+            // unlinkable here, because `diffPatch` returns empty on every
+            // subsequent poll so this gate never opens again. That is free
+            // today — nothing reads the column — but #2727's rollup will, and
+            // whoever wires it needs a backfill rather than a surprise.
             if (existing.fulfillmentWorkId === null) {
               await this.linkFulfillmentWork(existing.id, record.internalOrderId);
             }

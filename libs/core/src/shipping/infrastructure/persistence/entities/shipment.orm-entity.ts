@@ -163,7 +163,8 @@ export class ShipmentOrmEntity {
   reservationConsumedAt!: Date | null;
 
   // The `FulfillmentWork` this shipment satisfies (#2402), or `null` — see the
-  // domain entity for why there is no FK and why this is write-once. Nullable
+  // domain entity for why there is no FK and why this is assigned AT MOST ONCE
+  // (fill-in-when-NULL, not write-once-at-creation). Nullable
   // is the ORDINARY state (pre-OMS and unrouted orders), so no default and no
   // backfill.
   @Column({ type: 'text', nullable: true })

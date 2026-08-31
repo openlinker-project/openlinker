@@ -129,6 +129,7 @@ describe('ShipmentDispatchService', () => {
   let orders: jest.Mocked<IOrderRecordService>;
   let dispatchLock: jest.Mocked<SyncLockPort>;
   let orderHolds: jest.Mocked<IOrderHoldService>;
+  let fulfillmentWorks: { resolveLinkForOrder: jest.Mock };
   let service: ShipmentDispatchService;
 
   beforeEach(() => {
@@ -204,6 +205,9 @@ describe('ShipmentDispatchService', () => {
       release: jest.fn().mockResolvedValue(true),
       extend: jest.fn().mockResolvedValue(true),
     };
+    // #2402: by default the order is unrouted, so no work links — every
+    // pre-existing assertion in this file then holds byte for byte.
+    fulfillmentWorks = { resolveLinkForOrder: jest.fn().mockResolvedValue({ kind: 'none' }) };
     service = new ShipmentDispatchService(
       repository,
       routing,
@@ -212,6 +216,7 @@ describe('ShipmentDispatchService', () => {
       fulfillmentProjection,
       dispatchLock,
       orderHolds,
+      fulfillmentWorks,
     );
   });
 
@@ -385,9 +390,7 @@ describe('ShipmentDispatchService', () => {
         resolution({ processorKind: FULFILLMENT_PROCESSOR_KIND.OmpFulfilled, processorConnectionId: null, source: 'default' }),
       );
 
-      const result = await service.dispatch(
-        makeInput({ fulfillmentWorkId: 'ol_fulfillmentwork_1' }),
-      );
+      const result = await service.dispatch(makeInput());
 
       // The work id changes nothing about routing: the resolved kind still
       // decides, and a 3PL still mints no shipment and no providerShipmentId.
@@ -966,6 +969,10 @@ describe('ShipmentDispatchService', () => {
         // minted by the status poll before its order was routed could never
         // acquire a link at all.
         arrangeRetry();
+        fulfillmentWorks.resolveLinkForOrder.mockResolvedValue({
+          kind: 'unique',
+          workId: 'ol_fulfillmentwork_1',
+        });
         adapter.generateLabel.mockResolvedValue({
           providerShipmentId: 'shipx-2402',
           trackingNumber: null,
@@ -973,7 +980,7 @@ describe('ShipmentDispatchService', () => {
         });
         integrations.getCapabilityAdapter.mockResolvedValue(adapter);
 
-        await service.dispatch(makeInput({ fulfillmentWorkId: 'ol_fulfillmentwork_1' }));
+        await service.dispatch(makeInput());
 
         expect(repository.claimFulfillmentWorkLink).toHaveBeenCalledWith(
           'ol_shipment_c7b2',
@@ -983,7 +990,7 @@ describe('ShipmentDispatchService', () => {
         expect(repository.create).not.toHaveBeenCalled();
       });
 
-      it('should not claim when the caller supplies no work id', async () => {
+      it('should not claim when the order resolves to no work', async () => {
         arrangeRetry();
         adapter.generateLabel.mockResolvedValue({
           providerShipmentId: 'shipx-2402',
@@ -994,6 +1001,45 @@ describe('ShipmentDispatchService', () => {
 
         await service.dispatch(makeInput());
 
+        expect(repository.claimFulfillmentWorkLink).not.toHaveBeenCalled();
+      });
+
+      it('should leave the link unset when the order resolves to several works', async () => {
+        // Attributing one parcel across N works needs line grain (#2727); an
+        // unset link is recoverable, a wrong one is not.
+        arrangeRetry();
+        fulfillmentWorks.resolveLinkForOrder.mockResolvedValue({
+          kind: 'ambiguous',
+          workIds: ['ol_fulfillmentwork_1', 'ol_fulfillmentwork_2'],
+        });
+        adapter.generateLabel.mockResolvedValue({
+          providerShipmentId: 'shipx-2402',
+          trackingNumber: null,
+          labelPdfRef: 'ref-2402',
+        });
+        integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+
+        await service.dispatch(makeInput());
+
+        expect(repository.claimFulfillmentWorkLink).not.toHaveBeenCalled();
+      });
+
+      it('should still dispatch when the work lookup throws', async () => {
+        // The link is provenance; the label is the operator-facing act. A
+        // hiccup in the fulfilment context must never fail a dispatch that
+        // would otherwise succeed — and a thrown lookup would, unguarded.
+        arrangeRetry();
+        fulfillmentWorks.resolveLinkForOrder.mockRejectedValue(new Error('db down'));
+        adapter.generateLabel.mockResolvedValue({
+          providerShipmentId: 'shipx-2402',
+          trackingNumber: null,
+          labelPdfRef: 'ref-2402',
+        });
+        integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+
+        const result = await service.dispatch(makeInput());
+
+        expect(result.kind).toBe('dispatched');
         expect(repository.claimFulfillmentWorkLink).not.toHaveBeenCalled();
       });
 
@@ -1010,6 +1056,10 @@ describe('ShipmentDispatchService', () => {
         repository.findBranchOneByOrderAndConnection.mockResolvedValue(null);
         repository.create.mockResolvedValue(makeShipment());
         repository.update.mockResolvedValue(makeShipment({ status: 'generated' }));
+        fulfillmentWorks.resolveLinkForOrder.mockResolvedValue({
+          kind: 'unique',
+          workId: 'ol_fulfillmentwork_1',
+        });
         adapter.generateLabel.mockResolvedValue({
           providerShipmentId: 'shipx-2402',
           trackingNumber: null,
@@ -1017,7 +1067,7 @@ describe('ShipmentDispatchService', () => {
         });
         integrations.getCapabilityAdapter.mockResolvedValue(adapter);
 
-        await service.dispatch(makeInput({ fulfillmentWorkId: 'ol_fulfillmentwork_1' }));
+        await service.dispatch(makeInput());
 
         expect(repository.create).toHaveBeenCalledWith(
           expect.objectContaining({ fulfillmentWorkId: 'ol_fulfillmentwork_1' }),

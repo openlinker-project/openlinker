@@ -57,6 +57,12 @@ import { OrderNotDispatchablePaymentStatusException } from '../../domain/excepti
 import { OrderNotDispatchableHeldException } from '../../domain/exceptions/order-not-dispatchable-held.exception';
 import { ShippingProviderRejectionException } from '../../domain/exceptions/shipping-provider-rejection.exception';
 import { ShipmentDispatchContendedException } from '../../domain/exceptions/shipment-dispatch-contended.exception';
+import {
+  FULFILLMENT_WORK_QUERY_SERVICE_TOKEN,
+  type FulfillmentWorkLinkResolution,
+  type IFulfillmentWorkQueryService,
+} from '@openlinker/core/fulfillment';
+
 import { ShipmentRepositoryPort } from '../../domain/ports/shipment-repository.port';
 import type { ShippingProviderManagerPort } from '../../domain/ports/shipping-provider-manager.port';
 import { isShipmentReferenceReconciler } from '../../domain/ports/capabilities/shipment-reference-reconciler.capability';
@@ -95,6 +101,12 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
     private readonly dispatchLock: SyncLockPort,
     @Inject(ORDER_HOLD_SERVICE_TOKEN)
     private readonly orderHolds: IOrderHoldService,
+    // #2402: resolve the FulfillmentWork this dispatch satisfies. Resolved HERE
+    // rather than accepted as an input, because no caller holds a work id —
+    // an optional field would have left the whole `ol_managed_carrier` half of
+    // the bridge permanently unreachable, exercised only by its own spec.
+    @Inject(FULFILLMENT_WORK_QUERY_SERVICE_TOKEN)
+    private readonly fulfillmentWorks: IFulfillmentWorkQueryService,
   ) {}
 
   /**
@@ -421,6 +433,14 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
         )
       : [];
 
+    // Resolve the work this dispatch satisfies, before the create/update fork so
+    // both branches can use one answer. Best-effort: the link is provenance and
+    // the label is the operator-facing act, so a hiccup in the fulfilment
+    // context must never fail a dispatch that would otherwise succeed. Only a
+    // UNIQUE resolution links — `ambiguous` leaves the column NULL rather than
+    // attributing a parcel to a work that may not have shipped it (#2727).
+    const workLink = await this.resolveWorkLink(input.orderId);
+
     const shipment = priorBranchOne
       ? await this.shipments.update(priorBranchOne.id, {
           status: SHIPMENT_STATUS.Draft,
@@ -439,7 +459,7 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
           paczkomatId: input.paczkomatId,
           sourceDeliveryMethodId: input.sourceDeliveryMethodId ?? undefined,
           // Work linkage (#2402). Stamped at birth on the create branch.
-          fulfillmentWorkId: input.fulfillmentWorkId,
+          fulfillmentWorkId: workLink.kind === 'unique' ? workLink.workId : undefined,
         });
 
     // The retry branch above REUSED a prior row rather than creating one, so it
@@ -454,8 +474,8 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
     // re-reading the row purely to refresh a column no caller consults would be
     // an extra query for nothing — stated so a future reader of `shipment` here
     // knows it can disagree with the row.
-    if (priorBranchOne && input.fulfillmentWorkId !== undefined) {
-      await this.shipments.claimFulfillmentWorkLink(shipment.id, input.fulfillmentWorkId);
+    if (priorBranchOne && workLink.kind === 'unique') {
+      await this.shipments.claimFulfillmentWorkLink(shipment.id, workLink.workId);
     }
 
     // Lost-response recovery (#1917). A prior attempt may have committed at the
@@ -568,6 +588,19 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
    * material is lost: an intent change resolves into a different
    * `shippingMethod`, which is compared strictly.
    */
+  /** Resolve an order's work link, degrading to `none` on failure. */
+  private async resolveWorkLink(orderId: string): Promise<FulfillmentWorkLinkResolution> {
+    try {
+      return await this.fulfillmentWorks.resolveLinkForOrder(orderId);
+    } catch (error) {
+      this.logger.warn(
+        `Could not resolve a fulfillment work for order ${orderId}: ` +
+          `${error instanceof Error ? error.message : String(error)}`,
+      );
+      return { kind: 'none' };
+    }
+  }
+
   private describeParameterDivergence(
     prior: Shipment,
     shippingMethod: ShippingMethod,
