@@ -65,10 +65,14 @@ export const apiPlugins: PluginEntry[] = [
   // Registered API-side as well as worker-side so a future API restamp
   // endpoint fails at boot rather than at runtime against an empty registry.
   FxIntegrationModule,
-  // #2390 / ADR-055: OpenLinker's own OMS. Empty at this stage — the plugin
-  // descriptor and its credential-less connection arrive with #2405. Registered
-  // now because the import from `apps/*` is what makes the rest of the #2390
-  // wiring load-bearing: the jest mappers, the tsconfig paths and the Dockerfile
-  // COPY lines are unexercised, and therefore unverifiable, without it.
-  OmsModule,
+  // #2405 / ADR-055: OpenLinker's own OMS, registered through the same seam as
+  // any third-party plugin — no privileged path in core. Its manifest declares
+  // `requiresCredentials: false`, which is what lets an operator create the
+  // credential-less connection ADR-055 specifies; the row is created on enable
+  // and is NEVER seeded by a migration, because a seeded row would enter every
+  // existing install's authority candidate sets and flip previously-single
+  // candidate selections to `ambiguous`. `.register()` (the shipped
+  // `AiIntegrationModule` shape) keeps `OmsModule` a named class while handing
+  // back the descriptor-backed DynamicModule.
+  OmsModule.register(),
 ];

@@ -1,12 +1,13 @@
 import type { ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { usePlatform, usePlatforms } from '../../../shared/plugins';
 import { useCreateConnectionMutation } from '../hooks/use-create-connection-mutation';
+import { useAdaptersQuery } from '../../adapters';
 import {
-  createConnectionSchema,
+  buildCreateConnectionSchema,
   toCreateConnectionInput,
   type CreateConnectionFormSubmission,
   type CreateConnectionFormValues,
@@ -56,9 +57,13 @@ export function CreateConnectionForm(): ReactElement {
   // matching EditConnectionForm's "Save changes" treatment (#1615).
   const write = useWriteAccess('connections:write', demoMode);
   const platformOptions = plugins.map((p) => ({ value: p.platformType, label: p.displayName }));
+  // The schema depends on the SELECTED platform's adapter, which is only known
+  // after the operator picks one — so the resolver delegates through a ref
+  // rather than being captured once at first render.
+  const schemaRef = useRef(buildCreateConnectionSchema());
   const form = useForm<CreateConnectionFormValues, undefined, CreateConnectionFormSubmission>({
     defaultValues: DEFAULT_VALUES,
-    resolver: zodResolver(createConnectionSchema),
+    resolver: (values, context, options) => zodResolver(schemaRef.current)(values, context, options),
   });
 
   const watchedPlatformType = form.watch('platformType');
@@ -67,6 +72,26 @@ export function CreateConnectionForm(): ReactElement {
   // platform wizard owns the rest of the flow.
   const selectedPlugin = usePlatform(watchedPlatformType);
   const requiresExternalAuthRedirect = selectedPlugin?.requiresExternalAuthRedirect === true;
+
+  // Whether this destination needs credentials is the ADAPTER's own
+  // declaration (#2405, ADR-055), read from `GET /adapters` — never a literal
+  // `platformType` check, which is ESLint-banned (#578/#579) and would be
+  // unavailable to a third-party OMS adapter. The comparison below is
+  // variable-to-variable and therefore permitted.
+  //
+  // Absent (still loading, or an adapter that declares nothing) resolves to
+  // `true`, mirroring the backend default: the pre-arrival state shows the
+  // credential fields rather than briefly hiding them.
+  const adaptersQuery = useAdaptersQuery();
+  const selectedAdapter = adaptersQuery.data?.find(
+    (adapter) => adapter.platformType === watchedPlatformType,
+  );
+  const requiresCredentials = selectedAdapter?.requiresCredentials !== false;
+  const credentialSchema = useMemo(
+    () => buildCreateConnectionSchema({ requiresCredentials }),
+    [requiresCredentials],
+  );
+  schemaRef.current = credentialSchema;
 
   const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
     error?.message ? [String(error.message)] : [],
@@ -129,7 +154,14 @@ export function CreateConnectionForm(): ReactElement {
             </Select>
           </FormField>
 
-          {requiresExternalAuthRedirect ? null : (
+          {!requiresCredentials && selectedPlugin ? (
+            <Alert tone="info" title={`${selectedPlugin.displayName} needs no credentials`}>
+              {selectedPlugin.displayName} runs inside OpenLinker and crosses no network boundary,
+              so there is nothing to authenticate against. Leave the credential fields out entirely.
+            </Alert>
+          ) : null}
+
+          {requiresExternalAuthRedirect || !requiresCredentials ? null : (
             <FormField
               label="Credentials reference"
               name="credentialsRef"
@@ -144,7 +176,7 @@ export function CreateConnectionForm(): ReactElement {
             </FormField>
           )}
 
-          {requiresExternalAuthRedirect ? null : (
+          {requiresExternalAuthRedirect || !requiresCredentials ? null : (
             <FormField
               label="Credentials JSON"
               name="credentialsJson"

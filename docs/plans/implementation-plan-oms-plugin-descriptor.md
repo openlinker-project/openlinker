@@ -407,3 +407,74 @@ about migration effects is vacuous under a `synchronize`-built harness.*
 `pnpm check:invariants` (35) · cold `pnpm -r build`.
 Known pre-existing, named and never chased: **#2638**, **#2639**.
 Never run unit concurrently with integration. Node 22 on the hook's PATH.
+
+---
+
+## 11. Revisions after `/pre-implement` and `/tech-review` (applied)
+
+The gate and the plan review together produced one rename, three BLOCKING corrections and four
+IMPORTANT ones. All are applied; this section records what changed and why, so the shipped diff and
+the plan agree.
+
+### From `/pre-implement`
+
+- **D-1 rename**: `adapterRequiresCredentials` → **`resolveRequiresCredentials`**, matching the
+  `resolveVariantGroupingModel` sibling in the same file — which is the precedent D1 cites to
+  justify exporting a runtime function from a `*.types.ts` at all.
+- **W1 (blocking, process)**: a stale `libs/core/dist/` declared the field before source did.
+  `pnpm -r --filter "./libs/**" build` was run before any gate. This bit for real: the first
+  `connection.service.spec.ts` run failed `TS2305: no exported member 'resolveRequiresCredentials'`.
+  The actual cause turned out to be adjacent and worse — the `@openlinker/core/integrations` barrel
+  **cherry-picks** from `adapter.types.ts`, so the new export had to be added there too.
+- **W2**: `check-plugin-guide-quotes.mjs` pins `adapter.types.ts:38-77` by line range. The field is
+  added beside `defaultRateLimit?` (~line 181) and the resolver at end of file, both below the pin.
+
+### From `/tech-review` — BLOCKING
+
+- **B1 — the frontend would still 400, and the planned test could not catch it.** Phase 5 changed
+  the schema and form but not `toCreateConnectionInput`, the only function that builds the request
+  body; with both fields hidden it emitted `credentialsRef: ''`, which the DTO rejects. The mapper
+  now **omits both keys**, and the test asserts **key absence** (`'credentialsRef' in input`), not a
+  value — a schema-level assertion passes either way and is exactly the check-that-cannot-fail this
+  issue exists to eliminate. Proven empirically first: `create-connection.dto.spec.ts` shows `''`
+  is 400'd while an omitted pair passes.
+- **B2 — `supportedCapabilities: []` stamps `enabledCapabilities: []` permanently.** Not fixable
+  here without abandoning the Erli precedent, so it is recorded as a **named obligation on #2409**
+  (retro-fill existing `platformType='openlinker'` rows in the same PR that adds the capability),
+  in `docs/lessons.md`, in `libs/oms/README.md` and in § 2 below. AC-2's assertion is worded about
+  **seeding** (INSERTs), so that UPDATE-only migration legitimately passes it.
+- **B3 — "both supplied" must stay a 400.** The original 4.1 wording made it legal for a
+  credential-less adapter, which would have encrypted and persisted a credential row nothing reads,
+  discarded the caller's ref, reported `credentialsBacked: true`, and handed `updateCredentials`
+  its db-backed branch. Only the *neither* arm relaxes; the `db:` prefix check stays unconditional.
+  Both are pinned by unit cases.
+
+### From `/tech-review` — IMPORTANT
+
+- **I4**: the "neither" guard now sits **below** adapter-metadata resolution, so 4.4's negative
+  control asserts the **message** (`/Exactly one of/`) against a registered platform (`prestashop`),
+  not a bare 400 that an unregistered platformType would also produce. **Behaviour change, stated
+  rather than discovered**: a create for an *unknown* platformType with no credentials now answers
+  `AdapterNotFoundException` instead of "Exactly one of …".
+- **I6**: AC-5 is **mechanised** rather than a PR-time `git diff` —
+  `libs/oms/src/__tests__/host-services-not-widened.spec.ts` pins the member list and asserts none
+  of the five OMS deps entered the bag. AC-2's "proven able to fail" remains what it can only be:
+  a one-time, PR-recorded demonstration, not a standing gate.
+- **I7**: the `updateCredentials` int-spec asserts the message
+  (`/does not have a db-backed credentials reference/`), since that route can 400 for several
+  unrelated reasons.
+- **S9 (adopted as a requirement)**: `isDefault: true` is **required**, not stylistic — the create
+  form omits `adapterKey`, so `resolveAdapterMetadata` falls back to `getDefaultAdapterKey`. The
+  int-spec asserts the persisted `adapterKey` is `null` for exactly this reason.
+- **S11 (confirmed, now proven)**: `CreateConnectionDto` needed **no change**. Phase 4.2 is a no-op,
+  established by `create-connection.dto.spec.ts` rather than by reading decorators.
+
+### Discovered during implementation
+
+- The `@openlinker/core/integrations` **barrel cherry-picks** its `adapter.types.ts` exports, so
+  `resolveRequiresCredentials` needed an explicit line there.
+- The worker boot spec's `toContain(OmsModule)` could not simply be adapted:
+  `createNestAdapterModule` wraps an **inner, per-call anonymous class**, so no identity comparison
+  against `OmsModule` can ever succeed. It is **deleted** in favour of the registry assertion, which
+  strictly subsumes it — the manifest can only be registered if the module really was composed and
+  really did boot.

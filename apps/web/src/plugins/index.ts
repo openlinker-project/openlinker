@@ -51,6 +51,7 @@ import { ksefPlugin } from './ksef';
 import { prestashopPlugin } from './prestashop';
 import { subiektPlugin } from './subiekt';
 import { woocommercePlugin } from './woocommerce';
+import { omsPlugin } from './oms';
 
 export const plugins: readonly OpenLinkerPlugin[] = [
   prestashopPlugin,
@@ -63,6 +64,7 @@ export const plugins: readonly OpenLinkerPlugin[] = [
   ksefPlugin,
   infaktPlugin,
   eparagonyPlugin,
+  omsPlugin,
 ];
 
 assertUniquePluginInvariants(plugins);

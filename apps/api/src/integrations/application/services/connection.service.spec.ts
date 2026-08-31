@@ -284,10 +284,85 @@ describe('ConnectionService', () => {
       ).rejects.toThrow(/Exactly one of/);
     });
 
-    it('should reject when neither credentials nor credentialsRef are provided', async () => {
+    it('should reject when neither is provided and the adapter REQUIRES credentials', async () => {
+      // The default mock declares no `requiresCredentials`, so
+      // `resolveRequiresCredentials` resolves the safe default `true` and the
+      // guard is unchanged for every shipped adapter (#2405).
       const rest: ConnectionCreateInput = { ...payload };
       delete rest.credentialsRef;
       await expect(service.create(rest)).rejects.toThrow(/Exactly one of/);
+    });
+
+    describe('credential-less adapter (requiresCredentials: false, #2405 / ADR-055)', () => {
+      const credentialLessMetadata = {
+        adapterKey: 'openlinker.oms.v1',
+        platformType: 'openlinker',
+        supportedCapabilities: [],
+        isDefault: true,
+        requiresCredentials: false,
+      };
+
+      it('should ACCEPT a create with neither credentials nor credentialsRef', async () => {
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce(
+          credentialLessMetadata as never
+        );
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        const rest: ConnectionCreateInput = { ...payload, platformType: 'openlinker' };
+        delete rest.credentialsRef;
+
+        await expect(service.create(rest)).resolves.toEqual(mockConnection);
+        expect(credentials.create).not.toHaveBeenCalled();
+      });
+
+      it('should persist an EMPTY STRING credentialsRef, never undefined', async () => {
+        // The column is `character varying NOT NULL`, and `''` is the shipped
+        // Subiekt precedent: falsy exactly where `null` is, and safe at the two
+        // unguarded `.startsWith('db:')` sites where `null` would throw.
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce(
+          credentialLessMetadata as never
+        );
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        const rest: ConnectionCreateInput = { ...payload, platformType: 'openlinker' };
+        delete rest.credentialsRef;
+        await service.create(rest);
+
+        expect(connectionPort.create).toHaveBeenCalledWith(
+          expect.objectContaining({ credentialsRef: '' })
+        );
+      });
+
+      it('should STILL reject when BOTH credentials and credentialsRef are provided', async () => {
+        // Relaxation applies to the "neither" arm only. "Both" is contradictory
+        // input at every setting: letting it through would encrypt and persist
+        // a credential row nothing ever reads, silently discard the caller's
+        // own ref, and hand `updateCredentials` its db-backed branch.
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce(
+          credentialLessMetadata as never
+        );
+
+        await expect(
+          service.create({
+            ...payload,
+            platformType: 'openlinker',
+            credentials: { anything: 'X' },
+          })
+        ).rejects.toThrow(/Exactly one of/);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+        expect(credentials.create).not.toHaveBeenCalled();
+      });
+
+      it('should STILL reject a raw-key credentialsRef', async () => {
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce(
+          credentialLessMetadata as never
+        );
+
+        await expect(
+          service.create({ ...payload, platformType: 'openlinker', credentialsRef: 'RAW_KEY_XYZ' })
+        ).rejects.toThrow(/must start with "db:"/);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
     });
 
     it('should persist credentials and store db: ref when credentials payload is provided', async () => {

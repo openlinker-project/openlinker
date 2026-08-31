@@ -26,3 +26,6 @@
  * @see docs/architecture/adrs/055-oms-as-credentialless-connection-plugin.md
  */
 export { OmsModule } from './oms.module';
+export { createOmsPlugin, omsAdapterManifest } from './oms.plugin';
+export type { OmsPluginDeps } from './oms.plugin';
+export { OMS_ADAPTER_KEY, OMS_BRAND, OMS_PLATFORM_TYPE } from './oms.constants';

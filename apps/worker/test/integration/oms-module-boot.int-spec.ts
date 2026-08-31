@@ -2,7 +2,9 @@
  * `@openlinker/oms` — composition / DI boot integration test (#2390, `W3a-1`).
  *
  * **What this proves today.** That `OmsModule` composes and boots inside the
- * real Nest container as a member of `workerPlugins`. That is not a
+ * real Nest container as a member of `workerPlugins`, and — since #2405 — that
+ * booting it actually REGISTERS the `openlinker.oms.v1` manifest, which is what
+ * an operator-created OMS connection resolves through. That is not a
  * formality: booting the harness is the only thing in the repo that
  * exercises the whole #2390 registration chain end to end — the
  * `@openlinker/oms` jest `moduleNameMapper` entries (without them this file's
@@ -35,7 +37,8 @@
  * @see docs/architecture/adrs/055-oms-as-credentialless-connection-plugin.md
  */
 import { OmsModule } from '@openlinker/oms';
-import { workerPlugins } from '../../src/plugins';
+import type { AdapterMetadata } from '@openlinker/core/integrations';
+import { ADAPTER_REGISTRY_TOKEN } from '@openlinker/core/integrations';
 import { getTestHarness, teardownTestHarness } from './setup';
 import type { WorkerIntegrationTestHarness } from './setup';
 
@@ -70,10 +73,38 @@ describe('@openlinker/oms — composition boot (#2390)', () => {
     expect(OmsModule.name).toBe('OmsModule');
   });
 
-  it('should register OmsModule in the worker plugin composition list', () => {
-    // Catches an accidental removal from apps/worker/src/plugins.ts, which
-    // would silently un-exercise the mappers, paths and Dockerfile COPYs.
-    expect(workerPlugins).toContain(OmsModule);
+  // The pre-#2405 `expect(workerPlugins).toContain(OmsModule)` is deliberately
+  // GONE rather than adapted. `plugins.ts` now holds `OmsModule.register()`,
+  // and `createNestAdapterModule` returns `{ module: <inner PluginHostModule> }`
+  // — an anonymous class minted per call — so NO identity comparison against
+  // `OmsModule` can succeed, and a weaker "is there a DynamicModule in the
+  // array" check would assert almost nothing.
+  //
+  // The registry assertion below subsumes it completely: the manifest can only
+  // be registered if the module really is composed into `workerPlugins` and
+  // really did boot. An accidental removal from `plugins.ts` fails that test.
+
+  it('should register the openlinker.oms.v1 manifest in the adapter registry at boot', async () => {
+    // The honest assertion, and strictly stronger than the membership check
+    // above: `toContain` was only ever a proxy for "the wiring is exercised",
+    // and now that a manifest exists we can assert the thing that actually
+    // matters — booting the real container registers the OMS adapter, so
+    // `resolveAdapterMetadata` can find it for an operator-created connection.
+    const registry = harness
+      .getAppContext()
+      .get<{ listAdapters: () => Promise<AdapterMetadata[]> }>(ADAPTER_REGISTRY_TOKEN, {
+        strict: false,
+      });
+
+    const adapters = await registry.listAdapters();
+    const oms = adapters.find((a) => a.adapterKey === 'openlinker.oms.v1');
+
+    expect(oms).toBeDefined();
+    expect(oms?.platformType).toBe('openlinker');
+    // The declaration the credential-less create guard keys on (ADR-055).
+    expect(oms?.requiresCredentials).toBe(false);
+    // No capability is advertised until an adapter delivers one (#2409).
+    expect(oms?.supportedCapabilities).toEqual([]);
   });
 
   it('should boot the real container with OmsModule composed', () => {
