@@ -218,7 +218,40 @@ describe('FulfillmentHandshakeService', () => {
       expect(harness.executor.requestFulfillment).not.toHaveBeenCalled();
     });
 
-    it('should refuse to resume an attempt this job was not enqueued for', async () => {
+    it('should offer a RESUMED dispatch to the holder the row names NOW', async () => {
+    // A peer may `clearHolder` + `assignHolder` while the work is `submitted` —
+    // nothing forbids it — so the row loaded before the claim can name a holder
+    // that no longer holds the work. Sending to it would offer the work to the
+    // wrong connection under a key the current holder has never seen, and the
+    // port's replay guarantee cannot rescue that: it is scoped to one holder.
+    const OTHER_HOLDER = '99999999-9999-9999-9999-999999999999';
+    const { service, executor } = buildHarness({
+      works: [
+        buildWork({ requestStatus: 'submitted', assignmentAttempt: 1 }),
+        buildWork({
+          requestStatus: 'submitted',
+          assignmentAttempt: 1,
+          assignedConnectionId: OTHER_HOLDER,
+        }),
+      ],
+      claim: null,
+    });
+
+    const result = await service.dispatch({
+      workId: 'ol_fulfillmentwork_abc',
+      expectedAssignmentAttempt: 1,
+      shipTo: SHIP_TO,
+      executor,
+    });
+
+    expect(result.outcome).toBe('accepted');
+    const sent = executor.requestFulfillment.mock.calls[0][0];
+    expect(sent.work.connectionId).toBe(OTHER_HOLDER);
+    // The key is still the attempt's, unchanged by the holder move.
+    expect(sent.idempotencyKey).toBe('work:ol_fulfillmentwork_abc:1');
+  });
+
+  it('should refuse to resume an attempt this job was not enqueued for', async () => {
       // A delayed duplicate for attempt 1, waking after a re-request moved the
       // work to attempt 2. Sending would mint a key it never claimed.
       const harness = buildHarness({

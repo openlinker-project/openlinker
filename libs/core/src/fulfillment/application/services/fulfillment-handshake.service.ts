@@ -99,15 +99,24 @@ export class FulfillmentHandshakeService implements IFulfillmentHandshakeService
       throw new FulfillmentWorkUnassignedError(input.workId);
     }
 
-    const attempt = await this.claimOrResume(work, input.expectedAssignmentAttempt);
-    if (attempt === null) return NO_OP;
+    const claim = await this.claimOrResume(work, input.expectedAssignmentAttempt);
+    if (claim === null) return NO_OP;
 
-    const idempotencyKey = buildFulfillmentDispatchIdempotencyKey(work.id, attempt);
+    // Everything below reads the AUTHORITATIVE row the claim resolved against,
+    // never the copy loaded before it. On the resume path a peer may have moved
+    // the holder (`clearHolder` + `assignHolder` are not forbidden while
+    // `submitted`), and offering the work to the connection this call happened
+    // to load first would send a resumed dispatch to a holder that no longer
+    // holds it — under a key the current holder has never seen.
+    const { attempt, work: current } = claim;
+    const holderConnectionId = current.assignedConnectionId ?? connectionId;
+
+    const idempotencyKey = buildFulfillmentDispatchIdempotencyKey(current.id, attempt);
 
     const result = await input.executor.requestFulfillment({
-      work: { workId: work.id, connectionId },
-      orderId: work.orderId,
-      lines: work.lines.map(
+      work: { workId: current.id, connectionId: holderConnectionId },
+      orderId: current.orderId,
+      lines: current.lines.map(
         (line): FulfillmentRequestLine => ({
           workLineId: line.id,
           productVariantId: line.productVariantId,
@@ -117,7 +126,7 @@ export class FulfillmentHandshakeService implements IFulfillmentHandshakeService
       shipTo: input.shipTo,
       // Read from the ROW, never taken from the caller: it is an insert-only
       // column the router owns, and a second source could disagree with it.
-      deliveryMethod: work.deliveryMethod,
+      deliveryMethod: current.deliveryMethod,
       idempotencyKey,
     });
 
@@ -126,7 +135,7 @@ export class FulfillmentHandshakeService implements IFulfillmentHandshakeService
     // column value nobody chose.
     assertFulfillmentRequestResultRecognised(result);
 
-    return this.recordAnswer(work, connectionId, attempt, idempotencyKey, result);
+    return this.recordAnswer(current, holderConnectionId, attempt, idempotencyKey, result);
   }
 
   async requestCancellation(
@@ -195,12 +204,15 @@ export class FulfillmentHandshakeService implements IFulfillmentHandshakeService
   private async claimOrResume(
     work: FulfillmentWork,
     expectedAttempt: number | null
-  ): Promise<number | null> {
+  ): Promise<{ attempt: number; work: FulfillmentWork } | null> {
     const claimed = await this.repository.claimDispatchAttempt({
       workId: work.id,
       from: CLAIMABLE_FROM,
     });
-    if (claimed !== null) return claimed;
+    // A fresh claim re-reads too: the claim moved `requestStatus` and the
+    // counter, so the copy loaded before it is stale by construction, and every
+    // field the request carries should come from one consistent row.
+    if (claimed !== null) return { attempt: claimed, work: await this.loadWork(work.id) };
 
     // The claim did not apply. Re-read rather than trusting the row loaded
     // before it: a peer may have moved the work in between, and resuming on a
@@ -229,7 +241,7 @@ export class FulfillmentHandshakeService implements IFulfillmentHandshakeService
     // The retry path: same persisted attempt, therefore the IDENTICAL key. Safe
     // to re-issue because the port guarantees a repeat under one key returns the
     // original outcome.
-    return current.assignmentAttempt;
+    return { attempt: current.assignmentAttempt, work: current };
   }
 
   private async recordAnswer(

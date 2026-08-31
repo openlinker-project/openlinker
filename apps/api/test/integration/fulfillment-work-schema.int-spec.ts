@@ -135,6 +135,11 @@ describe('Fulfillment Work Schema Integration', () => {
   describe('column sets', () => {
     it('should carry exactly the fulfillment_works columns the wave depends on', async () => {
       expect(await columnsOf('fulfillment_works')).toEqual([
+        // #2399's acceptance claim column and the holder's own reference. Both
+        // nullable: the claim's at-most-once semantics come from
+        // `recordAcceptance`'s conditional UPDATE, never from the column being
+        // populated, and a holder may report neither.
+        'acceptedAt timestamp with time zone NULL',
         'assignedConnectionId uuid NULL',
         'assignmentAttempt integer NOT NULL DEFAULT 0',
         'cancellationReason character varying(64) NULL',
@@ -142,6 +147,7 @@ describe('Fulfillment Work Schema Integration', () => {
         'createdAt timestamp with time zone NOT NULL DEFAULT now()',
         'deliveryMethod text NULL',
         'dispatchRelayedAt timestamp with time zone NULL',
+        'externalWorkId text NULL',
         'id text NOT NULL',
         'locationId text NULL',
         'orderId text NOT NULL',

@@ -38,12 +38,12 @@
  * `fulfillment_works.assignedConnectionId`.
  *
  * Generated: 2026-08-30 (synthetic sequential prefix per docs/migrations.md
- * rule 3; 1864000000000 is #2392's fulfillment work tables).
+ * rule 3; 1864000000000 is #2392's fulfillment work tables; 1865000000000 is claimed concurrently by #2394's routing_decisions, so this slice takes 1866000000000 rather than collide).
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddFulfillmentHandshake1865000000000 implements MigrationInterface {
-  name = 'AddFulfillmentHandshake1865000000000';
+export class AddFulfillmentHandshake1866000000000 implements MigrationInterface {
+  name = 'AddFulfillmentHandshake1866000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     // The rejection id defaults to uuid_generate_v4() — the same guard
@@ -57,6 +57,19 @@ export class AddFulfillmentHandshake1865000000000 implements MigrationInterface 
     await queryRunner.query(`
       ALTER TABLE "fulfillment_works"
         ADD COLUMN IF NOT EXISTS "externalWorkId" text
+    `);
+
+    // #2400's inbound-progress correlation read (its shape deferred to #2399,
+    // which owns the writer). COMPOSITE and NOT keyed on "externalWorkId"
+    // alone: the value is a third party's, so two holders may both mint "1" and
+    // an unscoped lookup would correlate one holder's webhook onto another's
+    // work. Partial — a row with no vendor reference can never match. Non-unique
+    // because OL cannot assert uniqueness on a vendor's behalf, and a unique
+    // index would refuse a legitimate acceptance.
+    await queryRunner.query(`
+      CREATE INDEX IF NOT EXISTS "IDX_fulfillment_works_external_work_id"
+        ON "fulfillment_works" ("assignedConnectionId", "externalWorkId")
+        WHERE "externalWorkId" IS NOT NULL
     `);
 
     await queryRunner.query(`
@@ -95,6 +108,7 @@ export class AddFulfillmentHandshake1865000000000 implements MigrationInterface 
     await queryRunner.query(`DROP INDEX IF EXISTS "IDX_fulfillment_work_rejections_blocking"`);
     await queryRunner.query(`DROP INDEX IF EXISTS "UQ_fulfillment_work_rejections_work_attempt"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "fulfillment_work_rejections"`);
+    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_fulfillment_works_external_work_id"`);
     await queryRunner.query(`ALTER TABLE "fulfillment_works" DROP COLUMN IF EXISTS "externalWorkId"`);
     await queryRunner.query(`ALTER TABLE "fulfillment_works" DROP COLUMN IF EXISTS "acceptedAt"`);
   }
