@@ -15,7 +15,7 @@
  *
  * @module apps/web/src/features/orders/components
  */
-import { useMemo, useReducer, useState, type ReactElement } from 'react';
+import { Fragment, useMemo, useReducer, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 
 import { Alert } from '../../../shared/ui/alert';
@@ -303,7 +303,7 @@ function ParcelProfile({
             <DimInput label="Default height in millimetres" value={profile.height} onChange={set('height')} />
           </div>
         </div>
-        <div className="bulk-dispatch__field">
+        <div className="bulk-dispatch__field bulk-dispatch__weight">
           <span className="bulk-dispatch__field-label">Weight (g)</span>
           <DimInput label="Default weight in grams" value={profile.weightGrams} onChange={set('weightGrams')} wide />
         </div>
@@ -339,6 +339,41 @@ function DimInput({
   );
 }
 
+/**
+ * Split an internal id into wrap-safe chunks: the `ol_{type}_` prefix as one
+ * chunk, then the remaining opaque id in fixed-size groups (#2669). Rendered
+ * with `<wbr>` between chunks so the browser only wraps at these explicit
+ * points - never at `overflow-wrap: anywhere`, which broke the id one
+ * character per line once its column narrowed (#1658).
+ */
+export function splitIdForWrap(id: string, chunkSize = 6): string[] {
+  const prefixMatch = /^[a-z]+_[a-z]+_/.exec(id);
+  const prefix = prefixMatch?.[0] ?? '';
+  const rest = id.slice(prefix.length);
+  if (rest.length === 0) return prefix ? [prefix] : [id];
+  const chunks: string[] = prefix ? [prefix] : [];
+  for (let i = 0; i < rest.length; i += chunkSize) {
+    chunks.push(rest.slice(i, i + chunkSize));
+  }
+  return chunks;
+}
+
+/** Renders an order id with controlled wrap points and the full value as a
+ *  hover title (the visible text is still capped at 2 lines by CSS). */
+function WrappableOrderId({ id }: { id: string }): ReactElement {
+  const chunks = splitIdForWrap(id);
+  return (
+    <span className="mono bulk-dispatch__ordid" title={id}>
+      {chunks.map((chunk, i) => (
+        <Fragment key={i}>
+          {chunk}
+          {i < chunks.length - 1 ? <wbr /> : null}
+        </Fragment>
+      ))}
+    </span>
+  );
+}
+
 function EligibleRow({
   entry,
   channelLabelFor,
@@ -362,23 +397,27 @@ function EligibleRow({
     <div className="bulk-dispatch__row">
       <div className="bulk-dispatch__row-id">
         <span className="bulk-dispatch__src">{channelLabelFor(order.sourceConnectionId)}</span>
-        <span className="mono bulk-dispatch__ordid">{ref}</span>
+        <WrappableOrderId id={ref} />
         {buyer ? <span className="text-muted bulk-dispatch__buyer">{buyer}</span> : null}
       </div>
       <StatusBadge tone={shippingMethod === 'paczkomat' ? 'info' : 'neutral'} compact>
         {shippingMethod === 'paczkomat' ? 'Paczkomat' : 'Courier'}
       </StatusBadge>
-      <div className="bulk-dispatch__dims">
-        <DimInput label={`Length for ${ref}`} value={parcel.length} onChange={(v) => onField('length', v)} />
-        <span className="bulk-dispatch__times">×</span>
-        <DimInput label={`Width for ${ref}`} value={parcel.width} onChange={(v) => onField('width', v)} />
-        <span className="bulk-dispatch__times">×</span>
-        <DimInput label={`Height for ${ref}`} value={parcel.height} onChange={(v) => onField('height', v)} />
+      <div className="bulk-dispatch__parcel-fields">
+        <div className="bulk-dispatch__dims">
+          <DimInput label={`Length for ${ref}`} value={parcel.length} onChange={(v) => onField('length', v)} />
+          <span className="bulk-dispatch__times">×</span>
+          <DimInput label={`Width for ${ref}`} value={parcel.width} onChange={(v) => onField('width', v)} />
+          <span className="bulk-dispatch__times">×</span>
+          <DimInput label={`Height for ${ref}`} value={parcel.height} onChange={(v) => onField('height', v)} />
+        </div>
+        <div className="bulk-dispatch__weight">
+          <DimInput label={`Weight for ${ref}`} value={parcel.weightGrams} onChange={(v) => onField('weightGrams', v)} wide />
+        </div>
+        <StatusBadge tone="success" withDot compact>
+          Ready
+        </StatusBadge>
       </div>
-      <DimInput label={`Weight for ${ref}`} value={parcel.weightGrams} onChange={(v) => onField('weightGrams', v)} wide />
-      <StatusBadge tone="success" withDot compact>
-        Ready
-      </StatusBadge>
       {error ? <span className="bulk-dispatch__row-error" role="alert">{error}</span> : null}
     </div>
   );
@@ -401,10 +440,9 @@ function IneligibleRow({
     <div className="bulk-dispatch__row bulk-dispatch__row--ineligible">
       <div className="bulk-dispatch__row-id">
         <span className="bulk-dispatch__src">{channelLabelFor(order.sourceConnectionId)}</span>
-        <span className="mono bulk-dispatch__ordid">{ref}</span>
+        <WrappableOrderId id={ref} />
         {buyer ? <span className="text-muted bulk-dispatch__buyer">{buyer}</span> : null}
       </div>
-      <span className="bulk-dispatch__row-spacer" aria-hidden="true" />
       <StatusBadge tone="warning" withDot compact>
         {reason ? DISPATCH_INELIGIBILITY_LABEL[reason] : 'Not dispatchable'}
       </StatusBadge>
