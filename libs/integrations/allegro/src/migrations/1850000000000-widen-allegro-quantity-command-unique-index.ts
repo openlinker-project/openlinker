@@ -12,8 +12,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class WidenAllegroQuantityCommandUniqueIndex1841000000007 implements MigrationInterface {
-  name = 'WidenAllegroQuantityCommandUniqueIndex1841000000007';
+export class WidenAllegroQuantityCommandUniqueIndex1850000000000 implements MigrationInterface {
+  name = 'WidenAllegroQuantityCommandUniqueIndex1850000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`DROP INDEX IF EXISTS "IDX_allegro_quantity_commands_commandId"`);
