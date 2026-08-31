@@ -305,5 +305,16 @@ export default defineConfig({
       // making any assertion more truthful.
       use: { ...devices['Desktop Chrome'] },
     },
+    {
+      // Label-download failure-class mapping on the /shipments row accordion
+      // (#2671). Every OL route the page touches is stubbed in-test, following
+      // the `wizard-blockers` shape - no seeded stack, no shared auth artifact,
+      // just a served web app. `retries: 1` (nothing is mutated; the download
+      // call always fails by design).
+      name: 'label-download-errors',
+      testMatch: /label-download-errors\/.*\.spec\.ts/,
+      retries: 1,
+      use: { ...devices['Desktop Chrome'] },
+    },
   ],
 });
