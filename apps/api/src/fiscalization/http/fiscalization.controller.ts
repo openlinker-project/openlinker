@@ -69,6 +69,7 @@ import type { Order, OrderRecord } from '@openlinker/core/orders';
 
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { AcceptedFiscalRegistrationResponseDto } from './dto/accepted-fiscal-registration-response.dto';
+import { FiscalRegistrationProgressResponseDto } from './dto/fiscal-registration-progress-response.dto';
 import { FiscalRegistrationResponseDto } from './dto/fiscal-registration-response.dto';
 import { ReconcileFiscalRegistrationResponseDto } from './dto/reconcile-fiscal-registration-response.dto';
 import { RegisterFiscalTransactionRequestDto } from './dto/register-fiscal-transaction-request.dto';
@@ -186,6 +187,47 @@ export class FiscalizationController {
     const records = await this.fiscalRegistrations.getByOrderId(orderId.trim());
     const now = new Date();
     return records.map((record) => this.toDto(record, now));
+  }
+
+  @Get('orders/:orderId/fiscal-registration')
+  @ApiOperation({
+    summary: 'Where this order`s registration is on one connection',
+    description:
+      'The poll target for a registration that outlives the request which asked for it. A PURE ' +
+      'READ: it takes no lock, writes nothing, calls no provider and cannot cause a ' +
+      'registration, so polling it is exactly as consequential as not polling it. ' +
+      '`progress` distinguishes queued, running, stalled and each terminal outcome; the record ' +
+      'is null while the work is queued, which is the normal state in the window this read ' +
+      'exists for, not an error. It reports no estimate and no remaining time, because none is ' +
+      'observable.',
+  })
+  @ApiResponse({ status: 200, type: FiscalRegistrationProgressResponseDto })
+  async getRegistrationProgress(
+    @Param('orderId') orderId: string,
+    // Required, and connection-scoped for the same reason the exactly-once key
+    // is. Without it the read could not tell a sale queued on this connection
+    // from one nobody asked to register, and would have to answer with a value
+    // that is sometimes false.
+    @Query('connectionId', new ParseUUIDPipe()) connectionId: string,
+  ): Promise<FiscalRegistrationProgressResponseDto> {
+    const trimmed = typeof orderId === 'string' ? orderId.trim() : '';
+    if (trimmed.length === 0) {
+      throw new BadRequestException('orderId is required');
+    }
+    const view = await this.fiscalRegistrations.getRegistrationProgress(trimmed, connectionId);
+    return {
+      progress: view.progress,
+      record: view.record === null ? null : this.toDto(view.record),
+      inFlight:
+        view.inFlight === null
+          ? null
+          : {
+              documentKind: view.inFlight.documentKind,
+              connectionId: view.inFlight.connectionId,
+              recordId: view.inFlight.recordId,
+              since: view.inFlight.since.toISOString(),
+            },
+    };
   }
 
   @Roles('admin')

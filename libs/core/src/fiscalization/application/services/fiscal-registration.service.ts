@@ -37,6 +37,7 @@ import {
 
 import type {
   FiscalReconcileResult,
+  FiscalRegistrationProgressView,
   IFiscalRegistrationService,
 } from './fiscal-registration.service.interface';
 import type { FiscalRegistrationRecord } from '../../domain/entities/fiscal-registration-record.entity';
@@ -55,7 +56,14 @@ import { OrderAlreadyHasInvoiceException } from '../../domain/exceptions/order-a
 import { FiscalRegistrationContendedException } from '../../domain/exceptions/fiscal-registration-contended.exception';
 import { FiscalReconcileCheckFailedException } from '../../domain/exceptions/fiscal-reconcile-check-failed.exception';
 import { FISCAL_REGISTRATION_RECORD_REPOSITORY_TOKEN } from '../../fiscalization.tokens';
-import type { FiscalRegistrationRequestAccepted } from '../../domain/types/fiscal-registration-request.types';
+import {
+  fiscalRegistrationIdempotencyKey,
+  type FiscalRegistrationRequestAccepted,
+} from '../../domain/types/fiscal-registration-request.types';
+import {
+  resolveFiscalRegistrationProgress,
+  type FiscalRegistrationJobLiveness,
+} from '../../domain/types/fiscal-registration-progress.types';
 import { toFiscalizationRegisterPayload } from '../mappers/register-transaction-command-to-payload.mapper';
 import type {
   FiscalRegistrationFailureMode,
@@ -433,6 +441,38 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
       // forward. See `SalesDocumentInFlight.since`.
       since: claimed.updatedAt,
     };
+  }
+
+  async getRegistrationProgress(
+    orderId: string,
+    connectionId: string,
+  ): Promise<FiscalRegistrationProgressView> {
+    const now = new Date();
+    const key = fiscalRegistrationIdempotencyKey(connectionId, orderId);
+    // Two reads, because the answer genuinely needs two facts. The record is
+    // absent for the whole window between enqueueing and the job running, and
+    // the job is the only evidence in that window that anything was asked for.
+    const [record, job, inFlight] = await Promise.all([
+      this.repo.findByIdempotencyKey(connectionId, key),
+      this.syncJobs.findJobByIdempotencyKey(key),
+      this.getInFlightRegistration(orderId),
+    ]);
+
+    const progress = resolveFiscalRegistrationProgress({
+      record:
+        record === null
+          ? null
+          : {
+              status: record.status,
+              failureMode: record.failureMode,
+              // Evaluated once, here, so every field of one answer describes the
+              // same instant.
+              leaseLive: record.isLeaseLive(now),
+            },
+      job: readJobLiveness(job?.status),
+    });
+
+    return { progress, record, inFlight };
   }
 
   async getById(id: string): Promise<FiscalRegistrationRecord> {
@@ -908,4 +948,23 @@ function isResumableUnderSameKey(record: FiscalRegistrationRecord): boolean {
     record.status === 'registering' ||
     record.isReattemptableFailure
   );
+}
+
+
+/**
+ * Reduce a sync job's status to the liveness the progress rule needs.
+ *
+ * `succeeded` reads as `none`: a succeeded registration job says the handler
+ * ran, never that the sale was registered - the record carries that, and it is
+ * already the higher-ranked input. Reporting a succeeded job as live would keep
+ * a surface polling for an answer that has already arrived.
+ */
+function readJobLiveness(status: string | undefined): FiscalRegistrationJobLiveness {
+  if (status === 'queued' || status === 'running') {
+    return 'live';
+  }
+  if (status === 'dead') {
+    return 'dead';
+  }
+  return 'none';
 }

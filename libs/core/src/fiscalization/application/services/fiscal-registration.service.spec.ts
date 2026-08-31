@@ -98,7 +98,12 @@ describe('FiscalRegistrationService', () => {
   let adapter: jest.Mocked<FiscalizationPort>;
   let registrationLock: jest.Mocked<SyncLockPort>;
   let invoiceService: jest.Mocked<Pick<IInvoiceService, 'findBlockingInvoiceForOrder'>>;
-  let syncJobs: jest.Mocked<Pick<ISyncJobsService, 'schedule' | 'requeueDeadByIdempotencyKey'>>;
+  let syncJobs: jest.Mocked<
+    Pick<
+      ISyncJobsService,
+      'schedule' | 'requeueDeadByIdempotencyKey' | 'findJobByIdempotencyKey'
+    >
+  >;
   let service: FiscalRegistrationService;
 
   beforeEach(() => {
@@ -134,6 +139,7 @@ describe('FiscalRegistrationService', () => {
     syncJobs = {
       schedule: jest.fn().mockResolvedValue({ id: 'job-1' }),
       requeueDeadByIdempotencyKey: jest.fn().mockResolvedValue(false),
+      findJobByIdempotencyKey: jest.fn().mockResolvedValue(null),
     };
     service = new FiscalRegistrationService(
       repo,
@@ -1544,6 +1550,92 @@ describe('FiscalRegistrationService', () => {
         }),
       ).rejects.toBeInstanceOf(MissingIdempotencyKeyException);
       expect(syncJobs.schedule).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getRegistrationProgress (#2526)', () => {
+    it('should report the queued window, where a job exists and no record does yet', async () => {
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.findAllByOrderId.mockResolvedValue([]);
+      syncJobs.findJobByIdempotencyKey.mockResolvedValue({ status: 'queued' } as never);
+
+      const view = await service.getRegistrationProgress(ORDER_ID, CONNECTION_ID);
+
+      expect(view.progress).toBe('queued');
+      expect(view.record).toBeNull();
+    });
+
+    it('should read the record and the job under the SAME key', async () => {
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.findAllByOrderId.mockResolvedValue([]);
+
+      await service.getRegistrationProgress(ORDER_ID, CONNECTION_ID);
+
+      expect(repo.findByIdempotencyKey).toHaveBeenCalledWith(CONNECTION_ID, KEY);
+      expect(syncJobs.findJobByIdempotencyKey).toHaveBeenCalledWith(KEY);
+    });
+
+    it('should report a sale nobody asked to register as not requested', async () => {
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.findAllByOrderId.mockResolvedValue([]);
+
+      const view = await service.getRegistrationProgress(ORDER_ID, CONNECTION_ID);
+
+      expect(view.progress).toBe('not-requested');
+      expect(view.inFlight).toBeNull();
+    });
+
+    it('should report a live claim as running and carry the in-flight signal', async () => {
+      // Far future: the service evaluates the lease against the real clock, and
+      // the fixture's NOW is a fixed past instant.
+      const claimed = record('registering', {
+        leaseExpiresAt: new Date(Date.now() + 60_000),
+      });
+      repo.findByIdempotencyKey.mockResolvedValue(claimed);
+      repo.findAllByOrderId.mockResolvedValue([claimed]);
+
+      const view = await service.getRegistrationProgress(ORDER_ID, CONNECTION_ID);
+
+      expect(view.progress).toBe('running');
+      expect(view.inFlight).toMatchObject({
+        documentKind: 'fiscal-receipt',
+        recordId: claimed.id,
+      });
+    });
+
+    it('should report an intent nothing will pick up as stalled', async () => {
+      repo.findByIdempotencyKey.mockResolvedValue(record('pending'));
+      repo.findAllByOrderId.mockResolvedValue([record('pending')]);
+      syncJobs.findJobByIdempotencyKey.mockResolvedValue({ status: 'dead' } as never);
+
+      const view = await service.getRegistrationProgress(ORDER_ID, CONNECTION_ID);
+
+      expect(view.progress).toBe('stalled');
+    });
+
+    it('should not treat a succeeded job as work still in progress', async () => {
+      // A succeeded registration job says the handler ran, never that the sale
+      // was registered. The record carries that, and it already ranks higher.
+      repo.findByIdempotencyKey.mockResolvedValue(record('registered'));
+      repo.findAllByOrderId.mockResolvedValue([record('registered')]);
+      syncJobs.findJobByIdempotencyKey.mockResolvedValue({ status: 'succeeded' } as never);
+
+      const view = await service.getRegistrationProgress(ORDER_ID, CONNECTION_ID);
+
+      expect(view.progress).toBe('registered');
+    });
+
+    it('should attempt nothing', async () => {
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.findAllByOrderId.mockResolvedValue([]);
+
+      await service.getRegistrationProgress(ORDER_ID, CONNECTION_ID);
+
+      expect(integrations.getCapabilityAdapter).not.toHaveBeenCalled();
+      expect(repo.create).not.toHaveBeenCalled();
+      expect(repo.claimForRegistration).not.toHaveBeenCalled();
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
+      expect(registrationLock.acquire).not.toHaveBeenCalled();
     });
   });
 });

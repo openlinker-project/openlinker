@@ -44,6 +44,19 @@ export interface ISyncJobsService {
   requeueDeadByIdempotencyKey(idempotencyKey: string): Promise<boolean>;
 
   /**
+   * Read the job held under an idempotency key, or null when none exists
+   * (#2526).
+   *
+   * A pure read - it does not requeue, re-drive or otherwise touch the row,
+   * which is what separates it from {@link requeueDeadByIdempotencyKey}. It
+   * exists because a caller that enqueued work under a deterministic key needs
+   * to tell "queued" from "never asked" and from "gave up", and the work's own
+   * record cannot answer that: between the job being written and the job running
+   * there is nothing else to read.
+   */
+  findJobByIdempotencyKey(idempotencyKey: string): Promise<SyncJob | null>;
+
+  /**
    * Requeue every job left `running` past the lock timeout — the fleet-level
    * recovery sweep for a worker that died holding jobs (#2279's
    * `StuckJobRecoveryService`, extracted from `SyncJobRunner` for the
