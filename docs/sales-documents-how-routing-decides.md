@@ -9,7 +9,7 @@ This page explains how it follows it, so you can work out why any given order go
 
 ## The short version
 
-For each order, OpenLinker looks at the country the order is billed to, and then works through four steps in order. The first one that produces an answer wins.
+For each order, OpenLinker looks at the country the order is delivered to, and then works through four steps in order. The first one that produces an answer wins.
 
 1. **Your rules for that country.** Exactly one must match.
 2. **That country's default**, if no rule matched. Exactly one default may apply.

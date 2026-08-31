@@ -11,16 +11,16 @@ Everything below happens on **Settings → Sales documents**.
 
 ## What a market is
 
-A market is a country your orders are billed to, plus your decision about what a sale there gets.
+A market is a country your orders are delivered to, plus your decision about what a sale there gets.
 
 There is also one special market, **Rest of world**, used for any country you have not set up. It behaves like any other market, and is reached only by countries that have no setup of their own.
 
 ## Step 1: see which markets you actually need
 
-You do not have to guess. OpenLinker knows which countries your orders are billed to, so any country that orders arrive from appears in the market list with a count, whether or not you have set it up:
+You do not have to guess. OpenLinker knows which countries your orders are delivered to, so any country that orders arrive from appears in the market list with a count, whether or not you have set it up:
 
 > **Poland** · PL · not set up
-> Nothing · 47 orders billed here in the last 30 days
+> Nothing · 47 orders delivered here in the last 30 days
 
 A market listed like this is **not an error**. It means nobody has made a decision about it yet. Nothing is lost while it waits: no document is created, and one will be as soon as the market can answer.
 
@@ -51,7 +51,7 @@ Two limits to know before you start:
 
 ## Step 4: check what the market now issues
 
-The market list states what an order billed there gets today, worked out the same way as when a document is issued. Read it back before you move on:
+The market list states what an order delivered there gets today, worked out the same way as when a document is issued. Read it back before you move on:
 
 > **Germany** · DE
 > Invoice from Ksef Demo · Set by the default
