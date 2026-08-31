@@ -47,14 +47,19 @@ import { DataSource } from 'typeorm';
 
 import { getTestHarness, IntegrationTestHarness, teardownTestHarness } from './setup';
 
+// Every fulfillment table joins this one spec rather than getting a sibling:
+// the file already runs the FULL migration chain once per integration run — the
+// expensive part — so each extra table costs one more row in three cheap
+// catalogue queries. `routing_decisions` (#2394) in particular carries a PARTIAL
+// UNIQUE index, which is exactly what `indexdef` comparison exists to catch: a
+// predicate differing between the migration and the entity would let that guard
+// hold in production and silently not in tests.
 const TABLES = [
   'fulfillment_works',
   'fulfillment_work_lines',
   'fulfillment_holds',
-  // #2400. Extended here rather than given its own parity spec: this file's
-  // machinery is already table-driven, and a second file would be a second
-  // place for the migration chain to be run (the expensive part) for no gain.
   'fulfillment_progress_claims',
+  'routing_decisions',
 ] as const;
 
 const COLUMNS_SQL = `
@@ -153,7 +158,7 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
     (await migrated.query(sql, [[...TABLES]])) as unknown[],
   ];
 
-  it('should build every fulfillment table from the migration alone', async () => {
+  it('should build every declared table from the migration alone', async () => {
     const rows = (await migrated.query(
       `SELECT table_name FROM information_schema.tables
        WHERE table_schema = 'public' AND table_name = ANY($1) ORDER BY table_name`,
@@ -163,12 +168,13 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
     // Non-vacuity for every comparison below: if the migration built nothing,
     // two empty result sets would compare equal and this file would assert
     // nothing at all.
-    expect(rows.map((r) => r.table_name)).toEqual([
-      'fulfillment_holds',
-      'fulfillment_progress_claims',
-      'fulfillment_work_lines',
-      'fulfillment_works',
-    ]);
+    //
+    // DERIVED from `TABLES` rather than restated as literals (#2394). The
+    // hardcoded name list was a trap, and #2400 walked into it: extending
+    // `TABLES` left this assertion silently claiming the old set, so the FIRST
+    // thing adding a table did was fail here for a reason unrelated to the
+    // schema it was checking. Deriving it means the next table costs one line.
+    expect(rows.map((r) => r.table_name)).toEqual([...TABLES].sort());
   });
 
   it('should agree on every column, type, nullability and default', async () => {

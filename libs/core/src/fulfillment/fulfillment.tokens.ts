@@ -34,3 +34,6 @@ export const FULFILLMENT_PROGRESS_SERVICE_TOKEN = Symbol('IFulfillmentProgressSe
 export const FULFILLMENT_PROGRESS_CLAIM_REPOSITORY_TOKEN = Symbol(
   'FulfillmentProgressClaimRepositoryPort'
 );
+
+/** Routing intent row (#2394). Intra-context; the PORT is not on the barrel. */
+export const ROUTING_DECISION_REPOSITORY_TOKEN = Symbol('RoutingDecisionRepositoryPort');
