@@ -38,12 +38,12 @@
  * `fulfillment_works.assignedConnectionId`.
  *
  * Generated: 2026-08-30 (synthetic sequential prefix per docs/migrations.md
- * rule 3; 1864000000000 is #2392's fulfillment work tables; 1865000000000 is claimed concurrently by #2394's routing_decisions, so this slice takes 1866000000000 rather than collide).
+ * rule 3; 1864000000000 is #2392's fulfillment work tables; 1865000000000 went to #2400's progress claims and 1866000000000 to #2394's routing_decisions (which had itself renumbered off 1865), so this slice takes 1867000000000. The gate compares against origin/main only, so it cannot see a sibling in flight on the wave branch — re-verify the WAVE tail, never a tail checked an hour ago).
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddFulfillmentHandshake1866000000000 implements MigrationInterface {
-  name = 'AddFulfillmentHandshake1866000000000';
+export class AddFulfillmentHandshake1867000000000 implements MigrationInterface {
+  name = 'AddFulfillmentHandshake1867000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     // The rejection id defaults to uuid_generate_v4() — the same guard

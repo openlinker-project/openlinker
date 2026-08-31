@@ -31,6 +31,7 @@ import {
   FULFILLMENT_PROGRESS_CLAIM_REPOSITORY_TOKEN,
   FULFILLMENT_PROGRESS_SERVICE_TOKEN,
   FULFILLMENT_WORK_REPOSITORY_TOKEN,
+  ROUTING_DECISION_REPOSITORY_TOKEN,
 } from './fulfillment.tokens';
 import { FulfillmentProgressClaimOrmEntity } from './infrastructure/persistence/entities/fulfillment-progress-claim.orm-entity';
 import { FulfillmentProgressClaimRepository } from './infrastructure/persistence/repositories/fulfillment-progress-claim.repository';
@@ -38,7 +39,9 @@ import { FulfillmentHoldOrmEntity } from './infrastructure/persistence/entities/
 import { FulfillmentWorkLineOrmEntity } from './infrastructure/persistence/entities/fulfillment-work-line.orm-entity';
 import { FulfillmentWorkRejectionOrmEntity } from './infrastructure/persistence/entities/fulfillment-work-rejection.orm-entity';
 import { FulfillmentWorkOrmEntity } from './infrastructure/persistence/entities/fulfillment-work.orm-entity';
+import { RoutingDecisionOrmEntity } from './infrastructure/persistence/entities/routing-decision.orm-entity';
 import { FulfillmentWorkRepository } from './infrastructure/persistence/repositories/fulfillment-work.repository';
+import { RoutingDecisionRepository } from './infrastructure/persistence/repositories/routing-decision.repository';
 
 @Module({
   imports: [
@@ -48,6 +51,7 @@ import { FulfillmentWorkRepository } from './infrastructure/persistence/reposito
       FulfillmentHoldOrmEntity,
       FulfillmentWorkRejectionOrmEntity,
       FulfillmentProgressClaimOrmEntity,
+      RoutingDecisionOrmEntity,
     ]),
   ],
   providers: [
@@ -62,11 +66,14 @@ import { FulfillmentWorkRepository } from './infrastructure/persistence/reposito
     },
     FulfillmentProgressService,
     { provide: FULFILLMENT_PROGRESS_SERVICE_TOKEN, useExisting: FulfillmentProgressService },
+    RoutingDecisionRepository,
+    { provide: ROUTING_DECISION_REPOSITORY_TOKEN, useExisting: RoutingDecisionRepository },
   ],
   exports: [
     FULFILLMENT_WORK_REPOSITORY_TOKEN,
     FULFILLMENT_HANDSHAKE_SERVICE_TOKEN,
     FULFILLMENT_PROGRESS_SERVICE_TOKEN,
+    ROUTING_DECISION_REPOSITORY_TOKEN,
   ],
 })
 export class FulfillmentModule {}

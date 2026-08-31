@@ -48,6 +48,7 @@ import {
   InvalidConnectionConfigException,
   InvalidCredentialsShapeException,
   ConnectionCredentialsRewriteException,
+  resolveRequiresCredentials,
 } from '@openlinker/core/integrations';
 import type { SyncJobRequest } from '@openlinker/core/sync';
 import { JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
@@ -330,11 +331,22 @@ export class ConnectionService implements IConnectionService {
   async create(payload: ConnectionCreateInput): Promise<Connection> {
     const { credentials, credentialsRef, ...rest } = payload;
 
-    if ((credentials && credentialsRef) || (!credentials && !credentialsRef)) {
+    // Supplying BOTH is contradictory input at every setting, including for a
+    // credential-less adapter (#2405): the `if (credentials)` branch below
+    // would win, encrypting and persisting a credential row nothing ever reads
+    // while silently discarding the caller's own ref, reporting
+    // `credentialsBacked: true`, and handing `updateCredentials` its
+    // db-backed branch. So this stays unconditional and stays here, above the
+    // adapter lookup — it needs no manifest to be wrong.
+    if (credentials && credentialsRef) {
       throw new BadRequestException(
         'Exactly one of `credentials` or `credentialsRef` must be provided'
       );
     }
+    // Likewise unconditional: a raw key written into the column reads as
+    // "not db-backed" to `connection-response.dto.ts` and `updateCredentials`,
+    // yet is TRUTHY to every plugin factory's `if (connection.credentialsRef)`
+    // guard, which would then resolve it from the environment.
     if (credentialsRef && !credentialsRef.startsWith('db:')) {
       throw new BadRequestException(
         'credentialsRef must start with "db:" — raw keys are no longer accepted'
@@ -348,6 +360,21 @@ export class ConnectionService implements IConnectionService {
         platformType: rest.platformType,
         adapterKey: rest.adapterKey,
       });
+
+      // The "neither supplied" arm is the ONLY one an adapter may relax, and
+      // it can only be decided once the manifest is known — hence its position
+      // below the lookup rather than beside its two siblings above (#2405,
+      // ADR-055). An adapter declaring nothing keeps the guard it always had:
+      // `resolveRequiresCredentials` defaults to `true`.
+      //
+      // Capability-wise, never `platformType === 'openlinker'`: a privileged
+      // check by name would be unavailable to any third-party OMS adapter,
+      // which is precisely the design ADR-055 rejects.
+      if (resolveRequiresCredentials(metadata) && !credentials && !credentialsRef) {
+        throw new BadRequestException(
+          'Exactly one of `credentials` or `credentialsRef` must be provided'
+        );
+      }
 
       // Stock write-back defaults OFF for inventory-master-capable shops
       // (#1498): when the caller omits enabledCapabilities, exclude
@@ -410,7 +437,14 @@ export class ConnectionService implements IConnectionService {
       try {
         connection = await this.connectionPort.create({
           ...rest,
-          credentialsRef: resolvedCredentialsRef!,
+          // `''`, never `undefined`: the column is `character varying NOT
+          // NULL`, and a credential-less adapter legitimately reaches here
+          // with nothing resolved (#2405). `''` is the shipped Subiekt
+          // precedent — falsy exactly where `null` is, and safe at the two
+          // unguarded `.startsWith('db:')` sites where `null` would throw
+          // (`connection-response.dto.ts`, per row on every list render, and
+          // `updateCredentials`).
+          credentialsRef: resolvedCredentialsRef ?? '',
           enabledCapabilities,
         });
       } catch (error) {

@@ -238,6 +238,11 @@ const harness = createIntegrationTestHarness({
     // unreachable by the closure walk. Before `fulfillment_works`, being a child.
     'fulfillment_progress_claims',
     'fulfillment_works',
+    // routing_decisions (#2394) — the routing INTENT row. Carries no FK at all
+    // (both its references are cross-aggregate by value), so nothing cascades
+    // into it and it must be listed explicitly or a live decision written by
+    // one case refuses the next case's claim on the same order id.
+    'routing_decisions',
     // fulfillment_routing_rules is connection-scoped config (#832). Listed
     // explicitly because — like connection_carrier_mappings — its FKs live in
     // the migration, not the ORM decorators, so the synchronize-built test
