@@ -2,6 +2,7 @@ import type { ReactElement } from 'react';
 import { useLocation } from 'react-router-dom';
 import { EntityLabel } from '../../../shared/ui/entity-label';
 import { useConnectionQuery } from '../hooks/use-connection-query';
+import { SYSTEM_CONNECTION_ID } from '../api/connections.types';
 
 interface ConnectionEntityLabelProps {
   className?: string;
@@ -29,10 +30,27 @@ export function ConnectionEntityLabel({
   showCopy = true,
 }: ConnectionEntityLabelProps): ReactElement | null {
   const location = useLocation();
-  const nameSupplied = name !== undefined;
+  const isSystem = connectionId === SYSTEM_CONNECTION_ID;
+  const nameSupplied = name !== undefined || isSystem;
   const query = useConnectionQuery(connectionId, { enabled: !nameSupplied });
 
   if (!connectionId) return null;
+
+  // The all-zero placeholder id is never a real connection - resolving it
+  // would always 404 and render "Unknown", indistinguishable from a genuinely
+  // deleted/inaccessible connection. Render it as a system job instead.
+  if (isSystem) {
+    return (
+      <EntityLabel
+        id={connectionId}
+        name="System"
+        nameTitle="Not tied to a specific connection"
+        showId={false}
+        showCopy={false}
+        className={className}
+      />
+    );
+  }
 
   const targetPath = `/connections/${connectionId}`;
   const isSelfPage = location.pathname === targetPath;

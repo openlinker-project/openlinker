@@ -36,6 +36,7 @@ export {
   CORE_CAPABILITY_VALUES,
   VARIANT_GROUPING_MODEL_VALUES,
   resolveVariantGroupingModel,
+  SYSTEM_CONNECTION_ID,
 } from './api/connections.types';
 
 export { useConnectionsQuery } from './hooks/use-connections-query';
