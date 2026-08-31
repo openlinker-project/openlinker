@@ -683,6 +683,11 @@ export function createMockApiClient(
         acknowledgedAt: '2026-01-01T00:00:00.000Z',
       }),
       clearAcknowledgment: vi.fn().mockResolvedValue(undefined),
+      listMarkets: vi.fn().mockResolvedValue({
+        windowDays: 30,
+        since: '2026-01-01T00:00:00.000Z',
+        markets: [],
+      }),
       ...overrides.salesDocumentRules,
     } as ApiClient['salesDocumentRules'],
     shipments: {
