@@ -11,9 +11,23 @@ OMS, and its name is the product name.
 
 ## Status
 
-**Scaffold.** #2390 (`W3a-1`) establishes the package and its repo-wide registrations. The plugin
-descriptor, the credential-less connection, the router and the executor land in later Wave 3a
-children (#2405, #2408, #2409).
+**Descriptor.** #2390 (`W3a-1`) established the package and its repo-wide registrations; #2405
+(`W3a-16`) adds the plugin descriptor itself — the `openlinker.oms.v1` manifest, `createOmsPlugin`,
+and the `AdapterMetadata.requiresCredentials` field that lets an operator create the
+credential-less connection ADR-055 specifies. Booting either host now registers the manifest.
+
+The manifest advertises **no capabilities yet**: a name enters `supportedCapabilities` together
+with the adapter that delivers it (the Erli #980 precedent). `OmsPluginDeps` declares the five core
+services the plugin will read through, but nothing is injected while the dispatch table is empty.
+The router (#2408) and the executor (#2409) land next; #2409 additionally owns retro-filling
+`enabledCapabilities` on OMS connections created before it, since that column is stamped at create
+and never back-filled.
+
+The OMS ships no migrations and is therefore deliberately absent from
+`apps/api/src/plugin-migrations.ts` and `scripts/plugin-migration-dirs.json` — #2390 deferred that
+registration here on the premise that #2405 would carry a table, and it does not (routing lives on
+`Connection.config`, work objects in core `fulfillment_works`). The first `libs/oms` migration
+registers both lists in its own PR.
 
 ## How it plugs in
 

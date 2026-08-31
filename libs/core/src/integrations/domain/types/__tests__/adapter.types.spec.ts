@@ -9,7 +9,7 @@
  * @module libs/core/src/integrations/domain/types/__tests__
  */
 import type { CoreCapability, AdapterMetadata } from '../adapter.types';
-import { CoreCapabilityValues } from '../adapter.types';
+import { CoreCapabilityValues, resolveRequiresCredentials } from '../adapter.types';
 
 describe('adapter.types', () => {
   describe('CoreCapabilityValues', () => {
@@ -90,5 +90,27 @@ describe('adapter.types', () => {
     it('should return false for the empty string', () => {
       expect(isCoreCapability('')).toBe(false);
     });
+  });
+});
+
+describe('resolveRequiresCredentials', () => {
+  it('should default to true when the adapter declares nothing', () => {
+    // The safe default is the restrictive one: an adapter that says nothing
+    // keeps the credential guard it has always had, so relaxing it is always
+    // an explicit act by the adapter author (#2405, ADR-055).
+    expect(resolveRequiresCredentials({})).toBe(true);
+  });
+
+  it('should default to true for undefined or null metadata', () => {
+    expect(resolveRequiresCredentials(undefined)).toBe(true);
+    expect(resolveRequiresCredentials(null)).toBe(true);
+  });
+
+  it('should honour an explicit false', () => {
+    expect(resolveRequiresCredentials({ requiresCredentials: false })).toBe(false);
+  });
+
+  it('should honour an explicit true', () => {
+    expect(resolveRequiresCredentials({ requiresCredentials: true })).toBe(true);
   });
 });

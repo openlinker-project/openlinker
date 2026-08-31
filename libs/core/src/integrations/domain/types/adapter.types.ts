@@ -179,6 +179,31 @@ export interface AdapterMetadata {
    * `AdapterMetadata` itself, so the value is threaded in structurally.
    */
   defaultRateLimit?: ConnectionRateLimit;
+
+  /**
+   * Whether a connection for this adapter must carry credentials (#2405,
+   * ADR-055). Absent means `true` — every adapter that crosses a network
+   * boundary needs them, so an adapter declaring nothing is unchanged.
+   *
+   * `false` relaxes `ConnectionService.create`'s credential guard
+   * **capability-wise**: the OL-OMS holds no credentials because it crosses no
+   * network boundary at all, answering from OpenLinker's own tables. The
+   * relaxation deliberately keys on this declared field rather than on a
+   * privileged `platformType === 'openlinker'` check, which would make the
+   * host privilege one plugin by name and be unavailable to any third-party
+   * OMS adapter.
+   *
+   * It relaxes ONLY the "neither supplied" arm. Supplying *both* credentials
+   * and a `credentialsRef` stays a 400 at every setting — it is contradictory
+   * input, and letting it through would encrypt and persist a credential row
+   * nothing ever reads while silently discarding the caller's own ref.
+   *
+   * The resulting row carries `credentialsRef: ''` (the shipped Subiekt
+   * precedent), which every resolution site already guards with
+   * `if (credentialsRef)`. Read it through {@link resolveRequiresCredentials}
+   * rather than directly, so the safe default is always applied.
+   */
+  requiresCredentials?: boolean;
 }
 
 /**
@@ -215,5 +240,23 @@ export function resolveVariantGroupingModel(
   metadata: Pick<AdapterMetadata, 'variantGrouping'> | undefined | null
 ): VariantGroupingModel {
   return metadata?.variantGrouping ?? 'parent-child';
+}
+
+/**
+ * Resolve whether an adapter's connections must carry credentials, defaulting
+ * to `true` when the adapter declares nothing (#2405, ADR-055). The safe
+ * default is the restrictive one: an unresolvable or silent adapter keeps the
+ * credential guard it has always had, so relaxing it is always an explicit act
+ * by the adapter author.
+ *
+ * Pure, no I/O — the `resolveVariantGroupingModel` shape directly above, and
+ * admissible in a `*.types.ts` under the same rule
+ * (`docs/engineering-standards.md` § the pure-rule exception, #2231): it is
+ * the coercion rule for the field it sits beside, and the two change together.
+ */
+export function resolveRequiresCredentials(
+  metadata: Pick<AdapterMetadata, 'requiresCredentials'> | undefined | null
+): boolean {
+  return metadata?.requiresCredentials ?? true;
 }
 

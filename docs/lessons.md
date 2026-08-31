@@ -818,3 +818,27 @@ height was documented as four lines by two bodies independently when the composi
 **Applies to**: every detached long-running gate (`pnpm lint` / `type-check` / `test` / `test:integration` / `build`, `git commit` under the pre-commit hook); any agent workflow using a scratchpad `*.exit` / `*.log` convention.
 
 **Source**: #2390 (two occurrences, the second a falsely-reported commit); sharpened by #2404 (a concurrent sibling worktree's log read as this run's).
+
+## A zero-rows assertion about what a MIGRATION does is vacuous under a `synchronize`-built harness
+
+**Context**: #2405 had to prove that no migration seeds an `openlinker` connection row — ADR-055's zero-config non-negotiable, because a seeded row enters every existing install's authority candidate sets and flips previously-single-candidate selections to `ambiguous`.
+
+**Problem**: the obvious test — boot the integration harness, assert `COUNT(*) = 0` — **cannot fail**. `libs/shared/src/database/database.module.ts` sets `synchronize: NODE_ENV !== 'production'` and `migrationsRun: false`, so the harness schema is entity-derived and **no migration runs in that path**. The assertion is green whether or not a seeding migration exists, which is worse than no test because it reads like coverage. This is the same root cause as the pre-existing "migration-only FKs don't exist there" entry, one step further: there, a real constraint was *absent*; here, a whole class of migration *effects* is unobservable.
+
+**Rule**: to assert anything about what the migration chain **does** (or does not do), build it for real — a second database on the same Testcontainers Postgres with `synchronize: false`, then `runMigrations()`. Copy `apps/api/test/integration/fulfillment-work-migration-parity.int-spec.ts` (#2392), which also carries the `uuid-ossp` workaround (#2684) and the teardown order. Always include a **non-vacuity** assertion that the chain built the table first, or two empty result sets compare equal and the file asserts nothing. And prove the test can fail: add a temporary seeding migration, watch it go red **for the right reason** (an assertion failure with `Tests: N failed`, not a compile error with `Tests: 0 total`), then delete it.
+
+**Applies to**: any claim about migration behaviour; `apps/api/test/integration/**`.
+
+**Source**: #2405 (the parity spec from #2392 is now load-bearing for a second issue).
+
+## A manifest that advertises no capabilities stamps an EMPTY `enabledCapabilities`, permanently
+
+**Context**: #2405 shipped the OL-OMS manifest with `supportedCapabilities: []`, following the Erli #980 precedent that a capability name enters the manifest together with the adapter that delivers it.
+
+**Problem**: `ConnectionService.create` defaults `enabledCapabilities` from the manifest when the caller omits it, and that column is stamped at create and **never retro-filled** (the #2085 shape). So a connection created against an empty manifest carries `enabledCapabilities: []` for ever, and both `getCapabilityAdapter` and `listCapabilityAdapters` gate on it — meaning a capability added to the manifest *later* is unusable on every connection created before it, throwing `CapabilityNotEnabled` with a log line reading `enabled: <none>`.
+
+**Rule**: when a PR adds a capability name to a manifest that previously advertised fewer, it must also retro-fill `enabledCapabilities` on existing connections of that `platformType` **in the same PR**. An UPDATE-only migration is the right shape and does not conflict with a "nothing is seeded" assertion, which is about INSERTs. Say so explicitly in the issue that defers the capability, or the obligation is discovered by an operator instead.
+
+**Applies to**: `apps/api/src/integrations/application/services/connection.service.ts`; any adapter manifest whose `supportedCapabilities` grows after connections exist. **Named obligation: #2409**, which adds `FulfillmentExecutor` to the OMS manifest.
+
+**Source**: #2405.
