@@ -54,15 +54,19 @@ import { ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN } from '@openlinker/core/orders';
 const NOW = new Date('2026-08-31T10:00:00.000Z');
 
 /**
- * A rule carrying one A1 step. A1 is parameterless and resolves to
- * `UnavailableActionExecutorService` in this build, so the step is
- * deterministic and performs no I/O — no mailer, no relay, no outbound call —
- * while still proving the dispatcher's step loop ran.
+ * A rule carrying one IRREVERSIBLE step (A1). Named for that role rather than
+ * for its payload: test 2 depends on the irreversibility, not on documents.
+ *
+ * A1 is parameterless and, in this build, resolves to
+ * `UnavailableActionExecutorService` (`automation-action-executor.registry.ts`),
+ * so the step is deterministic and performs no I/O — no mailer, no relay, no
+ * outbound call — while still proving the dispatcher's step loop ran. Test 1
+ * PINS that inertness; see the comment there.
  *
  * `triggerConfig` is a real `EmptyTriggerConfig` (`{}`), which is what
  * `order.packed` carries; no cast is needed.
  */
-function issueDocumentRule(id: string): AutomationRule {
+function irreversibleRule(id: string): AutomationRule {
   return new AutomationRule(
     id,
     `Rule ${id}`,
@@ -126,7 +130,7 @@ describe('Automation action dispatch — DI boot (HARD GATE, #2361)', () => {
     // One rule cannot collide with itself, so it must survive #2362's gate and
     // reach the dispatcher. An inert binding records nothing at all.
     const record = spyOnRecorder();
-    const rule = issueDocumentRule('rule-survivor');
+    const rule = irreversibleRule('rule-survivor');
 
     await harness.get<IAutomationDispatchService>(AUTOMATION_DISPATCH_SERVICE_TOKEN).dispatch({
       trigger: 'order.packed',
@@ -142,6 +146,16 @@ describe('Automation action dispatch — DI boot (HARD GATE, #2361)', () => {
     // actions. A `blocked` verdict records an empty `steps` array by contract.
     expect(run.steps).toHaveLength(1);
     expect(run.steps[0].action).toBe('issue-sales-document');
+    // PIN, not decoration. This test executes a REAL executor chain for an
+    // IRREVERSIBLE action; it is safe only because A1 currently resolves to
+    // `UnavailableActionExecutorService`, which always reports `failed`. When
+    // A1 lands (#2361 — the gate service's docblock says it "arms the moment
+    // A1/A2 land") this assertion breaks and a human decides, instead of the
+    // boot suite silently issuing a fiscal document with every other assertion
+    // still green. Same rule as the `resolve_category` pin in
+    // engineering-standards § MCP tools: a latent write in the chain gets
+    // pinned so wiring it fails the build.
+    expect(run.steps[0].status).toBe('failed');
     // Kept although the two assertions above already exclude it (a `blocked`
     // verdict records `steps: []`): on a hard gate, a failure message that
     // names `blocked` explicitly beats one assertion fewer. A runtime check is
@@ -155,12 +169,17 @@ describe('Automation action dispatch — DI boot (HARD GATE, #2361)', () => {
     // Two rules claiming the same irreversible action: the gate refuses BOTH
     // (ADR-041 §6 — it never picks). A binding that resolved straight to
     // `AutomationDispatchService` would run both and issue two documents.
+    //
+    // DELIBERATELY NOT SYMMETRIC with test 1: this test needs no inertness pin
+    // and must not be given one. The gate blocks both rules by construction, so
+    // no executor is ever reached and there is no latent write to pin. Adding a
+    // step assertion here would assert something that cannot happen.
     const record = spyOnRecorder();
 
     await harness.get<IAutomationDispatchService>(AUTOMATION_DISPATCH_SERVICE_TOKEN).dispatch({
       trigger: 'order.packed',
       facts: { subjectKind: 'order', subjectId: 'ol_order_2711_collision' },
-      matchedRules: [issueDocumentRule('rule-a'), issueDocumentRule('rule-b')],
+      matchedRules: [irreversibleRule('rule-a'), irreversibleRule('rule-b')],
       now: NOW,
     });
 
