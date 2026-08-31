@@ -22,11 +22,13 @@ import { SalesDocumentRuleConflictException } from '../../domain/exceptions/sale
 import { SalesDocumentThresholdNotFoundException } from '../../domain/exceptions/sales-document-threshold-not-found.exception';
 import { SalesDocumentCountryAlreadyConfiguredException } from '../../domain/exceptions/sales-document-country-already-configured.exception';
 import type { SalesDocumentRuleInput } from '../../domain/types/sales-document-rule-write.types';
+import type { SalesDocumentOrderFacts } from '../../domain/types/sales-document-order-facts.types';
 
 function makeRuleRepo(): jest.Mocked<SalesDocumentRuleRepositoryPort> {
   return {
     findById: jest.fn(),
     findByCountry: jest.fn(),
+    findByCountries: jest.fn(),
     findByCountryAndConditionsHash: jest.fn(),
     create: jest.fn(),
     delete: jest.fn(),
@@ -38,6 +40,7 @@ function makeCountryDefaultRepo(): jest.Mocked<SalesDocumentCountryDefaultReposi
   return {
     findById: jest.fn(),
     findByCountry: jest.fn(),
+    findByCountries: jest.fn(),
     findAll: jest.fn(),
     findByCountryAndKind: jest.fn(),
     upsert: jest.fn(),
@@ -207,6 +210,83 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
       ruleRepo.findById.mockResolvedValue(null);
       await expect(service.deleteRule('missing')).rejects.toThrow();
       expect(ruleRepo.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('resolveRoutingBatch (#2516)', () => {
+    const facts = (country: string): SalesDocumentOrderFacts => ({
+      country,
+      totalGross: 100,
+      currency: 'PLN',
+      buyerHasTaxId: undefined,
+    });
+
+    it('should return no decisions and read nothing for an empty batch', async () => {
+      await expect(service.resolveRoutingBatch([])).resolves.toEqual([]);
+      expect(ruleRepo.findByCountries).not.toHaveBeenCalled();
+      expect(countryDefaultRepo.findByCountries).not.toHaveBeenCalled();
+      expect(thresholdRepo.findAll).not.toHaveBeenCalled();
+    });
+
+    it('should read each store once for the whole batch, whatever its size', async () => {
+      ruleRepo.findByCountries.mockResolvedValue([]);
+      countryDefaultRepo.findByCountries.mockResolvedValue([]);
+      thresholdRepo.findAll.mockResolvedValue([]);
+
+      const batch = Array.from({ length: 40 }, (_, index) => facts(index % 2 === 0 ? 'PL' : 'DE'));
+      const decisions = await service.resolveRoutingBatch(batch);
+
+      expect(decisions).toHaveLength(40);
+      expect(ruleRepo.findByCountries).toHaveBeenCalledTimes(1);
+      expect(countryDefaultRepo.findByCountries).toHaveBeenCalledTimes(1);
+      expect(thresholdRepo.findAll).toHaveBeenCalledTimes(1);
+    });
+
+    it('should load the distinct countries plus Rest of world', async () => {
+      ruleRepo.findByCountries.mockResolvedValue([]);
+      countryDefaultRepo.findByCountries.mockResolvedValue([]);
+      thresholdRepo.findAll.mockResolvedValue([]);
+
+      await service.resolveRoutingBatch([facts('PL'), facts('PL'), facts('DE')]);
+
+      expect(ruleRepo.findByCountries).toHaveBeenCalledWith(['PL', 'DE', '*']);
+      expect(countryDefaultRepo.findByCountries).toHaveBeenCalledWith(['PL', 'DE', '*']);
+    });
+
+    it('should resolve each order against its OWN country configuration', async () => {
+      ruleRepo.findByCountries.mockResolvedValue([]);
+      countryDefaultRepo.findByCountries.mockResolvedValue([
+        countryDefault({ country: 'PL', documentKind: 'fiscal-receipt', connectionId: 'conn-pl' }),
+      ]);
+      thresholdRepo.findAll.mockResolvedValue([]);
+
+      const decisions = await service.resolveRoutingBatch([facts('PL'), facts('DE')]);
+
+      expect(decisions[0]).toEqual({
+        kind: 'route',
+        documentKind: 'fiscal-receipt',
+        connectionId: 'conn-pl',
+      });
+      expect(decisions[1]).toEqual({
+        kind: 'unresolved',
+        reason: 'no-configuration-for-country',
+      });
+    });
+
+    it('should apply a Rest of world default to a country carrying no configuration of its own', async () => {
+      ruleRepo.findByCountries.mockResolvedValue([]);
+      countryDefaultRepo.findByCountries.mockResolvedValue([
+        countryDefault({ country: '*', documentKind: 'invoice', connectionId: 'conn-row' }),
+      ]);
+      thresholdRepo.findAll.mockResolvedValue([]);
+
+      const [decision] = await service.resolveRoutingBatch([facts('DE')]);
+
+      expect(decision).toEqual({
+        kind: 'route',
+        documentKind: 'invoice',
+        connectionId: 'conn-row',
+      });
     });
   });
 

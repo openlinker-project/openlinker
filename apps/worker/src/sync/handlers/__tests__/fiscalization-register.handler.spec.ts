@@ -63,6 +63,7 @@ describe('FiscalizationRegisterHandler', () => {
     fiscalRegistrations = {
       register: jest.fn().mockResolvedValue({} as never),
       getByOrderId: jest.fn(),
+      getByOrderIds: jest.fn().mockResolvedValue([]),
       getById: jest.fn(),
       reconcileInDoubt: jest.fn(),
       getInFlightRegistration: jest.fn().mockResolvedValue(null),

@@ -325,6 +325,10 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
     return this.repo.findAllByOrderId(orderId);
   }
 
+  async getByOrderIds(orderIds: readonly string[]): Promise<FiscalRegistrationRecord[]> {
+    return this.repo.findAllByOrderIds(orderIds);
+  }
+
   async getInFlightRegistration(orderId: string): Promise<SalesDocumentInFlight | null> {
     const now = new Date();
     // Same predicate the write path claims against, so the operator-facing

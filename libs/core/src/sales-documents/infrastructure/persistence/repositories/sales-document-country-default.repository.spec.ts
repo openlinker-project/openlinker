@@ -9,6 +9,7 @@
  *
  * @module libs/core/src/sales-documents/infrastructure/persistence/repositories
  */
+import { In } from 'typeorm';
 import type { Repository } from 'typeorm';
 import { SalesDocumentCountryDefaultRepository } from './sales-document-country-default.repository';
 import type { SalesDocumentCountryDefaultOrmEntity } from '../entities/sales-document-country-default.orm-entity';
@@ -112,6 +113,25 @@ describe('SalesDocumentCountryDefaultRepository', () => {
       await repository.delete('default-1');
 
       expect(ormRepository.delete).toHaveBeenCalledWith({ id: 'default-1' });
+    });
+  });
+
+  describe('findByCountries (#2516)', () => {
+    it('reads nothing for an empty input', async () => {
+      await expect(repository.findByCountries([])).resolves.toEqual([]);
+      expect(ormRepository.find).not.toHaveBeenCalled();
+    });
+
+    it('issues ONE query for every country in the batch', async () => {
+      ormRepository.find.mockResolvedValue([ormRow()]);
+
+      const defaults = await repository.findByCountries(['PL', '*']);
+
+      expect(ormRepository.find).toHaveBeenCalledTimes(1);
+      expect(ormRepository.find).toHaveBeenCalledWith({
+        where: { country: In(['PL', '*']) },
+      });
+      expect(defaults.map((row) => row.id)).toEqual(['default-1']);
     });
   });
 });
