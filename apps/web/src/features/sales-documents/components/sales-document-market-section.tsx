@@ -4,10 +4,12 @@
  * The settings page's headline half: one prose sentence answering "what does
  * each market issue" (#2541), then a scannable market list (#2540) — both
  * read the single merged `useSalesDocumentMarketsQuery` snapshot, so they
- * can never disagree about what "right now" means. The detected-market
- * suggested-setup wording (#2542) already renders inside each row; the
- * loading skeleton (#2543) builds on this same query in a later slice of
- * the same mini-epic.
+ * can never disagree about what "right now" means. Detected-market wording
+ * (#2542) — the order count, its discovery window, and the sole-templated-
+ * market caption — is computed here from the full row set and passed down
+ * to each row, since only the section can know whether a template is unique
+ * across the rendered markets. The loading skeleton (#2543) builds on this
+ * same query in a later slice of the same mini-epic.
  *
  * The summary and the empty state never both render (#2541 acceptance):
  * `summarizeSalesDocumentMarkets` returns `null` for an empty row set, and
@@ -74,6 +76,11 @@ export function SalesDocumentMarketSection({
   }
 
   const summary = summarizeSalesDocumentMarkets(rows);
+  const windowDays = marketsQuery.data?.windowDays;
+  // #2542 — a suggested-setup caption may only claim exclusivity ("the only
+  // market with guidance so far") when it's actually true of THIS section's
+  // rows, never hand-asserted from the current single-template catalogue.
+  const templatedMarketCount = rows.filter((row) => row.hasTemplate).length;
 
   return (
     <div className="page-section sales-document-market-section">
@@ -87,7 +94,13 @@ export function SalesDocumentMarketSection({
 
       <ul className="sales-document-market-row-list" aria-label="Sales-document markets">
         {rows.map((row) => (
-          <SalesDocumentMarketRow key={row.country} row={row} onSelect={onSelectCountry} />
+          <SalesDocumentMarketRow
+            key={row.country}
+            row={row}
+            onSelect={onSelectCountry}
+            windowDays={windowDays}
+            isSoleTemplatedMarket={row.hasTemplate && templatedMarketCount === 1}
+          />
         ))}
       </ul>
     </div>

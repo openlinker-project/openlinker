@@ -1,5 +1,5 @@
 /**
- * SalesDocumentMarketRow (#2540)
+ * SalesDocumentMarketRow (#2540/#2542)
  *
  * One row per market on the settings page's market section — replacing the
  * five-element-per-market stack (eyebrow, two-line sentence, badge, rule
@@ -17,6 +17,17 @@
  *
  * Below 768px this becomes a card via `.sales-document-market-row` CSS
  * (`index.css`), never a second component — see #2540 acceptance criterion.
+ *
+ * **Detected markets (#2542)**: a market with `orderCount !== null` shows its
+ * count *and* the discovery window it was measured over (`windowDays`),
+ * because "12 orders" on its own answers "how many" but not "over what
+ * period" — an operator needs both to judge whether it's worth acting on.
+ * The suggested-setup caption is honest about scope: when this row's
+ * `hasTemplate` market is the ONLY one among the rendered rows carrying a
+ * template, the caption says so explicitly (`isSoleTemplatedMarket`,
+ * computed by the section over every row and passed down) rather than
+ * implying every market has guidance. A template-less market never gets a
+ * recommendation — its action stays a plain "Set up".
  *
  * @module apps/web/src/features/sales-documents/components
  */
@@ -52,12 +63,27 @@ export interface SalesDocumentMarketRowProps {
   onSelect: (country: string) => void;
   /** Disables the action while a mutation/query for this section is in flight (#2543). */
   disabled?: boolean;
+  /**
+   * The discovery window (in days) the merged read applied, rendered
+   * alongside a detected market's order count. Omitted only in contexts
+   * (e.g. a standalone render in a test) where the window isn't known.
+   */
+  windowDays?: number;
+  /**
+   * True when this row's `hasTemplate` market is the ONLY templated market
+   * among the section's rows — changes the suggested-setup caption from a
+   * generic "Starter setup available" to one naming the scope explicitly
+   * (#2542). Ignored when `row.hasTemplate` is false.
+   */
+  isSoleTemplatedMarket?: boolean;
 }
 
 export function SalesDocumentMarketRow({
   row,
   onSelect,
   disabled = false,
+  windowDays,
+  isSoleTemplatedMarket = false,
 }: SalesDocumentMarketRowProps): ReactElement {
   const copy = describeSalesDocumentMarketOutcome(row.outcome);
   const isDetectedOnly = row.orderCount !== null;
@@ -82,7 +108,11 @@ export function SalesDocumentMarketRow({
         <span className="sales-document-market-row__meta muted-text mono-text">
           {row.country === SALES_DOCUMENT_REST_OF_WORLD_COUNTRY ? 'Catch-all' : row.country} ·{' '}
           {row.ruleCount === 1 ? '1 rule' : `${row.ruleCount} rules`}
-          {isDetectedOnly ? ` · ${row.orderCount} orders` : ''}
+          {isDetectedOnly
+            ? ` · ${row.orderCount} orders${
+                windowDays !== undefined ? ` in the last ${windowDays} days` : ''
+              }`
+            : ''}
         </span>
       </div>
 
@@ -94,7 +124,11 @@ export function SalesDocumentMarketRow({
         {copy.needsDecision && copy.reasonShort ? (
           <span className="sales-document-market-row__reason muted-text">
             {copy.reasonShort}
-            {copy.needsDecision && row.hasTemplate ? ' · Starter setup available' : ''}
+            {row.hasTemplate
+              ? isSoleTemplatedMarket
+                ? ` · Starter setup available — the only market with guidance so far`
+                : ' · Starter setup available'
+              : ''}
           </span>
         ) : null}
       </div>
