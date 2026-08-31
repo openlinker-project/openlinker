@@ -17,7 +17,9 @@ import {
 import { AllegroQuantityCommandStatus } from '../../../domain/entities/allegro-quantity-command.entity';
 
 @Entity('allegro_quantity_commands')
-@Index(['commandId'], { unique: true })
+// A batch command (#2622) covers several offers under one Allegro commandId,
+// so uniqueness is per (commandId, offerId) — not commandId alone.
+@Index(['commandId', 'offerId'], { unique: true })
 @Index(['connectionId', 'createdAt'])
 @Index(['status', 'createdAt'])
 export class AllegroQuantityCommandOrmEntity {
