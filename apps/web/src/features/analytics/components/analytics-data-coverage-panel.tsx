@@ -66,6 +66,16 @@ interface AnalyticsDataCoveragePanelProps {
   filters: AnalyticsCoverageFilters;
   /** Opens the shared Analytics Settings dialog — used by the tax-A row's "Include anyway" action. */
   onOpenSettings: () => void;
+  /**
+   * Controllable-with-uncontrolled-fallback (#2480, epic #2452 Phase 8):
+   * when supplied together, an external trigger (the KPI strip's `GapMark`,
+   * the channel table's `AnalyticsExclusionNote`) can open this panel's own
+   * detail modals without a second `CoverageDetailDialog` implementation.
+   * Omitted (the panel's own self-render, unchanged since Phase 7): falls
+   * back to internal state, byte-identical to pre-Phase-8 behavior.
+   */
+  openCategory?: CoverageCategory | null;
+  onOpenCategoryChange?: (category: CoverageCategory | null) => void;
 }
 
 function isTaxCategory(category: CoverageCategory): category is TaxCoverageCategory {
@@ -75,6 +85,8 @@ function isTaxCategory(category: CoverageCategory): category is TaxCoverageCateg
 export function AnalyticsDataCoveragePanel({
   filters,
   onOpenSettings,
+  openCategory: controlledOpenCategory,
+  onOpenCategoryChange,
 }: AnalyticsDataCoveragePanelProps): ReactElement {
   const { showToast } = useToast();
   const demoMode = useDemoMode();
@@ -88,7 +100,9 @@ export function AnalyticsDataCoveragePanel({
     return (connectionId: string): string => byId.get(connectionId) ?? connectionId;
   }, [connectionsQuery.data]);
 
-  const [openCategory, setOpenCategory] = useState<CoverageCategory | null>(null);
+  const [internalOpenCategory, setInternalOpenCategory] = useState<CoverageCategory | null>(null);
+  const openCategory = onOpenCategoryChange ? controlledOpenCategory ?? null : internalOpenCategory;
+  const setOpenCategory = onOpenCategoryChange ?? setInternalOpenCategory;
   const [offset, setOffset] = useState(0);
 
   function openDetail(category: CoverageCategory): void {

@@ -4884,6 +4884,21 @@ a.kpi-card:focus-visible {
   font-family: var(--font-mono);
 }
 
+/* ── GapMark clickable variant (#2480) — opens the coverage category's
+   own detail modal instead of only showing a tooltip. */
+.gap-mark--clickable {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.gap-mark--clickable:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
 .section-infotip {
   display: inline-flex;
   align-items: center;
@@ -19151,6 +19166,11 @@ legend.analytics-settings-dialog__label {
   align-items: center;
   gap: var(--space-3);
   width: 100%;
+  /* Opt out of the global `button, .button { height: 2rem }` (line ~541) —
+     this row's two-line headline+sub body needs its real content height,
+     not a fixed 32px that clips it and collapses the visual gap between
+     rows (mirrors .orders-sortbtn's identical fix, #1747). */
+  height: auto;
   padding: var(--space-3) var(--space-4);
   border: none;
   background: none;
@@ -19225,6 +19245,18 @@ legend.analytics-settings-dialog__label {
 
 .coverage-alert__close:hover {
   background: color-mix(in oklab, var(--status-success) 15%, transparent);
+}
+
+/* ── Analytics exclusion note (#2481) — per-row `.excl-note` annotation on
+   ChannelSalesTable when a row is under-counted by an open Data Coverage
+   category. Opens the same detail modal the Data Coverage panel uses.
+   Renders on the shared `.chip`/`.chip--warning` primitive (tone, border,
+   background, padding, font already come from there) — this only ADDS the
+   truncation behavior a table cell needs, never re-declares the pill. */
+.excl-note {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .coverage-detail__table-wrap {

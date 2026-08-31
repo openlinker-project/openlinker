@@ -84,6 +84,8 @@ import {
 } from '../lib/sales-analytics-view-model';
 import { AnalyticsKpiCard, type AnalyticsKpiDelta } from './analytics-kpi-card';
 import { GapMark } from './gap-mark';
+import { deriveCoverageRowCopy } from '../lib/data-coverage-copy.lib';
+import type { AnalyticsCoverage, CoverageCategory, CoverageCategoryRow } from '../api/analytics-coverage.types';
 
 // The metrics spec defines Net Sales as NOV minus the value of returns
 // (docs/specs/metrics-analytics-dashboard.md § Net Sales) — quoted, not
@@ -115,9 +117,38 @@ interface AnalyticsKpiStripProps {
   filters: SalesAnalyticsFilters;
   /** For `earliestOrderDate` coverage-gating the previous-period delta — already fetched at the page level for the trust header, so this never issues its own `GET /analytics/trust` call. */
   connections: ConnectionIngestionTrust[];
+  /**
+   * The Data Coverage aggregate (#2474 Phase 7), read at the page level —
+   * same query key as `AnalyticsDataCoveragePanel`'s own fetch, so this
+   * never issues a second `GET /analytics/coverage` call (#2480, epic
+   * #2452 Phase 8). `undefined` while still loading, or when the caller
+   * never wired coverage in (e.g. an older test) — every `GapMark` below
+   * falls back to its pre-Phase-8 generic title in that case.
+   */
+  coverage?: AnalyticsCoverage;
+  /** Opens the matching Data Coverage detail modal — omit to keep every `GapMark` inert. */
+  onOpenCategory?: (category: CoverageCategory) => void;
 }
 
-export function AnalyticsKpiStrip({ connections, filters }: AnalyticsKpiStripProps): ReactElement {
+/** Tax categories partition the exclusion set (`TaxCoverageDetectionService`'s classification pass) — the one with the largest `affectedCount` is the category actually causing `netExcludedCount`. Falls back to `'tax-a'` (the remediable one) if all three read zero, which should not happen while `netExcludedVisible` is true. */
+function resolveNetExcludedTaxCategory(categories: CoverageCategoryRow[]): CoverageCategoryRow {
+  const taxRows = categories.filter(
+    (row): row is CoverageCategoryRow & { category: 'tax-a' | 'tax-b' | 'tax-c' } =>
+      row.category === 'tax-a' || row.category === 'tax-b' || row.category === 'tax-c'
+  );
+  const best = taxRows.reduce<CoverageCategoryRow | null>(
+    (max, row) => (max === null || row.affectedCount > max.affectedCount ? row : max),
+    null
+  );
+  return best ?? { category: 'tax-a', status: 'open', affectedCount: 0, sampleOrderIds: [] };
+}
+
+export function AnalyticsKpiStrip({
+  connections,
+  filters,
+  coverage,
+  onOpenCategory,
+}: AnalyticsKpiStripProps): ReactElement {
   const query = useSalesAnalyticsQuery(filters);
 
   // Computed and the second query issued UNCONDITIONALLY, before any early
@@ -180,6 +211,28 @@ export function AnalyticsKpiStrip({ connections, filters }: AnalyticsKpiStripPro
   const stampedGapVisible = headline.unconvertedCount > 0;
   const netExcludedVisible = headline.netExcludedCount > 0;
   const netExcludedNote = `${headline.netExcludedCount} order(s) predate per-line tax rates or carry a line with an unresolvable rate, and are excluded from NOV.`;
+
+  // Currency/tax exclusion `GapMark`s (#2480, epic #2452 Phase 8) — a
+  // category-specific title + click-to-open only when the coverage
+  // aggregate reports the SAME category as genuinely open; otherwise every
+  // one of these falls back to the pre-Phase-8 generic `STAMPED_GAP` text,
+  // inert (nothing to open without real coverage data).
+  const currencyCoverageRow = coverage?.categories.find(
+    (row) => row.category === 'currency' && row.affectedCount > 0
+  );
+  const currencyGapTitle =
+    stampedGapVisible && currencyCoverageRow ? deriveCoverageRowCopy(currencyCoverageRow).sub : STAMPED_GAP;
+  const onOpenCurrencyGap =
+    stampedGapVisible && currencyCoverageRow && onOpenCategory ? () => onOpenCategory('currency') : undefined;
+
+  const netExcludedTaxRow =
+    netExcludedVisible && coverage ? resolveNetExcludedTaxCategory(coverage.categories) : undefined;
+  const netExcludedGapOpen = netExcludedTaxRow !== undefined && netExcludedTaxRow.affectedCount > 0;
+  const netExcludedGapTitle = netExcludedTaxRow ? deriveCoverageRowCopy(netExcludedTaxRow).sub : undefined;
+  const onOpenNetExcludedGap =
+    netExcludedGapOpen && netExcludedTaxRow && onOpenCategory
+      ? () => onOpenCategory(netExcludedTaxRow.category)
+      : undefined;
   const trendDays = rangeDays(filters.from, filters.to);
   const trendRangeLabel = trendDays === 1 ? 'the selected day' : `the last ${trendDays} days`;
 
@@ -269,7 +322,15 @@ export function AnalyticsKpiStrip({ connections, filters }: AnalyticsKpiStripPro
               : 'Cancelled orders and cancelled items are excluded. Returned/refunded items remain included.',
           },
         ]}
-        metric="Net sales"
+        metric={
+          netExcludedGapOpen ? (
+            <>
+              Net sales <GapMark title={netExcludedGapTitle ?? netExcludedNote} onActivate={onOpenNetExcludedGap} />
+            </>
+          ) : (
+            'Net sales'
+          )
+        }
         value={formatAmount(headline.netRevenue, currency)}
         trend={{
           values: revenueTrend,
@@ -280,7 +341,7 @@ export function AnalyticsKpiStrip({ connections, filters }: AnalyticsKpiStripPro
           {
             label: stampedGapVisible ? (
               <>
-                GMV <GapMark title={STAMPED_GAP} />
+                GMV <GapMark title={currencyGapTitle} onActivate={onOpenCurrencyGap} />
               </>
             ) : (
               'GMV'
@@ -332,7 +393,7 @@ export function AnalyticsKpiStrip({ connections, filters }: AnalyticsKpiStripPro
         metric={
           stampedGapVisible ? (
             <>
-              Average <GapMark title={STAMPED_GAP} />
+              Average <GapMark title={currencyGapTitle} onActivate={onOpenCurrencyGap} />
             </>
           ) : (
             'Average'
