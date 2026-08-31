@@ -480,6 +480,35 @@ describe('SalesDocumentCountryRoutingDialog — acknowledgment banner (#2189)', 
 });
 
 describe('SalesDocumentCountryRoutingDialog — Reset country (#2189)', () => {
+  it('should not render the reset affordance at all for a session with no write permission (non-demo)', async () => {
+    const rules = [makeRule('r1', { country: 'DE' })];
+    const apiClient = createMockApiClient({
+      salesDocumentRules: {
+        listRules: vi.fn().mockResolvedValue(rules),
+        listCountryDefaults: vi.fn().mockResolvedValue([]),
+      },
+    });
+    // Default session adapter (no sessionAdapter passed) is anonymous/no
+    // permissions, and demo mode is off by default — `useWriteAccess`'s
+    // `visible` is false, so the reset danger-zone must not render at all
+    // rather than render disabled (docs/frontend-architecture.md's
+    // "otherwise hidden" rule for a write affordance).
+    renderWithProviders(
+      <SalesDocumentCountryRoutingDialog
+        open
+        country="DE"
+        cameFrom={null}
+        onOpenChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+      { apiClient },
+    );
+
+    await screen.findByText(/An unmatched order is held/i);
+    expect(screen.queryByRole('button', { name: 'Reset country' })).toBeNull();
+    expect(screen.queryByText(/Resetting deletes every rule and default/i)).toBeNull();
+  });
+
   it('should disable "Reset country" when the country has zero rules, zero defaults, and no acknowledgment', async () => {
     const apiClient = createMockApiClient({
       salesDocumentRules: {
