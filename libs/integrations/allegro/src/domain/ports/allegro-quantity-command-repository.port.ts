@@ -21,6 +21,14 @@ export interface AllegroQuantityCommandFilters {
   status?: string;
   limit?: number;
   offset?: number;
+  /**
+   * `'newest'` (default) orders `createdAt DESC` — right for an
+   * operator-facing list. `'oldest'` orders `createdAt ASC` — required by a
+   * bounded reconcile sweep, or a page taken off the DESC ordering re-reads
+   * the newest rows on every pass and the oldest pending ones — the ones
+   * most likely genuinely stuck — are never revisited.
+   */
+  orderBy?: 'newest' | 'oldest';
 }
 
 /**

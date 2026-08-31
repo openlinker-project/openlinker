@@ -58,7 +58,7 @@ export class AllegroQuantityCommandRepository implements AllegroQuantityCommandR
       queryBuilder.andWhere('command.status = :status', { status: filters.status });
     }
 
-    queryBuilder.orderBy('command.createdAt', 'DESC');
+    queryBuilder.orderBy('command.createdAt', filters.orderBy === 'oldest' ? 'ASC' : 'DESC');
 
     if (filters.limit) {
       queryBuilder.limit(filters.limit);
@@ -141,7 +141,7 @@ export class AllegroQuantityCommandRepository implements AllegroQuantityCommandR
     });
 
     if (!entity) {
-      throw new AllegroQuantityCommandNotFoundException(commandId);
+      throw new AllegroQuantityCommandNotFoundException(commandId, offerId);
     }
 
     entity.status = status;

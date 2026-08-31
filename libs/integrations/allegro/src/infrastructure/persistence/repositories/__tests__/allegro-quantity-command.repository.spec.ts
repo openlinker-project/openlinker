@@ -138,6 +138,18 @@ describe('AllegroQuantityCommandRepository', () => {
       expect(mockQueryBuilder.orderBy).toHaveBeenCalledWith('command.createdAt', 'DESC');
     });
 
+    it('should order oldest-first when orderBy is "oldest"', async () => {
+      const entities = [createOrmEntity()];
+      const mockQueryBuilder = ormRepository.createQueryBuilder() as jest.Mocked<
+        SelectQueryBuilder<AllegroQuantityCommandOrmEntity>
+      >;
+      mockQueryBuilder.getMany.mockResolvedValue(entities);
+
+      await repository.find({ orderBy: 'oldest' });
+
+      expect(mockQueryBuilder.orderBy).toHaveBeenCalledWith('command.createdAt', 'ASC');
+    });
+
     it('should filter by connectionId', async () => {
       const connectionId = randomUUID();
       const entities = [createOrmEntity({ connectionId })];

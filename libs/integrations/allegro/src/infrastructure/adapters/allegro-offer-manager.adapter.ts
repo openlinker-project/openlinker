@@ -198,6 +198,15 @@ const MAX_CATEGORY_PATH_DEPTH = 12;
 const SINGLE_ITEM_KEY = 'single';
 
 /**
+ * Age past which a still-`queued`/`accepted` quantity command is warn-logged
+ * by `reconcilePendingQuantityAcks` rather than silently re-checked forever.
+ * A slow-but-live command still resolves on a later pass; this only makes a
+ * command Allegro appears to never terminalize observable, since today
+ * nothing ages such a row out or dead-letters it.
+ */
+const PENDING_QUANTITY_ACK_STALE_WARN_MS = 30 * 60 * 1000;
+
+/**
  * Build a URL-safe slug from a human offer name for the cosmetic path segment
  * of a public offer URL. Lowercases, strips diacritics (NFD + drop combining
  * marks), collapses every non-alphanumeric run to a single `-`, and trims
@@ -2642,14 +2651,28 @@ export class AllegroOfferManagerAdapter
         connectionId: this.connectionId,
         status: 'queued',
         limit: perStatusLimit,
+        orderBy: 'oldest',
       }),
       this.commandRepository.find({
         connectionId: this.connectionId,
         status: 'accepted',
         limit: perStatusLimit,
+        orderBy: 'oldest',
       }),
     ]);
     const pending = [...queued, ...accepted].slice(0, limit);
+
+    const staleCutoffMs = Date.now() - PENDING_QUANTITY_ACK_STALE_WARN_MS;
+    const staleCount = pending.filter(
+      (command) => command.createdAt.getTime() < staleCutoffMs
+    ).length;
+    if (staleCount > 0) {
+      this.logger.warn(
+        `${staleCount} Allegro quantity command(s) on connection ${this.connectionId} have been ` +
+          `pending for over ${PENDING_QUANTITY_ACK_STALE_WARN_MS / 60_000} minutes without reaching a ` +
+          `terminal status — Allegro may never resolve them for this offer/commandId`
+      );
+    }
 
     const groupsByCommandId = new Map<string, AllegroQuantityCommand[]>();
     for (const command of pending) {

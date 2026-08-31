@@ -710,6 +710,56 @@ describe('AllegroOfferManagerAdapter', () => {
       );
     });
 
+    it('should read both status pages oldest-first, so a full page never starves the oldest pending rows', async () => {
+      const commandRepository = repoWith();
+      const reconcileAdapter = fastAdapterWithRepo(commandRepository);
+
+      await reconcileAdapter.reconcilePendingQuantityAcks(50);
+
+      expect(commandRepository.find).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'queued', orderBy: 'oldest' })
+      );
+      expect(commandRepository.find).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'accepted', orderBy: 'oldest' })
+      );
+    });
+
+    it('should warn-log when a pending command has aged past the stale threshold', async () => {
+      const staleCreatedAt = new Date(Date.now() - 45 * 60 * 1000);
+      const staleCommand = new AllegroQuantityCommand(
+        'row-1',
+        'cmd-stale',
+        connectionId,
+        'offer-1',
+        10,
+        'accepted',
+        null,
+        staleCreatedAt,
+        staleCreatedAt
+      );
+      const commandRepository = repoWith({
+        find: jest
+          .fn()
+          .mockImplementation(({ status }: { status: string }) =>
+            Promise.resolve(status === 'accepted' ? [staleCommand] : [])
+          ),
+      });
+      const reconcileAdapter = fastAdapterWithRepo(commandRepository);
+      const warnSpy = jest
+        .spyOn(reconcileAdapter['logger'], 'warn')
+        .mockImplementation(() => undefined);
+
+      httpClient.get.mockResolvedValueOnce({
+        data: { id: 'cmd-stale', taskCount: 1, completedTaskCount: 0, tasks: [] },
+        status: 200,
+        headers: {},
+      });
+
+      await reconcileAdapter.reconcilePendingQuantityAcks(50);
+
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('1 Allegro quantity command'));
+    });
+
     it('should persist a FAIL task as failed via updateOfferStatus, disambiguated by offerId', async () => {
       const commandRepository = repoWith({
         find: jest
