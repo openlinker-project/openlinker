@@ -113,6 +113,15 @@ found it unenforced on GET requests, so a connection without it still works.
   `CONFIRMED`.** An unconfirmed-but-not-failed response is still a *successful*
   registration per ADR-042 decision 2 — a registered record with no artefact yet is not
   an incomplete result.
+- **`locateByQuery` answers from three outcomes, so normal processing is not reported as
+  an absence.** A document the vendor holds at a non-terminal status - or at a status this
+  build does not recognise - answers `held`, which core surfaces as the `still-unknown`
+  reconcile outcome and which leaves the record exactly where it was. Only `CONFIRMED`
+  answers `registered`; a vendor-reported `ERROR` answers `not-found`, because a failed
+  document is an absence of a registration rather than work still in progress (ADR-042
+  amendment #2502, decision 1). Read `not-found` as "no registration exists for these
+  coordinates", never as "the provider holds nothing" - on the `ERROR` path it holds a
+  document and reports it failed.
 - **Known gap: no webhook ingress.** The vendor delivers a confirmed status by webhook
   (`X-Signature` = `hash_hmac('sha256', rawBody, webhookSecret)`), which does not fit
   this repo's existing `WebhookEventTranslator` seams cleanly in v1 — the synchronous

@@ -22,6 +22,7 @@
  * @module apps/api/src/fiscalization/http
  */
 import {
+  BadGatewayException,
   BadRequestException,
   Body,
   ConflictException,
@@ -40,6 +41,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
   FISCAL_REGISTRATION_SERVICE_TOKEN,
+  FiscalReconcileCheckFailedException,
   FiscalRegistrationContendedException,
   FiscalRegistrationNotInDoubtException,
   FiscalRegistrationRecordNotFoundException,
@@ -167,7 +169,8 @@ export class FiscalizationController {
       throw new BadRequestException('orderId is required');
     }
     const records = await this.fiscalRegistrations.getByOrderId(orderId.trim());
-    return records.map((record) => this.toDto(record));
+    const now = new Date();
+    return records.map((record) => this.toDto(record, now));
   }
 
   @Roles('admin')
@@ -179,12 +182,19 @@ export class FiscalizationController {
       'The only sanctioned way out of an in-doubt outcome other than an operator decision. It ' +
       'looks the registration up at the provider by business coordinates - it is NEVER a resend, ' +
       'because resending a registration that already landed is the double registration this ' +
-      'contract exists to prevent. A provider that cannot be queried reports "unsupported" and ' +
-      'the record is left for the operator.',
+      'contract exists to prevent. Answers with exactly one of the four closed outcomes: ' +
+      'resolved, not-found, unsupported, still-unknown. Only "resolved" writes to the record; ' +
+      'the other three leave it exactly as it was, and none of them licenses a resend. A failed ' +
+      'CHECK is not an outcome - it answers 502, so a transient network failure is never ' +
+      'reported as the structural "unsupported".',
   })
   @ApiResponse({ status: 200, type: ReconcileFiscalRegistrationResponseDto })
   @ApiResponse({ status: 404, description: 'Registration record not found' })
   @ApiResponse({ status: 409, description: 'The record is not an in-doubt failure' })
+  @ApiResponse({
+    status: 502,
+    description: 'The provider could not be asked; nothing changed and the check can be repeated',
+  })
   async reconcile(
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<ReconcileFiscalRegistrationResponseDto> {
@@ -237,6 +247,12 @@ export class FiscalizationController {
     if (error instanceof FiscalRegistrationRecordNotFoundException) {
       return new NotFoundException(error.message);
     }
+    // #2522: the provider could not be ASKED. Upstream, not us, and retryable -
+    // so 502 rather than a 500 an operator can only read as "OpenLinker broke",
+    // and deliberately NOT one of the four reconcile outcomes.
+    if (error instanceof FiscalReconcileCheckFailedException) {
+      return new BadGatewayException(error.message);
+    }
     if (
       error instanceof FiscalRegistrationNotInDoubtException ||
       error instanceof OrderAlreadyRegisteredException ||
@@ -255,8 +271,27 @@ export class FiscalizationController {
     return error instanceof Error ? error : new Error(String(error));
   }
 
-  /** Explicit allowlist projection; `errorMessage` is deliberately not exposed. */
-  private toDto(record: FiscalRegistrationRecord): FiscalRegistrationResponseDto {
+  /**
+   * Explicit allowlist projection; `errorMessage` is deliberately not exposed.
+   *
+   * `inFlight` is DERIVED here rather than persisted (#2521): it is a question
+   * about now, and the record's own `isLeaseLive` is the same predicate the
+   * write path claims against, so the operator-facing reading and the one a
+   * second attempt would hit cannot drift.
+   *
+   * `now` is passed in so every row of one response is evaluated against the
+   * same instant.
+   *
+   * Derived here rather than routed through `IFiscalRegistrationService`'s
+   * `getInFlightRegistration`: this endpoint already holds the order's records,
+   * so the seam would repeat the read to answer a question already answerable.
+   * Both go through `isLeaseLive`, so the two cannot disagree. The seam exists
+   * for the caller that has an order id and no records.
+   */
+  private toDto(
+    record: FiscalRegistrationRecord,
+    now: Date = new Date(),
+  ): FiscalRegistrationResponseDto {
     return {
       id: record.id,
       connectionId: record.connectionId,
@@ -272,6 +307,7 @@ export class FiscalizationController {
       artefacts: record.artefacts,
       failureMode: record.failureMode,
       failureReason: record.failureReason,
+      inFlight: record.isLeaseLive(now),
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString(),
     };

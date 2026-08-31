@@ -7,13 +7,27 @@
  *
  * @module libs/core/src/fiscalization/application/services
  */
+import type { SalesDocumentInFlight } from '@openlinker/core/sales-documents';
+
 import type { FiscalRegistrationRecord } from '../../domain/entities/fiscal-registration-record.entity';
 import type {
   FiscalReconcileOutcome,
   RegisterTransactionCommand,
 } from '../../domain/types/fiscalization.types';
 
-/** Result of one reconciliation attempt against an in-doubt record. */
+/**
+ * Result of one reconciliation attempt against an in-doubt record.
+ *
+ * `outcome` is drawn from the CLOSED {@link FiscalReconcileOutcome} vocabulary,
+ * so a surface offering "check with the provider" can state every answer it may
+ * get back rather than promising a resolution the check cannot always deliver
+ * (ADR-042 amendment #2502, decision 3). Exactly one of the four values is
+ * returned; a failed CHECK is not among them and throws
+ * `FiscalReconcileCheckFailedException` instead.
+ *
+ * Only `resolved` writes to the record. The other three leave it exactly as it
+ * was, and none of them licenses a resend.
+ */
 export interface FiscalReconcileResult {
   outcome: FiscalReconcileOutcome;
   record: FiscalRegistrationRecord;
@@ -79,6 +93,36 @@ export interface IFiscalRegistrationService {
   getByOrderIds(orderIds: readonly string[]): Promise<FiscalRegistrationRecord[]>;
 
   /**
+   * Is a registration for this order being attempted RIGHT NOW (#2521, ADR-042
+   * amendment #2502 decision 2)?
+   *
+   * A pure READ over persisted state - it takes no lock, calls no provider and
+   * attempts nothing. Before it, the fact existed only as the 409 a concurrent
+   * write received, which is the correct answer to a write and useless to a
+   * reader: a surface could not tell *someone else is registering this right
+   * now* from an error.
+   *
+   * Answers from the same predicate the write path enforces
+   * (`FiscalRegistrationRecord.isLeaseLive`), so what an operator is shown and
+   * what a second attempt would hit cannot drift. `null` means no live claim -
+   * including the case where a claim EXPIRED, which is deliberately not
+   * reported as in flight: an expired lease means the previous attempt died,
+   * not that one is running.
+   *
+   * VISIBILITY ONLY. The lease semantics, the exactly-once guarantee and the
+   * 409 are all unchanged.
+   *
+   * Consumed by the per-order sales-document projection, which reports both
+   * document kinds through this one neutral shape. The fiscal-registration HTTP
+   * read deliberately does NOT call it: that endpoint already holds the order's
+   * records and derives its per-record `inFlight` from the same `isLeaseLive`
+   * predicate, so routing through here would repeat the read to answer a
+   * question it can already answer. The seam exists for the caller that has an
+   * order id and no records - which is the projection, not the list endpoint.
+   */
+  getInFlightRegistration(orderId: string): Promise<SalesDocumentInFlight | null>;
+
+  /**
    * Read one record by id. Throws `FiscalRegistrationRecordNotFoundException`
    * when it does not exist.
    */
@@ -94,10 +138,18 @@ export interface IFiscalRegistrationService {
    * exists to prevent. A provider that cannot be queried by business
    * coordinates reports `unsupported` and the record is left for the operator.
    * A `not-found` answer likewise leaves the record in doubt - it is evidence,
-   * not authority to re-send.
+   * not authority to re-send. A check that neither confirms a registration nor
+   * establishes an absence reports `still-unknown` (ADR-042 amendment #2502,
+   * decisions 1 and 3): the record is left exactly where it was, which is a
+   * legitimate answer rather than a failure, and the check may be repeated
+   * later. It does NOT assert that the provider is holding the sale - that is
+   * the usual cause, but the same outcome covers an answer core could not read.
    *
    * Throws `FiscalRegistrationNotInDoubtException` when the record is in any
-   * other state.
+   * other state, and `FiscalReconcileCheckFailedException` when the provider
+   * could not be ASKED - a transport failure is not an answer, and reporting it
+   * as `unsupported` would state a structural fact about the adapter where the
+   * truth is a transient one about the network. Neither throw writes anything.
    */
   reconcileInDoubt(recordId: string): Promise<FiscalReconcileResult>;
 }

@@ -66,6 +66,7 @@ describe('FiscalizationRegisterHandler', () => {
       getByOrderIds: jest.fn().mockResolvedValue([]),
       getById: jest.fn(),
       reconcileInDoubt: jest.fn(),
+      getInFlightRegistration: jest.fn().mockResolvedValue(null),
     };
     handler = new FiscalizationRegisterHandler(fiscalRegistrations);
     warnSpy = jest

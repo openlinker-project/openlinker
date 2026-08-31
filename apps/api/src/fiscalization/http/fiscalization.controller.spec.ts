@@ -14,6 +14,7 @@
  */
 import { Test } from '@nestjs/testing';
 import {
+  BadGatewayException,
   BadRequestException,
   ConflictException,
   NotFoundException,
@@ -21,6 +22,8 @@ import {
 } from '@nestjs/common';
 import {
   FISCAL_REGISTRATION_SERVICE_TOKEN,
+  FiscalReconcileCheckFailedException,
+  FiscalReconcileOutcomeValues,
   FiscalRegistrationNotInDoubtException,
   FiscalRegistrationRecord,
   FiscalRegistrationRecordNotFoundException,
@@ -82,6 +85,7 @@ function registrationRecord(
     status: 'pending' | 'registering' | 'registered' | 'failed';
     failureMode: 'rejected' | 'in-doubt' | null;
     failureReason: string | null;
+    leaseExpiresAt: Date | null;
   }> = {},
 ): FiscalRegistrationRecord {
   return new FiscalRegistrationRecord(
@@ -100,7 +104,7 @@ function registrationRecord(
     overrides.failureMode ?? null,
     overrides.failureReason ?? null,
     'internal diagnostic that must never be exposed',
-    null,
+    overrides.leaseExpiresAt ?? null,
     NOW,
     NOW,
   );
@@ -118,6 +122,7 @@ describe('FiscalizationController', () => {
       getByOrderIds: jest.fn().mockResolvedValue([]),
       getById: jest.fn(),
       reconcileInDoubt: jest.fn(),
+      getInFlightRegistration: jest.fn().mockResolvedValue(null),
     };
     orders = { getOrderRecord: jest.fn() };
 
@@ -361,6 +366,49 @@ describe('FiscalizationController', () => {
     });
   });
 
+  describe('in-flight signal (#2521)', () => {
+    it('should report a live claim as in flight, without attempting anything', async () => {
+      // Readable, so a panel can say "a registration for this order is already
+      // running" instead of learning it from the 409 of an attempt it should
+      // not have made.
+      service.getByOrderId.mockResolvedValue([
+        registrationRecord({
+          status: 'registering',
+          leaseExpiresAt: new Date(Date.now() + 60_000),
+        }),
+      ]);
+
+      const response = await controller.listForOrder(ORDER_ID);
+
+      expect(response[0]?.inFlight).toBe(true);
+      expect(service.register).not.toHaveBeenCalled();
+      expect(service.reconcileInDoubt).not.toHaveBeenCalled();
+    });
+
+    it('should report an EXPIRED claim as not in flight', async () => {
+      // An expired lease means the previous attempt died. Reporting it as
+      // running would tell an operator to wait for work nobody is doing.
+      service.getByOrderId.mockResolvedValue([
+        registrationRecord({
+          status: 'registering',
+          leaseExpiresAt: new Date(Date.now() - 1_000),
+        }),
+      ]);
+
+      const response = await controller.listForOrder(ORDER_ID);
+
+      expect(response[0]?.inFlight).toBe(false);
+    });
+
+    it('should report a settled record as not in flight', async () => {
+      service.getByOrderId.mockResolvedValue([registrationRecord()]);
+
+      const response = await controller.listForOrder(ORDER_ID);
+
+      expect(response[0]?.inFlight).toBe(false);
+    });
+  });
+
   describe('POST /fiscal-registrations/:id/reconcile', () => {
     it('should report the outcome alongside the record', async () => {
       service.reconcileInDoubt.mockResolvedValue({
@@ -384,6 +432,56 @@ describe('FiscalizationController', () => {
 
       expect(response.outcome).toBe('unsupported');
       expect(response.record.failureMode).toBe('in-doubt');
+    });
+
+    it.each(FiscalReconcileOutcomeValues)(
+      'should surface the `%s` outcome verbatim',
+      async (outcome) => {
+        // A panel offering "check with the provider" must be able to render
+        // every answer the check can return, so each one has to reach it
+        // unchanged rather than being collapsed into a boolean.
+        service.reconcileInDoubt.mockResolvedValue({
+          outcome,
+          record:
+            outcome === 'resolved'
+              ? registrationRecord()
+              : registrationRecord({ status: 'failed', failureMode: 'in-doubt' }),
+        });
+
+        const response = await controller.reconcile('11111111-1111-1111-1111-111111111111');
+
+        expect(response.outcome).toBe(outcome);
+      },
+    );
+
+    it('should leave the record untouched on every non-resolving outcome', async () => {
+      // `not-found`, `unsupported` and `still-unknown` all mean the record stays
+      // in doubt - none of them may look like progress to a caller.
+      for (const outcome of ['not-found', 'unsupported', 'still-unknown'] as const) {
+        service.reconcileInDoubt.mockResolvedValue({
+          outcome,
+          record: registrationRecord({ status: 'failed', failureMode: 'in-doubt' }),
+        });
+
+        const response = await controller.reconcile('11111111-1111-1111-1111-111111111111');
+
+        expect(response.outcome).toBe(outcome);
+        expect(response.record.status).toBe('failed');
+        expect(response.record.failureMode).toBe('in-doubt');
+      }
+    });
+
+    it('should 502 when the provider could not be asked, never report it as an outcome', async () => {
+      // A failed CHECK is upstream and retryable. Reporting it as `unsupported`
+      // would assert a structural fact about the adapter and tell an operator to
+      // stop retrying something transient.
+      service.reconcileInDoubt.mockRejectedValue(
+        new FiscalReconcileCheckFailedException('rec-1', 'conn-1', 'socket hang up'),
+      );
+
+      await expect(
+        controller.reconcile('11111111-1111-1111-1111-111111111111'),
+      ).rejects.toBeInstanceOf(BadGatewayException);
     });
 
     it('should 409 when the record is not an in-doubt failure', async () => {
