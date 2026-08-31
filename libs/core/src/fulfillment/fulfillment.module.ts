@@ -27,12 +27,14 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { FulfillmentHandshakeService } from './application/services/fulfillment-handshake.service';
 import { FulfillmentProgressService } from './application/services/fulfillment-progress.service';
 import { FulfillmentRelayGateService } from './application/services/fulfillment-relay-gate.service';
+import { RoutingCommitService } from './application/services/routing-commit.service';
 import {
   FULFILLMENT_HANDSHAKE_SERVICE_TOKEN,
   FULFILLMENT_PROGRESS_CLAIM_REPOSITORY_TOKEN,
   FULFILLMENT_PROGRESS_SERVICE_TOKEN,
   FULFILLMENT_RELAY_GATE_SERVICE_TOKEN,
   FULFILLMENT_WORK_REPOSITORY_TOKEN,
+  ROUTING_COMMIT_SERVICE_TOKEN,
   ROUTING_DECISION_REPOSITORY_TOKEN,
   FULFILLMENT_WORK_QUERY_SERVICE_TOKEN,
 } from './fulfillment.tokens';
@@ -79,6 +81,8 @@ import { RoutingDecisionRepository } from './infrastructure/persistence/reposito
       provide: FULFILLMENT_WORK_QUERY_SERVICE_TOKEN,
       useExisting: FulfillmentWorkQueryService,
     },
+    RoutingCommitService,
+    { provide: ROUTING_COMMIT_SERVICE_TOKEN, useExisting: RoutingCommitService },
   ],
   exports: [
     FULFILLMENT_WORK_REPOSITORY_TOKEN,
@@ -89,6 +93,7 @@ import { RoutingDecisionRepository } from './infrastructure/persistence/reposito
     // Exported for `ShippingModule` (#2402): the shipment bridge resolves an
     // order's work through this interface, never through the repository port.
     FULFILLMENT_WORK_QUERY_SERVICE_TOKEN,
+    ROUTING_COMMIT_SERVICE_TOKEN,
   ],
 })
 export class FulfillmentModule {}

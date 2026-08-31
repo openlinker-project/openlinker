@@ -179,6 +179,17 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
     private readonly dataSource: DataSource
   ) {}
 
+  /**
+   * ADR-054 R1's unit of work. `dataSource.transaction` gives us the
+   * `EntityManager` that `FulfillmentWorkTransaction` structurally describes, so
+   * the port stays framework-free while the caller gets real atomicity.
+   */
+  async runInTransaction<T>(
+    fn: (transaction: FulfillmentWorkTransaction) => Promise<T>
+  ): Promise<T> {
+    return await this.dataSource.transaction(async (manager) => fn(manager));
+  }
+
   async create(
     input: CreateFulfillmentWorkInput,
     transaction?: FulfillmentWorkTransaction

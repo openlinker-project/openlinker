@@ -1316,6 +1316,65 @@ describe('OrderRecordRepository', () => {
       }
     );
 
+    it('pins shippingAddressHash into the ready-path statement and reads it back (#2395)', async () => {
+      // Same argument as `buyerTaxId` above: the frozen-attribution upsert
+      // ENUMERATES its columns, so a value stamped on the entity but never
+      // added to the statement is silently not written.
+      const domainEntity = new OrderRecord(
+        'order-123',
+        'customer-456',
+        'source-connection-123',
+        'event-456',
+        { id: 'order-123', orderNumber: 'ORD-001', status: 'pending' },
+        [],
+        'ready',
+        new Date('2025-01-01T10:00:00Z'),
+        new Date('2025-01-01T10:00:00Z'),
+        [],
+        null,
+        null,
+        null,
+        new Date('2025-01-01T09:00:00Z'),
+        'PLN',
+        'inclusive',
+        199.99,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        [],
+        null,
+        'abc123hash'
+      );
+      const savedOrm = createOrmEntity();
+      savedOrm.shippingAddressHash = 'abc123hash';
+      transactionalManager.query.mockResolvedValue([savedOrm]);
+      transactionalManager.delete.mockResolvedValue(undefined);
+
+      await repository.upsertWithLineItems(domainEntity, []);
+
+      const [sql, params] = transactionalManager.query.mock.calls[0] as [string, unknown[]];
+      expect(sql).toContain('"shippingAddressHash"');
+      expect(params).toContain('abc123hash');
+
+      ormRepository.findOne.mockResolvedValue(savedOrm);
+      expect((await repository.findById('order-123'))?.shippingAddressHash).toBe('abc123hash');
+    });
+
     it('decodes the round-tripped column back to the three domain states', async () => {
       const withColumn = (stored: string | null): OrderRecordOrmEntity => {
         const entity = createOrmEntity();

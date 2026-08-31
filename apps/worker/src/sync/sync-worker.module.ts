@@ -74,6 +74,7 @@ import { RegulatoryStatusReconcileHandler } from './handlers/regulatory-status-r
 import { OfflineResubmitHandler } from './handlers/offline-resubmit.handler';
 import { PendingRecoveryHandler } from './handlers/pending-recovery.handler';
 import { FulfillmentWorkDispatchHandler } from './handlers/fulfillment-work-dispatch.handler';
+import { FulfillmentWorkRouteHandler } from './handlers/fulfillment-work-route.handler';
 import { PaymentStatusRefreshHandler } from './handlers/payment-status-refresh.handler';
 import { HandlerRegistrationService } from './handlers/handler-registration.service';
 
@@ -154,6 +155,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     PendingRecoveryHandler,
     PaymentStatusRefreshHandler,
     FulfillmentWorkDispatchHandler,
+    FulfillmentWorkRouteHandler,
     HandlerRegistrationService,
   ],
 })

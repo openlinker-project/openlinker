@@ -184,6 +184,26 @@ export interface FulfillmentWorkRepositoryPort {
     transaction?: FulfillmentWorkTransaction
   ): Promise<FulfillmentWork>;
 
+  /**
+   * Run `fn` inside ONE transaction, handing it the handle `create` and
+   * `RoutingDecisionRepositoryPort.terminalise` both accept.
+   *
+   * #2392 gave callers a way to JOIN a transaction but no way to START one, and
+   * predicted this: *"#2395 sits one transition away from wanting the same seam
+   * … Widening it is #2395's call."* This is that widening, and it is what makes
+   * ADR-054 R1 expressible — N work rows and the routing decision's
+   * terminalisation commit together or not at all.
+   *
+   * The handle stays the opaque `FulfillmentWorkTransaction`, never an
+   * `EntityManager`: the domain layer may not name framework code, and an
+   * in-memory fake must stay typable.
+   *
+   * **`fn` throwing rolls the transaction back**, which is the contract the
+   * caller relies on — a partial commit here is unfulfilled or double-committed
+   * physical work.
+   */
+  runInTransaction<T>(fn: (transaction: FulfillmentWorkTransaction) => Promise<T>): Promise<T>;
+
   findById(workId: string): Promise<FulfillmentWork | null>;
   findByOrderId(orderId: string): Promise<FulfillmentWork[]>;
 

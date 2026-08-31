@@ -55,3 +55,6 @@ export const ROUTING_DECISION_REPOSITORY_TOKEN = Symbol('RoutingDecisionReposito
 
 /** Dispatch-relay at-most-once gate (#2401). `FulfillmentRelayGateService` binds here. */
 export const FULFILLMENT_RELAY_GATE_SERVICE_TOKEN = Symbol('IFulfillmentRelayGateService');
+
+/** Routing commit (#2395). `RoutingCommitService` binds here. */
+export const ROUTING_COMMIT_SERVICE_TOKEN = Symbol('IRoutingCommitService');

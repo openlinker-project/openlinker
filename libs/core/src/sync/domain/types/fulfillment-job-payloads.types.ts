@@ -85,3 +85,24 @@ export interface FulfillmentWorkDispatchPayloadV1 {
   readonly orderId: string;
   readonly expectedAssignmentAttempt: number | null;
 }
+
+/**
+ * Route ONE order (#2395, `W3a-6`).
+ *
+ * Carries the order id and nothing else. Everything the router is told — the
+ * lines and the ADR-062 ship-to projection — is resolved by the HANDLER at
+ * execution time from OpenLinker's own store, never from the payload.
+ *
+ * That is not incidental. A payload-carried ship-to would put a buyer's address
+ * into `sync_jobs.payload`, which is durable, operator-visible and outside every
+ * PII control the projection exists to apply; and a payload-carried line list
+ * would be a snapshot that a re-ingestion could silently make stale, so a retry
+ * would route the order the buyer used to have.
+ *
+ * The router connection is `job.connectionId`, following the rule every other
+ * payload in this directory keeps.
+ */
+export interface FulfillmentWorkRoutePayloadV1 {
+  readonly schemaVersion: 1;
+  readonly orderId: string;
+}
