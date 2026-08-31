@@ -206,7 +206,7 @@ export function AnalyticsDataCoveragePanel({
     return (
       <article className="panel panel--dense">
         <div className="panel__header">
-          <h3 className="section-title">Synchronization</h3>
+          <h3 className="section-title">Data coverage</h3>
         </div>
         <LoadingState title="Checking data coverage" message="Looking at currency, tax rates, product matching…" />
       </article>
@@ -217,7 +217,7 @@ export function AnalyticsDataCoveragePanel({
     return (
       <article className="panel panel--dense">
         <div className="panel__header">
-          <h3 className="section-title">Synchronization</h3>
+          <h3 className="section-title">Data coverage</h3>
         </div>
         <ErrorState
           title="Unable to check data coverage"
@@ -250,7 +250,7 @@ export function AnalyticsDataCoveragePanel({
   return (
     <article className="panel panel--dense">
       <div className="panel__header">
-        <h3 className="section-title">Synchronization</h3>
+        <h3 className="section-title">Data coverage</h3>
       </div>
 
       {alertRun && (
