@@ -69,7 +69,10 @@ export function describeSalesDocumentMarketOutcome(
   }
 
   // 'unresolved' — the reason travels on the row itself, resolved against the
-  // same routing-reason vocabulary the order-level surfaces already use.
+  // same routing-reason vocabulary the order-level surfaces already use. The
+  // backend DTO types `reason` as a bare `string` (not the narrow union), so
+  // this cast is an honest acknowledgment of an untyped wire boundary value,
+  // not a bypass of a type we could otherwise have kept.
   const reasonCopy = outcome.reason
     ? (SALES_DOCUMENT_UNRESOLVED_REASON_COPY as Record<string, { short: string }>)[outcome.reason]
     : undefined;
