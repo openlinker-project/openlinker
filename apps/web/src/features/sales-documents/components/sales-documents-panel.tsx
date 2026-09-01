@@ -153,6 +153,12 @@ export function SalesDocumentsPanel(): ReactElement {
         </Alert>
       ) : null}
 
+      <p className="muted-text">
+        What each connection may issue, whether it goes first, and when. Only one connection may
+        go first across ALL of them, whatever it issues — the Primary column is a single choice,
+        not one per row. A connection with nothing set here is not a routing candidate at all.
+      </p>
+
       <div className="data-table__container">
         <table className="data-table" aria-label="Sales-document routing per connection">
           <caption className="sr-only">
@@ -183,6 +189,12 @@ export function SalesDocumentsPanel(): ReactElement {
                     <StatusBadge tone={toStatusTone(row.status)} compact>
                       {row.status}
                     </StatusBadge>
+                    {row.status === 'needs_reauth' ? (
+                      <>
+                        <br />
+                        <span className="text-muted">Cannot issue until reconnected</span>
+                      </>
+                    ) : null}
                   </td>
                   <td>
                     <StatusBadge tone="neutral" compact>
@@ -204,6 +216,12 @@ export function SalesDocumentsPanel(): ReactElement {
                         ))}
                       </Select>
                     </ReadOnlyLock>
+                    {row.documentKind === null ? (
+                      <>
+                        <br />
+                        <span className="text-muted">Not a routing candidate</span>
+                      </>
+                    ) : null}
                   </td>
                   <td>
                     <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
@@ -243,9 +261,8 @@ export function SalesDocumentsPanel(): ReactElement {
         </table>
       </div>
       <p className="muted-text">
-        One radio group across ALL rows, regardless of capability — decision 3a (ADR-041) is
-        singular: invoice XOR receipt, never both. Trigger is greyed out for a non-primary row
-        since the timing choice does not matter until a connection is actually the one issuing.
+        Trigger is greyed out for a non-primary row since the timing choice does not matter until
+        a connection is actually the one issuing.
       </p>
     </div>
   );
