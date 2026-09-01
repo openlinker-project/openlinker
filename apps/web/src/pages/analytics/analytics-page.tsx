@@ -54,7 +54,10 @@ export function AnalyticsPage(): ReactElement {
   // not an implicit fallback that only exists in memory.
   useEffect(() => {
     if (!searchParams.get('from') || !searchParams.get('to')) {
-      setSearchParams({ from, to }, { replace: true });
+      const next = new URLSearchParams(searchParams);
+      next.set('from', from);
+      next.set('to', to);
+      setSearchParams(next, { replace: true });
     }
     // Deliberate `[]`: this project's ESLint config carries no
     // `react-hooks/exhaustive-deps` rule (verified via `pnpm lint` — an
@@ -66,7 +69,14 @@ export function AnalyticsPage(): ReactElement {
   }, []);
 
   function handleApply(nextFrom: string, nextTo: string): void {
-    setSearchParams({ from: nextFrom, to: nextTo });
+    // Merge onto the existing params, never replace wholesale — `from`/`to`
+    // are not the only state this URL carries (ADR-064: `displayCurrency` /
+    // `rateBasis` are URL-encoded "like the existing date-range filter"), and
+    // a literal-object `setSearchParams` call drops every other param.
+    const next = new URLSearchParams(searchParams);
+    next.set('from', nextFrom);
+    next.set('to', nextTo);
+    setSearchParams(next);
   }
 
   const trustQuery = useAnalyticsTrustQuery();
