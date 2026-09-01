@@ -195,13 +195,14 @@ export {
   CreateRefundRecordInput,
 } from './domain/types/refund-record.types';
 
-// Analytics display-currency conversion read model (#2458, ADR-064, pending in PR #2485).
+// Analytics display-currency conversion read model (#2458, ADR-064).
 export {
   DISPLAY_CURRENCY_RATE_BASIS_VALUES,
   MIXED_NATIVE_CURRENCIES_LABEL,
   isDisplayCurrencyRateBasis,
 } from './domain/types/display-currency.types';
 export type {
+  AppliedRate,
   DisplayCurrencyRateBasis,
   NativeCurrencyAmount,
   CurrentRateConversionInput,
