@@ -101,35 +101,50 @@ import { useDemoMode } from '../../system';
 import { useTopProductsQuery } from '../hooks/use-top-products-query';
 import { ChannelPublishAction } from './channel-publish-action';
 import { VariantChannelMatrix } from './variant-channel-matrix';
+import { useSalesAnalyticsQuery } from '../hooks/use-sales-analytics-query';
 import type { SalesAnalyticsFilters } from '../api/sales-analytics.types';
 import type { AnalyticsCoverage } from '../api/analytics-coverage.types';
 import type { TopProductRow, TopProductsSortBy } from '../api/top-products.types';
 import { channelCellFor, deriveChannelColumns, isMissingFrom } from '../lib/top-products-view-model';
-import { isCurrencyRecalculating } from '../lib/display-currency.lib';
+import { isCurrencyRecalculating, resolveReportingCurrencyRate } from '../lib/display-currency.lib';
 import { RecalculatingValue } from './recalculating-value';
 
 const DEFAULT_LIMIT = 20;
 
 /**
  * `GET /analytics/top-products` has no `displayCurrency`/`rateBasis` axis of
- * its own (confirmed: no query param, no response field) — a genuine
- * backend gap. This table stays in the native reporting currency regardless
- * of the picker until the backend is extended: a client-side "derived rate"
- * approach was tried and reverted after it produced a live wrong number
- * (29 000 PLN read as ~20 000 "EUR") — see `display-currency.lib.ts`'s
- * "REJECTED APPROACH" note for why that shortcut is unsound.
+ * its own (confirmed: no query param, no response field, no per-bucket
+ * `appliedRate`) — a genuine backend gap that #2778/#2779 did not close for
+ * this endpoint specifically. What DID change: `row.currency` is the same
+ * system-wide reporting currency `headline.currency` is (ADR-040 — exactly
+ * ONE reporting currency at any time), so the ONE real rate the backend
+ * already resolved for the sales-analytics headline bucket
+ * (`resolveReportingCurrencyRate`, reused verbatim from `ChannelSalesTable`)
+ * is the correct rate here too — this is not a client-side derivation from
+ * two unrelated totals (the earlier REJECTED `convertedRevenue / revenue`
+ * shortcut that produced a live wrong number, 29 000 PLN read as ~20 000
+ * "EUR" — see `display-currency.lib.ts`'s "REJECTED APPROACH" note), it is
+ * the same audited rate reused for a second same-currency figure.
+ * `useSalesAnalyticsQuery(filters)` below reads the byte-identical cache
+ * entry `AnalyticsKpiStrip`/`ChannelSalesTable` already populate — no extra
+ * request.
  *
  * `currencyRecalculating`: same in-flight-run signal `AnalyticsKpiStrip` and
  * `ChannelSalesTable` read from Data Coverage (`isCurrencyRecalculating`) —
  * without it, every row here reads a bare 0.00 for the whole duration of a
  * recalculation run.
  */
-function renderNovCell(row: TopProductRow, currencyRecalculating: boolean): ReactElement {
+function renderNovCell(
+  row: TopProductRow,
+  currencyRecalculating: boolean,
+  convertToDisplay: (amount: number) => number,
+  displayCurrencyFor: (nativeCurrency: string) => string
+): ReactElement {
   if (currencyRecalculating) {
     return <RecalculatingValue />;
   }
   if (row.currency) {
-    return <>{formatAmount(row.netRevenue, row.currency)}</>;
+    return <>{formatAmount(convertToDisplay(row.netRevenue), displayCurrencyFor(row.currency))}</>;
   }
   return <EmptyValue label="No Net sales figure for this product in range" />;
 }
@@ -269,6 +284,19 @@ export function ProductSalesTable({ filters, coverage }: ProductSalesTableProps)
   const intFormat = useNumberFormat();
   const demoMode = useDemoMode();
 
+  // Shares the exact cache entry AnalyticsKpiStrip/ChannelSalesTable read
+  // for the same `filters` — no second network request.
+  const salesQuery = useSalesAnalyticsQuery(filters);
+  const headline = salesQuery.data?.headline;
+  const gmvConversion = headline?.displayCurrencyConversion;
+  const reportingRate = resolveReportingCurrencyRate(gmvConversion, headline?.currency ?? null);
+  function convertToDisplay(amount: number): number {
+    return reportingRate ? amount * Number(reportingRate.rate) : amount;
+  }
+  function displayCurrencyFor(nativeCurrency: string): string {
+    return reportingRate && gmvConversion ? gmvConversion.displayCurrency : nativeCurrency;
+  }
+
   const items = query.data?.items ?? [];
   const productIds = items.map((item) => item.productId);
   const productQueries = useProductsBatchQuery(productIds, { enabled: productIds.length > 0 });
@@ -317,7 +345,7 @@ export function ProductSalesTable({ filters, coverage }: ProductSalesTableProps)
       id: 'revenue',
       header: sortBy === 'revenue' ? 'Net sales ↓' : 'Net sales',
       align: 'right',
-      cell: (row) => renderNovCell(row, currencyRecalculating),
+      cell: (row) => renderNovCell(row, currencyRecalculating, convertToDisplay, displayCurrencyFor),
     },
     {
       id: 'units',
@@ -384,7 +412,7 @@ export function ProductSalesTable({ filters, coverage }: ProductSalesTableProps)
           subtitle: (row) => row.sku ?? undefined,
           summary: (row) => (
             <>
-              {renderNovCell(row, currencyRecalculating)}
+              {renderNovCell(row, currencyRecalculating, convertToDisplay, displayCurrencyFor)}
               {' · '}
               {intFormat.format(row.units)} units
             </>
