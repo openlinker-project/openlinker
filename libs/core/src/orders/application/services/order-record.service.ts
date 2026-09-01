@@ -30,6 +30,7 @@ import type {
   PaginatedOrderRecords,
 } from '../../domain/types/order-record.types';
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
+import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import { IAutomationTriggerEmissionService } from '@openlinker/core/automation';
 import { AUTOMATION_TRIGGER_EMISSION_SERVICE_TOKEN } from '@openlinker/core/automation';
@@ -39,7 +40,7 @@ import type {
   SalesAnalyticsFilters,
   SalesAndChannelAnalytics,
 } from '../../domain/types/order-sales-analytics.types';
-import { getPiiConfig } from '@openlinker/shared/config';
+import { getPiiConfig, hashAddress, normalizeAddress } from '@openlinker/shared/config';
 import { Logger } from '@openlinker/shared/logging';
 import {
   REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN,
@@ -207,6 +208,28 @@ export class OrderRecordService implements IOrderRecordService {
       ? encodeBuyerTaxIdColumn(readBuyerTaxId(order))
       : null;
 
+    // Shipping-address hash (#2395) - stamped HERE, at ingestion, because this
+    // is the only place the un-redacted address is still in hand.
+    //
+    // It must NOT be derived later by hashing the persisted snapshot: under
+    // `OL_STORE_PII=false` that snapshot has already been through
+    // `redactAddress`, so hashing it yields ONE hash per country, shared by
+    // every order in the install - a plausible 64-hex string that groups
+    // everything while looking correct. And `customer_address_projections` are
+    // keyed by CUSTOMER, not by order, so they cannot answer "this order's
+    // address" either.
+    //
+    // Deliberately NOT PII-gated, unlike its `buyerTaxId` neighbour directly
+    // above - the inversion is subtle enough to state: this is a one-way hash
+    // carrying no recoverable address, and it is consumed by `RoutingShipTo`'s
+    // DEGRADED arm, i.e. by hash-only deployments specifically. Gating it would
+    // null the value exactly on the installs the degraded arm exists to serve.
+    //
+    // `getPiiConfig()` is already called at the top of this method and throws
+    // when `OL_PII_HASH_SALT` is unset regardless of the flag, so `hashAddress`
+    // introduces no new failure mode on this path.
+    const shippingAddressHash = this.deriveShippingAddressHash(order);
+
     const orderRecord = new OrderRecord(
       order.id,
       order.customerId || null,
@@ -252,7 +275,8 @@ export class OrderRecordService implements IOrderRecordService {
       // their own writers, never set on the ingestion path.
       null,
       [],
-      buyerTaxId
+      buyerTaxId,
+      shippingAddressHash
     );
 
     // #1985: persist the order record AND its order_line_items rows in one
@@ -455,6 +479,31 @@ export class OrderRecordService implements IOrderRecordService {
     }
     const parsed = new Date(to);
     return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  /**
+   * Hash the order's shipping address (#2395) for `RoutingShipTo`'s degraded
+   * arm. Field mapping mirrors `OrderCustomerProjectionUpdaterService`
+   * verbatim, so the two hashes of one address agree.
+   *
+   * A blank or whitespace-only result is treated as `null`: a blank string is
+   * itself a shared grouping key, i.e. the exact failure this column exists to
+   * avoid, so it must never be forwarded as if it were a hash.
+   */
+  private deriveShippingAddressHash(order: Order): string | null {
+    if (!order.shippingAddress) {
+      return null;
+    }
+    const hash = hashAddress(
+      normalizeAddress({
+        address1: order.shippingAddress.address1,
+        address2: order.shippingAddress.address2,
+        city: order.shippingAddress.city,
+        postcode: order.shippingAddress.postalCode,
+        countryIso2: order.shippingAddress.country,
+      })
+    );
+    return hash.trim() === '' ? null : hash;
   }
 
   /**
@@ -663,6 +712,18 @@ export class OrderRecordService implements IOrderRecordService {
     block: SalesDocumentBlock | null
   ): Promise<void> {
     await this.repository.updateSalesDocumentBlock(internalOrderId, block);
+  }
+
+  /**
+   * #2396 — the write half of "gate reports, caller persists" for fulfilment
+   * routing. Thin by design: the decision belongs to the intercept, this only
+   * records it.
+   */
+  async markFulfillmentBlock(
+    internalOrderId: string,
+    block: FulfillmentBlock | null
+  ): Promise<void> {
+    await this.repository.updateFulfillmentBlock(internalOrderId, block);
   }
 
   /**

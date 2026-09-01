@@ -219,6 +219,8 @@ export const RETRY_REFUSAL_REASON_VALUES = [
   'not-failed',
   'rule-deleted',
   'subject-unsupported',
+  'superseded',
+  'retry-exhausted',
 ] as const;
 export type RetryRefusalReason = (typeof RETRY_REFUSAL_REASON_VALUES)[number];
 
@@ -258,6 +260,7 @@ export interface AutomationRun {
   dismissedByUserId: string | null;
   /** The failed run this one retries, or null for an ordinary firing. */
   retryOfRunId: string | null;
+  supersededByRetry: boolean;
 }
 
 // ── Dry run (#2366, spec §5.6a) ──────────────────────────────────────────────

@@ -20,6 +20,7 @@ import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { CustomersModule } from '@openlinker/core/customers';
 import { ReturnsModule } from '@openlinker/core/returns';
 import { AutomationModule } from '@openlinker/core/automation';
+import { FulfillmentModule } from '@openlinker/core/fulfillment';
 import { ContentModule } from '@openlinker/core/content';
 import { InvoicingModule } from '@openlinker/core/invoicing';
 import { FiscalizationModule } from '@openlinker/core/fiscalization';
@@ -50,6 +51,7 @@ import { MailerApiModule } from './mailer/mailer.module';
 import { AnalyticsApiModule } from './analytics/analytics.module';
 import { AnalyticsTrustApiModule } from './analytics-trust/analytics-trust.module';
 import { CatalogTrustApiModule } from './catalog-trust/catalog-trust.module';
+import { FulfillmentApiModule } from './fulfillment/fulfillment-api.module';
 import { FulfillmentAuthorityApiModule } from './fulfillment-authority/fulfillment-authority.module';
 import { ReturnActionsApiModule } from './returns/return-actions.module';
 import { ReturnsReadApiModule } from './returns/returns-read.module';
@@ -81,6 +83,11 @@ import { RequestPriorityModule } from './http/request-priority.module';
     // and so the two writer-less tables (#2360's firings, #2385's runs) are
     // built by the integration harness rather than only by the migration.
     AutomationModule,
+    // #2392: registers the three fulfillment_* ORM entities + the work
+    // repository. No API surface yet (#2406) — imported so the provider graph
+    // is proven at boot, and so the tables are built by the integration harness
+    // (autoLoadEntities + synchronize) rather than only by the migration.
+    FulfillmentModule,
     CustomersModule, // Import CustomersModule for customer identity resolution and projections
     IntegrationsModule,
     WebhooksModule,
@@ -103,6 +110,7 @@ import { RequestPriorityModule } from './http/request-priority.module';
     AnalyticsApiModule, // Admin REST surface for PostHog analytics settings (#1685)
     AnalyticsTrustApiModule, // GET /analytics/trust — data-trust snapshot for the /analytics page (#1982)
     CatalogTrustApiModule, // GET /connections/:id/catalog-trust — master rung + reconcile recency (#2258)
+    FulfillmentApiModule, // /fulfillment/works — operator worklist, supportedActions + optimistic token (#2406)
     FulfillmentAuthorityApiModule, // /fulfillment-authority — who decides what + presets (#2353)
     ReturnActionsApiModule, // Every return WRITE: decline (#2333) plus the custody,
     // money and correction-proposal routes (#2376)

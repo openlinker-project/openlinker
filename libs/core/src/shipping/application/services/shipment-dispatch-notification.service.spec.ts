@@ -56,6 +56,7 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     overrides.waybillRelayedAt ?? null,
     overrides.direction ?? 'outbound',
     overrides.reservationConsumedAt ?? null,
+    overrides.fulfillmentWorkId ?? null,
   );
 }
 
@@ -93,6 +94,7 @@ describe('ShipmentDispatchNotificationService', () => {
       releaseWaybillRelay: jest.fn(),
       listDispatchedAwaitingReservationConsume: jest.fn(),
       claimReservationConsume: jest.fn(),
+      claimFulfillmentWorkLink: jest.fn(),
     };
     orderRecords = {
       persistOrder: jest.fn(),
@@ -106,6 +108,7 @@ describe('ShipmentDispatchNotificationService', () => {
       getFailedSyncValueSummary: jest.fn(),
       markCancelled: jest.fn(),
       markSalesDocumentBlock: jest.fn(),
+      markFulfillmentBlock: jest.fn(),
       markPacked: jest.fn(),
       clearPacked: jest.fn(),
       recordAmendment: jest.fn(),

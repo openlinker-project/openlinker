@@ -22,6 +22,7 @@ import type {
 import type { OrderSlaSummary } from '../types/order-sla.types';
 import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
 import type { SyncAttempt } from '../types/order-sync.types';
+import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import type {
   AuthorityAttentionOutcome,
@@ -315,6 +316,21 @@ export interface OrderRecordRepositoryPort {
   updateSalesDocumentBlock(
     internalOrderId: string,
     block: SalesDocumentBlock | null
+  ): Promise<void>;
+
+  /**
+   * Persist why the fulfilment intercept HELD this order (#2396), or clear it.
+   *
+   * Level-triggered like {@link updateSalesDocumentBlock}: the intercept
+   * re-decides on every transition and writes the answer INCLUDING `null`,
+   * which is the only thing that clears a stale reason. Outside the ingestion
+   * write set, so a re-poll cannot reset it.
+   *
+   * No-op (no throw) when the order row doesn't exist.
+   */
+  updateFulfillmentBlock(
+    internalOrderId: string,
+    block: FulfillmentBlock | null
   ): Promise<void>;
 
   /**

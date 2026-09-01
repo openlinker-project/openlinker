@@ -16,6 +16,7 @@ import { OrderFxStampService } from './application/services/order-fx-stamp.servi
 import { OrderFxReadService } from './application/services/order-fx-read.service';
 import { OrderDestinationRetryService } from './application/services/order-destination-retry.service';
 import { OrderProvisioningResumeService } from './application/services/order-provisioning-resume.service';
+import { FulfillmentDispatchRelayService } from './application/services/fulfillment-dispatch-relay.service';
 import { OrderLifecycleRelayService } from './application/services/order-lifecycle-relay.service';
 import { OrderRecordRepository } from './infrastructure/persistence/repositories/order-record.repository';
 import { OrderLineItemRepository } from './infrastructure/persistence/repositories/order-line-item.repository';
@@ -40,6 +41,7 @@ import {
   ORDER_FX_READ_SERVICE_TOKEN,
   ORDER_LINE_ITEM_REPOSITORY_TOKEN,
   TAX_RATE_BACKFILL_SERVICE_TOKEN,
+  FULFILLMENT_DISPATCH_RELAY_SERVICE_TOKEN,
 } from './orders.tokens';
 import { OrderHoldsModule } from './order-holds.module';
 import { IntegrationsModule } from '@openlinker/core/integrations';
@@ -54,6 +56,7 @@ import { CustomersModule } from '@openlinker/core/customers';
 import { AutomationModule } from '@openlinker/core/automation';
 import { InvoicingModule } from '@openlinker/core/invoicing';
 import { CurrencyModule } from '@openlinker/core/currency';
+import { FulfillmentModule } from '@openlinker/core/fulfillment';
 
 // Re-export tokens for convenience
 export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
@@ -91,6 +94,13 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     // The edge is directional: importing the leaf here does not give the leaf
     // any of these dependencies.
     OrderHoldsModule,
+    // One-way edge to a ZERO-SIBLING-EDGE LEAF (#2401): FulfillmentDispatchRelayService
+    // injects FULFILLMENT_RELAY_GATE_SERVICE_TOKEN to take the work's at-most-once
+    // dispatch-relay claim. `fulfillment` imports NO sibling core context at all
+    // (barrel-purity.spec.ts pins it per leaf), so no cycle is possible — and the
+    // direction is forced: firing the relay from `fulfillment` would mean importing
+    // `@openlinker/core/orders` there, which two guards independently forbid.
+    FulfillmentModule,
   ],
   providers: [
     // Provide classes directly first
@@ -102,6 +112,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     OrderDestinationRetryService,
     OrderProvisioningResumeService,
     OrderLifecycleRelayService,
+    FulfillmentDispatchRelayService,
     OrderRecordRepository,
     OrderFxReadService,
     OrderRefundService,
@@ -150,6 +161,10 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
       useExisting: OrderLifecycleRelayService,
     },
     {
+      provide: FULFILLMENT_DISPATCH_RELAY_SERVICE_TOKEN,
+      useExisting: FulfillmentDispatchRelayService,
+    },
+    {
       provide: ORDER_REFUND_RECORD_REPOSITORY_TOKEN,
       useExisting: RefundRecordRepository,
     },
@@ -183,6 +198,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
     ORDER_PROVISIONING_RESUME_SERVICE_TOKEN,
     ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
+    FULFILLMENT_DISPATCH_RELAY_SERVICE_TOKEN,
     ORDER_REFUND_SERVICE_TOKEN,
     ORDER_FX_READ_SERVICE_TOKEN,
     // Exported so the worker's `orders.taxRate.backfill` handler can inject

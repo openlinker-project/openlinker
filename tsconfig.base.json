@@ -53,6 +53,8 @@
       "@openlinker/integrations-subiekt/*": ["libs/integrations/subiekt/src/*"],
       "@openlinker/integrations-eparagony": ["libs/integrations/eparagony/src/index.ts"],
       "@openlinker/integrations-eparagony/*": ["libs/integrations/eparagony/src/*"],
+      "@openlinker/oms": ["libs/oms/src/index.ts"],
+      "@openlinker/oms/*": ["libs/oms/src/*"],
       "@openlinker/plugin-sdk": ["libs/plugin-sdk/src/index.ts"],
       "@openlinker/plugin-sdk/*": ["libs/plugin-sdk/src/*"],
       "@openlinker/test-kit": ["libs/test-kit/src/index.ts"],

@@ -649,6 +649,7 @@ Defaults (FE-002):
 | KPI card | auto, ~96 px | Label + value + hint. Sparkline floats top-right. |
 | Analytics KPI card (`.status-strip--analytics .kpi-card`, #1990) | auto, ~152 px | Documented carve-out — the six-card sales strip stacks a headline+metric+delta block on top of one-or-more qualifier rows pinned to the card floor by a hairline, provably taller than the ~96 px default. See the carve-out note below. |
 | Status banner | auto, ~64 px | Icon + title + message + actions. |
+| Fulfilment worklist row (`.fulfilment-worklist-row`, #2410) | auto, ~52 px | Documented carve-out — a two-line identity stack (task id + order id) beside status, a line counter and the server-supplied action strip. See the carve-out note below. |
 | Analytics trust-header row (`.trust-header__row`) | auto, ~52 px | `var(--space-3) var(--space-4)` padding. Per-connection freshness list, denser than a status banner because it repeats per row. Collapses to one column, auto height on mobile. |
 | Who-decides question row (`.who-decides-row`, #2354) | auto, ~76 px | Documented **non-`DataTable`** carve-out — question + answer + why-line + optional extras + badge. See the carve-out below. |
 
@@ -662,6 +663,25 @@ Two mechanical consequences worth knowing before copying the pattern:
 - Only the unbounded field gets a hard character cap. Capping *every* meta field ellipses a routine 20-char SKU on a wide desktop; `flex: 0 1 auto` + `min-width: 0` already truncates each field under real pressure.
 
 **Documented carve-out — the analytics KPI card (#1990).** The six-card sales KPI strip (Revenue, Orders, Order value, Units, Returns & refunds, Cancellations) carries a richer anatomy than the default KPI card: a headline+metric+delta stack plus one or more qualifier rows, each qualifier separated by a hairline (`.kpi-card__qualifier`, `border-top` + `padding-top: var(--space-3)`) and pinned to the card floor via `margin-top: auto`. That composition doesn't fit in ~96 px, so `.status-strip--analytics .kpi-card` sets `min-height: 9.5rem` (152 px) — every line is a fact (a definition, a value, a comparison basis), nothing decorative padded in to hit a number. The strip also runs a 3-column desktop grid (`.status-strip.status-strip--analytics` at ≥1024px) rather than the general dashboard `.status-strip`'s 4-column, because 6 cards divide evenly into 2 rows of 3 rather than an uneven 4-then-2 — see the parity matrix entry below (2×3 desktop, not the generic KPI strip's 1×4). This carve-out is for the analytics KPI card specifically; a new strip wanting either the taller card or the 3-column grid needs its own entry here.
+
+**Documented carve-out — the fulfilment worklist row (#2410).** `/fulfillment` groups its rows into
+lanes (location × delivery method) rather than rendering one flat table, so it is **not** a `DataTable`
+at all — a `DataTable` renders one ungrouped body, and the lane heading is the thing an operator scans
+to. The row is a four-column CSS grid: a two-line identity stack (task id over order id), the status
+group (hold badge or orchestration status, plus the state · handshake line), a line counter, and the
+action strip built from `supportedActions`. Two lines of identity is what makes it ~52 px rather than
+the 36 px table default — the same reason the identity carve-outs above take their height from content.
+
+Mechanics worth knowing before copying it:
+
+- **Both surfaces render, and the breakpoint is CSS.** `.fulfilment-worklist__desktop` and
+  `.fulfilment-worklist__cards` are both in the DOM; a `max-width` / `min-width` pair hides one. That is
+  the `DataTable` `cardView` mechanic reproduced by hand (the lane grouping is what rules `DataTable`
+  out), and it is what lets a test assert the two surfaces show the same set of tasks. Each `display:
+  none` MUST stay inside its own `@media` block — hoisted out, the desktop grid renders on a phone or
+  both surfaces render at once — and a test asserts exactly that by brace-counting the media blocks.
+- **No leading control, and no frozen pane**, so neither the `vertical-align` heuristic nor the
+  frozen-pane narrowing above applies here.
 
 **Documented carve-out — the shared identity row (#2086).** The five lists that answer *which order is this* and *which connection did it come from* render those facts through two shared cells — `OrderIdentityCell` (24 px `ProductThumbnail` + order number/id line + item-name/`+N` line) and `ConnectionCell` (adornment + name line + shortened-id/status line). Either one makes the row two-line, so a table adopting them takes its height from content, same as the listings row above and for the same reason: every line is a fact an operator scans for.
 
@@ -866,6 +886,28 @@ Recommended status vocabulary:
 - conflicted
 
 Status should be consistent across orders, products, inventory, integrations, jobs, and automations.
+
+### An unrecognised backend value (#2678)
+
+A closed union on the frontend is a **claim about the wire, not a guarantee about
+it** — most list payloads are not schema-parsed, so a rolling deploy, a stale
+cached bundle, or a replayed cached response can all deliver a value this build
+does not know. Three rules:
+
+1. **Never render an unrecognised value as a known one.** Coalescing it into a
+   real member (`?? 'not-shipped'`) states something false about the operator's
+   own data. A quiet lie is worse than the loud failure it replaces.
+2. **Never drop it silently.** Rendering nothing reads as a row that has no such
+   fact, which is a different claim again.
+3. **Surface it, neutrally.** A `neutral` `StatusBadge` reading `Unknown ({raw})`
+   — never a status tone, which would assert whether the state is good or bad.
+   Truncate the raw value so one row cannot break the ~17-character pill budget,
+   and where the value is blank render bare `Unknown`: `Unknown ()` claims to
+   quote the offending value and quotes nothing.
+
+Absence is a separate question and keeps whatever contract the backend documents
+(on the orders list, an absent `fulfillmentState` genuinely means `not-shipped`).
+Distinguish the two — a guard that conflates them reintroduces rule 1.
 
 ### Order-row signal placement (#2081)
 

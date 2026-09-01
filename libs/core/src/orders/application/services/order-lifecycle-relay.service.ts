@@ -15,6 +15,15 @@
  * destinations and source marketplaces (e.g. Allegro) with no platform-type
  * branching.
  *
+ * **A router-filtered destination receives no relay, and that is deliberate**
+ * (#2401, DESIGN §5.5). Under a fulfilment router the `OrderSyncService` fan-out
+ * is filtered by `destinationConnectionIds`, and a filtered-out destination gets
+ * no `syncStatus[]` entry — so it is never an order participant and this service
+ * resolves no `externalOrderId` for it. Nothing load-bearing depends on that
+ * entry for routed orders: their `fulfillmentState` is fed by work-progress-derived
+ * shipments instead. Recorded here because the next reader will otherwise file it
+ * as a missing relay.
+ *
  * @module libs/core/src/orders/application/services
  * @implements {IOrderLifecycleRelayService}
  */
@@ -63,7 +72,15 @@ export class OrderLifecycleRelayService implements IOrderLifecycleRelayService {
       CORE_ENTITY_TYPE.Order,
       input.internalOrderId
     );
-    const targets = externalIds.filter((e) => e.connectionId !== input.originConnectionId);
+    // A Set, not a two-term predicate, so `author === origin` collapses to ONE
+    // exclusion instead of being filtered twice (#2401). An absent
+    // `authoredByConnectionId` leaves this exactly the single-term filter it has
+    // always been.
+    const excluded = new Set<string>([input.originConnectionId]);
+    if (input.authoredByConnectionId) {
+      excluded.add(input.authoredByConnectionId);
+    }
+    const targets = externalIds.filter((e) => !excluded.has(e.connectionId));
 
     if (targets.length === 0) {
       this.logger.debug(

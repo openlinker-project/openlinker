@@ -9,6 +9,7 @@
  * @module libs/core/src/inventory/application/services
  */
 import type { InventoryLocation } from '../../domain/entities/inventory-location.entity';
+import type { LocationBootstrapResult } from '../../domain/types/location-bootstrap.types';
 import type {
   CreateInventoryLocationInput,
   UpdateInventoryLocationInput,
@@ -58,4 +59,32 @@ export interface ILocationService {
    * @throws LocationNotFoundException when no location carries that id
    */
   deleteLocation(id: string): Promise<void>;
+
+  /**
+   * How many locations are `active` right now.
+   *
+   * Exists for the fulfilment-routing enablement precondition (#2407): routing
+   * against zero locations makes every line unfulfillable, so enabling it is
+   * refused until at least one active location exists.
+   *
+   * **The `active` filter is load-bearing and is coupled to what
+   * `bootstrapDefaultLocations` mints.** An `inactive` location cannot receive
+   * work, so counting it would let the guard pass on a topology that routes
+   * nothing — and if a future bootstrap spec minted `'inactive'`, the bootstrap
+   * would be unable to satisfy the very guard it exists to unblock.
+   */
+  countActiveLocations(): Promise<number>;
+
+  /**
+   * Mint the first-run locations an operator was offered, idempotently.
+   *
+   * **Idempotent by unique code, not by a read-then-write.** Each spec is
+   * attempted and `DuplicateLocationCodeError` is swallowed into
+   * `existingCodes`; a `count === 0` check followed by a create would be a race
+   * between two operators clicking at once. Same insert-then-recover shape as
+   * `IdentifierMappingRepository.insertMapping`. Re-running creates nothing.
+   *
+   * Any other error propagates — only the duplicate is expected.
+   */
+  bootstrapDefaultLocations(): Promise<LocationBootstrapResult>;
 }

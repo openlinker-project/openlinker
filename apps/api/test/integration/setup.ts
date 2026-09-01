@@ -98,6 +98,13 @@ const harness = createIntegrationTestHarness({
     // so truncate explicitly or a location leaks into the next case and collides
     // on UQ_inventory_locations_code.
     'inventory_locations',
+    // oms_routing_rules (#2408) — the OL router's ordered ruleset. Like
+    // inventory_locations above, it carries NO ORM foreign key to `connections`
+    // (the plugin owns its own table and the operator's ruleset outlives any one
+    // integration), so the harness's CASCADE-closure walk cannot reach it. Left
+    // unlisted, a rule leaks into the next case and collides on
+    // UQ_oms_routing_rules_live_name.
+    'oms_routing_rules',
     'order_records',
     // order_line_items (#1985) — the per-line analytics projection. No
     // ORM/migration FK to order_records (plain indexed text column, same
@@ -226,6 +233,23 @@ const harness = createIntegrationTestHarness({
     // — without this a mapping written by one case is still there for the
     // next, and the MCP write-refusal assertion (#1488) counts rows.
     'category_mappings',
+    // fulfillment_work_lines / fulfillment_holds / fulfillment_works (#2392) —
+    // the OL-owned work aggregate. Its two FKs (lines -> works, holds -> works,
+    // both ON DELETE CASCADE) live in the MIGRATION rather than the ORM
+    // decorators, so the synchronize-built test schema has nothing to cascade
+    // from and the closure walk cannot reach these tables. Children first.
+    'fulfillment_work_lines',
+    'fulfillment_holds',
+    // fulfillment_progress_claims (#2400) — the at-most-once progress gate. Its
+    // FK to fulfillment_works is migration-only too, so it is likewise
+    // unreachable by the closure walk. Before `fulfillment_works`, being a child.
+    'fulfillment_progress_claims',
+    'fulfillment_works',
+    // routing_decisions (#2394) — the routing INTENT row. Carries no FK at all
+    // (both its references are cross-aggregate by value), so nothing cascades
+    // into it and it must be listed explicitly or a live decision written by
+    // one case refuses the next case's claim on the same order id.
+    'routing_decisions',
     // fulfillment_routing_rules is connection-scoped config (#832). Listed
     // explicitly because — like connection_carrier_mappings — its FKs live in
     // the migration, not the ORM decorators, so the synchronize-built test

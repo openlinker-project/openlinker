@@ -49,6 +49,8 @@ function shipment(id: string, orderId: string, status: ShipmentStatus = 'dispatc
     // service can ever be handed.
     'outbound',
     null,
+    // #2402 fulfillmentWorkId — no work linkage in this fixture.
+    null,
   );
 }
 
@@ -61,6 +63,7 @@ describe('ShipmentReservationConsumeService', () => {
     shipments = {
       listDispatchedAwaitingReservationConsume: jest.fn().mockResolvedValue([]),
       claimReservationConsume: jest.fn().mockResolvedValue(true),
+      claimFulfillmentWorkLink: jest.fn().mockResolvedValue(true),
     } as unknown as jest.Mocked<ShipmentRepositoryPort>;
 
     reservations = {

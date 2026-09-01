@@ -43,6 +43,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import type { OrderSourcePort, ReturnSourceReader } from '@openlinker/core/orders';
+import { ReturnSourceNotReadableError } from '../../domain/exceptions/return-source-not-readable.error';
+
 import { isReturnSourceReader } from '@openlinker/core/orders';
 import {
   ISyncCursorsService,
@@ -175,9 +177,10 @@ export class ReturnIngestionService implements IReturnIngestionService {
   ): Promise<ReturnSyncResult> {
     const reader = await this.resolveReader(connectionId);
     if (!reader) {
-      throw new Error(
-        `Connection ${connectionId} does not support reading returns from its source`
-      );
+      // Named, so the worker handler can answer a TERMINAL `business_failure`
+      // (ADR-007) instead of retrying a structural condition ten times. Newly
+      // reachable from the inbound `'return'` domain as of #2400.
+      throw new ReturnSourceNotReadableError(connectionId, externalReturnId);
     }
 
     const observation = await reader.getReturn({ externalReturnId });

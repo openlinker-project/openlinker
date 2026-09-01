@@ -72,6 +72,10 @@ import {
   type FulfillmentAuthorityApi,
 } from '../../features/fulfillment-authority/api/who-decides.api';
 import {
+  createFulfillmentApi,
+  type FulfillmentApi,
+} from '../../features/fulfillment/api/fulfillment.api';
+import {
   createPosthogSettingsApi,
   type PosthogSettingsApi,
 } from '../../features/posthog-settings/api/posthog-settings.api';
@@ -195,6 +199,7 @@ export interface CoreApiClient {
   returns: ReturnsApi;
   salesDocumentRules: SalesDocumentRulesApi;
   fulfillmentAuthority: FulfillmentAuthorityApi;
+  fulfillment: FulfillmentApi;
   shipments: ShipmentsApi;
   syncJobs: SyncJobsApi;
   system: SystemApi;
@@ -418,6 +423,7 @@ export function createApiClient({
     salesDocumentRules: createSalesDocumentRulesApi(request),
     automations: createAutomationsApi(request),
     fulfillmentAuthority: createFulfillmentAuthorityApi(request),
+    fulfillment: createFulfillmentApi(request),
     returns: createReturnsApi(request),
     shipments: createShipmentsApi(request, requestBlob),
     syncJobs: createSyncJobsApi(request),

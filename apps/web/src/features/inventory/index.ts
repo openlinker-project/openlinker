@@ -23,6 +23,18 @@ export type {
   InventoryPagination,
 } from './api/inventory.types';
 
+export type {
+  InventoryLocationSummary,
+  LocationBootstrapResult,
+  PaginatedInventoryLocations,
+} from './api/inventory-locations.types';
+
+// #2407 — consumed by the connection detail page's routing-readiness panel,
+// which lives in `features/connections` and so must reach these through the
+// barrel rather than by a deep path.
+export { useActiveLocationCountQuery } from './hooks/use-active-location-count-query';
+export { useBootstrapLocationsMutation } from './hooks/use-bootstrap-locations-mutation';
+
 export { useInventoryAvailabilityBatchQuery } from './hooks/use-inventory-availability-batch-query';
 // Query-key factory re-exported so the bulk wizard's chunked per-variant
 // availability fan-out (#1741) shares cache entries with the batch hook above.

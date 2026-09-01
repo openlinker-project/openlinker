@@ -207,6 +207,12 @@ export {
   OrderIngestionOptions,
   OrderIngestionResult,
 } from './application/interfaces/order-ingestion.service.interface';
+
+// #2396 — the SINGLE fulfilment-router resolution seam, shared by the ingestion
+// intercept and the `fulfillment.work.route` handler. Exported so the worker
+// handler consumes the same body; a second copy is a double shipment the day
+// #2408 wires a real router into only one of them.
+export { resolveFulfillmentRouter } from './application/services/fulfillment-router-resolution';
 export { IOrderRecordService } from './application/interfaces/order-record.service.interface';
 export { OrderRecordService } from './application/services/order-record.service';
 export type { IOrderFxStampService } from './application/interfaces/order-fx-stamp.service.interface';
@@ -232,6 +238,13 @@ export type {
   OrderLifecycleRelayResult,
   OrderLifecycleRelayTargetResult,
 } from './application/interfaces/order-lifecycle-relay.service.interface';
+// #2401: the `dispatch` fulfilment-progress intent consumer.
+export type {
+  FulfillmentDispatchIntent,
+  FulfillmentDispatchRelayOutcome,
+  IFulfillmentDispatchRelayService,
+} from './application/interfaces/fulfillment-dispatch-relay.service.interface';
+export { FULFILLMENT_DISPATCH_RELAY_ORIGIN } from './application/services/fulfillment-dispatch-relay.service';
 export type { IOrderRefundService } from './application/interfaces/order-refund.service.interface';
 export { OrderRefundService } from './application/services/order-refund.service';
 export type {

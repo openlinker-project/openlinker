@@ -103,6 +103,24 @@ it must match the `features/automation` scan root in `scripts/check-ui-vocabular
 singular/plural drift between the two makes that gate skip the folder it was written to cover. The
 composer (#2365) and the dry run + fired log (#2366) consume the barrel.
 
+**Cross-feature consumption example (#2411):** `fulfillment` — the work-grain
+fulfilment-task panel on the order-detail page — imports `HoldReasonValues`,
+`HOLD_REASON_COPY` and `holdReasonLabel` from the `orders` barrel rather than
+mirroring them. Order holds and work holds are two grains of ONE vocabulary
+(`HoldReason`, `@openlinker/core/order-lifecycle`), already pinned against core
+by `scripts/check-hold-reason-mirror.mjs`; a second frontend copy would need a
+second guard script for one union. The `fulfillment` slug is in both
+`no-restricted-imports` pattern groups for all five canonical subdirectories,
+and the folder is a scan root of `scripts/check-ui-vocabulary.mjs` — the
+epic-#2412 UI naming rule (the internal aggregate name never reaches operator
+copy; it is a **fulfilment task**) is binding on it. Note the gate reads string
+literals only from a file whose name ends `*.copy.ts`, and otherwise only JSX
+text and a whitelist of JSX attributes in a `.tsx`. So this slice keeps every
+operator sentence — action labels, hints, status words AND the dialog's
+titles/descriptions — in `lib/fulfillment-task.copy.ts`. A copy table named
+`…-copy.ts`, or left as a `Record` inside a component, is scanned by nothing:
+adding the scan root does not by itself make the copy covered.
+
 **Cross-feature consumption example (#2150):** `invoicing` type-imports `OrderRecord` from the `orders` feature's public barrel (`import type { OrderRecord } from '../../orders';`) in `order-invoice-panel.tsx` and `sales-document-block-copy.ts`, and `shipments` imports `ordersQueryKeys` the same way in `use-notify-dispatched-mutation.ts`. `orders` is now the most cross-imported feature barrel in the app — five call sites (Orders, Shipments, Invoices, Products, Customers) render its `OrderIdentityCell` — so the slug was added to both `no-restricted-imports` pattern groups (`features/**` and `plugins/**`) in `.eslintrc.js`, for every canonical subdirectory (`orders/api`, `orders/hooks`, `orders/components`, `orders/lib`, `orders/types`).
 
 ## Routing Conventions

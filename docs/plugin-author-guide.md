@@ -69,7 +69,7 @@ port interfaces in `libs/core/src/<context>/domain/ports/`. An adapter
 implements one or more of them.
 
 The well-known set is `CoreCapabilityValues`, declared verbatim at
-[`libs/core/src/integrations/domain/types/adapter.types.ts:23-52`](../libs/core/src/integrations/domain/types/adapter.types.ts#L23-L52):
+[`libs/core/src/integrations/domain/types/adapter.types.ts:38-77`](../libs/core/src/integrations/domain/types/adapter.types.ts#L38-L77):
 
 ```typescript
 export const CoreCapabilityValues = [
@@ -101,6 +101,16 @@ export const CoreCapabilityValues = [
   // `ReturnsAuthority` yet, so A5 cannot resolve to a non-OpenLinker holder until an
   // adapter declares it.
   'ReturnsAuthority',
+  // Availability read authority (ADR-052 A1 / #2403): who answers "how many can
+  // I sell?" for a connection. `AUTHORITY_KIND_DESCRIPTORS.availability.capability`
+  // names this string as A1's gate, so it is resolved by narrowing a dispatched
+  // adapter — a dispatch name, not an advertised-without-dispatch one. No shipped
+  // manifest advertises it yet, so it stays unassignable until one does.
+  'AvailabilityAuthority',
+  // Fulfilment execution authority (ADR-052 A3 / #2403): who holds a work object
+  // and is allowed to act on it. `AUTHORITY_KIND_DESCRIPTORS['fulfillment-execution']
+  // .capability` names this string as A3's gate. ADVERTISED since #2409 (openlinker.oms.v1).
+  'FulfillmentExecutor',
 ] as const;
 ```
 

@@ -240,4 +240,125 @@ describe('InboundRoutingPolicyService', () => {
     expect(outcome.status).toBe('ungated');
     expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
   });
+
+  // ---- #2400: the two new inbound domains -------------------------------
+
+  describe('fulfillment domain (#2400)', () => {
+    it('should route a fulfillment event to fulfillment.work.statusSync when FulfillmentExecutor is supported and enabled', async () => {
+      const outcome = await service.route(
+        event({ domain: 'fulfillment', externalId: 'vendor-work-7', eventType: 'picked' }),
+        connection(['FulfillmentExecutor']),
+        ['FulfillmentExecutor'],
+        'evt-11'
+      );
+
+      expect(outcome).toEqual({
+        status: 'enqueued',
+        jobId: 'job-1',
+        jobType: 'fulfillment.work.statusSync',
+      });
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith({
+        jobType: 'fulfillment.work.statusSync',
+        connectionId: 'conn-1',
+        payload: {
+          schemaVersion: 1,
+          externalWorkId: 'vendor-work-7',
+          sourceEventId: 'evt-11',
+          eventType: 'picked',
+          occurredAt: '2026-01-01T00:00:00.000Z',
+        },
+        idempotencyKey: 'prestashop:conn-1:evt-11',
+      });
+    });
+
+    it('should carry NO progress deltas in the payload, because a webhook body is never a source of truth', async () => {
+      // Guards the #904 discipline structurally. A future change that "makes the
+      // handler work" by widening the payload to carry quantities would move
+      // real fulfilment counters off an unauthenticated body; this fails first.
+      await service.route(
+        event({ domain: 'fulfillment', externalId: 'vendor-work-7' }),
+        connection(['FulfillmentExecutor']),
+        ['FulfillmentExecutor'],
+        'evt-11'
+      );
+
+      const payload = jobEnqueue.enqueueJob.mock.calls[0][0].payload;
+      expect(Object.keys(payload).sort()).toEqual([
+        'eventType',
+        'externalWorkId',
+        'occurredAt',
+        'schemaVersion',
+        'sourceEventId',
+      ]);
+    });
+
+    it('should resolve ungated when FulfillmentExecutor is absent — every connection that has not enabled it', async () => {
+      // Until #2409 no manifest advertised `FulfillmentExecutor` at all, so this
+      // was what every shipped deployment did. `openlinker.oms.v1` advertises it
+      // now, which narrows this case rather than retiring it: it is still what
+      // happens for any connection whose operator has not enabled the capability,
+      // which is every connection except an explicitly configured OMS one.
+      const outcome = await service.route(
+        event({ domain: 'fulfillment', externalId: 'vendor-work-7' }),
+        connection([]),
+        [],
+        'evt-11'
+      );
+
+      expect(outcome).toEqual({
+        status: 'ungated',
+        domain: 'fulfillment',
+        requiredCapability: 'FulfillmentExecutor',
+      });
+      expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('return domain (#2400)', () => {
+    it('should route a return event to the existing marketplace.return.sync job', async () => {
+      const outcome = await service.route(
+        event({ domain: 'return', externalId: 'ret-5' }),
+        connection(['OrderSource']),
+        ['OrderSource'],
+        'evt-12'
+      );
+
+      expect(outcome).toEqual({
+        status: 'enqueued',
+        jobId: 'job-1',
+        jobType: 'marketplace.return.sync',
+      });
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith({
+        jobType: 'marketplace.return.sync',
+        connectionId: 'conn-1',
+        payload: {
+          schemaVersion: 1,
+          externalReturnId: 'ret-5',
+          eventKey: 'evt-12',
+          occurredAt: '2026-01-01T00:00:00.000Z',
+        },
+        idempotencyKey: 'prestashop:conn-1:evt-12',
+      });
+    });
+
+    it('should gate on OrderSource and NEVER on ReturnSourceReader (the #2085 trap)', async () => {
+      // `ReturnSourceReader` is guard-only: it is absent from
+      // `CoreCapabilityValues`, which both connection DTOs `@IsIn`-validate
+      // against, so `enabledCapabilities` can never contain it. Gating on it
+      // would leave this arm permanently `ungated` for every connection.
+      const outcome = await service.route(
+        event({ domain: 'return', externalId: 'ret-5' }),
+        connection(['ReturnSourceReader']),
+        ['ReturnSourceReader'],
+        'evt-12'
+      );
+
+      expect(outcome).toEqual({
+        status: 'ungated',
+        domain: 'return',
+        requiredCapability: 'OrderSource',
+      });
+    });
+  });
+
 });

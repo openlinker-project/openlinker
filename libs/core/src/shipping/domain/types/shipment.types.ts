@@ -29,6 +29,19 @@ import type { ShippingMethod } from './shipping-method.types';
 import type { DeliveryIntent } from './delivery-intent.types';
 
 export interface CreateShipmentInput {
+  /**
+   * The `FulfillmentWork` this shipment satisfies (#2402). Optional, so every
+   * pre-#2402 caller is byte-identical; omitted means the shipment satisfies no
+   * work, which is the ordinary case for an unrouted order.
+   *
+   * Assigned at most once. There is deliberately no counterpart on
+   * `UpdateShipmentInput`, so the ordinary patch path cannot rewrite a row's
+   * provenance — but the column IS writable after creation, by
+   * `claimFulfillmentWorkLink`, whose `WHERE ... IS NULL` guard is what
+   * actually makes at-most-once hold.
+   */
+  fulfillmentWorkId?: string;
+
   /** Internal order id (`ol_order_*`). */
   orderId: string;
   /** Shipping-provider connection that will issue the label, or the OMP

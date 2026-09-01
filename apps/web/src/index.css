@@ -4062,6 +4062,16 @@ a.delivery-rider-banner__button:focus-visible {
   color: var(--text-muted);
 }
 
+/* #2407 — routing-readiness notes. Same muted note treatment as the catalog
+   trust panel above; the two panels sit side by side on the health tab, so a
+   different size or colour here would read as a different kind of statement. */
+.router-readiness-panel__note {
+  margin: var(--space-2) 0 0;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
 /* ── Connection sync-status panel (#2615) ── */
 .connection-sync-status__headline {
   margin: var(--space-2) 0 0;
@@ -21076,3 +21086,259 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .change__ceiling-label {
   color: var(--status-warning-fg);
   font-weight: 600;}
+
+
+/* --------------------------------------------------------------------------
+   Fulfilment tasks panel (#2411)
+
+   Card-per-task rather than a table: a task carries a variable number of holds
+   and lines, and a table row that has to grow vertically for both stops being a
+   table. Every horizontal run is allowed to wrap and every id may break inside
+   itself, so the panel never forces the PAGE to scroll sideways on a phone —
+   the ids here are `ol_*` opaque strings with no natural break point.
+   -------------------------------------------------------------------------- */
+.fulfilment-task-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.fulfilment-task {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  min-width: 0;
+}
+
+.fulfilment-task[data-held='true'] {
+  border-color: var(--status-warning-border);
+}
+
+.fulfilment-task__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.fulfilment-task__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.fulfilment-task__id {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.fulfilment-task__holds,
+.fulfilment-task__lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: 0.8125rem;
+  min-width: 0;
+}
+
+.fulfilment-task__holds > li,
+.fulfilment-task__lines > li {
+  overflow-wrap: anywhere;
+}
+
+.fulfilment-task__lines > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.fulfilment-task__count {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.fulfilment-task__facts {
+  display: grid;
+  /* `auto-fit` + a minimum collapses to one column on a phone with no media
+     query, so there is one rule rather than one rule per breakpoint. */
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+  min-width: 0;
+}
+
+.fulfilment-task__facts dt {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+}
+
+.fulfilment-task__facts dd {
+  margin: 0;
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.fulfilment-task__note {
+  font-size: 0.75rem;
+  margin: 0;
+}
+
+.fulfilment-task__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-top: var(--space-1);
+}
+
+.fulfilment-task-dialog__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* ── Fulfilment worklist (#2410) ─────────────────────────────────────────── */
+
+.fulfilment-worklist-lane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+}
+
+.fulfilment-worklist-lane__head {
+  align-items: baseline;
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-bottom: var(--space-1);
+}
+
+.fulfilment-worklist-lane__title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.fulfilment-worklist-lane__method {
+  font-size: 0.8125rem;
+}
+
+.fulfilment-worklist-lane__count {
+  font-size: 0.8125rem;
+  margin-left: auto;
+}
+
+.fulfilment-worklist-lane__scope {
+  font-size: 0.75rem;
+  margin: 0;
+}
+
+/* The two surfaces. Both are always rendered — the breakpoint below decides
+   which one is visible, so the desktop rows and the cards can never show a
+   different set of tasks. */
+.fulfilment-worklist__desktop,
+.fulfilment-worklist__cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.fulfilment-worklist-row {
+  align-items: center;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: minmax(0, 2fr) minmax(0, 2fr) auto auto;
+  padding: var(--space-2) var(--space-3);
+}
+
+.fulfilment-worklist-row[data-held='true'] {
+  border-color: var(--status-warning-border);
+}
+
+.fulfilment-worklist-row__identity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.fulfilment-worklist-row__id,
+.fulfilment-worklist-row__order {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fulfilment-worklist-row__id {
+  font-size: 0.8125rem;
+}
+
+.fulfilment-worklist-row__order {
+  font-size: 0.75rem;
+}
+
+.fulfilment-worklist-row__state {
+  align-items: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.fulfilment-worklist-row__substate {
+  font-size: 0.75rem;
+}
+
+.fulfilment-worklist-row__lines {
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
+.fulfilment-worklist-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+/* The breakpoint switch. Each `display: none` MUST stay inside its own media
+   block: hoisted out, the desktop grid renders on a phone (or the cards render
+   beside it on a desktop) and both surfaces show at once. */
+@media (min-width: 768px) {
+  .fulfilment-worklist__cards {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .fulfilment-worklist__desktop {
+    display: none;
+  }
+}

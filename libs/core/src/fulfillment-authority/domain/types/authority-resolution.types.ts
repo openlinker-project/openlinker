@@ -56,6 +56,7 @@ import { AUTHORITY_KIND_DESCRIPTORS, type AuthorityKind } from './authority-kind
 import { parseAuthorityConfig } from './authority-config.types';
 import { type AuthorityScope, authorityScopeKey } from './authority-scope.types';
 import {
+  AuthorityAmbiguityReasonValues,
   type AuthorityAmbiguityReason,
   type AuthorityHolderCandidate,
   selectAuthorityHolder,
@@ -330,10 +331,72 @@ function claimedScopes(claim: { scopes: readonly AuthorityScope[] }): readonly A
  *
  * `selectAuthorityHolder` is composed here, never modified.
  */
-function resolveOneAuthority(
+/**
+ * Reduce A2's selection to a rendered row.
+ *
+ * A COMPOUND holder set is a routine answer, never an ambiguity — see
+ * `FulfillmentRouterSelection.holders`. Only a real misconfiguration reaches
+ * `cannot-tell`.
+ */
+function resolveSourcingAuthority(selection: FulfillmentRouterSelection): {
+  answer: AuthorityAnswer;
+  source: AuthoritySource;
+  why: AuthorityWhy;
+} {
+  if (AMBIGUITY_REASONS.includes(selection.reason)) {
+    const reason = selection.reason as AuthorityAmbiguityReason;
+    return {
+      answer: {
+        kind: 'cannot-tell',
+        reason,
+        candidateConnectionIds: selection.candidateConnectionIds,
+      },
+      source: 'operator-config',
+      why: { kind: 'ambiguous', reason },
+    };
+  }
+
+  if (selection.holders.length === 0) {
+    const fallback = DEFAULT_ANSWER.sourcing;
+    return {
+      answer: fallback.answer,
+      source: 'default',
+      why: { kind: 'default', code: fallback.code },
+    };
+  }
+
+  return {
+    answer: { kind: 'holders', holders: selection.holders },
+    source: 'operator-config',
+    why: { kind: 'default', code: CLAIMED_WHY.sourcing },
+  };
+}
+
+/**
+ * The fold, shared by the A2 READ MODEL and the A2 WRITE GATE.
+ *
+ * Extracted in #2395 so that `resolveAuthorities`' A2 row and
+ * `selectPrimaryFulfillmentRouter` cannot answer "who routes this order?"
+ * differently. Two answers to one question is what ADR-053 exists to prevent,
+ * and here it would be worse than a stale page: the surface would name one
+ * router while the commit path chose another.
+ *
+ * Behaviour is byte-identical to the pre-#2395 body of `resolveOneAuthority`;
+ * only the reduction to an `AuthorityAnswer` moved out.
+ */
+type HolderResolution =
+  | { readonly kind: 'none' }
+  | { readonly kind: 'holders'; readonly holders: readonly AuthorityAnswerHolder[] }
+  | {
+      readonly kind: 'ambiguous';
+      readonly reason: AuthorityAmbiguityReason;
+      readonly candidateIds: readonly string[];
+    };
+
+function resolveHolders(
   kind: AuthorityKind,
   claimants: readonly AuthorityClaimantInput[]
-): { answer: AuthorityAnswer; source: AuthoritySource; why: AuthorityWhy } {
+): HolderResolution {
   const candidates: AuthorityHolderCandidate[] = [];
   // Deduped on `(connection, scope)`. `parseAuthorityConfig` reads `scopes` off
   // untrusted jsonb and filters by shape, never by uniqueness, so one connection
@@ -366,12 +429,7 @@ function resolveOneAuthority(
   }
 
   if (candidates.length === 0) {
-    const fallback = DEFAULT_ANSWER[kind];
-    return {
-      answer: fallback.answer,
-      source: 'default',
-      why: { kind: 'default', code: fallback.code },
-    };
+    return { kind: 'none' };
   }
 
   // One resolution per distinct claimed scope. A `global` claim is itself one of
@@ -389,13 +447,9 @@ function resolveOneAuthority(
       // Any ambiguous scope makes the whole row inert — the row cannot honestly
       // claim a holder while one of its scopes has none.
       return {
-        answer: {
-          kind: 'cannot-tell',
-          reason: selection.reason,
-          candidateConnectionIds: selection.candidateIds,
-        },
-        source: 'operator-config',
-        why: { kind: 'ambiguous', reason: selection.reason },
+        kind: 'ambiguous',
+        reason: selection.reason,
+        candidateIds: selection.candidateIds,
       };
     }
     if (selection.kind === 'selected') {
@@ -408,6 +462,38 @@ function resolveOneAuthority(
   }
 
   if (holders.length === 0) {
+    return { kind: 'none' };
+  }
+
+  return { kind: 'holders', holders };
+}
+
+function resolveOneAuthority(
+  kind: AuthorityKind,
+  claimants: readonly AuthorityClaimantInput[]
+): { answer: AuthorityAnswer; source: AuthoritySource; why: AuthorityWhy } {
+  if (kind === 'sourcing') {
+    // A2 is answered THROUGH the same function the routing commit path calls
+    // (#2395): the row an operator reads and the gate that commits work must not
+    // be able to disagree about who routes.
+    return resolveSourcingAuthority(selectPrimaryFulfillmentRouter(claimants));
+  }
+
+  const resolved = resolveHolders(kind, claimants);
+
+  if (resolved.kind === 'ambiguous') {
+    return {
+      answer: {
+        kind: 'cannot-tell',
+        reason: resolved.reason,
+        candidateConnectionIds: resolved.candidateIds,
+      },
+      source: 'operator-config',
+      why: { kind: 'ambiguous', reason: resolved.reason },
+    };
+  }
+
+  if (resolved.kind === 'none') {
     const fallback = DEFAULT_ANSWER[kind];
     return {
       answer: fallback.answer,
@@ -417,9 +503,154 @@ function resolveOneAuthority(
   }
 
   return {
-    answer: { kind: 'holders', holders },
+    answer: { kind: 'holders', holders: resolved.holders },
     source: 'operator-config',
     why: { kind: 'default', code: CLAIMED_WHY[kind] },
+  };
+}
+
+/**
+ * Why A2 resolved the way it did — non-null on EVERY arm.
+ *
+ * The three ambiguity members are SPREAD from `AuthorityAmbiguityReason` rather
+ * than restated, so #2352 widening that union widens this one automatically
+ * instead of leaving a value this function can produce and no consumer can name.
+ *
+ * `multiple-scoped-holders` is this function's own, and has no counterpart in
+ * `AuthorityAmbiguityReason` because it is not a misconfiguration — see
+ * {@link selectPrimaryFulfillmentRouter}.
+ */
+export const FulfillmentRouterSelectionReasonValues = [
+  /** Nobody claims A2. Today's path runs untouched — ADR-054's pass-through. */
+  'no-claimant',
+  /** Exactly one router. The only arm that may commit. */
+  'claimed-by-connection',
+  /** Several routers legitimately hold A2 over different scopes. */
+  'multiple-scoped-holders',
+  ...AuthorityAmbiguityReasonValues,
+] as const;
+
+export type FulfillmentRouterSelectionReason =
+  (typeof FulfillmentRouterSelectionReasonValues)[number];
+
+/**
+ * Who routes this order, and why that is the answer.
+ *
+ * `{ holder, reason }` on every arm is the Wave-2 §7.1 obligation: the "Who
+ * decides what" surface renders A2 from this, and a null reason degrades that
+ * row to *"OpenLinker can't tell"* on every install that HAS configured a
+ * router. So `reason` is non-null even when `holder` is.
+ */
+export interface FulfillmentRouterSelection {
+  /**
+   * The single router to commit through, or `null`.
+   *
+   * `null` on `no-claimant`, on every ambiguity, AND on
+   * `multiple-scoped-holders` — the routing commit path may act only on exactly
+   * one.
+   */
+  readonly holder: string | null;
+  readonly reason: FulfillmentRouterSelectionReason;
+  /** Everyone in contention. Empty only on `no-claimant`. */
+  readonly candidateConnectionIds: readonly string[];
+  /**
+   * Every holder with its scope, for the A2 read model's COMPOUND answer.
+   *
+   * The read model and the write gate diverge here deliberately, and this is the
+   * one place they may. Two routers scoped to different channels is a routine
+   * compound answer for a page to render ("My shop · Allegro") and is NOT
+   * attention-worthy. It is nonetheless unusable by the commit path, which needs
+   * one router for one order and cannot narrow by channel in Wave 3a. So the
+   * page shows both and routing refuses — reported, never resolved arbitrarily,
+   * because a wrong pick here is a double shipment.
+   */
+  readonly holders: readonly AuthorityAnswerHolder[];
+}
+
+const AMBIGUITY_REASONS: readonly string[] = AuthorityAmbiguityReasonValues;
+
+/**
+ * Does this reason stop the routing commit?
+ *
+ * Deliberately NOT named `…Ambiguity`: it answers `true` for
+ * `multiple-scoped-holders`, which is expressly NOT a misconfiguration — two
+ * routers scoped to different channels is a routine compound the A2 row renders
+ * without complaint. It is simply not something the commit path can act on,
+ * because that path needs ONE router for one order. So the predicate is about
+ * committability, not about correctness of the operator's config.
+ */
+export const isFulfillmentRouterUnroutable = (reason: FulfillmentRouterSelectionReason): boolean =>
+  AMBIGUITY_REASONS.includes(reason) || reason === 'multiple-scoped-holders';
+
+/**
+ * Which connection's router decides where an order is sourced from (#2395).
+ *
+ * ## Why this lives in `fulfillment-authority` and not in `fulfillment`
+ *
+ * Because `resolveAuthorities` must consume it, and it cannot reach out to get
+ * it: this leaf carries an **empty** `authorizedTypeOnlySpecifiers` allow-set in
+ * `barrel-purity.spec.ts` — stricter than every other context, not even a
+ * type-only import permitted — so a `fulfillment -> fulfillment-authority`
+ * placement would make the A2 row unable to see its own answer, and the surface
+ * would fall back to a default while a router was configured.
+ *
+ * Note what is NOT the reason, because it is the plausible one and it is wrong:
+ * the `fulfillment` leaf's own value-import ban is irrelevant here, since the
+ * only caller of this function outside core is a worker HANDLER, which is not
+ * under `libs/core/src/fulfillment/**` and which that rule therefore never
+ * reaches.
+ *
+ * ADR-053 asks that ENFORCEMENT resolution live with the context that owns the
+ * write, and it still does: the write gate is the `routing_decisions` live
+ * partial-unique index and the guard around it, both in `fulfillment`. This
+ * function only names a candidate. Naming is not enforcing — nothing here can
+ * commit anything.
+ *
+ * ## The rule
+ *
+ * Folds over the scopes actually claimed, exactly as `resolveOneAuthority` does
+ * — never a single `{ kind: 'global' }` request, which would resolve a
+ * channel-scoped claim to `none` and report "nobody claims this" about a claim
+ * that exists (the regression D10 shape; channel-scoped claims are the DESIGNED
+ * shape for A2).
+ *
+ * Then it reduces: exactly one distinct holder may route. Anything else yields
+ * `holder: null`, which commits nothing and is reported. Silence-and-pick-one is
+ * forbidden here for the reason it is forbidden in #2047 — an unrouted order is
+ * recoverable by hand, two shipments of one order are not.
+ *
+ * Pure, total, never throws.
+ */
+export function selectPrimaryFulfillmentRouter(
+  claimants: readonly AuthorityClaimantInput[]
+): FulfillmentRouterSelection {
+  const resolved = resolveHolders('sourcing', claimants);
+
+  if (resolved.kind === 'none') {
+    return {
+      holder: null,
+      reason: 'no-claimant',
+      candidateConnectionIds: [],
+      holders: [],
+    };
+  }
+
+  if (resolved.kind === 'ambiguous') {
+    return {
+      holder: null,
+      reason: resolved.reason,
+      candidateConnectionIds: resolved.candidateIds,
+      holders: [],
+    };
+  }
+
+  const distinct = [...new Set(resolved.holders.map((holder) => holder.connectionId))];
+
+  return {
+    holder: distinct.length === 1 ? distinct[0] : null,
+    reason: distinct.length === 1 ? 'claimed-by-connection' : 'multiple-scoped-holders',
+    candidateConnectionIds: distinct,
+    holders: resolved.holders,
   };
 }
 

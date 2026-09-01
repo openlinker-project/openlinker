@@ -23,6 +23,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { IntegrationsModule } from '@openlinker/core/integrations';
+import { FulfillmentModule } from '@openlinker/core/fulfillment';
 import { MappingsModule } from '@openlinker/core/mappings';
 import { OrdersModule } from '@openlinker/core/orders';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
@@ -79,6 +80,12 @@ import {
     // (IdentifierMappingModule). Acyclic — OrdersModule does not import ShippingModule.
     OrdersModule,
     IdentifierMappingModule,
+    // #2402 shipment bridge: resolve the FulfillmentWork an observed shipment
+    // satisfies, via IFulfillmentWorkQueryService. Acyclic and one-way —
+    // FulfillmentModule imports NO sibling context at all (it is a
+    // zero-sibling-edge leaf, pinned by barrel-purity.spec.ts), so it can never
+    // import ShippingModule back.
+    FulfillmentModule,
     // #1917 per-order dispatch serialization: SYNC_LOCK_TOKEN / SyncLockPort.
     // Acyclic — SyncModule depends on events/listings/orders, never on shipping.
     SyncModule,

@@ -266,6 +266,24 @@ export class OrderRecordOrmEntity {
   buyerTaxId!: string | null;
 
   /**
+   * Stable hash of the order's shipping address (#2395), stamped at ingestion
+   * from the LIVE, un-redacted address - so it survives `OL_STORE_PII=false`,
+   * under which the snapshot address is replaced by `[REDACTED]` and hashing
+   * it back would yield one hash per country shared by every order.
+   *
+   * Written only on the `'ready'` path (`upsertWithLineItems`), like the four
+   * analytics scalars and `buyerTaxId` above: an `awaiting_mapping`
+   * re-ingestion routed through the shared `toOrm` would NULL a hash a
+   * previous ready-path write settled.
+   *
+   * NOT PII-gated, unlike its `buyerTaxId` neighbour: it is a one-way hash
+   * carrying no recoverable address, and gating it would remove it precisely
+   * on the hash-only deployments that need it.
+   */
+  @Column({ type: 'text', nullable: true })
+  shippingAddressHash!: string | null;
+
+  /**
    * Per-order reporting-currency snapshot (#2124, ADR-040) — six columns
    * written ONLY by the two narrow, conditional UPDATEs on the repository
    * (`claimFxIntentIfAbsent`, `stampFxIfAbsent`). The ingestion upsert
@@ -421,6 +439,53 @@ export class OrderRecordOrmEntity {
    */
   @Column({ type: 'jsonb', nullable: true })
   omsAttention!: AuthorityAttentionEntry[] | null;
+
+  /**
+   * Why the fulfilment intercept HELD this order (#2396) — or NULL when it did
+   * not, which is every install today.
+   *
+   * "Held" means `OrderSyncService` was never called, so the order was not
+   * mirrored to any destination. Sole writer `updateFulfillmentBlock`, invoked
+   * only by `OrderIngestionService` — deliberately NOT round-tripped through
+   * `toOrm`, for the reason the three `salesDocument*` columns are not:
+   * `persistOrder` runs BEFORE the intercept on every ingestion, so a
+   * round-trip would null-then-reset the value and let a stale in-memory read
+   * stomp a reason a peer transition just wrote.
+   *
+   * **Level-triggered, not sticky** (the #2100 discipline): the intercept
+   * re-decides on every transition and the writer stores the answer INCLUDING
+   * `null`, which is the only thing that clears a reason once the condition
+   * resolves.
+   *
+   * **Covers fewer arms than #2396's text, on purpose.** The `ambiguous` arm
+   * (two enabled routers on one source) writes NOTHING here, because #2352's
+   * derived `'sourcing-ambiguous'` (A2-A) already surfaces at order grain with
+   * `counted: true`; persisting it again would double-count
+   * `Needs attention (N)`. `routed` writes nothing either — the work object is
+   * the explanation, via `IFulfillmentWorkQueryService` (#2402). See
+   * `fulfillment-block-reason.types.ts`.
+   *
+   * Plain `text` with no check constraint, matching `salesDocumentBlockReason`:
+   * the union is enforced in TypeScript. `isFulfillmentBlockReason` exists for
+   * the read surface to coerce with — note that nothing reads the column YET
+   * (the operator surface is a later issue), so this is a guard made available,
+   * not one currently running. Whoever adds that read must call it: a value
+   * written by a newer release and then rolled back has to read as "nothing
+   * recognised" rather than widening the union at runtime.
+   *
+   * **No index, deliberately** — same call as `omsAttention` above: nothing
+   * filters on it yet, and the consuming issue adds one against its own data.
+   */
+  @Column({ type: 'text', nullable: true })
+  fulfillmentBlockReason!: string | null;
+
+  /**
+   * PII-free elaboration of the reason above (ids and causes only). Free text,
+   * rendered verbatim to the operator, never filtered on — so no index, the
+   * same call as `salesDocumentBlockDetail`.
+   */
+  @Column({ type: 'text', nullable: true })
+  fulfillmentBlockDetail!: string | null;
 
   @CreateDateColumn()
   createdAt!: Date;

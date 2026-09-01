@@ -7,7 +7,8 @@
  * **Not an inventory of contexts, deliberately.** This is an AGGREGATING
  * re-export: requiring it evaluates every context listed below in one module
  * graph. A **zero-sibling-edge leaf** — `sales-documents` (#2100),
- * `fulfillment-authority` (#2304) and `order-lifecycle` (#2305), whose whole
+ * `fulfillment-authority` (#2304), `order-lifecycle` (#2305) and
+ * `fulfillment` (#2391), whose whole
  * value is that siblings can value-import them without closing a CJS
  * module-load cycle — therefore stays OFF this barrel, the same reasoning that
  * kept `ListingsModule` off the main `@openlinker/core/listings` barrel

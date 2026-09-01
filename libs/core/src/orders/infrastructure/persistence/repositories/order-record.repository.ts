@@ -51,6 +51,7 @@ import {
   netSalesLineNetAmountSql,
   netSalesOrderNetEligibleSql,
 } from '../../../domain/types/net-sales-tax-rate.types';
+import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import {
   AuthorityAttentionCountedReasonValues,
@@ -1450,6 +1451,40 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   }
 
   /**
+   * Persist why the fulfilment intercept HELD this order (#2396), or clear it.
+   *
+   * Modelled on {@link updateSalesDocumentBlock}, and last-write-wins for the
+   * same reason: the intercept re-decides on every transition, so the NEWEST
+   * answer is the truthful one and an older reason must not survive it.
+   *
+   * The no-op guard lives HERE, in the `WHERE` clause, rather than in the
+   * caller. `IS DISTINCT FROM` is NULL-safe, so it is exact for the clear case
+   * too, and it keeps the `@UpdateDateColumn` bump off the overwhelmingly
+   * common `null -> null` path — which is EVERY ingestion on every install
+   * today, since no router is wired. `updatedAt` is a live filter axis
+   * (`FulfillmentStatusSyncService` scans `updatedSince`), so bumping it on
+   * every order for a column that did not change would be a real cost.
+   *
+   * No-op (no throw) when the order row doesn't exist, mirroring
+   * {@link updateFulfillmentState}'s residual-race tolerance.
+   */
+  async updateFulfillmentBlock(
+    internalOrderId: string,
+    block: FulfillmentBlock | null
+  ): Promise<void> {
+    await this.repository.query(
+      `UPDATE "order_records"
+          SET "fulfillmentBlockReason" = $1,
+              "fulfillmentBlockDetail" = $2,
+              "updatedAt" = now()
+        WHERE "internalOrderId" = $3
+          AND ("fulfillmentBlockReason" IS DISTINCT FROM $1
+            OR "fulfillmentBlockDetail" IS DISTINCT FROM $2)`,
+      [block?.reason ?? null, block?.detail ?? null, internalOrderId]
+    );
+  }
+
+  /**
    * How many orders carry at least one COUNTED OMS inert state (#2352)?
    *
    * The `Needs attention (N)` count's order half. Deliberately a COUNT of ORDERS
@@ -1852,7 +1887,11 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // `exchangeRateId` / `fxRule` / `fxStampedAt` / `fxIntendedCurrency`
     // (#2124), `packedAt` / `packedByUserId` (#2287), `lastAmendedAt` /
     // `lastAmendmentChanges` (#2283), `salesDocumentBlockedAt` /
-    // `salesDocumentBlockReleasedAt`, `taxRateEra`, `omsAttention` (#2352 -
+    // `salesDocumentBlockReleasedAt`, `taxRateEra`, the two `fulfillmentBlock*`
+    // columns (#2396 - sole writer `updateFulfillmentBlock`; `persistOrder` runs
+    // BEFORE the intercept on every ingestion, so a round-trip would null the
+    // reason the previous transition wrote and then re-add none),
+    // `omsAttention` (#2352 -
     // sole writer `updateOmsAttention`, whose whole contract is that it edits
     // ONE producer's entry; a round-trip here would drop every producer's entry
     // on every ingestion and then re-add none), and the four #1985
@@ -1972,6 +2011,12 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       // to read a tax id off, and writing it there would NULL a value a
       // previous ready-path write settled.
       add('buyerTaxId', entity.buyerTaxId ?? null);
+      // #2395, added here for exactly the reason `buyerTaxId` is: this
+      // statement enumerates its own columns, so a column the caller stamps on
+      // the entity but never adds here is simply not written. Ready-path only -
+      // `persistIncomingSnapshot` has no resolved shipping address to hash, and
+      // writing it there would NULL a hash a previous ready-path write settled.
+      add('shippingAddressHash', entity.shippingAddressHash ?? null);
     }
 
     const sql = `INSERT INTO "order_records" (
@@ -2067,6 +2112,12 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // which has no resolved billing address to read a tax id off, so mapping
     // the column there would NULL a value a previous ready-path write settled.
     entity.buyerTaxId = orderRecord.buyerTaxId;
+    // #2395 - stamped here, NOT in the shared `toOrm`, for the same
+    // single-writer reason (`cancelledAt` / the `salesDocument*` columns,
+    // #2100): `persistOrder` runs on EVERY ingestion, and an
+    // `awaiting_mapping` re-ingestion reaching `toOrm` would write `null` over
+    // a hash a previous ready-path ingestion had settled.
+    entity.shippingAddressHash = orderRecord.shippingAddressHash;
     const { sql, params, writeSet } = this.buildFrozenAttributionUpsert(entity, true);
     const savedRecord = await this.dataSource.transaction(async (manager: EntityManager) => {
       // Same statement as `upsert`, one parameter apart (#2282): a full-object
@@ -2270,7 +2321,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       // §4.4 S2-5 ("an unrecognised state degrades safely") held once, and it
       // is the same call the two reason guards above make.
       readAuthorityAttentionEntries(entity.omsAttention),
-      entity.buyerTaxId ?? null
+      entity.buyerTaxId ?? null,
+      entity.shippingAddressHash ?? null
     );
   }
 

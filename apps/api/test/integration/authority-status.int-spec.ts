@@ -66,6 +66,24 @@ describe('Authority status API (integration)', () => {
     return (response.body as { id: string }).id;
   }
 
+  /**
+   * Seed the one active inventory location that enabling fulfilment routing now
+   * requires (#2407).
+   *
+   * These specs are about the authority-status PROJECTION, not about
+   * enablement. After #2407 the state they used to construct — a claiming
+   * connection on an install with no locations — is one the product no longer
+   * permits, so the fixture is what is stale, not the guard. One added setup
+   * line each; every projection assertion below is unchanged.
+   */
+  async function seedLocation(token: string): Promise<void> {
+    await harness
+      .getHttp()
+      .post('/v1/inventory/locations/bootstrap')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(201);
+  }
+
   async function getStatus(token: string): Promise<StatusBody> {
     const response = await harness
       .getHttp()
@@ -111,6 +129,7 @@ describe('Authority status API (integration)', () => {
 
   it('previews a preset without committing anything', async () => {
     const token = await loginAsAdmin(harness.getHttp(), harness.getDataSource());
+    await seedLocation(token);
     await createConnection(token, 'Claiming shop', { sourcingAuthority: true });
 
     const before = await getStatus(token);
@@ -131,6 +150,7 @@ describe('Authority status API (integration)', () => {
 
   it('applies a preset, and the assignment survives so the change is reversible', async () => {
     const token = await loginAsAdmin(harness.getHttp(), harness.getDataSource());
+    await seedLocation(token);
     const connectionId = await createConnection(token, 'Claiming shop', {
       sourcingAuthority: { enabled: true, isPrimary: true },
     });
@@ -163,6 +183,7 @@ describe('Authority status API (integration)', () => {
 
   it('refuses with 422 and writes nothing when the result would be ambiguous', async () => {
     const token = await loginAsAdmin(harness.getHttp(), harness.getDataSource());
+    await seedLocation(token);
     const first = await createConnection(token, 'Router A', { sourcingAuthority: true });
     const second = await createConnection(token, 'Router B', { sourcingAuthority: true });
 

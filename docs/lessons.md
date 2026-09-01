@@ -869,3 +869,78 @@ media queries evaluate against, which at a boundary inverts the reading.
 `DataTable`'s card/table switch.
 
 **Source**: PR #2676 (#2388), asserted by `who-decides-styles.test.ts`.
+
+---
+
+## A captured exit file proves nothing unless its mtime belongs to THIS run — and HEAD, not an exit code, is what proves a commit happened
+
+**Context**: the long-running-gate pattern this repo leans on for anything past the Bash tool's timeout — launch detached, redirect to a log, capture `echo $? > <name>.exit`, then poll for the file. Used across a session for `pnpm lint`, `type-check`, `test`, `test:integration` and finally `git commit` (whose pre-commit hook runs the full lint + test and comfortably exceeds ten minutes).
+
+**Problem**: **a stale artifact and a fresh one are identical by content.** A `.exit` holding `0` and a `.log` ending in plausible output look exactly the same whether they were written thirty seconds ago or in a previous session, and nothing in the pattern forces a freshness check. It failed twice in one session, escalating each time. First a `tc.log` left over from an earlier run was read as the current type-check — the log even ended in `apps/api type-check: Done`, so the wrong answer was the *reassuring* one. Then, at the worst possible moment, a `commit.exit` dated 34 minutes earlier held `0` while the real `git commit` was still executing its hook: the pattern reported a successful commit, and `git log` showed `HEAD` still on the base commit. The failure mode has no error anywhere in it — the danger is precisely that the stale answer is plausible, and a stale `0` next to a still-running command is indistinguishable from success. Shared or long-lived scratch paths make it worse, since a concurrent agent's run can supply the plausible file.
+
+**Rule**: an artefact is evidence only when its mtime belongs to **this run** *and* its path **cannot be reached by a sibling** — two conditions, not one; satisfying either alone still admits a plausible wrong answer. Cheapest sufficient practice, in the pattern itself: **delete the `.exit` and `.log` immediately before launching**, use a session-scoped (never shared `/tmp`) path, and when a result is surprising or load-bearing, check the file's mtime — or have the runner write its own start timestamp — before trusting it. If a `.exit` exists but the log is still growing, the file is stale by definition; the live process is the authority, not the file. And for anything with a durable side effect, **verify the side effect, not the exit code**: `git rev-parse HEAD` is the only proof a commit landed (the absence of an error is not), and the remote ref (`git rev-parse origin/<branch>` equalling local `HEAD`) is the only proof a push did. **The path itself is half the freshness question**: a bare `/tmp/<gate>.log` is reachable by every concurrent agent, so "is this mine?" and "is this from this run?" are two separate checks and the first one has no mtime to consult. Observed live on #2404 — a `/tmp/lint.log` read as the current lint belonged to a **sibling worktree** running its own gate at the same moment, which is worse than the own-stale-run case above because the file was genuinely fresh, plausible, and about a different tree. Namespace gate artifacts by issue *and* worktree (`/tmp/2404-lint.log`), delete them before each launch, and never a bare `/tmp/lint.log`. This sharpens the existing "never pipe `git commit` through `tail`/`head`" lesson — the pipe was one way to lose the exit code, and a stale file is another, but both are covered by checking the thing the command was supposed to change.
+
+**Applies to**: every detached long-running gate (`pnpm lint` / `type-check` / `test` / `test:integration` / `build`, `git commit` under the pre-commit hook); any agent workflow using a scratchpad `*.exit` / `*.log` convention.
+
+**Source**: #2390 (two occurrences, the second a falsely-reported commit); sharpened by #2404 (a concurrent sibling worktree's log read as this run's).
+
+## A zero-rows assertion about what a MIGRATION does is vacuous under a `synchronize`-built harness
+
+**Context**: #2405 had to prove that no migration seeds an `openlinker` connection row — ADR-055's zero-config non-negotiable, because a seeded row enters every existing install's authority candidate sets and flips previously-single-candidate selections to `ambiguous`.
+
+**Problem**: the obvious test — boot the integration harness, assert `COUNT(*) = 0` — **cannot fail**. `libs/shared/src/database/database.module.ts` sets `synchronize: NODE_ENV !== 'production'` and `migrationsRun: false`, so the harness schema is entity-derived and **no migration runs in that path**. The assertion is green whether or not a seeding migration exists, which is worse than no test because it reads like coverage. This is the same root cause as the pre-existing "migration-only FKs don't exist there" entry, one step further: there, a real constraint was *absent*; here, a whole class of migration *effects* is unobservable.
+
+**Rule**: to assert anything about what the migration chain **does** (or does not do), build it for real — a second database on the same Testcontainers Postgres with `synchronize: false`, then `runMigrations()`. Copy `apps/api/test/integration/fulfillment-work-migration-parity.int-spec.ts` (#2392), which also carries the `uuid-ossp` workaround (#2684) and the teardown order. Always include a **non-vacuity** assertion that the chain built the table first, or two empty result sets compare equal and the file asserts nothing. And prove the test can fail: add a temporary seeding migration, watch it go red **for the right reason** (an assertion failure with `Tests: N failed`, not a compile error with `Tests: 0 total`), then delete it.
+
+**Applies to**: any claim about migration behaviour; `apps/api/test/integration/**`.
+
+**Source**: #2405 (the parity spec from #2392 is now load-bearing for a second issue).
+
+## A manifest that advertises no capabilities stamps an EMPTY `enabledCapabilities`, permanently
+
+**Context**: #2405 shipped the OL-OMS manifest with `supportedCapabilities: []`, following the Erli #980 precedent that a capability name enters the manifest together with the adapter that delivers it.
+
+**Problem**: `ConnectionService.create` defaults `enabledCapabilities` from the manifest when the caller omits it, and that column is stamped at create and **never retro-filled** (the #2085 shape). So a connection created against an empty manifest carries `enabledCapabilities: []` for ever, and both `getCapabilityAdapter` and `listCapabilityAdapters` gate on it — meaning a capability added to the manifest *later* is unusable on every connection created before it, throwing `CapabilityNotEnabled` with a log line reading `enabled: <none>`.
+
+**Rule**: when a PR adds a capability name to a manifest that previously advertised fewer, it must also retro-fill `enabledCapabilities` on existing connections of that `platformType` **in the same PR**. An UPDATE-only migration is the right shape and does not conflict with a "nothing is seeded" assertion, which is about INSERTs. Say so explicitly in the issue that defers the capability, or the obligation is discovered by an operator instead.
+
+**Applies to**: `apps/api/src/integrations/application/services/connection.service.ts`; any adapter manifest whose `supportedCapabilities` grows after connections exist. **Named obligation: #2409**, which adds `FulfillmentExecutor` to the OMS manifest.
+
+**Source**: #2405.
+
+## A "bootstrap the missing prerequisite" remedy wired as an automatic side effect makes its own guard unreachable
+
+**Context**: #2407 refuses to enable fulfilment routing until at least one active `inventory_location` exists, and offers a one-click bootstrap that mints `MAIN` as the remedy.
+
+**Problem**: the tempting wiring is to mint the location automatically — on connection create, on enable, or from a migration. Every one of those makes the refusal **unreachable**: the precondition is satisfied by the same act that would have violated it, so the guard is dead code that no test can exercise except by deleting the seeding it was written against. Worse, the automatic row is a *fabrication* — a bootstrapped location holds no stock and has no country, so seeding it silently converts "this install has not been configured" into "this install has a warehouse", which is a claim about the operator's business that OpenLinker is not in a position to make.
+
+**Rule**: a remedy offered by a guard must be an **explicit operator action**, never a side effect of the transition the guard sits on and never a migration. Keep the mint idempotent (insert-then-recover on the unique key, not a read-then-write), report what it did and did not create so a re-run is visibly a no-op, and keep the guarded write and the remedy on separate routes so a test can drive the refusal, apply the remedy, and re-drive the same request as the control.
+
+**Applies to**: any first-run precondition guard and its bootstrap; `apps/api/src/integrations/application/services/connection.service.ts`, `libs/core/src/inventory/application/services/location.service.ts`.
+
+**Source**: #2407.
+
+## A hidden control is not a guard — assert the endpoint refuses independently
+
+- **Context**: #2666, the automation retry chain. `resolveRetryEligibility` is read by two
+  surfaces: the run projection (which decides whether `Try again` renders enabled) and the
+  retry endpoint (which enforces the refusal). Its own docblock already states the rule —
+  *"the projection is a rendering fact and this is the guard. If only the endpoint knew, the
+  UI would lie; if only the UI knew, a direct call would bypass it."*
+- **Problem**: the terminality fix bounded a retry chain by an attempt budget, and the design
+  read as complete because the frontend hides the `Try again` control on a superseded row
+  (`AutomationRunActions` returns `null` on `!needsAttention`). But the eligibility rule never
+  tested supersession, so `POST /automations/runs/{id}/retry` on an already-retried parent
+  still succeeded — minting a second chain head whose budget restarted at 1. The budget
+  bounded each branch while the number of branches stayed unbounded, and the attention count
+  grew a second row for one underlying failure: the exact defect the issue existed to close,
+  restored through the API path. No test failed, because every test drove the UI's predicate.
+- **Rule**: when one predicate gates both a rendered affordance and an endpoint, write a test
+  that calls the **endpoint** with the affordance's precondition violated. "The button is
+  hidden" is not evidence the request is refused. Ask specifically: *which arm of this rule
+  does only the UI know about?*
+- **Applies to**: any pure rule consumed by both a projection/DTO and a controller —
+  `resolveRetryEligibility`, `isAutomationRunAttentionWorthy`, `checkRequiredToSell`,
+  `resolveSalesDocumentRouting`, and the `check-*-mirror.mjs` family that exists for the same
+  class of split-brain.
+- **Source**: #2666 (plan-stage `/tech-review`, escalated to BLOCKING before implementation).

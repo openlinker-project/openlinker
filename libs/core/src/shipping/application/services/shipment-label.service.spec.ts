@@ -48,6 +48,7 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     overrides.waybillRelayedAt ?? null,
     overrides.direction ?? 'outbound',
     overrides.reservationConsumedAt ?? null,
+    overrides.fulfillmentWorkId ?? null,
   );
 }
 
@@ -71,6 +72,7 @@ describe('ShipmentLabelService', () => {
       releaseWaybillRelay: jest.fn(),
       listDispatchedAwaitingReservationConsume: jest.fn(),
       claimReservationConsume: jest.fn(),
+      claimFulfillmentWorkLink: jest.fn(),
     };
     readerAdapter = {
       generateLabel: jest.fn(),

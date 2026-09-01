@@ -32,6 +32,7 @@ import { MarketplaceOfferPauseStaleSweepHandler } from './marketplace-offer-paus
 import { MarketplaceShipmentStatusSyncHandler } from './marketplace-shipment-status-sync.handler';
 import { MarketplaceShipmentSyncByExternalIdHandler } from './marketplace-shipment-sync-by-external-id.handler';
 import { MarketplaceFulfillmentStatusSyncHandler } from './marketplace-fulfillment-status-sync.handler';
+import { FulfillmentWorkStatusSyncHandler } from './fulfillment-work-status-sync.handler';
 import { MasterProductSyncHandler } from './master-product-sync.handler';
 import { MasterProductSyncBatchHandler } from './master-product-sync-batch.handler';
 import { MasterInventorySyncHandler } from './master-inventory-sync.handler';
@@ -57,6 +58,8 @@ import { RegulatoryStatusReconcileHandler } from './regulatory-status-reconcile.
 import { OfflineResubmitHandler } from './offline-resubmit.handler';
 import { PendingRecoveryHandler } from './pending-recovery.handler';
 import { PaymentStatusRefreshHandler } from './payment-status-refresh.handler';
+import { FulfillmentWorkDispatchHandler } from './fulfillment-work-dispatch.handler';
+import { FulfillmentWorkRouteHandler } from './fulfillment-work-route.handler';
 
 @Injectable()
 export class HandlerRegistrationService implements OnModuleInit {
@@ -90,6 +93,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly marketplaceShipmentStatusSyncHandler: MarketplaceShipmentStatusSyncHandler,
     private readonly marketplaceShipmentSyncByExternalIdHandler: MarketplaceShipmentSyncByExternalIdHandler,
     private readonly marketplaceFulfillmentStatusSyncHandler: MarketplaceFulfillmentStatusSyncHandler,
+    private readonly fulfillmentWorkStatusSyncHandler: FulfillmentWorkStatusSyncHandler,
     private readonly masterProductSyncHandler: MasterProductSyncHandler,
     private readonly masterProductSyncBatchHandler: MasterProductSyncBatchHandler,
     private readonly masterInventorySyncHandler: MasterInventorySyncHandler,
@@ -109,14 +113,16 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly regulatoryStatusReconcileHandler: RegulatoryStatusReconcileHandler,
     private readonly offlineResubmitHandler: OfflineResubmitHandler,
     private readonly pendingRecoveryHandler: PendingRecoveryHandler,
-    private readonly paymentStatusRefreshHandler: PaymentStatusRefreshHandler
+    private readonly paymentStatusRefreshHandler: PaymentStatusRefreshHandler,
+    private readonly fulfillmentWorkDispatchHandler: FulfillmentWorkDispatchHandler,
+    private readonly fulfillmentWorkRouteHandler: FulfillmentWorkRouteHandler
   ) {}
 
   onModuleInit(): void {
     // Every registration declares its ADR-050 concurrency lane (#2278). The
     // lane is chosen by cost-of-starvation, never by I/O shape or bounded
-    // context — the authoritative table is ADR-050 decision 1, now 13 realtime /
-    // 25 bulk / 5 fiscal / 7 fan-out across 50 job types. Amendments since the
+    // context — the authoritative table is ADR-050 decision 1, now 15 realtime /
+    // 25 bulk / 5 fiscal / 7 fan-out across 52 job types. Amendments since the
     // ADR: `fiscalization.register` joined `fiscal` (#2156),
     // `inventory.provenance.backfill` joined `bulk` (#2317), the three returns
     // types joined realtime/bulk/fan-out (#2330), `returns.orphan.reconcile`
@@ -182,6 +188,21 @@ export class HandlerRegistrationService implements OnModuleInit {
       'returns.orphan.reconcile',
       this.returnsOrphanReconcileHandler,
       'bulk'
+    );
+    // OMS fulfilment progress ingress (#2400). `realtime`, by ADR-050's
+    // cost-of-starvation rule: an executor's progress report is WAITED ON — a
+    // picker is standing at a station and the worklist shows stale counters
+    // until it drains — which is the same argument that puts inbound order sync
+    // on this lane. It outranks the "core-owned internal pass" instinct that
+    // would suggest `bulk`, because that instinct is about who ENQUEUES the job,
+    // and the lane is about who is hurt when it is late.
+    //
+    // Distinct from `marketplace.fulfillment.statusSync` (#834) above, which is
+    // the shipping context's OMP read-back and shares nothing with this but a word.
+    this.handlerRegistry.register(
+      'fulfillment.work.statusSync',
+      this.fulfillmentWorkStatusSyncHandler,
+      'realtime'
     );
     this.handlerRegistry.register(
       'marketplace.offers.sync',
@@ -483,6 +504,36 @@ export class HandlerRegistrationService implements OnModuleInit {
       'orders.taxRate.backfill',
       this.ordersTaxRateBackfillHandler,
       'bulk'
+    );
+
+    // Fulfilment executor handshake (#2399, `W3a-10`).
+    //
+    // 'realtime' lane, chosen by ADR-050's rule — cost of starvation, never I/O
+    // shape. A dispatch is the outbound "tell the holder to ship" for an order
+    // that has just been routed: someone is waiting, and lateness costs a
+    // shipment. That is the same class as `marketplace.order.sync`, not a paced
+    // catalogue sweep. #2594's split-by-trigger has nothing to separate here —
+    // one trigger, one cost — so the type stays single rather than gaining a
+    // sweep-lane twin.
+    this.handlerRegistry.register(
+      'fulfillment.work.dispatch',
+      this.fulfillmentWorkDispatchHandler,
+      'realtime'
+    );
+
+    // Routing commit (#2395, `W3a-6`).
+    //
+    // 'realtime', for the same ADR-050 reason its dispatch sibling is, and NOT
+    // 'bulk'. The core-owned-internal-pass instinct argues for `bulk` here, and
+    // that instinct is about who ENQUEUES the job; the lane is about who is hurt
+    // when it is late. Routing gates whether an order ships AT ALL, so starving
+    // it behind a catalogue sweep delays every order's fulfilment — and
+    // `bulk`'s per-scope cap is sized for work an operator tolerates being slow.
+    // A late route is a late shipment.
+    this.handlerRegistry.register(
+      'fulfillment.work.route',
+      this.fulfillmentWorkRouteHandler,
+      'realtime'
     );
 
     // Boot gate (ADR-050 D1 / ADR-051 D6): every JobTypeValues member must be

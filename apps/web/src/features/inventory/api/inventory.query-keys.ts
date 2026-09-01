@@ -5,6 +5,9 @@ export const inventoryQueryKeys = {
   list: (filters?: InventoryFilters, pagination?: InventoryPagination) =>
     ['inventory', 'list', filters ?? {}, pagination ?? {}] as const,
   detail: (id: string) => ['inventory', 'detail', id] as const,
+  // #2407 — install-wide, so no connection axis: the active-location count is
+  // a property of the deployment, not of the connection whose page renders it.
+  activeLocations: () => ['inventory', 'locations', 'active'] as const,
   // Sorted-join makes the cache key stable across call-site orderings of
   // the same ID set — so two callers requesting [a, b] and [b, a] hit the
   // same cache entry. The empty-list case is encoded as the empty string,

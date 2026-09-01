@@ -261,6 +261,11 @@ module.exports = {
                   '**/fulfillment-authority/components/**',
                   '**/fulfillment-authority/lib/**',
                   '**/fulfillment-authority/types/**',
+                  '**/fulfillment/api/**',
+                  '**/fulfillment/hooks/**',
+                  '**/fulfillment/components/**',
+                  '**/fulfillment/lib/**',
+                  '**/fulfillment/types/**',
                   '**/inventory/api/**',
                   '**/inventory/hooks/**',
                   '**/inventory/components/**',
@@ -504,6 +509,11 @@ module.exports = {
                   '**/fulfillment-authority/components/**',
                   '**/fulfillment-authority/lib/**',
                   '**/fulfillment-authority/types/**',
+                  '**/fulfillment/api/**',
+                  '**/fulfillment/hooks/**',
+                  '**/fulfillment/components/**',
+                  '**/fulfillment/lib/**',
+                  '**/fulfillment/types/**',
                   '**/inventory/api/**',
                   '**/inventory/hooks/**',
                   '**/inventory/components/**',
@@ -626,6 +636,10 @@ module.exports = {
         'libs/integrations/ksef/**/*.ts',
         'libs/integrations/subiekt/**/*.ts',
         'libs/integrations/woocommerce/**/*.ts',
+        // #2390 / ADR-055: `libs/oms` ships no HTTP client by design — the
+        // OL-OMS answers from OpenLinker's own tables. Banned here (and
+        // scanned by scripts/check-outbound-http.mjs) so that stays enforced.
+        'libs/oms/**/*.ts',
       ],
       excludedFiles: ['**/*.spec.ts', '**/*.int-spec.ts'],
       rules: {
@@ -787,7 +801,10 @@ module.exports = {
       // coupled to TypeORM (#594). The package.json wildcards were dropped
       // — deep aliases now fail at Node runtime; this rule catches them at
       // lint time.
-      files: ['libs/integrations/**/*.ts'],
+      // `libs/oms` is a first-party product package, not an integration
+      // (ADR-055) — but it is an integration-SHAPED consumer of core and
+      // takes the identical top-level-barrel-only contract (#2390).
+      files: ['libs/integrations/**/*.ts', 'libs/oms/**/*.ts'],
       rules: {
         'no-restricted-imports': [
           'error',

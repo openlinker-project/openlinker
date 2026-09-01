@@ -258,6 +258,7 @@ const runSchema = z.object({
   dismissedAt: z.string().nullish(),
   dismissedByUserId: z.string().nullish(),
   retryOfRunId: z.string().nullish(),
+  supersededByRetry: z.boolean().nullish(),
 });
 
 const runLogSchema = z.object({
@@ -296,6 +297,7 @@ export function parseAutomationRun(raw: unknown): AutomationRun | null {
     dismissedAt: parsed.data.dismissedAt ?? null,
     dismissedByUserId: parsed.data.dismissedByUserId ?? null,
     retryOfRunId: parsed.data.retryOfRunId ?? null,
+    supersededByRetry: parsed.data.supersededByRetry ?? false,
   };
 }
 
@@ -317,6 +319,7 @@ export function parseAutomationRunLog(raw: unknown): AutomationRunLog | null {
         dismissedAt: parsed.data.dismissedAt ?? null,
         dismissedByUserId: parsed.data.dismissedByUserId ?? null,
         retryOfRunId: parsed.data.retryOfRunId ?? null,
+        supersededByRetry: parsed.data.supersededByRetry ?? false,
       });
     }
   }

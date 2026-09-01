@@ -124,6 +124,32 @@ export interface ShipmentRepositoryPort {
   claimWaybillRelay(id: string, at: Date): Promise<boolean>;
 
   /**
+   * Atomically link this shipment to the `FulfillmentWork` it satisfies (#2402),
+   * but only if it carries no link yet. Reports whether THIS caller won.
+   *
+   * **Fill-in-when-NULL, not write-once.** The linkage is normally stamped at
+   * creation, but there is one path where it cannot be: a branch-1 observed row
+   * minted by `FulfillmentStatusSyncService` BEFORE the order was routed has no
+   * work to name at birth, and the dispatch retry path takes the `update()`
+   * branch, so a strict write-once rule would leave that row unlinkable
+   * forever. This is the seam that repairs it.
+   *
+   * The `IsNull()` in the WHERE is the whole guarantee — the same idiom, and for
+   * the same reason, as {@link claimWaybillRelay}: two unlocked observers (the
+   * status-sync poll and a dispatch) can reach the same row, and a
+   * read-then-write would let both write. At READ COMMITTED a plain `SELECT`
+   * takes no locks, so an application-side "is it null?" check enforces nothing.
+   *
+   * Monotone: a row's link is assigned at most once and never reassigned, so a
+   * `false` always means the row is already linked (or gone), never that the
+   * caller should retry.
+   *
+   * @returns `true` when this caller assigned the link, `false` when the row
+   *          already carries one or does not exist.
+   */
+  claimFulfillmentWorkLink(id: string, fulfillmentWorkId: string): Promise<boolean>;
+
+  /**
    * One page of shipments that have shipped but whose order's reservations have
    * not yet been consumed (#2347) — oldest first, capped at `limit`.
    *

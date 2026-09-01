@@ -393,6 +393,36 @@ describe('OrderRecordService', () => {
       expect(callArg.buyerTaxId).toBeNull();
     });
 
+    it('should stamp the shipping-address hash from the un-redacted address (#2395)', async () => {
+      const order = createMockOrder();
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
+      expect(callArg.shippingAddressHash).toEqual(expect.any(String));
+      expect(callArg.shippingAddressHash).not.toBe('');
+    });
+
+    it('should leave the shipping-address hash null when the order has no shipping address (#2395)', async () => {
+      const order = createMockOrder();
+      order.shippingAddress = undefined as never;
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
+      expect(callArg.shippingAddressHash).toBeNull();
+    });
+
+    // The blank-hash guard ("a blank string is itself a shared grouping key") is
+    // asserted where it actually protects routing rather than mocked into being
+    // here: `routing-ship-to.types.spec.ts` covers it against `buildRoutingShipTo`,
+    // which is the function that decides whether a hash is forwarded to a router.
+    // Driving it from this suite needed a module mock of the shared config
+    // barrel purely to make a real hash return whitespace, which is machinery in
+    // service of a case the production hash cannot produce.
+
     it('should serialise Order.placedAt into the snapshot as an ISO string when present (#926)', async () => {
       const order = createMockOrder();
       order.placedAt = new Date('2026-05-31T16:00:00.000Z');
@@ -554,6 +584,33 @@ describe('OrderRecordService', () => {
       const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       expect(callArg.buyerTaxId).toBeNull();
       expect(callArg.orderSnapshot.billingAddress).not.toHaveProperty('taxId');
+    });
+
+    it('should still stamp the shipping-address hash when PII storage is disabled (#2395)', async () => {
+      // The whole point: `RoutingShipTo`'s degraded arm serves exactly this
+      // deployment, so the hash must NOT be PII-gated the way `buyerTaxId` is.
+      // It is also derived from the LIVE address, so it must not collapse to
+      // the one-hash-per-country value that hashing the redacted snapshot
+      // would produce - assert it differs between two distinct addresses in
+      // the same country.
+      const order = createMockOrder();
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+      const first = repository.upsertWithLineItems.mock.calls[0][0].shippingAddressHash;
+      expect(first).toEqual(expect.any(String));
+      expect(first).not.toBe('');
+
+      const other = createMockOrder();
+      other.shippingAddress = {
+        ...other.shippingAddress!,
+        address1: 'Somewhere Else 999',
+        city: 'Gdansk',
+        postalCode: '80-001',
+      };
+      repository.upsertWithLineItems.mockClear();
+      await service.persistOrder(other, 'source-connection-123', 'event-457');
+      expect(repository.upsertWithLineItems.mock.calls[0][0].shippingAddressHash).not.toBe(first);
     });
 
     it('should persist order with sanitized addresses when PII storage is disabled', async () => {

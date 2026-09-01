@@ -48,6 +48,7 @@ describe('ShipmentRepository', () => {
     reservationConsumedAt: null,
     createdAt: now,
     updatedAt: now,
+    fulfillmentWorkId: null,
     ...overrides,
   });
 
@@ -547,6 +548,7 @@ describe('ShipmentRepository', () => {
         // Non-null so the round-trip proves the marker is actually carried,
         // rather than passing on a `null === null` coincidence (#2347).
         reservationConsumedAt: new Date('2026-05-21T16:00:00Z'),
+        fulfillmentWorkId: 'ol_fulfillmentwork_aaaaaaaaaaaaaaaaaaaaaaaa',
         status: 'delivered',
       });
       ormRepository.findOne.mockResolvedValue(fullyPopulated);
@@ -575,6 +577,7 @@ describe('ShipmentRepository', () => {
         waybillRelayedAt: fullyPopulated.waybillRelayedAt,
         direction: fullyPopulated.direction,
         reservationConsumedAt: fullyPopulated.reservationConsumedAt,
+        fulfillmentWorkId: fullyPopulated.fulfillmentWorkId,
         createdAt: fullyPopulated.createdAt,
         updatedAt: fullyPopulated.updatedAt,
       });

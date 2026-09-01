@@ -68,6 +68,15 @@ import type { DeliveryIntent } from '../../../domain/types/delivery-intent.types
 @Index('IDX_shipments_reservation_consume_pending', ['createdAt'], {
   where: '"reservationConsumedAt" IS NULL',
 })
+// Work-linkage lookup (#2402). Deliberately a FULL index, unlike the partial
+// one directly above, and the difference is the direction the populated set
+// moves. The reservation-consume set SHRINKS to ~nothing in steady state
+// (every shipment leaves it permanently), so a full index there would be
+// almost entirely dead rows. This set GROWS as OMS routing is adopted and is
+// expected to become the majority, at which point a partial index saves
+// nothing and has to be rebuilt as a full one — while permanently refusing to
+// serve the `IS NULL` scan that finding-the-unlinked-rows needs.
+@Index('IDX_shipments_fulfillmentWorkId', ['fulfillmentWorkId'])
 export class ShipmentOrmEntity {
   @PrimaryColumn({ type: 'text' })
   id!: string;
@@ -152,6 +161,14 @@ export class ShipmentOrmEntity {
   // partial index above serves the sweep's candidate predicate.
   @Column({ type: 'timestamp', nullable: true })
   reservationConsumedAt!: Date | null;
+
+  // The `FulfillmentWork` this shipment satisfies (#2402), or `null` — see the
+  // domain entity for why there is no FK and why this is assigned AT MOST ONCE
+  // (fill-in-when-NULL, not write-once-at-creation). Nullable
+  // is the ORDINARY state (pre-OMS and unrouted orders), so no default and no
+  // backfill.
+  @Column({ type: 'text', nullable: true })
+  fulfillmentWorkId!: string | null;
 
   @CreateDateColumn()
   createdAt!: Date;

@@ -331,6 +331,58 @@ describe('OrderRecordRepository', () => {
     });
   });
 
+  describe('updateFulfillmentBlock (#2396)', () => {
+    function blockSql(): string {
+      const calls = (ormRepository.query as jest.Mock).mock.calls as unknown[][];
+      return calls[0][0] as string;
+    }
+
+    function blockParams(): unknown[] {
+      const calls = (ormRepository.query as jest.Mock).mock.calls as unknown[][];
+      return calls[0][1] as unknown[];
+    }
+
+    it('should write the reason and its detail together', async () => {
+      (ormRepository.query as jest.Mock).mockResolvedValue([]);
+
+      await repository.updateFulfillmentBlock('order-123', {
+        reason: 'routing-in-doubt',
+        detail: 'decision dec-1 left live for resumption (timeout)',
+      });
+
+      expect(blockParams()).toEqual([
+        'routing-in-doubt',
+        'decision dec-1 left live for resumption (timeout)',
+        'order-123',
+      ]);
+    });
+
+    it('should send an explicit null pair when the block clears', async () => {
+      // Level-triggered: `null` is the ONLY thing that clears a reason once the
+      // condition resolves. A writer that skipped the clear would be sticky,
+      // which is the #2100 lesson.
+      (ormRepository.query as jest.Mock).mockResolvedValue([]);
+
+      await repository.updateFulfillmentBlock('order-123', null);
+
+      expect(blockParams()).toEqual([null, null, 'order-123']);
+    });
+
+    it('should guard the write so an unchanged value touches no row', async () => {
+      // This is the overwhelmingly common path — every ingestion on every
+      // install today writes `null` over `null`, and `updatedAt` is a live
+      // filter axis (`FulfillmentStatusSyncService` scans `updatedSince`), so
+      // an unguarded write would bump every order on every poll.
+      (ormRepository.query as jest.Mock).mockResolvedValue([]);
+
+      await repository.updateFulfillmentBlock('order-123', null);
+
+      const sql = blockSql();
+      expect(sql).toContain('"fulfillmentBlockReason" IS DISTINCT FROM $1');
+      expect(sql).toContain('"fulfillmentBlockDetail" IS DISTINCT FROM $2');
+    });
+  });
+
   describe('countOrdersWithOmsAttention (#2352)', () => {
     function countSql(): string {
       const calls = (ormRepository.query as jest.Mock).mock.calls as unknown[][];
@@ -1316,6 +1368,65 @@ describe('OrderRecordRepository', () => {
       }
     );
 
+    it('pins shippingAddressHash into the ready-path statement and reads it back (#2395)', async () => {
+      // Same argument as `buyerTaxId` above: the frozen-attribution upsert
+      // ENUMERATES its columns, so a value stamped on the entity but never
+      // added to the statement is silently not written.
+      const domainEntity = new OrderRecord(
+        'order-123',
+        'customer-456',
+        'source-connection-123',
+        'event-456',
+        { id: 'order-123', orderNumber: 'ORD-001', status: 'pending' },
+        [],
+        'ready',
+        new Date('2025-01-01T10:00:00Z'),
+        new Date('2025-01-01T10:00:00Z'),
+        [],
+        null,
+        null,
+        null,
+        new Date('2025-01-01T09:00:00Z'),
+        'PLN',
+        'inclusive',
+        199.99,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        [],
+        null,
+        'abc123hash'
+      );
+      const savedOrm = createOrmEntity();
+      savedOrm.shippingAddressHash = 'abc123hash';
+      transactionalManager.query.mockResolvedValue([savedOrm]);
+      transactionalManager.delete.mockResolvedValue(undefined);
+
+      await repository.upsertWithLineItems(domainEntity, []);
+
+      const [sql, params] = transactionalManager.query.mock.calls[0] as [string, unknown[]];
+      expect(sql).toContain('"shippingAddressHash"');
+      expect(params).toContain('abc123hash');
+
+      ormRepository.findOne.mockResolvedValue(savedOrm);
+      expect((await repository.findById('order-123'))?.shippingAddressHash).toBe('abc123hash');
+    });
+
     it('decodes the round-tripped column back to the three domain states', async () => {
       const withColumn = (stored: string | null): OrderRecordOrmEntity => {
         const entity = createOrmEntity();
@@ -1740,6 +1851,21 @@ describe('OrderRecordRepository', () => {
         await repository.upsert(createDomainEntity());
 
         expectColumnAbsentFromUpsert('omsAttention');
+      });
+
+      it('should NOT include either fulfillmentBlock column in the upsert statement (#2396)', async () => {
+        // The explicit #2396 acceptance criterion. `persistOrder` runs BEFORE
+        // the fulfilment intercept on every ingestion, so if either column were
+        // in the write set a re-poll would null the reason the previous
+        // transition wrote — and then re-add none, because the intercept has
+        // not run yet. The order would read "nothing is wrong" while being
+        // held. `updateFulfillmentBlock` is the sole writer.
+        mockUpsertReturning(createOrmEntity());
+
+        await repository.upsert(createDomainEntity());
+
+        expectColumnAbsentFromUpsert('fulfillmentBlockReason');
+        expectColumnAbsentFromUpsert('fulfillmentBlockDetail');
       });
 
       it('should NOT include any of the six FX columns in the upsert statement', async () => {

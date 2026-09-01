@@ -24,7 +24,7 @@ import {
   SyncLockPort,
   SYNC_LOCK_TOKEN,
 } from '@openlinker/core/sync';
-import { IIdentifierMappingService, IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
+import { IIdentifierMappingService, IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTITY_TYPE, CONNECTION_PORT_TOKEN, type ConnectionPort } from '@openlinker/core/identifier-mapping';
 import {
   IAutoIssueTriggerService,
   AUTO_ISSUE_TRIGGER_SERVICE_TOKEN,
@@ -71,6 +71,21 @@ import {
   type IFulfillmentRoutingService,
   FULFILLMENT_PROCESSOR_KIND,
 } from '@openlinker/core/mappings';
+import {
+  ROUTING_COMMIT_SERVICE_TOKEN,
+  buildRoutingShipTo,
+  type FulfillmentBlock,
+  type IRoutingCommitService,
+  type RoutingCommitOutcome,
+  type RoutingInputLine,
+  type RoutingShipTo,
+} from '@openlinker/core/fulfillment';
+import {
+  isFulfillmentRouterUnroutable,
+  selectPrimaryFulfillmentRouter,
+  type AuthorityClaimantInput,
+} from '@openlinker/core/fulfillment-authority';
+import { resolveFulfillmentRouter } from './fulfillment-router-resolution';
 import type { ReservationAtpEffect } from '@openlinker/core/inventory';
 import type { Order } from '../../domain/types/order.types';
 import type { OrderFeedEventType } from '../../domain/types/order-feed.types';
@@ -84,6 +99,26 @@ import { getEnvBoolean } from '@openlinker/shared/config';
 import { Logger } from '@openlinker/shared/logging';
 import { diffOrderAmendment } from '../../domain/order-amendment-diff';
 import { MissingOrderItemMappingError } from '../../domain/exceptions/missing-order-item-mapping.error';
+
+/**
+ * What the #2396 intercept decided for one order.
+ *
+ * `held` and `block` are independent: a `routed` order is held with NO block
+ * (the work object explains it), and an `ambiguous` one is not held and also
+ * carries no block (#2352's A2-A row already reports it). Collapsing them into
+ * one nullable field would make those two states indistinguishable.
+ */
+interface FulfillmentInterceptOutcome {
+  readonly held: boolean;
+  readonly block: FulfillmentBlock | null;
+}
+
+/** The ADR-062 allowlist projection handed to a router. */
+interface RoutingProjection {
+  readonly lines: RoutingInputLine[];
+  readonly shipTo: RoutingShipTo;
+  readonly requestedDeliveryMethod: string | null;
+}
 
 @Injectable()
 export class OrderIngestionService implements IOrderIngestionService {
@@ -144,7 +179,17 @@ export class OrderIngestionService implements IOrderIngestionService {
     // there would create the `inventory -> fulfillment` read ADR-061 decision 1
     // exists to eliminate.
     @Inject(FULFILLMENT_ROUTING_SERVICE_TOKEN)
-    private readonly fulfillmentRouting: IFulfillmentRoutingService
+    private readonly fulfillmentRouting: IFulfillmentRoutingService,
+    // #2396: the fulfilment routing commit. One-way edge — `fulfillment` is a
+    // zero-sibling-edge leaf and injects no `orders` service; it REPORTS the
+    // outcome and this service, which owns the order record, WRITES it.
+    @Inject(ROUTING_COMMIT_SERVICE_TOKEN)
+    private readonly routingCommit: IRoutingCommitService,
+    // #2396: A2 claimants are resolved from connection config, so the intercept
+    // needs the connection list. `selectPrimaryFulfillmentRouter` is pure and
+    // does the deciding.
+    @Inject(CONNECTION_PORT_TOKEN)
+    private readonly connections: ConnectionPort
   ) {}
 
   async ingestOrders(
@@ -455,7 +500,11 @@ export class OrderIngestionService implements IOrderIngestionService {
       internalCustomerId,
       resolvedItems
     );
-    await this.orderRecordService.persistOrder(
+    // The persisted record is captured for its `shippingAddressHash` (#2395),
+    // which the #2396 routing projection needs and which the `order` object does
+    // not carry. Hashing the snapshot instead would be wrong under hash-only
+    // mode — see `projectOrderForRouting`.
+    const persisted = await this.orderRecordService.persistOrder(
       order,
       connectionId,
       sourceEventId ?? null,
@@ -518,11 +567,41 @@ export class OrderIngestionService implements IOrderIngestionService {
       }
     }
 
-    const results = await this.orderSyncService.syncOrder({
+    // #2396 — THE FULFILMENT INTERCEPT. Sits here, between `persistOrder` and
+    // `syncOrder`, because a hold that still mirrors the order into the shop is
+    // not a hold (DESIGN §5.5). Everything above has already run: the order row
+    // exists, its advisory holds are recorded, and its projections are synced.
+    //
+    // On every installation today this resolves to the pass-through arm — no
+    // connection claims A2, and `resolveFulfillmentRouter` answers `null`
+    // regardless — so `syncOrder` below is reached with a byte-identical
+    // request. That is ADR-054's specified degenerate behaviour, not a stub.
+    const routing = await this.interceptFulfillmentRouting(
       order,
-      sourceConnectionId: connectionId,
-      sourceEventId,
-    });
+      connectionId,
+      persisted?.shippingAddressHash ?? null
+    );
+    await this.persistFulfillmentOutcome(order.id, routing);
+
+    let results: Awaited<ReturnType<IOrderSyncService['syncOrder']>> = [];
+
+    if (routing.held) {
+      // HELD: the order is being fulfilled through a routed work object, or its
+      // routing is in a state where mirroring could double-ship it. No
+      // destination fan-out, and therefore no `syncStatus` rows — writing
+      // `pending` here would claim a destination is still owed this order,
+      // which is exactly what routing decided is not true.
+      this.logger.log(
+        `Withholding destination mirror for order ${order.id}: fulfilment routing ` +
+          `held it (${routing.block?.reason ?? 'routed'})`
+      );
+    } else {
+      results = await this.orderSyncService.syncOrder({
+        order,
+        sourceConnectionId: connectionId,
+        sourceEventId,
+      });
+    }
 
     // Update per-destination sync status; allSettled — one failure doesn't block others
     const settlements = await Promise.allSettled(
@@ -639,7 +718,17 @@ export class OrderIngestionService implements IOrderIngestionService {
 
     // OL #1120 — auto-issue trigger (EV→SVC edge, ADR-026 §3). Fires STRICTLY at
     // the end of the authoritative source poll, AFTER per-destination status is
-    // settled. The destination-echo early-return (`return []`) above is the
+    // settled.
+    //
+    // #2396: this runs for a HELD order too, deliberately. Issuance is a
+    // separate authority (A7 / ADR-041) from fulfilment sourcing (A2) — the
+    // buyer has paid and the document is owed whether the parcel leaves from a
+    // destination shop or from a routed holder. Skipping it under a hold would
+    // silently stop invoicing for exactly the orders a router took over, which
+    // is a fiscal regression disguised as a fulfilment change. `results` is
+    // empty on that path, so the settlement loop above simply did nothing.
+    //
+    // The destination-echo early-return (`return []`) above is the
     // INTENDED gate: issuance fires only on the real source ingestion, never on a
     // destination re-read. Threads the in-scope `sourceEventId` as the trace token
     // (D10 — no `correlationId` exists). Wrapped so an enqueue/compose failure
@@ -681,6 +770,301 @@ export class OrderIngestionService implements IOrderIngestionService {
     }
 
     return results;
+  }
+
+  /**
+   * Decide whether fulfilment routing HOLDS this order (#2396, DESIGN §5.5).
+   *
+   * Three arms, per the issue:
+   *
+   * - **`none`** — nobody claims A2. Today's path, byte-identical. This is every
+   *   installation today.
+   * - **`ambiguous`** — several routers legitimately contend, or the config is
+   *   ambiguous. Today's path, and **nothing is persisted**: #2352's derived
+   *   `'sourcing-ambiguous'` (A2-A) already reports this at order grain with
+   *   `counted: true`, so a second copy would double-count
+   *   `Needs attention (N)`. Warn-logged only.
+   * - **`selected`** — exactly one router holds A2. `route()` decides, and a
+   *   routed order is HELD.
+   *
+   * Silence-and-pick-one is forbidden on the ambiguous arm for the reason it is
+   * forbidden in #2047: an unrouted order is recoverable by hand, two shipments
+   * of one order are not.
+   *
+   * **Never throws.** A failure anywhere here degrades to the pass-through, because
+   * an infrastructure hiccup in an optional layer must not cost a paid order its
+   * destination mirror.
+   */
+  private async interceptFulfillmentRouting(
+    order: Order,
+    connectionId: string,
+    shippingAddressHash: string | null
+  ): Promise<FulfillmentInterceptOutcome> {
+    try {
+      const selection = selectPrimaryFulfillmentRouter(await this.loadRoutingClaimants());
+
+      if (selection.holder === null) {
+        if (isFulfillmentRouterUnroutable(selection.reason)) {
+          this.logger.warn(
+            `Not routing order ${order.id}: reason=${selection.reason} ` +
+              `candidates=[${selection.candidateConnectionIds.join(',')}]. ` +
+              `Following today's path; the ambiguity is reported by the A2 ` +
+              `authority read model (#2352), not persisted here.`
+          );
+        }
+        // `no-claimant` is the pass-through and is not worth a log line per order.
+        return { held: false, block: null };
+      }
+
+      const router = await resolveFulfillmentRouter(selection.holder);
+      if (router === null) {
+        // The degenerate pass-through (ADR-054). Not an error, and not a block:
+        // the order follows today's path unchanged, so there is nothing held to
+        // explain.
+        this.logger.log(
+          `No fulfilment router is wired for connection ${selection.holder}; ` +
+            `order ${order.id} follows today's path unchanged (#2408/#2409).`
+        );
+        return { held: false, block: null };
+      }
+
+      const projection = this.projectOrderForRouting(order, shippingAddressHash);
+      if (projection === null) {
+        this.logger.warn(
+          `Order ${order.id} carries no shipping address; fulfilment routing skipped.`
+        );
+        return { held: false, block: null };
+      }
+
+      const outcome = await this.routingCommit.route({
+        orderId: order.id,
+        routerConnectionId: selection.holder,
+        lines: projection.lines,
+        shipTo: projection.shipTo,
+        requestedDeliveryMethod: projection.requestedDeliveryMethod,
+        router,
+        // `SyncLockPort` satisfies the locally-declared `RoutingLockPort`
+        // STRUCTURALLY, which is what lets the leaf keep its zero value edges
+        // while still getting the real distributed lock.
+        lock: this.lock,
+        // A CALLBACK, re-read inside the lock. A boolean resolved here would be
+        // a value from a moment that has already passed (REVIEW C10).
+        isCancelled: async () => {
+          const record = await this.orderRecordService.getOrderRecord(order.id);
+          return record?.isCancelled === true;
+        },
+      });
+
+      return this.toInterceptOutcome(order.id, outcome);
+    } catch (error) {
+      // Fail OPEN, and say so. An optional routing layer that cannot answer must
+      // not strand a paid order: the alternative — holding on an unknown — would
+      // withhold the destination mirror indefinitely on an install that has no
+      // router at all.
+      const errorName = error instanceof Error ? error.name : 'UnknownError';
+      this.logger.warn(
+        `Fulfilment routing intercept failed (swallowed, following today's path): ` +
+          `error=${errorName} orderId=${order.id} connectionId=${connectionId}`
+      );
+      return { held: false, block: null };
+    }
+  }
+
+  /**
+   * Map a routing commit outcome onto "is this order held, and why".
+   *
+   * The `switch` is exhaustive over `RoutingCommitOutcome['status']` with a
+   * `never` arm, so a new outcome member added by a later issue is a COMPILE
+   * error here rather than a silent fall-through into the pass-through — which
+   * would mirror an order the router may already have committed.
+   */
+  private toInterceptOutcome(
+    orderId: string,
+    outcome: RoutingCommitOutcome
+  ): FulfillmentInterceptOutcome {
+    switch (outcome.status) {
+      case 'routed':
+        // HELD, and nothing to persist: the work object IS the explanation, read
+        // through `IFulfillmentWorkQueryService` (#2402). A reason column here
+        // would be a second answer to a question the work already answers.
+        this.logger.log(
+          `Routed order ${orderId}: decisionId=${outcome.decisionId} ` +
+            `work=[${outcome.workIds.join(',')}]`
+        );
+        return { held: true, block: null };
+
+      case 'in-doubt':
+        // HELD. The router may or may not have committed on its side, so the
+        // mirror is withheld rather than risking a destination order for a parcel
+        // a holder is already picking. The decision row stays `live` for
+        // resumption under the identical idempotency key.
+        return {
+          held: true,
+          block: {
+            reason: 'routing-in-doubt',
+            detail: `decision ${outcome.decisionId} left live for resumption (${outcome.cause})`,
+          },
+        };
+
+      case 'contended':
+        // HELD. A peer holds the lock and the router was NOT called, so the
+        // decision belongs to whoever wins it. Mirroring now would race it.
+        return {
+          held: true,
+          block: { reason: 'routing-contended', detail: null },
+        };
+
+      case 'skipped':
+        if (outcome.reason === 'order-cancelled') {
+          // Not held: a cancelled order needs no hold, and today's path already
+          // knows what to do with it.
+          return { held: false, block: null };
+        }
+        // HELD. `already-routed` / `already-live-elsewhere` is the #2047
+        // write-path guard refusing regardless of router identity — some route
+        // already owns this order, and mirroring could double-ship it.
+        return {
+          held: true,
+          block: {
+            reason: 'routing-already-live-elsewhere',
+            detail: `routing refused: ${outcome.reason}`,
+          },
+        };
+
+      case 'refused':
+        // NOT held: the router answered, OpenLinker refused the plan, and the
+        // decision is terminal. No work exists, so the order must keep its
+        // ordinary destination path rather than being stranded. The refusal is
+        // already durable on the `routing_decisions` row, so nothing is
+        // persisted here.
+        this.logger.warn(
+          `Routing plan refused for order ${orderId}: reason=${outcome.reason} ` +
+            `decisionId=${outcome.decisionId}; following today's path.`
+        );
+        return { held: false, block: null };
+
+      default: {
+        // Compile-time: a new `RoutingCommitOutcome` member is an error HERE
+        // rather than a silent fall-through. Runtime: throwing, not returning,
+        // because the returned value would be the unrecognised outcome object
+        // itself — whose `held` is `undefined`, i.e. FALSY, so an outcome this
+        // build does not understand would quietly MIRROR an order the router
+        // may already have committed. The intercept's own catch turns this into
+        // the documented fail-open, which is the same answer but reached
+        // deliberately and logged.
+        const unreachable: never = outcome;
+        throw new Error(
+          `Unrecognised routing commit outcome: ${JSON.stringify(unreachable)}`
+        );
+      }
+    }
+  }
+
+  /**
+   * Every connection, whatever its status.
+   *
+   * `isActive` is REPORTED, never filtered upstream — the `analytics-trust` trap.
+   * `supportedCapabilities` is left empty deliberately: A2 is `config-only`, so
+   * `declaresCapability` short-circuits without reading it, and resolving adapter
+   * metadata per connection would be work whose result is discarded.
+   *
+   * **This is a real per-order cost, and ADR-054's "byte-identical" is a claim
+   * about BEHAVIOUR, not about query count.** The intercept adds two statements
+   * to every ingestion on every install: this unfiltered read, and the
+   * level-triggered `updateFulfillmentBlock`. Both are required — selection is
+   * not decidable without every claimant, and skipping the write would make the
+   * reason sticky, which is the #2100 lesson. Both are cheap: `connections` is a
+   * handful of rows, and the write's `IS DISTINCT FROM` guard means the
+   * overwhelmingly common `null -> null` touches no row and bumps no
+   * `updatedAt`. If `connections` ever stops being small, cache HERE — never by
+   * skipping the selection, which would decide routing from a stale claimant
+   * set.
+   */
+  private async loadRoutingClaimants(): Promise<AuthorityClaimantInput[]> {
+    const connections = await this.connections.list();
+    return connections.map((connection) => ({
+      connectionId: connection.id,
+      isActive: connection.status === 'active',
+      supportedCapabilities: [],
+      enabledCapabilities: connection.enabledCapabilities,
+      config: connection.config,
+    }));
+  }
+
+  /**
+   * Project the in-hand order into the router's ADR-062 allowlist input.
+   *
+   * Uses the `order` this method already holds rather than re-reading the
+   * snapshot: the snapshot has been through `sanitizeAddress`, so hashing it
+   * would collapse to one value per country across the whole install.
+   * `shippingAddressHash` (#2395) is stamped at ingestion from the UN-redacted
+   * address for exactly this reason.
+   */
+  private projectOrderForRouting(
+    order: Order,
+    shippingAddressHash: string | null
+  ): RoutingProjection | null {
+    const shippingAddress = order.shippingAddress;
+    if (shippingAddress === undefined) {
+      return null;
+    }
+
+    return {
+      lines: order.items.map((item) => ({
+        orderLineId: item.id,
+        // A work line needs a variant. `variantId` is optional on `OrderItem`, so
+        // fall back to the product id rather than emitting a blank — a work
+        // object pointing at no variant is unpickable stock nothing would report.
+        productVariantId: item.variantId ?? item.productId,
+        quantity: item.quantity,
+      })),
+      // The OPAQUE key `RoutingInput.requestedDeliveryMethod` documents — the
+      // source's own method id, never a neutral vocabulary.
+      requestedDeliveryMethod: order.shipping?.methodId ?? null,
+      shipTo: buildRoutingShipTo(
+        {
+          countryIso2: shippingAddress.country,
+          postalCode: shippingAddress.postalCode,
+          city: shippingAddress.city,
+          addressHash: shippingAddressHash,
+        },
+        {
+          // `getEnvBoolean`, NOT `getPiiConfig()`: the latter throws when
+          // `OL_PII_HASH_SALT` is unset regardless of the flag, which would break
+          // routing on every ordinary deployment that never enabled hash-only mode.
+          storePii: getEnvBoolean('OL_STORE_PII', true),
+        }
+      ),
+    };
+  }
+
+  /**
+   * Persist why the intercept held this order (#2396), or clear a stale reason.
+   *
+   * Mirrors {@link persistSalesDocumentOutcome} in every respect that matters:
+   *
+   * 1. **Level-triggered.** The outcome is re-decided on every transition and the
+   *    answer is written INCLUDING `null` — which is the only thing that clears a
+   *    reason once the operator fixes the condition. A sticky reason is the #2100
+   *    lesson.
+   * 2. **Its own catch and its own message.** A persistence failure here is not a
+   *    routing failure, and reporting it as one would send the next reader to the
+   *    wrong service. Swallowed: the outcome is re-decided next transition, so a
+   *    lost write self-heals.
+   */
+  private async persistFulfillmentOutcome(
+    internalOrderId: string,
+    outcome: FulfillmentInterceptOutcome
+  ): Promise<void> {
+    try {
+      await this.orderRecordService.markFulfillmentBlock(internalOrderId, outcome.block);
+    } catch (error) {
+      const errorName = error instanceof Error ? error.name : 'UnknownError';
+      this.logger.warn(
+        `Failed to persist the fulfilment block outcome (swallowed): ` +
+          `error=${errorName} orderId=${internalOrderId} held=${String(outcome.held)}`
+      );
+    }
   }
 
   /**

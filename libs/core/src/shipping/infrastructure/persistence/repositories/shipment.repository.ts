@@ -155,6 +155,18 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
     return (result.affected ?? 0) > 0;
   }
 
+  async claimFulfillmentWorkLink(id: string, fulfillmentWorkId: string): Promise<boolean> {
+    // Conditional write — `IsNull()` in the WHERE is what makes this atomic
+    // under two concurrent observers (a dispatch and the branch-1 status poll).
+    // Exactly one UPDATE can affect a row; an application-side null check would
+    // enforce nothing at READ COMMITTED.
+    const result = await this.repository.update(
+      { id, fulfillmentWorkId: IsNull() },
+      { fulfillmentWorkId },
+    );
+    return (result.affected ?? 0) > 0;
+  }
+
   async listDispatchedAwaitingReservationConsume(limit: number): Promise<readonly Shipment[]> {
     // Frontier-as-query: the predicate IS the cursor (see the port docblock).
     // `createdAt ASC` so the longest-outstanding shipment is examined first.
@@ -228,6 +240,11 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
     // Unclaimed at birth (#2347) — even a branch-1 row born terminal has not had
     // its order's reservations consumed yet; the sweep is what does that.
     entity.reservationConsumedAt = null;
+    // Work linkage (#2402). Written HERE and only here: `create` persists a
+    // fully-populated entity, so omitting this line would not fail to compile —
+    // `save` would simply write NULL on every row, silently. That is why the
+    // spec asserts the PERSISTED value rather than the call argument.
+    entity.fulfillmentWorkId = input.fulfillmentWorkId ?? null;
     return entity;
   }
 
@@ -310,6 +327,7 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
       entity.waybillRelayedAt,
       entity.direction,
       entity.reservationConsumedAt,
+      entity.fulfillmentWorkId,
     );
   }
 }

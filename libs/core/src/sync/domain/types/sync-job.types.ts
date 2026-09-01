@@ -55,6 +55,22 @@ export const JobTypeValues = [
   'marketplace.shipment.statusSync',
   'marketplace.shipment.syncByExternalId',
   'marketplace.fulfillment.statusSync',
+  // OMS fulfilment progress ingress (#2400, ADR-054).
+  //
+  // **NOT the same job as `marketplace.fulfillment.statusSync` one line above,
+  // and the two must never be conflated.** That one is the shipping context's
+  // branch-1 OMP read-back (#834, `MarketplaceFulfillmentStatusSyncHandler`,
+  // `IFulfillmentStatusSyncService` from `@openlinker/core/shipping`) — a
+  // marketplace telling us how IT fulfilled an order. This one is an executor
+  // reporting progress on a `FulfillmentWork` OL's own router created. Reusing
+  // the older name would have routed OMS traffic straight into the shipping
+  // handler.
+  //
+  // Namespaced `fulfillment.work.*` on the core-owned-internal-pass precedent
+  // set by `inventory.reservations.*` and `orders.holds.reconcile`, rather than
+  // `marketplace.*`, because the trigger is an executor and not necessarily a
+  // marketplace at all.
+  'fulfillment.work.statusSync',
   'master.product.syncByExternalId',
   // The SAME work as `master.product.syncByExternalId`, reached from a sweep
   // instead of a webhook (#2594). It exists as its own type because the two
@@ -159,6 +175,23 @@ export const JobTypeValues = [
   // non-nullable, so the per-`OrderSource`-connection fan-out is also the
   // natural partition of the rate-less frontier.
   'orders.taxRate.backfill',
+
+  // Fulfilment executor handshake (#2399, `W3a-10`, ADR-054). Offers ONE routed
+  // `FulfillmentWork` to its assigned holder under a retry-stable idempotency
+  // key. `connectionId` is the work's own `assignedConnectionId` — never a
+  // synthetic id, which is #2609's defect exactly: a shared scope collapses
+  // per-scope lane accounting for the whole installation.
+  'fulfillment.work.dispatch',
+
+  // Routing commit (#2395, `W3a-6`, ADR-054 R1). Decides where ONE order is
+  // fulfilled from and commits the decision plus its work rows atomically.
+  //
+  // Core-owned and namespaced `fulfillment.work.*` on the same precedent as its
+  // two siblings above — the trigger is OpenLinker's own ingestion, not a
+  // marketplace. `connectionId` is the SELECTED ROUTER's connection, never a
+  // synthetic id: #2609 is the standing lesson that a shared scope collapses
+  // per-scope lane accounting for the whole installation.
+  'fulfillment.work.route',
 ] as const;
 
 /**

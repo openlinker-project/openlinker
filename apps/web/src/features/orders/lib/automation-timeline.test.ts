@@ -33,6 +33,7 @@ function run(overrides: Partial<AutomationRun> = {}): AutomationRun {
     dismissedAt: null,
     dismissedByUserId: null,
     retryOfRunId: null,
+    supersededByRetry: false,
     ...overrides,
   };
 }

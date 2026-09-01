@@ -101,6 +101,14 @@ function RunOutcome({ run }: { run: AutomationRun }): ReactElement {
       {run.retryOfRunId === null ? null : (
         <span className="muted-text">{AUTOMATION_FAILURE_COPY.isRetryOf}</span>
       )}
+      {/*
+        `isRetryOf` says this run IS a retry; this says it HAS BEEN retried.
+        Without it a superseded failed row renders a red `failed` pill, no
+        attention badge and no actions cell, with nothing explaining why (#2666).
+      */}
+      {run.supersededByRetry ? (
+        <span className="muted-text">{AUTOMATION_FAILURE_COPY.superseded}</span>
+      ) : null}
     </div>
   );
 }
