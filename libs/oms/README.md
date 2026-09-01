@@ -16,12 +16,26 @@ OMS, and its name is the product name.
 and the `AdapterMetadata.requiresCredentials` field that lets an operator create the
 credential-less connection ADR-055 specifies. Booting either host now registers the manifest.
 
-The manifest advertises **no capabilities yet**: a name enters `supportedCapabilities` together
-with the adapter that delivers it (the Erli #980 precedent). `OmsPluginDeps` declares the five core
-services the plugin will read through, but nothing is injected while the dispatch table is empty.
-The router (#2408) and the executor (#2409) land next; #2409 additionally owns retro-filling
-`enabledCapabilities` on OMS connections created before it, since that column is stamped at create
-and never back-filled.
+**Executor.** #2409 (`W3a-18`) adds `OlFulfillmentExecutorAdapter` (`src/execution/`), the first
+implementation of `FulfillmentExecutorPort` anywhere in the tree, and advertises
+`FulfillmentExecutor` on the manifest alongside it — a name enters `supportedCapabilities` together
+with the adapter that delivers it (the Erli #980 precedent). It **auto-accepts**: the holder is
+OpenLinker itself, so there is no third party to negotiate with and no vendor record to reconcile.
+It holds no state, which is what makes the port's replay guarantee true rather than claimed — it
+creates no assignment for a second call to duplicate — and consequently needs no `oms_*` table, no
+TypeORM dependency and no migration, and injects nothing (so `OmsModule` stays on
+`createNestAdapterModule`). It deliberately does **not** implement `FulfillmentStatusSource`: that
+pull serves a POLLING holder, and here it would read core's own counters and report them back to
+core as observed progress. `OmsPluginDeps` still declares the five core services and still injects
+none; the router (#2408) lands next.
+
+**No `enabledCapabilities` retro-fill ships, deliberately.** That column is stamped at create and
+never back-filled, so an OMS connection created before #2409 does not gain `FulfillmentExecutor` on
+upgrade. A migration was considered and rejected on two grounds: the whole OMS wave is unreleased,
+so no such row can exist outside a developer's own stack running the wave branch, making the
+migration dead code on every real install while spending a scarce migration timestamp; and A3 is an
+*authority*, so granting it silently would assign "who holds fulfilment work" on the operator's
+behalf. An operator ticks the capability on the connection instead.
 
 The OMS ships no migrations and is therefore deliberately absent from
 `apps/api/src/plugin-migrations.ts` and `scripts/plugin-migration-dirs.json` — #2390 deferred that

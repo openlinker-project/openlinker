@@ -28,13 +28,15 @@ export const InboundEventDomainValues = [
   // payment-refresh job, not the regulatory-status reconcile.
   'invoice-payment',
   // Fulfilment progress from an executor (#2400, ADR-054). Gated on
-  // `FulfillmentExecutor`. Note the arm resolves `ungated` on every shipped
-  // deployment today: the capability is in `CoreCapabilityValues` but NO
-  // shipped adapter manifest advertises it yet, so no connection can have it
-  // both supported and enabled. The member exists so that when one does, the
-  // delivery ROUTES rather than dead-lettering — the inverse of ADR-042's
-  // eparagony decision, which declined to register a decoder precisely because
-  // there was no domain member and no job to route to.
+  // `FulfillmentExecutor`. Until #2409 this arm resolved `ungated` on every
+  // shipped deployment, because the capability was in `CoreCapabilityValues`
+  // while NO manifest advertised it, so no connection could have it both
+  // supported and enabled. `openlinker.oms.v1` advertises it now, so the arm
+  // can gate for real — on a connection whose operator has ALSO enabled it.
+  // The member was added ahead of that so the delivery would ROUTE rather than
+  // dead-letter the day one existed — the inverse of ADR-042's eparagony
+  // decision, which declined to register a decoder precisely because there was
+  // no domain member and no job to route to.
   'fulfillment',
   // Customer-return notification (#2330/#2400). Gated on `OrderSource`, NEVER
   // on `ReturnSourceReader`: that is a guard-only sub-capability narrowed off
