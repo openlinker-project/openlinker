@@ -33,14 +33,14 @@ export class AllegroQuantityCommandRepository implements AllegroQuantityCommandR
     private readonly ormRepository: Repository<AllegroQuantityCommandOrmEntity>
   ) {}
 
-  async findByCommandId(commandId: string): Promise<AllegroQuantityCommand | null> {
-    this.logger.debug(`Finding command by commandId: ${commandId}`);
+  async findByCommandId(commandId: string): Promise<AllegroQuantityCommand[]> {
+    this.logger.debug(`Finding commands by commandId: ${commandId}`);
 
-    const entity = await this.ormRepository.findOne({
+    const entities = await this.ormRepository.find({
       where: { commandId },
     });
 
-    return entity ? this.toDomain(entity) : null;
+    return entities.map((entity) => this.toDomain(entity));
   }
 
   async find(filters: AllegroQuantityCommandFilters): Promise<AllegroQuantityCommand[]> {
@@ -58,7 +58,7 @@ export class AllegroQuantityCommandRepository implements AllegroQuantityCommandR
       queryBuilder.andWhere('command.status = :status', { status: filters.status });
     }
 
-    queryBuilder.orderBy('command.createdAt', 'DESC');
+    queryBuilder.orderBy('command.createdAt', filters.orderBy === 'oldest' ? 'ASC' : 'DESC');
 
     if (filters.limit) {
       queryBuilder.limit(filters.limit);
@@ -122,6 +122,35 @@ export class AllegroQuantityCommandRepository implements AllegroQuantityCommandR
     const saved = await this.ormRepository.save(entity);
     this.logger.debug(
       `Command status updated: commandId=${saved.commandId}, status=${saved.status}`
+    );
+    return this.toDomain(saved);
+  }
+
+  async updateOfferStatus(
+    commandId: string,
+    offerId: string,
+    status: AllegroQuantityCommandStatus,
+    error?: string | null
+  ): Promise<AllegroQuantityCommand> {
+    this.logger.debug(
+      `Updating command offer status: commandId=${commandId}, offerId=${offerId}, status=${status}`
+    );
+
+    const entity = await this.ormRepository.findOne({
+      where: { commandId, offerId },
+    });
+
+    if (!entity) {
+      throw new AllegroQuantityCommandNotFoundException(commandId, offerId);
+    }
+
+    entity.status = status;
+    entity.error = error || null;
+    entity.updatedAt = new Date();
+
+    const saved = await this.ormRepository.save(entity);
+    this.logger.debug(
+      `Command offer status updated: commandId=${saved.commandId}, offerId=${saved.offerId}, status=${saved.status}`
     );
     return this.toDomain(saved);
   }
