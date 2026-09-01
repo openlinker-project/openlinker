@@ -1,11 +1,8 @@
-import type { RouteObject } from 'react-router-dom';
+import { Navigate, type RouteObject } from 'react-router-dom';
 import type { RouteCrumbHandle } from '../nav-registry.types';
 
 /**
- * Post-login landing page. Renders the same `AnalyticsPage` as
- * `analyticsRoute` below — kept as a distinct route object (rather than a
- * `<Navigate>` redirect) so `/` has its own crumb and lazy-route accounting,
- * and existing `/analytics` links/bookmarks keep working unchanged.
+ * Post-login landing page. Analytics owns `/` since #2740.
  */
 export const analyticsIndexRoute: RouteObject = {
   index: true,
@@ -16,11 +13,15 @@ export const analyticsIndexRoute: RouteObject = {
   },
 };
 
-export const analyticsRoute: RouteObject = {
+/**
+ * Legacy `/analytics` URL kept reachable for existing bookmarks and links, as
+ * a `<Navigate replace>` shim rather than a second route rendering the same
+ * page (the `prompt-templates-legacy-redirects` precedent). Rendering the page
+ * twice under two paths would leave the sidebar with no active item on
+ * `/analytics` — the "Analytics" nav entry matches `/` with `end: true` — and
+ * would duplicate the crumb source for one page.
+ */
+export const analyticsLegacyRedirectRoute: RouteObject = {
   path: 'analytics',
-  handle: { crumb: { group: 'Operations', title: 'Analytics' } } satisfies RouteCrumbHandle,
-  lazy: async () => {
-    const { AnalyticsPage } = await import('../../pages/analytics/analytics-page');
-    return { Component: AnalyticsPage };
-  },
+  element: <Navigate to="/" replace />,
 };
