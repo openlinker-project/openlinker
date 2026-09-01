@@ -7,7 +7,7 @@ import {
   renderWithProviders,
   sampleConnection,
 } from '../../test/test-utils';
-import { DashboardPage } from './dashboard-page';
+import { InsightsPage } from './insights-page';
 import type { Connection } from '../../features/connections/api/connections.types';
 import type {
   JobType,
@@ -77,11 +77,11 @@ function findCardByLabel(container: HTMLElement, label: string): HTMLElement {
   return card;
 }
 
-describe('DashboardPage', () => {
+describe('InsightsPage', () => {
   afterEach(cleanup);
 
   it('renders the operations overview heading', () => {
-    renderWithProviders(<DashboardPage />);
+    renderWithProviders(<InsightsPage />);
     expect(screen.getByRole('heading', { name: 'Operations overview' })).toBeInTheDocument();
   });
 
@@ -101,7 +101,7 @@ describe('DashboardPage', () => {
           ]),
       },
     });
-    renderWithProviders(<DashboardPage />, { apiClient });
+    renderWithProviders(<InsightsPage />, { apiClient });
 
     expect(await screen.findByText('1 / 2')).toBeInTheDocument();
     expect(screen.getByText('Store A')).toBeInTheDocument();
@@ -109,7 +109,7 @@ describe('DashboardPage', () => {
   });
 
   it('shows system health services from API', async () => {
-    const { container } = renderWithProviders(<DashboardPage />);
+    const { container } = renderWithProviders(<InsightsPage />);
 
     expect(await within(container).findByText('PostgreSQL')).toBeInTheDocument();
     expect(within(container).getByText('Redis')).toBeInTheDocument();
@@ -139,7 +139,7 @@ describe('DashboardPage', () => {
         }),
       },
     });
-    const { container } = renderWithProviders(<DashboardPage />, { apiClient });
+    const { container } = renderWithProviders(<InsightsPage />, { apiClient });
 
     expect(
       await within(container).findByText('WooCommerce — My WooCommerce Shop')
@@ -175,7 +175,7 @@ describe('DashboardPage', () => {
         }),
       },
     });
-    renderWithProviders(<DashboardPage />, { apiClient });
+    renderWithProviders(<InsightsPage />, { apiClient });
 
     expect(await screen.findByText('Unauthorized (401)')).toBeInTheDocument();
   });
@@ -203,7 +203,7 @@ describe('DashboardPage', () => {
         }),
       },
     });
-    const { container } = renderWithProviders(<DashboardPage />, { apiClient });
+    const { container } = renderWithProviders(<InsightsPage />, { apiClient });
 
     await waitFor(() => {
       const card = findCardByLabel(container, 'System health');
@@ -230,7 +230,7 @@ describe('DashboardPage', () => {
         }),
       },
     });
-    renderWithProviders(<DashboardPage />, { apiClient });
+    renderWithProviders(<InsightsPage />, { apiClient });
 
     expect(await screen.findByText('Connection refused')).toBeInTheDocument();
   });
@@ -239,7 +239,7 @@ describe('DashboardPage', () => {
     const apiClient = createMockApiClient({
       connections: { list: vi.fn().mockReturnValue(new Promise(() => {})) },
     });
-    renderWithProviders(<DashboardPage />, { apiClient });
+    renderWithProviders(<InsightsPage />, { apiClient });
 
     expect(screen.getByRole('heading', { name: 'Loading connections' })).toBeInTheDocument();
   });
@@ -250,7 +250,7 @@ describe('DashboardPage', () => {
         getDevStackHealth: vi.fn().mockRejectedValue(new Error('Health endpoint unreachable')),
       },
     });
-    renderWithProviders(<DashboardPage />, { apiClient });
+    renderWithProviders(<InsightsPage />, { apiClient });
 
     expect(
       await screen.findByRole('heading', { name: 'Health check failed' }, { timeout: 10000 })
@@ -272,7 +272,7 @@ describe('DashboardPage', () => {
     const apiClient = createMockApiClient({
       syncJobs: { list: listMock },
     });
-    renderWithProviders(<DashboardPage />, { apiClient });
+    renderWithProviders(<InsightsPage />, { apiClient });
 
     expect(await screen.findByText('marketplace › orders › poll')).toBeInTheDocument();
     expect(screen.getByText('marketplace › offers › sync')).toBeInTheDocument();
@@ -286,7 +286,7 @@ describe('DashboardPage', () => {
           .mockResolvedValue(groupsResponse([makeGroup({ count: 1, lastError: 'Timeout' })])),
       },
     });
-    renderWithProviders(<DashboardPage />, { apiClient });
+    renderWithProviders(<InsightsPage />, { apiClient });
 
     expect(await screen.findByText('1 job needs attention')).toBeInTheDocument();
   });
@@ -300,7 +300,7 @@ describe('DashboardPage', () => {
       },
     });
 
-    const { container } = renderWithProviders(<DashboardPage />, { apiClient });
+    const { container } = renderWithProviders(<InsightsPage />, { apiClient });
 
     await screen.findByText('3 jobs need attention');
     const failedCard = findCardByLabel(container, 'Failed jobs');
@@ -309,7 +309,7 @@ describe('DashboardPage', () => {
   });
 
   it('keeps the Failed jobs card neutral when there are no failures', async () => {
-    const { container } = renderWithProviders(<DashboardPage />);
+    const { container } = renderWithProviders(<InsightsPage />);
 
     await waitFor(() => {
       const failedCard = findCardByLabel(container, 'Failed jobs');
@@ -338,7 +338,7 @@ describe('DashboardPage', () => {
       },
     });
 
-    const { container } = renderWithProviders(<DashboardPage />, { apiClient });
+    const { container } = renderWithProviders(<InsightsPage />, { apiClient });
 
     await screen.findByText('1 / 2');
     const integrationCard = findCardByLabel(container, 'Integration health');
@@ -354,7 +354,7 @@ describe('DashboardPage', () => {
         list: vi.fn().mockRejectedValue(new Error('Sync API down')),
       },
     });
-    renderWithProviders(<DashboardPage />, { apiClient });
+    renderWithProviders(<InsightsPage />, { apiClient });
 
     expect(
       await screen.findByRole('heading', { name: 'Unable to load sync jobs' }, { timeout: 5000 })
@@ -362,7 +362,7 @@ describe('DashboardPage', () => {
   });
 
   it('shows empty state when no sync jobs exist', async () => {
-    renderWithProviders(<DashboardPage />);
+    renderWithProviders(<InsightsPage />);
 
     // Wait for queries to settle, then verify empty states are present
     await waitFor(() => {
@@ -377,7 +377,7 @@ describe('DashboardPage', () => {
     it('calls listGrouped with status=dead (regression guard: grouping happens server-side)', async () => {
       const listGrouped = vi.fn().mockResolvedValue(groupsResponse([]));
       const apiClient = createMockApiClient({ syncJobs: { listGrouped } });
-      renderWithProviders(<DashboardPage />, { apiClient });
+      renderWithProviders(<InsightsPage />, { apiClient });
 
       await waitFor(() => {
         expect(listGrouped).toHaveBeenCalledWith({ status: 'dead' });
@@ -399,7 +399,7 @@ describe('DashboardPage', () => {
           ),
         },
       });
-      renderWithProviders(<DashboardPage />, { apiClient });
+      renderWithProviders(<InsightsPage />, { apiClient });
 
       expect(
         await screen.findByRole('heading', { name: /What’s broken right now/ })
@@ -427,7 +427,7 @@ describe('DashboardPage', () => {
           ),
         },
       });
-      renderWithProviders(<DashboardPage />, { apiClient });
+      renderWithProviders(<InsightsPage />, { apiClient });
 
       expect(await screen.findByText('2 unique signatures · 3 total failures')).toBeInTheDocument();
     });
@@ -452,7 +452,7 @@ describe('DashboardPage', () => {
           retryGrouped,
         },
       });
-      renderWithProviders(<DashboardPage />, { apiClient });
+      renderWithProviders(<InsightsPage />, { apiClient });
 
       await screen.findByText('some › failing › job');
       const retryButton = await screen.findByRole('button', {
@@ -488,7 +488,7 @@ describe('DashboardPage', () => {
           retryGrouped,
         },
       });
-      renderWithProviders(<DashboardPage />, { apiClient });
+      renderWithProviders(<InsightsPage />, { apiClient });
 
       const retryButton = await screen.findByRole('button', {
         name: /Retry — bulk › failing › job on Main PrestaShop Store/,
@@ -518,7 +518,7 @@ describe('DashboardPage', () => {
           retryGrouped,
         },
       });
-      renderWithProviders(<DashboardPage />, { apiClient });
+      renderWithProviders(<InsightsPage />, { apiClient });
 
       const retryButton = await screen.findByRole('button', {
         name: /Retry — partial › retry › job on Main PrestaShop Store/,
@@ -550,7 +550,7 @@ describe('DashboardPage', () => {
           retryGrouped,
         },
       });
-      renderWithProviders(<DashboardPage />, { apiClient });
+      renderWithProviders(<InsightsPage />, { apiClient });
 
       const retryButton = await screen.findByRole('button', {
         name: /Retry — racy › job on Main PrestaShop Store/,
@@ -589,7 +589,7 @@ describe('DashboardPage', () => {
         },
       });
 
-      const { container } = renderWithProviders(<DashboardPage />, { apiClient });
+      const { container } = renderWithProviders(<InsightsPage />, { apiClient });
 
       // "Shop B" appears in both the Connection health list and the incidents
       // table's Connection column — just wait for it to land in the DOM.

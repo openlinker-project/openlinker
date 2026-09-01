@@ -140,7 +140,7 @@ The **Connection OK** toast and the displayed response time confirm the Allegro 
 
 ## Multiple connections
 
-You can add multiple connections of the same platform type — for example, two PrestaShop stores and three Allegro accounts. Each connection has its own credentials, config, and set of scheduled sync jobs. The Dashboard and Jobs & Logs views aggregate across all connections.
+You can add multiple connections of the same platform type — for example, two PrestaShop stores and three Allegro accounts. Each connection has its own credentials, config, and set of scheduled sync jobs. The Insights and Jobs & Logs views aggregate across all connections.
 
 ---
 

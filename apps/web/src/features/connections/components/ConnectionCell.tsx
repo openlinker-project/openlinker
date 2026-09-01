@@ -19,7 +19,7 @@ import type { ReactElement, ReactNode } from 'react';
 import { CopyableId } from '../../../shared/ui/copyable-id';
 import { EmptyValue } from '../../../shared/ui/empty-value';
 import { shortenId } from '../../../shared/ui/entity-label';
-import type { ConnectionStatus } from '../api/connections.types';
+import { SYSTEM_CONNECTION_ID, type ConnectionStatus } from '../api/connections.types';
 import { useConnectionQuery } from '../hooks/use-connection-query';
 import { ConnectionEntityLabel } from './ConnectionEntityLabel';
 
@@ -77,7 +77,12 @@ export function ConnectionCell({
   adornment,
   className = '',
 }: ConnectionCellProps): ReactElement {
-  const factsSupplied = connection !== undefined;
+  // The all-zero placeholder id (#2745) is never a real connection - line 1
+  // already renders "System" via ConnectionEntityLabel's own special case, so
+  // line 2's copyable id + status note (which describe a real connection)
+  // are suppressed rather than shown against a placeholder.
+  const isSystem = connectionId === SYSTEM_CONNECTION_ID;
+  const factsSupplied = connection !== undefined || isSystem;
   const query = useConnectionQuery(connectionId, { enabled: !factsSupplied });
 
   if (!connectionId) return <EmptyValue />;
@@ -107,22 +112,26 @@ export function ConnectionCell({
             showCopy={false}
           />
         </span>
-        <span className="connection-cell__meta">
-          <CopyableId
-            id={connectionId}
-            label={shortenId(connectionId)}
-            copyLabel={`Copy ${copySubject}`}
-            copiedLabel={`Copied ${copySubject}`}
-          />
-          {statusNote ? (
-            <span className={`connection-cell__status connection-cell__status--${resolvedStatus}`}>
-              <span className="connection-cell__status-dot" aria-hidden="true" />
-              <span className="connection-cell__status-label" title={statusNote}>
-                {statusNote}
+        {isSystem ? null : (
+          <span className="connection-cell__meta">
+            <CopyableId
+              id={connectionId}
+              label={shortenId(connectionId)}
+              copyLabel={`Copy ${copySubject}`}
+              copiedLabel={`Copied ${copySubject}`}
+            />
+            {statusNote ? (
+              <span
+                className={`connection-cell__status connection-cell__status--${resolvedStatus}`}
+              >
+                <span className="connection-cell__status-dot" aria-hidden="true" />
+                <span className="connection-cell__status-label" title={statusNote}>
+                  {statusNote}
+                </span>
               </span>
-            </span>
-          ) : null}
-        </span>
+            ) : null}
+          </span>
+        )}
       </span>
     </span>
   );
