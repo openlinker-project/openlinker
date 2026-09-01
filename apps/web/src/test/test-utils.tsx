@@ -380,6 +380,9 @@ export function createMockApiClient(
         .mockRejectedValue(
           new ApiError('No content snapshot', 409, { message: 'No content snapshot' }),
         ),
+      // #2558 — default so a rejected-clearance resend affordance doesn't hit
+      // `undefined` in a test that doesn't override it.
+      resendToKsef: vi.fn().mockResolvedValue(null),
       ...overrides.invoicing,
     } as ApiClient['invoicing'],
     operationalSettings: {
