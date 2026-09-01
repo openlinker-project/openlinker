@@ -40,34 +40,44 @@
  * forward.
  */
 export interface FxRestatementPageInput {
-  /** The run this page belongs to; folded into each child job's key. */
+  /** The run this page belongs to. */
   runId: string;
   /** Exclusive lower bound on `internalOrderId`, or `null` to start. */
   afterOrderId: string | null;
-  /** Max orders to clear + enqueue in this page. */
+  /** Max orders to clear + stamp in this page. */
   limit: number;
 }
 
 /**
  * One order the restatement page will repair. The source connection rides
- * along with the id because the child `marketplace.order.fxStamp` job needs a
- * `connectionId` (the column is non-nullable, #1943) and reading it back
- * per order would double the page's query count for a value the enumeration
- * already has in hand.
+ * along with the id because `OrderFxStampService.sweep`/child retry paths key
+ * on it — kept here so the enumeration's own read stays the single source and
+ * a per-order re-read isn't paid for a value already in hand.
  */
 export interface FxRestatementOrderRef {
   internalOrderId: string;
   sourceConnectionId: string;
 }
 
-/** What one restatement page did. */
+/**
+ * What one restatement page did.
+ *
+ * `stamped` / `terminal` / `deferred` mirror `OrderFxSweepResult` exactly —
+ * this page now stamps in-process instead of enqueueing a child job, so it
+ * reports the same three outcomes the sweep does rather than an `enqueued`
+ * count for work that either already happened or did not.
+ */
 export interface FxRestatementPageResult {
   /** Orders the page read. */
   scanned: number;
   /** Orders whose stamp columns this page actually cleared (a never-stamped row is not counted). */
   cleared: number;
-  /** Orders for which a `marketplace.order.fxStamp` job was enqueued. */
-  enqueued: number;
+  /** Orders this page stamped (excludes rows already stamped by a concurrent attempt). */
+  stamped: number;
+  /** Orders that reached a terminal FX answer this page. */
+  terminal: number;
+  /** Orders whose stamp attempt this page deferred to the retry pipeline. */
+  deferred: number;
   /**
    * Resume point for the next page — the last scanned id, or `null` when the
    * page came back short and the scope's frontier is exhausted.
@@ -94,22 +104,4 @@ export interface FxRestatementRemainingSummary {
   terminalMarked: number;
   /** Of those, orders with no marker at all — still in flight, or never attempted. */
   pending: number;
-}
-
-/**
- * Idempotency key for one order's restatement stamp job.
- *
- * WAVE-DISTINCT ON PURPOSE. `OrderFxStampService.enqueueRetry` uses the bare
- * `fx:{orderId}`, and `sync_jobs.idempotencyKey` is globally unique with NO
- * TTL — so for any order that has ever had a retry job,
- * `createIfNotExistsByIdempotencyKey` returns that (possibly long-dead) row
- * and the restatement silently enqueues nothing at all. Folding the run id in
- * gives each restatement its own key space, exactly as
- * `BulkOfferCreationRetryService`'s
- * `bulk:{batchId}:variant:{variantId}:retry:{retryWaveId}` does for its retry
- * waves. It also makes re-enumeration free: a page replayed after a crash
- * mints identical keys and dedups against its own earlier enqueue.
- */
-export function buildFxRestatementIdempotencyKey(runId: string, internalOrderId: string): string {
-  return `fx:restate:${runId}:${internalOrderId}`;
 }

@@ -228,7 +228,6 @@ export { ISalesDocumentViewService } from './application/interfaces/sales-docume
 export { SalesDocumentViewService } from './application/services/sales-document-view.service';
 export type { IOrderFxStampService } from './application/interfaces/order-fx-stamp.service.interface';
 export type { IOrderFxRestatementService } from './application/interfaces/order-fx-restatement.service.interface';
-export { buildFxRestatementIdempotencyKey } from './domain/types/order-fx-restatement.types';
 export type {
   FxRestatementOrderRef,
   FxRestatementPageInput,

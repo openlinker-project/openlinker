@@ -18,40 +18,40 @@
  * Two mechanics carry the whole thing, and both were live traps before they
  * were rules:
  *
- *  1. **CLEAR, THEN ENQUEUE, IN THAT ORDER.** `OrderFxStampService.stamp`
+ *  1. **CLEAR, THEN STAMP, IN THAT ORDER, IN-PROCESS.** `OrderFxStampService.stamp`
  *     short-circuits on any row that already carries a figure and returns
- *     `alreadyStamped: true` without touching a provider — so a stamp job
- *     enqueued before the clear can legitimately run first, find the stale
- *     stamp still present, and no-op. The reverse ordering is what makes the
- *     original live-demo bug ("we re-enqueued and nothing changed") reappear.
- *     If the process dies between the two, the row is simply left unstamped and
- *     the hourly `marketplace.order.fxStampSweep` (predicate
- *     `reportingCurrency IS NULL`) picks it up — self-healing, so no
- *     compensation is needed.
- *  2. **A WAVE-DISTINCT IDEMPOTENCY KEY.** `sync_jobs.idempotencyKey` is
- *     globally unique with no TTL and `OrderFxStampService.enqueueRetry`
- *     already spent the bare `fx:{orderId}` for any order that ever degraded
- *     to a retry. Re-using it here returns that long-dead row and enqueues
- *     nothing, silently. See `buildFxRestatementIdempotencyKey`.
+ *     `alreadyStamped: true` without touching a provider — so stamping before
+ *     the clear would just re-observe the stale figure and no-op. The reverse
+ *     ordering is what makes the original live-demo bug ("we re-enqueued and
+ *     nothing changed") reappear. If the process dies between the two, the row
+ *     is simply left unstamped and the hourly `marketplace.order.fxStampSweep`
+ *     (predicate `reportingCurrency IS NULL`) picks it up — self-healing, so
+ *     no compensation is needed.
+ *  2. **NO CHILD JOB, AND THEREFORE NO SEPARATE KEY SPACE.** The page used to
+ *     enqueue one `marketplace.order.fxStamp` job per order into the
+ *     `realtime` lane — sharing that lane's scope with live order ingestion
+ *     collapses a whole connection's throughput to `perScope` slots (#2776).
+ *     Calling `IOrderFxStampService.stamp` directly, sequentially, inside the
+ *     already-bulk-laned `analytics.currency.recalculate` job removes the fan-
+ *     out entirely: no `sync_jobs` row, no stream entry, no idempotency-key
+ *     collision with `OrderFxStampService.enqueueRetry`'s bare `fx:{orderId}`
+ *     to worry about — there is simply nothing left to key.
  *
  * @module libs/core/src/orders/application/services
  * @implements {IOrderFxRestatementService}
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
-import { JOB_ENQUEUE_TOKEN, JobEnqueuePort } from '@openlinker/core/sync';
-import type { SyncJobRequest } from '@openlinker/core/sync';
 import { OrderRecordRepositoryPort } from '../../domain/ports/order-record-repository.port';
-import { ORDER_RECORD_REPOSITORY_TOKEN } from '../../orders.tokens';
+import { ORDER_FX_STAMP_SERVICE_TOKEN, ORDER_RECORD_REPOSITORY_TOKEN } from '../../orders.tokens';
 import type { SalesAnalyticsFilters } from '../../domain/types/order-sales-analytics.types';
-import {
-  buildFxRestatementIdempotencyKey,
-  type FxRestatementOrderRef,
-  type FxRestatementPageInput,
-  type FxRestatementPageResult,
-  type FxRestatementRemainingSummary,
+import type {
+  FxRestatementPageInput,
+  FxRestatementPageResult,
+  FxRestatementRemainingSummary,
 } from '../../domain/types/order-fx-restatement.types';
 import type { IOrderFxRestatementService } from '../interfaces/order-fx-restatement.service.interface';
+import type { IOrderFxStampService } from '../interfaces/order-fx-stamp.service.interface';
 
 @Injectable()
 export class OrderFxRestatementService implements IOrderFxRestatementService {
@@ -60,8 +60,8 @@ export class OrderFxRestatementService implements IOrderFxRestatementService {
   constructor(
     @Inject(ORDER_RECORD_REPOSITORY_TOKEN)
     private readonly repository: OrderRecordRepositoryPort,
-    @Inject(JOB_ENQUEUE_TOKEN)
-    private readonly jobEnqueue: JobEnqueuePort
+    @Inject(ORDER_FX_STAMP_SERVICE_TOKEN)
+    private readonly stampService: IOrderFxStampService
   ) {}
 
   async restatePage(
@@ -76,20 +76,34 @@ export class OrderFxRestatementService implements IOrderFxRestatementService {
     );
 
     let cleared = 0;
-    let enqueued = 0;
+    let stamped = 0;
+    let terminal = 0;
+    let deferred = 0;
 
     for (const ref of refs) {
-      // Sequential, not `Promise.all`: each iteration is a write plus an
-      // enqueue, and the two must stay ordered PER ORDER (see the class doc).
-      // Fanning the page out would also burst the job queue for no latency
-      // benefit — nothing is waiting on this call.
+      // Sequential, not `Promise.all`: a page of foreign-currency orders on
+      // distinct days is a page of provider calls, and fanning them out in
+      // parallel would burst a public reference-rate API for no latency
+      // benefit anyone is waiting on — the same reasoning
+      // `OrderFxStampService.sweep` states for its own sequential walk.
       const didClear = await this.clearOne(ref.internalOrderId);
       if (didClear) {
         cleared += 1;
       }
-      const didEnqueue = await this.enqueueOne(page.runId, ref);
-      if (didEnqueue) {
-        enqueued += 1;
+
+      const outcome = await this.stampService.stamp(ref.internalOrderId);
+      switch (outcome.kind) {
+        case 'stamped':
+          if (!outcome.alreadyStamped) {
+            stamped += 1;
+          }
+          break;
+        case 'terminal':
+          terminal += 1;
+          break;
+        case 'deferred':
+          deferred += 1;
+          break;
       }
     }
 
@@ -97,10 +111,10 @@ export class OrderFxRestatementService implements IOrderFxRestatementService {
 
     this.logger.log(
       `FX restatement page: run=${page.runId} scanned=${refs.length} cleared=${cleared} ` +
-        `enqueued=${enqueued} nextCursor=${nextCursor ?? 'none'}`
+        `stamped=${stamped} terminal=${terminal} deferred=${deferred} nextCursor=${nextCursor ?? 'none'}`
     );
 
-    return { scanned: refs.length, cleared, enqueued, nextCursor };
+    return { scanned: refs.length, cleared, stamped, terminal, deferred, nextCursor };
   }
 
   async countRemaining(
@@ -122,37 +136,6 @@ export class OrderFxRestatementService implements IOrderFxRestatementService {
     } catch (error) {
       this.logger.warn(
         `FX restatement could not clear the stamp on order ${internalOrderId}: ` +
-          (error instanceof Error ? error.message : String(error))
-      );
-      return false;
-    }
-  }
-
-  private async enqueueOne(runId: string, ref: FxRestatementOrderRef): Promise<boolean> {
-    const internalOrderId = ref.internalOrderId;
-    const request: SyncJobRequest = {
-      jobType: 'marketplace.order.fxStamp',
-      // The order's OWN source connection, exactly as
-      // `OrderFxStampService.enqueueRetry` does — `SyncJob.connectionId` is
-      // non-nullable while the stamp itself is connection-agnostic, and this
-      // is also the connection the hourly reconcile sweep is scoped to, so a
-      // job the restatement failed to enqueue is still reachable there. The
-      // enumeration already carries the value, so no extra read is paid for it.
-      connectionId: ref.sourceConnectionId,
-      payload: { schemaVersion: 1, internalOrderId },
-      idempotencyKey: buildFxRestatementIdempotencyKey(runId, internalOrderId),
-    };
-
-    try {
-      await this.jobEnqueue.enqueueJob(request);
-      return true;
-    } catch (error) {
-      // Logged rather than thrown for the same reason the clear is: the run's
-      // completion poll is the authority on whether the scope is clear, and the
-      // hourly reconcile sweep still reaches a cleared-but-unenqueued row.
-      this.logger.warn(
-        `FX restatement could not enqueue a stamp job for order ${internalOrderId} ` +
-          `(run ${runId}); the hourly reconcile sweep remains the route to a stamp: ` +
           (error instanceof Error ? error.message : String(error))
       );
       return false;
