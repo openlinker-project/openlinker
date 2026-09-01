@@ -56,6 +56,7 @@ import {
 import type { JobEnqueuePort } from '@openlinker/core/sync';
 import { JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
 import { DESTINATION_TAXONOMY_SERVICE_TOKEN } from '@openlinker/core/listings';
+import { LOCATION_SERVICE_TOKEN, type ILocationService } from '@openlinker/core/inventory';
 import type { IDestinationTaxonomyService } from '@openlinker/core/listings';
 import type { ConnectionCreateInput } from '../interfaces/connection.service.types';
 
@@ -65,6 +66,7 @@ describe('ConnectionService', () => {
   let integrationsService: jest.Mocked<IIntegrationsService>;
   let jobEnqueue: jest.Mocked<JobEnqueuePort>;
   let destinationTaxonomy: jest.Mocked<IDestinationTaxonomyService>;
+  let locations: jest.Mocked<ILocationService>;
   let credentials: jest.Mocked<ICredentialsService>;
   let testerRegistry: ConnectionTesterRegistryService;
   let mockTester: jest.Mocked<ConnectionTesterPort>;
@@ -210,6 +212,14 @@ describe('ConnectionService', () => {
       evict: jest.fn(),
     } as jest.Mocked<HttpTransportFactoryPort>;
 
+    // #2407 — one active location by default, so the routing enablement guard
+    // is satisfied and no pre-existing test changes colour. Tests that exercise
+    // the refusal override this to 0 explicitly.
+    const mockLocations = {
+      countActiveLocations: jest.fn().mockResolvedValue(1),
+      bootstrapDefaultLocations: jest.fn(),
+    } as unknown as jest.Mocked<ILocationService>;
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ConnectionService,
@@ -234,6 +244,7 @@ describe('ConnectionService', () => {
         },
         { provide: CREDENTIALS_RESOLVER_TOKEN, useValue: mockCredentialsResolver },
         { provide: HTTP_TRANSPORT_FACTORY_TOKEN, useValue: mockHttpTransportFactory },
+        { provide: LOCATION_SERVICE_TOKEN, useValue: mockLocations },
       ],
     }).compile();
 
@@ -243,6 +254,7 @@ describe('ConnectionService', () => {
     jobEnqueue = module.get(JOB_ENQUEUE_TOKEN);
     destinationTaxonomy = module.get(DESTINATION_TAXONOMY_SERVICE_TOKEN);
     credentials = module.get(CREDENTIALS_SERVICE_TOKEN);
+    locations = module.get(LOCATION_SERVICE_TOKEN);
   });
 
   describe('create', () => {
@@ -1689,6 +1701,120 @@ describe('ConnectionService', () => {
       connectionPort.disable.mockRejectedValue(new ConnectionNotFoundException('connection-123'));
 
       await expect(service.disable('connection-123')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('routing enablement guard (#2407)', () => {
+    const claiming = (config: Record<string, unknown>): ConnectionCreateInput => ({
+      name: 'Routing shop',
+      platformType: 'prestashop',
+      config: { baseUrl: 'https://new.com', ...config },
+      credentialsRef: 'db:existing-ref',
+    });
+
+    const persisted = (config: Record<string, unknown>): Connection =>
+      new Connection(
+        'connection-123',
+        'prestashop',
+        'Test Connection',
+        'active',
+        { baseUrl: 'https://example.com', ...config },
+        'cred_123',
+        new Date(),
+        new Date(),
+        undefined,
+        ['ProductMaster']
+      );
+
+    describe('create', () => {
+      it('should refuse a routing claim while no active location exists', async () => {
+        locations.countActiveLocations.mockResolvedValue(0);
+
+        await expect(service.create(claiming({ sourcingAuthority: true }))).rejects.toThrow(
+          BadRequestException
+        );
+        // The message must name the remedy — an operator who cannot act on a
+        // refusal is worse off than one who was allowed to misconfigure.
+        await expect(service.create(claiming({ sourcingAuthority: true }))).rejects.toThrow(
+          /at least one active inventory location/i
+        );
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should allow the same claim once a location exists', async () => {
+        // The control for the test above: proves the refusal was caused by the
+        // location count and not by the payload being rejected for some other
+        // reason.
+        locations.countActiveLocations.mockResolvedValue(1);
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await expect(
+          service.create(claiming({ sourcingAuthority: true }))
+        ).resolves.toEqual(mockConnection);
+      });
+
+      it('should not read the location count at all when nothing claims routing', async () => {
+        // The guard short-circuits on the claim, so an untouched install pays
+        // no extra query. Asserting the call count is what makes that true
+        // rather than merely intended.
+        locations.countActiveLocations.mockResolvedValue(0);
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await service.create(claiming({}));
+
+        expect(locations.countActiveLocations).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('update', () => {
+      it('should refuse the false -> true transition with no location', async () => {
+        locations.countActiveLocations.mockResolvedValue(0);
+        connectionPort.get.mockResolvedValue(persisted({}));
+
+        await expect(
+          service.update('connection-123', {
+            config: { baseUrl: 'https://example.com', sourcingAuthority: true },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
+      it('should NOT refuse a patch on a connection that already claims routing', async () => {
+        // Enable-time only (D7). A connection already carrying the claim must
+        // stay editable even at zero locations — refusing here would punish an
+        // operator for a state the guard already let through, and would make an
+        // unrelated field un-editable. Distinguishes a transition guard from a
+        // standing invariant.
+        locations.countActiveLocations.mockResolvedValue(0);
+        connectionPort.get.mockResolvedValue(persisted({ sourcingAuthority: true }));
+        connectionPort.update.mockResolvedValue(persisted({ sourcingAuthority: true }));
+
+        await expect(
+          service.update('connection-123', {
+            config: { baseUrl: 'https://example.com', sourcingAuthority: true },
+          })
+        ).resolves.toBeDefined();
+        expect(connectionPort.update).toHaveBeenCalled();
+      });
+    });
+
+    describe('malformed config', () => {
+      // Must FAIL TO MATCH rather than throw: a config OpenLinker cannot read
+      // is not a claim, and an install that never opted in stays byte-identical.
+      it.each([
+        ['a non-boolean string', { sourcingAuthority: 'yes' }],
+        ['an array', { sourcingAuthority: [] }],
+        ['a number', { sourcingAuthority: 42 }],
+        ['an object without enabled', { sourcingAuthority: { scopes: [] } }],
+        ['an explicitly disabled claim', { sourcingAuthority: { enabled: false } }],
+      ])('should neither refuse nor throw for %s', async (_label, config) => {
+        locations.countActiveLocations.mockResolvedValue(0);
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await expect(
+          service.create(claiming(config as Record<string, unknown>))
+        ).resolves.toEqual(mockConnection);
+      });
     });
   });
 });

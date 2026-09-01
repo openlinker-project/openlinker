@@ -842,3 +842,15 @@ height was documented as four lines by two bodies independently when the composi
 **Applies to**: `apps/api/src/integrations/application/services/connection.service.ts`; any adapter manifest whose `supportedCapabilities` grows after connections exist. **Named obligation: #2409**, which adds `FulfillmentExecutor` to the OMS manifest.
 
 **Source**: #2405.
+
+## A "bootstrap the missing prerequisite" remedy wired as an automatic side effect makes its own guard unreachable
+
+**Context**: #2407 refuses to enable fulfilment routing until at least one active `inventory_location` exists, and offers a one-click bootstrap that mints `MAIN` as the remedy.
+
+**Problem**: the tempting wiring is to mint the location automatically — on connection create, on enable, or from a migration. Every one of those makes the refusal **unreachable**: the precondition is satisfied by the same act that would have violated it, so the guard is dead code that no test can exercise except by deleting the seeding it was written against. Worse, the automatic row is a *fabrication* — a bootstrapped location holds no stock and has no country, so seeding it silently converts "this install has not been configured" into "this install has a warehouse", which is a claim about the operator's business that OpenLinker is not in a position to make.
+
+**Rule**: a remedy offered by a guard must be an **explicit operator action**, never a side effect of the transition the guard sits on and never a migration. Keep the mint idempotent (insert-then-recover on the unique key, not a read-then-write), report what it did and did not create so a re-run is visibly a no-op, and keep the guarded write and the remedy on separate routes so a test can drive the refusal, apply the remedy, and re-drive the same request as the control.
+
+**Applies to**: any first-run precondition guard and its bootstrap; `apps/api/src/integrations/application/services/connection.service.ts`, `libs/core/src/inventory/application/services/location.service.ts`.
+
+**Source**: #2407.
