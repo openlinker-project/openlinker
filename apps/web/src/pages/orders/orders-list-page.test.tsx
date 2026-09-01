@@ -210,6 +210,41 @@ describe('OrdersListPage', () => {
     expect(screen.getByRole('status')).toBeInTheDocument();
   });
 
+  it('should reserve five stacked lines in the money-cluster skeleton column (#2555)', () => {
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockReturnValue(new Promise(() => {})) },
+    });
+
+    const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    // The money column is the LAST one (select, order, customer, channel,
+    // status, shipment, money) — total, payment badge, the sales-document
+    // line, an optional tax-rate-conflict badge, and created: five facts at
+    // the tallest, so the skeleton must reserve five bars or the real row
+    // (with a conflicting-rate order) grows past it on load.
+    const lastCell = container.querySelector('tbody tr td:last-child');
+    expect(lastCell?.querySelectorAll('.data-table-skeleton__bar').length).toBe(5);
+  });
+
+  it('should reserve the extra mobile-card line for the multi-fact money column (#2555)', () => {
+    const viewport = mockMobileViewport();
+    try {
+      const mockApi = createMockApiClient({
+        orders: { list: vi.fn().mockReturnValue(new Promise(() => {})) },
+      });
+
+      const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      const card = container.querySelector('.data-table-skeleton__card');
+      // Title + subtitle + one more (tallestColumn > 1) + the row action bar
+      // (this page's rows carry an inline Retry) — never a bare two-line card
+      // for a row whose real money cluster stacks up to five facts.
+      expect(card?.querySelectorAll('.data-table-skeleton__bar').length).toBe(4);
+    } finally {
+      viewport.restore();
+    }
+  });
+
   it('should show error state when fetch fails', async () => {
     const mockApi = createMockApiClient({
       orders: { list: vi.fn().mockRejectedValue(new Error('Network error')) },
