@@ -67,6 +67,7 @@ import { useSalesAnalyticsQuery } from '../hooks/use-sales-analytics-query';
 import type { ConnectionIngestionTrust } from '../api/analytics-trust.types';
 import type { SalesAnalyticsFilters } from '../api/sales-analytics.types';
 import { computePreviousPeriodRange, isPreviousPeriodCovered } from '../lib/date-range.lib';
+import { isCurrencyRecalculating } from '../lib/display-currency.lib';
 import { resolveEarliestOrderDate } from '../lib/ingestion-trust.lib';
 import {
   averageDailyOrders,
@@ -84,6 +85,7 @@ import {
 } from '../lib/sales-analytics-view-model';
 import { AnalyticsKpiCard, type AnalyticsKpiDelta } from './analytics-kpi-card';
 import { GapMark } from './gap-mark';
+import { RecalculatingValue } from './recalculating-value';
 import { deriveCoverageRowCopy } from '../lib/data-coverage-copy.lib';
 import type { AnalyticsCoverage, CoverageCategory, CoverageCategoryRow } from '../api/analytics-coverage.types';
 
@@ -208,6 +210,23 @@ export function AnalyticsKpiStrip({
   const unitsRatio = unitsPerOrder(headline.unitsSold, totalOrders);
   const cancelRate = cancellationRate(headline.cancelledCount, totalOrders);
   const currency = headline.currency ?? undefined;
+  // ADR-064 display-currency override (#2459/#2472): the backend converts
+  // exactly ONE figure — GMV, via `headline.displayCurrencyConversion.
+  // convertedRevenue`, rendered verbatim on the GMV qualifier below. It has
+  // no converted counterpart for netRevenue, AOV, median, or cancelledValue,
+  // and there is NO SAFE client-side shortcut for deriving one: in
+  // "current rate" mode `convertedRevenue` is `revenue` PLUS the separate
+  // `unconvertedValue` pool, both converted and summed (see
+  // `SalesAnalyticsController.buildNativeCurrencyAmounts`) — so
+  // `convertedRevenue / revenue` is NOT the exchange rate and produces a
+  // silently wrong number for any other figure (caught live: 29 000 PLN
+  // rendered as ~20 000 "EUR" instead of the correct ~6 700 EUR). Every
+  // figure below except the GMV qualifier therefore stays in the native
+  // reporting currency until the backend computes a real converted value for
+  // it — see `display-currency.lib.ts`'s "REJECTED APPROACH" note.
+  const gmvConversion = headline.displayCurrencyConversion;
+  const gmvCurrency = gmvConversion && gmvConversion.convertedRevenue !== null ? gmvConversion.displayCurrency : currency;
+  const gmvValue = gmvConversion && gmvConversion.convertedRevenue !== null ? gmvConversion.convertedRevenue : headline.revenue;
   const stampedGapVisible = headline.unconvertedCount > 0;
   const netExcludedVisible = headline.netExcludedCount > 0;
   const netExcludedNote = `${headline.netExcludedCount} order(s) predate per-line tax rates or carry a line with an unresolvable rate, and are excluded from NOV.`;
@@ -220,6 +239,13 @@ export function AnalyticsKpiStrip({
   const currencyCoverageRow = coverage?.categories.find(
     (row) => row.category === 'currency' && row.affectedCount > 0
   );
+  // A currency recalculation run is actively in flight (operator clicked
+  // "Recalculate now" in Data Coverage, or changed the reporting currency).
+  // Until now this state was indistinguishable from "genuinely nothing to
+  // report" — every revenue/order-value figure just read as a bare `0`
+  // (unconverted orders excluded from `revenue`/`netRevenue`), which reads
+  // as broken rather than "wait, this is being fixed right now".
+  const currencyRecalculating = isCurrencyRecalculating(coverage);
   const currencyGapTitle =
     stampedGapVisible && currencyCoverageRow ? deriveCoverageRowCopy(currencyCoverageRow).sub : STAMPED_GAP;
   const onOpenCurrencyGap =
@@ -331,7 +357,8 @@ export function AnalyticsKpiStrip({
             'Net sales'
           )
         }
-        value={formatAmount(headline.netRevenue, currency)}
+        headlineUnavailable={currencyRecalculating}
+        value={currencyRecalculating ? <RecalculatingValue /> : formatAmount(headline.netRevenue, currency)}
         trend={{
           values: revenueTrend,
           tone: trendTone(revenueTrend),
@@ -346,7 +373,7 @@ export function AnalyticsKpiStrip({
             ) : (
               'GMV'
             ),
-            value: formatAmount(headline.revenue, currency),
+            value: currencyRecalculating ? <RecalculatingValue /> : formatAmount(gmvValue, gmvCurrency),
           },
         ]}
       />
@@ -399,8 +426,14 @@ export function AnalyticsKpiStrip({
             'Average'
           )
         }
-        value={formatAmount(headline.netAverageOrderValue, currency)}
-        qualifiers={[{ label: 'Median', value: formatAmount(headline.netMedianOrderValue, currency) }]}
+        headlineUnavailable={currencyRecalculating}
+        value={currencyRecalculating ? <RecalculatingValue /> : formatAmount(headline.netAverageOrderValue, currency)}
+        qualifiers={[
+          {
+            label: 'Median',
+            value: currencyRecalculating ? <RecalculatingValue /> : formatAmount(headline.netMedianOrderValue, currency),
+          },
+        ]}
         delta={orderValueDelta}
         deltaGapReason={orderValueDeltaGapReason}
       />
@@ -436,7 +469,10 @@ export function AnalyticsKpiStrip({
         value={pctFormat.format(cancelRate)}
         qualifiers={[
           { label: 'Cancelled orders', value: numberFormat.format(headline.cancelledCount) },
-          { label: 'Cancelled value', value: formatAmount(headline.cancelledValue, currency) },
+          {
+            label: 'Cancelled value',
+            value: currencyRecalculating ? <RecalculatingValue /> : formatAmount(headline.cancelledValue, currency),
+          },
         ]}
         delta={cancelRateDelta}
         deltaGapReason={deltaGapReason}

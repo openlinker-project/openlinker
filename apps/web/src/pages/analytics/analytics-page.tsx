@@ -157,7 +157,11 @@ export function AnalyticsPage(): ReactElement {
           />
         }
       />
-      <AnalyticsConvertNote filters={salesFilters} onSwitchBack={() => handleDisplayCurrencyChange(null)} />
+      <AnalyticsConvertNote
+        filters={salesFilters}
+        coverage={coverageQuery.data}
+        onSwitchBack={() => handleDisplayCurrencyChange(null)}
+      />
 
       {trustQuery.isLoading ? (
         <LoadingState title="Loading data coverage" message="Checking ingestion status…" />
@@ -208,7 +212,7 @@ export function AnalyticsPage(): ReactElement {
                 coverageFilters={coverageFilters}
                 onOpenCategory={setOpenCoverageCategory}
               />
-              <ProductSalesTable filters={salesFilters} />
+              <ProductSalesTable filters={salesFilters} coverage={coverageQuery.data} />
             </>
           )}
           {/* Coverage gaps and stock-at-risk are listing facts, not order

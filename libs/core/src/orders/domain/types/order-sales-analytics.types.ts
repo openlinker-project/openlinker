@@ -14,8 +14,12 @@
  * silently omitting them or silently mixing their native-currency amount into
  * `revenue`. `unconvertedValue` itself sums each order's own native
  * `totalAmount` and MAY mix currencies — it is informational only, never a
- * KPI. `cancelledCount`/`cancelledValue` are left as pre-existing (native
- * `totalAmount`, unstamped-safe) — a secondary figure, not revisited here.
+ * KPI. `cancelledValue` now follows the same currency-safe split as `revenue`:
+ * `SUM(reportingTotalAmount)` over current-era-stamped, cancelled orders,
+ * with the unstamped remainder reported separately as
+ * `cancelledUnconvertedCount`/`cancelledUnconvertedValue` (native
+ * `totalAmount`, informational, may mix currencies) — it previously summed
+ * raw `totalAmount` across every currency in the bucket with no restriction.
  * Gross/net tax-treatment normalization remains out of scope — a separate,
  * not-yet-scoped effort.
  *
@@ -73,10 +77,16 @@ export interface DailyOrderAggregateRow {
    * layer must not read that as "mixed" (see `resolveUniformUnconvertedCurrency`).
    */
   unconvertedCurrency: string | null;
+  /** All cancelled orders in range, regardless of FX-stamp state. */
   cancelledCount: number;
+  /** `SUM(reportingTotalAmount)` over current-era-stamped, cancelled orders — expressed in `reportingCurrency`. */
   cancelledValue: number;
+  /** Cancelled orders in range with no CURRENT-era `reportingCurrency` stamp — not reflected in `cancelledValue`. */
+  cancelledUnconvertedCount: number;
+  /** Native-currency `SUM(totalAmount)` for `cancelledUnconvertedCount` — informational, may mix currencies, mirrors `unconvertedValue`. */
+  cancelledUnconvertedValue: number;
   /**
-   * The `reportingCurrency` this row's `revenue` is expressed in — `null`
+   * The `reportingCurrency` this row's `revenue` (and `cancelledValue`) is expressed in — `null`
    * when every order in the group is unconverted, OR when the stamped orders
    * in this (day, connection) bucket already disagree on `reportingCurrency`
    * (#1987 review, IMPORTANT 1 — an in-flight #2096 restatement can leave two
@@ -159,8 +169,14 @@ export interface SalesAnalyticsHeadline {
   unitsSold: number;
   /** Units sold on orders in `unconvertedCount`'s population — the `unitsSold` companion, mirroring `unconvertedCount`/`unconvertedValue`. */
   unconvertedUnitsSold: number;
+  /** All cancelled orders in range, regardless of FX-stamp state. */
   cancelledCount: number;
+  /** `SUM(reportingTotalAmount)` over current-era-stamped, cancelled orders — expressed in `currency`. */
   cancelledValue: number;
+  /** Cancelled orders in range with no CURRENT-era `reportingCurrency` stamp — not reflected in `cancelledValue`. */
+  cancelledUnconvertedCount: number;
+  /** Native-currency `SUM(totalAmount)` for `cancelledUnconvertedCount` — informational, may mix currencies. */
+  cancelledUnconvertedValue: number;
   /**
    * The reporting currency `revenue`/`averageOrderValue`/`medianOrderValue`/
    * `unitsSold` are expressed in. `null` when no order in range has been
@@ -209,8 +225,14 @@ export interface ChannelSalesAnalytics {
   unitsSold: number;
   /** Same meaning as {@link SalesAnalyticsHeadline.unconvertedUnitsSold}, scoped to this channel. */
   unconvertedUnitsSold: number;
+  /** Same meaning as {@link SalesAnalyticsHeadline.cancelledCount}, scoped to this channel. */
   cancelledCount: number;
+  /** Same meaning as {@link SalesAnalyticsHeadline.cancelledValue}, scoped to this channel — expressed in `currency`. */
   cancelledValue: number;
+  /** Same meaning as {@link SalesAnalyticsHeadline.cancelledUnconvertedCount}, scoped to this channel. */
+  cancelledUnconvertedCount: number;
+  /** Same meaning as {@link SalesAnalyticsHeadline.cancelledUnconvertedValue}, scoped to this channel. */
+  cancelledUnconvertedValue: number;
   /** Same meaning as {@link SalesAnalyticsHeadline.currency}, scoped to this channel. */
   currency: string | null;
   /** Same meaning as {@link SalesAnalyticsHeadline.unconvertedCount}, scoped to this channel. */

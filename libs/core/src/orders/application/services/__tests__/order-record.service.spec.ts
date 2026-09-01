@@ -1285,6 +1285,8 @@ describe('OrderRecordService', () => {
           unconvertedCurrency: null,
           cancelledCount: 0,
           cancelledValue: 0,
+          cancelledUnconvertedCount: 0,
+          cancelledUnconvertedValue: 0,
           reportingCurrency: 'EUR',
           netRevenue: 150,
           netExcludedCount: 0,
