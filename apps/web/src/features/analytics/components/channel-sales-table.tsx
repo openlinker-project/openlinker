@@ -79,7 +79,11 @@ import { ConnectionCell, useConnectionsQuery, type Connection } from '../../conn
 import { ConnectionDot } from '../../orders';
 import { useSalesAnalyticsQuery } from '../hooks/use-sales-analytics-query';
 import { useCoverageCrossReferenceQuery } from '../hooks/use-coverage-cross-reference-query';
-import { isCurrencyRecalculating, resolveReportingCurrencyRate } from '../lib/display-currency.lib';
+import {
+  createReportingCurrencyConverter,
+  isCurrencyRecalculating,
+  resolveReportingCurrencyRate,
+} from '../lib/display-currency.lib';
 import type { ChannelSalesAnalytics, SalesAnalyticsFilters } from '../api/sales-analytics.types';
 import type { AnalyticsCoverage, AnalyticsCoverageFilters, CoverageCategory } from '../api/analytics-coverage.types';
 import {
@@ -301,11 +305,12 @@ export function ChannelSalesTable({
   // A row whose `currency` doesn't resolve to a rate stays native.
   const gmvConversion = headline?.displayCurrencyConversion;
   const reportingRate = resolveReportingCurrencyRate(gmvConversion, headline?.currency ?? null);
-  function convertToDisplay(amount: number): number {
-    return reportingRate ? amount * Number(reportingRate.rate) : amount;
+  const reportingConverter = createReportingCurrencyConverter(reportingRate, headline?.currency ?? null);
+  function convertToDisplay(amount: number, nativeCurrency: string): number {
+    return reportingConverter.convertToDisplay(amount, nativeCurrency);
   }
   function displayCurrencyFor(nativeCurrency: string): string {
-    return reportingRate && gmvConversion ? gmvConversion.displayCurrency : nativeCurrency;
+    return reportingConverter.displayCurrencyFor(nativeCurrency);
   }
   const connectionsById = new Map((connectionsQuery.data ?? []).map((c) => [c.id, c]));
   const channelRows: ChannelRow[] = channels.map((channel) => ({
@@ -331,13 +336,21 @@ export function ChannelSalesTable({
     }
     if (row.kind === 'total') {
       return (
-        <>{formatAmount(convertToDisplay(row.total.netAverageOrderValue), displayCurrencyFor(row.total.currency))}</>
+        <>
+          {formatAmount(
+            convertToDisplay(row.total.netAverageOrderValue, row.total.currency),
+            displayCurrencyFor(row.total.currency)
+          )}
+        </>
       );
     }
     if (row.channel.currency !== null) {
       return (
         <>
-          {formatAmount(convertToDisplay(row.channel.netAverageOrderValue), displayCurrencyFor(row.channel.currency))}
+          {formatAmount(
+            convertToDisplay(row.channel.netAverageOrderValue, row.channel.currency),
+            displayCurrencyFor(row.channel.currency)
+          )}
         </>
       );
     }
@@ -359,11 +372,23 @@ export function ChannelSalesTable({
     }
     if (row.kind === 'total') {
       return (
-        <strong>{formatAmount(convertToDisplay(row.total.netRevenue), displayCurrencyFor(row.total.currency))}</strong>
+        <strong>
+          {formatAmount(
+            convertToDisplay(row.total.netRevenue, row.total.currency),
+            displayCurrencyFor(row.total.currency)
+          )}
+        </strong>
       );
     }
     if (row.channel.currency !== null) {
-      return <>{formatAmount(convertToDisplay(row.channel.netRevenue), displayCurrencyFor(row.channel.currency))}</>;
+      return (
+        <>
+          {formatAmount(
+            convertToDisplay(row.channel.netRevenue, row.channel.currency),
+            displayCurrencyFor(row.channel.currency)
+          )}
+        </>
+      );
     }
     return <EmptyValue label="No Net sales figure can be given for this channel in range" />;
   }
