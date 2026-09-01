@@ -1,0 +1,796 @@
+<title>Top Products Inline Expand</title>
+<style>
+/* ============================================================
+   Real OpenLinker design tokens (apps/web/src/index.css, verbatim)
+   ============================================================ */
+:root {
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+
+  --bg-canvas: oklch(99% 0.003 80);
+  --bg-shell: oklch(97.5% 0.004 80);
+  --bg-surface: #ffffff;
+  --bg-surface-elevated: oklch(99% 0.003 80);
+  --bg-muted: oklch(96% 0.005 80);
+  --bg-surface-muted: oklch(96% 0.005 80);
+  --bg-surface-hover: oklch(93% 0.006 80);
+  --bg-strong: oklch(93% 0.006 80);
+
+  --border-subtle: oklch(93.5% 0.006 80);
+  --border-default: oklch(88% 0.008 80);
+  --border-strong: oklch(78% 0.010 80);
+  --border-focus: oklch(68% 0.18 50);
+
+  --text-primary: oklch(20% 0.012 80);
+  --text-secondary: oklch(38% 0.010 80);
+  --text-muted: oklch(52% 0.008 80);
+  --text-disabled: oklch(70% 0.005 80);
+  --text-on-primary: oklch(18% 0.012 50);
+  --text-inverse: oklch(96% 0.005 80);
+  --text-link: oklch(50% 0.14 250);
+
+  --accent-primary: oklch(68% 0.18 50);
+  --accent-primary-hover: oklch(62% 0.19 50);
+  --accent-primary-active: oklch(56% 0.20 50);
+  --accent-primary-soft: oklch(96% 0.04 60);
+  --accent-primary-soft-strong: oklch(40% 0.16 50);
+  --accent-primary-border: oklch(85% 0.10 55);
+  --accent-focus: oklch(68% 0.18 50);
+  --accent-ring: oklch(68% 0.18 50 / 0.30);
+
+  --status-success: oklch(54% 0.14 150);
+  --status-success-soft: oklch(96% 0.04 150);
+  --status-success-border: oklch(85% 0.08 150);
+  --status-success-fg: oklch(36% 0.12 150);
+  --status-success-strong: oklch(36% 0.12 150);
+
+  --status-warning: oklch(72% 0.16 85);
+  --status-warning-soft: oklch(96% 0.05 85);
+  --status-warning-border: oklch(85% 0.10 85);
+  --status-warning-fg: oklch(42% 0.12 80);
+  --status-warning-strong: oklch(42% 0.12 80);
+
+  --status-error: oklch(58% 0.20 25);
+  --status-error-soft: oklch(96% 0.04 25);
+  --status-error-border: oklch(85% 0.10 25);
+  --status-error-fg: oklch(42% 0.16 25);
+  --status-error-strong: oklch(42% 0.16 25);
+
+  --status-info: oklch(56% 0.14 245);
+  --status-info-soft: oklch(96% 0.03 245);
+  --status-info-border: oklch(85% 0.08 245);
+  --status-info-fg: oklch(40% 0.12 245);
+  --status-info-strong: oklch(40% 0.12 245);
+
+  --channel-allegro: oklch(70% 0.18 35);
+  --channel-prestashop: oklch(60% 0.18 250);
+  --channel-erli: oklch(66% 0.17 320);
+  --channel-woocommerce: oklch(64% 0.16 150);
+
+  --status-review: oklch(58% 0.16 290);
+  --status-review-soft: oklch(96% 0.04 290);
+  --status-review-border: oklch(85% 0.08 290);
+  --status-review-fg: oklch(42% 0.14 290);
+
+  --shadow-xs: 0 1px 2px rgb(15 18 26 / 0.04);
+  --shadow-sm: 0 1px 2px rgb(15 18 26 / 0.04), 0 1px 3px rgb(15 18 26 / 0.06);
+  --shadow-soft: 0 1px 2px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.06);
+  --shadow-soft-hover: 0 2px 4px rgb(15 18 26 / 0.04), 0 12px 28px rgb(15 18 26 / 0.10);
+  --shadow-overlay: 0 24px 48px rgb(15 18 26 / 0.16), 0 8px 16px rgb(15 18 26 / 0.08);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+  --overlay-scrim: rgb(15 18 26 / 0.55);
+
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --radius-pill: 9999px;
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4rem;
+
+  --duration-fast: 120ms;
+  --duration-normal: 180ms;
+  --tracking-caps: 0.08em;
+  --tracking-wide: 0.02em;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg-canvas: oklch(14% 0.005 270);
+    --bg-shell: oklch(16% 0.006 270);
+    --bg-surface: oklch(19% 0.007 270);
+    --bg-surface-elevated: oklch(22% 0.008 270);
+    --bg-muted: oklch(24% 0.009 270);
+    --bg-surface-muted: oklch(24% 0.009 270);
+    --bg-surface-hover: oklch(28% 0.010 270);
+    --bg-strong: oklch(28% 0.010 270);
+
+    --border-subtle: oklch(24% 0.010 270);
+    --border-default: oklch(30% 0.012 270);
+    --border-strong: oklch(42% 0.014 270);
+    --border-focus: oklch(72% 0.18 50);
+
+    --text-primary: oklch(96% 0.006 270);
+    --text-secondary: oklch(78% 0.010 270);
+    --text-muted: oklch(60% 0.012 270);
+    --text-disabled: oklch(42% 0.012 270);
+    --text-on-primary: oklch(16% 0.012 50);
+    --text-inverse: oklch(20% 0.012 80);
+    --text-link: oklch(76% 0.14 245);
+
+    --accent-primary: oklch(72% 0.18 50);
+    --accent-primary-hover: oklch(78% 0.18 50);
+    --accent-primary-active: oklch(84% 0.16 50);
+    --accent-primary-soft: oklch(28% 0.08 50);
+    --accent-primary-soft-strong: oklch(86% 0.14 60);
+    --accent-primary-border: oklch(40% 0.14 55);
+    --accent-focus: oklch(72% 0.18 50);
+    --accent-ring: oklch(72% 0.18 50 / 0.40);
+
+    --status-success: oklch(68% 0.16 150);
+    --status-success-soft: oklch(26% 0.06 150);
+    --status-success-border: oklch(36% 0.10 150);
+    --status-success-fg: oklch(86% 0.14 150);
+
+    --status-warning: oklch(78% 0.16 85);
+    --status-warning-soft: oklch(28% 0.07 85);
+    --status-warning-border: oklch(38% 0.10 85);
+    --status-warning-fg: oklch(88% 0.14 85);
+
+    --status-error: oklch(70% 0.18 25);
+    --status-error-soft: oklch(28% 0.10 25);
+    --status-error-border: oklch(40% 0.14 25);
+    --status-error-fg: oklch(86% 0.14 25);
+
+    --status-info: oklch(72% 0.14 245);
+    --status-info-soft: oklch(26% 0.06 245);
+    --status-info-border: oklch(36% 0.10 245);
+    --status-info-fg: oklch(86% 0.12 245);
+
+    --status-review: oklch(74% 0.14 290);
+    --status-review-soft: oklch(28% 0.06 290);
+    --status-review-border: oklch(38% 0.10 290);
+    --status-review-fg: oklch(88% 0.12 290);
+
+    --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.40);
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.40), 0 1px 3px rgb(0 0 0 / 0.32);
+    --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.40), 0 8px 24px rgb(0 0 0 / 0.40);
+    --shadow-soft-hover: 0 2px 4px rgb(0 0 0 / 0.42), 0 12px 32px rgb(0 0 0 / 0.42);
+    --shadow-overlay: 0 24px 48px rgb(0 0 0 / 0.60), 0 8px 16px rgb(0 0 0 / 0.40);
+    --overlay-scrim: rgb(0 0 0 / 0.72);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg-canvas: oklch(14% 0.005 270);
+  --bg-shell: oklch(16% 0.006 270);
+  --bg-surface: oklch(19% 0.007 270);
+  --bg-surface-elevated: oklch(22% 0.008 270);
+  --bg-muted: oklch(24% 0.009 270);
+  --bg-surface-muted: oklch(24% 0.009 270);
+  --bg-surface-hover: oklch(28% 0.010 270);
+  --bg-strong: oklch(28% 0.010 270);
+  --border-subtle: oklch(24% 0.010 270);
+  --border-default: oklch(30% 0.012 270);
+  --border-strong: oklch(42% 0.014 270);
+  --border-focus: oklch(72% 0.18 50);
+  --text-primary: oklch(96% 0.006 270);
+  --text-secondary: oklch(78% 0.010 270);
+  --text-muted: oklch(60% 0.012 270);
+  --text-disabled: oklch(42% 0.012 270);
+  --text-on-primary: oklch(16% 0.012 50);
+  --text-inverse: oklch(20% 0.012 80);
+  --text-link: oklch(76% 0.14 245);
+  --accent-primary: oklch(72% 0.18 50);
+  --accent-primary-hover: oklch(78% 0.18 50);
+  --accent-primary-active: oklch(84% 0.16 50);
+  --accent-primary-soft: oklch(28% 0.08 50);
+  --accent-primary-soft-strong: oklch(86% 0.14 60);
+  --accent-primary-border: oklch(40% 0.14 55);
+  --accent-focus: oklch(72% 0.18 50);
+  --accent-ring: oklch(72% 0.18 50 / 0.40);
+  --status-success: oklch(68% 0.16 150);
+  --status-success-soft: oklch(26% 0.06 150);
+  --status-success-border: oklch(36% 0.10 150);
+  --status-success-fg: oklch(86% 0.14 150);
+  --status-warning: oklch(78% 0.16 85);
+  --status-warning-soft: oklch(28% 0.07 85);
+  --status-warning-border: oklch(38% 0.10 85);
+  --status-warning-fg: oklch(88% 0.14 85);
+  --status-error: oklch(70% 0.18 25);
+  --status-error-soft: oklch(28% 0.10 25);
+  --status-error-border: oklch(40% 0.14 25);
+  --status-error-fg: oklch(86% 0.14 25);
+  --status-info: oklch(72% 0.14 245);
+  --status-info-soft: oklch(26% 0.06 245);
+  --status-info-border: oklch(36% 0.10 245);
+  --status-info-fg: oklch(86% 0.12 245);
+  --status-review: oklch(74% 0.14 290);
+  --status-review-soft: oklch(28% 0.06 290);
+  --status-review-border: oklch(38% 0.10 290);
+  --status-review-fg: oklch(88% 0.12 290);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.40);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.40), 0 1px 3px rgb(0 0 0 / 0.32);
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.40), 0 8px 24px rgb(0 0 0 / 0.40);
+  --shadow-soft-hover: 0 2px 4px rgb(0 0 0 / 0.42), 0 12px 32px rgb(0 0 0 / 0.42);
+  --shadow-overlay: 0 24px 48px rgb(0 0 0 / 0.60), 0 8px 16px rgb(0 0 0 / 0.40);
+  --overlay-scrim: rgb(0 0 0 / 0.72);
+}
+
+/* ============================================================
+   Base
+   ============================================================ */
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent-primary-hover); }
+button, input, select { font: inherit; }
+
+.stage {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-5) var(--space-8);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* ── Meta / narration layer (not part of the product UI) ── */
+.meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.meta__eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.meta__title {
+  margin: 0;
+  font-size: 1.375rem;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  text-wrap: balance;
+}
+.meta__sub {
+  margin: 0;
+  max-width: 62ch;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+.meta__sub code {
+  font-family: var(--font-mono);
+  font-size: 0.8em;
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  padding: 1px 5px;
+}
+
+.modebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-surface-muted);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+}
+.modebar__label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+.modebar__label strong { color: var(--text-primary); }
+
+.explain {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--status-info-border);
+  background: var(--status-info-soft);
+  color: var(--status-info-fg);
+  font-size: 0.8125rem;
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+  transition: background var(--duration-normal), border-color var(--duration-normal), color var(--duration-normal);
+}
+.explain[data-tone="warn"] {
+  border-color: var(--status-warning-border);
+  background: var(--status-warning-soft);
+  color: var(--status-warning-fg);
+}
+.explain__icon { flex-shrink: 0; margin-top: 1px; }
+.explain b { font-weight: 600; }
+
+/* ── Real component chrome, copied from index.css ── */
+.section-title { margin: 0; color: var(--text-primary); font-size: 1rem; font-weight: 600; }
+
+.panel {
+  border: 1px solid var(--border-default);
+  border-radius: 0.5rem;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-soft);
+  padding: 1rem;
+}
+.panel--dense { display: flex; flex-direction: column; gap: 1rem; }
+.panel__header { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: var(--space-3); }
+
+.segmented-control { display: inline-flex; align-self: flex-start; border: 1px solid var(--border-default); border-radius: var(--radius-md); }
+.segmented-control__option {
+  display: inline-flex; align-items: center; gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border: none; border-right: 1px solid var(--border-default);
+  background: var(--bg-surface); color: var(--text-secondary);
+  font-family: var(--font-sans); font-size: 0.8125rem;
+  cursor: pointer; transition: background var(--duration-fast);
+}
+.segmented-control__option:first-child { border-top-left-radius: var(--radius-md); border-bottom-left-radius: var(--radius-md); }
+.segmented-control__option:last-child { border-right: none; border-top-right-radius: var(--radius-md); border-bottom-right-radius: var(--radius-md); }
+.segmented-control__option:hover { background: var(--bg-surface-hover); }
+.segmented-control__option--active { background: var(--accent-primary); color: var(--text-on-primary); font-weight: 600; }
+.segmented-control__option--active:hover { background: var(--accent-primary-hover); }
+
+.data-table__container { overflow-x: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--bg-surface); box-shadow: var(--shadow-xs); }
+.data-table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+.data-table .data-table__cell--right { text-align: right; font-variant-numeric: tabular-nums; }
+.data-table th, .data-table td { padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border-subtle); text-align: left; vertical-align: middle; font-size: 0.8125rem; line-height: 1.4; }
+.data-table thead th {
+  border-top: 0; border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-muted); font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 500;
+  letter-spacing: var(--tracking-caps); text-transform: uppercase; background: var(--bg-shell);
+}
+.data-table tbody td { color: var(--text-primary); }
+.data-table tbody tr:last-child td { border-bottom: 0; }
+
+.data-table__expand-cell { width: 2.25rem; padding-left: var(--space-2) !important; padding-right: 0 !important; text-align: center; }
+.data-table__expand-toggle {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.5rem; height: 1.5rem; padding: 0; background: transparent; border: none;
+  border-radius: var(--radius-xs); color: var(--text-muted); cursor: pointer;
+  transition: color var(--duration-fast), background var(--duration-fast);
+}
+.data-table__expand-toggle:hover { color: var(--text-primary); background: color-mix(in oklab, var(--bg-shell) 70%, transparent); }
+.data-table__expand-toggle:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.data-table__expand-icon { font-size: 0.75rem; line-height: 1; display: inline-block; transition: transform var(--duration-fast); }
+
+.data-table__row--linked { cursor: pointer; transition: background var(--duration-fast); }
+.data-table__row--linked:hover { background: color-mix(in oklab, var(--bg-shell) 60%, transparent); }
+.data-table__row--linked:hover .data-table__row-link { color: var(--accent-primary); }
+.data-table__row-link { color: var(--text-primary); text-decoration: none; font-weight: 500; transition: color var(--duration-fast); }
+
+.data-table__row--expandable { cursor: pointer; transition: background var(--duration-fast); }
+.data-table__row--expandable:hover { background: color-mix(in oklab, var(--bg-shell) 60%, transparent); }
+.data-table__row--expanded { background: color-mix(in oklab, var(--bg-shell) 45%, transparent); }
+.data-table__detail-row > .data-table__detail-cell { padding: 0; background: var(--bg-shell); border-top: 0; }
+.data-table__detail { padding: var(--space-4) var(--space-4) var(--space-4) 2.75rem; }
+
+.product-thumbnail {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  border: 1px solid var(--border-subtle); border-radius: 0.375rem; background: var(--bg-surface-muted);
+  overflow: hidden; font-family: var(--font-mono); color: var(--text-muted); text-transform: uppercase; line-height: 1;
+  width: 2rem; height: 2rem; font-size: 0.8125rem;
+}
+.product-row { display: inline-flex; align-items: center; gap: 0.75rem; min-width: 0; }
+
+.mono-text, .mono { font-family: var(--font-mono); letter-spacing: -0.01em; }
+.tabular { font-variant-numeric: tabular-nums; }
+
+.coverage-pill {
+  display: inline-flex; align-items: center; gap: var(--space-1);
+  padding: 2px var(--space-2); border: 1px solid var(--border-subtle); border-radius: var(--radius-pill);
+  background: var(--bg-surface-muted); color: var(--text-secondary); font-family: var(--font-mono); font-size: 0.6875rem; white-space: nowrap;
+}
+.coverage-pill::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); }
+.coverage-pill[data-channel="allegro"]::before { background: var(--channel-allegro); }
+.coverage-pill[data-channel="prestashop"]::before { background: var(--channel-prestashop); }
+.coverage-pill[data-channel="erli"]::before { background: var(--channel-erli); }
+.coverage-pill[data-channel="woocommerce"]::before { background: var(--channel-woocommerce); }
+
+.data-table__footnote { margin: var(--space-2) 0 0; font-size: 0.8125rem; color: var(--text-muted); }
+
+/* ── Inline detail content (adapted products-row-detail) ── */
+.products-row-detail { display: flex; flex-direction: column; gap: var(--space-4); }
+.products-detail-links { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.products-detail-links__link {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px var(--space-3); border: 1px solid var(--accent-primary-border); border-radius: var(--radius-sm);
+  background: var(--bg-surface); color: var(--accent-primary-soft-strong); font-size: 0.75rem; font-weight: 600;
+  text-decoration: none; white-space: nowrap; transition: border-color 0.12s, color 0.12s;
+  cursor: pointer;
+}
+.products-detail-links__link::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--accent-primary); flex-shrink: 0; }
+.products-detail-links__link:hover { border-color: var(--accent-primary); }
+.products-detail-links__arrow { color: var(--accent-primary); font-size: 0.75rem; }
+
+.products-detail-fields { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-3) var(--space-5); }
+@media (max-width: 720px) { .products-detail-fields { grid-template-columns: repeat(2, 1fr); } }
+.products-detail-field__label { font-family: var(--font-mono); font-size: 0.625rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 3px; }
+.products-detail-field__value { font-size: 0.8125rem; color: var(--text-secondary); }
+
+.products-detail-channels { display: flex; flex-direction: column; gap: var(--space-2); }
+.channel-bar-row { display: grid; grid-template-columns: 11rem 1fr auto; align-items: center; gap: var(--space-3); }
+.channel-bar-row__name { display: flex; align-items: center; gap: var(--space-2); font-size: 0.8125rem; color: var(--text-secondary); }
+.channel-bar-row__dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.channel-bar-row__track { position: relative; height: 6px; border-radius: 999px; background: var(--bg-strong); overflow: hidden; }
+.channel-bar-row__fill { position: absolute; inset: 0; border-radius: 999px; transition: width 320ms var(--ease-out, ease); }
+.channel-bar-row__figs { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-primary); white-space: nowrap; text-align: right; }
+.channel-bar-row__figs span { color: var(--text-muted); }
+
+/* ── Fake "left analytics" product page overlay ── */
+.leave-overlay {
+  position: fixed; inset: 0; z-index: 50;
+  background: var(--bg-canvas);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: var(--space-7) var(--space-5);
+  opacity: 0; pointer-events: none;
+  transition: opacity 200ms var(--ease-out, ease);
+}
+.leave-overlay.is-visible { opacity: 1; pointer-events: auto; }
+.leave-page { max-width: 720px; width: 100%; display: flex; flex-direction: column; gap: var(--space-4); }
+.leave-page__eyebrow { font-family: var(--font-mono); font-size: 0.6875rem; letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-muted); }
+.leave-page__title { margin: 0; font-size: 1.5rem; font-weight: 600; letter-spacing: -0.012em; }
+.leave-page__back {
+  align-self: flex-start;
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--border-default); border-radius: var(--radius-md);
+  background: var(--bg-surface); color: var(--text-primary); font-weight: 500; font-size: 0.8125rem;
+  cursor: pointer; box-shadow: var(--shadow-xs);
+}
+.leave-page__back:hover { background: var(--bg-surface-hover); }
+.leave-page__loss {
+  border: 1px solid var(--status-error-border); background: var(--status-error-soft); color: var(--status-error-fg);
+  border-radius: var(--radius-md); padding: var(--space-4); font-size: 0.8125rem; display: flex; flex-direction: column; gap: var(--space-2);
+}
+.leave-page__loss ul { margin: 0; padding-left: 1.1em; display: flex; flex-direction: column; gap: 4px; }
+.leave-page__skeleton { display: flex; flex-direction: column; gap: var(--space-2); opacity: 0.5; }
+.sk-line { height: 12px; border-radius: 4px; background: var(--bg-strong); }
+
+.tip {
+  position: fixed; z-index: 60; padding: 6px 10px; border-radius: var(--radius-sm);
+  background: var(--text-primary); color: var(--bg-surface); font-size: 0.75rem; font-weight: 500;
+  box-shadow: var(--shadow-soft-hover); opacity: 0; transform: translateY(4px);
+  transition: opacity 160ms, transform 160ms; pointer-events: none; white-space: nowrap;
+}
+.tip.is-visible { opacity: 1; transform: translateY(0); }
+
+.credit { font-size: 0.75rem; color: var(--text-muted); text-align: center; }
+</style>
+
+<div class="stage">
+  <div class="meta">
+    <span class="meta__eyebrow">Analytics · Top products — proposed fix</span>
+    <h1 class="meta__title">Row click stays on the page</h1>
+    <p class="meta__sub">
+      Today a row click does a full route navigation to <code>/products/:id</code>, which unmounts
+      Analytics — the sort choice and scroll position are gone, so getting back to where you were
+      means re-filtering and re-scrolling. This reuses <code>DataTable</code>'s existing
+      <code>expandable</code> prop (the same one already used on the Products list page) to open the
+      detail inline instead. Flip the switch below to compare.
+    </p>
+  </div>
+
+  <div class="modebar">
+    <span class="modebar__label">Behavior: <strong id="modeName">Inline expand (proposed)</strong></span>
+    <div class="segmented-control" role="group" aria-label="Compare behavior">
+      <button type="button" class="segmented-control__option segmented-control__option--active" data-mode="after">Proposed — inline expand</button>
+      <button type="button" class="segmented-control__option" data-mode="before">Current — navigates away</button>
+    </div>
+  </div>
+
+  <div class="explain" id="explainBox">
+    <span class="explain__icon">→</span>
+    <span>Click a product row (or the ▸ toggle). The detail opens <b>inline, right under the row</b> — sort stays on "By units", scroll doesn't move, and nothing else on the page reloads.</span>
+  </div>
+
+  <article class="panel panel--dense">
+    <div class="panel__header">
+      <h3 class="section-title">Top products</h3>
+      <div class="segmented-control" role="group" aria-label="Rank products by" id="sortControl">
+        <button type="button" class="segmented-control__option segmented-control__option--active" data-sort="units">By units</button>
+        <button type="button" class="segmented-control__option" data-sort="revenue">By net sales</button>
+      </div>
+    </div>
+
+    <div class="data-table__container">
+      <table class="data-table">
+        <thead>
+          <tr id="theadRow"></tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <p class="data-table__footnote" id="stateFootnote">Sort preference: <strong>By units</strong> · scroll offset: <strong>0px</strong> (unchanged since page load)</p>
+  </article>
+
+  <p class="credit">Mockup — same tokens &amp; component CSS as <code>apps/web/src/index.css</code>, adapted from <code>ProductSalesTable</code> + <code>ProductRowDetail</code>.</p>
+</div>
+
+<div class="leave-overlay" id="leaveOverlay">
+  <div class="leave-page">
+    <button type="button" class="leave-page__back" id="backBtn">← Back to Analytics</button>
+    <div>
+      <div class="leave-page__eyebrow">Products</div>
+      <h2 class="leave-page__title" id="leaveTitle">Wireless Mouse X200</h2>
+    </div>
+    <div class="leave-page__loss">
+      <div><b>Analytics just unmounted.</b> Its local state doesn't survive the trip:</div>
+      <ul>
+        <li>Sort choice reset from "By units" back to the default, "By net sales"</li>
+        <li>Scroll position lost — back on Analytics you land at the top again</li>
+      </ul>
+      <div>Click "← Back to Analytics" to see it.</div>
+    </div>
+    <div class="leave-page__skeleton">
+      <div class="sk-line" style="width: 40%"></div>
+      <div class="sk-line" style="width: 90%"></div>
+      <div class="sk-line" style="width: 75%"></div>
+      <div class="sk-line" style="width: 82%"></div>
+    </div>
+  </div>
+</div>
+
+<div class="tip" id="tip"></div>
+
+<script>
+(function () {
+  var PRODUCTS = [
+    { id: 'wm-x200', name: 'Wireless Mouse X200', sku: 'MX-200-BLK', currency: 'PLN', internalId: 'ol_product_7f3c1a9e', stock: '2026-08-31 21:04',
+      netSales: 18420, units: 612,
+      channels: { allegro: { name: 'Allegro', units: 340, sales: 10404, dot: 'allegro' }, prestashop: { name: 'Store PL', units: 210, sales: 6132, dot: 'prestashop' }, erli: { name: 'Erli', units: 62, sales: 1884, dot: 'erli' } } },
+    { id: 'usb-c-65w', name: 'USB-C Charger 65W', sku: 'CHG-65W-EU', currency: 'PLN', internalId: 'ol_product_2b88df41', stock: '2026-08-31 20:52',
+      netSales: 15960, units: 532,
+      channels: { allegro: { name: 'Allegro', units: 398, sales: 11952, dot: 'allegro' }, prestashop: { name: 'Store PL', units: 96, sales: 2880, dot: 'prestashop' }, erli: { name: 'Erli', units: 38, sales: 1128, dot: 'erli' } } },
+    { id: 'kb-mech-87', name: 'Mechanical Keyboard 87-key', sku: 'KB-87-RGB', currency: 'PLN', internalId: 'ol_product_9a04e712', stock: '2026-08-31 19:18',
+      netSales: 24960, units: 208,
+      channels: { allegro: { name: 'Allegro', units: 140, sales: 16800, dot: 'allegro' }, prestashop: { name: 'Store PL', units: 51, sales: 6120, dot: 'prestashop' }, erli: { name: 'Erli', units: 17, sales: 2040, dot: 'erli' } } },
+    { id: 'sleeve-15', name: 'Laptop Sleeve 15"', sku: 'SLV-15-GRY', currency: 'PLN', internalId: 'ol_product_5cf6b023', stock: '2026-08-31 18:40',
+      netSales: 6840, units: 380,
+      channels: { allegro: { name: 'Allegro', units: 260, sales: 4680, dot: 'allegro' }, prestashop: { name: 'Store PL', units: 90, sales: 1620, dot: 'prestashop' }, erli: { name: 'Erli', units: 30, sales: 540, dot: 'erli' } } },
+  ];
+
+  var mode = 'after';        // 'after' = proposed inline expand · 'before' = current navigate-away
+  var sortBy = 'units';      // matches the app's real default question: this table's own local, non-URL state
+  var expanded = {};         // rowId -> bool, only meaningful in 'after' mode
+  var scrollOffset = 0;      // faked, only ever resets in 'before' mode
+
+  var fmtMoney = function (n) { return n.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' zł'; };
+  var fmtInt = function (n) { return n.toLocaleString('pl-PL'); };
+
+  function sortedProducts() {
+    var copy = PRODUCTS.slice();
+    copy.sort(function (a, b) { return sortBy === 'units' ? b.units - a.units : b.netSales - a.netSales; });
+    return copy;
+  }
+
+  function renderHead() {
+    var expandCol = mode === 'after' ? '<th class="data-table__expand-cell"><span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)">Expand row</span></th>' : '';
+    document.getElementById('theadRow').innerHTML =
+      expandCol +
+      '<th>Product</th>' +
+      '<th>SKU</th>' +
+      '<th class="data-table__cell--right">' + (sortBy === 'revenue' ? 'Net sales ↓' : 'Net sales') + '</th>' +
+      '<th class="data-table__cell--right">' + (sortBy === 'units' ? 'Units ↓' : 'Units') + '</th>' +
+      '<th class="data-table__cell--right">Allegro</th>' +
+      '<th class="data-table__cell--right">Store PL</th>' +
+      '<th class="data-table__cell--right">Erli</th>';
+  }
+
+  function channelDetailRows(p) {
+    var max = Math.max(p.channels.allegro.sales, p.channels.prestashop.sales, p.channels.erli.sales) || 1;
+    return ['allegro', 'prestashop', 'erli'].map(function (key) {
+      var c = p.channels[key];
+      var pct = Math.round((c.sales / max) * 100);
+      return (
+        '<div class="channel-bar-row">' +
+          '<span class="channel-bar-row__name"><span class="channel-bar-row__dot" style="background:var(--channel-' + key + ')"></span>' + c.name + '</span>' +
+          '<span class="channel-bar-row__track"><span class="channel-bar-row__fill" style="width:' + pct + '%;background:var(--channel-' + key + ')"></span></span>' +
+          '<span class="channel-bar-row__figs">' + fmtMoney(c.sales) + ' <span>· ' + fmtInt(c.units) + ' units</span></span>' +
+        '</div>'
+      );
+    }).join('');
+  }
+
+  function detailHtml(p) {
+    return (
+      '<div class="products-row-detail">' +
+        '<div class="products-detail-links">' +
+          '<a class="products-detail-links__link" href="#" data-navlink="' + p.id + '">Open full product page <span class="products-detail-links__arrow">&rarr;</span></a>' +
+          '<a class="products-detail-links__link" href="#" data-navlink="' + p.id + '">Edit content <span class="products-detail-links__arrow">&rarr;</span></a>' +
+        '</div>' +
+        '<div class="products-detail-fields">' +
+          '<div class="products-detail-field"><div class="products-detail-field__label">Internal ID</div><div class="products-detail-field__value mono-text">' + p.internalId + '</div></div>' +
+          '<div class="products-detail-field"><div class="products-detail-field__label">SKU</div><div class="products-detail-field__value mono-text">' + p.sku + '</div></div>' +
+          '<div class="products-detail-field"><div class="products-detail-field__label">Currency</div><div class="products-detail-field__value">' + p.currency + '</div></div>' +
+          '<div class="products-detail-field"><div class="products-detail-field__label">Stock synced</div><div class="products-detail-field__value">' + p.stock + '</div></div>' +
+        '</div>' +
+        '<div class="products-detail-channels">' +
+          '<div class="products-detail-field__label">Net sales by channel, this range</div>' +
+          channelDetailRows(p) +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function renderBody() {
+    var rows = sortedProducts();
+    var html = '';
+    rows.forEach(function (p) {
+      var isExpanded = mode === 'after' && !!expanded[p.id];
+      var rowClass = mode === 'after' ? 'data-table__row--expandable' + (isExpanded ? ' data-table__row--expanded' : '') : 'data-table__row--linked';
+      var expandCell = mode === 'after'
+        ? '<td class="data-table__expand-cell"><button type="button" class="data-table__expand-toggle" data-toggle="' + p.id + '" aria-expanded="' + isExpanded + '" aria-label="' + (isExpanded ? 'Collapse' : 'Expand') + ' row details"><span class="data-table__expand-icon">' + (isExpanded ? '▾' : '▸') + '</span></button></td>'
+        : '';
+      var nameCell = mode === 'after'
+        ? '<td><span class="product-row"><span class="product-thumbnail">' + p.name.slice(0, 2) + '</span><span>' + p.name + '</span></span></td>'
+        : '<td><span class="product-row"><span class="product-thumbnail">' + p.name.slice(0, 2) + '</span><span class="data-table__row-link">' + p.name + '</span></span></td>';
+
+      html +=
+        '<tr class="' + rowClass + '" data-row="' + p.id + '">' +
+          expandCell +
+          nameCell +
+          '<td><span class="mono-text">' + p.sku + '</span></td>' +
+          '<td class="data-table__cell--right tabular">' + fmtMoney(p.netSales) + '</td>' +
+          '<td class="data-table__cell--right tabular">' + fmtInt(p.units) + '</td>' +
+          '<td class="data-table__cell--right tabular">' + fmtInt(p.channels.allegro.units) + '</td>' +
+          '<td class="data-table__cell--right tabular">' + fmtInt(p.channels.prestashop.units) + '</td>' +
+          '<td class="data-table__cell--right tabular">' + fmtInt(p.channels.erli.units) + '</td>' +
+        '</tr>';
+
+      if (isExpanded) {
+        html +=
+          '<tr class="data-table__detail-row">' +
+            '<td class="data-table__detail-cell" colspan="8">' +
+              '<div class="data-table__detail">' + detailHtml(p) + '</div>' +
+            '</td>' +
+          '</tr>';
+      }
+    });
+    document.getElementById('tbody').innerHTML = html;
+
+    // Wire per-row interaction after (re)render.
+    document.querySelectorAll('[data-toggle]').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var id = btn.getAttribute('data-toggle');
+        expanded[id] = !expanded[id];
+        renderBody();
+      });
+    });
+    document.querySelectorAll('tr[data-row]').forEach(function (tr) {
+      tr.addEventListener('click', function () {
+        var id = tr.getAttribute('data-row');
+        if (mode === 'after') {
+          expanded[id] = !expanded[id];
+          renderBody();
+        } else {
+          leaveAnalytics(id);
+        }
+      });
+    });
+    document.querySelectorAll('[data-navlink]').forEach(function (a) {
+      a.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        showTip(e.clientX, e.clientY, 'A deliberate click — opens /products/' + a.getAttribute('data-navlink') + ' on purpose');
+      });
+    });
+    updateMockState();
+  }
+
+  function showTip(x, y, text) {
+    var tip = document.getElementById('tip');
+    tip.textContent = text;
+    tip.style.left = Math.min(x, window.innerWidth - 260) + 'px';
+    tip.style.top = (y - 36) + 'px';
+    tip.classList.add('is-visible');
+    clearTimeout(showTip._t);
+    showTip._t = setTimeout(function () { tip.classList.remove('is-visible'); }, 1800);
+  }
+
+  function renderFootnote() {
+    document.getElementById('stateFootnote').innerHTML =
+      'Sort preference: <strong>' + (sortBy === 'units' ? 'By units' : 'By net sales') + '</strong> · scroll offset: <strong>' + scrollOffset + 'px</strong>' +
+      (mode === 'after' ? ' (unchanged since page load)' : '');
+  }
+
+  function renderExplain() {
+    var box = document.getElementById('explainBox');
+    if (mode === 'after') {
+      box.setAttribute('data-tone', 'info');
+      box.innerHTML = '<span class="explain__icon">→</span><span>Click a product row (or the ▸ toggle). The detail opens <b>inline, right under the row</b> — sort stays on "' + (sortBy === 'units' ? 'By units' : 'By net sales') + '", scroll doesn’t move, and nothing else on the page reloads.</span>';
+    } else {
+      box.setAttribute('data-tone', 'warn');
+      box.innerHTML = '<span class="explain__icon">⚠</span><span>Click a product row. This is what ships today — it’s a full navigation to <code>/products/:id</code>. Analytics unmounts; getting back means re-picking your sort and re-scrolling.</span>';
+    }
+  }
+
+  function leaveAnalytics(id) {
+    var p = PRODUCTS.filter(function (x) { return x.id === id; })[0];
+    document.getElementById('leaveTitle').textContent = p.name;
+    document.getElementById('leaveOverlay').classList.add('is-visible');
+    // The unmount happens at navigation time, not on "back" — model it that way.
+    sortBy = 'revenue';
+    scrollOffset = 0;
+    expanded = {};
+    updateMockState();
+  }
+
+  document.getElementById('backBtn').addEventListener('click', function () {
+    document.getElementById('leaveOverlay').classList.remove('is-visible');
+    renderAll();
+  });
+
+  // Stable, greppable state identifiers (docs/frontend-architecture.md § UX
+  // Mockups) — an implementing/E2E task references these by name, never by
+  // a free-text description of "the screen where X happens".
+  function currentDataState() {
+    if (document.getElementById('leaveOverlay').classList.contains('is-visible')) {
+      return 'current-full-navigation-left-analytics';
+    }
+    if (mode === 'before') return 'current-full-navigation';
+    var anyExpanded = Object.keys(expanded).some(function (k) { return expanded[k]; });
+    return anyExpanded ? 'proposed-inline-expand-row-open' : 'proposed-inline-expand';
+  }
+  function updateMockState() {
+    document.body.setAttribute('data-state', currentDataState());
+  }
+
+  document.querySelectorAll('.modebar .segmented-control__option').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('.modebar .segmented-control__option').forEach(function (b) { b.classList.remove('segmented-control__option--active'); });
+      btn.classList.add('segmented-control__option--active');
+      mode = btn.getAttribute('data-mode');
+      document.getElementById('modeName').textContent = mode === 'after' ? 'Inline expand (proposed)' : 'Full navigation (current)';
+      expanded = {};
+      renderAll();
+    });
+  });
+
+  document.querySelectorAll('#sortControl .segmented-control__option').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('#sortControl .segmented-control__option').forEach(function (b) { b.classList.remove('segmented-control__option--active'); });
+      btn.classList.add('segmented-control__option--active');
+      sortBy = btn.getAttribute('data-sort');
+      renderAll();
+    });
+  });
+
+  function renderAll() {
+    renderHead();
+    renderBody();
+    renderFootnote();
+    renderExplain();
+    updateMockState();
+  }
+
+  renderAll();
+})();
+</script>

@@ -95,7 +95,12 @@ import { useNumberFormat } from '../../../shared/i18n/use-number-format';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
 import { useConnectionsQuery, type Connection } from '../../connections';
-import { useProductsBatchQuery, type Product } from '../../products';
+import {
+  ProductDetailFields,
+  ProductDetailLinks,
+  useProductsBatchQuery,
+  type Product,
+} from '../../products';
 import { useDemoMode } from '../../system';
 import { useTopProductsQuery } from '../hooks/use-top-products-query';
 import type { SalesAnalyticsFilters } from '../api/sales-analytics.types';
@@ -146,9 +151,9 @@ function PublishAction({
   // A one-shot navigation, not a filter toggle — a real link (styled as a
   // button) rather than `Chip` (which hard-codes `aria-pressed`, exposing a
   // permanently-"not pressed" toggle to AT) or a `Button` + `navigate()`
-  // (which loses middle-click / open-in-new-tab for free). This cell is
-  // never inside the row's own `rowHref` anchor (`linkifyFirstCell` only
-  // covers the first column), so nesting is not a concern.
+  // (which loses middle-click / open-in-new-tab for free). The row itself is
+  // an expand toggle (#2765), not a navigation anchor, so nesting an `<a>`
+  // inside it is not a concern here either.
   const write = useWriteAccess('listings:write', demoMode);
   if (!write.visible) {
     return null;
@@ -220,6 +225,94 @@ function ChannelCell({
       <span className="cell-not-listed__label">Not listed</span>
       <PublishAction row={row} connectionId={connectionId} demoMode={demoMode} />
     </span>
+  );
+}
+
+/**
+ * Per-channel net-sales/units breakdown — the one piece of this row's detail
+ * that has no counterpart in `ProductDetailFields` (that shared block knows
+ * nothing about a date-ranged, per-channel sales split). Shared between the
+ * mobile card's collapsible detail and the desktop inline-expand panel
+ * (#2765) so the two surfaces can't drift.
+ */
+function ChannelBreakdownList({
+  row,
+  channelColumns,
+  connectionsById,
+  intFormat,
+  demoMode,
+  coverageGapAvailable,
+}: {
+  row: TopProductRow;
+  channelColumns: string[];
+  connectionsById: Map<string, Connection>;
+  intFormat: Intl.NumberFormat;
+  demoMode: boolean;
+  coverageGapAvailable: boolean;
+}): ReactElement {
+  return (
+    <div className="data-table__stack">
+      {channelColumns.map((connectionId) => {
+        const channel = channelCellFor(row, connectionId);
+        return (
+          <span key={connectionId}>
+            {connectionsById.get(connectionId)?.name ?? connectionId}:{' '}
+            {channel?.currency ? `${formatAmount(channel.netRevenue, channel.currency)} · ` : null}
+            <ChannelCell
+              row={row}
+              connectionId={connectionId}
+              intFormat={intFormat}
+              demoMode={demoMode}
+              coverageGapAvailable={coverageGapAvailable}
+            />
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Desktop inline-expand panel (#2765) — replaces the pre-existing full-page
+ * `rowHref` navigation to `/products/:id`, which unmounted all of Analytics
+ * (losing the sort toggle + scroll position) for what should be a quick
+ * look-up. Reuses `ProductDetailLinks`/`ProductDetailFields` (shared with
+ * the products cockpit's own expandable row, `product-row-detail.tsx`) for
+ * identity, and `ChannelBreakdownList` (above) for the sales split.
+ */
+function ProductSalesRowDetail({
+  row,
+  product,
+  channelColumns,
+  connectionsById,
+  intFormat,
+  demoMode,
+  coverageGapAvailable,
+}: {
+  row: TopProductRow;
+  product: Product | undefined;
+  channelColumns: string[];
+  connectionsById: Map<string, Connection>;
+  intFormat: Intl.NumberFormat;
+  demoMode: boolean;
+  coverageGapAvailable: boolean;
+}): ReactElement {
+  return (
+    <div className="products-row-detail">
+      <ProductDetailLinks productId={row.productId} />
+      <ProductDetailFields productId={row.productId} product={product} />
+      <div className="products-detail-variants">
+        <div className="products-detail-field__label">Net sales by channel, this range</div>
+        <ChannelBreakdownList
+          row={row}
+          channelColumns={channelColumns}
+          connectionsById={connectionsById}
+          intFormat={intFormat}
+          demoMode={demoMode}
+          coverageGapAvailable={coverageGapAvailable}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -324,7 +417,21 @@ export function ProductSalesTable({ filters }: ProductSalesTableProps): ReactEle
         rows={items}
         columns={columns}
         rowKey={(row) => row.productId}
-        rowHref={(row) => `/products/${row.productId}`}
+        expandable={{
+          renderDetail: (row) => (
+            <ProductSalesRowDetail
+              row={row}
+              product={productsById.get(row.productId)}
+              channelColumns={channelColumns}
+              connectionsById={connectionsById}
+              intFormat={intFormat}
+              demoMode={demoMode}
+              coverageGapAvailable={coverageGapAvailable}
+            />
+          ),
+          toggleLabel: (row, expanded) =>
+            `${expanded ? 'Collapse' : 'Expand'} details for ${row.name ?? row.productId}`,
+        }}
         stickyLeftColumns={1}
         cardView={{
           title: (row) => row.name ?? row.productId,
@@ -337,20 +444,14 @@ export function ProductSalesTable({ filters }: ProductSalesTableProps): ReactEle
             </>
           ),
           detail: (row) => (
-            <div className="data-table__stack">
-              {channelColumns.map((connectionId) => (
-                <span key={connectionId}>
-                  {connectionsById.get(connectionId)?.name ?? connectionId}:{' '}
-                  <ChannelCell
-                    row={row}
-                    connectionId={connectionId}
-                    intFormat={intFormat}
-                    demoMode={demoMode}
-                    coverageGapAvailable={coverageGapAvailable}
-                  />
-                </span>
-              ))}
-            </div>
+            <ChannelBreakdownList
+              row={row}
+              channelColumns={channelColumns}
+              connectionsById={connectionsById}
+              intFormat={intFormat}
+              demoMode={demoMode}
+              coverageGapAvailable={coverageGapAvailable}
+            />
           ),
           collapsibleDetail: true,
         }}

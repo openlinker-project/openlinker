@@ -12,14 +12,13 @@
  * @module apps/web/src/pages/products
  */
 import type { ReactElement } from 'react';
-import { Link } from 'react-router-dom';
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
 import { StatusBadge } from '../../shared/ui/status-badge';
-import { TimeDisplay } from '../../shared/ui/time-display';
 import { useProductQuery } from '../../features/products/hooks/use-product-query';
 import { useInventoryQuery } from '../../features/inventory/hooks/use-inventory-query';
 import { useListingsQuery } from '../../features/listings/hooks/use-listings-query';
 import { OfferPublicationStatusPanel } from '../../features/listings/components/offer-publication-status-panel';
+import { ProductDetailFields, ProductDetailLinks } from '../../features/products';
 import type { Product, ProductVariant } from '../../features/products/api/products.types';
 import type { InventoryItem } from '../../features/inventory/api/inventory.types';
 import type { Connection } from '../../features/connections';
@@ -49,59 +48,8 @@ export function ProductRowDetail({
   const productQuery = useProductQuery(product.id);
   const inventoryQuery = useInventoryQuery({ productId: product.id });
 
-  const source = product.externalIds?.[0];
-
-  const linksStrip = (
-    <div className="products-detail-links">
-      <Link
-        className="products-detail-links__link products-detail-links__link--internal"
-        to={`/products/${product.id}`}
-        title="Open the full product detail page"
-      >
-        Product details <span className="products-detail-links__arrow">&rarr;</span>
-      </Link>
-      <Link
-        className="products-detail-links__link products-detail-links__link--internal"
-        to={`/products/${product.id}?view=content`}
-        title="Edit this product's description"
-      >
-        Edit content <span className="products-detail-links__arrow">&rarr;</span>
-      </Link>
-    </div>
-  );
-
-  const fieldsGrid = (
-    <div className="products-detail-fields">
-      <div className="products-detail-field">
-        <div className="products-detail-field__label">Internal ID</div>
-        <div className="products-detail-field__value mono-text">{product.id}</div>
-      </div>
-      <div className="products-detail-field">
-        <div className="products-detail-field__label">Source external ID</div>
-        <div className="products-detail-field__value mono-text">
-          {source ? `${source.platformType} · ${source.externalId}` : (
-            <span className="text-muted">-</span>
-          )}
-        </div>
-      </div>
-      <div className="products-detail-field">
-        <div className="products-detail-field__label">Currency</div>
-        <div className="products-detail-field__value">
-          {product.currency ?? <span className="text-muted">not set by source</span>}
-        </div>
-      </div>
-      <div className="products-detail-field">
-        <div className="products-detail-field__label">Stock synced</div>
-        <div className="products-detail-field__value">
-          {product.stockUpdatedAt ? (
-            <TimeDisplay iso={product.stockUpdatedAt} format="datetime" />
-          ) : (
-            <span className="text-muted">-</span>
-          )}
-        </div>
-      </div>
-    </div>
-  );
+  const linksStrip = <ProductDetailLinks productId={product.id} />;
+  const fieldsGrid = <ProductDetailFields productId={product.id} product={product} />;
 
   if (productQuery.isLoading || inventoryQuery.isLoading) {
     return (

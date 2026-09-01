@@ -10,3 +10,9 @@ export { useProductQuery } from './hooks/use-product-query';
 export { useVariantQuery } from './hooks/use-variant-query';
 export { useProductsQuery } from './hooks/use-products-query';
 export { useProductsBatchQuery } from './hooks/use-products-batch-query';
+export {
+  ProductDetailFields,
+  ProductDetailLinks,
+  type ProductDetailFieldsProps,
+  type ProductDetailLinksProps,
+} from './components/product-detail-summary';
