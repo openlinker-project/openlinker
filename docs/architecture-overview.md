@@ -1648,10 +1648,10 @@ The `orders ↔ customers`, `listings ↔ inventory` (the latter added for #824)
 
 Pre-existing cross-context repository-port couplings are allow-listed in the script's `ALLOW_LIST` map by `(file, symbol)` pair until they're rewired through service interfaces:
 
-- **Core-to-core** (20 entries) — tracked in **[#718](https://github.com/openlinker-project/openlinker/issues/718)**.
-- **Plugins + apps** (64 entries) — tracked in **[#722](https://github.com/openlinker-project/openlinker/issues/722)**.
+- **Core-to-core** — **none left**; the last eight rows went with #2791 (see below). Tracked as **[#718](https://github.com/openlinker-project/openlinker/issues/718)**.
+- **Plugins + apps** (112 `(file, symbol)` entries across 99 files) — tracked in **[#722](https://github.com/openlinker-project/openlinker/issues/722)**.
 
-The per-symbol gate means new deny-pattern imports added to an already-listed file still fail the build — only the specific repository-port name listed against the path is silenced. When a rewire ships, its allow-list entries drop alongside.
+The per-symbol gate means new deny-pattern imports added to an already-listed file still fail the build — only the specific repository-port name listed against the path is silenced. When a rewire ships, its allow-list entries drop alongside — and since #2791 that is **enforced rather than remembered**: a row naming a file that no longer imports the symbol (or that no longer exists) fails the build. Eight such rows had outlived their rewire under #718, which left four core services — `inventory-query`, `order-item-ref-resolver`, `offer-mapping-sync` and `offer-builder` — free to silently re-acquire a `products` repository port with the gate still reporting green. A stale row is not a harmless leftover: it is a standing licence for the coupling to come back.
 
 ### Scope
 
