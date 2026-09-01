@@ -86,11 +86,37 @@ export const FulfillmentRollupStateValues = [
 ] as const;
 export type FulfillmentRollupStateValue = (typeof FulfillmentRollupStateValues)[number];
 
+/**
+ * Coerce an untrusted value — a field on a payload from a newer backend than
+ * this bundle, or a replayed cached response — to the union.
+ *
+ * Deliberately no fallback, matching `isOrderLifecyclePhase`: defaulting an
+ * unrecognised state to `not-shipped` would report "this order has not shipped"
+ * about an order whose real state this build cannot name. `fulfillmentBadge`
+ * (lib/order-health.ts) uses this to degrade one cell instead of throwing
+ * (#2678).
+ */
+export function isFulfillmentRollupState(value: unknown): value is FulfillmentRollupStateValue {
+  return (
+    typeof value === 'string' && (FulfillmentRollupStateValues as readonly string[]).includes(value)
+  );
+}
+
 // Ship-by SLA bucket (#1108). Hand-mirrored from `SlaStateValues` in
 // `@openlinker/core/orders`. BE-owned (single source of truth): the FE consumes
 // `slaState` and only renders the live countdown from `dispatchByAt`.
 export const SlaStateValues = ['none', 'on_track', 'at_risk', 'overdue'] as const;
 export type SlaStateValue = (typeof SlaStateValues)[number];
+
+/**
+ * Coerce an untrusted `slaState` to the union, same contract and same reason as
+ * `isFulfillmentRollupState` above. An unrecognised bucket must never collapse
+ * into `none` — `none` renders no badge at all, which would silently drop the
+ * one signal telling the operator this order's SLA is in a state OL cannot read.
+ */
+export function isSlaState(value: unknown): value is SlaStateValue {
+  return typeof value === 'string' && (SlaStateValues as readonly string[]).includes(value);
+}
 
 // Why OpenLinker issued no sales document (invoice or fiscal receipt) for an
 // order (#2100/#2156, ADR-041 decision 11). Hand-mirrored from
@@ -110,8 +136,7 @@ export const SalesDocumentGateBlockReasonValues = [
   'trigger-model-manual',
   'trigger-model-batched',
 ] as const;
-export type SalesDocumentGateBlockReasonValue =
-  (typeof SalesDocumentGateBlockReasonValues)[number];
+export type SalesDocumentGateBlockReasonValue = (typeof SalesDocumentGateBlockReasonValues)[number];
 
 export const SalesDocumentUnresolvedReasonValues = [
   'no-matching-rule',
