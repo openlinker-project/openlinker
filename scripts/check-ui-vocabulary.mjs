@@ -174,6 +174,14 @@ const SCAN_ROOTS = [
     pending: false,
   },
   {
+    // #2411's work-grain fulfilment-task panel. Added with the folder, not
+    // after it: the epic's UI naming rule is binding on every FE child, and a
+    // gate that arrives a wave later scans copy nobody re-reads.
+    dir: join('apps', 'web', 'src', 'features', 'fulfillment'),
+    owner: 'W3a-21 (#2411)',
+    pending: false,
+  },
+  {
     // #2342's hold copy (badge, dialogs, timeline) lives here, and the gate was
     // scanning three folders none of which contained it. Added after a trial run
     // proved the folder is already clean — widening a shared gate onto existing
