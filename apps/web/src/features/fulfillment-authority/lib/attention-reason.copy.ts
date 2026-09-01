@@ -33,8 +33,9 @@
  * `features/returns` is one of #2356's badge surfaces and will import this
  * module, so a static barrel-to-barrel edge would close a loop (#337/#359).
  * `scripts/check-attention-reason-mirror.mjs` MIRROR 6 asserts the OR-P title
- * equals `RETURN_ORPHAN_BANNER_COPY.title`; RB-L is declared here provisionally
- * with a pending pair naming #2364.
+ * equals `RETURN_ORPHAN_BANNER_COPY.title` and the RB-L title equals
+ * `RETURN_RESTOCK_BLOCKED_COPY.title`. Both pairs are live and compared; the
+ * mirror carries no "pending" mode any more (#2673).
  *
  * @module apps/web/src/features/fulfillment-authority/lib
  * @see docs/specs/product-spec-oms-wave2-operator-experience.md § 4.2 / § 4.3
@@ -124,12 +125,18 @@ export const ATTENTION_REASON_COPY = {
     body: 'Two systems are set up to decide, so OpenLinker is doing neither. Returns are still being recorded, but nothing is being restocked or scrapped automatically.',
     action: 'Open the connections named below and leave one of them deciding.',
   },
-  // Provisional wording. The returns spec § 5.4 is the canonical owner, and
-  // #2364 must converge on this string or change it here in the same commit —
-  // MIRROR 6's pending pair fails the build the day it lands.
+  // Byte-identical to `RETURN_RESTOCK_BLOCKED_COPY.title` in features/returns —
+  // asserted by MIRROR 6. The returns spec § 5.4 is the canonical owner and
+  // renders the line with a trailing period, so the period is here too (#2673:
+  // it was absent while the mirror pair was inert, which is the drift that
+  // proved a pair comparing nothing is worse than no pair).
+  //
+  // MIRROR 6 reads `title` ONLY. `titleFallback` carries the same sentence
+  // because this state names no order, but that equality is held BY HAND —
+  // editing `titleFallback` alone will not fail the build.
   'restock-blocked': {
-    title: 'Stock was not added',
-    titleFallback: 'Stock was not added',
+    title: 'Stock was not added.',
+    titleFallback: 'Stock was not added.',
     body: 'The system that owns this stock refused to put the returned goods back. Nothing was added, and nothing was lost.',
     action: 'Open the return to see which system refused and what it said.',
   },

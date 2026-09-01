@@ -48,13 +48,20 @@
  *   1. It compares declarations, not renderers. A reason present in every array
  *      with copy nobody renders passes here. #2356's own component tests are
  *      what assert a row shows the title.
- *   2. M6 cannot detect a RENAMED counterpart. Its pending pair is keyed on a
- *      declaration NAME inside an existing file; if #2364 ships RB-L copy under
- *      a different constant name, the pair stays "pending" and the divergence
- *      ships. The file's existence is asserted (a path typo fails); the name is
- *      not, and cannot be. The pending entry must be retired BY HAND — which is
- *      why the note names the issue, and why the RB-L copy entry itself carries
- *      the same warning in the file #2364's author will be editing.
+ *   2. M6 USED to carry a "pending" mode, and that mode is gone (#2673). A pair
+ *      keyed on a declaration NAME degrades to a no-op the moment that
+ *      declaration is renamed or moved, and while the mode existed "not found"
+ *      and "not written yet" were indistinguishable to this script — so the
+ *      RB-L pair sat green for a whole wave, pointing at a constant name and a
+ *      file that never existed, while the two strings it was meant to hold
+ *      identical drifted by a trailing period. Every pair is now LIVE: a pair
+ *      whose file, declaration, field, or own-side copy entry cannot be read is
+ *      a FAILURE naming the pair, never a note. A title that is not written yet
+ *      therefore has no entry here at all — an absent pair is honest, a pair
+ *      that compares nothing is a claim. The DECISION lives in the pure
+ *      `classifyCrossFeatureTitle`, so `--self-check` can prove each of its
+ *      arms; an arm reachable only through the filesystem is an arm no fixture
+ *      can pin, which is how the old one stayed wrong.
  *   3. It says nothing about whether a sentence is good. `check-ui-vocabulary`
  *      proves nine words are absent; neither script reads copy for sense.
  *
@@ -105,7 +112,8 @@ const FE_BADGE_COPY = 'ATTENTION_BADGE_COPY';
 
 /**
  * Titles this feature declares that another feature is the canonical owner of
- * (spec § 4.2). `pending: null` means live and compared.
+ * (spec § 4.2). EVERY pair is live and compared — there is no pending mode, for
+ * the reason recorded in note 2 above.
  */
 const CROSS_FEATURE_TITLES = [
   {
@@ -113,14 +121,16 @@ const CROSS_FEATURE_TITLES = [
     file: join('apps', 'web', 'src', 'features', 'returns', 'lib', 'return-detail.copy.ts'),
     declaration: 'RETURN_ORPHAN_BANNER_COPY',
     field: 'title',
-    pending: null,
   },
   {
+    // Returns spec § 5.4 owns this string, and #2381 moved it out of
+    // `returns-list.copy.ts` into its own module on #2357's behalf. The pair
+    // used to name the old file AND an old constant spelling, so it resolved to
+    // nothing and passed vacuously (#2673).
     reason: 'restock-blocked',
-    file: join('apps', 'web', 'src', 'features', 'returns', 'lib', 'returns-list.copy.ts'),
-    declaration: 'RETURNS_RESTOCK_BLOCKED_COPY',
+    file: join('apps', 'web', 'src', 'features', 'returns', 'lib', 'restock-blocked.copy.ts'),
+    declaration: 'RETURN_RESTOCK_BLOCKED_COPY',
     field: 'title',
-    pending: 'W2-27 / #2364 (returns spec § 5.4 is the canonical owner; retire this entry there)',
   },
 ];
 
@@ -347,6 +357,41 @@ export function diffDescriptorFields(core, mirror, mirrorLabel) {
   return { ok: issues.length === 0, issues };
 }
 
+/**
+ * M6's whole decision for ONE pair, as a pure function of both sides' resolved
+ * values. Extracted (#2673) so every outcome is falsifiable offline.
+ *
+ * The loop below used to decide inline, which is how the `owner-declaration-
+ * unreadable` arm came to mean "skip" for a whole wave without a single test
+ * disagreeing: an arm reachable only through the filesystem is an arm no
+ * fixture can pin. `--self-check` now asserts all four failure arms, and the
+ * ONE that matters is that an unreadable owner declaration is a FAILURE — a
+ * pair that resolves to nothing compares nothing, and must never be a note.
+ *
+ * `'ok'` is the only non-failing value. Anything else is recorded by main().
+ */
+export function classifyCrossFeatureTitle({ ours, fileExists, theirs }) {
+  if (ours === null) return 'no-own-copy';
+  if (!fileExists) return 'missing-file';
+  if (theirs === null) return 'owner-declaration-unreadable';
+  return theirs === ours ? 'ok' : 'drifted';
+}
+
+/**
+ * Every value {@link classifyCrossFeatureTitle} can return, and whether it
+ * passes. Declared as DATA rather than left implicit in a `switch`, so
+ * `--self-check` can assert that exactly one outcome passes and that main()
+ * handles every other one — which is what makes "no pair can resolve to a skip"
+ * a checked property instead of a claim about one key name (#2673).
+ */
+export const CROSS_FEATURE_TITLE_OUTCOMES = Object.freeze({
+  'no-own-copy': false,
+  'missing-file': false,
+  'owner-declaration-unreadable': false,
+  drifted: false,
+  ok: true,
+});
+
 async function readIfPresent(path) {
   try {
     return await readFile(path, 'utf8');
@@ -434,31 +479,45 @@ async function main() {
       [`${CORE_FILE}:${coreBadges.line}  (authoritative)`, `${FE_COPY_FILE}:${feBadgeCopy.line}  (operator copy)`], m5.issues);
   }
 
-  // M6 — cross-feature title agreement.
-  const pendingNotes = [];
+  // M6 — cross-feature title agreement. The DECISION is `classifyCrossFeature
+  // Title`; this loop only resolves the two sides and renders the outcome. Every
+  // outcome but 'ok' is recorded, so nothing here can resolve to a skip (#2673).
+  const compared = [];
   for (const pair of CROSS_FEATURE_TITLES) {
     const ours = readEntryField(feCopyContent, FE_REASON_COPY, pair.reason, 'title');
     const abs = join(repoRoot, pair.file);
-    const exists = await stat(abs).then((s) => s.isFile(), () => false);
-    if (!exists) {
-      record("a cross-feature title pair must name a file that exists (a typo here would pass forever)",
-        [`${pair.file}  (declared canonical owner for '${pair.reason}')`],
-        [`the file does not exist — fix the declared path, or remove the pair`]);
-      continue;
-    }
-    const content = await readIfPresent(abs);
-    const theirs = readEntryField(content ?? '', pair.declaration, pair.field, pair.field);
-    if (theirs === null) {
-      if (pair.pending) { pendingNotes.push(`${pair.file} '${pair.declaration}.${pair.field}' — pending ${pair.pending}`); continue; }
-      record(`the canonical owner must still declare '${pair.declaration}.${pair.field}'`,
-        [`${pair.file}  (canonical owner for '${pair.reason}')`],
-        [`'${pair.declaration}.${pair.field}' is gone — it was the source of this title; re-point the pair`]);
-      continue;
-    }
-    if (theirs !== ours) {
-      record(`the '${pair.reason}' title must be byte-identical to its canonical owner (spec § 4.2)`,
-        [`${FE_COPY_FILE}  (${FE_REASON_COPY}['${pair.reason}'].title)`, `${pair.file}  (${pair.declaration}.${pair.field}, canonical owner)`],
-        [`this feature says '${ours}', the owner says '${theirs}' — two sentences for one state`]);
+    const fileExists = await stat(abs).then((st) => st.isFile(), () => false);
+    const theirs = fileExists
+      ? readEntryField((await readIfPresent(abs)) ?? '', pair.declaration, pair.field, pair.field)
+      : null;
+
+    switch (classifyCrossFeatureTitle({ ours, fileExists, theirs })) {
+      case 'no-own-copy':
+        record('a cross-feature title pair must name a reason this feature actually declares copy for',
+          [`${FE_COPY_FILE}  (${FE_REASON_COPY}['${pair.reason}'].title)`],
+          [`'${pair.reason}' has no readable title here — the pair would compare nothing; ` +
+            'fix the reason key, or remove the pair']);
+        break;
+      case 'missing-file':
+        record('a cross-feature title pair must name a file that exists (a typo here would pass forever)',
+          [`${pair.file}  (declared canonical owner for '${pair.reason}')`],
+          ['the file does not exist — fix the declared path, or remove the pair']);
+        break;
+      case 'owner-declaration-unreadable':
+        record(`the canonical owner must declare '${pair.declaration}.${pair.field}'`,
+          [`${pair.file}  (canonical owner for '${pair.reason}')`],
+          [`'${pair.declaration}.${pair.field}' cannot be read — renamed, moved, or never written. ` +
+            'A pair that resolves to nothing compares nothing, so this is a failure and not a note; ' +
+            're-point the pair at the real declaration, or remove it']);
+        break;
+      case 'drifted':
+        record(`the '${pair.reason}' title must be byte-identical to its canonical owner (spec § 4.2)`,
+          [`${FE_COPY_FILE}  (${FE_REASON_COPY}['${pair.reason}'].title)`,
+            `${pair.file}  (${pair.declaration}.${pair.field}, canonical owner)`],
+          [`this feature says '${ours}', the owner says '${theirs}' — two sentences for one state`]);
+        break;
+      default:
+        compared.push(`'${pair.reason}' = ${JSON.stringify(ours)}  <- ${pair.file} (${pair.declaration}.${pair.field})`);
     }
   }
 
@@ -468,7 +527,8 @@ async function main() {
         `${coreBadges.values.length} badge(s) identical and in order across ${CORE_FILE}, ` +
         `${FE_MIRROR_FILE} and ${FE_COPY_FILE} (badge + counted included).`,
     );
-    for (const note of pendingNotes) console.log(`  pending cross-feature title (declared, not yet present): ${note}`);
+    console.log(`  ${compared.length} cross-feature title(s) byte-identical to their canonical owner:`);
+    for (const line of compared) console.log(`    ${line}`);
     process.exit(0);
   }
 
@@ -479,7 +539,6 @@ async function main() {
     for (const issue of issues) console.error(`        - ${issue}`);
     console.error('');
   }
-  for (const note of pendingNotes) console.error(`    pending cross-feature title (declared, not yet present): ${note}`);
   console.error(`    docs: ${DOCS_REF}\n`);
   process.exit(1);
 }
@@ -549,6 +608,52 @@ function selfCheck() {
     readEntryField(copySource, FE_REASON_COPY, 'return-unmatched', 'title'),
     'This return is not matched to an order',
   );
+
+  // --- M6's decision, every arm (#2673) ------------------------------------
+  // THE arm this issue exists for. A pair keyed on a declaration name that is
+  // not in the file it names resolves to `theirs === null`, and the old code
+  // turned that null into a "pending" NOTE and passed while the two strings it
+  // guarded drifted. It is a FAILURE, and these fixtures are the only artifact
+  // in the repo that says so — a correctly-keyed live run can never reach it.
+  expect('an unreadable owner declaration is a FAILURE, never a note',
+    classifyCrossFeatureTitle({ ours: 'T', fileExists: true, theirs: null }), 'owner-declaration-unreadable');
+  expect('a pair naming a reason this feature has no copy for is a FAILURE',
+    classifyCrossFeatureTitle({ ours: null, fileExists: true, theirs: 'T' }), 'no-own-copy');
+  expect('a pair naming a file that does not exist is a FAILURE',
+    classifyCrossFeatureTitle({ ours: 'T', fileExists: false, theirs: null }), 'missing-file');
+  expect('two different strings are a FAILURE',
+    classifyCrossFeatureTitle({ ours: 'Stock was not added', fileExists: true, theirs: 'Stock was not added.' }), 'drifted');
+  expect('two identical strings pass',
+    classifyCrossFeatureTitle({ ours: 'T', fileExists: true, theirs: 'T' }), 'ok');
+  // `ours === null` is tested FIRST, so a pair broken on both sides still
+  // fails; reporting the missing file first would name the wrong fix.
+  expect('a pair broken on BOTH sides still fails (never falls through to ok)',
+    classifyCrossFeatureTitle({ ours: null, fileExists: false, theirs: null }), 'no-own-copy');
+
+  // "No pair can resolve to a skip" — the real property. It replaces an earlier
+  // `!('pending' in pair)` assertion that detected ONE key spelling while its
+  // message claimed the whole escape hatch was gone.
+  const M6_ARMS = ['no-own-copy', 'missing-file', 'owner-declaration-unreadable', 'drifted', 'ok'];
+  expect('exactly one classifier outcome passes; every other is recorded',
+    Object.values(CROSS_FEATURE_TITLE_OUTCOMES).filter(Boolean).length, 1);
+  expect('the passing outcome is `ok`', CROSS_FEATURE_TITLE_OUTCOMES.ok, true);
+  expect('the outcome table enumerates exactly the arms main() switches on',
+    Object.keys(CROSS_FEATURE_TITLE_OUTCOMES).slice().sort().join(','), M6_ARMS.slice().sort().join(','));
+  // A classifier that could only ever answer one value would satisfy every
+  // assertion above and check nothing, so pin that it really reaches each arm.
+  expect('the classifier reaches every declared outcome',
+    new Set([
+      classifyCrossFeatureTitle({ ours: null, fileExists: true, theirs: 'T' }),
+      classifyCrossFeatureTitle({ ours: 'T', fileExists: false, theirs: null }),
+      classifyCrossFeatureTitle({ ours: 'T', fileExists: true, theirs: null }),
+      classifyCrossFeatureTitle({ ours: 'a', fileExists: true, theirs: 'b' }),
+      classifyCrossFeatureTitle({ ours: 'T', fileExists: true, theirs: 'T' }),
+    ]).size, M6_ARMS.length);
+  expect('there is at least one cross-feature pair to compare', CROSS_FEATURE_TITLES.length > 0, true);
+  // The parser half of the same regression: `readEntryField` must answer null
+  // for a declaration name absent from the content it is handed.
+  expect('a RENAMED/MOVED owner declaration reads as null',
+    readEntryField(copySource, 'RETURNS_RESTOCK_BLOCKED_COPY', 'title', 'title'), null);
 
   const ownerSource = "export const RETURN_ORPHAN_BANNER_COPY = {\n  title: 'This return is not matched to an order',\n  safeHere: 'x',\n} as const;\n";
   expect('reads the canonical owner field', readEntryField(ownerSource, 'RETURN_ORPHAN_BANNER_COPY', 'title', 'title'), 'This return is not matched to an order');
