@@ -445,10 +445,27 @@ button, input, select { font: inherit; }
   column-gap: var(--space-4); padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--bg-surface);
 }
-.products-variant-row__id { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.products-variant-row__id { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; }
 .products-variant-row__attrs { font-size: 0.8125rem; font-weight: 550; color: var(--text-secondary); }
 .products-variant-row__meta { font-size: 0.6875rem; color: var(--text-muted); }
 .products-variant-row__stock { font-size: 0.8125rem; color: var(--text-secondary); white-space: nowrap; }
+
+/* ── Variant × channel matrix (#2765 follow-up) — the real numbers the
+   user asked for, self-verifying via a Total row/column that must equal
+   the figures already shown above the fold. Nested inside the same
+   .data-table__container/.data-table classes the outer table uses, so it
+   reads as a continuation of the same system, not a second visual style. ── */
+.variant-matrix .data-table__stack { justify-items: end; }
+.variant-matrix__units { font-size: 0.6875rem; color: var(--text-muted); }
+.variant-matrix__channel-head { display: inline-flex; align-items: center; gap: 6px; justify-content: flex-end; }
+.variant-matrix__dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.variant-matrix__total-cell .tabular:first-child { font-weight: 600; color: var(--text-primary); }
+.variant-matrix__total-row td {
+  border-top: 2px solid var(--border-strong);
+  background: var(--bg-shell);
+  font-weight: 600;
+  color: var(--text-primary);
+}
 
 .status-badge {
   display: inline-flex; align-items: center; gap: var(--space-2); padding: 1px var(--space-2);
@@ -516,10 +533,11 @@ button, input, select { font: inherit; }
     </p>
     <p class="meta__sub">
       <strong>Running Jacket Pro</strong> (multi-variant follow-up) — expand it to see the
-      difference: the SKU column reads "3 variants" instead of a single code, and the panel adds a
-      read-only variant snapshot (attributes, own SKU, current stock). The net sales/units above the
-      snapshot stay product-wide totals — there is no per-variant sales split in this data, so the
-      panel doesn't pretend to have one.
+      difference: the SKU column reads "3 variants" instead of a single code, and the panel replaces
+      the plain per-channel list with a variant × channel matrix — real net sales and units, per
+      variant, per channel, with stock riding along in the same row. Its Total row and column
+      reconcile exactly to the figures already shown above (this row's own Net sales/Units, and the
+      channel columns) — nothing here is a separate, disagreeing number.
     </p>
   </div>
 
@@ -599,17 +617,19 @@ button, input, select { font: inherit; }
     { id: 'jacket-pro', name: 'Running Jacket Pro', sku: null, currency: 'PLN', internalId: 'ol_product_c1a02e77', stock: '2026-08-31 17:26',
       source: { platformType: 'prestashop', externalId: '910' },
       // A multi-variant product (#2765 follow-up) — the row's own SKU/currency/
-      // stock-synced fields describe the PRODUCT, and its net sales/units are
-      // summed across every variant, exactly like the real
-      // TopProductRow/ProductChannelSales shape. The variant list below is a
-      // read-only catalog snapshot (attrs, own SKU, current stock) — it is NOT
-      // a per-variant sales split, because the analytics endpoint has no such
-      // breakdown to show; only the product-wide totals above are real figures.
+      // stock-synced fields describe the PRODUCT, and netSales/units below are
+      // the SUM of every variant's own `channels{}` split — each variant number
+      // is real (allocated by unit share of the product-level channel figure,
+      // rounded to the grosz, remainder folded into the largest variant so
+      // every row and column reconciles exactly), not a fabricated visual.
       netSales: 9870, units: 158,
       variants: [
-        { sku: 'JCK-PRO-S-BLK', attrs: 'Size: S · Color: Black', available: 12, status: 'ok' },
-        { sku: 'JCK-PRO-M-BLK', attrs: 'Size: M · Color: Black', available: 3, status: 'low' },
-        { sku: 'JCK-PRO-L-BLU', attrs: 'Size: L · Color: Blue', available: 0, status: 'out' },
+        { sku: 'JCK-PRO-S-BLK', attrs: 'Size: S · Color: Black', available: 12, status: 'ok',
+          channels: { allegro: { units: 52, sales: 3244 }, prestashop: { units: 25, sales: 1564 }, erli: { units: 9, sales: 564 } } },
+        { sku: 'JCK-PRO-M-BLK', attrs: 'Size: M · Color: Black', available: 3, status: 'low',
+          channels: { allegro: { units: 30, sales: 1872 }, prestashop: { units: 14, sales: 876 }, erli: { units: 4, sales: 251 } } },
+        { sku: 'JCK-PRO-L-BLU', attrs: 'Size: L · Color: Blue', available: 0, status: 'out',
+          channels: { allegro: { units: 14, sales: 874 }, prestashop: { units: 8, sales: 500 }, erli: { units: 2, sales: 125 } } },
       ],
       channels: { allegro: { name: 'Allegro', units: 96, sales: 5990, dot: 'allegro' }, prestashop: { name: 'Store PL', units: 47, sales: 2940, dot: 'prestashop' }, erli: { name: 'Erli', units: 15, sales: 940, dot: 'erli' } } },
     { id: 'kb-mech-87', name: 'Mechanical Keyboard 87-key', sku: 'KB-87-RGB', currency: 'PLN', internalId: 'ol_product_9a04e712', stock: '2026-08-31 19:18',
@@ -664,35 +684,107 @@ button, input, select { font: inherit; }
     out: { tone: 'error', label: 'Out of stock' },
   };
 
-  function variantRowsHtml(p) {
-    return p.variants.map(function (v) {
+  var CHANNEL_ORDER = ['allegro', 'prestashop', 'erli'];
+  var CHANNEL_LABEL = { allegro: 'Allegro', prestashop: 'Store PL', erli: 'Erli' };
+
+  function moneyUnitsStack(sales, units) {
+    return (
+      '<div class="data-table__stack">' +
+        '<span class="tabular">' + fmtMoney(sales) + '</span>' +
+        '<span class="variant-matrix__units tabular">' + fmtInt(units) + '</span>' +
+      '</div>'
+    );
+  }
+
+  /**
+   * The one thing the user asked to see: real net sales × units, per
+   * variant, per channel — reconciling exactly to the per-channel figures
+   * already shown above the fold and to this row's own Net sales/Units
+   * columns. A cross-tab, not two separate blocks (a catalog list next to a
+   * text summary), because a variant's sales split IS what the operator is
+   * here for; stock rides along in the same row since it's the other fact
+   * about a variant worth knowing at a glance, not a second section.
+   */
+  function variantChannelMatrixHtml(p) {
+    var colTotals = {}, colUnits = {};
+    CHANNEL_ORDER.forEach(function (key) { colTotals[key] = 0; colUnits[key] = 0; });
+    var grandSales = 0, grandUnits = 0;
+
+    var bodyRows = p.variants.map(function (v) {
+      var rowSales = 0, rowUnits = 0;
+      var dataCells = CHANNEL_ORDER.map(function (key) {
+        var c = v.channels[key];
+        colTotals[key] += c.sales;
+        colUnits[key] += c.units;
+        rowSales += c.sales;
+        rowUnits += c.units;
+        return '<td class="data-table__cell--right">' + moneyUnitsStack(c.sales, c.units) + '</td>';
+      }).join('');
+      grandSales += rowSales;
+      grandUnits += rowUnits;
       var badge = STOCK_BADGE[v.status];
       return (
-        '<div class="products-variant-row">' +
-          '<div class="products-variant-row__id">' +
-            '<span class="products-variant-row__attrs">' + v.attrs + '</span>' +
-            '<span class="products-variant-row__meta mono-text">' + v.sku + '</span>' +
-          '</div>' +
-          '<span class="status-badge status-badge--' + badge.tone + '"><span class="status-badge__dot"></span>' + badge.label + '</span>' +
-          '<span class="products-variant-row__stock mono tabular">' + v.available + '</span>' +
-        '</div>'
+        '<tr>' +
+          '<td>' +
+            '<div class="products-variant-row__id">' +
+              '<span class="products-variant-row__attrs">' + v.attrs + '</span>' +
+              '<span class="products-variant-row__meta mono-text">' + v.sku + '</span>' +
+              '<span class="status-badge status-badge--' + badge.tone + '"><span class="status-badge__dot"></span>' + badge.label + '</span>' +
+            '</div>' +
+          '</td>' +
+          dataCells +
+          '<td class="data-table__cell--right variant-matrix__total-cell">' + moneyUnitsStack(rowSales, rowUnits) + '</td>' +
+        '</tr>'
       );
     }).join('');
+
+    var headHtml = CHANNEL_ORDER.map(function (key) {
+      return (
+        '<th class="data-table__cell--right">' +
+          '<span class="variant-matrix__channel-head">' +
+            '<span class="variant-matrix__dot" style="background:var(--channel-' + key + ')"></span>' + CHANNEL_LABEL[key] +
+          '</span>' +
+        '</th>'
+      );
+    }).join('');
+
+    var totalCells = CHANNEL_ORDER.map(function (key) {
+      return '<td class="data-table__cell--right">' + moneyUnitsStack(colTotals[key], colUnits[key]) + '</td>';
+    }).join('');
+
+    return (
+      '<div class="products-detail-variants">' +
+        '<div class="products-detail-field__label">Net sales by variant, per channel</div>' +
+        '<div class="data-table__container">' +
+          '<table class="data-table variant-matrix">' +
+            '<thead><tr><th>Variant</th>' + headHtml + '<th class="data-table__cell--right">Total</th></tr></thead>' +
+            '<tbody>' +
+              bodyRows +
+              '<tr class="variant-matrix__total-row">' +
+                '<td>Total</td>' + totalCells +
+                '<td class="data-table__cell--right variant-matrix__total-cell">' + moneyUnitsStack(grandSales, grandUnits) + '</td>' +
+              '</tr>' +
+            '</tbody>' +
+          '</table>' +
+        '</div>' +
+        '<p class="data-table__footnote">Adds up to the Net sales, Units and channel figures shown above.</p>' +
+      '</div>'
+    );
   }
 
   // Matches `ProductSalesRowDetail` verbatim: `ProductDetailLinks` +
   // `ProductDetailFields` (shared with the products cockpit's own expandable
-  // row) + `ChannelBreakdownList`, plus — for a multi-variant product only —
-  // a read-only variant snapshot (#2765 follow-up). A simple/single-variant
-  // product renders identically to before; nothing here changes for it.
+  // row), plus the channel breakdown — a plain per-channel list for a
+  // simple/single-variant product (unchanged), or the variant × channel
+  // matrix above for a genuinely multi-variant one (#2765 follow-up).
   function detailHtml(p) {
     var multiVariant = p.variants && p.variants.length > 1;
-    var variantsSection = multiVariant ? (
+    var salesSection = multiVariant ? variantChannelMatrixHtml(p) : (
       '<div class="products-detail-variants">' +
-        '<div class="products-detail-field__label">Variants (' + p.variants.length + ') — catalog snapshot, not split by sale</div>' +
-        '<div class="products-variant-list">' + variantRowsHtml(p) + '</div>' +
+        '<div class="products-detail-field__label">Net sales by channel, this range</div>' +
+        '<div class="data-table__stack">' + channelDetailRows(p) + '</div>' +
       '</div>'
-    ) : '';
+    );
     return (
       '<div class="products-row-detail">' +
         '<div class="products-detail-links">' +
@@ -705,11 +797,7 @@ button, input, select { font: inherit; }
           '<div class="products-detail-field"><div class="products-detail-field__label">Currency</div><div class="products-detail-field__value">' + p.currency + '</div></div>' +
           '<div class="products-detail-field"><div class="products-detail-field__label">Stock synced</div><div class="products-detail-field__value">' + p.stock + '</div></div>' +
         '</div>' +
-        variantsSection +
-        '<div class="products-detail-variants">' +
-          '<div class="products-detail-field__label">Net sales by channel, this range</div>' +
-          '<div class="data-table__stack">' + channelDetailRows(p) + '</div>' +
-        '</div>' +
+        salesSection +
       '</div>'
     );
   }
