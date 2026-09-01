@@ -151,9 +151,9 @@ describe('SalesDocumentPanel — state 1: filled (invoice)', () => {
     });
     expect(await screen.findByText('FV/2026/06/001')).toBeInTheDocument();
     expect(document.querySelector('.doc-slot--filled')).not.toBeNull();
-    expect(
-      document.querySelector('.sales-document-panel__header-badges .status-badge--success'),
-    ).not.toBeNull();
+    // #2557 — one DocumentHeadline, not a separate badge cluster.
+    expect(document.querySelector('.document-headline')).not.toBeNull();
+    expect(document.querySelector('.document-headline__word')?.textContent).toContain('Issued');
   });
 });
 
@@ -234,7 +234,7 @@ describe('SalesDocumentPanel — state 2: empty + gate-block reason', () => {
 });
 
 describe('SalesDocumentPanel — state 3: register-receipt blocked by an existing invoice', () => {
-  it('disables Register receipt with an explanatory warning, distinct from state 2', async () => {
+  it('states the fact with no dead action, distinct from state 2 (#2561)', async () => {
     renderWithProviders(<SalesDocumentPanel order={order} />, {
       apiClient: createMockApiClient({
         connections: { list: vi.fn().mockResolvedValue([invoicingConnection, fiscalConnection]) },
@@ -243,11 +243,11 @@ describe('SalesDocumentPanel — state 3: register-receipt blocked by an existin
       ...adminSession,
     });
     expect(await screen.findByText('FV/2026/06/001')).toBeInTheDocument();
-    expect(
-      screen.getByText(/Registering a receipt here would create a second document/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/This order already has a document/i)).toBeInTheDocument();
     expect(screen.getByText(/already has an invoice from Subiekt GT/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Register receipt' })).toBeDisabled();
+    // #2561 — the override is unreachable from a state that already carries a
+    // document, so there is no disabled "Register receipt" button here at all.
+    expect(screen.queryByRole('button', { name: 'Register receipt' })).toBeNull();
   });
 
   it('does NOT block when the existing invoice is a retryable rejected failure', async () => {
@@ -269,7 +269,7 @@ describe('SalesDocumentPanel — state 3: register-receipt blocked by an existin
 });
 
 describe('SalesDocumentPanel — state 4: issue-invoice blocked by an existing receipt', () => {
-  it('disables Issue invoice with an explanatory warning, distinct from state 2', async () => {
+  it('states the fact with no dead action, distinct from state 2 (#2561)', async () => {
     renderWithProviders(<SalesDocumentPanel order={order} />, {
       apiClient: createMockApiClient({
         connections: { list: vi.fn().mockResolvedValue([invoicingConnection, fiscalConnection]) },
@@ -279,10 +279,9 @@ describe('SalesDocumentPanel — state 4: issue-invoice blocked by an existing r
       ...adminSession,
     });
     expect(await screen.findByText('1/2026/08/14')).toBeInTheDocument();
-    expect(
-      screen.getByText(/Issuing an invoice here would create a second document/i),
-    ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Issue invoice' })).toBeDisabled();
+    expect(screen.getByText(/This order already has a document/i)).toBeInTheDocument();
+    // #2561 — no disabled "Issue invoice" button when a document already exists.
+    expect(screen.queryByRole('button', { name: 'Issue invoice' })).toBeNull();
   });
 });
 
@@ -781,9 +780,14 @@ describe('SalesDocumentPanel — header agrees with body (#2527)', () => {
 
     expect(await screen.findByText(/Registering with the provider/)).toBeInTheDocument();
     // The header used to read "Not registered" over that body, because the
-    // badge derived from a record that does not exist yet.
-    expect(screen.getByText('Queued')).toBeInTheDocument();
-    expect(screen.queryByText('Not registered')).toBeNull();
+    // badge derived from a record that does not exist yet. #2557 replaced the
+    // badge with the shared DocumentHeadline, which reads the same progress.
+    expect(document.querySelector('.document-headline__word')?.textContent).toContain(
+      'Registering',
+    );
+    expect(document.querySelector('.document-headline__word')?.textContent).not.toContain(
+      'Not registered',
+    );
   });
 
   it('should still report a request that stopped before any record existed', async () => {
