@@ -760,7 +760,7 @@ Three mechanics are load-bearing rather than incidental:
 
 Three primitives support it and belong in `shared/ui`: `DocumentKindGlyph` (a distinct silhouette per kind — a folded page for an invoice, a till slip for a receipt — carrying its own accessible name, since kind is an entity axis and must never take a status hue), `DocumentHeadline` (the same glyph-and-word treatment at reading size, used by the order-detail panel so the panel and the list describe one document identically), and `DocumentLifecycle` (a short horizontal trail for an invoice's two persisted axes). The trail renders **one step per stored state and no more** — an earlier attempt narrated three fiscal-printer phases OpenLinker cannot observe, and a fiscal receipt has no second axis so it gets no trail rather than a padded one.
 
-Known gap this carve-out depends on: `DataTableSkeleton` still renders 36 px rows, so a table using this cell grows on load — measured at ~61 px skeleton against 65-100 px loaded. Tracked as #2152 and closed by #2538.
+Gap this carve-out depended on, now closed: `DataTableSkeleton` used to render fixed 36 px rows, so a table using this cell grew on load - measured at ~61 px skeleton against 65-100 px loaded. Tracked as #2152 and closed by #2538, which made the 36 px a floor and had the skeleton read `DataTableColumn.lines`; a table adopting this cell must declare `lines` on the column that sets the height, or the growth comes back.
 
 Registered selection-row surfaces:
 

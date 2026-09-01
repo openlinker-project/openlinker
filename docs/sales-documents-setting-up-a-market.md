@@ -46,7 +46,7 @@ For each market you have two tools.
 
 Two limits to know before you start:
 
-- **Only one default may apply per market.** If you set both an invoice default and a receipt default, neither is used, and every order that matches no rule is held. If you need both documents in one market, the choice between them has to come from a rule.
+- **Only one default may apply per market.** If you set both an invoice default and a receipt default, neither is used, and every order that matches no rule is held. If you need both documents in one market, the choice between them has to come from a rule. The reason recorded on such an order is shared with the two-rules case today, so read it alongside your market setup rather than on its own.
 - **Only one rule may match an order.** Rules have no priority, so if two match, the order is held rather than one winning. Keep conditions narrow enough that they cannot overlap.
 
 ## Step 4: check what the market now issues

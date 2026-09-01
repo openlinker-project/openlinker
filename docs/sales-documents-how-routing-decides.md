@@ -42,6 +42,8 @@ If no rule matched, the default for that country applies. A default says: *anyth
 
 This is the single most common way a market ends up issuing nothing while looking configured. If a market shows *Two defaults set*, remove one, or add a rule that decides between them.
 
+> **Not yet distinguished.** Today this case shares its reason with *Two rules matched* and with a connection-level ambiguity, and the short explanation an order carries can name connections rather than defaults. Telling the two apart, so the order states which one it hit, is part of the work that builds these screens.
+
 ## Step 3: Rest of world
 
 **Rest of world** is a fallback market for countries you have not set up.
@@ -69,6 +71,8 @@ If nothing was chosen, the reason is one of these:
 | Provider cannot issue this | The chosen provider does not issue that kind of document | Choose a provider that does |
 | Order is net-priced | A rule compares the order total, and this order is priced net | Use a condition that does not depend on the total |
 | Currency does not match | A rule's limit is in a different currency from the order | Set the limit in the order's currency, or use a different condition |
+
+*Two rules matched* and *Two defaults set* are today recorded under one shared reason, so an order may show the other one's wording until they are told apart.
 
 Amounts are never converted when routing decides. A rule with a limit in one currency does not apply to an order in another.
 

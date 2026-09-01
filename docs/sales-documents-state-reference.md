@@ -5,6 +5,7 @@ Every order shows the state of its sales document: on the order row, and in full
 The two document kinds have different states, because they are different things. An **invoice** is issued by OpenLinker and then answered by the tax authority, so it has two states at once. A **fiscal receipt** is registered on a fiscal device and that is the end of it, so it has one.
 
 > How a document kind is chosen: see [How OpenLinker decides](./sales-documents-how-routing-decides.md).
+> Setting a market up: see [Setting up a market](./sales-documents-setting-up-a-market.md).
 
 ## The one you should read first
 
@@ -14,7 +15,9 @@ It means the provider took the sale and never answered, so OpenLinker genuinely 
 
 **What to do:** ask the provider what it has, using *Check with the provider* on the order. Do not register again first.
 
-A check comes back one of two ways: the provider confirms a receipt, or it still cannot say. If it still cannot say, nothing changes and you can check again later.
+A check comes back one of four ways: the provider confirms a receipt, says it holds nothing for this sale, says it holds the sale but has not registered it, or cannot be asked about this sale at all. Failing to reach the provider is a fifth outcome, and is not an answer about the sale. Retry it.
+
+Only a confirmation changes anything. In every other case the order is left exactly where it was, and you can check again later.
 
 ## Fiscal receipt
 
@@ -53,6 +56,7 @@ An invoice has a state of its own, and separately an answer from the tax authori
 
 | State | What it means | Waiting on you? | What to do |
 |---|---|---|---|
+| **N/A** | This provider has no authority step at all | No | Nothing. Not every invoice provider has one |
 | **Awaiting submission** | Issued, not yet sent to the authority | No | Nothing |
 | **Submitted** | Sent, no answer yet | No | Nothing. OpenLinker keeps checking |
 | **Clearing** | The authority is processing it | No | Nothing |
@@ -71,11 +75,13 @@ These states mean OpenLinker chose not to issue, and each one has a different fi
 |---|---|---|
 | **Issued on request** | This provider only issues when you ask. Nothing is wrong | Issue it when you are ready, or change when the provider issues |
 | **Waiting for the batch** | This connection is set to issue in batches, and OpenLinker does not collect batches yet, so nothing will pick this order up on its own | Issue it by hand, or set the connection to issue automatically |
-| **No buyer tax ID** | The document needs the buyer's tax ID and the order has none | Add it at the source, or route this order to a document that does not need one |
 | **Tax rate missing** | A line has no tax rate. Nothing is guessed | Set the rate in your shop catalogue, then try again |
-| **Tax rate conflict** | Your shop and the sales channel disagree on a line's rate | Review it. The shop's rate is used |
 | **No routing** | Routing could not decide what this order needs | See [How OpenLinker decides](./sales-documents-how-routing-decides.md) |
 | **Provider offline** | The provider's connection needs signing in again | Reconnect it. The order waits; it is not moved to another provider |
+
+**Not yet reachable.** *No buyer tax ID* is defined but nothing writes it today: OpenLinker now carries the buyer's tax ID on an order, but no check refuses a document for the lack of one, so you will not see this state until one does.
+
+**A tax rate disagreement does not hold anything.** If your shop and the sales channel report different rates for a line, the shop's rate is used, the document issues, and the difference is shown on the order as its own note. It is not one of the states above.
 
 **Issued on request is a setting, not a problem.** If that is how you work, those orders are not errors and are not counted as needing attention. They are listed separately so you can work through them.
 
