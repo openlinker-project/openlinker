@@ -106,7 +106,12 @@ import type { SalesAnalyticsFilters } from '../api/sales-analytics.types';
 import type { AnalyticsCoverage } from '../api/analytics-coverage.types';
 import type { TopProductRow, TopProductsSortBy } from '../api/top-products.types';
 import { channelCellFor, deriveChannelColumns, isMissingFrom } from '../lib/top-products-view-model';
-import { isCurrencyRecalculating, resolveReportingCurrencyRate } from '../lib/display-currency.lib';
+import {
+  createReportingCurrencyConverter,
+  isCurrencyRecalculating,
+  resolveReportingCurrencyRate,
+} from '../lib/display-currency.lib';
+import type { ReportingCurrencyConverter } from '../lib/display-currency.lib';
 import { RecalculatingValue } from './recalculating-value';
 
 const DEFAULT_LIMIT = 20;
@@ -137,14 +142,20 @@ const DEFAULT_LIMIT = 20;
 function renderNovCell(
   row: TopProductRow,
   currencyRecalculating: boolean,
-  convertToDisplay: (amount: number) => number,
-  displayCurrencyFor: (nativeCurrency: string) => string
+  reportingConverter: ReportingCurrencyConverter
 ): ReactElement {
   if (currencyRecalculating) {
     return <RecalculatingValue />;
   }
   if (row.currency) {
-    return <>{formatAmount(convertToDisplay(row.netRevenue), displayCurrencyFor(row.currency))}</>;
+    return (
+      <>
+        {formatAmount(
+          reportingConverter.convertToDisplay(row.netRevenue, row.currency),
+          reportingConverter.displayCurrencyFor(row.currency)
+        )}
+      </>
+    );
   }
   return <EmptyValue label="No Net sales figure for this product in range" />;
 }
@@ -290,12 +301,13 @@ export function ProductSalesTable({ filters, coverage }: ProductSalesTableProps)
   const headline = salesQuery.data?.headline;
   const gmvConversion = headline?.displayCurrencyConversion;
   const reportingRate = resolveReportingCurrencyRate(gmvConversion, headline?.currency ?? null);
-  function convertToDisplay(amount: number): number {
-    return reportingRate ? amount * Number(reportingRate.rate) : amount;
-  }
-  function displayCurrencyFor(nativeCurrency: string): string {
-    return reportingRate && gmvConversion ? gmvConversion.displayCurrency : nativeCurrency;
-  }
+  // While the shared sales-analytics cache entry is still in flight, hold
+  // every row native rather than rendering it native and then flipping to
+  // the display currency once `salesQuery` resolves (PR #2788 review).
+  const reportingConverter = createReportingCurrencyConverter(
+    salesQuery.isLoading ? null : reportingRate,
+    headline?.currency ?? null
+  );
 
   const items = query.data?.items ?? [];
   const productIds = items.map((item) => item.productId);
@@ -345,7 +357,7 @@ export function ProductSalesTable({ filters, coverage }: ProductSalesTableProps)
       id: 'revenue',
       header: sortBy === 'revenue' ? 'Net sales ↓' : 'Net sales',
       align: 'right',
-      cell: (row) => renderNovCell(row, currencyRecalculating, convertToDisplay, displayCurrencyFor),
+      cell: (row) => renderNovCell(row, currencyRecalculating, reportingConverter),
     },
     {
       id: 'units',
@@ -412,7 +424,7 @@ export function ProductSalesTable({ filters, coverage }: ProductSalesTableProps)
           subtitle: (row) => row.sku ?? undefined,
           summary: (row) => (
             <>
-              {renderNovCell(row, currencyRecalculating, convertToDisplay, displayCurrencyFor)}
+              {renderNovCell(row, currencyRecalculating, reportingConverter)}
               {' · '}
               {intFormat.format(row.units)} units
             </>

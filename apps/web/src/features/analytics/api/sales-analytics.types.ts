@@ -43,8 +43,11 @@ export type DisplayCurrencyRateBasis = (typeof DISPLAY_CURRENCY_RATE_BASIS_VALUE
  * Mirrors `AppliedRateDto` (#2778) — what produced one converted figure.
  * Never a statutory/invoice rate; see ADR-040's own warning about the FA(3)
  * `KursWaluty` distinction. `rate` stays a string, exactly as the backend
- * sends it (a `numeric(18,8)` column) — this app never `Number()`s it for
- * arithmetic, only for display formatting.
+ * sends it (a `numeric(18,8)` column) — the audited value. This app DOES
+ * `Number()` it, in `convertToDisplay`, to compute the on-screen figure; that
+ * float is acceptable only because the result is display-only and never
+ * written back or re-audited. `formatAppliedRateLine` separately `Number()`s
+ * it again purely for rounding the inline provenance line.
  */
 export interface AppliedRate {
   from: string;
