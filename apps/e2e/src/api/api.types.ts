@@ -262,6 +262,47 @@ export interface OrderSyncStatus {
   error: string | null;
 }
 
+/**
+ * One record of either kind inside a `SalesDocumentView` (ADR-065). Mirrored
+ * loosely — the e2e suite only reads the fields its specs assert on, never
+ * the full backend shape — from
+ * `apps/web/src/features/orders/api/orders.types.ts`, itself hand-mirrored
+ * from `SalesDocumentView` (`@openlinker/core/sales-documents`).
+ */
+export interface SalesDocumentRecordView {
+  kind: string;
+  status: string;
+  regulatoryStatus?: string;
+  failureMode?: string | null;
+  identity?: {
+    connectionId: string;
+    providerType: string | null;
+    documentNumber: string | null;
+  };
+}
+
+export interface SalesDocumentOtherRecord {
+  recordId: string;
+  connectionId: string;
+  kind: string;
+  blocksFurtherIssuance: boolean;
+}
+
+/**
+ * Batched per-order sales-document projection (#2516/#2552, ADR-065) — the
+ * SAME shape `GET /orders` attaches to every row as `salesDocument`, the
+ * order-detail panel and the settings page's per-market evidence all read.
+ */
+export interface SalesDocumentView {
+  orderId: string;
+  documentKind: string | null;
+  document: SalesDocumentRecordView | null;
+  blockReason: string | null;
+  unresolvedReason: string | null;
+  blockDetail: string | null;
+  otherRecords: SalesDocumentOtherRecord[];
+}
+
 export interface OrderRecord {
   internalOrderId: string;
   customerId: string | null;
@@ -282,6 +323,11 @@ export interface OrderRecord {
   salesDocumentUnresolvedReason?: string | null;
   /** PII-free elaboration of the block reason (ids and counts only). */
   salesDocumentBlockDetail?: string | null;
+  /**
+   * Per-order sales-document projection (#2516/#2552, ADR-065). Optional so
+   * the suite stays green against an API that predates the field.
+   */
+  salesDocument?: SalesDocumentView;
 }
 
 /**
