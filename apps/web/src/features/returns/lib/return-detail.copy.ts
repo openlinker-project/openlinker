@@ -69,7 +69,7 @@ export const RETURN_DETAIL_HEADER_COPY = {
  * worse than the sentence.
  */
 export const RETURN_ORPHAN_BANNER_COPY = {
-  title: 'This return is not matched to an order',
+  title: 'This return is not matched to an order.',
   safeHere: 'It is safe here — nothing is lost.',
   reattribution:
     'If the order is ingested later, OpenLinker matches this return to it automatically and the actions below become available.',

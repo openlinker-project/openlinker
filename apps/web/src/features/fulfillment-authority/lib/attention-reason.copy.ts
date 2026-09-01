@@ -141,12 +141,20 @@ export const ATTENTION_REASON_COPY = {
     action: 'Open the return to see which system refused and what it said.',
   },
   // Byte-identical to `RETURN_ORPHAN_BANNER_COPY.title` in features/returns —
-  // asserted by MIRROR 6. Note the spec renders this line with a trailing
-  // period and the shipped returns copy does not; the spec's own tie-break
-  // ("the returns spec wins") settles it, so there is no period here.
+  // asserted by MIRROR 6. The returns spec § 5.5 renders this line with a
+  // trailing period, so both code sides carry one (#2673).
+  //
+  // An earlier comment here claimed the opposite — that § 5.4's "the returns
+  // spec wins" tie-break justified DROPPING the period. It did not: that rule
+  // is the returns spec beating other DOCUMENTS, and it was cited to make
+  // shipped code beat the returns spec. The spec has the period at
+  // product-spec-oms-returns-operator-ux.md:364, as does the wave-2 spec § 4.2.
+  //
+  // MIRROR 6 reads `title` ONLY; `titleFallback` equality is held by hand (see
+  // the note on 'restock-blocked' above).
   'return-unmatched': {
-    title: 'This return is not matched to an order',
-    titleFallback: 'This return is not matched to an order',
+    title: 'This return is not matched to an order.',
+    titleFallback: 'This return is not matched to an order.',
     body: 'OpenLinker has never seen the order this return belongs to, so nothing is triggered from it — no stock change, no refund, no credit note.',
     action: 'Nothing to do. If the order arrives later, OpenLinker matches it automatically.',
   },

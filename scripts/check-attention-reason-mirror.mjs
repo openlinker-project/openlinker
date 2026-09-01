@@ -16,7 +16,7 @@
  * reason added only to core never reaches the browser, and one added only to
  * the frontend type-checks against a value the API will never send.
  *
- * SIX MIRRORS:
+ * SEVEN MIRRORS:
  *
  *   M1  `AuthorityAttentionReasonValues`  core <-> apps/web (membership + order)
  *   M2  `AuthorityAttentionBadgeValues`   core <-> apps/web (membership + order)
@@ -26,8 +26,15 @@
  *   M4  `ATTENTION_REASON_COPY` carries exactly one entry per reason, in order
  *   M5  `ATTENTION_BADGE_COPY` carries exactly one entry per badge value
  *   M6  cross-feature title agreement: the OR-P title equals
- *       `RETURN_ORPHAN_BANNER_COPY.title` in features/returns (spec § 4.2 —
+ *       `RETURN_ORPHAN_BANNER_COPY.title` and the RB-L title equals
+ *       `RETURN_RESTOCK_BLOCKED_COPY.title` in features/returns (spec § 4.2 —
  *       "the mirror check ... covers BOTH feature folders")
+ *   M7  a PLACEHOLDER-FREE `title` equals its own `titleFallback` — one
+ *       sentence written twice. Added by #2673's review: M6 reads `title`
+ *       only, and both cross-feature titles are placeholder-free, so without
+ *       M7 half of each guarded string was held by hand. A title carrying
+ *       `{ref}` / `{n}` is exempt, because differing from its fallback is
+ *       exactly what a fallback is for.
  *
  * WHY M3 MIRRORS TWO FIELDS AND NOT ONLY THE UNION. A mirror over the reason
  * union alone would let the aggregate count and the badge renderer disagree
@@ -286,6 +293,23 @@ export function parseDescriptorEntries(content, name) {
   };
 }
 
+/**
+ * Ordered depth-1 entries with their `title` + `titleFallback`, for M7.
+ * Fields are `null` when absent.
+ */
+export function parseTitleEntries(content, name) {
+  const parsed = parseEntrySegments(content, name);
+  if (parsed === null) return null;
+  return {
+    line: parsed.line,
+    entries: parsed.entries.map(({ key, segment }) => ({
+      key,
+      title: stringField(segment, 'title'),
+      titleFallback: stringField(segment, 'titleFallback'),
+    })),
+  };
+}
+
 /** Depth-1 keys of an object literal, in order. `null` when absent/unbalanced. */
 export function parseObjectKeys(content, name) {
   const parsed = parseEntrySegments(content, name);
@@ -355,6 +379,30 @@ export function diffDescriptorFields(core, mirror, mirrorLabel) {
   }
 
   return { ok: issues.length === 0, issues };
+}
+
+/**
+ * M7's rule, pure (#2673 review).
+ *
+ * `titleFallback` is what renders when a title's placeholders cannot be filled,
+ * so for a title that HAS no placeholder the two are one sentence written
+ * twice — the shape a mirror exists to hold together, and the shape that had
+ * just drifted by a period on both `restock-blocked` and `return-unmatched`.
+ *
+ * Scoped to placeholder-free titles deliberately: a title carrying `{ref}` or
+ * `{n}` MUST differ from its fallback (that is the fallback's whole job), so
+ * requiring equality there would be wrong, and requiring inequality would be a
+ * rule about copy rather than about structure. Returns the offending entries.
+ */
+export function diffTitleFallbacks(entries) {
+  return entries
+    .filter(({ title, titleFallback }) => title !== null && titleFallback !== null)
+    .filter(({ title }) => !/\{[a-zA-Z]+\}/.test(title))
+    .filter(({ title, titleFallback }) => title !== titleFallback)
+    .map(({ key, title, titleFallback }) =>
+      `'${key}': title is '${title}' but titleFallback is '${titleFallback}' — the title carries no ` +
+        `placeholder, so these are one sentence written twice and must match`,
+    );
 }
 
 /**
@@ -479,6 +527,18 @@ async function main() {
       [`${CORE_FILE}:${coreBadges.line}  (authoritative)`, `${FE_COPY_FILE}:${feBadgeCopy.line}  (operator copy)`], m5.issues);
   }
 
+  // M7 — a placeholder-free title and its fallback are one sentence.
+  const feTitles = parseTitleEntries(feCopyContent, FE_REASON_COPY);
+  if (!feTitles || feTitles.entries.length === 0) {
+    console.error(`✗ check-attention-reason-mirror: could not re-read '${FE_REASON_COPY}' for MIRROR 7.\n`);
+    process.exit(1);
+  }
+  const m7 = diffTitleFallbacks(feTitles.entries);
+  if (m7.length > 0) {
+    record('a title with no placeholder must equal its titleFallback',
+      [`${FE_COPY_FILE}:${feTitles.line}  (${FE_REASON_COPY})`], m7);
+  }
+
   // M6 — cross-feature title agreement. The DECISION is `classifyCrossFeature
   // Title`; this loop only resolves the two sides and renders the outcome. Every
   // outcome but 'ok' is recorded, so nothing here can resolve to a skip (#2673).
@@ -516,9 +576,31 @@ async function main() {
             `${pair.file}  (${pair.declaration}.${pair.field}, canonical owner)`],
           [`this feature says '${ours}', the owner says '${theirs}' — two sentences for one state`]);
         break;
-      default:
+      case 'ok':
         compared.push(`'${pair.reason}' = ${JSON.stringify(ours)}  <- ${pair.file} (${pair.declaration}.${pair.field})`);
+        break;
+      // A sixth outcome added later must not land in `compared` and be reported
+      // as byte-identical — a new failure mode announcing itself as a pass is
+      // this script's own defect class (#2673), and .mjs gives no exhaustiveness
+      // check to catch it. Throwing is louder than recording: an outcome nobody
+      // wrote a branch for is a bug in the script, not a drift in the copy.
+      default:
+        throw new Error(
+          `check-attention-reason-mirror: classifyCrossFeatureTitle returned an outcome M6 has no ` +
+            `branch for while checking '${pair.reason}'. Add a case, and add it to ` +
+            `CROSS_FEATURE_TITLE_OUTCOMES.`,
+        );
     }
+  }
+
+  // Must hold by construction: every non-'ok' outcome takes the failure branch
+  // above, so a short list means the loop lost a pair. Asserted so the count in
+  // the success line is load-bearing rather than incidental.
+  if (drifts.length === 0 && compared.length !== CROSS_FEATURE_TITLES.length) {
+    throw new Error(
+      `check-attention-reason-mirror: ${CROSS_FEATURE_TITLES.length} cross-feature pair(s) declared ` +
+        `but ${compared.length} compared with no drift recorded — the M6 loop dropped a pair.`,
+    );
   }
 
   if (drifts.length === 0) {
@@ -654,6 +736,33 @@ function selfCheck() {
   // for a declaration name absent from the content it is handed.
   expect('a RENAMED/MOVED owner declaration reads as null',
     readEntryField(copySource, 'RETURNS_RESTOCK_BLOCKED_COPY', 'title', 'title'), null);
+
+  // --- M7: titleFallback (#2673 review) -------------------------------------
+  const tf = (title, titleFallback) => [{ key: 'k', title, titleFallback }];
+  expect('a placeholder-free title that differs from its fallback is reported',
+    diffTitleFallbacks(tf('Stock was not added.', 'Stock was not added')).length, 1);
+  expect('an identical pair is not reported',
+    diffTitleFallbacks(tf('Stock was not added.', 'Stock was not added.')).length, 0);
+  // The exemption, and the reason M7 is scoped rather than universal: a title
+  // with a placeholder MUST differ from its fallback — that is the fallback's
+  // whole job — so flagging it would make the rule wrong for 6 of 8 reasons.
+  expect('a title carrying {ref} is EXEMPT even though it differs',
+    diffTitleFallbacks(tf('No one took the job for order {ref}', 'No one took the job for this order')).length, 0);
+  expect('a title carrying {n} is exempt too',
+    diffTitleFallbacks(tf('Order {ref} is short {n} x {sku}', 'This order is short of stock')).length, 0);
+  // A brace that is not a placeholder must not buy an exemption.
+  expect('a non-placeholder brace does not exempt the entry',
+    diffTitleFallbacks(tf('Stock {} was not added.', 'Stock {} was not added')).length, 1);
+  expect('an unreadable field on either side is skipped, never reported as drift',
+    diffTitleFallbacks(tf('T', null)).length + diffTitleFallbacks(tf(null, 'T')).length, 0);
+  expect('the reported message names the key and both strings',
+    diffTitleFallbacks(tf('A.', 'A'))[0].includes("'k'") && diffTitleFallbacks(tf('A.', 'A'))[0].includes("'A.'"), true);
+  // M7 must be able to see the real declaration, or it guards nothing.
+  const titleParse = parseTitleEntries(copySource, FE_REASON_COPY);
+  expect('parseTitleEntries reads both fields off each entry',
+    titleParse?.entries.length > 0, true);
+  expect('parseTitleEntries returns null for an absent declaration',
+    parseTitleEntries(copySource, 'NOPE_COPY'), null);
 
   const ownerSource = "export const RETURN_ORPHAN_BANNER_COPY = {\n  title: 'This return is not matched to an order',\n  safeHere: 'x',\n} as const;\n";
   expect('reads the canonical owner field', readEntryField(ownerSource, 'RETURN_ORPHAN_BANNER_COPY', 'title', 'title'), 'This return is not matched to an order');
