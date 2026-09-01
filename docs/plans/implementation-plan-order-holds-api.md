@@ -266,7 +266,7 @@ claim this issue deletes is one), so content matters as much as presence:
 3. `.../services/__tests__/order-hold.service.spec.ts` — remove the mock entry.
 4. `apps/api/test/integration/orders/order-holds.int-spec.ts` — **three** sites (`:67` the local
    port-shape restatement, `:304` and `:305` the two paging calls).
-5. `apps/api/src/migrations/1849000000011-create-order-holds.ts` — the comment naming the method.
+5. `apps/api/src/migrations/1850000000008-create-order-holds.ts` — the comment naming the method.
 6. `.../entities/order-hold.orm-entity.ts` — the comment naming the method.
 **Acceptance**: `grep -rn listOpenHolds` returns nothing; `pnpm type-check` clean.
 

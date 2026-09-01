@@ -26,13 +26,30 @@
  * this context, so TypeORM's default naming strategy needs no `name:` overrides.
  *
  * @module apps/api/src/migrations
+ *
+ * **Re-timestamped (1843000000000 -> 1849000000005 -> 1850000000002).** The migration-timestamp
+ * invariant pools core AND plugin directories, and `origin/main` gained
+ * `1850000000000-widen-allegro-quantity-command-unique-index`, moving the true
+ * baseline. The `up()` body is SELF-HEALING: it drops the `migrations` row(s)
+ * written under the prior class name(s) so TypeORM re-records this migration
+ * under its current name, and every statement is IF [NOT] EXISTS-guarded so
+ * an already-migrated database re-applies it as a no-op. No manual SQL needed.
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateInventoryLocations1849000000005 implements MigrationInterface {
-  name = 'CreateInventoryLocations1849000000005';
+export class CreateInventoryLocations1850000000002 implements MigrationInterface {
+  name = 'CreateInventoryLocations1850000000002';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    // Self-heal. This migration has been re-timestamped (1843000000000 -> 1849000000005 ->
+    // 1850000000002), so an environment that already ran an earlier revision holds a
+    // `migrations` row under a stale class name. Dropping those rows lets
+    // TypeORM re-record it under the current name; the DDL below is
+    // IF [NOT] EXISTS-guarded, so the re-run is a no-op. On a fresh database
+    // the DELETE matches nothing.
+    await queryRunner.query(
+      `DELETE FROM "migrations" WHERE "name" IN ('CreateInventoryLocations1849000000005', 'CreateInventoryLocations1843000000000')`
+    );
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS "inventory_locations" (
         "id" text NOT NULL,

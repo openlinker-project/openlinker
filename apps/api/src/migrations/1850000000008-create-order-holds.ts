@@ -47,13 +47,30 @@
  * Generated: 2026-08-26 (synthetic sequential prefix per docs/migrations.md
  * rule 3; 1848 is #2327's return-external-order-id).
  * @module apps/api/src/migrations
+ *
+ * **Re-timestamped (1849000000000 -> 1849000000011 -> 1850000000008).** The migration-timestamp
+ * invariant pools core AND plugin directories, and `origin/main` gained
+ * `1850000000000-widen-allegro-quantity-command-unique-index`, moving the true
+ * baseline. The `up()` body is SELF-HEALING: it drops the `migrations` row(s)
+ * written under the prior class name(s) so TypeORM re-records this migration
+ * under its current name, and every statement is IF [NOT] EXISTS-guarded so
+ * an already-migrated database re-applies it as a no-op. No manual SQL needed.
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateOrderHolds1849000000011 implements MigrationInterface {
-  name = 'CreateOrderHolds1849000000011';
+export class CreateOrderHolds1850000000008 implements MigrationInterface {
+  name = 'CreateOrderHolds1850000000008';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    // Self-heal. This migration has been re-timestamped (1849000000000 -> 1849000000011 ->
+    // 1850000000008), so an environment that already ran an earlier revision holds a
+    // `migrations` row under a stale class name. Dropping those rows lets
+    // TypeORM re-record it under the current name; the DDL below is
+    // IF [NOT] EXISTS-guarded, so the re-run is a no-op. On a fresh database
+    // the DELETE matches nothing.
+    await queryRunner.query(
+      `DELETE FROM "migrations" WHERE "name" IN ('CreateOrderHolds1849000000011', 'CreateOrderHolds1849000000000')`
+    );
     // `id` defaults to uuid_generate_v4() — the same guard 1846/1847 use.
     await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`);
 
@@ -98,9 +115,7 @@ export class CreateOrderHolds1849000000011 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(
-      `DROP INDEX IF EXISTS "IDX_order_holds_open_placed_at"`
-    );
+    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_order_holds_open_placed_at"`);
     await queryRunner.query(`DROP INDEX IF EXISTS "IDX_order_holds_order"`);
     await queryRunner.query(`DROP INDEX IF EXISTS "UQ_order_holds_open_order"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "order_holds"`);

@@ -26,13 +26,30 @@
  * exist — the #2100 / #2287 precedent.
  *
  * @module apps/api/src/migrations
+ *
+ * **Re-timestamped (1845000000000 -> 1849000000007 -> 1850000000004).** The migration-timestamp
+ * invariant pools core AND plugin directories, and `origin/main` gained
+ * `1850000000000-widen-allegro-quantity-command-unique-index`, moving the true
+ * baseline. The `up()` body is SELF-HEALING: it drops the `migrations` row(s)
+ * written under the prior class name(s) so TypeORM re-records this migration
+ * under its current name, and every statement is IF [NOT] EXISTS-guarded so
+ * an already-migrated database re-applies it as a no-op. No manual SQL needed.
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddOrderRecordAmendment1849000000007 implements MigrationInterface {
-  name = 'AddOrderRecordAmendment1849000000007';
+export class AddOrderRecordAmendment1850000000004 implements MigrationInterface {
+  name = 'AddOrderRecordAmendment1850000000004';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    // Self-heal. This migration has been re-timestamped (1845000000000 -> 1849000000007 ->
+    // 1850000000004), so an environment that already ran an earlier revision holds a
+    // `migrations` row under a stale class name. Dropping those rows lets
+    // TypeORM re-record it under the current name; the DDL below is
+    // IF [NOT] EXISTS-guarded, so the re-run is a no-op. On a fresh database
+    // the DELETE matches nothing.
+    await queryRunner.query(
+      `DELETE FROM "migrations" WHERE "name" IN ('AddOrderRecordAmendment1849000000007', 'AddOrderRecordAmendment1845000000000')`
+    );
     await queryRunner.query(
       `ALTER TABLE "order_records" ADD COLUMN IF NOT EXISTS "lastAmendedAt" TIMESTAMP WITH TIME ZONE`
     );

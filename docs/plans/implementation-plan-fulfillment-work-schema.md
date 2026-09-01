@@ -101,7 +101,7 @@ adapter, and makes no outbound call.
 | Named class-level `@Check` | `ReturnLineOrmEntity`, `ReservationOrmEntity` |
 | `QueryFailedError` → domain error | `ReturnPersistenceError`, `OrderHoldRepository` `23505` |
 | `toOrm` exclusion + writer table | `OrderRecordRepository.toOrm` |
-| Migration narrative shape | `1849000000011-create-order-holds.ts` |
+| Migration narrative shape | `1850000000008-create-order-holds.ts` |
 | `orm-entities` sub-barrel | `libs/core/src/returns/orm-entities.ts` |
 
 ---
