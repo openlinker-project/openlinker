@@ -3,7 +3,7 @@
  *
  * Pins the ADR-050 lane partition (#2278): every `JobTypeValues` member is
  * registered with exactly one lane, the per-lane counts match the ADR's
- * table (12 realtime / 18 bulk / 5 fiscal / 6 fan-out — `fiscalization.register`
+ * table (12 realtime / 19 bulk / 5 fiscal / 6 fan-out — `fiscalization.register`
  * joined `fiscal` post-ADR, #2156; `orders.taxRate.backfill` joined `bulk`,
  * #2440; `analytics.currency.recalculate` joined `bulk`, #2468; the two
  * sweep-triggered master children joined `bulk`, #2594; `master.product.syncBatch`
@@ -41,14 +41,16 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     expect(() => registry.assertFullLaneCoverage()).not.toThrow();
   });
 
-  it('should partition the 41 job types 12/18/5/6 per ADR-050 decision 1', () => {
-    // 18 bulk: #2648's `master.inventory.syncBatch` and #2593's
+  it('should partition the 42 job types 12/19/5/6 per ADR-050 decision 1', () => {
+    // 19 bulk: #2648's `master.inventory.syncBatch` and #2593's
     // `master.product.syncBatch` sit beside the two sweep-triggered master
-    // children #2594 moved out of `realtime`, and #2621's
+    // children #2594 moved out of `realtime`, #2621's
     // `marketplace.offerQuantity.reconcile` joins the same lane as a
-    // scan-style pass over adapter-internal pending state.
+    // scan-style pass over adapter-internal pending state, and #2468's
+    // `analytics.currency.recalculate` is another resumable, non-realtime
+    // sweep of the same shape.
     expect(registry.getJobTypesByLane('realtime')).toHaveLength(12);
-    expect(registry.getJobTypesByLane('bulk')).toHaveLength(18);
+    expect(registry.getJobTypesByLane('bulk')).toHaveLength(19);
     expect(registry.getJobTypesByLane('fiscal')).toHaveLength(5);
     expect(registry.getJobTypesByLane('fan-out')).toHaveLength(6);
   });
