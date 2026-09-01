@@ -304,6 +304,8 @@ describe('OrderRecordRepository', () => {
             unconverted_currency: 'PLN',
             cancelled_count: '1',
             cancelled_value: '20.00',
+            cancelled_unconverted_count: '0',
+            cancelled_unconverted_value: '0',
             reporting_currency: 'EUR',
             net_revenue: '0',
             net_excluded_count: '0',
@@ -328,6 +330,8 @@ describe('OrderRecordRepository', () => {
           netExcludedValue: 0,
           cancelledCount: 1,
           cancelledValue: 20,
+          cancelledUnconvertedCount: 0,
+          cancelledUnconvertedValue: 0,
           reportingCurrency: 'EUR',
         },
       ]);

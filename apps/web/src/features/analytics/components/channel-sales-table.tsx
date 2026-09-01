@@ -286,6 +286,13 @@ export function ChannelSalesTable({
   }
 
   const channels = query.data?.channels ?? [];
+  // ADR-064 display-currency override: NOT applied here. `revenue`/`netRevenue`
+  // have no converted counterpart from the backend, and deriving a "rate"
+  // client-side from `convertedRevenue / revenue` is UNSOUND — see
+  // `display-currency.lib.ts`'s "REJECTED APPROACH" note for the live bad
+  // number (29 000 PLN read as ~20 000 "EUR") that caught this. Net sales/AOV
+  // stay in the native reporting currency until the backend computes a real
+  // converted value for them.
   const connectionsById = new Map((connectionsQuery.data ?? []).map((c) => [c.id, c]));
   const channelRows: ChannelRow[] = channels.map((channel) => ({
     kind: 'channel',
@@ -298,7 +305,27 @@ export function ChannelSalesTable({
   }));
   const rows: ChannelRow[] = [...channelRows, ...totalRows];
 
+  // Same "in-flight recalculation" signal the KPI strip reads — see that
+  // component's doc comment. Without it, a channel's Net sales/AOV read as a
+  // bare 0.00 for the whole duration of a recalculation run instead of
+  // disclosing that a fix is already in progress.
+  const currencyRecalculating = coverage?.categories.some(
+    (row) => row.category === 'currency' && row.status === 'in-progress'
+  );
+  const RECALCULATING_NODE = (
+    <span
+      className="text-muted"
+      role="status"
+      title="A currency recalculation is running in the background for this range — figures will update once it completes. Safe to navigate away."
+    >
+      Recalculating…
+    </span>
+  );
+
   function renderAovCell(row: ChannelRow): ReactElement {
+    if (currencyRecalculating) {
+      return RECALCULATING_NODE;
+    }
     if (row.kind === 'total') {
       return <>{formatAmount(row.total.netAverageOrderValue, row.total.currency)}</>;
     }
@@ -312,6 +339,9 @@ export function ChannelSalesTable({
   }
 
   function renderNovCell(row: ChannelRow): ReactElement {
+    if (currencyRecalculating) {
+      return row.kind === 'total' ? <strong>{RECALCULATING_NODE}</strong> : RECALCULATING_NODE;
+    }
     if (row.kind === 'total') {
       return <strong>{formatAmount(row.total.netRevenue, row.total.currency)}</strong>;
     }

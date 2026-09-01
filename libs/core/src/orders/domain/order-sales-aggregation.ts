@@ -76,6 +76,8 @@ export function buildSalesAndChannelAnalytics(
   const headlineOrderCount = sum(dailyRows, (r) => r.orderCount);
   const headlineCancelledCount = sum(dailyRows, (r) => r.cancelledCount);
   const headlineCancelledValue = sum(dailyRows, (r) => r.cancelledValue);
+  const headlineCancelledUnconvertedCount = sum(dailyRows, (r) => r.cancelledUnconvertedCount);
+  const headlineCancelledUnconvertedValue = sum(dailyRows, (r) => r.cancelledUnconvertedValue);
   const headlineUnitsSold = sum([...unitsByConnection.values()], (row) => row.unitsSold);
   const headlineUnconvertedUnitsSold = sum(
     [...unitsByConnection.values()],
@@ -108,6 +110,8 @@ export function buildSalesAndChannelAnalytics(
     unconvertedUnitsSold: headlineUnconvertedUnitsSold,
     cancelledCount: headlineCancelledCount,
     cancelledValue: headlineCancelledValue,
+    cancelledUnconvertedCount: headlineCancelledUnconvertedCount,
+    cancelledUnconvertedValue: headlineCancelledUnconvertedValue,
     currency,
     unconvertedCount: headlineUnconvertedCount,
     unconvertedValue: headlineUnconvertedValue,
@@ -147,6 +151,8 @@ export function buildSalesAndChannelAnalytics(
         unconvertedUnitsSold: units.unconvertedUnitsSold,
         cancelledCount: sum(rows, (r) => r.cancelledCount),
         cancelledValue: sum(rows, (r) => r.cancelledValue),
+        cancelledUnconvertedCount: sum(rows, (r) => r.cancelledUnconvertedCount),
+        cancelledUnconvertedValue: sum(rows, (r) => r.cancelledUnconvertedValue),
         currency: resolveUniformReportingCurrency(rows),
         unconvertedCount: sum(rows, (r) => r.unconvertedCount),
         unconvertedValue: sum(rows, (r) => r.unconvertedValue),
