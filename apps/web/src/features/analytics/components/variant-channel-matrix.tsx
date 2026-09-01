@@ -172,21 +172,30 @@ export function VariantChannelMatrix({
     isNotListed: notListed.has(connectionId),
   }));
 
-  const channelTotals = channelHeadings.map(({ connectionId }) => {
-    const revenue = variants.reduce(
-      (sum, variant) => sum + (variantChannelCellFor(variant, connectionId)?.netRevenue ?? 0),
-      0
-    );
-    const units = variants.reduce(
-      (sum, variant) => sum + (variantChannelCellFor(variant, connectionId)?.units ?? 0),
-      0
-    );
-    const currency =
-      variants
-        .map((variant) => variantChannelCellFor(variant, connectionId)?.currency ?? null)
-        .find((value) => value !== null) ?? null;
-    return { connectionId, revenue, units, currency };
-  });
+  // One pass over (variant, channel) rather than three `reduce`s per channel
+  // each re-scanning every variant with a `.find()` inside (#2766 review,
+  // finding 5). `currency` follows the same first-non-null rule as before.
+  const totalsByConnection = new Map<
+    string,
+    { revenue: number; units: number; currency: string | null }
+  >();
+  for (const variant of variants) {
+    for (const channel of variant.channels) {
+      const running = totalsByConnection.get(channel.sourceConnectionId) ?? {
+        revenue: 0,
+        units: 0,
+        currency: null,
+      };
+      running.revenue += channel.netRevenue;
+      running.units += channel.units;
+      running.currency = running.currency ?? channel.currency;
+      totalsByConnection.set(channel.sourceConnectionId, running);
+    }
+  }
+  const channelTotals = channelHeadings.map(({ connectionId }) => ({
+    connectionId,
+    total: totalsByConnection.get(connectionId) ?? null,
+  }));
   const grandCurrency = variants.find((variant) => variant.currency)?.currency ?? null;
   const grandRevenue = variants.reduce((sum, variant) => sum + variant.netRevenue, 0);
   const grandUnits = variants.reduce((sum, variant) => sum + variant.units, 0);
@@ -213,7 +222,9 @@ export function VariantChannelMatrix({
                       true once. This is also the only place the mobile card
                       view can surface it and its remediation at all, since
                       cards have no channel columns (#2765 review,
-                      findings 6 + 7). */}
+                      findings 6 + 7). It is a claim about the listing NOW,
+                      which is why the cells below still report any real
+                      sales the range holds (#2766 review, finding 2). */}
                   {isNotListed ? (
                     <span className="cell-not-listed">
                       <span className="cell-not-listed__label">Not listed</span>
@@ -240,7 +251,22 @@ export function VariantChannelMatrix({
                   const channel = variantChannelCellFor(variant, connectionId);
                   return (
                     <td key={connectionId} className="data-table__cell--right">
-                      {isNotListed ? (
+                      {/* Data first, "Not listed" only as the fallback — the
+                          same order `ChannelCell` uses in the collapsed row
+                          (#2766 review, finding 2). Coverage is a statement
+                          about the listing NOW and is range-independent, so a
+                          channel delisted mid-range legitimately carries real
+                          net sales for this window; checking `isNotListed`
+                          first discarded those figures and made this panel
+                          contradict the very row it expands from. */}
+                      {channel ? (
+                        <MoneyUnitsStack
+                          netRevenue={channel.netRevenue}
+                          currency={channel.currency}
+                          units={channel.units}
+                          intFormat={intFormat}
+                        />
+                      ) : isNotListed ? (
                         // Not "no figure in range" — there is no listing to
                         // have sold anything, which the column header
                         // already states. A `0` here would read as a real
@@ -248,9 +274,9 @@ export function VariantChannelMatrix({
                         <EmptyValue label="Not listed on this channel" />
                       ) : (
                         <MoneyUnitsStack
-                          netRevenue={channel?.netRevenue ?? 0}
-                          currency={channel?.currency ?? null}
-                          units={channel?.units ?? 0}
+                          netRevenue={0}
+                          currency={null}
+                          units={0}
                           intFormat={intFormat}
                         />
                       )}
@@ -270,15 +296,28 @@ export function VariantChannelMatrix({
             {showTotalRow ? (
               <tr className="variant-matrix__total-row">
                 <td>Total</td>
-                {channelTotals.map(({ connectionId, revenue, units, currency }) => (
+                {/* Same order as the body cells, for the same reason: a
+                    not-listed column that still carries real sales in range
+                    must report them, or the Total row stops reconciling with
+                    the grand total beside it — which sums every variant
+                    unconditionally — while the footnote below claims it does
+                    (#2766 review, findings 2 + 3). */}
+                {channelTotals.map(({ connectionId, total }) => (
                   <td key={connectionId} className="data-table__cell--right">
-                    {notListed.has(connectionId) ? (
+                    {total ? (
+                      <MoneyUnitsStack
+                        netRevenue={total.revenue}
+                        currency={total.currency}
+                        units={total.units}
+                        intFormat={intFormat}
+                      />
+                    ) : notListed.has(connectionId) ? (
                       <EmptyValue label="Not listed on this channel" />
                     ) : (
                       <MoneyUnitsStack
-                        netRevenue={revenue}
-                        currency={currency}
-                        units={units}
+                        netRevenue={0}
+                        currency={null}
+                        units={0}
                         intFormat={intFormat}
                       />
                     )}

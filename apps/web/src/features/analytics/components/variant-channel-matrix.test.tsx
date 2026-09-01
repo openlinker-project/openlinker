@@ -408,4 +408,103 @@ describe('VariantChannelMatrix', () => {
     expect(screen.getAllByText('Not listed')).toHaveLength(1);
     expect(screen.getByLabelText('Not listed on this channel')).toBeInTheDocument();
   });
+
+  it('still reports real sales on a not-listed channel, and keeps the Total row reconciling', async () => {
+    // #2766 review, findings 2 + 3: coverage is a statement about the
+    // listing NOW and is range-independent, so a channel delisted mid-range
+    // legitimately carries real net sales for this window. Checking
+    // "not listed" BEFORE the data discarded those figures — the collapsed
+    // row above showed them while this panel called the cell blank — and
+    // left the Total row not reconciling against its own grand total, which
+    // sums every variant unconditionally.
+    const apiClient = createMockApiClient({
+      analytics: {
+        getTopProductVariantSales: vi.fn().mockResolvedValue(
+          variantSalesResult({
+            variants: [
+              {
+                variantId: 'v1',
+                sku: 'DL-1',
+                attributes: null,
+                totalAvailable: 4,
+                units: 7,
+                revenue: 70,
+                unconvertedRevenue: 0,
+                unconvertedOrderCount: 0,
+                currency: 'PLN',
+                unconvertedCurrency: null,
+                netRevenue: 70,
+                netExcludedRevenue: 0,
+                netExcludedLineCount: 0,
+                channels: [
+                  {
+                    sourceConnectionId: 'conn-b',
+                    units: 7,
+                    revenue: 70,
+                    unconvertedRevenue: 0,
+                    currency: 'PLN',
+                    unconvertedCurrency: null,
+                    netRevenue: 70,
+                    netExcludedRevenue: 0,
+                    netExcludedLineCount: 0,
+                  },
+                ],
+              },
+              {
+                variantId: 'v2',
+                sku: 'DL-2',
+                attributes: null,
+                totalAvailable: 4,
+                units: 3,
+                revenue: 30,
+                unconvertedRevenue: 0,
+                unconvertedOrderCount: 0,
+                currency: 'PLN',
+                unconvertedCurrency: null,
+                netRevenue: 30,
+                netExcludedRevenue: 0,
+                netExcludedLineCount: 0,
+                channels: [
+                  {
+                    sourceConnectionId: 'conn-b',
+                    units: 3,
+                    revenue: 30,
+                    unconvertedRevenue: 0,
+                    currency: 'PLN',
+                    unconvertedCurrency: null,
+                    netRevenue: 30,
+                    netExcludedRevenue: 0,
+                    netExcludedLineCount: 0,
+                  },
+                ],
+              },
+            ],
+          })
+        ),
+      },
+    });
+
+    renderWithProviders(
+      <VariantChannelMatrix
+        productId="p1"
+        productName="Widget"
+        filters={FILTERS}
+        channelColumns={['conn-b']}
+        connectionsById={CONNECTIONS_BY_ID}
+        notListedConnectionIds={['conn-b']}
+        demoMode={false}
+      />,
+      { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() }
+    );
+
+    // The coverage claim + its remediation stay, stated once in the header.
+    expect(await screen.findByText('Not listed')).toBeInTheDocument();
+    // …and the real figures are NOT discarded: no cell claims the channel
+    // is blank, and the delisted column's own total (7 + 3 = 10 units)
+    // matches the grand total beside it.
+    expect(screen.queryByLabelText('Not listed on this channel')).not.toBeInTheDocument();
+    expect(screen.getAllByText('7').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('3').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('10')).toHaveLength(2);
+  });
 });

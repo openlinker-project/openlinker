@@ -39,6 +39,51 @@ describe('OrderLineItemRepository', () => {
     jest.clearAllMocks();
   });
 
+  /**
+   * A query-builder stub carrying EVERY chained method the repository may
+   * call, so adding a clause to a read (the deterministic `ORDER BY`s of
+   * #2765/#2766, say) cannot break an unrelated spec with a
+   * `.orderBy is not a function` TypeError — which is exactly how the
+   * #2766 review found CI red. Named spies are passed in as `overrides`
+   * when a spec needs to assert on one.
+   */
+  const makeQbStub = (
+    rows: unknown[],
+    overrides: Record<string, jest.Mock> = {}
+  ): Record<string, jest.Mock> => {
+    const chained = [
+      'innerJoin',
+      'leftJoin',
+      'select',
+      'addSelect',
+      'where',
+      'andWhere',
+      'setParameter',
+      'setParameters',
+      'groupBy',
+      'addGroupBy',
+      'orderBy',
+      'addOrderBy',
+      'limit',
+      'offset',
+      'take',
+      'skip',
+    ];
+    const qb: Record<string, jest.Mock> = {};
+    for (const method of chained) {
+      qb[method] = jest.fn(() => qb);
+    }
+    qb.getRawMany = jest.fn().mockResolvedValue(rows);
+    qb.getRawOne = jest.fn().mockResolvedValue(rows[0] ?? undefined);
+    for (const [name, spy] of Object.entries(overrides)) {
+      if (chained.includes(name)) {
+        spy.mockImplementation(() => qb);
+      }
+      qb[name] = spy;
+    }
+    return qb;
+  };
+
   const createOrmEntity = (overrides: Partial<OrderLineItemOrmEntity> = {}): OrderLineItemOrmEntity => {
     const entity = new OrderLineItemOrmEntity();
     entity.id = 'line-1';
@@ -413,37 +458,40 @@ describe('OrderLineItemRepository', () => {
     };
 
     it('scopes to one product and groups by variant, across every channel', async () => {
-      const andWhere = jest.fn().mockReturnThis();
-      const setParameter = jest.fn().mockReturnThis();
-      const groupBy = jest.fn().mockReturnThis();
-      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
-        innerJoin: jest.fn().mockReturnThis(),
-        select: jest.fn().mockReturnThis(),
-        addSelect: jest.fn().mockReturnThis(),
-        setParameter,
-        andWhere,
-        groupBy,
-        getRawMany: jest.fn().mockResolvedValue([
-          {
-            variant_id: 'v1',
-            units: '10',
-            revenue: '123.45',
-            unconverted_revenue: '5',
-            unconverted_order_count: '1',
-            reporting_currency: 'EUR',
-            unconverted_currency: 'PLN',
-            net_revenue: '100',
-            net_excluded_revenue: '23.45',
-            net_excluded_line_count: '2',
-          },
-        ]),
-      });
+      const andWhere = jest.fn();
+      const setParameter = jest.fn();
+      const groupBy = jest.fn();
+      const orderBy = jest.fn();
+      const addOrderBy = jest.fn();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(
+        makeQbStub(
+          [
+            {
+              variant_id: 'v1',
+              units: '10',
+              revenue: '123.45',
+              unconverted_revenue: '5',
+              unconverted_order_count: '1',
+              reporting_currency: 'EUR',
+              unconverted_currency: 'PLN',
+              net_revenue: '100',
+              net_excluded_revenue: '23.45',
+              net_excluded_line_count: '2',
+            },
+          ],
+          { andWhere, setParameter, groupBy, orderBy, addOrderBy }
+        )
+      );
 
       const result = await repository.getVariantRanking('p1', baseFilters, 'EUR');
 
       expect(setParameter).toHaveBeenCalledWith('reportingCurrency', 'EUR');
       expect(andWhere).toHaveBeenCalledWith('li."productId" = :productId', { productId: 'p1' });
       expect(groupBy).toHaveBeenCalledWith('li.variantId');
+      // Deterministic ranking order, Unassigned pinned to the edge (#2765
+      // review, finding 2).
+      expect(orderBy).toHaveBeenCalledWith('revenue', 'DESC');
+      expect(addOrderBy).toHaveBeenCalledWith('variant_id', 'ASC', 'NULLS LAST');
       expect(result).toEqual([
         {
           variantId: 'v1',
@@ -461,14 +509,8 @@ describe('OrderLineItemRepository', () => {
     });
 
     it('reports a null variant_id row as its own row rather than coercing it', async () => {
-      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
-        innerJoin: jest.fn().mockReturnThis(),
-        select: jest.fn().mockReturnThis(),
-        addSelect: jest.fn().mockReturnThis(),
-        setParameter: jest.fn().mockReturnThis(),
-        andWhere: jest.fn().mockReturnThis(),
-        groupBy: jest.fn().mockReturnThis(),
-        getRawMany: jest.fn().mockResolvedValue([
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(
+        makeQbStub([
           {
             variant_id: null,
             units: '1',
@@ -481,8 +523,8 @@ describe('OrderLineItemRepository', () => {
             net_excluded_revenue: '0',
             net_excluded_line_count: '0',
           },
-        ]),
-      });
+        ])
+      );
 
       const result = await repository.getVariantRanking('p1', baseFilters, 'EUR');
 
@@ -497,33 +539,31 @@ describe('OrderLineItemRepository', () => {
     };
 
     it('scopes to one product and groups by (variant, connection)', async () => {
-      const andWhere = jest.fn().mockReturnThis();
-      const setParameter = jest.fn().mockReturnThis();
-      const groupBy = jest.fn().mockReturnThis();
-      const addGroupBy = jest.fn().mockReturnThis();
-      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
-        innerJoin: jest.fn().mockReturnThis(),
-        select: jest.fn().mockReturnThis(),
-        addSelect: jest.fn().mockReturnThis(),
-        setParameter,
-        andWhere,
-        groupBy,
-        addGroupBy,
-        getRawMany: jest.fn().mockResolvedValue([
-          {
-            variant_id: 'v1',
-            source_connection_id: 'conn-a',
-            units: '4',
-            revenue: '40',
-            unconverted_revenue: '0',
-            reporting_currency: 'EUR',
-            unconverted_currency: null,
-            net_revenue: '40',
-            net_excluded_revenue: '0',
-            net_excluded_line_count: '0',
-          },
-        ]),
-      });
+      const andWhere = jest.fn();
+      const setParameter = jest.fn();
+      const groupBy = jest.fn();
+      const addGroupBy = jest.fn();
+      const orderBy = jest.fn();
+      const addOrderBy = jest.fn();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(
+        makeQbStub(
+          [
+            {
+              variant_id: 'v1',
+              source_connection_id: 'conn-a',
+              units: '4',
+              revenue: '40',
+              unconverted_revenue: '0',
+              reporting_currency: 'EUR',
+              unconverted_currency: null,
+              net_revenue: '40',
+              net_excluded_revenue: '0',
+              net_excluded_line_count: '0',
+            },
+          ],
+          { andWhere, setParameter, groupBy, addGroupBy, orderBy, addOrderBy }
+        )
+      );
 
       const result = await repository.getVariantChannelBreakdown('p1', baseFilters, 'EUR');
 
@@ -531,6 +571,9 @@ describe('OrderLineItemRepository', () => {
       expect(andWhere).toHaveBeenCalledWith('li."productId" = :productId', { productId: 'p1' });
       expect(groupBy).toHaveBeenCalledWith('li.variantId');
       expect(addGroupBy).toHaveBeenCalledWith('li.sourceConnectionId');
+      // Deterministic breakdown order (#2766 review, finding 6).
+      expect(orderBy).toHaveBeenCalledWith('variant_id', 'ASC', 'NULLS LAST');
+      expect(addOrderBy).toHaveBeenCalledWith('source_connection_id', 'ASC');
       expect(result).toEqual([
         {
           variantId: 'v1',

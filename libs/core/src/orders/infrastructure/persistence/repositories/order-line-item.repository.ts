@@ -342,6 +342,15 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
    * product. No pagination/sort: a product's variant count is small and
    * catalog-bounded, unlike the full product catalog {@link
    * getTopProductRanking} pages over.
+   *
+   * No new index is needed for this read or for {@link
+   * getVariantChannelBreakdown} (#2766 review, finding 7). Both filter on
+   * `li."productId"` plus the `placedAt` range, which is exactly the
+   * leading-column shape the pre-existing `IDX(productId, placedAt)` on
+   * `order_line_items` serves; `variantId` / `sourceConnectionId` appear
+   * only as GROUP BY keys, never in a predicate, so a `(productId,
+   * variantId)` index would add write cost and change no plan. Hence no
+   * migration ships with this change.
    */
   async getVariantRanking(
     productId: string,
@@ -490,7 +499,14 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       .setParameter('reportingCurrency', reportingCurrency)
       .andWhere('li."productId" = :productId', { productId })
       .groupBy('li.variantId')
-      .addGroupBy('li.sourceConnectionId');
+      .addGroupBy('li.sourceConnectionId')
+      // The matrix indexes these rows by connection id, so their order does
+      // not decide what it renders today — but an unordered aggregate read is
+      // one refactor away from mattering, and determinism costs nothing here.
+      // Same reasoning (and same key order) as `getVariantRanking`'s own
+      // ordering above (#2766 review, finding 6).
+      .orderBy('variant_id', 'ASC', 'NULLS LAST')
+      .addOrderBy('source_connection_id', 'ASC');
     this.applyTopProductsScope(qb, filters);
 
     const rows = await qb.getRawMany<{
