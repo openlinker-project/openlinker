@@ -443,4 +443,32 @@ describe('ProductSalesTable', () => {
 
     expect(await screen.findByLabelText('No orders in this range')).toBeInTheDocument();
   });
+
+  it('shows "Recalculating…" for Net sales instead of a bare 0 while a currency remediation run is in progress', async () => {
+    const apiClient = createMockApiClient({
+      analytics: {
+        getTopProducts: vi.fn().mockResolvedValue(result([row({ productId: 'p1', netRevenue: 0 })])),
+      },
+      connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
+    });
+
+    renderWithProviders(
+      <ProductSalesTable
+        filters={FILTERS}
+        coverage={{
+          categories: [
+            { category: 'currency', status: 'in-progress', affectedCount: 25, sampleOrderIds: [], activeRunId: 'ol_remrun_1' },
+            { category: 'tax-a', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+            { category: 'tax-b', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+            { category: 'tax-c', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+            { category: 'product-matching', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+          ],
+        }}
+      />,
+      { apiClient }
+    );
+
+    expect(await screen.findByText('Recalculating…')).toBeInTheDocument();
+    expect(screen.queryByText(/PLN 0\.00/)).not.toBeInTheDocument();
+  });
 });
