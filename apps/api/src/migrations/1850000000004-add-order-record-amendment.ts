@@ -29,10 +29,19 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddOrderRecordAmendment1849000000007 implements MigrationInterface {
-  name = 'AddOrderRecordAmendment1849000000007';
+export class AddOrderRecordAmendment1850000000004 implements MigrationInterface {
+  name = 'AddOrderRecordAmendment1850000000004';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    // Self-heal. This migration has been re-timestamped (1845000000000 -> 1849000000007 ->
+    // 1850000000004), so an environment that already ran an earlier revision holds a
+    // `migrations` row under a stale class name. Dropping those rows lets
+    // TypeORM re-record it under the current name; the DDL below is
+    // IF [NOT] EXISTS-guarded, so the re-run is a no-op. On a fresh database
+    // the DELETE matches nothing.
+    await queryRunner.query(
+      `DELETE FROM "migrations" WHERE "name" IN ('AddOrderRecordAmendment1849000000007', 'AddOrderRecordAmendment1845000000000')`
+    );
     await queryRunner.query(
       `ALTER TABLE "order_records" ADD COLUMN IF NOT EXISTS "lastAmendedAt" TIMESTAMP WITH TIME ZONE`
     );

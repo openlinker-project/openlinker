@@ -30,10 +30,19 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddOrderRecordPacked1849000000004 implements MigrationInterface {
-  name = 'AddOrderRecordPacked1849000000004';
+export class AddOrderRecordPacked1850000000001 implements MigrationInterface {
+  name = 'AddOrderRecordPacked1850000000001';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    // Self-heal. This migration has been re-timestamped twice (1842000000000 →
+    // 1849000000004 → 1850000000001), so an environment that already ran an
+    // earlier revision holds a `migrations` row under a stale class name.
+    // Dropping those rows lets TypeORM re-record it under the current name; the
+    // DDL below is IF [NOT] EXISTS-guarded, so the re-run is a no-op. On a
+    // fresh database the DELETE matches nothing.
+    await queryRunner.query(
+      `DELETE FROM "migrations" WHERE "name" IN ('AddOrderRecordPacked1849000000004', 'AddOrderRecordPacked1842000000000')`
+    );
     await queryRunner.query(
       `ALTER TABLE "order_records" ADD COLUMN IF NOT EXISTS "packedAt" TIMESTAMP WITH TIME ZONE`
     );
@@ -47,9 +56,7 @@ export class AddOrderRecordPacked1849000000004 implements MigrationInterface {
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`DROP INDEX IF EXISTS "IDX_order_records_packedAt"`);
-    await queryRunner.query(
-      `ALTER TABLE "order_records" DROP COLUMN IF EXISTS "packedByUserId"`
-    );
+    await queryRunner.query(`ALTER TABLE "order_records" DROP COLUMN IF EXISTS "packedByUserId"`);
     await queryRunner.query(`ALTER TABLE "order_records" DROP COLUMN IF EXISTS "packedAt"`);
   }
 }

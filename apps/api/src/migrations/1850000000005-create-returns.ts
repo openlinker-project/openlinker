@@ -46,10 +46,19 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateReturns1849000000008 implements MigrationInterface {
-  name = 'CreateReturns1849000000008';
+export class CreateReturns1850000000005 implements MigrationInterface {
+  name = 'CreateReturns1850000000005';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    // Self-heal. This migration has been re-timestamped (1846000000000 -> 1849000000008 ->
+    // 1850000000005), so an environment that already ran an earlier revision holds a
+    // `migrations` row under a stale class name. Dropping those rows lets
+    // TypeORM re-record it under the current name; the DDL below is
+    // IF [NOT] EXISTS-guarded, so the re-run is a no-op. On a fresh database
+    // the DELETE matches nothing.
+    await queryRunner.query(
+      `DELETE FROM "migrations" WHERE "name" IN ('CreateReturns1849000000008', 'CreateReturns1846000000000')`
+    );
     // `return_lines.id` defaults to uuid_generate_v4() — same guard the
     // refund_records migration uses (1833000000002:25).
     await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`);
@@ -111,26 +120,26 @@ export class CreateReturns1849000000008 implements MigrationInterface {
     `);
 
     await queryRunner.query(`
-      CREATE UNIQUE INDEX "UQ_returns_source_external"
+      CREATE UNIQUE INDEX IF NOT EXISTS "UQ_returns_source_external"
         ON "returns" ("sourceConnectionId", "externalReturnId")
         WHERE "externalReturnId" IS NOT NULL
     `);
 
     await queryRunner.query(`
-      CREATE INDEX "IDX_returns_internal_order_id"
+      CREATE INDEX IF NOT EXISTS "IDX_returns_internal_order_id"
         ON "returns" ("internalOrderId")
     `);
 
     // The operator's orphan bucket, as an index rather than a scan — this is
     // `ReturnRepositoryPort.listOrphans`' exact query.
     await queryRunner.query(`
-      CREATE INDEX "IDX_returns_orphans"
+      CREATE INDEX IF NOT EXISTS "IDX_returns_orphans"
         ON "returns" ("createdAt" DESC)
         WHERE "internalOrderId" IS NULL
     `);
 
     await queryRunner.query(`
-      CREATE INDEX "IDX_returns_connection_created"
+      CREATE INDEX IF NOT EXISTS "IDX_returns_connection_created"
         ON "returns" ("sourceConnectionId", "createdAt")
     `);
 
@@ -139,12 +148,12 @@ export class CreateReturns1849000000008 implements MigrationInterface {
     // lookup and the FK's referential check, so no separate `returnId` index is
     // created — a second one would be pure write amplification.
     await queryRunner.query(`
-      CREATE UNIQUE INDEX "UQ_return_lines_return_index"
+      CREATE UNIQUE INDEX IF NOT EXISTS "UQ_return_lines_return_index"
         ON "return_lines" ("returnId", "lineIndex")
     `);
 
     await queryRunner.query(`
-      CREATE INDEX "IDX_return_lines_resolved_order_line"
+      CREATE INDEX IF NOT EXISTS "IDX_return_lines_resolved_order_line"
         ON "return_lines" ("resolvedOrderLineId")
         WHERE "resolvedOrderLineId" IS NOT NULL
     `);
@@ -156,7 +165,7 @@ export class CreateReturns1849000000008 implements MigrationInterface {
     `);
 
     await queryRunner.query(`
-      CREATE INDEX "IDX_refund_records_return_id"
+      CREATE INDEX IF NOT EXISTS "IDX_refund_records_return_id"
         ON "refund_records" ("returnId")
         WHERE "returnId" IS NOT NULL
     `);

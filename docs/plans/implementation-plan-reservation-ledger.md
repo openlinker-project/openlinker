@@ -90,7 +90,7 @@ infrastructure (ORM entity, repository) + module wiring. Migration in `apps/api/
 | Domain port | `domain/ports/reservation-repository.port.ts` |
 | Domain exceptions | `domain/exceptions/insufficient-availability.error.ts`, `reservation-position-unavailable.error.ts`, `reservation-not-held.error.ts`, `reservation-ledger-constraint.error.ts` |
 | Infrastructure | `infrastructure/persistence/entities/reservation.orm-entity.ts`, `.../repositories/reservation.repository.ts` |
-| Migration | `apps/api/src/migrations/1850000000000-create-reservations.ts` |
+| Migration | `apps/api/src/migrations/1850000000009-create-reservations.ts` |
 
 **CORE, not Integration**: the ledger is OpenLinker's OWN promise-tracking, defined precisely because
 no destination owns it. Nothing here is platform-shaped and no adapter is touched.
@@ -330,7 +330,7 @@ Every part of that is deliberate and is the contract the seven successor issues 
      named error (constraint-name-keyed) and rethrows already-named domain errors untouched. This is
      the AC "no TypeORM error escapes the port".
 
-5. **Migration `1850000000000-create-reservations.ts`** — creates the table, the partial unique index,
+5. **Migration `1850000000009-create-reservations.ts`** — creates the table, the partial unique index,
    the three supporting indexes, the FK, the quantity check; adds `olReservedQuantity` + its CHECK.
    `down()` drops both. Header states the synthetic-prefix rule and why no
    `olReserved <= available` CHECK exists.

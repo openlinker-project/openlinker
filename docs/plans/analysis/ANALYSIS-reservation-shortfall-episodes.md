@@ -10,7 +10,7 @@
 
 | Plan artifact | Verdict | Evidence |
 |---|---|---|
-| `reservation_shortfall_episodes` table | **NEW** | no `*shortfall*` table anywhere; `apps/api/src/migrations/1850000000000-create-reservations.ts:19-23` documents the deliberately-absent `olReserved <= available` CHECK and names `W2-12` as the follow-through |
+| `reservation_shortfall_episodes` table | **NEW** | no `*shortfall*` table anywhere; `apps/api/src/migrations/1850000000009-create-reservations.ts:19-23` documents the deliberately-absent `olReserved <= available` CHECK and names `W2-12` as the follow-through |
 | `ReservationShortfallEpisode` entity | **NEW** | no such class |
 | `ReservationShortfallRepositoryPort` / repository | **NEW** | — |
 | `IReservationShortfallService` | **NEW** | — |
@@ -19,7 +19,7 @@
 | Scan-offset cursor idiom | **REUSE** | `apps/worker/src/sync/handlers/returns-orphan-reconcile.handler.ts` — `CONNECTION_CURSOR_REPOSITORY_TOKEN` from `@openlinker/core/sync`, `get`/`set`, set **only after success** inside the try. `reservation-consume.handler.ts` is NOT the model (it deliberately has no cursor) |
 | Budget + lock primitives | **REUSE** | `resolveSweepBudget` / `resolveSweepLockTtlMs` from `apps/worker/src/sync/bounded-sweep`, `SYNC_LOCK_TOKEN` |
 | System scope id | **REUSE-BY-DUPLICATION** | there is no shared export; the nil-UUID is a documented local literal in 5 places (`scheduler.service.ts:88` explains why, ADR-051 role boundary). Follow the convention, do not invent an export |
-| Partial-unique index idiom | **REUSE** | `reservation.orm-entity.ts:52-73` + `1850000000000-create-reservations.ts:96-100`; every constraint declared class-level under the SAME name the migration uses |
+| Partial-unique index idiom | **REUSE** | `reservation.orm-entity.ts:52-73` + `1850000000009-create-reservations.ts:96-100`; every constraint declared class-level under the SAME name the migration uses |
 | **`stockAtRisk` field name** | **COLLISION → renamed** | see Critical-1 |
 
 ## Backward-compatibility findings

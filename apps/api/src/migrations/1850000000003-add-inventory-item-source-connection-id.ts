@@ -30,7 +30,7 @@
  * `text`, not `uuid`, and **no FK to `connections`**. Step (ii) writes the
  * `'legacy'` sentinel (DESIGN §4.1), which a `uuid` column could not represent
  * at all. The missing FK mirrors `packedByUserId` in
- * `1849000000004-add-order-record-packed.ts`: provenance is an audit fact, so
+ * `1850000000001-add-order-record-packed.ts`: provenance is an audit fact, so
  * it must survive deletion of the connection it names — the alternatives are
  * blocking the delete or silently erasing who synced the position.
  *
@@ -54,10 +54,19 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddInventoryItemSourceConnectionId1849000000006 implements MigrationInterface {
-  name = 'AddInventoryItemSourceConnectionId1849000000006';
+export class AddInventoryItemSourceConnectionId1850000000003 implements MigrationInterface {
+  name = 'AddInventoryItemSourceConnectionId1850000000003';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    // Self-heal. This migration has been re-timestamped (1844000000000 -> 1849000000006 ->
+    // 1850000000003), so an environment that already ran an earlier revision holds a
+    // `migrations` row under a stale class name. Dropping those rows lets
+    // TypeORM re-record it under the current name; the DDL below is
+    // IF [NOT] EXISTS-guarded, so the re-run is a no-op. On a fresh database
+    // the DELETE matches nothing.
+    await queryRunner.query(
+      `DELETE FROM "migrations" WHERE "name" IN ('AddInventoryItemSourceConnectionId1849000000006', 'AddInventoryItemSourceConnectionId1844000000000')`
+    );
     await queryRunner.query(
       `ALTER TABLE "inventory_items" ADD COLUMN IF NOT EXISTS "sourceConnectionId" text`
     );
