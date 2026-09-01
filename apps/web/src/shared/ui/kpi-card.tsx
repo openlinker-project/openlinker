@@ -6,7 +6,7 @@
  * the Button / Link composition story for "actionable" KPIs — the outer
  * element is a native `<a>` when `href` is provided, otherwise a `<div>`.
  *
- * Intended to replace `MetricCard` on the Dashboard in Phase 3. The
+ * Intended to replace `MetricCard` on the Insights page in Phase 3. The
  * legacy `MetricCard` stays in place for spots that don't need severity
  * tinting or a sparkline.
  */

@@ -50,7 +50,7 @@ describe('App', () => {
     const { view } = renderApp(['/']);
 
     expect(
-      await screen.findByRole('heading', { name: 'Operations overview' }, { timeout: 10000 }),
+      await screen.findByRole('heading', { name: 'Analytics' }, { timeout: 10000 }),
     ).toBeInTheDocument();
     const primaryNavigation = within(view.container).getByRole('navigation', {
       name: 'Primary',
@@ -73,6 +73,35 @@ describe('App', () => {
       'href',
       '/orders',
     );
+  });
+
+  it('renders the insights page at /insights (#2740)', async () => {
+    const { view } = renderApp(['/insights']);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Operations overview' }, { timeout: 10000 }),
+    ).toBeInTheDocument();
+    const primaryNavigation = within(view.container).getByRole('navigation', {
+      name: 'Primary',
+    });
+    expect(within(primaryNavigation).getByText('Insights').closest('a')).toHaveAttribute(
+      'href',
+      '/insights',
+    );
+  });
+
+  it('redirects the legacy /analytics bookmark to / (#2740)', async () => {
+    const { router } = renderApp(['/analytics']);
+
+    await waitFor(
+      () => {
+        expect(router.state.location.pathname).toBe('/');
+      },
+      { timeout: 5000 },
+    );
+    expect(
+      await screen.findByRole('heading', { name: 'Analytics' }, { timeout: 10000 }),
+    ).toBeInTheDocument();
   });
 
   it('redirects legacy /settings/prompt-templates to /ai/prompt-templates (#377)', async () => {

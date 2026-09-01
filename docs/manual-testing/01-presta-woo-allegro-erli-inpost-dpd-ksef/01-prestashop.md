@@ -17,10 +17,10 @@ cloudflared tunnel (public, so Erli can fetch images).
 
 ![Test connection success, "Connection OK (20ms)"](screenshots/prestashop/02-test-connection-success.png)
 
-- [x] Go to the **Overview**/dashboard page (http://localhost:8090) and confirm the "System
+- [x] Go to the **Insights** page (http://localhost:8090/insights) and confirm the "System
       health" widget shows PrestaShop as **OK** (this was the #1415 bug — should be fixed now)
 
-![Dashboard System health widget, PrestaShop row = OK](screenshots/prestashop/03-dashboard-health-ok.png)
+![Insights System health widget, PrestaShop row = OK](screenshots/prestashop/03-dashboard-health-ok.png)
 
 ## Part B — Seeded product data
 
