@@ -86,15 +86,20 @@ function stripComments(source) {
 
 /** Extract the string literals of `export const <name> = [...] as const;`. */
 export function parseReasonValues(content, name) {
+  // Strip BEFORE locating the brackets, not after. A `]` inside one of the
+  // per-value docblocks (an `[ADR-xxx]` reference is the likely one) would
+  // otherwise close the array early and silently shorten the parsed list.
+  const stripped = stripComments(content);
+
   const declRe = new RegExp(`export\\s+const\\s+${name}\\s*=\\s*\\[`);
-  const declMatch = declRe.exec(content);
+  const declMatch = declRe.exec(stripped);
   if (!declMatch) return null;
 
   const openBracket = declMatch.index + declMatch[0].length - 1;
-  const closeBracket = content.indexOf(']', openBracket);
+  const closeBracket = stripped.indexOf(']', openBracket);
   if (closeBracket === -1) return null;
 
-  const body = stripComments(content.slice(openBracket + 1, closeBracket));
+  const body = stripped.slice(openBracket + 1, closeBracket);
 
   const values = [];
   const literalRe = /'([^']*)'|"([^"]*)"/g;
@@ -133,6 +138,11 @@ function selfCheck() {
     parseReasonValues(`export const X = ['a', /* 'x' */ 'b'] as const;`, 'X'), ['a', 'b']);
   expect('ignores a line-commented entry',
     parseReasonValues(`export const X = [\n 'a',\n // 'x',\n 'b',\n] as const;`, 'X'), ['a', 'b']);
+  // A `]` inside a docblock must not close the array early — comments are
+  // stripped before the brackets are located, so this parses both values.
+  expect('survives a bracket inside a docblock',
+    parseReasonValues(`export const X = ['a', /* see [ADR-041] */ 'b'] as const;`, 'X'),
+    ['a', 'b']);
   expect('reports an absent declaration', parseReasonValues('export const Other = [];', 'X'), null);
   expect('agrees on identical lists', diffVocabularies(['a', 'b'], ['a', 'b']), []);
   expect('detects a missing value', diffVocabularies(['a', 'b'], ['a']), [

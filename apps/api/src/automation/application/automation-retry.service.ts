@@ -50,6 +50,11 @@
  * `dispatch-shipment` has no documented equivalent, so the day that executor
  * lands, a whole-rule retry can buy a second label.
  *
+ * **5. The new run links back.** `retryOfRunId` is what lets the derived AF-X
+ * state clear on a successful retry WITHOUT clearing on a later unrelated firing
+ * of the same rule. A derived state is only self-clearing if the derivation can
+ * see the thing that clears it.
+ *
  * **6. The chain TERMINATES, and both of its ends are guarded here (#2666).**
  * A retry that failed used to stay retry-eligible for ever, so one underlying
  * failure was re-offered indefinitely. Two refusals close that: `retry-exhausted`
@@ -59,11 +64,6 @@
  * budget restarts at 1, so the budget would bound each branch while the number
  * of branches stayed unbounded. Neither guard costs a read: both facts ride on
  * the projection `getRunById` already returns.
- *
- * **5. The new run links back.** `retryOfRunId` is what lets the derived AF-X
- * state clear on a successful retry WITHOUT clearing on a later unrelated firing
- * of the same rule. A derived state is only self-clearing if the derivation can
- * see the thing that clears it.
  *
  * @module apps/api/src/automation/application
  * @implements {IAutomationRetryService}

@@ -122,6 +122,22 @@ describe('AutomationActivityTable', () => {
     expect(screen.getByText('Skipped')).toBeInTheDocument();
   });
 
+  it('should say WHY a failed row carries no attention badge (#2666)', () => {
+    // Before #2666, `failed` + no badge could only mean a retry SUCCEEDED. It
+    // now also means a later retry exists that may itself have failed — and the
+    // actions cell disappears with the badge. Without this note the row shows a
+    // red pill, no badge, no controls and no explanation.
+    render([run({ outcome: 'failed', needsAttention: false, supersededByRetry: true })]);
+    expect(screen.getByText('A newer attempt replaced this one')).toBeInTheDocument();
+  });
+
+  it('should NOT claim a superseding attempt on a row that has none (#2666)', () => {
+    // The negative half: without it the assertion above passes against a
+    // component that renders the note unconditionally.
+    render([run({ outcome: 'failed', needsAttention: true, supersededByRetry: false })]);
+    expect(screen.queryByText('A newer attempt replaced this one')).not.toBeInTheDocument();
+  });
+
   it('should NOT render "Nothing to do" as a failure', () => {
     // A rule that fired and found the work already done is not an error, and
     // must not feed any attention count.
