@@ -12,6 +12,37 @@ From `0.2.0` onward this file is generated automatically by
 Commits. The `0.1.0` entry below is the hand-curated baseline of what shipped
 before automated releases began.
 
+## [0.9.0](https://github.com/openlinker-project/openlinker/compare/v0.8.0...v0.9.0) (2026-08-31)
+
+
+### ⚠ BREAKING CHANGES
+
+* **orders,fiscalization,sales-documents,web:** POST /fiscal-registrations now answers 202 Accepted with AcceptedFiscalRegistrationResponseDto instead of 200 with FiscalRegistrationResponseDto. The endpoint's own Swagger description previously told callers to read `status`/`failureMode` from the response body to learn the registration outcome - those fields no longer exist on the response. Callers must instead poll the registration-status read (GET .../registration-status) to learn the outcome.
+
+### Features
+
+* **orders,fiscalization,sales-documents,web:** sales-document read model, fiscal lifecycle honesty, async registration, routing config, FE primitives ([#2710](https://github.com/openlinker-project/openlinker/issues/2710)) ([6e9dc8e](https://github.com/openlinker-project/openlinker/commit/6e9dc8e387fe568e9a4bdca8b450d378528b8ecb))
+* **prestashop:** cut catalogue sync 137x (7.96 to 0.058 requests per SKU), closing [#2489](https://github.com/openlinker-project/openlinker/issues/2489) with adapter work and measurement, not a module (epic [#2590](https://github.com/openlinker-project/openlinker/issues/2590)) ([#2627](https://github.com/openlinker-project/openlinker/issues/2627)) ([e568e91](https://github.com/openlinker-project/openlinker/commit/e568e91a56017c12251bcb6206006bac01e28c44))
+  * measured 7.96 to 0.058 requests per SKU on a 100,000-product catalogue (~137x reduction)
+  * fan the catalogue sweep out per page ([#2593](https://github.com/openlinker-project/openlinker/issues/2593)) and batch the master stock sweep ([#2655](https://github.com/openlinker-project/openlinker/issues/2655)), instead of one request per product
+  * page every list read instead of silently truncating at 100, and stop probing every product for pack availability ([#2598](https://github.com/openlinker-project/openlinker/issues/2598))
+  * fix order-feed cursor loss ([#2605](https://github.com/openlinker-project/openlinker/issues/2605)), order-status mapping ([#2607](https://github.com/openlinker-project/openlinker/issues/2607)), and line pricing on cash-on-delivery orders ([#2597](https://github.com/openlinker-project/openlinker/issues/2597), [#2600](https://github.com/openlinker-project/openlinker/issues/2600))
+  * harden the retry/outbox layer: split 429 from 503 and reset backoff with jitter ([#2614](https://github.com/openlinker-project/openlinker/issues/2614)), bounded outbox retention ([#2603](https://github.com/openlinker-project/openlinker/issues/2603), [#2604](https://github.com/openlinker-project/openlinker/issues/2604))
+  * emit a product-deletion webhook so listings pause immediately instead of on the next sweep ([#2654](https://github.com/openlinker-project/openlinker/issues/2654))
+  * add operator controls for sync pacing ([#2660](https://github.com/openlinker-project/openlinker/issues/2660)), sweep budgets ([#2659](https://github.com/openlinker-project/openlinker/issues/2659)), and per-connection backlog status
+* **products:** flag deleted-at-source products on the /products list ([#2451](https://github.com/openlinker-project/openlinker/issues/2451)) ([022703a](https://github.com/openlinker-project/openlinker/commit/022703a7562d129aa32b36ab185f1c3dc8774f75))
+* **web/nav:** put Analytics at the top of the sidebar ([#2495](https://github.com/openlinker-project/openlinker/issues/2495)) ([d3ab5c9](https://github.com/openlinker-project/openlinker/commit/d3ab5c94a484263544ceddc43f43aaffc8f65fe2))
+
+
+### Bug Fixes
+
+* **products:** surface isStale/staleAt on variant response DTOs ([#2449](https://github.com/openlinker-project/openlinker/issues/2449)) ([9b56d7a](https://github.com/openlinker-project/openlinker/commit/9b56d7a708d437da06dcf72ea5dad327f41d16fb)), closes [#2446](https://github.com/openlinker-project/openlinker/issues/2446)
+* **shipments:** distinguish label-download failure classes instead of one generic toast ([#2700](https://github.com/openlinker-project/openlinker/issues/2700)) ([abe0f94](https://github.com/openlinker-project/openlinker/commit/abe0f9445b7e07579a20e8603c62bd71b5df2796))
+* **sync:** make RedisSyncLockService.acquire self-recognizing on NX failure ([#2717](https://github.com/openlinker-project/openlinker/issues/2717)) ([bfc204d](https://github.com/openlinker-project/openlinker/commit/bfc204d63e60be8561946375c6557a72d52d122b))
+* **web,analytics:** move Data coverage and Needs attention sections to the bottom of /analytics ([#2490](https://github.com/openlinker-project/openlinker/issues/2490)) ([57e174e](https://github.com/openlinker-project/openlinker/commit/57e174edcdba1165374b49c3a3882dd18c9faeb4))
+* **web,listings:** tighten dead gap under lifecycle tab bar ([#2450](https://github.com/openlinker-project/openlinker/issues/2450)) ([014395f](https://github.com/openlinker-project/openlinker/commit/014395f5f40758e119b591f9e94a983b95d5722d))
+* **web/orders:** widen bulk-dispatch dims/weight fields, wrap the id in chunks ([#2699](https://github.com/openlinker-project/openlinker/issues/2699)) ([7213acd](https://github.com/openlinker-project/openlinker/commit/7213acdaf820139c44c92636be27cbc17b534e40))
+
 ## [0.8.0](https://github.com/openlinker-project/openlinker/compare/v0.7.0...v0.8.0) (2026-08-24)
 
 

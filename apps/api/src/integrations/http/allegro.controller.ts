@@ -350,32 +350,35 @@ export class AllegroController {
 
   @ApiBearerAuth()
   @Get('connections/:id/commands/:commandId')
-  @ApiOperation({ summary: 'Get quantity command by commandId for a connection' })
+  @ApiOperation({
+    summary:
+      'Get quantity command rows by commandId for a connection — one row per offer named ' +
+      'in the command (a batched command, #2622, covers several offers under one commandId)',
+  })
   @ApiParam({ name: 'id', description: 'Connection ID (UUID)' })
   @ApiParam({ name: 'commandId', description: 'Allegro command ID' })
   @ApiResponse({
     status: 200,
-    description: 'Command details',
-    type: AllegroQuantityCommandResponseDto,
+    description: 'Command rows for this commandId, scoped to the connection',
+    type: [AllegroQuantityCommandResponseDto],
   })
   @ApiResponse({ status: 404, description: 'Command not found' })
   async getCommand(
     @Param('id') connectionId: string,
     @Param('commandId') commandId: string
-  ): Promise<AllegroQuantityCommandResponseDto> {
+  ): Promise<AllegroQuantityCommandResponseDto[]> {
     this.logger.log(`Getting command: ${commandId} for connection: ${connectionId}`);
 
-    const command = await this.commandRepository.findByCommandId(commandId);
-    if (!command) {
+    const commands = await this.commandRepository.findByCommandId(commandId);
+
+    // Validate that every row belongs to the specified connection (all rows
+    // for one commandId always share a connection, so this is all-or-nothing).
+    const scoped = commands.filter((command) => command.connectionId === connectionId);
+    if (scoped.length === 0) {
       throw new NotFoundException(`Command not found: ${commandId}`);
     }
 
-    // Validate that command belongs to the specified connection
-    if (command.connectionId !== connectionId) {
-      throw new NotFoundException(`Command not found: ${commandId}`);
-    }
-
-    return AllegroQuantityCommandResponseDto.fromDomain(command);
+    return scoped.map((command) => AllegroQuantityCommandResponseDto.fromDomain(command));
   }
 
   /**

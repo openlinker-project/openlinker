@@ -50,6 +50,17 @@ Three constraints shaped the answer. There is no per-object serialisation primit
 
 *Reversal gate (prose-only):* a second caller wanting this ordering with a token that is **not** a single database stamp. That is the point at which the comparison needs a real logical clock (a per-target sequence advanced in the same transaction as the fact) rather than a timestamp, and this ADR is superseded rather than widened.
 
+## Amendment (#2621): "successful write" narrowed to "successful submission"
+
+#2621 made `AllegroOfferManagerAdapter.updateOfferQuantity` / `updateOfferQuantitiesBatch` return as soon as Allegro **accepts** the write (`QUEUED`/`ACCEPTED`), instead of blocking until the command reaches a terminal status. The mark-advance rule in this ADR (§ Decision, point 1: *"the mark advances only after a successful platform write"*) predates that change and must be read narrower than its original wording for Allegro: **"successful write" now means "successfully submitted," not "successfully applied."**
+
+Two consequences the original decision did not anticipate:
+
+- **A submission that is later rejected asynchronously has already advanced the mark.** A subsequent older `observedAt` is still correctly refused (the guard's core property — refusing an older write is never wrong once a newer one is live or in flight), but the channel can now be stale with **no automatic re-drive**. Nothing consumes the reconcile pass's `'failed'` outcome (`OfferQuantityAckReconcileService` / `reconcilePendingQuantityAcks`) to re-submit the write — it only persists the terminal status on `allegro_quantity_commands` for operator visibility. Recovery is whatever next discovers the drift: the periodic `master.inventory.syncAll` sweep or `inventory.propagateToMarketplaces` re-reading the master and re-emitting a fresh (and therefore fresher-`observedAt`) write. There is no dedicated re-drive path for a specifically-rejected async command.
+- **The lock in this ADR still only serialises *submission* order, not *application* order.** It never guaranteed platform-side application order to begin with, but under the pre-#2621 synchronous adapter, submission order and application order were the same thing (the adapter blocked until terminal). Post-#2621 they can diverge: Allegro is free to apply two accepted commands for the same offer in an order other than the one OL submitted them in. This ADR's guard still prevents OL from *submitting* a stale value once a fresher one is already known — that property is intact — but it makes no claim about the order in which Allegro's own queue processes two already-accepted commands.
+
+Neither point required a code change at the time — the mark-advance-after-submission behaviour is still the correct point to advance a token that exists to prevent OL from submitting something it already knows is stale, and the reconcile sweep's backstop (plus the inventory sweep) is an accepted, bounded gap rather than a silent one. This amendment exists so the next reader does not assume "the mark only advances on a *confirmed* write" — that was true before #2621 and is not true after it.
+
 ## References
 
 - Related issues: #2617 (the guard), #2609 (the scope fix that removed the accidental ordering), #2071 (the database-stamped `updatedAt` the token depends on), #2613 (penalty-free deferral, which the contention path uses), #1689 (the unguarded pause path)

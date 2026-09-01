@@ -273,6 +273,22 @@ export interface MarketplaceOfferStatusSyncPayloadV1 {
 }
 
 /**
+ * Payload for `marketplace.offerQuantity.reconcile` jobs (#2621).
+ *
+ * Steady-state reconcile of a connection's outstanding asynchronously-
+ * acknowledged quantity writes — mirrors `MarketplaceOfferStatusSyncPayloadV1`
+ * in shape, but there is no scan offset: `limit` simply bounds how many
+ * outstanding writes the adapter's own bookkeeping resolves per run, since
+ * the pending-write set is adapter-internal and naturally shrinks as writes
+ * terminalize.
+ */
+export interface MarketplaceOfferQuantityReconcilePayloadV1 {
+  schemaVersion: 1;
+  /** Max outstanding writes to reconcile per run. */
+  limit: number;
+}
+
+/**
  * Payload for `marketplace.offer.refreshSnapshot` jobs (#1760).
  *
  * Post-terminal one-shot reconcile: the creation poller (#447) terminalises a

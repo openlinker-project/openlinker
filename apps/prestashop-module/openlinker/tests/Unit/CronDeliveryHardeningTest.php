@@ -22,6 +22,36 @@ class CronDeliveryHardeningTest extends TestCase
         self::assertStringContainsString('catch (Throwable', $source);
     }
 
+    /**
+     * OutboxDrainer::deliverOne (#2635 review) is the single per-event
+     * delivery primitive both DeliveryRunner and the response-flush fast
+     * path now share. A regression back to `catch (Exception ...)` here
+     * would let a TypeError/Error from `sendEvent()` escape uncaught,
+     * aborting whichever caller's batch loop is in progress instead of
+     * resolving just that one event to retried/failed.
+     */
+    public function testTheOutboxDrainerCatchesErrorsAsWellAsExceptions(): void
+    {
+        $source = self::sourceOf('classes/OutboxDrainer.php');
+
+        self::assertStringNotContainsString('catch (Exception', $source);
+        self::assertStringContainsString('catch (Throwable', $source);
+    }
+
+    /**
+     * DeliveryRunner must delegate its per-event delivery to
+     * OutboxDrainer::deliverOne rather than re-implementing the claim-send-
+     * mark loop itself (#2635 review) - a second implementation is exactly
+     * how the two delivery paths' retry semantics drift apart.
+     */
+    public function testTheDeliveryPassDelegatesPerEventDeliveryToOutboxDrainer(): void
+    {
+        $source = self::sourceOf('classes/DeliveryRunner.php');
+
+        self::assertStringContainsString('OutboxDrainer::deliverOne', $source);
+        self::assertStringNotContainsString('private static function deliverOne', $source);
+    }
+
     public function testTheCronFileCatchesErrorsAsWellAsExceptions(): void
     {
         $source = self::sourceOf('cron/openlinker-cron.php');
