@@ -27,7 +27,8 @@ After a successful login you land on **Analytics**.
 
 The admin UI follows a fixed shell: persistent left sidebar, top utility bar, and a main workspace area.
 
-<!-- screenshot: full dashboard view showing the nav groups in the sidebar and the main workspace -->
+<!-- screenshot: full shell view showing the nav groups in the sidebar and the main workspace -->
+<!-- TODO(#2772): screenshot predates the Insights rename — sidebar still says "Dashboard" -->
 ![Shell layout — sidebar groups and main workspace](./images/01-dashboard1.png)
 
 ### Left Sidebar
@@ -76,7 +77,7 @@ The top bar carries:
 The Insights page is your at-a-glance view of system and integration health. Find it in the sidebar
 under **Operations → Insights** (`/insights`).
 
-<!-- TODO(#2740): re-capture screenshot — filename below still reflects the pre-rename page -->
+<!-- TODO(#2772): screenshot predates the Insights rename — sidebar and filename still say "Dashboard" -->
 ![Insights overview](./images/01-dashboard-2.png)
 
 ### Summary cards
