@@ -46,8 +46,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateReservations1850000000000 implements MigrationInterface {
-  name = 'CreateReservations1850000000000';
+export class CreateReservations1850000000009 implements MigrationInterface {
+  name = 'CreateReservations1850000000009';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     // `reservations.id` defaults to uuid_generate_v4() — same guard the

@@ -22,7 +22,7 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddReturnExternalOrderId1849000000010 implements MigrationInterface {
+export class AddReturnExternalOrderId1850000000007 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`ALTER TABLE "returns" ADD COLUMN IF NOT EXISTS "externalOrderId" text`);
     await queryRunner.query(

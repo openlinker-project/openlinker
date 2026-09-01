@@ -50,8 +50,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateOrderHolds1849000000011 implements MigrationInterface {
-  name = 'CreateOrderHolds1849000000011';
+export class CreateOrderHolds1850000000008 implements MigrationInterface {
+  name = 'CreateOrderHolds1850000000008';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     // `id` defaults to uuid_generate_v4() — the same guard 1846/1847 use.

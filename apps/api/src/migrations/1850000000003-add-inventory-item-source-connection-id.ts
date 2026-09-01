@@ -54,8 +54,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddInventoryItemSourceConnectionId1849000000006 implements MigrationInterface {
-  name = 'AddInventoryItemSourceConnectionId1849000000006';
+export class AddInventoryItemSourceConnectionId1850000000003 implements MigrationInterface {
+  name = 'AddInventoryItemSourceConnectionId1850000000003';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
