@@ -1,4 +1,5 @@
 import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
 import { AnalyticsPage } from './analytics-page';
@@ -299,5 +300,56 @@ describe('AnalyticsPage', () => {
 
     expect(await screen.findByText('Allegro — main')).toBeInTheDocument();
     expect(await screen.findByText('Unable to check for open items')).toBeInTheDocument();
+  });
+
+  it('should keep the URL-encoded displayCurrency/rateBasis when a date-range preset is applied', async () => {
+    // Regression guard: `handleApply` used to call `setSearchParams({ from, to })`
+    // with a literal object, which REPLACES the whole query string — silently
+    // dropping `displayCurrency`/`rateBasis` and resetting the picker to
+    // "Current rate" on every date change. ADR-064 states both are
+    // URL-encoded "like the existing date-range filter", i.e. they must
+    // survive exactly what `from`/`to` survive.
+    const user = userEvent.setup();
+    const apiClient = createMockApiClient({
+      analyticsTrust: { getTrust: vi.fn().mockResolvedValue(healthySnapshot()) },
+      analytics: {
+        getSales: vi.fn().mockResolvedValue({
+          headline: {
+            revenue: 4800,
+            currency: 'PLN',
+            orderCount: 40,
+            averageOrderValue: 120,
+            medianOrderValue: 100,
+            unitsSold: 60,
+            cancelledCount: 2,
+            cancelledValue: 200,
+            unconvertedCount: 0,
+            unconvertedValue: 0,
+            unconvertedCurrency: null,
+            netRevenue: 4300,
+            netAverageOrderValue: 107.5,
+            netMedianOrderValue: 90,
+            netExcludedCount: 0,
+            netExcludedValue: 0,
+            trend: [],
+          },
+          channels: [],
+        }),
+      },
+    });
+
+    renderWithProviders(<AnalyticsPage />, {
+      apiClient,
+      route: '/analytics?from=2026-07-16&to=2026-08-14&displayCurrency=EUR&rateBasis=order-date',
+    });
+
+    const picker = await screen.findByRole('combobox', { name: 'Display currency' });
+    expect(picker).toHaveValue('EUR');
+
+    // "7d" is a genuinely different range from the ROUTE's custom from/to, so
+    // clicking it commits immediately via `handleSegmentChange` -> `onApply`.
+    await user.click(screen.getByRole('radio', { name: '7d' }));
+
+    expect(await screen.findByRole('combobox', { name: 'Display currency' })).toHaveValue('EUR');
   });
 });
