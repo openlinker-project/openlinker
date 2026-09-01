@@ -783,10 +783,23 @@ export interface OrderRecordRepositoryPort {
    *   - `fxRule`                — written as a pair with the intent by
    *                               `claimFxIntentIfAbsent`
    *
-   * Guarded on `reportingCurrency IS NOT NULL` so it is idempotent under a
-   * re-delivered driver job and can never touch a row that was never stamped
-   * (a never-stamped order is in the mismatch population too, and needs only
-   * the enqueue).
+   * Guarded on `reportingCurrency IS NOT NULL OR fxIntendedCurrency IS NOT
+   * NULL OR fxStampedAt IS NOT NULL` (#2775) so it is idempotent under a
+   * re-delivered driver job and can never touch a row carrying NO FX STATE AT
+   * ALL — a virgin order is in the mismatch population too, and needs only the
+   * enqueue.
+   *
+   * The guard is deliberately NOT "was this row ever stamped". Two ordinary
+   * shapes carry a pinned intent while carrying no figure, and both are inside
+   * {@link findCurrencyMismatchOrderRefsAfter}'s population:
+   *   - DEFERRED       — an intent was pinned, then the rate provider blipped
+   *   - TERMINAL-MARKED — `fxStampedAt` set with `reportingCurrency` still
+   *                      `NULL`, which {@link countRemainingCurrencyMismatch}
+   *                      counts explicitly as `terminalMarked`
+   * A figure-only guard skipped exactly those rows, left the stale intent
+   * standing, and had the child job re-stamp the currency the operator just
+   * moved away from — so the run's completion poll could never reach zero and
+   * closed `failed` blaming rate resolution.
    */
   clearFxStampForRestatement(internalOrderId: string): Promise<boolean>;
 

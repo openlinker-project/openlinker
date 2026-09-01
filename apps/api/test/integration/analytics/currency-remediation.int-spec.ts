@@ -101,6 +101,52 @@ describe('Currency remediation against real Postgres (#2468)', () => {
     return record.internalOrderId;
   }
 
+  /**
+   * The DEFERRED shape (#2775): `claimFxIntentIfAbsent` pinned an intent under
+   * a prior reporting currency, then the provider blipped, so the attempt
+   * returned `kind: 'deferred'` and no figure was ever written. The row carries
+   * FX state without carrying a figure.
+   */
+  async function seedDeferredOrder(total: number): Promise<string> {
+    const record = await createTestOrderRecord(harness.getDataSource(), {
+      placedAt: new Date('2026-08-03T00:00:00.000Z'),
+      recordStatus: 'ready',
+      totalAmount: total,
+      currency: reportingCurrency,
+      orderSnapshot: { items: [], totals: { total, currency: reportingCurrency } },
+      reportingCurrency: null,
+      reportingTotalAmount: null,
+      exchangeRateId: null,
+      fxStampedAt: null,
+      fxIntendedCurrency: STALE_REPORTING_CURRENCY,
+      fxRule: 'prev-business-day',
+    });
+    return record.internalOrderId;
+  }
+
+  /**
+   * The TERMINAL-MARKED shape (#2775): the pipeline reached a terminal answer,
+   * so `fxStampedAt` is set, but no figure was produced.
+   * `countRemainingCurrencyMismatch` counts these explicitly as
+   * `terminal_marked`, so they are unambiguously in the repaired population.
+   */
+  async function seedTerminalMarkedOrder(total: number): Promise<string> {
+    const record = await createTestOrderRecord(harness.getDataSource(), {
+      placedAt: new Date('2026-08-03T00:00:00.000Z'),
+      recordStatus: 'ready',
+      totalAmount: total,
+      currency: reportingCurrency,
+      orderSnapshot: { items: [], totals: { total, currency: reportingCurrency } },
+      reportingCurrency: null,
+      reportingTotalAmount: null,
+      exchangeRateId: null,
+      fxStampedAt: new Date('2026-08-03T01:00:00.000Z'),
+      fxIntendedCurrency: STALE_REPORTING_CURRENCY,
+      fxRule: 'prev-business-day',
+    });
+    return record.internalOrderId;
+  }
+
   async function readOrder(internalOrderId: string): Promise<OrderRecordOrmEntity> {
     return harness
       .getDataSource()
@@ -273,6 +319,100 @@ describe('Currency remediation against real Postgres (#2468)', () => {
 
     expect(second.id).not.toBe(first.id);
     expect(second.status).toBe('in-progress');
+  });
+
+  it('clears a DEFERRED row, whose pinned intent would otherwise re-stamp the stale currency (#2775)', async () => {
+    const orderId = await seedDeferredOrder(100);
+    const run = await runs.openRun({
+      category: 'currency',
+      affectedCount: 1,
+      triggeredByUserId: 'user-1',
+    });
+
+    const page = await restatement.restatePage(scope, reportingCurrency, {
+      runId: run.id,
+      afterOrderId: null,
+      limit: 50,
+    });
+
+    expect(page).toMatchObject({ scanned: 1, cleared: 1, enqueued: 1 });
+    const row = await readOrder(orderId);
+    expect(row.reportingCurrency).toBeNull();
+    expect(row.reportingTotalAmount).toBeNull();
+    expect(row.exchangeRateId).toBeNull();
+    expect(row.fxStampedAt).toBeNull();
+    expect(row.fxIntendedCurrency).toBeNull();
+    expect(row.fxRule).toBeNull();
+
+    // The point of the clear: the re-stamp names the CURRENT currency. With the
+    // stale intent left behind, `resolveIntent` re-pins it and the run cannot
+    // converge.
+    await expect(fxStamp.stamp(orderId)).resolves.toMatchObject({
+      kind: 'stamped',
+      alreadyStamped: false,
+      reportingCurrency,
+    });
+  });
+
+  it('clears a TERMINAL-MARKED row, so it is not held out by its own marker (#2775)', async () => {
+    const orderId = await seedTerminalMarkedOrder(60);
+    const run = await runs.openRun({
+      category: 'currency',
+      affectedCount: 1,
+      triggeredByUserId: 'user-1',
+    });
+
+    const page = await restatement.restatePage(scope, reportingCurrency, {
+      runId: run.id,
+      afterOrderId: null,
+      limit: 50,
+    });
+
+    expect(page).toMatchObject({ scanned: 1, cleared: 1 });
+    const row = await readOrder(orderId);
+    expect(row.fxStampedAt).toBeNull();
+    expect(row.fxIntendedCurrency).toBeNull();
+    expect(row.fxRule).toBeNull();
+
+    await expect(fxStamp.stamp(orderId)).resolves.toMatchObject({
+      kind: 'stamped',
+      reportingCurrency,
+      reportingTotalAmount: 60,
+    });
+  });
+
+  it('reaches resolved over a mixed population of stale, deferred and terminal-marked rows (#2775)', async () => {
+    const orderIds = [
+      await seedStaleStampedOrder(100),
+      await seedDeferredOrder(250),
+      await seedTerminalMarkedOrder(75),
+    ];
+    const run = await runs.openRun({
+      category: 'currency',
+      affectedCount: orderIds.length,
+      triggeredByUserId: 'user-1',
+    });
+
+    const page = await restatement.restatePage(scope, reportingCurrency, {
+      runId: run.id,
+      afterOrderId: null,
+      limit: 50,
+    });
+    expect(page).toMatchObject({ scanned: 3, cleared: 3, enqueued: 3 });
+
+    for (const orderId of orderIds) {
+      await fxStamp.stamp(orderId);
+    }
+
+    // Before #2775 the deferred and terminal-marked rows re-stamped USD, so
+    // this total stuck at 2 and the run's completion poll closed `failed`.
+    await expect(restatement.countRemaining(scope, reportingCurrency)).resolves.toMatchObject({
+      total: 0,
+      terminalMarked: 0,
+      pending: 0,
+    });
+    await expect(runs.markResolved(run.id)).resolves.toBe(true);
+    await expect(runs.getRun(run.id)).resolves.toMatchObject({ status: 'resolved', detail: null });
   });
 
   it('leaves a never-stamped order uncleared but still enqueued, so the guard is idempotent', async () => {
