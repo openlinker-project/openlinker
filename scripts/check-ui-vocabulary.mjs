@@ -552,8 +552,37 @@ async function walk(dir, out = []) {
   return out;
 }
 
+/**
+ * A copy module, whatever separator its author reached for.
+ *
+ * `.copy.ts` was the only shape recognised until a scan root turned out to hold
+ * `delivery-copy.ts` and `stock-at-risk-copy.ts` — real operator sentences,
+ * invisible to this gate because of one character. That is the second time this
+ * exact miss has shipped (the first was `fulfillment-task-copy.ts`), so the
+ * separator is now a parameter rather than a convention, and `copyModuleEscapee`
+ * below fails the run rather than trusting the next author to pick the dot.
+ *
+ * `.test.ts` is excluded: a test asserting on banned copy is not itself copy.
+ */
+const COPY_MODULE = /(?:^|[.\-])copy\.ts$/;
+
+function isCopyModule(path) {
+  return !path.endsWith('.test.ts') && COPY_MODULE.test(path);
+}
+
 function isScannable(path) {
-  return path.endsWith('.tsx') || path.endsWith('.copy.ts');
+  return path.endsWith('.tsx') || isCopyModule(path);
+}
+
+/**
+ * A `.ts` file that NAMES itself copy but that `isScannable` would skip. Never
+ * expected to match; it exists so a future `copyStrings.ts` or `copy_text.ts`
+ * fails loudly instead of being silently unscanned the way `-copy.ts` was.
+ */
+function copyModuleEscapee(path) {
+  if (!path.endsWith('.ts') || path.endsWith('.test.ts')) return false;
+  const base = path.slice(path.lastIndexOf(sep) + 1);
+  return /copy/i.test(base) && !isCopyModule(path);
 }
 
 async function exists(path) {
@@ -634,14 +663,29 @@ async function main() {
     }
 
     liveRoots.push(root);
-    const files = (await walk(abs)).filter(isScannable);
+    const walked = await walk(abs);
+    const files = walked.filter(isScannable);
+
+    // Z4 — a file that calls itself copy but that the matcher would skip. See
+    // `copyModuleEscapee`: the miss this catches has shipped twice.
+    const escapees = walked.map((f) => relative(repoRoot, f)).filter(copyModuleEscapee);
+    if (escapees.length > 0) {
+      failures.push({
+        rule: 'a .ts file named like copy must be scannable (rename it to *.copy.ts)',
+        locations: escapees.map((rel) => `${rel}  (unscanned copy module)`),
+        issues: [
+          'the filename says copy but the scanner does not recognise it, so every operator ' +
+            'sentence in it is unchecked — rename to *.copy.ts',
+        ],
+      });
+    }
 
     // Z3 — the root exists but nothing matched. The walk or the extension
     // logic broke; passing here is the silent-nothing trap this gate is
     // supposed to be immune to.
     if (files.length === 0) {
       failures.push({
-        rule: 'a scan root that exists must contain at least one .tsx or *.copy.ts file',
+        rule: 'a scan root that exists must contain at least one .tsx or copy module',
         locations: [`${root.dir}  (scan root)`],
         issues: [
           'the directory exists but no scannable file was found, so this root is being checked ' +
@@ -656,9 +700,7 @@ async function main() {
       if (EXEMPTIONS.has(rel)) continue;
       scannedFiles += 1;
       const source = await readFile(file, 'utf8');
-      const strings = rel.endsWith('.copy.ts')
-        ? extractCopyStrings(source)
-        : extractTsxStrings(source);
+      const strings = isCopyModule(rel) ? extractCopyStrings(source) : extractTsxStrings(source);
       const findings = findBannedTerms(strings, BANNED_TERMS);
       if (findings.length === 0) continue;
       failures.push({
