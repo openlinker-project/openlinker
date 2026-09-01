@@ -2,7 +2,7 @@
  * Display Currency Conversion Service
  *
  * The read-only display-currency transform behind the `/analytics`
- * display-currency picker (#2458, ADR-064, pending in PR #2485). Both modes are plain synchronous
+ * display-currency picker (#2458, ADR-064). Both modes are plain synchronous
  * application-layer code — no `SyncJobPort`, no `sync_jobs` row, no polling
  * endpoint — and neither reads nor writes `order_records.reportingCurrency` /
  * `reportingTotalAmount` (the ADR-040 write-once stamp). This is a SECOND,
@@ -33,9 +33,11 @@ import {
   ICurrencyRateService,
   resolveRateDate,
   resolveRateSource,
+  type StoredExchangeRate,
 } from '@openlinker/core/currency';
 import {
   MIXED_NATIVE_CURRENCIES_LABEL,
+  type AppliedRate,
   type CurrentRateConversionInput,
   type CurrentRateConversionResult,
   type NativeCurrencyBreakdown,
@@ -120,44 +122,50 @@ export class DisplayCurrencyConversionService implements IDisplayCurrencyConvers
           orderCount: group.count,
           nativeTotal: round2(group.total),
           convertedTotal: null,
+          appliedRate: null,
         });
         continue;
       }
 
       if (currency === input.displayCurrency) {
+        // An identity, not a rate — no lookup happened, so nothing produced
+        // this figure beyond "it was already in the right currency" (#2778).
         const nativeTotal = round2(group.total);
         breakdown.push({
           currency,
           orderCount: group.count,
           nativeTotal,
           convertedTotal: nativeTotal,
+          appliedRate: null,
         });
         convertedTotal += nativeTotal;
         continue;
       }
 
-      const rate =
+      const stored =
         rateDate === null
           ? null
           : await this.resolveRate(currency, input.displayCurrency, rateDate);
 
-      if (rate === null) {
+      if (stored === null) {
         unresolvedNativeCurrencies.push(currency);
         breakdown.push({
           currency,
           orderCount: group.count,
           nativeTotal: round2(group.total),
           convertedTotal: null,
+          appliedRate: null,
         });
         continue;
       }
 
-      const converted = round2(group.total * rate);
+      const converted = round2(group.total * Number(stored.rate));
       breakdown.push({
         currency,
         orderCount: group.count,
         nativeTotal: round2(group.total),
         convertedTotal: converted,
+        appliedRate: toAppliedRate(stored),
       });
       convertedTotal += converted;
     }
@@ -183,40 +191,45 @@ export class DisplayCurrencyConversionService implements IDisplayCurrencyConvers
         convertedTotal: null,
         sourceCurrency: null,
         unresolved: false,
+        appliedRate: null,
       };
     }
 
     // Zero I/O — the whole point of this mode's "stable" framing. Never
-    // calls `ICurrencyRateService`.
+    // calls `ICurrencyRateService`. An identity, not a rate (#2778) — no
+    // lookup happened, so there is nothing to attribute the figure to.
     if (input.reportingCurrency === input.displayCurrency) {
       return {
         displayCurrency: input.displayCurrency,
         convertedTotal: round2(input.reportingTotal),
         sourceCurrency: input.reportingCurrency,
         unresolved: false,
+        appliedRate: null,
       };
     }
 
     const rateDate = this.resolveCurrentRateDate(now);
-    const rate =
+    const stored =
       rateDate === null
         ? null
         : await this.resolveRate(input.reportingCurrency, input.displayCurrency, rateDate);
 
-    if (rate === null) {
+    if (stored === null) {
       return {
         displayCurrency: input.displayCurrency,
         convertedTotal: null,
         sourceCurrency: input.reportingCurrency,
         unresolved: true,
+        appliedRate: null,
       };
     }
 
     return {
       displayCurrency: input.displayCurrency,
-      convertedTotal: round2(input.reportingTotal * rate),
+      convertedTotal: round2(input.reportingTotal * Number(stored.rate)),
       sourceCurrency: input.reportingCurrency,
       unresolved: false,
+      appliedRate: toAppliedRate(stored),
     };
   }
 
@@ -233,18 +246,26 @@ export class DisplayCurrencyConversionService implements IDisplayCurrencyConvers
   }
 
   /**
-   * Resolve one `to` unit's worth of `from`, or `null` on any failure —
-   * an unsupported display currency (`resolveRateSource` throws for a
-   * currency no publisher quotes), an unsupported pair, a transient provider
-   * failure, anything. This service never retries and never throws past
-   * itself: a failed lookup for one currency must not abort the batch for
-   * every other currency, nor the whole request.
+   * Resolve the stored rate for one `to` unit's worth of `from`, or `null` on
+   * any failure — an unsupported display currency (`resolveRateSource`
+   * throws for a currency no publisher quotes), an unsupported pair, a
+   * transient provider failure, anything. This service never retries and
+   * never throws past itself: a failed lookup for one currency must not abort
+   * the batch for every other currency, nor the whole request.
+   *
+   * Returns the full {@link StoredExchangeRate}, not just the numeric rate
+   * (#2778) — a caller multiplies via `Number(stored.rate)` and separately
+   * builds an {@link AppliedRate} from the same row, so the two can never
+   * describe different lookups.
    */
-  private async resolveRate(from: string, to: string, rateDate: string): Promise<number | null> {
+  private async resolveRate(
+    from: string,
+    to: string,
+    rateDate: string
+  ): Promise<StoredExchangeRate | null> {
     try {
       const source = resolveRateSource(to);
-      const rate = await this.rates.getRateFor({ source, from, to, rateDate });
-      return Number(rate.rate);
+      return await this.rates.getRateFor({ source, from, to, rateDate });
     } catch (error) {
       this.logger.warn(
         `Display-currency rate ${from}->${to} on ${rateDate} could not be resolved: ` +
@@ -253,4 +274,21 @@ export class DisplayCurrencyConversionService implements IDisplayCurrencyConvers
       return null;
     }
   }
+}
+
+/**
+ * Project a {@link StoredExchangeRate} into the neutral, wire-safe
+ * {@link AppliedRate} shape (#2778) — one place, reused by both conversion
+ * modes, so the two can never diverge on which fields carry provenance.
+ */
+function toAppliedRate(stored: StoredExchangeRate): AppliedRate {
+  return {
+    from: stored.from,
+    to: stored.to,
+    rate: stored.rate,
+    rateDate: stored.rateDate,
+    source: stored.source,
+    derivation: stored.derivation.kind,
+    sourceRef: stored.sourceRef,
+  };
 }

@@ -258,7 +258,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     // tax A/B/C detector seam (#2465).
     TAX_COVERAGE_DETECTION_SERVICE_TOKEN,
     // Exported so the `/analytics` display-currency read surface (a later
-    // phase of #2452) can inject this seam (#2458, ADR-064, pending in PR #2485).
+    // phase of #2452) can inject this seam (#2458, ADR-064).
     DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,
   ],
 })

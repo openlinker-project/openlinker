@@ -2,7 +2,7 @@
  * Display Currency Conversion Service Interface
  *
  * The read-only, request-scoped display-currency transform behind the
- * `/analytics` display-currency picker (#2458, ADR-064, pending in PR #2485). See the interface
+ * `/analytics` display-currency picker (#2458, ADR-064). See the interface
  * methods' own doc comments for the two conversion modes.
  *
  * @module libs/core/src/orders/application/interfaces
