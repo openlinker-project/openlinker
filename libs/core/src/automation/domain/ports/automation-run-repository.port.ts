@@ -54,6 +54,15 @@ export interface NewAutomationRun {
    * spec draws and that latest-run-wins cannot express.
    */
   readonly retryOfRunId?: string | null;
+  /**
+   * This run's position in its retry chain (#2666) — `0` for an ordinary
+   * firing, the parent's `retryAttempt` plus one for a retry.
+   *
+   * Flat here, deliberately, while the two application seams carry the pair as
+   * one `AutomationRunRetryLink`: this shape mirrors COLUMNS, and the recorder
+   * is the single translation point between the two.
+   */
+  readonly retryAttempt: number;
 }
 
 /**
@@ -128,12 +137,20 @@ export interface AutomationRunRepositoryPort {
   countAttention(): Promise<number>;
 
   /**
-   * Of these run ids, which have been superseded by a retry that did NOT fail.
+   * Of these run ids, which have ANY retry pointing at them — whatever that
+   * retry's own outcome.
    *
    * ONE batched read for a whole page — never per row. This is the second half
    * of the AF-X predicate that a single row cannot answer about itself: a
    * derived state is only self-clearing if the derivation can see the thing that
    * clears it, and the retry lives in a different row.
+   *
+   * **The retry's outcome stopped mattering with #2666.** A chain is one
+   * underlying failure with one live end, so only the newest link is the
+   * operator's handle; keying on a SUCCESSFUL retry badged every link of a
+   * failed chain. It shares one condition with `countAttention` / the
+   * `attentionOnly` filter, so the count, the filtered rows and the per-row
+   * badge cannot answer the same question differently.
    */
   findSupersededRunIds(runIds: readonly string[]): Promise<Set<string>>;
 

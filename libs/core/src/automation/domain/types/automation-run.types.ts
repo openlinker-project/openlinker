@@ -105,15 +105,35 @@ export function isAutomationRunOutcome(value: unknown): value is AutomationRunOu
  * divergence that class of duplication produces is why this note exists).
  */
 
+/**
+ * A retry chain's link back to the failure it retries (#2666).
+ *
+ * The two fields are meaningless apart: `runId` without `attempt` restarts the
+ * budget on every chain and reopens #2666 with nothing failing, so they travel
+ * as ONE value at every application seam. `NewAutomationRun` stays flat because
+ * it mirrors columns; the recorder is the single translation point.
+ */
+export interface AutomationRunRetryLink {
+  /** The failed run this one retries. */
+  readonly runId: string;
+  /** The parent's `retryAttempt` plus one. */
+  readonly attempt: number;
+}
+
 /** The single-row half of the AF-X rule; the link is resolved by the caller. */
 export interface AutomationRunAttentionInput {
   readonly outcome: AutomationRunOutcome;
   readonly dismissedAt: Date | null;
   /**
-   * Whether a run carrying `retryOfRunId = <this run>` ended in anything other
-   * than `failed`. Resolved by the repository, because it is a second read.
+   * Whether ANY run carries `retryOfRunId = <this run>` — whatever that retry's
+   * own outcome. Resolved by the repository, because it is a second read.
+   *
+   * Outcome-blind since #2666, and that is the rule rather than a relaxation: a
+   * retry chain is ONE underlying failure with one live end, so the operator's
+   * handle is the newest link. Testing the retry's outcome instead badged every
+   * link of a three-deep chain — three red rows, three dismissals, one problem.
    */
-  readonly supersededBySuccessfulRetry: boolean;
+  readonly supersededByRetry: boolean;
 }
 
 /**
@@ -125,9 +145,7 @@ export interface AutomationRunAttentionInput {
  * install (#2100's `trigger-model-manual` lesson).
  */
 export function isAutomationRunAttentionWorthy(run: AutomationRunAttentionInput): boolean {
-  return (
-    run.outcome === 'failed' && run.dismissedAt === null && !run.supersededBySuccessfulRetry
-  );
+  return run.outcome === 'failed' && run.dismissedAt === null && !run.supersededByRetry;
 }
 
 /**
@@ -152,8 +170,42 @@ export const RetryRefusalReasonValues = [
    * "unsupported", which reads as a gap someone files a bug against.
    */
   'subject-unsupported',
+  /**
+   * A newer attempt already exists, so THIS row is no longer the chain's live
+   * end (#2666). Deliberately distinct from `retry-exhausted`: "act on the newer
+   * row" and "stop retrying" are different instructions, and one sentence
+   * covering both would send the operator to the wrong place.
+   *
+   * It is also what closes the FORK. Without it a direct API call could retry an
+   * already-superseded parent, minting a second chain head under a fresh budget
+   * — the frontend hides that control, but `resolveRetryEligibility`'s own
+   * contract forbids relying on that: if only the UI knows, a direct call
+   * bypasses it.
+   */
+  'superseded',
+  /**
+   * The chain has used its whole budget (`AUTOMATION_MAX_RETRY_ATTEMPTS`).
+   *
+   * Not a system fault and not the operator's mistake: the automation cannot
+   * finish as configured, and the remaining moves are fixing the cause at the
+   * source or dismissing the run.
+   */
+  'retry-exhausted',
 ] as const;
 export type RetryRefusalReason = (typeof RetryRefusalReasonValues)[number];
+
+/**
+ * How many times one failure may be retried before OpenLinker stops offering it.
+ *
+ * A JUDGEMENT, not a measurement — there is no operator data on this yet. The
+ * reasoning: the sync runner's ladder is `maxAttempts = 10` with exponential
+ * backoff, which is machine-paced and retries a TRANSIENT condition time may
+ * fix. This is the opposite — an operator clicking a button, with no backoff,
+ * re-running actions against facts `AutomationRetryService` deliberately does
+ * not re-evaluate (its property 2). Attempt 4 is byte-identical to attempt 1, so
+ * three is where the honest message becomes "this cannot finish as configured".
+ */
+export const AUTOMATION_MAX_RETRY_ATTEMPTS = 3;
 
 /** Whether a firing can be re-run, and why not when it cannot. */
 export type RetryEligibility =
@@ -165,6 +217,20 @@ export interface RetryEligibilityInput {
   readonly subjectKind: AutomationRunSubjectKind;
   /** Whether the rule named by `ruleId` still exists. Resolved by the caller. */
   readonly ruleExists: boolean;
+  /**
+   * This run's own position in its chain — `0` for an ordinary firing (#2666).
+   *
+   * REQUIRED, never optional-with-a-default: a caller that forgot it would
+   * silently get an unbounded chain, which is this issue recurring with nothing
+   * failing. The compiler asks instead.
+   */
+  readonly retryAttempt: number;
+  /**
+   * Whether a newer attempt already points at this run. Resolved by the caller,
+   * which has it in hand either way — the projection computes it for every row,
+   * and the retry endpoint reads its run through that same projection.
+   */
+  readonly supersededByRetry: boolean;
 }
 
 /**
@@ -180,8 +246,16 @@ export interface RetryEligibilityInput {
  * cannot drift.
  */
 export function resolveRetryEligibility(input: RetryEligibilityInput): RetryEligibility {
+  // Order matters: the three pre-#2666 reasons keep their precedence, and the two
+  // chain reasons are checked last so a run refused for a MORE SPECIFIC cause
+  // still reports that cause. `superseded` precedes `retry-exhausted` because
+  // pointing at the live row is better advice than "stop" while one exists.
   if (input.outcome !== 'failed') return { retryable: false, reason: 'not-failed' };
   if (input.subjectKind !== 'order') return { retryable: false, reason: 'subject-unsupported' };
   if (!input.ruleExists) return { retryable: false, reason: 'rule-deleted' };
+  if (input.supersededByRetry) return { retryable: false, reason: 'superseded' };
+  if (input.retryAttempt >= AUTOMATION_MAX_RETRY_ATTEMPTS) {
+    return { retryable: false, reason: 'retry-exhausted' };
+  }
   return { retryable: true };
 }

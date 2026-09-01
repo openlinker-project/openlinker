@@ -40,6 +40,7 @@ function run(overrides: Partial<AutomationRun> = {}): AutomationRun {
     dismissedAt: null,
     dismissedByUserId: null,
     retryOfRunId: null,
+    supersededByRetry: false,
     ...overrides,
   };
 }
@@ -112,6 +113,24 @@ describe('retryRefusalCopy', () => {
     const copy = retryRefusalCopy('subject-unsupported') ?? '';
     expect(copy.toLowerCase()).toContain('return');
     expect(copy.toLowerCase()).not.toContain('not supported');
+  });
+
+  it('should point a superseded run at the newer attempt, not tell it to stop (#2666)', () => {
+    // The two chain refusals must give DIFFERENT advice. Collapsing them into
+    // one sentence sends the operator to the wrong place: there IS a newer row
+    // to act on here, and none once the budget is spent.
+    const copy = retryRefusalCopy('superseded') ?? '';
+    expect(copy.toLowerCase()).toContain('newer');
+    expect(copy).not.toBe('superseded');
+  });
+
+  it('should tell an exhausted chain to fix the cause, not to try again (#2666)', () => {
+    const copy = retryRefusalCopy('retry-exhausted') ?? '';
+    expect(copy).not.toBe('retry-exhausted');
+    // Not a system fault and not the operator's mistake — it names the two
+    // remaining moves instead.
+    expect(copy.toLowerCase()).toContain('fix');
+    expect(copy.toLowerCase()).toContain('dismiss');
   });
 
   it('should render an unrecognised code as itself', () => {

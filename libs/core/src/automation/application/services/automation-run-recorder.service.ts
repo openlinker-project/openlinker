@@ -112,7 +112,12 @@ export class PersistingAutomationRunRecorder implements IAutomationRunRecorderSe
       // read path re-narrows and #2366 parses.
       steps: run.steps,
       blockedByRuleIds: run.blockedByRuleIds === undefined ? null : [...run.blockedByRuleIds],
-      retryOfRunId: run.retryOfRunId ?? null,
+      // The ONE translation point between the paired application seam and the
+      // column-shaped persistence contract (#2666). An ordinary firing is
+      // attempt 0; a retry carries the parent's value plus one, minted by
+      // whoever holds the parent.
+      retryOfRunId: run.retryOf?.runId ?? null,
+      retryAttempt: run.retryOf?.attempt ?? 0,
       firedAt: run.firedAt,
     });
   }

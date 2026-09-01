@@ -578,6 +578,16 @@ export const AUTOMATION_FAILURE_COPY = {
     'No automation has stopped part-way through. Failures show up here until someone runs them again or marks them handled.',
   /** Rendered on a retry's own row so a chain reads as one story, not two firings. */
   isRetryOf: 'Ran again after an earlier failure',
+  /**
+   * Why a FAILED row carries no attention badge (#2666).
+   *
+   * Before #2666 an unbadged failed row could only mean a retry succeeded; it
+   * now also means a later retry exists that may itself have failed. Without
+   * this the row shows a red `failed` pill, no badge, no note and — since the
+   * actions cell short-circuits on `needsAttention` — no controls either, with
+   * nothing on the row explaining any of it.
+   */
+  superseded: 'A newer attempt replaced this one',
 } as const;
 
 /**
@@ -597,4 +607,8 @@ export const RETRY_REFUSAL_COPY = {
   'rule-deleted':
     'This automation has been deleted, so there is no longer anything to run. The record of what it did stays here.',
   'subject-unsupported': 'Running again is not possible for a return.',
+  superseded:
+    'This run has already been tried again. Open the newer attempt to see what happened.',
+  'retry-exhausted':
+    'This has been run again the maximum number of times without succeeding. Fix what is failing at the source, or dismiss it.',
 } as const satisfies Record<RetryRefusalReason, string>;

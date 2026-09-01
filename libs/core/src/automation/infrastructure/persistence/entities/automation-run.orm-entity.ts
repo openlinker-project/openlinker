@@ -121,6 +121,19 @@ export class AutomationRunOrmEntity {
   @Column({ type: 'uuid', nullable: true })
   retryOfRunId!: string | null;
 
+  /**
+   * This run's position in its retry chain (#2666) — `0` for an ordinary
+   * firing, the parent's value plus one for a retry.
+   *
+   * The declared default MUST match the migration's, because the integration
+   * harness synchronizes schema from this decorator while production runs the
+   * migration — the same rule stated on `steps` above. Existing rows take the
+   * migration's `DEFAULT 0`, which understates a chain's history rather than
+   * overstating it: a fresh budget, never a legitimate retry refused.
+   */
+  @Column({ type: 'int', default: 0 })
+  retryAttempt!: number;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 }

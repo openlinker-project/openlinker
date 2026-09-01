@@ -24,6 +24,7 @@
  */
 import type { AutomationRule } from '../../domain/entities/automation-rule.entity';
 import type { AutomationSubjectFacts } from '../../domain/types/automation-facts.types';
+import type { AutomationRunRetryLink } from '../../domain/types/automation-run.types';
 import type { AutomationTrigger } from '../../domain/types/automation-trigger.types';
 
 export interface AutomationDispatchInput {
@@ -34,15 +35,21 @@ export interface AutomationDispatchInput {
   /** The emitting caller's instant. Never read from a clock below this line. */
   readonly now: Date;
   /**
-   * When this dispatch is a RETRY, the failed run it retries (#2387).
+   * When this dispatch is a RETRY, the failure it retries — as ONE value
+   * (#2387, paired by #2666).
    *
    * Threaded to the recorder so the new run row carries the link. It has to
    * travel with the dispatch rather than being stamped afterwards: `dispatch`
    * returns `void`, so the caller never learns the new run's id, and the link
    * is what lets the derived AF-X state clear on a successful retry WITHOUT
    * clearing on a later unrelated firing of the same rule.
+   *
+   * The run id and the chain position are meaningless apart: a caller that set
+   * the link and forgot the counter would silently restart the budget on every
+   * chain, reopening #2666 with nothing failing and no error anywhere. A type
+   * that cannot express that state is worth the small churn.
    */
-  readonly retryOfRunId?: string;
+  readonly retryOf?: AutomationRunRetryLink;
 }
 
 export interface IAutomationDispatchService {

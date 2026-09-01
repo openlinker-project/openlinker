@@ -22,7 +22,7 @@
  */
 import type { AutomationRule } from '../../domain/entities/automation-rule.entity';
 import type { AutomationSubjectFacts } from '../../domain/types/automation-facts.types';
-import type { AutomationRunOutcome } from '../../domain/types/automation-run.types';
+import type { AutomationRunOutcome, AutomationRunRetryLink } from '../../domain/types/automation-run.types';
 import type { AutomationStepResult } from '../../domain/types/automation-step-result.types';
 import type { AutomationTrigger } from '../../domain/types/automation-trigger.types';
 
@@ -46,8 +46,15 @@ export interface AutomationRunRecord {
    * prevent. Optional so every pre-#2362 caller compiles untouched.
    */
   readonly blockedByRuleIds?: readonly string[];
-  /** The failed run this firing retries (#2387), when it is a retry. */
-  readonly retryOfRunId?: string;
+  /**
+   * The failure this firing retries, as ONE value (#2666).
+   *
+   * The run id and the chain position are meaningless apart: a caller that set
+   * the link and forgot the counter would silently restart the budget on every
+   * chain, reopening #2666 with nothing failing and no error anywhere. A type
+   * that cannot express that state is worth the small churn.
+   */
+  readonly retryOf?: AutomationRunRetryLink;
 }
 
 export interface IAutomationRunRecorderService {

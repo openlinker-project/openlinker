@@ -85,5 +85,18 @@ export class AutomationRun {
      * from clearing an unrelated failure's attention state.
      */
     public readonly retryOfRunId: string | null = null,
+    /**
+     * This run's position in its retry chain — `0` for an ordinary firing, and
+     * the parent's value plus one for a retry (#2666).
+     *
+     * A DENORMALISED fact frozen at write time, like `ruleName` and `trigger`
+     * beside it, rather than a depth re-derived by walking `retryOfRunId`. It
+     * bounds the chain's LENGTH at write time instead of bounding a read-side
+     * walk, so the data cannot grow past the budget; and `retryOfRunId` carries
+     * no FK, so a walk could not be assumed acyclic anyway.
+     *
+     * Appended last so every existing positional construction stays valid.
+     */
+    public readonly retryAttempt: number = 0,
   ) {}
 }

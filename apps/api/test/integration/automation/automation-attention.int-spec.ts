@@ -13,7 +13,10 @@
  *
  * @module apps/api/test/integration/automation
  */
-import { AUTOMATION_RUNS_READ_SERVICE_TOKEN } from '@openlinker/core/automation';
+import {
+  AUTOMATION_MAX_RETRY_ATTEMPTS,
+  AUTOMATION_RUNS_READ_SERVICE_TOKEN,
+} from '@openlinker/core/automation';
 import type { IAutomationRunsReadService } from '@openlinker/core/automation';
 
 import { getTestHarness, resetTestHarness, teardownTestHarness } from '../setup';
@@ -37,6 +40,8 @@ describe('Automation attention state (#2387)', () => {
     subjectId?: string;
     subjectKind?: string;
     retryOfRunId?: string | null;
+    retryAttempt?: number;
+    ruleId?: string;
   }
 
   /** Seed one `automation_runs` row and return its id. */
@@ -44,11 +49,11 @@ describe('Automation attention state (#2387)', () => {
     const rows: Array<{ id: string }> = await harness.getDataSource().query(
       `INSERT INTO "automation_runs"
          ("ruleId", "ruleName", "trigger", "subjectKind", "subjectId", "outcome",
-          "steps", "blockedByRuleIds", "firedAt", "retryOfRunId")
-       VALUES ($1, $2, $3, $4, $5, $6, '[]'::jsonb, NULL, $7, $8)
+          "steps", "blockedByRuleIds", "firedAt", "retryOfRunId", "retryAttempt")
+       VALUES ($1, $2, $3, $4, $5, $6, '[]'::jsonb, NULL, $7, $8, $9)
        RETURNING "id"`,
       [
-        '11111111-1111-1111-1111-111111111111',
+        options.ruleId ?? '11111111-1111-1111-1111-111111111111',
         'Ship paid orders',
         'order.packed',
         options.subjectKind ?? 'order',
@@ -56,10 +61,34 @@ describe('Automation attention state (#2387)', () => {
         options.outcome ?? 'failed',
         firedAt,
         options.retryOfRunId ?? null,
+        options.retryAttempt ?? 0,
       ],
     );
     const id = rows[0]?.id;
     if (id === undefined) throw new Error('Seeding an automation run returned no id.');
+    return id;
+  }
+
+  /**
+   * A REAL rule row, so a retry gets past `rule-deleted` (#2666).
+   *
+   * `resolveRetryEligibility` checks `rule-deleted` BEFORE the two chain
+   * reasons, so the default seed's dangling rule id would mask both — the
+   * endpoint would answer `rule-deleted` and the test would pass while
+   * asserting nothing about the chain.
+   */
+  async function seedRule(): Promise<string> {
+    const rows: Array<{ id: string }> = await harness.getDataSource().query(
+      `INSERT INTO "automation_rules"
+         ("name", "trigger", "triggerConfig", "conditions", "actions",
+          "definitionHash", "isActive", "effectiveFrom")
+       VALUES ('Ship paid orders', 'order.packed', '{}'::jsonb, '[]'::jsonb, '[]'::jsonb,
+               $1, true, '2026-01-01')
+       RETURNING "id"`,
+      [`hash-${Math.random().toString(16).slice(2)}`],
+    );
+    const id = rows[0]?.id;
+    if (id === undefined) throw new Error('Seeding an automation rule returned no id.');
     return id;
   }
 
@@ -144,11 +173,94 @@ describe('Automation attention state (#2387)', () => {
     expect(await runs.countAttention()).toBe(0);
   });
 
-  it('should keep counting when a retry of that firing also failed', async () => {
+  it('should count ONE row when a retry of that firing also failed', async () => {
     const failedId = await seedRun();
-    await seedRun({ outcome: 'failed', retryOfRunId: failedId });
-    // Two failures, and the retry itself is now attention-worthy too.
-    expect(await runs.countAttention()).toBe(2);
+    await seedRun({ outcome: 'failed', retryOfRunId: failedId, retryAttempt: 1 });
+    // Was 2 before #2666, which IS the defect: one underlying failure, two red
+    // rows. A chain has one live end, and the newest link is the handle.
+    expect(await runs.countAttention()).toBe(1);
+  });
+
+  it('should report ONE attention row for a three-deep failed chain, and all three surfaces must name it (#2666)', async () => {
+    // THE load-bearing test. Three independently-red assertions, each against a
+    // DIFFERENT surface resolving the shared predicate:
+    //   1. countAttention()            — the badge  (returned 4 before)
+    //   2. listRecent({attentionOnly}) — the filter (returned 4 rows before)
+    //   3. the projected needsAttention — the row   (was true on all 4 before)
+    // Assertion 4 (count === rows.length) is deliberately NOT the proof: those
+    // two shapes agreed before this change too, so alone it is a check that
+    // cannot fail. What proves they agree on the RIGHT SET is 1+2+3 together.
+    const r0 = await seedRun();
+    const r1 = await seedRun({ outcome: 'failed', retryOfRunId: r0, retryAttempt: 1 });
+    const r2 = await seedRun({ outcome: 'failed', retryOfRunId: r1, retryAttempt: 2 });
+    const r3 = await seedRun({ outcome: 'failed', retryOfRunId: r2, retryAttempt: 3 });
+
+    const count = await runs.countAttention();
+    const attentionRows = (await runs.listRecent({ attentionOnly: true }, 50, 0)).runs;
+    const allRows = (await runs.listRecent({}, 50, 0)).runs;
+
+    expect(count).toBe(1);
+    expect(attentionRows.map((row) => row.id)).toEqual([r3]);
+
+    const needsAttentionById = new Map(allRows.map((row) => [row.id, row.needsAttention]));
+    expect(needsAttentionById.get(r3)).toBe(true);
+    expect(needsAttentionById.get(r0)).toBe(false);
+    expect(needsAttentionById.get(r1)).toBe(false);
+    expect(needsAttentionById.get(r2)).toBe(false);
+
+    expect(count).toBe(attentionRows.length);
+  });
+
+  it('should let a successful retry still clear a whole chain (#2387 regression)', async () => {
+    const r0 = await seedRun();
+    const r1 = await seedRun({ outcome: 'failed', retryOfRunId: r0, retryAttempt: 1 });
+    await seedRun({ outcome: 'done', retryOfRunId: r1, retryAttempt: 2 });
+    // A `done` retry is also "a retry that exists", and the successful head is
+    // not itself attention-worthy — so #2387's behaviour is preserved, not
+    // traded away for the chain-head rule.
+    expect(await runs.countAttention()).toBe(0);
+  });
+
+  it('should refuse a retry of an already-superseded run over HTTP (#2666)', async () => {
+    // The FORK guard, exercised through the ENDPOINT rather than the projection:
+    // the frontend hides the control on a superseded row, and relying on that is
+    // exactly what `resolveRetryEligibility`'s own contract forbids.
+    const ruleId = await seedRule();
+    const r0 = await seedRun({ ruleId });
+    await seedRun({ ruleId, outcome: 'failed', retryOfRunId: r0, retryAttempt: 1 });
+
+    const response = await harness
+      .getHttp()
+      .post(`/v1/automations/runs/${r0}/retry`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(400);
+    expect(response.body.reason).toBe('superseded');
+  });
+
+  it('should refuse a retry once the chain has spent its budget (#2666)', async () => {
+    const ruleId = await seedRule();
+    const exhausted = await seedRun({ ruleId, retryAttempt: AUTOMATION_MAX_RETRY_ATTEMPTS });
+
+    const response = await harness
+      .getHttp()
+      .post(`/v1/automations/runs/${exhausted}/retry`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(400);
+    expect(response.body.reason).toBe('retry-exhausted');
+
+    // The projection reports the IDENTICAL refusal — one rule, two enforcement
+    // points, so the disabled control and the endpoint cannot drift.
+    const projected = await runs.getRunById(exhausted);
+    expect(projected?.retry).toEqual({ retryable: false, reason: 'retry-exhausted' });
+  });
+
+  it('should still allow a retry that has budget left and no newer attempt', async () => {
+    // The positive control: without it, every refusal assertion above would
+    // pass against an implementation that refuses everything.
+    const ruleId = await seedRule();
+    const runId = await seedRun({ ruleId, retryAttempt: AUTOMATION_MAX_RETRY_ATTEMPTS - 1 });
+    const projected = await runs.getRunById(runId);
+    expect(projected?.retry).toEqual({ retryable: true });
   });
 
   it('should keep counting when only an UNRELATED later firing of the same rule succeeded', async () => {

@@ -270,6 +270,11 @@ describe('Automation Schema Integration', () => {
         'firedAt',
         'id',
         'outcome',
+        // #2666's chain position — `0` for an ordinary firing, the parent's
+        // value plus one for a retry. It is what gives a retry chain a terminal
+        // state without walking `retryOfRunId`, which carries no FK and so
+        // cannot be assumed acyclic.
+        'retryAttempt',
         'retryOfRunId',
         'ruleId',
         'ruleName',
