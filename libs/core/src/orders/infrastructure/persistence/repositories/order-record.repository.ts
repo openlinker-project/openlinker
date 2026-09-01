@@ -11,7 +11,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { DataSource, EntityManager, SelectQueryBuilder } from 'typeorm';
-import { In, IsNull, LessThan, MoreThanOrEqual, Not, Repository } from 'typeorm';
+import { In, IsNull, LessThan, MoreThanOrEqual, Repository } from 'typeorm';
 import type { OrderSyncStatusJson, SyncAttemptJson } from '../entities/order-record.orm-entity';
 import { OrderRecordOrmEntity } from '../entities/order-record.orm-entity';
 import { OrderLineItemOrmEntity } from '../entities/order-line-item.orm-entity';
@@ -652,23 +652,42 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * The six columns are set in a single guarded statement — the same
    * "the group can never half-apply" shape {@link stampFxIfAbsent} uses — so
    * a partial clear that would violate `ck_order_records_fx_group` is not
-   * expressible. `reportingCurrency: IsNull()` in the WHERE is what makes it
-   * idempotent: a second delivery of the same driver job finds nothing to
-   * clear and reports `false` rather than re-clearing a row the stamp
-   * pipeline may already have re-answered.
+   * expressible.
+   *
+   * The guard is a DISJUNCTION over the three columns that can independently
+   * carry FX state (#2775), not `reportingCurrency IS NOT NULL` alone. A row
+   * can hold a pinned `fxIntendedCurrency` with no figure at all — the
+   * deferred path (`claimFxIntentIfAbsent` pinned an intent, then the provider
+   * blipped) and the terminal-marked path (`fxStampedAt` set, no figure, which
+   * {@link countRemainingCurrencyMismatch} counts explicitly). Both are inside
+   * {@link findCurrencyMismatchOrderRefsAfter}'s population, and for both a
+   * figure-only guard matched nothing, left the stale intent behind, and let
+   * `resolveIntent` re-pin the currency the operator just moved away from — so
+   * the run could never converge.
+   *
+   * A query builder rather than the object-literal `where`, because TypeORM
+   * cannot express an OR across columns in that API. Idempotency is preserved
+   * by the disjunction itself: a virgin row (all six columns `NULL`) still
+   * matches nothing and reports `false`, so a re-delivered driver job does not
+   * re-clear a row the stamp pipeline has already re-answered.
    */
   async clearFxStampForRestatement(internalOrderId: string): Promise<boolean> {
-    const result = await this.repository.update(
-      { internalOrderId, reportingCurrency: Not(IsNull()) },
-      {
+    const result = await this.repository
+      .createQueryBuilder()
+      .update(OrderRecordOrmEntity)
+      .set({
         reportingCurrency: null,
         reportingTotalAmount: null,
         exchangeRateId: null,
         fxStampedAt: null,
         fxIntendedCurrency: null,
         fxRule: null,
-      }
-    );
+      })
+      .where('"internalOrderId" = :internalOrderId', { internalOrderId })
+      .andWhere(
+        '("reportingCurrency" IS NOT NULL OR "fxIntendedCurrency" IS NOT NULL OR "fxStampedAt" IS NOT NULL)'
+      )
+      .execute();
     return (result.affected ?? 0) > 0;
   }
 
