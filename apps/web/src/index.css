@@ -9388,6 +9388,136 @@ a.kpi-card:focus-visible {
 .orders-row-cta:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
 .orders-row-cta__plus { color: var(--text-muted); font-weight: 700; }
 
+/* ── Sales-document cell (#2552/#2553) ──────────────────────────────────
+   The line inside the money cluster where the CTA above used to sit. Colour
+   marks exceptions only: `--done`/`--progress` stay in secondary ink, `--idle`
+   (issue-on-request, or nothing routed yet with no attention) is muted, and
+   only `--warning`/`--error` pick up a status tint. */
+.sales-doc {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 100%;
+  min-width: 0;
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+.sales-doc__glyph { flex: none; }
+/* `min-width: 0` is load-bearing (#2555): a flex child defaults to
+   `min-width: auto`, which refuses to shrink below its own text's intrinsic
+   width — so on a narrow mobile card the word would push the trigger wider
+   than the card rather than truncate inside it. */
+.sales-doc__word {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sales-doc--done,
+.sales-doc--progress { color: var(--text-secondary); }
+.sales-doc--idle { color: var(--text-muted); }
+.sales-doc--warning { color: var(--status-warning-fg); }
+.sales-doc--error { color: var(--status-error-fg); }
+.sales-doc__tick { color: var(--status-success); flex: none; }
+.sales-doc__live {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--status-info);
+  flex: none;
+  animation: sales-doc-pulse 1.6s ease-in-out infinite;
+}
+@keyframes sales-doc-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sales-doc__live { animation: none; }
+}
+.sales-doc__dupe {
+  display: inline-grid;
+  place-items: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  background: var(--status-warning-soft);
+  border: 1px solid var(--status-warning-border);
+  color: var(--status-warning-fg);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  flex: none;
+}
+/* The clickable trigger (#2553) — same ink as the static line, an
+   underline-on-hover/focus is the only affordance change, matching the
+   ghost-first, accent-on-interaction rule the row CTA above already follows. */
+.sales-doc-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 100%;
+  min-width: 0;
+  padding: 1px var(--space-1);
+  margin: -1px calc(var(--space-1) * -1);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+}
+.sales-doc-trigger:hover,
+.sales-doc-trigger:focus-visible { background: var(--bg-surface-hover); }
+.sales-doc-trigger:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+/* #2555 — a real tap target on touch: the button's own box is tight (icon +
+   word), so the minimum comes from padding rather than font-size. `min-height`
+   only; width is intentionally left to content — a full-width hit target here
+   would make the whole card row read as one giant tappable area. */
+@media (pointer: coarse) {
+  .sales-doc-trigger { min-height: 44px; }
+}
+/* The mobile card's document line must fold, never push the card sideways
+   (#2555 acceptance criteria: no horizontal page scroll at 360px). The card
+   grid cell already carries `min-width: 0` (`.orders-card-facts > div`), so
+   this only needs to stop the trigger claiming more than the cell offers. */
+@media (max-width: 767.98px) {
+  .orders-card-facts .sales-doc-trigger,
+  .orders-card-facts .sales-doc { max-width: 100%; }
+  .orders-card-facts .sales-doc__word { min-width: 0; }
+}
+.sales-doc-popover__head { padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border-subtle); }
+.sales-doc-popover__body { padding: var(--space-3) var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); }
+.sales-doc-popover__foot {
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.sales-doc-popover__why { margin: 0; font-size: 0.8125rem; color: var(--text-secondary); }
+.sales-doc-popover__warn {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--status-warning-soft);
+  border: 1px solid var(--status-warning-border);
+  color: var(--status-warning-fg);
+  font-size: 0.8125rem;
+}
+.sales-doc-fact {
+  display: grid;
+  grid-template-columns: 5.5rem 1fr;
+  gap: var(--space-2);
+  font-size: 0.8125rem;
+}
+.sales-doc-fact__label { color: var(--text-muted); font-size: 0.75rem; }
+.sales-doc-fact__value { font-family: var(--font-mono); font-size: 0.75rem; overflow-wrap: anywhere; }
+.sales-doc-tone { font-weight: 500; font-size: 0.8125rem; }
+.sales-doc-tone--success { color: var(--status-success-fg); }
+.sales-doc-tone--info { color: var(--status-info-fg); }
+.sales-doc-tone--error { color: var(--status-error-fg); }
+.sales-doc-tone--neutral { color: var(--text-muted); }
+
 /* Inline Retry under the order name (#1713). Sits in the Order cell rather than
    a trailing column so a rare failed row can't widen the whole table. Carries an
    error tint because it only ever appears on a failed sync — a ghost button read
