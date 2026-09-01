@@ -55,6 +55,7 @@ import {
   mapReturnEventsToTimeline,
   useOrderReturnEventsQuery,
 } from '../../features/returns';
+import { OrderFulfillmentTasksPanel } from '../../features/fulfillment';
 import { useSession } from '../../shared/auth/use-session';
 
 const RAW_SNAPSHOT_ANCHOR_ID = 'order-raw-snapshot';
@@ -503,6 +504,19 @@ export function OrderDetailPage(): ReactElement {
           <OrderCustomerCard customerId={order.customerId} sourceConnectionId={order.sourceConnectionId} />
         </div>
       </div>
+
+      {/* #2411 — work-grain holds. Full width and BELOW the grid: a routed
+          order can carry several fulfilment tasks, each with its own lines and
+          holds, which is more than a rail column can hold without wrapping into
+          nonsense on a tablet. Rendered unconditionally, and keyed per order so
+          the panel's dialog state cannot leak onto a cached next order (the
+          OrderHoldPanel precedent) — an order with no fulfilment tasks SAYS so
+          rather than silently disappearing, which is what a reader needs when
+          routing is switched on and an order was not routed. */}
+      <OrderFulfillmentTasksPanel
+        key={order.internalOrderId}
+        internalOrderId={order.internalOrderId}
+      />
 
       {snapshot.parseWarnings.length > 0 ? (
         <p className="order-detail__parse-warning-row">

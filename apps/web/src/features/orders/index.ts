@@ -87,3 +87,15 @@ export type {
   TimelineEvent,
   DatedTimelineEvent,
 } from './components/order-activity-timeline';
+
+// #2411 — the work-grain fulfilment-task panel renders the SAME `HoldReason`
+// vocabulary at a different grain. It imports these rather than mirroring them:
+// a second frontend copy of one union would need a second guard script, and
+// `scripts/check-hold-reason-mirror.mjs` already pins this one against core.
+export {
+  HOLD_REASON_COPY,
+  HoldReasonValues,
+  holdReasonLabel,
+  isHoldReason,
+} from './lib/order-hold.types';
+export type { HoldReason } from './lib/order-hold.types';

@@ -705,6 +705,14 @@ export function createMockApiClient(
       applyPreset: vi.fn().mockResolvedValue(null),
       ...overrides.fulfillmentAuthority,
     } as ApiClient['fulfillmentAuthority'],
+    // #2411. The default answers the SHAPE the parse layer returns (a page
+    // object), never a bare array — a mock returning `[]` would let the panel
+    // read `.works` as undefined and pass, while the real client never can.
+    fulfillment: {
+      listByOrder: vi.fn().mockResolvedValue({ works: [], total: 0, limit: 50, offset: 0 }),
+      applyAction: vi.fn().mockResolvedValue(null),
+      ...overrides.fulfillment,
+    } as ApiClient['fulfillment'],
     salesDocumentRules: {
       listRules: vi.fn().mockResolvedValue([]),
       createRule: vi.fn().mockResolvedValue(null),
