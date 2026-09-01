@@ -2,6 +2,7 @@
  * `Try again` (#2387)
  */
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { AUTOMATION_MAX_RETRY_ATTEMPTS } from '@openlinker/core/automation';
 import type {
   AutomationRunView,
   IAutomationDispatchService,
@@ -28,6 +29,8 @@ function view(overrides: Partial<AutomationRunView> = {}): AutomationRunView {
     dismissedAt: null,
     dismissedByUserId: null,
     retryOfRunId: null,
+    retryAttempt: 0,
+    supersededByRetry: false,
     needsAttention: true,
     retry: { retryable: true },
     ...overrides,
@@ -69,8 +72,45 @@ describe('AutomationRetryService', () => {
     expect(input?.matchedRules[0]).toBe(rule);
     // The link is what lets the derived attention state clear on success
     // WITHOUT a later unrelated firing of the same rule clearing it.
-    expect(input?.retryOfRunId).toBe('run-1');
+    expect(input?.retryOf?.runId).toBe('run-1');
     expect(input?.trigger).toBe('order.packed');
+  });
+
+  it('should stamp the chain position as the parent attempt plus one (#2666)', async () => {
+    runs.getRunById.mockResolvedValue(view({ retryAttempt: 1 }));
+
+    await service.retry({ runId: 'run-1' });
+
+    // The link and the counter travel as ONE value, so a retry cannot be
+    // recorded without advancing the budget it is spending — a caller that set
+    // one and forgot the other would restart the budget on every chain.
+    expect(dispatcher.dispatch.mock.calls[0]?.[0]?.retryOf).toEqual({
+      runId: 'run-1',
+      attempt: 2,
+    });
+  });
+
+  it('should refuse and NOT dispatch once the chain has spent its budget (#2666)', async () => {
+    runs.getRunById.mockResolvedValue(view({ retryAttempt: AUTOMATION_MAX_RETRY_ATTEMPTS }));
+
+    await expect(service.retry({ runId: 'run-1' })).rejects.toMatchObject({
+      response: { reason: 'retry-exhausted' },
+    });
+    // The refusal must precede the side effect, or the terminal state is a
+    // label on work that already ran.
+    expect(dispatcher.dispatch).not.toHaveBeenCalled();
+  });
+
+  it('should refuse and NOT dispatch a retry of an already-superseded run (#2666)', async () => {
+    runs.getRunById.mockResolvedValue(view({ supersededByRetry: true }));
+
+    await expect(service.retry({ runId: 'run-1' })).rejects.toMatchObject({
+      response: { reason: 'superseded' },
+    });
+    // This is the FORK guard, and it must live HERE and not only in the UI: the
+    // frontend hides the control on a superseded row, but a direct call would
+    // otherwise mint a second chain head whose budget restarts at 1.
+    expect(dispatcher.dispatch).not.toHaveBeenCalled();
   });
 
   it('should hand the gate exactly ONE rule, which it can never refuse', async () => {

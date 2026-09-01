@@ -40,14 +40,40 @@ import {
 import { AutomationRunOrmEntity } from '../entities/automation-run.orm-entity';
 
 /**
- * What makes a retry SUPERSEDE the failure it retries: it did not fail.
+ * What makes a retry SUPERSEDE the failure it retries: it EXISTS (#2666).
  *
  * One string, two readers (`applyAttentionPredicate`'s correlated `NOT EXISTS`
  * and `findSupersededRunIds`' batched read), because those two answer the same
  * question at different grains and must never answer it differently. `%alias%`
  * is substituted by the caller.
+ *
+ * It was `outcome <> 'failed'` until #2666, and the rename is not cosmetic — a
+ * constant still called `RETRY_SUCCEEDED` while it no longer tests success is
+ * the next reader's bug. A retry chain is ONE underlying failure with one live
+ * end, so the operator's handle is the newest link; testing the retry's outcome
+ * badged all three rows of a three-deep chain and made the operator dismiss each
+ * one to silence a single problem. A successful retry still clears the chain,
+ * because a `done` retry is also a retry that exists and the successful head is
+ * not itself attention-worthy.
+ *
+ * **Deliberately non-recursive**, which is what makes the chain safe to read
+ * with no depth cap: `retryOfRunId` carries no FK and the projection cannot be
+ * assumed acyclic, and there is no `statement_timeout` configured, so a
+ * recursive walk on an operator page load could pin a pooled connection. A
+ * single-level `NOT EXISTS` cannot hang on a cycle at all — it simply reads both
+ * members as superseded, understating rather than overstating. Chain LENGTH is
+ * bounded instead at write time by `AUTOMATION_MAX_RETRY_ATTEMPTS`, which bounds
+ * the data rather than only the query.
+ *
+ * **The expression is deliberately TAUTOLOGICAL** — every row in the subquery
+ * has an id, so it adds nothing beyond the `retryOfRunId` join, and that is the
+ * point: existence IS the rule now. Do not "clean it up" by inlining it at the
+ * two call sites. The constant is the structural guarantee that the count, the
+ * filtered rows and the per-row badge cannot answer the same question
+ * differently (#2666 acceptance criterion 4), and it is the one place to
+ * re-narrow the rule if supersession ever needs a condition again.
  */
-const RETRY_SUCCEEDED_CONDITION = `%alias%."outcome" <> 'failed'`;
+const SUPERSEDED_BY_RETRY_CONDITION = `%alias%."id" IS NOT NULL`;
 
 @Injectable()
 export class AutomationRunRepository implements AutomationRunRepositoryPort {
@@ -82,6 +108,7 @@ export class AutomationRunRepository implements AutomationRunRepositoryPort {
       blockedByRuleIds: run.blockedByRuleIds === null ? null : [...run.blockedByRuleIds],
       firedAt: run.firedAt,
       retryOfRunId: run.retryOfRunId ?? null,
+      retryAttempt: run.retryAttempt,
     });
     const saved = await this.ormRepository.save(entity);
     return this.toDomain(saved);
@@ -159,7 +186,7 @@ export class AutomationRunRepository implements AutomationRunRepositoryPort {
       .createQueryBuilder('retry')
       .select('retry."retryOfRunId"', 'retryOfRunId')
       .where('retry."retryOfRunId" IN (:...runIds)', { runIds: [...runIds] })
-      .andWhere(RETRY_SUCCEEDED_CONDITION.replace(/%alias%/g, 'retry'))
+      .andWhere(SUPERSEDED_BY_RETRY_CONDITION.replace(/%alias%/g, 'retry'))
       .groupBy('retry."retryOfRunId"')
       .getRawMany<{ retryOfRunId: string }>();
     return new Set(rows.map((row) => row.retryOfRunId));
@@ -195,7 +222,7 @@ export class AutomationRunRepository implements AutomationRunRepositoryPort {
       .andWhere(
         `NOT EXISTS (SELECT 1 FROM "automation_runs" retry ` +
           `WHERE retry."retryOfRunId" = ${alias}."id" ` +
-          `AND ${RETRY_SUCCEEDED_CONDITION.replace(/%alias%/g, 'retry')})`,
+          `AND ${SUPERSEDED_BY_RETRY_CONDITION.replace(/%alias%/g, 'retry')})`,
       );
   }
 
@@ -241,6 +268,13 @@ export class AutomationRunRepository implements AutomationRunRepositoryPort {
       entity.dismissedAt,
       entity.dismissedByUserId,
       entity.retryOfRunId,
+      // Coerce on read, never throw — the same contract this file's header
+      // states for `outcome`. `0` is the value that keeps a row USABLE (a fresh
+      // budget) rather than permanently refused, so a junk value degrades in the
+      // safe direction.
+      Number.isFinite(entity.retryAttempt) && entity.retryAttempt > 0
+        ? Math.floor(entity.retryAttempt)
+        : 0,
     );
   }
 }

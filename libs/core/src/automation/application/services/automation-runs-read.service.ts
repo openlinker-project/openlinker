@@ -153,12 +153,18 @@ export class AutomationRunsReadService implements IAutomationRunsReadService {
       needsAttention: isAutomationRunAttentionWorthy({
         outcome: run.outcome,
         dismissedAt: run.dismissedAt,
-        supersededBySuccessfulRetry: superseded.has(run.id),
+        supersededByRetry: superseded.has(run.id),
       }),
+      supersededByRetry: superseded.has(run.id),
       retry: resolveRetryEligibility({
         outcome: run.outcome,
         subjectKind: run.subjectKind,
         ruleExists: existingRuleIds.has(run.ruleId),
+        // Both chain facts are already in hand — `superseded` is the read the
+        // badge needs anyway, and `retryAttempt` is a column on the row — so
+        // closing the #2666 fork costs no extra query on this path.
+        retryAttempt: run.retryAttempt,
+        supersededByRetry: superseded.has(run.id),
       }),
     }));
   }

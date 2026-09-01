@@ -74,6 +74,21 @@ describe('PersistingAutomationRunRecorder', () => {
     recorder = new PersistingAutomationRunRecorder(repository);
   });
 
+  it('should record an ordinary firing as chain position zero (#2666)', async () => {
+    await recorder.record(makeRecord());
+    expect(saved?.retryOfRunId).toBeNull();
+    expect(saved?.retryAttempt).toBe(0);
+  });
+
+  it('should translate the retry link pair onto the two columns (#2666)', async () => {
+    // The recorder is the SINGLE translation point between the paired
+    // application seam (`retryOf`) and the column-shaped persistence contract.
+    // A second translation site is how a chain silently restarts its budget.
+    await recorder.record(makeRecord({ retryOf: { runId: 'run-parent', attempt: 2 } }));
+    expect(saved?.retryOfRunId).toBe('run-parent');
+    expect(saved?.retryAttempt).toBe(2);
+  });
+
   it('should declare that it persists runs', () => {
     // The single switch that flips `recordingAvailable`, so an empty log stops
     // reading as "not built yet".

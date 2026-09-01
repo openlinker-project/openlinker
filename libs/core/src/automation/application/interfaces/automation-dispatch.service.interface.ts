@@ -26,6 +26,8 @@ import type { AutomationRule } from '../../domain/entities/automation-rule.entit
 import type { AutomationSubjectFacts } from '../../domain/types/automation-facts.types';
 import type { AutomationTrigger } from '../../domain/types/automation-trigger.types';
 
+import type { AutomationRunRetryLink } from '../../domain/types/automation-run.types';
+
 export interface AutomationDispatchInput {
   readonly trigger: AutomationTrigger;
   readonly facts: AutomationSubjectFacts;
@@ -42,7 +44,15 @@ export interface AutomationDispatchInput {
    * is what lets the derived AF-X state clear on a successful retry WITHOUT
    * clearing on a later unrelated firing of the same rule.
    */
-  readonly retryOfRunId?: string;
+  /**
+   * The failure this firing retries, as ONE value (#2666).
+   *
+   * The run id and the chain position are meaningless apart: a caller that set
+   * the link and forgot the counter would silently restart the budget on every
+   * chain, reopening #2666 with nothing failing and no error anywhere. A type
+   * that cannot express that state is worth the small churn.
+   */
+  readonly retryOf?: AutomationRunRetryLink;
 }
 
 export interface IAutomationDispatchService {

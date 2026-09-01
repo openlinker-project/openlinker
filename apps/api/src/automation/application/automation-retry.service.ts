@@ -1,5 +1,5 @@
 /**
- * Automation Retry Service (#2387, Wave-2 spec §4.2 AF-X row)
+ * Automation Retry Service (#2387, Wave-2 spec §4.2 AF-X row; #2666 terminality)
  *
  * The producer behind `Try again`. Re-runs one failed firing's rule against that
  * firing's own order, writing a NEW run row linked back by `retryOfRunId`.
@@ -50,6 +50,16 @@
  * `dispatch-shipment` has no documented equivalent, so the day that executor
  * lands, a whole-rule retry can buy a second label.
  *
+ * **6. The chain TERMINATES, and both of its ends are guarded here (#2666).**
+ * A retry that failed used to stay retry-eligible for ever, so one underlying
+ * failure was re-offered indefinitely. Two refusals close that: `retry-exhausted`
+ * past `AUTOMATION_MAX_RETRY_ATTEMPTS`, and `superseded` when a newer attempt
+ * already exists. The second is what closes the FORK — without it a direct call
+ * could retry an already-superseded parent, minting a second chain head whose
+ * budget restarts at 1, so the budget would bound each branch while the number
+ * of branches stayed unbounded. Neither guard costs a read: both facts ride on
+ * the projection `getRunById` already returns.
+ *
  * **5. The new run links back.** `retryOfRunId` is what lets the derived AF-X
  * state clear on a successful retry WITHOUT clearing on a later unrelated firing
  * of the same rule. A derived state is only self-clearing if the derivation can
@@ -88,6 +98,10 @@ const REFUSAL_MESSAGE: Readonly<Record<RetryRefusalReason, string>> = {
   'rule-deleted':
     'The automation this run belongs to has been deleted, so there is no longer a definition to run.',
   'subject-unsupported': 'Running again is not possible for a return.',
+  superseded:
+    'This run has already been tried again. Open the newer attempt to see what happened and to run it again.',
+  'retry-exhausted':
+    'This has already been run again the maximum number of times without succeeding. Fix what is failing at the source, or dismiss this run.',
 };
 
 @Injectable()
@@ -121,6 +135,13 @@ export class AutomationRetryService implements IAutomationRetryService {
       outcome: run.outcome,
       subjectKind: run.subjectKind,
       ruleExists: rule !== null,
+      // The two #2666 chain facts. Both ride on the projection `getRunById`
+      // already returns, so the guard costs no extra read — and both must be
+      // enforced HERE, not only rendered: the frontend hides `Try again` on a
+      // superseded row, and property 1 forbids relying on that, since a direct
+      // call would otherwise fork the chain under a fresh budget.
+      retryAttempt: run.retryAttempt,
+      supersededByRetry: run.supersededByRetry,
     });
     if (!eligibility.retryable) {
       throw new BadRequestException({
@@ -160,7 +181,9 @@ export class AutomationRetryService implements IAutomationRetryService {
       // Exactly one rule: the operator named it. Property 2 — no evaluation.
       matchedRules: [rule],
       now: new Date(),
-      retryOfRunId: run.id,
+      // The link and the chain position travel as one value, so a retry can
+      // never be recorded without advancing the budget it is spending (#2666).
+      retryOf: { runId: run.id, attempt: run.retryAttempt + 1 },
     });
 
     // Re-read the ORIGINAL run: its `needsAttention` is what changed, and it

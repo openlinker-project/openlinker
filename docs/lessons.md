@@ -854,3 +854,28 @@ height was documented as four lines by two bodies independently when the composi
 **Applies to**: any first-run precondition guard and its bootstrap; `apps/api/src/integrations/application/services/connection.service.ts`, `libs/core/src/inventory/application/services/location.service.ts`.
 
 **Source**: #2407.
+
+## A hidden control is not a guard — assert the endpoint refuses independently
+
+- **Context**: #2666, the automation retry chain. `resolveRetryEligibility` is read by two
+  surfaces: the run projection (which decides whether `Try again` renders enabled) and the
+  retry endpoint (which enforces the refusal). Its own docblock already states the rule —
+  *"the projection is a rendering fact and this is the guard. If only the endpoint knew, the
+  UI would lie; if only the UI knew, a direct call would bypass it."*
+- **Problem**: the terminality fix bounded a retry chain by an attempt budget, and the design
+  read as complete because the frontend hides the `Try again` control on a superseded row
+  (`AutomationRunActions` returns `null` on `!needsAttention`). But the eligibility rule never
+  tested supersession, so `POST /automations/runs/{id}/retry` on an already-retried parent
+  still succeeded — minting a second chain head whose budget restarted at 1. The budget
+  bounded each branch while the number of branches stayed unbounded, and the attention count
+  grew a second row for one underlying failure: the exact defect the issue existed to close,
+  restored through the API path. No test failed, because every test drove the UI's predicate.
+- **Rule**: when one predicate gates both a rendered affordance and an endpoint, write a test
+  that calls the **endpoint** with the affordance's precondition violated. "The button is
+  hidden" is not evidence the request is refused. Ask specifically: *which arm of this rule
+  does only the UI know about?*
+- **Applies to**: any pure rule consumed by both a projection/DTO and a controller —
+  `resolveRetryEligibility`, `isAutomationRunAttentionWorthy`, `checkRequiredToSell`,
+  `resolveSalesDocumentRouting`, and the `check-*-mirror.mjs` family that exists for the same
+  class of split-brain.
+- **Source**: #2666 (plan-stage `/tech-review`, escalated to BLOCKING before implementation).

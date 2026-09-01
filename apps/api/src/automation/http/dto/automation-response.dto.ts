@@ -200,6 +200,16 @@ export class AutomationRunResponseDto {
   })
   retryOfRunId!: string | null;
 
+  @ApiProperty({
+    description:
+      'Whether a newer attempt already points at this run (#2666). It is why a FAILED run can ' +
+      'carry no attention badge: a chain is one underlying failure with one live end, so only ' +
+      'the newest link is the operator handle. Rendered as a muted note so a failed row is never ' +
+      'silent about why it is unbadged. `retryAttempt` itself is deliberately not exposed — see ' +
+      'the issue #2666 plan for the argument.',
+  })
+  supersededByRetry!: boolean;
+
   static fromDomain(run: AutomationRunView): AutomationRunResponseDto {
     const dto = new AutomationRunResponseDto();
     dto.id = run.id;
@@ -218,6 +228,7 @@ export class AutomationRunResponseDto {
     dto.dismissedAt = run.dismissedAt === null ? null : run.dismissedAt.toISOString();
     dto.dismissedByUserId = run.dismissedByUserId;
     dto.retryOfRunId = run.retryOfRunId;
+    dto.supersededByRetry = run.supersededByRetry;
     return dto;
   }
 }

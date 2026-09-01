@@ -45,6 +45,16 @@ export interface AutomationRunView extends AutomationRun {
   readonly needsAttention: boolean;
   /** Whether `Try again` is offered, and the operator-facing reason when it is not. */
   readonly retry: RetryEligibility;
+  /**
+   * Whether a newer attempt already points at this run (#2666).
+   *
+   * Surfaced because it changes what an unbadged `failed` row MEANS: before
+   * #2666 that could only be "a retry succeeded", and it now also covers "a
+   * later retry exists and may itself have failed". The row renders a muted
+   * note from this, so the operator is never shown a failed row that is silent
+   * about why it carries no badge.
+   */
+  readonly supersededByRetry: boolean;
 }
 
 export interface AutomationRunLogPage {

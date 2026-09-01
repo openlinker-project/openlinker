@@ -184,7 +184,7 @@ export class AutomationDispatchService implements IAutomationDispatchService {
         outcome,
         steps,
         firedAt: input.now,
-        retryOfRunId: input.retryOfRunId,
+        retryOf: input.retryOf,
       });
     } catch (error) {
       // Recording is a report on effects that have already happened; letting it
