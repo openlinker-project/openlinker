@@ -41,10 +41,7 @@ import {
   netSalesOrderNetEligibleSql,
 } from '../../../domain/types/net-sales-tax-rate.types';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
-import type {
-  FxRestatementOrderRef,
-  FxRestatementRemainingSummary,
-} from '../../../domain/types/order-fx-restatement.types';
+import type { FxRestatementRemainingSummary } from '../../../domain/types/order-fx-restatement.types';
 import {
   SalesDocumentAttentionReasonValues,
   isSalesDocumentGateBlockReason,
@@ -651,20 +648,22 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * why this is keyset-ordered on `internalOrderId` rather than reusing
    * {@link findCurrencyMismatchOrders}' `placedAt DESC`.
    *
-   * `select`-narrowed to the two columns the caller actually uses — the id it
-   * repairs and the connection its child job must carry — so a page of
-   * `orderSnapshot` JSONB is never hydrated for nothing (same reasoning as
-   * {@link findUnstampedFxOrderIds}).
+   * `select`-narrowed to the one column the caller actually uses — the id it
+   * repairs — so a page of `orderSnapshot` JSONB is never hydrated for
+   * nothing (same reasoning as {@link findUnstampedFxOrderIds}). Used to also
+   * select `sourceConnectionId` for a child job to carry; #2776 replaced the
+   * child job with an in-process stamp that re-reads the full `OrderRecord`
+   * (connection included) itself, so that column became a per-row cost with
+   * no consumer.
    */
   async findCurrencyMismatchOrderRefsAfter(
     filters: SalesAnalyticsFilters,
     currentReportingCurrency: string,
     page: { afterOrderId: string | null; limit: number }
-  ): Promise<FxRestatementOrderRef[]> {
+  ): Promise<string[]> {
     const qb = this.repository
       .createQueryBuilder('rec')
       .select('rec."internalOrderId"', 'internal_order_id')
-      .addSelect('rec."sourceConnectionId"', 'source_connection_id')
       .andWhere('rec."cancelledAt" IS NULL')
       .andWhere(
         '(rec."reportingCurrency" IS NULL OR rec."reportingCurrency" != :currentReportingCurrency)',
@@ -679,14 +678,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
 
     this.applySalesAnalyticsScope(qb, filters);
 
-    const rows = await qb.getRawMany<{
-      internal_order_id: string;
-      source_connection_id: string;
-    }>();
-    return rows.map((row) => ({
-      internalOrderId: row.internal_order_id,
-      sourceConnectionId: row.source_connection_id,
-    }));
+    const rows = await qb.getRawMany<{ internal_order_id: string }>();
+    return rows.map((row) => row.internal_order_id);
   }
 
   /**

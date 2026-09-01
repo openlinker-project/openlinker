@@ -75,7 +75,7 @@ describe('AnalyticsCurrencyRecalculateHandler', () => {
     restatement = {
       restatePage: jest
         .fn()
-        .mockResolvedValue({ scanned: 3, cleared: 3, stamped: 3, terminal: 0, deferred: 0, nextCursor: null }),
+        .mockResolvedValue({ scanned: 3, cleared: 3, stamped: 3, terminal: 0, deferred: 0, failed: 0, nextCursor: null }),
       countRemaining: jest.fn().mockResolvedValue({ total: 0, terminalMarked: 0, pending: 0 }),
     };
     reportingCurrency = {
@@ -105,6 +105,7 @@ describe('AnalyticsCurrencyRecalculateHandler', () => {
       stamped: 100,
       terminal: 0,
       deferred: 0,
+      failed: 0,
       nextCursor: 'ol_order_z',
     });
 
@@ -130,6 +131,7 @@ describe('AnalyticsCurrencyRecalculateHandler', () => {
       stamped: 100,
       terminal: 0,
       deferred: 0,
+      failed: 0,
       nextCursor: 'ol_order_z',
     });
 
@@ -191,6 +193,7 @@ describe('AnalyticsCurrencyRecalculateHandler', () => {
       stamped: 100,
       terminal: 0,
       deferred: 0,
+      failed: 0,
       nextCursor: 'ol_order_zz',
     });
 

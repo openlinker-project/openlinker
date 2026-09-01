@@ -53,9 +53,7 @@ describe('OrderFxRestatementService', () => {
   });
 
   function seed(ids: string[]): void {
-    repository.findCurrencyMismatchOrderRefsAfter.mockResolvedValue(
-      ids.map((internalOrderId) => ({ internalOrderId, sourceConnectionId: 'conn-1' }))
-    );
+    repository.findCurrencyMismatchOrderRefsAfter.mockResolvedValue(ids);
   }
 
   it('should not enqueue any job during a restatement page', async () => {
@@ -88,11 +86,8 @@ describe('OrderFxRestatementService', () => {
     expect(order).toEqual(['clear', 'stamp']);
   });
 
-  it('should stamp every ref in the page, sequentially', async () => {
-    repository.findCurrencyMismatchOrderRefsAfter.mockResolvedValue([
-      { internalOrderId: 'ol_order_a', sourceConnectionId: 'conn-a' },
-      { internalOrderId: 'ol_order_b', sourceConnectionId: 'conn-b' },
-    ]);
+  it('should stamp every id in the page, sequentially', async () => {
+    seed(['ol_order_a', 'ol_order_b']);
 
     await service.restatePage(SCOPE, 'EUR', { runId: 'run-1', afterOrderId: null, limit: 10 });
 
@@ -174,7 +169,29 @@ describe('OrderFxRestatementService', () => {
 
     await expect(
       service.restatePage(SCOPE, 'EUR', { runId: 'run-1', afterOrderId: null, limit: 10 })
-    ).resolves.toMatchObject({ scanned: 3, stamped: 1, terminal: 1, deferred: 1 });
+    ).resolves.toMatchObject({ scanned: 3, stamped: 1, terminal: 1, deferred: 1, failed: 0 });
+  });
+
+  it('should keep going, and still count the rest, when one order`s stamp attempt throws', async () => {
+    // `IOrderFxStampService.stamp` is documented as never throwing, but that
+    // is an implementation promise on an injected interface, not a type
+    // guarantee — and this page replaced N independent per-order jobs with
+    // ONE sequential loop, so an unguarded throw here would silently abort
+    // every order still queued behind it. Tallied as `failed`, distinct from
+    // an ordinary `stamp()`-reported `deferred`.
+    stampService.stamp
+      .mockRejectedValueOnce(new Error('unexpected stamp() failure'))
+      .mockResolvedValueOnce(STAMPED_OUTCOME);
+    seed(['ol_order_a', 'ol_order_b']);
+
+    const result = await service.restatePage(SCOPE, 'EUR', {
+      runId: 'run-1',
+      afterOrderId: null,
+      limit: 10,
+    });
+
+    expect(result).toMatchObject({ scanned: 2, stamped: 1, failed: 1 });
+    expect(stampService.stamp.mock.calls.map(([id]) => id)).toEqual(['ol_order_a', 'ol_order_b']);
   });
 
   it('should not count an already-stamped outcome as a fresh stamp', async () => {

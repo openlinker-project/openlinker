@@ -229,7 +229,6 @@ export { SalesDocumentViewService } from './application/services/sales-document-
 export type { IOrderFxStampService } from './application/interfaces/order-fx-stamp.service.interface';
 export type { IOrderFxRestatementService } from './application/interfaces/order-fx-restatement.service.interface';
 export type {
-  FxRestatementOrderRef,
   FxRestatementPageInput,
   FxRestatementPageResult,
   FxRestatementRemainingSummary,

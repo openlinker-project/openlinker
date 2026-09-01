@@ -49,17 +49,6 @@ export interface FxRestatementPageInput {
 }
 
 /**
- * One order the restatement page will repair. The source connection rides
- * along with the id because `OrderFxStampService.sweep`/child retry paths key
- * on it — kept here so the enumeration's own read stays the single source and
- * a per-order re-read isn't paid for a value already in hand.
- */
-export interface FxRestatementOrderRef {
-  internalOrderId: string;
-  sourceConnectionId: string;
-}
-
-/**
  * What one restatement page did.
  *
  * `stamped` / `terminal` / `deferred` mirror `OrderFxSweepResult` exactly —
@@ -78,6 +67,17 @@ export interface FxRestatementPageResult {
   terminal: number;
   /** Orders whose stamp attempt this page deferred to the retry pipeline. */
   deferred: number;
+  /**
+   * Orders whose `IOrderFxStampService.stamp()` call THREW (#2776 review).
+   * `stamp()` is documented as never throwing, but that is an implementation
+   * promise on an injected interface, not a type guarantee — and collapsing
+   * per-order jobs into one sequential in-process loop means an unguarded
+   * throw would silently abort every remaining order in the page, which is
+   * strictly worse than the fan-out this page replaced. Counted separately
+   * from `deferred` (a `stamp()`-reported, expected retry) because this is an
+   * unexpected fault the operator should be able to tell apart from one.
+   */
+  failed: number;
   /**
    * Resume point for the next page — the last scanned id, or `null` when the
    * page came back short and the scope's frontier is exhausted.

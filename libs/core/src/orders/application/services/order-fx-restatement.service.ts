@@ -27,15 +27,21 @@
  *     is simply left unstamped and the hourly `marketplace.order.fxStampSweep`
  *     (predicate `reportingCurrency IS NULL`) picks it up — self-healing, so
  *     no compensation is needed.
- *  2. **NO CHILD JOB, AND THEREFORE NO SEPARATE KEY SPACE.** The page used to
+ *  2. **NO CHILD JOB, AND THEREFORE NO SEPARATE KEY SPACE — BUT ALSO NO
+ *     PER-ORDER FAILURE ISOLATION FOR FREE ANY MORE.** The page used to
  *     enqueue one `marketplace.order.fxStamp` job per order into the
  *     `realtime` lane — sharing that lane's scope with live order ingestion
  *     collapses a whole connection's throughput to `perScope` slots (#2776).
  *     Calling `IOrderFxStampService.stamp` directly, sequentially, inside the
- *     already-bulk-laned `analytics.currency.recalculate` job removes the fan-
- *     out entirely: no `sync_jobs` row, no stream entry, no idempotency-key
- *     collision with `OrderFxStampService.enqueueRetry`'s bare `fx:{orderId}`
- *     to worry about — there is simply nothing left to key.
+ *     already-bulk-laned `analytics.currency.recalculate` job removes the
+ *     fan-out entirely: no `sync_jobs` row, no stream entry, no idempotency-
+ *     key collision with `OrderFxStampService.enqueueRetry`'s bare
+ *     `fx:{orderId}` to worry about — there is simply nothing left to key.
+ *     One job per order also meant one order's failure could never touch
+ *     another's; collapsing them into one sequential loop reopens exactly
+ *     that risk, so `stampOne` guards `stamp()` the same way `clearOne`
+ *     guards the clear — a caught failure counts as `failed` and the loop
+ *     continues.
  *
  * @module libs/core/src/orders/application/services
  * @implements {IOrderFxRestatementService}
@@ -52,6 +58,7 @@ import type {
 } from '../../domain/types/order-fx-restatement.types';
 import type { IOrderFxRestatementService } from '../interfaces/order-fx-restatement.service.interface';
 import type { IOrderFxStampService } from '../interfaces/order-fx-stamp.service.interface';
+import type { FxStampOutcome } from '../../domain/types/order-fx-stamp.types';
 
 @Injectable()
 export class OrderFxRestatementService implements IOrderFxRestatementService {
@@ -69,7 +76,7 @@ export class OrderFxRestatementService implements IOrderFxRestatementService {
     currentReportingCurrency: string,
     page: FxRestatementPageInput
   ): Promise<FxRestatementPageResult> {
-    const refs = await this.repository.findCurrencyMismatchOrderRefsAfter(
+    const ids = await this.repository.findCurrencyMismatchOrderRefsAfter(
       scope,
       currentReportingCurrency,
       { afterOrderId: page.afterOrderId, limit: page.limit }
@@ -79,20 +86,21 @@ export class OrderFxRestatementService implements IOrderFxRestatementService {
     let stamped = 0;
     let terminal = 0;
     let deferred = 0;
+    let failed = 0;
 
-    for (const ref of refs) {
+    for (const internalOrderId of ids) {
       // Sequential, not `Promise.all`: a page of foreign-currency orders on
       // distinct days is a page of provider calls, and fanning them out in
       // parallel would burst a public reference-rate API for no latency
       // benefit anyone is waiting on — the same reasoning
       // `OrderFxStampService.sweep` states for its own sequential walk.
-      const didClear = await this.clearOne(ref.internalOrderId);
+      const didClear = await this.clearOne(internalOrderId);
       if (didClear) {
         cleared += 1;
       }
 
-      const outcome = await this.stampService.stamp(ref.internalOrderId);
-      switch (outcome.kind) {
+      const outcome = await this.stampOne(internalOrderId);
+      switch (outcome?.kind) {
         case 'stamped':
           if (!outcome.alreadyStamped) {
             stamped += 1;
@@ -104,17 +112,21 @@ export class OrderFxRestatementService implements IOrderFxRestatementService {
         case 'deferred':
           deferred += 1;
           break;
+        case undefined:
+          failed += 1;
+          break;
       }
     }
 
-    const nextCursor = refs.length === page.limit ? refs[refs.length - 1].internalOrderId : null;
+    const nextCursor = ids.length === page.limit ? ids[ids.length - 1] : null;
 
     this.logger.log(
-      `FX restatement page: run=${page.runId} scanned=${refs.length} cleared=${cleared} ` +
-        `stamped=${stamped} terminal=${terminal} deferred=${deferred} nextCursor=${nextCursor ?? 'none'}`
+      `FX restatement page: run=${page.runId} scanned=${ids.length} cleared=${cleared} ` +
+        `stamped=${stamped} terminal=${terminal} deferred=${deferred} failed=${failed} ` +
+        `nextCursor=${nextCursor ?? 'none'}`
     );
 
-    return { scanned: refs.length, cleared, stamped, terminal, deferred, nextCursor };
+    return { scanned: ids.length, cleared, stamped, terminal, deferred, failed, nextCursor };
   }
 
   async countRemaining(
@@ -139,6 +151,31 @@ export class OrderFxRestatementService implements IOrderFxRestatementService {
           (error instanceof Error ? error.message : String(error))
       );
       return false;
+    }
+  }
+
+  /**
+   * Guarded the same way `clearOne` is, for the same reason: one order's
+   * failure must not abort the page. `IOrderFxStampService.stamp` is
+   * documented as never throwing, but that is an implementation promise on an
+   * INJECTED INTERFACE, not a type guarantee — and this page's whole point
+   * was replacing N independent per-order jobs with one sequential loop, so
+   * an unguarded throw here would silently abort every order still queued
+   * behind it in the page (#2776 review). `undefined` (rather than folding
+   * into `deferred`) is the caller's signal to count it as `failed` — an
+   * unexpected fault the operator should be able to tell apart from an
+   * ordinary, `stamp()`-reported retry.
+   */
+  private async stampOne(internalOrderId: string): Promise<FxStampOutcome | undefined> {
+    try {
+      return await this.stampService.stamp(internalOrderId);
+    } catch (error) {
+      this.logger.warn(
+        `FX restatement's stamp attempt threw for order ${internalOrderId}; the hourly ` +
+          `marketplace.order.fxStampSweep reconcile remains the route to a stamp: ` +
+          (error instanceof Error ? error.message : String(error))
+      );
+      return undefined;
     }
   }
 }
