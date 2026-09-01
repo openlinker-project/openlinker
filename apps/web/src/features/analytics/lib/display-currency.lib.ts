@@ -105,21 +105,26 @@ export function resolveConvertNoteState(input: ConvertNoteStateInput): ConvertNo
  * altogether.
  */
 export function resolveReportingCurrencyRate(
-  conversion: { rateBasis: DisplayCurrencyRateBasis; appliedRates: readonly AppliedRate[] } | undefined,
+  conversion:
+    | {
+        rateBasis: DisplayCurrencyRateBasis;
+        displayCurrency: string;
+        appliedRates: readonly AppliedRate[];
+      }
+    | undefined,
   nativeCurrency: string | null
 ): AppliedRate | null {
   if (!conversion || nativeCurrency === null) {
     return null;
   }
-  if (conversion.rateBasis === 'order-date') {
-    // Already exactly the rate for `reportingCurrency -> displayCurrency` —
-    // `OrderDateConversionResult` never carries more than one.
-    return conversion.appliedRates[0] ?? null;
-  }
-  // `current-rate` mode: find the ONE breakdown row for this exact native
-  // currency — never the first entry, which could belong to the separate
-  // unconverted-money bucket if that bucket's currency differs.
-  return conversion.appliedRates.find((rate) => rate.from === nativeCurrency) ?? null;
+  // Match BOTH ends — `from` alone isn't enough: a stale or pivot-leg entry
+  // could share `nativeCurrency` while converting to a different display
+  // currency than the one every call site actually labels the figure with.
+  return (
+    conversion.appliedRates.find(
+      (rate) => rate.from === nativeCurrency && rate.to === conversion.displayCurrency
+    ) ?? null
+  );
 }
 
 /**
@@ -162,6 +167,43 @@ export function isCurrencyRecalculating(coverage: AnalyticsCoverage | undefined)
  */
 export function pickInlineAppliedRate(appliedRates: readonly AppliedRate[]): AppliedRate | null {
   return appliedRates.length === 1 ? appliedRates[0] : null;
+}
+
+/**
+ * A single reusable amount converter, factored out of what used to be three
+ * copies of `convertToDisplay` / `displayCurrencyFor` — one each in
+ * `AnalyticsKpiStrip`, `ChannelSalesTable`, `ProductSalesTable` — that could
+ * drift independently (tech-review finding, PR #2788).
+ *
+ * `convertToDisplay` and `displayCurrencyFor` both take the amount's own
+ * `nativeCurrency` and check it against `reportingCurrency` before applying
+ * `reportingRate` — defence in depth (PR #2788 review): `reportingRate` was
+ * resolved for `reportingCurrency` specifically, and every call site already
+ * expects the amount it converts to be denominated in that same bucket
+ * (ADR-040's one system-wide reporting currency invariant), but a caller
+ * passing a row whose `currency` diverges must still get its native amount
+ * back rather than a rate for a different currency silently applied to it.
+ */
+export interface ReportingCurrencyConverter {
+  convertToDisplay(amount: number, nativeCurrency: string | null): number;
+  displayCurrencyFor(nativeCurrency: string): string;
+}
+
+export function createReportingCurrencyConverter(
+  reportingRate: AppliedRate | null,
+  reportingCurrency: string | null
+): ReportingCurrencyConverter {
+  function applies(nativeCurrency: string | null): boolean {
+    return reportingRate !== null && nativeCurrency !== null && nativeCurrency === reportingCurrency;
+  }
+  return {
+    convertToDisplay(amount: number, nativeCurrency: string | null): number {
+      return applies(nativeCurrency) ? amount * Number((reportingRate as AppliedRate).rate) : amount;
+    },
+    displayCurrencyFor(nativeCurrency: string): string {
+      return applies(nativeCurrency) ? (reportingRate as AppliedRate).to : nativeCurrency;
+    },
+  };
 }
 
 /**

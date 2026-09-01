@@ -69,6 +69,7 @@ import type { SalesAnalyticsFilters } from '../api/sales-analytics.types';
 import { computePreviousPeriodRange, isPreviousPeriodCovered } from '../lib/date-range.lib';
 import {
   buildRateProvenanceDefinitions,
+  createReportingCurrencyConverter,
   formatAppliedRateLine,
   isCurrencyRecalculating,
   pickInlineAppliedRate,
@@ -243,9 +244,10 @@ export function AnalyticsKpiStrip({
   // native — the same "never guess" discipline as before, just no longer
   // refusing conversion outright.
   const reportingRate = resolveReportingCurrencyRate(gmvConversion, headline.currency);
+  const reportingConverter = createReportingCurrencyConverter(reportingRate, headline.currency);
   const currency = reportingRate && gmvConversion ? gmvConversion.displayCurrency : nativeCurrency;
   function convertToDisplay(amount: number): number {
-    return reportingRate ? amount * Number(reportingRate.rate) : amount;
+    return reportingConverter.convertToDisplay(amount, headline.currency);
   }
   const stampedGapVisible = headline.unconvertedCount > 0;
   const netExcludedVisible = headline.netExcludedCount > 0;
