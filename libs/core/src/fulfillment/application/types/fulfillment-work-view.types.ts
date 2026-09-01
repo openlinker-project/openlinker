@@ -99,11 +99,24 @@ export interface FulfillmentWorkPageView {
  * Narrower than what `deriveSupportedActions` finds legal, and the gap is
  * deliberate and temporary:
  *
- * - `submit` / `request_cancellation` are legal operator intents, but executing
- *   either needs a resolved `FulfillmentExecutorPort` — `IFulfillmentHandshakeService`
- *   takes the executor as an ARGUMENT, so the caller resolves it. That
- *   resolution is #2409's. Lifting the gate is then a one-line edit here,
- *   because the legality rule is already written and tested.
+ * - `submit` / `request_cancellation` are legal operator intents that this
+ *   service cannot yet carry out. #2409 has since landed a real
+ *   `FulfillmentExecutorPort` (`OlFulfillmentExecutorAdapter`, dispatched by the
+ *   `openlinker.oms.v1` plugin under the `FulfillmentExecutor` capability), so
+ *   the executor half is no longer the blocker it was when this gate was
+ *   written. TWO things still are, and the second is the substantive one:
+ *
+ *     1. The executor is still resolved by the HOST — `DispatchFulfillmentWorkInput`
+ *        takes it as a field, and nothing resolves one per work object here.
+ *     2. That same input requires a `shipTo: RoutingShipTo`, which carries buyer
+ *        PII (ADR-062) — and this read model deliberately holds none of it (see
+ *        the allowlist above, and its spec). Wiring `submit` through this service
+ *        would mean giving the operator READ MODEL a reason to load a ship-to,
+ *        which is exactly the coupling the projection is shaped to avoid.
+ *
+ *   So the honest owner of `submit` is a dispatch path that already has both,
+ *   not this one. Lifting the gate is still a one-line edit here once such a
+ *   caller exists, because the legality rule is written and tested now.
  * - `accept` / `reject` / `accept_cancellation` / `reject_cancellation` are the
  *   HOLDER's replies (#2399) and are never operator actions; the derivation
  *   never emits them at all.

@@ -52,6 +52,13 @@ Two consequences, neither optional:
   (`IFulfillmentHandshakeService.dispatch` / `.requestCancellation` both take `executor` as an
   argument — the caller resolves it). Executor resolution is #2409's. See §5 for the decision and
   why they are filtered from the exposed set rather than exposed-and-refused.
+
+  **Updated after merging the wave branch**: #2409 has since landed
+  `OlFulfillmentExecutorAdapter` and a dispatched `FulfillmentExecutor` capability, so the executor
+  is no longer the blocker. The gate stays, for a sharper reason now recorded on
+  `OPERATOR_INVOCABLE_ACTIONS` itself: `DispatchFulfillmentWorkInput` still takes a host-resolved
+  executor AND a `shipTo: RoutingShipTo`, i.e. buyer PII (ADR-062) that this deliberately PII-free
+  read model holds none of. `submit` belongs to a dispatch path that already has both.
 - **The four holder-side replies** (`accept`, `reject`, `accept_cancellation`,
   `reject_cancellation`). Structurally not operator actions — they are the executor's answers,
   recorded by #2399's `recordAcceptance` / `recordRejection`. Excluded by construction.
