@@ -682,21 +682,33 @@ describe('OrderRecordRepository', () => {
       ).resolves.toEqual([{ internalOrderId: 'ol_order_a', sourceConnectionId: 'conn-a' }]);
     });
 
-    it('clears exactly the six FX columns, guarded on the row still carrying a stamp', async () => {
-      // Every one of the six matters — see the port's JSDoc. `fxIntendedCurrency`
+    /**
+     * Builds a mock `createQueryBuilder().update()` chain and returns it, so the
+     * guard can be asserted as SQL rather than as a TypeORM operator object.
+     */
+    const mockClearQueryBuilder = (
+      affected: number
+    ): { set: jest.Mock; where: jest.Mock; andWhere: jest.Mock } => {
+      const chain = {
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        execute: jest.fn().mockResolvedValue({ affected }),
+      };
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(chain);
+      return chain;
+    };
+
+    it('clears exactly the six FX columns in one statement', async () => {
+      // Every one of the six matters - see the port's JSDoc. `fxIntendedCurrency`
       // is the subtle one: leaving it behind makes `resolveIntent` re-pin the
       // stale currency and re-stamp it, so the bug looks fixed and is not.
-      (ormRepository.update as jest.Mock).mockResolvedValue({ affected: 1 });
+      const chain = mockClearQueryBuilder(1);
 
       await expect(repository.clearFxStampForRestatement('ol_order_a')).resolves.toBe(true);
 
-      const [where, patch] = (ormRepository.update as jest.Mock).mock.calls[0] as [
-        Record<string, unknown>,
-        Record<string, unknown>,
-      ];
-      expect(where).toMatchObject({ internalOrderId: 'ol_order_a' });
-      expect(where.reportingCurrency).toBeDefined();
-      expect(patch).toEqual({
+      expect(chain.set).toHaveBeenCalledWith({
         reportingCurrency: null,
         reportingTotalAmount: null,
         exchangeRateId: null,
@@ -704,10 +716,30 @@ describe('OrderRecordRepository', () => {
         fxIntendedCurrency: null,
         fxRule: null,
       });
+      expect(chain.where).toHaveBeenCalledWith(expect.stringContaining('"internalOrderId"'), {
+        internalOrderId: 'ol_order_a',
+      });
     });
 
-    it('reports false when the row was never stamped, so the clear is idempotent', async () => {
-      (ormRepository.update as jest.Mock).mockResolvedValue({ affected: 0 });
+    it('guards on ANY FX-group state, not on a figure alone, so deferred and terminal-marked rows are repaired (#2775)', async () => {
+      // The enumeration deliberately includes rows carrying no figure. A
+      // figure-only guard skipped exactly those, left the stale
+      // `fxIntendedCurrency` standing, and had the child re-stamp the currency
+      // the operator moved away from - so the run could never converge.
+      const chain = mockClearQueryBuilder(1);
+
+      await repository.clearFxStampForRestatement('ol_order_a');
+
+      const guard = (chain.andWhere.mock.calls as unknown[][])
+        .map((call) => String(call[0]))
+        .join(' ');
+      expect(guard).toContain('"reportingCurrency" IS NOT NULL');
+      expect(guard).toContain('"fxIntendedCurrency" IS NOT NULL');
+      expect(guard).toContain('"fxStampedAt" IS NOT NULL');
+    });
+
+    it('reports false when the row carries no FX state at all, so the clear is idempotent (#2775)', async () => {
+      mockClearQueryBuilder(0);
 
       await expect(repository.clearFxStampForRestatement('ol_order_a')).resolves.toBe(false);
     });
