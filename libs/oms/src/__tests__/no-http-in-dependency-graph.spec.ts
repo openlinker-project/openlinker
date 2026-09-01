@@ -36,7 +36,7 @@
  * @module libs/oms/src/__tests__
  * @see docs/architecture/adrs/055-oms-as-credentialless-connection-plugin.md
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
@@ -63,9 +63,19 @@ const HTTP_CLIENT_PACKAGES = [
 
 const ROOT_PACKAGE = '@openlinker/oms';
 
-/** `@openlinker/<name>` -> `libs/<name>/package.json`, the layout every workspace lib uses. */
+const LIBS_DIR = join(__dirname, '..', '..', '..');
+
+/**
+ * `@openlinker/<name>` -> `libs/<name>/package.json`.
+ *
+ * That is the layout of every package currently in this graph, but NOT of the repo as a whole:
+ * an integration package is `@openlinker/integrations-<x>` at `libs/integrations/<x>`. Rather than
+ * teach this walker a second layout it has no reason to need, an unresolvable name is reported as
+ * its own failure — because the OMS acquiring a dependency outside `libs/<name>` is itself the
+ * thing worth knowing, and an `ENOENT` from `readFileSync` would read as a broken test instead.
+ */
 const manifestPathFor = (packageName: string): string =>
-  join(__dirname, '..', '..', '..', packageName.replace('@openlinker/', ''), 'package.json');
+  join(LIBS_DIR, packageName.replace('@openlinker/', ''), 'package.json');
 
 interface Manifest {
   readonly dependencies?: Record<string, string>;
@@ -73,8 +83,18 @@ interface Manifest {
   readonly devDependencies?: Record<string, string>;
 }
 
-const readManifest = (packageName: string): Manifest =>
-  JSON.parse(readFileSync(manifestPathFor(packageName), 'utf8')) as Manifest;
+const readManifest = (packageName: string): Manifest => {
+  const path = manifestPathFor(packageName);
+  if (!existsSync(path)) {
+    throw new Error(
+      `@openlinker/oms's dependency graph reached ${packageName}, whose manifest is not at ${path}. ` +
+        `Either the OMS gained a workspace dependency outside libs/<name> (check whether it should ` +
+        `have — this package is defined by depending on almost nothing), or the repo layout moved ` +
+        `and this walker needs updating.`
+    );
+  }
+  return JSON.parse(readFileSync(path, 'utf8')) as Manifest;
+};
 
 /**
  * Every declared dependency name reachable from the root package, paired with the manifest that
@@ -85,8 +105,7 @@ const collectDeclaredDependencies = (): ReadonlyArray<{ pkg: string; dep: string
   const seen = new Set<string>();
   const queue = [ROOT_PACKAGE];
 
-  while (queue.length > 0) {
-    const pkg = queue.shift() as string;
+  for (let pkg = queue.pop(); pkg !== undefined; pkg = queue.pop()) {
     if (seen.has(pkg)) continue;
     seen.add(pkg);
 
