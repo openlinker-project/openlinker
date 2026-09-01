@@ -414,8 +414,12 @@ button, input, select { font: inherit; }
 .coverage-pill[data-channel="woocommerce"]::before { background: var(--channel-woocommerce); }
 
 .data-table__footnote { margin: var(--space-2) 0 0; font-size: 0.8125rem; color: var(--text-muted); }
+.data-table__stack { display: grid; gap: 2px; }
 
-/* ── Inline detail content (adapted products-row-detail) ── */
+/* ── Inline detail content — matches the shipped ProductDetailLinks /
+   ProductDetailFields / ChannelBreakdownList / ProductVariantRow markup
+   verbatim (product-detail-summary.tsx, product-sales-table.tsx,
+   product-row-detail.tsx), so this mockup stays a true reference. ── */
 .products-row-detail { display: flex; flex-direction: column; gap: var(--space-4); }
 .products-detail-links { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .products-detail-links__link {
@@ -434,14 +438,29 @@ button, input, select { font: inherit; }
 .products-detail-field__label { font-family: var(--font-mono); font-size: 0.625rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 3px; }
 .products-detail-field__value { font-size: 0.8125rem; color: var(--text-secondary); }
 
-.products-detail-channels { display: flex; flex-direction: column; gap: var(--space-2); }
-.channel-bar-row { display: grid; grid-template-columns: 11rem 1fr auto; align-items: center; gap: var(--space-3); }
-.channel-bar-row__name { display: flex; align-items: center; gap: var(--space-2); font-size: 0.8125rem; color: var(--text-secondary); }
-.channel-bar-row__dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-.channel-bar-row__track { position: relative; height: 6px; border-radius: 999px; background: var(--bg-strong); overflow: hidden; }
-.channel-bar-row__fill { position: absolute; inset: 0; border-radius: 999px; transition: width 320ms var(--ease-out, ease); }
-.channel-bar-row__figs { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-primary); white-space: nowrap; text-align: right; }
-.channel-bar-row__figs span { color: var(--text-muted); }
+.products-detail-variants { display: flex; flex-direction: column; gap: var(--space-2); }
+.products-variant-list { display: flex; flex-direction: column; gap: 6px; }
+.products-variant-row {
+  display: grid; grid-template-columns: minmax(0, 1.4fr) auto auto; align-items: center;
+  column-gap: var(--space-4); padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--bg-surface);
+}
+.products-variant-row__id { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.products-variant-row__attrs { font-size: 0.8125rem; font-weight: 550; color: var(--text-secondary); }
+.products-variant-row__meta { font-size: 0.6875rem; color: var(--text-muted); }
+.products-variant-row__stock { font-size: 0.8125rem; color: var(--text-secondary); white-space: nowrap; }
+
+.status-badge {
+  display: inline-flex; align-items: center; gap: var(--space-2); padding: 1px var(--space-2);
+  border: 1px solid var(--status-disabled-border, var(--border-default)); border-radius: var(--radius-sm);
+  background: var(--bg-surface-muted); color: var(--text-secondary);
+  font-family: var(--font-mono); font-size: 0.625rem; font-weight: 500; letter-spacing: var(--tracking-wide);
+  text-transform: uppercase; white-space: nowrap;
+}
+.status-badge__dot { width: 0.375rem; height: 0.375rem; border-radius: 999px; background: currentColor; flex-shrink: 0; opacity: 0.75; }
+.status-badge--success { border-color: var(--status-success-border); background: var(--status-success-soft); color: var(--status-success-fg); }
+.status-badge--warning { border-color: var(--status-warning-border); background: var(--status-warning-soft); color: var(--status-warning-fg); }
+.status-badge--error { border-color: var(--status-error-border); background: var(--status-error-soft); color: var(--status-error-fg); }
 
 /* ── Fake "left analytics" product page overlay ── */
 .leave-overlay {
@@ -494,6 +513,13 @@ button, input, select { font: inherit; }
       means re-filtering and re-scrolling. This reuses <code>DataTable</code>'s existing
       <code>expandable</code> prop (the same one already used on the Products list page) to open the
       detail inline instead. Flip the switch below to compare.
+    </p>
+    <p class="meta__sub">
+      <strong>Running Jacket Pro</strong> (multi-variant follow-up) — expand it to see the
+      difference: the SKU column reads "3 variants" instead of a single code, and the panel adds a
+      read-only variant snapshot (attributes, own SKU, current stock). The net sales/units above the
+      snapshot stay product-wide totals — there is no per-variant sales split in this data, so the
+      panel doesn't pretend to have one.
     </p>
   </div>
 
@@ -563,16 +589,36 @@ button, input, select { font: inherit; }
 (function () {
   var PRODUCTS = [
     { id: 'wm-x200', name: 'Wireless Mouse X200', sku: 'MX-200-BLK', currency: 'PLN', internalId: 'ol_product_7f3c1a9e', stock: '2026-08-31 21:04',
-      netSales: 18420, units: 612,
+      source: { platformType: 'prestashop', externalId: '482' },
+      netSales: 18420, units: 612, variants: null,
       channels: { allegro: { name: 'Allegro', units: 340, sales: 10404, dot: 'allegro' }, prestashop: { name: 'Store PL', units: 210, sales: 6132, dot: 'prestashop' }, erli: { name: 'Erli', units: 62, sales: 1884, dot: 'erli' } } },
     { id: 'usb-c-65w', name: 'USB-C Charger 65W', sku: 'CHG-65W-EU', currency: 'PLN', internalId: 'ol_product_2b88df41', stock: '2026-08-31 20:52',
-      netSales: 15960, units: 532,
+      source: { platformType: 'prestashop', externalId: '507' },
+      netSales: 15960, units: 532, variants: null,
       channels: { allegro: { name: 'Allegro', units: 398, sales: 11952, dot: 'allegro' }, prestashop: { name: 'Store PL', units: 96, sales: 2880, dot: 'prestashop' }, erli: { name: 'Erli', units: 38, sales: 1128, dot: 'erli' } } },
+    { id: 'jacket-pro', name: 'Running Jacket Pro', sku: null, currency: 'PLN', internalId: 'ol_product_c1a02e77', stock: '2026-08-31 17:26',
+      source: { platformType: 'prestashop', externalId: '910' },
+      // A multi-variant product (#2765 follow-up) — the row's own SKU/currency/
+      // stock-synced fields describe the PRODUCT, and its net sales/units are
+      // summed across every variant, exactly like the real
+      // TopProductRow/ProductChannelSales shape. The variant list below is a
+      // read-only catalog snapshot (attrs, own SKU, current stock) — it is NOT
+      // a per-variant sales split, because the analytics endpoint has no such
+      // breakdown to show; only the product-wide totals above are real figures.
+      netSales: 9870, units: 158,
+      variants: [
+        { sku: 'JCK-PRO-S-BLK', attrs: 'Size: S · Color: Black', available: 12, status: 'ok' },
+        { sku: 'JCK-PRO-M-BLK', attrs: 'Size: M · Color: Black', available: 3, status: 'low' },
+        { sku: 'JCK-PRO-L-BLU', attrs: 'Size: L · Color: Blue', available: 0, status: 'out' },
+      ],
+      channels: { allegro: { name: 'Allegro', units: 96, sales: 5990, dot: 'allegro' }, prestashop: { name: 'Store PL', units: 47, sales: 2940, dot: 'prestashop' }, erli: { name: 'Erli', units: 15, sales: 940, dot: 'erli' } } },
     { id: 'kb-mech-87', name: 'Mechanical Keyboard 87-key', sku: 'KB-87-RGB', currency: 'PLN', internalId: 'ol_product_9a04e712', stock: '2026-08-31 19:18',
-      netSales: 24960, units: 208,
+      source: { platformType: 'prestashop', externalId: '644' },
+      netSales: 24960, units: 208, variants: null,
       channels: { allegro: { name: 'Allegro', units: 140, sales: 16800, dot: 'allegro' }, prestashop: { name: 'Store PL', units: 51, sales: 6120, dot: 'prestashop' }, erli: { name: 'Erli', units: 17, sales: 2040, dot: 'erli' } } },
     { id: 'sleeve-15', name: 'Laptop Sleeve 15"', sku: 'SLV-15-GRY', currency: 'PLN', internalId: 'ol_product_5cf6b023', stock: '2026-08-31 18:40',
-      netSales: 6840, units: 380,
+      source: { platformType: 'prestashop', externalId: '221' },
+      netSales: 6840, units: 380, variants: null,
       channels: { allegro: { name: 'Allegro', units: 260, sales: 4680, dot: 'allegro' }, prestashop: { name: 'Store PL', units: 90, sales: 1620, dot: 'prestashop' }, erli: { name: 'Erli', units: 30, sales: 540, dot: 'erli' } } },
   ];
 
@@ -603,40 +649,80 @@ button, input, select { font: inherit; }
       '<th class="data-table__cell--right">Erli</th>';
   }
 
+  // Matches `ChannelBreakdownList` verbatim: "Name: 12.00 zł · 2" — never a
+  // fabricated proportional bar.
   function channelDetailRows(p) {
-    var max = Math.max(p.channels.allegro.sales, p.channels.prestashop.sales, p.channels.erli.sales) || 1;
     return ['allegro', 'prestashop', 'erli'].map(function (key) {
       var c = p.channels[key];
-      var pct = Math.round((c.sales / max) * 100);
+      return '<span>' + c.name + ': ' + fmtMoney(c.sales) + ' · ' + fmtInt(c.units) + '</span>';
+    }).join('');
+  }
+
+  var STOCK_BADGE = {
+    ok: { tone: 'success', label: 'In stock' },
+    low: { tone: 'warning', label: 'Low stock' },
+    out: { tone: 'error', label: 'Out of stock' },
+  };
+
+  function variantRowsHtml(p) {
+    return p.variants.map(function (v) {
+      var badge = STOCK_BADGE[v.status];
       return (
-        '<div class="channel-bar-row">' +
-          '<span class="channel-bar-row__name"><span class="channel-bar-row__dot" style="background:var(--channel-' + key + ')"></span>' + c.name + '</span>' +
-          '<span class="channel-bar-row__track"><span class="channel-bar-row__fill" style="width:' + pct + '%;background:var(--channel-' + key + ')"></span></span>' +
-          '<span class="channel-bar-row__figs">' + fmtMoney(c.sales) + ' <span>· ' + fmtInt(c.units) + ' units</span></span>' +
+        '<div class="products-variant-row">' +
+          '<div class="products-variant-row__id">' +
+            '<span class="products-variant-row__attrs">' + v.attrs + '</span>' +
+            '<span class="products-variant-row__meta mono-text">' + v.sku + '</span>' +
+          '</div>' +
+          '<span class="status-badge status-badge--' + badge.tone + '"><span class="status-badge__dot"></span>' + badge.label + '</span>' +
+          '<span class="products-variant-row__stock mono tabular">' + v.available + '</span>' +
         '</div>'
       );
     }).join('');
   }
 
+  // Matches `ProductSalesRowDetail` verbatim: `ProductDetailLinks` +
+  // `ProductDetailFields` (shared with the products cockpit's own expandable
+  // row) + `ChannelBreakdownList`, plus — for a multi-variant product only —
+  // a read-only variant snapshot (#2765 follow-up). A simple/single-variant
+  // product renders identically to before; nothing here changes for it.
   function detailHtml(p) {
+    var multiVariant = p.variants && p.variants.length > 1;
+    var variantsSection = multiVariant ? (
+      '<div class="products-detail-variants">' +
+        '<div class="products-detail-field__label">Variants (' + p.variants.length + ') — catalog snapshot, not split by sale</div>' +
+        '<div class="products-variant-list">' + variantRowsHtml(p) + '</div>' +
+      '</div>'
+    ) : '';
     return (
       '<div class="products-row-detail">' +
         '<div class="products-detail-links">' +
-          '<a class="products-detail-links__link" href="#" data-navlink="' + p.id + '">Open full product page <span class="products-detail-links__arrow">&rarr;</span></a>' +
+          '<a class="products-detail-links__link" href="#" data-navlink="' + p.id + '">Product details <span class="products-detail-links__arrow">&rarr;</span></a>' +
           '<a class="products-detail-links__link" href="#" data-navlink="' + p.id + '">Edit content <span class="products-detail-links__arrow">&rarr;</span></a>' +
         '</div>' +
         '<div class="products-detail-fields">' +
           '<div class="products-detail-field"><div class="products-detail-field__label">Internal ID</div><div class="products-detail-field__value mono-text">' + p.internalId + '</div></div>' +
-          '<div class="products-detail-field"><div class="products-detail-field__label">SKU</div><div class="products-detail-field__value mono-text">' + p.sku + '</div></div>' +
+          '<div class="products-detail-field"><div class="products-detail-field__label">Source external ID</div><div class="products-detail-field__value mono-text">' + p.source.platformType + ' · ' + p.source.externalId + '</div></div>' +
           '<div class="products-detail-field"><div class="products-detail-field__label">Currency</div><div class="products-detail-field__value">' + p.currency + '</div></div>' +
           '<div class="products-detail-field"><div class="products-detail-field__label">Stock synced</div><div class="products-detail-field__value">' + p.stock + '</div></div>' +
         '</div>' +
-        '<div class="products-detail-channels">' +
+        variantsSection +
+        '<div class="products-detail-variants">' +
           '<div class="products-detail-field__label">Net sales by channel, this range</div>' +
-          channelDetailRows(p) +
+          '<div class="data-table__stack">' + channelDetailRows(p) + '</div>' +
         '</div>' +
       '</div>'
     );
+  }
+
+  // A multi-variant product has no single row-level SKU — say so, rather
+  // than rendering the same "No SKU" placeholder a genuinely-missing SKU
+  // gets (that placeholder means "unknown"; this is a known, real fact).
+  function skuCellHtml(p) {
+    if (p.sku) return '<span class="mono-text">' + p.sku + '</span>';
+    if (p.variants && p.variants.length > 1) {
+      return '<span class="mono-text">' + p.variants.length + ' variants</span>';
+    }
+    return '<span class="text-muted" aria-label="No SKU">—</span>';
   }
 
   function renderBody() {
@@ -656,7 +742,7 @@ button, input, select { font: inherit; }
         '<tr class="' + rowClass + '" data-row="' + p.id + '">' +
           expandCell +
           nameCell +
-          '<td><span class="mono-text">' + p.sku + '</span></td>' +
+          '<td>' + skuCellHtml(p) + '</td>' +
           '<td class="data-table__cell--right tabular">' + fmtMoney(p.netSales) + '</td>' +
           '<td class="data-table__cell--right tabular">' + fmtInt(p.units) + '</td>' +
           '<td class="data-table__cell--right tabular">' + fmtInt(p.channels.allegro.units) + '</td>' +
@@ -756,8 +842,13 @@ button, input, select { font: inherit; }
       return 'current-full-navigation-left-analytics';
     }
     if (mode === 'before') return 'current-full-navigation';
-    var anyExpanded = Object.keys(expanded).some(function (k) { return expanded[k]; });
-    return anyExpanded ? 'proposed-inline-expand-row-open' : 'proposed-inline-expand';
+    var expandedIds = Object.keys(expanded).filter(function (k) { return expanded[k]; });
+    if (expandedIds.length === 0) return 'proposed-inline-expand';
+    var anyMultiVariant = expandedIds.some(function (id) {
+      var p = PRODUCTS.filter(function (x) { return x.id === id; })[0];
+      return p && p.variants && p.variants.length > 1;
+    });
+    return anyMultiVariant ? 'proposed-inline-expand-multivariant-open' : 'proposed-inline-expand-row-open';
   }
   function updateMockState() {
     document.body.setAttribute('data-state', currentDataState());
