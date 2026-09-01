@@ -8,8 +8,12 @@
  * @module libs/integrations/allegro/src/domain/exceptions
  */
 export class AllegroQuantityCommandNotFoundException extends Error {
-  constructor(commandId: string) {
-    super(`Allegro quantity command not found: commandId=${commandId}`);
+  constructor(commandId: string, offerId?: string) {
+    super(
+      offerId
+        ? `Allegro quantity command not found: commandId=${commandId}, offerId=${offerId}`
+        : `Allegro quantity command not found: commandId=${commandId}`
+    );
     this.name = 'AllegroQuantityCommandNotFoundException';
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, this.constructor);
