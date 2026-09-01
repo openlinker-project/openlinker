@@ -232,7 +232,7 @@ Recording a hold is additive and nothing subtracts from the ledger until #2345 �
 
 ### Database Migrations
 
-**None.** This is an application layer over the table #2343 shipped (migration `1850000000000`). Both persistence changes are **reads**. The allocated slot `1854000000000` is **not used** and remains free. (Note `docs/lessons.md`: integration schema is built by `synchronize`, not migrations — nothing here depends on a constraint that exists only in the migration.)
+**None.** This is an application layer over the table #2343 shipped (migration `1850000000009`, re-timestamped from `1850000000000`). Both persistence changes are **reads**. The allocated slot `1854000000000` is **not used** and remains free. (Note `docs/lessons.md`: integration schema is built by `synchronize`, not migrations — nothing here depends on a constraint that exists only in the migration.)
 
 ### Configuration
 

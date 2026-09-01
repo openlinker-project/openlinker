@@ -58,7 +58,12 @@ matrix against real Postgres — a mocked repository cannot prove a `WHERE` pred
   Handling`; `DuplicateIdentifierMappingError` precedent).
 - Synthetic sequential migration prefix (`docs/migrations.md` rule 3). Tail on the Wave-2 base is
   `1848000000000`; a sibling agent (#2338) is claiming `1849000000000`; this plan takes
-  **`1850000000000`**, verified against the working tree and `origin/main` before commit.
+  **`1850000000009`**, verified against the working tree and `origin/main` before commit.
+  (Originally `1850000000000`. That check was run against the `apps/api`-only newest
+  migration, but the invariant pools core AND plugin directories — `origin/main` carried
+  `1850000000000-widen-allegro-quantity-command-unique-index`, so the value TIED the true
+  pooled baseline. Re-timestamped to `1850000000009`; see re-timestamp #4 in
+  `oms-progress-ledger.md`.)
 - The integration harness builds its schema by `synchronize`, **not** by migration — so every
   constraint that the migration creates must ALSO be declared, under the same name, on the ORM
   entity, or the int-spec is testing a different schema than production. (`CreateReturns1846…`
@@ -406,7 +411,7 @@ awaiting the first — a single-connection `Promise.all` would serialise in the 
 | Cross-context imports | ✅ none added |
 | Naming (`*.port.ts`, `*.orm-entity.ts`, `*.error.ts`, `as const` unions) | ✅ |
 | Symbol token in `<ctx>.tokens.ts`, barrel `export *` | ✅ |
-| Migration ordering (rule 3) | ✅ `1850000000000`, re-verified pre-commit |
+| Migration ordering (rule 3) | ⚠️ was `1850000000000` — checked against the `apps/api`-only tail, which MISSED the pooled plugin baseline and tied it; re-timestamped to `1850000000009` (re-timestamp #4) |
 | Backward compatibility | ✅ additive; ATP unchanged until #2345 |
 
 **Risks**

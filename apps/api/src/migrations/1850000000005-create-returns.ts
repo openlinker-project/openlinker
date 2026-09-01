@@ -43,6 +43,14 @@
  *
  * Generated: 2026-08-25 (synthetic sequential prefix per docs/migrations.md rule 3).
  * @module apps/api/src/migrations
+ *
+ * **Re-timestamped (1846000000000 -> 1849000000008 -> 1850000000005).** The migration-timestamp
+ * invariant pools core AND plugin directories, and `origin/main` gained
+ * `1850000000000-widen-allegro-quantity-command-unique-index`, moving the true
+ * baseline. The `up()` body is SELF-HEALING: it drops the `migrations` row(s)
+ * written under the prior class name(s) so TypeORM re-records this migration
+ * under its current name, and every statement is IF [NOT] EXISTS-guarded so
+ * an already-migrated database re-applies it as a no-op. No manual SQL needed.
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
