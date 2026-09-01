@@ -79,7 +79,7 @@ import { ConnectionCell, useConnectionsQuery, type Connection } from '../../conn
 import { ConnectionDot } from '../../orders';
 import { useSalesAnalyticsQuery } from '../hooks/use-sales-analytics-query';
 import { useCoverageCrossReferenceQuery } from '../hooks/use-coverage-cross-reference-query';
-import { isCurrencyRecalculating } from '../lib/display-currency.lib';
+import { isCurrencyRecalculating, resolveReportingCurrencyRate } from '../lib/display-currency.lib';
 import type { ChannelSalesAnalytics, SalesAnalyticsFilters } from '../api/sales-analytics.types';
 import type { AnalyticsCoverage, AnalyticsCoverageFilters, CoverageCategory } from '../api/analytics-coverage.types';
 import {
@@ -288,13 +288,25 @@ export function ChannelSalesTable({
   }
 
   const channels = query.data?.channels ?? [];
-  // ADR-064 display-currency override: NOT applied here. `revenue`/`netRevenue`
-  // have no converted counterpart from the backend, and deriving a "rate"
-  // client-side from `convertedRevenue / revenue` is UNSOUND — see
-  // `display-currency.lib.ts`'s "REJECTED APPROACH" note for the live bad
-  // number (29 000 PLN read as ~20 000 "EUR") that caught this. Net sales/AOV
-  // stay in the native reporting currency until the backend computes a real
-  // converted value for them.
+  const headline = query.data?.headline;
+  // ADR-064 display-currency override (#2778/#2779): every channel's
+  // `currency` — and `row.total.currency` — always equals `headline.currency`
+  // (the one system-wide reporting currency, see this file's own doc
+  // comment), so the single rate resolved for the headline bucket is the
+  // exact rate for every row here too. This reuses the REAL per-bucket rate
+  // the backend applied (`NativeCurrencyBreakdown.appliedRate`) — never a
+  // rate derived by dividing `convertedRevenue` by `revenue`, which is
+  // UNSOUND (see `display-currency.lib.ts`'s "REJECTED APPROACH" note for
+  // the live bad number, 29 000 PLN read as ~20 000 "EUR", that caught it).
+  // A row whose `currency` doesn't resolve to a rate stays native.
+  const gmvConversion = headline?.displayCurrencyConversion;
+  const reportingRate = resolveReportingCurrencyRate(gmvConversion, headline?.currency ?? null);
+  function convertToDisplay(amount: number): number {
+    return reportingRate ? amount * Number(reportingRate.rate) : amount;
+  }
+  function displayCurrencyFor(nativeCurrency: string): string {
+    return reportingRate && gmvConversion ? gmvConversion.displayCurrency : nativeCurrency;
+  }
   const connectionsById = new Map((connectionsQuery.data ?? []).map((c) => [c.id, c]));
   const channelRows: ChannelRow[] = channels.map((channel) => ({
     kind: 'channel',
@@ -318,10 +330,16 @@ export function ChannelSalesTable({
       return <RecalculatingValue />;
     }
     if (row.kind === 'total') {
-      return <>{formatAmount(row.total.netAverageOrderValue, row.total.currency)}</>;
+      return (
+        <>{formatAmount(convertToDisplay(row.total.netAverageOrderValue), displayCurrencyFor(row.total.currency))}</>
+      );
     }
     if (row.channel.currency !== null) {
-      return <>{formatAmount(row.channel.netAverageOrderValue, row.channel.currency)}</>;
+      return (
+        <>
+          {formatAmount(convertToDisplay(row.channel.netAverageOrderValue), displayCurrencyFor(row.channel.currency))}
+        </>
+      );
     }
     // No unconverted-evidence fallback, same reasoning as Net sales: an
     // unconverted amount is a GROSS figure and would misrepresent itself as
@@ -340,10 +358,12 @@ export function ChannelSalesTable({
       );
     }
     if (row.kind === 'total') {
-      return <strong>{formatAmount(row.total.netRevenue, row.total.currency)}</strong>;
+      return (
+        <strong>{formatAmount(convertToDisplay(row.total.netRevenue), displayCurrencyFor(row.total.currency))}</strong>
+      );
     }
     if (row.channel.currency !== null) {
-      return <>{formatAmount(row.channel.netRevenue, row.channel.currency)}</>;
+      return <>{formatAmount(convertToDisplay(row.channel.netRevenue), displayCurrencyFor(row.channel.currency))}</>;
     }
     return <EmptyValue label="No Net sales figure can be given for this channel in range" />;
   }
@@ -354,7 +374,7 @@ export function ChannelSalesTable({
       header: 'Channel',
       cell: (row) =>
         row.kind === 'total' ? (
-          <strong>Total · {row.total.currency}</strong>
+          <strong>Total · {displayCurrencyFor(row.total.currency)}</strong>
         ) : (
           <ChannelName
             connectionsLoading={connectionsQuery.isLoading}
