@@ -44,7 +44,10 @@ interface RenderOptions {
   user?: SessionUser;
 }
 
-function renderPanel(options: RenderOptions = {}): { bootstrap: () => Promise<LocationBootstrapResult> } {
+function renderPanel(options: RenderOptions = {}): {
+  bootstrap: () => Promise<LocationBootstrapResult>;
+  container: HTMLElement;
+} {
   const bootstrap: () => Promise<LocationBootstrapResult> =
     options.bootstrap ??
     vi.fn(() =>
@@ -64,11 +67,11 @@ function renderPanel(options: RenderOptions = {}): { bootstrap: () => Promise<Lo
       getStatus: vi.fn().mockResolvedValue(sourcingStatus(options.sourcing ?? 'default')),
     },
   });
-  renderWithProviders(<RouterReadinessPanel />, {
+  const { container } = renderWithProviders(<RouterReadinessPanel />, {
     apiClient,
     sessionAdapter: createAuthenticatedSessionAdapter(options.user),
   });
-  return { bootstrap };
+  return { bootstrap, container };
 }
 
 afterEach(() => {
@@ -98,7 +101,9 @@ describe('RouterReadinessPanel', () => {
   });
 
   it('reports ready without promising routing will find somewhere to send an order', async () => {
-    renderPanel({ activeLocations: 2 });
+    // Claimed, so the panel confirms the claim. The unclaimed+ready combination
+    // renders nothing at all — see the test below.
+    renderPanel({ activeLocations: 2, sourcing: 'resolved' });
 
     expect(await screen.findByText('Location ready')).toBeInTheDocument();
     expect(screen.getByText('2')).toBeInTheDocument();
@@ -106,6 +111,17 @@ describe('RouterReadinessPanel', () => {
     // read as "routing will now work".
     expect(screen.getByText(/holds no stock/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /create default location/i })).not.toBeInTheDocument();
+  });
+
+  it('renders nothing when the precondition is met and nothing claims routing', async () => {
+    // The only non-actionable combination. This panel sits on EVERY connection's
+    // health tab, including connections that will never route, so "routing can be
+    // switched on" there is noise rather than information. Would go red against a
+    // panel that renders all four states.
+    const { container } = renderPanel({ activeLocations: 1, sourcing: 'default' });
+
+    await waitFor(() => expect(container.querySelector('.panel')).toBeNull());
+    expect(screen.queryByText(/fulfilment routing/i)).not.toBeInTheDocument();
   });
 
   it('mints on click and re-reads the count rather than assuming the write moved it', async () => {
@@ -171,7 +187,7 @@ describe('RouterReadinessPanel', () => {
       sessionAdapter: createAuthenticatedSessionAdapter(),
     });
 
-    expect(await screen.findByText(/could not be read/i)).toBeInTheDocument();
+    expect(await screen.findByText(/is not known here/i)).toBeInTheDocument();
     expect(screen.queryByText(/cannot be switched on until/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/is switched on, and with no active location/i)).not.toBeInTheDocument();
     // The blocker itself is still stated, and the remedy still offered.

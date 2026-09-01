@@ -115,6 +115,15 @@ export function RouterReadinessPanel(): ReactElement {
   const routingClaimed: boolean | undefined =
     sourcingRow !== undefined ? sourcingRow.state !== 'default' : undefined;
 
+  // Nothing to say: the precondition is met and nothing claims routing on this
+  // install. Rendering "routing can be switched on" on every connection's health
+  // tab — including connections that will never route — is noise, and for a
+  // READINESS panel absence correctly reads as "nothing to do here". Every state
+  // that is actionable, or that confirms a claim the operator made, still renders.
+  if (hasLocation && routingClaimed !== true) {
+    return <></>;
+  }
+
   return (
     <div className="panel panel--dense">
       <div className="panel__header">
@@ -163,7 +172,8 @@ export function RouterReadinessPanel(): ReactElement {
       ) : (
         <p className="router-readiness-panel__note">
           This install has no active inventory location, which fulfilment routing requires. Whether
-          routing is currently switched on could not be read, so this says only what is known.
+          routing is currently switched on is not known here — that read has not answered yet — so
+          this states only the part that is known.
         </p>
       )}
 
