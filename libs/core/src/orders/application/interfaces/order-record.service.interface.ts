@@ -20,7 +20,10 @@ import type {
 } from '../../domain/types/order-record.types';
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
 import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
-import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
+import type {
+  SalesDocumentBlock,
+  SalesDocumentMarketDiscovery,
+} from '@openlinker/core/sales-documents';
 import type { OrderAmendmentChange } from '../../domain/order-amendment-diff';
 import type {
   SalesAnalyticsFilters,
@@ -152,6 +155,27 @@ export interface IOrderRecordService {
    * The ORDER half only — return-scoped states are counted on the returns side.
    */
   countOrdersWithOmsAttention(): Promise<number>;
+
+  /**
+   * Which markets the operator has orders from, and how many (#2518, ADR-066).
+   *
+   * A clean instance has no sales-document routing, and nothing today says
+   * which markets need a decision - the failure is invisible until someone
+   * notices no documents exist. OpenLinker already knows where its orders are
+   * routed, so this derives the answer instead of asking for it.
+   *
+   * The cross-context surface the sales-document settings page uses -
+   * repository ports are forbidden across context boundaries per
+   * architecture-overview.md, so `apps/api` goes through this method rather
+   * than `OrderRecordRepositoryPort.countOrdersByRoutingCountrySince`.
+   *
+   * A READ, and only a read: it creates no rule, no country default and no
+   * routing. It also does not classify - a country with configured routing and
+   * one without are both returned, and joining these rows against
+   * `listConfiguredCountries` is the caller's job. `now` defaults to the system
+   * clock; pass it explicitly in tests.
+   */
+  discoverSalesDocumentMarkets(now?: Date): Promise<SalesDocumentMarketDiscovery>;
 
   /**
    * Push a per-order fulfillment rollup (#1108) onto the order record. The

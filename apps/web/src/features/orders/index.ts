@@ -30,12 +30,23 @@ export { useOrdersQuery } from './hooks/use-orders-query';
 // #2254 — the invoice panel needs the parsed lines to decide WHICH remedy a
 // missing rate calls for; the reason alone cannot say.
 export { parseOrderSnapshot } from './api/order-snapshot.schema';
+// #2534 - the runtime arrays back the reason-to-copy map's own coverage test in
+// `features/sales-documents`; the types alone cannot be enumerated at runtime.
+export {
+  SalesDocumentGateBlockReasonValues,
+  SalesDocumentUnresolvedReasonValues,
+} from './api/orders.types';
 export type { ParsedOrderItem } from './api/order-snapshot.schema';
 export type {
   OrderRecord,
   OrderFilters,
   OrderPagination,
   PaginatedOrders,
+  // #2534 - the reason vocabularies mirrored from `@openlinker/core/sales-documents`
+  // live here because the order payload carries them. `features/sales-documents`
+  // owns the operator-facing copy for each value and type-imports these to key it.
+  SalesDocumentGateBlockReasonValue,
+  SalesDocumentUnresolvedReasonValue,
 } from './api/orders.types';
 // #2441 review S9 — `OrderRecord.lifecyclePhase` is part of the shape the
 // `invoicing` and `shipments` features type-import from this barrel, so the

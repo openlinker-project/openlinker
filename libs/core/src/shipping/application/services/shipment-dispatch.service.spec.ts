@@ -188,6 +188,7 @@ describe('ShipmentDispatchService', () => {
       getTopProducts: jest.fn(),
       findDispatchDeadlineCandidates: jest.fn(),
       countOrdersWithOmsAttention: jest.fn(),
+      discoverSalesDocumentMarkets: jest.fn(),
     };
     const fulfillmentProjection = { recompute: jest.fn() };
     // Unheld by default (#2339): as with the lock below, every pre-existing test

@@ -178,7 +178,20 @@ describe('@openlinker/core/<context> barrel purity (#598)', () => {
    * it, or give that leaf a `…/types` sub-barrel and point this entry at it.
    */
   const ZERO_SIBLING_EDGE_LEAVES = [
-    { context: 'sales-documents', authorizedTypeOnlySpecifiers: ['@openlinker/core/orders/types'] },
+    {
+      context: 'sales-documents',
+      // #2515 (ADR-065) adds two to the original `orders/types` carve-out, on
+      // the identical principle: the neutral per-order sales-document
+      // projection must name the EXISTING invoice and fiscal status
+      // vocabularies rather than declare a third one, and both are reached
+      // type-only through dedicated cycle-breaker sub-barrels that re-export
+      // no runtime value at all. Same erasure, same absent `require()`.
+      authorizedTypeOnlySpecifiers: [
+        '@openlinker/core/orders/types',
+        '@openlinker/core/invoicing/types',
+        '@openlinker/core/fiscalization/types',
+      ],
+    },
     { context: 'fulfillment-authority', authorizedTypeOnlySpecifiers: [] },
     { context: 'order-lifecycle', authorizedTypeOnlySpecifiers: ['@openlinker/core/orders/types'] },
     {

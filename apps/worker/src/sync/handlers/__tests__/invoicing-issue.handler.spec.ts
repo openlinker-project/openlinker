@@ -71,9 +71,11 @@ describe('InvoicingIssueHandler', () => {
       getLatestInvoiceForOrder: jest.fn(),
       // #2374 — the correction-proposal read.
       getLatestIssuedInvoiceForOrder: jest.fn().mockResolvedValue(null),
+      getInFlightIssuance: jest.fn().mockResolvedValue(null),
       findBlockingInvoiceForOrder: jest.fn().mockResolvedValue(null),
       listInvoiceConnectionIdsForOrder: jest.fn().mockResolvedValue([]),
       getLatestInvoicesForOrders: jest.fn(),
+      listInvoicesForOrders: jest.fn().mockResolvedValue([]),
       listInvoices: jest.fn(),
       issueCorrection: jest.fn(),
       applyRegulatoryClearance: jest.fn(),

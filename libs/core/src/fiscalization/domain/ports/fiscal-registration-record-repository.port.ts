@@ -42,6 +42,15 @@ export interface FiscalRegistrationRecordRepositoryPort {
   findAllByOrderId(orderId: string): Promise<FiscalRegistrationRecord[]>;
 
   /**
+   * Batch counterpart of {@link findAllByOrderId} (#2516): every record held by
+   * any of the given orders, across ALL connections, newest-first within each
+   * order (`orderId` ASC, then `createdAt` DESC, `id` DESC). Backs the per-order
+   * sales-document projection (ADR-065), which renders a whole page of orders
+   * and must not pay one query per row. Returns `[]` for an empty input.
+   */
+  findAllByOrderIds(orderIds: readonly string[]): Promise<FiscalRegistrationRecord[]>;
+
+  /**
    * Apply an outcome patch. Throws `FiscalRegistrationRecordNotFoundException`
    * when the id does not exist.
    */

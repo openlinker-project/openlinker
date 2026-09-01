@@ -15,7 +15,7 @@ import type { OrderRef } from '../../../domain/types/order-processor.types';
 import type { IMappingConfigService } from '@openlinker/core/mappings';
 import { NoOrderDestinationsAvailableException } from '../../../domain/exceptions/no-order-destinations-available.exception';
 import { OrderCreateContendedException } from '../../../domain/exceptions/order-create-contended.exception';
-import type { SyncLockPort } from '@openlinker/core/sync';
+import type { SyncLockPort, SyncJobQueuePort } from '@openlinker/core/sync';
 import type { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
 import type { IOrderRecordService } from '../../interfaces/order-record.service.interface';
 import type { IOrderHoldService } from '../../interfaces/order-hold.service.interface';
@@ -34,6 +34,7 @@ describe('OrderSyncService', () => {
   let identifierMapping: jest.Mocked<IIdentifierMappingService>;
   let orderRecordService: jest.Mocked<IOrderRecordService>;
   let orderHoldService: jest.Mocked<IOrderHoldService>;
+  let jobQueue: jest.Mocked<SyncJobQueuePort>;
 
   const makeAdapter = (orderRef: OrderRef = { orderId: 'dest_order' }) =>
     ({
@@ -135,6 +136,10 @@ describe('OrderSyncService', () => {
       release: jest.fn(),
       listHolds: jest.fn(),
     } as unknown as jest.Mocked<IOrderHoldService>;
+    jobQueue = {
+      enqueue: jest.fn().mockResolvedValue('job-id'),
+      enqueueBulk: jest.fn().mockResolvedValue([]),
+    } as jest.Mocked<SyncJobQueuePort>;
 
     service = new OrderSyncService(
       integrationsService,
@@ -142,7 +147,8 @@ describe('OrderSyncService', () => {
       syncLock,
       identifierMapping,
       orderRecordService,
-      orderHoldService
+      orderHoldService,
+      jobQueue
     );
   });
 
@@ -815,13 +821,25 @@ describe('OrderSyncService', () => {
 
       await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
 
-      // Exactly one listing call, carrying exactly one key. The filter must be
-      // applied to the RESULT, never pushed into the listing argument, or the
-      // three conditions behind an empty result stop being distinguishable.
-      expect(integrationsService.listCapabilityAdapters).toHaveBeenCalledTimes(1);
-      const [listingArg] = integrationsService.listCapabilityAdapters.mock.calls[0] as [
-        Record<string, unknown>,
-      ];
+      // Exactly one DESTINATION listing call, carrying exactly one key. The
+      // filter must be applied to the RESULT, never pushed into the listing
+      // argument, or the three conditions behind an empty result stop being
+      // distinguishable.
+      //
+      // Selected by capability rather than by call index: `syncOrder` also
+      // lists `InventoryMaster` for #2623's post-sale refresh, which is a
+      // different question asked of the same mocked method. Counting every
+      // call would make this assertion fail whenever an unrelated capability
+      // lookup is added — a fact about the destination listing is what the
+      // characterisation claims, and that claim is unchanged.
+      const listingArgs = integrationsService.listCapabilityAdapters.mock.calls.map(
+        ([arg]) => arg as Record<string, unknown>
+      );
+      const destinationListings = listingArgs.filter(
+        (arg) => arg.capability === 'OrderProcessorManager'
+      );
+      expect(destinationListings).toHaveLength(1);
+      const [listingArg] = destinationListings;
       expect(Object.keys(listingArg)).toEqual(['capability']);
       expect(listingArg).toStrictEqual({ capability: 'OrderProcessorManager' });
     });
@@ -1106,4 +1124,172 @@ describe('OrderSyncService', () => {
     });
   });
 
+  describe('post-sale master inventory refresh (#2623)', () => {
+    // resolveDestinations and the InventoryMaster lookup share one mocked
+    // method (`listCapabilityAdapters`) — this discriminates by `capability`
+    // so both callers get the right answer in the same test.
+    const registerDestinationsAndInventoryMaster = (
+      destinationConnectionId: string,
+      inventoryMasterConnectionId: string | null
+    ): void => {
+      integrationsService.listCapabilityAdapters.mockImplementation((filters) => {
+        if (filters.capability === 'InventoryMaster') {
+          return Promise.resolve(
+            inventoryMasterConnectionId
+              ? [
+                  {
+                    connectionId: inventoryMasterConnectionId,
+                    connection: {} as never,
+                    adapter: {} as never,
+                    metadata: {} as never,
+                  },
+                ]
+              : []
+          );
+        }
+        return Promise.resolve([
+          {
+            connectionId: destinationConnectionId,
+            connection: {} as never,
+            adapter: makeAdapter(),
+            metadata: {} as never,
+          },
+        ]);
+      });
+    };
+
+    it('should enqueue a master inventory refresh for a product mapped at an InventoryMaster connection', async () => {
+      registerDestinationsAndInventoryMaster('dest-a', 'master-conn');
+      identifierMapping.getExternalIds.mockImplementation((entityType) =>
+        Promise.resolve(
+          entityType === 'Product'
+            ? [
+                {
+                  externalId: 'PS-PRODUCT-789',
+                  connectionId: 'master-conn',
+                  platformType: 'prestashop',
+                  entityType: 'Product',
+                },
+              ]
+            : []
+        )
+      );
+
+      await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+
+      expect(jobQueue.enqueue).toHaveBeenCalledWith({
+        type: 'master.inventory.syncByExternalId',
+        connectionId: 'master-conn',
+        payload: { schemaVersion: 1, externalId: 'PS-PRODUCT-789', objectType: 'Inventory' },
+        options: { dedupeKey: 'order:ol_order_123:inventory:sync:master-conn:PS-PRODUCT-789' },
+      });
+    });
+
+    it('should enqueue nothing when no InventoryMaster-capable connection exists', async () => {
+      registerDestinationsAndInventoryMaster('dest-a', null);
+
+      await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+
+      expect(jobQueue.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('should enqueue nothing for a product with no external-id mapping at any InventoryMaster connection', async () => {
+      registerDestinationsAndInventoryMaster('dest-a', 'master-conn');
+      identifierMapping.getExternalIds.mockResolvedValue([]);
+
+      await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+
+      expect(jobQueue.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('should not fail order sync when the inventory refresh enqueue itself fails', async () => {
+      registerDestinationsAndInventoryMaster('dest-a', 'master-conn');
+      identifierMapping.getExternalIds.mockImplementation((entityType) =>
+        Promise.resolve(
+          entityType === 'Product'
+            ? [
+                {
+                  externalId: 'PS-PRODUCT-789',
+                  connectionId: 'master-conn',
+                  platformType: 'prestashop',
+                  entityType: 'Product',
+                },
+              ]
+            : []
+        )
+      );
+      jobQueue.enqueue.mockRejectedValue(new Error('queue unavailable'));
+
+      const results = await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+
+      expect(results[0]).toMatchObject({ status: 'success' });
+    });
+
+    it('should not fail order sync when resolving InventoryMaster connections itself throws', async () => {
+      registerDestinationsAndInventoryMaster('dest-a', 'master-conn');
+      integrationsService.listCapabilityAdapters.mockImplementation((filters) => {
+        if (filters.capability === 'InventoryMaster') {
+          return Promise.reject(new Error('registry unavailable'));
+        }
+        return Promise.resolve([
+          {
+            connectionId: 'dest-a',
+            connection: {} as never,
+            adapter: makeAdapter(),
+            metadata: {} as never,
+          },
+        ]);
+      });
+
+      const results = await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+
+      expect(results[0]).toMatchObject({ status: 'success' });
+      expect(jobQueue.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('should enqueue nothing when every destination create fails', async () => {
+      integrationsService.listCapabilityAdapters.mockImplementation((filters) => {
+        if (filters.capability === 'InventoryMaster') {
+          return Promise.resolve([
+            {
+              connectionId: 'master-conn',
+              connection: {} as never,
+              adapter: {} as never,
+              metadata: {} as never,
+            },
+          ]);
+        }
+        const failingAdapter: jest.Mocked<OrderProcessorManagerPort> = {
+          createOrder: jest.fn().mockRejectedValue(new Error('destination unreachable')),
+        };
+        return Promise.resolve([
+          {
+            connectionId: 'dest-a',
+            connection: {} as never,
+            adapter: failingAdapter,
+            metadata: {} as never,
+          },
+        ]);
+      });
+      identifierMapping.getExternalIds.mockImplementation((entityType) =>
+        Promise.resolve(
+          entityType === 'Product'
+            ? [
+                {
+                  externalId: 'PS-PRODUCT-789',
+                  connectionId: 'master-conn',
+                  platformType: 'prestashop',
+                  entityType: 'Product',
+                },
+              ]
+            : []
+        )
+      );
+
+      const results = await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+
+      expect(results[0]).toMatchObject({ status: 'failed' });
+      expect(jobQueue.enqueue).not.toHaveBeenCalled();
+    });
+  });
 });

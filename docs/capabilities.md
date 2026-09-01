@@ -87,7 +87,7 @@ runtime gate validates a connection's request against the adapter's
 Each is an independent interface + co-located `is{Capability}` guard. Adapters
 declare what they support via `implements <BasePort>, <SubCapability>, …`.
 
-### `OfferManagerPort` (listings) — 19
+### `OfferManagerPort` (listings) — 20
 
 | Sub-capability | What it does | Method(s) | Guard |
 |---|---|---|---|
@@ -99,6 +99,7 @@ declare what they support via `implements <BasePort>, <SubCapability>, …`.
 | `OfferStatusReader` | Read an offer's live publication status. | `getOfferStatus` | `isOfferStatusReader` |
 | `OfferStockRestorer` | Restore offer stock after a cancellation. | `restoreStockOnCancellation` | `isOfferStockRestorer` |
 | `OfferQuantityBatchUpdater` | Bulk-update quantities for many offers in one call. | `updateOfferQuantitiesBatch` | `isOfferQuantityBatchUpdater` |
+| `PendingQuantityAckReconciler` | Reconcile outstanding asynchronously-acknowledged quantity writes against a destination's authoritative status (#2621) - a destination that acknowledges a quantity write synchronously simply doesn't implement this. | `reconcilePendingQuantityAcks` | `isPendingQuantityAckReconciler` |
 | `OfferSmartClassificationReader` | Fetch the marketplace's smart/auto classification for an offer. | `getOfferSmartClassification` | `isOfferSmartClassificationReader` |
 | `CategoryBrowser` | Browse the marketplace category tree. | `fetchCategories` | `isCategoryBrowser` |
 | `CategoryBarcodeMatcher` | Auto-detect a category from a product barcode. | `matchCategoryByBarcode` | `isCategoryBarcodeMatcher` |

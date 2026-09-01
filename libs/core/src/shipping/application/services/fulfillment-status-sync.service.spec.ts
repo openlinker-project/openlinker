@@ -120,6 +120,7 @@ describe('FulfillmentStatusSyncService', () => {
       getTopProducts: jest.fn(),
       findDispatchDeadlineCandidates: jest.fn(),
       countOrdersWithOmsAttention: jest.fn(),
+      discoverSalesDocumentMarkets: jest.fn(),
     };
 
     routing = {

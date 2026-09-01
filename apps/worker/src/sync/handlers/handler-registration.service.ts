@@ -20,6 +20,7 @@ import { MarketplaceReturnsStatusSyncHandler } from './marketplace-returns-statu
 import { ReturnsOrphanReconcileHandler } from './returns-orphan-reconcile.handler';
 import { OrdersTaxRateBackfillHandler } from './orders-tax-rate-backfill.handler';
 import { MarketplaceOfferQuantityUpdateHandler } from './marketplace-offer-quantity-update.handler';
+import { MarketplaceOfferQuantityReconcileHandler } from './marketplace-offer-quantity-reconcile.handler';
 import { MarketplaceOfferFieldUpdateHandler } from './marketplace-offer-field-update.handler';
 import { MarketplaceOfferCreateHandler } from './marketplace-offer-create.handler';
 import { MarketplaceOfferPollCreationStatusHandler } from './marketplace-offer-poll-creation-status.handler';
@@ -81,6 +82,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly returnsOrphanReconcileHandler: ReturnsOrphanReconcileHandler,
     private readonly ordersTaxRateBackfillHandler: OrdersTaxRateBackfillHandler,
     private readonly marketplaceOfferQuantityUpdateHandler: MarketplaceOfferQuantityUpdateHandler,
+    private readonly marketplaceOfferQuantityReconcileHandler: MarketplaceOfferQuantityReconcileHandler,
     private readonly marketplaceOfferFieldUpdateHandler: MarketplaceOfferFieldUpdateHandler,
     private readonly marketplaceOfferCreateHandler: MarketplaceOfferCreateHandler,
     private readonly marketplaceOfferPollCreationStatusHandler: MarketplaceOfferPollCreationStatusHandler,
@@ -121,21 +123,23 @@ export class HandlerRegistrationService implements OnModuleInit {
   onModuleInit(): void {
     // Every registration declares its ADR-050 concurrency lane (#2278). The
     // lane is chosen by cost-of-starvation, never by I/O shape or bounded
-    // context — the authoritative table is ADR-050 decision 1, now 15 realtime /
-    // 25 bulk / 5 fiscal / 7 fan-out across 52 job types. Amendments since the
+    // context — the authoritative table is ADR-050 decision 1, now 16 realtime /
+    // 26 bulk / 5 fiscal / 7 fan-out across 54 job types. Amendments since the
     // ADR: `fiscalization.register` joined `fiscal` (#2156),
     // `inventory.provenance.backfill` joined `bulk` (#2317), the three returns
     // types joined realtime/bulk/fan-out (#2330), `returns.orphan.reconcile`
     // joined `bulk` (#2332), `orders.taxRate.backfill` joined `bulk` (#2440),
-    // the two sweep-triggered master children moved to `bulk` (#2594) and
+    // the two sweep-triggered master children moved to `bulk` (#2594),
     // `master.product.syncBatch` joined `bulk` as a catalogue-sweep child like
-    // them (#2593), `orders.holds.reconcile` joined `bulk` (#2340, Wave 2 body
-    // A), the three reservation sweeps joined `bulk` (#2346 / #2347 / #2349,
-    // Wave 2 body B), and `automation.trigger.deadlineSweep` joined `bulk`
-    // (#2360, Wave 2 body D). #2609 left the tally alone: it raised the
-    // `fan-out` lane's caps instead of moving a job out of it. The tripwire in
-    // `handler-registration.service.spec.ts` is the authority on these counts —
-    // this comment had drifted from it before #2330.
+    // them (#2593) and `master.inventory.syncBatch` beside it (#2648),
+    // `orders.holds.reconcile` joined `bulk` (#2340, Wave 2 body A), the three
+    // reservation sweeps joined `bulk` (#2346 / #2347 / #2349, Wave 2 body B),
+    // `automation.trigger.deadlineSweep` joined `bulk` (#2360, Wave 2 body D),
+    // and `marketplace.offerQuantity.reconcile` joined `bulk` as a scan-style
+    // pass over adapter-internal pending state (#2621). #2609 left the tally
+    // alone: it raised the `fan-out` lane's caps instead of moving a job out of
+    // it. The tripwire in `handler-registration.service.spec.ts` is the
+    // authority on these counts — this comment had drifted from it before #2330.
 
     // Register generic marketplace handlers (Option B)
     this.handlerRegistry.register(
@@ -213,6 +217,14 @@ export class HandlerRegistrationService implements OnModuleInit {
       'marketplace.offerQuantity.update',
       this.marketplaceOfferQuantityUpdateHandler,
       'realtime'
+    );
+    // Steady-state reconcile of outstanding async quantity acks (#2621) —
+    // a scan-style pass over adapter-internal pending state, same shape as
+    // the other `*.sync`/`*Sweep` bulk passes below.
+    this.handlerRegistry.register(
+      'marketplace.offerQuantity.reconcile',
+      this.marketplaceOfferQuantityReconcileHandler,
+      'bulk'
     );
     this.handlerRegistry.register(
       'marketplace.offer.updateFields',

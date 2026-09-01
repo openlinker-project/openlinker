@@ -790,6 +790,8 @@ export function OrdersListPage(): ReactElement {
       },
       {
         id: 'order',
+        // #2538 - OrderIdentityCell stacks a thumbnail, the order number and a meta line.
+        lines: 2,
         header: 'Order',
         cell: (order) => {
           const sourcePlatform = platformByConnection.get(order.sourceConnectionId);
@@ -1076,6 +1078,8 @@ export function OrdersListPage(): ReactElement {
       },
       {
         id: 'money',
+        // #2538 - Total, payment badge, document and created date - the column that sets this row's height.
+        lines: 4,
         align: 'right',
         // Merged money column (#1713): total + payment pill + created, each an
         // independent per-label sort control in the header. Not `sortable` — the
@@ -1641,7 +1645,7 @@ export function OrdersListPage(): ReactElement {
       </div>
 
       {query.isLoading ? (
-        <DataTableSkeleton columns={columns} />
+        <DataTableSkeleton columns={columns} rowAction label="Loading orders…" />
       ) : query.error ? (
         <ErrorState
           title="Unable to load orders"

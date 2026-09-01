@@ -5,7 +5,7 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import type { SalesDocumentCountryDefaultRepositoryPort } from '../../../domain/ports/sales-document-country-default-repository.port';
 import { SalesDocumentCountryDefault } from '../../../domain/entities/sales-document-country-default.entity';
 import type { SalesDocumentCountryDefaultInput } from '../../../domain/types/sales-document-rule-write.types';
@@ -27,6 +27,14 @@ export class SalesDocumentCountryDefaultRepository
 
   async findByCountry(country: string): Promise<SalesDocumentCountryDefault[]> {
     const entities = await this.ormRepository.find({ where: { country } });
+    return entities.map((entity) => this.toDomain(entity));
+  }
+
+  async findByCountries(countries: readonly string[]): Promise<SalesDocumentCountryDefault[]> {
+    if (countries.length === 0) {
+      return [];
+    }
+    const entities = await this.ormRepository.find({ where: { country: In([...countries]) } });
     return entities.map((entity) => this.toDomain(entity));
   }
 

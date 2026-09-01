@@ -91,8 +91,8 @@ Optional right utility rail
 The left navigation is persistent and grouped **by frequency of use**, with two admin-only groups and a disabled **Planned** footer for IA-anticipated modules that are not yet shipped. This structure was finalized during the FE-002 refactor; the shipped composition lives in `apps/web/src/app/nav-registry.ts`, which is the source of truth.
 
 **Operations** (daily surfaces):
-- Analytics
-- Dashboard
+- Analytics (landing page, at `/`)
+- Insights
 - Orders
 - Products
 - Customers
@@ -740,7 +740,7 @@ Mechanics that differ from the listings carve-out, and why:
   One mechanical trap when you write the rule: `DataTable` hardcodes the `<table>` class and puts the caller's `className` on the **container** div, so a page-scoped rule is a *descendant* match (`.orders-table td`) and ties on specificity with `.data-table td { vertical-align: middle }`. It wins by source order alone. Author it **after** that rule in `index.css`, or it silently loses.
 - **Hosting one of these cells in a card `title` slot** (the mobile branch) puts it inside `<strong>`, so the meta line must not inherit the emphasis — `.orders-cell-sub, .orders-more-count` pin `font-weight: 400` (the `+N` chip inherits the emphasis too).
 
-Known gap: `DataTableSkeleton` still renders `36 px` rows, so a table with these cells grows on load. It predates this epic (listings ships the same mismatch) and is not owned by any of the five sub-issues. Tracked as #2152.
+A table carrying one of these cells declares its row shape so the loading state reserves the same height (#2538, closing #2152): `DataTableColumn.lines` says how many text lines a column's cell renders at its tallest, and `DataTableSkeleton` stacks that many bars and takes the tallest column on the row. Declare it on the column that SETS the height, not on every column - on Orders that is the money column at four stacked items, not the two-line identity cell. `rowAction` reserves a control's height on every row, because a table where only some rows carry an action must not resize when it turns out that they do. The skeleton's `36 px` is now a floor rather than a fixed height, so a single-line table is unchanged.
 
 **Documented carve-out — the who-decides question row (#2354).** `/settings/who-decides` renders its seven rows as a CSS-grid definition list (`.who-decides-row`), not a `DataTable`, and that is the carve-out: the only column cheap enough to hide at a breakpoint is the **why-line**, which spec § 3.3 calls "the whole point of the table" — an answer with no reason is a configuration dump. A `hideBelow` on it would delete the feature on mobile, so the row reflows to a single column at ≤ 768 px instead and never drops a fact. The other reasons `DataTable` is the wrong primitive here are secondary but real: seven fixed rows with no sort, no pagination and no row link, carrying per-row content a table cell does not model well (a link out for A7, a locked note for A6, a list of named connections on an ambiguous row).
 

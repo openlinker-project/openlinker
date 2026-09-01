@@ -15,6 +15,18 @@ export const CORE_PLATFORM_TYPES = ['prestashop', 'allegro', 'woocommerce'] as c
  */
 export type PlatformType = string;
 
+/**
+ * The all-zero placeholder `connectionId` backend services stamp on a sync
+ * job that has no real connection to attribute (e.g. a deletion-triggered
+ * offer pause, a currency reporting sweep) - mirrors the backend
+ * `SYSTEM_CONNECTION_ID` constant (`libs/core/src/inventory/application/
+ * services/inventory.service.ts`, `apps/worker/src/events/
+ * master-deletion-to-job.handler.ts`). It is not a real connection, so
+ * resolving it against `GET /connections/:id` always 404s - callers that
+ * render a connection column should special-case it rather than fetch it.
+ */
+export const SYSTEM_CONNECTION_ID = '00000000-0000-0000-0000-000000000000';
+
 export type ConnectionStatus = 'active' | 'disabled' | 'error' | 'needs_reauth';
 
 /**

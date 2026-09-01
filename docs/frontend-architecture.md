@@ -145,11 +145,11 @@ Each route should have:
 Page-bearing route modules use React Router's `lazy` field so each page becomes its own bundle chunk (#606):
 
 ```ts
-export const dashboardRoute: RouteObject = {
+export const analyticsIndexRoute: RouteObject = {
   index: true,
   lazy: async () => {
-    const { DashboardPage } = await import('../../pages/dashboard/dashboard-page');
-    return { Component: DashboardPage };
+    const { AnalyticsPage } = await import('../../pages/analytics/analytics-page');
+    return { Component: AnalyticsPage };
   },
 };
 ```
@@ -188,7 +188,7 @@ The shell resolves the active crumb by calling `useMatches()` and walking the ma
 
 **Rules**:
 
-- Leaf routes (including index children like `dashboardRoute`) own their crumb metadata. Parent shells with no semantic title carry no handle — `useMatches()`'s deepest-first walk picks the right one.
+- Leaf routes (including index children like `analyticsIndexRoute`) own their crumb metadata. Parent shells with no semantic title carry no handle — `useMatches()`'s deepest-first walk picks the right one.
 - Guest routes (`loginRoute`, `forgotPasswordRoute`, `resetPasswordRoute`) render outside `AppShell` and have no `handle.crumb`. They are excluded from the route-handle contract test.
 - Marketplace-specific breadcrumbs (e.g. `Connect Allegro`, `Connect PrestaShop`) ship with the plugin route module — never with the host shell.
 - A parameterized contract test at `apps/web/src/app/routes/route-handle.test.ts` asserts every authenticated leaf route declares a crumb. Same enforcement shape as `route-lazy.test.ts`.

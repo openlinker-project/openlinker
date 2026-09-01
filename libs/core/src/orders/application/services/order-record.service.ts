@@ -31,11 +31,15 @@ import type {
 } from '../../domain/types/order-record.types';
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
 import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
-import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import { IAutomationTriggerEmissionService } from '@openlinker/core/automation';
 import { AUTOMATION_TRIGGER_EMISSION_SERVICE_TOKEN } from '@openlinker/core/automation';
 import { redactAddress } from '../../domain/order-address-redaction';
 import type { OrderAmendmentChange } from '../../domain/order-amendment-diff';
+import { SALES_DOCUMENT_MARKET_DISCOVERY_WINDOW_DAYS } from '@openlinker/core/sales-documents';
+import type {
+  SalesDocumentBlock,
+  SalesDocumentMarketDiscovery,
+} from '@openlinker/core/sales-documents';
 import type {
   SalesAnalyticsFilters,
   SalesAndChannelAnalytics,
@@ -57,6 +61,9 @@ import { buildOrderAutomationFacts } from '../../domain/order-automation-facts-p
 import { buildSalesAndChannelAnalytics } from '../../domain/order-sales-aggregation';
 import { buildTopProducts } from '../../domain/top-products-aggregation';
 import type { TopProductFilters, TopProductsResult } from '../../domain/types/top-products.types';
+
+/** One day in milliseconds, for the market-discovery window arithmetic (#2518). */
+const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class OrderRecordService implements IOrderRecordService {
@@ -627,6 +634,27 @@ export class OrderRecordService implements IOrderRecordService {
 
   async countOrdersWithOmsAttention(): Promise<number> {
     return this.repository.countOrdersWithOmsAttention();
+  }
+
+  /**
+   * Which markets the operator has orders from, and how many (#2518, ADR-066).
+   *
+   * One grouped repository read plus the window arithmetic. It writes nothing
+   * and classifies nothing - see the interface for both rules. The resolved
+   * window travels back with the counts so no surface has to hold its own copy
+   * of the number and drift from it.
+   */
+  async discoverSalesDocumentMarkets(now: Date = new Date()): Promise<SalesDocumentMarketDiscovery> {
+    const since = new Date(
+      now.getTime() - SALES_DOCUMENT_MARKET_DISCOVERY_WINDOW_DAYS * MILLISECONDS_PER_DAY
+    );
+    const markets = await this.repository.countOrdersByRoutingCountrySince(since);
+
+    return {
+      windowDays: SALES_DOCUMENT_MARKET_DISCOVERY_WINDOW_DAYS,
+      since: since.toISOString(),
+      markets,
+    };
   }
 
   /**

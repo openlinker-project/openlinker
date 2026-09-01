@@ -230,6 +230,7 @@ export type {
   UpdateOfferQuantitiesBatchCommand,
   UpdateOfferQuantitiesBatchResult,
   UpdateOfferQuantitiesBatchFailure,
+  PendingQuantityAckReconcileResult,
 } from './domain/types/offer-quantity-update.types';
 export type {
   FrozenOfferField,
@@ -265,6 +266,8 @@ export type { OfferEventReader } from './domain/ports/capabilities/offer-event-r
 export { isOfferEventReader } from './domain/ports/capabilities/offer-event-reader.capability';
 export type { OfferQuantityBatchUpdater } from './domain/ports/capabilities/offer-quantity-batch-updater.capability';
 export { isOfferQuantityBatchUpdater } from './domain/ports/capabilities/offer-quantity-batch-updater.capability';
+export type { PendingQuantityAckReconciler } from './domain/ports/capabilities/pending-quantity-ack-reconciler.capability';
+export { isPendingQuantityAckReconciler } from './domain/ports/capabilities/pending-quantity-ack-reconciler.capability';
 export type { OfferFieldUpdater } from './domain/ports/capabilities/offer-field-updater.capability';
 export { isOfferFieldUpdater } from './domain/ports/capabilities/offer-field-updater.capability';
 export type { OfferStockRestorer } from './domain/ports/capabilities/offer-stock-restorer.capability';
@@ -382,6 +385,7 @@ export type {
   OfferStatusSyncOptions,
 } from './application/services/offer-status-sync.service.interface';
 export type { IOfferStatusReadService } from './application/services/offer-status-read.service.interface';
+export type { IOfferQuantityAckReconcileService } from './application/services/offer-quantity-ack-reconcile.service.interface';
 export type { IOfferStockRestoreService } from './application/interfaces/offer-stock-restore.service.interface';
 export type {
   OfferStockRestoreOutcome,

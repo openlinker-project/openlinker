@@ -22,6 +22,7 @@
  * @module apps/api/src/fiscalization/http
  */
 import {
+  BadGatewayException,
   BadRequestException,
   Body,
   ConflictException,
@@ -40,12 +41,14 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
   FISCAL_REGISTRATION_SERVICE_TOKEN,
+  FiscalReconcileCheckFailedException,
   FiscalRegistrationContendedException,
   FiscalRegistrationNotInDoubtException,
   FiscalRegistrationRecordNotFoundException,
   IFiscalRegistrationService,
   InvalidFiscalLineError,
   MissingIdempotencyKeyException,
+  fiscalRegistrationIdempotencyKey,
   OrderAlreadyHasInvoiceException,
   OrderAlreadyRegisteredException,
   UnsupportedFiscalPriceTreatmentError,
@@ -53,6 +56,7 @@ import {
 } from '@openlinker/core/fiscalization';
 import type {
   FiscalRegistrationRecord,
+  FiscalRegistrationRequestAccepted,
   RegisterTransactionCommand,
 } from '@openlinker/core/fiscalization';
 import {
@@ -64,25 +68,28 @@ import {
 import type { Order, OrderRecord } from '@openlinker/core/orders';
 
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { AcceptedFiscalRegistrationResponseDto } from './dto/accepted-fiscal-registration-response.dto';
+import { FiscalRegistrationProgressResponseDto } from './dto/fiscal-registration-progress-response.dto';
 import { FiscalRegistrationResponseDto } from './dto/fiscal-registration-response.dto';
 import { ReconcileFiscalRegistrationResponseDto } from './dto/reconcile-fiscal-registration-response.dto';
 import { RegisterFiscalTransactionRequestDto } from './dto/register-fiscal-transaction-request.dto';
 
 /**
- * The exactly-once key for this surface. One connection registering one order is
- * one sale, so this makes a repeated request - a double click, a retried fetch, a
- * duplicated job - idempotent BY CONSTRUCTION rather than by the caller
- * remembering to send a key.
+ * The exactly-once key for this surface.
+ *
+ * One connection registering one order is one sale, so a repeated request - a
+ * double click, a retried fetch, a duplicated job - is idempotent BY
+ * CONSTRUCTION rather than by the caller remembering to send a key.
  *
  * It is the ONLY key this endpoint can produce: the request DTO deliberately
  * carries no `idempotencyKey`, because a caller-chosen key would bypass the read
  * gate and register the same sale a second time. See the DTO for the full
- * reasoning; the mandatory-key contract of ADR-042 decision 6 lives at the
- * service boundary, which this function satisfies.
+ * reasoning.
+ *
+ * The format itself lives in `@openlinker/core/fiscalization` (#2525) so this
+ * surface and the auto-issue gate cannot drift apart; two copies of a key format
+ * that must be byte-identical is how one sale ends up with two receipts.
  */
-function idempotencyKeyFor(connectionId: string, orderId: string): string {
-  return `fiscal:${connectionId}:${orderId}`;
-}
 
 @ApiTags('fiscalization')
 @ApiBearerAuth()
@@ -97,30 +104,35 @@ export class FiscalizationController {
 
   @Roles('admin')
   @Post('fiscal-registrations')
-  @HttpCode(HttpStatus.OK)
+  @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({
-    summary: 'Register an order`s sale with a fiscalization provider',
+    summary: 'Ask for an order`s sale to be registered with a fiscalization provider',
     description:
-      'Composes the command server-side from the order and delegates to the core service, which ' +
-      'owns the exactly-once guarantee. The exactly-once key is derived from (connection, order) ' +
-      'and cannot be supplied by the caller, so a repeat resumes the existing record and can ' +
-      'never produce a second registration of the same sale; an order that already carries a ' +
-      'non-rejected registration is refused with 409 rather than registered again. ' +
-      'Returns 200 with the record even when the attempt FAILED - an indeterminate outcome must ' +
-      'be visibly indeterminate, and the caller needs the record id to reconcile against. Read ' +
-      '`status` / `failureMode`, never the status code, to decide whether the sale was registered.',
+      'ACCEPTS the registration; it does not perform it. The command is composed server-side ' +
+      'from the order and enqueued as a `fiscalization.register` job, which the worker runs. ' +
+      'A 202 therefore says the request was recorded and nothing more - never that the sale was ' +
+      'registered, and never that it will be. Read the order`s registration state to learn the ' +
+      'outcome. ' +
+      'The exactly-once key is derived from (connection, order) and cannot be supplied by the ' +
+      'caller, so a repeat joins the same job and can never produce a second registration of ' +
+      'the same sale; an order that already carries a non-rejected document is refused with 409 ' +
+      'at this point rather than by a job failing out of sight.',
   })
-  @ApiResponse({ status: 200, description: 'Registration record', type: FiscalRegistrationResponseDto })
+  @ApiResponse({
+    status: 202,
+    description: 'Registration accepted and enqueued',
+    type: AcceptedFiscalRegistrationResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Order not found' })
   @ApiResponse({
     status: 409,
-    description: 'The order already carries a fiscal registration that is not terminally rejected',
+    description: 'The order already carries a sales document that is not terminally rejected',
   })
   @ApiResponse({ status: 422, description: 'The order cannot be composed into a registrable sale' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async register(
     @Body() dto: RegisterFiscalTransactionRequestDto,
-  ): Promise<FiscalRegistrationResponseDto> {
+  ): Promise<AcceptedFiscalRegistrationResponseDto> {
     const record = await this.orders.getOrderRecord(dto.orderId);
     if (!record) {
       throw new NotFoundException(`Order not found: ${dto.orderId}`);
@@ -130,10 +142,14 @@ export class FiscalizationController {
 
     let command: RegisterTransactionCommand;
     try {
+      // Composed HERE, not in the worker, so a sale that cannot be expressed as
+      // a registrable command is refused while the operator is still looking at
+      // it. Deferring the composition would turn a 422 into an accepted request
+      // that fails later with nothing on screen to explain it.
       command = toRegisterTransactionCommand({
         order,
         connectionId: dto.connectionId,
-        idempotencyKey: idempotencyKeyFor(dto.connectionId, dto.orderId),
+        idempotencyKey: fiscalRegistrationIdempotencyKey(dto.connectionId, dto.orderId),
         // #2260 review: a manual registration of a pre-rollout order must reach
         // the same verdict the manual invoice path does, so the marker travels
         // with the command rather than being re-derived (or lost) downstream.
@@ -143,13 +159,15 @@ export class FiscalizationController {
       throw this.toHttpException(error);
     }
 
-    let registered: FiscalRegistrationRecord;
+    let accepted: FiscalRegistrationRequestAccepted;
     try {
-      registered = await this.fiscalRegistrations.register(command);
+      accepted = await this.fiscalRegistrations.requestRegistration(command, {
+        sourceConnectionId: record.sourceConnectionId,
+      });
     } catch (error) {
       throw this.toHttpException(error);
     }
-    return this.toDto(registered);
+    return accepted;
   }
 
   @Get('fiscal-registrations')
@@ -167,7 +185,49 @@ export class FiscalizationController {
       throw new BadRequestException('orderId is required');
     }
     const records = await this.fiscalRegistrations.getByOrderId(orderId.trim());
-    return records.map((record) => this.toDto(record));
+    const now = new Date();
+    return records.map((record) => this.toDto(record, now));
+  }
+
+  @Get('orders/:orderId/fiscal-registration')
+  @ApiOperation({
+    summary: 'Where this order`s registration is on one connection',
+    description:
+      'The poll target for a registration that outlives the request which asked for it. A PURE ' +
+      'READ: it takes no lock, writes nothing, calls no provider and cannot cause a ' +
+      'registration, so polling it is exactly as consequential as not polling it. ' +
+      '`progress` distinguishes queued, running, stalled and each terminal outcome; the record ' +
+      'is null while the work is queued, which is the normal state in the window this read ' +
+      'exists for, not an error. It reports no estimate and no remaining time, because none is ' +
+      'observable.',
+  })
+  @ApiResponse({ status: 200, type: FiscalRegistrationProgressResponseDto })
+  async getRegistrationProgress(
+    @Param('orderId') orderId: string,
+    // Required, and connection-scoped for the same reason the exactly-once key
+    // is. Without it the read could not tell a sale queued on this connection
+    // from one nobody asked to register, and would have to answer with a value
+    // that is sometimes false.
+    @Query('connectionId', new ParseUUIDPipe()) connectionId: string,
+  ): Promise<FiscalRegistrationProgressResponseDto> {
+    const trimmed = typeof orderId === 'string' ? orderId.trim() : '';
+    if (trimmed.length === 0) {
+      throw new BadRequestException('orderId is required');
+    }
+    const view = await this.fiscalRegistrations.getRegistrationProgress(trimmed, connectionId);
+    return {
+      progress: view.progress,
+      record: view.record === null ? null : this.toDto(view.record),
+      inFlight:
+        view.inFlight === null
+          ? null
+          : {
+              documentKind: view.inFlight.documentKind,
+              connectionId: view.inFlight.connectionId,
+              recordId: view.inFlight.recordId,
+              since: view.inFlight.since.toISOString(),
+            },
+    };
   }
 
   @Roles('admin')
@@ -179,12 +239,19 @@ export class FiscalizationController {
       'The only sanctioned way out of an in-doubt outcome other than an operator decision. It ' +
       'looks the registration up at the provider by business coordinates - it is NEVER a resend, ' +
       'because resending a registration that already landed is the double registration this ' +
-      'contract exists to prevent. A provider that cannot be queried reports "unsupported" and ' +
-      'the record is left for the operator.',
+      'contract exists to prevent. Answers with exactly one of the four closed outcomes: ' +
+      'resolved, not-found, unsupported, still-unknown. Only "resolved" writes to the record; ' +
+      'the other three leave it exactly as it was, and none of them licenses a resend. A failed ' +
+      'CHECK is not an outcome - it answers 502, so a transient network failure is never ' +
+      'reported as the structural "unsupported".',
   })
   @ApiResponse({ status: 200, type: ReconcileFiscalRegistrationResponseDto })
   @ApiResponse({ status: 404, description: 'Registration record not found' })
   @ApiResponse({ status: 409, description: 'The record is not an in-doubt failure' })
+  @ApiResponse({
+    status: 502,
+    description: 'The provider could not be asked; nothing changed and the check can be repeated',
+  })
   async reconcile(
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<ReconcileFiscalRegistrationResponseDto> {
@@ -237,6 +304,12 @@ export class FiscalizationController {
     if (error instanceof FiscalRegistrationRecordNotFoundException) {
       return new NotFoundException(error.message);
     }
+    // #2522: the provider could not be ASKED. Upstream, not us, and retryable -
+    // so 502 rather than a 500 an operator can only read as "OpenLinker broke",
+    // and deliberately NOT one of the four reconcile outcomes.
+    if (error instanceof FiscalReconcileCheckFailedException) {
+      return new BadGatewayException(error.message);
+    }
     if (
       error instanceof FiscalRegistrationNotInDoubtException ||
       error instanceof OrderAlreadyRegisteredException ||
@@ -255,8 +328,27 @@ export class FiscalizationController {
     return error instanceof Error ? error : new Error(String(error));
   }
 
-  /** Explicit allowlist projection; `errorMessage` is deliberately not exposed. */
-  private toDto(record: FiscalRegistrationRecord): FiscalRegistrationResponseDto {
+  /**
+   * Explicit allowlist projection; `errorMessage` is deliberately not exposed.
+   *
+   * `inFlight` is DERIVED here rather than persisted (#2521): it is a question
+   * about now, and the record's own `isLeaseLive` is the same predicate the
+   * write path claims against, so the operator-facing reading and the one a
+   * second attempt would hit cannot drift.
+   *
+   * `now` is passed in so every row of one response is evaluated against the
+   * same instant.
+   *
+   * Derived here rather than routed through `IFiscalRegistrationService`'s
+   * `getInFlightRegistration`: this endpoint already holds the order's records,
+   * so the seam would repeat the read to answer a question already answerable.
+   * Both go through `isLeaseLive`, so the two cannot disagree. The seam exists
+   * for the caller that has an order id and no records.
+   */
+  private toDto(
+    record: FiscalRegistrationRecord,
+    now: Date = new Date(),
+  ): FiscalRegistrationResponseDto {
     return {
       id: record.id,
       connectionId: record.connectionId,
@@ -272,6 +364,7 @@ export class FiscalizationController {
       artefacts: record.artefacts,
       failureMode: record.failureMode,
       failureReason: record.failureReason,
+      inFlight: record.isLeaseLive(now),
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString(),
     };

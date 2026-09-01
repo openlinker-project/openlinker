@@ -215,6 +215,8 @@ export {
 export { resolveFulfillmentRouter } from './application/services/fulfillment-router-resolution';
 export { IOrderRecordService } from './application/interfaces/order-record.service.interface';
 export { OrderRecordService } from './application/services/order-record.service';
+export { ISalesDocumentViewService } from './application/interfaces/sales-document-view.service.interface';
+export { SalesDocumentViewService } from './application/services/sales-document-view.service';
 export type { IOrderFxStampService } from './application/interfaces/order-fx-stamp.service.interface';
 // FX aggregate reads for the reporting-currency settings surface (#2126).
 export type { IOrderFxReadService } from './application/interfaces/order-fx-read.service.interface';

@@ -1147,7 +1147,7 @@ describe('OrdersListPage', () => {
       await screen.findByText('ALG-882414');
       const row = container.querySelector('.data-table__row') as HTMLElement;
 
-      expect(within(row).getByText('No primary')).toBeInTheDocument();
+      expect(within(row).getByText('Two setups apply')).toBeInTheDocument();
       // The CTA must be GONE: an order OpenLinker already refused is not an order
       // waiting for a click, and the CTA alone made every cause look identical.
       expect(within(row).queryByRole('link', { name: /issue invoice/i })).not.toBeInTheDocument();
@@ -1194,7 +1194,7 @@ describe('OrdersListPage', () => {
       const row = container.querySelector('.data-table__row') as HTMLElement;
 
       expect(within(row).getByText('Failed')).toBeInTheDocument();
-      expect(within(row).getByText('No primary')).toBeInTheDocument();
+      expect(within(row).getByText('Two setups apply')).toBeInTheDocument();
       // A record exists, so the next step is Retry in the panel, not a fresh issue.
       expect(within(row).queryByRole('link', { name: /issue invoice/i })).not.toBeInTheDocument();
     });
@@ -1225,7 +1225,7 @@ describe('OrdersListPage', () => {
         const card = container.querySelector('.orders-card-summary') as HTMLElement;
 
         expect(within(card).getByText('Failed')).toBeInTheDocument();
-        expect(within(card).getByText('No primary')).toBeInTheDocument();
+        expect(within(card).getByText('Two setups apply')).toBeInTheDocument();
       } finally {
         viewport.restore();
       }
@@ -1260,9 +1260,9 @@ describe('OrdersListPage', () => {
       await screen.findByText('ALG-882414');
       const row = container.querySelector('.data-table__row') as HTMLElement;
 
-      // "No primary" beside an issued invoice is worse than no pill at all — and
+      // "Two setups apply" beside an issued invoice is worse than no pill at all — and
       // the backend gate refuses to persist a block here in the first place.
-      expect(within(row).queryByText('No primary')).not.toBeInTheDocument();
+      expect(within(row).queryByText('Two setups apply')).not.toBeInTheDocument();
     });
 
     it('should keep the "Issue invoice" CTA alongside a manual-only badge', async () => {
@@ -1282,7 +1282,7 @@ describe('OrdersListPage', () => {
       await screen.findByText('ALG-882414');
       const row = container.querySelector('.data-table__row') as HTMLElement;
 
-      expect(within(row).getByText('Manual only')).toBeInTheDocument();
+      expect(within(row).getByText('Issued on request')).toBeInTheDocument();
       // Issuing by hand IS the configured workflow here, so the affordance stays.
       expect(within(row).getByRole('link', { name: /issue invoice/i })).toBeInTheDocument();
     });
@@ -1315,10 +1315,10 @@ describe('OrdersListPage', () => {
       await screen.findByText('ALG-882414');
       const row = container.querySelector('.data-table__row') as HTMLElement;
 
-      // "No primary" next to an issued invoice is worse than no badge at all, so
+      // "Two setups apply" next to an issued invoice is worse than no badge at all, so
       // the render refuses the contradiction rather than trusting the clear to
       // have landed already.
-      expect(within(row).queryByText('No primary')).not.toBeInTheDocument();
+      expect(within(row).queryByText('Two setups apply')).not.toBeInTheDocument();
       expect(within(row).getByText('Issued')).toBeInTheDocument();
     });
 
@@ -1369,13 +1369,13 @@ describe('OrdersListPage', () => {
 
       await screen.findByText('ALG-882414');
       const row = container.querySelector('.data-table__row') as HTMLElement;
-      const wrapper = within(row).getByText('No primary').closest('span[title]');
+      const wrapper = within(row).getByText('Two setups apply').closest('span[title]');
 
       // The hint is the ONLY statement of why on this surface, so it must reach the
       // DOM — and `title` alone is unreachable by keyboard and unreliable in screen
       // readers on a role-less span.
-      expect(wrapper).toHaveAttribute('title', expect.stringMatching(/none is set to issue/i));
-      expect(wrapper).toHaveAttribute('aria-label', expect.stringContaining('No primary'));
+      expect(wrapper).toHaveAttribute('title', expect.stringMatching(/nothing chooses between them/i));
+      expect(wrapper).toHaveAttribute('aria-label', expect.stringContaining('Two setups apply'));
     });
 
     it('should render the block badge on the mobile card path too', async () => {

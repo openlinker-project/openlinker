@@ -745,6 +745,8 @@ export function ProductsListPage(): ReactElement {
       },
       {
         id: 'name',
+        // #2538 - Thumbnail, name and a meta line.
+        lines: 2,
         header: 'Product',
         sortable: true,
         cell: (product): ReactNode => {
@@ -807,6 +809,8 @@ export function ProductsListPage(): ReactElement {
       },
       {
         id: 'source',
+        // #2538 - ConnectionCell stacks the name over its status.
+        lines: 2,
         header: 'Source',
         // Stays 1024 (#1996): lowering it to 768 was rejected because it keeps
         // the column only behind horizontal scroll. The tablet relocation of
@@ -1321,7 +1325,7 @@ export function ProductsListPage(): ReactElement {
       ) : null}
 
       {query.isLoading ? (
-        <DataTableSkeleton columns={columns} />
+        <DataTableSkeleton columns={columns} label="Loading products…" />
       ) : query.error ? (
         <ErrorState
           title="Unable to load products"

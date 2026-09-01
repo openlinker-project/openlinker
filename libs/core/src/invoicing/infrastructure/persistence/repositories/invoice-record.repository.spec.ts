@@ -61,19 +61,25 @@ describe('InvoiceRecordRepository', () => {
   let repository: InvoiceRecordRepository;
 
   let qb: {
+    where: jest.Mock;
     andWhere: jest.Mock;
     orderBy: jest.Mock;
+    addOrderBy: jest.Mock;
     skip: jest.Mock;
     take: jest.Mock;
+    getMany: jest.Mock;
     getManyAndCount: jest.Mock;
   };
 
   beforeEach(() => {
     qb = {
+      where: jest.fn().mockReturnThis(),
       andWhere: jest.fn().mockReturnThis(),
       orderBy: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
       skip: jest.fn().mockReturnThis(),
       take: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue([]),
       getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
     };
     ormRepo = {
@@ -555,6 +561,29 @@ describe('InvoiceRecordRepository', () => {
       expect(result.items).toHaveLength(2);
       expect(result.items[0]).toBeInstanceOf(InvoiceRecord);
       expect(result.items[1].id).toBe('ol_invoice_2');
+    });
+  });
+
+  describe('findAllByOrderIds (#2516)', () => {
+    it('reads nothing for an empty input', async () => {
+      await expect(repository.findAllByOrderIds([])).resolves.toEqual([]);
+      expect(ormRepo.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    it('issues ONE query for the whole page and keeps every record per order', async () => {
+      qb.getMany.mockResolvedValue([
+        ormRow({ id: 'inv-a', orderId: 'ol_order_1' }),
+        ormRow({ id: 'inv-b', orderId: 'ol_order_1', connectionId: 'conn_2' }),
+        ormRow({ id: 'inv-c', orderId: 'ol_order_2' }),
+      ]);
+
+      const records = await repository.findAllByOrderIds(['ol_order_1', 'ol_order_2']);
+
+      expect(ormRepo.createQueryBuilder).toHaveBeenCalledTimes(1);
+      expect(qb.where).toHaveBeenCalledWith('record.orderId IN (:...orderIds)', {
+        orderIds: ['ol_order_1', 'ol_order_2'],
+      });
+      expect(records.map((record) => record.id)).toEqual(['inv-a', 'inv-b', 'inv-c']);
     });
   });
 });

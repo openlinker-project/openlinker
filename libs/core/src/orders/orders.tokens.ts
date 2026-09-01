@@ -62,3 +62,5 @@ export const ORDER_HOLD_PROJECTION_RECONCILE_SERVICE_TOKEN = Symbol(
 
 /** Fulfilment dispatch relay (#2401). `FulfillmentDispatchRelayService` binds here. */
 export const FULFILLMENT_DISPATCH_RELAY_SERVICE_TOKEN = Symbol('IFulfillmentDispatchRelayService');
+// One per-order sales-document read (#2516, ADR-065).
+export const SALES_DOCUMENT_VIEW_SERVICE_TOKEN = Symbol('ISalesDocumentViewService');
