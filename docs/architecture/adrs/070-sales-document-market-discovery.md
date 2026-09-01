@@ -8,9 +8,9 @@
 
 A clean OpenLinker instance has **no sales-document routing at all**, and it should not: which document a sale needs is a legal question about the seller's business, and [ADR-041](./041-sales-document-routing-policy.md) is explicit that OpenLinker executes configured routing rather than deciding tax obligations.
 
-The consequence today is silence. Orders arrive, no document is issued, and nothing on any screen says which markets the operator would need to configure. The failure is invisible until someone notices no documents exist - which on the live demo is exactly what happened for Poland, where three configured rules key on a buyer tax ID that OpenLinker never records, so every Polish order resolves to no document while the settings page presents the configuration as working.
+The consequence today is silence. Orders arrive, no document is issued, and nothing on any screen says which markets the operator would need to configure. The failure is invisible until someone notices no documents exist - which on the live demo is exactly what happened for Poland, where three configured rules key on a buyer tax ID that neither the Allegro nor the WooCommerce order source supplies - #2599 carries the field (`order_records.buyerTaxId`, populated from `ps_address.vat_number`), but only PrestaShop populates it - so every Polish order from those sources resolves to no document while the settings page presents the configuration as working.
 
-OpenLinker does already know where orders are delivered: every `order_records` row carries its delivery-address country - the same field [ADR-041](./041-sales-document-routing-policy.md) decision 5 routes on. So the set of markets that need a decision is derivable, and leaving it underived is a choice, not a limitation.
+OpenLinker does already know where orders are delivered: an `order_records` row carries its delivery-address country - the same field [ADR-041](./041-sales-document-routing-policy.md) decision 5 routes on. It is not a column, though: the value lives in the `orderSnapshot` jsonb as `shippingAddress.country`, it survives `OL_STORE_PII=false` (`sanitizeAddress` redacts every address field except the country code), and it is absent on a non-`ready` record and on any source that supplies no shipping address. So the set of markets that need a decision is derivable, and leaving it underived is a choice, not a limitation.
 
 Separately, we have researched starter rules for exactly **one** market (Poland, sourced from public guidance) and none for any other. A generic "suggested setup" affordance would therefore imply guidance we do not have.
 
@@ -49,4 +49,4 @@ One presentational rule follows and is load-bearing: **a detected, unconfigured 
 
 - Related issues: #2503, #2513, #2518, #2528, #2529, #2530
 - Related ADRs: [ADR-041](./041-sales-document-routing-policy.md), [ADR-065](./065-sales-document-read-surface.md)
-- UX mockup: [`docs/plans/mockups/sales-document-routing.html`](../../plans/mockups/sales-document-routing.html) - `#page=settings`, states *brand new* and *orders arriving, nothing set up*
+- UX mockup: [`docs/plans/mockups/sales-document-routing.html`](../../plans/mockups/sales-document-routing.html) - `#page=settings&state=fresh` (*Brand new*) and `#page=settings&state=detected` (*Orders arriving, nothing set up*)
