@@ -51,6 +51,8 @@ describe('InventoryLocationsController', () => {
       listLocations: jest.fn(),
       deleteLocation: jest.fn(),
       countPositionsAtLocation: jest.fn(),
+      countActiveLocations: jest.fn(),
+      bootstrapDefaultLocations: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -191,6 +193,33 @@ describe('InventoryLocationsController', () => {
           'updatedAt',
         ].sort()
       );
+    });
+  });
+
+  describe('bootstrap (#2407)', () => {
+    it('reports what it created and what was already there', async () => {
+      const location = makeLocation();
+      service.bootstrapDefaultLocations.mockResolvedValue({
+        created: [location],
+        existingCodes: [],
+      });
+
+      const result = await controller.bootstrap();
+
+      expect(result.created).toHaveLength(1);
+      expect(result.created[0].code).toBe(location.code);
+      expect(result.existingCodes).toEqual([]);
+    });
+
+    it('reports a re-run as having created nothing, rather than as an empty success', async () => {
+      // `created: []` on its own reads identically to a write that failed
+      // silently. `existingCodes` is what makes the no-op legible.
+      service.bootstrapDefaultLocations.mockResolvedValue({ created: [], existingCodes: ['MAIN'] });
+
+      const result = await controller.bootstrap();
+
+      expect(result.created).toEqual([]);
+      expect(result.existingCodes).toEqual(['MAIN']);
     });
   });
 });

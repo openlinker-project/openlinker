@@ -4046,6 +4046,16 @@ a.delivery-rider-banner__button:focus-visible {
   color: var(--text-muted);
 }
 
+/* #2407 — routing-readiness notes. Same muted note treatment as the catalog
+   trust panel above; the two panels sit side by side on the health tab, so a
+   different size or colour here would read as a different kind of statement. */
+.router-readiness-panel__note {
+  margin: var(--space-2) 0 0;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
 /* ── Connection sync-status panel (#2615) ── */
 .connection-sync-status__headline {
   margin: var(--space-2) 0 0;

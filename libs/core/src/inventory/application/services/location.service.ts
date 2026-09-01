@@ -19,6 +19,11 @@ import { LocationRepositoryPort } from '../../domain/ports/location-repository.p
 import type { InventoryLocation } from '../../domain/entities/inventory-location.entity';
 import { LocationNotFoundException } from '../../domain/exceptions/location-not-found.exception';
 import { LocationInUseError } from '../../domain/exceptions/location-in-use.error';
+import { DuplicateLocationCodeError } from '../../domain/exceptions/duplicate-location-code.error';
+import {
+  BOOTSTRAP_LOCATION_SPECS,
+  type LocationBootstrapResult,
+} from '../../domain/types/location-bootstrap.types';
 import { LOCATION_REPOSITORY_TOKEN } from '../../inventory.tokens';
 import type {
   CreateInventoryLocationInput,
@@ -102,6 +107,43 @@ export class LocationService implements ILocationService {
     }
 
     this.logger.log(`Deleted inventory location ${id}`);
+  }
+
+  async countActiveLocations(): Promise<number> {
+    // Reuses the existing paged read for its `total` rather than adding a
+    // count method to the port: `limit: 1` keeps the row payload at one row
+    // while `total` answers the actual question.
+    const { total } = await this.repository.list(
+      { status: 'active' },
+      { page: 1, limit: 1 }
+    );
+    return total;
+  }
+
+  async bootstrapDefaultLocations(): Promise<LocationBootstrapResult> {
+    const created: InventoryLocation[] = [];
+    const existingCodes: string[] = [];
+
+    for (const spec of BOOTSTRAP_LOCATION_SPECS) {
+      try {
+        created.push(await this.createLocation(spec));
+      } catch (error) {
+        // ONLY the duplicate is expected, and it is the idempotency
+        // mechanism rather than a failure: the code is already taken, so this
+        // run must leave that row exactly as it is. Anything else is a real
+        // fault and must not be swallowed into a success-shaped result.
+        if (error instanceof DuplicateLocationCodeError) {
+          existingCodes.push(this.normaliseCode(spec.code));
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    this.logger.log(
+      `Location bootstrap: created ${created.length}, already present ${existingCodes.length}`
+    );
+    return { created, existingCodes };
   }
 
   /**
