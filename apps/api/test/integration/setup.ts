@@ -98,6 +98,13 @@ const harness = createIntegrationTestHarness({
     // so truncate explicitly or a location leaks into the next case and collides
     // on UQ_inventory_locations_code.
     'inventory_locations',
+    // oms_routing_rules (#2408) — the OL router's ordered ruleset. Like
+    // inventory_locations above, it carries NO ORM foreign key to `connections`
+    // (the plugin owns its own table and the operator's ruleset outlives any one
+    // integration), so the harness's CASCADE-closure walk cannot reach it. Left
+    // unlisted, a rule leaks into the next case and collides on
+    // UQ_oms_routing_rules_live_name.
+    'oms_routing_rules',
     'order_records',
     // order_line_items (#1985) — the per-line analytics projection. No
     // ORM/migration FK to order_records (plain indexed text column, same

@@ -36,4 +36,18 @@ export interface IFulfillmentWorkQueryService {
    * outcomes. Infrastructure faults still propagate.
    */
   resolveLinkForOrder(orderId: string): Promise<FulfillmentWorkLinkResolution>;
+
+  /**
+   * The connections excluded from re-sourcing this order because they rejected
+   * it with a **blocking** reason (ADR-054: "blocking excludes the rejecter
+   * from re-sourcing").
+   *
+   * Deliberately narrow (#2408). It returns connection ids and nothing else,
+   * because that is all the `not-blocked-by-reject` routing filter needs, and a
+   * general work query here would be mistaken for the worklist read model —
+   * which **#2406** owns. The grain is the CONNECTION, not the location:
+   * `FulfillmentWorkRejection` carries no location, and the rejecter is a
+   * holder rather than a place.
+   */
+  listBlockingRejectionConnectionIds(orderId: string): Promise<readonly string[]>;
 }
