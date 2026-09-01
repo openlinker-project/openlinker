@@ -3,6 +3,7 @@
  *
  * @module libs/oms/src/__tests__
  */
+import { OlFulfillmentExecutorAdapter } from '../execution/ol-fulfillment-executor.adapter';
 import { createOmsPlugin, omsAdapterManifest } from '../oms.plugin';
 import { OMS_ADAPTER_KEY, OMS_BRAND, OMS_PLATFORM_TYPE } from '../oms.constants';
 
@@ -18,11 +19,15 @@ describe('omsAdapterManifest', () => {
     expect(omsAdapterManifest.requiresCredentials).toBe(false);
   });
 
-  it('should advertise NO capabilities until an adapter delivers one', () => {
-    // The Erli #980 precedent. Advertising a name with no dispatch entry makes
+  it('should advertise exactly the capabilities it has an adapter for', () => {
+    // The Erli #980 precedent: a name enters this array WITH its adapter, never
+    // before. Advertising a name with no dispatch entry makes
     // `dispatchCapability` throw a plain Error, which aborts the WHOLE
     // `listCapabilityAdapters` listing rather than skipping this connection.
-    expect(omsAdapterManifest.supportedCapabilities).toEqual([]);
+    // #2409 added `FulfillmentExecutor` together with
+    // `OlFulfillmentExecutorAdapter`; this assertion is what keeps the pairing
+    // honest, so adding a second name without its dispatch entry fails here.
+    expect(omsAdapterManifest.supportedCapabilities).toEqual(['FulfillmentExecutor']);
   });
 
   it('should be the platform default, because the create form omits adapterKey', () => {
@@ -38,7 +43,7 @@ describe('omsAdapterManifest', () => {
 });
 
 describe('createOmsPlugin', () => {
-  it('should be constructible with no deps while the dispatch table is empty', () => {
+  it('should be constructible with no deps, because the executor injects none', () => {
     expect(() => createOmsPlugin()).not.toThrow();
   });
 
@@ -53,17 +58,30 @@ describe('createOmsPlugin', () => {
     expect(createOmsPlugin().register).toBeUndefined();
   });
 
-  it('should reject any capability request, naming the brand an operator recognises', async () => {
+  it('should resolve the OL executor for FulfillmentExecutor', async () => {
+    // The pairing the manifest assertion above declares. Resolved through the
+    // ordinary `dispatchCapability` path — core reaches the OL-OMS by exactly
+    // the seam it reaches any vendor plugin by (ADR-055: no privileged path).
     await expect(
-      createOmsPlugin().createCapabilityAdapter(
-        {} as never,
-        'FulfillmentExecutor',
-        {} as never,
-      ),
+      createOmsPlugin().createCapabilityAdapter({} as never, 'FulfillmentExecutor', {} as never),
+    ).resolves.toBeInstanceOf(OlFulfillmentExecutorAdapter);
+  });
+
+  it('should build a fresh executor per resolution rather than sharing one instance', async () => {
+    const plugin = createOmsPlugin();
+    const first = await plugin.createCapabilityAdapter({} as never, 'FulfillmentExecutor', {} as never);
+    const second = await plugin.createCapabilityAdapter({} as never, 'FulfillmentExecutor', {} as never);
+
+    expect(first).not.toBe(second);
+  });
+
+  it('should reject an unsupported capability, naming the brand an operator recognises', async () => {
+    await expect(
+      createOmsPlugin().createCapabilityAdapter({} as never, 'OrderSource', {} as never),
     ).rejects.toThrow(new RegExp(OMS_BRAND));
   });
 
-  it('should report that it supports no capabilities in the rejection', async () => {
+  it('should name the capability it does not support in the rejection', async () => {
     await expect(
       createOmsPlugin().createCapabilityAdapter({} as never, 'OrderSource', {} as never),
     ).rejects.toThrow(/does not support capability/i);
