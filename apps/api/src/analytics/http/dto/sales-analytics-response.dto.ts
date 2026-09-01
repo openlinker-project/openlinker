@@ -53,7 +53,8 @@ export class AppliedRateDto {
     type: String,
     description:
       'to units per one from unit, as a string — never Number()’d, matching the ' +
-      'numeric(18,8) registry column this figure is audited against.',
+      'numeric(18,8) registry column this figure is audited against. ' +
+      'Analytics provenance only; never a statutory/fiscal conversion rate (ADR-040).',
   })
   rate!: string;
 
