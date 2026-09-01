@@ -51,6 +51,7 @@ import {
   FulfillmentWorkVersionConflictError,
   FULFILLMENT_WORKLIST_SERVICE_TOKEN,
   isOperatorInvocableAction,
+  MissingFulfillmentWorkActionFieldError,
   type FulfillmentWorkConflictCode,
   OPERATOR_INVOCABLE_ACTIONS,
   UnsupportedFulfillmentWorkActionError,
@@ -217,7 +218,13 @@ export class FulfillmentWorkController {
         supportedActions: [...error.supportedActions],
       });
     }
-    if (error instanceof UnsupportedFulfillmentWorkActionError) {
+    // Both are 400 — a malformed request, not a state conflict — but they are
+    // different facts: an action this surface does not execute, versus an
+    // action it does execute called without a field it needs.
+    if (
+      error instanceof UnsupportedFulfillmentWorkActionError ||
+      error instanceof MissingFulfillmentWorkActionFieldError
+    ) {
       return new BadRequestException(error.message);
     }
     if (

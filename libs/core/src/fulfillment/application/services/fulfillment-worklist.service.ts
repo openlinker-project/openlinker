@@ -33,6 +33,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 
 import { FulfillmentWorkActionNotLegalError } from '../../domain/exceptions/fulfillment-work-action-not-legal.error';
+import { MissingFulfillmentWorkActionFieldError } from '../../domain/exceptions/missing-fulfillment-work-action-field.error';
 import { FulfillmentWorkNotFoundError } from '../../domain/exceptions/fulfillment-work-not-found.error';
 import { FulfillmentWorkVersionConflictError } from '../../domain/exceptions/fulfillment-work-version-conflict.error';
 import { FulfillmentWorkVersionMismatchError } from '../../domain/exceptions/fulfillment-work-version-mismatch.error';
@@ -183,10 +184,10 @@ export class FulfillmentWorklistService implements IFulfillmentWorklistService {
         });
 
       case 'hold': {
+        // NOT `UnsupportedFulfillmentWorkActionError` — `hold` IS invocable, and
+        // that error's message would list it as such while denying it.
         if (input.holdReason === undefined) {
-          throw new UnsupportedFulfillmentWorkActionError('hold (without a reason)', [
-            ...OPERATOR_INVOCABLE_ACTIONS,
-          ]);
+          throw new MissingFulfillmentWorkActionFieldError('hold', 'holdReason');
         }
         // `CHK_fulfillment_holds_actor` is an XOR, not an at-least-one: a row
         // with BOTH actors null is rejected by the database. An operator action
@@ -210,9 +211,7 @@ export class FulfillmentWorklistService implements IFulfillmentWorklistService {
 
       case 'release_hold': {
         if (input.holdId === undefined) {
-          throw new UnsupportedFulfillmentWorkActionError('release_hold (without a holdId)', [
-            ...OPERATOR_INVOCABLE_ACTIONS,
-          ]);
+          throw new MissingFulfillmentWorkActionFieldError('release_hold', 'holdId');
         }
         await this.works.releaseHold({
           holdId: input.holdId,

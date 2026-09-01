@@ -167,6 +167,7 @@ export * from './application/types/fulfillment-work-view.types';
 export * from './domain/types/fulfillment-worklist-page.types';
 export * from './domain/types/fulfillment-supported-actions.types';
 export { FulfillmentWorkActionNotLegalError } from './domain/exceptions/fulfillment-work-action-not-legal.error';
+export { MissingFulfillmentWorkActionFieldError } from './domain/exceptions/missing-fulfillment-work-action-field.error';
 export { FulfillmentWorkVersionConflictError } from './domain/exceptions/fulfillment-work-version-conflict.error';
 export { FulfillmentWorkVersionMismatchError } from './domain/exceptions/fulfillment-work-version-mismatch.error';
 export { UnsupportedFulfillmentWorkActionError } from './domain/exceptions/unsupported-fulfillment-work-action.error';

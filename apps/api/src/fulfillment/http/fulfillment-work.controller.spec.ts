@@ -23,6 +23,7 @@ import {
   FulfillmentWorkActionNotLegalError,
   FulfillmentWorkNotFoundError,
   FulfillmentWorkVersionConflictError,
+  MissingFulfillmentWorkActionFieldError,
   OPERATOR_INVOCABLE_ACTIONS,
   UnsupportedFulfillmentWorkActionError,
   type FulfillmentWorkView,
@@ -198,6 +199,26 @@ describe('FulfillmentWorkController', () => {
         .catch((e: unknown) => e);
 
       expect(error).toBeInstanceOf(expected);
+    });
+
+    it('should not deny that an invocable action is invocable when a field is missing', async () => {
+      // The defect this pins was operator-facing COPY, so the assertion is about
+      // the message. Reusing UnsupportedFulfillmentWorkActionError produced
+      // "'hold (without a reason)' is not an operator-invocable ... action;
+      // invocable: schedule, hold, ..." — denying `hold` while listing it, which
+      // sends a client looking for a capability problem it does not have.
+      worklist.applyAction.mockRejectedValue(
+        new MissingFulfillmentWorkActionFieldError('hold', 'holdReason')
+      );
+
+      const error = (await controller
+        .applyAction('work-1', 'hold', body(), user)
+        .catch((e: unknown) => e)) as BadRequestException;
+
+      expect(error).toBeInstanceOf(BadRequestException);
+      const message = error.message;
+      expect(message).toContain('holdReason');
+      expect(message).not.toContain('not an operator-invocable');
     });
 
     it('should map a not-found on the single read too', async () => {

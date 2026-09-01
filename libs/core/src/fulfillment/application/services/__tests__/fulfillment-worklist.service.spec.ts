@@ -7,6 +7,7 @@ import { FulfillmentWorkActionNotLegalError } from '../../../domain/exceptions/f
 import { FulfillmentWorkNotFoundError } from '../../../domain/exceptions/fulfillment-work-not-found.error';
 import { FulfillmentWorkVersionConflictError } from '../../../domain/exceptions/fulfillment-work-version-conflict.error';
 import { FulfillmentWorkVersionMismatchError } from '../../../domain/exceptions/fulfillment-work-version-mismatch.error';
+import { MissingFulfillmentWorkActionFieldError } from '../../../domain/exceptions/missing-fulfillment-work-action-field.error';
 import { UnsupportedFulfillmentWorkActionError } from '../../../domain/exceptions/unsupported-fulfillment-work-action.error';
 import type { FulfillmentWorkRepositoryPort } from '../../../domain/ports/fulfillment-work-repository.port';
 import type { FulfillmentHold } from '../../../domain/types/fulfillment-hold.types';
@@ -289,13 +290,24 @@ describe('FulfillmentWorklistService', () => {
     });
 
     it('should require a reason for hold and a holdId for release_hold', async () => {
+      // A MISSING FIELD, not an unsupported action — and the distinction is the
+      // point. `UnsupportedFulfillmentWorkActionError` names the invocable set
+      // in its message, so raising it here produced copy that denied `hold` was
+      // invocable while listing it as invocable. Both are still 400.
       const service = makeService(makeRepo());
-      await expect(
-        service.applyAction({ workId: 'work-1', action: 'hold', expectedVersion: 7 })
-      ).rejects.toThrow(UnsupportedFulfillmentWorkActionError);
-      await expect(
-        service.applyAction({ workId: 'work-1', action: 'release_hold', expectedVersion: 7 })
-      ).rejects.toThrow(UnsupportedFulfillmentWorkActionError);
+
+      const missingReason = await service
+        .applyAction({ workId: 'work-1', action: 'hold', expectedVersion: 7 })
+        .catch((e: unknown) => e);
+      expect(missingReason).toBeInstanceOf(MissingFulfillmentWorkActionFieldError);
+      expect((missingReason as MissingFulfillmentWorkActionFieldError).field).toBe('holdReason');
+      expect((missingReason as Error).message).not.toContain('not an operator-invocable');
+
+      const missingHoldId = await service
+        .applyAction({ workId: 'work-1', action: 'release_hold', expectedVersion: 7 })
+        .catch((e: unknown) => e);
+      expect(missingHoldId).toBeInstanceOf(MissingFulfillmentWorkActionFieldError);
+      expect((missingHoldId as MissingFulfillmentWorkActionFieldError).field).toBe('holdId');
     });
 
     it('should force-cancel to cancelled with a reason, never closed-as-completed', async () => {

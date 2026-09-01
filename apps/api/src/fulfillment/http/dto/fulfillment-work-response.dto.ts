@@ -9,6 +9,8 @@
  * @module apps/api/src/fulfillment/http/dto
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import type { FulfillmentCancellationReason } from '@openlinker/core/fulfillment-authority';
+import { HoldReason } from '@openlinker/core/order-lifecycle';
 import {
   FulfillmentRequestStatusValues,
   FulfillmentWorkActionValues,
@@ -37,7 +39,7 @@ export class FulfillmentWorkLineResponseDto {
 
 export class FulfillmentHoldResponseDto {
   @ApiProperty() id!: string;
-  @ApiProperty() reason!: string;
+  @ApiProperty() reason!: HoldReason;
   @ApiPropertyOptional({ nullable: true }) note!: string | null;
   @ApiProperty() placedAt!: Date;
 }
@@ -51,7 +53,7 @@ export class FulfillmentWorkResponseDto {
   @ApiProperty({ enum: FulfillmentWorkStatusValues }) status!: FulfillmentWorkStatus;
   @ApiProperty({ enum: FulfillmentRequestStatusValues }) requestStatus!: FulfillmentRequestStatus;
   @ApiProperty() assignmentAttempt!: number;
-  @ApiPropertyOptional({ nullable: true }) cancellationReason!: string | null;
+  @ApiPropertyOptional({ nullable: true }) cancellationReason!: FulfillmentCancellationReason | null;
   @ApiPropertyOptional({ nullable: true }) externalWorkId!: string | null;
   @ApiPropertyOptional({ nullable: true }) acceptedAt!: Date | null;
   @ApiPropertyOptional({ nullable: true }) cancelledAt!: Date | null;
