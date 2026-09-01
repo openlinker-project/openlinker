@@ -34,12 +34,21 @@
  * ## The rule that keeps it honest
  *
  * **This module is the only place these sentences exist.** A variant
- * interpolated at a call site belongs IN here. There is deliberately no
- * `check-*-mirror.mjs`: a mirror script holds two *independently authored*
- * halves identical across a boundary that forbids imports, and every consumer
- * here can import directly — a mirror would guard a boundary that does not
- * exist. If a backend-side counterpart ever genuinely cannot import this, the
- * mirror is that issue's to add, with its own reason.
+ * interpolated at a call site belongs IN here. Every consumer that CAN import
+ * this must — a mirror script exists for halves that cannot.
+ *
+ * **Amended (#2673): `title` now has exactly such a half.**
+ * `ATTENTION_REASON_COPY['restock-blocked'].title` in
+ * `features/fulfillment-authority` restates this sentence rather than importing
+ * it, because that module is imported BY the returns badge surfaces and a
+ * barrel-to-barrel edge back would close a cycle (#337/#359). That is the
+ * boundary the original note said did not exist, and
+ * `scripts/check-attention-reason-mirror.mjs` MIRROR 6 holds the two
+ * byte-identical. **So `RETURN_RESTOCK_BLOCKED_COPY.title` is load-bearing
+ * across a feature boundary**: renaming the constant, moving this file, or
+ * editing the sentence fails `pnpm check:invariants` naming the pair. Nothing
+ * else here is mirrored; a new field is a local concern until some other
+ * feature is forced to restate it.
  *
  * @module apps/web/src/features/returns/lib
  */

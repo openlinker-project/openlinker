@@ -16,7 +16,7 @@
  * reason added only to core never reaches the browser, and one added only to
  * the frontend type-checks against a value the API will never send.
  *
- * SIX MIRRORS:
+ * SEVEN MIRRORS:
  *
  *   M1  `AuthorityAttentionReasonValues`  core <-> apps/web (membership + order)
  *   M2  `AuthorityAttentionBadgeValues`   core <-> apps/web (membership + order)
@@ -26,8 +26,15 @@
  *   M4  `ATTENTION_REASON_COPY` carries exactly one entry per reason, in order
  *   M5  `ATTENTION_BADGE_COPY` carries exactly one entry per badge value
  *   M6  cross-feature title agreement: the OR-P title equals
- *       `RETURN_ORPHAN_BANNER_COPY.title` in features/returns (spec § 4.2 —
+ *       `RETURN_ORPHAN_BANNER_COPY.title` and the RB-L title equals
+ *       `RETURN_RESTOCK_BLOCKED_COPY.title` in features/returns (spec § 4.2 —
  *       "the mirror check ... covers BOTH feature folders")
+ *   M7  a PLACEHOLDER-FREE `title` equals its own `titleFallback` — one
+ *       sentence written twice. Added by #2673's review: M6 reads `title`
+ *       only, and both cross-feature titles are placeholder-free, so without
+ *       M7 half of each guarded string was held by hand. A title carrying
+ *       `{ref}` / `{n}` is exempt, because differing from its fallback is
+ *       exactly what a fallback is for.
  *
  * WHY M3 MIRRORS TWO FIELDS AND NOT ONLY THE UNION. A mirror over the reason
  * union alone would let the aggregate count and the badge renderer disagree
@@ -48,13 +55,20 @@
  *   1. It compares declarations, not renderers. A reason present in every array
  *      with copy nobody renders passes here. #2356's own component tests are
  *      what assert a row shows the title.
- *   2. M6 cannot detect a RENAMED counterpart. Its pending pair is keyed on a
- *      declaration NAME inside an existing file; if #2364 ships RB-L copy under
- *      a different constant name, the pair stays "pending" and the divergence
- *      ships. The file's existence is asserted (a path typo fails); the name is
- *      not, and cannot be. The pending entry must be retired BY HAND — which is
- *      why the note names the issue, and why the RB-L copy entry itself carries
- *      the same warning in the file #2364's author will be editing.
+ *   2. M6 USED to carry a "pending" mode, and that mode is gone (#2673). A pair
+ *      keyed on a declaration NAME degrades to a no-op the moment that
+ *      declaration is renamed or moved, and while the mode existed "not found"
+ *      and "not written yet" were indistinguishable to this script — so the
+ *      RB-L pair sat green for a whole wave, pointing at a constant name and a
+ *      file that never existed, while the two strings it was meant to hold
+ *      identical drifted by a trailing period. Every pair is now LIVE: a pair
+ *      whose file, declaration, field, or own-side copy entry cannot be read is
+ *      a FAILURE naming the pair, never a note. A title that is not written yet
+ *      therefore has no entry here at all — an absent pair is honest, a pair
+ *      that compares nothing is a claim. The DECISION lives in the pure
+ *      `classifyCrossFeatureTitle`, so `--self-check` can prove each of its
+ *      arms; an arm reachable only through the filesystem is an arm no fixture
+ *      can pin, which is how the old one stayed wrong.
  *   3. It says nothing about whether a sentence is good. `check-ui-vocabulary`
  *      proves nine words are absent; neither script reads copy for sense.
  *
@@ -105,7 +119,8 @@ const FE_BADGE_COPY = 'ATTENTION_BADGE_COPY';
 
 /**
  * Titles this feature declares that another feature is the canonical owner of
- * (spec § 4.2). `pending: null` means live and compared.
+ * (spec § 4.2). EVERY pair is live and compared — there is no pending mode, for
+ * the reason recorded in note 2 above.
  */
 const CROSS_FEATURE_TITLES = [
   {
@@ -113,14 +128,16 @@ const CROSS_FEATURE_TITLES = [
     file: join('apps', 'web', 'src', 'features', 'returns', 'lib', 'return-detail.copy.ts'),
     declaration: 'RETURN_ORPHAN_BANNER_COPY',
     field: 'title',
-    pending: null,
   },
   {
+    // Returns spec § 5.4 owns this string, and #2381 moved it out of
+    // `returns-list.copy.ts` into its own module on #2357's behalf. The pair
+    // used to name the old file AND an old constant spelling, so it resolved to
+    // nothing and passed vacuously (#2673).
     reason: 'restock-blocked',
-    file: join('apps', 'web', 'src', 'features', 'returns', 'lib', 'returns-list.copy.ts'),
-    declaration: 'RETURNS_RESTOCK_BLOCKED_COPY',
+    file: join('apps', 'web', 'src', 'features', 'returns', 'lib', 'restock-blocked.copy.ts'),
+    declaration: 'RETURN_RESTOCK_BLOCKED_COPY',
     field: 'title',
-    pending: 'W2-27 / #2364 (returns spec § 5.4 is the canonical owner; retire this entry there)',
   },
 ];
 
@@ -196,9 +213,24 @@ export function maskObjectBody(content, openBrace) {
   return null;
 }
 
+/**
+ * A field name must start where an identifier starts, or `title` is also read
+ * out of `subtitle` (#2673 review).
+ *
+ * The regexes below are unanchored `RegExp`s built from a name, so without this
+ * `stringField(segment, 'title')` returns `subtitle`'s value — silently, and
+ * with the wrong string then compared byte-for-byte against a canonical owner.
+ * A mirror reading the WRONG field is this script's own defect class, so the
+ * boundary is asserted by `--self-check` rather than left to the fact that no
+ * entry happens to carry such a name today.
+ */
+const FIELD_START = '(?:^|[^A-Za-z0-9_$])';
+
 /** Read a quoted string field out of one entry's raw source segment. */
 function stringField(segment, fieldName) {
-  const m = new RegExp(`${fieldName}\\s*:\\s*'([^']*)'|${fieldName}\\s*:\\s*"([^"]*)"`).exec(segment);
+  const m = new RegExp(
+    `${FIELD_START}${fieldName}\\s*:\\s*'([^']*)'|${FIELD_START}${fieldName}\\s*:\\s*"([^"]*)"`,
+  ).exec(segment);
   return m ? (m[1] ?? m[2]) : null;
 }
 
@@ -209,7 +241,7 @@ function stringField(segment, fieldName) {
  * member is `counted: true` today.
  */
 function booleanField(segment, fieldName) {
-  const m = new RegExp(`${fieldName}\\s*:\\s*(true|false)\\b`).exec(segment);
+  const m = new RegExp(`${FIELD_START}${fieldName}\\s*:\\s*(true|false)\\b`).exec(segment);
   return m ? m[1] === 'true' : null;
 }
 
@@ -272,6 +304,23 @@ export function parseDescriptorEntries(content, name) {
       key,
       badge: stringField(segment, 'badge'),
       counted: booleanField(segment, 'counted'),
+    })),
+  };
+}
+
+/**
+ * Ordered depth-1 entries with their `title` + `titleFallback`, for M7.
+ * Fields are `null` when absent.
+ */
+export function parseTitleEntries(content, name) {
+  const parsed = parseEntrySegments(content, name);
+  if (parsed === null) return null;
+  return {
+    line: parsed.line,
+    entries: parsed.entries.map(({ key, segment }) => ({
+      key,
+      title: stringField(segment, 'title'),
+      titleFallback: stringField(segment, 'titleFallback'),
     })),
   };
 }
@@ -346,6 +395,65 @@ export function diffDescriptorFields(core, mirror, mirrorLabel) {
 
   return { ok: issues.length === 0, issues };
 }
+
+/**
+ * M7's rule, pure (#2673 review).
+ *
+ * `titleFallback` is what renders when a title's placeholders cannot be filled,
+ * so for a title that HAS no placeholder the two are one sentence written
+ * twice — the shape a mirror exists to hold together, and the shape that had
+ * just drifted by a period on both `restock-blocked` and `return-unmatched`.
+ *
+ * Scoped to placeholder-free titles deliberately: a title carrying `{ref}` or
+ * `{n}` MUST differ from its fallback (that is the fallback's whole job), so
+ * requiring equality there would be wrong, and requiring inequality would be a
+ * rule about copy rather than about structure. Returns the offending entries.
+ */
+export function diffTitleFallbacks(entries) {
+  return entries
+    .filter(({ title, titleFallback }) => title !== null && titleFallback !== null)
+    .filter(({ title }) => !/\{[a-zA-Z]+\}/.test(title))
+    .filter(({ title, titleFallback }) => title !== titleFallback)
+    .map(({ key, title, titleFallback }) =>
+      `'${key}': title is '${title}' but titleFallback is '${titleFallback}' — the title carries no ` +
+        `placeholder, so these are one sentence written twice and must match`,
+    );
+}
+
+/**
+ * M6's whole decision for ONE pair, as a pure function of both sides' resolved
+ * values. Extracted (#2673) so every outcome is falsifiable offline.
+ *
+ * The loop below used to decide inline, which is how the `owner-declaration-
+ * unreadable` arm came to mean "skip" for a whole wave without a single test
+ * disagreeing: an arm reachable only through the filesystem is an arm no
+ * fixture can pin. `--self-check` now asserts all four failure arms, and the
+ * ONE that matters is that an unreadable owner declaration is a FAILURE — a
+ * pair that resolves to nothing compares nothing, and must never be a note.
+ *
+ * `'ok'` is the only non-failing value. Anything else is recorded by main().
+ */
+export function classifyCrossFeatureTitle({ ours, fileExists, theirs }) {
+  if (ours === null) return 'no-own-copy';
+  if (!fileExists) return 'missing-file';
+  if (theirs === null) return 'owner-declaration-unreadable';
+  return theirs === ours ? 'ok' : 'drifted';
+}
+
+/**
+ * Every value {@link classifyCrossFeatureTitle} can return, and whether it
+ * passes. Declared as DATA rather than left implicit in a `switch`, so
+ * `--self-check` can assert that exactly one outcome passes and that main()
+ * handles every other one — which is what makes "no pair can resolve to a skip"
+ * a checked property instead of a claim about one key name (#2673).
+ */
+export const CROSS_FEATURE_TITLE_OUTCOMES = Object.freeze({
+  'no-own-copy': false,
+  'missing-file': false,
+  'owner-declaration-unreadable': false,
+  drifted: false,
+  ok: true,
+});
 
 async function readIfPresent(path) {
   try {
@@ -434,32 +542,80 @@ async function main() {
       [`${CORE_FILE}:${coreBadges.line}  (authoritative)`, `${FE_COPY_FILE}:${feBadgeCopy.line}  (operator copy)`], m5.issues);
   }
 
-  // M6 — cross-feature title agreement.
-  const pendingNotes = [];
+  // M7 — a placeholder-free title and its fallback are one sentence.
+  const feTitles = parseTitleEntries(feCopyContent, FE_REASON_COPY);
+  if (!feTitles || feTitles.entries.length === 0) {
+    console.error(`✗ check-attention-reason-mirror: could not re-read '${FE_REASON_COPY}' for MIRROR 7.\n`);
+    process.exit(1);
+  }
+  const m7 = diffTitleFallbacks(feTitles.entries);
+  if (m7.length > 0) {
+    record('a title with no placeholder must equal its titleFallback',
+      [`${FE_COPY_FILE}:${feTitles.line}  (${FE_REASON_COPY})`], m7);
+  }
+
+  // M6 — cross-feature title agreement. The DECISION is `classifyCrossFeature
+  // Title`; this loop only resolves the two sides and renders the outcome. Every
+  // outcome but 'ok' is recorded, so nothing here can resolve to a skip (#2673).
+  const compared = [];
   for (const pair of CROSS_FEATURE_TITLES) {
     const ours = readEntryField(feCopyContent, FE_REASON_COPY, pair.reason, 'title');
     const abs = join(repoRoot, pair.file);
-    const exists = await stat(abs).then((s) => s.isFile(), () => false);
-    if (!exists) {
-      record("a cross-feature title pair must name a file that exists (a typo here would pass forever)",
-        [`${pair.file}  (declared canonical owner for '${pair.reason}')`],
-        [`the file does not exist — fix the declared path, or remove the pair`]);
-      continue;
+    const fileExists = await stat(abs).then((st) => st.isFile(), () => false);
+    const theirs = fileExists
+      ? readEntryField((await readIfPresent(abs)) ?? '', pair.declaration, pair.field, pair.field)
+      : null;
+
+    switch (classifyCrossFeatureTitle({ ours, fileExists, theirs })) {
+      case 'no-own-copy':
+        record('a cross-feature title pair must name a reason this feature actually declares copy for',
+          [`${FE_COPY_FILE}  (${FE_REASON_COPY}['${pair.reason}'].title)`],
+          [`'${pair.reason}' has no readable title here — the pair would compare nothing; ` +
+            'fix the reason key, or remove the pair']);
+        break;
+      case 'missing-file':
+        record('a cross-feature title pair must name a file that exists (a typo here would pass forever)',
+          [`${pair.file}  (declared canonical owner for '${pair.reason}')`],
+          ['the file does not exist — fix the declared path, or remove the pair']);
+        break;
+      case 'owner-declaration-unreadable':
+        record(`the canonical owner must declare '${pair.declaration}.${pair.field}'`,
+          [`${pair.file}  (canonical owner for '${pair.reason}')`],
+          [`'${pair.declaration}.${pair.field}' cannot be read — renamed, moved, or never written. ` +
+            'A pair that resolves to nothing compares nothing, so this is a failure and not a note; ' +
+            're-point the pair at the real declaration, or remove it']);
+        break;
+      case 'drifted':
+        record(`the '${pair.reason}' title must be byte-identical to its canonical owner (spec § 4.2)`,
+          [`${FE_COPY_FILE}  (${FE_REASON_COPY}['${pair.reason}'].title)`,
+            `${pair.file}  (${pair.declaration}.${pair.field}, canonical owner)`],
+          [`this feature says '${ours}', the owner says '${theirs}' — two sentences for one state`]);
+        break;
+      case 'ok':
+        compared.push(`'${pair.reason}' = ${JSON.stringify(ours)}  <- ${pair.file} (${pair.declaration}.${pair.field})`);
+        break;
+      // A sixth outcome added later must not land in `compared` and be reported
+      // as byte-identical — a new failure mode announcing itself as a pass is
+      // this script's own defect class (#2673), and .mjs gives no exhaustiveness
+      // check to catch it. Throwing is louder than recording: an outcome nobody
+      // wrote a branch for is a bug in the script, not a drift in the copy.
+      default:
+        throw new Error(
+          `check-attention-reason-mirror: classifyCrossFeatureTitle returned an outcome M6 has no ` +
+            `branch for while checking '${pair.reason}'. Add a case, and add it to ` +
+            `CROSS_FEATURE_TITLE_OUTCOMES.`,
+        );
     }
-    const content = await readIfPresent(abs);
-    const theirs = readEntryField(content ?? '', pair.declaration, pair.field, pair.field);
-    if (theirs === null) {
-      if (pair.pending) { pendingNotes.push(`${pair.file} '${pair.declaration}.${pair.field}' — pending ${pair.pending}`); continue; }
-      record(`the canonical owner must still declare '${pair.declaration}.${pair.field}'`,
-        [`${pair.file}  (canonical owner for '${pair.reason}')`],
-        [`'${pair.declaration}.${pair.field}' is gone — it was the source of this title; re-point the pair`]);
-      continue;
-    }
-    if (theirs !== ours) {
-      record(`the '${pair.reason}' title must be byte-identical to its canonical owner (spec § 4.2)`,
-        [`${FE_COPY_FILE}  (${FE_REASON_COPY}['${pair.reason}'].title)`, `${pair.file}  (${pair.declaration}.${pair.field}, canonical owner)`],
-        [`this feature says '${ours}', the owner says '${theirs}' — two sentences for one state`]);
-    }
+  }
+
+  // Must hold by construction: every non-'ok' outcome takes the failure branch
+  // above, so a short list means the loop lost a pair. Asserted so the count in
+  // the success line is load-bearing rather than incidental.
+  if (drifts.length === 0 && compared.length !== CROSS_FEATURE_TITLES.length) {
+    throw new Error(
+      `check-attention-reason-mirror: ${CROSS_FEATURE_TITLES.length} cross-feature pair(s) declared ` +
+        `but ${compared.length} compared with no drift recorded — the M6 loop dropped a pair.`,
+    );
   }
 
   if (drifts.length === 0) {
@@ -468,7 +624,8 @@ async function main() {
         `${coreBadges.values.length} badge(s) identical and in order across ${CORE_FILE}, ` +
         `${FE_MIRROR_FILE} and ${FE_COPY_FILE} (badge + counted included).`,
     );
-    for (const note of pendingNotes) console.log(`  pending cross-feature title (declared, not yet present): ${note}`);
+    console.log(`  ${compared.length} cross-feature title(s) byte-identical to their canonical owner:`);
+    for (const line of compared) console.log(`    ${line}`);
     process.exit(0);
   }
 
@@ -479,7 +636,6 @@ async function main() {
     for (const issue of issues) console.error(`        - ${issue}`);
     console.error('');
   }
-  for (const note of pendingNotes) console.error(`    pending cross-feature title (declared, not yet present): ${note}`);
   console.error(`    docs: ${DOCS_REF}\n`);
   process.exit(1);
 }
@@ -549,6 +705,103 @@ function selfCheck() {
     readEntryField(copySource, FE_REASON_COPY, 'return-unmatched', 'title'),
     'This return is not matched to an order',
   );
+
+  // --- M6's decision, every arm (#2673) ------------------------------------
+  // THE arm this issue exists for. A pair keyed on a declaration name that is
+  // not in the file it names resolves to `theirs === null`, and the old code
+  // turned that null into a "pending" NOTE and passed while the two strings it
+  // guarded drifted. It is a FAILURE, and these fixtures are the only artifact
+  // in the repo that says so — a correctly-keyed live run can never reach it.
+  expect('an unreadable owner declaration is a FAILURE, never a note',
+    classifyCrossFeatureTitle({ ours: 'T', fileExists: true, theirs: null }), 'owner-declaration-unreadable');
+  expect('a pair naming a reason this feature has no copy for is a FAILURE',
+    classifyCrossFeatureTitle({ ours: null, fileExists: true, theirs: 'T' }), 'no-own-copy');
+  expect('a pair naming a file that does not exist is a FAILURE',
+    classifyCrossFeatureTitle({ ours: 'T', fileExists: false, theirs: null }), 'missing-file');
+  expect('two different strings are a FAILURE',
+    classifyCrossFeatureTitle({ ours: 'Stock was not added', fileExists: true, theirs: 'Stock was not added.' }), 'drifted');
+  expect('two identical strings pass',
+    classifyCrossFeatureTitle({ ours: 'T', fileExists: true, theirs: 'T' }), 'ok');
+  // `ours === null` is tested FIRST, so a pair broken on both sides still
+  // fails; reporting the missing file first would name the wrong fix.
+  expect('a pair broken on BOTH sides still fails (never falls through to ok)',
+    classifyCrossFeatureTitle({ ours: null, fileExists: false, theirs: null }), 'no-own-copy');
+
+  // "No pair can resolve to a skip" — the real property. It replaces an earlier
+  // `!('pending' in pair)` assertion that detected ONE key spelling while its
+  // message claimed the whole escape hatch was gone.
+  const M6_ARMS = ['no-own-copy', 'missing-file', 'owner-declaration-unreadable', 'drifted', 'ok'];
+  expect('exactly one classifier outcome passes; every other is recorded',
+    Object.values(CROSS_FEATURE_TITLE_OUTCOMES).filter(Boolean).length, 1);
+  expect('the passing outcome is `ok`', CROSS_FEATURE_TITLE_OUTCOMES.ok, true);
+  expect('the outcome table enumerates exactly the arms main() switches on',
+    Object.keys(CROSS_FEATURE_TITLE_OUTCOMES).slice().sort().join(','), M6_ARMS.slice().sort().join(','));
+  // A classifier that could only ever answer one value would satisfy every
+  // assertion above and check nothing, so pin that it really reaches each arm.
+  expect('the classifier reaches every declared outcome',
+    new Set([
+      classifyCrossFeatureTitle({ ours: null, fileExists: true, theirs: 'T' }),
+      classifyCrossFeatureTitle({ ours: 'T', fileExists: false, theirs: null }),
+      classifyCrossFeatureTitle({ ours: 'T', fileExists: true, theirs: null }),
+      classifyCrossFeatureTitle({ ours: 'a', fileExists: true, theirs: 'b' }),
+      classifyCrossFeatureTitle({ ours: 'T', fileExists: true, theirs: 'T' }),
+    ]).size, M6_ARMS.length);
+  expect('there is at least one cross-feature pair to compare', CROSS_FEATURE_TITLES.length > 0, true);
+  // The parser half of the same regression: `readEntryField` must answer null
+  // for a declaration name absent from the content it is handed.
+  expect('a RENAMED/MOVED owner declaration reads as null',
+    readEntryField(copySource, 'RETURNS_RESTOCK_BLOCKED_COPY', 'title', 'title'), null);
+
+  // --- M7: titleFallback (#2673 review) -------------------------------------
+  const tf = (title, titleFallback) => [{ key: 'k', title, titleFallback }];
+  expect('a placeholder-free title that differs from its fallback is reported',
+    diffTitleFallbacks(tf('Stock was not added.', 'Stock was not added')).length, 1);
+  expect('an identical pair is not reported',
+    diffTitleFallbacks(tf('Stock was not added.', 'Stock was not added.')).length, 0);
+  // The exemption, and the reason M7 is scoped rather than universal: a title
+  // with a placeholder MUST differ from its fallback — that is the fallback's
+  // whole job — so flagging it would make the rule wrong for 6 of 8 reasons.
+  expect('a title carrying {ref} is EXEMPT even though it differs',
+    diffTitleFallbacks(tf('No one took the job for order {ref}', 'No one took the job for this order')).length, 0);
+  expect('a title carrying {n} is exempt too',
+    diffTitleFallbacks(tf('Order {ref} is short {n} x {sku}', 'This order is short of stock')).length, 0);
+  // A brace that is not a placeholder must not buy an exemption.
+  expect('a non-placeholder brace does not exempt the entry',
+    diffTitleFallbacks(tf('Stock {} was not added.', 'Stock {} was not added')).length, 1);
+  expect('an unreadable field on either side is skipped, never reported as drift',
+    diffTitleFallbacks(tf('T', null)).length + diffTitleFallbacks(tf(null, 'T')).length, 0);
+  expect('the reported message names the key and both strings',
+    diffTitleFallbacks(tf('A.', 'A'))[0].includes("'k'") && diffTitleFallbacks(tf('A.', 'A'))[0].includes("'A.'"), true);
+  // M7 must be able to see the real declaration, or it guards nothing.
+  const titleParse = parseTitleEntries(copySource, FE_REASON_COPY);
+  expect('parseTitleEntries reads both fields off each entry',
+    titleParse?.entries.length > 0, true);
+  expect('parseTitleEntries returns null for an absent declaration',
+    parseTitleEntries(copySource, 'NOPE_COPY'), null);
+
+  // --- field names are read at an identifier boundary (#2673 review) --------
+  // Before this, `stringField(segment, 'title')` also matched `subtitle:` and
+  // `booleanField(segment, 'counted')` also matched `subcounted:` — the reader
+  // would hand M6/M7/M3 a DIFFERENT field's value and then compare it
+  // byte-for-byte against a canonical owner. That is this script's own defect
+  // class (a check that runs and checks the wrong thing), and no live run could
+  // reveal it, because no shipped entry carries such a name. These fixtures are
+  // the only artifact that says the boundary is there.
+  const subtitleTrap =
+    "export const TRAP_COPY = {\n  'k': {\n    subtitle: 'WRONG',\n    title: 'RIGHT',\n" +
+    "    titleFallback: 'RIGHT',\n  },\n} as const;\n";
+  expect("a 'subtitle' field is not read as 'title'",
+    parseTitleEntries(subtitleTrap, 'TRAP_COPY')?.entries[0].title, 'RIGHT');
+  const subFieldTrap =
+    "export const TRAP_DESC = {\n  'k': {\n    subbadge: 'WRONG',\n    badge: 'RIGHT',\n" +
+    "    subcounted: true,\n    counted: false,\n  },\n} as const;\n";
+  expect("a 'subbadge' field is not read as 'badge'",
+    parseDescriptorEntries(subFieldTrap, 'TRAP_DESC')?.entries[0].badge, 'RIGHT');
+  expect("a 'subcounted' field is not read as 'counted'",
+    parseDescriptorEntries(subFieldTrap, 'TRAP_DESC')?.entries[0].counted, false);
+  // The boundary must not stop a field that opens its own segment from matching.
+  expect('a field at the very start of a segment still matches',
+    stringField("title: 'RIGHT',", 'title'), 'RIGHT');
 
   const ownerSource = "export const RETURN_ORPHAN_BANNER_COPY = {\n  title: 'This return is not matched to an order',\n  safeHere: 'x',\n} as const;\n";
   expect('reads the canonical owner field', readEntryField(ownerSource, 'RETURN_ORPHAN_BANNER_COPY', 'title', 'title'), 'This return is not matched to an order');

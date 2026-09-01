@@ -8,7 +8,12 @@ import {
   renderWithProviders,
 } from '../../test/test-utils';
 import { ApiError } from '../../shared/api/api-error';
-import { ReturnDetailUnreadableError, type ReturnDetail, type ReturnLine } from '../../features/returns';
+import {
+  RETURN_ORPHAN_BANNER_COPY,
+  ReturnDetailUnreadableError,
+  type ReturnDetail,
+  type ReturnLine,
+} from '../../features/returns';
 import { ReturnDetailPage } from './return-detail-page';
 import type { Connection } from '../../features/connections/api/connections.types';
 
@@ -206,7 +211,9 @@ describe('ReturnDetailPage', () => {
         detail: makeDetail({ bucket: 'orphan', internalOrderId: null }),
       });
 
-      expect(await screen.findByText('This return is not matched to an order')).toBeInTheDocument();
+      expect(
+        await screen.findByText(RETURN_ORPHAN_BANNER_COPY.title),
+      ).toBeInTheDocument();
       expect(
         screen.getByText(/not matched to an order, so nothing can be sent to the channel/),
       ).toBeInTheDocument();

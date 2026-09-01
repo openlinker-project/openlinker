@@ -33,8 +33,11 @@
  * `features/returns` is one of #2356's badge surfaces and will import this
  * module, so a static barrel-to-barrel edge would close a loop (#337/#359).
  * `scripts/check-attention-reason-mirror.mjs` MIRROR 6 asserts the OR-P title
- * equals `RETURN_ORPHAN_BANNER_COPY.title`; RB-L is declared here provisionally
- * with a pending pair naming #2364.
+ * equals `RETURN_ORPHAN_BANNER_COPY.title` and the RB-L title equals
+ * `RETURN_RESTOCK_BLOCKED_COPY.title`. Both pairs are live and compared; the
+ * mirror carries no "pending" mode any more (#2673). MIRROR 7 additionally
+ * holds a placeholder-free `title` equal to its own `titleFallback`, so the
+ * second half of each of those sentences is checked too.
  *
  * @module apps/web/src/features/fulfillment-authority/lib
  * @see docs/specs/product-spec-oms-wave2-operator-experience.md § 4.2 / § 4.3
@@ -124,22 +127,36 @@ export const ATTENTION_REASON_COPY = {
     body: 'Two systems are set up to decide, so OpenLinker is doing neither. Returns are still being recorded, but nothing is being restocked or scrapped automatically.',
     action: 'Open the connections named below and leave one of them deciding.',
   },
-  // Provisional wording. The returns spec § 5.4 is the canonical owner, and
-  // #2364 must converge on this string or change it here in the same commit —
-  // MIRROR 6's pending pair fails the build the day it lands.
+  // Byte-identical to `RETURN_RESTOCK_BLOCKED_COPY.title` in features/returns —
+  // asserted by MIRROR 6. The returns spec § 5.4 is the canonical owner and
+  // renders the line with a trailing period, so the period is here too (#2673:
+  // it was absent while the mirror pair was inert, which is the drift that
+  // proved a pair comparing nothing is worse than no pair).
+  //
+  // MIRROR 6 reads `title` only; MIRROR 7 holds `titleFallback` equal to it,
+  // because this state names no order and the title therefore carries no
+  // placeholder. Editing EITHER field alone fails the build.
   'restock-blocked': {
-    title: 'Stock was not added',
-    titleFallback: 'Stock was not added',
+    title: 'Stock was not added.',
+    titleFallback: 'Stock was not added.',
     body: 'The system that owns this stock refused to put the returned goods back. Nothing was added, and nothing was lost.',
     action: 'Open the return to see which system refused and what it said.',
   },
   // Byte-identical to `RETURN_ORPHAN_BANNER_COPY.title` in features/returns —
-  // asserted by MIRROR 6. Note the spec renders this line with a trailing
-  // period and the shipped returns copy does not; the spec's own tie-break
-  // ("the returns spec wins") settles it, so there is no period here.
+  // asserted by MIRROR 6. The returns spec § 5.5 renders this line with a
+  // trailing period, so both code sides carry one (#2673).
+  //
+  // An earlier comment here claimed the opposite — that § 5.4's "the returns
+  // spec wins" tie-break justified DROPPING the period. It did not: that rule
+  // is the returns spec beating other DOCUMENTS, and it was cited to make
+  // shipped code beat the returns spec. The spec has the period at
+  // product-spec-oms-returns-operator-ux.md:364, as does the wave-2 spec § 4.2.
+  //
+  // MIRROR 6 reads `title`; MIRROR 7 holds `titleFallback` equal to it (see the
+  // note on 'restock-blocked' above).
   'return-unmatched': {
-    title: 'This return is not matched to an order',
-    titleFallback: 'This return is not matched to an order',
+    title: 'This return is not matched to an order.',
+    titleFallback: 'This return is not matched to an order.',
     body: 'OpenLinker has never seen the order this return belongs to, so nothing is triggered from it — no stock change, no refund, no credit note.',
     action: 'Nothing to do. If the order arrives later, OpenLinker matches it automatically.',
   },
