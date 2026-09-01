@@ -102,12 +102,32 @@ import { useTopProductsQuery } from '../hooks/use-top-products-query';
 import { ChannelPublishAction } from './channel-publish-action';
 import { VariantChannelMatrix } from './variant-channel-matrix';
 import type { SalesAnalyticsFilters } from '../api/sales-analytics.types';
+import type { AnalyticsCoverage } from '../api/analytics-coverage.types';
 import type { TopProductRow, TopProductsSortBy } from '../api/top-products.types';
 import { channelCellFor, deriveChannelColumns, isMissingFrom } from '../lib/top-products-view-model';
+import { isCurrencyRecalculating } from '../lib/display-currency.lib';
+import { RecalculatingValue } from './recalculating-value';
 
 const DEFAULT_LIMIT = 20;
 
-function renderNovCell(row: TopProductRow): ReactElement {
+/**
+ * `GET /analytics/top-products` has no `displayCurrency`/`rateBasis` axis of
+ * its own (confirmed: no query param, no response field) — a genuine
+ * backend gap. This table stays in the native reporting currency regardless
+ * of the picker until the backend is extended: a client-side "derived rate"
+ * approach was tried and reverted after it produced a live wrong number
+ * (29 000 PLN read as ~20 000 "EUR") — see `display-currency.lib.ts`'s
+ * "REJECTED APPROACH" note for why that shortcut is unsound.
+ *
+ * `currencyRecalculating`: same in-flight-run signal `AnalyticsKpiStrip` and
+ * `ChannelSalesTable` read from Data Coverage (`isCurrencyRecalculating`) —
+ * without it, every row here reads a bare 0.00 for the whole duration of a
+ * recalculation run.
+ */
+function renderNovCell(row: TopProductRow, currencyRecalculating: boolean): ReactElement {
+  if (currencyRecalculating) {
+    return <RecalculatingValue />;
+  }
   if (row.currency) {
     return <>{formatAmount(row.netRevenue, row.currency)}</>;
   }
@@ -121,6 +141,8 @@ const SORT_OPTIONS = [
 
 interface ProductSalesTableProps {
   filters: SalesAnalyticsFilters;
+  /** Same Data Coverage aggregate `AnalyticsKpiStrip`/`ChannelSalesTable` read — no extra request when the page fetches it once. `undefined` renders as if nothing is recalculating. */
+  coverage?: AnalyticsCoverage;
 }
 
 function ProductCell({ row, product }: { row: TopProductRow; product: Product | undefined }): ReactElement {
@@ -239,7 +261,8 @@ function resolveNotListedConnectionIds(
   return coverageGapAvailable ? row.missingFromConnectionIds : [];
 }
 
-export function ProductSalesTable({ filters }: ProductSalesTableProps): ReactElement {
+export function ProductSalesTable({ filters, coverage }: ProductSalesTableProps): ReactElement {
+  const currencyRecalculating = isCurrencyRecalculating(coverage);
   const [sortBy, setSortBy] = useState<TopProductsSortBy>('revenue');
   const query = useTopProductsQuery({ ...filters, sortBy, limit: DEFAULT_LIMIT, offset: 0 });
   const connectionsQuery = useConnectionsQuery();
@@ -294,7 +317,7 @@ export function ProductSalesTable({ filters }: ProductSalesTableProps): ReactEle
       id: 'revenue',
       header: sortBy === 'revenue' ? 'Net sales ↓' : 'Net sales',
       align: 'right',
-      cell: renderNovCell,
+      cell: (row) => renderNovCell(row, currencyRecalculating),
     },
     {
       id: 'units',
@@ -361,7 +384,7 @@ export function ProductSalesTable({ filters }: ProductSalesTableProps): ReactEle
           subtitle: (row) => row.sku ?? undefined,
           summary: (row) => (
             <>
-              {renderNovCell(row)}
+              {renderNovCell(row, currencyRecalculating)}
               {' · '}
               {intFormat.format(row.units)} units
             </>

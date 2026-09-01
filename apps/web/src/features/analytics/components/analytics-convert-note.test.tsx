@@ -75,9 +75,116 @@ describe('AnalyticsConvertNote', () => {
       { apiClient }
     );
 
-    expect(await screen.findByText(/Converted to EUR/)).toBeInTheDocument();
+    // Names the active rate-basis mode (matching the Analytics Settings
+    // dialog's own labels), never a generic "Converted to EUR" that implies
+    // both modes answer the same question.
+    expect(await screen.findByText('Current rate:', { exact: false })).toBeInTheDocument();
+    expect(screen.getByText(/converted to EUR/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Switch back' }));
     expect(onSwitchBack).toHaveBeenCalled();
+  });
+
+  it('should label the order-date mode distinctly from current-rate', async () => {
+    const apiClient = createMockApiClient({
+      analytics: {
+        getSales: vi.fn().mockResolvedValue({
+          headline: {
+            revenue: 100,
+            currency: 'PLN',
+            orderCount: 1,
+            averageOrderValue: 100,
+            medianOrderValue: 100,
+            unitsSold: 1,
+            cancelledCount: 0,
+            cancelledValue: 0,
+            unconvertedCount: 0,
+            unconvertedValue: 0,
+            unconvertedCurrency: null,
+            trend: [],
+            netRevenue: 100,
+            netAverageOrderValue: 100,
+            netMedianOrderValue: 100,
+            netExcludedCount: 0,
+            netExcludedValue: 0,
+            displayCurrencyConversion: {
+              displayCurrency: 'EUR',
+              rateBasis: 'order-date',
+              convertedRevenue: 23.21,
+              unresolvedNativeCurrencies: [],
+            },
+          },
+          channels: [],
+        }),
+      },
+    });
+
+    renderWithProviders(
+      <AnalyticsConvertNote
+        filters={{ ...baseFilters, displayCurrency: 'EUR', rateBasis: 'order-date' }}
+        onSwitchBack={vi.fn()}
+      />,
+      { apiClient }
+    );
+
+    expect(await screen.findByText('Rate on order date:', { exact: false })).toBeInTheDocument();
+    expect(screen.queryByText('Current rate:', { exact: false })).not.toBeInTheDocument();
+  });
+
+  it('should replace the "converted" claim with an in-progress note while a currency recalculation is running', async () => {
+    const apiClient = createMockApiClient({
+      analytics: {
+        getSales: vi.fn().mockResolvedValue({
+          headline: {
+            revenue: 0,
+            currency: null,
+            orderCount: 0,
+            averageOrderValue: 0,
+            medianOrderValue: 0,
+            unitsSold: 0,
+            cancelledCount: 0,
+            cancelledValue: 0,
+            unconvertedCount: 40,
+            unconvertedValue: 4800,
+            unconvertedCurrency: 'PLN',
+            trend: [],
+            netRevenue: 0,
+            netAverageOrderValue: 0,
+            netMedianOrderValue: 0,
+            netExcludedCount: 0,
+            netExcludedValue: 0,
+            displayCurrencyConversion: {
+              displayCurrency: 'EUR',
+              rateBasis: 'current-rate',
+              convertedRevenue: 0,
+              unresolvedNativeCurrencies: [],
+            },
+          },
+          channels: [],
+        }),
+      },
+    });
+
+    renderWithProviders(
+      <AnalyticsConvertNote
+        filters={{ ...baseFilters, displayCurrency: 'EUR', rateBasis: 'current-rate' }}
+        coverage={{
+          categories: [
+            { category: 'currency', status: 'in-progress', affectedCount: 40, sampleOrderIds: [], activeRunId: 'ol_remrun_1' },
+            { category: 'tax-a', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+            { category: 'tax-b', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+            { category: 'tax-c', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+            { category: 'product-matching', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+          ],
+        }}
+        onSwitchBack={vi.fn()}
+      />,
+      { apiClient }
+    );
+
+    expect(
+      await screen.findByText(/A currency recalculation is running for this range/)
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/converted to EUR/)).not.toBeInTheDocument();
   });
 
   it('should show an unavailable state when the conversion could not be resolved', async () => {

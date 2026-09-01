@@ -48,6 +48,8 @@ function analytics(overrides: Partial<SalesAndChannelAnalytics['headline']> = {}
       unitsSold: 60,
       cancelledCount: 2,
       cancelledValue: 200,
+      cancelledUnconvertedCount: 0,
+      cancelledUnconvertedValue: 0,
       unconvertedCount: 0,
       unconvertedValue: 0,
       unconvertedCurrency: null,
@@ -342,5 +344,92 @@ describe('AnalyticsKpiStrip', () => {
       ).not.toBeInTheDocument();
       expect(onOpenCategory).not.toHaveBeenCalled();
     });
+  });
+
+  it('converts only the GMV qualifier when a display currency is picked — every other money figure stays native (ADR-064)', async () => {
+    const apiClient = createMockApiClient({
+      analytics: {
+        getSales: vi.fn().mockResolvedValue(
+          analytics({
+            revenue: 1000,
+            netRevenue: 900,
+            netAverageOrderValue: 90,
+            netMedianOrderValue: 85,
+            cancelledValue: 50,
+            displayCurrencyConversion: {
+              displayCurrency: 'EUR',
+              rateBasis: 'current-rate',
+              // NOT `revenue * a plain rate` — in current-rate mode this is
+              // revenue PLUS the separate unconverted bucket, both converted
+              // and summed (see SalesAnalyticsController.
+              // buildNativeCurrencyAmounts). Deriving a "rate" from this by
+              // dividing by revenue is exactly the unsound shortcut this
+              // test guards against reintroducing.
+              convertedRevenue: 232.1,
+              unresolvedNativeCurrencies: [],
+            },
+          })
+        ),
+      },
+    });
+
+    renderWithProviders(
+      <AnalyticsKpiStrip filters={{ ...FILTERS, displayCurrency: 'EUR' }} connections={[]} />,
+      { apiClient }
+    );
+
+    // GMV qualifier renders the backend's own convertedRevenue, verbatim.
+    // EUR has a well-known symbol in Intl's default (en-US-shaped) locale,
+    // unlike PLN elsewhere in this file, which renders as a bare "PLN 0.00".
+    expect(await screen.findByText('€232.10')).toBeInTheDocument();
+    // Every other money figure has no backend-converted counterpart and
+    // MUST stay in the native reporting currency — never a client-derived
+    // approximation (see display-currency.lib.ts's "REJECTED APPROACH" note).
+    expect(screen.getByText('PLN 900.00')).toBeInTheDocument(); // Net sales
+    expect(screen.getByText('PLN 90.00')).toBeInTheDocument(); // AOV
+    expect(screen.getByText('PLN 85.00')).toBeInTheDocument(); // Median
+    expect(screen.getByText('PLN 50.00')).toBeInTheDocument(); // Cancelled value
+  });
+
+  it('shows "Recalculating…" instead of a bare 0 while a currency remediation run is in progress', async () => {
+    const apiClient = createMockApiClient({
+      analytics: {
+        // Everything reads 0/unconverted while the recalculation is mid-run —
+        // exactly the state that used to render as a flat "0.00" with no
+        // explanation.
+        getSales: vi.fn().mockResolvedValue(
+          analytics({
+            revenue: 0,
+            currency: null,
+            netRevenue: 0,
+            netAverageOrderValue: 0,
+            netMedianOrderValue: 0,
+            cancelledValue: 0,
+            unconvertedCount: 40,
+            unconvertedValue: 4800,
+            unconvertedCurrency: 'PLN',
+          })
+        ),
+      },
+    });
+    const inProgressCoverage: AnalyticsCoverage = {
+      categories: [
+        { category: 'currency', status: 'in-progress', affectedCount: 40, sampleOrderIds: [], activeRunId: 'ol_remrun_1' },
+        { category: 'tax-a', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+        { category: 'tax-b', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+        { category: 'tax-c', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+        { category: 'product-matching', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+      ],
+    };
+
+    renderWithProviders(
+      <AnalyticsKpiStrip filters={FILTERS} connections={[]} coverage={inProgressCoverage} />,
+      { apiClient }
+    );
+
+    // 5 figures go through RECALCULATING_NODE: Net sales, GMV, AOV, Median,
+    // Cancelled value — never a bare "0.00" while a run is genuinely in flight.
+    expect((await screen.findAllByText('Recalculating…')).length).toBe(5);
+    expect(screen.queryByText('PLN 0.00')).not.toBeInTheDocument();
   });
 });

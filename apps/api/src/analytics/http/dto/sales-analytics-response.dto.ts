@@ -145,17 +145,34 @@ export class SalesAnalyticsHeadlineDto {
   })
   unconvertedUnitsSold!: number;
 
-  @ApiProperty()
+  @ApiProperty({
+    description: 'All cancelled orders in range, regardless of FX-stamp state.',
+  })
   cancelledCount!: number;
 
-  @ApiProperty()
+  @ApiProperty({
+    description:
+      'Sum of reportingTotalAmount over current-era-stamped, cancelled orders — expressed in currency. See cancelledUnconvertedValue for what is excluded.',
+  })
   cancelledValue!: number;
+
+  @ApiProperty({
+    description:
+      'Cancelled orders in range with no current-era reporting-currency stamp — not reflected in cancelledValue.',
+  })
+  cancelledUnconvertedCount!: number;
+
+  @ApiProperty({
+    description:
+      'Native-currency sum for cancelledUnconvertedCount. Informational only — may mix currencies.',
+  })
+  cancelledUnconvertedValue!: number;
 
   @ApiProperty({
     type: String,
     nullable: true,
     description:
-      'Reporting currency revenue/averageOrderValue/medianOrderValue are expressed in. Null when no order in range has been stamped yet.',
+      'Reporting currency revenue/averageOrderValue/medianOrderValue/cancelledValue are expressed in. Null when no order in range has been stamped yet.',
   })
   currency!: string | null;
 
@@ -235,6 +252,8 @@ export class SalesAnalyticsHeadlineDto {
     dto.unconvertedUnitsSold = headline.unconvertedUnitsSold;
     dto.cancelledCount = headline.cancelledCount;
     dto.cancelledValue = headline.cancelledValue;
+    dto.cancelledUnconvertedCount = headline.cancelledUnconvertedCount;
+    dto.cancelledUnconvertedValue = headline.cancelledUnconvertedValue;
     dto.currency = headline.currency;
     dto.unconvertedCount = headline.unconvertedCount;
     dto.unconvertedValue = headline.unconvertedValue;
@@ -275,11 +294,27 @@ export class ChannelSalesAnalyticsDto {
   })
   unconvertedUnitsSold!: number;
 
-  @ApiProperty()
+  @ApiProperty({
+    description: 'Same meaning as the headline cancelledCount field, scoped to this channel.',
+  })
   cancelledCount!: number;
 
-  @ApiProperty()
+  @ApiProperty({
+    description: 'Same meaning as the headline cancelledValue field, scoped to this channel.',
+  })
   cancelledValue!: number;
+
+  @ApiProperty({
+    description:
+      'Same meaning as the headline cancelledUnconvertedCount field, scoped to this channel.',
+  })
+  cancelledUnconvertedCount!: number;
+
+  @ApiProperty({
+    description:
+      'Same meaning as the headline cancelledUnconvertedValue field, scoped to this channel.',
+  })
+  cancelledUnconvertedValue!: number;
 
   @ApiProperty({
     type: String,
@@ -360,6 +395,8 @@ export class ChannelSalesAnalyticsDto {
     dto.unconvertedUnitsSold = channel.unconvertedUnitsSold;
     dto.cancelledCount = channel.cancelledCount;
     dto.cancelledValue = channel.cancelledValue;
+    dto.cancelledUnconvertedCount = channel.cancelledUnconvertedCount;
+    dto.cancelledUnconvertedValue = channel.cancelledUnconvertedValue;
     dto.currency = channel.currency;
     dto.unconvertedCount = channel.unconvertedCount;
     dto.unconvertedValue = channel.unconvertedValue;

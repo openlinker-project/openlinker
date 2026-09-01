@@ -246,8 +246,10 @@ export interface OrderRecordRepositoryPort {
    * the unconverted bucket alongside never-stamped rows — both report via
    * `unconvertedCount`/`unconvertedValue` (native `totalAmount`,
    * informational, may mix currencies) rather than being silently summed
-   * into `revenue` or silently dropped. `cancelledValue` stays on native
-   * `totalAmount`, unchanged.
+   * into `revenue` or silently dropped. `cancelledValue` follows the same
+   * split: `SUM(reportingTotalAmount)` over current-era-stamped, cancelled
+   * orders, with the unstamped remainder reported separately as
+   * `cancelledUnconvertedCount`/`cancelledUnconvertedValue`.
    *
    * `unconvertedCurrency` (#1987 scope, not an FX-epic deliverable —
    * `order_records.currency` predates #2049) labels `unconvertedValue` with

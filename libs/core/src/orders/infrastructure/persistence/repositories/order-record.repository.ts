@@ -514,8 +514,13 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * comparable currency, `SUM(reportingTotalAmount)` — with the complementary
    * unstamped slice reported separately as `unconverted_count`/
    * `unconverted_value` (native `totalAmount`, informational only) rather
-   * than silently mixed in or silently dropped. `cancelled_value` is left on
-   * native `totalAmount`, unchanged — a secondary figure, not revisited here.
+   * than silently mixed in or silently dropped. `cancelled_value` now follows
+   * the SAME split (#currency-fix): `SUM(reportingTotalAmount)` restricted to
+   * the current-era-stamped, cancelled population, with the unstamped
+   * remainder reported separately as `cancelled_unconverted_count`/
+   * `cancelled_unconverted_value` — it previously summed raw, unrestricted
+   * `totalAmount` across every currency in the bucket, which silently mixed
+   * currencies into one meaningless total.
    *
    * `unconverted_currency` (#1987 scope, not FX-epic scope — `order_records.
    * currency` is the pre-existing native-currency column from #1985, untouched
@@ -541,6 +546,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     const isUnconverted = `(rec."reportingCurrency" IS NULL OR rec."reportingCurrency" != :currentReportingCurrency)`;
     const stampedAndNotCancelled = `${notCancelled} AND ${isStamped}`;
     const unconvertedAndNotCancelled = `${notCancelled} AND ${isUnconverted}`;
+    const stampedAndCancelled = `${isCancelled} AND ${isStamped}`;
+    const unconvertedAndCancelled = `${isCancelled} AND ${isUnconverted}`;
 
     // Net-sales (VAT-exclusive) eligibility — see `buildNetSalesOrderFragments`.
     const { netEligible, netOrderAmount } = this.buildNetSalesOrderFragments(
@@ -589,8 +596,16 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       )
       .addSelect(`COUNT(*) FILTER (WHERE ${isCancelled})`, 'cancelled_count')
       .addSelect(
-        `COALESCE(SUM(rec."totalAmount") FILTER (WHERE ${isCancelled}), 0)`,
+        `COALESCE(SUM(rec."reportingTotalAmount") FILTER (WHERE ${stampedAndCancelled}), 0)`,
         'cancelled_value'
+      )
+      .addSelect(
+        `COUNT(*) FILTER (WHERE ${unconvertedAndCancelled})`,
+        'cancelled_unconverted_count'
+      )
+      .addSelect(
+        `COALESCE(SUM(rec."totalAmount") FILTER (WHERE ${unconvertedAndCancelled}), 0)`,
+        'cancelled_unconverted_value'
       )
       .addSelect(
         // `isStamped` now filters on `reportingCurrency = :currentReportingCurrency`
@@ -627,6 +642,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       unconverted_currency: string | null;
       cancelled_count: string;
       cancelled_value: string;
+      cancelled_unconverted_count: string;
+      cancelled_unconverted_value: string;
       reporting_currency: string | null;
       net_revenue: string;
       net_excluded_count: string;
@@ -643,6 +660,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       unconvertedCurrency: row.unconverted_currency,
       cancelledCount: Number(row.cancelled_count),
       cancelledValue: Number(row.cancelled_value),
+      cancelledUnconvertedCount: Number(row.cancelled_unconverted_count),
+      cancelledUnconvertedValue: Number(row.cancelled_unconverted_value),
       reportingCurrency: row.reporting_currency,
       netRevenue: Number(row.net_revenue),
       netExcludedCount: Number(row.net_excluded_count),
