@@ -42,11 +42,12 @@
  * therefore be assignable — whereas A2 (`sourcing`) is `config-only`, which is why
  * `FulfillmentRouter` was deliberately kept out.
  *
- * **But no shipped adapter manifest advertises it**, and both capability-checkbox surfaces
- * intersect an adapter's advertised list with the core set, so A3 is not assignable through
- * the UI today. That is a reachability gap rather than data loss — the value round-trips
- * through a direct `PATCH /connections/:id` — and it closes when the first executor adapter
- * declares the capability.
+ * **That reachability gap closed with #2409.** Until then no shipped manifest advertised the
+ * name, and both capability-checkbox surfaces intersect an adapter's advertised list with the
+ * core set, so A3 was assignable only through a direct `PATCH /connections/:id`.
+ * `openlinker.oms.v1` now advertises it alongside `OlFulfillmentExecutorAdapter`
+ * (`libs/oms/src/execution/`), the first implementation of this port — so A3 is assignable in
+ * the UI for an OMS connection, and `getCapabilityAdapter` resolves an executor for it.
  *
  * ## Deferred, with owners
  *

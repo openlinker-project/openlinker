@@ -292,10 +292,12 @@ describe('InboundRoutingPolicyService', () => {
       ]);
     });
 
-    it('should resolve ungated when FulfillmentExecutor is absent — TODAY\'S REAL CASE on every shipped deployment', async () => {
-      // No shipped adapter manifest advertises `FulfillmentExecutor`, so this is
-      // what actually happens in production right now. It gets its own named
-      // test so the arm is never mistaken for working end-to-end.
+    it('should resolve ungated when FulfillmentExecutor is absent — every connection that has not enabled it', async () => {
+      // Until #2409 no manifest advertised `FulfillmentExecutor` at all, so this
+      // was what every shipped deployment did. `openlinker.oms.v1` advertises it
+      // now, which narrows this case rather than retiring it: it is still what
+      // happens for any connection whose operator has not enabled the capability,
+      // which is every connection except an explicitly configured OMS one.
       const outcome = await service.route(
         event({ domain: 'fulfillment', externalId: 'vendor-work-7' }),
         connection([]),

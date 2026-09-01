@@ -180,10 +180,11 @@ describe('Fulfillment inbound routing through the real gate (#2400)', () => {
     expect(delivery?.dlqReason).toBeNull();
   });
 
-  it('should dead-letter instead when FulfillmentExecutor is not enabled — TODAY\'S REAL CASE', async () => {
-    // No shipped adapter manifest advertises `FulfillmentExecutor`, so this is
-    // what a real deployment does right now. Asserted so the arm is never
-    // mistaken for working end-to-end.
+  it('should dead-letter instead when FulfillmentExecutor is not enabled — every connection that has not enabled it', async () => {
+    // Until #2409 no manifest advertised `FulfillmentExecutor` at all, so this was
+    // what every real deployment did. `openlinker.oms.v1` advertises it now, which
+    // narrows the case rather than retiring it — a PrestaShop connection like this
+    // one can never have the capability, so the dead-letter is still the real path.
     const connection = await createTestConnection(harness.getDataSource(), {
       platformType: 'prestashop',
       enabledCapabilities: [],
