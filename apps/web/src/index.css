@@ -14527,6 +14527,12 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .sales-document-panel__skeleton {
   height: 14px;
 }
+/* #2562 — sized to match the loaded `DocumentHeadline`'s two-line height, so
+   the section does not change height once the real content arrives. */
+.sales-document-panel__skeleton--headline {
+  height: 38px;
+  margin-bottom: var(--space-3);
+}
 @keyframes invoice-skeleton-shimmer {
   0% { background-position: 100% 0; }
   100% { background-position: -100% 0; }
@@ -15207,13 +15213,32 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   max-width: 22rem;
 }
 
-/* ─ Correction trigger in the sales document panel (issued state) ─ */
+/* ─ Correction disclosure in the sales document panel (issued state, #2558) ─
+   A `<details>`: a correction is a new linked document, not a replacement, so
+   its trigger sits behind its own disclosure rather than beside the record
+   it corrects. */
 .sales-document-panel__correction {
   margin-top: var(--space-3);
   padding-top: var(--space-3);
   border-top: 1px solid var(--border-subtle);
-  display: flex;
-  justify-content: flex-end;
+}
+.sales-document-panel__correction summary {
+  cursor: pointer;
+  font-size: 0.8125rem;
+  color: var(--text-link);
+  width: fit-content;
+}
+.sales-document-panel__correction .panel-copy {
+  margin: var(--space-2) 0;
+}
+
+/* ─ Routing-explanation disclosure above the manual override (#2561) ─ */
+.sales-document-panel__routing-disclosure summary {
+  cursor: pointer;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-2);
 }
 
 /* ── KSeF UPO inline preview dialog (#1234) ─────────────────────────
