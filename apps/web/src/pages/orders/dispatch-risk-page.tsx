@@ -126,8 +126,11 @@ const COLUMNS: DataTableColumn<OrderRecord>[] = [
     header: 'Fulfillment',
     hideBelow: 768,
     cell: (order) => {
+      // No null guard: `fulfillmentBadge` is total by contract (#2678) — an
+      // absent state means `not-shipped` and an unrecognised one renders a
+      // neutral "Unknown (…)" badge. The guard that used to sit here was dead
+      // and read as coverage it never provided (the #2589 dead-fallback lesson).
       const badge = fulfillmentBadge(order.fulfillmentState);
-      if (!badge) return null;
       return (
         <StatusBadge tone={badge.tone} compact>
           {badge.label}
@@ -159,7 +162,7 @@ export function DispatchRiskPage(): ReactElement {
   const summaryQuery = useOrderSlaSummaryQuery(scope);
   const query = useOrdersQuery(
     { ...scope, slaState: bucket, sort: 'dispatchBy', dir: 'asc' },
-    { limit: PAGE_SIZE, offset },
+    { limit: PAGE_SIZE, offset }
   );
 
   const connectionsQuery = useConnectionsQuery();
@@ -271,7 +274,9 @@ export function DispatchRiskPage(): ReactElement {
       ) : rows.length === 0 ? (
         <EmptyState
           liveRegion="off"
-          title={noDeadlinesAnywhere ? 'No ship-by deadlines' : `Nothing ${meta.label.toLowerCase()}`}
+          title={
+            noDeadlinesAnywhere ? 'No ship-by deadlines' : `Nothing ${meta.label.toLowerCase()}`
+          }
           message={
             noDeadlinesAnywhere
               ? 'No open order carries a ship-by deadline, so there is nothing to rank. Deadlines come from the marketplace dispatch window.'
