@@ -425,4 +425,47 @@ describe('ChannelSalesTable', () => {
     expect(screen.getAllByText('Recalculating…')).toHaveLength(2);
     expect(screen.queryByText(/0\.00/)).not.toBeInTheDocument();
   });
+
+  it('converts per-channel Net sales/AOV and the Total row using the real headline rate (#2779 course correction)', async () => {
+    const apiClient = createMockApiClient({
+      analytics: {
+        getSales: vi.fn().mockResolvedValue({
+          ...analytics([channel({ netRevenue: 2700, netAverageOrderValue: 108, currency: 'PLN' })]),
+          headline: {
+            ...analytics([]).headline,
+            currency: 'PLN',
+            displayCurrencyConversion: {
+              displayCurrency: 'EUR',
+              rateBasis: 'current-rate',
+              convertedRevenue: 1132.8,
+              unresolvedNativeCurrencies: [],
+              appliedRates: [
+                {
+                  from: 'PLN',
+                  to: 'EUR',
+                  rate: '0.236',
+                  rateDate: '2026-08-29',
+                  source: 'nbp',
+                  derivation: 'direct',
+                  sourceRef: '167/A/NBP/2026',
+                },
+              ],
+            },
+          },
+        }),
+      },
+      connections: {
+        list: vi.fn().mockResolvedValue([{ id: 'conn-1', name: 'Allegro — main', platformType: 'allegro' }]),
+      },
+    });
+
+    renderWithProviders(<ChannelSalesTable filters={{ ...FILTERS, displayCurrency: 'EUR' }} />, { apiClient });
+
+    await screen.findByRole('link', { name: 'Allegro — main' });
+    // Channel row + Total row both read €637.20 (one channel), so 2 occurrences.
+    expect(screen.getAllByText('€637.20')).toHaveLength(2); // Net sales: 2700 * 0.236
+    expect(screen.getAllByText('€25.49')).toHaveLength(2); // AOV: 108 * 0.236
+    expect(screen.getByText('Total · EUR')).toBeInTheDocument();
+    expect(screen.queryByText(/^PLN /)).not.toBeInTheDocument();
+  });
 });

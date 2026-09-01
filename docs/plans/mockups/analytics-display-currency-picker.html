@@ -306,6 +306,8 @@ body[data-state="unavailable"] .convert-note--unavailable { display: flex; }
 body:not([data-state="converted"]) .value-native,
 body[data-state="converting"] .value-native { display: inline; }
 body[data-state="converted"] .value-eur { display: inline; }
+/* #2778/#2779 — the rate-provenance sub-line under the GMV qualifier is a flex row (rate text + info trigger), not inline text like the amount spans above. */
+body[data-state="converted"] .kpi-card__qualifier-value .value-eur { display: flex; }
 body[data-state="converting"] .kpi-card__value .value-native,
 body[data-state="converting"] .kpi-card__qualifier-value .value-native { visibility: hidden; }
 .skeleton { position: absolute; inset: 0; display: none; align-items: center; }
@@ -547,7 +549,21 @@ tr.total td { font-weight: 700; border-bottom: none; border-top: 2px solid var(-
       <div class="kpi-card__qualifiers">
         <div class="kpi-card__qualifier">
           <span class="kpi-card__qualifier-label">GMV</span>
-          <span class="kpi-card__qualifier-value"><span class="value-native mono">PLN&nbsp;704.18</span><span class="value-eur mono">EUR&nbsp;163.42</span><span class="skeleton"><span class="skeleton__bar" style="width:4.5em"></span></span></span>
+          <span class="kpi-card__qualifier-value">
+            <span class="value-native mono">PLN&nbsp;704.18</span><span class="value-eur mono">EUR&nbsp;163.42</span><span class="skeleton"><span class="skeleton__bar" style="width:4.5em"></span></span>
+            <!-- #2778/#2779 rate provenance — visible only alongside value-eur (the converted state), never for the native/unavailable states, which show no rate line at all. -->
+            <span class="value-eur" style="display:none;font-size:0.6875rem;font-weight:400;color:var(--text-muted);align-items:center;gap:4px;">
+              1 PLN = 0.2321 EUR (ECB, 2026-08-25)
+              <details style="display:inline-block;">
+                <summary class="section-infotip" style="display:inline-flex;cursor:pointer;" aria-label="About this conversion">&#9432;</summary>
+                <div class="infotip-popover" style="position:static;margin-top:6px;max-width:20rem;">
+                  <span class="infotip-def"><span class="infotip-def__term">Current rate</span><span>Today’s rate applied to each order’s own native currency, then summed.</span></span>
+                  <span class="infotip-def"><span class="infotip-def__term">PLN → EUR</span><span>1 PLN = 0.2321 EUR (ECB, 2026-08-25)</span><span class="infotip-def__caveat">EU/ECB1(1.0):D.PLN.EUR.SP00.A@2026-08-25</span></span>
+                  <span class="infotip-def"><span class="infotip-def__term">Not an invoice rate</span><span>This is an analytics-only conversion for viewing the dashboard — never the statutory rate used on an invoice.</span></span>
+                </div>
+              </details>
+            </span>
+          </span>
         </div>
       </div>
     </div>
