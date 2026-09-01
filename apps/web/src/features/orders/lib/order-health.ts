@@ -14,12 +14,14 @@
  *
  * @module apps/web/src/features/orders/lib
  */
-import type {
-  OrderRecord,
-  OrderHealthValue,
-  OrderSyncStatus,
-  SlaStateValue,
-  FulfillmentRollupStateValue,
+import {
+  isFulfillmentRollupState,
+  isSlaState,
+  type OrderRecord,
+  type OrderHealthValue,
+  type OrderSyncStatus,
+  type SlaStateValue,
+  type FulfillmentRollupStateValue,
 } from '../api/orders.types';
 import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
 
@@ -190,7 +192,7 @@ export type FulfillmentState = (typeof FulfillmentStateValues)[number];
  */
 export function deriveFulfillment(
   shipmentStatuses: readonly string[] | null,
-  hasShippingCapability: boolean,
+  hasShippingCapability: boolean
 ): FulfillmentState {
   if (!hasShippingCapability) return 'unavailable';
   if (!shipmentStatuses || shipmentStatuses.length === 0) return 'not-shipped';
@@ -243,9 +245,17 @@ export const ORDER_SLA_META: Record<
  * FE never re-derives the bucket.
  */
 export function slaBadge(
-  slaState: SlaStateValue | undefined,
+  slaState: string | null | undefined
 ): { label: string; tone: StatusBadgeTone } | null {
-  if (!slaState || slaState === 'none') return null;
+  if (!slaState) return null;
+  // Membership is established BEFORE the `none` check, not after: `none` is a
+  // MEMBER of the union (meaning "no deadline, or already shipped"), so testing
+  // it first would conflate "the backend said none" with "the backend said
+  // something this build cannot read" — two different facts with two different
+  // right answers. It also re-widens the type past the narrowing, which is how
+  // the compiler found this.
+  if (!isSlaState(slaState)) return unknownStateBadge(slaState);
+  if (slaState === 'none') return null;
   return ORDER_SLA_META[slaState];
 }
 
@@ -260,10 +270,57 @@ export const ORDER_FULFILLMENT_META: Record<
   failed: { label: 'Dispatch failed', tone: 'error' },
 };
 
-/** Fulfillment badge for an order row. NULL/absent ≡ `not-shipped`. */
-export function fulfillmentBadge(state: FulfillmentRollupStateValue | undefined): {
+/**
+ * Fulfillment badge for an order row. NULL/absent ≡ `not-shipped` — that is a
+ * real backend contract, not a fallback.
+ *
+ * An UNRECOGNISED value is a different case and gets a different answer
+ * (#2678). The parameter is typed `string` rather than the union because that
+ * is what actually arrives: `GET /orders` is not schema-parsed anywhere in
+ * `features/orders/api/`, so the declared union is a claim about the wire, not
+ * a guarantee about it. A rolling deploy, a stale bundle or a replayed cached
+ * response can all put a value here that this build does not know.
+ *
+ * Before this it was `ORDER_FULFILLMENT_META[state ?? 'not-shipped']`, which
+ * returned `undefined`, and all three call sites read `.tone` off it
+ * immediately — inside a `DataTable` cell renderer, so the throw unmounted the
+ * whole `/orders` page rather than one cell.
+ *
+ * Two fixes were rejected. Coalescing to `not-shipped` would render "Not
+ * shipped" about an order whose state this build cannot name — a quiet lie
+ * about the operator's own data, and worse than the crash it replaces.
+ * Returning `null` would render nothing, which reads as a row that simply has
+ * no fulfilment fact. So the value is surfaced verbatim in a neutral badge, the
+ * way an unrecognised marketplace code is surfaced rather than dropped (#2231).
+ */
+export function fulfillmentBadge(state: string | null | undefined): {
   label: string;
   tone: StatusBadgeTone;
 } {
-  return ORDER_FULFILLMENT_META[state ?? 'not-shipped'];
+  if (state === null || state === undefined) return ORDER_FULFILLMENT_META['not-shipped'];
+  if (!isFulfillmentRollupState(state)) return unknownStateBadge(state);
+  return ORDER_FULFILLMENT_META[state];
+}
+
+/**
+ * How long an unrecognised raw value may be inside a status pill. A status pill
+ * is budgeted at ~17 characters (see `frontend-ui-style-guide.md` § Order-row
+ * signal placement), and `Unknown ()` already spends 10 of them. A real enum
+ * member is short, so this only bites a pathological value — where legibility
+ * of the row beats the budget anyway.
+ */
+const UNKNOWN_STATE_MAX_CHARS = 16;
+
+/**
+ * The one shared shape for "the backend said something this build does not
+ * know". Shared by `slaBadge` and `fulfillmentBadge` so the two cannot drift
+ * into describing the same condition differently.
+ *
+ * `neutral`, never a status tone: OL has no idea whether this state is good or
+ * bad, and picking a tone would assert one.
+ */
+function unknownStateBadge(raw: string): { label: string; tone: StatusBadgeTone } {
+  const shown =
+    raw.length > UNKNOWN_STATE_MAX_CHARS ? `${raw.slice(0, UNKNOWN_STATE_MAX_CHARS - 1)}…` : raw;
+  return { label: `Unknown (${shown})`, tone: 'neutral' };
 }
