@@ -73,7 +73,7 @@
  *
  * @module apps/web/src/features/orders/components
  */
-import { useEffect, useState, type ReactElement } from 'react';
+import { useCallback, useEffect, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { Dialog, DialogContent, DialogTitle } from '../../../shared/ui/dialog';
 
@@ -90,6 +90,7 @@ import { usePlatform } from '../../../shared/plugins';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { useSession } from '../../../shared/auth/use-session';
+import { isAdminSession } from '../../../shared/auth/is-admin-session';
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
 import { formatAmount } from '../../../shared/format/format-amount';
 import { formatTaxRate } from '../../../shared/format/format-tax-rate';
@@ -248,9 +249,22 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   // #2561 — both write paths are admin-only server-side (`@Roles('admin')`);
   // the manual "pick either kind" override is gated on the same fact so a
   // non-admin session never sees a control that would 403.
-  const isAdmin = session.status === 'authenticated' && session.user?.role === 'admin';
+  // The role literal lives in ONE place (`isAdminSession`): `role` is typed
+  // `string`, so an inline comparison typo compiles and silently returns false.
+  const isAdmin = isAdminSession(session);
   // #2562 — one live region carries every wait/outcome announcement below.
   const [liveAnnouncement, setLiveAnnouncement] = useState('');
+  // A live region that does not CHANGE is not re-announced, so an identical
+  // consecutive outcome (retry a register, get the same answer) would be
+  // silent for a screen-reader user. A zero-width suffix toggles the text
+  // node without changing a single word that is read out.
+  const announce = useCallback((message: string): void => {
+    setLiveAnnouncement((prev) => {
+      const bare = prev.replace(/\u200B$/, '');
+      if (bare !== message) return message;
+      return prev.endsWith('\u200B') ? message : `${message}\u200B`;
+    });
+  }, []);
 
   // ── Invoicing data + actions ──────────────────────────────────────────
   const [documentType, setDocumentType] = useState<string>('invoice');
@@ -270,7 +284,11 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   // attempt already holds the exactly-once claim (a 409). It is cleared the
   // moment progress next settles, so it never survives past the attempt it
   // describes.
-  const [contended, setContended] = useState(false);
+  // Held as the INSTANT of contention rather than a bare boolean: the clear
+  // below has to wait for an answer that post-dates the 409, and a boolean
+  // carries no way to tell one apart from the poll that was already on screen.
+  const [contendedAt, setContendedAt] = useState<number | null>(null);
+  const contended = contendedAt !== null;
   const fiscalQuery = useOrderFiscalRegistrationsQuery(order.internalOrderId);
   const registerMutation = useRegisterFiscalReceiptMutation();
   const reconcileMutation = useReconcileFiscalRegistrationMutation();
@@ -305,11 +323,18 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   // #2559 — a contended attempt is transient by nature: once progress moves
   // past the window that produced it, the flag is stale and must clear itself
   // rather than sticking to a record it no longer describes.
+  //
+  // The clear waits for a progress read taken AFTER the 409. Clearing on the
+  // reading already on screen would retire the flag in the same commit that
+  // set it - the peer attempt has not reached `sync_jobs` yet, so the last
+  // poll still says `not-requested` - and the operator would be told nothing.
+  const progressUpdatedAt = fiscalProgressQuery.dataUpdatedAt;
   useEffect(() => {
-    if (contended && !fiscalWorkOutstanding) {
-      setContended(false);
+    if (contendedAt === null || fiscalWorkOutstanding) return;
+    if (progressUpdatedAt > contendedAt) {
+      setContendedAt(null);
     }
-  }, [contended, fiscalWorkOutstanding]);
+  }, [contendedAt, fiscalWorkOutstanding, progressUpdatedAt]);
 
   // Loading skeleton while connections settle, sized to match the loaded
   // panel's header + one body row so the section never changes height when
@@ -363,9 +388,15 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   // `register` ever wrote a row - and it is the one state whose whole purpose is
   // to say a previous request stopped. Without it here the panel falls through
   // to the empty state and says nothing at all.
+  // A contended attempt (#2559) opens the slot for the same reason: a peer holds
+  // the exactly-once claim RIGHT NOW, and the empty state would answer that by
+  // offering to register the sale a second time.
   const showFiscalSlot =
     !showInvoiceSlot &&
-    (fiscalRecord !== null || fiscalWorkOutstanding || fiscalProgress === 'stalled');
+    (fiscalRecord !== null ||
+      fiscalWorkOutstanding ||
+      contended ||
+      fiscalProgress === 'stalled');
   const showEmptyState = !showInvoiceSlot && !showFiscalSlot;
 
   // ── Invoicing connection resolution (verbatim from the pre-#2160 panel) ──
@@ -399,13 +430,13 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
 
   const issueOn = (connection: { id: string }): void => {
     setMissingNumbering(false);
-    setLiveAnnouncement(t('invoice.announce.issuing', 'Issuing the invoice.'));
+    announce(t('invoice.announce.issuing', 'Issuing the invoice.'));
     issueMutation.mutate(
       { connectionId: connection.id, orderId: order.internalOrderId, documentType },
       {
         onSuccess: () => {
           setSwitchTargetId(null);
-          setLiveAnnouncement(t('invoice.announce.issued', 'Invoice issued.'));
+          announce(t('invoice.announce.issued', 'Invoice issued.'));
           showToast({
             tone: 'success',
             title: t('invoice.action.issued', 'Invoice issued'),
@@ -414,13 +445,13 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
         },
         onError: (error) => {
           if (isMissingNumberingSeriesError(error)) {
-            setLiveAnnouncement(
+            announce(
               t('invoice.announce.numberingMissing', 'Numbering is not configured.'),
             );
             setMissingNumbering(true);
             return;
           }
-          setLiveAnnouncement(t('invoice.announce.issueFailed', 'The invoice could not be issued.'));
+          announce(t('invoice.announce.issueFailed', 'The invoice could not be issued.'));
           showToast({
             tone: 'error',
             title: t('invoice.action.issueFailed', 'Could not issue invoice'),
@@ -461,12 +492,12 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
 
   const handleRegister = (connectionId: string): void => {
     if (!connectionId) return;
-    setLiveAnnouncement(t('fiscalReceipt.announce.registering', 'Registering with the provider.'));
+    announce(t('fiscalReceipt.announce.registering', 'Registering with the provider.'));
     registerMutation.mutate(
       { connectionId, orderId: order.internalOrderId },
       {
         onSuccess: () => {
-          setLiveAnnouncement(t('fiscalReceipt.announce.registered', 'Registered.'));
+          announce(t('fiscalReceipt.announce.registered', 'Registered.'));
         },
         onError: (error) => {
           // #2559 — a 409 here is the exactly-once claim refusing a SECOND
@@ -474,15 +505,15 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
           // needs fixing, so this is the one error that gets its own tone
           // rather than the generic failure toast.
           if (error instanceof ApiError && error.status === 409) {
-            setContended(true);
-            setLiveAnnouncement(
+            setContendedAt(Date.now());
+            announce(
               t('fiscalReceipt.announce.contended', 'Another attempt is already running.'),
             );
             void invoiceQuery.refetch();
             void fiscalQuery.refetch();
             return;
           }
-          setLiveAnnouncement(
+          announce(
             t('fiscalReceipt.announce.registerFailed', 'The request could not be sent.'),
           );
           showToast({
@@ -617,6 +648,9 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   // needs an admin session because both write paths behind it are
   // admin-only server-side (`@Roles('admin')`).
   const canOverride = (isAdmin || demoMode) && !hardBlockedNoAction;
+  // The demo relaxation above is visibility only - the register write is
+  // admin-only server-side, so a demo non-admin sees the control locked.
+  const fiscalDemoReadOnly = !isAdmin && demoMode;
   // #2254 (epic F2) - the FIRST reason where the manual path must close too.
   // Every other block reason means "auto-issue did not happen" and issuing by
   // hand is a legitimate action; this one means "this cannot be issued", and the
@@ -652,9 +686,9 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
     invoicingConnection?.name ??
     '';
   const headlineModel = showInvoiceSlot
-    ? resolveInvoiceHeadline(invoice, headlineConnectionName)
+    ? resolveInvoiceHeadline(invoice, headlineConnectionName, t)
     : showFiscalSlot
-      ? resolveFiscalHeadline(fiscalRecord, fiscalProgress, headlineConnectionName, contended)
+      ? resolveFiscalHeadline(fiscalRecord, fiscalProgress, headlineConnectionName, contended, t)
       : { state: t('salesDocument.kind.none', 'Not issued'), tone: 'idle' as const, identity: null };
 
   return (
@@ -671,7 +705,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
       {/* #2562 — the one live region for every wait/outcome announcement below.
           Visually hidden: the headline and the alerts already carry the same
           words for a sighted operator. */}
-      <p className="sr-only" role="status" aria-live="polite">
+      <p className="sr-only" role="status">
         {liveAnnouncement}
       </p>
 
@@ -786,18 +820,18 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                         className="button--sm"
                         disabled={resendMutation.isPending || invoiceWrite.demoReadOnly}
                         onClick={() => {
-                          setLiveAnnouncement(
+                          announce(
                             t('invoice.clearance.resending', 'Resending to the authority.'),
                           );
                           resendMutation.mutate(invoice.id, {
                             onSuccess: () => {
-                              setLiveAnnouncement(
+                              announce(
                                 t('invoice.clearance.resent', 'Resent to the authority.'),
                               );
                               void invoiceQuery.refetch();
                             },
                             onError: () => {
-                              setLiveAnnouncement(
+                              announce(
                                 t('invoice.clearance.resendFailed', 'The resend could not be sent.'),
                               );
                             },
@@ -1348,7 +1382,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                   {issueRefusal}
                 </span>
               ) : null}
-              <p className="text-muted" style={{ fontSize: '0.78rem' }}>
+              <p className="text-muted sales-document-panel__scope-note">
                 {t('salesDocument.override.scopeNote', 'This applies to this order only.')}
               </p>
             </div>
@@ -1419,14 +1453,26 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                 </Alert>
               ) : null}
               <span className="spacer" />
-              <Button
-                tone="primary"
-                disabled={registerMutation.isPending || missingRateReason}
-                onClick={() => handleRegister(defaultFiscalConnectionId)}
+              {/* `canOverride` deliberately admits a demo viewer so the
+                  affordance is discoverable (#1615), but the write behind it is
+                  `@Roles('admin')` - so a demo non-admin gets the locked
+                  treatment rather than a control that would 403. */}
+              <ReadOnlyLock
+                active={fiscalDemoReadOnly}
+                message={DEMO_READ_ONLY_ACTION_MESSAGE}
+                onLockedClick={() => captureDemoEvent('demo_fiscal_register_attempted', {})}
               >
-                {t('fiscalReceipt.action.register', 'Register receipt')}
-              </Button>
-              <p className="text-muted" style={{ fontSize: '0.78rem', width: '100%' }}>
+                <Button
+                  tone="primary"
+                  disabled={
+                    registerMutation.isPending || missingRateReason || fiscalDemoReadOnly
+                  }
+                  onClick={() => handleRegister(defaultFiscalConnectionId)}
+                >
+                  {t('fiscalReceipt.action.register', 'Register receipt')}
+                </Button>
+              </ReadOnlyLock>
+              <p className="text-muted sales-document-panel__scope-note">
                 {t('salesDocument.override.scopeNote', 'This applies to this order only.')}
               </p>
             </div>

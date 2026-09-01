@@ -15245,6 +15245,15 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   margin: var(--space-2) 0;
 }
 
+/* ─ Scope note under a manual override action (#2561) ─
+   The override applies to ONE order, and the note says so beside the control
+   rather than in a tooltip. Full-width so it sits on its own row below a
+   wrapped flex action group. */
+.sales-document-panel__scope-note {
+  width: 100%;
+  font-size: 0.75rem;
+}
+
 /* ─ Routing-explanation disclosure above the manual override (#2561) ─ */
 .sales-document-panel__routing-disclosure summary {
   cursor: pointer;
