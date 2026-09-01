@@ -406,6 +406,148 @@ describe('OrderLineItemRepository', () => {
     });
   });
 
+  describe('getVariantRanking (#2765)', () => {
+    const baseFilters = {
+      from: new Date('2026-08-01T00:00:00.000Z'),
+      to: new Date('2026-08-08T00:00:00.000Z'),
+    };
+
+    it('scopes to one product and groups by variant, across every channel', async () => {
+      const andWhere = jest.fn().mockReturnThis();
+      const setParameter = jest.fn().mockReturnThis();
+      const groupBy = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        innerJoin: jest.fn().mockReturnThis(),
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        setParameter,
+        andWhere,
+        groupBy,
+        getRawMany: jest.fn().mockResolvedValue([
+          {
+            variant_id: 'v1',
+            units: '10',
+            revenue: '123.45',
+            unconverted_revenue: '5',
+            unconverted_order_count: '1',
+            reporting_currency: 'EUR',
+            unconverted_currency: 'PLN',
+            net_revenue: '100',
+            net_excluded_revenue: '23.45',
+            net_excluded_line_count: '2',
+          },
+        ]),
+      });
+
+      const result = await repository.getVariantRanking('p1', baseFilters, 'EUR');
+
+      expect(setParameter).toHaveBeenCalledWith('reportingCurrency', 'EUR');
+      expect(andWhere).toHaveBeenCalledWith('li."productId" = :productId', { productId: 'p1' });
+      expect(groupBy).toHaveBeenCalledWith('li.variantId');
+      expect(result).toEqual([
+        {
+          variantId: 'v1',
+          units: 10,
+          revenue: 123.45,
+          unconvertedRevenue: 5,
+          unconvertedOrderCount: 1,
+          currency: 'EUR',
+          unconvertedCurrency: 'PLN',
+          netRevenue: 100,
+          netExcludedRevenue: 23.45,
+          netExcludedLineCount: 2,
+        },
+      ]);
+    });
+
+    it('reports a null variant_id row as its own row rather than coercing it', async () => {
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        innerJoin: jest.fn().mockReturnThis(),
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        setParameter: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        groupBy: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([
+          {
+            variant_id: null,
+            units: '1',
+            revenue: '0',
+            unconverted_revenue: '20',
+            unconverted_order_count: '1',
+            reporting_currency: null,
+            unconverted_currency: 'EUR',
+            net_revenue: '0',
+            net_excluded_revenue: '0',
+            net_excluded_line_count: '0',
+          },
+        ]),
+      });
+
+      const result = await repository.getVariantRanking('p1', baseFilters, 'EUR');
+
+      expect(result[0].variantId).toBeNull();
+    });
+  });
+
+  describe('getVariantChannelBreakdown (#2765)', () => {
+    const baseFilters = {
+      from: new Date('2026-08-01T00:00:00.000Z'),
+      to: new Date('2026-08-08T00:00:00.000Z'),
+    };
+
+    it('scopes to one product and groups by (variant, connection)', async () => {
+      const andWhere = jest.fn().mockReturnThis();
+      const setParameter = jest.fn().mockReturnThis();
+      const groupBy = jest.fn().mockReturnThis();
+      const addGroupBy = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        innerJoin: jest.fn().mockReturnThis(),
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        setParameter,
+        andWhere,
+        groupBy,
+        addGroupBy,
+        getRawMany: jest.fn().mockResolvedValue([
+          {
+            variant_id: 'v1',
+            source_connection_id: 'conn-a',
+            units: '4',
+            revenue: '40',
+            unconverted_revenue: '0',
+            reporting_currency: 'EUR',
+            unconverted_currency: null,
+            net_revenue: '40',
+            net_excluded_revenue: '0',
+            net_excluded_line_count: '0',
+          },
+        ]),
+      });
+
+      const result = await repository.getVariantChannelBreakdown('p1', baseFilters, 'EUR');
+
+      expect(setParameter).toHaveBeenCalledWith('reportingCurrency', 'EUR');
+      expect(andWhere).toHaveBeenCalledWith('li."productId" = :productId', { productId: 'p1' });
+      expect(groupBy).toHaveBeenCalledWith('li.variantId');
+      expect(addGroupBy).toHaveBeenCalledWith('li.sourceConnectionId');
+      expect(result).toEqual([
+        {
+          variantId: 'v1',
+          sourceConnectionId: 'conn-a',
+          units: 4,
+          revenue: 40,
+          unconvertedRevenue: 0,
+          currency: 'EUR',
+          unconvertedCurrency: null,
+          netRevenue: 40,
+          netExcludedRevenue: 0,
+          netExcludedLineCount: 0,
+        },
+      ]);
+    });
+  });
+
   describe('findPageWithNoTaxRate', () => {
     const makeQb = (rows: OrderLineItemOrmEntity[]) => ({
       where: jest.fn().mockReturnThis(),

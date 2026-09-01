@@ -383,6 +383,58 @@ describe('ProductSalesTable', () => {
     expect(screen.queryByRole('link', { name: /Product details/ })).not.toBeInTheDocument();
   });
 
+  it('fetches and renders the variant × channel sales matrix when a row expands (#2765)', async () => {
+    const getTopProductVariantSales = vi.fn().mockResolvedValue({
+      productId: 'p1',
+      variants: [
+        {
+          variantId: 'v1',
+          sku: 'WID-A-VARIANT',
+          attributes: null,
+          totalAvailable: 10,
+          units: 4,
+          revenue: 110,
+          unconvertedRevenue: 0,
+          unconvertedOrderCount: 0,
+          currency: 'PLN',
+          unconvertedCurrency: null,
+          netRevenue: 100,
+          netExcludedRevenue: 0,
+          netExcludedLineCount: 0,
+          channels: [
+            {
+              sourceConnectionId: 'conn-a',
+              units: 4,
+              revenue: 110,
+              unconvertedRevenue: 0,
+              currency: 'PLN',
+              unconvertedCurrency: null,
+              netRevenue: 100,
+              netExcludedRevenue: 0,
+              netExcludedLineCount: 0,
+            },
+          ],
+        },
+      ],
+    });
+    const apiClient = createMockApiClient({
+      analytics: {
+        getTopProducts: vi.fn().mockResolvedValue(result([row({ productId: 'p1' })])),
+        getTopProductVariantSales,
+      },
+      connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
+    });
+
+    renderWithProviders(<ProductSalesTable filters={FILTERS} />, { apiClient });
+    await screen.findByText('Widget A');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Expand details for Widget A' }));
+
+    expect(getTopProductVariantSales).toHaveBeenCalledWith('p1', FILTERS);
+    expect(await screen.findByText('WID-A-VARIANT')).toBeInTheDocument();
+    expect(screen.getByText('In stock')).toBeInTheDocument();
+  });
+
   it('renders an empty Net sales value for a product with no current-era FX stamp, with no unconverted fallback (net requires the same stamp as gross)', async () => {
     const apiClient = createMockApiClient({
       analytics: {

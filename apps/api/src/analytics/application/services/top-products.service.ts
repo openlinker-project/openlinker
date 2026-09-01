@@ -25,7 +25,10 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
   ORDER_RECORD_SERVICE_TOKEN,
   type IOrderRecordService,
+  type SalesAnalyticsFilters,
   type TopProductFilters,
+  type VariantChannelBreakdownRow,
+  type VariantSalesView,
 } from '@openlinker/core/orders';
 import { PRODUCTS_SERVICE_TOKEN, type IProductsService } from '@openlinker/core/products';
 import {
@@ -36,8 +39,13 @@ import {
   PUBLISHED_VARIANTS_SERVICE_TOKEN,
   type IPublishedVariantsService,
 } from '@openlinker/core/listings';
+import {
+  INVENTORY_QUERY_SERVICE_TOKEN,
+  type IInventoryQueryService,
+} from '@openlinker/core/inventory';
 import { Logger } from '@openlinker/shared/logging';
 import { TopProductsResponseDto, TopProductRowDto } from '../../http/dto/top-products-response.dto';
+import { TopProductVariantsResponseDto } from '../../http/dto/top-product-variants-response.dto';
 import type { ITopProductsService } from './top-products.service.interface';
 
 @Injectable()
@@ -52,7 +60,9 @@ export class TopProductsService implements ITopProductsService {
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
     @Inject(PUBLISHED_VARIANTS_SERVICE_TOKEN)
-    private readonly publishedVariantsService: IPublishedVariantsService
+    private readonly publishedVariantsService: IPublishedVariantsService,
+    @Inject(INVENTORY_QUERY_SERVICE_TOKEN)
+    private readonly inventoryQueryService: IInventoryQueryService
   ) {}
 
   async getTopProducts(filters: TopProductFilters): Promise<TopProductsResponseDto> {
@@ -76,6 +86,143 @@ export class TopProductsService implements ITopProductsService {
     dto.unresolvedProductCount = catalogByProductId.unresolvedCount;
     dto.coverageGapAvailable = coverageGaps.available;
     return dto;
+  }
+
+  /**
+   * One product's sales split by variant, per channel (#2765). Composes the
+   * core per-variant read with variant catalog metadata (sku/attributes) and
+   * live stock — same "catalog/enrichment lives at apps/api, not core"
+   * layering as {@link getTopProducts}.
+   */
+  async getTopProductVariantSales(
+    productId: string,
+    filters: SalesAnalyticsFilters
+  ): Promise<TopProductVariantsResponseDto> {
+    const core = await this.orderRecordService.getTopProductVariantSales(productId, filters);
+    const catalogVariants = await this.productsService.getVariantsByProductId(productId);
+    const realVariantIds = catalogVariants.map((variant) => variant.id);
+
+    const variants = this.mergeUnassignedVariantBucket(core.variants, realVariantIds);
+
+    const catalogByVariantId = new Map(
+      catalogVariants.map((variant) => [
+        variant.id,
+        { sku: variant.sku, attributes: variant.attributes },
+      ])
+    );
+    const stockByVariantId = await this.resolveVariantStock(
+      productId,
+      variants
+        .map((variant) => variant.variantId)
+        .filter((variantId): variantId is string => variantId !== null)
+    );
+
+    return TopProductVariantsResponseDto.fromDomain(
+      { productId, variants },
+      catalogByVariantId,
+      stockByVariantId
+    );
+  }
+
+  /**
+   * A `variantId: null` row means some order lines never resolved to a
+   * variant — `order_line_items.variantId` is nullable "for a simple
+   * product's synthetic-variant edge case" (see the entity's own doc).
+   * Folding it into a real variant is sound in EXACTLY one case: the
+   * product has precisely one catalog variant, so a line that resolved to
+   * "no variant" could only ever have meant that one — there is no other
+   * candidate to have silently picked instead. With zero or several real
+   * variants there is no unique target, and the bucket is reported as its
+   * own "Unassigned" row (never dropped, never guessed at).
+   */
+  private mergeUnassignedVariantBucket(
+    variants: VariantSalesView[],
+    realVariantIds: string[]
+  ): VariantSalesView[] {
+    const unassignedIndex = variants.findIndex((variant) => variant.variantId === null);
+    if (unassignedIndex === -1 || realVariantIds.length !== 1) {
+      return variants;
+    }
+
+    const targetId = realVariantIds[0];
+    const targetIndex = variants.findIndex((variant) => variant.variantId === targetId);
+    if (targetIndex === -1) {
+      // The sole real variant sold nothing at all — nothing to merge into.
+      return variants;
+    }
+
+    const unassigned = variants[unassignedIndex];
+    const target = variants[targetIndex];
+    const merged: VariantSalesView = {
+      variantId: targetId,
+      units: target.units + unassigned.units,
+      revenue: target.revenue + unassigned.revenue,
+      unconvertedRevenue: target.unconvertedRevenue + unassigned.unconvertedRevenue,
+      unconvertedOrderCount: target.unconvertedOrderCount + unassigned.unconvertedOrderCount,
+      currency: target.currency ?? unassigned.currency,
+      unconvertedCurrency: target.unconvertedCurrency ?? unassigned.unconvertedCurrency,
+      netRevenue: target.netRevenue + unassigned.netRevenue,
+      netExcludedRevenue: target.netExcludedRevenue + unassigned.netExcludedRevenue,
+      netExcludedLineCount: target.netExcludedLineCount + unassigned.netExcludedLineCount,
+      channels: this.mergeChannelBreakdowns(target.channels, unassigned.channels, targetId),
+    };
+
+    const result = variants.filter((_, index) => index !== targetIndex && index !== unassignedIndex);
+    result.splice(Math.min(targetIndex, unassignedIndex), 0, merged);
+    return result;
+  }
+
+  private mergeChannelBreakdowns(
+    a: VariantChannelBreakdownRow[],
+    b: VariantChannelBreakdownRow[],
+    variantId: string
+  ): VariantChannelBreakdownRow[] {
+    const byConnection = new Map<string, VariantChannelBreakdownRow>();
+    for (const row of [...a, ...b]) {
+      const existing = byConnection.get(row.sourceConnectionId);
+      if (!existing) {
+        byConnection.set(row.sourceConnectionId, { ...row, variantId });
+        continue;
+      }
+      byConnection.set(row.sourceConnectionId, {
+        variantId,
+        sourceConnectionId: row.sourceConnectionId,
+        units: existing.units + row.units,
+        revenue: existing.revenue + row.revenue,
+        unconvertedRevenue: existing.unconvertedRevenue + row.unconvertedRevenue,
+        currency: existing.currency ?? row.currency,
+        unconvertedCurrency: existing.unconvertedCurrency ?? row.unconvertedCurrency,
+        netRevenue: existing.netRevenue + row.netRevenue,
+        netExcludedRevenue: existing.netExcludedRevenue + row.netExcludedRevenue,
+        netExcludedLineCount: existing.netExcludedLineCount + row.netExcludedLineCount,
+      });
+    }
+    return [...byConnection.values()];
+  }
+
+  /**
+   * Live stock per variant, best-effort (#2765) — mirrors {@link
+   * resolveCoverageGaps}'s degrade-rather-than-500 policy: a failure here
+   * must not take down the whole drill-down over a secondary enrichment.
+   * Degrades to an empty map, which `TopProductVariantsResponseDto` reads as
+   * `totalAvailable: null` per variant — "not resolved", never a false `0`.
+   */
+  private async resolveVariantStock(
+    productId: string,
+    variantIds: string[]
+  ): Promise<Map<string, number>> {
+    if (variantIds.length === 0) {
+      return new Map();
+    }
+    try {
+      const availability = await this.inventoryQueryService.getAvailabilityByVariantIds(variantIds);
+      return new Map(availability.map((entry) => [entry.productVariantId, entry.totalAvailable]));
+    } catch (error) {
+      this.logger.warn(
+        `Stock enrichment failed for top-product variant sales (product ${productId}): ${(error as Error).message}`
+      );
+      return new Map();
+    }
   }
 
   /**

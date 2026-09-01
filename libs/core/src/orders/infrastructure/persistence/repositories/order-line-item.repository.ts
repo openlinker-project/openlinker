@@ -25,6 +25,8 @@ import type {
   ProductChannelBreakdownRow,
   ProductRankingRow,
   TopProductFilters,
+  VariantChannelBreakdownRow,
+  VariantRankingRow,
 } from '../../../domain/types/top-products.types';
 import {
   netSalesLineNetAmountSql,
@@ -141,33 +143,13 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
     filters: TopProductFilters,
     reportingCurrency: string
   ): Promise<{ rows: ProductRankingRow[]; total: number }> {
-    const stampedNonZero = 'rec."reportingCurrency" = :reportingCurrency AND rec."totalAmount" <> 0';
-    // Parenthesized even though it's the only clause needing it today —
-    // this constant is later spliced into `${unconvertedOrZeroTotal} AND
-    // rec."currency" IS NULL`, and SQL's AND-before-OR precedence silently
-    // turned that into `X OR (Y AND Z)` instead of the intended `(X OR Y)
-    // AND Z` when this was a bare, unparenthesized OR (#2172 review — this
-    // is what actually broke `unconverted_currency`, always falling to
-    // NULL whenever any row's reportingCurrency mismatched).
-    const unconvertedOrZeroTotal =
-      '(rec."reportingCurrency" IS DISTINCT FROM :reportingCurrency OR rec."totalAmount" = 0)';
-
-    // Net-sales (VAT-exclusive) eligibility for a LINE — this read already
-    // operates at line grain, so unlike #1987's order-level aggregates no
-    // correlated subquery is needed: the rate fraction is read directly off
-    // this row's own `li."taxRate"`, unless the order is net-priced.
-    const lineNetAmount = netSalesLineNetAmountSql(
-      'li."unitPrice"',
-      'li."quantity"',
-      'li."taxRate"',
-      'rec."taxTreatment"'
-    );
-    const netEligibleCondition = netSalesLineNetEligibleConditionSql(
-      'li."taxRate"',
-      'rec."taxTreatment"'
-    );
-    const stampedNonZeroKnownRate = `${stampedNonZero} AND ${netEligibleCondition}`;
-    const stampedNonZeroUnknownRate = `${stampedNonZero} AND NOT ${netEligibleCondition}`;
+    const {
+      stampedNonZero,
+      unconvertedOrZeroTotal,
+      lineNetAmount,
+      stampedNonZeroKnownRate,
+      stampedNonZeroUnknownRate,
+    } = this.buildTopProductsSqlFragments();
 
     const rankingQb = this.repository
       .createQueryBuilder('li')
@@ -278,28 +260,13 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       return [];
     }
 
-    const stampedNonZero = 'rec."reportingCurrency" = :reportingCurrency AND rec."totalAmount" <> 0';
-    // Parenthesized even though it's the only clause needing it today —
-    // this constant is later spliced into `${unconvertedOrZeroTotal} AND
-    // rec."currency" IS NULL`, and SQL's AND-before-OR precedence silently
-    // turned that into `X OR (Y AND Z)` instead of the intended `(X OR Y)
-    // AND Z` when this was a bare, unparenthesized OR (#2172 review — this
-    // is what actually broke `unconverted_currency`, always falling to
-    // NULL whenever any row's reportingCurrency mismatched).
-    const unconvertedOrZeroTotal =
-      '(rec."reportingCurrency" IS DISTINCT FROM :reportingCurrency OR rec."totalAmount" = 0)';
-    const lineNetAmount = netSalesLineNetAmountSql(
-      'li."unitPrice"',
-      'li."quantity"',
-      'li."taxRate"',
-      'rec."taxTreatment"'
-    );
-    const netEligibleCondition = netSalesLineNetEligibleConditionSql(
-      'li."taxRate"',
-      'rec."taxTreatment"'
-    );
-    const stampedNonZeroKnownRate = `${stampedNonZero} AND ${netEligibleCondition}`;
-    const stampedNonZeroUnknownRate = `${stampedNonZero} AND NOT ${netEligibleCondition}`;
+    const {
+      stampedNonZero,
+      unconvertedOrZeroTotal,
+      lineNetAmount,
+      stampedNonZeroKnownRate,
+      stampedNonZeroUnknownRate,
+    } = this.buildTopProductsSqlFragments();
 
     const qb = this.repository
       .createQueryBuilder('li')
@@ -366,6 +333,232 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       netExcludedRevenue: Number(row.net_excluded_revenue),
       netExcludedLineCount: Number(row.net_excluded_line_count),
     }));
+  }
+
+  /**
+   * One product's variants ranked across every channel (#2765) — the
+   * variant-scoped counterpart to {@link getTopProductRanking}, grouped by
+   * `li.variantId` instead of `li.productId` and pre-filtered to one
+   * product. No pagination/sort: a product's variant count is small and
+   * catalog-bounded, unlike the full product catalog {@link
+   * getTopProductRanking} pages over.
+   */
+  async getVariantRanking(
+    productId: string,
+    filters: SalesAnalyticsFilters,
+    reportingCurrency: string
+  ): Promise<VariantRankingRow[]> {
+    const {
+      stampedNonZero,
+      unconvertedOrZeroTotal,
+      lineNetAmount,
+      stampedNonZeroKnownRate,
+      stampedNonZeroUnknownRate,
+    } = this.buildTopProductsSqlFragments();
+
+    const qb = this.repository
+      .createQueryBuilder('li')
+      .innerJoin(OrderRecordOrmEntity, 'rec', 'rec."internalOrderId" = li."orderRecordId"')
+      .select('li.variantId', 'variant_id')
+      .addSelect('COALESCE(SUM(li."quantity"), 0)', 'units')
+      .addSelect(
+        `COALESCE(SUM(li."unitPrice" * li."quantity" * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZero}), 0)`,
+        'revenue'
+      )
+      .addSelect(
+        `COALESCE(SUM(li."unitPrice" * li."quantity") FILTER (WHERE ${unconvertedOrZeroTotal}), 0)`,
+        'unconverted_revenue'
+      )
+      .addSelect(
+        `COUNT(DISTINCT li."orderRecordId") FILTER (WHERE ${unconvertedOrZeroTotal})`,
+        'unconverted_order_count'
+      )
+      .addSelect(
+        `CASE WHEN COUNT(*) FILTER (WHERE ${stampedNonZero}) > 0 THEN :reportingCurrency ELSE NULL END`,
+        'reporting_currency'
+      )
+      .addSelect(
+        `CASE WHEN COUNT(DISTINCT rec."currency") FILTER (WHERE ${unconvertedOrZeroTotal}) <= 1
+              AND COUNT(*) FILTER (WHERE ${unconvertedOrZeroTotal} AND rec."currency" IS NULL) = 0
+              THEN MAX(rec."currency") FILTER (WHERE ${unconvertedOrZeroTotal})
+              ELSE NULL END`,
+        'unconverted_currency'
+      )
+      .addSelect(
+        `COALESCE(SUM((${lineNetAmount}) * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZeroKnownRate}), 0)`,
+        'net_revenue'
+      )
+      .addSelect(
+        `COALESCE(SUM(li."unitPrice" * li."quantity" * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZeroUnknownRate}), 0)`,
+        'net_excluded_revenue'
+      )
+      .addSelect(`COUNT(*) FILTER (WHERE ${stampedNonZeroUnknownRate})`, 'net_excluded_line_count')
+      .setParameter('reportingCurrency', reportingCurrency)
+      .andWhere('li."productId" = :productId', { productId })
+      .groupBy('li.variantId');
+    this.applyTopProductsScope(qb, filters);
+
+    const rows = await qb.getRawMany<{
+      variant_id: string | null;
+      units: string;
+      revenue: string;
+      unconverted_revenue: string;
+      unconverted_order_count: string;
+      reporting_currency: string | null;
+      unconverted_currency: string | null;
+      net_revenue: string;
+      net_excluded_revenue: string;
+      net_excluded_line_count: string;
+    }>();
+
+    return rows.map((row) => ({
+      variantId: row.variant_id,
+      units: Number(row.units),
+      revenue: Number(row.revenue),
+      unconvertedRevenue: Number(row.unconverted_revenue),
+      unconvertedOrderCount: Number(row.unconverted_order_count),
+      currency: row.reporting_currency,
+      unconvertedCurrency: row.unconverted_currency,
+      netRevenue: Number(row.net_revenue),
+      netExcludedRevenue: Number(row.net_excluded_revenue),
+      netExcludedLineCount: Number(row.net_excluded_line_count),
+    }));
+  }
+
+  /**
+   * Per-channel breakdown of one product's variants (#2765) — the
+   * variant-scoped counterpart to {@link getProductChannelBreakdown}, grouped
+   * by `(li.variantId, li.sourceConnectionId)` and pre-filtered to one
+   * product instead of an explicit page of product ids.
+   */
+  async getVariantChannelBreakdown(
+    productId: string,
+    filters: SalesAnalyticsFilters,
+    reportingCurrency: string
+  ): Promise<VariantChannelBreakdownRow[]> {
+    const {
+      stampedNonZero,
+      unconvertedOrZeroTotal,
+      lineNetAmount,
+      stampedNonZeroKnownRate,
+      stampedNonZeroUnknownRate,
+    } = this.buildTopProductsSqlFragments();
+
+    const qb = this.repository
+      .createQueryBuilder('li')
+      .innerJoin(OrderRecordOrmEntity, 'rec', 'rec."internalOrderId" = li."orderRecordId"')
+      .select('li.variantId', 'variant_id')
+      .addSelect('li.sourceConnectionId', 'source_connection_id')
+      .addSelect('COALESCE(SUM(li."quantity"), 0)', 'units')
+      .addSelect(
+        `COALESCE(SUM(li."unitPrice" * li."quantity" * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZero}), 0)`,
+        'revenue'
+      )
+      .addSelect(
+        `COALESCE(SUM(li."unitPrice" * li."quantity") FILTER (WHERE ${unconvertedOrZeroTotal}), 0)`,
+        'unconverted_revenue'
+      )
+      .addSelect(
+        `CASE WHEN COUNT(*) FILTER (WHERE ${stampedNonZero}) > 0 THEN :reportingCurrency ELSE NULL END`,
+        'reporting_currency'
+      )
+      .addSelect(
+        `CASE WHEN COUNT(DISTINCT rec."currency") FILTER (WHERE ${unconvertedOrZeroTotal}) <= 1
+              AND COUNT(*) FILTER (WHERE ${unconvertedOrZeroTotal} AND rec."currency" IS NULL) = 0
+              THEN MAX(rec."currency") FILTER (WHERE ${unconvertedOrZeroTotal})
+              ELSE NULL END`,
+        'unconverted_currency'
+      )
+      .addSelect(
+        `COALESCE(SUM((${lineNetAmount}) * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZeroKnownRate}), 0)`,
+        'net_revenue'
+      )
+      .addSelect(
+        `COALESCE(SUM(li."unitPrice" * li."quantity" * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZeroUnknownRate}), 0)`,
+        'net_excluded_revenue'
+      )
+      .addSelect(`COUNT(*) FILTER (WHERE ${stampedNonZeroUnknownRate})`, 'net_excluded_line_count')
+      .setParameter('reportingCurrency', reportingCurrency)
+      .andWhere('li."productId" = :productId', { productId })
+      .groupBy('li.variantId')
+      .addGroupBy('li.sourceConnectionId');
+    this.applyTopProductsScope(qb, filters);
+
+    const rows = await qb.getRawMany<{
+      variant_id: string | null;
+      source_connection_id: string;
+      units: string;
+      revenue: string;
+      unconverted_revenue: string;
+      reporting_currency: string | null;
+      unconverted_currency: string | null;
+      net_revenue: string;
+      net_excluded_revenue: string;
+      net_excluded_line_count: string;
+    }>();
+
+    return rows.map((row) => ({
+      variantId: row.variant_id,
+      sourceConnectionId: row.source_connection_id,
+      units: Number(row.units),
+      revenue: Number(row.revenue),
+      unconvertedRevenue: Number(row.unconverted_revenue),
+      currency: row.reporting_currency,
+      unconvertedCurrency: row.unconverted_currency,
+      netRevenue: Number(row.net_revenue),
+      netExcludedRevenue: Number(row.net_excluded_revenue),
+      netExcludedLineCount: Number(row.net_excluded_line_count),
+    }));
+  }
+
+  /**
+   * The `#stampedNonZero`/`#unconvertedOrZeroTotal`/net-sales SQL fragments
+   * shared by every #1988/#2765 top-products read (product- and
+   * variant-grained alike) — extracted (#2765 review) so a fourth near-
+   * identical copy wasn't pasted alongside the product-level pair. Every
+   * fragment is parameter-name-only (`:reportingCurrency`); the actual value
+   * is bound once per query via `.setParameter(...)`, so this needs none.
+   */
+  private buildTopProductsSqlFragments(): {
+    stampedNonZero: string;
+    unconvertedOrZeroTotal: string;
+    lineNetAmount: string;
+    stampedNonZeroKnownRate: string;
+    stampedNonZeroUnknownRate: string;
+  } {
+    const stampedNonZero = 'rec."reportingCurrency" = :reportingCurrency AND rec."totalAmount" <> 0';
+    // Parenthesized even though it's the only clause needing it today —
+    // this constant is later spliced into `${unconvertedOrZeroTotal} AND
+    // rec."currency" IS NULL`, and SQL's AND-before-OR precedence silently
+    // turned that into `X OR (Y AND Z)` instead of the intended `(X OR Y)
+    // AND Z` when this was a bare, unparenthesized OR (#2172 review — this
+    // is what actually broke `unconverted_currency`, always falling to
+    // NULL whenever any row's reportingCurrency mismatched).
+    const unconvertedOrZeroTotal =
+      '(rec."reportingCurrency" IS DISTINCT FROM :reportingCurrency OR rec."totalAmount" = 0)';
+
+    // Net-sales (VAT-exclusive) eligibility for a LINE — this read already
+    // operates at line grain, so unlike #1987's order-level aggregates no
+    // correlated subquery is needed: the rate fraction is read directly off
+    // this row's own `li."taxRate"`, unless the order is net-priced.
+    const lineNetAmount = netSalesLineNetAmountSql(
+      'li."unitPrice"',
+      'li."quantity"',
+      'li."taxRate"',
+      'rec."taxTreatment"'
+    );
+    const netEligibleCondition = netSalesLineNetEligibleConditionSql(
+      'li."taxRate"',
+      'rec."taxTreatment"'
+    );
+
+    return {
+      stampedNonZero,
+      unconvertedOrZeroTotal,
+      lineNetAmount,
+      stampedNonZeroKnownRate: `${stampedNonZero} AND ${netEligibleCondition}`,
+      stampedNonZeroUnknownRate: `${stampedNonZero} AND NOT ${netEligibleCondition}`,
+    };
   }
 
   /**

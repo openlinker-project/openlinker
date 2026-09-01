@@ -18,17 +18,18 @@ import { useProductQuery } from '../../features/products/hooks/use-product-query
 import { useInventoryQuery } from '../../features/inventory/hooks/use-inventory-query';
 import { useListingsQuery } from '../../features/listings/hooks/use-listings-query';
 import { OfferPublicationStatusPanel } from '../../features/listings/components/offer-publication-status-panel';
-import { ProductDetailFields, ProductDetailLinks } from '../../features/products';
+import {
+  deriveStockStatus,
+  ProductDetailFields,
+  ProductDetailLinks,
+  STOCK_STATUS_BADGE_TONE,
+  STOCK_STATUS_LABEL,
+} from '../../features/products';
 import type { Product, ProductVariant } from '../../features/products/api/products.types';
 import type { InventoryItem } from '../../features/inventory/api/inventory.types';
 import type { Connection } from '../../features/connections';
 import { usePlatforms } from '../../shared/plugins';
 import { findPlatformDisplayName } from '../../features/mappings';
-import {
-  deriveStockStatus,
-  STOCK_STATUS_BADGE_TONE,
-  STOCK_STATUS_LABEL,
-} from './product-stock-status';
 
 export interface ProductRowDetailProps {
   product: Product;

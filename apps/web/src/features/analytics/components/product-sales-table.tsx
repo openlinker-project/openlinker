@@ -103,6 +103,7 @@ import {
 } from '../../products';
 import { useDemoMode } from '../../system';
 import { useTopProductsQuery } from '../hooks/use-top-products-query';
+import { VariantChannelMatrix } from './variant-channel-matrix';
 import type { SalesAnalyticsFilters } from '../api/sales-analytics.types';
 import type { TopProductRow, TopProductsSortBy } from '../api/top-products.types';
 import { channelCellFor, deriveChannelColumns, isMissingFrom } from '../lib/top-products-view-model';
@@ -229,89 +230,38 @@ function ChannelCell({
 }
 
 /**
- * Per-channel net-sales/units breakdown — the one piece of this row's detail
- * that has no counterpart in `ProductDetailFields` (that shared block knows
- * nothing about a date-ranged, per-channel sales split). Shared between the
- * mobile card's collapsible detail and the desktop inline-expand panel
- * (#2765) so the two surfaces can't drift.
- */
-function ChannelBreakdownList({
-  row,
-  channelColumns,
-  connectionsById,
-  intFormat,
-  demoMode,
-  coverageGapAvailable,
-}: {
-  row: TopProductRow;
-  channelColumns: string[];
-  connectionsById: Map<string, Connection>;
-  intFormat: Intl.NumberFormat;
-  demoMode: boolean;
-  coverageGapAvailable: boolean;
-}): ReactElement {
-  return (
-    <div className="data-table__stack">
-      {channelColumns.map((connectionId) => {
-        const channel = channelCellFor(row, connectionId);
-        return (
-          <span key={connectionId}>
-            {connectionsById.get(connectionId)?.name ?? connectionId}:{' '}
-            {channel?.currency ? `${formatAmount(channel.netRevenue, channel.currency)} · ` : null}
-            <ChannelCell
-              row={row}
-              connectionId={connectionId}
-              intFormat={intFormat}
-              demoMode={demoMode}
-              coverageGapAvailable={coverageGapAvailable}
-            />
-          </span>
-        );
-      })}
-    </div>
-  );
-}
-
-/**
  * Desktop inline-expand panel (#2765) — replaces the pre-existing full-page
  * `rowHref` navigation to `/products/:id`, which unmounted all of Analytics
  * (losing the sort toggle + scroll position) for what should be a quick
  * look-up. Reuses `ProductDetailLinks`/`ProductDetailFields` (shared with
  * the products cockpit's own expandable row, `product-row-detail.tsx`) for
- * identity, and `ChannelBreakdownList` (above) for the sales split.
+ * identity, and `VariantChannelMatrix` for the sales split — the same
+ * component the mobile card's collapsible detail uses, so the two surfaces
+ * can't drift (consistency follow-up).
  */
 function ProductSalesRowDetail({
   row,
   product,
+  filters,
   channelColumns,
   connectionsById,
-  intFormat,
-  demoMode,
-  coverageGapAvailable,
 }: {
   row: TopProductRow;
   product: Product | undefined;
+  filters: SalesAnalyticsFilters;
   channelColumns: string[];
   connectionsById: Map<string, Connection>;
-  intFormat: Intl.NumberFormat;
-  demoMode: boolean;
-  coverageGapAvailable: boolean;
 }): ReactElement {
   return (
     <div className="products-row-detail">
       <ProductDetailLinks productId={row.productId} />
       <ProductDetailFields productId={row.productId} product={product} />
-      <div className="products-detail-variants">
-        <div className="products-detail-field__label">Net sales by channel, this range</div>
-        <ChannelBreakdownList
-          row={row}
-          channelColumns={channelColumns}
-          connectionsById={connectionsById}
-          intFormat={intFormat}
-          demoMode={demoMode}
-          coverageGapAvailable={coverageGapAvailable}
-        />
-      </div>
+      <VariantChannelMatrix
+        productId={row.productId}
+        filters={filters}
+        channelColumns={channelColumns}
+        connectionsById={connectionsById}
+      />
     </div>
   );
 }
@@ -422,11 +372,9 @@ export function ProductSalesTable({ filters }: ProductSalesTableProps): ReactEle
             <ProductSalesRowDetail
               row={row}
               product={productsById.get(row.productId)}
+              filters={filters}
               channelColumns={channelColumns}
               connectionsById={connectionsById}
-              intFormat={intFormat}
-              demoMode={demoMode}
-              coverageGapAvailable={coverageGapAvailable}
             />
           ),
           toggleLabel: (row, expanded) =>
@@ -444,13 +392,11 @@ export function ProductSalesTable({ filters }: ProductSalesTableProps): ReactEle
             </>
           ),
           detail: (row) => (
-            <ChannelBreakdownList
-              row={row}
+            <VariantChannelMatrix
+              productId={row.productId}
+              filters={filters}
               channelColumns={channelColumns}
               connectionsById={connectionsById}
-              intFormat={intFormat}
-              demoMode={demoMode}
-              coverageGapAvailable={coverageGapAvailable}
             />
           ),
           collapsibleDetail: true,
