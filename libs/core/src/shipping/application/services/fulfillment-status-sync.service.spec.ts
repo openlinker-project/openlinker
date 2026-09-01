@@ -111,6 +111,7 @@ describe('FulfillmentStatusSyncService', () => {
       getFailedSyncValueSummary: jest.fn(),
       markCancelled: jest.fn(),
       markSalesDocumentBlock: jest.fn(),
+      markFulfillmentBlock: jest.fn(),
       markPacked: jest.fn(),
       clearPacked: jest.fn(),
       recordAmendment: jest.fn(),

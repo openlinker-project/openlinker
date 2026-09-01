@@ -19,6 +19,7 @@ import type {
   PaginatedOrderRecords,
 } from '../../domain/types/order-record.types';
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
+import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import type { OrderAmendmentChange } from '../../domain/order-amendment-diff';
 import type {
@@ -218,6 +219,20 @@ export interface IOrderRecordService {
   markSalesDocumentBlock(
     internalOrderId: string,
     block: SalesDocumentBlock | null
+  ): Promise<void>;
+
+  /**
+   * Persist why the fulfilment intercept HELD this order, or clear it (#2396).
+   *
+   * The `fulfillment` context REPORTS the routing outcome (it is a
+   * zero-sibling-edge leaf and may not inject an `orders` service); `orders`
+   * WRITES it. That one-way edge is what keeps `fulfillment -> orders` from
+   * becoming a DI cycle — the same shape #2100 established for the invoicing
+   * gate.
+   */
+  markFulfillmentBlock(
+    internalOrderId: string,
+    block: FulfillmentBlock | null
   ): Promise<void>;
 
   /**

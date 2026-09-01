@@ -213,6 +213,41 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
     expect(fromMigration[0]).toMatchObject({ is_nullable: 'YES' });
   });
 
+  /**
+   * #2396's two columns, checked by the same NARROW shape #2395 established
+   * directly above — and for the same reason, restated so the next reader does
+   * not "fix" it by extending `TABLES`: `order_records` carries pre-existing
+   * index/FK drift between the `synchronize`-built and migration-built schemas,
+   * so adding it to the list fails on drift this issue neither caused nor can
+   * fix. The COLUMN half is the half a new column needs, and it is asserted here.
+   *
+   * `1870000000000-add-order-fulfillment-block.ts` is the only thing that
+   * creates these columns in the migrated database; nothing but the ORM entity
+   * creates them in the harness's.
+   */
+  it('should build both order_records fulfillmentBlock columns identically from the migration (#2396)', async () => {
+    const sql = `
+      SELECT column_name, data_type, is_nullable
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'order_records'
+        AND column_name IN ('fulfillmentBlockReason', 'fulfillmentBlockDetail')
+      ORDER BY column_name`;
+
+    const fromMigration = (await migrated.query(sql)) as unknown[];
+    const synchronized = (await harness.getDataSource().query(sql)) as unknown[];
+
+    // Non-vacuity: two empty result sets would compare equal and assert nothing.
+    expect(fromMigration).toHaveLength(2);
+    expect(fromMigration).toEqual(synchronized);
+    // Both nullable, and both `text` — an existing install must be able to
+    // upgrade past this migration without a backfill, and every row starts with
+    // no reason because nothing was held before the intercept existed.
+    for (const column of fromMigration as { is_nullable: string; data_type: string }[]) {
+      expect(column).toMatchObject({ is_nullable: 'YES', data_type: 'text' });
+    }
+  });
+
   it('should agree on every column, type, nullability and default', async () => {
     const [synchronized, fromMigration] = await bothSides(COLUMNS_SQL);
     expect(fromMigration).toEqual(synchronized);
