@@ -21166,3 +21166,130 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   flex-direction: column;
   gap: var(--space-3);
 }
+
+/* ── Fulfilment worklist (#2410) ─────────────────────────────────────────── */
+
+.fulfilment-worklist-lane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+}
+
+.fulfilment-worklist-lane__head {
+  align-items: baseline;
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-bottom: var(--space-1);
+}
+
+.fulfilment-worklist-lane__title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.fulfilment-worklist-lane__method {
+  font-size: 0.8125rem;
+}
+
+.fulfilment-worklist-lane__count {
+  font-size: 0.8125rem;
+  margin-left: auto;
+}
+
+.fulfilment-worklist-lane__scope {
+  font-size: 0.75rem;
+  margin: 0;
+}
+
+/* The two surfaces. Both are always rendered — the breakpoint below decides
+   which one is visible, so the desktop rows and the cards can never show a
+   different set of tasks. */
+.fulfilment-worklist__desktop,
+.fulfilment-worklist__cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.fulfilment-worklist-row {
+  align-items: center;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: minmax(0, 2fr) minmax(0, 2fr) auto auto;
+  padding: var(--space-2) var(--space-3);
+}
+
+.fulfilment-worklist-row[data-held='true'] {
+  border-color: var(--status-warning-border);
+}
+
+.fulfilment-worklist-row__identity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.fulfilment-worklist-row__id,
+.fulfilment-worklist-row__order {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fulfilment-worklist-row__id {
+  font-size: 0.8125rem;
+}
+
+.fulfilment-worklist-row__order {
+  font-size: 0.75rem;
+}
+
+.fulfilment-worklist-row__state {
+  align-items: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.fulfilment-worklist-row__substate {
+  font-size: 0.75rem;
+}
+
+.fulfilment-worklist-row__lines {
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
+.fulfilment-worklist-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+/* The breakpoint switch. Each `display: none` MUST stay inside its own media
+   block: hoisted out, the desktop grid renders on a phone (or the cards render
+   beside it on a desktop) and both surfaces show at once. */
+@media (min-width: 768px) {
+  .fulfilment-worklist__cards {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .fulfilment-worklist__desktop {
+    display: none;
+  }
+}

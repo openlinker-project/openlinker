@@ -121,3 +121,22 @@ export interface ApplyFulfillmentTaskActionRequest {
   /** `release_hold` only — the note recorded on the RELEASE. */
   releaseNote?: string;
 }
+
+/**
+ * The filters `GET /fulfillment/works` accepts and this app is willing to send
+ * (#2410).
+ *
+ * `status` and `requestStatus` are accepted by the endpoint and ABSENT here on
+ * purpose. They are closed unions in `@openlinker/core/fulfillment` that this
+ * app may not mirror (see the module docblock), and the endpoint validates them
+ * — so a value forwarded raw from the URL bar would 400 the whole page over a
+ * typo, and a value this build invented would be silently dropped. Filtering is
+ * by the two free-string params until a server-supplied facet list exists.
+ */
+export interface FulfillmentTaskFilters {
+  orderId?: string;
+  locationId?: string;
+  /** Server-clamped; the response reports what was actually applied. */
+  limit?: number;
+  offset?: number;
+}
