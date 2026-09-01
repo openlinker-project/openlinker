@@ -30,6 +30,7 @@ import type {
   PaginatedOrderRecords,
 } from '../../domain/types/order-record.types';
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
+import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import { IAutomationTriggerEmissionService } from '@openlinker/core/automation';
 import { AUTOMATION_TRIGGER_EMISSION_SERVICE_TOKEN } from '@openlinker/core/automation';
@@ -711,6 +712,18 @@ export class OrderRecordService implements IOrderRecordService {
     block: SalesDocumentBlock | null
   ): Promise<void> {
     await this.repository.updateSalesDocumentBlock(internalOrderId, block);
+  }
+
+  /**
+   * #2396 — the write half of "gate reports, caller persists" for fulfilment
+   * routing. Thin by design: the decision belongs to the intercept, this only
+   * records it.
+   */
+  async markFulfillmentBlock(
+    internalOrderId: string,
+    block: FulfillmentBlock | null
+  ): Promise<void> {
+    await this.repository.updateFulfillmentBlock(internalOrderId, block);
   }
 
   /**

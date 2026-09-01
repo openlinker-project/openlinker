@@ -111,6 +111,10 @@ export { FulfillmentWorkUnassignedError } from './domain/exceptions/fulfillment-
 export * from './domain/types/fulfillment-progress-event.types';
 export * from './domain/types/routing-decision.types';
 
+// #2396's held-order reason. Narrower than the issue text on purpose — see the
+// file header for the #2352 `sourcing-ambiguous` double-count it avoids.
+export * from './domain/types/fulfillment-block-reason.types';
+
 // `IFulfillmentProgressService` (#2400) — the single core-side progress ingress
 // seam. Its `FulfillmentProgressClaimRepositoryPort` is deliberately NOT here,
 // for the same reason `FulfillmentWorkRepositoryPort` is not: a

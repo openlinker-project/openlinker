@@ -19,8 +19,11 @@
  * `FulfillmentRouter` is deliberately absent from `CoreCapabilityValues` and
  * from every manifest (#2393/#2403 — A2 is `config-only`), and `@openlinker/oms`
  * ships `supportedCapabilities: []` with an empty dispatch table until
- * #2408/#2409 inject the first router. So {@link resolveRouter} answers `null`
- * on every installation today and this handler completes as a no-op.
+ * #2408/#2409 inject the first router. So the shared `resolveFulfillmentRouter`
+ * answers `null` on every installation today and this handler completes as a
+ * no-op. That seam is shared with #2396's ingestion intercept deliberately: two
+ * copies would let one site route while the other mirrors, which is a double
+ * shipment (see the function's own header).
  *
  * That is not unfinished work. ADR-054: *"with no router configured the layer is
  * a degenerate pass-through: no work objects, today's path byte-identical — the
@@ -65,7 +68,6 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
   ROUTING_COMMIT_SERVICE_TOKEN,
   buildRoutingShipTo,
-  type FulfillmentRouterPort,
   type IRoutingCommitService,
   type RoutingInputLine,
   type RoutingShipTo,
@@ -80,6 +82,7 @@ import {
   ORDER_RECORD_SERVICE_TOKEN,
   OrderSnapshotUnavailableError,
   orderFromReadySnapshot,
+  resolveFulfillmentRouter,
   type IOrderRecordService,
 } from '@openlinker/core/orders';
 import type {
@@ -127,7 +130,7 @@ export class FulfillmentWorkRouteHandler implements SyncJobHandler {
       return { outcome: 'ok' };
     }
 
-    const router = await this.resolveRouter(selection.holder);
+    const router = await resolveFulfillmentRouter(selection.holder);
     if (router === null) {
       // The degenerate pass-through — see this file's header. Not an error.
       this.logger.log(
@@ -227,23 +230,6 @@ export class FulfillmentWorkRouteHandler implements SyncJobHandler {
       enabledCapabilities: connection.enabledCapabilities,
       config: connection.config,
     }));
-  }
-
-  /**
-   * The router for the selected connection, or `null` when none is wired.
-   *
-   * Deliberately NOT `getCapabilityAdapter(connectionId, 'FulfillmentRouter')`:
-   * that name is absent from `CoreCapabilityValues` and from every manifest by
-   * design, and a spec asserts the absence. Calling it would fail the manifest
-   * gate on every installation, and adding the name would reintroduce the #2085
-   * trap — `enabledCapabilities` is stamped at connection create and never
-   * retro-filled, so gating on a new name drains nothing for every connection
-   * that already exists.
-   *
-   * #2408/#2409 replace this body with the plugin-supplied router.
-   */
-  private async resolveRouter(_connectionId: string): Promise<FulfillmentRouterPort | null> {
-    return await Promise.resolve(null);
   }
 
   private async projectOrder(
