@@ -2312,6 +2312,41 @@ describe('OrderIngestionService', () => {
         expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
       });
 
+      it('does not fail ingestion when persisting the block reason throws', async () => {
+        // A SEPARATE catch from the intercept's own, and separately
+        // load-bearing: `persistFulfillmentOutcome` is awaited BEFORE the
+        // held/pass-through branch, on every ingestion on every install — where
+        // it is writing `null` over `null`. If its catch ever went missing, a
+        // transient DB blip while recording a routing reason would fail the
+        // whole order sync. The outcome is re-decided next transition, so a
+        // lost write self-heals; a lost ORDER does not.
+        routingCommit.route.mockResolvedValue({ status: 'refused', decisionId: 'dec-1', reason: 'plan-not-conserving' });
+        markBlock().mockRejectedValue(new Error('order_records unreachable'));
+
+        await expect(
+          service.syncOrderFromSource(connectionId, externalOrderId)
+        ).resolves.toBeDefined();
+
+        expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
+      });
+
+      it('still holds a routed order when persisting the block reason throws', async () => {
+        // The hold must not depend on the write succeeding — a swallowed
+        // persistence failure that also dropped the hold would mirror an order
+        // the router already committed, which is the double-shipment this
+        // whole intercept exists to prevent.
+        routingCommit.route.mockResolvedValue({
+          status: 'in-doubt',
+          decisionId: 'dec-1',
+          cause: 'timeout',
+        });
+        markBlock().mockRejectedValue(new Error('order_records unreachable'));
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
+      });
+
       it('still runs the invoicing gate for a HELD order', async () => {
         // Issuance (A7) is a separate authority from sourcing (A2): the buyer
         // has paid and the document is owed whether the parcel leaves from a

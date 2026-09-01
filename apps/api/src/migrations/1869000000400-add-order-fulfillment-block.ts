@@ -27,6 +27,11 @@
  *
  * Generated: 2026-08-31 (synthetic sequential prefix per docs/migrations.md
  * rule 3; 1869000000000 is #2402's `shipments.fulfillmentWorkId`).
+ *
+ * The `…400` rather than `…001` is deliberate, not a gap to tidy up: Wave 3a
+ * reserved `…100` / `…200` / `…300` / `…900` for siblings in flight on
+ * unpushed branches. `check-migration-timestamps.mjs` compares only against
+ * `origin/main`, so it cannot see those and would not catch a collision.
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
