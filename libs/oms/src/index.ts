@@ -29,3 +29,27 @@ export { OmsModule } from './oms.module';
 export { createOmsPlugin, omsAdapterManifest } from './oms.plugin';
 export type { OmsPluginDeps } from './oms.plugin';
 export { OMS_ADAPTER_KEY, OMS_BRAND, OMS_PLATFORM_TYPE } from './oms.constants';
+
+export { createOlFulfillmentRouter, OlFulfillmentRouter } from './routing/ol-fulfillment-router';
+export type { OlFulfillmentRouterDeps } from './routing/ol-fulfillment-router';
+export { evaluateRouting } from './routing/evaluate-routing';
+export type { RoutingPipelineResult } from './routing/evaluate-routing';
+export { coerceRoutingRule, coerceRoutingRules, isRoutingRule } from './routing/routing-rule.types';
+export type { RoutingFilterRule, RoutingRule, RoutingRuleBase, RoutingSortRule } from './routing/routing-rule.types';
+export {
+  mostRestrictiveAfterAction,
+  RoutingAfterActionValues,
+  RoutingFilterNameValues,
+  RoutingRuleKindValues,
+  RoutingSortNameValues,
+} from './routing/routing-vocabulary.types';
+export type {
+  RoutingAfterAction,
+  RoutingFilterName,
+  RoutingRuleKind,
+  RoutingSortName,
+} from './routing/routing-vocabulary.types';
+export { stockKey } from './routing/routing-facts.types';
+export type { RoutingCandidate, RoutingFacts } from './routing/routing-facts.types';
+export type { RoutingRuleSourcePort } from './routing/routing-rule-source.port';
+export * from './oms.tokens';

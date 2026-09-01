@@ -79,7 +79,7 @@ describe('FulfillmentStatusSyncService', () => {
   let integrations: jest.Mocked<IIntegrationsService>;
   let getFulfillmentStatus: jest.Mock;
   let relay: jest.Mocked<IOrderLifecycleRelayService>;
-  let fulfillmentWorks: { resolveLinkForOrder: jest.Mock };
+  let fulfillmentWorks: { resolveLinkForOrder: jest.Mock; listBlockingRejectionConnectionIds: jest.Mock };
   let service: FulfillmentStatusSyncService;
 
   beforeEach(() => {
@@ -144,7 +144,10 @@ describe('FulfillmentStatusSyncService', () => {
 
     // #2402: by default the order is unrouted, so no work links — every
     // pre-existing assertion in this file then holds byte for byte.
-    fulfillmentWorks = { resolveLinkForOrder: jest.fn().mockResolvedValue({ kind: 'none' }) };
+    fulfillmentWorks = {
+      resolveLinkForOrder: jest.fn().mockResolvedValue({ kind: 'none' }),
+      listBlockingRejectionConnectionIds: jest.fn().mockResolvedValue([]),
+    };
     service = new FulfillmentStatusSyncService(
       shipments,
       orderRecords,

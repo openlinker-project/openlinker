@@ -26,6 +26,20 @@ export class FulfillmentWorkQueryService implements IFulfillmentWorkQueryService
     private readonly works: FulfillmentWorkRepositoryPort
   ) {}
 
+  async listBlockingRejectionConnectionIds(orderId: string): Promise<readonly string[]> {
+    const works = await this.works.findByOrderId(orderId);
+
+    const connectionIds = new Set<string>();
+    for (const work of works) {
+      const rejections = await this.works.listBlockingRejections(work.id);
+      for (const rejection of rejections) {
+        connectionIds.add(rejection.connectionId);
+      }
+    }
+
+    return [...connectionIds];
+  }
+
   async resolveLinkForOrder(orderId: string): Promise<FulfillmentWorkLinkResolution> {
     const works = await this.works.findByOrderId(orderId);
 
