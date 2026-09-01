@@ -395,7 +395,16 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       .addSelect(`COUNT(*) FILTER (WHERE ${stampedNonZeroUnknownRate})`, 'net_excluded_line_count')
       .setParameter('reportingCurrency', reportingCurrency)
       .andWhere('li."productId" = :productId', { productId })
-      .groupBy('li.variantId');
+      .groupBy('li.variantId')
+      // Postgres returns `HashAggregate` output in unspecified order, so
+      // without this the "ranking" was nondeterministic — two identical
+      // requests could hand the panel its rows in different orders, and the
+      // null-variant "Unassigned" bucket could land mid-list (#2765 review,
+      // finding 2). Mirrors the product-level twin's ordering, with the
+      // `variantId` tiebreak pinned NULLS LAST so the Unassigned bucket is
+      // always at the edge rather than between two real variants.
+      .orderBy('revenue', 'DESC')
+      .addOrderBy('variant_id', 'ASC', 'NULLS LAST');
     this.applyTopProductsScope(qb, filters);
 
     const rows = await qb.getRawMany<{

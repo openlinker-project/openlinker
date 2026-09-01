@@ -82,18 +82,14 @@
  * @module features/analytics/components
  */
 import { type ReactElement, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { DataTable, type DataTableColumn } from '../../../shared/ui/data-table';
 import { Button } from '../../../shared/ui/button';
 import { EmptyValue } from '../../../shared/ui/empty-value';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import { ProductThumbnail } from '../../../shared/ui/product-thumbnail';
-import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { SegmentedControl } from '../../../shared/ui/segmented-control';
 import { formatAmount } from '../../../shared/format/format-amount';
 import { useNumberFormat } from '../../../shared/i18n/use-number-format';
-import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
 import { useConnectionsQuery, type Connection } from '../../connections';
 import {
   ProductDetailFields,
@@ -103,6 +99,7 @@ import {
 } from '../../products';
 import { useDemoMode } from '../../system';
 import { useTopProductsQuery } from '../hooks/use-top-products-query';
+import { ChannelPublishAction } from './channel-publish-action';
 import { VariantChannelMatrix } from './variant-channel-matrix';
 import type { SalesAnalyticsFilters } from '../api/sales-analytics.types';
 import type { TopProductRow, TopProductsSortBy } from '../api/top-products.types';
@@ -126,65 +123,12 @@ interface ProductSalesTableProps {
   filters: SalesAnalyticsFilters;
 }
 
-function buildPublishHref(productId: string, connectionId: string): string {
-  const params = new URLSearchParams({ productIds: productId, connectionId });
-  return `/listings/bulk-create/wizard?${params.toString()}`;
-}
-
 function ProductCell({ row, product }: { row: TopProductRow; product: Product | undefined }): ReactElement {
   return (
     <span className="product-row">
       <ProductThumbnail src={product?.images?.[0]} name={row.name ?? row.productId} />
       <span>{row.name ?? row.productId}</span>
     </span>
-  );
-}
-
-function PublishAction({
-  row,
-  connectionId,
-  demoMode,
-}: {
-  row: TopProductRow;
-  connectionId: string;
-  demoMode: boolean;
-}): ReactElement | null {
-  // A one-shot navigation, not a filter toggle — a real link (styled as a
-  // button) rather than `Chip` (which hard-codes `aria-pressed`, exposing a
-  // permanently-"not pressed" toggle to AT) or a `Button` + `navigate()`
-  // (which loses middle-click / open-in-new-tab for free). The row itself is
-  // an expand toggle (#2765), not a navigation anchor, so nesting an `<a>`
-  // inside it is not a concern here either.
-  const write = useWriteAccess('listings:write', demoMode);
-  if (!write.visible) {
-    return null;
-  }
-
-  const label = `Publish ${row.name ?? row.productId} on this channel — it already sells elsewhere`;
-
-  if (write.demoReadOnly) {
-    return (
-      <ReadOnlyLock active message={DEMO_READ_ONLY_ACTION_MESSAGE}>
-        <button
-          type="button"
-          className="chip chip--warning cell-not-listed__chip"
-          disabled
-          aria-label={label}
-        >
-          Publish
-        </button>
-      </ReadOnlyLock>
-    );
-  }
-
-  return (
-    <Link
-      to={buildPublishHref(row.productId, connectionId)}
-      className="chip chip--warning cell-not-listed__chip"
-      aria-label={label}
-    >
-      Publish
-    </Link>
   );
 }
 
@@ -224,7 +168,12 @@ function ChannelCell({
   return (
     <span className="cell-not-listed">
       <span className="cell-not-listed__label">Not listed</span>
-      <PublishAction row={row} connectionId={connectionId} demoMode={demoMode} />
+      <ChannelPublishAction
+        productId={row.productId}
+        productName={row.name ?? row.productId}
+        connectionId={connectionId}
+        demoMode={demoMode}
+      />
     </span>
   );
 }
@@ -245,12 +194,16 @@ function ProductSalesRowDetail({
   filters,
   channelColumns,
   connectionsById,
+  notListedConnectionIds,
+  demoMode,
 }: {
   row: TopProductRow;
   product: Product | undefined;
   filters: SalesAnalyticsFilters;
   channelColumns: string[];
   connectionsById: Map<string, Connection>;
+  notListedConnectionIds: string[];
+  demoMode: boolean;
 }): ReactElement {
   return (
     <div className="products-row-detail">
@@ -258,12 +211,32 @@ function ProductSalesRowDetail({
       <ProductDetailFields productId={row.productId} product={product} />
       <VariantChannelMatrix
         productId={row.productId}
+        productName={row.name ?? row.productId}
         filters={filters}
         channelColumns={channelColumns}
         connectionsById={connectionsById}
+        notListedConnectionIds={notListedConnectionIds}
+        demoMode={demoMode}
       />
     </div>
   );
+}
+
+/**
+ * Which channel columns this product is genuinely NOT listed on.
+ *
+ * Gated on `coverageGapAvailable` exactly as `ChannelCell` is: when the
+ * enrichment failed, `missingFromConnectionIds` is an unreliable `[]` on
+ * every row, so trusting it would render "Not listed" as a false claim
+ * (#2172 review, IMPORTANT 1). Computed once here rather than inside the
+ * matrix so the collapsed row and its own expand panel can never disagree
+ * about the same fact (#2765 review, finding 7).
+ */
+function resolveNotListedConnectionIds(
+  row: TopProductRow,
+  coverageGapAvailable: boolean
+): string[] {
+  return coverageGapAvailable ? row.missingFromConnectionIds : [];
 }
 
 export function ProductSalesTable({ filters }: ProductSalesTableProps): ReactElement {
@@ -375,6 +348,8 @@ export function ProductSalesTable({ filters }: ProductSalesTableProps): ReactEle
               filters={filters}
               channelColumns={channelColumns}
               connectionsById={connectionsById}
+              notListedConnectionIds={resolveNotListedConnectionIds(row, coverageGapAvailable)}
+              demoMode={demoMode}
             />
           ),
           toggleLabel: (row, expanded) =>
@@ -394,9 +369,12 @@ export function ProductSalesTable({ filters }: ProductSalesTableProps): ReactEle
           detail: (row) => (
             <VariantChannelMatrix
               productId={row.productId}
+              productName={row.name ?? row.productId}
               filters={filters}
               channelColumns={channelColumns}
               connectionsById={connectionsById}
+              notListedConnectionIds={resolveNotListedConnectionIds(row, coverageGapAvailable)}
+              demoMode={demoMode}
             />
           ),
           collapsibleDetail: true,

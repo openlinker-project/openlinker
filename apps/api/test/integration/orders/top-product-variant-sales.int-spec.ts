@@ -224,6 +224,77 @@ describe('Top product variant sales — real Postgres (#2765)', () => {
     expect(result.variants[0].revenue).toBeCloseTo(20, 2);
   });
 
+  it('ranks variants by revenue descending, deterministically, whatever order the lines were written in', async () => {
+    // #2765 review, finding 2: the query had no ORDER BY at all, so
+    // `HashAggregate` output order decided the panel's row order — which
+    // Postgres does not promise to keep stable between two identical
+    // requests. The `variantId ASC NULLS LAST` tiebreak (not exercised
+    // here, since every revenue differs) additionally pins the "Unassigned"
+    // bucket behind a real variant of EQUAL revenue rather than leaving
+    // that pair's order to the plan.
+    const dataSource = harness.getDataSource();
+    const conn = await createTestConnection(dataSource, {
+      platformType: 'allegro',
+      name: 'Variant sales ordering connection',
+      adapterKey: 'allegro.test.unused-variant-ordering',
+    });
+
+    await createTestOrderRecord(dataSource, {
+      internalOrderId: 'ol_order_variant_ordering',
+      sourceConnectionId: conn.id,
+      orderSnapshot: { items: [] },
+      recordStatus: 'ready',
+      cancelledAt: null,
+      placedAt: new Date('2026-08-02T00:00:00.000Z'),
+      totalAmount: 100,
+      reportingCurrency: 'EUR',
+      reportingTotalAmount: 100,
+    });
+
+    // Seeded smallest-revenue-first, and with the null bucket in the middle,
+    // so insertion order cannot be mistaken for the assertion passing.
+    await seedLineItem(dataSource, {
+      orderRecordId: 'ol_order_variant_ordering',
+      productId: 'ol_product_ordering',
+      variantId: 'ol_variant_low',
+      sourceConnectionId: conn.id,
+      quantity: 1,
+      unitPrice: 10,
+      placedAt: new Date('2026-08-02T00:00:00.000Z'),
+    });
+    await seedLineItem(dataSource, {
+      orderRecordId: 'ol_order_variant_ordering',
+      lineNumber: 1,
+      productId: 'ol_product_ordering',
+      variantId: null,
+      sourceConnectionId: conn.id,
+      quantity: 1,
+      unitPrice: 20,
+      placedAt: new Date('2026-08-02T00:00:00.000Z'),
+    });
+    await seedLineItem(dataSource, {
+      orderRecordId: 'ol_order_variant_ordering',
+      lineNumber: 2,
+      productId: 'ol_product_ordering',
+      variantId: 'ol_variant_high',
+      sourceConnectionId: conn.id,
+      quantity: 1,
+      unitPrice: 70,
+      placedAt: new Date('2026-08-02T00:00:00.000Z'),
+    });
+
+    const result = await orderRecordService.getTopProductVariantSales(
+      'ol_product_ordering',
+      filters
+    );
+
+    expect(result.variants.map((variant) => variant.variantId)).toEqual([
+      'ol_variant_high',
+      null,
+      'ol_variant_low',
+    ]);
+  });
+
   it('discloses an unstamped order’s native amount as unconvertedRevenue, never silently summed into revenue', async () => {
     const dataSource = harness.getDataSource();
     const conn = await createTestConnection(dataSource, {

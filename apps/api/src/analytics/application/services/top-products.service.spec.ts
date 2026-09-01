@@ -17,7 +17,7 @@ describe('TopProductsService', () => {
   >;
   let integrationsService: jest.Mocked<Pick<IIntegrationsService, 'listCapabilityAdapters'>>;
   let publishedVariantsService: jest.Mocked<IPublishedVariantsService>;
-  let inventoryQueryService: jest.Mocked<Pick<IInventoryQueryService, 'getAvailabilityByVariantIds'>>;
+  let inventoryQueryService: jest.Mocked<Pick<IInventoryQueryService, 'findAvailabilityByVariantIds'>>;
   let service: TopProductsService;
 
   const filters = {
@@ -90,7 +90,7 @@ describe('TopProductsService', () => {
     };
     integrationsService = { listCapabilityAdapters: jest.fn() };
     publishedVariantsService = { getPublishedVariantIds: jest.fn() };
-    inventoryQueryService = { getAvailabilityByVariantIds: jest.fn() };
+    inventoryQueryService = { findAvailabilityByVariantIds: jest.fn() };
 
     service = new TopProductsService(
       orderRecordService as unknown as IOrderRecordService,
@@ -246,7 +246,7 @@ describe('TopProductsService', () => {
       productsService.getVariantsByProductId.mockResolvedValue([
         { ...variant('v1', 'p1'), sku: 'V-1', attributes: { Size: 'M' } },
       ]);
-      inventoryQueryService.getAvailabilityByVariantIds.mockResolvedValue([
+      inventoryQueryService.findAvailabilityByVariantIds.mockResolvedValue([
         { productVariantId: 'v1', totalAvailable: 7, locationCount: 1 },
       ]);
 
@@ -270,7 +270,7 @@ describe('TopProductsService', () => {
       };
       orderRecordService.getTopProductVariantSales.mockResolvedValue(core);
       productsService.getVariantsByProductId.mockResolvedValue([variant('v1', 'p1')]);
-      inventoryQueryService.getAvailabilityByVariantIds.mockResolvedValue([]);
+      inventoryQueryService.findAvailabilityByVariantIds.mockResolvedValue([]);
 
       const result = await service.getTopProductVariantSales('p1', salesFilters);
 
@@ -293,7 +293,7 @@ describe('TopProductsService', () => {
         variant('v1', 'p1'),
         variant('v2', 'p1'),
       ]);
-      inventoryQueryService.getAvailabilityByVariantIds.mockResolvedValue([]);
+      inventoryQueryService.findAvailabilityByVariantIds.mockResolvedValue([]);
 
       const result = await service.getTopProductVariantSales('p1', salesFilters);
 
@@ -305,7 +305,7 @@ describe('TopProductsService', () => {
       const core: VariantSalesResult = { productId: 'p1', variants: [variantView(null)] };
       orderRecordService.getTopProductVariantSales.mockResolvedValue(core);
       productsService.getVariantsByProductId.mockResolvedValue([]);
-      inventoryQueryService.getAvailabilityByVariantIds.mockResolvedValue([]);
+      inventoryQueryService.findAvailabilityByVariantIds.mockResolvedValue([]);
 
       const result = await service.getTopProductVariantSales('p1', salesFilters);
 
@@ -323,23 +323,122 @@ describe('TopProductsService', () => {
         variant('v1', 'p1'),
         variant('v2', 'p1'),
       ]);
-      inventoryQueryService.getAvailabilityByVariantIds.mockResolvedValue([
+      inventoryQueryService.findAvailabilityByVariantIds.mockResolvedValue([
         { productVariantId: 'v1', totalAvailable: 3, locationCount: 1 },
         { productVariantId: 'v2', totalAvailable: 0, locationCount: 1 },
       ]);
 
       const result = await service.getTopProductVariantSales('p1', salesFilters);
 
-      expect(inventoryQueryService.getAvailabilityByVariantIds).toHaveBeenCalledWith(['v1', 'v2']);
+      expect(inventoryQueryService.findAvailabilityByVariantIds).toHaveBeenCalledWith(['v1', 'v2']);
       const unassigned = result.variants.find((row) => row.variantId === null);
       expect(unassigned?.totalAvailable).toBeNull();
+    });
+
+    it('reports totalAvailable: null for a variant no inventory master has ever synced, never a false 0', async () => {
+      // #2765 review, finding 1: the zero-filled `getAvailabilityByVariantIds`
+      // returned `0` for such a variant, which rendered a red "Out of stock"
+      // badge — a positive false claim. The presence-preserving read omits
+      // the row instead, and an omitted row must stay `null` on the wire.
+      const core: VariantSalesResult = {
+        productId: 'p1',
+        variants: [variantView('v1'), variantView('v2')],
+      };
+      orderRecordService.getTopProductVariantSales.mockResolvedValue(core);
+      productsService.getVariantsByProductId.mockResolvedValue([
+        variant('v1', 'p1'),
+        variant('v2', 'p1'),
+      ]);
+      inventoryQueryService.findAvailabilityByVariantIds.mockResolvedValue([
+        { productVariantId: 'v1', totalAvailable: 0, locationCount: 1 },
+      ]);
+
+      const result = await service.getTopProductVariantSales('p1', salesFilters);
+
+      // v1 HAS an inventory row that genuinely reads zero — a real 0.
+      expect(result.variants.find((row) => row.variantId === 'v1')?.totalAvailable).toBe(0);
+      // v2 has no inventory row at all — not resolved, not zero.
+      expect(result.variants.find((row) => row.variantId === 'v2')?.totalAvailable).toBeNull();
+    });
+
+    it('reports no currency when the folded "Unassigned" bucket disagrees with the variant it merges into', async () => {
+      // #2765 review, finding 4: a `??` chain labelled the sum of a PLN
+      // slice and a EUR slice with whichever came first.
+      const core: VariantSalesResult = {
+        productId: 'p1',
+        variants: [
+          variantView('v1', {
+            unconvertedRevenue: 100,
+            unconvertedCurrency: 'PLN',
+            channels: [channelRow('v1', { unconvertedRevenue: 100, unconvertedCurrency: 'PLN' })],
+          }),
+          variantView(null, {
+            unconvertedRevenue: 50,
+            unconvertedCurrency: 'EUR',
+            channels: [channelRow(null, { unconvertedRevenue: 50, unconvertedCurrency: 'EUR' })],
+          }),
+        ],
+      };
+      orderRecordService.getTopProductVariantSales.mockResolvedValue(core);
+      productsService.getVariantsByProductId.mockResolvedValue([variant('v1', 'p1')]);
+      inventoryQueryService.findAvailabilityByVariantIds.mockResolvedValue([]);
+
+      const result = await service.getTopProductVariantSales('p1', salesFilters);
+
+      expect(result.variants).toHaveLength(1);
+      expect(result.variants[0].unconvertedRevenue).toBe(150);
+      expect(result.variants[0].unconvertedCurrency).toBeNull();
+      expect(result.variants[0].channels[0].unconvertedCurrency).toBeNull();
+    });
+
+    it('keeps the shared currency when both sides of the fold agree', async () => {
+      const core: VariantSalesResult = {
+        productId: 'p1',
+        variants: [
+          variantView('v1', {
+            unconvertedCurrency: 'PLN',
+            channels: [channelRow('v1', { unconvertedCurrency: 'PLN' })],
+          }),
+          variantView(null, {
+            unconvertedCurrency: 'PLN',
+            channels: [channelRow(null, { unconvertedCurrency: 'PLN' })],
+          }),
+        ],
+      };
+      orderRecordService.getTopProductVariantSales.mockResolvedValue(core);
+      productsService.getVariantsByProductId.mockResolvedValue([variant('v1', 'p1')]);
+      inventoryQueryService.findAvailabilityByVariantIds.mockResolvedValue([]);
+
+      const result = await service.getTopProductVariantSales('p1', salesFilters);
+
+      expect(result.variants[0].unconvertedCurrency).toBe('PLN');
+    });
+
+    it('does not double-count unstamped orders across the folded bucket', async () => {
+      // #2765 review, finding 5: both operands are COUNT(DISTINCT orderId)
+      // within their own variantId group, so one order carrying both an
+      // assigned and an unassigned line was counted twice.
+      const core: VariantSalesResult = {
+        productId: 'p1',
+        variants: [
+          variantView('v1', { unconvertedOrderCount: 1 }),
+          variantView(null, { unconvertedOrderCount: 1 }),
+        ],
+      };
+      orderRecordService.getTopProductVariantSales.mockResolvedValue(core);
+      productsService.getVariantsByProductId.mockResolvedValue([variant('v1', 'p1')]);
+      inventoryQueryService.findAvailabilityByVariantIds.mockResolvedValue([]);
+
+      const result = await service.getTopProductVariantSales('p1', salesFilters);
+
+      expect(result.variants[0].unconvertedOrderCount).toBe(1);
     });
 
     it('degrades to totalAvailable: null for every variant when the stock read fails, without failing the whole request', async () => {
       const core: VariantSalesResult = { productId: 'p1', variants: [variantView('v1')] };
       orderRecordService.getTopProductVariantSales.mockResolvedValue(core);
       productsService.getVariantsByProductId.mockResolvedValue([variant('v1', 'p1')]);
-      inventoryQueryService.getAvailabilityByVariantIds.mockRejectedValue(new Error('boom'));
+      inventoryQueryService.findAvailabilityByVariantIds.mockRejectedValue(new Error('boom'));
 
       const result = await service.getTopProductVariantSales('p1', salesFilters);
 

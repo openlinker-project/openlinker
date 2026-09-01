@@ -158,9 +158,20 @@ export class TopProductsService implements ITopProductsService {
       units: target.units + unassigned.units,
       revenue: target.revenue + unassigned.revenue,
       unconvertedRevenue: target.unconvertedRevenue + unassigned.unconvertedRevenue,
-      unconvertedOrderCount: target.unconvertedOrderCount + unassigned.unconvertedOrderCount,
-      currency: target.currency ?? unassigned.currency,
-      unconvertedCurrency: target.unconvertedCurrency ?? unassigned.unconvertedCurrency,
+      // NOT a sum (#2765 review, finding 5): both operands are
+      // `COUNT(DISTINCT orderRecordId)` computed inside their own
+      // `variantId` group, so one order carrying both an unassigned and an
+      // assigned line for this product — exactly the mixed historical shape
+      // this fold exists for — is counted once on each side. Summing
+      // reports 2 unstamped orders for 1. The union size cannot be
+      // recovered from two group counts, so this reports the larger, which
+      // is a true LOWER BOUND and never overstates a data-quality problem.
+      unconvertedOrderCount: Math.max(target.unconvertedOrderCount, unassigned.unconvertedOrderCount),
+      currency: this.mergeCurrency(target.currency, unassigned.currency),
+      unconvertedCurrency: this.mergeCurrency(
+        target.unconvertedCurrency,
+        unassigned.unconvertedCurrency
+      ),
       netRevenue: target.netRevenue + unassigned.netRevenue,
       netExcludedRevenue: target.netExcludedRevenue + unassigned.netExcludedRevenue,
       netExcludedLineCount: target.netExcludedLineCount + unassigned.netExcludedLineCount,
@@ -170,6 +181,24 @@ export class TopProductsService implements ITopProductsService {
     const result = variants.filter((_, index) => index !== targetIndex && index !== unassignedIndex);
     result.splice(Math.min(targetIndex, unassignedIndex), 0, merged);
     return result;
+  }
+
+  /**
+   * `null` when the two sides name DIFFERENT currencies (#2765 review,
+   * finding 4) — mirroring the SQL that produced these fields, which
+   * already returns `null` for a set that mixes native currencies
+   * (`unconverted_currency`'s `COUNT(DISTINCT rec."currency") <= 1` guard).
+   * A `??` chain instead labelled the sum of a PLN slice and a EUR slice
+   * with whichever currency happened to come first — a number that is not
+   * an amount in the currency it claims. An amount with no single currency
+   * is unrenderable, which is the correct outcome: the FE reads `null` as
+   * "no figure", never as zero.
+   */
+  private mergeCurrency(a: string | null, b: string | null): string | null {
+    if (a !== null && b !== null && a !== b) {
+      return null;
+    }
+    return a ?? b;
   }
 
   private mergeChannelBreakdowns(
@@ -190,8 +219,8 @@ export class TopProductsService implements ITopProductsService {
         units: existing.units + row.units,
         revenue: existing.revenue + row.revenue,
         unconvertedRevenue: existing.unconvertedRevenue + row.unconvertedRevenue,
-        currency: existing.currency ?? row.currency,
-        unconvertedCurrency: existing.unconvertedCurrency ?? row.unconvertedCurrency,
+        currency: this.mergeCurrency(existing.currency, row.currency),
+        unconvertedCurrency: this.mergeCurrency(existing.unconvertedCurrency, row.unconvertedCurrency),
         netRevenue: existing.netRevenue + row.netRevenue,
         netExcludedRevenue: existing.netExcludedRevenue + row.netExcludedRevenue,
         netExcludedLineCount: existing.netExcludedLineCount + row.netExcludedLineCount,
@@ -206,6 +235,14 @@ export class TopProductsService implements ITopProductsService {
    * must not take down the whole drill-down over a secondary enrichment.
    * Degrades to an empty map, which `TopProductVariantsResponseDto` reads as
    * `totalAvailable: null` per variant — "not resolved", never a false `0`.
+   *
+   * Reads `findAvailabilityByVariantIds`, NOT the zero-filled
+   * `getAvailabilityByVariantIds` (#2765 review, finding 1): the latter maps
+   * every requested id to a number, so a variant no inventory master has
+   * ever synced came back as `0` and rendered a red "Out of stock" badge —
+   * a positive false claim about the seller's stock, where the intent is no
+   * badge at all. A variant absent from this read stays absent from the map
+   * and therefore `null` on the wire.
    */
   private async resolveVariantStock(
     productId: string,
@@ -215,7 +252,7 @@ export class TopProductsService implements ITopProductsService {
       return new Map();
     }
     try {
-      const availability = await this.inventoryQueryService.getAvailabilityByVariantIds(variantIds);
+      const availability = await this.inventoryQueryService.findAvailabilityByVariantIds(variantIds);
       return new Map(availability.map((entry) => [entry.productVariantId, entry.totalAvailable]));
     } catch (error) {
       this.logger.warn(

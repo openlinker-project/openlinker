@@ -35,27 +35,60 @@ import { useNumberFormat } from '../../../shared/i18n/use-number-format';
 import { deriveStockStatus, STOCK_STATUS_BADGE_TONE, STOCK_STATUS_LABEL } from '../../products';
 import type { Connection } from '../../connections';
 import { useTopProductVariantSalesQuery } from '../hooks/use-top-product-variant-sales-query';
+import { ChannelPublishAction } from './channel-publish-action';
 import { variantChannelCellFor } from '../lib/top-products-view-model';
 import type { SalesAnalyticsFilters } from '../api/sales-analytics.types';
 import type { TopProductVariantRow } from '../api/top-products.types';
 
 interface VariantChannelMatrixProps {
   productId: string;
+  productName: string;
   filters: SalesAnalyticsFilters;
   channelColumns: string[];
   connectionsById: Map<string, Connection>;
+  /**
+   * Channels this product is genuinely not listed on — already gated on the
+   * list's `coverageGapAvailable` by the caller, so an empty array here
+   * always means "nothing to claim" and never "the check failed"
+   * (#2765 review, finding 7).
+   */
+  notListedConnectionIds: string[];
+  demoMode: boolean;
 }
 
+/**
+ * The identity line for one matrix row.
+ *
+ * Three cases, deliberately distinct (#2765 review, finding 3):
+ *
+ * - `variantId === null` — the real "Unassigned" bucket: line items that
+ *   never resolved to a variant. This is the ONLY row that may say so.
+ * - a non-null id the catalog could not resolve — a variant that sold but no
+ *   longer exists in the catalog (the documented delete-then-recreate case
+ *   leaves stale mappings behind). Labelling it "Unassigned" made a real
+ *   variant indistinguishable from the unattributed bucket, so it says
+ *   "Unresolved variant" and shows the raw id instead.
+ * - anything else — attributes, else its SKU.
+ */
 function VariantIdentityCell({ variant }: { variant: TopProductVariantRow }): ReactElement {
-  const primary = variant.attributes
+  const attributeLine = variant.attributes
     ? Object.entries(variant.attributes)
-        .map(([key, value]) => `${key}: ${value}`)
+        .map(([key, value]) => `${key}: ${String(value)}`)
         .join(', ')
-    : (variant.sku ?? 'Unassigned');
+    : null;
+  const primary =
+    attributeLine ??
+    variant.sku ??
+    (variant.variantId === null ? 'Unassigned' : 'Unresolved variant');
   // The meta line only earns its place when it says something the identity
   // line hasn't already said — a simple variant with no attributes shows its
-  // SKU once, not twice.
-  const meta = variant.attributes ? variant.sku : null;
+  // SKU once, not twice. An unresolved variant shows the raw id, which is
+  // the only thing an operator can use to chase it.
+  const meta = attributeLine
+    ? variant.sku
+    : primary === 'Unresolved variant'
+      ? variant.variantId
+      : null;
   const stockStatus = variant.totalAvailable !== null ? deriveStockStatus(variant.totalAvailable) : null;
 
   return (
@@ -94,9 +127,12 @@ function MoneyUnitsStack({
 
 export function VariantChannelMatrix({
   productId,
+  productName,
   filters,
   channelColumns,
   connectionsById,
+  notListedConnectionIds,
+  demoMode,
 }: VariantChannelMatrixProps): ReactElement {
   const intFormat = useNumberFormat();
   const query = useTopProductVariantSalesQuery(productId, filters, { enabled: true });
@@ -128,10 +164,12 @@ export function VariantChannelMatrix({
 
   const showTotalRow = variants.length > 1;
 
+  const notListed = new Set(notListedConnectionIds);
   const channelHeadings = channelColumns.map((connectionId) => ({
     connectionId,
     name: connectionsById.get(connectionId)?.name ?? connectionId,
     platformType: connectionsById.get(connectionId)?.platformType,
+    isNotListed: notListed.has(connectionId),
   }));
 
   const channelTotals = channelHeadings.map(({ connectionId }) => {
@@ -162,12 +200,31 @@ export function VariantChannelMatrix({
           <thead>
             <tr>
               <th>Variant</th>
-              {channelHeadings.map(({ connectionId, name, platformType }) => (
+              {channelHeadings.map(({ connectionId, name, platformType, isNotListed }) => (
                 <th key={connectionId} className="data-table__cell--right">
                   <span className="variant-matrix__channel-head">
                     <span className="trust-header__dot" data-channel={platformType} />
                     {name}
                   </span>
+                  {/* Stated ONCE per column, never per cell: "this product
+                      is not listed on this channel" is a fact about the
+                      product and the channel, not about a variant, so
+                      repeating it on every row would say N times something
+                      true once. This is also the only place the mobile card
+                      view can surface it and its remediation at all, since
+                      cards have no channel columns (#2765 review,
+                      findings 6 + 7). */}
+                  {isNotListed ? (
+                    <span className="cell-not-listed">
+                      <span className="cell-not-listed__label">Not listed</span>
+                      <ChannelPublishAction
+                        productId={productId}
+                        productName={productName}
+                        connectionId={connectionId}
+                        demoMode={demoMode}
+                      />
+                    </span>
+                  ) : null}
                 </th>
               ))}
               <th className="data-table__cell--right">Total</th>
@@ -179,16 +236,24 @@ export function VariantChannelMatrix({
                 <td>
                   <VariantIdentityCell variant={variant} />
                 </td>
-                {channelHeadings.map(({ connectionId }) => {
+                {channelHeadings.map(({ connectionId, isNotListed }) => {
                   const channel = variantChannelCellFor(variant, connectionId);
                   return (
                     <td key={connectionId} className="data-table__cell--right">
-                      <MoneyUnitsStack
-                        netRevenue={channel?.netRevenue ?? 0}
-                        currency={channel?.currency ?? null}
-                        units={channel?.units ?? 0}
-                        intFormat={intFormat}
-                      />
+                      {isNotListed ? (
+                        // Not "no figure in range" — there is no listing to
+                        // have sold anything, which the column header
+                        // already states. A `0` here would read as a real
+                        // zero-unit channel.
+                        <EmptyValue label="Not listed on this channel" />
+                      ) : (
+                        <MoneyUnitsStack
+                          netRevenue={channel?.netRevenue ?? 0}
+                          currency={channel?.currency ?? null}
+                          units={channel?.units ?? 0}
+                          intFormat={intFormat}
+                        />
+                      )}
                     </td>
                   );
                 })}
@@ -207,7 +272,16 @@ export function VariantChannelMatrix({
                 <td>Total</td>
                 {channelTotals.map(({ connectionId, revenue, units, currency }) => (
                   <td key={connectionId} className="data-table__cell--right">
-                    <MoneyUnitsStack netRevenue={revenue} currency={currency} units={units} intFormat={intFormat} />
+                    {notListed.has(connectionId) ? (
+                      <EmptyValue label="Not listed on this channel" />
+                    ) : (
+                      <MoneyUnitsStack
+                        netRevenue={revenue}
+                        currency={currency}
+                        units={units}
+                        intFormat={intFormat}
+                      />
+                    )}
                   </td>
                 ))}
                 <td className="data-table__cell--right variant-matrix__total-cell">

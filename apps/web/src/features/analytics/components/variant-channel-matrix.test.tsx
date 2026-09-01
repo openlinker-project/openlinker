@@ -1,6 +1,10 @@
 import { screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
+import {
+  createAuthenticatedSessionAdapter,
+  createMockApiClient,
+  renderWithProviders,
+} from '../../../test/test-utils';
 import type { Connection } from '../../connections';
 import type { TopProductVariantsResult } from '../api/top-products.types';
 import { VariantChannelMatrix } from './variant-channel-matrix';
@@ -29,9 +33,12 @@ describe('VariantChannelMatrix', () => {
     renderWithProviders(
       <VariantChannelMatrix
         productId="p1"
+        productName="Widget"
         filters={FILTERS}
         channelColumns={['conn-a']}
         connectionsById={CONNECTIONS_BY_ID}
+        notListedConnectionIds={[]}
+        demoMode={false}
       />,
       { apiClient }
     );
@@ -47,9 +54,12 @@ describe('VariantChannelMatrix', () => {
     renderWithProviders(
       <VariantChannelMatrix
         productId="p1"
+        productName="Widget"
         filters={FILTERS}
         channelColumns={['conn-a']}
         connectionsById={CONNECTIONS_BY_ID}
+        notListedConnectionIds={[]}
+        demoMode={false}
       />,
       { apiClient }
     );
@@ -67,9 +77,12 @@ describe('VariantChannelMatrix', () => {
     renderWithProviders(
       <VariantChannelMatrix
         productId="p1"
+        productName="Widget"
         filters={FILTERS}
         channelColumns={['conn-a']}
         connectionsById={CONNECTIONS_BY_ID}
+        notListedConnectionIds={[]}
+        demoMode={false}
       />,
       { apiClient }
     );
@@ -120,9 +133,12 @@ describe('VariantChannelMatrix', () => {
     renderWithProviders(
       <VariantChannelMatrix
         productId="p1"
+        productName="Widget"
         filters={FILTERS}
         channelColumns={['conn-a']}
         connectionsById={CONNECTIONS_BY_ID}
+        notListedConnectionIds={[]}
+        demoMode={false}
       />,
       { apiClient }
     );
@@ -207,9 +223,12 @@ describe('VariantChannelMatrix', () => {
     renderWithProviders(
       <VariantChannelMatrix
         productId="p1"
+        productName="Widget"
         filters={FILTERS}
         channelColumns={['conn-a']}
         connectionsById={CONNECTIONS_BY_ID}
+        notListedConnectionIds={[]}
+        demoMode={false}
       />,
       { apiClient }
     );
@@ -257,9 +276,12 @@ describe('VariantChannelMatrix', () => {
     renderWithProviders(
       <VariantChannelMatrix
         productId="p1"
+        productName="Widget"
         filters={FILTERS}
         channelColumns={['conn-a']}
         connectionsById={CONNECTIONS_BY_ID}
+        notListedConnectionIds={[]}
+        demoMode={false}
       />,
       { apiClient }
     );
@@ -267,5 +289,123 @@ describe('VariantChannelMatrix', () => {
     expect(await screen.findByText('Unassigned')).toBeInTheDocument();
     expect(screen.queryByText('In stock')).not.toBeInTheDocument();
     expect(screen.queryByText('Out of stock')).not.toBeInTheDocument();
+  });
+
+  it('says "Unresolved variant" — never "Unassigned" — for a real variant the catalog could not resolve', async () => {
+    // #2765 review, finding 3: a variant that sold but no longer exists in
+    // the catalog (delete-then-recreate leaves stale mappings behind) has a
+    // non-null id and no sku/attributes. Calling that "Unassigned" made it
+    // indistinguishable from the genuinely unattributed bucket.
+    const apiClient = createMockApiClient({
+      analytics: {
+        getTopProductVariantSales: vi.fn().mockResolvedValue(
+          variantSalesResult({
+            variants: [
+              {
+                variantId: 'ol_variant_stale',
+                sku: null,
+                attributes: null,
+                totalAvailable: null,
+                units: 1,
+                revenue: 10,
+                unconvertedRevenue: 0,
+                unconvertedOrderCount: 0,
+                currency: 'PLN',
+                unconvertedCurrency: null,
+                netRevenue: 10,
+                netExcludedRevenue: 0,
+                netExcludedLineCount: 0,
+                channels: [],
+              },
+            ],
+          })
+        ),
+      },
+    });
+
+    renderWithProviders(
+      <VariantChannelMatrix
+        productId="p1"
+        productName="Widget"
+        filters={FILTERS}
+        channelColumns={['conn-a']}
+        connectionsById={CONNECTIONS_BY_ID}
+        notListedConnectionIds={[]}
+        demoMode={false}
+      />,
+      { apiClient }
+    );
+
+    expect(await screen.findByText('Unresolved variant')).toBeInTheDocument();
+    expect(screen.queryByText('Unassigned')).not.toBeInTheDocument();
+    // The raw id is the only handle an operator has to chase it.
+    expect(screen.getByText('ol_variant_stale')).toBeInTheDocument();
+  });
+
+  it('says "Not listed" once per not-listed channel column, with a publish affordance, instead of "no figure in range"', async () => {
+    // #2765 review, findings 6 + 7: the matrix used to render an empty
+    // "No Net sales figure in range" cell for a channel the collapsed row
+    // above reported as "Not listed" — two statements about one fact — and
+    // the mobile card had no other surface carrying that fact at all.
+    const apiClient = createMockApiClient({
+      analytics: {
+        getTopProductVariantSales: vi.fn().mockResolvedValue(
+          variantSalesResult({
+            variants: [
+              {
+                variantId: 'v1',
+                sku: 'MX-1',
+                attributes: null,
+                totalAvailable: 4,
+                units: 5,
+                revenue: 50,
+                unconvertedRevenue: 0,
+                unconvertedOrderCount: 0,
+                currency: 'PLN',
+                unconvertedCurrency: null,
+                netRevenue: 50,
+                netExcludedRevenue: 0,
+                netExcludedLineCount: 0,
+                channels: [
+                  {
+                    sourceConnectionId: 'conn-a',
+                    units: 5,
+                    revenue: 50,
+                    unconvertedRevenue: 0,
+                    currency: 'PLN',
+                    unconvertedCurrency: null,
+                    netRevenue: 50,
+                    netExcludedRevenue: 0,
+                    netExcludedLineCount: 0,
+                  },
+                ],
+              },
+            ],
+          })
+        ),
+      },
+    });
+
+    renderWithProviders(
+      <VariantChannelMatrix
+        productId="p1"
+        productName="Widget"
+        filters={FILTERS}
+        channelColumns={['conn-a', 'conn-b']}
+        connectionsById={CONNECTIONS_BY_ID}
+        notListedConnectionIds={['conn-b']}
+        demoMode={false}
+      />,
+      { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() }
+    );
+
+    expect(await screen.findByText('Not listed')).toBeInTheDocument();
+    expect(
+      screen.getByLabelText('Publish Widget on this channel — it already sells elsewhere')
+    ).toBeInTheDocument();
+    // Stated once in the header, and the body cell defers to it rather than
+    // claiming there was simply no sale in range.
+    expect(screen.getAllByText('Not listed')).toHaveLength(1);
+    expect(screen.getByLabelText('Not listed on this channel')).toBeInTheDocument();
   });
 });
