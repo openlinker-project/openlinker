@@ -20,12 +20,7 @@ import {
   syncCellLabel,
   totalUnits,
 } from './order-health';
-import type {
-  OrderRecord,
-  OrderSyncStatus,
-  FulfillmentRollupStateValue,
-  SlaStateValue,
-} from '../api/orders.types';
+import type { OrderRecord, OrderSyncStatus } from '../api/orders.types';
 
 function syncEntry(overrides: Partial<OrderSyncStatus>): OrderSyncStatus {
   return {
@@ -292,7 +287,7 @@ describe('unrecognised state degradation (#2678)', () => {
   // bundle outlives a deploy, or a cached API response is replayed. `GET /orders`
   // is not schema-parsed, so the value arrives verbatim.
   it('renders a neutral badge naming the value, rather than throwing', () => {
-    expect(fulfillmentBadge('teleported' as FulfillmentRollupStateValue)).toEqual({
+    expect(fulfillmentBadge('teleported')).toEqual({
       label: 'Unknown (teleported)',
       tone: 'neutral',
     });
@@ -302,15 +297,28 @@ describe('unrecognised state degradation (#2678)', () => {
     // The tempting one-character fix (`?? 'not-shipped'` widened to cover the
     // miss) would say "Not shipped" about an order in an unknown state. Absent
     // and unrecognised must stay distinguishable.
-    const unknown = fulfillmentBadge('teleported' as FulfillmentRollupStateValue);
+    const unknown = fulfillmentBadge('teleported');
     expect(unknown).not.toEqual(fulfillmentBadge(undefined));
     expect(unknown.label).not.toBe('Not shipped');
   });
 
   it('truncates a pathological value so one row cannot wreck the pill', () => {
-    const badge = fulfillmentBadge('x'.repeat(200) as FulfillmentRollupStateValue);
+    const badge = fulfillmentBadge('x'.repeat(200));
     expect(badge.tone).toBe('neutral');
     expect(badge.label).toBe(`Unknown (${'x'.repeat(15)}…)`);
+  });
+
+  it('says only what is true when the value is blank, rather than quoting nothing', () => {
+    // `Unknown ()` claims to name the offending value and names nothing. A
+    // JSON "" is a real degenerate wire value, so both resolvers must reach the
+    // same answer for it — `slaBadge` previously swallowed it via `!slaState`
+    // into the same result as `none`, i.e. "no badge, nothing is wrong".
+    expect(fulfillmentBadge('')).toEqual({ label: 'Unknown', tone: 'neutral' });
+    expect(fulfillmentBadge('   ')).toEqual({ label: 'Unknown', tone: 'neutral' });
+    expect(slaBadge('')).toEqual({ label: 'Unknown', tone: 'neutral' });
+    // Absent still means absent, on both.
+    expect(slaBadge(undefined)).toBeNull();
+    expect(fulfillmentBadge(undefined)).toEqual({ label: 'Not shipped', tone: 'neutral' });
   });
 
   it('surfaces an unrecognised SLA bucket instead of silently dropping it', () => {
@@ -318,7 +326,7 @@ describe('unrecognised state degradation (#2678)', () => {
     // unrecognised bucket rendered nothing at all. A silent drop of the signal
     // is its own defect: `none` legitimately means "no badge", so collapsing an
     // unknown bucket into it makes the two indistinguishable.
-    expect(slaBadge('quantum' as SlaStateValue)).toEqual({
+    expect(slaBadge('quantum')).toEqual({
       label: 'Unknown (quantum)',
       tone: 'neutral',
     });

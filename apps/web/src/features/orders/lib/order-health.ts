@@ -247,7 +247,11 @@ export const ORDER_SLA_META: Record<
 export function slaBadge(
   slaState: string | null | undefined
 ): { label: string; tone: StatusBadgeTone } | null {
-  if (!slaState) return null;
+  // Only ABSENT short-circuits. An empty string is a value the backend sent and
+  // this build cannot read, so it must reach `unknownStateBadge` exactly as it
+  // does in `fulfillmentBadge` — `!slaState` would have swallowed it into the
+  // same answer as `none`, which means "no badge, nothing is wrong".
+  if (slaState === null || slaState === undefined) return null;
   // Membership is established BEFORE the `none` check, not after: `none` is a
   // MEMBER of the union (meaning "no deadline, or already shipped"), so testing
   // it first would conflate "the backend said none" with "the backend said
@@ -320,7 +324,14 @@ const UNKNOWN_STATE_MAX_CHARS = 16;
  * bad, and picking a tone would assert one.
  */
 function unknownStateBadge(raw: string): { label: string; tone: StatusBadgeTone } {
+  // A blank or whitespace-only value is still unreadable, but naming it is
+  // impossible — `Unknown ()` claims to quote the offending value and quotes
+  // nothing. Say only what is true: this build cannot read the state.
+  const trimmed = raw.trim();
+  if (trimmed === '') return { label: 'Unknown', tone: 'neutral' };
   const shown =
-    raw.length > UNKNOWN_STATE_MAX_CHARS ? `${raw.slice(0, UNKNOWN_STATE_MAX_CHARS - 1)}…` : raw;
+    trimmed.length > UNKNOWN_STATE_MAX_CHARS
+      ? `${trimmed.slice(0, UNKNOWN_STATE_MAX_CHARS - 1)}…`
+      : trimmed;
   return { label: `Unknown (${shown})`, tone: 'neutral' };
 }

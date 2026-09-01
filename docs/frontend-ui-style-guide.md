@@ -853,6 +853,28 @@ Recommended status vocabulary:
 
 Status should be consistent across orders, products, inventory, integrations, jobs, and automations.
 
+### An unrecognised backend value (#2678)
+
+A closed union on the frontend is a **claim about the wire, not a guarantee about
+it** — most list payloads are not schema-parsed, so a rolling deploy, a stale
+cached bundle, or a replayed cached response can all deliver a value this build
+does not know. Three rules:
+
+1. **Never render an unrecognised value as a known one.** Coalescing it into a
+   real member (`?? 'not-shipped'`) states something false about the operator's
+   own data. A quiet lie is worse than the loud failure it replaces.
+2. **Never drop it silently.** Rendering nothing reads as a row that has no such
+   fact, which is a different claim again.
+3. **Surface it, neutrally.** A `neutral` `StatusBadge` reading `Unknown ({raw})`
+   — never a status tone, which would assert whether the state is good or bad.
+   Truncate the raw value so one row cannot break the ~17-character pill budget,
+   and where the value is blank render bare `Unknown`: `Unknown ()` claims to
+   quote the offending value and quotes nothing.
+
+Absence is a separate question and keeps whatever contract the backend documents
+(on the orders list, an absent `fulfillmentState` genuinely means `not-shipped`).
+Distinguish the two — a guard that conflates them reintroduces rule 1.
+
 ### Order-row signal placement (#2081)
 
 The orders list carries several signals per row. They are organised into **three semantic groups**
