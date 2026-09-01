@@ -213,9 +213,24 @@ export function maskObjectBody(content, openBrace) {
   return null;
 }
 
+/**
+ * A field name must start where an identifier starts, or `title` is also read
+ * out of `subtitle` (#2673 review).
+ *
+ * The regexes below are unanchored `RegExp`s built from a name, so without this
+ * `stringField(segment, 'title')` returns `subtitle`'s value — silently, and
+ * with the wrong string then compared byte-for-byte against a canonical owner.
+ * A mirror reading the WRONG field is this script's own defect class, so the
+ * boundary is asserted by `--self-check` rather than left to the fact that no
+ * entry happens to carry such a name today.
+ */
+const FIELD_START = '(?:^|[^A-Za-z0-9_$])';
+
 /** Read a quoted string field out of one entry's raw source segment. */
 function stringField(segment, fieldName) {
-  const m = new RegExp(`${fieldName}\\s*:\\s*'([^']*)'|${fieldName}\\s*:\\s*"([^"]*)"`).exec(segment);
+  const m = new RegExp(
+    `${FIELD_START}${fieldName}\\s*:\\s*'([^']*)'|${FIELD_START}${fieldName}\\s*:\\s*"([^"]*)"`,
+  ).exec(segment);
   return m ? (m[1] ?? m[2]) : null;
 }
 
@@ -226,7 +241,7 @@ function stringField(segment, fieldName) {
  * member is `counted: true` today.
  */
 function booleanField(segment, fieldName) {
-  const m = new RegExp(`${fieldName}\\s*:\\s*(true|false)\\b`).exec(segment);
+  const m = new RegExp(`${FIELD_START}${fieldName}\\s*:\\s*(true|false)\\b`).exec(segment);
   return m ? m[1] === 'true' : null;
 }
 
@@ -763,6 +778,30 @@ function selfCheck() {
     titleParse?.entries.length > 0, true);
   expect('parseTitleEntries returns null for an absent declaration',
     parseTitleEntries(copySource, 'NOPE_COPY'), null);
+
+  // --- field names are read at an identifier boundary (#2673 review) --------
+  // Before this, `stringField(segment, 'title')` also matched `subtitle:` and
+  // `booleanField(segment, 'counted')` also matched `subcounted:` — the reader
+  // would hand M6/M7/M3 a DIFFERENT field's value and then compare it
+  // byte-for-byte against a canonical owner. That is this script's own defect
+  // class (a check that runs and checks the wrong thing), and no live run could
+  // reveal it, because no shipped entry carries such a name. These fixtures are
+  // the only artifact that says the boundary is there.
+  const subtitleTrap =
+    "export const TRAP_COPY = {\n  'k': {\n    subtitle: 'WRONG',\n    title: 'RIGHT',\n" +
+    "    titleFallback: 'RIGHT',\n  },\n} as const;\n";
+  expect("a 'subtitle' field is not read as 'title'",
+    parseTitleEntries(subtitleTrap, 'TRAP_COPY')?.entries[0].title, 'RIGHT');
+  const subFieldTrap =
+    "export const TRAP_DESC = {\n  'k': {\n    subbadge: 'WRONG',\n    badge: 'RIGHT',\n" +
+    "    subcounted: true,\n    counted: false,\n  },\n} as const;\n";
+  expect("a 'subbadge' field is not read as 'badge'",
+    parseDescriptorEntries(subFieldTrap, 'TRAP_DESC')?.entries[0].badge, 'RIGHT');
+  expect("a 'subcounted' field is not read as 'counted'",
+    parseDescriptorEntries(subFieldTrap, 'TRAP_DESC')?.entries[0].counted, false);
+  // The boundary must not stop a field that opens its own segment from matching.
+  expect('a field at the very start of a segment still matches',
+    stringField("title: 'RIGHT',", 'title'), 'RIGHT');
 
   const ownerSource = "export const RETURN_ORPHAN_BANNER_COPY = {\n  title: 'This return is not matched to an order',\n  safeHere: 'x',\n} as const;\n";
   expect('reads the canonical owner field', readEntryField(ownerSource, 'RETURN_ORPHAN_BANNER_COPY', 'title', 'title'), 'This return is not matched to an order');

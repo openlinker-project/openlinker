@@ -35,7 +35,9 @@
  * `scripts/check-attention-reason-mirror.mjs` MIRROR 6 asserts the OR-P title
  * equals `RETURN_ORPHAN_BANNER_COPY.title` and the RB-L title equals
  * `RETURN_RESTOCK_BLOCKED_COPY.title`. Both pairs are live and compared; the
- * mirror carries no "pending" mode any more (#2673).
+ * mirror carries no "pending" mode any more (#2673). MIRROR 7 additionally
+ * holds a placeholder-free `title` equal to its own `titleFallback`, so the
+ * second half of each of those sentences is checked too.
  *
  * @module apps/web/src/features/fulfillment-authority/lib
  * @see docs/specs/product-spec-oms-wave2-operator-experience.md § 4.2 / § 4.3
@@ -131,9 +133,9 @@ export const ATTENTION_REASON_COPY = {
   // it was absent while the mirror pair was inert, which is the drift that
   // proved a pair comparing nothing is worse than no pair).
   //
-  // MIRROR 6 reads `title` ONLY. `titleFallback` carries the same sentence
-  // because this state names no order, but that equality is held BY HAND —
-  // editing `titleFallback` alone will not fail the build.
+  // MIRROR 6 reads `title` only; MIRROR 7 holds `titleFallback` equal to it,
+  // because this state names no order and the title therefore carries no
+  // placeholder. Editing EITHER field alone fails the build.
   'restock-blocked': {
     title: 'Stock was not added.',
     titleFallback: 'Stock was not added.',
@@ -150,8 +152,8 @@ export const ATTENTION_REASON_COPY = {
   // shipped code beat the returns spec. The spec has the period at
   // product-spec-oms-returns-operator-ux.md:364, as does the wave-2 spec § 4.2.
   //
-  // MIRROR 6 reads `title` ONLY; `titleFallback` equality is held by hand (see
-  // the note on 'restock-blocked' above).
+  // MIRROR 6 reads `title`; MIRROR 7 holds `titleFallback` equal to it (see the
+  // note on 'restock-blocked' above).
   'return-unmatched': {
     title: 'This return is not matched to an order.',
     titleFallback: 'This return is not matched to an order.',
