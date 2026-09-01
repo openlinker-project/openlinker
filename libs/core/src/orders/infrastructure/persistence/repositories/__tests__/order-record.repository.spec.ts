@@ -666,16 +666,13 @@ describe('OrderRecordRepository', () => {
       );
     });
 
-    it('returns the id together with the connection the child job must carry', async () => {
+    it('returns bare ids — #2776 removed the child job that once needed sourceConnectionId alongside them', async () => {
       (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
         select: jest.fn().mockReturnThis(),
-        addSelect: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
         orderBy: jest.fn().mockReturnThis(),
         limit: jest.fn().mockReturnThis(),
-        getRawMany: jest
-          .fn()
-          .mockResolvedValue([{ internal_order_id: 'ol_order_a', source_connection_id: 'conn-a' }]),
+        getRawMany: jest.fn().mockResolvedValue([{ internal_order_id: 'ol_order_a' }]),
       });
 
       await expect(
@@ -683,7 +680,7 @@ describe('OrderRecordRepository', () => {
           afterOrderId: null,
           limit: 50,
         })
-      ).resolves.toEqual([{ internalOrderId: 'ol_order_a', sourceConnectionId: 'conn-a' }]);
+      ).resolves.toEqual(['ol_order_a']);
     });
 
     /**
