@@ -61,4 +61,12 @@ export class OrderHealthSummaryResponseDto {
       'dotted badge to a row that already has two SLA badges.',
   })
   salesDocumentBlockedOldestAt!: string | null;
+
+  @ApiProperty({
+    description:
+      'Orders whose sales document is issued ONLY on request — the trigger-model-manual gate ' +
+      'reason (#2554). Its OWN count, never part of salesDocumentBlocked: manual is the default ' +
+      'trigger model, so counting it as blocked would put a large red number on a healthy install.',
+  })
+  salesDocumentIssuedOnRequest!: number;
 }

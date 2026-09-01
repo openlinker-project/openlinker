@@ -408,6 +408,15 @@ export interface OrderHealthSummary {
    * carries two SLA badges.
    */
   salesDocumentBlockedOldestAt?: string | null;
+  /**
+   * Orders whose sales document is issued ONLY on request (#2554, the
+   * `trigger-model-manual` gate reason) — reported separately, and neutrally,
+   * from `salesDocumentBlocked`. Manual is the default trigger model, so on a
+   * manual install every uninvoiced order carries it; counting it as blocked
+   * would put a large red number on a healthy install (ADR-041 §54). Optional
+   * for graceful degradation against an older API.
+   */
+  salesDocumentIssuedOnRequest?: number;
 }
 
 export interface OrderFilters {

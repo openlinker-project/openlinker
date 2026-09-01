@@ -1351,14 +1351,35 @@ export function OrdersListPage(): ReactElement {
           <Chip tone="error" active={invoicingBlocked} onClick={toggleInvoicingBlocked}>
             {/* The count is omitted until the summary resolves rather than
                 defaulted to 0 — asserting a number the client does not have yet
-                would be worse than showing none. */}
-            Invoicing blocked
+                would be worse than showing none.
+
+                #2554 — cross-kind wording: the underlying reasons cover both
+                invoices and fiscal receipts, so "Invoicing blocked" asserted a
+                narrower fact than the count behind it. "Sales documents
+                blocked" names what `salesDocumentBlocked` actually counts
+                (`SalesDocumentAttentionReasonValues`, which already excludes
+                `trigger-model-manual` — see the neutral figure below). */}
+            Sales documents blocked
             {summary?.salesDocumentBlocked === undefined
               ? ''
               : ` ${summary.salesDocumentBlocked}${blockedAgeSuffix(
                   summary.salesDocumentBlockedOldestAt,
                 )}`}
           </Chip>
+        ) : null}
+        {/* #2554 — issue-on-request is NOT counted above (the backend already
+            excludes `trigger-model-manual` from `salesDocumentBlocked`, per
+            ADR-041 §54: manual is the default trigger model, so counting it
+            would put a large red number on a healthy install). Reported here
+            as its own neutral figure, not a chip: it names orders waiting for
+            the operator by CONFIGURATION, not orders anything is wrong with,
+            and there is no separate filter for it to link to — the manual
+            reason is visible per-row wherever the document line itself
+            renders "Issued on request". */}
+        {summary?.salesDocumentIssuedOnRequest ? (
+          <span className="text-muted mono tabular" style={{ fontSize: '0.75rem' }}>
+            {summary.salesDocumentIssuedOnRequest} issued on request
+          </span>
         ) : null}
         {/* #2254 — its own count, and it mounts on `filterActive || count` for
             the same nine-line reason the chip above does: gating on the count
@@ -1451,8 +1472,8 @@ export function OrdersListPage(): ReactElement {
           */
           <EmptyState
             liveRegion="off"
-            title="Nothing is blocked from invoicing"
-            message="No order is waiting on an invoicing decision right now."
+            title="Nothing is blocked"
+            message="No order's sales document is waiting on a routing decision right now."
             action={
               <Button onClick={() => { clearAllFilters(setSearchParams); }}>
                 View all orders
