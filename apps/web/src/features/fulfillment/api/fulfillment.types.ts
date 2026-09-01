@@ -22,7 +22,7 @@
  *
  * The cost is real and accepted: a typo in an action name is not a compile
  * error here. What buys it back is that no code branches on these values — they
- * are looked up in a loose copy table (`lib/fulfillment-task-copy.ts`) that
+ * are looked up in a loose copy table (`lib/fulfillment-task.copy.ts`) that
  * falls back to the raw string, so an unrecognised value degrades to *shown but
  * unlabelled* rather than to *silently dropped*.
  *

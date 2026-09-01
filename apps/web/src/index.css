@@ -21069,7 +21069,7 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 }
 
 .fulfilment-task[data-held='true'] {
-  border-color: var(--status-warning-border, var(--border-subtle));
+  border-color: var(--status-warning-border);
 }
 
 .fulfilment-task__head {
@@ -21140,7 +21140,7 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   font-size: 0.75rem;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: var(--tracking-wide, 0.04em);
+  letter-spacing: var(--tracking-wide);
 }
 
 .fulfilment-task__facts dd {

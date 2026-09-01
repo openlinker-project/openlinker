@@ -45,7 +45,7 @@ import {
   describeFulfillmentActionError,
   readFulfillmentConflict,
 } from '../lib/fulfillment-conflict';
-import { fulfillmentActionLabel } from '../lib/fulfillment-task-copy';
+import { fulfillmentActionLabel } from '../lib/fulfillment-task.copy';
 import { FulfillmentTaskActions } from './fulfillment-task-actions';
 import {
   FulfillmentTaskActionDialog,
@@ -61,6 +61,18 @@ interface PendingForm {
   mode: FulfillmentTaskActionMode;
   task: FulfillmentTask;
   hold?: FulfillmentTaskHold;
+  /**
+   * The failure of THIS form's own submit, if it has had one.
+   *
+   * Deliberately not `mutation.error`: one mutation object serves every task
+   * and every mode, so a dismissed force-cancel failure on task A was still
+   * `isError` when the hold dialog opened on task B — the dialog rendered
+   * "Could not put this fulfilment task on hold" before anything was
+   * submitted. A fabricated failure is the worst possible output from a panel
+   * whose job is explaining why work is stopped, so the error is scoped to the
+   * form that earned it and dies with it.
+   */
+  error?: unknown;
 }
 
 export function OrderFulfillmentTasksPanel({
@@ -85,7 +97,14 @@ export function OrderFulfillmentTasksPanel({
     task: FulfillmentTask,
     action: string,
     body: Omit<ApplyFulfillmentTaskActionRequest, 'expectedVersion'>,
-    onDone?: () => void
+    onDone?: () => void,
+    /**
+     * Present on the dialog path. A failure the dialog will render as its own
+     * Alert is NOT also toasted — the operator is still in the form and the
+     * remedy is usually in it (the `PlaceOrderHoldDialog` precedent). A
+     * conflict is the exception: the form closes, so the toast is the signal.
+     */
+    onFailure?: (error: unknown) => void
   ): void => {
     setBusyTaskId(task.id);
     mutation.mutate(
@@ -104,20 +123,27 @@ export function OrderFulfillmentTasksPanel({
         },
         onError: (error) => {
           const conflict = readFulfillmentConflict(error);
-          showToast({
-            // A stale token is the guard working, not a fault: the surface has
-            // already refreshed itself and the operator can simply look again.
-            // An illegal action, and every other failure, is an error.
-            tone: conflict?.retryable ? 'warning' : 'error',
-            description: describeFulfillmentActionError(
-              error,
-              `Could not ${fulfillmentActionLabel(action).toLowerCase()} this fulfilment task.`
-            ),
-          });
           // A version conflict is retryable against the REFRESHED task, so the
           // form closes and the operator re-reads. Keeping it open would invite
           // a resubmit carrying the same stale token.
-          if (conflict) onDone?.();
+          const closesTheForm = conflict !== null || onFailure === undefined;
+          if (closesTheForm) {
+            showToast({
+              // A stale token is the guard working, not a fault: the surface
+              // has already refreshed itself and the operator can simply look
+              // again. An illegal action, and every other failure, is an error.
+              tone: conflict?.retryable === true ? 'warning' : 'error',
+              description: describeFulfillmentActionError(
+                error,
+                `Could not ${fulfillmentActionLabel(action).toLowerCase()} this fulfilment task.`
+              ),
+            });
+          }
+          if (conflict) {
+            onDone?.();
+            return;
+          }
+          onFailure?.(error);
         },
         onSettled: () => {
           setBusyTaskId(null);
@@ -127,6 +153,13 @@ export function OrderFulfillmentTasksPanel({
   };
 
   const body = ((): ReactElement => {
+    if (!internalOrderId) {
+      // The query is `enabled: Boolean(orderId)`, so with no id it never
+      // leaves `isPending` and would report "Loading…" for ever — a fourth
+      // state ("never asked") wearing the first one's clothes. Unreachable
+      // from the order-detail page, and stated rather than left as a trap.
+      return <p className="text-muted">No order to look fulfilment tasks up for.</p>;
+    }
     if (query.isPending) {
       return <p className="text-muted">Loading fulfilment tasks…</p>;
     }
@@ -215,14 +248,25 @@ export function OrderFulfillmentTasksPanel({
           mode={pendingForm.mode}
           holdId={pendingForm.hold?.id}
           submitting={busyTaskId === pendingForm.task.id}
-          error={mutation.isError ? mutation.error : null}
+          error={pendingForm.error ?? null}
           onOpenChange={(open) => {
             if (!open) setPendingForm(null);
           }}
           onSubmit={(actionBody) => {
-            run(pendingForm.task, pendingForm.mode, actionBody, () => {
-              setPendingForm(null);
-            });
+            // Clear this form's previous failure on resubmit, so a corrected
+            // note does not keep the old Alert on screen while it is in flight.
+            setPendingForm((current) => (current ? { ...current, error: undefined } : current));
+            run(
+              pendingForm.task,
+              pendingForm.mode,
+              actionBody,
+              () => {
+                setPendingForm(null);
+              },
+              (error) => {
+                setPendingForm((current) => (current ? { ...current, error } : current));
+              }
+            );
           }}
         />
       ) : null}

@@ -161,7 +161,8 @@ describe('OrderFulfillmentTasksPanel (#2411)', () => {
     it('should show the plain status when nothing is holding the task', async () => {
       renderPanel([task({ status: 'in_progress' })]);
 
-      expect(await screen.findAllByText('In progress')).not.toHaveLength(0);
+      // Badge + State row again. Drop the badge and this reads 1.
+      expect(await screen.findAllByText('In progress')).toHaveLength(2);
       expect(screen.queryByText(/On hold/)).not.toBeInTheDocument();
     });
   });
@@ -173,9 +174,11 @@ describe('OrderFulfillmentTasksPanel (#2411)', () => {
       // what makes the assertion able to fail.
       renderPanel([task({ status: 'open', supportedActions: [] })]);
 
-      // Two matches by design: the badge and the State row (see the card's
-      // docblock — the underlying state is never hidden).
-      expect(await screen.findAllByText('Open')).not.toHaveLength(0);
+      // Exactly two by design — the badge and the State row (see the card's
+      // docblock: the underlying state is never hidden). A count, not a
+      // `not.toHaveLength(0)`: `findAllByText` already throws on zero, so that
+      // matcher could never fail and would be decoration.
+      expect(await screen.findAllByText('Open')).toHaveLength(2);
       expect(screen.queryByRole('button', { name: 'Schedule' })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Put on hold' })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Close' })).not.toBeInTheDocument();
@@ -214,11 +217,17 @@ describe('OrderFulfillmentTasksPanel (#2411)', () => {
       ]);
 
       expect(
-        await screen.findByRole('button', { name: 'Release hold (operator)' })
+        await screen.findByRole('button', { name: 'Release hold (Held by operator)' })
       ).toBeInTheDocument();
       expect(
-        screen.getByRole('button', { name: 'Release hold (stock-shortfall)' })
+        screen.getByRole('button', { name: 'Release hold (Stock shortfall)' })
       ).toBeInTheDocument();
+      // The label is also the control's ACCESSIBLE NAME, and the card renders
+      // the same vocabulary as "Stock shortfall" one line above — one union,
+      // one spelling.
+      expect(
+        screen.queryByRole('button', { name: 'Release hold (stock-shortfall)' })
+      ).not.toBeInTheDocument();
     });
   });
 
@@ -312,6 +321,18 @@ describe('OrderFulfillmentTasksPanel (#2411)', () => {
       await waitFor(() => {
         expect(listByOrder).toHaveBeenCalledTimes(2);
       });
+
+      // …and the resulting surface is REFRESHED, not destroyed. A refetch count
+      // alone would still pass if the 409 blanked the panel or replaced it with
+      // an error state, which is the whole failure this handler exists to
+      // avoid: the operator is told to look again, at something still on
+      // screen. So assert what the operator ends up with.
+      expect(
+        await screen.findByText(/Somebody moved this fulfilment task while you were looking at it/)
+      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Schedule' })).toBeInTheDocument();
+      expect(screen.queryByText(/Could not load/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/No fulfilment tasks/)).not.toBeInTheDocument();
     });
 
     it('should also refresh after an action-not-legal 409, which is NOT retried', async () => {
@@ -409,6 +430,54 @@ describe('OrderFulfillmentTasksPanel (#2411)', () => {
       renderPanel([task({ supportedActions: ['schedule'] })], { user: OPERATOR });
 
       expect(await screen.findByRole('button', { name: 'Schedule' })).toBeInTheDocument();
+    });
+  });
+
+  describe('a dialog never shows a failure it did not earn', () => {
+    it('should not carry a previous action\u2019s failure into a freshly opened form', async () => {
+      const applyAction = vi.fn().mockRejectedValue(new ApiError('boom', 500, {}));
+      renderPanel(
+        [
+          task({
+            supportedActions: ['hold', 'force_cancel'],
+          }),
+        ],
+        { applyAction }
+      );
+
+      // Fail a force-cancel, then dismiss it.
+      await userEvent.click(await screen.findByRole('button', { name: 'Force cancel' }));
+      const first = await screen.findByRole('dialog');
+      await userEvent.click(within(first).getByRole('button', { name: 'Force cancel' }));
+      expect(await within(first).findByText(/Could not cancel/)).toBeInTheDocument();
+      await userEvent.click(within(first).getByRole('button', { name: 'Cancel' }));
+
+      // Open a DIFFERENT form. It has submitted nothing, so it must claim
+      // nothing — one shared mutation object used to leak the failure above.
+      await userEvent.click(await screen.findByRole('button', { name: 'Put on hold' }));
+      const second = await screen.findByRole('dialog');
+      expect(within(second).queryByText(/Could not/)).not.toBeInTheDocument();
+    });
+
+    it('should report a form failure in the form, not also as a toast', async () => {
+      const applyAction = vi.fn().mockRejectedValue(new ApiError('boom', 500, {}));
+      renderPanel([task({ supportedActions: ['hold'] })], { applyAction });
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Put on hold' }));
+      const dialog = await screen.findByRole('dialog');
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Put on hold' }));
+
+      expect(
+        await within(dialog).findByText(/Could not put this fulfilment task on hold/)
+      ).toBeInTheDocument();
+      // The operator is still in the form and the remedy is usually in it, so a
+      // toast would be the same news twice (the PlaceOrderHoldDialog rule).
+      // Exactly one report of the failure, in the dialog. A toast would be the
+      // same news twice while the operator is still in the form and the remedy
+      // is usually in it (the `PlaceOrderHoldDialog` rule). Queried against the
+      // DOM rather than the a11y tree, since an open modal hides the toast
+      // region from the latter and the assertion would pass vacuously.
+      expect(screen.getAllByText(/Could not put this fulfilment task on hold/)).toHaveLength(1);
     });
   });
 

@@ -23,8 +23,19 @@
  * anywhere reads these values, so a miss costs a label and never a decision.
  *
  * Operator-facing wording follows the epic-#2412 UI naming rule: **fulfilment
- * task**, never the internal aggregate name (`scripts/check-ui-vocabulary.mjs`
- * enforces it for this folder).
+ * task**, never the internal aggregate name.
+ *
+ * ## The `.copy.ts` in the filename is load-bearing, not decoration
+ *
+ * `scripts/check-ui-vocabulary.mjs` scans a `.tsx` for JSX text and a
+ * whitelist of user-facing attributes, and a `*.copy.ts` for EVERY string
+ * literal. Nothing else. Named `fulfillment-task-copy.ts` — one character out —
+ * this file was invisible to the gate, so every label, hint and status word
+ * below could have carried a banned term with the build green. That is why the
+ * dialog's own sentences live here too rather than as a record inside the
+ * `.tsx`: an object literal in a component is not JSX text and is not scanned
+ * either. Operator sentences belong in this file, and this file must keep this
+ * name.
  *
  * @module apps/web/src/features/fulfillment/lib
  */
@@ -140,3 +151,47 @@ const REQUEST_STATUS_COPY: Record<string, string> = {
 export function fulfillmentRequestStatusLabel(requestStatus: string): string {
   return REQUEST_STATUS_COPY[requestStatus] ?? humanise(requestStatus);
 }
+
+/**
+ * The three actions that need a form before they can be sent.
+ *
+ * Here rather than in `fulfillment-task-action-dialog.tsx` for the reason in
+ * the module docblock: these are the longest operator sentences this feature
+ * ships, and a `Record` inside a component escapes the vocabulary gate.
+ */
+export type FulfillmentTaskActionMode = 'hold' | 'release_hold' | 'force_cancel';
+
+export interface FulfillmentTaskActionModeCopy {
+  title: string;
+  description: string;
+  /** Submit-button label. */
+  confirm: string;
+  /** Fallback sentence when the server gave no better one. */
+  failure: string;
+}
+
+export const FULFILLMENT_ACTION_MODE_COPY: Record<
+  FulfillmentTaskActionMode,
+  FulfillmentTaskActionModeCopy
+> = {
+  hold: {
+    title: 'Put this fulfilment task on hold',
+    description:
+      'The task stops moving until someone releases the hold. The rest of the order is unaffected.',
+    confirm: 'Put on hold',
+    failure: 'Could not put this fulfilment task on hold.',
+  },
+  release_hold: {
+    title: 'Release this hold',
+    description: 'The fulfilment task can move again. Any other hold on it stays in place.',
+    confirm: 'Release hold',
+    failure: 'Could not release this hold.',
+  },
+  force_cancel: {
+    title: 'Force-cancel this fulfilment task',
+    description:
+      'This cancels the task outright without asking whoever holds it, and cannot be undone. The order itself is not cancelled.',
+    confirm: 'Force cancel',
+    failure: 'Could not cancel this fulfilment task.',
+  },
+};

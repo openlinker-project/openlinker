@@ -11,6 +11,19 @@
  * last writer the win — exactly the two-operators-ship-it-twice failure the
  * token exists to prevent.
  *
+ * ## Invalidate the WHOLE feature, not the order that issued the action
+ *
+ * The key is `fulfillmentQueryKeys.all`, deliberately, even though this hook's
+ * only caller today is the order-detail panel and `worksByOrder(orderId)` would
+ * cover its rows exactly. One task is rendered by more than one cached query —
+ * #2410's worklist keys its rows by FILTERS, not by order — and an action taken
+ * from the worklist under the narrow key would refresh the order panel and
+ * leave the worklist's own row holding a stale `version`. The operator's next
+ * click on that row is then a 409 the UI manufactured for itself out of its own
+ * cache, on the exact optimistic-token path this feature exists to handle
+ * gracefully. `all` is a prefix of every fulfilment key, so it is strictly
+ * wider than the panel needs and never narrower than a consumer needs.
+ *
  * ## Invalidate; never patch the cache from a 409 body
  *
  * Both coded 409s carry a refreshed `supportedActions`, but NOT a whole task —
@@ -33,7 +46,12 @@ import { readFulfillmentConflict } from '../lib/fulfillment-conflict';
 export interface ApplyFulfillmentTaskActionInput extends ApplyFulfillmentTaskActionRequest {
   workId: string;
   action: string;
-  /** The order whose panel is showing this task — the invalidation target. */
+  /**
+   * The order the caller acted from. Context only — it is stripped from the
+   * request body and is deliberately NOT the invalidation key (see the module
+   * docblock): invalidating by order would miss a sibling query that renders
+   * the same task under a different key.
+   */
   orderId: string;
 }
 
@@ -48,20 +66,16 @@ export function useFulfillmentTaskActionMutation(): UseMutationResult<
   return useMutation({
     mutationFn: ({ workId, action, orderId: _orderId, ...body }) =>
       apiClient.fulfillment.applyAction(workId, action, body),
-    onSuccess: async (_result, variables) => {
-      await queryClient.invalidateQueries({
-        queryKey: fulfillmentQueryKeys.worksByOrder(variables.orderId),
-      });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: fulfillmentQueryKeys.all });
     },
-    onError: async (error: Error, variables) => {
+    onError: async (error: Error) => {
       // Either coded 409 — and any other 409 the server raises about this
       // task's own state — means the server holds a truth this client does
       // not, so the surface refreshes ITSELF rather than asking the operator
       // to reload. A non-conflict failure is left alone.
       if (readFulfillmentConflict(error)) {
-        await queryClient.invalidateQueries({
-          queryKey: fulfillmentQueryKeys.worksByOrder(variables.orderId),
-        });
+        await queryClient.invalidateQueries({ queryKey: fulfillmentQueryKeys.all });
       }
     },
   });

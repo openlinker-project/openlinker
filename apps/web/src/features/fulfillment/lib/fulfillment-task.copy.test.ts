@@ -14,7 +14,7 @@ import {
   fulfillmentActionTone,
   fulfillmentRequestStatusLabel,
   fulfillmentStatusLabel,
-} from './fulfillment-task-copy';
+} from './fulfillment-task.copy';
 
 describe('fulfillment task copy (#2411)', () => {
   it('should label the six operator-invocable actions', () => {

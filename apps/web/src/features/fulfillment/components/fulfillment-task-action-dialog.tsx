@@ -43,38 +43,21 @@ import { HOLD_REASON_COPY, HoldReasonValues } from '../../orders';
 import type { ApplyFulfillmentTaskActionRequest } from '../api/fulfillment.types';
 import { describeFulfillmentActionError } from '../lib/fulfillment-conflict';
 import {
+  FULFILLMENT_ACTION_MODE_COPY,
+  type FulfillmentTaskActionMode,
+} from '../lib/fulfillment-task.copy';
+import {
   fulfillmentTaskActionSchema,
   type FulfillmentTaskActionFormValues,
   type FulfillmentTaskActionSubmission,
 } from './fulfillment-task-action-dialog.schema';
 
-export type FulfillmentTaskActionMode = 'hold' | 'release_hold' | 'force_cancel';
-
-const COPY: Record<
-  FulfillmentTaskActionMode,
-  { title: string; description: string; confirm: string; failure: string }
-> = {
-  hold: {
-    title: 'Put this fulfilment task on hold',
-    description:
-      'The task stops moving until someone releases the hold. The rest of the order is unaffected.',
-    confirm: 'Put on hold',
-    failure: 'Could not put this fulfilment task on hold.',
-  },
-  release_hold: {
-    title: 'Release this hold',
-    description: 'The fulfilment task can move again. Any other hold on it stays in place.',
-    confirm: 'Release hold',
-    failure: 'Could not release this hold.',
-  },
-  force_cancel: {
-    title: 'Force-cancel this fulfilment task',
-    description:
-      'This cancels the task outright without asking whoever holds it, and cannot be undone. The order itself is not cancelled.',
-    confirm: 'Force cancel',
-    failure: 'Could not cancel this fulfilment task.',
-  },
-};
+// Re-exported so the panel keeps importing the mode from the component it
+// drives. The copy — and the union it is keyed by — live in the `.copy.ts`,
+// which is the only file shape `scripts/check-ui-vocabulary.mjs` reads string
+// literals from; a `Record` of operator sentences in this `.tsx` was invisible
+// to it.
+export type { FulfillmentTaskActionMode };
 
 export interface FulfillmentTaskActionDialogProps {
   open: boolean;
@@ -96,7 +79,7 @@ export function FulfillmentTaskActionDialog({
   onOpenChange,
   onSubmit,
 }: FulfillmentTaskActionDialogProps): ReactElement {
-  const copy = COPY[mode];
+  const copy = FULFILLMENT_ACTION_MODE_COPY[mode];
 
   const form = useForm<FulfillmentTaskActionFormValues, undefined, FulfillmentTaskActionSubmission>(
     {
@@ -131,7 +114,7 @@ export function FulfillmentTaskActionDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="fulfilment-task-dialog">
+      <DialogContent>
         <DialogTitle>{copy.title}</DialogTitle>
         <DialogDescription>{copy.description}</DialogDescription>
 

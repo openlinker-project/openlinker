@@ -28,12 +28,13 @@ import type { ReactElement } from 'react';
 import { Button } from '../../../shared/ui/button';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { holdReasonLabel } from '../../orders';
 import type { FulfillmentTask, FulfillmentTaskHold } from '../api/fulfillment.types';
 import {
   fulfillmentActionHint,
   fulfillmentActionLabel,
   fulfillmentActionTone,
-} from '../lib/fulfillment-task-copy';
+} from '../lib/fulfillment-task.copy';
 
 export interface FulfillmentTaskActionsProps {
   task: FulfillmentTask;
@@ -96,7 +97,13 @@ export function FulfillmentTaskActions({
               `${action}:${hold.id}`,
               action,
               task.activeHolds.length > 1
-                ? `${fulfillmentActionLabel(action)} (${hold.reason})`
+                ? // `holdReasonLabel`, never the raw value: this label is the
+                  // control's ACCESSIBLE NAME, and the card renders the same
+                  // vocabulary as "Stock shortfall" one line above it. Two
+                  // spellings of one union on one card is a defect, not a
+                  // shorthand. The label falls back to the raw string for a
+                  // reason this build does not know, so nothing is dropped.
+                  `${fulfillmentActionLabel(action)} (${holdReasonLabel(hold.reason)})`
                 : fulfillmentActionLabel(action),
               () => onReleaseHold(hold)
             )

@@ -36,7 +36,7 @@ import type { FulfillmentTask } from '../api/fulfillment.types';
 import {
   fulfillmentRequestStatusLabel,
   fulfillmentStatusLabel,
-} from '../lib/fulfillment-task-copy';
+} from '../lib/fulfillment-task.copy';
 
 export interface FulfillmentTaskCardProps {
   task: FulfillmentTask;
