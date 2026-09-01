@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ConnectionCell } from './ConnectionCell';
-import type { Connection } from '../api/connections.types';
+import { SYSTEM_CONNECTION_ID, type Connection } from '../api/connections.types';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 
 const CONNECTION_ID = 'aa966882-0d21-4e2f-9d5a-71c4a5f14cfb';
@@ -203,6 +203,18 @@ describe('ConnectionCell', () => {
     expect(screen.getByLabelText('No value')).toBeInTheDocument();
     expect(screen.queryByRole('link')).toBeNull();
     expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it('renders System with no copyable id or status note for the system placeholder id, without fetching', () => {
+    const getById = vi.fn();
+    const api = createMockApiClient({ connections: { getById } });
+
+    renderWithProviders(<ConnectionCell connectionId={SYSTEM_CONNECTION_ID} />, { apiClient: api });
+
+    expect(screen.getByText('System')).toBeInTheDocument();
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.queryByText('Re-auth')).toBeNull();
+    expect(getById).not.toHaveBeenCalled();
   });
 
   it('renders an adornment when provided', async () => {
