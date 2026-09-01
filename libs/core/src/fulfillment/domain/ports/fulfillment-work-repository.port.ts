@@ -45,6 +45,10 @@ import type { FulfillmentRequestStatus } from '../types/fulfillment-request-stat
 import type { FulfillmentWork } from '../types/fulfillment-work.types';
 import type { FulfillmentWorkRejection } from '../types/fulfillment-work-rejection.types';
 import type { FulfillmentWorkStatus } from '../types/fulfillment-work-status.types';
+import type {
+  FulfillmentWorkListFilter,
+  FulfillmentWorkPage,
+} from '../types/fulfillment-worklist-page.types';
 
 /** One line of a work object at creation time. Counters start at zero. */
 export interface CreateFulfillmentWorkLineInput {
@@ -98,7 +102,23 @@ export interface CreateFulfillmentWorkInput {
 export interface TransitionFulfillmentWorkStatusInput {
   readonly workId: string;
   readonly from: readonly FulfillmentWorkStatus[];
-  readonly to: FulfillmentWorkStatus;
+  readonly to: FulfillmentWorkStatus;  /**
+   * Optimistic-concurrency precondition (#2406). When present the conditional
+   * UPDATE additionally carries `"version" = :expectedVersion`, so the state
+   * predicate, the version predicate and the write are ONE statement.
+   *
+   * Optional, and additive by design — the port's docblock reserved exactly
+   * this: *"#2406 will add an `expectedVersion` precondition to the mutating
+   * methods; an object shape makes that purely additive."* Omitting it keeps
+   * every pre-#2406 caller byte-identical.
+   *
+   * Because the version rides in the same WHERE as the state guard, a caller
+   * can distinguish "somebody moved it first" (version differs) from "not legal
+   * / already applied" (version matches, state guard refused) — which is what
+   * honours `version`'s "counts state changes, not writes" contract instead of
+   * reporting an idempotent replay as a stale-token 409.
+   */
+  readonly expectedVersion?: number;
 }
 
 /** Move the NEGOTIATION axis, guarding on the request status it is moving from. */
@@ -112,7 +132,23 @@ export interface TransitionFulfillmentRequestStatusInput {
 export interface CancelFulfillmentWorkInput {
   readonly workId: string;
   readonly reason: FulfillmentCancellationReason;
-  readonly cancelledAt: Date;
+  readonly cancelledAt: Date;  /**
+   * Optimistic-concurrency precondition (#2406). When present the conditional
+   * UPDATE additionally carries `"version" = :expectedVersion`, so the state
+   * predicate, the version predicate and the write are ONE statement.
+   *
+   * Optional, and additive by design — the port's docblock reserved exactly
+   * this: *"#2406 will add an `expectedVersion` precondition to the mutating
+   * methods; an object shape makes that purely additive."* Omitting it keeps
+   * every pre-#2406 caller byte-identical.
+   *
+   * Because the version rides in the same WHERE as the state guard, a caller
+   * can distinguish "somebody moved it first" (version differs) from "not legal
+   * / already applied" (version matches, state guard refused) — which is what
+   * honours `version`'s "counts state changes, not writes" contract instead of
+   * reporting an idempotent replay as a stale-token 409.
+   */
+  readonly expectedVersion?: number;
 }
 
 /** Progress ingress (#2400) moves the counters, never a per-line status. */
@@ -131,13 +167,53 @@ export interface PlaceFulfillmentHoldInput {
   readonly placedByUserId?: string | null;
   readonly placedByService?: string | null;
   readonly placedAt: Date;
+
+  /**
+   * Optimistic-concurrency precondition (#2406). When present the conditional
+   * UPDATE additionally carries `"version" = :expectedVersion`, so the state
+   * predicate, the version predicate and the write are ONE statement.
+   *
+   * Optional, and additive by design — the port's docblock reserved exactly
+   * this: *"#2406 will add an `expectedVersion` precondition to the mutating
+   * methods; an object shape makes that purely additive."* Omitting it keeps
+   * every pre-#2406 caller byte-identical.
+   *
+   * Because the version rides in the same WHERE as the state guard, a caller
+   * can distinguish "somebody moved it first" (version differs) from "not legal
+   * / already applied" (version matches, state guard refused) — which is what
+   * honours `version`'s "counts state changes, not writes" contract instead of
+   * reporting an idempotent replay as a stale-token 409.
+   */
+  readonly expectedVersion?: number;
 }
 
 export interface ReleaseFulfillmentHoldInput {
   readonly holdId: string;
+  /**
+   * The work the hold belongs to. Required only to version-guard the header
+   * (#2406); the hold row itself is found by `holdId` alone, so a caller that
+   * passes no `expectedVersion` may omit it.
+   */
+  readonly workId?: string;
   readonly releasedAt: Date;
   readonly releasedByUserId?: string | null;
-  readonly releaseNote?: string | null;
+  readonly releaseNote?: string | null;  /**
+   * Optimistic-concurrency precondition (#2406). When present the conditional
+   * UPDATE additionally carries `"version" = :expectedVersion`, so the state
+   * predicate, the version predicate and the write are ONE statement.
+   *
+   * Optional, and additive by design — the port's docblock reserved exactly
+   * this: *"#2406 will add an `expectedVersion` precondition to the mutating
+   * methods; an object shape makes that purely additive."* Omitting it keeps
+   * every pre-#2406 caller byte-identical.
+   *
+   * Because the version rides in the same WHERE as the state guard, a caller
+   * can distinguish "somebody moved it first" (version differs) from "not legal
+   * / already applied" (version matches, state guard refused) — which is what
+   * honours `version`'s "counts state changes, not writes" contract instead of
+   * reporting an idempotent replay as a stale-token 409.
+   */
+  readonly expectedVersion?: number;
 }
 
 export interface ClaimFulfillmentDispatchInput {
@@ -206,6 +282,15 @@ export interface FulfillmentWorkRepositoryPort {
 
   findById(workId: string): Promise<FulfillmentWork | null>;
   findByOrderId(orderId: string): Promise<FulfillmentWork[]>;
+
+  /**
+   * The worklist read (#2406) — filtered, ordered and BOUNDED.
+   *
+   * Ordered `createdAt DESC, id DESC`: `createdAt` alone is not unique, so a
+   * page boundary landing inside a same-timestamp run would drop or repeat rows
+   * between pages. The id is the tiebreak that makes the page stable.
+   */
+  listWorks(filter: FulfillmentWorkListFilter): Promise<FulfillmentWorkPage>;
 
   transitionStatus(input: TransitionFulfillmentWorkStatusInput): Promise<boolean>;
   transitionRequestStatus(input: TransitionFulfillmentRequestStatusInput): Promise<boolean>;
@@ -298,4 +383,16 @@ export interface FulfillmentWorkRepositoryPort {
   releaseHold(input: ReleaseFulfillmentHoldInput): Promise<FulfillmentHold>;
 
   listActiveHolds(workId: string): Promise<FulfillmentHold[]>;
+
+  /**
+   * The BATCHED sibling of `listActiveHolds`, for the worklist read (#2406).
+   *
+   * One query for the whole page rather than one per work: at `limit = 100` the
+   * per-work call in a loop is 100 queries. Batched once BEFORE the loop, never
+   * inside it — the `getEarliestOrderDateByConnection` (#2083) precedent.
+   *
+   * Keyed by work id. A work with no active hold is absent from the map rather
+   * than present with an empty array, so a caller must default.
+   */
+  listActiveHoldsForWorks(workIds: readonly string[]): Promise<Map<string, FulfillmentHold[]>>;
 }

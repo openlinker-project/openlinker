@@ -159,6 +159,18 @@ export {
   fulfillmentRouteLockKey,
 } from './application/services/routing-commit-lock';
 
+// Operator worklist read model (#2406). The SERVICE INTERFACE, its view types
+// and the paging vocabulary cross the barrel; `FulfillmentWorkRepositoryPort`
+// still does not, per the deny pattern.
+export type { IFulfillmentWorklistService } from './application/interfaces/fulfillment-worklist.service.interface';
+export * from './application/types/fulfillment-work-view.types';
+export * from './domain/types/fulfillment-worklist-page.types';
+export * from './domain/types/fulfillment-supported-actions.types';
+export { FulfillmentWorkActionNotLegalError } from './domain/exceptions/fulfillment-work-action-not-legal.error';
+export { FulfillmentWorkVersionConflictError } from './domain/exceptions/fulfillment-work-version-conflict.error';
+export { FulfillmentWorkVersionMismatchError } from './domain/exceptions/fulfillment-work-version-mismatch.error';
+export { UnsupportedFulfillmentWorkActionError } from './domain/exceptions/unsupported-fulfillment-work-action.error';
+
 export { FulfillmentModule } from './fulfillment.module';
 
 export * from './fulfillment.tokens';
