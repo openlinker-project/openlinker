@@ -98,6 +98,21 @@ describe('ConnectionEntityLabel', () => {
     expect(await screen.findByText('Unknown')).toBeInTheDocument();
   });
 
+  it('renders System without fetching for the all-zero system connection id', () => {
+    const getById = vi.fn();
+    const api = createMockApiClient({ connections: { getById } });
+
+    renderWithProviders(
+      <ConnectionEntityLabel connectionId="00000000-0000-0000-0000-000000000000" />,
+      { apiClient: api },
+    );
+
+    expect(screen.getByText('System')).toBeInTheDocument();
+    expect(screen.queryByText('Unknown')).toBeNull();
+    expect(screen.queryByRole('link')).toBeNull();
+    expect(getById).not.toHaveBeenCalled();
+  });
+
   it('renders nothing when connectionId is empty', () => {
     const api = createMockApiClient({
       connections: {

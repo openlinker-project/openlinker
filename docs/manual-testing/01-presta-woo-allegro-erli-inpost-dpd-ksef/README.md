@@ -113,7 +113,7 @@ exact way to force a poll-based flow to run instead of waiting for its cron cade
 - **Jobs & Logs (web UI)** — left nav **Diagnostics → Jobs & Logs** (`/jobs-logs`). Lists every
   `sync_jobs` row with status (`queued` / `running` / `succeeded` / `dead`), the connection, the
   job type, attempts, and `lastError`. Filter by URL query: `/jobs-logs?status=dead`,
-  `?status=queued`, `?connectionId=<id>`, `?jobType=<type>`. The dashboard's "Failed jobs" KPI
+  `?status=queued`, `?connectionId=<id>`, `?jobType=<type>`. The Insights page's "Failed jobs" KPI
   links straight into `?status=dead`. This is the first stop for "the flow ran but nothing
   happened" — a `dead` row with a `lastError` is the usual culprit.
 - **Worker logs (container)** — poll jobs and offer/order pipelines execute in the **worker**
