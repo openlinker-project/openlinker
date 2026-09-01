@@ -17,5 +17,4 @@ export const fulfillmentQueryKeys = {
    * filter is a different query rather than a refetch of the same one.
    */
   list: (filters: FulfillmentTaskFilters) => ['fulfillment', 'works', 'list', filters] as const,
-  detail: (workId: string) => ['fulfillment', 'works', 'detail', workId] as const,
 };

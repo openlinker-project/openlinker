@@ -85,10 +85,23 @@ function mediaBlocks(css: string): { condition: string; body: string }[] {
   return blocks;
 }
 
+/**
+ * Escape a literal for use inside a `RegExp`.
+ *
+ * Spelled out rather than inlined into the template below: the inline form
+ * silently escaped NOTHING (its character class closed early on `[\\]`, leaving
+ * a pattern that matches no real class name), so a class name carrying a regex
+ * metacharacter would have made {@link declaresDisplayNone} answer `false` and
+ * the breakpoint guard pass while asserting nothing.
+ */
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 /** Does this chunk of CSS declare `display: none` for `className`? */
 function declaresDisplayNone(chunk: string, className: string): boolean {
   const pattern = new RegExp(
-    `\\.${className.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}\\s*\\{[^}]*display\\s*:\\s*none`
+    `\\.${escapeRegExp(className)}\\s*\\{[^}]*display\\s*:\\s*none`
   );
   return pattern.test(chunk);
 }
@@ -230,6 +243,15 @@ describe('fulfilment worklist breakpoint switch', () => {
       css
     );
     expect(declaresDisplayNone(outsideMediaBlocks, 'fulfilment-worklist__cards')).toBe(false);
+  });
+
+  it('escapes a class name before matching it, rather than only appearing to', () => {
+    // The guard of the guard for the escape. The inline escape this replaced
+    // matched nothing, so `.` in a class name stayed a wildcard and the rule
+    // matched a DIFFERENT class — a breakpoint assertion that reads green
+    // against the wrong selector is worse than none.
+    expect(declaresDisplayNone('.axb { display: none; }', 'a.b')).toBe(false);
+    expect(declaresDisplayNone('.a.b { display: none; }', 'a.b')).toBe(true);
   });
 
   it('extracts a media block by brace counting, not to its first closing brace', () => {

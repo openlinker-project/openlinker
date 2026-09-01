@@ -90,6 +90,32 @@ function controlLabels(row: HTMLElement): string[] {
 }
 
 describe('FulfillmentWorklistRow — actions come only from supportedActions', () => {
+  it('renders a DIFFERENT control set when the server offers a different one', () => {
+    // The three cases below hold `supportedActions` constant and assert the
+    // controls do not change — which a component that IGNORED the field and
+    // hardcoded its own list would also satisfy. This is the positive half:
+    // the rendered set TRACKS the server's, including an action this build has
+    // no copy table entry for, so nothing here can be a local vocabulary.
+    const both = renderRow(task({ supportedActions: ['hold', 'close'] }));
+    const baseline = controlLabels(both);
+    expect(baseline.length).toBeGreaterThan(1);
+
+    cleanup();
+
+    const one = renderRow(task({ supportedActions: ['close'] }));
+    const narrowed = controlLabels(one);
+    expect(narrowed.length).toBe(baseline.length - 1);
+    expect(baseline).toEqual(expect.arrayContaining(narrowed));
+
+    cleanup();
+
+    // An action the copy table does not know still reaches the operator: the
+    // row hands `supportedActions` through untouched, so the set cannot be
+    // narrowed to what this build happens to have words for.
+    const unknown = renderRow(task({ supportedActions: ['expedite_pick'] }));
+    expect(controlLabels(unknown)).toEqual(['Expedite pick']);
+  });
+
   it('renders the same controls for two tasks that differ only in status', () => {
     // The break this catches: `if (task.status !== 'open') return null;` around
     // the row's action strip.
