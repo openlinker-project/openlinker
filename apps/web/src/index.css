@@ -2731,6 +2731,7 @@ a.delivery-rider-banner__button:focus-visible {
  * primary content. Native `<option>` elements append the same string as
  * plain text via `optionPlainText` (style there is browser-default).
  */
+.mapping-option__derived-suffix,
 .mapping-option__dynamic-suffix {
   color: var(--text-muted);
   font-size: 0.75rem;
@@ -3325,8 +3326,35 @@ a.delivery-rider-banner__button:focus-visible {
   background: transparent;
 }
 
+/* A floor, not a fixed height (#2538): the stacked bars a multi-line column
+   declares are what make the row as tall as the loaded one. Pinning `height`
+   was what made a two-line table grow on load. */
 .data-table-skeleton__row {
-  height: 36px;
+  min-height: 36px;
+}
+
+/* Reserved on every row, because a table where only some rows carry an action
+   must not resize when it turns out that they do. */
+.data-table-skeleton__row--action td {
+  padding-bottom: 20px;
+}
+
+.data-table-skeleton__stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* The second and further lines of a cell are the meta line: shorter, matching
+   the identity cells this reserves room for. */
+.data-table-skeleton__bar--meta {
+  width: 60%;
+}
+
+.data-table-skeleton__bar--action {
+  height: 24px;
+  width: 30%;
+  border-radius: var(--radius-sm);
 }
 
 .data-table-skeleton__bar {
@@ -3983,6 +4011,38 @@ a.delivery-rider-banner__button:focus-visible {
   font-size: 0.75rem;
   line-height: 1.35;
   color: var(--text-muted);
+}
+
+/* ── Connection sync-status panel (#2615) ── */
+.connection-sync-status__headline {
+  margin: var(--space-2) 0 0;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: var(--text-primary);
+}
+
+.connection-sync-status__note {
+  margin: var(--space-2) 0 0;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
+.connection-sync-status__details {
+  margin-top: var(--space-3);
+}
+
+.connection-sync-status__details > summary {
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.connection-sync-status__details > summary:focus-visible {
+  box-shadow: var(--shadow-focus);
+  outline: none;
+  border-radius: 0.25rem;
 }
 
 /* Button group */
@@ -5980,6 +6040,18 @@ a.kpi-card:focus-visible {
 
 .tabs__content:focus-visible {
   outline: none;
+}
+
+/* ── forceMount'd panel that exists only as an `aria-controls` target
+   (#2448 / #2450 review) ────────────────────────────────────────────
+   A `forceMount`ed, non-selected Radix panel keeps `present === true`, so
+   Radix never sets the native `hidden` attribute on it - it stays an
+   ordinary flex item (dead gap under the tab bar) and a focusable
+   `tabIndex=0` stop with no content. This takes it out of both. Declared
+   after `.tabs__content` on purpose: same specificity, so source order is
+   what makes the override win. */
+.tabs__content--aria-anchor {
+  display: none;
 }
 
 /* ── Listings lifecycle tab bar: scroll, don't wrap, at phone widths
@@ -10623,6 +10695,17 @@ html[data-density='compact'] .status-badge {
   color: var(--text-disabled);
 }
 
+/* Weight sits behind its own divider - it's a different physical quantity
+ * from L x W x H, not a fourth dimension, so the rule reads it as its own
+ * fact rather than a continuation of the dims group (#2669). Deliberately
+ * NOT `display: flex` - this wraps two different internal layouts (a single
+ * input in a row, a stacked label+input in the profile bar) and must not
+ * impose a direction of its own on either. */
+.bulk-dispatch__weight {
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--border-default);
+}
+
 /* `input.bulk-dispatch__num` (not `.bulk-dispatch__num` alone) is required to
  * out-specificity the base `input[type='number'] { width: 100%; }` rule: that
  * rule combines an element-type selector with an attribute selector (0,1,1),
@@ -10630,16 +10713,30 @@ html[data-density='compact'] .status-badge {
  * the `input` element-type selector here brings this rule to the same
  * specificity tier so it wins on source order instead - otherwise these
  * compact dimension/weight fields silently stretch to share the row's flex
- * space instead of staying at their intended width (#1658). */
+ * space instead of staying at their intended width (#1658).
+ *
+ * Widths are sized for the agreed maximum value length plus the native
+ * number-input stepper: 4 digits of millimetres for dims, 5 digits of grams
+ * for weight (#2669 - the previous 52/68px clipped anything past 2-3 digits).
+ * `min-width` repeats the value so the input can never be squeezed below it
+ * even if a future layout change drops the explicit `width`. The base
+ * `.control` rule's 12px side padding is tightened to 4px here too - at the
+ * base padding a 64px input has ~40px left for digits + spinner, only
+ * ~3 digits, so widening the box alone was not enough to stop the clip
+ * (verified empirically: a 1500mm value rendered as "150" until the padding
+ * was cut down). */
 input.bulk-dispatch__num {
-  width: 52px;
+  width: 64px;
+  min-width: 64px;
   flex-shrink: 0;
+  padding: 0 var(--space-1);
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
 
 input.bulk-dispatch__num--wide {
-  width: 68px;
+  width: 84px;
+  min-width: 84px;
 }
 
 .bulk-dispatch__apply {
@@ -10668,11 +10765,16 @@ input.bulk-dispatch__num--wide {
   overflow-y: auto;
 }
 
+/* Flex-wrap, not a rigid grid (#2669): the id column no longer claims the
+ * whole flexible share, and the parcel-fields cluster (below) can drop to its
+ * own line as a group once the row runs out of width, instead of any input
+ * shrinking below its floor. */
 .bulk-dispatch__row {
-  display: grid;
-  grid-template-columns: minmax(140px, 1fr) auto auto auto auto;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-3);
+  column-gap: var(--space-3);
+  row-gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--border-subtle);
 }
@@ -10683,14 +10785,29 @@ input.bulk-dispatch__num--wide {
 
 .bulk-dispatch__row--ineligible {
   background: var(--bg-canvas);
-  grid-template-columns: minmax(140px, 1fr) auto auto;
 }
 
 .bulk-dispatch__row-id {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  /* Narrower than the old 140px grid track (#2669) - it no longer needs to
+   * carry the row's whole flexible share, just enough for the source pill +
+   * a couple of wrapped id lines + the buyer name. */
+  flex: 1 1 96px;
+  max-width: 168px;
   min-width: 0;
+}
+
+/* Groups dims + weight + the Ready badge as one unit so they wrap together
+ * onto their own line under the id/badge instead of each input shrinking
+ * (#2669). */
+.bulk-dispatch__parcel-fields {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-left: auto;
 }
 
 .bulk-dispatch__src {
@@ -10709,15 +10826,22 @@ input.bulk-dispatch__num--wide {
 .bulk-dispatch__ordid {
   font-size: 0.75rem;
   color: var(--text-primary);
+  line-height: 1.35;
+  /* Wraps only at the <wbr> break points `splitIdForWrap` inserts (the
+   * `ol_x_` prefix boundary, then every 6 hex chars) - never bare
+   * `overflow-wrap: anywhere` (inherited from `.mono`), which broke this
+   * unbroken internal id one character per line once its squeezed column ran
+   * low on width (#1658). `normal` respects only explicit break
+   * opportunities, so a narrow column gets sane multi-character chunks
+   * instead. Capped at 2 lines so a very long id still can't inflate the row
+   * (and, once clipped by `.bulk-dispatch__rows`' max-height, the whole
+   * dialog) the way the pre-#1658 unbounded wrap did (#2669). */
+  white-space: normal;
+  overflow-wrap: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  /* Without `nowrap`, `overflow-wrap: anywhere` (inherited from `.mono`)
-   * breaks this unbroken internal order id one character per line once its
-   * squeezed grid column runs low on width - inflating the row (and, once
-   * clipped by `.bulk-dispatch__rows`' max-height, the whole dialog) to
-   * hundreds of pixels of apparent empty space (#1658). `nowrap` lets the
-   * already-declared ellipsis truncate it on one line instead. */
-  white-space: nowrap;
 }
 
 .bulk-dispatch__buyer {
@@ -10725,19 +10849,15 @@ input.bulk-dispatch__num--wide {
 }
 
 .bulk-dispatch__row-error {
-  grid-column: 1 / -1;
+  flex-basis: 100%;
   font-size: 0.75rem;
   color: var(--status-error-fg);
-}
-
-.bulk-dispatch__row-spacer {
-  display: block;
 }
 
 .bulk-dispatch__row-hint {
   font-size: 0.75rem;
   color: var(--status-warning-fg);
-  grid-column: 1 / -1;
+  flex-basis: 100%;
 }
 
 .bulk-dispatch__link {
@@ -10786,11 +10906,25 @@ input.bulk-dispatch__num--wide {
 }
 
 @media (max-width: 767.98px) {
-  /* Stack each row's controls so dims/weight don't overflow on a phone. */
+  /* Stack each row's controls so dims/weight don't overflow on a phone -
+   * unchanged behaviour from before #2669, just expressed as a flex column
+   * instead of a single grid track (the row itself is flex-wrap now, not
+   * grid). Each control still lands on its own full-width line. */
   .bulk-dispatch__row,
   .bulk-dispatch__row--ineligible {
-    grid-template-columns: 1fr;
-    gap: var(--space-2);
+    flex-direction: column;
+    align-items: flex-start;
+    row-gap: var(--space-2);
+  }
+  .bulk-dispatch__row-id {
+    flex-basis: auto;
+    max-width: none;
+  }
+  .bulk-dispatch__parcel-fields {
+    flex-direction: column;
+    align-items: flex-start;
+    margin-left: 0;
+    width: 100%;
   }
   .bulk-dispatch__profile-fields {
     gap: var(--space-3);
@@ -19360,4 +19494,616 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 }
 .ack-row input[type='checkbox'] {
   margin-top: 3px;
+}
+
+/* ── Sync pacing (#2653) ─────────────────────────────────────────────────
+ * The operational-settings page. Every value below is a token, so the page
+ * holds in both themes without a second palette — the mockup was authored
+ * dark-only, but nothing here is a literal colour.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+.settings-column {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.impact-column {
+  position: sticky;
+  top: var(--space-4);
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+  align-self: start;
+}
+
+@media (max-width: 900px) {
+  .impact-column {
+    position: static;
+  }
+}
+
+.field-stack {
+  display: grid;
+  gap: var(--space-4);
+}
+
+/* Label with the effective value + its provenance pushed to the right. */
+.form-field__label--split {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.form-field__source {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+/* An operator-set value reads differently from an inherited one. */
+.form-field__source[data-source='setting'] {
+  color: var(--status-info-fg);
+}
+
+.field-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.field-row__slider {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent-primary);
+}
+
+.control--narrow {
+  width: 6.5rem;
+  flex: none;
+  text-align: right;
+}
+
+.field-changed {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--status-warning-fg);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+}
+
+.field-changed::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--status-warning);
+}
+
+.actions-hint {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.form-actions {
+  flex-wrap: wrap;
+  padding-top: var(--space-2);
+}
+
+/* ── The tick-budget bar ────────────────────────────────────────────────
+ * The track is the gap between runs, the fill is the projected run, and the
+ * hatched right-hand zone is everything past the host's process limit —
+ * struck out rather than tinted, so it reads as "not yours".
+ * ──────────────────────────────────────────────────────────────────────── */
+.impact-metric {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.impact-metric__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.impact-metric__name {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.impact-metric__value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8125rem;
+  color: var(--text-primary);
+}
+
+.budget-bar {
+  position: relative;
+  height: 2.25rem;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-canvas);
+  overflow: hidden;
+}
+
+.budget-bar__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--status-success) 45%, transparent),
+    color-mix(in oklab, var(--status-success) 70%, transparent)
+  );
+  transition:
+    width var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+}
+
+.budget-bar[data-over='true'] .budget-bar__fill {
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--status-error) 45%, transparent),
+    color-mix(in oklab, var(--status-error) 75%, transparent)
+  );
+}
+
+.budget-bar__forbidden {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent 0 5px,
+    color-mix(in oklab, var(--status-error) 26%, transparent) 5px 6px
+  );
+  border-left: 2px solid var(--status-error);
+}
+
+.budget-bar__ceiling-label {
+  position: absolute;
+  top: 50%;
+  transform: translate(6px, -50%);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  color: var(--status-error-fg);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.budget-bar__scale {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  color: var(--text-muted);
+}
+
+.impact-alert {
+  margin-top: var(--space-4);
+}
+
+/* ── Before / after ─────────────────────────────────────────────────────── */
+.impact-rows {
+  display: grid;
+  gap: 0;
+}
+
+.impact-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 0.8125rem;
+}
+
+.impact-row:first-child {
+  border-top: 0;
+}
+
+.impact-row__label {
+  color: var(--text-secondary);
+}
+
+.impact-row__from,
+.impact-row__to {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.impact-row__from,
+.impact-row__arrow {
+  color: var(--text-muted);
+}
+
+.impact-row__to {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.impact-row--better .impact-row__to {
+  color: var(--status-success-fg);
+}
+
+.impact-row--worse .impact-row__to {
+  color: var(--status-warning-fg);
+}
+
+.impact-rows__note {
+  margin-top: var(--space-3);
+}
+
+.limits-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.limits-list li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.limits-list li::before {
+  content: '';
+  width: 3px;
+  margin-top: 0.35em;
+  height: 0.9em;
+  background: var(--border-strong);
+  border-radius: 2px;
+}
+
+/* ── Confirmation change list ───────────────────────────────────────────── */
+.change-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.change {
+  display: grid;
+  gap: 0.3rem;
+  border: 1px solid var(--border-default);
+  border-left: 3px solid var(--status-warning);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  background: var(--bg-surface);
+}
+
+.change__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: 0.8125rem;
+}
+
+.change__name {
+  font-weight: 500;
+}
+
+.change__delta {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.change__delta b {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.change__effect {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+/* Informational, never a warning: it says WHEN a change lands, not that it
+   could hurt. The warning and error tones must keep meaning risk. */
+.change__timing {
+  margin: 0;
+  border-left: 2px solid var(--status-info-border);
+  padding-left: var(--space-2);
+  color: var(--status-info-fg);
+  font-size: 0.75rem;
+}
+
+/* ── Two ceilings (#2653 follow-up) ──────────────────────────────────────
+ * The slider runs to the ABSOLUTE ceiling, so the recommended one has to be
+ * visible on the track - otherwise an operator only learns they crossed it
+ * when the save is refused.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+.field-row__track {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.field-row__track .field-row__slider {
+  width: 100%;
+}
+
+.field-row__recommended-marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--status-warning);
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+.field-row__scale {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+}
+
+/* A value the operator deliberately pushed past our advice must not read as
+   an ordinary setting when the page is reopened. */
+.form-field__source[data-above-recommended='true'] {
+  color: var(--status-warning-fg);
+}
+
+/* The acknowledgement sits inside its warning, so it inherits the alert's
+   ground rather than drawing a second box on top of it. */
+.ack-row--inline {
+  margin-top: var(--space-2);
+  margin-bottom: 0;
+  border: 0;
+  padding: 0;
+  gap: var(--space-2);
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+/* Which ceiling a change crossed, on that change's own entry in the modal. */
+.change__ceiling {
+  margin: 0;
+  border-left: 2px solid var(--status-warning-border);
+  padding-left: var(--space-2);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.change__ceiling-label {
+  color: var(--status-warning-fg);
+  font-weight: 600;
+}
+
+/* ── Sales-document glyph + headline (#2535) ───────────────────────────
+   The kind is an entity axis, so the glyph inherits `currentColor` and takes
+   no tone of its own. On the headline, colour marks exceptions only: `done`
+   and `idle` stay plain ink, and every tinted state carries a second
+   non-colour signal (a tick, a live dot, or the state word itself). */
+
+.document-glyph {
+  flex: none;
+  color: inherit;
+}
+
+.document-headline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.document-headline__main {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-primary);
+}
+
+.document-headline__main .document-glyph {
+  width: 20px;
+  height: 20px;
+}
+
+.document-headline__word {
+  min-width: 0;
+}
+
+.document-headline__sep {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.document-headline__main--idle {
+  color: var(--text-muted);
+}
+
+.document-headline__main--warning {
+  color: var(--status-warning-fg);
+}
+
+.document-headline__main--error {
+  color: var(--status-error-fg);
+}
+
+/* A finished or in-flight document is not an exception, so its glyph recedes
+   and the words stay in ordinary ink. */
+.document-headline__main--done .document-glyph,
+.document-headline__main--progress .document-glyph {
+  color: var(--text-muted);
+}
+
+.document-headline__tick {
+  flex: none;
+  color: var(--status-success);
+}
+
+.document-headline__live {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--status-info);
+  animation: document-headline-pulse 1.6s var(--ease-out) infinite;
+}
+
+@keyframes document-headline-pulse {
+  0% {
+    opacity: 0.95;
+  }
+  70% {
+    opacity: 0.45;
+  }
+  100% {
+    opacity: 0.95;
+  }
+}
+
+/* The dot's tint already says "in flight"; the animation is decorative. */
+@media (prefers-reduced-motion: reduce) {
+  .document-headline__live {
+    animation: none;
+  }
+}
+
+.document-headline__sub {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+/* ── Document lifecycle trail (#2536) ──────────────────────────────────
+   One step per persisted stage of an invoice. State is carried by the
+   marker's SHAPE as well as its tint, and each step announces its state in
+   words, so the trail survives without colour. */
+
+.document-lifecycle {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.document-lifecycle__step {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto auto auto;
+  gap: 2px;
+  padding-top: var(--space-3);
+}
+
+/* The connector runs from the previous marker to this one, so the first step
+   has none to its left and the last none to its right. */
+.document-lifecycle__step::before {
+  content: '';
+  position: absolute;
+  top: 5px;
+  left: 0;
+  right: 50%;
+  height: 2px;
+  background: var(--border-subtle);
+}
+
+.document-lifecycle__step:first-child::before {
+  left: 50%;
+}
+
+.document-lifecycle__step--done::before {
+  background: var(--status-success-border);
+}
+
+.document-lifecycle__marker {
+  position: absolute;
+  top: 0;
+  left: calc(50% - 6px);
+  display: inline-grid;
+  place-items: center;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--border-strong);
+  background: var(--bg-surface);
+  color: var(--text-inverse);
+}
+
+.document-lifecycle__step--done .document-lifecycle__marker {
+  border-color: var(--status-success);
+  background: var(--status-success);
+}
+
+.document-lifecycle__step--error .document-lifecycle__marker {
+  border-color: var(--status-error);
+  background: var(--status-error);
+}
+
+.document-lifecycle__step--active .document-lifecycle__marker {
+  border-color: var(--status-info);
+  animation: document-lifecycle-pulse 1.6s var(--ease-out) infinite;
+}
+
+@keyframes document-lifecycle-pulse {
+  0% {
+    opacity: 1;
+  }
+  70% {
+    opacity: 0.45;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* The marker's shape and the announced state word both survive without it. */
+@media (prefers-reduced-motion: reduce) {
+  .document-lifecycle__step--active .document-lifecycle__marker {
+    animation: none;
+  }
+}
+
+.document-lifecycle__label {
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.document-lifecycle__step--todo .document-lifecycle__label {
+  color: var(--text-muted);
+}
+
+.document-lifecycle__time {
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
 }

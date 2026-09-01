@@ -72,6 +72,14 @@ export {
   OrderDispatchWindow,
 } from './domain/types/order.types';
 export { OrderPickupPointTypeValues } from './domain/types/order.types';
+export type { BuyerTaxId } from './domain/types/buyer-tax-id.types';
+export {
+  readBuyerTaxId,
+  buyerHasTaxId,
+  encodeBuyerTaxIdColumn,
+  decodeBuyerTaxIdColumn,
+  readSourceBuyerTaxId,
+} from './domain/types/buyer-tax-id.types';
 export { PaymentStatusValues, PAYMENT_STATUS } from './domain/types/payment-status.types';
 export type { PaymentStatus } from './domain/types/payment-status.types';
 export type { CodToCollect } from './domain/types/cod-to-collect.types';
@@ -173,6 +181,8 @@ export {
 } from './application/interfaces/order-ingestion.service.interface';
 export { IOrderRecordService } from './application/interfaces/order-record.service.interface';
 export { OrderRecordService } from './application/services/order-record.service';
+export { ISalesDocumentViewService } from './application/interfaces/sales-document-view.service.interface';
+export { SalesDocumentViewService } from './application/services/sales-document-view.service';
 export type { IOrderFxStampService } from './application/interfaces/order-fx-stamp.service.interface';
 // FX aggregate reads for the reporting-currency settings surface (#2126).
 export type { IOrderFxReadService } from './application/interfaces/order-fx-read.service.interface';

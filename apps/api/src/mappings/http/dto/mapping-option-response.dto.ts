@@ -29,4 +29,10 @@ export class MappingOptionResponseDto {
     enum: MappingOptionKindValues,
   })
   kind?: MappingOptionKind;
+
+  @ApiPropertyOptional({
+    description:
+      'The neutral value the integration already derives for this option without an operator override. Absent means the integration derives nothing here, not that nothing is matched.',
+  })
+  derivedValue?: string;
 }

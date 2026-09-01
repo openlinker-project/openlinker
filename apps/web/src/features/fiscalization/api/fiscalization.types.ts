@@ -44,14 +44,98 @@ export interface FiscalRegistrationRecord {
   updatedAt: string;
 }
 
-export type FiscalReconcileOutcome = 'resolved' | 'not-found' | 'unsupported';
+/**
+ * Mirrors `FiscalReconcileOutcomeValues` in
+ * `libs/core/src/fiscalization/domain/types/fiscalization.types.ts`.
+ *
+ * The browser bundle cannot import `@openlinker/core`, so this is a hand-written
+ * copy and it drifts silently in both directions - a value added only to core
+ * never reaches the browser, and one added only here type-checks against
+ * something the API will never send. `scripts/check-fiscal-reconcile-outcome-mirror.mjs`
+ * enforces the equality under `pnpm check:invariants`; this comment is not the
+ * enforcement.
+ *
+ * Only `resolved` changes the record. The other three leave it exactly as it
+ * was, and none of them licenses a resend.
+ */
+export type FiscalReconcileOutcome =
+  | 'resolved'
+  | 'not-found'
+  | 'unsupported'
+  | 'still-unknown';
 
 export interface ReconcileFiscalRegistrationResult {
   outcome: FiscalReconcileOutcome;
   record: FiscalRegistrationRecord;
 }
 
+/**
+ * Mirrors `AcceptedFiscalRegistrationResponseDto`.
+ *
+ * The answer to asking for a registration. It carries no status and no record,
+ * because when it is sent a job exists and no provider has been called. Nothing
+ * may read an outcome out of it.
+ */
+export interface AcceptedFiscalRegistration {
+  orderId: string;
+  connectionId: string;
+  idempotencyKey: string;
+  jobId: string;
+  /** The request restarted a job that had given up, rather than joining a live one. */
+  redrivenFromDead: boolean;
+}
+
 export interface RegisterFiscalTransactionInput {
   connectionId: string;
   orderId: string;
+}
+
+/**
+ * Mirrors `FiscalRegistrationProgressValues` in
+ * `libs/core/src/fiscalization/domain/types/fiscal-registration-progress.types.ts`.
+ *
+ * The browser bundle cannot import `@openlinker/core` (#591), so this is a
+ * hand-written copy and it drifts silently in both directions.
+ * `scripts/check-fiscal-registration-progress-mirror.mjs` enforces the equality
+ * under `pnpm check:invariants`; this comment is not the enforcement.
+ *
+ * `stalled` and `interrupted` both mean nothing is running, and they must not be
+ * rendered with the same words: `stalled` is work that never reached the
+ * provider, `interrupted` is an attempt that stopped without answering and may
+ * already have reached it. Only the first may be described as having registered
+ * nothing. `rejected` and `in-doubt` stay apart for the same reason - only a
+ * rejection may be re-attempted freely.
+ */
+export type FiscalRegistrationProgress =
+  | 'not-requested'
+  | 'queued'
+  | 'running'
+  | 'stalled'
+  | 'interrupted'
+  | 'registered'
+  | 'rejected'
+  | 'in-doubt';
+
+/**
+ * A sales document being produced for this order right now, on any connection.
+ *
+ * `since` is a LOWER BOUND on how long the attempt has been running, never its
+ * start: nothing persists a claim-start instant, and a write inside a live claim
+ * moves it forward. A surface may render an elapsed reading from it and must not
+ * render a start time, a countdown or an estimate - OpenLinker observes no steps
+ * between handing a sale to a provider and getting one answer back.
+ */
+export interface SalesDocumentInFlight {
+  documentKind: 'invoice' | 'fiscal-receipt';
+  connectionId: string;
+  recordId: string;
+  since: string;
+}
+
+/** Mirrors `FiscalRegistrationProgressResponseDto`. */
+export interface FiscalRegistrationProgressView {
+  progress: FiscalRegistrationProgress;
+  /** Null while the work is queued, which is normal rather than an error. */
+  record: FiscalRegistrationRecord | null;
+  inFlight: SalesDocumentInFlight | null;
 }

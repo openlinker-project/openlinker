@@ -226,6 +226,15 @@ export interface AllegroOfferQuantityChangeCommand {
 }
 
 /**
+ * Allegro's `{code, message}` error shape, shared by the quantity-change
+ * command's synchronous rejection and by each polled task's own errors.
+ */
+export interface AllegroTaskError {
+  code: string;
+  message: string;
+}
+
+/**
  * Allegro offer quantity change command response
  *
  * Response from PUT /sale/offer-quantity-change-commands/{commandId} endpoint.
@@ -233,10 +242,7 @@ export interface AllegroOfferQuantityChangeCommand {
 export interface AllegroOfferQuantityChangeCommandResponse {
   id: string;
   status: 'QUEUED' | 'ACCEPTED' | 'REJECTED';
-  errors?: Array<{
-    code: string;
-    message: string;
-  }>;
+  errors?: AllegroTaskError[];
 }
 
 /**
@@ -255,10 +261,7 @@ export interface AllegroQuantityChangeCommandStatusResponse {
     offerId: string;
     status: AllegroCommandTaskStatus;
     message?: string;
-    errors?: Array<{
-      code: string;
-      message: string;
-    }>;
+    errors?: AllegroTaskError[];
   }>;
 }
 
@@ -668,8 +671,8 @@ export interface AllegroProductOfferCreateRequest extends Record<string, unknown
   /**
    * Ship-from address. Required for every offer regardless of inline vs
    * smart-link path (#430 — sandbox 422 on `location.state` was the
-   * original trigger). Sourced from `Connection.config.allegro
-   * .sellerDefaults.location` at offer-build time.
+   * original trigger). Sourced from `Connection.config.sellerDefaults
+   * (config ROOT).location` at offer-build time.
    */
   location?: {
     countryCode: string;

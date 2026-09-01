@@ -299,7 +299,19 @@ export function createMockApiClient(
       // #1909 — empty list default: the normal never-registered state, never a
       // 404 (OpenLinker never asserts an order requires a receipt).
       listForOrder: vi.fn().mockResolvedValue([]),
-      register: vi.fn().mockResolvedValue(null),
+      register: vi.fn().mockResolvedValue({
+        orderId: 'ord_1',
+        connectionId: 'conn_fiscal',
+        idempotencyKey: 'fiscal:conn_fiscal:ord_1',
+        jobId: 'job_1',
+        redrivenFromDead: false,
+      }),
+      // #2526 — default: nobody has asked to register this sale.
+      getProgress: vi.fn().mockResolvedValue({
+        progress: 'not-requested',
+        record: null,
+        inFlight: null,
+      }),
       reconcile: vi.fn().mockResolvedValue(null),
       ...overrides.fiscalization,
     } as ApiClient['fiscalization'],
@@ -366,6 +378,85 @@ export function createMockApiClient(
         ),
       ...overrides.invoicing,
     } as ApiClient['invoicing'],
+    operationalSettings: {
+      get: vi.fn().mockResolvedValue({
+        catalogueSweepBudget: {
+          value: 500,
+          source: 'default',
+          recommendedMax: 2000,
+          recommendedReason: 'A 2000-item run takes about 184 s against a 1200 s window.',
+          absoluteMax: 20000,
+          absoluteReason: 'A sanity backstop against a mistyped value.',
+          aboveRecommended: false,
+        },
+        inventorySweepBudget: {
+          value: 100,
+          source: 'default',
+          recommendedMax: 2000,
+          recommendedReason: 'Headroom is the point; 2000 matches the catalogue sweep.',
+          absoluteMax: 20000,
+          absoluteReason: 'The same sanity backstop as the catalogue sweep.',
+          aboveRecommended: false,
+        },
+        sweepPageSize: {
+          value: 100,
+          source: 'default',
+          recommendedMax: 100,
+          recommendedReason: "100 is PrestaShop's own collection page size.",
+          absoluteMax: 500,
+          absoluteReason: 'Ids are joined into a query string, so this drives URL length.',
+          aboveRecommended: false,
+        },
+        deletionAuditBudget: {
+          value: 100,
+          source: 'default',
+          recommendedMax: 2000,
+          recommendedReason: 'A 41.7-day audit cycle at the default is what this knob is for.',
+          absoluteMax: 20000,
+          absoluteReason: 'The same sanity backstop as the catalogue sweep.',
+          aboveRecommended: false,
+        },
+        deletionAuditCadence: { value: '0 * * * *', source: 'default' },
+        deletionAuditAlwaysEnabled: true,
+        cadenceAppliesAt: 'next-scheduler-start',
+        updatedAt: null,
+        updatedBy: null,
+        adapterClampNote:
+          'A page size above what a specific adapter can send is clamped where the request is built.',
+        bounds: {
+          catalogueSweepBudget: {
+            min: 1,
+            recommendedMax: 2000,
+            absoluteMax: 20000,
+            default: 500,
+            envVar: 'OL_PRODUCT_SYNC_PAGE_LIMIT',
+          },
+          inventorySweepBudget: {
+            min: 1,
+            recommendedMax: 2000,
+            absoluteMax: 20000,
+            default: 100,
+            envVar: 'OL_INVENTORY_SYNC_PAGE_LIMIT',
+          },
+          sweepPageSize: {
+            min: 1,
+            recommendedMax: 100,
+            absoluteMax: 500,
+            default: 100,
+            envVar: 'OL_SWEEP_PAGE_SIZE',
+          },
+          deletionAuditBudget: {
+            min: 1,
+            recommendedMax: 2000,
+            absoluteMax: 20000,
+            default: 100,
+            envVar: 'OL_MASTER_PRODUCT_RECONCILE_PAGE_LIMIT',
+          },
+        },
+      }),
+      update: vi.fn().mockResolvedValue(undefined),
+      ...overrides.operationalSettings,
+    } as ApiClient['operationalSettings'],
     orders: {
       list: vi.fn().mockResolvedValue({
         items: [],

@@ -88,6 +88,12 @@ export interface MarketplaceOfferQuantityUpdatePayloadV1 {
   offerId: string;
   quantity: number;
   idempotencyKey?: string;
+  /**
+   * ISO timestamp of the inventory observation this quantity came from (#2617).
+   * Absent on a legacy job already queued across the deploy, which then writes
+   * unguarded as before.
+   */
+  observedAt?: string;
 }
 
 export interface MarketplaceOfferFieldUpdatePayloadV1 {
@@ -264,6 +270,22 @@ export interface MarketplaceOfferStatusSyncPayloadV1 {
    * `allegro.offerStatus.scanOffset`.
    */
   cursorKey?: string;
+}
+
+/**
+ * Payload for `marketplace.offerQuantity.reconcile` jobs (#2621).
+ *
+ * Steady-state reconcile of a connection's outstanding asynchronously-
+ * acknowledged quantity writes — mirrors `MarketplaceOfferStatusSyncPayloadV1`
+ * in shape, but there is no scan offset: `limit` simply bounds how many
+ * outstanding writes the adapter's own bookkeeping resolves per run, since
+ * the pending-write set is adapter-internal and naturally shrinks as writes
+ * terminalize.
+ */
+export interface MarketplaceOfferQuantityReconcilePayloadV1 {
+  schemaVersion: 1;
+  /** Max outstanding writes to reconcile per run. */
+  limit: number;
 }
 
 /**

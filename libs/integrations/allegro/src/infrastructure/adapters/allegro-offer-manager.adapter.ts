@@ -46,6 +46,12 @@ import type {
   OfferFeedOutput,
   UpdateOfferQuantityCommand,
   UpdateOfferFieldsCommand,
+  PendingQuantityAckReconciler,
+  PendingQuantityAckReconcileResult,
+  OfferQuantityBatchUpdater,
+  UpdateOfferQuantitiesBatchCommand,
+  UpdateOfferQuantitiesBatchResult,
+  UpdateOfferQuantitiesBatchFailure,
   CreateOfferCommand,
   OfferCondition,
   OfferParameter,
@@ -95,6 +101,7 @@ import { toNeutralCategoryParameter } from '../mappers/allegro-category-paramete
 import type {
   AllegroOfferQuantityChangeCommandResponse,
   AllegroQuantityChangeCommandStatusResponse,
+  AllegroTaskError,
   AllegroCategoryParametersResponse,
   AllegroCategoriesResponse,
   AllegroCategoryResponse,
@@ -191,6 +198,15 @@ const MAX_CATEGORY_PATH_DEPTH = 12;
 const SINGLE_ITEM_KEY = 'single';
 
 /**
+ * Age past which a still-`queued`/`accepted` quantity command is warn-logged
+ * by `reconcilePendingQuantityAcks` rather than silently re-checked forever.
+ * A slow-but-live command still resolves on a later pass; this only makes a
+ * command Allegro appears to never terminalize observable, since today
+ * nothing ages such a row out or dead-letters it.
+ */
+const PENDING_QUANTITY_ACK_STALE_WARN_MS = 30 * 60 * 1000;
+
+/**
  * Build a URL-safe slug from a human offer name for the cosmetic path segment
  * of a public offer URL. Lowercases, strips diacritics (NFD + drop combining
  * marks), collapses every non-alphanumeric run to a single `-`, and trims
@@ -218,8 +234,8 @@ function slugify(name: string): string {
 }
 
 /**
- * Defensive runtime check for the persisted `Connection.config.allegro
- * .sellerDefaults` blob. The TypeScript shape (`AllegroSellerDefaultsConfig`)
+ * Defensive runtime check for the persisted `Connection.config
+ * .sellerDefaults` (config ROOT) blob. The TypeScript shape (`AllegroSellerDefaultsConfig`)
  * marks every sub-field non-optional, but the JSONB column can carry partial
  * shapes if the operator saved a half-completed wizard before #437 closed
  * the DTO bypass — and on the operator-experience side we still want to
@@ -288,6 +304,8 @@ export interface QuantityPollConfig {
 export class AllegroOfferManagerAdapter
   implements
     OfferManagerPort,
+    PendingQuantityAckReconciler,
+    OfferQuantityBatchUpdater,
     OfferLister,
     OfferEventReader,
     OfferFieldUpdater,
@@ -374,7 +392,7 @@ export class AllegroOfferManagerAdapter
     /**
      * Connection-level seller defaults — `location` (every offer),
      * `responsibleProducerId` and `safetyInformation` (inline-product path).
-     * Sourced from `Connection.config.allegro.sellerDefaults` by
+     * Sourced from `Connection.config.sellerDefaults` (config ROOT) by
      * `AllegroAdapterFactory`. When undefined, `createOffer` throws
      * `OfferCreateRejectedException` with code
      * `SELLER_DEFAULTS_NOT_CONFIGURED` rather than silently producing a
@@ -523,8 +541,19 @@ export class AllegroOfferManagerAdapter
   /**
    * Update marketplace offer quantity.
    *
-   * Issues an Allegro offer quantity change command. Uses idempotency key
-   * to derive a deterministic commandId for deduplication.
+   * Issues an Allegro offer quantity change command and returns as soon as
+   * Allegro acknowledges the SUBMISSION — it does not wait for the command to
+   * reach a terminal status (#2621). Allegro's own per-offer throttle
+   * (~60/minute) means waiting here made propagation queue depth a direct
+   * function of platform latency rather than of OL's own throughput. A
+   * synchronous `REJECTED` submission (the platform's own definitive,
+   * immediately-known answer) still throws so the caller marks the write
+   * failed right away; a `QUEUED`/`ACCEPTED` submission resolves as
+   * "dispatched" and is reconciled later by `reconcilePendingQuantityAcks`,
+   * driven by the `marketplace.offerQuantity.reconcile` job.
+   *
+   * Uses idempotency key to derive a deterministic commandId for
+   * deduplication.
    */
   async updateOfferQuantity(cmd: UpdateOfferQuantityCommand): Promise<void> {
     if (!cmd.idempotencyKey) {
@@ -560,9 +589,10 @@ export class AllegroOfferManagerAdapter
         commandBody
       );
 
+      const status = this.mapAllegroCommandStatus(response.data.status);
+
       try {
         if (this.commandRepository) {
-          const status = this.mapAllegroCommandStatus(response.data.status);
           const command = AllegroQuantityCommand.create(
             response.data.id,
             this.connectionId,
@@ -579,10 +609,16 @@ export class AllegroOfferManagerAdapter
       }
 
       this.logger.debug(
-        `Allegro offer quantity command submitted: commandId=${response.data.id} (connection: ${this.connectionId})`
+        `Allegro offer quantity command submitted: commandId=${response.data.id}, status=${status} (connection: ${this.connectionId})`
       );
 
-      await this.pollAndUpdateCommandStatus(response.data.id, cmd.offerId);
+      if (status === 'rejected') {
+        const errorMessages =
+          response.data.errors?.map((e) => `${e.code}: ${e.message}`).join('; ') ?? 'rejected';
+        throw new Error(
+          `Allegro rejected offer quantity command ${response.data.id} for offer ${cmd.offerId}: ${errorMessages}`
+        );
+      }
     } catch (error) {
       this.logger.error(
         `Failed to update Allegro offer quantity (offerId: ${cmd.offerId}, connection: ${this.connectionId}): ${(error as Error).message}`,
@@ -590,6 +626,213 @@ export class AllegroOfferManagerAdapter
       );
       throw error;
     }
+  }
+
+  /**
+   * Batched counterpart of `updateOfferQuantity` (#2622). Allegro's
+   * quantity-change-commands endpoint applies ONE `modification` value to
+   * every offer named in `offerCriteria` — there is no per-offer distinct
+   * quantity in a single command — so items are grouped by their target
+   * quantity and one command is issued per group, rather than one per item.
+   * A batch that happens to share the same quantity across all offers costs
+   * exactly one request; a batch with N distinct quantities costs N requests
+   * (still far below Allegro's ~60/min single-offer throttle for anything
+   * larger than a handful of distinct values).
+   *
+   * Returns as soon as Allegro acknowledges submission, exactly like the
+   * single-item `updateOfferQuantity` (#2621) — it does not poll for a
+   * terminal status. A `QUEUED`/`ACCEPTED` group resolves every one of its
+   * items as dispatched; `reconcilePendingQuantityAcks` resolves the
+   * persisted queued/accepted rows to succeeded/failed later, on its own
+   * schedule.
+   *
+   * Never throws: a whole-group failure (submit, or a synchronous platform
+   * rejection) is reported as a per-item failure for every offer in that
+   * group, so one bad group cannot sink offers in a sibling group, and the
+   * caller never falls back to the N-request single-item path unnecessarily.
+   */
+  async updateOfferQuantitiesBatch(
+    cmd: UpdateOfferQuantitiesBatchCommand
+  ): Promise<UpdateOfferQuantitiesBatchResult> {
+    const succeeded: string[] = [];
+    const failed: UpdateOfferQuantitiesBatchFailure[] = [];
+
+    const groups = new Map<number, UpdateOfferQuantityCommand[]>();
+    for (const item of cmd.items) {
+      if (!item.idempotencyKey) {
+        failed.push({
+          offerId: item.offerId,
+          errorCode: 'missing-idempotency-key',
+          message: 'idempotencyKey is required for Allegro offer quantity updates',
+        });
+        continue;
+      }
+      const group = groups.get(item.quantity);
+      if (group) {
+        group.push(item);
+      } else {
+        groups.set(item.quantity, [item]);
+      }
+    }
+
+    await Promise.all(
+      Array.from(groups.values()).map((items) => this.submitQuantityGroup(items, succeeded, failed))
+    );
+
+    return { succeeded, failed };
+  }
+
+  /**
+   * Submits one quantity-change command covering every item in `items` (all
+   * sharing the same target quantity) and maps Allegro's per-offer task
+   * outcomes onto `succeeded`/`failed`. The commandId is derived from the
+   * sorted set of item idempotency keys, so a retried batch with the same
+   * membership dedupes against the same Allegro command.
+   */
+  private async submitQuantityGroup(
+    items: UpdateOfferQuantityCommand[],
+    succeeded: string[],
+    failed: UpdateOfferQuantitiesBatchFailure[]
+  ): Promise<void> {
+    const quantity = items[0].quantity;
+    const groupKey = items
+      .map((item) => item.idempotencyKey)
+      .sort()
+      .join(',');
+    const commandId = this.generateCommandIdFromIdempotencyKey(groupKey);
+
+    try {
+      const commandBody: Record<string, unknown> = {
+        modification: {
+          changeType: 'FIXED',
+          value: quantity,
+        },
+        offerCriteria: [
+          {
+            offers: items.map((item) => ({ id: item.offerId })),
+            type: 'CONTAINS_OFFERS',
+          },
+        ],
+      };
+
+      const response = await this.httpClient.put<AllegroOfferQuantityChangeCommandResponse>(
+        `/sale/offer-quantity-change-commands/${commandId}`,
+        commandBody
+      );
+
+      this.logger.debug(
+        `Allegro batch offer quantity command submitted: commandId=${commandId}, offers=${items.length}, status=${response.data.status} (connection: ${this.connectionId})`
+      );
+
+      await this.persistBatchCommandRows(commandId, response.data.status, items);
+
+      if (response.data.status === 'REJECTED') {
+        // Allegro answered synchronously — this is the platform's own
+        // definitive, immediately-known answer, so it fails right away
+        // rather than waiting for a reconcile pass that will never resolve
+        // it (no task for a rejected command ever appears).
+        const message = this.formatAllegroTaskErrors(response.data.errors) ?? 'rejected';
+        for (const item of items) {
+          failed.push({ offerId: item.offerId, errorCode: 'rejected', message });
+          await this.persistBatchOfferStatus(commandId, item.offerId, 'failed', message);
+        }
+        return;
+      }
+
+      // QUEUED/ACCEPTED — dispatched, not yet terminal (#2621). Every item in
+      // the group resolves as accepted-for-processing here, exactly like the
+      // single-item path; `reconcilePendingQuantityAcks` resolves the
+      // already-persisted queued/accepted rows to succeeded/failed later.
+      for (const item of items) {
+        succeeded.push(item.offerId);
+      }
+    } catch (error) {
+      this.logger.error(
+        `Failed to submit Allegro batch offer quantity command (offers=${items.length}, connection: ${this.connectionId}): ${(error as Error).message}`,
+        error
+      );
+      for (const item of items) {
+        failed.push({
+          offerId: item.offerId,
+          errorCode: 'transport-error',
+          message: (error as Error).message,
+        });
+      }
+    }
+  }
+
+  /**
+   * Best-effort per-offer command-record creation for a batch group (#2622
+   * review). `updateOfferQuantity`'s single-item path persists one row per
+   * command via `commandRepository.create`; a batch command covers several
+   * offers under one Allegro commandId, so this persists one row PER OFFER
+   * against that same commandId — the widened (commandId, offerId) unique
+   * index (see the migration) is what makes that possible. Never throws:
+   * losing observability must never sink a batch that Allegro itself accepted.
+   */
+  private async persistBatchCommandRows(
+    commandId: string,
+    allegroStatus: 'QUEUED' | 'ACCEPTED' | 'REJECTED',
+    items: UpdateOfferQuantityCommand[]
+  ): Promise<void> {
+    if (!this.commandRepository) {
+      return;
+    }
+    const status = this.mapAllegroCommandStatus(allegroStatus);
+    await Promise.all(
+      items.map(async (item) => {
+        try {
+          const command = AllegroQuantityCommand.create(
+            commandId,
+            this.connectionId,
+            item.offerId,
+            item.quantity,
+            status
+          );
+          await this.commandRepository?.create(command);
+        } catch (persistError) {
+          this.logger.warn(
+            `Failed to persist batch offer quantity command row (commandId: ${commandId}, offerId: ${item.offerId}): ${(persistError as Error).message}`
+          );
+        }
+      })
+    );
+  }
+
+  /**
+   * Best-effort per-offer status update for a batch group (#2622 review).
+   * Mirrors `pollAndUpdateCommandStatus`'s persistence, but disambiguated by
+   * (commandId, offerId) since one batch commandId can back several rows.
+   */
+  private async persistBatchOfferStatus(
+    commandId: string,
+    offerId: string,
+    status: 'succeeded' | 'failed',
+    error?: string | null
+  ): Promise<void> {
+    if (!this.commandRepository) {
+      return;
+    }
+    try {
+      await this.commandRepository.updateOfferStatus(commandId, offerId, status, error);
+    } catch (persistError) {
+      this.logger.warn(
+        `Failed to persist batch offer quantity command status (commandId: ${commandId}, offerId: ${offerId}): ${(persistError as Error).message}`
+      );
+    }
+  }
+
+  /**
+   * Joins Allegro's `{code, message}` error list into one string, or
+   * returns `undefined` when there is nothing to report — including when
+   * `errors` is present but empty, so callers can safely `?? fallback`
+   * without a defined-but-empty string masking it (#2622 review).
+   */
+  private formatAllegroTaskErrors(errors: AllegroTaskError[] | undefined): string | undefined {
+    if (!errors || errors.length === 0) {
+      return undefined;
+    }
+    return errors.map((e) => `${e.code}: ${e.message}`).join('; ');
   }
 
   /**
@@ -1373,7 +1616,7 @@ export class AllegroOfferManagerAdapter
    *
    * #487 — Allegro re-validates the whole offer on every PATCH. A description-
    * only update will 422 if the offer happens to be missing required fields
-   * that live on `Connection.config.allegro.sellerDefaults` (GPSR
+   * that live on `Connection.config.sellerDefaults` (config ROOT; GPSR
    * `responsibleProducer` / `safetyInformation`, ship-from `location`). When
    * `sellerDefaults` is configured, we opportunistically merge those into the
    * PATCH body via `buildSellerDefaultsPatch`. Caller-supplied fields always
@@ -2323,13 +2566,20 @@ export class AllegroOfferManagerAdapter
   /**
    * Poll Allegro for quantity change command completion status.
    *
-   * Uses exponential backoff: 2s initial, 2x multiplier, 30s max, 5 attempts.
-   * Returns the final status response, or the last response if still pending after timeout.
+   * Uses exponential backoff: 2s initial, 2x multiplier, 30s max, 5 attempts
+   * by default. `overrides` lets a caller that already paces its own retries
+   * (the reconcile sweep, driven by its own scheduled cadence) ask for a
+   * single, immediate check instead of layering a second backoff loop on
+   * top of the sweep's own — see `reconcileOneQuantityCommand`.
    */
   private async pollQuantityCommandStatus(
-    commandId: string
+    commandId: string,
+    overrides?: Partial<QuantityPollConfig>
   ): Promise<AllegroQuantityChangeCommandStatusResponse | null> {
-    const { maxAttempts, initialDelayMs, maxDelayMs, backoffMultiplier } = this.quantityPollConfig;
+    const { maxAttempts, initialDelayMs, maxDelayMs, backoffMultiplier } = {
+      ...this.quantityPollConfig,
+      ...overrides,
+    };
 
     let delayMs = initialDelayMs;
 
@@ -2368,59 +2618,205 @@ export class AllegroOfferManagerAdapter
   }
 
   /**
-   * Poll for command status and update the persisted command record.
+   * Reconciles up to `limit` of this connection's outstanding
+   * asynchronously-acknowledged quantity commands (#2621) — the "confirm
+   * later" half of `updateOfferQuantity`, which returns as soon as Allegro
+   * acknowledges submission rather than waiting for a terminal status.
    *
-   * On SUCCESS: update to 'succeeded'
-   * On FAIL: update to 'failed' with error details, then throw
-   * On timeout: leave as 'queued', log warning
+   * Pending rows are grouped by `commandId` before any Allegro call: a batch
+   * write (#2622) persists several rows — one per offer — under ONE shared
+   * commandId, and Allegro's own command-status read answers for the whole
+   * command regardless of how many rows OL keeps for it. Issuing one GET per
+   * row here would re-fetch the identical response once per offer in the
+   * group, undoing #2622's batching efficiency and multiplying outbound
+   * calls against Allegro's rate limit for no new information. Each distinct
+   * commandId is checked once via `reconcileQuantityCommandGroup`; remaining
+   * fan-out across groups is bounded by `resolveBatchConcurrency` — the same
+   * operator-configurable ceiling (#2229) the EAN-resolve batch path already
+   * honours — rather than firing every group at once.
+   *
+   * Never throws for an individual command's outcome — a genuinely failed
+   * command is persisted as `'failed'` and counted, not raised, since there
+   * is no caller left waiting to catch it. Only a whole-pass infrastructure
+   * error (e.g. the repository itself failing) propagates.
    */
-  private async pollAndUpdateCommandStatus(commandId: string, offerId: string): Promise<void> {
-    const result = await this.pollQuantityCommandStatus(commandId);
-
-    if (!result) {
-      return;
+  async reconcilePendingQuantityAcks(limit: number): Promise<PendingQuantityAckReconcileResult> {
+    if (!this.commandRepository) {
+      return { reconciled: 0, stillPending: 0 };
     }
 
-    const tasks = result.tasks ?? [];
-    const failedTasks = tasks.filter((t) => t.status === 'FAIL');
+    const perStatusLimit = Math.max(1, Math.ceil(limit / 2));
+    const [queued, accepted] = await Promise.all([
+      this.commandRepository.find({
+        connectionId: this.connectionId,
+        status: 'queued',
+        limit: perStatusLimit,
+        orderBy: 'oldest',
+      }),
+      this.commandRepository.find({
+        connectionId: this.connectionId,
+        status: 'accepted',
+        limit: perStatusLimit,
+        orderBy: 'oldest',
+      }),
+    ]);
+    const pending = [...queued, ...accepted].slice(0, limit);
 
-    if (failedTasks.length > 0) {
-      const errorMessages = failedTasks
-        .map((t) => {
-          const errDetails =
-            t.errors?.map((e) => `${e.code}: ${e.message}`).join('; ') ?? t.message ?? 'unknown';
-          return `offer ${t.offerId}: ${errDetails}`;
-        })
-        .join(', ');
-
-      try {
-        if (this.commandRepository) {
-          await this.commandRepository.updateStatus(commandId, 'failed', errorMessages);
-        }
-      } catch (persistError) {
-        this.logger.warn(
-          `Failed to persist command failure status (commandId: ${commandId}): ${(persistError as Error).message}`
-        );
-      }
-
-      throw new Error(
-        `Allegro quantity command ${commandId} failed for offer ${offerId}: ${errorMessages}`
+    const staleCutoffMs = Date.now() - PENDING_QUANTITY_ACK_STALE_WARN_MS;
+    const staleCount = pending.filter(
+      (command) => command.createdAt.getTime() < staleCutoffMs
+    ).length;
+    if (staleCount > 0) {
+      this.logger.warn(
+        `${staleCount} Allegro quantity command(s) on connection ${this.connectionId} have been ` +
+          `pending for over ${PENDING_QUANTITY_ACK_STALE_WARN_MS / 60_000} minutes without reaching a ` +
+          `terminal status — Allegro may never resolve them for this offer/commandId`
       );
     }
 
-    try {
-      if (this.commandRepository) {
-        await this.commandRepository.updateStatus(commandId, 'succeeded');
+    const groupsByCommandId = new Map<string, AllegroQuantityCommand[]>();
+    for (const command of pending) {
+      const group = groupsByCommandId.get(command.commandId);
+      if (group) {
+        group.push(command);
+      } else {
+        groupsByCommandId.set(command.commandId, [command]);
       }
+    }
+
+    let reconciled = 0;
+    let stillPending = 0;
+
+    const concurrency = resolveBatchConcurrency(this.configuredMaxConcurrent).maxInFlight;
+    await this.runWithConcurrency(
+      Array.from(groupsByCommandId.values()),
+      concurrency,
+      async (group) => {
+        const outcomes = await this.reconcileQuantityCommandGroup(group);
+        for (const outcome of outcomes) {
+          if (outcome === 'pending') {
+            stillPending += 1;
+          } else {
+            reconciled += 1;
+          }
+        }
+      }
+    );
+
+    return { reconciled, stillPending };
+  }
+
+  /**
+   * Runs `worker` over `items` in fixed-size waves capped at `concurrency` —
+   * the next wave starts only once the previous one fully settles. Kept
+   * local and generic rather than reused from `throttleStream`
+   * (`resolve-categories-for-batch-by-ean.ts`), which is EAN-match-shaped and
+   * streams results; this caller only needs bounded fan-out over a pass that
+   * already completes in one shot.
+   */
+  private async runWithConcurrency<T>(
+    items: T[],
+    concurrency: number,
+    worker: (item: T) => Promise<void>
+  ): Promise<void> {
+    const cap = Math.max(1, concurrency);
+    for (let i = 0; i < items.length; i += cap) {
+      await Promise.all(items.slice(i, i + cap).map(worker));
+    }
+  }
+
+  /**
+   * Checks ONE Allegro commandId's CURRENT status with a single, immediate
+   * request — deliberately not the multi-attempt backoff
+   * `pollQuantityCommandStatus` otherwise uses (`maxAttempts: 1,
+   * initialDelayMs: 0`) — and resolves EVERY persisted row sharing that
+   * commandId from the one response, rather than one GET per row. This runs
+   * inside a periodic reconcile sweep whose own cadence already supplies the
+   * wait; layering the write-path's "wait-a-bit-right-after-submit" backoff
+   * on top would reintroduce, inside the sweep, the exact per-write blocking
+   * cost #2621 removed from `updateOfferQuantity`. A `null` (or
+   * still-non-terminal) result reports every row in the group as `'pending'`
+   * and touches nothing — retried by the NEXT scheduled pass, so a command
+   * Allegro is simply slow to process is never marked failed on a fluke.
+   */
+  private async reconcileQuantityCommandGroup(
+    commands: AllegroQuantityCommand[]
+  ): Promise<Array<'succeeded' | 'failed' | 'pending'>> {
+    const commandId = commands[0].commandId;
+    const result = await this.pollQuantityCommandStatus(commandId, {
+      maxAttempts: 1,
+      initialDelayMs: 0,
+    });
+
+    if (!result) {
+      return commands.map(() => 'pending' as const);
+    }
+
+    const tasksByOfferId = new Map((result.tasks ?? []).map((task) => [task.offerId, task]));
+
+    return Promise.all(
+      commands.map((command) =>
+        this.reconcileOneQuantityCommand(command, tasksByOfferId.get(command.offerId))
+      )
+    );
+  }
+
+  /**
+   * Resolves one persisted (commandId, offerId) row against its already-
+   * fetched task (or `undefined` if the group's terminal response never
+   * named this offer). Persisted via `updateOfferStatus(commandId, offerId,
+   * …)`, never the commandId-only `updateStatus`, which would resolve an
+   * arbitrary row sharing that commandId rather than the one this call is
+   * actually about (#2622 regression).
+   */
+  private async reconcileOneQuantityCommand(
+    command: AllegroQuantityCommand,
+    task: AllegroQuantityChangeCommandStatusResponse['tasks'][number] | undefined
+  ): Promise<'succeeded' | 'failed' | 'pending'> {
+    if (task?.status === 'FAIL') {
+      const errorMessage = this.formatAllegroTaskErrors(task.errors) ?? task.message ?? 'unknown';
+
+      try {
+        await this.commandRepository?.updateOfferStatus(
+          command.commandId,
+          command.offerId,
+          'failed',
+          errorMessage
+        );
+      } catch (persistError) {
+        this.logger.warn(
+          `Failed to persist command failure status (commandId: ${command.commandId}, offerId: ${command.offerId}): ${(persistError as Error).message}`
+        );
+      }
+
+      this.logger.warn(
+        `Allegro quantity command ${command.commandId} failed for offer ${command.offerId} (connection: ${this.connectionId}): ${errorMessage}`
+      );
+      return 'failed';
+    }
+
+    if (task?.status !== 'SUCCESS') {
+      // Not yet terminal for THIS offer (or the group's terminal response
+      // never named it) — retried by the next scheduled reconcile pass.
+      return 'pending';
+    }
+
+    try {
+      await this.commandRepository?.updateOfferStatus(
+        command.commandId,
+        command.offerId,
+        'succeeded'
+      );
     } catch (persistError) {
       this.logger.warn(
-        `Failed to persist command success status (commandId: ${commandId}): ${(persistError as Error).message}`
+        `Failed to persist command success status (commandId: ${command.commandId}, offerId: ${command.offerId}): ${(persistError as Error).message}`
       );
     }
 
     this.logger.debug(
-      `Allegro quantity command ${commandId} confirmed SUCCESS (connection: ${this.connectionId})`
+      `Allegro quantity command ${command.commandId} confirmed SUCCESS during reconcile (connection: ${this.connectionId}, offerId: ${command.offerId})`
     );
+    return 'succeeded';
   }
 
   private sleep(ms: number): Promise<void> {

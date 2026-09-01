@@ -2,7 +2,7 @@
  * Adopt Sales-Document Template DTO (#2170)
  *
  * The operator's per-slot connection selections for the "Review & adopt"
- * flow — see `apps/api/src/sales-documents/data/pl-starter-template.ts` for
+ * flow — see `apps/api/src/sales-documents/data/sales-document-template-catalogue.ts` for
  * the slot vocabulary. Adopting writes ORDINARY, fully-editable rows via the
  * same `createRule` path every other rule goes through, tagged with the
  * template's provenance string.

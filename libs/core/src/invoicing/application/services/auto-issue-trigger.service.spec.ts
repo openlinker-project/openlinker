@@ -146,6 +146,7 @@ describe('AutoIssueTriggerService', () => {
     syncJobs = {
       schedule: jest.fn().mockResolvedValue({} as never),
       requeueDeadByIdempotencyKey: jest.fn().mockResolvedValue(false),
+      findJobByIdempotencyKey: jest.fn().mockResolvedValue(null),
       requeueStuckJobs: jest.fn().mockResolvedValue(0),
       findLastSucceededJob: jest.fn().mockResolvedValue(null),
       findEnabledPollTask: jest.fn().mockReturnValue(null),
@@ -1269,7 +1270,7 @@ describe('AutoIssueTriggerService', () => {
   // precedence — these tests exercise that wiring directly (the
   // rule-engine call itself is mocked; the pure evaluator has its own spec).
   describe('rule-engine-first precedence (#2173, ADR-041 decision 5)', () => {
-    it('feeds the rule engine order facts built from the DELIVERY address, with buyerHasTaxId always undefined', async () => {
+    it('feeds the rule engine order facts built from the DELIVERY address, carrying the buyer tax id when the source asserted one', async () => {
       connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
       await service.onOrderTransition(
         makeOrderWithDelivery({ paymentStatus: 'paid' }, 'DE'),

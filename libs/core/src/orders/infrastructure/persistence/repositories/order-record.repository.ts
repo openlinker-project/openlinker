@@ -121,6 +121,32 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     return new Map(rows.map((row) => [row.source_connection_id, row.earliest_at]));
   }
 
+  async countOrdersByRoutingCountrySince(
+    since: Date
+  ): Promise<{ country: string; orderCount: number }[]> {
+    // ONE grouped query for every market, never one per country. The country
+    // expression reads the DELIVERY address, matching what the rule engine
+    // routes on (#2518, ADR-066); `#>>` yields NULL rather than throwing when
+    // the snapshot has no shippingAddress object at all, and the NULLIF strips
+    // a blank one so it groups as "no country" and is then filtered out.
+    const rows = await this.repository
+      .createQueryBuilder('rec')
+      .select(OrderRecordRepository.ROUTING_COUNTRY_EXPR, 'country')
+      .addSelect('COUNT(*)', 'order_count')
+      .where(`COALESCE(rec."placedAt", rec."createdAt") >= :since`, { since })
+      .andWhere(`${OrderRecordRepository.ROUTING_COUNTRY_EXPR} IS NOT NULL`)
+      .groupBy(OrderRecordRepository.ROUTING_COUNTRY_EXPR)
+      .orderBy('COUNT(*)', 'DESC')
+      // Deterministic tiebreak so two markets with equal counts do not swap
+      // places between page loads.
+      .addOrderBy(OrderRecordRepository.ROUTING_COUNTRY_EXPR, 'ASC')
+      .getRawMany<{ country: string; order_count: string }>();
+
+    // pg returns COUNT(*) as a string at the driver level, mirroring the
+    // Number() the money columns already get in `toDomain`.
+    return rows.map((row) => ({ country: row.country, orderCount: Number(row.order_count) }));
+  }
+
   async findMany(
     filters: OrderRecordFilters,
     pagination: OrderRecordPagination
@@ -755,6 +781,14 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   private static readonly TOTAL_EXPR =
     `CASE WHEN jsonb_typeof(rec."orderSnapshot"#>'{totals,total}') = 'number' ` +
     `THEN (rec."orderSnapshot"#>>'{totals,total}')::numeric END`;
+  /**
+   * The country routing evaluates on (#2518) - the DELIVERY address country,
+   * the same field `toSalesDocumentOrderFacts` reads. `NULLIF(btrim(...), '')`
+   * makes a blank indistinguishable from absent, so both are excluded rather
+   * than one of them becoming a market with an empty name.
+   */
+  private static readonly ROUTING_COUNTRY_EXPR = `NULLIF(btrim(rec."orderSnapshot"#>>'{shippingAddress,country}'), '')`;
+
   private static readonly CUSTOMER_EXPR = `lower(rec."orderSnapshot"#>>'{shippingAddress,lastName}')`;
   // Guarded so a malformed (non-array) `items` value sorts as NULL rather than
   // erroring the whole list query.
@@ -1378,6 +1412,11 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     entity.currency = orderRecord.currency;
     entity.taxTreatment = orderRecord.taxTreatment;
     entity.totalAmount = orderRecord.totalAmount;
+    // Same reason the four scalars above are stamped here rather than in the
+    // shared toOrm: `upsert()` is also reached by `persistIncomingSnapshot`,
+    // which has no resolved billing address to read a tax id off, so mapping
+    // the column there would NULL a value a previous ready-path write settled.
+    entity.buyerTaxId = orderRecord.buyerTaxId;
     const savedRecord = await this.dataSource.transaction(async (manager: EntityManager) => {
       const saved = await manager.save(OrderRecordOrmEntity, entity);
       await manager.delete(OrderLineItemOrmEntity, { orderRecordId: orderRecord.internalOrderId });
@@ -1555,7 +1594,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       // reason columns above are: the column is a plain `varchar`, and a value
       // this build does not recognise must read as "no era" - i.e. the tax-rate
       // guard applies - rather than silently exempting the order from it.
-      isTaxRateEra(entity.taxRateEra) ? entity.taxRateEra : null
+      isTaxRateEra(entity.taxRateEra) ? entity.taxRateEra : null,
+      entity.buyerTaxId ?? null
     );
   }
 

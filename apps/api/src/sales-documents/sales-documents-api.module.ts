@@ -12,13 +12,21 @@
 import { Module } from '@nestjs/common';
 import { SalesDocumentsModule as CoreSalesDocumentsModule } from '@openlinker/core/sales-documents';
 import { IntegrationsModule as CoreIntegrationsModule } from '@openlinker/core/integrations';
+// #2518: market discovery is a read against the ORDERS store, reached through
+// `IOrderRecordService`. CoreOrdersModule exports that token.
+import { OrdersModule as CoreOrdersModule } from '@openlinker/core/orders';
 import { SalesDocumentRulesController } from './http/sales-document-rules.controller';
 import { SalesDocumentTemplatesController } from './http/sales-document-templates.controller';
+import { SalesDocumentMarketsController } from './http/sales-document-markets.controller';
 import { SalesDocumentCapabilityGuardService } from './sales-document-capability-guard.service';
 
 @Module({
-  imports: [CoreSalesDocumentsModule, CoreIntegrationsModule],
-  controllers: [SalesDocumentRulesController, SalesDocumentTemplatesController],
+  imports: [CoreSalesDocumentsModule, CoreIntegrationsModule, CoreOrdersModule],
+  controllers: [
+    SalesDocumentRulesController,
+    SalesDocumentTemplatesController,
+    SalesDocumentMarketsController,
+  ],
   providers: [SalesDocumentCapabilityGuardService],
 })
 export class SalesDocumentsApiModule {}

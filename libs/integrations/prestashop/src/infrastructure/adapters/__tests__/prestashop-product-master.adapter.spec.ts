@@ -18,6 +18,7 @@ import { PrestashopCategoryPathResolver } from '../../provisioners/prestashop-ca
 import {
   PrestashopResourceNotFoundException,
   PrestashopNotSupportedException,
+  PrestashopTruncatedReadException,
 } from '@openlinker/integrations-prestashop';
 import { MasterProductNotFoundError } from '@openlinker/core/products';
 import { PrestashopApiException } from '@openlinker/integrations-prestashop';
@@ -284,7 +285,7 @@ describe('PrestashopProductMasterAdapter', () => {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
       expect(mockHttpClient.listResources).toHaveBeenCalledWith(
         'products',
-        {},
+        { sort: ['id_ASC'] },
         undefined,
         undefined
       );
@@ -362,9 +363,12 @@ describe('PrestashopProductMasterAdapter', () => {
       const result = await adapter.listExternalIds({ limit: 100, offset: 0 });
 
       expect(result).toEqual(['1', '2', '3']);
+      // Sorted, always: this is the read `runBoundedSweep` pages across ticks,
+      // so an unsorted offset read can drop a live product for a whole cycle
+      // (#2627 review).
       expect(mockHttpClient.listResources).toHaveBeenCalledWith(
         'products',
-        { display: '[id]' },
+        { display: '[id]', sort: ['id_ASC'] },
         100,
         0
       );
@@ -448,7 +452,9 @@ describe('PrestashopProductMasterAdapter', () => {
           custom: expect.objectContaining({
             id_product: externalProductId,
           }),
-        })
+        }),
+        100,
+        0
       );
 
       expect(result).toHaveLength(2);
@@ -464,6 +470,69 @@ describe('PrestashopProductMasterAdapter', () => {
           expect.objectContaining({ entityType: 'ProductVariant', externalId: '101' }),
           expect.objectContaining({ entityType: 'ProductVariant', externalId: '102' }),
         ])
+      );
+    });
+
+    it('should report every combination of a product whose combinations span several pages (#2608)', async () => {
+      const productId = 'internal-product-123';
+      const externalProductId = '42';
+      const TOTAL = 250;
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockIdentifierMapping.getExternalIds = jest
+        .fn()
+        .mockResolvedValue([
+          { connectionId: connection.id, externalId: externalProductId, entityType: 'Product' },
+        ]);
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(samplePrestashopProduct);
+
+      const allCombinations: PrestashopCombination[] = Array.from({ length: TOTAL }, (_, i) => ({
+        id: String(i + 1),
+        id_product: externalProductId,
+        reference: `VAR-${i + 1}`,
+        price: '1.00',
+        quantity: '1',
+      }));
+      mockHttpClient.listResources = jest.fn(
+        (_resource: string, _filters: unknown, limit?: number, offset?: number) =>
+          Promise.resolve(allCombinations.slice(offset ?? 0, (offset ?? 0) + (limit ?? 100)))
+      ) as unknown as jest.Mocked<IPrestashopWebserviceClient>['listResources'];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockIdentifierMapping.batchGetOrCreateInternalIds = jest
+        .fn()
+        .mockResolvedValue(
+          new Map(allCombinations.map((c) => [`${c.id}:${connection.id}`, `internal-${c.id}`]))
+        );
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      const result = await adapter.getProductVariants(productId);
+
+      expect(result).toHaveLength(TOTAL);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
+      expect(mockHttpClient.listResources).toHaveBeenCalledTimes(3);
+    });
+
+    it('should refuse rather than report a truncated combination list when the page budget runs out (#2608)', async () => {
+      const productId = 'internal-product-123';
+      const externalProductId = '42';
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockIdentifierMapping.getExternalIds = jest
+        .fn()
+        .mockResolvedValue([
+          { connectionId: connection.id, externalId: externalProductId, entityType: 'Product' },
+        ]);
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(samplePrestashopProduct);
+      const fullPage: PrestashopCombination[] = Array.from({ length: 100 }, (_, i) => ({
+        id: String(i + 1),
+        id_product: externalProductId,
+        price: '1.00',
+        quantity: '1',
+      }));
+      mockHttpClient.listResources = jest.fn().mockResolvedValue(fullPage);
+
+      await expect(adapter.getProductVariants(productId)).rejects.toBeInstanceOf(
+        PrestashopTruncatedReadException
       );
     });
 
@@ -893,6 +962,7 @@ describe('PrestashopProductMasterAdapter', () => {
 
     it('should resolve the rate as a percent code when the resolver names one', async () => {
       seedMapping();
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(samplePrestashopProduct);
       const taxRateResolver = makeTaxRateResolver();
       taxRateResolver.resolveProductTaxRate.mockResolvedValue({ kind: 'resolved', rate: 0.23 });
       const adapterWithResolver = new PrestashopProductMasterAdapter(
@@ -913,7 +983,10 @@ describe('PrestashopProductMasterAdapter', () => {
         externalId,
         undefined,
         connection.id,
-        mockHttpClient
+        mockHttpClient,
+        // The product this adapter already fetched, handed over so the resolver
+        // does not re-read the same resource (#2592).
+        samplePrestashopProduct
       );
     });
 
@@ -1040,6 +1113,134 @@ describe('PrestashopProductMasterAdapter', () => {
         adapterWithResolver.readProductTaxRate({ productId: internalId })
       ).rejects.toBeInstanceOf(MasterProductNotFoundError);
       expect(taxRateResolver.resolveProductTaxRate).not.toHaveBeenCalled();
+    });
+  });
+  /**
+   * The catalogue sweep read `GET /api/products/{id}` three times per SKU:
+   * `getProduct`, `getProductVariants` and - through the tax resolver's own
+   * code path - `readProductTaxRate`. A per-instance memo collapses them to one
+   * (#2592). These assertions pin the COUNT, because a reduction nobody counts
+   * silently comes back.
+   */
+  describe('product-read request count (#2592)', () => {
+    const internalId = 'internal-product-123';
+    const externalId = '42';
+
+    function seedMapping(): void {
+      mockIdentifierMapping.getExternalIds = jest
+        .fn()
+        .mockResolvedValue([{ connectionId: connection.id, externalId, entityType: 'Product' }]);
+    }
+
+    function productFetchCount(): number {
+      return mockHttpClient.getResource.mock.calls.filter((call) => call[0] === 'products').length;
+    }
+
+    it('fetches the product once for getProduct + getProductVariants + readProductTaxRate', async () => {
+      seedMapping();
+      mockIdentifierMapping.getOrCreateInternalId = jest.fn().mockResolvedValue('internal-variant');
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(samplePrestashopProduct);
+      mockHttpClient.listResources = jest.fn().mockResolvedValue([]);
+      const taxRateResolver = {
+        resolveProductTaxRate: jest.fn().mockResolvedValue({ kind: 'resolved', rate: 0.23 }),
+      };
+      const adapterUnderTest = new PrestashopProductMasterAdapter(
+        mockHttpClient,
+        mockIdentifierMapping,
+        productMapper,
+        connection,
+        undefined,
+        undefined,
+        undefined,
+        taxRateResolver as unknown as PrestashopTaxRateResolver
+      );
+
+      await adapterUnderTest.getProduct(internalId);
+      await adapterUnderTest.getProductVariants(internalId);
+      await adapterUnderTest.readProductTaxRate({ productId: internalId });
+
+      expect(productFetchCount()).toBe(1);
+      // The resolver is handed the memoised product instead of fetching its own.
+      expect(taxRateResolver.resolveProductTaxRate).toHaveBeenCalledWith(
+        externalId,
+        undefined,
+        connection.id,
+        mockHttpClient,
+        samplePrestashopProduct
+      );
+    });
+
+    it('shares one in-flight request between concurrent callers', async () => {
+      seedMapping();
+      mockIdentifierMapping.getOrCreateInternalId = jest.fn().mockResolvedValue('internal-variant');
+      mockHttpClient.listResources = jest.fn().mockResolvedValue([]);
+      let release: (value: PrestashopProduct) => void = () => undefined;
+      mockHttpClient.getResource = jest.fn().mockReturnValue(
+        new Promise<PrestashopProduct>((resolve) => {
+          release = resolve;
+        })
+      );
+
+      const inFlight = Promise.all([
+        adapter.getProduct(internalId),
+        adapter.getProductVariants(internalId),
+      ]);
+      release(samplePrestashopProduct);
+      await inFlight;
+
+      expect(productFetchCount()).toBe(1);
+    });
+
+    it('re-reads a different product rather than serving the memoised one', async () => {
+      mockIdentifierMapping.getExternalIds = jest
+        .fn()
+        .mockImplementation((_type: string, id: string) =>
+          Promise.resolve([
+            {
+              connectionId: connection.id,
+              externalId: id === internalId ? externalId : '43',
+              entityType: 'Product',
+            },
+          ])
+        );
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(samplePrestashopProduct);
+
+      await adapter.getProduct(internalId);
+      await adapter.getProduct('internal-product-other');
+
+      expect(productFetchCount()).toBe(2);
+    });
+
+    it('evicts a failed read so the next caller retries instead of inheriting the error', async () => {
+      seedMapping();
+      mockHttpClient.getResource = jest
+        .fn()
+        .mockRejectedValueOnce(new PrestashopApiException('boom', 503))
+        .mockResolvedValueOnce(samplePrestashopProduct);
+
+      await expect(adapter.getProduct(internalId)).rejects.toBeInstanceOf(PrestashopApiException);
+      await expect(adapter.getProduct(internalId)).resolves.toMatchObject({ id: internalId });
+
+      expect(productFetchCount()).toBe(2);
+    });
+
+    it('caches nothing when the read throws synchronously, so the next caller retries', async () => {
+      seedMapping();
+      let firstCall = true;
+      mockHttpClient.getResource = jest.fn().mockImplementation(() => {
+        if (firstCall) {
+          firstCall = false;
+          // A throw before any promise exists, e.g. a client that rejects the
+          // request shape. It never reaches the cache write.
+          throw new PrestashopApiException('boom', 400);
+        }
+        return Promise.resolve(samplePrestashopProduct);
+      });
+
+      await expect(adapter.getProduct(internalId)).rejects.toBeInstanceOf(PrestashopApiException);
+      await expect(adapter.getProduct(internalId)).resolves.toMatchObject({ id: internalId });
+
+      expect(productFetchCount()).toBe(2);
     });
   });
 });

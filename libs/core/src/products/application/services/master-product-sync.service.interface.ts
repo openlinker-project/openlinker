@@ -78,11 +78,52 @@ export const PruneSkippedReasonValues = ['rival', 'empty-response'] as const;
 /** `null` is carried at the field rather than in the union, so the runtime array above stays a list of real reasons. */
 export type PruneSkippedReason = (typeof PruneSkippedReasonValues)[number] | null;
 
+/** One product the batch could not sync, and why (#2593). */
+export interface MasterProductBatchSyncFailure {
+  externalId: string;
+  message: string;
+}
+
+/**
+ * Outcome of one batched page (#2593).
+ *
+ * `failures` is reported rather than thrown because the caller has a better
+ * answer than a whole-page retry: re-enqueue the failed ids as ordinary
+ * per-product jobs, which keeps their own retry ladder and their own dead row.
+ * Failing the batch would let one poisonous product take its ninety-nine
+ * page-mates down with it, which the per-product fan-out never did.
+ */
+export interface MasterProductBatchSyncResult {
+  results: readonly MasterProductSyncResult[];
+  failures: readonly MasterProductBatchSyncFailure[];
+  /** True when the master's bulk-read rung answered, so the page was warmed. */
+  prefetched: boolean;
+}
+
 export interface IMasterProductSyncService {
   syncFromMasterByExternalId(
     connectionId: string,
     externalId: string,
   ): Promise<MasterProductSyncResult>;
+
+  /**
+   * Sync a page of products through ONE adapter instance (#2593, ADR-048).
+   *
+   * Behaviourally identical to calling `syncFromMasterByExternalId` once per id
+   * - same upserts, same identifier mappings, same variant handling, same
+   * #1904 rival-claimant prune guard, same #1599 deletion signal, same tax
+   * journal. The only difference is request count: the ids share one adapter
+   * instance, so a master declaring `BulkProductReader` can hydrate the whole
+   * page before the loop starts and every per-product read is served from that
+   * one answer.
+   *
+   * A master declaring nothing is not penalised - the loop runs exactly as the
+   * per-product jobs did.
+   */
+  syncFromMasterByExternalIds(
+    connectionId: string,
+    externalIds: readonly string[],
+  ): Promise<MasterProductBatchSyncResult>;
 
   /**
    * Record that a master has confirmed this product is gone: mark every one of

@@ -24,6 +24,7 @@ describe('MasterInventorySyncHandler', () => {
   beforeEach(() => {
     masterInventorySync = {
       syncFromMasterByExternalId: jest.fn(),
+      syncFromMasterByExternalIds: jest.fn(),
     };
     handler = new MasterInventorySyncHandler(masterInventorySync);
   });

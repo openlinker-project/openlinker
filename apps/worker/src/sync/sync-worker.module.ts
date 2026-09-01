@@ -12,6 +12,7 @@ import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { ProductsModule } from '@openlinker/core/products';
 import { InventoryModule } from '@openlinker/core/inventory';
+import { OperationalSettingsModule } from '@openlinker/core/operational-settings';
 import { OrdersModule } from '@openlinker/core/orders';
 import { ListingsModule } from '@openlinker/core/listings/services';
 import { ShippingModule } from '@openlinker/core/shipping';
@@ -28,6 +29,7 @@ import { MarketplaceOrderFxStampHandler } from './handlers/marketplace-order-fx-
 import { MarketplaceOrderFxStampSweepHandler } from './handlers/marketplace-order-fx-stamp-sweep.handler';
 import { OrdersTaxRateBackfillHandler } from './handlers/orders-tax-rate-backfill.handler';
 import { MarketplaceOfferQuantityUpdateHandler } from './handlers/marketplace-offer-quantity-update.handler';
+import { MarketplaceOfferQuantityReconcileHandler } from './handlers/marketplace-offer-quantity-reconcile.handler';
 import { MarketplaceOfferFieldUpdateHandler } from './handlers/marketplace-offer-field-update.handler';
 import { MarketplaceOfferCreateHandler } from './handlers/marketplace-offer-create.handler';
 import { MarketplaceOfferPollCreationStatusHandler } from './handlers/marketplace-offer-poll-creation-status.handler';
@@ -41,7 +43,9 @@ import { MarketplaceShipmentStatusSyncHandler } from './handlers/marketplace-shi
 import { MarketplaceShipmentSyncByExternalIdHandler } from './handlers/marketplace-shipment-sync-by-external-id.handler';
 import { MarketplaceFulfillmentStatusSyncHandler } from './handlers/marketplace-fulfillment-status-sync.handler';
 import { MasterProductSyncHandler } from './handlers/master-product-sync.handler';
+import { MasterProductSyncBatchHandler } from './handlers/master-product-sync-batch.handler';
 import { MasterInventorySyncHandler } from './handlers/master-inventory-sync.handler';
+import { MasterInventorySyncBatchHandler } from './handlers/master-inventory-sync-batch.handler';
 import { AutoMatchVariantsHandler } from './handlers/auto-match-variants.handler';
 import { MasterInventorySyncAllHandler } from './handlers/master-inventory-sync-all.handler';
 import { MasterProductSyncAllHandler } from './handlers/master-product-sync-all.handler';
@@ -66,6 +70,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     IdentifierMappingModule, // Import IdentifierMappingModule to access IDENTIFIER_MAPPING_SERVICE_TOKEN
     ProductsModule, // Import ProductsModule to access PRODUCTS_SERVICE_TOKEN
     InventoryModule, // Import InventoryModule to access INVENTORY_SERVICE_TOKEN
+    OperationalSettingsModule, // #2651 — operator-settable sweep budgets, read per tick by the sweep handlers
     OrdersModule, // Import OrdersModule to access ORDER_SYNC_SERVICE_TOKEN
     ListingsModule, // Import ListingsModule to access OFFER_MAPPING_SYNC_SERVICE_TOKEN
     ShippingModule, // Import ShippingModule to access SHIPMENT_STATUS_SYNC_SERVICE_TOKEN (#838)
@@ -84,6 +89,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     MarketplaceOrderFxStampSweepHandler,
     OrdersTaxRateBackfillHandler,
     MarketplaceOfferQuantityUpdateHandler,
+    MarketplaceOfferQuantityReconcileHandler,
     MarketplaceOfferFieldUpdateHandler,
     MarketplaceOfferCreateHandler,
     MarketplaceOfferPollCreationStatusHandler,
@@ -97,7 +103,9 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     MarketplaceShipmentSyncByExternalIdHandler,
     MarketplaceFulfillmentStatusSyncHandler,
     MasterProductSyncHandler,
+    MasterProductSyncBatchHandler,
     MasterInventorySyncHandler,
+    MasterInventorySyncBatchHandler,
     AutoMatchVariantsHandler,
     MasterInventorySyncAllHandler,
     MasterProductSyncAllHandler,

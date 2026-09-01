@@ -40,6 +40,7 @@ describe('OrderRecordService', () => {
       findById: jest.fn(),
       findByIds: jest.fn(),
       findEarliestOrderDateByConnection: jest.fn(),
+      countOrdersByRoutingCountrySince: jest.fn(),
       upsert: jest.fn(),
       upsertWithLineItems: jest.fn(),
       updateSyncStatus: jest.fn(),
@@ -340,6 +341,42 @@ describe('OrderRecordService', () => {
       expect(callArg.orderSnapshot).not.toHaveProperty('deliverySmart');
     });
 
+    it('should denormalize the buyer tax id from the billing address (#2599)', async () => {
+      const order = createMockOrder();
+      order.billingAddress = { ...order.billingAddress!, taxId: '1234567890' };
+
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
+      expect(callArg.buyerTaxId).toBe('1234567890');
+    });
+
+    it('should encode an asserted-none buyer tax id as the empty string, not NULL (#2599)', async () => {
+      const order = createMockOrder();
+      order.billingAddress = { ...order.billingAddress!, taxId: null };
+
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
+      expect(callArg.buyerTaxId).toBe('');
+    });
+
+    it('should leave the buyer tax id NULL when no address asserted one (#2599)', async () => {
+      const order = createMockOrder();
+      expect(order.billingAddress?.taxId).toBeUndefined();
+
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
+      expect(callArg.buyerTaxId).toBeNull();
+    });
+
     it('should serialise Order.placedAt into the snapshot as an ISO string when present (#926)', async () => {
       const order = createMockOrder();
       order.placedAt = new Date('2026-05-31T16:00:00.000Z');
@@ -488,6 +525,19 @@ describe('OrderRecordService', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'false';
       service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
+    });
+
+    it('should store no buyer tax id at all when PII storage is disabled (#2599)', async () => {
+      const order = createMockOrder();
+      order.billingAddress = { ...order.billingAddress!, taxId: '1234567890' };
+
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
+      expect(callArg.buyerTaxId).toBeNull();
+      expect(callArg.orderSnapshot.billingAddress).not.toHaveProperty('taxId');
     });
 
     it('should persist order with sanitized addresses when PII storage is disabled', async () => {
@@ -1064,6 +1114,71 @@ describe('OrderRecordService', () => {
 
       expect(result).toBe(records);
       expect(repository.findByIds).toHaveBeenCalledWith(['order-123', 'order-456']);
+    });
+  });
+
+  describe('discoverSalesDocumentMarkets (#2518, ADR-066)', () => {
+    it('reports the window it applied and derives `since` from it', async () => {
+      repository.countOrdersByRoutingCountrySince.mockResolvedValue([]);
+
+      const result = await service.discoverSalesDocumentMarkets(
+        new Date('2026-08-30T10:00:00.000Z'),
+      );
+
+      expect(result.windowDays).toBe(30);
+      expect(result.since).toBe('2026-07-31T10:00:00.000Z');
+      expect(repository.countOrdersByRoutingCountrySince).toHaveBeenCalledWith(
+        new Date('2026-07-31T10:00:00.000Z'),
+      );
+    });
+
+    it('returns configured and unconfigured markets alike, most orders first', async () => {
+      repository.countOrdersByRoutingCountrySince.mockResolvedValue([
+        { country: 'PL', orderCount: 47 },
+        { country: 'DE', orderCount: 12 },
+        { country: 'CZ', orderCount: 6 },
+      ]);
+
+      const result = await service.discoverSalesDocumentMarkets(new Date());
+
+      // No `configured` / `hasTemplate` flag: classification is the caller's
+      // job, so this read cannot become a second source of truth for it.
+      expect(result.markets).toEqual([
+        { country: 'PL', orderCount: 47 },
+        { country: 'DE', orderCount: 12 },
+        { country: 'CZ', orderCount: 6 },
+      ]);
+    });
+
+    it('reports no markets on an instance with no orders in the window', async () => {
+      repository.countOrdersByRoutingCountrySince.mockResolvedValue([]);
+
+      const result = await service.discoverSalesDocumentMarkets(new Date());
+
+      // A brand-new install is a legitimate state, not an error.
+      expect(result.markets).toEqual([]);
+    });
+
+    it('issues ONE read, never one per country', async () => {
+      repository.countOrdersByRoutingCountrySince.mockResolvedValue([
+        { country: 'PL', orderCount: 47 },
+        { country: 'DE', orderCount: 12 },
+      ]);
+
+      await service.discoverSalesDocumentMarkets(new Date());
+
+      expect(repository.countOrdersByRoutingCountrySince).toHaveBeenCalledTimes(1);
+    });
+
+    it('writes nothing', async () => {
+      repository.countOrdersByRoutingCountrySince.mockResolvedValue([]);
+
+      await service.discoverSalesDocumentMarkets(new Date());
+
+      // Discovery must never create routing on its own (ADR-066 decision 1).
+      expect(repository.upsert).not.toHaveBeenCalled();
+      expect(repository.upsertWithLineItems).not.toHaveBeenCalled();
+      expect(repository.updateSalesDocumentBlock).not.toHaveBeenCalled();
     });
   });
 

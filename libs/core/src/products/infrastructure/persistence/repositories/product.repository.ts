@@ -152,6 +152,20 @@ export class ProductRepository implements ProductRepositoryPort {
       );
     }
 
+    if (filters.hideFullyStale) {
+      // Exclude only a product whose variants ALL are stale (#1599) — a
+      // product with zero variants, or at least one live one, is kept.
+      qb.andWhere(
+        `NOT (
+          EXISTS (SELECT 1 FROM product_variants pv5 WHERE pv5."productId" = product.id)
+          AND NOT EXISTS (
+            SELECT 1 FROM product_variants pv6
+            WHERE pv6."productId" = product.id AND pv6."isStale" = false
+          )
+        )`
+      );
+    }
+
     if (filters.sourceConnectionId) {
       // Product originates from (has a Product mapping on) this connection.
       qb.andWhere(

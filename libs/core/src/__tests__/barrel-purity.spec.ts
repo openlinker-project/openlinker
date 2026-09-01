@@ -87,7 +87,7 @@ describe('@openlinker/core/<context> barrel purity (#598)', () => {
    * import of anything, or a type-only import from any specifier other than
    * that one cycle-breaker sub-barrel — still fails this spec.
    */
-  it('sales-documents stays a zero-outbound-CORE-CONTEXT-edge leaf (only the one authorized type-only import reaches a sibling context)', () => {
+  it('sales-documents stays a zero-outbound-CORE-CONTEXT-edge leaf (only the authorized type-only imports reach a sibling context)', () => {
     const root = join(__dirname, '..', 'sales-documents');
     const files: string[] = [];
     const walk = (dir: string): void => {
@@ -101,7 +101,19 @@ describe('@openlinker/core/<context> barrel purity (#598)', () => {
 
     expect(files.length).toBeGreaterThan(0);
 
-    const AUTHORIZED_TYPE_ONLY_SPECIFIER = '@openlinker/core/orders/types';
+    /**
+     * #2515 (ADR-065) adds two more, on the identical principle: the neutral
+     * per-order sales-document projection must name the EXISTING invoice and
+     * fiscal status vocabularies rather than declare a third one, and both are
+     * reached type-only through dedicated cycle-breaker sub-barrels that
+     * re-export no runtime value at all. Same erasure, same absent
+     * `require()`, same reason the `orders/types` carve-out is safe.
+     */
+    const AUTHORIZED_TYPE_ONLY_SPECIFIERS = [
+      '@openlinker/core/orders/types',
+      '@openlinker/core/invoicing/types',
+      '@openlinker/core/fiscalization/types',
+    ];
 
     for (const file of files) {
       const source = readFileSync(file, 'utf8');
@@ -147,11 +159,71 @@ describe('@openlinker/core/<context> barrel purity (#598)', () => {
         expect(typeOnly).toBeTruthy();
         // The ONLY authorized cross-context type this concern may borrow, and
         // ONLY from the cycle-breaker sub-barrel — never the main
-        // `@openlinker/core/orders` barrel, which re-exports `OrdersModule` and
-        // would reintroduce exactly the cycle risk decision 2 exists to avoid
-        // if this import were ever (incorrectly) turned into a value import.
-        expect(specifier).toBe(AUTHORIZED_TYPE_ONLY_SPECIFIER);
+        // `@openlinker/core/orders` / `.../invoicing` / `.../fiscalization`
+        // barrels, which re-export their NestJS modules and would reintroduce
+        // exactly the cycle risk these carve-outs exist to avoid if such an
+        // import were ever (incorrectly) turned into a value import.
+        expect(AUTHORIZED_TYPE_ONLY_SPECIFIERS).toContain(specifier);
       }
     }
+  });
+
+  /**
+   * The mirror of the assertion above, for the OTHER half of the same cycle.
+   *
+   * `orders.module.ts` value-imports `@openlinker/core/invoicing`, and the main
+   * `@openlinker/core/orders` barrel re-exports `OrdersModule`. So a VALUE
+   * import of that main barrel from anywhere inside `invoicing` closes
+   * `invoicing -> orders -> invoicing` at module-load time. This is not
+   * hypothetical: #2599 shipped exactly that import, having already added both
+   * functions it needed to the `orders/types` cycle-breaker sub-barrel, and no
+   * invariant in the repo objected. `check-cross-context-imports.mjs` allows
+   * `is*` / entity / pure-constant shapes without looking at whether the import
+   * is a value import of a module-exporting barrel, and the leaf assertion above
+   * only walks `sales-documents`.
+   *
+   * Type-only imports of the main barrel stay allowed: they erase, so they add
+   * no runtime edge. A value import must come from `@openlinker/core/orders/types`.
+   */
+  it('invoicing never VALUE-imports the main @openlinker/core/orders barrel (#2599)', () => {
+    const root = join(__dirname, '..', 'invoicing');
+    const files: string[] = [];
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (entry.name.endsWith('.ts') && !entry.name.endsWith('.spec.ts')) files.push(full);
+      }
+    };
+    walk(root);
+
+    expect(files.length).toBeGreaterThan(0);
+
+    const offenders: string[] = [];
+    for (const file of files) {
+      const withoutComments = readFileSync(file, 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, ' ')
+        .replace(/\/\/.*$/gm, '');
+      const statements = [
+        ...withoutComments.matchAll(/import\s+(type\s+)?([^'";]*?)from\s+['"]([^'"]+)['"]/g),
+      ];
+      for (const [, typeOnly, clause, specifier] of statements) {
+        if (specifier !== '@openlinker/core/orders') continue;
+        if (typeOnly) continue;
+        // `import { type Order } from ...` — an inline-type-only clause also
+        // erases entirely, so it is as safe as a statement-level `import type`.
+        const bindings = (clause.match(/\{([\s\S]*)\}/)?.[1] ?? '')
+          .split(',')
+          .map((b) => b.trim())
+          .filter((b) => b.length > 0);
+        const hasValueBinding =
+          bindings.length === 0 || bindings.some((b) => !b.startsWith('type '));
+        if (hasValueBinding) {
+          offenders.push(`${file}: import ${clause.trim()} from '${specifier}'`);
+        }
+      }
+    }
+
+    expect(offenders).toEqual([]);
   });
 });

@@ -12,9 +12,14 @@ import type { JobEnqueuePort, ISyncCursorsService, SyncLockPort } from '@openlin
 import type { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
 import type { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
 import type { ConfigService } from '@nestjs/config';
+import {
+  FakeOperationalSettingsService,
+  settingNumber,
+} from '../../../testing/operational-settings.double';
 
 describe('MasterProductReconcileHandler', () => {
   let handler: MasterProductReconcileHandler;
+  let operationalSettings: FakeOperationalSettingsService;
   let identifierMapping: jest.Mocked<IIdentifierMappingService>;
   let jobEnqueue: jest.Mocked<JobEnqueuePort>;
   let cursors: jest.Mocked<ISyncCursorsService>;
@@ -48,11 +53,14 @@ describe('MasterProductReconcileHandler', () => {
       get: jest.fn((_key: string, defaultValue?: unknown) => defaultValue),
     } as unknown as jest.Mocked<ConfigService>;
 
+    operationalSettings = new FakeOperationalSettingsService();
+
     handler = new MasterProductReconcileHandler(
       identifierMapping,
       jobEnqueue,
       cursors,
       syncLock,
+      operationalSettings,
       configService
     );
   });
@@ -142,7 +150,7 @@ describe('MasterProductReconcileHandler', () => {
           (call) => (call[0] as { jobType: string }).jobType
         )
       );
-      expect(jobTypes).toEqual(new Set(['master.product.syncByExternalId']));
+      expect(jobTypes).toEqual(new Set(['master.product.syncFromSweep']));
     });
 
     it('should stale nothing when the connection has no mappings', async () => {
@@ -265,6 +273,25 @@ describe('MasterProductReconcileHandler', () => {
       expect(
         cursors.advanceCursor.mock.calls.find((call) => call[1] === COMPLETED_AT_KEY)
       ).toBeUndefined();
+    });
+
+    // #2651 — the deletion-audit budget is the one an operator is most likely
+    // to raise (#2644 measured a 41.7-day cycle at the default), so it must
+    // take effect without a restart.
+    it('should use the operator-set deletion-audit budget on the next tick', async () => {
+      mappings(3);
+      jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'j', isExisting: false });
+      operationalSettings.setValues({
+        deletionAuditBudget: settingNumber('deletionAuditBudget', 750),
+      });
+
+      await handler.execute(createJob());
+
+      expect(identifierMapping.listExternalIdsByConnection).toHaveBeenCalledWith(
+        'Product',
+        'conn-1',
+        expect.objectContaining({ limit: 750, offset: 0 })
+      );
     });
 
     it('should release the lock when enumeration throws', async () => {

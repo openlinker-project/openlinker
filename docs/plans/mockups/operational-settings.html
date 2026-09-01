@@ -1,0 +1,1031 @@
+<title>Sync Pacing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+
+<style>
+/* ─────────────────────────────────────────────────────────────────────────
+ * Mockup for #2653 — operational settings page.
+ *
+ * Deliberately SINGLE-THEME. OpenLinker's admin is being reviewed in dark
+ * only, so every token below is lifted verbatim from the
+ * html[data-theme='dark'] block of apps/web/src/index.css. No inversion, no
+ * second palette: the page paints its own ground explicitly so it holds on
+ * any host background.
+ *
+ * Class names match the shipped ones (.panel, .form-field, .alert, .dialog,
+ * .button, .control, .eyebrow, .workspace-grid--primary) so this reads as a
+ * layout study, not a new design language. Only the impact calculator is new,
+ * and it is namespaced .impact-*.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+:root {
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --bg-canvas: oklch(14% 0.005 270);
+  --bg-shell: oklch(16% 0.006 270);
+  --bg-surface: oklch(19% 0.007 270);
+  --bg-surface-elevated: oklch(22% 0.008 270);
+  --bg-surface-muted: oklch(24% 0.009 270);
+  --bg-surface-hover: oklch(28% 0.010 270);
+
+  --border-subtle: oklch(24% 0.010 270);
+  --border-default: oklch(30% 0.012 270);
+  --border-strong: oklch(42% 0.014 270);
+
+  --text-primary: oklch(96% 0.006 270);
+  --text-secondary: oklch(78% 0.010 270);
+  --text-muted: oklch(60% 0.012 270);
+  --text-on-primary: oklch(16% 0.012 50);
+
+  --accent-primary: oklch(72% 0.18 50);
+  --accent-primary-hover: oklch(78% 0.18 50);
+  --accent-primary-border: oklch(40% 0.14 55);
+  --accent-ring: oklch(72% 0.18 50 / 0.40);
+
+  --status-success: oklch(68% 0.16 150);
+  --status-success-soft: oklch(26% 0.06 150);
+  --status-success-border: oklch(36% 0.10 150);
+  --status-success-fg: oklch(86% 0.14 150);
+
+  --status-warning: oklch(78% 0.16 85);
+  --status-warning-soft: oklch(28% 0.07 85);
+  --status-warning-border: oklch(38% 0.10 85);
+  --status-warning-fg: oklch(88% 0.14 85);
+
+  --status-error: oklch(70% 0.18 25);
+  --status-error-soft: oklch(28% 0.10 25);
+  --status-error-border: oklch(40% 0.14 25);
+  --status-error-fg: oklch(86% 0.14 25);
+
+  --status-info: oklch(72% 0.14 245);
+  --status-info-soft: oklch(26% 0.06 245);
+  --status-info-border: oklch(36% 0.10 245);
+  --status-info-fg: oklch(86% 0.12 245);
+
+  --space-1: 0.25rem; --space-2: 0.5rem; --space-3: 0.75rem;
+  --space-4: 1rem; --space-5: 1.5rem; --space-6: 2rem; --space-7: 3rem;
+
+  --radius-xs: 4px; --radius-sm: 6px; --radius-md: 8px;
+  --radius-lg: 10px; --radius-xl: 14px; --radius-pill: 9999px;
+
+  --duration-fast: 120ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.30);
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.28), 0 6px 16px rgb(0 0 0 / 0.34);
+  --shadow-overlay: 0 24px 48px rgb(0 0 0 / 0.55), 0 8px 16px rgb(0 0 0 / 0.35);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: var(--space-6) var(--space-5) var(--space-7);
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--text-primary);
+  background: var(--bg-canvas);
+  -webkit-font-smoothing: antialiased;
+}
+
+.shell { max-width: 76rem; margin: 0 auto; display: grid; gap: var(--space-6); }
+
+/* ── Mockup-only framing ───────────────────────────────────────────────── */
+.mock-note {
+  display: grid; gap: var(--space-1);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-shell);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+.mock-note strong { color: var(--text-secondary); font-weight: 600; }
+
+.state-label {
+  display: flex; align-items: center; gap: var(--space-3);
+  margin: var(--space-6) 0 calc(var(--space-3) * -1);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.state-label::after {
+  content: ''; flex: 1; height: 1px; background: var(--border-subtle);
+}
+
+/* ── Page header ───────────────────────────────────────────────────────── */
+.page-header { display: grid; gap: 0.45rem; }
+.eyebrow {
+  margin: 0; font-size: 0.76rem; font-weight: 700;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--accent-primary-hover);
+}
+.page-title {
+  margin: 0; font-size: 1.5rem; font-weight: 600;
+  letter-spacing: -0.012em; text-wrap: balance;
+}
+.page-description { margin: 0; color: var(--text-secondary); max-width: 62ch; }
+.toolbar__group { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-2); }
+.toolbar-chip {
+  border: 1px solid var(--border-strong); border-radius: var(--radius-pill);
+  padding: 0.2rem 0.65rem; background: var(--bg-surface-elevated);
+  color: var(--text-secondary); font-size: 0.75rem;
+}
+
+/* ── Layout ────────────────────────────────────────────────────────────── */
+.workspace-grid--primary {
+  display: grid; gap: var(--space-4);
+  grid-template-columns: minmax(0, 1.5fr) minmax(300px, 0.9fr);
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .workspace-grid--primary { grid-template-columns: minmax(0, 1fr); }
+}
+.settings-column { display: grid; gap: var(--space-4); min-width: 0; }
+.impact-column { position: sticky; top: var(--space-4); display: grid; gap: var(--space-4); min-width: 0; }
+@media (max-width: 900px) { .impact-column { position: static; } }
+
+/* ── Panel ─────────────────────────────────────────────────────────────── */
+.panel {
+  border: 1px solid var(--border-default);
+  border-radius: 0.5rem;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-soft);
+  padding: var(--space-4);
+}
+.panel__header {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: var(--space-3); margin-bottom: var(--space-3);
+}
+.section-title { margin: 0; font-size: 1rem; font-weight: 600; }
+.panel__meta {
+  border: 1px solid var(--border-strong); border-radius: var(--radius-pill);
+  padding: 0.15rem 0.6rem; background: var(--bg-surface-elevated);
+  color: var(--text-muted); font-size: 0.75rem; white-space: nowrap;
+}
+.panel-copy { margin: 0; color: var(--text-secondary); }
+
+/* ── Form fields ───────────────────────────────────────────────────────── */
+.field-stack { display: grid; gap: var(--space-4); }
+.form-field { display: grid; gap: var(--space-2); }
+.form-field__label {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--space-3);
+  color: var(--text-primary); font-size: 0.8125rem; font-weight: 500;
+}
+.form-field__source {
+  font-family: var(--font-mono); font-size: 0.6875rem;
+  font-weight: 400; color: var(--text-muted);
+}
+.form-field__source[data-source='setting'] { color: var(--status-info-fg); }
+.form-field__description { margin: 0; color: var(--text-muted); font-size: 0.75rem; max-width: 62ch; }
+
+.field-row { display: flex; align-items: center; gap: var(--space-3); }
+.field-row input[type='range'] { flex: 1; min-width: 0; accent-color: var(--accent-primary); }
+.control {
+  width: 100%; height: 2rem;
+  border: 1px solid var(--border-default); border-radius: var(--radius-md);
+  padding: 0 var(--space-3);
+  background: var(--bg-surface-elevated); color: var(--text-primary);
+  font-family: var(--font-mono); font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  box-shadow: var(--shadow-xs);
+  transition: border-color var(--duration-fast) var(--ease-out);
+}
+.control--narrow { width: 6.5rem; flex: none; text-align: right; }
+.control:hover:not(:disabled) { border-color: var(--border-strong); }
+input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible {
+  outline: none; box-shadow: var(--shadow-focus);
+}
+select.control { padding-right: var(--space-6); }
+
+.field-changed {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  color: var(--status-warning-fg); font-size: 0.6875rem;
+  font-family: var(--font-mono);
+}
+.field-changed::before {
+  content: ''; width: 5px; height: 5px; border-radius: 50%;
+  background: var(--status-warning);
+}
+.field-changed[hidden] { display: none; }
+
+/* ── Alerts ────────────────────────────────────────────────────────────── */
+.alert {
+  display: flex; align-items: flex-start; gap: var(--space-3);
+  border: 1px solid var(--border-default); border-radius: var(--radius-lg);
+  padding: 0.875rem 1rem 0.875rem 1.125rem;
+  background: var(--bg-surface);
+  box-shadow: inset 3px 0 0 var(--border-default);
+}
+.alert__content { display: grid; gap: 0.3rem; min-width: 0; }
+.alert__title { margin: 0; font-size: 0.8125rem; font-weight: 600; }
+.alert__body { margin: 0; font-size: 0.8125rem; color: var(--text-secondary); }
+.alert--warning {
+  border-color: var(--status-warning-border); background: var(--status-warning-soft);
+  box-shadow: inset 3px 0 0 var(--status-warning);
+}
+.alert--warning .alert__title { color: var(--status-warning-fg); }
+.alert--error {
+  border-color: var(--status-error-border); background: var(--status-error-soft);
+  box-shadow: inset 3px 0 0 var(--status-error);
+}
+.alert--error .alert__title { color: var(--status-error-fg); }
+.alert--info {
+  border-color: var(--status-info-border); background: var(--status-info-soft);
+  box-shadow: inset 3px 0 0 var(--status-info);
+}
+.alert--info .alert__title { color: var(--status-info-fg); }
+.alert[hidden] { display: none; }
+
+/* ── The signature: tick-budget bar ────────────────────────────────────────
+ * A tick has a WINDOW (the cron interval) and a CEILING (the hosting's
+ * process-kill limit). The operator's real question is containment, not a
+ * number, so the bar shows the projected run inside its window with the
+ * ceiling drawn as a hard edge and everything past it struck out.
+ * ─────────────────────────────────────────────────────────────────────── */
+.impact-metric { display: grid; gap: var(--space-2); }
+.impact-metric__head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3);
+}
+.impact-metric__name {
+  font-size: 0.75rem; font-weight: 600; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--text-secondary);
+}
+.impact-metric__value {
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+  font-size: 0.8125rem; color: var(--text-primary);
+}
+
+.budget-bar {
+  position: relative; height: 2.25rem;
+  border: 1px solid var(--border-default); border-radius: var(--radius-sm);
+  background: var(--bg-canvas); overflow: hidden;
+}
+.budget-bar__fill {
+  position: absolute; inset: 0 auto 0 0;
+  background: linear-gradient(90deg,
+    color-mix(in oklab, var(--status-success) 45%, transparent),
+    color-mix(in oklab, var(--status-success) 70%, transparent));
+  transition: width var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
+}
+.budget-bar[data-over='true'] .budget-bar__fill {
+  background: linear-gradient(90deg,
+    color-mix(in oklab, var(--status-error) 45%, transparent),
+    color-mix(in oklab, var(--status-error) 75%, transparent));
+}
+/* The unusable territory past the hosting ceiling — struck, not tinted, so it
+   reads as "not yours" rather than "a different colour of yours". */
+.budget-bar__forbidden {
+  position: absolute; top: 0; bottom: 0; right: 0;
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent 0 5px,
+    color-mix(in oklab, var(--status-error) 26%, transparent) 5px 6px);
+  border-left: 2px solid var(--status-error);
+}
+.budget-bar__ceiling-label {
+  position: absolute; top: 50%; transform: translate(6px, -50%);
+  font-family: var(--font-mono); font-size: 0.625rem;
+  color: var(--status-error-fg); white-space: nowrap; pointer-events: none;
+}
+.budget-bar__scale {
+  display: flex; justify-content: space-between;
+  font-family: var(--font-mono); font-size: 0.625rem; color: var(--text-muted);
+}
+
+.impact-rows { display: grid; gap: 0; }
+.impact-row {
+  display: grid; grid-template-columns: 1fr auto auto auto;
+  align-items: baseline; gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 0.8125rem;
+}
+.impact-row:first-child { border-top: 0; }
+.impact-row__label { color: var(--text-secondary); }
+.impact-row__from,
+.impact-row__to {
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+}
+.impact-row__from { color: var(--text-muted); }
+.impact-row__arrow { color: var(--text-muted); }
+.impact-row__to { color: var(--text-primary); font-weight: 500; }
+.impact-row--better .impact-row__to { color: var(--status-success-fg); }
+.impact-row--worse .impact-row__to { color: var(--status-warning-fg); }
+
+.limits-list { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--space-2); }
+.limits-list li {
+  display: grid; grid-template-columns: auto 1fr; gap: var(--space-2);
+  color: var(--text-muted); font-size: 0.75rem; line-height: 1.5;
+}
+.limits-list li::before {
+  content: ''; width: 3px; margin-top: 0.35em; height: 0.9em;
+  background: var(--border-strong); border-radius: 2px;
+}
+
+/* ── Actions ───────────────────────────────────────────────────────────── */
+.form-actions {
+  display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap;
+  padding-top: var(--space-2);
+}
+.button {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2);
+  border: 1px solid var(--accent-primary-border); border-radius: var(--radius-md);
+  padding: 0 var(--space-4); height: 2rem;
+  background: var(--accent-primary); color: var(--text-on-primary);
+  font-family: inherit; font-size: 0.8125rem; font-weight: 500;
+  cursor: pointer; white-space: nowrap;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.button:hover { background: var(--accent-primary-hover); }
+.button:disabled { opacity: 0.45; cursor: not-allowed; }
+.button--secondary {
+  border-color: var(--border-default); background: var(--bg-surface-elevated);
+  color: var(--text-primary);
+}
+.button--secondary:hover { background: var(--bg-surface-hover); }
+.actions-hint { color: var(--text-muted); font-size: 0.75rem; }
+
+/* ── Confirmation dialog ───────────────────────────────────────────────── */
+.dialog-backdrop {
+  position: relative;
+  display: grid; place-items: center;
+  padding: var(--space-6) var(--space-4);
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
+  background:
+    repeating-linear-gradient(-45deg, transparent 0 9px, rgb(255 255 255 / 0.012) 9px 18px),
+    rgb(0 0 0 / 0.45);
+}
+.dialog {
+  width: min(100%, 34rem);
+  display: grid; gap: var(--space-4);
+  border: 1px solid var(--border-default); border-radius: 0.75rem;
+  padding: 1.25rem; background: var(--bg-surface-elevated);
+  box-shadow: var(--shadow-overlay);
+}
+.dialog__header { display: grid; gap: var(--space-1); }
+.dialog__title { margin: 0; font-size: 1rem; font-weight: 600; }
+.dialog__subtitle { margin: 0; color: var(--text-secondary); font-size: 0.8125rem; }
+.dialog__body { display: grid; gap: var(--space-3); }
+.dialog__actions {
+  display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3);
+}
+
+.change-list { display: grid; gap: var(--space-2); margin: 0; }
+.change {
+  display: grid; gap: 0.3rem;
+  border: 1px solid var(--border-default); border-left: 3px solid var(--status-warning);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  background: var(--bg-surface);
+}
+.change__head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--space-3); font-size: 0.8125rem;
+}
+.change__name { font-weight: 500; }
+.change__delta {
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+  font-size: 0.75rem; color: var(--text-secondary); white-space: nowrap;
+}
+.change__delta b { color: var(--text-primary); font-weight: 600; }
+.change__effect { margin: 0; color: var(--text-muted); font-size: 0.75rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+
+/* Mockup state switcher (docs/frontend-architecture.md, UX Mockups). */
+.proto-rail { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-bottom: var(--space-4); padding: var(--space-3); border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-surface); }
+.proto-rail__label { font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.proto-rail__note { flex-basis: 100%; font-size: 0.6875rem; color: var(--text-muted); }
+.state-btn { padding: 4px 10px; font-family: inherit; font-size: 0.75rem; color: var(--text-default); background: var(--bg-shell); border: 1px solid var(--border-default); border-radius: var(--radius-sm); cursor: pointer; }
+.state-btn[aria-pressed="true"] { color: var(--text-on-primary); background: var(--color-primary); border-color: var(--color-primary); }
+body[data-state="default"] .mock-state:not([data-state="default"]),
+body[data-state="save-confirm"] .mock-state:not([data-state="save-confirm"]),
+body[data-state="host-limit-blocked"] .mock-state:not([data-state="host-limit-blocked"]) { display: none; }
+</style>
+
+<div class="shell">
+
+  <div class="mock-note">
+    <strong>Mockup for issue #2653 — not shipped code.</strong>
+    <span>Dark theme only. Every colour, radius and class name is taken from <code>apps/web/src/index.css</code> and the existing <code>/settings</code> pages. The sliders are live so the calculator can be judged the way an operator would meet it.</span>
+  </div>
+
+  <div class="proto-rail" role="toolbar" aria-label="Mockup state switcher">
+    <span class="proto-rail__label">State:</span>
+    <button class="state-btn" type="button" data-goto="all" aria-pressed="true">All (stacked)</button>
+    <button class="state-btn" type="button" data-goto="default">default</button>
+    <button class="state-btn" type="button" data-goto="save-confirm">save-confirm</button>
+    <button class="state-btn" type="button" data-goto="host-limit-blocked">host-limit-blocked</button>
+    <span class="proto-rail__note">Implementation and E2E tasks cite these <code>data-state</code> values by name (<code>docs/frontend-architecture.md</code> &sect; UX Mockups).</span>
+  </div>
+
+  <header class="page-header">
+    <p class="eyebrow">Settings</p>
+    <h1 class="page-title">Sync pacing</h1>
+    <p class="page-description">
+      How hard OpenLinker works your shop, and how long a full pass takes. Changing these
+      trades shop load against how quickly OpenLinker notices a change.
+    </p>
+    <div class="toolbar__group">
+      <span class="toolbar-chip">Catalogue</span>
+      <span class="toolbar-chip">Stock</span>
+      <span class="toolbar-chip">Deletion audit</span>
+      <span class="toolbar-chip">Hosting</span>
+    </div>
+  </header>
+
+  <section class="mock-state" data-state="default">
+  <p class="state-label">Default state</p>
+
+  <div class="workspace-grid--primary">
+
+    <!-- ── Settings column ──────────────────────────────────────────────── -->
+    <div class="settings-column">
+
+      <article class="panel">
+        <div class="panel__header">
+          <div>
+            <p class="eyebrow">Your server</p>
+            <h2 class="section-title">Hosting limits</h2>
+          </div>
+          <span class="panel__meta">Used by the calculator</span>
+        </div>
+
+        <div class="field-stack">
+          <div class="form-field">
+            <label class="form-field__label" for="hosting">
+              Process time limit
+              <span class="form-field__source">seconds</span>
+            </label>
+            <div class="field-row">
+              <input class="control control--narrow" id="hosting" type="number" min="10" max="3600" step="10" value="300">
+              <span class="form-field__description" style="margin:0">
+                How long your host lets a single PHP process run before killing it.
+                Shared hosting is often 300 s. Ask your provider, or leave it at 300.
+              </span>
+            </div>
+          </div>
+
+          <div class="form-field">
+            <label class="form-field__label" for="catalogsize">
+              Products in this shop
+              <span class="form-field__source">read from sync status</span>
+            </label>
+            <div class="field-row">
+              <input class="control control--narrow" id="catalogsize" type="number" min="100" max="1000000" step="1000" value="100000">
+              <span class="form-field__description" style="margin:0">
+                Used only to work out how long a full pass takes. OpenLinker reads this
+                from the connection, so it is not something you set.
+              </span>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="panel__header">
+          <div>
+            <p class="eyebrow">Catalogue</p>
+            <h2 class="section-title">Product sweep</h2>
+          </div>
+          <span class="panel__meta">every 20 min</span>
+        </div>
+
+        <div class="field-stack">
+          <div class="form-field">
+            <label class="form-field__label" for="catalogBudget">
+              Products per run
+              <span class="form-field__source" data-source="default" id="catalogBudgetSource">500 (default)</span>
+            </label>
+            <div class="field-row">
+              <input type="range" id="catalogBudget" min="50" max="2000" step="50" value="500"
+                     aria-describedby="catalogBudgetDesc">
+              <input class="control control--narrow" id="catalogBudgetNum" type="number" min="50" max="2000" step="50" value="500"
+                     aria-label="Products per catalogue run">
+            </div>
+            <p class="form-field__description" id="catalogBudgetDesc">
+              How many products OpenLinker reads from the shop in one run. Raise it and a
+              full pass finishes sooner, but each run leans harder on the shop.
+            </p>
+            <span class="field-changed" id="catalogBudgetChanged" hidden>changed from 500</span>
+          </div>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="panel__header">
+          <div>
+            <p class="eyebrow">Stock</p>
+            <h2 class="section-title">Stock sweep</h2>
+          </div>
+          <span class="panel__meta">every 15 min</span>
+        </div>
+
+        <div class="field-stack">
+          <div class="form-field">
+            <label class="form-field__label" for="stockBudget">
+              Products per run
+              <span class="form-field__source" data-source="default" id="stockBudgetSource">100 (default)</span>
+            </label>
+            <div class="field-row">
+              <input type="range" id="stockBudget" min="50" max="2000" step="50" value="100"
+                     aria-describedby="stockBudgetDesc">
+              <input class="control control--narrow" id="stockBudgetNum" type="number" min="50" max="2000" step="50" value="100"
+                     aria-label="Products per stock run">
+            </div>
+            <p class="form-field__description" id="stockBudgetDesc">
+              How many products have their stock re-read in one run. On a shop with no stock
+              webhook this is the only thing that notices a quantity change.
+            </p>
+            <span class="field-changed" id="stockBudgetChanged" hidden>changed from 100</span>
+          </div>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="panel__header">
+          <div>
+            <p class="eyebrow">Deleted products</p>
+            <h2 class="section-title">Deletion audit</h2>
+          </div>
+          <span class="panel__meta">cannot be switched off</span>
+        </div>
+
+        <p class="panel-copy" style="margin-bottom:var(--space-4);font-size:0.8125rem">
+          A shop never tells OpenLinker that a product is gone, so OpenLinker walks its own
+          list and checks. Until a deleted product is reached, its offers keep selling.
+        </p>
+
+        <div class="field-stack">
+          <div class="form-field">
+            <label class="form-field__label" for="auditBudget">
+              Products per run
+              <span class="form-field__source" data-source="default" id="auditBudgetSource">100 (default)</span>
+            </label>
+            <div class="field-row">
+              <input type="range" id="auditBudget" min="50" max="2000" step="50" value="100"
+                     aria-describedby="auditBudgetDesc">
+              <input class="control control--narrow" id="auditBudgetNum" type="number" min="50" max="2000" step="50" value="100"
+                     aria-label="Products per audit run">
+            </div>
+            <p class="form-field__description" id="auditBudgetDesc">
+              How many products are checked per run.
+            </p>
+            <span class="field-changed" id="auditBudgetChanged" hidden>changed from 100</span>
+          </div>
+
+          <div class="form-field">
+            <label class="form-field__label" for="auditCron">
+              How often it runs
+              <span class="form-field__source" data-source="default" id="auditCronSource">hourly (default)</span>
+            </label>
+            <select class="control" id="auditCron" aria-describedby="auditCronDesc">
+              <option value="0.25">Every 15 minutes</option>
+              <option value="0.5">Every 30 minutes</option>
+              <option value="1" selected>Every hour</option>
+              <option value="4">Every 4 hours</option>
+              <option value="24">Once a day</option>
+            </select>
+            <p class="form-field__description" id="auditCronDesc">
+              Together with the number above, this decides how long a deleted product can
+              keep selling. It cannot be turned off.
+            </p>
+            <span class="field-changed" id="auditCronChanged" hidden>changed from hourly</span>
+          </div>
+        </div>
+      </article>
+
+      <div class="form-actions">
+        <button class="button" id="saveBtn" type="button" disabled>Save changes</button>
+        <button class="button button--secondary" id="resetBtn" type="button">Reset to defaults</button>
+        <span class="actions-hint" id="actionsHint">No changes yet.</span>
+      </div>
+    </div>
+
+    <!-- ── Impact column ────────────────────────────────────────────────── -->
+    <aside class="impact-column">
+
+      <article class="panel">
+        <div class="panel__header">
+          <div>
+            <p class="eyebrow">One catalogue run</p>
+            <h2 class="section-title">Will it finish?</h2>
+          </div>
+        </div>
+
+        <div class="impact-metric">
+          <div class="impact-metric__head">
+            <span class="impact-metric__name">Run length</span>
+            <span class="impact-metric__value" id="runLength">46 s of 1200 s</span>
+          </div>
+
+          <div class="budget-bar" id="budgetBar" data-over="false"
+               role="img" aria-label="Projected run length inside the 20 minute window">
+            <div class="budget-bar__fill" id="budgetFill" style="width:3.8%"></div>
+            <div class="budget-bar__forbidden" id="budgetForbidden" style="width:75%">
+              <span class="budget-bar__ceiling-label">host kills at 300 s</span>
+            </div>
+          </div>
+
+          <div class="budget-bar__scale">
+            <span>0 s</span>
+            <span id="windowEnd">1200 s (next run)</span>
+          </div>
+        </div>
+
+        <div class="alert alert--error" id="hostAlert" hidden style="margin-top:var(--space-4)">
+          <div class="alert__content">
+            <p class="alert__title">This run will be cut short</p>
+            <p class="alert__body" id="hostAlertBody"></p>
+          </div>
+        </div>
+
+        <div class="alert alert--warning" id="windowAlert" hidden style="margin-top:var(--space-4)">
+          <div class="alert__content">
+            <p class="alert__title">Runs will overlap</p>
+            <p class="alert__body" id="windowAlertBody"></p>
+          </div>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="panel__header">
+          <div>
+            <p class="eyebrow">What changes</p>
+            <h2 class="section-title">Before and after</h2>
+          </div>
+        </div>
+
+        <div class="impact-rows" id="impactRows">
+          <div class="impact-row" data-key="catalogReq">
+            <span class="impact-row__label">Shop requests per catalogue run</span>
+            <span class="impact-row__from">29</span>
+            <span class="impact-row__arrow">&rarr;</span>
+            <span class="impact-row__to">29</span>
+          </div>
+          <div class="impact-row" data-key="catalogCycle">
+            <span class="impact-row__label">Full catalogue pass</span>
+            <span class="impact-row__from">2.8 d</span>
+            <span class="impact-row__arrow">&rarr;</span>
+            <span class="impact-row__to">2.8 d</span>
+          </div>
+          <div class="impact-row" data-key="stockCycle">
+            <span class="impact-row__label">Full stock pass</span>
+            <span class="impact-row__from">10.4 d</span>
+            <span class="impact-row__arrow">&rarr;</span>
+            <span class="impact-row__to">10.4 d</span>
+          </div>
+          <div class="impact-row" data-key="auditCycle">
+            <span class="impact-row__label">Deleted product still selling</span>
+            <span class="impact-row__from">41.7 d</span>
+            <span class="impact-row__arrow">&rarr;</span>
+            <span class="impact-row__to">41.7 d</span>
+          </div>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="panel__header">
+          <div>
+            <p class="eyebrow">Read this</p>
+            <h2 class="section-title">What these numbers cannot tell you</h2>
+          </div>
+        </div>
+        <ul class="limits-list">
+          <li><span>Not where your shop breaks. These figures come from OpenLinker's own pacing, never from pushing a shop until it failed. They show load, they do not predict an outage.</span></li>
+          <li><span>One worker process. Two workers double every request count here.</span></li>
+          <li><span>Measured on a test catalogue of 100 000 products, 3 variants each, no bundles. Your shop will differ.</span></li>
+        </ul>
+      </article>
+    </aside>
+  </div>
+
+  <!-- ── Confirmation state ────────────────────────────────────────────── -->
+  </section>
+
+  <section class="mock-state" data-state="save-confirm">
+  <p class="state-label">Confirmation, shown on save</p>
+
+  <div class="dialog-backdrop">
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlgTitle">
+      <div class="dialog__header">
+        <h2 class="dialog__title" id="dlgTitle">Save these changes?</h2>
+        <p class="dialog__subtitle">Two settings changed. Everything else stays as it is.</p>
+      </div>
+
+      <div class="dialog__body">
+        <div class="change-list">
+          <div class="change">
+            <div class="change__head">
+              <span class="change__name">Catalogue: products per run</span>
+              <span class="change__delta">500 &rarr; <b>2000</b></span>
+            </div>
+            <p class="change__effect">
+              A run goes from 46 s to about 184 s. A full pass drops from 2.8 days to
+              0.7 days. Your host kills processes at 300 s, so this still fits.
+            </p>
+          </div>
+
+          <div class="change">
+            <div class="change__head">
+              <span class="change__name">Deletion audit: how often it runs</span>
+              <span class="change__delta">hourly &rarr; <b>every 4 hours</b></span>
+            </div>
+            <p class="change__effect">
+              A deleted product can keep selling for up to 167 days instead of 42.
+            </p>
+          </div>
+        </div>
+
+        <div class="alert alert--warning">
+          <div class="alert__content">
+            <p class="alert__title">One change makes things worse</p>
+            <p class="alert__body">
+              Running the deletion audit less often is the only way a deleted product keeps
+              selling longer. Nothing else in OpenLinker catches it.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="dialog__actions">
+        <button class="button button--secondary" type="button">Keep editing</button>
+        <button class="button" type="button">Save changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Blocked state ─────────────────────────────────────────────────── -->
+  </section>
+
+  <section class="mock-state" data-state="host-limit-blocked">
+  <p class="state-label">When a value will not fit the host</p>
+
+  <div class="workspace-grid--primary">
+    <div class="settings-column">
+      <article class="panel">
+        <div class="panel__header">
+          <div>
+            <p class="eyebrow">Catalogue</p>
+            <h2 class="section-title">Product sweep</h2>
+          </div>
+          <span class="panel__meta">every 20 min</span>
+        </div>
+        <div class="form-field">
+          <label class="form-field__label" for="demoBlocked">
+            Products per run
+            <span class="form-field__source" data-source="setting">2000 (you set this)</span>
+          </label>
+          <div class="field-row">
+            <input type="range" id="demoBlocked" min="50" max="2000" step="50" value="2000" disabled>
+            <input class="control control--narrow" type="number" value="2000" disabled aria-label="Products per catalogue run">
+          </div>
+          <p class="form-field__description">
+            How many products OpenLinker reads from the shop in one run.
+          </p>
+        </div>
+      </article>
+
+      <div class="alert alert--error">
+        <div class="alert__content">
+          <p class="alert__title">This run will be cut short</p>
+          <p class="alert__body">
+            At 2000 products a run takes about 184 s. You told us your host kills processes
+            at <b>120 s</b>. The run will stop halfway and its work is held until recovery.
+            Try 1200 or fewer.
+          </p>
+        </div>
+      </div>
+    </div>
+    <aside class="impact-column">
+      <article class="panel">
+        <div class="panel__header">
+          <div>
+            <p class="eyebrow">One catalogue run</p>
+            <h2 class="section-title">Will it finish?</h2>
+          </div>
+        </div>
+        <div class="impact-metric">
+          <div class="impact-metric__head">
+            <span class="impact-metric__name">Run length</span>
+            <span class="impact-metric__value">184 s of 1200 s</span>
+          </div>
+          <div class="budget-bar" data-over="true" role="img" aria-label="Projected run exceeds the host process limit">
+            <div class="budget-bar__fill" style="width:15.3%"></div>
+            <div class="budget-bar__forbidden" style="width:90%">
+              <span class="budget-bar__ceiling-label">host kills at 120 s</span>
+            </div>
+          </div>
+          <div class="budget-bar__scale">
+            <span>0 s</span>
+            <span>1200 s (next run)</span>
+          </div>
+        </div>
+      </article>
+    </aside>
+  </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // Measured in #2644 on a 100 000-product PrestaShop, single worker process.
+  // Per-tick cost was identical at 10 000 and at 100 000 products, so scaling
+  // it linearly with the budget is a defensible model rather than a guess.
+  var BASE = {
+    catalog: { budget: 500, requests: 29, seconds: 46, windowSec: 1200 },
+    stock:   { budget: 100, requests: 5,  seconds: 20, windowSec: 900 }
+  };
+  var DEFAULTS = { catalogBudget: 500, stockBudget: 100, auditBudget: 100, auditCron: '1' };
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  function days(products, budget, everyMinutes) {
+    return Math.ceil(products / budget) * everyMinutes / 1440;
+  }
+  function fmtDays(d) {
+    if (d < 1) return (Math.round(d * 24 * 10) / 10) + ' h';
+    return (Math.round(d * 10) / 10) + ' d';
+  }
+  function fmtSec(s) { return Math.round(s) + ' s'; }
+
+  function read() {
+    return {
+      hosting: Number($('hosting').value) || 300,
+      products: Number($('catalogsize').value) || 1,
+      catalogBudget: Number($('catalogBudget').value),
+      stockBudget: Number($('stockBudget').value),
+      auditBudget: Number($('auditBudget').value),
+      auditCron: $('auditCron').value
+    };
+  }
+
+  function project(state) {
+    var cScale = state.catalogBudget / BASE.catalog.budget;
+    var sScale = state.stockBudget / BASE.stock.budget;
+    return {
+      catalogReq: Math.round(BASE.catalog.requests * cScale),
+      catalogSec: BASE.catalog.seconds * cScale,
+      catalogCycle: days(state.products, state.catalogBudget, 20),
+      stockCycle: days(state.products, state.stockBudget, 15),
+      auditCycle: days(state.products, state.auditBudget, Number(state.auditCron) * 60)
+    };
+  }
+
+  var BASELINE = project({
+    hosting: 300, products: 100000,
+    catalogBudget: DEFAULTS.catalogBudget,
+    stockBudget: DEFAULTS.stockBudget,
+    auditBudget: DEFAULTS.auditBudget,
+    auditCron: DEFAULTS.auditCron
+  });
+
+  function setRow(key, fromText, toText, direction) {
+    var row = document.querySelector('.impact-row[data-key="' + key + '"]');
+    if (!row) return;
+    row.querySelector('.impact-row__from').textContent = fromText;
+    row.querySelector('.impact-row__to').textContent = toText;
+    row.classList.remove('impact-row--better', 'impact-row--worse');
+    if (direction === 'better') row.classList.add('impact-row--better');
+    if (direction === 'worse') row.classList.add('impact-row--worse');
+  }
+
+  function markChanged(id, changed, sourceId, sourceText) {
+    var el = $(id);
+    if (el) el.hidden = !changed;
+    var src = $(sourceId);
+    if (src) {
+      src.textContent = sourceText;
+      src.setAttribute('data-source', changed ? 'setting' : 'default');
+    }
+  }
+
+  function render() {
+    var s = read();
+    var p = project(s);
+
+    // Keep the paired slider and number box in step.
+    $('catalogBudgetNum').value = s.catalogBudget;
+    $('stockBudgetNum').value = s.stockBudget;
+    $('auditBudgetNum').value = s.auditBudget;
+
+    // ── The bar. Fill is the run inside its window; the hatched right-hand
+    // zone is everything past the host's process limit.
+    var win = BASE.catalog.windowSec;
+    var fillPct = Math.min(100, (p.catalogSec / win) * 100);
+    var ceilingPct = Math.min(100, (s.hosting / win) * 100);
+    var over = p.catalogSec > s.hosting;
+
+    $('budgetFill').style.width = fillPct.toFixed(1) + '%';
+    $('budgetForbidden').style.width = Math.max(0, 100 - ceilingPct).toFixed(1) + '%';
+    $('budgetForbidden').querySelector('.budget-bar__ceiling-label').textContent =
+      'host kills at ' + s.hosting + ' s';
+    $('budgetBar').dataset.over = String(over);
+    $('runLength').textContent = fmtSec(p.catalogSec) + ' of ' + win + ' s';
+    $('windowEnd').textContent = win + ' s (next run)';
+
+    $('hostAlert').hidden = !over;
+    if (over) {
+      var fits = Math.floor((s.hosting / BASE.catalog.seconds) * BASE.catalog.budget / 50) * 50;
+      $('hostAlertBody').innerHTML =
+        'At ' + s.catalogBudget + ' products a run takes about <b>' + fmtSec(p.catalogSec) +
+        '</b>. You told us your host kills processes at <b>' + s.hosting + ' s</b>. ' +
+        'The run will stop halfway and its work is held until recovery. Try ' +
+        (fits > 0 ? fits : 50) + ' or fewer.';
+    }
+
+    var overWindow = p.catalogSec > win;
+    $('windowAlert').hidden = !overWindow;
+    if (overWindow) {
+      $('windowAlertBody').textContent =
+        'A run takes about ' + fmtSec(p.catalogSec) + ', but the next one starts after ' +
+        win + ' s. Runs will queue behind each other instead of finishing sooner.';
+    }
+
+    // ── Before and after. "Better" is always shorter waiting or lighter load.
+    setRow('catalogReq', BASELINE.catalogReq, p.catalogReq,
+      p.catalogReq === BASELINE.catalogReq ? null : (p.catalogReq > BASELINE.catalogReq ? 'worse' : 'better'));
+    setRow('catalogCycle', fmtDays(BASELINE.catalogCycle), fmtDays(p.catalogCycle),
+      p.catalogCycle === BASELINE.catalogCycle ? null : (p.catalogCycle > BASELINE.catalogCycle ? 'worse' : 'better'));
+    setRow('stockCycle', fmtDays(BASELINE.stockCycle), fmtDays(p.stockCycle),
+      p.stockCycle === BASELINE.stockCycle ? null : (p.stockCycle > BASELINE.stockCycle ? 'worse' : 'better'));
+    setRow('auditCycle', fmtDays(BASELINE.auditCycle), fmtDays(p.auditCycle),
+      p.auditCycle === BASELINE.auditCycle ? null : (p.auditCycle > BASELINE.auditCycle ? 'worse' : 'better'));
+
+    // ── Changed-value markers and the save gate.
+    var cronLabel = $('auditCron').options[$('auditCron').selectedIndex].text.toLowerCase();
+    var changes = 0;
+    var c1 = s.catalogBudget !== DEFAULTS.catalogBudget;
+    var c2 = s.stockBudget !== DEFAULTS.stockBudget;
+    var c3 = s.auditBudget !== DEFAULTS.auditBudget;
+    var c4 = s.auditCron !== DEFAULTS.auditCron;
+    [c1, c2, c3, c4].forEach(function (c) { if (c) changes++; });
+
+    markChanged('catalogBudgetChanged', c1, 'catalogBudgetSource',
+      c1 ? s.catalogBudget + ' (you set this)' : '500 (default)');
+    markChanged('stockBudgetChanged', c2, 'stockBudgetSource',
+      c2 ? s.stockBudget + ' (you set this)' : '100 (default)');
+    markChanged('auditBudgetChanged', c3, 'auditBudgetSource',
+      c3 ? s.auditBudget + ' (you set this)' : '100 (default)');
+    markChanged('auditCronChanged', c4, 'auditCronSource',
+      c4 ? cronLabel + ' (you set this)' : 'hourly (default)');
+
+    $('saveBtn').disabled = changes === 0;
+    $('actionsHint').textContent = changes === 0
+      ? 'No changes yet.'
+      : changes + (changes === 1 ? ' setting changed.' : ' settings changed.') +
+        ' You will see what each one does before it saves.';
+  }
+
+  ['catalogBudget', 'stockBudget', 'auditBudget'].forEach(function (id) {
+    $(id).addEventListener('input', render);
+    $(id + 'Num').addEventListener('input', function () {
+      $(id).value = this.value;
+      render();
+    });
+  });
+  $('auditCron').addEventListener('change', render);
+  $('hosting').addEventListener('input', render);
+  $('catalogsize').addEventListener('input', render);
+
+  $('resetBtn').addEventListener('click', function () {
+    $('catalogBudget').value = DEFAULTS.catalogBudget;
+    $('stockBudget').value = DEFAULTS.stockBudget;
+    $('auditBudget').value = DEFAULTS.auditBudget;
+    $('auditCron').value = DEFAULTS.auditCron;
+    render();
+  });
+
+  render();
+
+  // State switcher. `all` keeps the stacked reading; a named value isolates one
+  // block so a task or an E2E spec can cite it unambiguously by name.
+  Array.prototype.forEach.call(document.querySelectorAll('.state-btn'), function (btn) {
+    btn.addEventListener('click', function () {
+      var name = btn.getAttribute('data-goto');
+      if (name === 'all') {
+        document.body.removeAttribute('data-state');
+      } else {
+        document.body.setAttribute('data-state', name);
+      }
+      Array.prototype.forEach.call(document.querySelectorAll('.state-btn'), function (other) {
+        other.setAttribute('aria-pressed', String(other === btn));
+      });
+    });
+  });
+
+})();
+</script>

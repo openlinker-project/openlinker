@@ -15,6 +15,7 @@ import { SyncModule as CoreSyncModule } from '@openlinker/core/sync';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { SyncController } from './http/sync.controller';
+import { ConnectionSyncStatusController } from './http/connection-sync-status.controller';
 
 @Module({
   imports: [
@@ -22,7 +23,7 @@ import { SyncController } from './http/sync.controller';
     IdentifierMappingModule, // Provides ConnectionPort
     IntegrationsModule, // Provides IIntegrationsService
   ],
-  controllers: [SyncController],
+  controllers: [SyncController, ConnectionSyncStatusController],
 })
 export class SyncModule {}
 

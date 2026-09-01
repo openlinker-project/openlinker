@@ -556,6 +556,61 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder', () => {
         expect(mockHttpClient.deleteResource).toHaveBeenCalledWith('specific_prices', 'sp_test');
       });
 
+      // #2597: a module that advertises `line_prices` pins the whole set inside
+      // the order-import request, so the two Webservice calls per line go away.
+      describe('module-side line pinning (#2597)', () => {
+        const grossOrderForModule = (): OrderCreate =>
+          createTestOrder({
+            totals: {
+              subtotal: 109.97,
+              tax: 0,
+              shipping: 5.0,
+              total: 114.97,
+              currency: 'EUR',
+              taxTreatment: 'inclusive',
+            },
+          });
+
+        beforeEach(() => {
+          arrange();
+          (mockTaxRateResolver.resolveProductTaxRate as jest.Mock).mockResolvedValue({
+            kind: 'resolved',
+            rate: 0.23,
+          });
+          (mockOpenLinkerModuleClient.supportsLinePrices as jest.Mock).mockReturnValue(true);
+        });
+
+        it('sends the pins on importOrder and writes no specific_prices at all', async () => {
+          await adapter.createOrder(grossOrderForModule());
+
+          expect(createCalls().map((c) => c[0])).not.toContain('specific_prices');
+          expect(mockHttpClient.deleteResource).not.toHaveBeenCalledWith(
+            'specific_prices',
+            expect.anything()
+          );
+
+          const [input] = (mockOpenLinkerModuleClient.importOrder as jest.Mock).mock.calls[0] as [
+            { linePrices?: Array<{ idProduct: number; price: string }> },
+          ];
+          expect(input.linePrices).toHaveLength(2);
+          // Same net price the Webservice path pins, to the same six decimals.
+          expect(input.linePrices?.[0]?.price).toBe((29.99 / 1.23).toFixed(6));
+          expect(input.linePrices?.[0]?.idProduct).toBe(100);
+        });
+
+        it('falls back to the Webservice path when the module has not advertised the field', async () => {
+          (mockOpenLinkerModuleClient.supportsLinePrices as jest.Mock).mockReturnValue(false);
+
+          await adapter.createOrder(grossOrderForModule());
+
+          expect(createCalls().filter((c) => c[0] === 'specific_prices')).toHaveLength(2);
+          const [input] = (mockOpenLinkerModuleClient.importOrder as jest.Mock).mock.calls[0] as [
+            { linePrices?: unknown },
+          ];
+          expect(input.linePrices).toBeUndefined();
+        });
+      });
+
       it('pins the price as-is (no tax conversion) when the source reports net prices', async () => {
         arrange();
 
@@ -697,10 +752,9 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder', () => {
         expect(mockOpenLinkerModuleClient.importOrder).not.toHaveBeenCalled();
       });
 
-      // The unknown fires on a LATER line, so the earlier line's pin is already
-      // written when the throw happens — the one case where the throw path
-      // interacts with a prior write.
-      it('deletes the pins already written for earlier lines when a later line is unknown', async () => {
+      // Since #2597 every line's price is resolved before any is written, so an
+      // unknown on a later line leaves nothing behind to clean up.
+      it('writes no pin at all when a later line has an unknown tax rate', async () => {
         arrange();
         (mockTaxRateResolver.resolveProductTaxRate as jest.Mock)
           .mockResolvedValueOnce({ kind: 'resolved', rate: 0.23 })
@@ -714,10 +768,10 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder', () => {
           PrestashopTaxRateUnknownException
         );
 
-        // The first line's pin was created and then cleaned up; the order was
+        // No pin was written, so there is nothing to delete, and the order was
         // never submitted.
-        expect(createCalls().map((c) => c[0])).toContain('specific_prices');
-        expect(mockHttpClient.deleteResource).toHaveBeenCalledWith(
+        expect(createCalls().map((c) => c[0])).not.toContain('specific_prices');
+        expect(mockHttpClient.deleteResource).not.toHaveBeenCalledWith(
           'specific_prices',
           expect.anything()
         );

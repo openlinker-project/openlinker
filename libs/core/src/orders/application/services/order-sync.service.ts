@@ -19,11 +19,11 @@ import type {
 } from '../interfaces/order-sync.service.interface';
 import type { OrderProcessorManagerPort } from '../../domain/ports/order-processor-manager.port';
 import type { OrderCreate, OrderRef } from '../../domain/types/order-processor.types';
-import { OrderStatusValues } from '../../domain/types/order.types';
+import { OrderStatusValues, type Order } from '../../domain/types/order.types';
 import { IIntegrationsService } from '@openlinker/core/integrations';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { IMappingConfigService, MAPPING_CONFIG_SERVICE_TOKEN } from '@openlinker/core/mappings';
-import { SyncLockPort, SYNC_LOCK_TOKEN } from '@openlinker/core/sync';
+import { SyncLockPort, SYNC_LOCK_TOKEN, SyncJobQueuePort, SYNC_JOB_QUEUE_TOKEN } from '@openlinker/core/sync';
 import {
   IIdentifierMappingService,
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
@@ -48,7 +48,9 @@ export class OrderSyncService implements IOrderSyncService {
     @Inject(SYNC_LOCK_TOKEN)
     private readonly syncLock: SyncLockPort,
     @Inject(IDENTIFIER_MAPPING_SERVICE_TOKEN)
-    private readonly identifierMapping: IIdentifierMappingService
+    private readonly identifierMapping: IIdentifierMappingService,
+    @Inject(SYNC_JOB_QUEUE_TOKEN)
+    private readonly jobQueue: SyncJobQueuePort
   ) {}
 
   async syncOrder(request: OrderSyncRequest): Promise<OrderSyncResult[]> {
@@ -98,6 +100,9 @@ export class OrderSyncService implements IOrderSyncService {
       shipping: order.shipping,
       pickupPoint: order.pickupPoint,
       source: { connectionId: sourceConnectionId, eventId: sourceEventId },
+      // Threaded so a destination can record what the buyer has paid apart from
+      // what the order is worth (#2600). Passed through, never derived.
+      paymentStatus: order.paymentStatus,
       metadata: {
         // Required by destination adapters (e.g. WooCommerce) for idempotency checks.
         internalOrderId: order.id,
@@ -139,6 +144,28 @@ export class OrderSyncService implements IOrderSyncService {
     if (contended) {
       this.logger.warn(`Order ${order.id} create contended on a destination; retrying sync job`);
       throw contended.reason;
+    }
+
+    // Best-effort post-sale close of the "it sold, so re-read the master and
+    // propagate" loop (#2623). The sweep (`master.inventory.syncAll`) is the
+    // backstop — this just avoids waiting for it. Never allowed to fail the
+    // sync itself: the destination create above is the correctness-critical
+    // half, this is a latency optimization on top of it.
+    //
+    // Only fires when at least one destination actually created the order:
+    // if every destination failed, nothing downstream decremented the
+    // master's stock, so a refresh here would just spend outbound API quota
+    // against the master for no observable change — worst timed during a
+    // destination outage, when many orders fail at once.
+    const anyDestinationSucceeded = settled.some((outcome) => outcome.status === 'fulfilled');
+    if (anyDestinationSucceeded) {
+      try {
+        await this.enqueuePostSaleInventoryRefresh(order);
+      } catch (error) {
+        this.logger.warn(
+          `Failed to enqueue post-sale master inventory refresh for order ${order.id}: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
     }
 
     return settled.map((outcome, index): OrderSyncResult => {
@@ -329,5 +356,85 @@ export class OrderSyncService implements IOrderSyncService {
     }
     this.logger.warn(`Unknown order status: ${status}, defaulting to 'pending'`);
     return 'pending';
+  }
+
+  /**
+   * Closes the third trigger `master.inventory.syncByExternalId` was missing
+   * (#2623): a webhook and the sweep re-read a master product's stock, but
+   * nothing did after a sale sold it down. For every distinct product on this
+   * order, enqueues one re-read per `InventoryMaster`-capable connection that
+   * has an external-id mapping for it — mirroring the sweep child's own job
+   * type/payload shape (`libs/core/src/sync/domain/types/master-job-payloads.types.ts`)
+   * so the existing handler needs no change.
+   *
+   * A product with no `InventoryMaster` mapping anywhere (e.g. the master IS
+   * the destination that just created the order, or the SKU has no master
+   * connection configured) simply enqueues nothing for that product — this is
+   * a latency optimization on top of the sweep, not a new correctness path.
+   *
+   * Only called from `syncOrder` when `anyDestinationSucceeded` — see that
+   * gate's comment for why a fully-failed dispatch enqueues nothing here.
+   */
+  private async enqueuePostSaleInventoryRefresh(order: Order): Promise<void> {
+    const inventoryMasters = await this.integrationsService.listCapabilityAdapters<unknown>({
+      capability: 'InventoryMaster',
+      lazy: true,
+    });
+
+    if (inventoryMasters.length === 0) {
+      return;
+    }
+
+    const masterConnectionIds = new Set(inventoryMasters.map((m) => m.connectionId));
+    const uniqueProductIds = Array.from(new Set(order.items.map((item) => item.productId)));
+
+    // allSettled, not all: one product's getExternalIds rejecting must never
+    // suppress the enqueues that other products' lookups already resolved.
+    await Promise.allSettled(
+      uniqueProductIds.map((productId) =>
+        this.enqueueInventoryRefreshForProduct(order.id, productId, masterConnectionIds)
+      )
+    );
+  }
+
+  private async enqueueInventoryRefreshForProduct(
+    orderId: string,
+    productId: string,
+    masterConnectionIds: Set<string>
+  ): Promise<void> {
+    const mappings = await this.identifierMapping.getExternalIds(
+      CORE_ENTITY_TYPE.Product,
+      productId
+    );
+
+    await Promise.all(
+      mappings
+        .filter((mapping) => masterConnectionIds.has(mapping.connectionId))
+        .map(async (mapping) => {
+          try {
+            await this.jobQueue.enqueue({
+              type: 'master.inventory.syncByExternalId',
+              connectionId: mapping.connectionId,
+              payload: {
+                schemaVersion: 1,
+                externalId: mapping.externalId,
+                objectType: CORE_ENTITY_TYPE.Inventory,
+              },
+              options: {
+                // Order-scoped, not write-event-scoped like `setInventory`'s
+                // dedupe key: a retried order-sync job re-dispatches
+                // every destination (see the contended-retry comment above),
+                // and must not re-enqueue N redundant refreshes for the same
+                // SKU on the same order.
+                dedupeKey: `order:${orderId}:inventory:sync:${mapping.connectionId}:${mapping.externalId}`,
+              },
+            });
+          } catch (error) {
+            this.logger.warn(
+              `Failed to enqueue post-sale master inventory refresh (order ${orderId}, connection ${mapping.connectionId}, externalId ${mapping.externalId}): ${error instanceof Error ? error.message : String(error)}`
+            );
+          }
+        })
+    );
   }
 }

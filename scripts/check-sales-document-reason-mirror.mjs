@@ -51,12 +51,32 @@ const BACKEND_FILE = join(
   'sales-document-reason.types.ts',
 );
 const FRONTEND_FILE = join('apps', 'web', 'src', 'features', 'orders', 'api', 'orders.types.ts');
+const COPY_FILE = join(
+  'apps',
+  'web',
+  'src',
+  'features',
+  'sales-documents',
+  'lib',
+  'sales-document-reason-copy.ts',
+);
 
 /** The two `as const` arrays this script keeps aligned. */
 const MIRRORED_DECLARATIONS = [
   'SalesDocumentGateBlockReasonValues',
   'SalesDocumentUnresolvedReasonValues',
 ];
+
+/**
+ * The copy map that must carry one entry per reason (#2534), keyed by the union
+ * whose values it covers. Membership only - the `satisfies Record<…>` in the
+ * copy file is what enforces it against the FRONTEND type, and this check is
+ * what enforces it against the BACKEND union, which the type system cannot see.
+ */
+const COPY_DECLARATIONS = {
+  SalesDocumentGateBlockReasonValues: 'SALES_DOCUMENT_GATE_REASON_COPY',
+  SalesDocumentUnresolvedReasonValues: 'SALES_DOCUMENT_UNRESOLVED_REASON_COPY',
+};
 
 const DOCS_REF = 'docs/architecture/adrs/041-sales-document-routing-policy.md';
 
@@ -89,6 +109,94 @@ export function parseReasonValues(content, name) {
 
   const line = content.slice(0, declMatch.index).split('\n').length;
   return { line, values };
+}
+
+/**
+ * Extract the TOP-LEVEL keys of `export const <name> = { ... } satisfies ...;`.
+ *
+ * Brace-matched rather than regex-scanned, because a copy entry is itself an
+ * object and a nested key must not be read as a reason id. String bodies are
+ * skipped so a brace or a quote inside operator copy cannot end the scan early.
+ * Returns `{ line, keys }`, or `null` when the declaration is absent.
+ */
+export function parseCopyKeys(content, name) {
+  const declRe = new RegExp(`export\\s+const\\s+${name}\\s*=\\s*\\{`);
+  const declMatch = declRe.exec(content);
+  if (!declMatch) return null;
+
+  const open = declMatch.index + declMatch[0].length - 1;
+  const keys = [];
+  let depth = 0;
+  let quote = null;
+  let pendingKey = null;
+
+  for (let i = open; i < content.length; i += 1) {
+    const ch = content[i];
+
+    if (quote !== null) {
+      if (ch === '\\') {
+        i += 1;
+      } else if (ch === quote) {
+        quote = null;
+      }
+      continue;
+    }
+
+    if (ch === '/' && content[i + 1] === '/') {
+      i = content.indexOf('\n', i);
+      if (i === -1) break;
+      continue;
+    }
+    if (ch === '/' && content[i + 1] === '*') {
+      const end = content.indexOf('*/', i + 2);
+      if (end === -1) break;
+      i = end + 1;
+      continue;
+    }
+
+    if (ch === "'" || ch === '"') {
+      const end = findStringEnd(content, i);
+      if (end === -1) break;
+      if (depth === 1) pendingKey = content.slice(i + 1, end);
+      i = end;
+      continue;
+    }
+
+    if (ch === '{') {
+      depth += 1;
+      continue;
+    }
+    if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) break;
+      continue;
+    }
+
+    if (ch === ':' && depth === 1 && pendingKey !== null) {
+      keys.push(pendingKey);
+      pendingKey = null;
+      continue;
+    }
+    if (ch === ',' && depth === 1) {
+      pendingKey = null;
+    }
+  }
+
+  const line = content.slice(0, declMatch.index).split('\n').length;
+  return { line, keys };
+}
+
+/** Index of the closing quote of the string literal starting at `start`. */
+function findStringEnd(content, start) {
+  const quote = content[start];
+  for (let i = start + 1; i < content.length; i += 1) {
+    if (content[i] === '\\') {
+      i += 1;
+      continue;
+    }
+    if (content[i] === quote) return i;
+  }
+  return -1;
 }
 
 /**
@@ -129,14 +237,41 @@ export function diffReasonValues(backend, frontend) {
   return { ok: issues.length === 0, issues };
 }
 
+/**
+ * Pure coverage check. Returns a list of human-readable issues describing which
+ * reasons have no copy entry, and which entries describe a reason that no longer
+ * exists.
+ */
+export function diffCopyCoverage(reasons, copyKeys) {
+  const issues = [];
+  const keySet = new Set(copyKeys);
+  const reasonSet = new Set(reasons);
+
+  const missing = reasons.filter((r) => !keySet.has(r));
+  const extra = copyKeys.filter((k) => !reasonSet.has(k));
+
+  if (missing.length > 0) {
+    issues.push(`no copy entry for: ${missing.map((v) => `'${v}'`).join(', ')}`);
+  }
+  if (extra.length > 0) {
+    issues.push(
+      `copy entry for a reason that does not exist: ${extra.map((v) => `'${v}'`).join(', ')}`,
+    );
+  }
+
+  return issues;
+}
+
 async function main() {
-  const [backendContent, frontendContent] = await Promise.all([
+  const [backendContent, frontendContent, copyContent] = await Promise.all([
     readFile(join(repoRoot, BACKEND_FILE), 'utf8'),
     readFile(join(repoRoot, FRONTEND_FILE), 'utf8'),
+    readFile(join(repoRoot, COPY_FILE), 'utf8'),
   ]);
 
   const fatal = [];
   const drifts = [];
+  const copyDrifts = [];
   let compared = 0;
 
   for (const name of MIRRORED_DECLARATIONS) {
@@ -157,6 +292,21 @@ async function main() {
     if (!ok) {
       drifts.push({ name, backend, frontend, issues });
     }
+
+    // #2534 - a reason with no operator-facing copy renders as nothing at all,
+    // which is the silent decline ADR-041 §54 forbids. Membership only: order is
+    // irrelevant for a map, and the copy file's own `satisfies Record<…>` covers
+    // the frontend type.
+    const copyName = COPY_DECLARATIONS[name];
+    const copy = parseCopyKeys(copyContent, copyName);
+    if (!copy) {
+      fatal.push(`${COPY_FILE}: no 'export const ${copyName} = {...}' found`);
+      continue;
+    }
+    const copyIssues = diffCopyCoverage(backend.values, copy.keys);
+    if (copyIssues.length > 0) {
+      copyDrifts.push({ name: copyName, backend, copy, issues: copyIssues });
+    }
   }
 
   if (fatal.length > 0) {
@@ -166,12 +316,34 @@ async function main() {
     process.exit(1);
   }
 
-  if (drifts.length === 0) {
+  if (drifts.length === 0 && copyDrifts.length === 0) {
     console.log(
       `✓ check-sales-document-reason-mirror: ${compared} reason value(s) across ` +
-        `${MIRRORED_DECLARATIONS.length} union(s) identical in ${BACKEND_FILE} and ${FRONTEND_FILE}.`,
+        `${MIRRORED_DECLARATIONS.length} union(s) identical in ${BACKEND_FILE} and ${FRONTEND_FILE}, ` +
+        `each with operator-facing copy in ${COPY_FILE}.`,
     );
     process.exit(0);
+  }
+
+  if (copyDrifts.length > 0) {
+    console.error(
+      `✗ check-sales-document-reason-mirror: ${copyDrifts.length} copy map(s) out of step.\n`,
+    );
+    for (const { name, backend, copy, issues } of copyDrifts) {
+      console.error(`  ${name}`);
+      console.error(`    ${BACKEND_FILE}:${backend.line}  (authoritative)`);
+      console.error(`    ${COPY_FILE}:${copy.line}  (operator-facing copy)`);
+      for (const issue of issues) {
+        console.error(`      rule: every reason needs one copy entry - ${issue}`);
+      }
+    }
+    console.error('');
+  }
+
+  if (drifts.length === 0) {
+    console.error(`    docs: ${DOCS_REF}`);
+    console.error('');
+    process.exit(1);
   }
 
   console.error(`✗ check-sales-document-reason-mirror: ${drifts.length} drifted union(s).\n`);
@@ -231,6 +403,26 @@ function selfCheck() {
   expect('missing in frontend → not ok', diffReasonValues(['a', 'b'], ['a']).ok, false);
   expect('missing in backend → not ok', diffReasonValues(['a'], ['a', 'b']).ok, false);
   expect('reordered → not ok', diffReasonValues(['a', 'b'], ['b', 'a']).ok, false);
+
+  const copyFile =
+    `export const SALES_DOCUMENT_GATE_REASON_COPY = {\n` +
+    `  'a-x': { short: 'A', detail: 'One, two: three. {not a brace}' },\n` +
+    `  // 'ghost-value': never written\n` +
+    `  'b-y': { short: 'B', detail: "It's fine", tone: 'error' },\n` +
+    `} satisfies Record<X, Y>;\n`;
+  expect(
+    'reads only top-level copy keys',
+    parseCopyKeys(copyFile, 'SALES_DOCUMENT_GATE_REASON_COPY')?.keys.join(','),
+    'a-x,b-y',
+  );
+  expect(
+    'absent copy declaration → null',
+    parseCopyKeys('export const Other = {};', 'SALES_DOCUMENT_GATE_REASON_COPY'),
+    null,
+  );
+  expect('full copy coverage → no issues', diffCopyCoverage(['a', 'b'], ['b', 'a']).length, 0);
+  expect('missing copy entry → issue', diffCopyCoverage(['a', 'b'], ['a']).length, 1);
+  expect('stale copy entry → issue', diffCopyCoverage(['a'], ['a', 'b']).length, 1);
 
   if (failures.length > 0) {
     console.error('✗ check-sales-document-reason-mirror --self-check failed:\n');

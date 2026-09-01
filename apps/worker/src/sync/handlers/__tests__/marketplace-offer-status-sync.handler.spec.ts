@@ -15,6 +15,7 @@ import type { OfferStatusSyncResult } from '@openlinker/core/listings';
 
 describe('MarketplaceOfferStatusSyncHandler', () => {
   let handler: MarketplaceOfferStatusSyncHandler;
+  let syncLock: { acquire: jest.Mock; release: jest.Mock; extend: jest.Mock };
   type OfferStatusSyncServiceLike = { sync: jest.Mock };
   let offerStatusSync: OfferStatusSyncServiceLike;
   let cursorRepository: jest.Mocked<ConnectionCursorRepositoryPort>;
@@ -38,9 +39,19 @@ describe('MarketplaceOfferStatusSyncHandler', () => {
       delete: jest.fn(),
     } as unknown as jest.Mocked<ConnectionCursorRepositoryPort>;
 
+    // Uncontended lock and default TTL - the sweep's own exclusivity (#2594
+    // review) is asserted separately.
+    syncLock = {
+      acquire: jest.fn().mockResolvedValue('lock-token'),
+      release: jest.fn().mockResolvedValue(true),
+      extend: jest.fn().mockResolvedValue(true),
+    };
+
     handler = new MarketplaceOfferStatusSyncHandler(
       offerStatusSync as never,
-      cursorRepository
+      cursorRepository,
+      syncLock as never,
+      { get: jest.fn().mockReturnValue(undefined) } as never
     );
   });
 
@@ -59,6 +70,32 @@ describe('MarketplaceOfferStatusSyncHandler', () => {
     lastError: null,
     createdAt: new Date(),
     updatedAt: new Date(),
+  });
+
+  it('does nothing and reports ok when another run holds this connection (#2594 review)', async () => {
+    syncLock.acquire.mockResolvedValue(null);
+
+    const result = await handler.execute(createJob({ schemaVersion: 1, limit: 10 }));
+
+    // The holder is doing this connection's work and the cursor has not moved,
+    // so a second run must neither read the page nor write the cursor.
+    expect(result).toEqual({ outcome: 'ok' });
+    expect(offerStatusSync.sync).not.toHaveBeenCalled();
+    expect(cursorRepository.set).not.toHaveBeenCalled();
+    expect(syncLock.release).not.toHaveBeenCalled();
+  });
+
+  it('releases the lock once the page is done', async () => {
+    await handler.execute(createJob({ schemaVersion: 1, limit: 10 }));
+
+    expect(syncLock.acquire).toHaveBeenCalledWith(
+      'scan:offer-status:sweep:connection-1',
+      expect.any(Number)
+    );
+    expect(syncLock.release).toHaveBeenCalledWith(
+      'scan:offer-status:sweep:connection-1',
+      'lock-token'
+    );
   });
 
   it('starts at offset 0 with the default cursor key when no cursor is stored', async () => {

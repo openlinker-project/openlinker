@@ -34,10 +34,52 @@ export interface MasterInventorySyncResult {
   pruneSkipped: boolean;
 }
 
+/** One product the batch could not sync, and why (#2648). */
+export interface MasterInventoryBatchSyncFailure {
+  externalId: string;
+  message: string;
+}
+
+/**
+ * Outcome of one batched page (#2648, mirroring #2593's product side).
+ *
+ * `failures` is reported rather than thrown because the caller has a better
+ * answer than a whole-page retry: re-enqueue the failed ids as ordinary
+ * per-product jobs, which keeps their own retry ladder and their own dead row.
+ * Failing the batch would let one poisonous product take its ninety-nine
+ * page-mates down with it, which the per-product fan-out never did.
+ */
+export interface MasterInventoryBatchSyncResult {
+  results: readonly MasterInventorySyncResult[];
+  failures: readonly MasterInventoryBatchSyncFailure[];
+  /** True when the master's bulk-read rung answered, so the page was warmed. */
+  prefetched: boolean;
+}
+
 export interface IMasterInventorySyncService {
   syncFromMasterByExternalId(
     connectionId: string,
     externalId: string,
   ): Promise<MasterInventorySyncResult>;
+
+  /**
+   * Sync a page of products' inventory through ONE adapter instance (#2648,
+   * ADR-048).
+   *
+   * Behaviourally identical to calling `syncFromMasterByExternalId` once per
+   * id - same variant-keyed writes (#822/#823), same identifier mappings, same
+   * #1904 rival-claimant prune guard, same #1688 deletion signal. The only
+   * difference is request count: the ids share one adapter instance, so a
+   * master declaring `BulkInventoryReader` can read the whole page's stock
+   * before the loop starts and every per-product read is served from that one
+   * answer.
+   *
+   * A master declaring nothing is not penalised - the loop runs exactly as the
+   * per-product jobs did.
+   */
+  syncFromMasterByExternalIds(
+    connectionId: string,
+    externalIds: readonly string[],
+  ): Promise<MasterInventoryBatchSyncResult>;
 }
 

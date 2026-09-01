@@ -10,6 +10,10 @@
  */
 import { Injectable, Inject } from '@nestjs/common';
 import type { Order, OrderDispatchWindow } from '../../domain/types/order.types';
+import {
+  encodeBuyerTaxIdColumn,
+  readBuyerTaxId,
+} from '../../domain/types/buyer-tax-id.types';
 import { OrderRecordRepositoryPort } from '../../domain/ports/order-record-repository.port';
 import { OrderLineItemRepositoryPort } from '../../domain/ports/order-line-item-repository.port';
 import { OrderRecord } from '../../domain/entities/order-record.entity';
@@ -25,7 +29,11 @@ import type {
   PaginatedOrderRecords,
 } from '../../domain/types/order-record.types';
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
-import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
+import { SALES_DOCUMENT_MARKET_DISCOVERY_WINDOW_DAYS } from '@openlinker/core/sales-documents';
+import type {
+  SalesDocumentBlock,
+  SalesDocumentMarketDiscovery,
+} from '@openlinker/core/sales-documents';
 import type {
   SalesAnalyticsFilters,
   SalesAndChannelAnalytics,
@@ -46,6 +54,9 @@ import { deriveOrderAnalyticsScalars, deriveOrderLineItems } from '../../domain/
 import { buildSalesAndChannelAnalytics } from '../../domain/order-sales-aggregation';
 import { buildTopProducts } from '../../domain/top-products-aggregation';
 import type { TopProductFilters, TopProductsResult } from '../../domain/types/top-products.types';
+
+/** One day in milliseconds, for the market-discovery window arithmetic (#2518). */
+const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class OrderRecordService implements IOrderRecordService {
@@ -182,6 +193,19 @@ export class OrderRecordService implements IOrderRecordService {
     // dispatchByAt above, from the same already-resolved Order. See ADR-039.
     const analyticsScalars = deriveOrderAnalyticsScalars(order);
 
+    // Buyer tax id (#2599) - denormalized so routing and gating never expand
+    // JSONB, and so the value outlives the snapshot's PII redaction.
+    //
+    // PII-gated exactly like `customerEmail` above, and for the same reason: a
+    // sole trader's tax id identifies a natural person, and `sanitizeAddress`
+    // already drops it from the snapshot under hash-only mode. Keeping the
+    // scalar would leave the one buyer identifier the redaction was meant to
+    // remove. Not-stored reads back as "the source asserted nothing", which is
+    // the honest answer for a deployment that chose not to keep it.
+    const buyerTaxId = piiConfig.storePii
+      ? encodeBuyerTaxIdColumn(readBuyerTaxId(order))
+      : null;
+
     const orderRecord = new OrderRecord(
       order.id,
       order.customerId || null,
@@ -199,7 +223,26 @@ export class OrderRecordService implements IOrderRecordService {
       analyticsScalars.placedAt,
       analyticsScalars.currency,
       analyticsScalars.taxTreatment,
-      analyticsScalars.totalAmount
+      analyticsScalars.totalAmount,
+      // The thirteen columns between here and `buyerTaxId` all default to
+      // `null` and are owned by their own narrow UPDATEs (cancellation, the
+      // three salesDocument* reasons, the six FX snapshot columns, the two
+      // block-episode timestamps, taxRateEra). Restated explicitly only because
+      // this is a positional constructor and the new argument sits past them.
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      buyerTaxId
     );
 
     // #1985: persist the order record AND its order_line_items rows in one
@@ -490,6 +533,27 @@ export class OrderRecordService implements IOrderRecordService {
 
   async getEarliestOrderDateByConnection(connectionIds: string[]): Promise<Map<string, Date>> {
     return this.repository.findEarliestOrderDateByConnection(connectionIds);
+  }
+
+  /**
+   * Which markets the operator has orders from, and how many (#2518, ADR-066).
+   *
+   * One grouped repository read plus the window arithmetic. It writes nothing
+   * and classifies nothing - see the interface for both rules. The resolved
+   * window travels back with the counts so no surface has to hold its own copy
+   * of the number and drift from it.
+   */
+  async discoverSalesDocumentMarkets(now: Date = new Date()): Promise<SalesDocumentMarketDiscovery> {
+    const since = new Date(
+      now.getTime() - SALES_DOCUMENT_MARKET_DISCOVERY_WINDOW_DAYS * MILLISECONDS_PER_DAY
+    );
+    const markets = await this.repository.countOrdersByRoutingCountrySince(since);
+
+    return {
+      windowDays: SALES_DOCUMENT_MARKET_DISCOVERY_WINDOW_DAYS,
+      since: since.toISOString(),
+      markets,
+    };
   }
 
   /**

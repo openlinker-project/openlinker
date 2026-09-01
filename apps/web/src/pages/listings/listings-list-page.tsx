@@ -538,6 +538,8 @@ export function ListingsListPage(): ReactElement {
     () => [
       {
         id: 'listing',
+        // #2538 - Thumbnail, title and a meta line.
+        lines: 2,
         header: 'Listing',
         cell: (row): ReactNode => <ListingCell row={row} activeLifecycle={activeTabDef.lifecycle} />,
       },
@@ -548,6 +550,8 @@ export function ListingsListPage(): ReactElement {
       },
       {
         id: 'connection',
+        // #2538 - ConnectionCell stacks the name over its status.
+        lines: 2,
         header: 'Connection',
         // `.get()` returns undefined on a miss, which ConnectionCell reads as
         // "resolve it yourself" and would turn back into a per-row fetch -
@@ -806,10 +810,19 @@ export function ListingsListPage(): ReactElement {
             DOM node (#2032 review thread 12.1) - Radix always emits
             `aria-controls={contentId}` on every trigger regardless of whether
             a matching panel is mounted, and the APG tabs pattern requires each
-            `tab` to reference its `tabpanel`. Radix sets the native `hidden`
-            attribute on a forceMount'd, non-selected panel itself. */}
+            `tab` to reference its `tabpanel`. Radix does NOT hide a
+            forceMount'd, non-selected panel - `present` stays true regardless
+            of selection, so `hidden` is never set and the panel is an
+            ordinary flex item. `tabs__content--aria-anchor` takes it out of
+            layout and out of the tab order, both of which an empty
+            tabIndex=0 stop would otherwise pollute (#2450 review). */}
         {LIFECYCLE_TABS.filter((def) => def.key !== tab).map((def) => (
-          <TabsContent key={def.key} value={def.key} forceMount />
+          <TabsContent
+            key={def.key}
+            value={def.key}
+            forceMount
+            className="tabs__content--aria-anchor"
+          />
         ))}
 
         <TabsContent value={tab}>
@@ -819,7 +832,7 @@ export function ListingsListPage(): ReactElement {
               skeleton on it would still blank the table on every one of
               them - the exact symptom this fix removes. */}
           {query.isPending ? (
-            <DataTableSkeleton columns={columns} />
+            <DataTableSkeleton columns={columns} label="Loading listings…" />
           ) : query.error ? (
             <ErrorState
               title="Unable to load listings"

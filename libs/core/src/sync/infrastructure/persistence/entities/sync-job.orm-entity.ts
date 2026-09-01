@@ -80,6 +80,33 @@ export class SyncJobOrmEntity {
   @Column({ type: 'text', nullable: true })
   lastError!: string | null;
 
+  /**
+   * Wall-clock milliseconds of the most recently COMPLETED attempt (#2611),
+   * including any time that attempt spent waiting for a per-connection
+   * rate-limit slot. Written in the same UPDATE as the status transition that ended
+   * that attempt, so it always describes the same attempt the row's
+   * status/outcome/lastError describe.
+   *
+   * Not derivable from the other columns: the heartbeat rewrites `lockedAt`
+   * every few minutes while a job runs, and `updatedAt - createdAt` includes
+   * queue wait and retry backoff.
+   *
+   * `null` for a job that has never completed an attempt, and for every row
+   * predating this column. Never treat `null` as zero.
+   */
+  @Column({ type: 'integer', nullable: true })
+  lastAttemptDurationMs!: number | null;
+
+  /**
+   * Total milliseconds of penalty-free DEFERRAL this job has been granted
+   * (#2613/#2617). A deferral consumes no retry attempt, so this running total
+   * is the only thing that can end an otherwise endless defer cycle: past the
+   * runner's budget the job rejoins the ordinary retry ladder and can reach
+   * `dead`. `null` for a job that has never been deferred.
+   */
+  @Column({ type: 'integer', nullable: true })
+  deferredTotalMs!: number | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 

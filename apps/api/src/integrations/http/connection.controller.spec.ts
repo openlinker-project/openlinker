@@ -108,6 +108,7 @@ describe('ConnectionController', () => {
       heartbeat: jest.fn(),
       requeueWithoutPenalty: jest.fn(),
       findLastSucceededByConnectionAndJobType: jest.fn(),
+      getConnectionBacklogStats: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -419,6 +420,72 @@ describe('ConnectionController', () => {
 
       expect(service.update).toHaveBeenCalledWith('connection-123', {
         status: 'disabled',
+      });
+    });
+
+    // #2532: document kind, "goes first" and trigger are written through this
+    // same generic PATCH via the open `config` JSONB passthrough
+    // (`config.salesDocument.documentKind`, `config.invoicing.isPrimary`,
+    // `config.invoicing.triggerModel` — ADR-041 decision 4, #2047, #2159). A
+    // connection with no document kind is not a routing candidate at all, so
+    // these three fields are load-bearing: this suite pins that the
+    // controller forwards each of them to the service untouched, with no
+    // schema stripping any of the three keys.
+    it('should forward config.salesDocument.documentKind unchanged (#2532)', async () => {
+      service.update.mockResolvedValue(mockConnection);
+
+      const dto = { config: { salesDocument: { documentKind: 'invoice' } } };
+      await controller.update('connection-123', dto, mockAdminUser);
+
+      expect(service.update).toHaveBeenCalledWith('connection-123', {
+        config: { salesDocument: { documentKind: 'invoice' } },
+      });
+    });
+
+    it('should forward config.invoicing.isPrimary unchanged (#2532)', async () => {
+      service.update.mockResolvedValue(mockConnection);
+
+      const dto = { config: { invoicing: { isPrimary: true } } };
+      await controller.update('connection-123', dto, mockAdminUser);
+
+      expect(service.update).toHaveBeenCalledWith('connection-123', {
+        config: { invoicing: { isPrimary: true } },
+      });
+    });
+
+    it('should forward config.invoicing.triggerModel unchanged (#2532)', async () => {
+      service.update.mockResolvedValue(mockConnection);
+
+      const dto = { config: { invoicing: { triggerModel: 'on-paid' } } };
+      await controller.update('connection-123', dto, mockAdminUser);
+
+      expect(service.update).toHaveBeenCalledWith('connection-123', {
+        config: { invoicing: { triggerModel: 'on-paid' } },
+      });
+    });
+
+    it('should forward all three routing fields together in one write (#2532)', async () => {
+      service.update.mockResolvedValue(mockConnection);
+
+      const dto = {
+        config: {
+          salesDocument: { documentKind: 'fiscal-receipt' },
+          invoicing: { isPrimary: false, triggerModel: 'manual' },
+        },
+      };
+      await controller.update('connection-123', dto, mockAdminUser);
+
+      expect(service.update).toHaveBeenCalledWith('connection-123', { config: dto.config });
+    });
+
+    it('should clear the document kind by writing an empty string, matching the FE "Nothing" option (#2532)', async () => {
+      service.update.mockResolvedValue(mockConnection);
+
+      const dto = { config: { salesDocument: { documentKind: '' } } };
+      await controller.update('connection-123', dto, mockAdminUser);
+
+      expect(service.update).toHaveBeenCalledWith('connection-123', {
+        config: { salesDocument: { documentKind: '' } },
       });
     });
   });

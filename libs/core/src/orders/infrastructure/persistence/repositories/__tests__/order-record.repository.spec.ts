@@ -823,6 +823,87 @@ describe('OrderRecordRepository', () => {
       expect(callArg.taxTreatment).toBe('inclusive');
       expect(callArg.totalAmount).toBe(199.99);
     });
+
+    /**
+     * The middle state (`''` = the source asserted the buyer has no tax id) is
+     * the one a well-meaning edit destroys. A `|| null` or a `.trim()` on the
+     * write line, or a `|| null` on the read, collapses it into "not asserted"
+     * while every three-state unit test on the pure helpers stays green,
+     * because those never touch this repository. So each state is pinned here,
+     * through the real write and the real read.
+     */
+    it.each([
+      ['a tax id', '1234567890', '1234567890'],
+      ['asserted-none', '', ''],
+      ['not asserted', null, null],
+    ])(
+      'round-trips buyerTaxId in the %s state through save() and toDomain() (#2599 review, finding 4)',
+      async (_label, stored: string | null, expected: string | null) => {
+        const domainEntity = new OrderRecord(
+          'order-123',
+          'customer-456',
+          'source-connection-123',
+          'event-456',
+          { id: 'order-123', orderNumber: 'ORD-001', status: 'pending' },
+          [],
+          'ready',
+          new Date('2025-01-01T10:00:00Z'),
+          new Date('2025-01-01T10:00:00Z'),
+          [],
+          null,
+          null,
+          null,
+          new Date('2025-01-01T09:00:00Z'),
+          'PLN',
+          'inclusive',
+          199.99,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          stored
+        );
+        const savedOrm = createOrmEntity();
+        savedOrm.buyerTaxId = stored;
+        transactionalManager.save.mockResolvedValue(savedOrm);
+        transactionalManager.delete.mockResolvedValue(undefined);
+
+        await repository.upsertWithLineItems(domainEntity, []);
+
+        const callArg = transactionalManager.save.mock.calls[0][1] as OrderRecordOrmEntity;
+        expect(callArg.buyerTaxId).toBe(stored);
+
+        ormRepository.findOne.mockResolvedValue(savedOrm);
+        const read = await repository.findById('order-123');
+        expect(read?.buyerTaxId).toBe(expected);
+      }
+    );
+
+    it('decodes the round-tripped column back to the three domain states', async () => {
+      const withColumn = (stored: string | null): OrderRecordOrmEntity => {
+        const entity = createOrmEntity();
+        entity.buyerTaxId = stored;
+        return entity;
+      };
+
+      ormRepository.findOne.mockResolvedValue(withColumn('1234567890'));
+      expect((await repository.findById('order-123'))?.buyerTaxIdState).toBe('1234567890');
+
+      ormRepository.findOne.mockResolvedValue(withColumn(''));
+      expect((await repository.findById('order-123'))?.buyerTaxIdState).toBeNull();
+
+      ormRepository.findOne.mockResolvedValue(withColumn(null));
+      expect((await repository.findById('order-123'))?.buyerTaxIdState).toBeUndefined();
+    });
   });
 
   describe('findMany', () => {
@@ -1408,6 +1489,109 @@ describe('OrderRecordRepository', () => {
         (m) => m[1]
       );
       expect(new Set(pathKeyMatches)).toEqual(new Set(['taxRate', 'taxSource', 'taxRateReadAt']));
+    });
+  });
+
+  describe('countOrdersByRoutingCountrySince (#2518, ADR-066)', () => {
+    function stubQueryBuilder(rows: { country: string; order_count: string }[]): {
+      select: jest.Mock;
+      addSelect: jest.Mock;
+      where: jest.Mock;
+      andWhere: jest.Mock;
+      groupBy: jest.Mock;
+      orderBy: jest.Mock;
+      addOrderBy: jest.Mock;
+      getRawMany: jest.Mock;
+    } {
+      const parts = {
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        groupBy: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue(rows),
+      };
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(parts);
+      return parts;
+    }
+
+    it('should issue ONE grouped query, never one per country', async () => {
+      stubQueryBuilder([
+        { country: 'PL', order_count: '47' },
+        { country: 'DE', order_count: '12' },
+      ]);
+
+      const result = await repository.countOrdersByRoutingCountrySince(
+        new Date('2026-07-31T10:00:00.000Z')
+      );
+
+      expect(ormRepository.createQueryBuilder).toHaveBeenCalledTimes(1);
+      expect(result).toEqual([
+        { country: 'PL', orderCount: 47 },
+        { country: 'DE', orderCount: 12 },
+      ]);
+    });
+
+    it('should group on the DELIVERY address country the rule engine routes on', async () => {
+      const parts = stubQueryBuilder([]);
+
+      await repository.countOrdersByRoutingCountrySince(new Date());
+
+      // Must stay the same field `toSalesDocumentOrderFacts` reads, or
+      // discovery would name markets the evaluator never sees (ADR-066).
+      expect(parts.groupBy).toHaveBeenCalledWith(
+        expect.stringContaining(`'{shippingAddress,country}'`)
+      );
+      expect(parts.select).toHaveBeenCalledWith(
+        expect.stringContaining(`'{shippingAddress,country}'`),
+        'country'
+      );
+    });
+
+    it('should exclude a row with no country rather than grouping it under an empty key', async () => {
+      const parts = stubQueryBuilder([]);
+
+      await repository.countOrdersByRoutingCountrySince(new Date());
+
+      // NULLIF(btrim(...), '') collapses blank into NULL, and the NOT NULL arm
+      // then drops both: the evaluator cannot route such an order either.
+      expect(parts.select).toHaveBeenCalledWith(
+        expect.stringContaining("NULLIF(btrim("),
+        'country'
+      );
+      expect(parts.andWhere).toHaveBeenCalledWith(expect.stringContaining('IS NOT NULL'));
+    });
+
+    it('should bound the window on the same COALESCE the coverage read uses', async () => {
+      const parts = stubQueryBuilder([]);
+      const since = new Date('2026-07-31T10:00:00.000Z');
+
+      await repository.countOrdersByRoutingCountrySince(since);
+
+      expect(parts.where).toHaveBeenCalledWith(
+        expect.stringContaining('COALESCE(rec."placedAt", rec."createdAt")'),
+        { since }
+      );
+    });
+
+    it('should order by count descending with a deterministic country tiebreak', async () => {
+      const parts = stubQueryBuilder([]);
+
+      await repository.countOrdersByRoutingCountrySince(new Date());
+
+      expect(parts.orderBy).toHaveBeenCalledWith('COUNT(*)', 'DESC');
+      expect(parts.addOrderBy).toHaveBeenCalledWith(expect.any(String), 'ASC');
+    });
+
+    it('should coerce the driver-level string count to a number', async () => {
+      stubQueryBuilder([{ country: 'PL', order_count: '47' }]);
+
+      const [market] = await repository.countOrdersByRoutingCountrySince(new Date());
+
+      expect(market.orderCount).toBe(47);
+      expect(typeof market.orderCount).toBe('number');
     });
   });
 });

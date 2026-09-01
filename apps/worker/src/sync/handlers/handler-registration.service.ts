@@ -16,6 +16,7 @@ import { MarketplaceOrderFxStampHandler } from './marketplace-order-fx-stamp.han
 import { MarketplaceOrderFxStampSweepHandler } from './marketplace-order-fx-stamp-sweep.handler';
 import { OrdersTaxRateBackfillHandler } from './orders-tax-rate-backfill.handler';
 import { MarketplaceOfferQuantityUpdateHandler } from './marketplace-offer-quantity-update.handler';
+import { MarketplaceOfferQuantityReconcileHandler } from './marketplace-offer-quantity-reconcile.handler';
 import { MarketplaceOfferFieldUpdateHandler } from './marketplace-offer-field-update.handler';
 import { MarketplaceOfferCreateHandler } from './marketplace-offer-create.handler';
 import { MarketplaceOfferPollCreationStatusHandler } from './marketplace-offer-poll-creation-status.handler';
@@ -29,7 +30,9 @@ import { MarketplaceShipmentStatusSyncHandler } from './marketplace-shipment-sta
 import { MarketplaceShipmentSyncByExternalIdHandler } from './marketplace-shipment-sync-by-external-id.handler';
 import { MarketplaceFulfillmentStatusSyncHandler } from './marketplace-fulfillment-status-sync.handler';
 import { MasterProductSyncHandler } from './master-product-sync.handler';
+import { MasterProductSyncBatchHandler } from './master-product-sync-batch.handler';
 import { MasterInventorySyncHandler } from './master-inventory-sync.handler';
+import { MasterInventorySyncBatchHandler } from './master-inventory-sync-batch.handler';
 import { AutoMatchVariantsHandler } from './auto-match-variants.handler';
 import { MasterInventorySyncAllHandler } from './master-inventory-sync-all.handler';
 import { MasterProductSyncAllHandler } from './master-product-sync-all.handler';
@@ -57,6 +60,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly marketplaceOrderFxStampSweepHandler: MarketplaceOrderFxStampSweepHandler,
     private readonly ordersTaxRateBackfillHandler: OrdersTaxRateBackfillHandler,
     private readonly marketplaceOfferQuantityUpdateHandler: MarketplaceOfferQuantityUpdateHandler,
+    private readonly marketplaceOfferQuantityReconcileHandler: MarketplaceOfferQuantityReconcileHandler,
     private readonly marketplaceOfferFieldUpdateHandler: MarketplaceOfferFieldUpdateHandler,
     private readonly marketplaceOfferCreateHandler: MarketplaceOfferCreateHandler,
     private readonly marketplaceOfferPollCreationStatusHandler: MarketplaceOfferPollCreationStatusHandler,
@@ -70,7 +74,9 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly marketplaceShipmentSyncByExternalIdHandler: MarketplaceShipmentSyncByExternalIdHandler,
     private readonly marketplaceFulfillmentStatusSyncHandler: MarketplaceFulfillmentStatusSyncHandler,
     private readonly masterProductSyncHandler: MasterProductSyncHandler,
+    private readonly masterProductSyncBatchHandler: MasterProductSyncBatchHandler,
     private readonly masterInventorySyncHandler: MasterInventorySyncHandler,
+    private readonly masterInventorySyncBatchHandler: MasterInventorySyncBatchHandler,
     private readonly autoMatchVariantsHandler: AutoMatchVariantsHandler,
     private readonly masterInventorySyncAllHandler: MasterInventorySyncAllHandler,
     private readonly masterProductSyncAllHandler: MasterProductSyncAllHandler,
@@ -91,9 +97,16 @@ export class HandlerRegistrationService implements OnModuleInit {
   onModuleInit(): void {
     // Every registration declares its ADR-050 concurrency lane (#2278). The
     // lane is chosen by cost-of-starvation, never by I/O shape or bounded
-    // context — the authoritative table is ADR-050 decision 1 (12 realtime /
-    // 12 bulk / 5 fiscal / 6 fan-out; `fiscalization.register` joined
-    // `fiscal` post-ADR, #2156).
+    // context — the authoritative table is ADR-050 decision 1, as amended by
+    // #2440 (`orders.taxRate.backfill` -> `bulk`), #2594 (the two
+    // sweep-triggered master children -> `bulk`), #2593
+    // (`master.product.syncBatch` -> `bulk`, a catalogue-sweep child like
+    // them), #2648 (`master.inventory.syncBatch` -> `bulk`, same reason), and
+    // #2621 (`marketplace.offerQuantity.reconcile` -> `bulk`, a scan-style
+    // pass over adapter-internal pending state): 12 realtime / 18 bulk /
+    // 5 fiscal / 6 fan-out. `fiscalization.register` joined `fiscal`
+    // post-ADR, #2156. #2609 left the tally alone: it raised the `fan-out`
+    // lane's caps instead of moving a job out of it.
 
     // Register generic marketplace handlers (Option B)
     this.handlerRegistry.register(
@@ -126,6 +139,14 @@ export class HandlerRegistrationService implements OnModuleInit {
       'marketplace.offerQuantity.update',
       this.marketplaceOfferQuantityUpdateHandler,
       'realtime'
+    );
+    // Steady-state reconcile of outstanding async quantity acks (#2621) —
+    // a scan-style pass over adapter-internal pending state, same shape as
+    // the other `*.sync`/`*Sweep` bulk passes below.
+    this.handlerRegistry.register(
+      'marketplace.offerQuantity.reconcile',
+      this.marketplaceOfferQuantityReconcileHandler,
+      'bulk'
     );
     this.handlerRegistry.register(
       'marketplace.offer.updateFields',
@@ -197,6 +218,24 @@ export class HandlerRegistrationService implements OnModuleInit {
       'realtime'
     );
 
+    // Same two handlers again, under the sweep-triggered job types (#2594).
+    // A webhook says "this one product changed and someone is waiting"; a
+    // sweep says "re-read the catalogue, a budget of children at a time".
+    // Cost-of-starvation differs, so ADR-050 requires a different lane, and a
+    // lane is declared per job type at registration — hence one handler, two
+    // types. This is what stops a catalogue cycle from filling the realtime
+    // lane's per-scope slots ahead of a buyer's order.
+    this.handlerRegistry.register(
+      'master.product.syncFromSweep',
+      this.masterProductSyncHandler,
+      'bulk'
+    );
+    this.handlerRegistry.register(
+      'master.inventory.syncFromSweep',
+      this.masterInventorySyncHandler,
+      'bulk'
+    );
+
     // Register auto-match variants handler
     this.handlerRegistry.register(
       'master.variants.autoMatch',
@@ -209,6 +248,25 @@ export class HandlerRegistrationService implements OnModuleInit {
       'master.inventory.syncAll',
       this.masterInventorySyncAllHandler,
       'fan-out'
+    );
+
+    // Batched catalogue read (#2593). `bulk`, for the same reason the
+    // sweep-triggered per-product children above are: it is a catalogue-sweep
+    // child, arriving a budget wide, and ADR-050 picks the lane by cost of
+    // starvation, not by the work the body does. It must not be able to fill
+    // the realtime lane's per-scope slots ahead of a buyer's order.
+    this.handlerRegistry.register(
+      'master.product.syncBatch',
+      this.masterProductSyncBatchHandler,
+      'bulk'
+    );
+
+    // Batched stock read (#2648). Same lane and same reason as the batched
+    // catalogue read above: a sweep child, arriving a budget wide.
+    this.handlerRegistry.register(
+      'master.inventory.syncBatch',
+      this.masterInventorySyncBatchHandler,
+      'bulk'
     );
 
     // Register master product sync all handler (catalog discovery / periodic full sync)
@@ -235,7 +293,16 @@ export class HandlerRegistrationService implements OnModuleInit {
       'bulk'
     );
 
-    // Register inventory propagate to marketplaces handler
+    // Register inventory propagate to marketplaces handler.
+    //
+    // Stays `fan-out`, and #2609 confirmed rather than moved it. The job makes
+    // no marketplace call of its own; it reads stock and enqueues one realtime
+    // quantity write per mapped destination. Its cost of starvation is the same
+    // whichever trigger produced it - a webhook and the inventory sweep both
+    // discover real stock drift, and on a master with no stock webhook the
+    // sweep is the only thing that discovers it at all - so #2594's
+    // split-by-trigger has nothing to separate here. The serialisation #2609
+    // fixed was the scope and the lane cap, not the lane.
     this.handlerRegistry.register(
       'inventory.propagateToMarketplaces',
       this.inventoryPropagateHandler,
