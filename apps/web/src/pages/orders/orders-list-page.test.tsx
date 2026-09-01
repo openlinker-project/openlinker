@@ -17,8 +17,23 @@ import type {
   PaginatedOrders,
   OrderRecord,
   OrderHealthSummary,
+  SalesDocumentView,
 } from '../../features/orders/api/orders.types';
 import type { Connection } from '../../features/connections';
+
+/** Base `SalesDocumentView` fixture (#2552) — override per scenario. */
+function baseSalesDocumentView(over: Partial<SalesDocumentView> = {}): SalesDocumentView {
+  return {
+    orderId: 'ol_order_synced',
+    documentKind: null,
+    document: null,
+    blockReason: null,
+    unresolvedReason: null,
+    blockDetail: null,
+    otherRecords: [],
+    ...over,
+  };
+}
 
 const captureDemoEvent = vi.fn();
 vi.mock('../../features/demo', () => ({
@@ -995,10 +1010,10 @@ describe('OrdersListPage', () => {
     expect(within(row).queryByText(/more$/)).not.toBeInTheDocument();
   });
 
-  it('should offer "Issue invoice" and "Generate label" actions for an order with neither yet (#1713)', async () => {
+  it('should offer "Issue invoice" (via the popover) and "Generate label" for an order with neither yet (#1713/#2552)', async () => {
     // Explicit not-shipped order (the Generate-label gate needs it explicit,
     // never undefined — #1713) with no invoice, plus an invoicing-capable
-    // connection so the "Issue invoice" CTA is offered rather than an em dash.
+    // connection so the popover offers the action rather than nothing.
     const notShippedOrder: OrderRecord = {
       ...syncedOrder,
       fulfillmentState: 'not-shipped',
@@ -1009,6 +1024,7 @@ describe('OrdersListPage', () => {
         processorConnectionId: 'conn-inpost',
         processorAvailable: true,
       },
+      salesDocument: baseSalesDocumentView({ documentKind: 'invoice' }),
     };
     const invoicingConnection: Connection = {
       ...sampleConnection,
@@ -1026,13 +1042,14 @@ describe('OrdersListPage', () => {
     await screen.findByText('ALG-882414');
     const row = container.querySelector('.data-table__row') as HTMLElement;
 
-    const invoiceCta = within(row).getByRole('link', { name: /issue invoice/i });
+    await userEvent.setup().click(within(row).getByRole('button', { name: /invoice: not issued/i }));
+    const invoiceCta = screen.getByRole('link', { name: /issue invoice/i });
     expect(invoiceCta).toHaveAttribute('href', '/orders/ol_order_synced#invoicing');
     const labelCta = within(row).getByRole('link', { name: /generate label/i });
     expect(labelCta).toHaveAttribute('href', '/orders/ol_order_synced#shipment');
   });
 
-  it('should show an em dash for "Issue invoice" when no connection can issue invoices (#1713)', async () => {
+  it('should withhold the issuing action when no connection can issue any sales document (#1713/#2552)', async () => {
     const notShippedOrder: OrderRecord = {
       ...syncedOrder,
       fulfillmentState: 'not-shipped',
@@ -1043,10 +1060,11 @@ describe('OrdersListPage', () => {
         processorConnectionId: 'conn-inpost',
         processorAvailable: true,
       },
+      salesDocument: baseSalesDocumentView({ documentKind: 'invoice' }),
     };
     const mockApi = createMockApiClient({
       orders: { list: vi.fn().mockResolvedValue(paginated([notShippedOrder])) },
-      // sampleConnection has no Invoicing capability.
+      // sampleConnection has no Invoicing/Fiscalization capability.
       connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
     });
 
@@ -1055,7 +1073,8 @@ describe('OrdersListPage', () => {
     await screen.findByText('ALG-882414');
     const row = container.querySelector('.data-table__row') as HTMLElement;
 
-    expect(within(row).queryByRole('link', { name: /issue invoice/i })).not.toBeInTheDocument();
+    await userEvent.setup().click(within(row).getByRole('button', { name: /invoice: not issued/i }));
+    expect(screen.queryByRole('link', { name: /issue invoice/i })).not.toBeInTheDocument();
     // Generate label is still offered — it isn't invoicing-gated.
     expect(within(row).getByRole('link', { name: /generate label/i })).toBeInTheDocument();
   });
@@ -1072,14 +1091,17 @@ describe('OrdersListPage', () => {
       return { ...syncedOrder, fulfillmentState: 'not-shipped', ...overrides };
     }
 
-    it('should replace the "Issue invoice" CTA with the block badge', async () => {
+    it('should replace the "Issue invoice" action with the block word', async () => {
       const mockApi = createMockApiClient({
         orders: {
           list: vi.fn().mockResolvedValue(
             paginated([
               blockedOrder({
-                salesDocumentBlockReason: 'unresolved-routing',
-                salesDocumentUnresolvedReason: 'ambiguous-connection-no-primary',
+                salesDocument: baseSalesDocumentView({
+                  documentKind: 'invoice',
+                  blockReason: 'unresolved-routing',
+                  unresolvedReason: 'ambiguous-connection-no-primary',
+                }),
               }),
             ]),
           ),
@@ -1094,38 +1116,50 @@ describe('OrdersListPage', () => {
 
       expect(within(row).getByText('Two setups apply')).toBeInTheDocument();
       // The CTA must be GONE: an order OpenLinker already refused is not an order
-      // waiting for a click, and the CTA alone made every cause look identical.
+      // waiting for a click, and offering it alongside made every cause look
+      // identical.
       expect(within(row).queryByRole('link', { name: /issue invoice/i })).not.toBeInTheDocument();
     });
 
     /**
-     * The row must render the invoice pill and the block badge as INDEPENDENT
-     * parts, not as a three-way choice (#2100 review round 4).
-     *
-     * `a ? pill : b ? badge : cta` made the badge unreachable behind any invoice
-     * record — including a terminal REJECTED failure, the one shape the backend
-     * gate, the panel, the timeline, the aggregate count and the
-     * `?invoicing=blocked` filter all deliberately keep blocked. Clicking the
-     * "Invoicing blocked" chip then landed the operator on rows whose only
-     * visible signal was `Failed`: true, but a different fact from "auto-issue
-     * was refused because no connection is primary".
+     * Once a document RECORD exists, the row's single word is resolved from the
+     * document's own axes, never from the persisted block reason (#2552,
+     * ADR-065) — a stale routing reason must not out-rank a terminal fact the
+     * provider already reported. This differs from the pre-#2552
+     * `OrderInvoicingCell`, which rendered the invoice pill and the block badge
+     * as two independent parts; the new cell renders exactly one word for the
+     * most actionable fact.
      */
-    const rejectedInvoice = {
-      invoiceId: 'inv-1',
-      status: 'failed' as const,
-      regulatoryStatus: 'not-applicable' as const,
-      blocksIssuanceElsewhere: false,
-    };
-
-    it('should show the block badge BESIDE a rejected invoice pill', async () => {
+    it('should resolve the word from the terminal invoice failure, not a stale block reason', async () => {
       const mockApi = createMockApiClient({
         orders: {
           list: vi.fn().mockResolvedValue(
             paginated([
               blockedOrder({
-                salesDocumentBlockReason: 'unresolved-routing',
-                salesDocumentUnresolvedReason: 'ambiguous-connection-no-primary',
-                orderSnapshot: { ...syncedOrder.orderSnapshot, invoice: rejectedInvoice },
+                salesDocument: baseSalesDocumentView({
+                  documentKind: 'invoice',
+                  blockReason: 'unresolved-routing',
+                  unresolvedReason: 'ambiguous-connection-no-primary',
+                  document: {
+                    kind: 'invoice',
+                    documentType: 'vat',
+                    status: 'failed',
+                    failureMode: 'rejected',
+                    failureCode: null,
+                    failureReason: 'refused',
+                    regulatoryStatus: 'not-applicable',
+                    clearanceReference: null,
+                    identity: {
+                      recordId: 'rec-1',
+                      connectionId: 'conn_invoicing_1',
+                      providerType: 'ksef',
+                      documentNumber: null,
+                      createdAt: '2026-01-15T10:00:00.000Z',
+                      completedAt: null,
+                      inFlightUntil: null,
+                    },
+                  },
+                }),
               }),
             ]),
           ),
@@ -1139,20 +1173,39 @@ describe('OrdersListPage', () => {
       const row = container.querySelector('.data-table__row') as HTMLElement;
 
       expect(within(row).getByText('Failed')).toBeInTheDocument();
-      expect(within(row).getByText('Two setups apply')).toBeInTheDocument();
+      expect(within(row).queryByText('Two setups apply')).not.toBeInTheDocument();
       // A record exists, so the next step is Retry in the panel, not a fresh issue.
       expect(within(row).queryByRole('link', { name: /issue invoice/i })).not.toBeInTheDocument();
     });
 
-    it('should show the block badge beside a rejected invoice on the mobile card too', async () => {
+    it('should render the same word on the mobile card path too', async () => {
       const mockApi = createMockApiClient({
         orders: {
           list: vi.fn().mockResolvedValue(
             paginated([
               blockedOrder({
-                salesDocumentBlockReason: 'unresolved-routing',
-                salesDocumentUnresolvedReason: 'ambiguous-connection-no-primary',
-                orderSnapshot: { ...syncedOrder.orderSnapshot, invoice: rejectedInvoice },
+                salesDocument: baseSalesDocumentView({
+                  documentKind: 'invoice',
+                  document: {
+                    kind: 'invoice',
+                    documentType: 'vat',
+                    status: 'failed',
+                    failureMode: 'rejected',
+                    failureCode: null,
+                    failureReason: 'refused',
+                    regulatoryStatus: 'not-applicable',
+                    clearanceReference: null,
+                    identity: {
+                      recordId: 'rec-1',
+                      connectionId: 'conn_invoicing_1',
+                      providerType: 'ksef',
+                      documentNumber: null,
+                      createdAt: '2026-01-15T10:00:00.000Z',
+                      completedAt: null,
+                      inFlightUntil: null,
+                    },
+                  },
+                }),
               }),
             ]),
           ),
@@ -1170,54 +1223,24 @@ describe('OrdersListPage', () => {
         const card = container.querySelector('.orders-card-summary') as HTMLElement;
 
         expect(within(card).getByText('Failed')).toBeInTheDocument();
-        expect(within(card).getByText('Two setups apply')).toBeInTheDocument();
       } finally {
         viewport.restore();
       }
     });
 
-    it('should still hide the badge behind an invoice that plausibly exists', async () => {
+    it('should keep the "Issue invoice" action reachable alongside issue-on-request', async () => {
       const mockApi = createMockApiClient({
         orders: {
           list: vi.fn().mockResolvedValue(
             paginated([
               blockedOrder({
-                salesDocumentBlockReason: 'unresolved-routing',
-                salesDocumentUnresolvedReason: 'ambiguous-connection-no-primary',
-                orderSnapshot: {
-                  ...syncedOrder.orderSnapshot,
-                  invoice: {
-                    invoiceId: 'inv-1',
-                    status: 'issued',
-                    regulatoryStatus: 'accepted',
-                    blocksIssuanceElsewhere: true,
-                  },
-                },
+                salesDocument: baseSalesDocumentView({
+                  documentKind: 'invoice',
+                  blockReason: 'trigger-model-manual',
+                }),
               }),
             ]),
           ),
-        },
-        connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
-      });
-
-      const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
-
-      await screen.findByText('ALG-882414');
-      const row = container.querySelector('.data-table__row') as HTMLElement;
-
-      // "Two setups apply" beside an issued invoice is worse than no pill at all — and
-      // the backend gate refuses to persist a block here in the first place.
-      expect(within(row).queryByText('Two setups apply')).not.toBeInTheDocument();
-    });
-
-    it('should keep the "Issue invoice" CTA alongside a manual-only badge', async () => {
-      const mockApi = createMockApiClient({
-        orders: {
-          list: vi
-            .fn()
-            .mockResolvedValue(
-              paginated([blockedOrder({ salesDocumentBlockReason: 'trigger-model-manual' })]),
-            ),
         },
         connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
       });
@@ -1228,26 +1251,44 @@ describe('OrdersListPage', () => {
       const row = container.querySelector('.data-table__row') as HTMLElement;
 
       expect(within(row).getByText('Issued on request')).toBeInTheDocument();
-      // Issuing by hand IS the configured workflow here, so the affordance stays.
-      expect(within(row).getByRole('link', { name: /issue invoice/i })).toBeInTheDocument();
+      // Issuing by hand IS the configured workflow here, so the action stays
+      // reachable — one click away in the popover.
+      await userEvent.setup().click(within(row).getByRole('button', { name: /invoice: issued on request/i }));
+      expect(screen.getByRole('link', { name: /issue invoice/i })).toBeInTheDocument();
     });
 
-    it('should suppress the badge when the order already carries an invoice', async () => {
+    it('should render "Issued", never a stale block word, once the order carries an invoice', async () => {
       const mockApi = createMockApiClient({
         orders: {
           list: vi.fn().mockResolvedValue(
             paginated([
               blockedOrder({
-                salesDocumentBlockReason: 'unresolved-routing',
-                salesDocumentUnresolvedReason: 'ambiguous-connection-no-primary',
-                orderSnapshot: {
-                  ...syncedOrder.orderSnapshot,
-                  invoice: {
-                    invoiceId: 'inv-1',
+                salesDocument: baseSalesDocumentView({
+                  documentKind: 'invoice',
+                  // A stale reason from before the document existed — the row
+                  // must ignore it once a record is present (#2552).
+                  blockReason: 'unresolved-routing',
+                  unresolvedReason: 'ambiguous-connection-no-primary',
+                  document: {
+                    kind: 'invoice',
+                    documentType: 'vat',
                     status: 'issued',
+                    failureMode: null,
+                    failureCode: null,
+                    failureReason: null,
                     regulatoryStatus: 'not-applicable',
+                    clearanceReference: null,
+                    identity: {
+                      recordId: 'rec-1',
+                      connectionId: 'conn_invoicing_1',
+                      providerType: 'ksef',
+                      documentNumber: 'FV/1/2026',
+                      createdAt: '2026-01-15T10:00:00.000Z',
+                      completedAt: '2026-01-15T10:05:00.000Z',
+                      inFlightUntil: null,
+                    },
                   },
-                },
+                }),
               }),
             ]),
           ),
@@ -1260,9 +1301,6 @@ describe('OrdersListPage', () => {
       await screen.findByText('ALG-882414');
       const row = container.querySelector('.data-table__row') as HTMLElement;
 
-      // "Two setups apply" next to an issued invoice is worse than no badge at all, so
-      // the render refuses the contradiction rather than trusting the clear to
-      // have landed already.
       expect(within(row).queryByText('Two setups apply')).not.toBeInTheDocument();
       expect(within(row).getByText('Issued')).toBeInTheDocument();
     });
@@ -1295,14 +1333,17 @@ describe('OrdersListPage', () => {
       expect(filters).toMatchObject({ salesDocumentBlocked: true });
     });
 
-    it('should state the cause as the badge tooltip AND an accessible name', async () => {
+    it('should state the cause inside the popover, reachable by keyboard (#2553)', async () => {
       const mockApi = createMockApiClient({
         orders: {
           list: vi.fn().mockResolvedValue(
             paginated([
               blockedOrder({
-                salesDocumentBlockReason: 'unresolved-routing',
-                salesDocumentUnresolvedReason: 'ambiguous-connection-no-primary',
+                salesDocument: baseSalesDocumentView({
+                  documentKind: 'invoice',
+                  blockReason: 'unresolved-routing',
+                  unresolvedReason: 'ambiguous-connection-no-primary',
+                }),
               }),
             ]),
           ),
@@ -1314,25 +1355,33 @@ describe('OrdersListPage', () => {
 
       await screen.findByText('ALG-882414');
       const row = container.querySelector('.data-table__row') as HTMLElement;
-      const wrapper = within(row).getByText('Two setups apply').closest('span[title]');
 
-      // The hint is the ONLY statement of why on this surface, so it must reach the
-      // DOM — and `title` alone is unreachable by keyboard and unreliable in screen
-      // readers on a role-less span.
-      expect(wrapper).toHaveAttribute('title', expect.stringMatching(/nothing chooses between them/i));
-      expect(wrapper).toHaveAttribute('aria-label', expect.stringContaining('Two setups apply'));
+      // The row's word is the accessible name of the trigger button itself —
+      // reachable by keyboard, unlike a bare `title`.
+      const trigger = within(row).getByRole('button', { name: /invoice: two setups apply/i });
+      await userEvent.setup().click(trigger);
+
+      // The reason is the ONLY statement of why on this surface, and it now
+      // lives inside the popover body, not a `title` attribute nobody without
+      // a mouse could reach.
+      expect(screen.getByText(/nothing chooses between them/i)).toBeInTheDocument();
     });
 
-    it('should render the block badge on the mobile card path too', async () => {
+    it('should render the block word on the mobile card path too', async () => {
       const viewport = mockMobileViewport();
       try {
         const mockApi = createMockApiClient({
           orders: {
-            list: vi
-              .fn()
-              .mockResolvedValue(
-                paginated([blockedOrder({ salesDocumentBlockReason: 'trigger-model-batched' })]),
-              ),
+            list: vi.fn().mockResolvedValue(
+              paginated([
+                blockedOrder({
+                  salesDocument: baseSalesDocumentView({
+                    documentKind: 'invoice',
+                    blockReason: 'trigger-model-batched',
+                  }),
+                }),
+              ]),
+            ),
           },
           connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
         });
@@ -1541,21 +1590,34 @@ describe('OrdersListPage', () => {
     expect(within(row).queryByText('Unmapped')).not.toBeInTheDocument();
   });
 
-  it('should show status pills (not actions) once an invoice exists and the order is dispatched (#1713)', async () => {
+  it('should show status pills (not actions) once an invoice exists and the order is dispatched (#1713/#2552)', async () => {
     const richOrder: OrderRecord = {
       ...syncedOrder,
       internalOrderId: 'ol_order_rich',
       fulfillmentState: 'dispatched',
-      orderSnapshot: {
-        ...syncedOrder.orderSnapshot,
-        invoice: {
-          invoiceId: 'rec-1',
+      salesDocument: baseSalesDocumentView({
+        orderId: 'ol_order_rich',
+        documentKind: 'invoice',
+        document: {
+          kind: 'invoice',
+          documentType: 'vat',
           status: 'issued',
+          failureMode: null,
+          failureCode: null,
+          failureReason: null,
           regulatoryStatus: 'accepted',
           clearanceReference: 'KSEF-1',
-          confirmationDocumentAvailable: true,
+          identity: {
+            recordId: 'rec-1',
+            connectionId: 'conn_invoicing_1',
+            providerType: 'ksef',
+            documentNumber: null,
+            createdAt: '2026-01-15T10:00:00.000Z',
+            completedAt: '2026-01-15T10:05:00.000Z',
+            inFlightUntil: null,
+          },
         },
-      },
+      }),
     };
     const mockApi = createMockApiClient({
       orders: { list: vi.fn().mockResolvedValue(paginated([richOrder])) },
@@ -1569,7 +1631,9 @@ describe('OrdersListPage', () => {
 
     expect(within(row).queryByRole('link', { name: /issue invoice/i })).not.toBeInTheDocument();
     expect(within(row).queryByRole('link', { name: /generate label/i })).not.toBeInTheDocument();
-    expect(within(row).getByText('Cleared')).toBeInTheDocument();
+    // A fully accepted, already-issued invoice is "Issued" (done, plain ink) —
+    // the row's single word, not the retired "Cleared" invoice-pill vocabulary.
+    expect(within(row).getByText('Issued')).toBeInTheDocument();
     expect(within(row).getByText('Dispatched')).toBeInTheDocument();
   });
 });
