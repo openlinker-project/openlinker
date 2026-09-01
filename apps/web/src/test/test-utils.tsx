@@ -710,6 +710,13 @@ export function createMockApiClient(
     // read `.works` as undefined and pass, while the real client never can.
     fulfillment: {
       listByOrder: vi.fn().mockResolvedValue({ works: [], total: 0, limit: 50, offset: 0 }),
+      // #2410. `list` and `get` are defaulted HERE rather than in the specs
+      // that need them: every worklist page test calls `list`, and an absent
+      // member fails as `apiClient.fulfillment.list is not a function` from
+      // inside a render — an inscrutable crash that reads as a defect in the
+      // page rather than as a missing mock.
+      list: vi.fn().mockResolvedValue({ works: [], total: 0, limit: 25, offset: 0 }),
+      get: vi.fn().mockResolvedValue(null),
       applyAction: vi.fn().mockResolvedValue(null),
       ...overrides.fulfillment,
     } as ApiClient['fulfillment'],
