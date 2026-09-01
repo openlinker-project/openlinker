@@ -103,8 +103,14 @@ describe('@openlinker/oms — composition boot (#2390)', () => {
     expect(oms?.platformType).toBe('openlinker');
     // The declaration the credential-less create guard keys on (ADR-055).
     expect(oms?.requiresCredentials).toBe(false);
-    // No capability is advertised until an adapter delivers one (#2409).
-    expect(oms?.supportedCapabilities).toEqual([]);
+    // A capability is advertised only together with the adapter that delivers it (the Erli #980
+    // precedent). #2409 added `FulfillmentExecutor` alongside `OlFulfillmentExecutorAdapter`, so
+    // this asserts the pairing AS COMPOSED IN THE REAL CONTAINER — the boot-time counterpart to
+    // the same assertion in `libs/oms/src/__tests__/oms-plugin.spec.ts`, which sees only the
+    // manifest constant. Advertising a name with no dispatch-table entry makes
+    // `dispatchCapability` throw a plain Error, which aborts a whole `listCapabilityAdapters`
+    // listing rather than skipping the one connection — so the pairing is worth pinning twice.
+    expect(oms?.supportedCapabilities).toEqual(['FulfillmentExecutor']);
   });
 
   it('should boot the real container with OmsModule composed', () => {

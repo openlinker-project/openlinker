@@ -238,10 +238,11 @@ export class InboundRoutingPolicyService implements IInboundRoutingPolicyService
         // no deltas — writing counters from a non-authoritative hint is the
         // failure this discipline exists to prevent.
         //
-        // This arm resolves `ungated` on every shipped deployment today: no
-        // adapter manifest advertises `FulfillmentExecutor` yet. That is the
-        // honest current state, not a defect — the member exists so the
-        // delivery routes the day one does, rather than dead-lettering.
+        // This arm resolved `ungated` on every shipped deployment until #2409,
+        // because no adapter manifest advertised `FulfillmentExecutor`.
+        // `openlinker.oms.v1` advertises it now, so the gate can bind — but only
+        // on a connection whose operator has ALSO enabled the capability, which
+        // is why an install that has not created an OMS connection is unchanged.
         return {
           jobType: 'fulfillment.work.statusSync',
           requiredCapability: FULFILLMENT_EXECUTOR_CAPABILITY,
