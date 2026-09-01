@@ -89,13 +89,21 @@ describe('Router enablement guard + location bootstrap (integration)', () => {
       /at least one active inventory location/i
     );
 
-    // ...and it wrote nothing.
+    // ...and it wrote nothing. Scoped to the connection THIS request would have
+    // created, not to the whole table: the claim is about the refused write, and
+    // a global-emptiness assertion instead fails whenever a sibling suite sharing
+    // this database has left a connection behind - a failure that says nothing
+    // about the guard. Observed exactly that under the full integration run,
+    // where a `FulfillmentExecutor` connection from another suite made an
+    // otherwise-passing guard read red.
     const listed = await harness
       .getHttp()
       .get('/v1/connections')
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
-    expect(listed.body as unknown[]).toHaveLength(0);
+    expect(
+      (listed.body as { name: string }[]).filter((c) => c.name === 'Routing shop')
+    ).toHaveLength(0);
   });
 
   it('accepts the identical request once a location exists', async () => {
