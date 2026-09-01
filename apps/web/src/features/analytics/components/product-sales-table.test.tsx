@@ -471,4 +471,64 @@ describe('ProductSalesTable', () => {
     expect(await screen.findByText('Recalculating…')).toBeInTheDocument();
     expect(screen.queryByText(/PLN 0\.00/)).not.toBeInTheDocument();
   });
+
+  it('converts Net sales using the real headline rate shared with AnalyticsKpiStrip/ChannelSalesTable (#2779 course correction)', async () => {
+    const apiClient = createMockApiClient({
+      analytics: {
+        getTopProducts: vi.fn().mockResolvedValue(result([row({ netRevenue: 100, currency: 'PLN' })])),
+        getSales: vi.fn().mockResolvedValue({
+          headline: {
+            revenue: 1000,
+            currency: 'PLN',
+            orderCount: 10,
+            averageOrderValue: 100,
+            medianOrderValue: 100,
+            unitsSold: 10,
+            cancelledCount: 0,
+            cancelledValue: 0,
+            cancelledUnconvertedCount: 0,
+            cancelledUnconvertedValue: 0,
+            unconvertedCount: 0,
+            unconvertedValue: 0,
+            unconvertedCurrency: null,
+            netRevenue: 900,
+            netAverageOrderValue: 90,
+            netMedianOrderValue: 90,
+            netExcludedCount: 0,
+            netExcludedValue: 0,
+            trend: [],
+            displayCurrencyConversion: {
+              displayCurrency: 'EUR',
+              rateBasis: 'current-rate',
+              convertedRevenue: 236,
+              unresolvedNativeCurrencies: [],
+              appliedRates: [
+                {
+                  from: 'PLN',
+                  to: 'EUR',
+                  rate: '0.236',
+                  rateDate: '2026-08-29',
+                  source: 'nbp',
+                  derivation: 'direct',
+                  sourceRef: '167/A/NBP/2026',
+                },
+              ],
+            },
+          },
+          channels: [],
+        }),
+      },
+      connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
+    });
+
+    renderWithProviders(
+      <ProductSalesTable filters={{ ...FILTERS, displayCurrency: 'EUR' }} />,
+      { apiClient }
+    );
+
+    // 100 * 0.236 — reusing the exact same rate the headline bucket applied,
+    // never a rate derived by dividing two unrelated totals.
+    expect(await screen.findByText('€23.60')).toBeInTheDocument();
+    expect(screen.queryByText(/^PLN /)).not.toBeInTheDocument();
+  });
 });

@@ -4875,6 +4875,22 @@ a.kpi-card:focus-visible {
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+/* ── Rate provenance line under a converted qualifier (#2778/#2779) ── */
+.kpi-card__qualifier-rate {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 400;
+  color: var(--text-muted);
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .status-strip--analytics .kpi-card--planned {

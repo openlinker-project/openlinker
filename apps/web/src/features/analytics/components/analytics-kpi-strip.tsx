@@ -67,7 +67,14 @@ import { useSalesAnalyticsQuery } from '../hooks/use-sales-analytics-query';
 import type { ConnectionIngestionTrust } from '../api/analytics-trust.types';
 import type { SalesAnalyticsFilters } from '../api/sales-analytics.types';
 import { computePreviousPeriodRange, isPreviousPeriodCovered } from '../lib/date-range.lib';
-import { isCurrencyRecalculating } from '../lib/display-currency.lib';
+import {
+  buildRateProvenanceDefinitions,
+  formatAppliedRateLine,
+  isCurrencyRecalculating,
+  pickInlineAppliedRate,
+  resolveReportingCurrencyRate,
+} from '../lib/display-currency.lib';
+import { AnalyticsInfotip } from './analytics-infotip';
 import { resolveEarliestOrderDate } from '../lib/ingestion-trust.lib';
 import {
   averageDailyOrders,
@@ -209,24 +216,37 @@ export function AnalyticsKpiStrip({
   const avgDaily = averageDailyOrders(totalOrders, filters.from, filters.to);
   const unitsRatio = unitsPerOrder(headline.unitsSold, totalOrders);
   const cancelRate = cancellationRate(headline.cancelledCount, totalOrders);
-  const currency = headline.currency ?? undefined;
-  // ADR-064 display-currency override (#2459/#2472): the backend converts
-  // exactly ONE figure — GMV, via `headline.displayCurrencyConversion.
-  // convertedRevenue`, rendered verbatim on the GMV qualifier below. It has
-  // no converted counterpart for netRevenue, AOV, median, or cancelledValue,
-  // and there is NO SAFE client-side shortcut for deriving one: in
-  // "current rate" mode `convertedRevenue` is `revenue` PLUS the separate
-  // `unconvertedValue` pool, both converted and summed (see
-  // `SalesAnalyticsController.buildNativeCurrencyAmounts`) — so
-  // `convertedRevenue / revenue` is NOT the exchange rate and produces a
-  // silently wrong number for any other figure (caught live: 29 000 PLN
-  // rendered as ~20 000 "EUR" instead of the correct ~6 700 EUR). Every
-  // figure below except the GMV qualifier therefore stays in the native
-  // reporting currency until the backend computes a real converted value for
-  // it — see `display-currency.lib.ts`'s "REJECTED APPROACH" note.
+  const nativeCurrency = headline.currency ?? undefined;
   const gmvConversion = headline.displayCurrencyConversion;
-  const gmvCurrency = gmvConversion && gmvConversion.convertedRevenue !== null ? gmvConversion.displayCurrency : currency;
   const gmvValue = gmvConversion && gmvConversion.convertedRevenue !== null ? gmvConversion.convertedRevenue : headline.revenue;
+  const gmvCurrency = gmvConversion && gmvConversion.convertedRevenue !== null ? gmvConversion.displayCurrency : nativeCurrency;
+  // Rate provenance for the GMV qualifier (#2778/#2779) — `null` unless the
+  // figure was actually converted (never for the unavailable/identity paths,
+  // which report no applied rate at all). See `pickInlineAppliedRate`'s own
+  // doc for why only an UNAMBIGUOUS single rate ever renders inline.
+  const gmvAppliedRates =
+    gmvConversion && gmvConversion.convertedRevenue !== null ? gmvConversion.appliedRates : [];
+  const gmvInlineRate = pickInlineAppliedRate(gmvAppliedRates);
+  const gmvProvenanceDefinitions = buildRateProvenanceDefinitions(
+    gmvConversion?.rateBasis ?? 'current-rate',
+    gmvAppliedRates
+  );
+  // #2778/#2779: the REAL published rate for `headline.currency ->
+  // displayCurrency`, picked out of the exact backend response GMV itself
+  // used — never derived by dividing two totals (see `display-currency.
+  // lib.ts`'s "REJECTED APPROACH" note for why that failed in production).
+  // `netRevenue`/AOV/median/cancelledValue are all denominated in the SAME
+  // `headline.currency` bucket `revenue` came from (ADR-040's one
+  // system-wide reporting currency invariant), so applying this one rate to
+  // each of them is ordinary arithmetic on a real number, not a shortcut.
+  // `null` (unresolved, or nothing converted) means every one of them stays
+  // native — the same "never guess" discipline as before, just no longer
+  // refusing conversion outright.
+  const reportingRate = resolveReportingCurrencyRate(gmvConversion, headline.currency);
+  const currency = reportingRate && gmvConversion ? gmvConversion.displayCurrency : nativeCurrency;
+  function convertToDisplay(amount: number): number {
+    return reportingRate ? amount * Number(reportingRate.rate) : amount;
+  }
   const stampedGapVisible = headline.unconvertedCount > 0;
   const netExcludedVisible = headline.netExcludedCount > 0;
   const netExcludedNote = `${headline.netExcludedCount} order(s) predate per-line tax rates or carry a line with an unresolvable rate, and are excluded from NOV.`;
@@ -358,7 +378,7 @@ export function AnalyticsKpiStrip({
           )
         }
         headlineUnavailable={currencyRecalculating}
-        value={currencyRecalculating ? <RecalculatingValue /> : formatAmount(headline.netRevenue, currency)}
+        value={currencyRecalculating ? <RecalculatingValue /> : formatAmount(convertToDisplay(headline.netRevenue), currency)}
         trend={{
           values: revenueTrend,
           tone: trendTone(revenueTrend),
@@ -373,7 +393,23 @@ export function AnalyticsKpiStrip({
             ) : (
               'GMV'
             ),
-            value: currencyRecalculating ? <RecalculatingValue /> : formatAmount(gmvValue, gmvCurrency),
+            value: currencyRecalculating ? (
+              <RecalculatingValue />
+            ) : (
+              <>
+                {formatAmount(gmvValue, gmvCurrency)}
+                {gmvProvenanceDefinitions.length > 0 ? (
+                  <span className="kpi-card__qualifier-rate">
+                    {gmvInlineRate ? formatAppliedRateLine(gmvInlineRate) : "today's rate(s)"}
+                    <AnalyticsInfotip
+                      ariaLabel="About this conversion"
+                      definitions={gmvProvenanceDefinitions}
+                      align="end"
+                    />
+                  </span>
+                ) : null}
+              </>
+            ),
           },
         ]}
       />
@@ -427,11 +463,11 @@ export function AnalyticsKpiStrip({
           )
         }
         headlineUnavailable={currencyRecalculating}
-        value={currencyRecalculating ? <RecalculatingValue /> : formatAmount(headline.netAverageOrderValue, currency)}
+        value={currencyRecalculating ? <RecalculatingValue /> : formatAmount(convertToDisplay(headline.netAverageOrderValue), currency)}
         qualifiers={[
           {
             label: 'Median',
-            value: currencyRecalculating ? <RecalculatingValue /> : formatAmount(headline.netMedianOrderValue, currency),
+            value: currencyRecalculating ? <RecalculatingValue /> : formatAmount(convertToDisplay(headline.netMedianOrderValue), currency),
           },
         ]}
         delta={orderValueDelta}
@@ -471,7 +507,7 @@ export function AnalyticsKpiStrip({
           { label: 'Cancelled orders', value: numberFormat.format(headline.cancelledCount) },
           {
             label: 'Cancelled value',
-            value: currencyRecalculating ? <RecalculatingValue /> : formatAmount(headline.cancelledValue, currency),
+            value: currencyRecalculating ? <RecalculatingValue /> : formatAmount(convertToDisplay(headline.cancelledValue), currency),
           },
         ]}
         delta={cancelRateDelta}
