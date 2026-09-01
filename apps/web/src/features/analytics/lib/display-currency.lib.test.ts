@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { AppliedRate } from '../api/sales-analytics.types';
 import {
   buildRateProvenanceDefinitions,
+  createReportingCurrencyConverter,
   formatAppliedRateLine,
   pickInlineAppliedRate,
   resolveReportingCurrencyRate,
@@ -99,19 +100,30 @@ describe('resolveReportingCurrencyRate', () => {
 
   it('returns null when the native currency is unknown (headline.currency is null)', () => {
     expect(
-      resolveReportingCurrencyRate({ rateBasis: 'current-rate', appliedRates: [rate()] }, null)
+      resolveReportingCurrencyRate(
+        { rateBasis: 'current-rate', displayCurrency: 'PLN', appliedRates: [rate()] },
+        null
+      )
     ).toBeNull();
   });
 
   it('order-date mode: returns the single applied rate verbatim — never more than one exists', () => {
     const only = rate({ from: 'PLN', to: 'EUR' });
     expect(
-      resolveReportingCurrencyRate({ rateBasis: 'order-date', appliedRates: [only] }, 'PLN')
+      resolveReportingCurrencyRate(
+        { rateBasis: 'order-date', displayCurrency: 'EUR', appliedRates: [only] },
+        'PLN'
+      )
     ).toBe(only);
   });
 
   it('order-date mode: returns null when no rate was applied', () => {
-    expect(resolveReportingCurrencyRate({ rateBasis: 'order-date', appliedRates: [] }, 'PLN')).toBeNull();
+    expect(
+      resolveReportingCurrencyRate(
+        { rateBasis: 'order-date', displayCurrency: 'EUR', appliedRates: [] },
+        'PLN'
+      )
+    ).toBeNull();
   });
 
   it("current-rate mode: finds the ONE breakdown row whose `from` matches the native currency", () => {
@@ -119,7 +131,7 @@ describe('resolveReportingCurrencyRate', () => {
     const usdRate = rate({ from: 'USD', to: 'EUR', rate: '0.92' });
     expect(
       resolveReportingCurrencyRate(
-        { rateBasis: 'current-rate', appliedRates: [usdRate, plnRate] },
+        { rateBasis: 'current-rate', displayCurrency: 'EUR', appliedRates: [usdRate, plnRate] },
         'PLN'
       )
     ).toBe(plnRate);
@@ -128,7 +140,40 @@ describe('resolveReportingCurrencyRate', () => {
   it('current-rate mode: returns null when no bucket matches the native currency — never picks a wrong one', () => {
     const usdRate = rate({ from: 'USD', to: 'EUR' });
     expect(
-      resolveReportingCurrencyRate({ rateBasis: 'current-rate', appliedRates: [usdRate] }, 'PLN')
+      resolveReportingCurrencyRate(
+        { rateBasis: 'current-rate', displayCurrency: 'EUR', appliedRates: [usdRate] },
+        'PLN'
+      )
     ).toBeNull();
+  });
+
+  it("returns null when `from` matches but `to` doesn't match the requested display currency", () => {
+    const wrongTarget = rate({ from: 'PLN', to: 'USD' });
+    expect(
+      resolveReportingCurrencyRate(
+        { rateBasis: 'current-rate', displayCurrency: 'EUR', appliedRates: [wrongTarget] },
+        'PLN'
+      )
+    ).toBeNull();
+  });
+});
+
+describe('createReportingCurrencyConverter', () => {
+  it('applies the rate to an amount denominated in the reporting currency', () => {
+    const converter = createReportingCurrencyConverter(rate({ from: 'PLN', to: 'EUR' }), 'PLN');
+    expect(converter.convertToDisplay(100, 'PLN')).toBeCloseTo(425);
+    expect(converter.displayCurrencyFor('PLN')).toBe('EUR');
+  });
+
+  it('does NOT apply the rate to an amount in a different native currency, even with a resolved rate (defence in depth, PR #2788)', () => {
+    const converter = createReportingCurrencyConverter(rate({ from: 'PLN', to: 'EUR' }), 'PLN');
+    expect(converter.convertToDisplay(100, 'USD')).toBe(100);
+    expect(converter.displayCurrencyFor('USD')).toBe('USD');
+  });
+
+  it('passes the amount through natively when there is no resolved rate', () => {
+    const converter = createReportingCurrencyConverter(null, 'PLN');
+    expect(converter.convertToDisplay(100, 'PLN')).toBe(100);
+    expect(converter.displayCurrencyFor('PLN')).toBe('PLN');
   });
 });
