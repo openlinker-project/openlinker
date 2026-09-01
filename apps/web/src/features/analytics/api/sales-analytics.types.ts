@@ -62,9 +62,14 @@ export interface SalesAnalyticsHeadline {
   averageOrderValue: number;
   medianOrderValue: number;
   unitsSold: number;
+  /** All cancelled orders in range, regardless of FX-stamp state. */
   cancelledCount: number;
-  /** Native-currency sum — may mix currencies; a secondary figure, not gated behind a stamp. */
+  /** `SUM(reportingTotalAmount)` over current-era-stamped, cancelled orders — expressed in `currency`. */
   cancelledValue: number;
+  /** Cancelled orders in range with no current-era reporting-currency stamp — not reflected in `cancelledValue`. */
+  cancelledUnconvertedCount: number;
+  /** Native-currency sum for `cancelledUnconvertedCount` — informational only, may mix currencies. */
+  cancelledUnconvertedValue: number;
   /** Non-cancelled orders in range with no reporting-currency stamp yet — not reflected in `revenue`. */
   unconvertedCount: number;
   /** Native-currency sum for `unconvertedCount` — informational only, may mix currencies. */
@@ -107,6 +112,8 @@ export interface ChannelSalesAnalytics {
   unitsSold: number;
   cancelledCount: number;
   cancelledValue: number;
+  cancelledUnconvertedCount: number;
+  cancelledUnconvertedValue: number;
   unconvertedCount: number;
   unconvertedValue: number;
   unconvertedCurrency: string | null;
