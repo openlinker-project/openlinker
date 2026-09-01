@@ -37,6 +37,7 @@ import {
   ROUTING_COMMIT_SERVICE_TOKEN,
   ROUTING_DECISION_REPOSITORY_TOKEN,
   FULFILLMENT_WORK_QUERY_SERVICE_TOKEN,
+  FULFILLMENT_WORKLIST_SERVICE_TOKEN,
 } from './fulfillment.tokens';
 import { FulfillmentProgressClaimOrmEntity } from './infrastructure/persistence/entities/fulfillment-progress-claim.orm-entity';
 import { FulfillmentProgressClaimRepository } from './infrastructure/persistence/repositories/fulfillment-progress-claim.repository';
@@ -47,6 +48,7 @@ import { FulfillmentWorkOrmEntity } from './infrastructure/persistence/entities/
 import { RoutingDecisionOrmEntity } from './infrastructure/persistence/entities/routing-decision.orm-entity';
 import { FulfillmentWorkRepository } from './infrastructure/persistence/repositories/fulfillment-work.repository';
 import { FulfillmentWorkQueryService } from './application/services/fulfillment-work-query.service';
+import { FulfillmentWorklistService } from './application/services/fulfillment-worklist.service';
 import { RoutingDecisionRepository } from './infrastructure/persistence/repositories/routing-decision.repository';
 
 @Module({
@@ -83,6 +85,8 @@ import { RoutingDecisionRepository } from './infrastructure/persistence/reposito
     },
     RoutingCommitService,
     { provide: ROUTING_COMMIT_SERVICE_TOKEN, useExisting: RoutingCommitService },
+    FulfillmentWorklistService,
+    { provide: FULFILLMENT_WORKLIST_SERVICE_TOKEN, useExisting: FulfillmentWorklistService },
   ],
   exports: [
     FULFILLMENT_WORK_REPOSITORY_TOKEN,
@@ -94,6 +98,10 @@ import { RoutingDecisionRepository } from './infrastructure/persistence/reposito
     // order's work through this interface, never through the repository port.
     FULFILLMENT_WORK_QUERY_SERVICE_TOKEN,
     ROUTING_COMMIT_SERVICE_TOKEN,
+    // Exported for `FulfillmentApiModule` (#2406): the operator worklist read
+    // model. `apps/api` reaches the aggregate through this interface and never
+    // through `FulfillmentWorkRepositoryPort`, which stays off the barrel.
+    FULFILLMENT_WORKLIST_SERVICE_TOKEN,
   ],
 })
 export class FulfillmentModule {}

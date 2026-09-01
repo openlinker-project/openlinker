@@ -67,6 +67,7 @@ import { FulfillmentHoldAlreadyReleasedError } from '../../../domain/exceptions/
 import { FulfillmentHoldLimitExceededError } from '../../../domain/exceptions/fulfillment-hold-limit-exceeded.error';
 import { FulfillmentHoldNotFoundError } from '../../../domain/exceptions/fulfillment-hold-not-found.error';
 import { FulfillmentPersistenceError } from '../../../domain/exceptions/fulfillment-persistence.error';
+import { FulfillmentWorkVersionMismatchError } from '../../../domain/exceptions/fulfillment-work-version-mismatch.error';
 import { FulfillmentWorkNotFoundError } from '../../../domain/exceptions/fulfillment-work-not-found.error';
 import type {
   CancelFulfillmentWorkInput,
@@ -95,6 +96,12 @@ import {
   type FulfillmentWorkStatus,
 } from '../../../domain/types/fulfillment-work-status.types';
 import type { FulfillmentWorkRejection } from '../../../domain/types/fulfillment-work-rejection.types';
+import {
+  clampWorklistLimit,
+  clampWorklistOffset,
+  type FulfillmentWorkListFilter,
+  type FulfillmentWorkPage,
+} from '../../../domain/types/fulfillment-worklist-page.types';
 import type {
   FulfillmentWork,
   FulfillmentWorkLine,
@@ -314,10 +321,13 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
     // FulfillmentPersistenceError wrapping a malformed statement.
     if (input.from.length === 0) return false;
     return this.applyGuardedUpdate('transitionStatus', (qb) =>
-      qb
-        .set({ status: input.to, version: () => '"version" + 1' })
-        .where('"id" = :id', { id: input.workId })
-        .andWhere('"status" IN (:...from)', { from: [...input.from] })
+      this.withVersionGuard(
+        qb
+          .set({ status: input.to, version: () => '"version" + 1' })
+          .where('"id" = :id', { id: input.workId })
+          .andWhere('"status" IN (:...from)', { from: [...input.from] }),
+        input.expectedVersion
+      )
     );
   }
 
@@ -498,8 +508,8 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
     // statement as the status, and a cancelled row can never lack one.
     // Terminal states are excluded from `from`: re-cancelling reports
     // not-applied rather than moving `cancelledAt`.
-    return this.applyGuardedUpdate('cancel', (qb) =>
-      qb
+    return this.applyGuardedUpdate('cancel', (qb) => {
+      const guarded = qb
         .set({
           status: 'cancelled',
           cancellationReason: input.reason,
@@ -507,8 +517,9 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
           version: () => '"version" + 1',
         })
         .where('"id" = :id', { id: input.workId })
-        .andWhere('"status" NOT IN (:...terminal)', { terminal: ['cancelled', 'closed'] })
-    );
+        .andWhere('"status" NOT IN (:...terminal)', { terminal: ['cancelled', 'closed'] });
+      return this.withVersionGuard(guarded, input.expectedVersion);
+    });
   }
 
   async recordLineProgress(input: RecordFulfillmentLineProgressInput): Promise<boolean> {
@@ -579,6 +590,20 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
           .getOne();
         if (parent === null) throw new FulfillmentWorkNotFoundError(input.workId);
 
+        // ## The optimistic token, checked under the lock taken above
+        //
+        // A read-compare is normally read-then-act and racy — but the parent row
+        // is held `FOR UPDATE` from here to commit, so no peer can move
+        // `version` in between. This is the same serialisation the hold cap
+        // relies on, reused rather than a second mechanism.
+        if (input.expectedVersion !== undefined && parent.version !== input.expectedVersion) {
+          throw new FulfillmentWorkVersionMismatchError(
+            input.workId,
+            input.expectedVersion,
+            parent.version
+          );
+        }
+
         const active = await em.count(FulfillmentHoldOrmEntity, {
           where: { fulfillmentWorkId: input.workId, releasedAt: IsNull() },
         });
@@ -602,12 +627,21 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
         hold.releaseNote = null;
 
         const saved = await em.save(FulfillmentHoldOrmEntity, hold);
+
+        // Placing a hold IS a state change: it adds `release_hold` and
+        // suppresses every forward-motion action. Leaving `version` still while
+        // `supportedActions` moved is the false-negative direction for
+        // optimistic concurrency — `claimDispatchRelay` names it in those words
+        // — and would let a stale client's next write through.
+        await em.increment(FulfillmentWorkOrmEntity, { id: input.workId }, 'version', 1);
+
         return this.toHoldDomain(saved);
       });
     } catch (error) {
       if (
         error instanceof FulfillmentHoldLimitExceededError ||
-        error instanceof FulfillmentWorkNotFoundError
+        error instanceof FulfillmentWorkNotFoundError ||
+        error instanceof FulfillmentWorkVersionMismatchError
       ) {
         throw error;
       }
@@ -617,47 +651,171 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
 
   async releaseHold(input: ReleaseFulfillmentHoldInput): Promise<FulfillmentHold> {
     try {
-      // One statement: the conditional UPDATE and the row it stamped. `affected`
-      // and the returned row cannot disagree, and there is no read-after-write.
-      const result = await this.holds
-        .createQueryBuilder()
-        .update(FulfillmentHoldOrmEntity)
-        .set({
-          releasedAt: input.releasedAt,
-          releasedByUserId: input.releasedByUserId ?? null,
-          releaseNote: input.releaseNote ?? null,
-        })
-        .where('"id" = :id AND "releasedAt" IS NULL', { id: input.holdId })
-        .returning('*')
-        .execute();
+      return await this.dataSource.transaction(async (em) => {
+        // The hold is located first because it is what carries the work id —
+        // `workId` on the input is optional, and a caller passing no
+        // `expectedVersion` has no reason to supply it.
+        const existing = await em.findOne(FulfillmentHoldOrmEntity, {
+          where: { id: input.holdId },
+        });
+        if (existing === null) throw new FulfillmentHoldNotFoundError(input.holdId);
 
-      const rows = result.raw as FulfillmentHoldOrmEntity[];
-      if (rows.length > 0) return this.toHoldDomain(rows[0]);
+        const workId = input.workId ?? existing.fulfillmentWorkId;
 
-      // Zero rows has TWO causes and they are different facts — a benign
-      // double-release versus a caller referencing a hold that never existed.
-      // Re-read to say which; the alternative is one error that means neither.
-      const existing = await this.holds.findOne({ where: { id: input.holdId } });
-      if (existing === null) throw new FulfillmentHoldNotFoundError(input.holdId);
-      // `existing.releasedAt` cannot be null here — a null would have matched the
-      // conditional UPDATE above — but falling back to the CALLER's timestamp
-      // would report a fabricated moment of release as an audit fact, so the
-      // impossible branch is reported as itself.
-      if (existing.releasedAt === null) {
-        throw new FulfillmentPersistenceError(
-          'releaseHold',
-          new Error(`Hold ${input.holdId} matched no conditional update yet reads as unreleased`)
-        );
-      }
-      throw new FulfillmentHoldAlreadyReleasedError(input.holdId, existing.releasedAt);
+        // ## The optimistic token, checked under a lock — the `placeHold` shape
+        //
+        // Only taken when a token was supplied: an unguarded caller pays no
+        // lock. Held `FOR UPDATE` to commit, so the compare is not read-then-act.
+        if (input.expectedVersion !== undefined) {
+          const parent = await em
+            .createQueryBuilder(FulfillmentWorkOrmEntity, 'work')
+            .setLock('pessimistic_write')
+            .where('work.id = :id', { id: workId })
+            .getOne();
+          if (parent === null) throw new FulfillmentWorkNotFoundError(workId);
+          if (parent.version !== input.expectedVersion) {
+            throw new FulfillmentWorkVersionMismatchError(
+              workId,
+              input.expectedVersion,
+              parent.version
+            );
+          }
+        }
+
+        // Conditional on `releasedAt IS NULL`: `affected` and the returned row
+        // cannot disagree, and there is no read-after-write.
+        const result = await em
+          .createQueryBuilder()
+          .update(FulfillmentHoldOrmEntity)
+          .set({
+            releasedAt: input.releasedAt,
+            releasedByUserId: input.releasedByUserId ?? null,
+            releaseNote: input.releaseNote ?? null,
+          })
+          .where('"id" = :id AND "releasedAt" IS NULL', { id: input.holdId })
+          .returning('*')
+          .execute();
+
+        const rows = result.raw as FulfillmentHoldOrmEntity[];
+        if (rows.length === 0) {
+          // Zero rows now has ONE remaining cause — the hold exists (checked
+          // above) and was already released. A benign double-release and a
+          // dangling id stay different facts, reported by different errors.
+          //
+          // `existing.releasedAt` cannot be null here, but falling back to the
+          // CALLER's timestamp would report a fabricated moment of release as an
+          // audit fact, so the impossible branch is reported as itself.
+          if (existing.releasedAt === null) {
+            throw new FulfillmentPersistenceError(
+              'releaseHold',
+              new Error(
+                `Hold ${input.holdId} matched no conditional update yet reads as unreleased`
+              )
+            );
+          }
+          throw new FulfillmentHoldAlreadyReleasedError(input.holdId, existing.releasedAt);
+        }
+
+        // Releasing a hold is a state change for the same reason placing one is:
+        // it restores forward-motion actions. See `placeHold`.
+        await em.increment(FulfillmentWorkOrmEntity, { id: workId }, 'version', 1);
+
+        return this.toHoldDomain(rows[0]);
+      });
     } catch (error) {
       if (
         error instanceof FulfillmentHoldNotFoundError ||
-        error instanceof FulfillmentHoldAlreadyReleasedError
+        error instanceof FulfillmentHoldAlreadyReleasedError ||
+        error instanceof FulfillmentWorkNotFoundError ||
+        error instanceof FulfillmentWorkVersionMismatchError ||
+        error instanceof FulfillmentPersistenceError
       ) {
         throw error;
       }
       throw new FulfillmentPersistenceError('releaseHold', error);
+    }
+  }
+
+  async listWorks(filter: FulfillmentWorkListFilter): Promise<FulfillmentWorkPage> {
+    try {
+      // Clamped HERE as well as in the request DTO. Reported === enforced: a
+      // caller that bypasses the HTTP boundary (a worker, a future MCP tool)
+      // must not be able to ask for an unbounded page either.
+      const limit = clampWorklistLimit(filter.limit);
+      const offset = clampWorklistOffset(filter.offset);
+
+      const qb = this.works.createQueryBuilder('work');
+      if (filter.status !== undefined && filter.status.length > 0) {
+        qb.andWhere('work.status IN (:...status)', { status: [...filter.status] });
+      }
+      if (filter.requestStatus !== undefined && filter.requestStatus.length > 0) {
+        qb.andWhere('work.requestStatus IN (:...requestStatus)', {
+          requestStatus: [...filter.requestStatus],
+        });
+      }
+      if (filter.locationId !== undefined) {
+        qb.andWhere('work.locationId = :locationId', { locationId: filter.locationId });
+      }
+      if (filter.orderId !== undefined) {
+        qb.andWhere('work.orderId = :orderId', { orderId: filter.orderId });
+      }
+
+      // `createdAt` alone is not unique, so a page boundary landing inside a
+      // same-timestamp run would drop or repeat rows between pages. The id is
+      // the tiebreak that makes the page stable.
+      const [headers, total] = await qb
+        .orderBy('work.createdAt', 'DESC')
+        .addOrderBy('work.id', 'DESC')
+        .take(limit)
+        .skip(offset)
+        .getManyAndCount();
+
+      if (headers.length === 0) return { works: [], total };
+
+      // One query for the page's lines, not one per work.
+      const lines = await this.lines.find({
+        where: { fulfillmentWorkId: In(headers.map((header) => header.id)) },
+        order: { createdAt: 'ASC' },
+      });
+      const linesByWork = new Map<string, FulfillmentWorkLineOrmEntity[]>();
+      for (const line of lines) {
+        const bucket = linesByWork.get(line.fulfillmentWorkId);
+        if (bucket === undefined) linesByWork.set(line.fulfillmentWorkId, [line]);
+        else bucket.push(line);
+      }
+
+      return {
+        works: headers.map((header) => this.toDomain(header, linesByWork.get(header.id) ?? [])),
+        total,
+      };
+    } catch (error) {
+      throw new FulfillmentPersistenceError('listWorks', error);
+    }
+  }
+
+  async listActiveHoldsForWorks(
+    workIds: readonly string[]
+  ): Promise<Map<string, FulfillmentHold[]>> {
+    const byWork = new Map<string, FulfillmentHold[]>();
+    // `In([])` is an empty-set query rather than a syntax error, but issuing it
+    // at all is pointless; short-circuiting also keeps the caller's page-of-zero
+    // path free of a round trip.
+    if (workIds.length === 0) return byWork;
+
+    try {
+      const rows = await this.holds.find({
+        where: { fulfillmentWorkId: In([...workIds]), releasedAt: IsNull() },
+        order: { placedAt: 'ASC' },
+      });
+      for (const row of rows) {
+        const hold = this.toHoldDomain(row);
+        const bucket = byWork.get(row.fulfillmentWorkId);
+        if (bucket === undefined) byWork.set(row.fulfillmentWorkId, [hold]);
+        else bucket.push(hold);
+      }
+      return byWork;
+    } catch (error) {
+      throw new FulfillmentPersistenceError('listActiveHoldsForWorks', error);
     }
   }
 
@@ -677,6 +835,26 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
    * The one place a guarded UPDATE on `fulfillment_works` is issued, so the
    * `?? 0` and the error conversion cannot be forgotten per transition.
    */
+  /**
+   * Attach the optimistic-concurrency precondition to a conditional UPDATE.
+   *
+   * Applied to the SAME statement as the state guard, which is the whole design
+   * (#2406 / REVIEW C10): the state predicate, the version predicate and the
+   * write commit together, so no window exists between checking the token and
+   * using it. A separate claim-then-act would both reverse `version`'s
+   * "counts state changes, not writes" contract and leave that window open.
+   *
+   * `undefined` attaches nothing, which is what keeps every pre-#2406 caller
+   * byte-identical.
+   */
+  private withVersionGuard(
+    qb: UpdateQueryBuilder<FulfillmentWorkOrmEntity>,
+    expectedVersion: number | undefined
+  ): UpdateQueryBuilder<FulfillmentWorkOrmEntity> {
+    if (expectedVersion === undefined) return qb;
+    return qb.andWhere('"version" = :expectedVersion', { expectedVersion });
+  }
+
   private async applyGuardedUpdate(
     operation: string,
     build: (

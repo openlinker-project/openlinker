@@ -24,6 +24,7 @@ import { FulfillmentHoldLimitExceededError } from '../../../../domain/exceptions
 import { FulfillmentHoldNotFoundError } from '../../../../domain/exceptions/fulfillment-hold-not-found.error';
 import { FulfillmentPersistenceError } from '../../../../domain/exceptions/fulfillment-persistence.error';
 import { FulfillmentWorkNotFoundError } from '../../../../domain/exceptions/fulfillment-work-not-found.error';
+import { FulfillmentWorkVersionMismatchError } from '../../../../domain/exceptions/fulfillment-work-version-mismatch.error';
 import { FULFILLMENT_HOLD_ACTIVE_LIMIT } from '../../../../domain/types/fulfillment-hold.types';
 import { FulfillmentWorkRepository } from '../fulfillment-work.repository';
 
@@ -344,6 +345,7 @@ describe('FulfillmentWorkRepository', () => {
         }),
         count: jest.fn().mockResolvedValue(FULFILLMENT_HOLD_ACTIVE_LIMIT),
         save: jest.fn(),
+        increment: jest.fn(),
       };
       const { repo } = makeRepository({
         dataSource: { transaction: jest.fn((cb: (m: unknown) => unknown) => cb(em)) },
@@ -373,6 +375,10 @@ describe('FulfillmentWorkRepository', () => {
         }),
         count: jest.fn().mockResolvedValue(0),
         save: jest.fn().mockImplementation((_e, hold) => Promise.resolve({ ...hold, id: 'h1' })),
+        // Placing a hold bumps the parent's `version` in the SAME transaction
+        // (#2406): the hold changes what is legal next, so a token that did not
+        // move would let a stale client's next write through.
+        increment: jest.fn(),
       };
       const { repo } = makeRepository({
         dataSource: { transaction: jest.fn((cb: (m: unknown) => unknown) => cb(em)) },
@@ -397,6 +403,7 @@ describe('FulfillmentWorkRepository', () => {
         }),
         count: jest.fn(),
         save: jest.fn(),
+        increment: jest.fn(),
       };
       const { repo } = makeRepository({
         dataSource: { transaction: jest.fn((cb: (m: unknown) => unknown) => cb(em)) },
@@ -414,12 +421,42 @@ describe('FulfillmentWorkRepository', () => {
   });
 
   describe('releaseHold', () => {
-    it('should distinguish an unknown hold from an already-released one', async () => {
-      const qb = updateQueryBuilder({ raw: [] });
-      const findOne = jest.fn().mockResolvedValue(null);
-      const { repo } = makeRepository({
-        holds: { createQueryBuilder: jest.fn().mockReturnValue(qb), findOne },
+    /**
+     * `releaseHold` runs inside `dataSource.transaction` since #2406, because
+     * the optimistic-token compare and the release have to be one atomic unit.
+     * The mock therefore models an EntityManager, not the hold repository.
+     */
+    const releaseEm = (options: {
+      existing: unknown;
+      raw: unknown[];
+      parent?: unknown;
+    }): Record<string, Mock> => ({
+      findOne: jest.fn().mockResolvedValue(options.existing),
+      // ONE self-returning builder serving both roles the implementation asks
+      // for — the `FOR UPDATE` parent read and the conditional UPDATE. A mock
+      // whose `where()` returned a different object than its `getOne()` lives on
+      // fails as a TypeError wrapped in FulfillmentPersistenceError, which looks
+      // exactly like a guard that did not fire.
+      createQueryBuilder: jest.fn().mockImplementation(() => {
+        const qb: Record<string, unknown> = {};
+        for (const method of ['update', 'set', 'where', 'andWhere', 'returning', 'setLock']) {
+          qb[method] = jest.fn().mockReturnValue(qb);
+        }
+        qb.getOne = jest.fn().mockResolvedValue(options.parent ?? { id: 'w1', version: 3 });
+        qb.execute = jest.fn().mockResolvedValue({ raw: options.raw });
+        return qb;
+      }),
+      increment: jest.fn(),
+    });
+
+    const withEm = (em: Record<string, Mock>) =>
+      makeRepository({
+        dataSource: { transaction: jest.fn((cb: (m: unknown) => unknown) => cb(em)) },
       });
+
+    it('should distinguish an unknown hold from an already-released one', async () => {
+      const em = releaseEm({ existing: null, raw: [] });
+      const { repo } = withEm(em);
 
       await expect(
         repo.releaseHold({ holdId: 'h-unknown', releasedAt: new Date() })
@@ -428,11 +465,11 @@ describe('FulfillmentWorkRepository', () => {
 
     it('should report an already-released hold as its own fact', async () => {
       const releasedAt = new Date('2026-08-01T00:00:00Z');
-      const qb = updateQueryBuilder({ raw: [] });
-      const findOne = jest.fn().mockResolvedValue({ id: 'h1', releasedAt });
-      const { repo } = makeRepository({
-        holds: { createQueryBuilder: jest.fn().mockReturnValue(qb), findOne },
+      const em = releaseEm({
+        existing: { id: 'h1', fulfillmentWorkId: 'w1', releasedAt },
+        raw: [],
       });
+      const { repo } = withEm(em);
 
       await expect(
         repo.releaseHold({ holdId: 'h1', releasedAt: new Date() })
@@ -440,7 +477,8 @@ describe('FulfillmentWorkRepository', () => {
     });
 
     it('should return the stamped row from the same statement that released it', async () => {
-      const qb = updateQueryBuilder({
+      const em = releaseEm({
+        existing: { id: 'h1', fulfillmentWorkId: 'w1', releasedAt: null },
         raw: [
           {
             id: 'h1',
@@ -456,16 +494,46 @@ describe('FulfillmentWorkRepository', () => {
           },
         ],
       });
-      const findOne = jest.fn();
-      const { repo } = makeRepository({
-        holds: { createQueryBuilder: jest.fn().mockReturnValue(qb), findOne },
-      });
+      const { repo } = withEm(em);
 
       const released = await repo.releaseHold({ holdId: 'h1', releasedAt: new Date() });
 
+      // The RETURNING row, not a read-after-write: `affected` and the returned
+      // row cannot disagree.
       expect(released.id).toBe('h1');
-      // No read-after-write: `affected` and the returned row cannot disagree.
-      expect(findOne).not.toHaveBeenCalled();
+      expect(released.releasedByUserId).toBe('u2');
+    });
+
+    it('should refuse a stale token BEFORE releasing anything (#2406)', async () => {
+      // The guard exists so a second operator cannot release a hold the first
+      // one already acted on. Asserted by its EFFECT — nothing was released and
+      // no version was bumped — not merely by the throw.
+      const em = releaseEm({
+        existing: { id: 'h1', fulfillmentWorkId: 'w1', releasedAt: null },
+        raw: [],
+        parent: { id: 'w1', version: 9 },
+      });
+      const { repo } = withEm(em);
+
+      await expect(
+        repo.releaseHold({ holdId: 'h1', releasedAt: new Date(), expectedVersion: 3 })
+      ).rejects.toBeInstanceOf(FulfillmentWorkVersionMismatchError);
+      expect(em.increment).not.toHaveBeenCalled();
+    });
+
+    it('should take the token lock only when a token was supplied (#2406)', async () => {
+      // An unguarded caller pays no lock — the pre-#2406 behaviour is preserved
+      // byte-for-byte, which is what makes `expectedVersion` additive.
+      const em = releaseEm({
+        existing: { id: 'h1', fulfillmentWorkId: 'w1', releasedAt: null },
+        raw: [{ id: 'h1', fulfillmentWorkId: 'w1', reason: 'manual-review', placedAt: new Date() }],
+      });
+      const { repo } = withEm(em);
+
+      await repo.releaseHold({ holdId: 'h1', releasedAt: new Date() });
+
+      const builder = em.createQueryBuilder.mock.results[0].value as { setLock: Mock };
+      expect(builder.setLock).not.toHaveBeenCalled();
     });
   });
 });

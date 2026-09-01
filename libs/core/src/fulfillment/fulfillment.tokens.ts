@@ -58,3 +58,12 @@ export const FULFILLMENT_RELAY_GATE_SERVICE_TOKEN = Symbol('IFulfillmentRelayGat
 
 /** Routing commit (#2395). `RoutingCommitService` binds here. */
 export const ROUTING_COMMIT_SERVICE_TOKEN = Symbol('IRoutingCommitService');
+
+/**
+ * Operator worklist read model (#2406). `FulfillmentWorklistService` binds here.
+ *
+ * Distinct from `FULFILLMENT_WORK_QUERY_SERVICE_TOKEN` above, which is the
+ * cross-context "what work covers this order" seam (#2402). Same aggregate,
+ * different question — see the interface docblock.
+ */
+export const FULFILLMENT_WORKLIST_SERVICE_TOKEN = Symbol('IFulfillmentWorklistService');
