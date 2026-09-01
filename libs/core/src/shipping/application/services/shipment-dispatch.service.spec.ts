@@ -129,7 +129,7 @@ describe('ShipmentDispatchService', () => {
   let orders: jest.Mocked<IOrderRecordService>;
   let dispatchLock: jest.Mocked<SyncLockPort>;
   let orderHolds: jest.Mocked<IOrderHoldService>;
-  let fulfillmentWorks: { resolveLinkForOrder: jest.Mock };
+  let fulfillmentWorks: { resolveLinkForOrder: jest.Mock; listBlockingRejectionConnectionIds: jest.Mock };
   let service: ShipmentDispatchService;
 
   beforeEach(() => {
@@ -208,7 +208,10 @@ describe('ShipmentDispatchService', () => {
     };
     // #2402: by default the order is unrouted, so no work links — every
     // pre-existing assertion in this file then holds byte for byte.
-    fulfillmentWorks = { resolveLinkForOrder: jest.fn().mockResolvedValue({ kind: 'none' }) };
+    fulfillmentWorks = {
+      resolveLinkForOrder: jest.fn().mockResolvedValue({ kind: 'none' }),
+      listBlockingRejectionConnectionIds: jest.fn().mockResolvedValue([]),
+    };
     service = new ShipmentDispatchService(
       repository,
       routing,
