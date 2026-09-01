@@ -192,7 +192,7 @@ export function SalesDocumentsPanel(): ReactElement {
                     {row.status === 'needs_reauth' ? (
                       <>
                         <br />
-                        <span className="text-muted">Cannot issue until reconnected</span>
+                        <span className="muted-text">Cannot issue until reconnected</span>
                       </>
                     ) : null}
                   </td>
@@ -219,7 +219,7 @@ export function SalesDocumentsPanel(): ReactElement {
                     {row.documentKind === null ? (
                       <>
                         <br />
-                        <span className="text-muted">Not a routing candidate</span>
+                        <span className="muted-text">Not a routing candidate</span>
                       </>
                     ) : null}
                   </td>

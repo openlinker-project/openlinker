@@ -801,4 +801,34 @@ describe('SalesDocumentCountryRoutingDialog — Reset country (#2189)', () => {
 
     expect(await screen.findByText(/An unmatched order is held/i)).toBeInTheDocument();
   });
+
+  it('should not claim a country has no rules and no default while the counts are still loading', async () => {
+    // `rules`/`defaults` read `?? []` while the queries are in flight, so an
+    // ungated tier would assert "DE has no rules and no default" about a
+    // configured country and then flip once the real counts land.
+    const apiClient = createMockApiClient({
+      salesDocumentRules: {
+        listRules: vi.fn().mockReturnValue(new Promise(() => {})),
+        listCountryDefaults: vi.fn().mockReturnValue(new Promise(() => {})),
+      },
+    });
+    renderWithProviders(
+      <SalesDocumentCountryRoutingDialog
+        open
+        country="DE"
+        cameFrom={null}
+        onOpenChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+      { apiClient },
+    );
+
+    expect(
+      await screen.findByText(/What happens to an unmatched order/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/DE has no rules and no default/i)).toBeNull();
+    expect(screen.queryByText(/Falls through to ★ Rest of world/i)).toBeNull();
+    expect(screen.queryByText(/An unmatched order is held/i)).toBeNull();
+    expect(screen.queryByRole('button', { name: /Open ★ Rest of world/i })).toBeNull();
+  });
 });

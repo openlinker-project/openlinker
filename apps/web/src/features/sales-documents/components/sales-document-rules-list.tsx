@@ -122,8 +122,8 @@ export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps)
                 <Button
                   tone="secondary"
                   className="button--sm"
-                  disabled={!write.canWrite || deleteRule.isPending}
-                  onClick={() => void deleteRule.mutateAsync(rule.id).catch(() => {})}
+                  disabled={!write.canWrite || isDeletingThisRule}
+                  onClick={() => deleteRule.mutate(rule.id)}
                 >
                   {isDeletingThisRule ? 'Deleting…' : 'Delete'}
                 </Button>

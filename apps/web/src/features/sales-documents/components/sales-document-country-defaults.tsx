@@ -101,10 +101,10 @@ export function SalesDocumentCountryDefaults({
                   onChange={(event) => {
                     const connectionId = event.target.value;
                     if (connectionId === '') {
-                      if (current) void remove.mutateAsync(current.id).catch(() => {});
+                      if (current) remove.mutate(current.id);
                       return;
                     }
-                    void upsert.mutateAsync({ country, documentKind, connectionId }).catch(() => {});
+                    upsert.mutate({ country, documentKind, connectionId });
                   }}
                 >
                   <option value="">Not set</option>
