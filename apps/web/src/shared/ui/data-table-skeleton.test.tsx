@@ -1,6 +1,6 @@
 import { render } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
-import { DataTableSkeleton } from './data-table-skeleton';
+import { DataTableSkeleton, type DataTableSkeletonColumn } from './data-table-skeleton';
 import type { DataTableColumn } from './data-table';
 
 type Row = { id: string };
@@ -81,5 +81,65 @@ describe('DataTableSkeleton', () => {
     const bars = selectAll(container, '.data-table-skeleton__bar');
     // 3 header bars + (3 columns × 2 rows) body bars = 9
     expect(bars).toHaveLength(9);
+  });
+
+  // ── Row shape (#2538, closing #2152) ────────────────────────────────
+
+  it('should stack one bar per declared line, so a two-line cell reserves its real height', () => {
+    const twoLine: DataTableSkeletonColumn[] = [{ lines: 2 }, {}];
+    const { container } = render(<DataTableSkeleton columns={twoLine} rows={1} />);
+    const cells = selectAll(container, 'tbody td');
+    expect(cells[0].querySelectorAll('.data-table-skeleton__bar')).toHaveLength(2);
+    expect(cells[1].querySelectorAll('.data-table-skeleton__bar')).toHaveLength(1);
+  });
+
+  it('should keep a single-line table exactly as it was', () => {
+    const { container } = render(<DataTableSkeleton columns={3} rows={2} />);
+    for (const cell of selectAll(container, 'tbody td')) {
+      expect(cell.querySelectorAll('.data-table-skeleton__bar')).toHaveLength(1);
+    }
+  });
+
+  it('should read the row shape off the DataTable columns it is handed', () => {
+    // The point of taking the column array: a page passes its existing COLUMNS
+    // and the skeleton matches the table without a second declaration to keep
+    // in step.
+    const columns: DataTableColumn<Row>[] = [
+      { id: 'identity', header: 'Order', cell: (row) => row.id, lines: 2 },
+      { id: 'status', header: 'Status', cell: () => '—' },
+    ];
+    const { container } = render(<DataTableSkeleton columns={columns} rows={1} />);
+    const cells = selectAll(container, 'tbody td');
+    expect(cells[0].querySelectorAll('.data-table-skeleton__bar')).toHaveLength(2);
+    expect(cells[1].querySelectorAll('.data-table-skeleton__bar')).toHaveLength(1);
+  });
+
+  it('should treat a nonsensical line count as one line rather than rendering nothing', () => {
+    const columns: DataTableSkeletonColumn[] = [{ lines: 0 }, { lines: -3 }, { lines: 2.6 }];
+    const { container } = render(<DataTableSkeleton columns={columns} rows={1} />);
+    const cells = selectAll(container, 'tbody td');
+    expect(cells[0].querySelectorAll('.data-table-skeleton__bar')).toHaveLength(1);
+    expect(cells[1].querySelectorAll('.data-table-skeleton__bar')).toHaveLength(1);
+    expect(cells[2].querySelectorAll('.data-table-skeleton__bar')).toHaveLength(2);
+  });
+
+  it('should reserve an action on every row, not only where one would appear', () => {
+    const { container } = render(<DataTableSkeleton columns={2} rows={3} rowAction />);
+    const rows = selectAll(container, 'tbody tr');
+    for (const row of rows) {
+      expect(row.classList.contains('data-table-skeleton__row--action')).toBe(true);
+    }
+  });
+
+  it('should leave the action reservation off by default', () => {
+    const { container } = render(<DataTableSkeleton columns={2} rows={1} />);
+    expect(
+      container.querySelector('.data-table-skeleton__row--action'),
+    ).toBeNull();
+  });
+
+  it('should announce what is loading when the caller says', () => {
+    const { container } = render(<DataTableSkeleton columns={2} label="Loading orders…" />);
+    expect(container.querySelector('.sr-only')?.textContent).toBe('Loading orders…');
   });
 });

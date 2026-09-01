@@ -144,8 +144,8 @@ import {
 import {
   ISalesDocumentRulesService,
   SALES_DOCUMENT_RULES_SERVICE_TOKEN,
+  chooseSalesDocumentDecision,
   readSalesDocumentRouting,
-  resolveSalesDocumentRouting,
 } from '@openlinker/core/sales-documents';
 import type {
   SalesDocumentBlock,
@@ -165,7 +165,11 @@ import {
 // the one function used in the lazy require below. Erases at compile time,
 // never emits a runtime require(), so it cannot reintroduce the CommonJS
 // cycle that require breaks.
-import type { toRegisterTransactionCommand as ToRegisterTransactionCommandType } from '@openlinker/core/fiscalization';
+import type {
+  toRegisterTransactionCommand as ToRegisterTransactionCommandType,
+  toFiscalizationRegisterPayload as ToFiscalizationRegisterPayloadType,
+  fiscalRegistrationIdempotencyKey as FiscalRegistrationIdempotencyKeyType,
+} from '@openlinker/core/fiscalization';
 // Same lazy-require reason as `toRegisterTransactionCommand` above and as
 // `InvoiceService.resolveFiscalRegistrationService` — see either doc comment.
 import type {
@@ -432,7 +436,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
 
     const eligibleCount = candidates.filter((candidate) => candidate.documentKind !== null).length;
 
-    const decision = await this.resolveSalesDocumentDecision(order, candidates, eligibleCount);
+    const decision = await this.resolveSalesDocumentDecision(order, candidates);
     if (decision === null) {
       // Neither the rule engine nor the operator-configured resolver has
       // anything to route with — mirrors the pre-#2173 zero-eligible-candidate
@@ -488,44 +492,25 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
    *     operator never touched the rule-engine UI for this order's country —
    *     or when no order facts could be built at all (no delivery address),
    *     fall back to the pre-#2170 `resolveSalesDocumentRouting`. That
-   *     resolver's own zero-eligible-candidate short-circuit (mirrored here
-   *     via `eligibleCount === 0 → null`) is preserved verbatim, so an
+   *     resolver's own zero-eligible-candidate short-circuit (since #2516
+   *     inside `chooseSalesDocumentDecision`) is preserved verbatim, so an
    *     untouched install's behaviour is byte-identical to before #2170
    *     shipped its authoring surface.
    */
   private async resolveSalesDocumentDecision(
     order: Order,
     candidates: readonly SalesDocumentRoutingCandidate[],
-    eligibleCount: number,
   ): Promise<SalesDocumentDecision | null> {
     const orderFacts = toSalesDocumentOrderFacts(order);
-    if (orderFacts !== null) {
-      const ruleDecision = await this.salesDocumentRules.resolveRouting(orderFacts);
-      if (!this.isNoConfigurationForCountry(ruleDecision)) {
-        return ruleDecision;
-      }
-    }
+    const ruleDecision =
+      orderFacts === null ? null : await this.salesDocumentRules.resolveRouting(orderFacts);
 
-    // Fallback: the pre-#2170, `operator-configured` single-primary model.
-    if (eligibleCount === 0) {
-      // resolveSalesDocumentRouting's own doc: a caller that already knows it
-      // has zero ELIGIBLE candidates (none carries a configured
-      // `documentKind`) is expected to short-circuit before calling the
-      // resolver — its zero-candidate branch is a defensive fallback, not the
-      // common path. Without this, a perfectly ordinary "not configured yet"
-      // install (capability enabled, but no `config.salesDocument.documentKind`
-      // set) would error-log 'ambiguous-connection-no-primary' on every order,
-      // which is a materially different and less actionable signal than "no
-      // candidate at all". Mirrors the pre-#2156 `selection.kind === 'none'`
-      // short-circuit.
-      return null;
-    }
-    return resolveSalesDocumentRouting(order, candidates);
-  }
-
-  /** Narrow a rule-engine decision to "the engine has no configuration at all for this order's country". */
-  private isNoConfigurationForCountry(decision: SalesDocumentDecision): boolean {
-    return decision.kind === 'unresolved' && decision.reason === 'no-configuration-for-country';
+    // The precedence itself lives in `sales-documents` (#2516) because the
+    // per-order sales-document projection (ADR-065) states which document an
+    // order that has none yet is routed to, and a surface that answered
+    // differently from this gate would promise something the system will not
+    // do. One function, two callers - never two copies of the rule.
+    return chooseSalesDocumentDecision({ ruleDecision, candidates });
   }
 
   /**
@@ -905,10 +890,12 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         return await this.reportBlock({ reason: gate.reason }, order.id);
       }
 
-      // Same key FORMAT the fiscalization HTTP controller already uses for
-      // the identical semantic (one connection registering one order is one
-      // sale) — see `apps/api/src/fiscalization/http/fiscalization.controller.ts`.
-      const idempotencyKey = `fiscal:${connection.id}:${order.id}`;
+      // ONE definition of the key, shared with every other caller that asks for
+      // a registration (#2525). It used to be written out here and again at the
+      // HTTP surface, so the two agreed only by inspection - and they have to
+      // agree exactly, or a manual request and an automatic one register the
+      // same sale twice.
+      const idempotencyKey = this.fiscalRegistrationKey(connection.id, order.id);
       const payload = this.composeFiscalReceiptPayload(
         order,
         connection,
@@ -1192,9 +1179,11 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     taxRateEra?: string | null,
   ): FiscalizationRegisterPayloadV1 {
     // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires -- lazy require needed to break a CommonJS barrel-load cycle with `@openlinker/core/fiscalization` (see the doc comment above)
-    const { toRegisterTransactionCommand } = require('@openlinker/core/fiscalization') as {
+    const fiscalization = require('@openlinker/core/fiscalization') as {
       toRegisterTransactionCommand: typeof ToRegisterTransactionCommandType;
+      toFiscalizationRegisterPayload: typeof ToFiscalizationRegisterPayloadType;
     };
+    const { toRegisterTransactionCommand, toFiscalizationRegisterPayload } = fiscalization;
     const command = toRegisterTransactionCommand({
       order,
       connectionId: connection.id,
@@ -1203,38 +1192,25 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       taxRateEra,
     });
 
-    const payload: FiscalizationRegisterPayloadV1 = {
-      schemaVersion: 1,
-      connectionId: command.connectionId,
-      orderId: command.orderId,
-      idempotencyKey,
-      currency: command.currency,
-      lines: command.lines,
-      totalGross: command.totalGross,
+    return toFiscalizationRegisterPayload(command, {
       sourceConnectionId,
-    };
-
-    // SERIALIZATION CONTRACT: `occurredAt` is a `Date` on the command; the
-    // jsonb payload carries it as ISO-8601 (see the payload type's own doc).
-    if (command.occurredAt !== undefined) {
-      payload.occurredAt = command.occurredAt.toISOString();
-    }
-    if (command.recipient !== undefined) {
-      payload.recipient = command.recipient;
-    }
-    if (sourceEventId !== undefined) {
-      payload.sourceEventId = sourceEventId;
-    }
-    // #2260 review: the gate above is era-aware, so the marker HAS to survive
-    // the hop or the write gate in `FiscalRegistrationService` re-decides the
-    // question without it - passing the order here and refusing it there, with
-    // no persisted reason for the refusal.
-    if (command.taxRateEra !== undefined && command.taxRateEra !== null) {
-      payload.taxRateEra = command.taxRateEra;
-    }
-
-    return payload;
+      ...(sourceEventId !== undefined ? { sourceEventId } : {}),
+    });
   }
+
+  /**
+   * The exactly-once key, resolved through the fiscalization context's own
+   * definition rather than restated here (#2525). Lazily required for the same
+   * CommonJS barrel-cycle reason `composeFiscalReceiptPayload` documents.
+   */
+  private fiscalRegistrationKey(connectionId: string, orderId: string): string {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires -- lazy require needed to break a CommonJS barrel-load cycle with `@openlinker/core/fiscalization`
+    const { fiscalRegistrationIdempotencyKey } = require('@openlinker/core/fiscalization') as {
+      fiscalRegistrationIdempotencyKey: typeof FiscalRegistrationIdempotencyKeyType;
+    };
+    return fiscalRegistrationIdempotencyKey(connectionId, orderId);
+  }
+
 
   /**
    * Read the connection's optional operator-supplied shipping-line label

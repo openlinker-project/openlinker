@@ -224,6 +224,8 @@ export {
 } from './application/interfaces/order-ingestion.service.interface';
 export { IOrderRecordService } from './application/interfaces/order-record.service.interface';
 export { OrderRecordService } from './application/services/order-record.service';
+export { ISalesDocumentViewService } from './application/interfaces/sales-document-view.service.interface';
+export { SalesDocumentViewService } from './application/services/sales-document-view.service';
 export type { IOrderFxStampService } from './application/interfaces/order-fx-stamp.service.interface';
 export type { IOrderFxRestatementService } from './application/interfaces/order-fx-restatement.service.interface';
 export { buildFxRestatementIdempotencyKey } from './domain/types/order-fx-restatement.types';

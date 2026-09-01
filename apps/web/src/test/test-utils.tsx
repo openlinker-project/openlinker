@@ -344,7 +344,19 @@ export function createMockApiClient(
       // #1909 — empty list default: the normal never-registered state, never a
       // 404 (OpenLinker never asserts an order requires a receipt).
       listForOrder: vi.fn().mockResolvedValue([]),
-      register: vi.fn().mockResolvedValue(null),
+      register: vi.fn().mockResolvedValue({
+        orderId: 'ord_1',
+        connectionId: 'conn_fiscal',
+        idempotencyKey: 'fiscal:conn_fiscal:ord_1',
+        jobId: 'job_1',
+        redrivenFromDead: false,
+      }),
+      // #2526 — default: nobody has asked to register this sale.
+      getProgress: vi.fn().mockResolvedValue({
+        progress: 'not-requested',
+        record: null,
+        inFlight: null,
+      }),
       reconcile: vi.fn().mockResolvedValue(null),
       ...overrides.fiscalization,
     } as ApiClient['fiscalization'],

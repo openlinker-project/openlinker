@@ -33,3 +33,5 @@ export const TAX_COVERAGE_DETECTION_SERVICE_TOKEN = Symbol('ITaxCoverageDetectio
 export const DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN = Symbol(
   'IDisplayCurrencyConversionService'
 );
+// One per-order sales-document read (#2516, ADR-065).
+export const SALES_DOCUMENT_VIEW_SERVICE_TOKEN = Symbol('ISalesDocumentViewService');

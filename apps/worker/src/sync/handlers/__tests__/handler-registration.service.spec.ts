@@ -5,20 +5,12 @@
  * registered with exactly one lane, the per-lane counts match the ADR's
  * table (12 realtime / 18 bulk / 5 fiscal / 6 fan-out — `fiscalization.register`
  * joined `fiscal` post-ADR, #2156; `orders.taxRate.backfill` joined `bulk`,
-<<<<<<< HEAD
  * #2440; `analytics.currency.recalculate` joined `bulk`, #2468; the two
  * sweep-triggered master children joined `bulk`, #2594; `master.product.syncBatch`
  * joined `bulk` as another catalogue-sweep child, #2593; `master.inventory.syncBatch`
- * joined `bulk` alongside it, #2648; #2609 changed no assignment at all), and
- * the consequential assignments the ADR calls out cannot silently churn.
-=======
- * #2440; the two sweep-triggered master children joined `bulk`, #2594;
- * `master.product.syncBatch` joined `bulk` as another catalogue-sweep child,
- * #2593; `master.inventory.syncBatch` joined `bulk` the same way, #2648;
- * #2609 changed no assignment at all; `marketplace.offerQuantity.reconcile`
- * joined `bulk`, #2621), and the consequential assignments the ADR calls out
- * cannot silently churn.
->>>>>>> origin/main
+ * joined `bulk` alongside it, #2648; #2609 changed no assignment at all;
+ * `marketplace.offerQuantity.reconcile` joined `bulk`, #2621), and the
+ * consequential assignments the ADR calls out cannot silently churn.
  *
  * @module apps/worker/src/sync/handlers
  */

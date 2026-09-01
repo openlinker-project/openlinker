@@ -39,6 +39,10 @@ import type {
   SyncAttempt,
 } from '@openlinker/core/orders';
 import {
+  ISalesDocumentViewService,
+  SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
+} from '@openlinker/core/orders';
+import {
   INVOICE_SERVICE_TOKEN,
   IInvoiceService,
 } from '@openlinker/core/invoicing';
@@ -64,6 +68,10 @@ import type { SyncAttemptResponseDto } from './dto/sync-attempt-response.dto';
 import { PaginatedOrdersResponseDto } from './dto/paginated-orders-response.dto';
 import { RetryOrderDestinationResponseDto } from './dto/retry-order-destination-response.dto';
 import type { OrderInvoiceProjectionDto } from './dto/order-invoice-projection.dto';
+import {
+  SalesDocumentViewResponseDto,
+  toSalesDocumentViewDto,
+} from './dto/sales-document-view-response.dto';
 import type { OrderDeliveryResolutionDto } from './dto/order-delivery-resolution.dto';
 import type { OrderDeliveryRiderDto } from './dto/order-delivery-rider.dto';
 
@@ -81,7 +89,9 @@ export class OrdersController {
     @Inject(FULFILLMENT_ROUTING_SERVICE_TOKEN)
     private readonly fulfillmentRouting: IFulfillmentRoutingService,
     @Inject(DELIVERY_RIDER_SERVICE_TOKEN)
-    private readonly deliveryRider: IDeliveryRiderService
+    private readonly deliveryRider: IDeliveryRiderService,
+    @Inject(SALES_DOCUMENT_VIEW_SERVICE_TOKEN)
+    private readonly salesDocumentView: ISalesDocumentViewService
   ) {}
 
   @Get()
@@ -154,6 +164,16 @@ export class OrdersController {
     // have no `deliveryResolution` / `deliveryRider` on their DTO.
     const deliveryByOrderId = await this.resolveDeliveryForOrders(items);
 
+    // Batch the sales-document projection for the whole page (#2516/#2517):
+    // a fixed number of queries regardless of page size. Carrying it on the
+    // list row is what lets the `/orders` cell state the routed document kind
+    // and the persisted block reason without a second request per row - and
+    // it is the SAME shape the detail endpoint serves, so the row and the
+    // panel cannot disagree about one order.
+    const salesDocumentByOrderId = await this.salesDocumentView.getForOrders(
+      items.map((order) => order.internalOrderId)
+    );
+
     return {
       items: items.map((order) => {
         const dto = this.toDto(order);
@@ -165,6 +185,10 @@ export class OrdersController {
         if (delivery) {
           dto.deliveryResolution = delivery.resolution;
           dto.deliveryRider = delivery.rider;
+        }
+        const salesDocument = salesDocumentByOrderId.get(order.internalOrderId);
+        if (salesDocument) {
+          dto.salesDocument = toSalesDocumentViewDto(salesDocument);
         }
         return dto;
       }),
@@ -267,7 +291,37 @@ export class OrdersController {
         await this.deliveryRider.resolve(this.toRiderInput(order, resolution))
       );
     }
+    // Same projection the list carries (#2517) - one shape, so the panel never
+    // interprets a field differently from the row it was opened from.
+    const salesDocument = await this.salesDocumentView.getForOrder(order.internalOrderId);
+    if (salesDocument) {
+      dto.salesDocument = toSalesDocumentViewDto(salesDocument);
+    }
     return dto;
+  }
+
+  @Get(':internalOrderId/sales-document')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Get the order's sales-document projection",
+    description:
+      'The ONE per-order sales-document read (ADR-065): the resolved document kind, the state on the ' +
+      'axis belonging to that kind (both invoice axes, or the single fiscal one), the persisted block ' +
+      'and unresolved reasons VERBATIM, and any record held on another connection. Read-only - it ' +
+      'issues, registers, routes and configures nothing. The same shape is carried on every row of ' +
+      'GET /orders, so the detail panel needs this endpoint only when it is opened directly.',
+  })
+  @ApiResponse({ status: 200, description: 'Sales-document projection', type: SalesDocumentViewResponseDto })
+  @ApiResponse({ status: 404, description: 'Order not found' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async getOrderSalesDocument(
+    @Param('internalOrderId') internalOrderId: string
+  ): Promise<SalesDocumentViewResponseDto> {
+    const view = await this.salesDocumentView.getForOrder(internalOrderId);
+    if (view === null) {
+      throw new NotFoundException(`Order not found: ${internalOrderId}`);
+    }
+    return toSalesDocumentViewDto(view);
   }
 
   @Roles('admin', 'operator')

@@ -27,6 +27,8 @@ import { SyncAttemptResponseDto } from './sync-attempt-response.dto';
 import type { OrderInvoiceProjectionDto } from './order-invoice-projection.dto';
 import { OrderDeliveryResolutionDto } from './order-delivery-resolution.dto';
 import { OrderDeliveryRiderDto } from './order-delivery-rider.dto';
+import { SalesDocumentViewResponseDto } from './sales-document-view-response.dto';
+
 
 export class OrderRecordResponseDto {
   @ApiProperty({ description: 'Internal order ID (e.g. ol_order_...)' })
@@ -206,4 +208,17 @@ export class OrderRecordResponseDto {
     description: 'Source delivery method label (#1791).',
   })
   sourceDeliveryMethodName?: string | null;
+
+  @ApiPropertyOptional({
+    type: SalesDocumentViewResponseDto,
+    description:
+      'The per-order sales-document projection (#2517, ADR-065) - the routed document kind, the state ' +
+      'on the axis belonging to that kind, the persisted block reasons verbatim, and any record held ' +
+      'on another connection. Carried on BOTH the list and the detail read, in the same shape ' +
+      'GET /orders/:internalOrderId/sales-document serves, so a row and the panel opened from it can ' +
+      'never describe one order differently and the list needs no second request per row. Optional ' +
+      'only because the projection is a separate read: it is populated for every order the read ' +
+      'resolves, and an order with NO document at all is present with `document: null`, never absent.',
+  })
+  salesDocument?: SalesDocumentViewResponseDto;
 }

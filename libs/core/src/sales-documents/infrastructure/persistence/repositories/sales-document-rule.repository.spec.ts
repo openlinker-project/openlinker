@@ -12,7 +12,7 @@
  *
  * @module libs/core/src/sales-documents/infrastructure/persistence/repositories
  */
-import { QueryFailedError } from 'typeorm';
+import { In, QueryFailedError } from 'typeorm';
 import { SalesDocumentRuleRepository } from './sales-document-rule.repository';
 import { SalesDocumentRuleConflictException } from '../../../domain/exceptions/sales-document-rule-conflict.exception';
 import { SalesDocumentRule } from '../../../domain/entities/sales-document-rule.entity';
@@ -96,6 +96,32 @@ describe('SalesDocumentRuleRepository', () => {
           provenance: null,
         }),
       ).rejects.toThrow('connection terminated unexpectedly');
+    });
+  });
+
+  describe('findByCountries (#2516)', () => {
+    it('reads nothing for an empty input', async () => {
+      const ormRepository = { find: jest.fn() };
+      const repository = new SalesDocumentRuleRepository(
+        ormRepository as unknown as ConstructorParameters<typeof SalesDocumentRuleRepository>[0],
+      );
+
+      await expect(repository.findByCountries([])).resolves.toEqual([]);
+      expect(ormRepository.find).not.toHaveBeenCalled();
+    });
+
+    it('issues ONE query for every country in the batch', async () => {
+      const ormRepository = { find: jest.fn().mockResolvedValue([]) };
+      const repository = new SalesDocumentRuleRepository(
+        ormRepository as unknown as ConstructorParameters<typeof SalesDocumentRuleRepository>[0],
+      );
+
+      await repository.findByCountries(['PL', 'DE', '*']);
+
+      expect(ormRepository.find).toHaveBeenCalledTimes(1);
+      expect(ormRepository.find).toHaveBeenCalledWith({
+        where: { country: In(['PL', 'DE', '*']) },
+      });
     });
   });
 });
