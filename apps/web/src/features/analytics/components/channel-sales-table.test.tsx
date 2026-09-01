@@ -30,6 +30,8 @@ function channel(overrides: Partial<ChannelSalesAnalytics> = {}): ChannelSalesAn
     unitsSold: 40,
     cancelledCount: 0,
     cancelledValue: 0,
+    cancelledUnconvertedCount: 0,
+    cancelledUnconvertedValue: 0,
     unconvertedCount: 0,
     unconvertedValue: 0,
     unconvertedCurrency: null,
@@ -55,6 +57,8 @@ function analytics(channels: ChannelSalesAnalytics[]): SalesAndChannelAnalytics 
       unitsSold: 60,
       cancelledCount: 2,
       cancelledValue: 200,
+      cancelledUnconvertedCount: 0,
+      cancelledUnconvertedValue: 0,
       unconvertedCount: 0,
       unconvertedValue: 0,
       unconvertedCurrency: null,
@@ -377,5 +381,48 @@ describe('ChannelSalesTable', () => {
       // category is represented, none silently dropped.
       expect(row!.querySelectorAll('.excl-note')).toHaveLength(4);
     });
+  });
+
+  it('shows "Recalculating…" for Net sales/AOV instead of a bare 0 while a currency remediation run is in progress', async () => {
+    const apiClient = createMockApiClient({
+      analytics: {
+        getSales: vi.fn().mockResolvedValue(
+          analytics([
+            channel({
+              revenue: 0,
+              currency: null,
+              netRevenue: 0,
+              netAverageOrderValue: 0,
+              orderCount: 0,
+              revenueShare: 0,
+              unconvertedCount: 25,
+              unconvertedValue: 3000,
+              unconvertedCurrency: 'PLN',
+            }),
+          ])
+        ),
+      },
+      connections: {
+        list: vi.fn().mockResolvedValue([{ id: 'conn-1', name: 'Allegro — main', platformType: 'allegro' }]),
+      },
+    });
+    const inProgressCoverage: AnalyticsCoverage = {
+      categories: [
+        { category: 'currency', status: 'in-progress', affectedCount: 25, sampleOrderIds: [], activeRunId: 'ol_remrun_1' },
+        { category: 'tax-a', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+        { category: 'tax-b', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+        { category: 'tax-c', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+        { category: 'product-matching', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+      ],
+    };
+
+    renderWithProviders(<ChannelSalesTable filters={FILTERS} coverage={inProgressCoverage} />, { apiClient });
+
+    await screen.findByRole('link', { name: 'Allegro — main' });
+    // The one channel row's Net sales + AOV cells — no Total row is emitted
+    // here since nothing is stamped yet (groupChannelTotalsByCurrency's own
+    // rule), so exactly 2 occurrences, never a bare "PLN 0.00".
+    expect(screen.getAllByText('Recalculating…')).toHaveLength(2);
+    expect(screen.queryByText(/0\.00/)).not.toBeInTheDocument();
   });
 });
