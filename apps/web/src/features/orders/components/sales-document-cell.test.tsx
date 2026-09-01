@@ -167,6 +167,45 @@ describe('SalesDocumentCell (#2552/#2553)', () => {
       );
     });
 
+    it('renders fully outside a scrolled, overflow-clipping ancestor (#2553)', async () => {
+      const user = userEvent.setup();
+      render(
+        <MemoryRouter>
+          <div className="data-table__container" style={{ overflowX: 'auto', width: '10px' }}>
+            <SalesDocumentCell
+              internalOrderId="ol_order_1"
+              view={baseView({ documentKind: 'invoice' })}
+              layout="stack"
+              hasIssuingCapability
+            />
+          </div>
+        </MemoryRouter>,
+      );
+
+      await user.click(screen.getByRole('button', { name: /invoice: not issued/i }));
+
+      const link = screen.getByRole('link', { name: /issue invoice/i });
+      // The M5 `Popover` primitive portals its content to the document root
+      // specifically so a cell-anchored panel is never clipped by the table's
+      // `overflow-x: auto` container (see `shared/ui/popover.tsx`) — assert
+      // that guarantee holds through THIS component, not just the primitive.
+      expect(document.querySelector('.data-table__container')?.contains(link)).toBe(false);
+    });
+
+    it('closes on Escape and returns focus to the trigger', async () => {
+      const user = userEvent.setup();
+      renderCell({ view: baseView({ documentKind: 'invoice' }) });
+
+      const trigger = screen.getByRole('button', { name: /invoice: not issued/i });
+      await user.click(trigger);
+      expect(screen.getByRole('link', { name: /issue invoice/i })).toBeInTheDocument();
+
+      await user.keyboard('{Escape}');
+
+      expect(screen.queryByRole('link', { name: /issue invoice/i })).not.toBeInTheDocument();
+      expect(trigger).toHaveFocus();
+    });
+
     it('warns when another connection holds a document for the same order', async () => {
       const user = userEvent.setup();
       renderCell({
