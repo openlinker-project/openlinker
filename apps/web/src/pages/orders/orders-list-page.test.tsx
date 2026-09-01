@@ -1320,7 +1320,7 @@ describe('OrdersListPage', () => {
 
       renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
-      const chip = await screen.findByRole('button', { name: /invoicing blocked/i });
+      const chip = await screen.findByRole('button', { name: /sales documents blocked/i });
       expect(chip).toHaveTextContent('2');
 
       const before = list.mock.calls.length;
@@ -1331,6 +1331,57 @@ describe('OrdersListPage', () => {
       });
       const [filters] = list.mock.calls[list.mock.calls.length - 1];
       expect(filters).toMatchObject({ salesDocumentBlocked: true });
+    });
+
+    it('should report issue-on-request as its own neutral figure, never inside the blocked count (#2554)', async () => {
+      const mockApi = createMockApiClient({
+        orders: {
+          list: vi.fn().mockResolvedValue(paginated([syncedOrder])),
+          statusSummary: vi.fn().mockResolvedValue({
+            total: 5,
+            sourceDeleted: 0,
+            awaitingMapping: 0,
+            needsAttention: 0,
+            synced: 5,
+            awaitingDispatch: 0,
+            salesDocumentBlocked: 2,
+            salesDocumentIssuedOnRequest: 3,
+          }),
+        },
+      });
+
+      renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      const chip = await screen.findByRole('button', { name: /sales documents blocked/i });
+      // The blocked chip's own count is unaffected by the separate figure.
+      expect(chip).toHaveTextContent('2');
+      expect(await screen.findByText('3 issued on request')).toBeInTheDocument();
+      // Neutral, not a filter: no button/link role for this figure.
+      expect(screen.queryByRole('button', { name: /issued on request/i })).not.toBeInTheDocument();
+    });
+
+    it('should render neither figure when the summary reports zero of each (#2554)', async () => {
+      const mockApi = createMockApiClient({
+        orders: {
+          list: vi.fn().mockResolvedValue(paginated([syncedOrder])),
+          statusSummary: vi.fn().mockResolvedValue({
+            total: 1,
+            sourceDeleted: 0,
+            awaitingMapping: 0,
+            needsAttention: 0,
+            synced: 1,
+            awaitingDispatch: 0,
+            salesDocumentBlocked: 0,
+            salesDocumentIssuedOnRequest: 0,
+          }),
+        },
+      });
+
+      renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      await screen.findByText('ALG-882414');
+      expect(screen.queryByRole('button', { name: /sales documents blocked/i })).not.toBeInTheDocument();
+      expect(screen.queryByText(/issued on request/i)).not.toBeInTheDocument();
     });
 
     it('should state the cause inside the popover, reachable by keyboard (#2553)', async () => {
@@ -1417,7 +1468,7 @@ describe('OrdersListPage', () => {
         route: '/orders?invoicing=blocked&offset=20',
       });
 
-      const chip = await screen.findByRole('button', { name: /invoicing blocked/i });
+      const chip = await screen.findByRole('button', { name: /sales documents blocked/i });
       expect(chip).toHaveAttribute('aria-pressed', 'true');
       expect(list.mock.calls[0][0]).toMatchObject({ salesDocumentBlocked: true });
 
@@ -1457,7 +1508,7 @@ describe('OrdersListPage', () => {
       // Gating the chip on the count alone unmounted the ONLY control for this
       // param exactly when the remediation succeeded, stranding an applied filter.
       expect(
-        await screen.findByRole('button', { name: /invoicing blocked/i }),
+        await screen.findByRole('button', { name: /sales documents blocked/i }),
       ).toBeInTheDocument();
       // And the empty state must not claim nothing has ever synced.
       // `findByText` (not `getByText`): the chip is sync-derived from the URL
@@ -1465,7 +1516,7 @@ describe('OrdersListPage', () => {
       // synchronous assertion here raced the async empty-state render under
       // load (flaked when this file ran alongside its siblings, though not in
       // isolation) — this text depends on `query.data`, so it must be awaited.
-      expect(await screen.findByText(/Nothing is blocked from invoicing/i)).toBeInTheDocument();
+      expect(await screen.findByText(/Nothing is blocked/i)).toBeInTheDocument();
       expect(screen.queryByText(/No order records have been synced yet/i)).toBeNull();
     });
 
@@ -1525,7 +1576,7 @@ describe('OrdersListPage', () => {
 
       await screen.findByText('ALG-882414');
       // An install that never hits this state gets no extra control.
-      expect(screen.queryByRole('button', { name: /invoicing blocked/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /sales documents blocked/i })).not.toBeInTheDocument();
     });
   });
 
