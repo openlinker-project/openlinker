@@ -64,6 +64,18 @@ function toneFromReasonTone(tone: SalesDocumentReasonTone): SalesDocumentCellTon
  * payload, or genuinely no projection) — rendered identically to a `null`
  * `documentKind`, since a surface cannot tell the two apart and must not
  * assert one over the other.
+ *
+ * **Absence is never an error** (#2761 review). A missing view and an
+ * undecided `documentKind` with no persisted reason both mean "OpenLinker has
+ * not been told what this order should get" - a configuration state, on every
+ * row of a fresh install and on every row of an FE running against an API
+ * predating the field. Painting those red is the same defect #2554 exists to
+ * prevent (a large red number on a healthy install), one surface down, so they
+ * resolve `idle` / no attention and lean on the popover's `Set routing`
+ * affordance instead. A reason the BACKEND actually persisted is a different
+ * thing and keeps that reason's own tone - `unresolved-routing` really is an
+ * error, and it is an error because the gate said so, not because a field was
+ * absent.
  */
 export function resolveSalesDocumentCellState(
   view: SalesDocumentView | undefined,
@@ -72,12 +84,22 @@ export function resolveSalesDocumentCellState(
     const copy = view
       ? resolveSalesDocumentReasonCopy(view.blockReason, view.unresolvedReason)
       : null;
+    if (!copy) {
+      return {
+        kind: null,
+        word: 'No document',
+        tone: 'idle',
+        attention: false,
+        reasonDetail: null,
+        keepsAction: false,
+      };
+    }
     return {
       kind: null,
-      word: 'No routing',
-      tone: 'error',
-      attention: true,
-      reasonDetail: copy?.detail ?? null,
+      word: copy.short,
+      tone: toneFromReasonTone(copy.tone),
+      attention: copy.tone !== 'neutral',
+      reasonDetail: copy.detail,
       keepsAction: false,
     };
   }

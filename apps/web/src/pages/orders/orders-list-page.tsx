@@ -54,9 +54,10 @@ import { useDemoMode } from '../../features/system';
 import { captureDemoEvent } from '../../features/demo';
 import { parseOrderSnapshot } from '../../features/orders/api/order-snapshot.schema';
 import { deriveOrderHealth, slaBadge, fulfillmentBadge } from '../../features/orders/lib/order-health';
-import { paymentBadge, taxRateConflictBadge } from '../../features/orders/lib/order-row';
+import { paymentBadge } from '../../features/orders/lib/order-row';
 import { OrderIdentityCell } from '../../features/orders';
 import { SalesDocumentCell } from '../../features/orders/components/sales-document-cell';
+import { TaxRateConflictBadge } from '../../features/orders/components/tax-rate-conflict-badge';
 import { deriveDeliveryOutcome, hasLiveOlCarrierRoute } from '../../features/orders/lib/delivery-outcome';
 import { DeliveryOutcomeChip } from '../../features/orders/components/delivery-chip';
 import { resolveDeliveryOwner } from '../../features/orders/lib/delivery-owner';
@@ -1015,16 +1016,7 @@ export function OrdersListPage(): ReactElement {
               {/* #2254 — its own independent line, never folded into the
                   document cell above: a conflict does not stop the invoice,
                   so it can be true alongside any document state. */}
-              {hasTaxRateConflict(parsed) ? (
-                <span title={taxRateConflictBadge().hint}>
-                  <StatusBadge tone="conflict" withDot compact>
-                    {taxRateConflictBadge().label}
-                  </StatusBadge>
-                  <span className="sr-only">
-                    {taxRateConflictBadge().label}: {taxRateConflictBadge().hint}
-                  </span>
-                </span>
-              ) : null}
+              {hasTaxRateConflict(parsed) ? <TaxRateConflictBadge /> : null}
               <span className="text-muted orders-cell-sub mono tabular">
                 <TimeDisplay iso={order.createdAt} format="datetime" />
               </span>
@@ -1380,7 +1372,7 @@ export function OrdersListPage(): ReactElement {
             reason is visible per-row wherever the document line itself
             renders "Issued on request". */}
         {summary?.salesDocumentIssuedOnRequest ? (
-          <span className="text-muted mono tabular" style={{ fontSize: '0.75rem' }}>
+          <span className="text-muted mono tabular orders-summary-note">
             {summary.salesDocumentIssuedOnRequest} issued on request
           </span>
         ) : null}
@@ -1702,13 +1694,7 @@ export function OrdersListPage(): ReactElement {
                             layout="row"
                             hasIssuingCapability={hasIssuingCapability}
                           />
-                          {hasTaxRateConflict(parsed) ? (
-                            <span title={taxRateConflictBadge().hint}>
-                              <StatusBadge tone="conflict" withDot compact>
-                                {taxRateConflictBadge().label}
-                              </StatusBadge>
-                            </span>
-                          ) : null}
+                          {hasTaxRateConflict(parsed) ? <TaxRateConflictBadge /> : null}
                         </dd>
                       </div>
                       <div>

@@ -9489,6 +9489,12 @@ a.kpi-card:focus-visible {
   .orders-card-facts .sales-doc { max-width: 100%; }
   .orders-card-facts .sales-doc__word { min-width: 0; }
 }
+/* The document popover's own box (#2761 review: was an inline `style` width).
+   Desktop pins the width so the identity facts' two-column grid does not
+   reflow per row; the mobile `row` layout caps it instead, so a narrow
+   viewport shrinks the panel rather than overflowing it. */
+.sales-doc-popover { width: 20rem; }
+.sales-doc-popover--row { width: auto; max-width: 20rem; }
 .sales-doc-popover__head { padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border-subtle); }
 .sales-doc-popover__body { padding: var(--space-3) var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); }
 .sales-doc-popover__foot {
@@ -9514,6 +9520,9 @@ a.kpi-card:focus-visible {
   gap: var(--space-2);
   font-size: 0.8125rem;
 }
+/* The neutral "issued on request" count beside the health chips (#2554).
+   Its own class rather than an inline `fontSize` (#2761 review). */
+.orders-summary-note { font-size: 0.75rem; }
 .sales-doc-fact__label { color: var(--text-muted); font-size: 0.75rem; }
 .sales-doc-fact__value { font-family: var(--font-mono); font-size: 0.75rem; overflow-wrap: anywhere; }
 .sales-doc-tone { font-weight: 500; font-size: 0.8125rem; }

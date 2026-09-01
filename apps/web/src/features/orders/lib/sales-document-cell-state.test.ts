@@ -28,14 +28,41 @@ function baseView(over: Partial<SalesDocumentView> = {}): SalesDocumentView {
 }
 
 describe('resolveSalesDocumentCellState (#2552)', () => {
-  it('reports "No routing" when the row carries no view at all', () => {
+  // #2761 review: absence is a configuration state, not an error. A fresh
+  // install (nothing routed yet) and an FE running against an API predating the
+  // field would otherwise paint a red line on EVERY row - the same "large red
+  // number on a healthy install" regression #2554 exists to prevent.
+  it('reports an idle "No document" when the row carries no view at all', () => {
     const state = resolveSalesDocumentCellState(undefined);
-    expect(state).toMatchObject({ kind: null, word: 'No routing', tone: 'error', attention: true });
+    expect(state).toMatchObject({
+      kind: null,
+      word: 'No document',
+      tone: 'idle',
+      attention: false,
+    });
   });
 
-  it('reports "No routing" when documentKind is null', () => {
+  it('reports an idle "No document" when documentKind is null with no persisted reason', () => {
     const state = resolveSalesDocumentCellState(baseView());
-    expect(state).toMatchObject({ kind: null, word: 'No routing', tone: 'error', attention: true });
+    expect(state).toMatchObject({
+      kind: null,
+      word: 'No document',
+      tone: 'idle',
+      attention: false,
+    });
+  });
+
+  it('keeps the error tone when the BACKEND persisted an unresolved-routing reason', () => {
+    // The distinction that matters: a routing failure the gate actually
+    // recorded IS an error and stays one. What must not be an error is a field
+    // that simply is not there.
+    const state = resolveSalesDocumentCellState(
+      baseView({ blockReason: 'unresolved-routing', unresolvedReason: 'no-configuration-for-country' }),
+    );
+    expect(state.kind).toBeNull();
+    expect(state.tone).toBe('error');
+    expect(state.attention).toBe(true);
+    expect(state.reasonDetail).not.toBeNull();
   });
 
   it('renders "Issue on request" (idle, no attention) for trigger-model-manual with no document yet', () => {
