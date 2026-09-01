@@ -31,9 +31,11 @@
  *     wildcard introspection is reserved for the barrel-purity spec.
  *
  * The matcher fires ONLY on bare `@openlinker/core/<ctx>` (no subpath).
- * Documented sub-barrels (`/services`, `/orm-entities`, `/testing`) are
- * governed by separate ESLint rules in `.eslintrc.js` and are out of
- * scope here.
+ * Documented sub-barrels are out of scope here and governed elsewhere:
+ * `/services`, `/orm-entities` and `/testing` by ESLint rules in
+ * `.eslintrc.js`, and the `/types` cycle-breaker family by
+ * `scripts/check-types-sub-barrels.mjs`, which bounds what those files may
+ * re-export at the source instead of policing every consumer.
  *
  * Scope. The walker descends into:
  *   - `libs/core/src/<ctx>/**`                          (#713/#721)

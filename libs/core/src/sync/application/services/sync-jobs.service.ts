@@ -63,6 +63,10 @@ export class SyncJobsService implements ISyncJobsService {
     return this.syncJobRepository.requeueDeadByIdempotencyKey(idempotencyKey);
   }
 
+  async findJobByIdempotencyKey(idempotencyKey: string): Promise<SyncJob | null> {
+    return this.syncJobRepository.findByIdempotencyKey(idempotencyKey);
+  }
+
   async requeueStuckJobs(timeoutMinutes: number): Promise<number> {
     return this.syncJobRepository.requeueStuckJobs(timeoutMinutes);
   }

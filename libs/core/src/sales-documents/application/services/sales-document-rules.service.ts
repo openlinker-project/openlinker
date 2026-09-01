@@ -161,6 +161,56 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
   }
 
   /**
+   * Batched {@link resolveRouting} (#2516).
+   *
+   * Three reads for the whole batch - rules and defaults for every DISTINCT
+   * country the batch mentions plus `★ Rest of world`, and the threshold table
+   * once - then the same pure `evaluateSalesDocumentRules` per entry. The query
+   * count is fixed at three however many orders arrive, which is the property
+   * the orders-list projection needs: one `IN (...)` per table, never one
+   * round trip per row.
+   */
+  async resolveRoutingBatch(
+    orders: readonly SalesDocumentOrderFacts[],
+    now: Date = new Date(),
+  ): Promise<SalesDocumentDecision[]> {
+    if (orders.length === 0) {
+      return [];
+    }
+
+    const countries = new Set<string>(orders.map((order) => order.country));
+    // `★ Rest of world` is always loaded: tier 3 applies to every order whose
+    // own country carries no configuration, so leaving it out would answer
+    // `no-configuration-for-country` on an install that HAS a rest-of-world
+    // rule.
+    countries.add(SALES_DOCUMENT_REST_OF_WORLD_COUNTRY);
+    const countryList = [...countries];
+
+    const [rules, defaults, thresholds] = await Promise.all([
+      this.ruleRepository.findByCountries(countryList),
+      this.countryDefaultRepository.findByCountries(countryList),
+      this.thresholdRepository.findAll(),
+    ]);
+
+    const rulesByCountry = groupByCountry(rules);
+    const defaultsByCountry = groupByCountry(defaults);
+    const restOfWorldRules = rulesByCountry.get(SALES_DOCUMENT_REST_OF_WORLD_COUNTRY) ?? [];
+    const restOfWorldDefaults = defaultsByCountry.get(SALES_DOCUMENT_REST_OF_WORLD_COUNTRY) ?? [];
+
+    return orders.map((order) =>
+      evaluateSalesDocumentRules({
+        order,
+        countryRules: rulesByCountry.get(order.country) ?? [],
+        countryDefaults: defaultsByCountry.get(order.country) ?? [],
+        restOfWorldRules,
+        restOfWorldDefaults,
+        thresholds,
+        now,
+      }),
+    );
+  }
+
+  /**
    * Merges rule counts + country defaults + acknowledgments by country
    * (#2186) — a country appearing in ANY of the three sources gets a row; a
    * missing side defaults to `0` / `null` rather than the row being dropped.
@@ -318,4 +368,21 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
       }
     }
   }
+}
+
+/**
+ * Index country-scoped rows by their own `country`, so the batched resolve
+ * can slice one shared read per order without re-filtering the whole list.
+ */
+function groupByCountry<T extends { readonly country: string }>(rows: readonly T[]): Map<string, T[]> {
+  const byCountry = new Map<string, T[]>();
+  for (const row of rows) {
+    const existing = byCountry.get(row.country);
+    if (existing === undefined) {
+      byCountry.set(row.country, [row]);
+    } else {
+      existing.push(row);
+    }
+  }
+  return byCountry;
 }

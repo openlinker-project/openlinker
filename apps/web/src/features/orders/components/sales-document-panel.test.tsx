@@ -15,13 +15,18 @@ import {
   createMockApiClient,
   sampleConnection,
   createAuthenticatedSessionAdapter,
+  findToastTitle,
+  findToastDescription,
 } from '../../../test/test-utils';
 import { ApiError } from '../../../shared/api/api-error';
 import { formatAmount } from '../../../shared/format/format-amount';
 import type { Connection } from '../../connections';
 import type { OrderRecord } from '../api/orders.types';
 import type { InvoiceRecord } from '../../invoicing';
-import type { FiscalRegistrationRecord } from '../../fiscalization';
+import type {
+  FiscalRegistrationRecord,
+  ReconcileFiscalRegistrationResult,
+} from '../../fiscalization';
 import { SalesDocumentPanel } from './sales-document-panel';
 
 afterEach(cleanup);
@@ -319,6 +324,76 @@ describe('SalesDocumentPanel — manual actions when nothing is blocked', () => 
   });
 });
 
+describe('SalesDocumentPanel - reconcile outcomes (#2522/#2583)', () => {
+  const inDoubt = makeFiscalRecord({
+    status: 'failed',
+    failureMode: 'in-doubt',
+    failureReason: 'The provider did not confirm the registration.',
+    registeredAt: null,
+    documentReference: null,
+  });
+
+  type ReconcileFn = (id: string) => Promise<ReconcileFiscalRegistrationResult>;
+
+  function renderInDoubt(reconcile: ReconcileFn): void {
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([fiscalConnection]) },
+        fiscalization: {
+          listForOrder: vi.fn().mockResolvedValue([inDoubt]),
+          reconcile,
+        },
+      }),
+      ...adminSession,
+    });
+  }
+
+  it('reports still-unknown as an unsettled check, naming no cause for it', async () => {
+    // Two things must both hold. It must not fall through to the "cannot be
+    // looked up automatically" arm, which is false - the check worked and
+    // simply did not settle. And it must not claim the provider holds the
+    // sale: the same outcome covers an answer OpenLinker could not read,
+    // where nothing about the provider is known.
+    const reconcile = vi
+      .fn()
+      .mockResolvedValue({ outcome: 'still-unknown', record: inDoubt });
+    const user = userEvent.setup();
+    renderInDoubt(reconcile);
+
+    await user.click(await screen.findByRole('button', { name: 'Look it up' }));
+
+    expect(await findToastTitle('Still not confirmed')).toBeInTheDocument();
+    await findToastDescription(/did not confirm a registration/i);
+    expect(screen.queryByText(/cannot be queried by OpenLinker/i)).toBeNull();
+    expect(screen.queryByText(/has the sale/i)).toBeNull();
+    expect(screen.queryByText(/has not registered it yet/i)).toBeNull();
+  });
+
+  it('does not say the provider holds nothing when it reports no registration', async () => {
+    // `not-found` also answers for an eparagony document the provider HOLDS and
+    // reports failed, so the copy is about the registration and nothing else.
+    const reconcile = vi.fn().mockResolvedValue({ outcome: 'not-found', record: inDoubt });
+    const user = userEvent.setup();
+    renderInDoubt(reconcile);
+
+    await user.click(await screen.findByRole('button', { name: 'Look it up' }));
+
+    expect(await findToastTitle('No registration found')).toBeInTheDocument();
+    // The literal string this epic names as its motivating defect.
+    expect(screen.queryByText('Still not found')).toBeNull();
+  });
+
+  it('keeps the cannot-be-queried copy for `unsupported` alone', async () => {
+    const reconcile = vi.fn().mockResolvedValue({ outcome: 'unsupported', record: inDoubt });
+    const user = userEvent.setup();
+    renderInDoubt(reconcile);
+
+    await user.click(await screen.findByRole('button', { name: 'Look it up' }));
+
+    expect(await findToastTitle('Cannot be looked up automatically')).toBeInTheDocument();
+  });
+});
+
 // Ported from the pre-#2160 `order-invoice-panel.test.tsx` (#2254): the panel
 // that rendered these was folded into `SalesDocumentPanel`, so the coverage
 // moved with the behaviour rather than being dropped with the file.
@@ -574,5 +649,160 @@ describe('SalesDocumentPanel - receipt path, missing rate (#2255/#2252)', () => 
 
     expect(await screen.findByRole('button', { name: 'Register receipt' })).toBeEnabled();
     expect(screen.queryByText(/has no tax rate/i)).toBeNull();
+  });
+});
+
+describe('SalesDocumentPanel — asynchronous registration (#2527)', () => {
+  it('shows the in-flight state when the order is reopened before any record exists', async () => {
+    // The window between the request being accepted and the job running. It has
+    // no record in it, so before #2526 this fell through to the empty state and
+    // offered to register the sale a second time.
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([fiscalConnection]) },
+        fiscalization: {
+          listForOrder: vi.fn().mockResolvedValue([]),
+          getProgress: vi
+            .fn()
+            .mockResolvedValue({ progress: 'queued', record: null, inFlight: null }),
+        },
+      }),
+      ...adminSession,
+    });
+
+    expect(
+      await screen.findByText(/Registering with the provider/),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Register receipt' })).toBeNull();
+  });
+
+  it('states that the work continues, and never asks anyone to keep the page open', async () => {
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([fiscalConnection]) },
+        fiscalization: {
+          listForOrder: vi.fn().mockResolvedValue([makeFiscalRecord({ status: 'registering' })]),
+          getProgress: vi.fn().mockResolvedValue({
+            progress: 'running',
+            record: makeFiscalRecord({ status: 'registering' }),
+            inFlight: null,
+          }),
+        },
+      }),
+      ...adminSession,
+    });
+
+    const notice = await screen.findByText(/This continues if you leave the page/);
+    expect(notice).toBeInTheDocument();
+    // The claim that was true before the work moved off the request, and is now
+    // false in the other direction.
+    expect(screen.queryByText(/keep this page open/i)).toBeNull();
+    expect(screen.queryByText(/close/i)).toBeNull();
+  });
+
+  it('says nothing reached the provider only where that is true', async () => {
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([fiscalConnection]) },
+        fiscalization: {
+          listForOrder: vi.fn().mockResolvedValue([makeFiscalRecord({ status: 'pending' })]),
+          getProgress: vi.fn().mockResolvedValue({
+            progress: 'stalled',
+            record: makeFiscalRecord({ status: 'pending' }),
+            inFlight: null,
+          }),
+        },
+      }),
+      ...adminSession,
+    });
+
+    expect(await screen.findByText('Nothing is running for this receipt')).toBeInTheDocument();
+    // A `pending` record was written before any outbound call and never
+    // claimed, so the absence is provable here.
+    expect(screen.getByText(/stopped before it reached the provider/)).toBeInTheDocument();
+  });
+
+  it('never claims an absence for an attempt that may already have reached the provider', async () => {
+    // A `registering` record whose claim expired is a crashed attempt: the
+    // process died, and a dead socket says nothing about whether the request
+    // was processed. This is the one path into "nothing is running" where an
+    // absence cannot be asserted.
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([fiscalConnection]) },
+        fiscalization: {
+          listForOrder: vi.fn().mockResolvedValue([makeFiscalRecord({ status: 'registering' })]),
+          getProgress: vi.fn().mockResolvedValue({
+            progress: 'interrupted',
+            record: makeFiscalRecord({ status: 'registering' }),
+            inFlight: null,
+          }),
+        },
+      }),
+      ...adminSession,
+    });
+
+    expect(await screen.findByText('An attempt stopped without an answer')).toBeInTheDocument();
+    expect(screen.getByText(/cannot tell whether the provider registered/)).toBeInTheDocument();
+    expect(screen.queryByText(/nothing was registered/i)).toBeNull();
+    expect(screen.queryByText(/before it reached the provider/i)).toBeNull();
+  });
+
+  it('polls the progress read for the (order, connection) pair the key is built from', async () => {
+    const getProgress = vi
+      .fn()
+      .mockResolvedValue({ progress: 'queued', record: null, inFlight: null });
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([fiscalConnection]) },
+        fiscalization: { listForOrder: vi.fn().mockResolvedValue([]), getProgress },
+      }),
+      ...adminSession,
+    });
+
+    await waitFor(() => expect(getProgress).toHaveBeenCalledWith(ORDER_ID, FISCAL_CONN_ID));
+  });
+});
+
+describe('SalesDocumentPanel — header agrees with body (#2527)', () => {
+  it('should not badge a queued registration as not registered', async () => {
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([fiscalConnection]) },
+        fiscalization: {
+          listForOrder: vi.fn().mockResolvedValue([]),
+          getProgress: vi
+            .fn()
+            .mockResolvedValue({ progress: 'queued', record: null, inFlight: null }),
+        },
+      }),
+      ...adminSession,
+    });
+
+    expect(await screen.findByText(/Registering with the provider/)).toBeInTheDocument();
+    // The header used to read "Not registered" over that body, because the
+    // badge derived from a record that does not exist yet.
+    expect(screen.getByText('Queued')).toBeInTheDocument();
+    expect(screen.queryByText('Not registered')).toBeNull();
+  });
+
+  it('should still report a request that stopped before any record existed', async () => {
+    // A job that gave up before `register` wrote a row. Without the slot
+    // opening on this the panel falls through to the empty state and says
+    // nothing about the stopped request at all.
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([fiscalConnection]) },
+        fiscalization: {
+          listForOrder: vi.fn().mockResolvedValue([]),
+          getProgress: vi
+            .fn()
+            .mockResolvedValue({ progress: 'stalled', record: null, inFlight: null }),
+        },
+      }),
+      ...adminSession,
+    });
+
+    expect(await screen.findByText('Nothing is running for this receipt')).toBeInTheDocument();
   });
 });

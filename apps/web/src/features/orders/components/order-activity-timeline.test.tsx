@@ -204,7 +204,7 @@ describe('OrderActivityTimeline', () => {
 
       expect(screen.getByText('No invoice issued')).toBeInTheDocument();
       expect(
-        screen.getByText(/none is set to issue automatically/i),
+        screen.getByText(/nothing chooses between them/i),
       ).toBeInTheDocument();
       expect(
         screen.getByText(/2 invoicing connections, none marked primary/),

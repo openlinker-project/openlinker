@@ -64,12 +64,24 @@ directly.
 | `failed` | `rejected` | The provider definitely created nothing (e.g. unresolvable tax rate, non-registrable amount). | Fix the cause, then register again — safe, because nothing exists to duplicate. |
 | `failed` | `in-doubt` | The request was sent but the outcome could not be confirmed before the poll budget ran out, or a transport failure happened after send. | **Never register again for this order/connection pair on this basis alone.** Use "Look it up" (`locateByQuery`) — it asks the provider by the same deterministic document reference, never by resubmitting. If it still reports nothing, wait and try again; the device may simply be slower than the poll budget. |
 
-`locateByQuery` itself can report three outcomes (`FiscalReconcileOutcome`):
+A check reports one of four outcomes (`FiscalReconcileOutcome`), and only the
+first changes the record:
 
 - `resolved` — the provider confirmed a registration; the record advances.
-- `not-found` — the provider holds no matching document yet. Stays `in-doubt`.
+- `not-found` — no registration exists for these coordinates. Stays `in-doubt`.
+  This does NOT mean the provider holds nothing: a document it reports in
+  `ERROR` answers here too, because a failed document is an absence of a
+  registration rather than work still in progress.
+- `still-unknown` — the check settled nothing. Usually the provider holds the
+  sale at a non-terminal status and simply has not registered it yet; the same
+  outcome also covers an answer OpenLinker could not read, which is marked
+  `detail: "unreadable-answer"`. Stays `in-doubt`; check again later.
 - `unsupported` — this provider cannot be queried this way. Falls to manual
   operator handling (check the vendor's own panel).
+
+A failed CHECK is deliberately none of the four: if the provider could not be
+reached at all, the endpoint answers HTTP 502, nothing is written, and the check
+can be repeated.
 
 ---
 

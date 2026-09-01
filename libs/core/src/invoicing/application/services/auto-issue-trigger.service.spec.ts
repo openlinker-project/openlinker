@@ -146,6 +146,7 @@ describe('AutoIssueTriggerService', () => {
     syncJobs = {
       schedule: jest.fn().mockResolvedValue({} as never),
       requeueDeadByIdempotencyKey: jest.fn().mockResolvedValue(false),
+      findJobByIdempotencyKey: jest.fn().mockResolvedValue(null),
       requeueStuckJobs: jest.fn().mockResolvedValue(0),
       findLastSucceededJob: jest.fn().mockResolvedValue(null),
       findEnabledPollTask: jest.fn().mockReturnValue(null),

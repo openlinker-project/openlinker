@@ -125,10 +125,12 @@ import {
 
 import {
   useOrderFiscalRegistrationsQuery,
+  useFiscalRegistrationProgressQuery,
   useRegisterFiscalReceiptMutation,
   useReconcileFiscalRegistrationMutation,
   selectFiscalizationCandidates,
   deriveFiscalReceiptDisplayStatus,
+  deriveFiscalReceiptBadgeStatus,
   canRetryFiscalReceipt,
   resolveFiscalFailureCopy,
   FiscalReceiptStatusBadge,
@@ -267,6 +269,25 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   // a second connection is unusual but not this surface's concern to reconcile).
   const fiscalRecord = fiscalRecords[0] ?? null;
 
+  // ── Where the registration has got to (#2526) ──
+  // Scoped to the connection the record is on, or - before any record exists -
+  // the one an action here would register on, because that is the pair the
+  // exactly-once key is built from.
+  const fiscalProgressConnectionId =
+    fiscalRecord?.connectionId ?? pickedFiscalConnectionId ?? fiscalCandidates[0]?.id ?? '';
+  const fiscalProgressQuery = useFiscalRegistrationProgressQuery(
+    order.internalOrderId,
+    fiscalProgressConnectionId,
+  );
+  const fiscalProgress = fiscalProgressQuery.data?.progress;
+  // The two states with work outstanding. `queued` is the one no record can
+  // describe: the request has been accepted and the job has not run yet, so
+  // there is nothing but the job to read.
+  const fiscalWorkOutstanding = fiscalProgress === 'queued' || fiscalProgress === 'running';
+  // The header badge takes the four states the record cannot express from
+  // progress, so it can never contradict the body beneath it.
+  const fiscalBadgeStatus = deriveFiscalReceiptBadgeStatus(fiscalRecord, fiscalProgress);
+
   // Loading skeleton while connections settle — matches the pre-#2160 panels.
   if (connectionsQuery.isLoading) {
     return (
@@ -306,7 +327,16 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   const fiscalBlocks = fiscalRecord !== null && !canRetryFiscalReceipt(fiscalRecord);
 
   const showInvoiceSlot = invoice !== null;
-  const showFiscalSlot = !showInvoiceSlot && fiscalRecord !== null;
+  // Outstanding work opens the slot even with no record. Without that, an order
+  // reopened in the window right after the operator asked would fall through to
+  // the empty state and offer to register the sale again.
+  // `stalled` with no record is a real state - a job that gave up before
+  // `register` ever wrote a row - and it is the one state whose whole purpose is
+  // to say a previous request stopped. Without it here the panel falls through
+  // to the empty state and says nothing at all.
+  const showFiscalSlot =
+    !showInvoiceSlot &&
+    (fiscalRecord !== null || fiscalWorkOutstanding || fiscalProgress === 'stalled');
   const showEmptyState = !showInvoiceSlot && !showFiscalSlot;
 
   // ── Invoicing connection resolution (verbatim from the pre-#2160 panel) ──
@@ -393,6 +423,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   const fiscalSettled = !fiscalQuery.isError && !fiscalQuery.isLoading;
   const fiscalDisplayStatus = deriveFiscalReceiptDisplayStatus(fiscalRecord);
 
+
   const handleRegister = (connectionId: string): void => {
     if (!connectionId) return;
     registerMutation.mutate(
@@ -434,10 +465,31 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
           } else if (result.outcome === 'not-found') {
             showToast({
               tone: 'info',
-              title: t('fiscalReceipt.reconcile.notFound', 'Still not found'),
+              title: t('fiscalReceipt.reconcile.notFound', 'No registration found'),
               description: t(
                 'fiscalReceipt.reconcile.notFoundBody',
-                'The provider has no matching registration yet. This will keep checking.',
+                'The provider reports no registration for this sale. Nothing changed here, and OpenLinker will not register it again on its own.',
+              ),
+            });
+          } else if (result.outcome === 'still-unknown') {
+            // INTERIM (#2522/#2583). Before this branch existed `still-unknown`
+            // fell into the `else` below and told the operator the provider
+            // cannot be queried, which is false: the check worked and simply did
+            // not settle.
+            //
+            // The copy names the OUTCOME and never its cause. The usual cause is
+            // a provider holding the sale, but the same outcome also covers an
+            // answer OpenLinker could not read, where nothing about the provider
+            // is known - so saying "the provider has the sale" would assert what
+            // no adapter reported, which is the defect this branch exists to
+            // stop. The backend distinguishes the two on the record's `detail`;
+            // whether to surface that is M9's call, not this branch's.
+            showToast({
+              tone: 'info',
+              title: t('fiscalReceipt.reconcile.stillUnknown', 'Still not confirmed'),
+              description: t(
+                'fiscalReceipt.reconcile.stillUnknownBody',
+                'The check did not confirm a registration, and did not find that one is missing either. Nothing changed here. You can check again.',
               ),
             });
           } else {
@@ -533,7 +585,9 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
               ) : null}
             </>
           ) : null}
-          {showFiscalSlot ? <FiscalReceiptStatusBadge status={fiscalDisplayStatus} /> : null}
+          {showFiscalSlot ? (
+            <FiscalReceiptStatusBadge status={fiscalBadgeStatus} />
+          ) : null}
         </div>
       </header>
 
@@ -829,13 +883,67 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
             <div className="sales-document-panel__skeleton" aria-hidden="true" />
           ) : null}
 
-          {fiscalSettled && (fiscalDisplayStatus === 'pending' || fiscalDisplayStatus === 'registering') ? (
+          {fiscalWorkOutstanding ||
+          (fiscalProgress === undefined &&
+            fiscalSettled &&
+            (fiscalDisplayStatus === 'pending' || fiscalDisplayStatus === 'registering')) ? (
             <>
               <div className="sales-document-panel__skeleton" aria-hidden="true" />
               <p className="sales-document-panel__notice">
-                {t('fiscalReceipt.pending.body', 'Sent to the provider. This refreshes automatically when it responds.')}
+                {/* The work runs in the background since #2525, so this no
+                    longer asks anyone to wait with the page open. It says what
+                    is true and nothing more: it continues, and it will be here.
+                    There is deliberately no estimate - OpenLinker hands the sale
+                    over and waits for one answer, observing nothing in between. */}
+                {t(
+                  'fiscalReceipt.pending.body',
+                  'Registering with the provider. This continues if you leave the page, and the result will be here when you come back.',
+                )}
               </p>
             </>
+          ) : null}
+
+          {/* Nothing is running. Two states, two sentences, because they differ
+              on whether the provider can already have been called - and an
+              absence is not something this surface may assert on a guess. */}
+          {fiscalProgress === 'stalled' ? (
+            <Alert
+              tone="warning"
+              title={t('fiscalReceipt.stalled.title', 'Nothing is running for this receipt')}
+            >
+              {t(
+                'fiscalReceipt.stalled.body',
+                'The registration was requested and stopped before it reached the provider, so nothing was registered. Asking again picks it up.',
+              )}{' '}
+              <Button
+                tone="secondary"
+                className="button--sm"
+                disabled={registerMutation.isPending || !fiscalProgressConnectionId}
+                onClick={() => handleRegister(fiscalProgressConnectionId)}
+              >
+                {t('fiscalReceipt.action.retry', 'Register receipt')}
+              </Button>
+            </Alert>
+          ) : null}
+
+          {fiscalProgress === 'interrupted' ? (
+            <Alert
+              tone="warning"
+              title={t('fiscalReceipt.interrupted.title', 'An attempt stopped without an answer')}
+            >
+              {t(
+                'fiscalReceipt.interrupted.body',
+                'The attempt had started, so OpenLinker cannot tell whether the provider registered this sale. Asking again resumes the same registration rather than starting a new one.',
+              )}{' '}
+              <Button
+                tone="secondary"
+                className="button--sm"
+                disabled={registerMutation.isPending || !fiscalProgressConnectionId}
+                onClick={() => handleRegister(fiscalProgressConnectionId)}
+              >
+                {t('fiscalReceipt.action.retry', 'Register receipt')}
+              </Button>
+            </Alert>
           ) : null}
 
           {fiscalSettled && fiscalDisplayStatus === 'registered' && fiscalRecord ? (

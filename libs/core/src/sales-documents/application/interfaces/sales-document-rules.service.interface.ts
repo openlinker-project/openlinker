@@ -54,6 +54,26 @@ export interface ISalesDocumentRulesService {
   resolveRouting(order: SalesDocumentOrderFacts, now?: Date): Promise<SalesDocumentDecision>;
 
   /**
+   * Batch counterpart of {@link resolveRouting} (#2516): one decision per
+   * entry of `orders`, in the same order, resolved from rules and defaults
+   * loaded ONCE for the whole batch rather than once per order.
+   *
+   * It exists because the per-order sales-document projection (ADR-065) states
+   * which document an order that has none yet is routed to, and a page of
+   * orders would otherwise pay `resolveRouting`'s five reads per row. The
+   * evaluation itself is the same pure `evaluateSalesDocumentRules` call, so a
+   * single order resolves identically through either method.
+   *
+   * `now` defaults to the system clock and is applied to EVERY entry, so one
+   * batch is evaluated against one instant - pass it explicitly in tests.
+   * Returns `[]` for an empty input.
+   */
+  resolveRoutingBatch(
+    orders: readonly SalesDocumentOrderFacts[],
+    now?: Date,
+  ): Promise<SalesDocumentDecision[]>;
+
+  /**
    * Every country carrying any rule, country default, or no-document
    * acknowledgment (#2186) — merged by country, defaulting a missing side to
    * `0` / `null` rather than dropping the row. No pagination — see the
