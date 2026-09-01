@@ -91,8 +91,8 @@ Optional right utility rail
 The left navigation is persistent and grouped **by frequency of use**, with two admin-only groups and a disabled **Planned** footer for IA-anticipated modules that are not yet shipped. This structure was finalized during the FE-002 refactor; the shipped composition lives in `apps/web/src/app/nav-registry.ts`, which is the source of truth.
 
 **Operations** (daily surfaces):
-- Analytics
-- Dashboard
+- Analytics (landing page, at `/`)
+- Insights
 - Orders
 - Products
 - Customers

@@ -17,7 +17,7 @@ function baseGroups(): NavGroup[] {
     {
       kind: 'live',
       label: 'Operations',
-      items: [{ to: '/', label: 'Dashboard', end: true }],
+      items: [{ to: '/', label: 'Analytics', end: true }],
     },
     {
       kind: 'live',

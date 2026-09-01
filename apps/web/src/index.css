@@ -4650,7 +4650,7 @@ a.delivery-rider-banner__button:focus-visible {
 }
 
 /* ── KpiCard + Sparkline (#775) ─────────────────────────────────────
- * Severity-aware KPI primitive used on the Dashboard. Top accent rule
+ * Severity-aware KPI primitive used on the Insights page. Top accent rule
  * (`.kpi-card::before`) is shipped in the design-system extras block at
  * the end of this file. The mono+caps label sits across from the
  * sparkline; the value below is large and tabular.
@@ -4776,7 +4776,7 @@ a.kpi-card:focus-visible {
  * click-to-open (ⓘ) definitions popover on the label row.
  */
 /* `.status-strip.status-strip--analytics` (not bare `.status-strip--analytics`): the
- * Phase 6 dashboard-triage `.status-strip` breakpoints below share this rule's
+ * Phase 6 insights-triage `.status-strip` breakpoints below share this rule's
  * specificity (0,1,0) and sit later in the file, so without the compound
  * selector their `repeat(4, …)` at ≥1024px silently won, packing 6 KPI cards
  * as 4-then-2 instead of the mockup's 3-per-row. */
@@ -6715,13 +6715,13 @@ a.kpi-card:focus-visible {
 }
 
 /*
- * ── Phase 6 — Dashboard triage ──────────────────────────────────────
+ * ── Phase 6 — Insights triage ──────────────────────────────────────
  * KPI strip responsive matrix per style guide §Responsive:
  *   mobile (<768)  → 1×4 vertical stack
  *   tablet (768–1023) → 2×2 grid
  *   desktop (≥1024) → 1×4 horizontal
  * Overrides the default `repeat(auto-fit, minmax(180px, 1fr))` on
- * `.status-strip` so the dashboard gets the exact reflow the audit specs.
+ * `.status-strip` so the Insights page gets the exact reflow the audit specs.
  */
 .status-strip {
   grid-template-columns: minmax(0, 1fr);
@@ -6744,7 +6744,7 @@ a.kpi-card:focus-visible {
  * view actions below the row body on mobile so neither button wraps off-
  * screen on narrow viewports.
  */
-.dashboard-incidents__actions {
+.insights-incidents__actions {
   display: flex;
   gap: 0.5rem;
   justify-content: flex-end;
@@ -6752,11 +6752,11 @@ a.kpi-card:focus-visible {
 }
 
 @media (max-width: 767.98px) {
-  .dashboard-incidents__actions {
+  .insights-incidents__actions {
     justify-content: stretch;
   }
-  .dashboard-incidents__actions .button,
-  .dashboard-incidents__actions a.button {
+  .insights-incidents__actions .button,
+  .insights-incidents__actions a.button {
     flex: 1 1 auto;
     min-width: 0;
   }
