@@ -9384,11 +9384,22 @@ a.kpi-card:focus-visible {
   align-items: center;
   gap: var(--space-2);
   max-width: 100%;
+  min-width: 0;
   font-size: 0.8125rem;
   font-weight: 500;
 }
 .sales-doc__glyph { flex: none; }
-.sales-doc__word { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* `min-width: 0` is load-bearing (#2555): a flex child defaults to
+   `min-width: auto`, which refuses to shrink below its own text's intrinsic
+   width — so on a narrow mobile card the word would push the trigger wider
+   than the card rather than truncate inside it. */
+.sales-doc__word {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .sales-doc--done,
 .sales-doc--progress { color: var(--text-secondary); }
 .sales-doc--idle { color: var(--text-muted); }
@@ -9432,6 +9443,7 @@ a.kpi-card:focus-visible {
   align-items: center;
   gap: var(--space-2);
   max-width: 100%;
+  min-width: 0;
   padding: 1px var(--space-1);
   margin: -1px calc(var(--space-1) * -1);
   border: none;
@@ -9443,6 +9455,22 @@ a.kpi-card:focus-visible {
 .sales-doc-trigger:hover,
 .sales-doc-trigger:focus-visible { background: var(--bg-surface-hover); }
 .sales-doc-trigger:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+/* #2555 — a real tap target on touch: the button's own box is tight (icon +
+   word), so the minimum comes from padding rather than font-size. `min-height`
+   only; width is intentionally left to content — a full-width hit target here
+   would make the whole card row read as one giant tappable area. */
+@media (pointer: coarse) {
+  .sales-doc-trigger { min-height: 44px; }
+}
+/* The mobile card's document line must fold, never push the card sideways
+   (#2555 acceptance criteria: no horizontal page scroll at 360px). The card
+   grid cell already carries `min-width: 0` (`.orders-card-facts > div`), so
+   this only needs to stop the trigger claiming more than the cell offers. */
+@media (max-width: 767.98px) {
+  .orders-card-facts .sales-doc-trigger,
+  .orders-card-facts .sales-doc { max-width: 100%; }
+  .orders-card-facts .sales-doc__word { min-width: 0; }
+}
 .sales-doc-popover__head { padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border-subtle); }
 .sales-doc-popover__body { padding: var(--space-3) var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); }
 .sales-doc-popover__foot {

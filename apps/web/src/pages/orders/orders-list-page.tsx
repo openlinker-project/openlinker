@@ -968,8 +968,11 @@ export function OrdersListPage(): ReactElement {
       },
       {
         id: 'money',
-        // #2538 - Total, payment badge, document and created date - the column that sets this row's height.
-        lines: 4,
+        // #2538/#2555 - Total, payment badge, the sales-document line, an
+        // optional tax-rate-conflict badge, and the created date - five
+        // stacked facts at the tallest (a conflicting-rate order), so the
+        // skeleton reserves that height rather than the pre-#2552 count of 4.
+        lines: 5,
         align: 'right',
         // Merged money column (#1713): total + payment pill + created, each an
         // independent per-label sort control in the header. Not `sortable` — the
