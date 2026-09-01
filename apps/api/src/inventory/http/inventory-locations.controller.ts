@@ -58,6 +58,7 @@ import { UpdateLocationDto } from './dto/update-location.dto';
 import { ListLocationsQueryDto } from './dto/list-locations-query.dto';
 import { LocationResponseDto } from './dto/location-response.dto';
 import { PaginatedLocationsResponseDto } from './dto/paginated-locations-response.dto';
+import { LocationBootstrapResponseDto } from './dto/location-bootstrap-response.dto';
 
 @ApiBearerAuth()
 @ApiTags('inventory')
@@ -129,6 +130,30 @@ export class InventoryLocationsController {
     // Delegated verbatim — normalisation is the service's single responsibility.
     const location = await this.locations.createLocation(dto);
     return this.toDto(location);
+  }
+
+  @Post('bootstrap')
+  @Roles('admin')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Create the first-run inventory location, idempotently (admin only)',
+    description:
+      'Mints the starting location that fulfilment routing requires before it can be enabled ' +
+      '(#2407). Safe to call repeatedly: a code that already exists is reported in ' +
+      '`existingCodes` and left untouched, so a re-run creates nothing. This is an offer an ' +
+      'operator takes, never a seed — nothing creates these rows automatically, because minting ' +
+      'on enable would make the zero-location refusal unreachable. Note the minted row locates no ' +
+      'existing stock: a position with a NULL location means the master declines to locate its ' +
+      'stock, and no location row is ever a stand-in for that.',
+  })
+  @ApiResponse({ status: 201, type: LocationBootstrapResponseDto })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async bootstrap(): Promise<LocationBootstrapResponseDto> {
+    const result = await this.locations.bootstrapDefaultLocations();
+    return {
+      created: result.created.map((location) => this.toDto(location)),
+      existingCodes: [...result.existingCodes],
+    };
   }
 
   @Patch(':id')

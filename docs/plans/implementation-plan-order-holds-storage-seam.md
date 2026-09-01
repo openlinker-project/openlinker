@@ -316,8 +316,8 @@ comment's reasoning.
 
 ### Phase 3 — Migration
 
-10. **`apps/api/src/migrations/1849000000011-create-order-holds.ts`**
-    (`CreateOrderHolds1849000000011`) — `CREATE EXTENSION IF NOT EXISTS
+10. **`apps/api/src/migrations/1850000000008-create-order-holds.ts`**
+    (`CreateOrderHolds1850000000008`) — `CREATE EXTENSION IF NOT EXISTS
     "uuid-ossp"`, `CREATE TABLE IF NOT EXISTS "order_holds" (…)` with the
     `CHK_order_holds_actor` constraint inline, then the three indexes; `down()`
     drops indexes then table. Docblock states the three contract choices (partial

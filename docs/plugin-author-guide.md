@@ -109,7 +109,7 @@ export const CoreCapabilityValues = [
   'AvailabilityAuthority',
   // Fulfilment execution authority (ADR-052 A3 / #2403): who holds a work object
   // and is allowed to act on it. `AUTHORITY_KIND_DESCRIPTORS['fulfillment-execution']
-  // .capability` names this string as A3's gate. Same posture as A1 above.
+  // .capability` names this string as A3's gate. ADVERTISED since #2409 (openlinker.oms.v1).
   'FulfillmentExecutor',
 ] as const;
 ```

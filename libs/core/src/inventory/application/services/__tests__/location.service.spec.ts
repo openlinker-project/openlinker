@@ -14,6 +14,8 @@ import { Test } from '@nestjs/testing';
 import { InventoryLocation } from '../../../domain/entities/inventory-location.entity';
 import { LocationNotFoundException } from '../../../domain/exceptions/location-not-found.exception';
 import { LocationInUseError } from '../../../domain/exceptions/location-in-use.error';
+import { DuplicateLocationCodeError } from '../../../domain/exceptions/duplicate-location-code.error';
+import { BOOTSTRAP_LOCATION_SPECS } from '../../../domain/types/location-bootstrap.types';
 import type { LocationRepositoryPort } from '../../../domain/ports/location-repository.port';
 import { LOCATION_REPOSITORY_TOKEN } from '../../../inventory.tokens';
 import { LocationService } from '../location.service';
@@ -181,6 +183,65 @@ describe('LocationService', () => {
 
       await expect(service.countPositionsAtLocation('ol_location_x')).resolves.toBe(4);
       expect(repository.countPositionsAtLocation).toHaveBeenCalledWith('ol_location_x');
+    });
+  });
+
+  describe('countActiveLocations (#2407 routing precondition)', () => {
+    it('should report the total, not the page length, and filter to active', async () => {
+      // `total` is the answer; `limit: 1` only bounds the payload. A naive
+      // implementation returning `items.length` would report 1 for a hundred
+      // locations and 1 for one — indistinguishable, and wrong.
+      repository.list.mockResolvedValue({ items: [sample], total: 7, page: 1, limit: 1 });
+
+      await expect(service.countActiveLocations()).resolves.toBe(7);
+      expect(repository.list).toHaveBeenCalledWith(
+        { status: 'active' },
+        { page: 1, limit: 1 }
+      );
+    });
+
+    it('should report zero for an install that has never created a location', async () => {
+      repository.list.mockResolvedValue({ items: [], total: 0, page: 1, limit: 1 });
+
+      await expect(service.countActiveLocations()).resolves.toBe(0);
+    });
+  });
+
+  describe('bootstrapDefaultLocations (#2407 first run)', () => {
+    it('should mint the declared specs on a first run', async () => {
+      const result = await service.bootstrapDefaultLocations();
+
+      expect(result.created).toHaveLength(BOOTSTRAP_LOCATION_SPECS.length);
+      expect(result.existingCodes).toEqual([]);
+      expect(repository.create).toHaveBeenCalledTimes(BOOTSTRAP_LOCATION_SPECS.length);
+    });
+
+    it('should mint every spec as ACTIVE, or the bootstrap cannot satisfy its own guard', async () => {
+      // countActiveLocations filters on `active`. A spec minted `inactive`
+      // would leave the operator stuck: they ran the offered remedy and the
+      // refusal still fires.
+      await service.bootstrapDefaultLocations();
+
+      for (const call of repository.create.mock.calls) {
+        expect(call[0].status).toBe('active');
+      }
+    });
+
+    it('should create NOTHING on a re-run, reporting the code as already present', async () => {
+      repository.create.mockRejectedValue(new DuplicateLocationCodeError('MAIN'));
+
+      const result = await service.bootstrapDefaultLocations();
+
+      expect(result.created).toEqual([]);
+      expect(result.existingCodes).toEqual(['MAIN']);
+    });
+
+    it('should propagate a non-duplicate failure instead of reporting a success-shaped result', async () => {
+      // Swallowing this would report "nothing to do" for a database that is
+      // down — the caller would render "ready" over a broken write path.
+      repository.create.mockRejectedValue(new Error('connection terminated'));
+
+      await expect(service.bootstrapDefaultLocations()).rejects.toThrow('connection terminated');
     });
   });
 });

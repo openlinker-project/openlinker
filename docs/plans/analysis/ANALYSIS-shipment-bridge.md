@@ -72,7 +72,7 @@ The plan proposes attempting `TABLES + 'shipments'` first. Evidence says start t
 `…000007-add-branch-one-shipments-uq-index`, `1801000000000-AddShipmentDeliveryIntent`,
 `1802000000000-add-shipment-carrier`, `1809000000000-add-order-fulfillment-state`,
 `1832000000000-add-shipment-provider-code`, `1832000000007-add-shipment-waybill-relayed-at`,
-`1849000000008-create-returns`, `1849000000009-create-order-changes`,
+`1850000000005-create-returns`, `1850000000006-create-order-changes`,
 `1854000000000-add-shipment-reservation-consumed-at`, `1862000000000-add-shipment-direction`,
 `1866000000000-create-routing-decisions`.
 

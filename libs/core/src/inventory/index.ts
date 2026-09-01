@@ -219,6 +219,8 @@ export {
   InventoryLocationPagination,
   PaginatedInventoryLocations,
 } from './domain/types/location.types';
+export { BOOTSTRAP_LOCATION_SPECS } from './domain/types/location-bootstrap.types';
+export type { LocationBootstrapResult } from './domain/types/location-bootstrap.types';
 
 // Offer quantity write-order guard (#2617)
 export {

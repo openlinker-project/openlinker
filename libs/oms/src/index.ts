@@ -19,12 +19,19 @@
  * tables rather than a vendor API, so there is no network boundary to
  * adapt across; adding one would put an HTTP hop on the ATP publish hot
  * path for an in-process consumer (DESIGN §9). That is enforced, not
- * merely intended — `libs/oms` is in `scripts/check-outbound-http.mjs`'s
- * `SCAN_ROOTS` and in the bare-`fetch` ESLint ban.
+ * merely intended, by two COMPLEMENTARY guards — neither of which subsumes
+ * the other. `libs/oms` is in `scripts/check-outbound-http.mjs`'s
+ * `SCAN_ROOTS` and in the bare-`fetch` ESLint ban, which catch a bare
+ * `fetch(` in source text; and `__tests__/no-http-in-dependency-graph.spec.ts`
+ * (#2409) asserts the transitive workspace dependency graph declares no HTTP
+ * client, which is what catches an `axios`/`got`/`undici` reached by an
+ * ordinary import — invisible to a source grep and to `no-restricted-globals`
+ * alike.
  *
  * @module libs/oms/src
  * @see docs/architecture/adrs/055-oms-as-credentialless-connection-plugin.md
  */
+export { OlFulfillmentExecutorAdapter } from './execution/ol-fulfillment-executor.adapter';
 export { OmsModule } from './oms.module';
 export { createOmsPlugin, omsAdapterManifest } from './oms.plugin';
 export type { OmsPluginDeps } from './oms.plugin';

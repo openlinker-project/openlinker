@@ -43,6 +43,14 @@
  *
  * Generated: 2026-08-26 (synthetic sequential prefix per docs/migrations.md rule 3).
  * @module apps/api/src/migrations
+ *
+ * **Re-timestamped (1850000000000 -> 1850000000009).** The migration-timestamp
+ * invariant pools core AND plugin directories, and `origin/main` gained
+ * `1850000000000-widen-allegro-quantity-command-unique-index`, moving the true
+ * baseline. The `up()` body is SELF-HEALING: it drops the `migrations` row(s)
+ * written under the prior class name(s) so TypeORM re-records this migration
+ * under its current name, and every statement is IF [NOT] EXISTS-guarded so
+ * an already-migrated database re-applies it as a no-op. No manual SQL needed.
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
@@ -50,6 +58,15 @@ export class CreateReservations1850000000009 implements MigrationInterface {
   name = 'CreateReservations1850000000009';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    // Self-heal. This migration has been re-timestamped (1850000000000 ->
+    // 1850000000009), so an environment that already ran an earlier revision holds a
+    // `migrations` row under a stale class name. Dropping those rows lets
+    // TypeORM re-record it under the current name; the DDL below is
+    // IF [NOT] EXISTS-guarded, so the re-run is a no-op. On a fresh database
+    // the DELETE matches nothing.
+    await queryRunner.query(
+      `DELETE FROM "migrations" WHERE "name" IN ('CreateReservations1850000000000')`
+    );
     // `reservations.id` defaults to uuid_generate_v4() — same guard the
     // refund_records / returns migrations use.
     await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`);
