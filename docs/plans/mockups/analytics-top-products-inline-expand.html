@@ -532,12 +532,14 @@ button, input, select { font: inherit; }
       detail inline instead. Flip the switch below to compare.
     </p>
     <p class="meta__sub">
-      <strong>Running Jacket Pro</strong> (multi-variant follow-up) — expand it to see the
-      difference: the SKU column reads "3 variants" instead of a single code, and the panel replaces
-      the plain per-channel list with a variant × channel matrix — real net sales and units, per
-      variant, per channel, with stock riding along in the same row. Its Total row and column
-      reconcile exactly to the figures already shown above (this row's own Net sales/Units, and the
-      channel columns) — nothing here is a separate, disagreeing number.
+      <strong>Every row's panel is the same shape</strong> (consistency follow-up) — a variant ×
+      channel matrix, real net sales and units per variant per channel, whether the product has one
+      variant or several. A simple product (Wireless Mouse, USB-C Charger, …) renders it as a
+      one-row matrix — its own deterministic variant — with no separate "Total" row, since there's
+      nothing left to sum; a genuinely multi-variant product like <strong>Running Jacket Pro</strong>
+      (3 variants, expand it to see the spread and the mixed stock) gets the same table with more
+      rows and a Total that reconciles exactly to the figures already shown above. Same table, same
+      columns, same cell format, every time — only the row count changes.
     </p>
   </div>
 
@@ -605,18 +607,34 @@ button, input, select { font: inherit; }
 
 <script>
 (function () {
+  // Every product carries a real `variants` array — a simple/single-variant
+  // product gets exactly one entry, mirroring the real architecture rule
+  // ("a product without combinations produces a deterministic synthetic
+  // variant" — docs/architecture-overview.md § Products). That's what lets
+  // the detail panel render ONE shape regardless of variant count: the
+  // matrix below is never a special case for multi-variant products, it's
+  // the only shape there is (feedback: "single-product looks different in
+  // table from variant-product — ui should be also the same").
   var PRODUCTS = [
     { id: 'wm-x200', name: 'Wireless Mouse X200', sku: 'MX-200-BLK', currency: 'PLN', internalId: 'ol_product_7f3c1a9e', stock: '2026-08-31 21:04',
       source: { platformType: 'prestashop', externalId: '482' },
-      netSales: 18420, units: 612, variants: null,
+      netSales: 18420, units: 612,
+      variants: [
+        { sku: 'MX-200-BLK', attrs: null, status: 'ok',
+          channels: { allegro: { units: 340, sales: 10404 }, prestashop: { units: 210, sales: 6132 }, erli: { units: 62, sales: 1884 } } },
+      ],
       channels: { allegro: { name: 'Allegro', units: 340, sales: 10404, dot: 'allegro' }, prestashop: { name: 'Store PL', units: 210, sales: 6132, dot: 'prestashop' }, erli: { name: 'Erli', units: 62, sales: 1884, dot: 'erli' } } },
     { id: 'usb-c-65w', name: 'USB-C Charger 65W', sku: 'CHG-65W-EU', currency: 'PLN', internalId: 'ol_product_2b88df41', stock: '2026-08-31 20:52',
       source: { platformType: 'prestashop', externalId: '507' },
-      netSales: 15960, units: 532, variants: null,
+      netSales: 15960, units: 532,
+      variants: [
+        { sku: 'CHG-65W-EU', attrs: null, status: 'ok',
+          channels: { allegro: { units: 398, sales: 11952 }, prestashop: { units: 96, sales: 2880 }, erli: { units: 38, sales: 1128 } } },
+      ],
       channels: { allegro: { name: 'Allegro', units: 398, sales: 11952, dot: 'allegro' }, prestashop: { name: 'Store PL', units: 96, sales: 2880, dot: 'prestashop' }, erli: { name: 'Erli', units: 38, sales: 1128, dot: 'erli' } } },
     { id: 'jacket-pro', name: 'Running Jacket Pro', sku: null, currency: 'PLN', internalId: 'ol_product_c1a02e77', stock: '2026-08-31 17:26',
       source: { platformType: 'prestashop', externalId: '910' },
-      // A multi-variant product (#2765 follow-up) — the row's own SKU/currency/
+      // A genuinely multi-variant product — the row's own SKU/currency/
       // stock-synced fields describe the PRODUCT, and netSales/units below are
       // the SUM of every variant's own `channels{}` split — each variant number
       // is real (allocated by unit share of the product-level channel figure,
@@ -624,21 +642,29 @@ button, input, select { font: inherit; }
       // every row and column reconciles exactly), not a fabricated visual.
       netSales: 9870, units: 158,
       variants: [
-        { sku: 'JCK-PRO-S-BLK', attrs: 'Size: S · Color: Black', available: 12, status: 'ok',
+        { sku: 'JCK-PRO-S-BLK', attrs: 'Size: S · Color: Black', status: 'ok',
           channels: { allegro: { units: 52, sales: 3244 }, prestashop: { units: 25, sales: 1564 }, erli: { units: 9, sales: 564 } } },
-        { sku: 'JCK-PRO-M-BLK', attrs: 'Size: M · Color: Black', available: 3, status: 'low',
+        { sku: 'JCK-PRO-M-BLK', attrs: 'Size: M · Color: Black', status: 'low',
           channels: { allegro: { units: 30, sales: 1872 }, prestashop: { units: 14, sales: 876 }, erli: { units: 4, sales: 251 } } },
-        { sku: 'JCK-PRO-L-BLU', attrs: 'Size: L · Color: Blue', available: 0, status: 'out',
+        { sku: 'JCK-PRO-L-BLU', attrs: 'Size: L · Color: Blue', status: 'out',
           channels: { allegro: { units: 14, sales: 874 }, prestashop: { units: 8, sales: 500 }, erli: { units: 2, sales: 125 } } },
       ],
       channels: { allegro: { name: 'Allegro', units: 96, sales: 5990, dot: 'allegro' }, prestashop: { name: 'Store PL', units: 47, sales: 2940, dot: 'prestashop' }, erli: { name: 'Erli', units: 15, sales: 940, dot: 'erli' } } },
     { id: 'kb-mech-87', name: 'Mechanical Keyboard 87-key', sku: 'KB-87-RGB', currency: 'PLN', internalId: 'ol_product_9a04e712', stock: '2026-08-31 19:18',
       source: { platformType: 'prestashop', externalId: '644' },
-      netSales: 24960, units: 208, variants: null,
+      netSales: 24960, units: 208,
+      variants: [
+        { sku: 'KB-87-RGB', attrs: null, status: 'low',
+          channels: { allegro: { units: 140, sales: 16800 }, prestashop: { units: 51, sales: 6120 }, erli: { units: 17, sales: 2040 } } },
+      ],
       channels: { allegro: { name: 'Allegro', units: 140, sales: 16800, dot: 'allegro' }, prestashop: { name: 'Store PL', units: 51, sales: 6120, dot: 'prestashop' }, erli: { name: 'Erli', units: 17, sales: 2040, dot: 'erli' } } },
     { id: 'sleeve-15', name: 'Laptop Sleeve 15"', sku: 'SLV-15-GRY', currency: 'PLN', internalId: 'ol_product_5cf6b023', stock: '2026-08-31 18:40',
       source: { platformType: 'prestashop', externalId: '221' },
-      netSales: 6840, units: 380, variants: null,
+      netSales: 6840, units: 380,
+      variants: [
+        { sku: 'SLV-15-GRY', attrs: null, status: 'ok',
+          channels: { allegro: { units: 260, sales: 4680 }, prestashop: { units: 90, sales: 1620 }, erli: { units: 30, sales: 540 } } },
+      ],
       channels: { allegro: { name: 'Allegro', units: 260, sales: 4680, dot: 'allegro' }, prestashop: { name: 'Store PL', units: 90, sales: 1620, dot: 'prestashop' }, erli: { name: 'Erli', units: 30, sales: 540, dot: 'erli' } } },
   ];
 
@@ -669,15 +695,6 @@ button, input, select { font: inherit; }
       '<th class="data-table__cell--right">Erli</th>';
   }
 
-  // Matches `ChannelBreakdownList` verbatim: "Name: 12.00 zł · 2" — never a
-  // fabricated proportional bar.
-  function channelDetailRows(p) {
-    return ['allegro', 'prestashop', 'erli'].map(function (key) {
-      var c = p.channels[key];
-      return '<span>' + c.name + ': ' + fmtMoney(c.sales) + ' · ' + fmtInt(c.units) + '</span>';
-    }).join('');
-  }
-
   var STOCK_BADGE = {
     ok: { tone: 'success', label: 'In stock' },
     low: { tone: 'warning', label: 'Low stock' },
@@ -696,14 +713,36 @@ button, input, select { font: inherit; }
     );
   }
 
+  // Same fallback the real `ProductVariantRow` uses for a variant with no
+  // distinguishing attributes (product-row-detail.tsx): show its SKU as the
+  // identity line instead. Unlike the real component, the meta line is only
+  // added when it says something the identity line hasn't already said —
+  // repeating the SKU on both lines just because there's nothing else to
+  // put there isn't "more information," it's noise.
+  function variantIdentityHtml(v) {
+    var primary = v.attrs || v.sku;
+    var metaLine = v.attrs ? '<span class="products-variant-row__meta mono-text">' + v.sku + '</span>' : '';
+    var badge = STOCK_BADGE[v.status];
+    return (
+      '<div class="products-variant-row__id">' +
+        '<span class="products-variant-row__attrs">' + primary + '</span>' +
+        metaLine +
+        '<span class="status-badge status-badge--' + badge.tone + '"><span class="status-badge__dot"></span>' + badge.label + '</span>' +
+      '</div>'
+    );
+  }
+
   /**
    * The one thing the user asked to see: real net sales × units, per
    * variant, per channel — reconciling exactly to the per-channel figures
    * already shown above the fold and to this row's own Net sales/Units
-   * columns. A cross-tab, not two separate blocks (a catalog list next to a
-   * text summary), because a variant's sales split IS what the operator is
-   * here for; stock rides along in the same row since it's the other fact
-   * about a variant worth knowing at a glance, not a second section.
+   * columns. Unconditional — a simple/single-variant product renders the
+   * SAME table with one row (its one, deterministic-synthetic variant),
+   * never a different, plainer summary just because it has nothing to
+   * split. The Total row is the one thing that depends on row count: with
+   * a single row there is nothing left to sum, so repeating the row's own
+   * numbers as a "Total" directly below it would read as a glitch, not a
+   * reassurance — it only earns its place once it aggregates ≥2 rows.
    */
   function variantChannelMatrixHtml(p) {
     var colTotals = {}, colUnits = {};
@@ -722,16 +761,9 @@ button, input, select { font: inherit; }
       }).join('');
       grandSales += rowSales;
       grandUnits += rowUnits;
-      var badge = STOCK_BADGE[v.status];
       return (
         '<tr>' +
-          '<td>' +
-            '<div class="products-variant-row__id">' +
-              '<span class="products-variant-row__attrs">' + v.attrs + '</span>' +
-              '<span class="products-variant-row__meta mono-text">' + v.sku + '</span>' +
-              '<span class="status-badge status-badge--' + badge.tone + '"><span class="status-badge__dot"></span>' + badge.label + '</span>' +
-            '</div>' +
-          '</td>' +
+          '<td>' + variantIdentityHtml(v) + '</td>' +
           dataCells +
           '<td class="data-table__cell--right variant-matrix__total-cell">' + moneyUnitsStack(rowSales, rowUnits) + '</td>' +
         '</tr>'
@@ -748,9 +780,21 @@ button, input, select { font: inherit; }
       );
     }).join('');
 
-    var totalCells = CHANNEL_ORDER.map(function (key) {
-      return '<td class="data-table__cell--right">' + moneyUnitsStack(colTotals[key], colUnits[key]) + '</td>';
-    }).join('');
+    var totalRow = '';
+    if (p.variants.length > 1) {
+      var totalCells = CHANNEL_ORDER.map(function (key) {
+        return '<td class="data-table__cell--right">' + moneyUnitsStack(colTotals[key], colUnits[key]) + '</td>';
+      }).join('');
+      totalRow =
+        '<tr class="variant-matrix__total-row">' +
+          '<td>Total</td>' + totalCells +
+          '<td class="data-table__cell--right variant-matrix__total-cell">' + moneyUnitsStack(grandSales, grandUnits) + '</td>' +
+        '</tr>';
+    }
+
+    var footnote = p.variants.length > 1
+      ? 'Adds up to the Net sales, Units and channel figures shown above.'
+      : 'Matches the Net sales, Units and channel figures shown above — one variant, so nothing to sum.';
 
     return (
       '<div class="products-detail-variants">' +
@@ -758,33 +802,19 @@ button, input, select { font: inherit; }
         '<div class="data-table__container">' +
           '<table class="data-table variant-matrix">' +
             '<thead><tr><th>Variant</th>' + headHtml + '<th class="data-table__cell--right">Total</th></tr></thead>' +
-            '<tbody>' +
-              bodyRows +
-              '<tr class="variant-matrix__total-row">' +
-                '<td>Total</td>' + totalCells +
-                '<td class="data-table__cell--right variant-matrix__total-cell">' + moneyUnitsStack(grandSales, grandUnits) + '</td>' +
-              '</tr>' +
-            '</tbody>' +
+            '<tbody>' + bodyRows + totalRow + '</tbody>' +
           '</table>' +
         '</div>' +
-        '<p class="data-table__footnote">Adds up to the Net sales, Units and channel figures shown above.</p>' +
+        '<p class="data-table__footnote">' + footnote + '</p>' +
       '</div>'
     );
   }
 
   // Matches `ProductSalesRowDetail` verbatim: `ProductDetailLinks` +
   // `ProductDetailFields` (shared with the products cockpit's own expandable
-  // row), plus the channel breakdown — a plain per-channel list for a
-  // simple/single-variant product (unchanged), or the variant × channel
-  // matrix above for a genuinely multi-variant one (#2765 follow-up).
+  // row) + the variant × channel matrix — the SAME shape for every product,
+  // one row or many (#2765 follow-up, consistency pass).
   function detailHtml(p) {
-    var multiVariant = p.variants && p.variants.length > 1;
-    var salesSection = multiVariant ? variantChannelMatrixHtml(p) : (
-      '<div class="products-detail-variants">' +
-        '<div class="products-detail-field__label">Net sales by channel, this range</div>' +
-        '<div class="data-table__stack">' + channelDetailRows(p) + '</div>' +
-      '</div>'
-    );
     return (
       '<div class="products-row-detail">' +
         '<div class="products-detail-links">' +
@@ -797,7 +827,7 @@ button, input, select { font: inherit; }
           '<div class="products-detail-field"><div class="products-detail-field__label">Currency</div><div class="products-detail-field__value">' + p.currency + '</div></div>' +
           '<div class="products-detail-field"><div class="products-detail-field__label">Stock synced</div><div class="products-detail-field__value">' + p.stock + '</div></div>' +
         '</div>' +
-        salesSection +
+        variantChannelMatrixHtml(p) +
       '</div>'
     );
   }
