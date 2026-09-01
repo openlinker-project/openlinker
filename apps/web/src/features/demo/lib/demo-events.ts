@@ -97,6 +97,12 @@ export const DemoEventCatalog = {
     group: 'conversion-intent',
     props: {} as Record<string, never>,
   },
+  demo_fiscal_register_attempted: {
+    description:
+      'Viewer clicked "Register" on a fiscal receipt — the locked write action — the primary fiscalization intent-to-convert signal',
+    group: 'conversion-intent',
+    props: {} as Record<string, never>,
+  },
 
   // ── Connections / product import (#1789) ─────────────────────────────
   demo_connection_platform_selected: {
