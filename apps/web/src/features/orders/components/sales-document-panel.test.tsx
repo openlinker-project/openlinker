@@ -20,6 +20,7 @@ import {
 } from '../../../test/test-utils';
 import { ApiError } from '../../../shared/api/api-error';
 import { formatAmount } from '../../../shared/format/format-amount';
+import { PermissionValues } from '../../../shared/auth/session.types';
 import type { Connection } from '../../connections';
 import type { OrderRecord } from '../api/orders.types';
 import type { InvoiceRecord } from '../../invoicing';
@@ -808,5 +809,116 @@ describe('SalesDocumentPanel — header agrees with body (#2527)', () => {
     });
 
     expect(await screen.findByText('Nothing is running for this receipt')).toBeInTheDocument();
+  });
+});
+
+describe('SalesDocumentPanel — the gates that decide whether a write control renders', () => {
+  // ── contended (#2559) ────────────────────────────────────────────────────
+  it('should report a refused second attempt as in-progress-elsewhere, not as a failure', async () => {
+    const user = userEvent.setup();
+    const register = vi
+      .fn()
+      .mockRejectedValue(
+        new ApiError('Another attempt is in flight', 409, { message: 'in flight' }),
+      );
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([fiscalConnection]) },
+        fiscalization: { listForOrder: vi.fn().mockResolvedValue([]), register },
+      }),
+      ...adminSession,
+    });
+
+    await user.click(await screen.findByRole('button', { name: /register receipt/i }));
+
+    expect(
+      await screen.findByText('Another attempt is already running'),
+    ).toBeInTheDocument();
+    // The headline follows, and carries no elapsed counter: `SalesDocumentInFlight`
+    // is a lower bound on elapsed time, never a completion estimate (#2559).
+    await waitFor(() =>
+      expect(document.querySelector('.document-headline__word')?.textContent).toContain(
+        'In progress elsewhere',
+      ),
+    );
+    // A 409 is the exactly-once claim working, not a failed request.
+    expect(screen.queryByText(/Could not register receipt/i)).toBeNull();
+  });
+
+  // ── canOverride (#2561) ──────────────────────────────────────────────────
+  it('should hide the manual issue control from a non-admin session outside demo mode', async () => {
+    const operator = createAuthenticatedSessionAdapter({
+      id: 'user_2',
+      username: 'operator',
+      email: null,
+      // Every invoicing permission, but not the admin role the write path
+      // (`@Roles('admin')`) actually gates on.
+      role: 'operator',
+      permissions: [...PermissionValues],
+    });
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([invoicingConnection, fiscalConnection]) },
+        invoicing: { getForOrder: vi.fn().mockRejectedValue(notFound()) },
+        fiscalization: { listForOrder: vi.fn().mockResolvedValue([]) },
+      }),
+      sessionAdapter: operator,
+    });
+
+    expect(await screen.findByText('Sales document')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /issue invoice/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /register receipt/i })).toBeNull();
+  });
+
+  it('should offer the manual issue control to an admin session on the same order', async () => {
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([invoicingConnection, fiscalConnection]) },
+        invoicing: { getForOrder: vi.fn().mockRejectedValue(notFound()) },
+        fiscalization: { listForOrder: vi.fn().mockResolvedValue([]) },
+      }),
+      ...adminSession,
+    });
+
+    expect(await screen.findByRole('button', { name: /issue invoice/i })).toBeInTheDocument();
+  });
+
+  // ── hardBlockedNoAction (#2560) ──────────────────────────────────────────
+  it('should hide the action entirely for a hard block, rather than offering one that would refuse', async () => {
+    renderWithProviders(
+      <SalesDocumentPanel
+        order={{ ...order, salesDocumentBlockReason: 'missing-required-tax-id' }}
+      />,
+      {
+        apiClient: createMockApiClient({
+          connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) },
+          invoicing: { getForOrder: vi.fn().mockRejectedValue(notFound()) },
+        }),
+        ...adminSession,
+      },
+    );
+
+    expect(
+      await screen.findByText(/cannot be issued without the buyer tax ID/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /issue invoice/i })).toBeNull();
+  });
+
+  it('should keep a disabled-with-reason control for missing-tax-rate rather than hiding it', async () => {
+    // The one carve-out: this reason already closes the action through its own
+    // refusal copy, which names the rate-less lines. Hiding it too would drop
+    // that information.
+    renderWithProviders(
+      <SalesDocumentPanel order={{ ...order, salesDocumentBlockReason: 'missing-tax-rate' }} />,
+      {
+        apiClient: createMockApiClient({
+          connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) },
+          invoicing: { getForOrder: vi.fn().mockRejectedValue(notFound()) },
+        }),
+        ...adminSession,
+      },
+    );
+
+    expect(await screen.findByRole('button', { name: /issue invoice/i })).toBeDisabled();
   });
 });
