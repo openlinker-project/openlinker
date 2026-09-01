@@ -25,7 +25,7 @@
  * sibling branches in flight on this programme, every one of which would reach
  * for `1870000000000` — three slots have already collided that way.
  */
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class AddAutomationRunRetryAttempt1869000000900 implements MigrationInterface {
   name = 'AddAutomationRunRetryAttempt1869000000900';
