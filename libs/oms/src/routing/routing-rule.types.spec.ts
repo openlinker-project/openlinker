@@ -1,3 +1,14 @@
+/**
+ * Routing rule coercer — spec
+ *
+ * The coercer narrows an untrusted PERSISTED column, so the cases that matter
+ * are the misses: an unrecognised name, kind or after-action, a malformed row
+ * inside an otherwise good collection, and hostile input that must never throw.
+ * `method-capable` has a case of its own because this build deliberately does
+ * not declare it (#2736) and a future re-add must be a deliberate edit here.
+ *
+ * @module libs/oms/src/routing
+ */
 import { coerceRoutingRule, coerceRoutingRules, isRoutingRule } from './routing-rule.types';
 import { RoutingFilterNameValues, RoutingSortNameValues } from './routing-vocabulary.types';
 

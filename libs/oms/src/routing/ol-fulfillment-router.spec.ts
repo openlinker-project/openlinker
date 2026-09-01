@@ -1,3 +1,14 @@
+/**
+ * OL fulfilment router — behavioural spec
+ *
+ * Runs the shared `describeFulfillmentRouterContract` kit (#2404) against the
+ * router, then covers each filter, each sort, the three-rung split ladder and
+ * the paged stock read. Every case here asserts through `route()`/`evaluate()`
+ * rather than over the pure pipeline directly, so the fakes exercise the code
+ * that actually changed.
+ *
+ * @module libs/oms/src/routing
+ */
 import { checkRoutingPlanConservesQuantities, type RoutingInput } from '@openlinker/core/fulfillment';
 import { runFulfillmentRouterContract } from '@openlinker/core/fulfillment/testing';
 
@@ -402,6 +413,50 @@ describe('OlFulfillmentRouter', () => {
       const plan = await router.route(twoLines, { idempotencyKey: 'route:s6' });
       if (plan.status !== 'resolved') throw new Error('expected resolved');
       expect(plan.assignments.map((a) => a.locationId)).toEqual(['loc-a', 'loc-b']);
+    });
+
+    it('should not treat two lines of one variant as separately covered under `no-split`', async () => {
+      // 6 units at loc-a; two lines wanting 5 each. Compared line-by-line the
+      // location "covers" both, and the resulting plan conserves the ORDER's
+      // quantities — so `checkRoutingPlanConservesQuantities` cannot catch it.
+      // Only summed demand can.
+      const router = buildRouter({
+        locations: [{ id: 'loc-a', countryIso2: 'PL', postcode: '00-001' }],
+        stock: [{ locationId: 'loc-a', productVariantId: 'ol_variant_1', availableQuantity: 6 }],
+        rules: [sort('priority', ['loc-a'], 'no-split')],
+      });
+
+      const request = input({
+        lines: [
+          { orderLineId: 'line-1', productVariantId: 'ol_variant_1', quantity: 5 },
+          { orderLineId: 'line-2', productVariantId: 'ol_variant_1', quantity: 5 },
+        ],
+      });
+
+      const plan = await router.route(request, { idempotencyKey: 'route:s9' });
+      if (plan.status !== 'resolved') throw new Error('expected resolved');
+      expect(plan.assignments).toEqual([]);
+      expect(plan.unfulfillable.map((u) => u.orderLineId)).toEqual(['line-1', 'line-2']);
+    });
+
+    it('should source two lines of one variant from a location that really holds both', async () => {
+      const router = buildRouter({
+        locations: [{ id: 'loc-a', countryIso2: 'PL', postcode: '00-001' }],
+        stock: [{ locationId: 'loc-a', productVariantId: 'ol_variant_1', availableQuantity: 10 }],
+        rules: [sort('priority', ['loc-a'], 'no-split')],
+      });
+
+      const request = input({
+        lines: [
+          { orderLineId: 'line-1', productVariantId: 'ol_variant_1', quantity: 5 },
+          { orderLineId: 'line-2', productVariantId: 'ol_variant_1', quantity: 5 },
+        ],
+      });
+
+      const plan = await router.route(request, { idempotencyKey: 'route:s10' });
+      if (plan.status !== 'resolved') throw new Error('expected resolved');
+      expect(plan.assignments.map((a) => a.locationId)).toEqual(['loc-a', 'loc-a']);
+      expect(checkRoutingPlanConservesQuantities(request, plan)).toBe(true);
     });
 
     it('should let the most restrictive rule in a mixed ruleset govern', async () => {

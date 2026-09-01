@@ -19,6 +19,20 @@
  * routing by delivery method and would be silently wrong. A prohibition is
  * honest with no subject; a declaration is not. Owned by #2736.
  *
+ * ## Why a runtime function lives in a `*.types.ts`
+ *
+ * `mostRestrictiveAfterAction` invokes the pure-rule exception in
+ * `docs/engineering-standards.md` § "The pure-rule exception to 'types only'
+ * (#2231)", and satisfies all three conditions. It is **pure** (a function of
+ * its argument alone — no I/O, no dependency, no mutation); it **is** the rule
+ * for the type it sits with (reducing a set of `RoutingAfterAction` values to
+ * the one that governs is what the ladder MEANS, not a use case that happens to
+ * take the type); and **both halves change together** — adding a rung means
+ * editing the permissiveness table in the same commit, which is precisely the
+ * property that keeps a fourth rung from silently ranking equal to an existing
+ * one. Same precedent as `resolveOfferLifecycle` beside
+ * `offer-lifecycle.types.ts`.
+ *
  * @module libs/oms/src/routing
  * @see docs/plans/analysis/DESIGN-oms-authority-model.md §5.3
  */

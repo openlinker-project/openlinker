@@ -119,7 +119,11 @@ function scoreFor(
   }
 
   if (rule.name === 'least-splits') {
-    return linesCoverable(input, facts, candidate) === input.lines.length ? 0 : 1;
+    // Delegates to the same predicate `no-split` gates on, rather than counting
+    // satisfiable lines: a location that "covers every line" line-by-line but
+    // cannot cover their summed demand would otherwise be ranked first for
+    // producing a single fulfilment it cannot actually produce.
+    return coversWholeOrder(input, facts, candidate) ? 0 : 1;
   }
 
   // `nearest` — a proximity PROXY, never a geodesic distance: RoutingShipTo
@@ -191,11 +195,33 @@ function resolveSplitPolicy(rules: readonly RoutingRule[]): {
   };
 }
 
+/**
+ * Total demand per variant across the whole order.
+ *
+ * Two lines CAN name the same variant, and the difference matters: compared
+ * line-by-line, a location holding 6 units "covers" two 5-unit lines, because
+ * each comparison sees the full 6. `no-split` would then commit 10 units to a
+ * location holding 6 — an over-commitment that conserves the ORDER's quantities
+ * and so passes `checkRoutingPlanConservesQuantities`, which is exactly the
+ * blind spot that made the paged-stock double-count worth fixing too. Demand is
+ * therefore summed per variant before it is compared with anything.
+ */
+function demandByVariant(input: RoutingInput): ReadonlyMap<string, number> {
+  const demand = new Map<string, number>();
+  for (const line of input.lines) {
+    demand.set(line.productVariantId, (demand.get(line.productVariantId) ?? 0) + line.quantity);
+  }
+  return demand;
+}
+
 /** Can this candidate source every line of the order on its own? */
 function coversWholeOrder(input: RoutingInput, facts: RoutingFacts, candidate: RoutingCandidate): boolean {
-  return input.lines.every(
-    (line) => availableAt(facts, candidate.locationId, line.productVariantId) >= line.quantity
-  );
+  for (const [variantId, quantity] of demandByVariant(input)) {
+    if (availableAt(facts, candidate.locationId, variantId) < quantity) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /**

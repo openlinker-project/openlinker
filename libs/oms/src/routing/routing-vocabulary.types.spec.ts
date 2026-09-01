@@ -1,3 +1,14 @@
+/**
+ * Split-ladder reduction — spec
+ *
+ * Covers the property the ladder exists for: the most restrictive rung any rule
+ * declares governs, whatever order the rules arrived in, so a permissive sibling
+ * can never lift a restriction the operator authored. The last case asserts the
+ * three rungs stay DISTINCT — a build that collapsed `line-split` into
+ * `quantity-split` would pass every other case in this file.
+ *
+ * @module libs/oms/src/routing
+ */
 import { mostRestrictiveAfterAction, RoutingAfterActionValues } from './routing-vocabulary.types';
 
 describe('mostRestrictiveAfterAction', () => {
