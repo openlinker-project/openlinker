@@ -54,9 +54,9 @@ import { useDemoMode } from '../../features/system';
 import { captureDemoEvent } from '../../features/demo';
 import { parseOrderSnapshot } from '../../features/orders/api/order-snapshot.schema';
 import { deriveOrderHealth, slaBadge, fulfillmentBadge } from '../../features/orders/lib/order-health';
-import { paymentBadge } from '../../features/orders/lib/order-row';
+import { paymentBadge, taxRateConflictBadge } from '../../features/orders/lib/order-row';
 import { OrderIdentityCell } from '../../features/orders';
-import { OrderInvoicingCell } from '../../features/orders/components/order-invoicing-cell';
+import { SalesDocumentCell } from '../../features/orders/components/sales-document-cell';
 import { deriveDeliveryOutcome, hasLiveOlCarrierRoute } from '../../features/orders/lib/delivery-outcome';
 import { DeliveryOutcomeChip } from '../../features/orders/components/delivery-chip';
 import { resolveDeliveryOwner } from '../../features/orders/lib/delivery-owner';
@@ -520,12 +520,18 @@ export function OrdersListPage(): ReactElement {
     [parsedFor],
   );
 
-  // Whether ANY connection exposes the Invoicing capability (#1713). When none
-  // does, the "Issue invoice" CTA degrades to an em dash — the platform can't
-  // issue invoices, so offering the action would dead-end. An existing invoice
-  // pill still renders regardless (the record exists independent of this gate).
-  const hasInvoicingCapability = useMemo(
-    () => (connectionsQuery.data ?? []).some((c) => c.enabledCapabilities.includes('Invoicing')),
+  // Whether ANY connection exposes a sales-document-issuing capability
+  // (#1713, extended #2552 to cover both kinds). When none does, the
+  // "Issue…" / "Register…" action degrades to nothing rather than dead-ending.
+  // An existing document still renders regardless (the record exists
+  // independent of this gate).
+  const hasIssuingCapability = useMemo(
+    () =>
+      (connectionsQuery.data ?? []).some(
+        (c) =>
+          c.enabledCapabilities.includes('Invoicing') ||
+          c.enabledCapabilities.includes('Fiscalization'),
+      ),
     [connectionsQuery.data],
   );
 
@@ -992,19 +998,30 @@ export function OrdersListPage(): ReactElement {
                   {pay.label}
                 </StatusBadge>
               ) : null}
-              {/* Invoice pill, block badge and "Issue invoice" CTA — independent
-                  parts, not a three-way choice; see `OrderInvoicingCell`. Shared
-                  verbatim with the mobile card so the two cannot drift again. */}
-              <OrderInvoicingCell
+              {/* The routed sales document (#2552, ADR-065) — kind-aware
+                  (invoice or fiscal receipt), reading the batched
+                  `SalesDocumentView` rather than the invoice-only projection
+                  `OrderInvoicingCell` rendered. Shared verbatim with the
+                  mobile card so the two cannot drift. */}
+              <SalesDocumentCell
                 internalOrderId={order.internalOrderId}
-                invoice={parsed.invoice}
-                blockReason={order.salesDocumentBlockReason}
-                unresolvedReason={order.salesDocumentUnresolvedReason}
-                hasInvoicingCapability={hasInvoicingCapability}
-                hasTaxRateConflict={hasTaxRateConflict(parsed)}
+                view={order.salesDocument}
                 layout="stack"
-                emptyFallback={<span className="text-muted">—</span>}
+                hasIssuingCapability={hasIssuingCapability}
               />
+              {/* #2254 — its own independent line, never folded into the
+                  document cell above: a conflict does not stop the invoice,
+                  so it can be true alongside any document state. */}
+              {hasTaxRateConflict(parsed) ? (
+                <span title={taxRateConflictBadge().hint}>
+                  <StatusBadge tone="conflict" withDot compact>
+                    {taxRateConflictBadge().label}
+                  </StatusBadge>
+                  <span className="sr-only">
+                    {taxRateConflictBadge().label}: {taxRateConflictBadge().hint}
+                  </span>
+                </span>
+              ) : null}
               <span className="text-muted orders-cell-sub mono tabular">
                 <TimeDisplay iso={order.createdAt} format="datetime" />
               </span>
@@ -1037,12 +1054,12 @@ export function OrdersListPage(): ReactElement {
       // active-state arrows track the current sort/dir. `sortLabel` is a
       // useCallback keyed on sort/dir, so this rebuilds exactly on a sort change.
       sortLabel,
-      // Per-page snapshot cache + invoicing-capability gate (#1713).
+      // Per-page snapshot cache + issuing-capability gate (#1713/#2552).
       parsedFor,
+      hasIssuingCapability,
       // The shared Order cell renderer (#2091) — a `useCallback` over
       // `parsedFor`, so this rebuilds exactly when the parse cache does.
       renderOrderIdentity,
-      hasInvoicingCapability,
     ],
   );
 
@@ -1650,21 +1667,24 @@ export function OrdersListPage(): ReactElement {
                         </dd>
                       </div>
                       <div>
-                        <dt>Invoice</dt>
+                        <dt>Document</dt>
                         <dd>
-                          {/* SAME component as the desktop cell — this used to be a
-                              hand-duplicated parallel render path, and the two
-                              diverged. */}
-                          <OrderInvoicingCell
+                          {/* SAME component as the desktop cell (#2552) — this
+                              used to be a hand-duplicated parallel render
+                              path, and the two diverged. */}
+                          <SalesDocumentCell
                             internalOrderId={order.internalOrderId}
-                            invoice={parsed.invoice}
-                            blockReason={order.salesDocumentBlockReason}
-                            unresolvedReason={order.salesDocumentUnresolvedReason}
-                            hasInvoicingCapability={hasInvoicingCapability}
-                            hasTaxRateConflict={hasTaxRateConflict(parsed)}
+                            view={order.salesDocument}
                             layout="row"
-                            emptyFallback="—"
+                            hasIssuingCapability={hasIssuingCapability}
                           />
+                          {hasTaxRateConflict(parsed) ? (
+                            <span title={taxRateConflictBadge().hint}>
+                              <StatusBadge tone="conflict" withDot compact>
+                                {taxRateConflictBadge().label}
+                              </StatusBadge>
+                            </span>
+                          ) : null}
                         </dd>
                       </div>
                       <div>
