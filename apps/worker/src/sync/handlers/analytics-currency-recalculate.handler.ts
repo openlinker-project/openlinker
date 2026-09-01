@@ -7,9 +7,9 @@
  *
  *  1. **Enumeration.** `IOrderFxRestatementService.restatePage` clears the
  *     ADR-040 FX stamp on one keyset page of the run's mismatched population
- *     and enqueues a `marketplace.order.fxStamp` job per order under a
- *     run-scoped idempotency key. While a `nextCursor` comes back, the handler
- *     re-schedules itself immediately with that cursor.
+ *     and stamps each order in-process, sequentially — no child job, no
+ *     `realtime`-lane fan-out (#2776). While a `nextCursor` comes back, the
+ *     handler re-schedules itself immediately with that cursor.
  *  2. **Completion poll.** Once the frontier is exhausted, the handler re-reads
  *     the remaining population. Empty -> the run is `resolved`. Non-empty ->
  *     re-schedule after a delay, up to a bounded number of polls, then `failed`
@@ -61,16 +61,18 @@ import { Logger } from '@openlinker/shared/logging';
 type SyncJob = SyncJobEntity;
 
 /**
- * Orders cleared + enqueued per enumeration page.
+ * Orders cleared + stamped per enumeration page.
  *
- * Sized off what one page COSTS rather than copied from a sibling sweep: each
- * unit is one guarded UPDATE plus one enqueue, both cheap, so the page can be
- * generously large — but every enqueued child is a real stamp job with a
- * possible provider round-trip behind it, so a page that is too large front-
- * loads the `realtime` lane. 200 keeps a typical operator's whole range in one
- * or two pages while staying well inside one job's wall clock.
+ * The page is now a WALL-CLOCK unit, not 200 cheap writes — #2776 moved the
+ * stamp itself in-process (a guarded clear plus a real, possibly
+ * provider-round-tripping stamp per order, sequential, no child job), so a
+ * page's cost scales with real stamp latency rather than with a cheap
+ * enqueue. 100 matches `DEFAULT_LIMIT` in the sibling
+ * `marketplace.order.fxStampSweep` handler, and leaves ample headroom between
+ * the 3-minute `lockedAt` heartbeat (`sync-job.runner.ts`) and the 15-minute
+ * stuck-job timeout (`stuck-job-recovery.service.ts`).
  */
-const RESTATEMENT_PAGE_SIZE = 200;
+const RESTATEMENT_PAGE_SIZE = 100;
 
 @Injectable()
 export class AnalyticsCurrencyRecalculateHandler implements SyncJobHandler {
