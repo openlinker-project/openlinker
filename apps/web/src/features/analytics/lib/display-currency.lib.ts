@@ -8,6 +8,7 @@
  * @module features/analytics/lib
  */
 import type { SalesAndChannelAnalytics } from '../api/sales-analytics.types';
+import type { AnalyticsCoverage } from '../api/analytics-coverage.types';
 
 /**
  * A small curated list an operator can pick from in the toolbar. Must stay a
@@ -86,3 +87,22 @@ export function resolveConvertNoteState(input: ConvertNoteStateInput): ConvertNo
  * until the backend is extended to compute a real converted value for each
  * of them — there is no safe client-side shortcut.
  */
+
+/**
+ * `true` while a currency remediation run (operator-triggered "Recalculate
+ * now", or a currency-setting change's own follow-up) is actively rewriting
+ * the `currency` Data Coverage category. Shared by `AnalyticsKpiStrip`,
+ * `ChannelSalesTable`, `ProductSalesTable`, and `AnalyticsConvertNote` — all
+ * four previously derived this predicate independently (tech-review
+ * finding, PR #2781), which is exactly the kind of copy that drifts the
+ * next time one call site's wording changes but the others don't.
+ * `coverage` is `undefined` while the Data Coverage read hasn't resolved
+ * yet, which correctly reads as "not recalculating" rather than blocking
+ * the rest of the page on a second fetch.
+ */
+export function isCurrencyRecalculating(coverage: AnalyticsCoverage | undefined): boolean {
+  return (
+    coverage?.categories.some((row) => row.category === 'currency' && row.status === 'in-progress') ??
+    false
+  );
+}

@@ -34,7 +34,7 @@
 import type { ReactElement } from 'react';
 import { Alert, Button } from '../../../shared/ui';
 import { useSalesAnalyticsQuery } from '../hooks/use-sales-analytics-query';
-import { resolveConvertNoteState } from '../lib/display-currency.lib';
+import { isCurrencyRecalculating, resolveConvertNoteState } from '../lib/display-currency.lib';
 import type { SalesAnalyticsFilters } from '../api/sales-analytics.types';
 import type { AnalyticsCoverage } from '../api/analytics-coverage.types';
 
@@ -83,9 +83,7 @@ export function AnalyticsConvertNote({
     );
   }
 
-  const currencyRecalculating = coverage?.categories.some(
-    (row) => row.category === 'currency' && row.status === 'in-progress'
-  );
+  const currencyRecalculating = isCurrencyRecalculating(coverage);
 
   if (currencyRecalculating) {
     return (

@@ -79,6 +79,7 @@ import { ConnectionCell, useConnectionsQuery, type Connection } from '../../conn
 import { ConnectionDot } from '../../orders';
 import { useSalesAnalyticsQuery } from '../hooks/use-sales-analytics-query';
 import { useCoverageCrossReferenceQuery } from '../hooks/use-coverage-cross-reference-query';
+import { isCurrencyRecalculating } from '../lib/display-currency.lib';
 import type { ChannelSalesAnalytics, SalesAnalyticsFilters } from '../api/sales-analytics.types';
 import type { AnalyticsCoverage, AnalyticsCoverageFilters, CoverageCategory } from '../api/analytics-coverage.types';
 import {
@@ -94,6 +95,7 @@ import {
   type ChannelExclusionMap,
 } from '../lib/channel-exclusion-map.lib';
 import { AnalyticsExclusionNote } from './analytics-exclusion-note';
+import { RecalculatingValue } from './recalculating-value';
 
 const PERCENT_FORMAT_OPTIONS: Intl.NumberFormatOptions = {
   style: 'percent',
@@ -305,26 +307,15 @@ export function ChannelSalesTable({
   }));
   const rows: ChannelRow[] = [...channelRows, ...totalRows];
 
-  // Same "in-flight recalculation" signal the KPI strip reads — see that
-  // component's doc comment. Without it, a channel's Net sales/AOV read as a
-  // bare 0.00 for the whole duration of a recalculation run instead of
-  // disclosing that a fix is already in progress.
-  const currencyRecalculating = coverage?.categories.some(
-    (row) => row.category === 'currency' && row.status === 'in-progress'
-  );
-  const RECALCULATING_NODE = (
-    <span
-      className="text-muted"
-      role="status"
-      title="A currency recalculation is running in the background for this range — figures will update once it completes. Safe to navigate away."
-    >
-      Recalculating…
-    </span>
-  );
+  // Same "in-flight recalculation" signal the KPI strip reads — see
+  // `isCurrencyRecalculating`'s doc comment. Without it, a channel's Net
+  // sales/AOV read as a bare 0.00 for the whole duration of a recalculation
+  // run instead of disclosing that a fix is already in progress.
+  const currencyRecalculating = isCurrencyRecalculating(coverage);
 
   function renderAovCell(row: ChannelRow): ReactElement {
     if (currencyRecalculating) {
-      return RECALCULATING_NODE;
+      return <RecalculatingValue />;
     }
     if (row.kind === 'total') {
       return <>{formatAmount(row.total.netAverageOrderValue, row.total.currency)}</>;
@@ -340,7 +331,13 @@ export function ChannelSalesTable({
 
   function renderNovCell(row: ChannelRow): ReactElement {
     if (currencyRecalculating) {
-      return row.kind === 'total' ? <strong>{RECALCULATING_NODE}</strong> : RECALCULATING_NODE;
+      return row.kind === 'total' ? (
+        <strong>
+          <RecalculatingValue />
+        </strong>
+      ) : (
+        <RecalculatingValue />
+      );
     }
     if (row.kind === 'total') {
       return <strong>{formatAmount(row.total.netRevenue, row.total.currency)}</strong>;

@@ -102,18 +102,10 @@ import type { SalesAnalyticsFilters } from '../api/sales-analytics.types';
 import type { AnalyticsCoverage } from '../api/analytics-coverage.types';
 import type { TopProductRow, TopProductsSortBy } from '../api/top-products.types';
 import { channelCellFor, deriveChannelColumns, isMissingFrom } from '../lib/top-products-view-model';
+import { isCurrencyRecalculating } from '../lib/display-currency.lib';
+import { RecalculatingValue } from './recalculating-value';
 
 const DEFAULT_LIMIT = 20;
-
-const RECALCULATING_NODE = (
-  <span
-    className="text-muted"
-    role="status"
-    title="A currency recalculation is running in the background for this range — figures will update once it completes. Safe to navigate away."
-  >
-    Recalculating…
-  </span>
-);
 
 /**
  * `GET /analytics/top-products` has no `displayCurrency`/`rateBasis` axis of
@@ -125,12 +117,13 @@ const RECALCULATING_NODE = (
  * "REJECTED APPROACH" note for why that shortcut is unsound.
  *
  * `currencyRecalculating`: same in-flight-run signal `AnalyticsKpiStrip` and
- * `ChannelSalesTable` read from Data Coverage — without it, every row here
- * reads a bare 0.00 for the whole duration of a recalculation run.
+ * `ChannelSalesTable` read from Data Coverage (`isCurrencyRecalculating`) —
+ * without it, every row here reads a bare 0.00 for the whole duration of a
+ * recalculation run.
  */
-function renderNovCell(row: TopProductRow, currencyRecalculating: boolean | undefined): ReactElement {
+function renderNovCell(row: TopProductRow, currencyRecalculating: boolean): ReactElement {
   if (currencyRecalculating) {
-    return RECALCULATING_NODE;
+    return <RecalculatingValue />;
   }
   if (row.currency) {
     return <>{formatAmount(row.netRevenue, row.currency)}</>;
@@ -253,9 +246,7 @@ function ChannelCell({
 }
 
 export function ProductSalesTable({ filters, coverage }: ProductSalesTableProps): ReactElement {
-  const currencyRecalculating = coverage?.categories.some(
-    (row) => row.category === 'currency' && row.status === 'in-progress'
-  );
+  const currencyRecalculating = isCurrencyRecalculating(coverage);
   const [sortBy, setSortBy] = useState<TopProductsSortBy>('revenue');
   const query = useTopProductsQuery({ ...filters, sortBy, limit: DEFAULT_LIMIT, offset: 0 });
   const connectionsQuery = useConnectionsQuery();

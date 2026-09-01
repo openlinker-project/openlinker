@@ -67,6 +67,7 @@ import { useSalesAnalyticsQuery } from '../hooks/use-sales-analytics-query';
 import type { ConnectionIngestionTrust } from '../api/analytics-trust.types';
 import type { SalesAnalyticsFilters } from '../api/sales-analytics.types';
 import { computePreviousPeriodRange, isPreviousPeriodCovered } from '../lib/date-range.lib';
+import { isCurrencyRecalculating } from '../lib/display-currency.lib';
 import { resolveEarliestOrderDate } from '../lib/ingestion-trust.lib';
 import {
   averageDailyOrders,
@@ -84,6 +85,7 @@ import {
 } from '../lib/sales-analytics-view-model';
 import { AnalyticsKpiCard, type AnalyticsKpiDelta } from './analytics-kpi-card';
 import { GapMark } from './gap-mark';
+import { RecalculatingValue } from './recalculating-value';
 import { deriveCoverageRowCopy } from '../lib/data-coverage-copy.lib';
 import type { AnalyticsCoverage, CoverageCategory, CoverageCategoryRow } from '../api/analytics-coverage.types';
 
@@ -243,18 +245,7 @@ export function AnalyticsKpiStrip({
   // report" — every revenue/order-value figure just read as a bare `0`
   // (unconverted orders excluded from `revenue`/`netRevenue`), which reads
   // as broken rather than "wait, this is being fixed right now".
-  const currencyRecalculating = coverage?.categories.some(
-    (row) => row.category === 'currency' && row.status === 'in-progress'
-  );
-  const RECALCULATING_NODE = (
-    <span
-      className="text-muted"
-      role="status"
-      title="A currency recalculation is running in the background for this range — figures will update once it completes. Safe to navigate away."
-    >
-      Recalculating…
-    </span>
-  );
+  const currencyRecalculating = isCurrencyRecalculating(coverage);
   const currencyGapTitle =
     stampedGapVisible && currencyCoverageRow ? deriveCoverageRowCopy(currencyCoverageRow).sub : STAMPED_GAP;
   const onOpenCurrencyGap =
@@ -367,7 +358,7 @@ export function AnalyticsKpiStrip({
           )
         }
         headlineUnavailable={currencyRecalculating}
-        value={currencyRecalculating ? RECALCULATING_NODE : formatAmount(headline.netRevenue, currency)}
+        value={currencyRecalculating ? <RecalculatingValue /> : formatAmount(headline.netRevenue, currency)}
         trend={{
           values: revenueTrend,
           tone: trendTone(revenueTrend),
@@ -382,7 +373,7 @@ export function AnalyticsKpiStrip({
             ) : (
               'GMV'
             ),
-            value: currencyRecalculating ? RECALCULATING_NODE : formatAmount(gmvValue, gmvCurrency),
+            value: currencyRecalculating ? <RecalculatingValue /> : formatAmount(gmvValue, gmvCurrency),
           },
         ]}
       />
@@ -436,11 +427,11 @@ export function AnalyticsKpiStrip({
           )
         }
         headlineUnavailable={currencyRecalculating}
-        value={currencyRecalculating ? RECALCULATING_NODE : formatAmount(headline.netAverageOrderValue, currency)}
+        value={currencyRecalculating ? <RecalculatingValue /> : formatAmount(headline.netAverageOrderValue, currency)}
         qualifiers={[
           {
             label: 'Median',
-            value: currencyRecalculating ? RECALCULATING_NODE : formatAmount(headline.netMedianOrderValue, currency),
+            value: currencyRecalculating ? <RecalculatingValue /> : formatAmount(headline.netMedianOrderValue, currency),
           },
         ]}
         delta={orderValueDelta}
@@ -480,7 +471,7 @@ export function AnalyticsKpiStrip({
           { label: 'Cancelled orders', value: numberFormat.format(headline.cancelledCount) },
           {
             label: 'Cancelled value',
-            value: currencyRecalculating ? RECALCULATING_NODE : formatAmount(headline.cancelledValue, currency),
+            value: currencyRecalculating ? <RecalculatingValue /> : formatAmount(headline.cancelledValue, currency),
           },
         ]}
         delta={cancelRateDelta}
