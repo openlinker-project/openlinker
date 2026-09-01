@@ -53,6 +53,8 @@ export class ExchangeRatesController {
   @Get()
   @ApiOperation({
     summary: 'Read one stored exchange rate — never fetches, never writes.',
+    description:
+      'Analytics provenance only; never a statutory/fiscal conversion rate (ADR-040).',
   })
   @ApiResponse({ status: 200, type: ExchangeRateResponseDto })
   @ApiResponse({ status: 404, description: 'No rate is stored under this key.' })
