@@ -75,7 +75,7 @@ describe('AnalyticsCurrencyRecalculateHandler', () => {
     restatement = {
       restatePage: jest
         .fn()
-        .mockResolvedValue({ scanned: 3, cleared: 3, enqueued: 3, nextCursor: null }),
+        .mockResolvedValue({ scanned: 3, cleared: 3, stamped: 3, terminal: 0, deferred: 0, failed: 0, nextCursor: null }),
       countRemaining: jest.fn().mockResolvedValue({ total: 0, terminalMarked: 0, pending: 0 }),
     };
     reportingCurrency = {
@@ -100,9 +100,12 @@ describe('AnalyticsCurrencyRecalculateHandler', () => {
 
   it('should reschedule immediately with the next keyset cursor while enumeration continues', async () => {
     restatement.restatePage.mockResolvedValue({
-      scanned: 200,
-      cleared: 200,
-      enqueued: 200,
+      scanned: 100,
+      cleared: 100,
+      stamped: 100,
+      terminal: 0,
+      deferred: 0,
+      failed: 0,
       nextCursor: 'ol_order_z',
     });
 
@@ -123,9 +126,12 @@ describe('AnalyticsCurrencyRecalculateHandler', () => {
     // from the run id alone would let the run advance exactly once and then
     // stall at `in-progress` forever (#2039's `reconcileId` trap).
     restatement.restatePage.mockResolvedValue({
-      scanned: 200,
-      cleared: 200,
-      enqueued: 200,
+      scanned: 100,
+      cleared: 100,
+      stamped: 100,
+      terminal: 0,
+      deferred: 0,
+      failed: 0,
       nextCursor: 'ol_order_z',
     });
 
@@ -182,9 +188,12 @@ describe('AnalyticsCurrencyRecalculateHandler', () => {
     // Restart-safety: a fresh handler instance handed a mid-run payload must
     // resume exactly where the payload says, with no prior call.
     restatement.restatePage.mockResolvedValue({
-      scanned: 200,
-      cleared: 200,
-      enqueued: 200,
+      scanned: 100,
+      cleared: 100,
+      stamped: 100,
+      terminal: 0,
+      deferred: 0,
+      failed: 0,
       nextCursor: 'ol_order_zz',
     });
 

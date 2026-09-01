@@ -37,6 +37,7 @@ import {
   type IOrderFxStampService,
 } from '@openlinker/core/orders';
 import { OrderRecordOrmEntity } from '@openlinker/core/orders/orm-entities';
+import { SyncJobOrmEntity } from '@openlinker/core/sync/orm-entities';
 import {
   getTestHarness,
   resetTestHarness,
@@ -164,7 +165,7 @@ describe('Currency remediation against real Postgres (#2468)', () => {
     expect(row.reportingCurrency).toBe(STALE_REPORTING_CURRENCY);
   });
 
-  it('clears all six FX columns and leaves the row on the sweep frontier', async () => {
+  it('clears all six FX columns and then re-stamps in-process, in the same page (#2776)', async () => {
     const orderId = await seedStaleStampedOrder(100);
     const run = await runs.openRun({
       category: 'currency',
@@ -178,45 +179,20 @@ describe('Currency remediation against real Postgres (#2468)', () => {
       limit: 50,
     });
 
-    expect(page).toMatchObject({ scanned: 1, cleared: 1 });
+    expect(page).toMatchObject({ scanned: 1, cleared: 1, stamped: 1, terminal: 0, deferred: 0 });
     const row = await readOrder(orderId);
-    expect(row.reportingCurrency).toBeNull();
-    expect(row.reportingTotalAmount).toBeNull();
-    expect(row.exchangeRateId).toBeNull();
-    expect(row.fxStampedAt).toBeNull();
-    // The subtle one: left behind, `resolveIntent` re-pins USD and the repair
-    // silently produces the same wrong figure.
-    expect(row.fxIntendedCurrency).toBeNull();
-    expect(row.fxRule).toBeNull();
-  });
-
-  it('re-stamps into the CURRENT reporting currency after the clear, not the stale one', async () => {
-    const orderId = await seedStaleStampedOrder(100);
-    const run = await runs.openRun({
-      category: 'currency',
-      affectedCount: 1,
-      triggeredByUserId: 'user-1',
-    });
-    await restatement.restatePage(scope, reportingCurrency, {
-      runId: run.id,
-      afterOrderId: null,
-      limit: 50,
-    });
-
-    const outcome = await fxStamp.stamp(orderId);
-
-    expect(outcome).toMatchObject({
-      kind: 'stamped',
-      alreadyStamped: false,
-      reportingCurrency,
-      reportingTotalAmount: 100,
-    });
-    const row = await readOrder(orderId);
+    // Re-stamped into the CURRENT reporting currency, not the stale one — the
+    // clear alone would leave every column null; the page's own in-process
+    // stamp is what produces a fresh, correct figure.
     expect(row.reportingCurrency).toBe(reportingCurrency);
     expect(Number(row.reportingTotalAmount)).toBe(100);
+    // The subtle one: left behind, `resolveIntent` would have re-pinned USD
+    // and the repair would silently reproduce the same wrong figure.
+    expect(row.fxIntendedCurrency).toBe(reportingCurrency);
+    expect(row.fxRule).not.toBeNull();
   });
 
-  it('reaches resolved once the whole scope is re-stamped, with the ledger row as the only state', async () => {
+  it('reaches resolved once the whole scope is re-stamped by the page itself, with no child job anywhere', async () => {
     const orderIds = [
       await seedStaleStampedOrder(100),
       await seedStaleStampedOrder(250),
@@ -229,8 +205,8 @@ describe('Currency remediation against real Postgres (#2468)', () => {
     });
 
     // Enumerate in two pages so the keyset cursor is genuinely exercised: a
-    // cleared row still satisfies the mismatch predicate, so an offset walk
-    // would re-read page one forever.
+    // cleared-and-restamped row no longer satisfies the mismatch predicate,
+    // so this also proves the cursor advances over rows this run itself fixed.
     const first = await restatement.restatePage(scope, reportingCurrency, {
       runId: run.id,
       afterOrderId: null,
@@ -244,18 +220,9 @@ describe('Currency remediation against real Postgres (#2468)', () => {
     });
     expect(second.nextCursor).toBeNull();
     expect(first.scanned + second.scanned).toBe(3);
+    expect(first.stamped + second.stamped).toBe(3);
 
-    // Mid-run the population is still fully mismatched (cleared, not stamped).
-    await expect(restatement.countRemaining(scope, reportingCurrency)).resolves.toMatchObject({
-      total: 3,
-      terminalMarked: 0,
-      pending: 3,
-    });
-
-    for (const orderId of orderIds) {
-      await fxStamp.stamp(orderId);
-    }
-
+    // The page itself stamped every order — nothing left to converge on.
     await expect(restatement.countRemaining(scope, reportingCurrency)).resolves.toMatchObject({
       total: 0,
     });
@@ -265,10 +232,32 @@ describe('Currency remediation against real Postgres (#2468)', () => {
       detail: null,
       affectedCount: 3,
     });
+
+    // #2776's whole point: zero `marketplace.order.fxStamp` rows were ever
+    // created for this run, and therefore zero `realtime`-lane slots spent.
+    const fxStampJobCount = await harness
+      .getDataSource()
+      .getRepository(SyncJobOrmEntity)
+      .count({ where: { jobType: 'marketplace.order.fxStamp' } });
+    expect(fxStampJobCount).toBe(0);
   });
 
   it('fails with a non-empty detail while orders remain, and reports the terminal partition honestly', async () => {
-    await seedStaleStampedOrder(100);
+    // A row whose snapshot carries no native total: the in-process stamp
+    // reaches a genuinely TERMINAL answer (`no-native-total`), so — unlike a
+    // same-currency row, which the page now stamps outright — this one stays
+    // in the mismatched population after the page runs.
+    await createTestOrderRecord(harness.getDataSource(), {
+      placedAt: new Date('2026-08-03T00:00:00.000Z'),
+      recordStatus: 'ready',
+      totalAmount: 100,
+      currency: STALE_REPORTING_CURRENCY,
+      reportingCurrency: STALE_REPORTING_CURRENCY,
+      reportingTotalAmount: 200,
+      fxStampedAt: new Date('2026-08-03T01:00:00.000Z'),
+      fxIntendedCurrency: STALE_REPORTING_CURRENCY,
+      fxRule: 'prev-business-day',
+    });
     const run = await runs.openRun({
       category: 'currency',
       affectedCount: 1,
@@ -282,6 +271,7 @@ describe('Currency remediation against real Postgres (#2468)', () => {
 
     const remaining = await restatement.countRemaining(scope, reportingCurrency);
     expect(remaining.total).toBe(1);
+    expect(remaining.terminalMarked).toBe(1);
 
     await expect(runs.markFailed(run.id, `${remaining.total} order(s) still unstamped`)).resolves.toBe(
       true
@@ -335,26 +325,16 @@ describe('Currency remediation against real Postgres (#2468)', () => {
       limit: 50,
     });
 
-    expect(page).toMatchObject({ scanned: 1, cleared: 1, enqueued: 1 });
-    const row = await readOrder(orderId);
-    expect(row.reportingCurrency).toBeNull();
-    expect(row.reportingTotalAmount).toBeNull();
-    expect(row.exchangeRateId).toBeNull();
-    expect(row.fxStampedAt).toBeNull();
-    expect(row.fxIntendedCurrency).toBeNull();
-    expect(row.fxRule).toBeNull();
-
     // The point of the clear: the re-stamp names the CURRENT currency. With the
-    // stale intent left behind, `resolveIntent` re-pins it and the run cannot
-    // converge.
-    await expect(fxStamp.stamp(orderId)).resolves.toMatchObject({
-      kind: 'stamped',
-      alreadyStamped: false,
-      reportingCurrency,
-    });
+    // stale intent left behind, `resolveIntent` would re-pin it and the run
+    // could never converge.
+    expect(page).toMatchObject({ scanned: 1, cleared: 1, stamped: 1 });
+    const row = await readOrder(orderId);
+    expect(row.reportingCurrency).toBe(reportingCurrency);
+    expect(row.fxIntendedCurrency).toBe(reportingCurrency);
   });
 
-  it('clears a TERMINAL-MARKED row, so it is not held out by its own marker (#2775)', async () => {
+  it('clears a TERMINAL-MARKED row, then re-stamps it in the same page, so it is not held out by its own marker (#2775, #2776)', async () => {
     const orderId = await seedTerminalMarkedOrder(60);
     const run = await runs.openRun({
       category: 'currency',
@@ -368,20 +348,13 @@ describe('Currency remediation against real Postgres (#2468)', () => {
       limit: 50,
     });
 
-    expect(page).toMatchObject({ scanned: 1, cleared: 1 });
+    expect(page).toMatchObject({ scanned: 1, cleared: 1, stamped: 1 });
     const row = await readOrder(orderId);
-    expect(row.fxStampedAt).toBeNull();
-    expect(row.fxIntendedCurrency).toBeNull();
-    expect(row.fxRule).toBeNull();
-
-    await expect(fxStamp.stamp(orderId)).resolves.toMatchObject({
-      kind: 'stamped',
-      reportingCurrency,
-      reportingTotalAmount: 60,
-    });
+    expect(row.reportingCurrency).toBe(reportingCurrency);
+    expect(Number(row.reportingTotalAmount)).toBe(60);
   });
 
-  it('reaches resolved over a mixed population of stale, deferred and terminal-marked rows (#2775)', async () => {
+  it('reaches resolved over a mixed population of stale, deferred and terminal-marked rows (#2775, #2776)', async () => {
     const orderIds = [
       await seedStaleStampedOrder(100),
       await seedDeferredOrder(250),
@@ -398,14 +371,10 @@ describe('Currency remediation against real Postgres (#2468)', () => {
       afterOrderId: null,
       limit: 50,
     });
-    expect(page).toMatchObject({ scanned: 3, cleared: 3, enqueued: 3 });
-
-    for (const orderId of orderIds) {
-      await fxStamp.stamp(orderId);
-    }
-
     // Before #2775 the deferred and terminal-marked rows re-stamped USD, so
     // this total stuck at 2 and the run's completion poll closed `failed`.
+    expect(page).toMatchObject({ scanned: 3, cleared: 3, stamped: 3 });
+
     await expect(restatement.countRemaining(scope, reportingCurrency)).resolves.toMatchObject({
       total: 0,
       terminalMarked: 0,
@@ -415,7 +384,7 @@ describe('Currency remediation against real Postgres (#2468)', () => {
     await expect(runs.getRun(run.id)).resolves.toMatchObject({ status: 'resolved', detail: null });
   });
 
-  it('leaves a never-stamped order uncleared but still enqueued, so the guard is idempotent', async () => {
+  it('leaves a never-stamped order uncleared but still stamps it, so the guard is idempotent', async () => {
     const record = await createTestOrderRecord(harness.getDataSource(), {
       placedAt: new Date('2026-08-03T00:00:00.000Z'),
       recordStatus: 'ready',
@@ -437,8 +406,8 @@ describe('Currency remediation against real Postgres (#2468)', () => {
       limit: 50,
     });
 
-    expect(page).toMatchObject({ scanned: 1, cleared: 0, enqueued: 1 });
+    expect(page).toMatchObject({ scanned: 1, cleared: 0, stamped: 1 });
     const row = await readOrder(record.internalOrderId);
-    expect(row.fxStampedAt).toBeNull();
+    expect(row.reportingCurrency).toBe(reportingCurrency);
   });
 });
