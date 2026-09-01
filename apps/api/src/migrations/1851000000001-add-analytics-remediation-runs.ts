@@ -41,8 +41,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddAnalyticsRemediationRuns1843000000000 implements MigrationInterface {
-  name = 'AddAnalyticsRemediationRuns1843000000000';
+export class AddAnalyticsRemediationRuns1851000000001 implements MigrationInterface {
+  name = 'AddAnalyticsRemediationRuns1851000000001';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`

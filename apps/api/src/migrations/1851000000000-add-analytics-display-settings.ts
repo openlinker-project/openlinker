@@ -21,8 +21,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddAnalyticsDisplaySettings1842000000000 implements MigrationInterface {
-  name = 'AddAnalyticsDisplaySettings1842000000000';
+export class AddAnalyticsDisplaySettings1851000000000 implements MigrationInterface {
+  name = 'AddAnalyticsDisplaySettings1851000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
