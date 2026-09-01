@@ -3357,7 +3357,8 @@ a.delivery-rider-banner__button:focus-visible {
   border-radius: var(--radius-sm);
 }
 
-.data-table-skeleton__bar {
+.data-table-skeleton__bar,
+.sales-document-market-row .skeleton-bar {
   display: block;
   height: 10px;
   width: 100%;
@@ -3416,7 +3417,8 @@ a.delivery-rider-banner__button:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .data-table-skeleton__bar {
+  .data-table-skeleton__bar,
+  .sales-document-market-row .skeleton-bar {
     animation: none;
     background-image: none;
   }
@@ -19377,9 +19379,6 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   font-size: 0.9375rem;
   color: var(--text-secondary);
 }
-.sales-document-market-section__summary--fresh-install {
-  color: var(--text-secondary);
-}
 .sales-document-market-section__summary--attention {
   color: var(--status-warning-fg);
 }
@@ -19458,11 +19457,6 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 @media (max-width: 767.98px) {
   .sales-document-market-row {
     grid-template-columns: 1fr;
-    grid-template-areas:
-      'status'
-      'identity'
-      'outcome'
-      'action';
     align-items: start;
   }
   .sales-document-market-row__status {
@@ -19491,11 +19485,12 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   background: var(--bg-surface);
 }
 
+/* Shimmer itself is the shared `data-table-skeleton__bar` primitive (extended
+   above, with its `prefers-reduced-motion` guard); only the per-slot sizing is
+   page-local. */
 .sales-document-market-row .skeleton-bar {
   display: block;
   border-radius: var(--radius-sm);
-  background: var(--bg-surface-muted);
-  animation: sales-document-market-skeleton-shimmer 1.4s ease-in-out infinite;
 }
 .sales-document-market-row .skeleton-bar--dot {
   width: 0.625rem;
@@ -19523,16 +19518,6 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .sales-document-market-row .skeleton-bar--action {
   width: 6rem;
   height: 1.75rem;
-}
-
-@keyframes sales-document-market-skeleton-shimmer {
-  0%,
-  100% {
-    opacity: 0.6;
-  }
-  50% {
-    opacity: 1;
-  }
 }
 
 /* ── Sales-document country index (#2187) ── */

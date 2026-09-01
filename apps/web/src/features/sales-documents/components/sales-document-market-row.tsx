@@ -86,7 +86,7 @@ export function SalesDocumentMarketRow({
   isSoleTemplatedMarket = false,
 }: SalesDocumentMarketRowProps): ReactElement {
   const copy = describeSalesDocumentMarketOutcome(row.outcome);
-  const isDetectedOnly = row.orderCount !== null;
+  const isDetected = row.orderCount !== null;
 
   return (
     <li
@@ -99,7 +99,9 @@ export function SalesDocumentMarketRow({
     >
       <div className="sales-document-market-row__status">
         <StatusBadge tone={toneFor(copy)} withDot compact>
-          <span className="sr-only">{copy.needsDecision ? 'Needs attention' : 'Set up'}</span>
+          <span className="sr-only">
+            {copy.needsDecision ? 'Needs attention' : 'No action needed'}
+          </span>
         </StatusBadge>
       </div>
 
@@ -108,8 +110,8 @@ export function SalesDocumentMarketRow({
         <span className="sales-document-market-row__meta muted-text mono-text">
           {row.country === SALES_DOCUMENT_REST_OF_WORLD_COUNTRY ? 'Catch-all' : row.country} ·{' '}
           {row.ruleCount === 1 ? '1 rule' : `${row.ruleCount} rules`}
-          {isDetectedOnly
-            ? ` · ${row.orderCount} orders${
+          {isDetected
+            ? ` · ${row.orderCount === 1 ? '1 order' : `${row.orderCount} orders`}${
                 windowDays !== undefined ? ` in the last ${windowDays} days` : ''
               }`
             : ''}

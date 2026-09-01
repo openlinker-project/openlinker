@@ -22,12 +22,12 @@ function renderRow(
   row: MarketRowData,
   onSelect = vi.fn(),
   disabled = false,
-  extra: { windowDays?: number; isSoleTemplatedMarket?: boolean } = {},
+  extra: { windowDays?: number; isSoleTemplatedMarket?: boolean } = {}
 ): void {
   render(
     <ul>
       <SalesDocumentMarketRow row={row} onSelect={onSelect} disabled={disabled} {...extra} />
-    </ul>,
+    </ul>
   );
 }
 
@@ -38,7 +38,13 @@ describe('SalesDocumentMarketRow', () => {
   });
 
   it('should offer a plain "Set up" action for an unresolved row without a starter template', () => {
-    renderRow(makeRow({ ruleCount: 0, invoiceDefaultConnectionId: null, outcome: { kind: 'unresolved', reason: 'no-configuration-for-country' } }));
+    renderRow(
+      makeRow({
+        ruleCount: 0,
+        invoiceDefaultConnectionId: null,
+        outcome: { kind: 'unresolved', reason: 'no-configuration-for-country' },
+      })
+    );
     expect(screen.getByRole('button', { name: 'Set up' })).toBeInTheDocument();
   });
 
@@ -49,7 +55,7 @@ describe('SalesDocumentMarketRow', () => {
         ruleCount: 0,
         invoiceDefaultConnectionId: null,
         outcome: { kind: 'unresolved', reason: 'no-configuration-for-country' },
-      }),
+      })
     );
     expect(screen.getByRole('button', { name: 'Use starter setup' })).toBeInTheDocument();
   });
@@ -66,15 +72,29 @@ describe('SalesDocumentMarketRow', () => {
     expect(screen.getByRole('button')).toBeDisabled();
   });
 
+  it('should announce a settled row as needing no action, never as an imperative', () => {
+    renderRow(makeRow());
+    expect(screen.getByText('No action needed')).toBeInTheDocument();
+    // The action button on an unresolved row is labelled "Set up" - the status
+    // text must never reuse those words for a row that is already settled.
+    expect(screen.queryByText(/^Set up$/)).not.toBeInTheDocument();
+  });
+
   it('should render the Rest of world pseudo-country with its display label', () => {
     renderRow(makeRow({ country: '*' }));
     expect(screen.getByText('★ Rest of world')).toBeInTheDocument();
   });
 
   describe('detected markets (#2542)', () => {
-    it('should render a detected market\'s order count with its discovery window', () => {
+    it("should render a detected market's order count with its discovery window", () => {
       renderRow(makeRow({ orderCount: 12 }), vi.fn(), false, { windowDays: 30 });
       expect(screen.getByText(/12 orders in the last 30 days/)).toBeInTheDocument();
+    });
+
+    it('should render a single detected order in the singular', () => {
+      renderRow(makeRow({ orderCount: 1 }), vi.fn(), false, { windowDays: 30 });
+      expect(screen.getByText(/1 order in the last 30 days/)).toBeInTheDocument();
+      expect(screen.queryByText(/1 orders/)).not.toBeInTheDocument();
     });
 
     it('should render only the order count when the window is not known', () => {
@@ -98,7 +118,7 @@ describe('SalesDocumentMarketRow', () => {
         }),
         vi.fn(),
         false,
-        { isSoleTemplatedMarket: true },
+        { isSoleTemplatedMarket: true }
       );
       expect(screen.getByText(/the only market with guidance so far/)).toBeInTheDocument();
     });
@@ -113,7 +133,7 @@ describe('SalesDocumentMarketRow', () => {
         }),
         vi.fn(),
         false,
-        { isSoleTemplatedMarket: false },
+        { isSoleTemplatedMarket: false }
       );
       expect(screen.getByText(/Starter setup available/)).toBeInTheDocument();
       expect(screen.queryByText(/the only market with guidance/)).not.toBeInTheDocument();
@@ -129,7 +149,7 @@ describe('SalesDocumentMarketRow', () => {
         }),
         vi.fn(),
         false,
-        { isSoleTemplatedMarket: true },
+        { isSoleTemplatedMarket: true }
       );
       expect(screen.queryByText(/Starter setup available/)).not.toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Set up' })).toBeInTheDocument();

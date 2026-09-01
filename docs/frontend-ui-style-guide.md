@@ -646,6 +646,7 @@ Defaults (FE-002):
 | Analytics KPI card (`.status-strip--analytics .kpi-card`, #1990) | auto, ~152 px | Documented carve-out — the six-card sales strip stacks a headline+metric+delta block on top of one-or-more qualifier rows pinned to the card floor by a hairline, provably taller than the ~96 px default. See the carve-out note below. |
 | Status banner | auto, ~64 px | Icon + title + message + actions. |
 | Analytics trust-header row (`.trust-header__row`) | auto, ~52 px | `var(--space-3) var(--space-4)` padding. Per-connection freshness list, denser than a status banner because it repeats per row. Collapses to one column, auto height on mobile. |
+| Sales-document market row (`.sales-document-market-row`, #2540) | `4.25 rem` min | Settings list row, not a `DataTable` row. Status dot + market identity (name + meta line) + outcome (headline + optional reason line) + one action, in a 4-column grid; the floor keeps a one-line row the same height as a row carrying a reason, so the list does not step as rows resolve. Collapses to a single column, auto height below 768 px. |
 
 Never introduce a row height that isn't on this list without updating the guide first. Variability across surfaces is the primary way a cockpit feels amateur.
 
