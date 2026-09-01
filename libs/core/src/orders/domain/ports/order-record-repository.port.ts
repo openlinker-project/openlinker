@@ -31,10 +31,7 @@ import type {
   NetExcludedOrderCandidate,
   PaginatedProductMatchingErrorOrders,
 } from '../types/coverage-detection.types';
-import type {
-  FxRestatementOrderRef,
-  FxRestatementRemainingSummary,
-} from '../types/order-fx-restatement.types';
+import type { FxRestatementRemainingSummary } from '../types/order-fx-restatement.types';
 
 export interface OrderRecordRepositoryPort {
   /**
@@ -573,12 +570,20 @@ export interface OrderRecordRepositoryPort {
    * predicate — so an offset walk would re-read the same page forever and
    * the enumeration would never terminate. A strictly-increasing key can
    * only move forward.
+   *
+   * Returns bare ids, not a `{ internalOrderId, sourceConnectionId }` ref
+   * (#2776 review): the caller used to need `sourceConnectionId` to file a
+   * child `marketplace.order.fxStamp` job under the order's own connection,
+   * but the page now clears-and-stamps each order in-process via
+   * `IOrderFxStampService.stamp`, which re-reads the full `OrderRecord`
+   * (connection included) itself. Selecting a column nothing consumes was a
+   * real, if small, per-row cost.
    */
   findCurrencyMismatchOrderRefsAfter(
     filters: SalesAnalyticsFilters,
     currentReportingCurrency: string,
     page: { afterOrderId: string | null; limit: number }
-  ): Promise<FxRestatementOrderRef[]>;
+  ): Promise<string[]>;
 
   /**
    * Clear one order's ADR-040 FX stamp so the stamp pipeline can re-answer it

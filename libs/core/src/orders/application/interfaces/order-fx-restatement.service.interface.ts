@@ -20,8 +20,8 @@ import type {
 
 export interface IOrderFxRestatementService {
   /**
-   * Clear + re-enqueue one bounded page of the mismatched population in
-   * `scope`.
+   * Clear + re-stamp one bounded page of the mismatched population in
+   * `scope`, in-process and sequentially — no child job is enqueued.
    *
    * `scope` is the SAME `SalesAnalyticsFilters` the coverage detector counted
    * over, so the repair can never be wider than the figure the operator
