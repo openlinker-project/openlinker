@@ -16,9 +16,10 @@ import { Module } from '@nestjs/common';
 import { CurrencyModule as CoreCurrencyModule } from '@openlinker/core/currency';
 import { OrdersModule } from '@openlinker/core/orders';
 import { CurrencySettingsController } from './http/currency-settings.controller';
+import { ExchangeRatesController } from './http/exchange-rates.controller';
 
 @Module({
   imports: [CoreCurrencyModule, OrdersModule],
-  controllers: [CurrencySettingsController],
+  controllers: [CurrencySettingsController, ExchangeRatesController],
 })
 export class CurrencyApiModule {}
