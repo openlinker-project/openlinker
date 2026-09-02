@@ -30,6 +30,12 @@ export const CAPABILITY_HELP: Record<CoreCapability, string> = {
   Invoicing: 'Issue and manage fiscal documents (invoices) through this connection.',
   Fiscalization:
     'Register a completed sale with this connection, which performs or brokers the fiscal registration. OpenLinker never decides whether an order requires one.',
+  ReturnsAuthority:
+    'Decides what happens to goods a customer sends back — whether they go back on sale, and who approves that.',
+  AvailabilityAuthority:
+    'Decides how much of each product is sellable, overriding the stock figure OpenLinker would otherwise compute.',
+  FulfillmentExecutor:
+    'Picks, packs and ships the work OpenLinker hands it, and reports progress back. One holder at a time per piece of work.',
 };
 
 /**

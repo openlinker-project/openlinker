@@ -14,5 +14,16 @@ import type { CreateRefundRecordInput, RefundSummary } from '../../domain/types/
 export interface IOrderRefundService {
   recordRefund(input: CreateRefundRecordInput): Promise<RefundRecord>;
   getRefundsForOrder(internalOrderId: string): Promise<RefundRecord[]>;
+
+  /**
+   * Refunds linked to one RETURN (#2382) — the read behind the return detail's
+   * refund panel.
+   *
+   * A separate read rather than a filter over {@link getRefundsForOrder},
+   * because an orphan return has no order id to filter by and an order with two
+   * returns would cross-attribute. See the repository port for the full
+   * argument.
+   */
+  getRefundsForReturn(returnId: string): Promise<RefundRecord[]>;
   getRefundSummariesForOrders(internalOrderIds: string[]): Promise<Map<string, RefundSummary>>;
 }

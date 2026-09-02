@@ -43,7 +43,7 @@ import {
   isOrderFulfillmentUpdater,
 } from '@openlinker/core/orders';
 import { ProductOrmEntity, ProductVariantOrmEntity } from '@openlinker/core/products/orm-entities';
-import { destinationOrderIdFromRef } from '../helpers/order-ref.helper';
+import { describeUnsuccessfulSync, destinationOrderIdFromRef } from '../helpers/order-ref.helper';
 import { getTestHarness, IntegrationTestHarness } from '../setup';
 import {
   PrestashopTestContainer,
@@ -269,7 +269,7 @@ describe('PrestaShop order fulfillment update (#858)', () => {
       const results = await ingestion.syncOrderFromSource(allegroConnectionId, 'ALG-858');
       if (results[0]?.status !== 'success') {
         throw new Error(
-          `Order seed failed: ${results[0] ? results[0].error.message : 'no result'}`
+          `Order seed failed: ${results[0] ? describeUnsuccessfulSync(results[0]) : 'no result'}`
         );
       }
       // orderRef.orderId is the destination-native PrestaShop order id (#909).

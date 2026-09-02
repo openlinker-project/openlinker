@@ -8,13 +8,16 @@
  * @module libs/core/src/orders/infrastructure/persistence/entities
  */
 import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
+import type { OrderSyncStatusFilter } from '../../../domain/types/order-record.types';
+import type { OrderAmendmentChange } from '../../../domain/order-amendment-diff';
+import type { AuthorityAttentionEntry } from '@openlinker/core/fulfillment-authority';
 
 /**
  * Sync status JSONB structure
  */
 export interface OrderSyncStatusJson {
   destinationConnectionId: string;
-  status: 'pending' | 'syncing' | 'synced' | 'failed';
+  status: OrderSyncStatusFilter;
   syncedAt?: string;
   externalOrderId?: string;
   externalOrderNumber?: string;
@@ -27,7 +30,7 @@ export interface OrderSyncStatusJson {
  */
 export interface SyncAttemptJson {
   destinationConnectionId: string;
-  status: 'pending' | 'syncing' | 'synced' | 'failed';
+  status: OrderSyncStatusFilter;
   attemptedAt: string;
   error?: string;
   externalOrderId?: string;
@@ -263,6 +266,24 @@ export class OrderRecordOrmEntity {
   buyerTaxId!: string | null;
 
   /**
+   * Stable hash of the order's shipping address (#2395), stamped at ingestion
+   * from the LIVE, un-redacted address - so it survives `OL_STORE_PII=false`,
+   * under which the snapshot address is replaced by `[REDACTED]` and hashing
+   * it back would yield one hash per country shared by every order.
+   *
+   * Written only on the `'ready'` path (`upsertWithLineItems`), like the four
+   * analytics scalars and `buyerTaxId` above: an `awaiting_mapping`
+   * re-ingestion routed through the shared `toOrm` would NULL a hash a
+   * previous ready-path write settled.
+   *
+   * NOT PII-gated, unlike its `buyerTaxId` neighbour: it is a one-way hash
+   * carrying no recoverable address, and gating it would remove it precisely
+   * on the hash-only deployments that need it.
+   */
+  @Column({ type: 'text', nullable: true })
+  shippingAddressHash!: string | null;
+
+  /**
    * Per-order reporting-currency snapshot (#2124, ADR-040) — six columns
    * written ONLY by the two narrow, conditional UPDATEs on the repository
    * (`claimFxIntentIfAbsent`, `stampFxIfAbsent`). The ingestion upsert
@@ -326,6 +347,145 @@ export class OrderRecordOrmEntity {
    */
   @Column({ type: 'varchar', length: 3, nullable: true })
   fxIntendedCurrency!: string | null;
+
+  /**
+   * Instant an operator marked this order packed (#2287). `null` = not packed.
+   * A fact, not a state — independent of `recordStatus` / `fulfillmentState` /
+   * `slaState`. Indexed because "is it packed" is an operator-facing scan axis,
+   * mirroring `cancelledAt`.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  @Index()
+  packedAt!: Date | null;
+
+  /**
+   * OL user id of whoever marked this order packed (#2287). Deliberately
+   * unindexed: it is display + attribution only and is never filtered on. No FK
+   * to `users` — this table FKs across no context, and a dangling id from a
+   * deleted user is the honest outcome for an audit fact.
+   */
+  @Column({ type: 'uuid', nullable: true })
+  packedByUserId!: string | null;
+
+  /**
+   * Instant OpenLinker last observed the source amend this order after ingestion
+   * (#2283). `null` = never observed amended. Indexed because "which orders did
+   * the source change under us" is an operator-facing scan axis, and it is the
+   * index that makes a follow-up list badge/filter cheap. Plain rather than
+   * partial, mirroring `packedAt`: an operator filters both ways.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  @Index()
+  lastAmendedAt!: Date | null;
+
+  /**
+   * The change list observed at `lastAmendedAt` (#2283) — most recent
+   * observation only, not a history. `jsonb` because the shape is a small
+   * open-ended list the FE renders; nothing queries inside it. PII-free by
+   * construction (ids, SKUs, quantities and address FIELD NAMES only).
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  lastAmendmentChanges!: OrderAmendmentChange[] | null;
+
+  /**
+   * Denormalised reason of the order's currently-open hold (#2340), or `null`
+   * when nothing holds it.
+   *
+   * **`order_holds` is the authority; this column is a CACHE.** It exists so the
+   * derived-lifecycle `CASE` (#2309) and the `?phase=held` filter can answer
+   * without joining `order_holds` per bucket — that `CASE` is already
+   * non-sargable and `getManyAndCount()` evaluates it twice per request. On
+   * drift the table wins and `orders.holds.reconcile` repairs the column; no
+   * hold GATE may read it (the epic's L4 exit criterion).
+   *
+   * Written ONLY by `OrderHoldProjectionRepositoryPort.setActiveHoldReason`,
+   * and deliberately excluded from `toOrm` + `upsert`'s column tuple — the
+   * `cancelledAt` / `salesDocument*` single-writer precedent.
+   *
+   * Plain `text` with no check constraint, matching `salesDocumentBlockReason`:
+   * the union is enforced in TypeScript, and `isHoldReason` coerces on read.
+   */
+  @Column({ type: 'text', nullable: true })
+  @Index('IDX_order_records_active_hold', { where: '"activeHoldReason" IS NOT NULL' })
+  activeHoldReason!: string | null;
+
+  /**
+   * The OMS inert states currently reported against this order (#2352,
+   * Wave-2 product spec §4.2) — an array of `AuthorityAttentionEntry`, or NULL
+   * when nothing is reported.
+   *
+   * **An ARRAY keyed by producer, not a scalar reason, and that is the whole
+   * point.** #2100's single `salesDocumentBlockReason` is safe because ONE
+   * authority re-decides the whole question on every order transition, so its
+   * `null` is a complete statement. Here the writers are three unrelated
+   * subsystems (the reservation ledger, routing, the execution handshake) and an
+   * order can genuinely carry two states at once — one line unroutable, another
+   * short. A level-triggered scalar would make each producer's "nothing is
+   * wrong" honest about its own question and a lie about the others', so the
+   * `Needs attention (N)` count would depend on which subsystem ran last.
+   * `updateOmsAttention` therefore replaces or removes exactly ONE producer's
+   * entry and leaves the rest alone.
+   *
+   * Sole writer `updateOmsAttention` — deliberately NOT round-tripped through
+   * `toOrm`, for the reason the three `salesDocument*` columns are not.
+   *
+   * **No index, deliberately.** Nothing writes this column yet (its producers
+   * are Wave-3 / the reservation-ledger and returns-custody bodies), so an index
+   * added here would be permanently empty DDL sized against no real cardinality;
+   * and a partial index over a hardcoded value list is exactly the shape that
+   * silently went stale on `IDX_order_records_salesDocumentBlockReason` when
+   * #2248 widened the union without touching the index. The producing issue adds
+   * it, against its own data.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  omsAttention!: AuthorityAttentionEntry[] | null;
+
+  /**
+   * Why the fulfilment intercept HELD this order (#2396) — or NULL when it did
+   * not, which is every install today.
+   *
+   * "Held" means `OrderSyncService` was never called, so the order was not
+   * mirrored to any destination. Sole writer `updateFulfillmentBlock`, invoked
+   * only by `OrderIngestionService` — deliberately NOT round-tripped through
+   * `toOrm`, for the reason the three `salesDocument*` columns are not:
+   * `persistOrder` runs BEFORE the intercept on every ingestion, so a
+   * round-trip would null-then-reset the value and let a stale in-memory read
+   * stomp a reason a peer transition just wrote.
+   *
+   * **Level-triggered, not sticky** (the #2100 discipline): the intercept
+   * re-decides on every transition and the writer stores the answer INCLUDING
+   * `null`, which is the only thing that clears a reason once the condition
+   * resolves.
+   *
+   * **Covers fewer arms than #2396's text, on purpose.** The `ambiguous` arm
+   * (two enabled routers on one source) writes NOTHING here, because #2352's
+   * derived `'sourcing-ambiguous'` (A2-A) already surfaces at order grain with
+   * `counted: true`; persisting it again would double-count
+   * `Needs attention (N)`. `routed` writes nothing either — the work object is
+   * the explanation, via `IFulfillmentWorkQueryService` (#2402). See
+   * `fulfillment-block-reason.types.ts`.
+   *
+   * Plain `text` with no check constraint, matching `salesDocumentBlockReason`:
+   * the union is enforced in TypeScript. `isFulfillmentBlockReason` exists for
+   * the read surface to coerce with — note that nothing reads the column YET
+   * (the operator surface is a later issue), so this is a guard made available,
+   * not one currently running. Whoever adds that read must call it: a value
+   * written by a newer release and then rolled back has to read as "nothing
+   * recognised" rather than widening the union at runtime.
+   *
+   * **No index, deliberately** — same call as `omsAttention` above: nothing
+   * filters on it yet, and the consuming issue adds one against its own data.
+   */
+  @Column({ type: 'text', nullable: true })
+  fulfillmentBlockReason!: string | null;
+
+  /**
+   * PII-free elaboration of the reason above (ids and causes only). Free text,
+   * rendered verbatim to the operator, never filtered on — so no index, the
+   * same call as `salesDocumentBlockDetail`.
+   */
+  @Column({ type: 'text', nullable: true })
+  fulfillmentBlockDetail!: string | null;
 
   @CreateDateColumn()
   createdAt!: Date;

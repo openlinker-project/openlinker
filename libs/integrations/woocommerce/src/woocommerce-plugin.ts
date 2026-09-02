@@ -208,6 +208,7 @@ export function createWooCommercePlugin(deps?: CreateWooCommercePluginDeps): Ada
                   httpClient,
                   host.identifierMapping,
                   connection,
+                  host.cache,
                 ),
               OrderProcessorManager: () => {
                 if (!deps) {

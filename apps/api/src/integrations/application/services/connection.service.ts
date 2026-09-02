@@ -48,9 +48,12 @@ import {
   InvalidConnectionConfigException,
   InvalidCredentialsShapeException,
   ConnectionCredentialsRewriteException,
+  resolveRequiresCredentials,
 } from '@openlinker/core/integrations';
 import type { SyncJobRequest } from '@openlinker/core/sync';
 import { JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
+import { parseAuthorityConfig } from '@openlinker/core/fulfillment-authority';
+import { ILocationService, LOCATION_SERVICE_TOKEN } from '@openlinker/core/inventory';
 import { IDestinationTaxonomyService } from '@openlinker/core/listings';
 import { DESTINATION_TAXONOMY_SERVICE_TOKEN } from '@openlinker/core/listings';
 import { Inject } from '@nestjs/common';
@@ -90,8 +93,68 @@ export class ConnectionService implements IConnectionService {
     @Inject(HTTP_TRANSPORT_FACTORY_TOKEN)
     private readonly httpTransportFactory: HttpTransportFactoryPort,
     @Inject(DESTINATION_TAXONOMY_SERVICE_TOKEN)
-    private readonly destinationTaxonomy: IDestinationTaxonomyService
+    private readonly destinationTaxonomy: IDestinationTaxonomyService,
+    @Inject(LOCATION_SERVICE_TOKEN)
+    private readonly locations: ILocationService
   ) {}
+
+  /**
+   * Refuse to switch fulfilment routing ON while no active inventory location
+   * exists (#2407, REVIEW D3).
+   *
+   * Routing against zero locations makes every line unfulfillable, so the
+   * feature reads as broken when it is merely unconfigured. The refusal names
+   * the remedy instead.
+   *
+   * **Enablement is decided from CONFIG, never from a capability list.** A2
+   * (`sourcing`) is `capability: 'config-only'` and `FulfillmentRouter` is
+   * deliberately absent from `CoreCapabilityValues`, because a connection's
+   * `enabledCapabilities` is stamped at create and never retro-filled (#2085).
+   * The already-shipped `parseAuthorityConfig` is the reader; nothing here
+   * coerces config itself, and nothing is added to any capability list.
+   *
+   * **A malformed config fails to MATCH rather than throwing** — that falls out
+   * of reusing the coercer, whose unrecognised-shape default is the frozen
+   * `UNHELD` claim. An install that never opted in is byte-identical to before.
+   *
+   * **Fires only on the `false -> true` transition, compared against the
+   * PERSISTED config** (the `enqueueInitialTaxonomySync` rule one method down).
+   * A connection that already carries the claim must not have an unrelated
+   * patch refused because the location table happens to be empty — that would
+   * punish an operator for a state this guard already let through.
+   *
+   * **This is enable-time only and is not an invariant.** `deleteLocation` and
+   * `updateLocation({status:'inactive'})` can both take an already-enabled
+   * connection back to zero active locations. Enforcing it there would put a
+   * routing rule inside the inventory context and open a cross-context edge
+   * ADR-053 forbids; the degenerate state is safe (no holder means today's
+   * untouched all-destinations fan-out), so it is REPORTED by the connection's
+   * routing-readiness panel rather than enforced here.
+   *
+   * The check short-circuits on the claim before reading the database, so a
+   * connection with no A2 claim performs no extra query at all.
+   */
+  private async assertRouterEnablementPreconditions(
+    nextConfig: unknown,
+    previousConfig: unknown
+  ): Promise<void> {
+    const claimed = parseAuthorityConfig(nextConfig, 'sourcing').enabled;
+    if (!claimed) {
+      return;
+    }
+    const alreadyClaimed = parseAuthorityConfig(previousConfig, 'sourcing').enabled;
+    if (alreadyClaimed) {
+      return;
+    }
+
+    if ((await this.locations.countActiveLocations()) === 0) {
+      throw new BadRequestException(
+        'Fulfilment routing cannot be enabled until at least one active inventory location exists. ' +
+          "Create one first — the connection's routing readiness panel offers a default, " +
+          'or POST /inventory/locations.'
+      );
+    }
+  }
 
   /**
    * Advisory authority guard (#1498): a connection must not have both
@@ -330,11 +393,22 @@ export class ConnectionService implements IConnectionService {
   async create(payload: ConnectionCreateInput): Promise<Connection> {
     const { credentials, credentialsRef, ...rest } = payload;
 
-    if ((credentials && credentialsRef) || (!credentials && !credentialsRef)) {
+    // Supplying BOTH is contradictory input at every setting, including for a
+    // credential-less adapter (#2405): the `if (credentials)` branch below
+    // would win, encrypting and persisting a credential row nothing ever reads
+    // while silently discarding the caller's own ref, reporting
+    // `credentialsBacked: true`, and handing `updateCredentials` its
+    // db-backed branch. So this stays unconditional and stays here, above the
+    // adapter lookup — it needs no manifest to be wrong.
+    if (credentials && credentialsRef) {
       throw new BadRequestException(
         'Exactly one of `credentials` or `credentialsRef` must be provided'
       );
     }
+    // Likewise unconditional: a raw key written into the column reads as
+    // "not db-backed" to `connection-response.dto.ts` and `updateCredentials`,
+    // yet is TRUTHY to every plugin factory's `if (connection.credentialsRef)`
+    // guard, which would then resolve it from the environment.
     if (credentialsRef && !credentialsRef.startsWith('db:')) {
       throw new BadRequestException(
         'credentialsRef must start with "db:" — raw keys are no longer accepted'
@@ -348,6 +422,21 @@ export class ConnectionService implements IConnectionService {
         platformType: rest.platformType,
         adapterKey: rest.adapterKey,
       });
+
+      // The "neither supplied" arm is the ONLY one an adapter may relax, and
+      // it can only be decided once the manifest is known — hence its position
+      // below the lookup rather than beside its two siblings above (#2405,
+      // ADR-055). An adapter declaring nothing keeps the guard it always had:
+      // `resolveRequiresCredentials` defaults to `true`.
+      //
+      // Capability-wise, never `platformType === 'openlinker'`: a privileged
+      // check by name would be unavailable to any third-party OMS adapter,
+      // which is precisely the design ADR-055 rejects.
+      if (resolveRequiresCredentials(metadata) && !credentials && !credentialsRef) {
+        throw new BadRequestException(
+          'Exactly one of `credentials` or `credentialsRef` must be provided'
+        );
+      }
 
       // Stock write-back defaults OFF for inventory-master-capable shops
       // (#1498): when the caller omits enabledCapabilities, exclude
@@ -382,6 +471,10 @@ export class ConnectionService implements IConnectionService {
         this.validateRateLimitConfig(rest.config);
         this.validateStockAndPricingConfig(rest.config);
         await this.validateConfigShape(metadata.adapterKey, rest.config);
+        // #2407 — above the credential-persistence block below, which requires
+        // that a 400 from validation never leaves an orphan credential row.
+        // No previous config exists on create, so every claim is a transition.
+        await this.assertRouterEnablementPreconditions(rest.config, undefined);
       }
 
       // Persist credentials if the caller supplied raw values. We write the
@@ -410,7 +503,14 @@ export class ConnectionService implements IConnectionService {
       try {
         connection = await this.connectionPort.create({
           ...rest,
-          credentialsRef: resolvedCredentialsRef!,
+          // `''`, never `undefined`: the column is `character varying NOT
+          // NULL`, and a credential-less adapter legitimately reaches here
+          // with nothing resolved (#2405). `''` is the shipped Subiekt
+          // precedent — falsy exactly where `null` is, and safe at the two
+          // unguarded `.startsWith('db:')` sites where `null` would throw
+          // (`connection-response.dto.ts`, per row on every list render, and
+          // `updateCredentials`).
+          credentialsRef: resolvedCredentialsRef ?? '',
           enabledCapabilities,
         });
       } catch (error) {
@@ -630,6 +730,12 @@ export class ConnectionService implements IConnectionService {
         this.validateRateLimitConfig(patch.config);
         this.validateStockAndPricingConfig(patch.config);
         await this.validateConfigShape(metadata.adapterKey, patch.config);
+        // #2407 — inside this branch, which is correct ONLY because
+        // `ConnectionRepository.update` REPLACES `config` wholesale rather than
+        // merging it (connection.repository.ts:109-111): a patch omitting
+        // `config` therefore cannot move the A2 claim. If that write ever
+        // starts merging, this placement becomes a hole.
+        await this.assertRouterEnablementPreconditions(patch.config, existing.config);
       }
 
       const connection = await this.connectionPort.update(connectionId, patch);

@@ -1,0 +1,166 @@
+/**
+ * Return Record Domain Entity
+ *
+ * The OL-owned return aggregate root (#2327, ADR-060) — the header above the
+ * source observation, carrying its lines.
+ *
+ * **`internalOrderId` is nullable BY DESIGN, and this is the whole point of the
+ * field.** A return arrives from a source that names an order OL may not have
+ * ingested, may have ingested under a different connection, or may never
+ * ingest at all; a parcel is nonetheless on its way to the operator's building.
+ * Refusing to persist such a return would delete the only record that it
+ * exists. So an ORPHAN return persists, surfaces in an operator bucket
+ * (`ReturnRepositoryPort.listOrphans`, read API #2334), and **blocks every
+ * downstream trigger** — nothing may be restocked, refunded or corrected
+ * against an order OL cannot name. Nullability is what makes "unattributed" a
+ * representable, visible state instead of an insert that fails silently in a
+ * job log.
+ *
+ * There is deliberately no FK to `order_records` either: the value is verified
+ * at the application layer, matching the `refund_records` / `invoice_records`
+ * precedent of an indexed `text` reference with no cross-table lock coupling.
+ *
+ * Anemic and fully `readonly` per ADR-011. The four timestamps are independent
+ * facts, not a status ladder — see `return.types.ts`.
+ *
+ * The id is `ol_return_*`, minted with `formatInternalId('Return')`.
+ *
+ * @module domain/entities
+ */
+import type { ReturnOrigin } from '../types/return.types';
+import type { ReturnStageCounters } from '../types/return-stage.types';
+import type { ReturnLine } from './return-line.entity';
+import type {
+  AuthorityAttentionEntry,
+  AuthorityAttentionReason,
+} from '@openlinker/core/fulfillment-authority';
+
+export class ReturnRecord {
+  constructor(
+    /** `ol_return_*` — see `ReturnRepository.create`. */
+    public readonly id: string,
+    public readonly sourceConnectionId: string,
+    public readonly externalReturnId: string | null,
+    /** Nullable by design — orphan returns persist and block downstream triggers. */
+    public readonly internalOrderId: string | null,
+    /**
+     * The SOURCE's own order reference, verbatim (#2332) — the re-attribution key.
+     *
+     * Deliberately adjacent to `internalOrderId`: the two are the same fact seen from
+     * either side of the mapping, and reading them together is what makes an orphan row
+     * legible. Note the consequence for constructors — three adjacent `string | null`
+     * parameters means a mis-ordered call type-checks, so the repository round-trip is
+     * specced with three DISTINCT values.
+     */
+    public readonly externalOrderId: string | null,
+    public readonly origin: ReturnOrigin,
+    /** The source's own status word, verbatim — never interpreted. */
+    public readonly rawStatus: string | null,
+    public readonly rawPayload: Record<string, unknown> | null,
+    public readonly openedAt: Date | null,
+    public readonly authorizedAt: Date | null,
+    public readonly declinedAt: Date | null,
+    public readonly closedAt: Date | null,
+    public readonly createdAt: Date,
+    public readonly updatedAt: Date,
+    public readonly lines: readonly ReturnLine[],
+    /**
+     * When an OPERATOR matched this orphan to an order, and who (#2372).
+     *
+     * NULL for a return attributed at ingestion and for one the #2332 reconcile
+     * resolved — see the ORM column's docblock for why the distinction is worth a
+     * column at all.
+     *
+     * **Appended after `lines`, and defaulted, deliberately.** This constructor is
+     * positional with six call sites, and the docblock above warns that adjacent
+     * `string | null` parameters make a mis-ordered call type-check. Appending after
+     * the one non-nullable trailing parameter means a missing argument cannot bind to
+     * the wrong slot; inserting these beside the four timestamps would be exactly that
+     * silent mis-binding. Extend this constructor the same way.
+     */
+    public readonly matchedAt: Date | null = null,
+    public readonly matchedByUserId: string | null = null,
+    /**
+     * Per-return counter rollup, for the derived stage (#2377, spec § 3.2).
+     *
+     * **`null` means "this read did not load counters", never "all zero".** The
+     * LIST projection carries no lines (loading every line of every row to
+     * compute six integers is not what a header-shaped read is for), so it
+     * aggregates them in SQL and populates this. The DETAIL read carries real
+     * `lines` and derives its stage from those, so it leaves this `null`.
+     *
+     * A zeroed default would claim "nothing advised, nothing received" for a
+     * fully-disposed return and render `Awaiting parcel` over it.
+     *
+     * *Alternative considered and rejected*: a `ReturnListRow { record, counters }`
+     * projection. Cleaner in the abstract, but it forces
+     * `IReturnsService.listReturns` to change its return type and the controller
+     * to zip two collections.
+     */
+    public readonly counters: ReturnStageCounters | null = null,
+    /**
+     * Does this return hold a restock the master refused and nobody attested
+     * (#2381, spec § 5.4)?
+     *
+     * **A SIBLING of `counters`, deliberately never a member of it.** It is
+     * fetched by the same aggregate query, but the fetch mechanism must not
+     * dictate the projection shape: `ReturnStageCounters` is the input
+     * `deriveReturnStage` computes from, and #2377 was deliberate that the stage
+     * derives from counters ALONE. A boolean fact living inside that type would
+     * silently widen the input to a derivation that must not see it.
+     *
+     * **`null` means "this read did not report it", never `false`.** `false`
+     * asserts the operator's stock is fine; on an unreadable or
+     * counters-less read that is a claim OpenLinker is not entitled to make.
+     * The detail read leaves it `null` and surfaces the blocks themselves.
+     */
+    public readonly restockBlocked: boolean | null = null,
+    /**
+     * The OMS inert states reported against this return (#2352), one entry per
+     * reporting producer. Empty when nothing is reported.
+     *
+     * Carries only the states that are FACTS — today `restock-blocked` (RB-L),
+     * whose producer is the returns-custody body. It deliberately does NOT carry
+     * the orphan state (OR-P): that is derived from `internalOrderId IS NULL` by
+     * {@link isOrphan}, and this entity's own docblock says in terms that there
+     * must not be a second definition of it. A persisted OR-P entry would be
+     * exactly that second definition, free to disagree with the bucket and the
+     * trigger block about one row.
+     *
+     * Appended last — positional constructor.
+     */
+    public readonly omsAttention: readonly AuthorityAttentionEntry[] = []
+  ) {}
+
+  /**
+   * Is this return unattributed — i.e. does OL not know which order it belongs to?
+   *
+   * **This is THE definition of orphan, and there must not be a second one.** Every
+   * consumer derives from `internalOrderId IS NULL`: the downstream-trigger guard
+   * (`IReturnsService.assertAttributedForTrigger`), the orphan-bucket count and list
+   * (`IDX_returns_orphans`' predicate), the re-attribution candidate query, and #2334's
+   * read DTO. A second rule spelled anywhere else is how the bucket and the block start
+   * disagreeing about the same row.
+   *
+   * Pure and synchronous — a function of one already-loaded field, per ADR-011's bounded
+   * allowance for read-only derivations on an otherwise anemic entity.
+   */
+  isOrphan(): boolean {
+    return this.internalOrderId === null;
+  }
+
+  /**
+   * Every OMS inert state this return currently carries, persisted AND derived.
+   *
+   * The single place the two mechanisms are joined, so no consumer has to
+   * remember that OR-P is derived while RB-L is stored — the distinction is an
+   * implementation fact about where a state can be recomputed from, never
+   * something an operator surface should encode.
+   *
+   * Pure and synchronous, a function of already-loaded fields (ADR-011).
+   */
+  attentionReasons(): readonly AuthorityAttentionReason[] {
+    const reasons = this.omsAttention.map((entry) => entry.reason);
+    return this.isOrphan() ? [...reasons, 'return-unmatched'] : reasons;
+  }
+}

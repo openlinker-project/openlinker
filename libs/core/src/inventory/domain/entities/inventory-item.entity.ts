@@ -11,6 +11,11 @@
  * the table for debugging/history rather than hard-deleted. A variant that
  * reappears clears the flag on its next successful upsert.
  *
+ * `sourceConnectionId` is the connection whose sync owns the position (ADR-058
+ * ladder step (i), #2314). It defaults to `null`, which means "provenance
+ * unknown" — the legitimate pre-#2317-backfill state of every existing row, not
+ * an error.
+ *
  * @module libs/core/src/inventory/domain/entities
  */
 export class InventoryItem {
@@ -23,6 +28,7 @@ export class InventoryItem {
     public readonly locationId: string | null,
     public readonly updatedAt: Date,
     public readonly isStale: boolean = false,
+    public readonly sourceConnectionId: string | null = null,
   ) {}
 }
 

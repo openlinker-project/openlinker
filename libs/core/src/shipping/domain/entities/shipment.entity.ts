@@ -24,6 +24,7 @@
  * @module libs/core/src/shipping/domain/entities
  */
 
+import type { ShipmentDirection } from '../types/shipment-direction.types';
 import type { ShipmentStatus } from '../types/shipment-status.types';
 import type { ShippingMethod } from '../types/shipping-method.types';
 import type { DeliveryIntent } from '../types/delivery-intent.types';
@@ -100,5 +101,71 @@ export class Shipment {
     // the first row of that model, not a competing half-measure.
     // Appended last for the same anti-collision rationale as the fields above.
     public readonly waybillRelayedAt: Date | null,
+    // Which way the goods travel (#2373, ADR-060). `'outbound'` is the seller
+    // shipping to a buyer — every row that existed before this field. A return
+    // label shares the table because it IS a shipment (same carrier, same
+    // waybill, same tracking poll), so the discriminator is what keeps the
+    // branch-1 duplicate guard and every read predicate honest.
+    //
+    // Appended at the END of the parameter list for the same anti-collision
+    // rationale as the fields above — do not splice it into the middle. It is
+    // no longer the final parameter: #2347's `reservationConsumedAt` was
+    // appended after it when the reservations ledger merged, which is the
+    // correct way to extend this constructor and is why this comment says
+    // "appended at the end" rather than "last". Required (no default) so every
+    // construction site is forced to state its cohort.
+    public readonly direction: ShipmentDirection,
+    // When this shipment's order had its held reservations consumed (#2347).
+    // The second claim marker on this entity, and the same shape as
+    // `waybillRelayedAt` above one concern over: claimed conditionally
+    // (`WHERE reservation_consumed_at IS NULL`), so at-most-once is a database
+    // fact rather than a convention.
+    //
+    // It exists because `ShipmentDispatchService` SHORT-CIRCUITS on an already
+    // active shipment (the same early return that made #1947 necessary), so
+    // hanging "consume the reservation" off the dispatch call loses it on any
+    // retry and the hold sits `held` until the expiry sweep — which, per
+    // #2346's fail-closed posture, extends rather than releases. Understated
+    // ATP, indefinitely.
+    //
+    // What this marker is NOT: the guard against a double decrement. That is
+    // the ledger's own `status = 'held'` predicate, which is why the sweep
+    // consumes FIRST and claims SECOND — a process kill between the two then
+    // converges on the next tick instead of stranding the hold forever. See
+    // `IShipmentReservationConsumeService`.
+    //
+    // Also the durable answer to "did this order already consume?", which is
+    // what #2348's cancelled-after-dispatch path needs so it cannot double
+    // restore.
+    // Appended last for the same anti-collision rationale as every field above.
+    public readonly reservationConsumedAt: Date | null,
+    // The `FulfillmentWork` this shipment satisfies (#2402), or `null`.
+    //
+    // `null` is the ORDINARY state, not a migration artefact: every shipment
+    // predating the OMS, and every shipment for an order the router never
+    // touched, legitimately satisfies no work.
+    //
+    // Reference by VALUE with no foreign key — the cross-aggregate precedent
+    // (`order_changes`, `refund_records`, `returns.internalOrderId`). A
+    // shipment is not part of a work: it outlives it, is queried on its own,
+    // and its dispatch path already takes a per-order lock, so a real FK would
+    // buy referential tidiness at the cost of cross-table lock coupling on a
+    // hot write path. A real FK stays reserved for a part-of-its-parent child
+    // (`return_lines.returnId ON DELETE CASCADE`).
+    //
+    // ASSIGNED AT MOST ONCE — and note precisely what makes that structural.
+    // It is NOT write-once-at-creation: `claimFulfillmentWorkLink` writes it
+    // outside creation, to repair a branch-1 row minted before its order was
+    // routed. Its absence from `UpdateShipmentInput` therefore keeps the
+    // ORDINARY patch path away from the column, but it is the `WHERE
+    // "fulfillmentWorkId" IS NULL` guard on that claim — not the type — that
+    // makes at-most-once true against two concurrent writers. It carries NO
+    // `assignmentAttempt` companion — the attempt lives on the work row where
+    // #2399's conditional UPDATE claims it, and it legitimately advances after
+    // this shipment exists (a re-assignment does not un-ship a parcel), so a
+    // copy here would go stale with no writer able to correct it.
+    //
+    // Appended last for the same anti-collision rationale as every field above.
+    public readonly fulfillmentWorkId: string | null,
   ) {}
 }

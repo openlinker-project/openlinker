@@ -13,6 +13,7 @@
  * @see nav-registry.ts — `BASE_NAV_GROUPS` data + `buildNavGroups` helper
  * @see breadcrumbs.ts — `resolveCrumbFromMatches` consumes `isCrumbHandle`
  */
+import type { Permission } from '../shared/auth/session.types';
 import type { NavCounts } from './hooks/use-nav-counts';
 
 /**
@@ -35,6 +36,22 @@ export interface LiveNavItem {
   countKey?: NavCountKey;
   end?: boolean;
   label: string;
+  /**
+   * Declarative PERMISSION gate for a single item (#2358 review I5).
+   *
+   * `requiresRole` on a group cannot express this case: `/automations` lives in
+   * the ungated `Operations` group alongside nine items every role may open, and
+   * its own API is `@Roles('admin', 'operator')` — so a `viewer` was shown a nav
+   * entry that 403s on the first request it makes. A permission is also the
+   * right axis rather than a role list: `ROLE_PERMISSIONS` on the backend is the
+   * single place the role→capability map lives, and `automations:read` is
+   * exactly the fact this gate needs (see `usePermission`, which every other
+   * affordance in the app already resolves through).
+   *
+   * An item declaring nothing is visible to every authenticated session, which
+   * is the pre-existing behaviour of all other items.
+   */
+  requiresPermission?: Permission;
   to: string;
 }
 

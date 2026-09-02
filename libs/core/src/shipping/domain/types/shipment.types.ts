@@ -23,16 +23,37 @@
  * @module libs/core/src/shipping/domain/types
  */
 
+import type { ShipmentDirection } from './shipment-direction.types';
 import type { ShipmentStatus } from './shipment-status.types';
 import type { ShippingMethod } from './shipping-method.types';
 import type { DeliveryIntent } from './delivery-intent.types';
 
 export interface CreateShipmentInput {
+  /**
+   * The `FulfillmentWork` this shipment satisfies (#2402). Optional, so every
+   * pre-#2402 caller is byte-identical; omitted means the shipment satisfies no
+   * work, which is the ordinary case for an unrouted order.
+   *
+   * Assigned at most once. There is deliberately no counterpart on
+   * `UpdateShipmentInput`, so the ordinary patch path cannot rewrite a row's
+   * provenance — but the column IS writable after creation, by
+   * `claimFulfillmentWorkLink`, whose `WHERE ... IS NULL` guard is what
+   * actually makes at-most-once hold.
+   */
+  fulfillmentWorkId?: string;
+
   /** Internal order id (`ol_order_*`). */
   orderId: string;
   /** Shipping-provider connection that will issue the label, or the OMP
    * connection for branch-1 projection rows. */
   connectionId: string;
+  /**
+   * Which way the goods travel (#2373, ADR-060). Defaults to `'outbound'` in
+   * the repository's entity builder — the ONE application-side default, and
+   * the reason the DB column carries none. Omitting it therefore preserves
+   * every pre-#2373 caller byte for byte; a return label states `'return'`.
+   */
+  direction?: ShipmentDirection;
   /** Which shipping shape this attempt produces (the carrier-specific method
    * the seam resolved from `deliveryIntent`). */
   shippingMethod: ShippingMethod;

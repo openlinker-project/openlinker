@@ -25,6 +25,9 @@ export type {
   TerminalShipmentStatus,
 } from './domain/types/shipment-status.types';
 
+export { ShipmentDirectionValues } from './domain/types/shipment-direction.types';
+export type { ShipmentDirection } from './domain/types/shipment-direction.types';
+
 export { ShippingMethodValues, SHIPPING_METHOD } from './domain/types/shipping-method.types';
 export type { ShippingMethod } from './domain/types/shipping-method.types';
 export { DeliveryIntentValues, DELIVERY_INTENT } from './domain/types/delivery-intent.types';
@@ -119,6 +122,7 @@ export type { LabelDocument } from './domain/types/label-document.types';
 export { ShipmentNotFoundException } from './domain/exceptions/shipment-not-found.exception';
 export { UndispatchableResolutionException } from './domain/exceptions/undispatchable-resolution.exception';
 export { OrderNotDispatchablePaymentStatusException } from './domain/exceptions/order-not-dispatchable-payment-status.exception';
+export { OrderNotDispatchableHeldException } from './domain/exceptions/order-not-dispatchable-held.exception';
 export { ShipmentNotCancellableException } from './domain/exceptions/shipment-not-cancellable.exception';
 export { ShipmentCancellationNotSupportedException } from './domain/exceptions/shipment-cancellation-not-supported.exception';
 export { PickupPointFinderNotSupportedException } from './domain/exceptions/pickup-point-finder-not-supported.exception';
@@ -158,6 +162,14 @@ export type { IShipmentCancellationService } from './application/interfaces/ship
 // Application — label-document fetch seam (#884). Interface only; the service
 // is injected via SHIPMENT_LABEL_SERVICE_TOKEN.
 export type { IShipmentLabelService } from './application/interfaces/shipment-label.service.interface';
+
+// Application — reservation-consume sweep seam (#2347). Interface + I/O types
+// only; the service is injected via SHIPMENT_RESERVATION_CONSUME_SERVICE_TOKEN.
+export type {
+  IShipmentReservationConsumeService,
+  ConsumeShipmentReservationsInput,
+  ConsumeShipmentReservationsResult,
+} from './application/services/shipment-reservation-consume.service.interface';
 
 // Application — pickup-point lookup seam (#766). Interface only; the service is
 // injected via PICKUP_POINT_LOOKUP_SERVICE_TOKEN.

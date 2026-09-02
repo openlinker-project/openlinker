@@ -18,17 +18,21 @@ import cookieParser from 'cookie-parser';
 import { VersioningType } from '@nestjs/common';
 import { createIntegrationTestHarness } from '@openlinker/test-kit';
 import { AppModule } from '../../src/app.module';
+import { buildGlobalExceptionFilters } from '../../src/common/filters/global-filters';
 import { API_VERSION } from '../../src/app-info/app-info.types';
-import { CapabilityNotSupportedFilter } from '../../src/common/filters/capability-not-supported.filter';
-import { ConnectionExceptionFilter } from '../../src/common/filters/connection-exception.filter';
 
 const harness = createIntegrationTestHarness({
   imports: [AppModule],
   // Mirror `main.ts`'s global exception filters so int-specs see the same
-  // HTTP status mapping the running app does (domain exceptions → 400/404/409
-  // rather than a default 500).
+  // HTTP status mapping the running app does (domain exceptions →
+  // 400/404/409/422/503 rather than a default 500). The list is the FULL set
+  // main.ts registers — a partial mirror makes an int-spec assert a 500 the
+  // running app never returns, which is a passing test about the wrong app.
   configureApp: (app) => {
-    app.useGlobalFilters(new CapabilityNotSupportedFilter(), new ConnectionExceptionFilter());
+    // The SAME roster main.ts registers, from the one producer — a second copy
+    // here is a copy that silently stops matching, and this copy is what decides
+    // what every status-code assertion in the suite is really testing.
+    app.useGlobalFilters(...buildGlobalExceptionFilters());
     // Mirror main.ts's URI versioning (#1133) so int-specs exercise the same
     // `/v1` routing prod serves. Only the version-neutral routes (the `/webhooks`
     // ingress and the root `/`) stay reachable without the prefix.
@@ -62,7 +66,34 @@ const harness = createIntegrationTestHarness({
     // the rest but listing in dependency order keeps intent clear).
     'identifier_mappings',
     'sync_jobs',
+    // reservations (#2343) — OL's advisory reservation ledger. Listed BEFORE
+    // `inventory_items` in keeping with the child-first note above: it is the
+    // only table here holding a real ORM FK to it (ON DELETE RESTRICT, so a
+    // position carrying live reservations cannot vanish). Listing it also keeps
+    // each case's `olReservedQuantity` starting point honest.
+    'reservations',
+    // #2349 — shortfall episodes carry NO foreign key (an episode is evidence
+    // about a position and must outlive it), so they are invisible to the
+    // CASCADE closure walk and must be listed explicitly.
+    'reservation_shortfall_episodes',
     'inventory_items',
+    // inventory_locations (#2313) — operator-authored locations. Like
+    // category_mappings and fulfillment_routing_rules, its FK lives in the
+    // migration rather than the ORM decorators, so the synchronize-built test
+    // schema has nothing to cascade from `connections`. And even in a
+    // migration-built schema that FK is ON DELETE SET NULL, which CLEARS the
+    // column rather than removing the row — deliberately, since an operator's
+    // warehouse outlives the integration. Either way nothing removes these rows,
+    // so truncate explicitly or a location leaks into the next case and collides
+    // on UQ_inventory_locations_code.
+    'inventory_locations',
+    // oms_routing_rules (#2408) — the OL router's ordered ruleset. Like
+    // inventory_locations above, it carries NO ORM foreign key to `connections`
+    // (the plugin owns its own table and the operator's ruleset outlives any one
+    // integration), so the harness's CASCADE-closure walk cannot reach it. Left
+    // unlisted, a rule leaks into the next case and collides on
+    // UQ_oms_routing_rules_live_name.
+    'oms_routing_rules',
     'order_records',
     // order_line_items (#1985) — the per-line analytics projection. No
     // ORM/migration FK to order_records (plain indexed text column, same
@@ -102,6 +133,47 @@ const harness = createIntegrationTestHarness({
     // the invoice_records precedent); truncate explicitly so each refund case
     // starts clean.
     'refund_records',
+    // return_lines / returns (#2327) — the OL-owned return aggregate. The ONE
+    // FK is return_lines -> returns (ON DELETE CASCADE); neither
+    // sourceConnectionId nor internalOrderId carries one (the refund_records
+    // precedent), so nothing cascades in from connections or order_records and
+    // `truncateTables`' CASCADE walk would never reach either table. Listed
+    // child-first for readability — the cascade makes the order immaterial.
+    // return_line_events (#2370) — the append-only per-line act ledger. It
+    // carries NO FK to `return_lines` (this context's posture: the one FK is
+    // return_lines -> returns), so `truncateTables`' CASCADE walk cannot reach
+    // it from either table below and it must be listed in its own right —
+    // otherwise acts leak between cases and collide on
+    // UQ_return_line_events_line_seq.
+    'return_line_events',
+    'return_lines',
+    'returns',
+    // order_changes (#2333) — the ADR-044 change-proposal record. No FK to
+    // order_records (the refund_records precedent of an indexed reference by
+    // value), so nothing cascades in and `truncateTables`' CASCADE walk would
+    // never reach it; truncate explicitly or a proposal from one case still
+    // holds its target's slot in the next.
+    'order_changes',
+    // order_holds (#2338) — the OL-owned hold record. Same shape as
+    // order_changes above: no FK to order_records (the refund_records precedent
+    // of an indexed reference by value), so nothing cascades in and
+    // `truncateTables`' CASCADE walk would never reach it. Truncate explicitly
+    // or a hold from one case still holds its order's slot in the next — and
+    // because the unique index is partial on OPEN rows, that leak surfaces as a
+    // spurious `OrderAlreadyOnHoldError` in an unrelated spec.
+    'order_holds',
+    // automation_* (#2358) — the OMS automation v1 storage. NOTHING here
+    // carries an FK: not runs/firings -> automation_rules (a deleted rule must
+    // neither destroy its history nor be blocked by it), and not subjectId ->
+    // order_records (the order_changes precedent of an indexed reference by
+    // value). `truncateTables`' CASCADE walk therefore reaches none of the
+    // three; truncate explicitly, or a firing recorded by one case still
+    // suppresses that (rule, subject) pair for the next — which is exactly the
+    // at-most-once behaviour the table exists to provide, and exactly the
+    // wrong behaviour between test cases.
+    'automation_runs',
+    'automation_trigger_firings',
+    'automation_rules',
     // destination_categories (#1979) — the taxonomy projection. Marketplace
     // rows are owner-keyed with NO connectionId, so nothing cascades from
     // connections; truncate explicitly or an owner tree leaks between cases.
@@ -150,6 +222,23 @@ const harness = createIntegrationTestHarness({
     // — without this a mapping written by one case is still there for the
     // next, and the MCP write-refusal assertion (#1488) counts rows.
     'category_mappings',
+    // fulfillment_work_lines / fulfillment_holds / fulfillment_works (#2392) —
+    // the OL-owned work aggregate. Its two FKs (lines -> works, holds -> works,
+    // both ON DELETE CASCADE) live in the MIGRATION rather than the ORM
+    // decorators, so the synchronize-built test schema has nothing to cascade
+    // from and the closure walk cannot reach these tables. Children first.
+    'fulfillment_work_lines',
+    'fulfillment_holds',
+    // fulfillment_progress_claims (#2400) — the at-most-once progress gate. Its
+    // FK to fulfillment_works is migration-only too, so it is likewise
+    // unreachable by the closure walk. Before `fulfillment_works`, being a child.
+    'fulfillment_progress_claims',
+    'fulfillment_works',
+    // routing_decisions (#2394) — the routing INTENT row. Carries no FK at all
+    // (both its references are cross-aggregate by value), so nothing cascades
+    // into it and it must be listed explicitly or a live decision written by
+    // one case refuses the next case's claim on the same order id.
+    'routing_decisions',
     // fulfillment_routing_rules is connection-scoped config (#832). Listed
     // explicitly because — like connection_carrier_mappings — its FKs live in
     // the migration, not the ORM decorators, so the synchronize-built test
@@ -206,6 +295,10 @@ const harness = createIntegrationTestHarness({
     // enabled it fires against the empty integration database and keeps the event
     // loop alive, which is the Jest hang this whole block exists to prevent.
     OL_MASTER_PRODUCT_RECONCILE_ENABLED: 'false',
+    // Connection-provenance backfill (#2317). Also defaults ON, for the same
+    // reason and with the same consequence - left enabled it ticks against the
+    // integration database every 5 minutes and keeps the event loop alive.
+    OL_INVENTORY_PROVENANCE_BACKFILL_ENABLED: 'false',
     OL_PICKUP_POINT_REFRESH_ENABLED: 'false',
     OL_REGULATORY_RECONCILE_ENABLED: 'false',
     OL_OFFLINE_RESUBMIT_ENABLED: 'false',

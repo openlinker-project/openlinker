@@ -19,6 +19,7 @@ import {
   AUTO_ISSUE_TRIGGER_SERVICE_TOKEN,
   INVOICE_SERVICE_TOKEN,
 } from '@openlinker/core/invoicing';
+import { RESERVATION_SERVICE_TOKEN } from '@openlinker/core/inventory';
 import { InvoicingIssueHandler } from '../../src/sync/handlers/invoicing-issue.handler';
 import { SyncJobHandlerRegistry } from '../../src/sync/handlers/sync-job-handler.registry';
 
@@ -61,6 +62,20 @@ describe('Invoicing Auto-Issue — DI boot (HARD GATE, OL #1120)', () => {
     const invoiceService = harness.get(INVOICE_SERVICE_TOKEN);
     expect(invoiceService).toBeDefined();
     expect(typeof (invoiceService as { issueInvoice?: unknown }).issueInvoice).toBe('function');
+  });
+
+  it('the real container resolves RESERVATION_SERVICE_TOKEN (OrdersModule → InventoryModule; no require cycle, #2344)', () => {
+    // A Nest-acyclic module graph can still die at NestFactory.create on a
+    // CommonJS require cycle — invisible to type-check, lint, unit specs AND
+    // check-cross-context-imports (docs/lessons.md, #2154/#2157). Since
+    // `orders.module.ts` value-imports `InventoryModule`, the standing invariant
+    // is that nothing reachable from the inventory barrel may top-level
+    // value-import `@openlinker/core/orders`. This boot is what proves it.
+    const reservations = harness.get(RESERVATION_SERVICE_TOKEN);
+    expect(reservations).toBeDefined();
+    expect(typeof (reservations as { reserveForOrder?: unknown }).reserveForOrder).toBe(
+      'function'
+    );
   });
 
   it('invoicing.issue is registered in the handler registry after onModuleInit', () => {

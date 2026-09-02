@@ -17,6 +17,8 @@ import type { Order } from '../../../domain/types/order.types';
 import type { IncomingOrder } from '../../../domain/types/incoming-order.types';
 import type { IOrderFxStampService } from '../../interfaces/order-fx-stamp.service.interface';
 import type { IReportingCurrencySettingsService } from '@openlinker/core/currency';
+import type { IAutomationTriggerEmissionService } from '@openlinker/core/automation';
+import { AUTOMATION_TRIGGER_EMISSION_SERVICE_TOKEN } from '@openlinker/core/automation';
 import { REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN } from '@openlinker/core/currency';
 import {
   ORDER_FX_STAMP_SERVICE_TOKEN,
@@ -26,6 +28,15 @@ import {
 
 describe('OrderRecordService', () => {
   let service: OrderRecordService;
+  // T5 emission is exercised in `order-record-packed.service.spec.ts`; here it is
+  // an inert stub so the constructor stays honest without implying participation.
+  const automationEmission = {
+    emit: jest.fn().mockResolvedValue({
+      firedRuleIds: [],
+      alreadyFiredRuleIds: [],
+      evaluatedRuleCount: 0,
+    }),
+  } as unknown as IAutomationTriggerEmissionService;
   let repository: jest.Mocked<OrderRecordRepositoryPort>;
   let fxStamp: jest.Mocked<IOrderFxStampService>;
   let lineItemRepository: jest.Mocked<OrderLineItemRepositoryPort>;
@@ -47,6 +58,8 @@ describe('OrderRecordService', () => {
       updateItemResolutionFailure: jest.fn(),
       markCancelled: jest.fn(),
       updateSalesDocumentBlock: jest.fn(),
+      updateOmsAttention: jest.fn(),
+      countOrdersWithOmsAttention: jest.fn(),
       getDailyOrderAggregates: jest.fn(),
       getMedianOrderValue: jest.fn(),
       getNetMedianOrderValue: jest.fn(),
@@ -92,6 +105,10 @@ describe('OrderRecordService', () => {
         {
           provide: ORDER_LINE_ITEM_REPOSITORY_TOKEN,
           useValue: lineItemRepository,
+        },
+        {
+          provide: AUTOMATION_TRIGGER_EMISSION_SERVICE_TOKEN,
+          useValue: automationEmission,
         },
         {
           provide: REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN,
@@ -194,7 +211,7 @@ describe('OrderRecordService', () => {
   describe('persistOrder - PII enabled', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings, automationEmission);
     });
 
     it('should persist order with all PII fields when PII storage is enabled', async () => {
@@ -377,6 +394,36 @@ describe('OrderRecordService', () => {
       expect(callArg.buyerTaxId).toBeNull();
     });
 
+    it('should stamp the shipping-address hash from the un-redacted address (#2395)', async () => {
+      const order = createMockOrder();
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
+      expect(callArg.shippingAddressHash).toEqual(expect.any(String));
+      expect(callArg.shippingAddressHash).not.toBe('');
+    });
+
+    it('should leave the shipping-address hash null when the order has no shipping address (#2395)', async () => {
+      const order = createMockOrder();
+      order.shippingAddress = undefined as never;
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
+      expect(callArg.shippingAddressHash).toBeNull();
+    });
+
+    // The blank-hash guard ("a blank string is itself a shared grouping key") is
+    // asserted where it actually protects routing rather than mocked into being
+    // here: `routing-ship-to.types.spec.ts` covers it against `buildRoutingShipTo`,
+    // which is the function that decides whether a hash is forwarded to a router.
+    // Driving it from this suite needed a module mock of the shared config
+    // barrel purely to make a real hash return whitespace, which is machinery in
+    // service of a case the production hash cannot produce.
+
     it('should serialise Order.placedAt into the snapshot as an ISO string when present (#926)', async () => {
       const order = createMockOrder();
       order.placedAt = new Date('2026-05-31T16:00:00.000Z');
@@ -524,7 +571,7 @@ describe('OrderRecordService', () => {
   describe('persistOrder - PII disabled', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'false';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings, automationEmission);
     });
 
     it('should store no buyer tax id at all when PII storage is disabled (#2599)', async () => {
@@ -538,6 +585,33 @@ describe('OrderRecordService', () => {
       const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       expect(callArg.buyerTaxId).toBeNull();
       expect(callArg.orderSnapshot.billingAddress).not.toHaveProperty('taxId');
+    });
+
+    it('should still stamp the shipping-address hash when PII storage is disabled (#2395)', async () => {
+      // The whole point: `RoutingShipTo`'s degraded arm serves exactly this
+      // deployment, so the hash must NOT be PII-gated the way `buyerTaxId` is.
+      // It is also derived from the LIVE address, so it must not collapse to
+      // the one-hash-per-country value that hashing the redacted snapshot
+      // would produce - assert it differs between two distinct addresses in
+      // the same country.
+      const order = createMockOrder();
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+      const first = repository.upsertWithLineItems.mock.calls[0][0].shippingAddressHash;
+      expect(first).toEqual(expect.any(String));
+      expect(first).not.toBe('');
+
+      const other = createMockOrder();
+      other.shippingAddress = {
+        ...other.shippingAddress!,
+        address1: 'Somewhere Else 999',
+        city: 'Gdansk',
+        postalCode: '80-001',
+      };
+      repository.upsertWithLineItems.mockClear();
+      await service.persistOrder(other, 'source-connection-123', 'event-457');
+      expect(repository.upsertWithLineItems.mock.calls[0][0].shippingAddressHash).not.toBe(first);
     });
 
     it('should persist order with sanitized addresses when PII storage is disabled', async () => {
@@ -629,7 +703,7 @@ describe('OrderRecordService', () => {
   describe('persistOrder — cancellation recorded via markCancelled (#1984)', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings, automationEmission);
     });
 
     it('never constructs the OrderRecord passed to upsertWithLineItems() with a non-null cancelledAt, even for a cancelled order', async () => {
@@ -700,7 +774,7 @@ describe('OrderRecordService', () => {
   describe('persistOrder - fulfillment rollup left to updateFulfillmentState (#2101)', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings, automationEmission);
     });
 
     it('never constructs the OrderRecord passed to upsertWithLineItems() with a fulfillment state', async () => {
@@ -721,7 +795,7 @@ describe('OrderRecordService', () => {
   describe('persist paths - destination sync state left to updateSyncStatus (#2140)', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings, automationEmission);
     });
 
     it('never constructs the OrderRecord passed to upsertWithLineItems() with sync state', async () => {
@@ -759,7 +833,7 @@ describe('OrderRecordService', () => {
   describe('persistIncomingSnapshot', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings, automationEmission);
     });
 
     it('should persist incoming snapshot with awaiting_mapping status', async () => {
@@ -823,7 +897,7 @@ describe('OrderRecordService', () => {
 
     it('should sanitize addresses in snapshot when PII is disabled', async () => {
       process.env.OL_STORE_PII = 'false';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings, automationEmission);
 
       const incoming = createMockIncomingOrder();
       const expectedRecord = new OrderRecord(
@@ -898,7 +972,7 @@ describe('OrderRecordService', () => {
 
     it('should omit customerEmail from the snapshot under hash-only PII mode (#948)', async () => {
       process.env.OL_STORE_PII = 'false';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings, automationEmission);
 
       const incoming = createMockIncomingOrder();
       repository.upsert.mockResolvedValue({} as OrderRecord);
@@ -949,7 +1023,7 @@ describe('OrderRecordService', () => {
   describe('persistIncomingSnapshot — cancellation recorded via markCancelled (#1984)', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings, automationEmission);
     });
 
     it('never constructs the OrderRecord passed to upsert() with a non-null cancelledAt, even for a cancelled order', async () => {

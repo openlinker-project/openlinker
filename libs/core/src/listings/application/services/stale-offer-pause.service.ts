@@ -173,6 +173,10 @@ export class StaleOfferPauseService implements IStaleOfferPauseService {
           schemaVersion: 1,
           offerId: target.externalOfferId,
           quantity: 0,
+          // #2285 — the stale transition IS the observation this write expresses, so
+          // a re-pause after a restock derives a fresh key instead of reusing a dead
+          // command id and leaving the offer selling.
+          observedAt: target.staleAt.toISOString(),
         },
         options: { dedupeKey },
       });
