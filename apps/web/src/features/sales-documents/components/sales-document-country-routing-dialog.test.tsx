@@ -864,9 +864,13 @@ describe('SalesDocumentCountryRoutingDialog — Reset country (#2189)', () => {
 
   it('should offer an explicit "Done" close action so the operator does not rely on Escape or a backdrop click', async () => {
     const onOpenChange = vi.fn();
+    // A configured country (a rule present) — Done closes directly with no
+    // gate; an unconfigured, unacknowledged country's close-time gate is
+    // covered separately (it opens a "Leave {country} unconfigured?" confirm
+    // instead of closing directly — see the close-time-gate tests above).
     const apiClient = createMockApiClient({
       salesDocumentRules: {
-        listRules: vi.fn().mockResolvedValue([]),
+        listRules: vi.fn().mockResolvedValue([makeRule('r1')]),
         listCountryDefaults: vi.fn().mockResolvedValue([]),
       },
     });
