@@ -27,6 +27,7 @@ import type {
   InventoryFilters,
   InventoryPagination,
   VariantAvailability,
+  VariantStockRow,
   ProductStockAggregate,
   DuplicatePositionReport,
 } from '../../domain/types/inventory.types';
@@ -117,7 +118,7 @@ export class InventoryQueryService implements IInventoryQueryService {
 
   async findAvailabilityByVariantIds(
     variantIds: readonly string[]
-  ): Promise<readonly VariantAvailability[]> {
+  ): Promise<readonly VariantStockRow[]> {
     // No zero-fill, deliberately — see the interface docblock. The
     // repository read already returns one row per variant that HAS
     // non-stale inventory rows and nothing for the rest, so this is a

@@ -13,6 +13,7 @@ import type {
   InventoryFilters,
   InventoryPagination,
   VariantAvailability,
+  VariantStockRow,
   ProductStockAggregate,
   DuplicatePositionReport,
 } from '../../domain/types/inventory.types';
@@ -62,10 +63,18 @@ export interface IInventoryQueryService {
    * "Out of stock" badge asserting something no adapter ever reported.
    * Ask for this read when the difference matters; keep the zero-filled one
    * when it does not.
+   *
+   * Returns the REPOSITORY-layer {@link VariantStockRow}, not the
+   * service-layer {@link VariantAvailability} (#2323/#2765 integration): this
+   * is a straight pass-through that consults no reservation ledger, so it
+   * cannot answer `availableToPromise`, and inventing one here is exactly
+   * what the #2323 shape split exists to prevent. A caller that must PUBLISH
+   * a quantity uses {@link getAvailabilityByVariantIds}; this read serves
+   * callers that RENDER stock.
    */
   findAvailabilityByVariantIds(
     variantIds: readonly string[]
-  ): Promise<readonly VariantAvailability[]>;
+  ): Promise<readonly VariantStockRow[]>;
 
   /**
    * Product-level stock aggregates for the given product IDs (#1720).
