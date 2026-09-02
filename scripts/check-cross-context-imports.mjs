@@ -105,44 +105,6 @@ const ALLOW_LIST = new Map([
   // IProductsService and dropped from this list. See PR for #718.)
   // ─── Core-scope (#713/#721) — tracked in #718 ───────────────────────
 
-  // inventory → products.ProductRepositoryPort — rewire via IProductsService
-  [
-    'libs/core/src/inventory/application/services/inventory-query.service.ts',
-    new Set(['ProductRepositoryPort']),
-  ],
-  [
-    'libs/core/src/inventory/application/services/__tests__/inventory-query.service.spec.ts',
-    new Set(['ProductRepositoryPort']),
-  ],
-
-  // orders → products.ProductVariantRepositoryPort — rewire via IProductsService
-  [
-    'libs/core/src/orders/application/services/order-item-ref-resolver.service.ts',
-    new Set(['ProductVariantRepositoryPort']),
-  ],
-  [
-    'libs/core/src/orders/application/services/__tests__/order-item-ref-resolver.service.spec.ts',
-    new Set(['ProductVariantRepositoryPort']),
-  ],
-
-  // listings → products.ProductVariantRepositoryPort — rewire via IProductsService
-  [
-    'libs/core/src/listings/application/services/offer-mapping-sync.service.ts',
-    new Set(['ProductVariantRepositoryPort']),
-  ],
-  [
-    'libs/core/src/listings/application/services/__tests__/offer-mapping-sync.service.spec.ts',
-    new Set(['ProductVariantRepositoryPort']),
-  ],
-  [
-    'libs/core/src/listings/application/services/offer-builder.service.ts',
-    new Set(['ProductVariantRepositoryPort']),
-  ],
-  [
-    'libs/core/src/listings/application/services/__tests__/offer-builder.service.spec.ts',
-    new Set(['ProductVariantRepositoryPort']),
-  ],
-
   // (Slice 2 of #718 — sync repository-port callers — rewired via
   // ISyncJobsService + ISyncCursorsService and dropped from this list.
   // See PR for #718 slice 2.)
@@ -793,6 +755,39 @@ async function main() {
     (sum, set) => sum + set.size,
     0,
   );
+
+  // A stale allow-list row permits nothing today and silently RE-permits the
+  // coupling the moment someone reintroduces it (#2791). Eight rows sat here
+  // after their services were rewired under #718, so four core services were
+  // free to re-acquire a `products` repository port with the gate still green.
+  // The row is the licence; an expired licence must be surrendered, not filed.
+  const staleAllowRows = [];
+  for (const [file, symbols] of ALLOW_LIST) {
+    let source;
+    try {
+      source = await readFile(join(repoRoot, file), 'utf8');
+    } catch {
+      staleAllowRows.push({ file, symbols: [...symbols], why: 'the file does not exist' });
+      continue;
+    }
+    const unused = [...symbols].filter((symbol) => !new RegExp(`\\b${symbol}\\b`).test(source));
+    if (unused.length > 0) {
+      staleAllowRows.push({ file, symbols: unused, why: 'the file no longer names the symbol' });
+    }
+  }
+
+  if (staleAllowRows.length > 0) {
+    console.error('✗ check-cross-context-imports: stale ALLOW_LIST row(s).\n');
+    for (const { file, symbols, why } of staleAllowRows) {
+      console.error(`  ${file}`);
+      console.error(`    ${symbols.join(', ')} — ${why}`);
+    }
+    console.error(
+      '\n  Drop the row. While it stands it approves nothing and would silently re-approve\n' +
+        '  the coupling if it came back, which is how the rewire under #718 went unnoticed.',
+    );
+    process.exit(1);
+  }
 
   if (violations.length === 0) {
     console.log(

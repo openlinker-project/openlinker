@@ -26,10 +26,26 @@
  *   node scripts/check-stream-writes.mjs --self-check
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const ROOTS = ['libs', 'apps'];
-const REPO_ROOT = process.cwd();
+/**
+ * Anchored to this file, never to `process.cwd()` (#2792). Under the CWD the
+ * walk found nothing, `scanned` stayed 0, and the run printed
+ * "0 source file(s) checked. All writes are bounded." and exited 0 — the only
+ * guard against an unbounded Redis stream reporting success for having looked
+ * at nothing. A pre-commit hook, an editor task or a CI step that does not
+ * happen to start at the repo root was enough to disarm it.
+ */
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+/**
+ * A run that scanned nothing is a broken run, not a clean one. Belt to the
+ * anchoring above: it also fails a future `ROOTS` typo or an over-eager
+ * `TEST_PATTERN`, neither of which the anchor can catch.
+ */
+const MIN_SCANNED_FILES = 100;
 
 /**
  * Files permitted to call `.xAdd(` directly, with the reason.
@@ -271,6 +287,16 @@ function main() {
     console.error('  dynamic-seam: `xAddBoundedDynamic` skips the call-site type check and');
     console.error('                exists only for `EventPublisherPort.publish`, whose stream');
     console.error('                name is dynamic by contract. Use `xAddBounded` instead.');
+    process.exit(1);
+  }
+
+  if (scanned < MIN_SCANNED_FILES) {
+    console.error(
+      `✗ check-stream-writes: only ${scanned} source file(s) were scanned (expected at least ` +
+        `${MIN_SCANNED_FILES}).\n\n  The walk found almost nothing, so a clean result means the ` +
+        `scan is broken rather than\n  the tree. Check ROOTS/TEST_PATTERN and that ` +
+        `${REPO_ROOT} is the repository root.`,
+    );
     process.exit(1);
   }
 

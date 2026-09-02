@@ -40,11 +40,30 @@ import {
   writeFileSync,
   rmSync,
 } from 'node:fs';
-import { join, sep } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 
-const CORE_SRC = 'libs/core/src';
+/**
+ * Anchored to this file, never left relative to `process.cwd()` (#2792). From
+ * any other CWD `findTypesSubBarrels` hit its `existsSync(root)` guard, returned
+ * `[]`, and the run printed "0 <ctx>/types sub-barrel(s) checked" and exited 0 —
+ * the guard against a repository-port or ORM entity reaching a leaf context
+ * through a cycle-breaker reporting success for having looked at nothing.
+ */
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const CORE_SRC = join(REPO_ROOT, 'libs', 'core', 'src');
 const ALLOWED_RE_EXPORT_PREFIX = './domain/types/';
+
+/** orders, invoicing, fiscalization — the three ADR-authorized cycle-breakers. */
+const MIN_SUB_BARRELS = 3;
+
+/** Repo-relative, forward-slashed — the form the allow-list keys use. */
+function relFromRoot(file) {
+  return file.startsWith(REPO_ROOT + sep)
+    ? file.slice(REPO_ROOT.length + 1).split(sep).join('/')
+    : file.split(sep).join('/');
+}
 
 /**
  * Sub-barrels permitted to re-export a RUNTIME VALUE, and why.
@@ -108,6 +127,8 @@ function stripComments(source) {
  */
 function findTypesSubBarrels(root = CORE_SRC) {
   if (!existsSync(root)) return [];
+  // NOTE: callers other than the self-check must treat an empty result as a
+  // BROKEN RUN, not a clean one — see the guards in main().
   const candidates = [];
   for (const entry of readdirSync(root, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
@@ -282,7 +303,7 @@ function run() {
         violations.push({ file, specifier });
       }
     }
-    const normalized = file.split(sep).join('/');
+    const normalized = relFromRoot(file);
     const allowedSymbols = VALUE_EXPORT_ALLOWED.get(normalized) ?? new Map();
     for (const symbol of valueReExportsOf(source)) {
       if (!allowedSymbols.has(symbol)) {
@@ -317,6 +338,30 @@ function run() {
     for (const violation of valueExports) {
       console.error(`  ${violation.file}: re-exports the value '${violation.symbol}'`);
     }
+    process.exit(1);
+  }
+
+  // A run that discovered nothing is broken, not clean (#2792). Three
+  // cycle-breakers are authorized by `barrel-purity.spec.ts` and must be found.
+  if (files.length < MIN_SUB_BARRELS) {
+    console.error(
+      `✗ check-types-sub-barrels: discovered only ${files.length} <ctx>/types sub-barrel(s) ` +
+        `(expected at least ${MIN_SUB_BARRELS}) under ${CORE_SRC}.\n\n  Nothing was checked, so ` +
+        `a clean result would mean the discovery is broken rather than the tree.`,
+    );
+    process.exit(1);
+  }
+
+  // A stale allow-list row silences nothing while its author believes it does —
+  // and it is the shape that let #2791's eight dead rows sit unnoticed.
+  const discovered = new Set(files.map((f) => relFromRoot(f)));
+  const staleAllowRows = [...VALUE_EXPORT_ALLOWED.keys()].filter((f) => !discovered.has(f));
+  if (staleAllowRows.length > 0) {
+    console.error(
+      '✗ check-types-sub-barrels: allow-list row(s) name a sub-barrel that no longer exists.\n',
+    );
+    for (const row of staleAllowRows) console.error(`  ${row}`);
+    console.error('\n  Drop the row, or fix the path — it currently approves nothing.');
     process.exit(1);
   }
 
