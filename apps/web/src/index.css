@@ -3358,7 +3358,8 @@ a.delivery-rider-banner__button:focus-visible {
 }
 
 .data-table-skeleton__bar,
-.sales-document-market-row .skeleton-bar {
+.sales-document-market-row .skeleton-bar,
+.sales-document-market-section__summary-skeleton {
   display: block;
   height: 10px;
   width: 100%;
@@ -3418,7 +3419,8 @@ a.delivery-rider-banner__button:focus-visible {
 
 @media (prefers-reduced-motion: reduce) {
   .data-table-skeleton__bar,
-  .sales-document-market-row .skeleton-bar {
+  .sales-document-market-row .skeleton-bar,
+  .sales-document-market-section__summary-skeleton {
     animation: none;
     background-image: none;
   }
@@ -19471,14 +19473,14 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 }
 
 /* Loading skeleton (#2543) — sized off the real row above so arrival never
-   reflows the section. */
+   reflows the section. Shimmer + reduced-motion guard come from the shared
+   `data-table-skeleton__bar` primitive (extended above); only per-slot sizing
+   is page-local. */
 .sales-document-market-section__summary-skeleton {
-  display: block;
   width: min(32rem, 80%);
   height: 0.9375rem;
   margin-bottom: var(--space-4);
   border-radius: var(--radius-sm);
-  background: var(--bg-surface-muted);
 }
 
 .sales-document-market-row--skeleton {

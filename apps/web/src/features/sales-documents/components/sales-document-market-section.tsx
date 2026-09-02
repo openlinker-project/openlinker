@@ -94,7 +94,11 @@ export function SalesDocumentMarketSection({
   // #2543 — a background refetch (e.g. the error state's Retry, or React
   // Query's own focus/interval refetch) keeps the loaded rows visible but
   // must disable every action: the section already read `isLoading` above,
-  // so this branch only covers "loaded once, fetching again."
+  // so this branch only covers "loaded once, fetching again." This also
+  // fires on the default `refetchOnWindowFocus` past `staleTime`, so a brief
+  // tab switch disables every row action and announces "Refreshing
+  // markets…" — deliberate: a routing decision changed here is a fiscal
+  // fact, so a stale-looking action must not be clickable mid-refetch.
   const isBusy = marketsQuery.isFetching;
 
   return (
