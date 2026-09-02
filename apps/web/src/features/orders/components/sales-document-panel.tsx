@@ -38,25 +38,18 @@
  *      copy rules: the persisted reason is document-kind-agnostic, so this
  *      panel derives `kind` locally from its own candidate pool).
  *   3 / 4. Blocked-by-other-kind — the primary action for the OTHER document
- *      kind is disabled with an explanatory `alert--warning`, distinct in tone
- *      from state 2: this is a WRITE-PATH refusal (ADR-041 §3b — the document
- *      already exists on another connection), never a routing decision. It is
- *      derived PROACTIVELY from the two queries this panel already runs
- *      (`invoice.blocksIssuanceElsewhere` / `fiscalRecord.blocksFurtherRegistration`,
- *      mirrored client-side as `!canRetryInvoice` / `!canRetryFiscalReceipt` —
- *      see the inline comment at their computation), NOT by parsing a 409 from
- *      `OrderAlreadyHasFiscalReceiptException` / `OrderAlreadyHasInvoiceException`
- *      (#2157). Proactive prevention beats reactive error-parsing here: it also
- *      matches the existing `InvoiceConnectionLock` philosophy ("no Select, so
- *      the panel can no longer be talked into issuing a SECOND document") and
- *      sidesteps a real asymmetry — `invoicing.controller.ts` maps its 409 to a
- *      structured `{ error: 'OrderAlreadyHasFiscalReceiptException', ... }`
- *      body, but `fiscalization.controller.ts` maps its mirror-image 409 to a
- *      PLAIN `ConflictException(message)` (Nest's generic `error: 'Conflict'`
- *      shape), so message-text sniffing would be the only way to reach the
- *      same discriminator from that side. Both mutations still handle a
- *      defensive 409 (below) in case the proactive read races a concurrent
- *      write from elsewhere.
+ *      kind is simply ABSENT (never rendered, never disabled): a filled
+ *      `.doc-slot--filled` for one kind is already the whole statement that
+ *      the other kind cannot be started here — restating "invoice or
+ *      receipt, never both" as a standing warning banner every time an order
+ *      already has a document was pure noise (review finding, #2561
+ *      superseded). `canRetryInvoice` / `canRetryFiscalReceipt` still gate
+ *      each kind's action buttons directly at their render sites — a
+ *      terminal `rejected` failure is the one case a record does NOT block
+ *      the other kind, so the retry check is load-bearing, just no longer
+ *      paired with an explanatory alert. Both mutations still handle a
+ *      defensive 409 (below) in case a concurrent write from elsewhere
+ *      raced this read.
  *
  * KNOWN GAP — corrections are not rendered as a linked follow-up row: a
  * correction is stored as its own separate `InvoiceRecord` row (verified:
@@ -345,15 +338,6 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
     return null;
   }
 
-  // ── Derived: does the existing record on the OTHER kind's behalf forbid
-  // starting a NEW originating document here? Mirrors the backend's pure
-  // getters (`InvoiceRecord.blocksIssuanceElsewhere` /
-  // `FiscalRegistrationRecord.blocksFurtherRegistration`, #2157): both reduce
-  // to "a record exists and is not a safely-retryable rejected failure" —
-  // exactly `record !== null && !canRetry*(record)`. ──
-  const invoiceBlocks = invoice !== null && !canRetryInvoice(invoice);
-  const fiscalBlocks = fiscalRecord !== null && !canRetryFiscalReceipt(fiscalRecord);
-
   const showInvoiceSlot = invoice !== null;
   // Outstanding work opens the slot even with no record. Without that, an order
   // reopened in the window right after the operator asked would fall through to
@@ -557,11 +541,6 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
     );
   };
 
-  // ── Cross-kind block copy (states 3 / 4 — a WRITE-PATH refusal, distinct
-  // from the routing/gate-block reason below) ──
-  const registerBlockedByInvoice = showInvoiceSlot && invoiceBlocks && fiscalCandidates.length > 0;
-  const issueBlockedByReceipt = showFiscalSlot && fiscalBlocks && invoicingConnections.length > 0;
-
   // ── Empty-state routing/gate-block reason (state 2) ──
   //
   // The persisted block reason is document-kind-AGNOSTIC (#2156 resolves across
@@ -718,20 +697,27 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
             <div className="sales-document-panel__skeleton" aria-hidden="true" />
           ) : null}
 
+          {/* Review finding: the old copy restated the "one document" rule at
+              length but named no real action. OpenLinker genuinely cannot
+              resolve this itself — there's no void/cancel capability on
+              `InvoicingPort`, and it has no way to know which of the two
+              documents actually reached the buyer or the tax authority. The
+              honest next step is manual, at the provider level; the copy
+              says so directly instead of a vague "check both providers". */}
           {duplicateConnectionNames.length > 0 ? (
             <Alert tone="warning">
               <strong>
-                {t('invoice.panel.duplicateTitle', 'This order has documents on more than one connection.')}
+                {t('invoice.panel.duplicateTitle', 'Two invoices exist for this order')}
               </strong>{' '}
               {t(
                 'invoice.panel.duplicateBody',
-                'One sale should have one invoice. Below is the most recent record; another exists on',
-              )}{' '}
+                'Below is the most recent one, from {{connection}}. Also exists on:',
+              ).replace('{{connection}}', lock?.connection?.name ?? lock?.connectionId ?? '')}{' '}
               {duplicateConnectionNames.join(', ')}
               {'. '}
               {t(
                 'invoice.panel.duplicateAdvice',
-                'Check both providers and correct whichever document should not have been issued.',
+                "OpenLinker can't tell which one is correct, and can't void either from here — log into both providers, check which invoice the buyer actually received, and cancel or correct the wrong one there.",
               )}
             </Alert>
           ) : null}
@@ -971,20 +957,6 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
             </>
           ) : null}
 
-          {/* #2561 — this order already has a document; the override does not
-              reach here, so this is a plain fact with no dead action beside
-              it, never a disabled control. */}
-          {registerBlockedByInvoice ? (
-            <Alert
-              tone="warning"
-              title={t('salesDocument.blocked.receiptTitle', 'This order already has a document')}
-            >
-              {t(
-                'salesDocument.blocked.receiptBody',
-                'This order already has an invoice from {{connection}}. Invoice or receipt — never both for one sale. Void the invoice first if a receipt is what this order actually needs.',
-              ).replace('{{connection}}', lock?.connection?.name ?? lock?.connectionId ?? '')}
-            </Alert>
-          ) : null}
         </div>
       ) : null}
 
@@ -1153,19 +1125,6 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
             </>
           ) : null}
 
-          {/* #2561 — same rule as the invoice slot above: a plain fact, no
-              dead action beside it. */}
-          {issueBlockedByReceipt ? (
-            <Alert
-              tone="warning"
-              title={t('salesDocument.blocked.invoiceTitle', 'This order already has a document')}
-            >
-              {t(
-                'salesDocument.blocked.invoiceBody',
-                'This order already has a fiscal receipt. Invoice or receipt — never both for one sale.',
-              )}
-            </Alert>
-          ) : null}
         </div>
       ) : null}
 
@@ -1288,148 +1247,163 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
             <details className="sales-document-panel__routing-disclosure">
               <summary>{t('salesDocument.panel.manualOverride', 'Issue or register manually instead')}</summary>
 
-          {/* Issue-invoice affordance — the override (#2561): admin-only, and
-              refused once a hard block already says the manual path is
-              closed too. */}
-          {invoiceSettled && invoicingConnections.length > 0 && invoiceWrite.visible && canOverride ? (
-            <div className="sales-document-panel__actions sales-document-panel__actions--issue">
-              {showConnectionPicker ? (
-                <div className="sales-document-panel__connection">
-                  <label className="sales-document-panel__connection-label" htmlFor="invoice-connection">
-                    {t('invoice.panel.issueOnLabel', 'Issue on')}
-                  </label>
-                  <Select
-                    id="invoice-connection"
-                    value={issuableConnection?.id ?? ''}
-                    onChange={(event) => setPickedConnectionId(event.target.value || null)}
-                    aria-label={t('invoice.panel.issueOnLabel', 'Issue on')}
-                  >
-                    <option value="">{t('invoice.panel.connectionPlaceholder', 'Select a connection…')}</option>
-                    {invoicingConnections.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {isPrimaryInvoicingConnection(c) ? `${c.name} - ${t('invoice.panel.primarySuffix', 'primary')}` : c.name}
-                      </option>
-                    ))}
-                  </Select>
+          <div className="sales-document-panel__override-cards">
+            {/* Issue-invoice affordance — the override (#2561): admin-only, and
+                refused once a hard block already says the manual path is
+                closed too. */}
+            {invoiceSettled && invoicingConnections.length > 0 && invoiceWrite.visible && canOverride ? (
+              <div className="sales-document-panel__override-card">
+                <p className="sales-document-panel__override-card-title">
+                  {t('invoice.panel.cardTitle', 'Invoice')}
+                </p>
+                <div className="sales-document-panel__override-card-fields">
+                  {showConnectionPicker ? (
+                    <div className="sales-document-panel__connection">
+                      <label className="sales-document-panel__connection-label" htmlFor="invoice-connection">
+                        {t('invoice.panel.issueOnLabel', 'Issue on')}
+                      </label>
+                      <Select
+                        id="invoice-connection"
+                        value={issuableConnection?.id ?? ''}
+                        onChange={(event) => setPickedConnectionId(event.target.value || null)}
+                        aria-label={t('invoice.panel.issueOnLabel', 'Issue on')}
+                      >
+                        <option value="">{t('invoice.panel.connectionPlaceholder', 'Select a connection…')}</option>
+                        {invoicingConnections.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {isPrimaryInvoicingConnection(c) ? `${c.name} - ${t('invoice.panel.primarySuffix', 'primary')}` : c.name}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+                  ) : null}
+                  <DocumentTypeSelect
+                    value={documentType}
+                    onChange={(next) => {
+                      captureDemoEvent('demo_invoice_doctype_changed', { documentType: next });
+                      setDocumentType(next);
+                    }}
+                    disabled={issueMutation.isPending || invoiceWrite.demoReadOnly}
+                    className="sales-document-panel__doc-type"
+                  />
                 </div>
-              ) : null}
-              <DocumentTypeSelect
-                value={documentType}
-                onChange={(next) => {
-                  captureDemoEvent('demo_invoice_doctype_changed', { documentType: next });
-                  setDocumentType(next);
-                }}
-                disabled={issueMutation.isPending || invoiceWrite.demoReadOnly}
-                className="sales-document-panel__doc-type"
-              />
-              <ReadOnlyLock
-                active={invoiceWrite.demoReadOnly}
-                message={DEMO_READ_ONLY_ACTION_MESSAGE}
-                onLockedClick={() => captureDemoEvent('demo_invoice_issue_attempted', {})}
-              >
-                <Button
-                  tone="primary"
-                  onClick={handleIssue}
-                  disabled={
-                    issueMutation.isPending ||
-                    invoiceWrite.demoReadOnly ||
-                    invoicingConnection === null ||
-                    issueRefusal !== null
-                  }
-                >
-                  {t('invoice.action.issue', 'Issue invoice')}
-                </Button>
-              </ReadOnlyLock>
-              {/* The reason sits ON the control, not only in the alert above: a
-                  disabled button with no explanation beside it reads as a bug. */}
-              {issueRefusal ? (
-                <span className="text-muted" style={{ fontSize: '0.82rem' }}>
-                  {issueRefusal}
-                </span>
-              ) : null}
-              <p className="text-muted" style={{ fontSize: '0.78rem' }}>
-                {t('salesDocument.override.scopeNote', 'This applies to this order only.')}
-              </p>
-            </div>
-          ) : null}
+                <div className="sales-document-panel__override-card-action">
+                  <ReadOnlyLock
+                    active={invoiceWrite.demoReadOnly}
+                    message={DEMO_READ_ONLY_ACTION_MESSAGE}
+                    onLockedClick={() => captureDemoEvent('demo_invoice_issue_attempted', {})}
+                  >
+                    <Button
+                      tone="primary"
+                      onClick={handleIssue}
+                      disabled={
+                        issueMutation.isPending ||
+                        invoiceWrite.demoReadOnly ||
+                        invoicingConnection === null ||
+                        issueRefusal !== null
+                      }
+                    >
+                      {t('invoice.action.issue', 'Issue invoice')}
+                    </Button>
+                  </ReadOnlyLock>
+                  {/* The reason sits ON the control, not only in the alert above: a
+                      disabled button with no explanation beside it reads as a bug. */}
+                  {issueRefusal ? (
+                    <span className="text-muted sales-document-panel__override-card-hint">
+                      {issueRefusal}
+                    </span>
+                  ) : null}
+                </div>
+                <p className="text-muted sales-document-panel__override-card-scope">
+                  {t('salesDocument.override.scopeNote', 'This applies to this order only.')}
+                </p>
+              </div>
+            ) : null}
 
-          {/* Register-receipt affordance — the override (#2561), same gate. */}
-          {fiscalSettled && fiscalCandidates.length > 0 && canOverride ? (
-            <div className="sales-document-panel__actions">
-              <p className="panel-copy">
-                {t(
-                  'fiscalReceipt.notRegistered.body',
-                  "No receipt has been registered for this order. Whether this sale needs one is your call, not OpenLinker's.",
-                )}
-              </p>
-              {fiscalCandidates.length > 1 ? (
-                <div className="sales-document-panel__connection">
-                  <label className="sales-document-panel__connection-label" htmlFor="fiscal-connection">
-                    {t('fiscalReceipt.panel.registerOnLabel', 'Register on')}
-                  </label>
-                  <Select
-                    id="fiscal-connection"
-                    value={defaultFiscalConnectionId}
-                    onChange={(event) => setPickedFiscalConnectionId(event.target.value)}
-                    aria-label={t('fiscalReceipt.panel.registerOnLabel', 'Register on')}
-                  >
-                    {fiscalCandidates.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-              ) : null}
-              {/* #2255 / #2252 - the same rule as the invoice, on the receipt
-                  path. The per-connection tax letter is NOT used to fill the
-                  gap: a receipt carrying an unconfirmed rate reaches the buyer
-                  and the daily report and cannot be recalled, so the accepted
-                  cost is late registration. */}
-              {/* Gated on the REASON, not on a line count (#2260 review): the
-                  Register button below is disabled on the reason alone, and a
-                  dead control with nothing beside it reads as a bug. A
-                  shipping-scope block has no rate-less line to name, so it gets
-                  its own true sentence rather than a count it cannot support. */}
-              {missingRateScope !== null ? (
-                <Alert tone="error">
-                  <strong>
+            {/* Register-receipt affordance — the override (#2561), same gate. */}
+            {fiscalSettled && fiscalCandidates.length > 0 && canOverride ? (
+              <div className="sales-document-panel__override-card">
+                <p className="sales-document-panel__override-card-title">
+                  {t('fiscalReceipt.panel.cardTitle', 'Fiscal receipt')}
+                </p>
+                <p className="panel-copy">
+                  {t(
+                    'fiscalReceipt.notRegistered.body',
+                    "No receipt has been registered for this order. Whether this sale needs one is your call, not OpenLinker's.",
+                  )}
+                </p>
+                {fiscalCandidates.length > 1 ? (
+                  <div className="sales-document-panel__override-card-fields">
+                    <div className="sales-document-panel__connection">
+                      <label className="sales-document-panel__connection-label" htmlFor="fiscal-connection">
+                        {t('fiscalReceipt.panel.registerOnLabel', 'Register on')}
+                      </label>
+                      <Select
+                        id="fiscal-connection"
+                        value={defaultFiscalConnectionId}
+                        onChange={(event) => setPickedFiscalConnectionId(event.target.value)}
+                        aria-label={t('fiscalReceipt.panel.registerOnLabel', 'Register on')}
+                      >
+                        {fiscalCandidates.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+                  </div>
+                ) : null}
+                {/* #2255 / #2252 - the same rule as the invoice, on the receipt
+                    path. The per-connection tax letter is NOT used to fill the
+                    gap: a receipt carrying an unconfirmed rate reaches the buyer
+                    and the daily report and cannot be recalled, so the accepted
+                    cost is late registration. */}
+                {/* Gated on the REASON, not on a line count (#2260 review): the
+                    Register button below is disabled on the reason alone, and a
+                    dead control with nothing beside it reads as a bug. A
+                    shipping-scope block has no rate-less line to name, so it gets
+                    its own true sentence rather than a count it cannot support. */}
+                {missingRateScope !== null ? (
+                  <Alert tone="error">
+                    <strong>
+                      {missingRateScope === 'shipping'
+                        ? t(
+                            'fiscalReceipt.blockNoRateShippingTitle',
+                            'Not registered: the delivery charge has no tax rate.',
+                          )
+                        : rateLessLines.length === 1
+                          ? t(
+                              'fiscalReceipt.blockNoRateTitleOne',
+                              'Not registered: 1 line has no tax rate.',
+                            )
+                          : `${t('fiscalReceipt.blockNoRateTitlePrefix', 'Not registered:')} ${String(rateLessLines.length)} ${t('fiscalReceipt.blockNoRateTitleSuffix', 'lines have no tax rate.')}`}
+                    </strong>{' '}
                     {missingRateScope === 'shipping'
                       ? t(
-                          'fiscalReceipt.blockNoRateShippingTitle',
-                          'Not registered: the delivery charge has no tax rate.',
+                          'fiscalReceipt.blockNoRateShippingBody',
+                          "Every product line has a rate, but nothing in this order carries an amount the delivery charge could follow. Check the order's lines and delivery charge.",
                         )
-                      : rateLessLines.length === 1
-                        ? t(
-                            'fiscalReceipt.blockNoRateTitleOne',
-                            'Not registered: 1 line has no tax rate.',
-                          )
-                        : `${t('fiscalReceipt.blockNoRateTitlePrefix', 'Not registered:')} ${String(rateLessLines.length)} ${t('fiscalReceipt.blockNoRateTitleSuffix', 'lines have no tax rate.')}`}
-                  </strong>{' '}
-                  {missingRateScope === 'shipping'
-                    ? t(
-                        'fiscalReceipt.blockNoRateShippingBody',
-                        "Every product line has a rate, but nothing in this order carries an amount the delivery charge could follow. Check the order's lines and delivery charge.",
-                      )
-                    : t(
-                        'fiscalReceipt.blockNoRateBody',
-                        "Add the rate in the shop's catalogue and re-sync the product. The connection's tax letter is not used to fill the gap.",
-                      )}
-                </Alert>
-              ) : null}
-              <span className="spacer" />
-              <Button
-                tone="primary"
-                disabled={registerMutation.isPending || missingRateReason}
-                onClick={() => handleRegister(defaultFiscalConnectionId)}
-              >
-                {t('fiscalReceipt.action.register', 'Register receipt')}
-              </Button>
-              <p className="text-muted" style={{ fontSize: '0.78rem', width: '100%' }}>
-                {t('salesDocument.override.scopeNote', 'This applies to this order only.')}
-              </p>
-            </div>
-          ) : null}
+                      : t(
+                          'fiscalReceipt.blockNoRateBody',
+                          "Add the rate in the shop's catalogue and re-sync the product. The connection's tax letter is not used to fill the gap.",
+                        )}
+                  </Alert>
+                ) : null}
+                <div className="sales-document-panel__override-card-action">
+                  <Button
+                    tone="primary"
+                    disabled={registerMutation.isPending || missingRateReason}
+                    onClick={() => handleRegister(defaultFiscalConnectionId)}
+                  >
+                    {t('fiscalReceipt.action.register', 'Register receipt')}
+                  </Button>
+                </div>
+                <p className="text-muted sales-document-panel__override-card-scope">
+                  {t('salesDocument.override.scopeNote', 'This applies to this order only.')}
+                </p>
+              </div>
+            ) : null}
+          </div>
             </details>
           ) : null}
         </div>

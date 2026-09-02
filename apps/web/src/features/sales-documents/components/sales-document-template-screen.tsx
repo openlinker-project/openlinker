@@ -11,6 +11,11 @@
  * ordinary, fully-editable rows via the same create-rule path every other
  * rule takes.
  *
+ * Rendered as a native `<details>` accordion, collapsed by default — an
+ * operator opening a brand-new country's routing dialog should see the
+ * empty rule ladder first, with the suggestion available but not forced
+ * open on top of it.
+ *
  * @module apps/web/src/features/sales-documents/components
  */
 import { useState, type ReactElement } from 'react';
@@ -49,13 +54,15 @@ export function SalesDocumentTemplateScreen({
   const connections = connectionsQuery.data ?? [];
 
   return (
-    <div className="page-section">
-      <p className="eyebrow" style={{ marginBottom: 2 }}>
-        {template.country}
-      </p>
+    <details className="template-accordion">
+      <summary className="template-accordion__summary">
+        <span className="template-card__badge">Suggested starter template</span>
+        <span className="template-accordion__hint">
+          A ready-made rule set for {template.country} — click to review
+        </span>
+      </summary>
       <div className="template-card">
         <div className="template-card__head">
-          <span className="template-card__badge">Suggested starter template</span>
           <span className="template-card__source">
             Sourced from public guidance —{' '}
             <a href={template.sourceUrl} target="_blank" rel="noopener noreferrer">
@@ -98,9 +105,10 @@ export function SalesDocumentTemplateScreen({
 
         {template.rules.some((rule) => rule.usesBuyerHasTaxId) ? (
           <Alert tone="warning">
-            Every rule above keys off whether the buyer has a tax ID — a fact OpenLinker does not
-            capture on any order yet. None of these rules will fire until that data is available;
-            adopting the template today would silently route no orders at all.
+            Every rule above keys off whether the buyer has a tax ID — reported today only for
+            PrestaShop orders. An order from a source that doesn&apos;t carry it (Allegro,
+            WooCommerce) will never match any of these rules and falls through to whatever you set
+            as the country default below.
           </Alert>
         ) : null}
 
@@ -136,6 +144,6 @@ export function SalesDocumentTemplateScreen({
           </Button>
         </div>
       </div>
-    </div>
+    </details>
   );
 }

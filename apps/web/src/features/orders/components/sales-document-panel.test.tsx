@@ -256,7 +256,7 @@ describe('SalesDocumentPanel — state 2: empty + gate-block reason', () => {
 });
 
 describe('SalesDocumentPanel — state 3: register-receipt blocked by an existing invoice', () => {
-  it('states the fact with no dead action, distinct from state 2 (#2561)', async () => {
+  it('renders no dead action, and no restated "one document" alert either (#2561, review: alert removed as noise)', async () => {
     renderWithProviders(<SalesDocumentPanel order={order} />, {
       apiClient: createMockApiClient({
         connections: { list: vi.fn().mockResolvedValue([invoicingConnection, fiscalConnection]) },
@@ -265,11 +265,11 @@ describe('SalesDocumentPanel — state 3: register-receipt blocked by an existin
       ...adminSession,
     });
     expect(await screen.findByText('FV/2026/06/001')).toBeInTheDocument();
-    expect(screen.getByText(/This order already has a document/i)).toBeInTheDocument();
-    expect(screen.getByText(/already has an invoice from Subiekt GT/i)).toBeInTheDocument();
-    // #2561 — the override is unreachable from a state that already carries a
-    // document, so there is no disabled "Register receipt" button here at all.
+    // The other kind's action is simply absent — no disabled button, and no
+    // longer a standing "already has a document" alert either: the filled
+    // invoice slot already states the whole fact.
     expect(screen.queryByRole('button', { name: 'Register receipt' })).toBeNull();
+    expect(screen.queryByText(/This order already has a document/i)).toBeNull();
   });
 
   it('does NOT block when the existing invoice is a retryable rejected failure', async () => {
@@ -291,7 +291,7 @@ describe('SalesDocumentPanel — state 3: register-receipt blocked by an existin
 });
 
 describe('SalesDocumentPanel — state 4: issue-invoice blocked by an existing receipt', () => {
-  it('states the fact with no dead action, distinct from state 2 (#2561)', async () => {
+  it('renders no dead action, and no restated "one document" alert either (#2561, review: alert removed as noise)', async () => {
     renderWithProviders(<SalesDocumentPanel order={order} />, {
       apiClient: createMockApiClient({
         connections: { list: vi.fn().mockResolvedValue([invoicingConnection, fiscalConnection]) },
@@ -301,9 +301,10 @@ describe('SalesDocumentPanel — state 4: issue-invoice blocked by an existing r
       ...adminSession,
     });
     expect(await screen.findByText('1/2026/08/14')).toBeInTheDocument();
-    expect(screen.getByText(/This order already has a document/i)).toBeInTheDocument();
-    // #2561 — no disabled "Issue invoice" button when a document already exists.
+    // #2561 — no disabled "Issue invoice" button when a document already
+    // exists, and (review finding) no restated alert either.
     expect(screen.queryByRole('button', { name: 'Issue invoice' })).toBeNull();
+    expect(screen.queryByText(/This order already has a document/i)).toBeNull();
   });
 });
 

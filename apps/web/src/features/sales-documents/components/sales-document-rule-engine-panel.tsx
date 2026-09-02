@@ -1,57 +1,70 @@
 /**
  * Sales-Document Rule Engine Panel (#2170, ADR-041 decision 5, narrowed)
  *
- * Composes the country index (#2187, replacing the free-text-plus-chips
- * `SalesDocumentCountrySelector`), the starter-template "Review & adopt"
- * screen (Poland only), and the per-country routing dialog (#2188) into the
- * "Settings → Sales documents" page's rule-engine section.
+ * Composes the market list (#2540/#2542, filtered — see below), the
+ * starter-template "Review & adopt" screen (Poland only), and the
+ * per-country routing dialog (#2188) into the "Settings → Sales documents"
+ * page's rule-engine section.
  *
- * A row's "Configure" action (and "Add country") reaches
+ * A row's action (and "Add a market") reaches
  * `SalesDocumentCountryRoutingDialog` via `handleSelectCountry` — the country
- * defaults + rules list no longer render flat below the index (#2188 retires
- * that interim placeholder); they render exclusively inside the dialog now.
- * `handleNavigate` backs the dialog's own tier-3 cross-link (open ★ Rest of
- * world's dialog) and its "← Back to {country}" affordance, both of which
- * switch the dialog's country while it stays open.
+ * defaults + rules list render exclusively inside the dialog. `handleNavigate`
+ * backs the dialog's own tier-3 cross-link (open ★ Rest of world's dialog)
+ * and its "← Back to {country}" affordance, both of which switch the
+ * dialog's country while it stays open.
  *
- * WIRED TO AUTO-ISSUE (#2173): `AutoIssueTriggerService` consults
- * `evaluateSalesDocumentRules` FIRST, ahead of the #2156 operator-configured
- * single-primary model (`SalesDocumentsPanel`). Both surfaces stay on the
- * same page, clearly labelled, because the older resolver is still live and
- * reachable whenever a country has no rule-engine configuration.
+ * WIRED TO AUTO-ISSUE (#2173, fallback retired — "opcja b" decision):
+ * `AutoIssueTriggerService` consults `evaluateSalesDocumentRules` ONLY. The
+ * pre-#2170 operator-configured single-primary model
+ * (`config.invoicing.isPrimary`) is no longer consulted at all — a country
+ * with no rule-engine configuration always resolves to manual, never to a
+ * connection picked via `isPrimary`. The old "Connected providers" page that
+ * edited that flag is retired; there is nothing left for it to configure.
  *
- * LAYOUT (#2806 review — providers split to its own page): the market table
- * (`SalesDocumentMarketSection`, "what each market issues right now") is the
- * only primary table left on this page. "Connected providers" — which
- * connection is configured to issue automatically, and its priority — moved
- * to `SalesDocumentProvidersPage` (`/settings/sales-documents/providers`):
- * the two tables stacked directly on top of each other with no visual break
- * read as one long table answering two unrelated questions, and a divider or
- * card border on the same page could not fix that as reliably as a real page
- * boundary (its own heading, its own description, an explicit navigation).
- * Every other surface — the rule composer, starter templates, and the older
- * per-country `SalesDocumentCountryIndex` table — stays behind the
- * closed-by-default `<details>` disclosure below the market table. Nothing is
- * removed; a country still appearing in both the market table and the
- * advanced per-country table is expected (they answer different questions:
- * "what happens right now" vs. "how is that decided").
+ * ONE LIST, NOT TWO (#2806 review, second pass): this used to compose the
+ * market section ABOVE a second, separate `SalesDocumentCountryIndex` table
+ * behind an "Advanced: per-country rules" disclosure — two lists that both
+ * opened the identical routing dialog for the identical underlying config,
+ * reading as duplicate functionality to an operator ("why are there two
+ * places to set the same country up?"). They always were the same data
+ * wearing two UIs: `GET /sales-documents/markets` already unions "has recent
+ * orders" and "is configured" countries server-side (a country appears once,
+ * however it qualified — see that controller's own doc comment), which is
+ * exactly what made the second `/sales-documents/countries` read and its
+ * table redundant. `SalesDocumentMarketSection` now renders every country
+ * from that ONE read, with filter chips ("All" / "Recent orders" /
+ * "Configured, no recent orders" / "Needs a decision") standing in for what
+ * used to be two separate page sections. `SalesDocumentCountryIndex` and its
+ * backing query are retired — nothing else consumed them.
  *
- * The shipped Poland starter template's `buyerHasTaxId` condition CANNOT
- * match a real order yet: `Order` carries no buyer-tax-id field, so the
- * mapper that feeds this engine always supplies `undefined` for it (see
- * `toSalesDocumentOrderFacts`'s own doc comment) — `undefined` matches
- * neither `true` nor `false`. `SalesDocumentRuleComposerDialog` surfaces this
- * as an inline warning wherever an operator authors that condition, rather
- * than only in a code comment nobody configuring a rule would ever read.
+ * The Poland starter template now renders INSIDE `SalesDocumentCountryRoutingDialog`
+ * itself (moved off this page, review finding): it was previously a standalone
+ * block below the market list, disconnected from PL's own configuration
+ * dialog — an operator opening "Configure" on PL saw the ordinary empty-rules
+ * dialog, then had to scroll past it on the page to find the suggested
+ * template. It now appears where the operator actually is when deciding how
+ * to configure PL.
+ *
+ * The shipped Poland starter template's `buyerHasTaxId` condition matches
+ * ONLY orders from sources that actually assert a buyer tax id (#2599) —
+ * PrestaShop, today. Allegro and WooCommerce orders never carry the fact
+ * (see `order-to-sales-document-order-facts.mapper.ts`'s own doc comment;
+ * tracked to close for both in #2822), so a rule using it silently falls
+ * through to the next tier for those orders rather than matching or
+ * erroring. `SalesDocumentRuleComposerDialog` surfaces this as an inline
+ * warning wherever an operator authors that condition, rather than only in
+ * a code comment nobody configuring a rule would ever read.
  *
  * @module apps/web/src/features/sales-documents/components
  */
-import { useRef, useState, type ReactElement } from 'react';
-import { Link } from 'react-router-dom';
-import { SalesDocumentCountryIndex } from './sales-document-country-index';
+import { useMemo, useState, type ReactElement } from 'react';
+import { Button } from '../../../shared/ui/button';
+import { Combobox, type ComboboxOption } from '../../../shared/ui/combobox';
+import { ISO_3166_1_COUNTRIES } from '../../../shared/lib/iso-3166-1-countries';
 import { SalesDocumentCountryRoutingDialog } from './sales-document-country-routing-dialog';
 import { SalesDocumentMarketSection } from './sales-document-market-section';
-import { SalesDocumentTemplateScreen } from './sales-document-template-screen';
+import { useSalesDocumentMarketsQuery } from '../hooks/use-sales-document-markets-query';
+import { SALES_DOCUMENT_REST_OF_WORLD_COUNTRY } from '../api/sales-document-rules.types';
 
 interface RoutingDialogState {
   open: boolean;
@@ -59,11 +72,10 @@ interface RoutingDialogState {
   cameFrom: string | null;
 }
 
-const ADD_COUNTRY_INPUT_ID = 'sales-document-add-country-input';
-
 export function SalesDocumentRuleEnginePanel(): ReactElement {
   const [routingDialog, setRoutingDialog] = useState<RoutingDialogState | null>(null);
-  const advancedRef = useRef<HTMLDetailsElement>(null);
+  const [draftCountry, setDraftCountry] = useState<string | null>(null);
+  const marketsQuery = useSalesDocumentMarketsQuery();
 
   function handleSelectCountry(selected: string): void {
     setRoutingDialog({ open: true, country: selected, cameFrom: null });
@@ -77,14 +89,44 @@ export function SalesDocumentRuleEnginePanel(): ReactElement {
     setRoutingDialog((prev) => (prev ? { ...prev, open } : prev));
   }
 
-  // "Add a market" (mockup) reveals the advanced disclosure that still owns
-  // the country-add flow, rather than duplicating a second country-entry
-  // control — one input, one place it lives.
-  function handleAddMarket(): void {
-    if (advancedRef.current) advancedRef.current.open = true;
-    requestAnimationFrame(() => {
-      document.getElementById(ADD_COUNTRY_INPUT_ID)?.focus();
-    });
+  // Review finding: a free-text "Country code, e.g. IT" input let an
+  // operator mistype or fabricate a code — the market row it opens is keyed
+  // by that exact string, so a typo silently creates a market no real order
+  // can ever reach. A real ISO 3166-1 dictionary makes an invalid code
+  // unreachable through the UI at all, and a country already in the list
+  // above is disabled here (still visible, so the operator can see it
+  // already exists) rather than letting "Add a market" open a second,
+  // confusing entry point to the same row.
+  const existingCountries = useMemo(
+    () => new Set((marketsQuery.data?.markets ?? []).map((market) => market.country)),
+    [marketsQuery.data],
+  );
+  const countryOptions: ComboboxOption[] = useMemo(
+    () =>
+      ISO_3166_1_COUNTRIES.map((country) => ({
+        id: country.code,
+        label: country.name,
+        hint: country.code,
+        disabled: existingCountries.has(country.code),
+        disabledReason: 'Already in the list above',
+      })),
+    [existingCountries],
+  );
+
+  // A country not yet in the list (no orders, no config) has nowhere to
+  // click yet — picking it here opens the SAME routing dialog every row's
+  // action does, pre-scoped to it. Once something is actually saved there,
+  // it joins the list above on its own. The dictionary already disables an
+  // existing country, but that's a UI convenience, not the guard: even a
+  // DOM-tampered submit lands on `handleSelectCountry`, which only ever
+  // OPENS the existing dialog for that country — there is no separate
+  // "create a market" write this could duplicate. A market row is a
+  // read projection over rules/defaults keyed by country, not a row of its
+  // own, so there is nothing here for a hacked value to duplicate.
+  function submitAddMarket(): void {
+    if (draftCountry === null) return;
+    setDraftCountry(null);
+    handleSelectCountry(draftCountry);
   }
 
   return (
@@ -99,55 +141,55 @@ export function SalesDocumentRuleEnginePanel(): ReactElement {
       </header>
 
       {/*
-       * #2539/M6 — the settings page's headline: what does each market
-       * issue, right now.
+       * #2539/M6/#2806 — the settings page's one list: what does each market
+       * issue right now, filterable by why it's showing up.
        */}
       <SalesDocumentMarketSection onSelectCountry={handleSelectCountry} />
 
       <div className="sales-document-add-market-row">
-        <button type="button" className="button button--secondary button--sm" onClick={handleAddMarket}>
+        <Combobox
+          ariaLabel="New market country"
+          className="sales-document-add-market-row__input"
+          options={countryOptions}
+          value={draftCountry ? { kind: 'dictionary', ids: [draftCountry] } : null}
+          onChange={(next) =>
+            setDraftCountry(next?.kind === 'dictionary' ? (next.ids[0] ?? null) : null)
+          }
+          placeholder="Search a country…"
+        />
+        <Button
+          tone="secondary"
+          className="button--sm"
+          disabled={draftCountry === null}
+          onClick={submitAddMarket}
+        >
           Add a market
-        </button>
+        </Button>
       </div>
 
       {/*
-       * #2806 review — "Connected providers" moved to its own page
-       * (`SalesDocumentProvidersPage`): stacked directly under the market
-       * table with no visual break between them, an operator could not tell
-       * "what each market issues right now" apart from "which connection is
-       * configured to issue" — two different tables answering two different
-       * questions, reading as one long table. A page boundary (its own
-       * heading, its own description, a real navigation) separates them
-       * unambiguously; a divider or a card border on the same page would not.
+       * Review finding: ★ Rest of world never has orders of its own, so it
+       * never appears as a row in the market list above — the only way in
+       * was typing the undiscoverable "*" into the input above, or stumbling
+       * onto another country's tier-3 cross-link. This is its own row, the
+       * same visual weight as a real market, so it reads as a first-class
+       * catch-all rather than a hidden shortcut.
        */}
-      <div className="sales-document-providers-link-row">
-        <Link to="/settings/sales-documents/providers" className="button button--secondary">
-          Manage connections &amp; priority →
-        </Link>
-      </div>
-
-      <details ref={advancedRef} className="sales-document-advanced-disclosure">
-        <summary className="sales-document-advanced-disclosure__summary">
-          Advanced: per-country rules
-        </summary>
-
-        <div className="sales-document-advanced-disclosure__body">
-          <p className="page-description">
-            A rule is <span className="mono-text">conditions → document type → integration</span>,
-            scoped to one country; no rule matched falls through to that country&apos;s default
-            integration per document type.
+      <div className="sales-document-rest-of-world-row">
+        <div>
+          <p className="sales-document-rest-of-world-row__title">★ Rest of world</p>
+          <p className="muted-text">
+            The catch-all every unconfigured market above falls through to.
           </p>
-
-          <SalesDocumentCountryIndex onSelectCountry={handleSelectCountry} />
-
-          {/* Only shown while nothing else is open, or while the operator is actually
-              configuring PL — otherwise it's clutter on every other market's dialog
-              (review finding, optional improvements). */}
-          {routingDialog === null || routingDialog.country === 'PL' ? (
-            <SalesDocumentTemplateScreen country="PL" />
-          ) : null}
         </div>
-      </details>
+        <Button
+          tone="secondary"
+          className="button--sm"
+          onClick={() => handleSelectCountry(SALES_DOCUMENT_REST_OF_WORLD_COUNTRY)}
+        >
+          Configure →
+        </Button>
+      </div>
 
       {routingDialog ? (
         <SalesDocumentCountryRoutingDialog

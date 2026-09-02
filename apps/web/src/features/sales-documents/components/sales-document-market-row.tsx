@@ -22,12 +22,9 @@
  * count *and* the discovery window it was measured over (`windowDays`),
  * because "12 orders" on its own answers "how many" but not "over what
  * period" — an operator needs both to judge whether it's worth acting on.
- * The suggested-setup caption is honest about scope: when this row's
- * `hasTemplate` market is the ONLY one among the rendered rows carrying a
- * template, the caption says so explicitly (`isSoleTemplatedMarket`,
- * computed by the section over every row and passed down) rather than
- * implying every market has guidance. A template-less market never gets a
- * recommendation — its action stays a plain "Set up".
+ * A `hasTemplate` market gets a plain "Starter setup available" caption; a
+ * template-less market never gets a recommendation — its action stays a
+ * plain "Set up".
  *
  * @module apps/web/src/features/sales-documents/components
  */
@@ -52,9 +49,14 @@ function toneFor(copy: SalesDocumentMarketOutcomeCopy): StatusBadgeTone {
   return 'neutral';
 }
 
-function actionLabel(row: MarketRowData, copy: SalesDocumentMarketOutcomeCopy): string {
-  if (!copy.needsDecision) return 'Configure';
-  return row.hasTemplate ? 'Use starter setup' : 'Set up';
+// Review finding: "Use starter setup" (PL) vs "Set up" (everywhere else) vs
+// "Configure" (already routed) made the SAME action read as three different
+// actions depending on the row — an operator scanning the list for "how do I
+// configure a market" had to learn three labels for one button. The
+// "Starter setup available" caption already says a template exists; the
+// button itself now always says the one thing it always does.
+function actionLabel(): string {
+  return 'Configure';
 }
 
 // #2806 — plain-sentence meta copy, replacing the mono "PL · 0 rules · 3
@@ -90,13 +92,6 @@ export interface SalesDocumentMarketRowProps {
    * (e.g. a standalone render in a test) where the window isn't known.
    */
   windowDays?: number;
-  /**
-   * True when this row's `hasTemplate` market is the ONLY templated market
-   * among the section's rows — changes the suggested-setup caption from a
-   * generic "Starter setup available" to one naming the scope explicitly
-   * (#2542). Ignored when `row.hasTemplate` is false.
-   */
-  isSoleTemplatedMarket?: boolean;
 }
 
 export function SalesDocumentMarketRow({
@@ -104,7 +99,6 @@ export function SalesDocumentMarketRow({
   onSelect,
   disabled = false,
   windowDays,
-  isSoleTemplatedMarket = false,
 }: SalesDocumentMarketRowProps): ReactElement {
   const copy = describeSalesDocumentMarketOutcome(row.outcome);
   const isDetectedOnly = row.orderCount !== null;
@@ -146,11 +140,7 @@ export function SalesDocumentMarketRow({
         {copy.needsDecision && copy.reasonShort ? (
           <span className="sales-document-market-row__reason muted-text">
             {copy.reasonShort}
-            {row.hasTemplate
-              ? isSoleTemplatedMarket
-                ? ` · Starter setup available — the only market with guidance so far`
-                : ' · Starter setup available'
-              : ''}
+            {row.hasTemplate ? ' · Starter setup available' : ''}
           </span>
         ) : null}
       </div>
@@ -162,7 +152,7 @@ export function SalesDocumentMarketRow({
           disabled={disabled}
           onClick={() => onSelect(row.country)}
         >
-          {actionLabel(row, copy)}
+          {actionLabel()}
         </Button>
       </div>
     </li>

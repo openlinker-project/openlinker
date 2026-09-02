@@ -3593,6 +3593,140 @@ a.delivery-rider-banner__button:focus-visible {
   gap: var(--space-5);
 }
 
+/* ── Per-tier cards (review finding: tiers read as one unbroken block) ──
+ * Each fallback-ladder tier is a discrete decision an operator can act on
+ * independently, but a bare heading + content with only vertical `gap`
+ * between siblings gave no visual boundary — the numbered "Tier N" title,
+ * a component's own internal eyebrow label, and its body all read as one
+ * continuous wall of small-caps text. A bordered card per tier, with the
+ * step number pulled out as its own badge, is what makes "these are four
+ * separate steps" legible at a glance rather than something the operator
+ * has to parse from the prose. */
+.sales-document-tier {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  padding: var(--space-4);
+  display: grid;
+  gap: var(--space-3);
+}
+.sales-document-tier__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.sales-document-tier__number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  flex: none;
+  border-radius: 999px;
+  background: var(--accent-primary-soft);
+  color: var(--accent-primary);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.sales-document-tier__title {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.sales-document-tier__content {
+  display: grid;
+  gap: var(--space-3);
+  padding-left: calc(1.5rem + var(--space-2));
+}
+
+/* ── Rule composer sections (review finding: no visual grouping at all) ──
+ * Mirrors `.sales-document-tier`'s bordered-card treatment for the "Add
+ * rule" dialog, minus the numbered badge — these aren't a fallback ladder,
+ * just grouped fields, so a plain eyebrow heading is enough to separate
+ * "Conditions" from "Document & destination" from "Effective window". */
+.rule-composer-section {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  padding: var(--space-4);
+  display: grid;
+  gap: var(--space-3);
+}
+.rule-composer-section__header {
+  display: grid;
+  gap: 2px;
+}
+.rule-composer-section__header .eyebrow {
+  margin: 0;
+}
+.rule-composer-section__footnote {
+  margin: 0;
+}
+.rule-composer-section__footnote-row {
+  background: var(--bg-surface-muted);
+}
+
+.rule-composer-conditions {
+  display: grid;
+  gap: var(--space-2);
+}
+/* field select | value control | warning-glyph slot (always reserved, so a
+   row without a caveat doesn't shift width relative to one that has it). */
+.rule-composer-condition-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  align-items: center;
+  gap: var(--space-2);
+}
+.rule-composer-condition-row__threshold {
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* One small glyph per row instead of a repeated full-width Alert — an
+   operator adding three buyerHasTaxId conditions used to see the identical
+   multi-paragraph warning box three times over; the fact is now stated once,
+   on demand, per row. */
+.rule-composer-warning-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--status-warning-fg, var(--accent-primary));
+  cursor: pointer;
+}
+.rule-composer-warning-trigger:hover,
+.rule-composer-warning-trigger:focus-visible {
+  background: var(--status-warning-soft, var(--accent-primary-soft));
+  outline: none;
+}
+.rule-composer-warning-glyph {
+  pointer-events: none;
+}
+/* This tooltip's trigger always lives inside the ELEVATED "Add rule" dialog
+   (z-index 101, nested inside the routing dialog) — the base `.tooltip__content`
+   z-index (60, #775) sits well below that tier, so without an override the
+   tooltip rendered but was fully hidden behind the dialog surface (review
+   finding: "modal in modal" - the same class of gap `.bulk-image-lightbox`
+   (120) already solved for the lightbox-over-edit-modal case). */
+.rule-composer-warning-tooltip {
+  max-width: 320px;
+}
+/* Higher specificity than `.tooltip__content`'s own z-index:60 (#775),
+   which otherwise wins on source order alone — both are single-class
+   selectors of equal specificity, and `.tooltip__content` is declared
+   later in this file. */
+.tooltip__content.rule-composer-warning-tooltip {
+  z-index: 120;
+}
+
 .sales-document-country-routing-dialog__save-note {
   margin: calc(-1 * var(--space-2)) 0 0;
 }
@@ -15254,6 +15388,49 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   margin-bottom: var(--space-2);
 }
 
+/* ─ Manual-override cards (review finding: Issue-invoice and Register-receipt
+ * used to be two differently-shaped flex rows — one aligned its button left,
+ * the other pushed its button right via a `.spacer` hack, and the two had no
+ * shared visual boundary. Both are now identically-structured bordered cards
+ * (the `.rule-composer-section` / `.sales-document-tier` precedent), each
+ * with its own title, so the manual path reads as "one form with two equal
+ * options" instead of two ad hoc rows. ─ */
+.sales-document-panel__override-cards {
+  display: grid;
+  gap: var(--space-3);
+}
+.sales-document-panel__override-card {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  padding: var(--space-4);
+  display: grid;
+  gap: var(--space-3);
+}
+.sales-document-panel__override-card-title {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.sales-document-panel__override-card-fields {
+  display: grid;
+  gap: var(--space-3);
+}
+.sales-document-panel__override-card-action {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.sales-document-panel__override-card-hint {
+  font-size: 0.82rem;
+}
+.sales-document-panel__override-card-scope {
+  margin: 0;
+  font-size: 0.78rem;
+}
+
 /* ─ Empty-state "routing could not decide" lead block (#2807) ─
  * Mirrors the mockup: the headline + explanation + primary "fix it in
  * Settings" action lead the empty state, ahead of the demoted manual
@@ -19571,6 +19748,44 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 }
 
 /* ── Sales-document market section (#2540/#2541) ── */
+/* #2806 review — filter chips replacing the second, now-redundant table. */
+.sales-document-market-section__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-4);
+}
+.sales-document-market-section__chip {
+  font-family: var(--font-mono);
+  font-size: 0.71875rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  padding: 7px 14px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.sales-document-market-section__chip-count {
+  background: var(--bg-surface-muted);
+  border-radius: var(--radius-pill);
+  padding: 1px 6px;
+  font-size: 0.65625rem;
+}
+.sales-document-market-section__chip--active {
+  background: var(--text-primary);
+  border-color: var(--text-primary);
+  color: var(--bg-surface);
+}
+.sales-document-market-section__chip--active .sales-document-market-section__chip-count {
+  background: rgba(255, 255, 255, 0.18);
+  color: inherit;
+}
+
 .sales-document-market-section__summary {
   margin: 0 0 var(--space-4);
   font-size: 0.9375rem;
@@ -19764,59 +19979,39 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 }
 
 /* ── Sales-document market table layout (#2806) ── */
+/* #2806 review — an inline text input + button replacing the "Add a market"
+   button that used to jump focus into a hidden disclosure's own input; with
+   no disclosure left to reveal, the control lives here directly. */
 .sales-document-add-market-row {
-  display: flex;
-  justify-content: flex-end;
-  margin: var(--space-3) 0 var(--space-5);
-}
-/* #2806 review — the link to the now-separate "Connected providers" page.
-   A full-width top border is what makes this row read as leaving the market
-   table's section, rather than one more row stacked on top of it. */
-.sales-document-providers-link-row {
-  display: flex;
-  justify-content: flex-start;
-  padding-top: var(--space-5);
-  margin-top: var(--space-2);
-  border-top: 1px solid var(--border-subtle);
-}
-
-.sales-document-advanced-disclosure {
-  margin-top: var(--space-6);
-  border-top: 1px solid var(--border-subtle);
-  padding-top: var(--space-4);
-}
-.sales-document-advanced-disclosure__summary {
-  cursor: pointer;
-  font-weight: 600;
-  color: var(--text-secondary);
-  list-style: none;
-}
-.sales-document-advanced-disclosure__summary::-webkit-details-marker {
-  display: none;
-}
-.sales-document-advanced-disclosure__summary::before {
-  content: '▸';
-  display: inline-block;
-  margin-right: var(--space-2);
-  color: var(--text-muted);
-}
-.sales-document-advanced-disclosure[open] > .sales-document-advanced-disclosure__summary::before {
-  content: '▾';
-}
-.sales-document-advanced-disclosure__body {
-  margin-top: var(--space-4);
-}
-
-/* ── Sales-document country index (#2187) ── */
-.sales-document-country-index__add-row {
-  margin-top: var(--space-3);
-}
-.sales-document-country-index__add-row-controls {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  margin-bottom: var(--space-2);
-  flex-wrap: wrap;
+  margin: var(--space-3) 0 var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px dashed var(--border-default);
+}
+.sales-document-add-market-row__input {
+  max-width: 220px;
+}
+/* ★ Rest of world's own row — visually a market row's sibling (border,
+   radius, padding) but dashed rather than solid to read as "the catch-all",
+   not one more real market in the list above it (review finding: a bare
+   ghost button here was nearly invisible). */
+.sales-document-rest-of-world-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-5);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface-muted);
+}
+.sales-document-rest-of-world-row__title {
+  margin: 0;
+  font-weight: 600;
+  color: var(--text-primary);
 }
 
 .rule-card {
@@ -19886,16 +20081,57 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   margin-left: var(--space-1);
 }
 
-.template-card {
-  border: 1px solid var(--border-default);
+/* ── Suggested starter template accordion (review finding) ──────────
+ * The card used to render permanently open, at full height, above the
+ * ordinary empty-ladder tiers — the least relevant thing on first paint of
+ * a brand-new country pushed the actually-empty state below the fold. A
+ * native <details> costs no JS and needs no open/close state of its own. */
+.template-accordion {
+  border: 1px solid var(--accent-primary-border, var(--border-default));
   border-radius: var(--radius-lg);
   background: var(--bg-surface-elevated);
+  overflow: hidden;
+}
+.template-accordion__summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+  list-style: none;
+  flex-wrap: wrap;
+}
+.template-accordion__summary::-webkit-details-marker {
+  display: none;
+}
+.template-accordion__summary::before {
+  content: '▸';
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+.template-accordion[open] > .template-accordion__summary::before {
+  transform: rotate(90deg);
+}
+.template-accordion__summary:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.template-accordion__hint {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+.template-accordion .template-card {
+  border-top: 1px solid var(--border-subtle);
+  border-radius: 0;
+}
+
+.template-card {
   padding: var(--space-4);
 }
 .template-card__head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: var(--space-3);
   margin-bottom: var(--space-3);
   flex-wrap: wrap;
@@ -20442,10 +20678,7 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
    words, so the trail survives without colour. */
 
 .document-lifecycle {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 1fr;
-  gap: var(--space-3);
+  display: flex;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -20453,40 +20686,62 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 
 .document-lifecycle__step {
   position: relative;
-  display: grid;
-  grid-template-rows: auto auto auto;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   gap: 2px;
-  padding-top: var(--space-3);
+  padding-top: 20px;
+  text-align: center;
 }
 
-/* The connector runs from the previous marker to this one, so the first step
-   has none to its left and the last none to its right. */
+/* Review fix (#2536 regression): the connector used to run from THIS column's
+   own left edge to its own center (`left:0; right:50%`) — it never reached
+   the PREVIOUS step's marker at all, so on any two unequally-sized columns
+   the line visibly started partway through the row instead of connecting the
+   two circles. `left:-50%; width:100%` is the standard connected-track trick:
+   with equal `flex:1` columns, half of THIS column's width plus half of the
+   PREVIOUS column's width is exactly one full inter-marker span, so the line
+   now runs center-to-center regardless of how long either label is. */
 .document-lifecycle__step::before {
   content: '';
   position: absolute;
-  top: 5px;
-  left: 0;
-  right: 50%;
+  z-index: 0;
+  top: 6px;
+  left: -50%;
+  width: 100%;
   height: 2px;
   background: var(--border-subtle);
 }
 
 .document-lifecycle__step:first-child::before {
-  left: 50%;
+  content: none;
 }
 
 .document-lifecycle__step--done::before {
   background: var(--status-success-border);
 }
 
+/* `left: 50%; transform: translateX(-50%)` centers regardless of the
+   marker's own width — the previous `calc(50% - 6px)` silently assumed a
+   fixed 12px box and drifted the moment that number and the width diverged.
+   Flex centering (not `inline-grid; place-items`) for the SVG child fixes
+   the "object in circle not centered" finding — a checkmark/cross SVG's
+   reported intrinsic size does not always agree with a grid track's sizing
+   pass, but always agrees with flex's content-box centering. */
 .document-lifecycle__marker {
   position: absolute;
+  z-index: 1;
   top: 0;
-  left: calc(50% - 6px);
-  display: inline-grid;
-  place-items: center;
-  width: 12px;
-  height: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   border: 2px solid var(--border-strong);
   background: var(--bg-surface);

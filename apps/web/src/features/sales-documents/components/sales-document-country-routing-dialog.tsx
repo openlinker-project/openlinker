@@ -36,8 +36,8 @@
  *
  *   - An acknowledgment banner, rendered ONLY when the country carries zero
  *     rules and zero country defaults (loading excluded, to avoid a flash of
- *     the banner before the real counts arrive). It offers "Mark as no sales
- *     document" (`PUT .../acknowledgment`) or, once acknowledged, flips to an
+ *     the banner before the real counts arrive). It offers "Confirm -
+ *     nothing needed here" (`PUT .../acknowledgment`) or, once acknowledged, flips to an
  *     "Acknowledged — {timestamp}" state with an "Undo" (`DELETE
  *     .../acknowledgment`) action. No client-side clear-on-configure logic
  *     exists here on purpose — the backend (#2186) already clears the
@@ -76,6 +76,7 @@ import { useDeleteSalesDocumentRuleMutation } from '../hooks/use-delete-sales-do
 import { useDeleteSalesDocumentCountryDefaultMutation } from '../hooks/use-delete-sales-document-country-default-mutation';
 import { SalesDocumentRulesList } from './sales-document-rules-list';
 import { SalesDocumentCountryDefaults } from './sales-document-country-defaults';
+import { SalesDocumentTemplateScreen } from './sales-document-template-screen';
 import { salesDocumentRulesQueryKeys } from '../api/sales-document-rules.query-keys';
 import { SALES_DOCUMENT_REST_OF_WORLD_COUNTRY } from '../api/sales-document-rules.types';
 import { describeSalesDocumentCountryReset } from '../lib/describe-sales-document-country-reset';
@@ -134,6 +135,7 @@ export function SalesDocumentCountryRoutingDialog({
   const [confirmResetOpen, setConfirmResetOpen] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
+  const [confirmLeaveOpen, setConfirmLeaveOpen] = useState(false);
 
   const rules = rulesQuery.data ?? [];
   const defaults = defaultsQuery.data ?? [];
@@ -171,6 +173,25 @@ export function SalesDocumentCountryRoutingDialog({
     } finally {
       setIsResetting(false);
     }
+  }
+
+  // Review reversal: closing an unconfigured, unacknowledged country now
+  // REQUIRES an answer — Radix routes Escape, backdrop click, and the
+  // "Done" button through this single `onOpenChange`, so intercepting here
+  // covers all three uniformly (a Done-only gate would have left Escape and
+  // backdrop-click as silent bypasses). Navigating to a different country
+  // via the tier-3 cross-link or "← Back" does NOT go through this — those
+  // keep the dialog open, they never call `onOpenChange(false)`.
+  function handleDialogOpenChange(next: boolean): void {
+    if (next) {
+      onOpenChange(next);
+      return;
+    }
+    if (isEmptyCountry && acknowledgedAt === null) {
+      setConfirmLeaveOpen(true);
+      return;
+    }
+    onOpenChange(false);
   }
 
   const tiers: RoutingTier[] = [
@@ -262,7 +283,7 @@ export function SalesDocumentCountryRoutingDialog({
 
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog open={open} onOpenChange={handleDialogOpenChange}>
         <DialogContent aria-describedby={undefined} className="dialog__content--wide">
           {cameFrom ? (
             <Button
@@ -280,54 +301,34 @@ export function SalesDocumentCountryRoutingDialog({
           </p>
 
           <div className="sales-document-country-routing-dialog__body">
-            {isEmptyCountry ? (
-              acknowledgedAt !== null ? (
-                <Alert
-                  tone="success"
-                  title="No sales document, by design"
-                  action={
-                    <ReadOnlyLock
-                      active={write.demoReadOnly}
-                      message={DEMO_READ_ONLY_ACTION_MESSAGE}
+            {/*
+             * The starter template sits at the TOP again (reverted per
+             * feedback) — an operator opening an unconfigured country with
+             * guidance available should see it before the empty ladder, not
+             * discover it by scrolling past four tiers.
+             */}
+            {isEmptyCountry && acknowledgedAt === null ? (
+              <SalesDocumentTemplateScreen country={country} />
+            ) : null}
+            {isEmptyCountry && acknowledgedAt !== null ? (
+              <Alert
+                tone="success"
+                title="No sales document, by design"
+                action={
+                  <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                    <Button
+                      tone="secondary"
+                      className="button--sm"
+                      disabled={!write.canWrite || clearAcknowledgmentMutation.isPending}
+                      onClick={() => void clearAcknowledgmentMutation.mutateAsync(country)}
                     >
-                      <Button
-                        tone="secondary"
-                        className="button--sm"
-                        disabled={!write.canWrite || clearAcknowledgmentMutation.isPending}
-                        onClick={() => void clearAcknowledgmentMutation.mutateAsync(country)}
-                      >
-                        Undo
-                      </Button>
-                    </ReadOnlyLock>
-                  }
-                >
-                  Acknowledged - <TimeDisplay iso={acknowledgedAt} />.
-                </Alert>
-              ) : (
-                <Alert
-                  tone="info"
-                  title="Nothing configured for this country yet"
-                  action={
-                    <ReadOnlyLock
-                      active={write.demoReadOnly}
-                      message={DEMO_READ_ONLY_ACTION_MESSAGE}
-                    >
-                      <Button
-                        tone="secondary"
-                        className="button--sm"
-                        disabled={!write.canWrite || acknowledgeMutation.isPending}
-                        onClick={() => void acknowledgeMutation.mutateAsync(country)}
-                      >
-                        Mark as no sales document
-                      </Button>
-                    </ReadOnlyLock>
-                  }
-                >
-                  If {displayName} intentionally has no invoicing or fiscalization integration
-                  configured, acknowledge it so operators can tell that apart from a market nobody
-                  has looked at yet.
-                </Alert>
-              )
+                      Undo
+                    </Button>
+                  </ReadOnlyLock>
+                }
+              >
+                Acknowledged - <TimeDisplay iso={acknowledgedAt} />.
+              </Alert>
             ) : null}
             {acknowledgeMutation.error ? (
               <Alert tone="error">{acknowledgeMutation.error.message}</Alert>
@@ -337,11 +338,12 @@ export function SalesDocumentCountryRoutingDialog({
             ) : null}
 
             {tiers.map((tier, index) => (
-              <section key={tier.key} className="page-section">
-                <h3 className="detail-section__title">
-                  Tier {index + 1} · {tier.title}
-                </h3>
-                {tier.content}
+              <section key={tier.key} className="sales-document-tier">
+                <header className="sales-document-tier__header">
+                  <span className="sales-document-tier__number">{index + 1}</span>
+                  <h3 className="sales-document-tier__title">{tier.title}</h3>
+                </header>
+                <div className="sales-document-tier__content">{tier.content}</div>
               </section>
             ))}
 
@@ -379,6 +381,33 @@ export function SalesDocumentCountryRoutingDialog({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/*
+       * The close-time gate (review reversal): closing this dialog while
+       * {displayName} carries zero rules and zero defaults, and hasn't been
+       * acknowledged, requires an explicit answer here rather than letting
+       * Done/Escape/backdrop silently leave it unresolved. "Go back" is the
+       * cancel path — it just closes THIS confirm and leaves the routing
+       * dialog open, unchanged. Confirming both acknowledges AND closes.
+       */}
+      <ConfirmDialog
+        open={confirmLeaveOpen}
+        onOpenChange={setConfirmLeaveOpen}
+        className="dialog__content--elevated"
+        overlayClassName="dialog__overlay--elevated"
+        tone="default"
+        title={`Leave ${displayName} unconfigured?`}
+        description={`No rule or default is set for this market, so every ${displayName} order is held with nothing issued. If that's intentional — for example the marketplace already fiscalizes on your behalf — confirm it below. OpenLinker still won't decide what's legally required; this only stops flagging ${displayName} as something to review.`}
+        confirmLabel="Confirm - nothing needed here"
+        cancelLabel="Go back"
+        isConfirming={acknowledgeMutation.isPending}
+        onConfirm={() =>
+          void acknowledgeMutation.mutateAsync(country).then(() => {
+            setConfirmLeaveOpen(false);
+            onOpenChange(false);
+          })
+        }
+      />
 
       <ConfirmDialog
         open={confirmResetOpen}

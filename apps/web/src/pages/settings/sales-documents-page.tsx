@@ -1,9 +1,9 @@
 /**
  * Sales Documents Page (#2159)
  *
- * Admin-only page hosting the centralized "Settings → Sales documents" table
- * — see `SalesDocumentsPanel` for the panel itself. Mirrors `McpTokensPage`'s
- * admin-gating shape.
+ * Admin-only page hosting the centralized "Settings → Sales documents" view
+ * — see `SalesDocumentRuleEnginePanel` for the content itself. Mirrors
+ * `McpTokensPage`'s admin-gating shape.
  *
  * @module apps/web/src/pages/settings
  */
@@ -31,16 +31,9 @@ export function SalesDocumentsPage(): ReactElement {
     <PageLayout
       eyebrow="Settings"
       title="Sales documents"
-      description="Choose what each connected provider issues, and which one issues first. OpenLinker never decides which document an order legally needs."
+      description="Choose what each market issues, per country. OpenLinker never decides which document an order legally needs."
       backTo={{ to: '/settings', label: 'Settings' }}
     >
-      {/*
-       * #2806 — `SalesDocumentRuleEnginePanel` now composes both primary
-       * tables (markets + connected providers) at the top of the page and
-       * houses the older rule-engine / per-country surfaces behind an
-       * advanced disclosure. See its own doc comment for the full
-       * precedence and layout rationale.
-       */}
       <SalesDocumentRuleEnginePanel />
     </PageLayout>
   );

@@ -1,10 +1,20 @@
 /**
- * Document Type Select (#757)
+ * Document Type Select (#757, narrowed — review finding)
  *
- * Small controlled `<Select>` of well-known document types — `invoice` /
- * `receipt` surfaced in PL as faktura / paragon via `t()`. The selected value
- * feeds `documentType` into the issue call. Ephemeral action input (local
- * `useState` in the panel), not a persisted form (plan §2.5).
+ * Small controlled `<Select>` feeding `documentType` into the INVOICE issue
+ * call (`InvoicingPort.issueInvoice`). Offers `invoice` ONLY: no
+ * `InvoicingPort` adapter in the tree (KSeF, inFakt, Subiekt) issues a
+ * `receipt` document type — a fiscal receipt is a `FiscalizationPort`
+ * concept entirely, reached through the separate "Register receipt" card,
+ * never through this one. The picker used to also offer "Receipt (paragon)"
+ * here, which sent `documentType: 'receipt'` straight to an invoicing
+ * adapter that has no idea what that means — a capability mismatch the
+ * picker itself should never have been able to construct.
+ *
+ * `DOCUMENT_TYPE_LABEL_FALLBACK` stays the wider six-value map (unchanged) —
+ * it labels whatever a provider already issued on read-back surfaces
+ * (invoices list / detail, `SalesDocumentPanel`'s issued state), which is a
+ * different question from what an operator may newly SELECT here.
  *
  * @module apps/web/src/features/invoicing/components
  */
@@ -12,8 +22,8 @@ import type { ReactElement } from 'react';
 import { Select } from '../../../shared/ui/select';
 import { useTranslation } from '../../../shared/i18n';
 
-/** Operator-selectable document types in v1 (subset of `DocumentTypeValues`). */
-const OPTIONS = ['invoice', 'receipt'] as const;
+/** The only document type any shipped `InvoicingPort` adapter actually issues. */
+const OPTIONS = ['invoice'] as const;
 
 /** EN fallbacks for the well-known document types (PL via `t()`). Exported as
  *  the single source of truth so the issued-state line in the `orders` feature's

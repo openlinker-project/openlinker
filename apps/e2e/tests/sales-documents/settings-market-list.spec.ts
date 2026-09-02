@@ -8,15 +8,17 @@
  *
  * REAL PAGE STRUCTURE DIVERGES FROM THE MOCKUP, and this matters for what
  * "verified against the mockup" can mean here: the mockup shows a bare market
- * list + a routing dialog with numbered fallback tiers. The SHIPPED page
- * additionally composes the country-agnostic rule engine (#2170 —
- * `SalesDocumentRuleEnginePanel`'s rule composer, starter templates, and the
- * older `SalesDocumentCountryIndex` table) ABOVE the market section, and a
- * connections/providers table (`SalesDocumentsPanel`) below it. Those extra
- * surfaces are real, shipped, and NOT part of the mockup's proposal, so this
- * spec verifies only the two pieces the mockup actually depicts: the market
- * section (mockup's four "Show state" variants) and the per-country routing
- * dialog it opens.
+ * list + a routing dialog with numbered fallback tiers. The SHIPPED page adds
+ * the "Add a market" row and the standing ★ Rest of world row below the
+ * market section. Those extra surfaces are real, shipped, and NOT part of
+ * the mockup's proposal, so this spec verifies only the two pieces the
+ * mockup actually depicts: the market section (mockup's four "Show state"
+ * variants) and the per-country routing dialog it opens.
+ *
+ * The old "Connected providers" table (`SalesDocumentsPanel`) and its own
+ * settings sub-page are RETIRED (the "opcja b" fallback retirement) — the
+ * `config.invoicing.isPrimary` flag it edited is no longer consulted by
+ * `AutoIssueTriggerService` at all.
  *
  * THE FOUR MOCKUP STATES map onto the shipped code's pure rules exactly
  * (`summarize-sales-document-markets.ts` + `sales-document-market-section.tsx`):
@@ -127,13 +129,13 @@ test.describe('sales documents: settings market list + routing dialog (#2563 M10
     );
   });
 
-  test('FI (detected, unconfigured) needs a decision and offers "Set up"', async ({ page }) => {
+  test('FI (detected, unconfigured) needs a decision and offers "Configure"', async ({ page }) => {
     await gotoSettings(page);
     const row = marketRow(page, MARKET_SEED_COUNTRIES.unconfigured);
 
     await expect(row).toHaveClass(/sales-document-market-row--attention/);
     await expect(row.getByText('Nothing issued')).toBeVisible();
-    await expect(row.getByRole('button', { name: 'Set up' })).toBeVisible();
+    await expect(row.getByRole('button', { name: 'Configure' })).toBeVisible();
   });
 
   test('opening the dialog for an unconfigured country states there is nothing configured yet', async ({
@@ -141,14 +143,14 @@ test.describe('sales documents: settings market list + routing dialog (#2563 M10
   }) => {
     await gotoSettings(page);
     await marketRow(page, MARKET_SEED_COUNTRIES.unconfigured)
-      .getByRole('button', { name: 'Set up' })
+      .getByRole('button', { name: 'Configure' })
       .click();
 
     const dialog = page.getByRole('dialog', {
       name: `Sales-document routing · ${MARKET_SEED_COUNTRIES.unconfigured}`,
     });
     await expect(dialog).toBeVisible();
-    await expect(dialog.getByText('Nothing configured for this country yet')).toBeVisible();
+    await expect(dialog.getByText(/orders currently get no invoice or receipt/)).toBeVisible();
     await expect(dialog.getByText('Tier 1 · Rules')).toBeVisible();
     await expect(dialog.getByText(/Tier 2 · /)).toBeVisible();
 
@@ -168,7 +170,7 @@ test.describe('sales documents: settings market list + routing dialog (#2563 M10
   }) => {
     await gotoSettings(page);
     await marketRow(page, MARKET_SEED_COUNTRIES.toConfigure)
-      .getByRole('button', { name: 'Set up' })
+      .getByRole('button', { name: 'Configure' })
       .click();
 
     const dialog = page.getByRole('dialog', {
@@ -180,7 +182,7 @@ test.describe('sales documents: settings market list + routing dialog (#2563 M10
     // Every control saves on change — wait for the save to land rather than
     // asserting on the client-side optimistic value.
     await expect(dialog.getByLabel('Invoice')).toHaveValue(MARKET_SEED_CONNECTION_IDS.invoicing);
-    await expect(dialog.getByText('Nothing configured for this country yet')).toBeHidden();
+    await expect(dialog.getByText(/orders currently get no invoice or receipt/)).toBeHidden();
 
     await page.keyboard.press('Escape');
     await expect(dialog).toBeHidden();
@@ -199,14 +201,14 @@ test.describe('sales documents: settings market list + routing dialog (#2563 M10
   test('acknowledging "no document, by choice" for NO, then undoing it', async ({ page }) => {
     await gotoSettings(page);
     await marketRow(page, MARKET_SEED_COUNTRIES.toAcknowledge)
-      .getByRole('button', { name: 'Set up' })
+      .getByRole('button', { name: 'Configure' })
       .click();
 
     const dialog = page.getByRole('dialog', {
       name: `Sales-document routing · ${MARKET_SEED_COUNTRIES.toAcknowledge}`,
     });
     await expect(dialog).toBeVisible();
-    await dialog.getByRole('button', { name: 'Mark as no sales document' }).click();
+    await dialog.getByRole('button', { name: 'Confirm - nothing needed here' }).click();
 
     await expect(dialog.getByText('No sales document, by design')).toBeVisible();
     const undo = dialog.getByRole('button', { name: 'Undo' });
@@ -227,7 +229,7 @@ test.describe('sales documents: settings market list + routing dialog (#2563 M10
     await row.getByRole('button', { name: 'Configure' }).click();
     await expect(dialog).toBeVisible();
     await dialog.getByRole('button', { name: 'Undo' }).click();
-    await expect(dialog.getByText('Nothing configured for this country yet')).toBeVisible();
+    await expect(dialog.getByText(/orders currently get no invoice or receipt/)).toBeVisible();
     await page.keyboard.press('Escape');
   });
 
@@ -262,11 +264,11 @@ test.describe('sales documents: settings market list + routing dialog (#2563 M10
     await confirm.getByRole('button', { name: 'Yes, reset' }).click();
 
     await expect(confirm).toBeHidden();
-    await expect(dialog.getByText('Nothing configured for this country yet')).toBeVisible();
+    await expect(dialog.getByText(/orders currently get no invoice or receipt/)).toBeVisible();
     await page.keyboard.press('Escape');
 
     const row = marketRow(page, MARKET_SEED_COUNTRIES.toConfigure);
-    await expect(row.getByRole('button', { name: 'Set up' })).toBeVisible();
+    await expect(row.getByRole('button', { name: 'Configure' })).toBeVisible();
   });
 
   test('keyboard operability: the dialog opens via Enter and closes via Escape (focus-restore gap pinned)', async ({
@@ -274,7 +276,7 @@ test.describe('sales documents: settings market list + routing dialog (#2563 M10
   }) => {
     await gotoSettings(page);
     const trigger = marketRow(page, MARKET_SEED_COUNTRIES.unconfigured).getByRole('button', {
-      name: 'Set up',
+      name: 'Configure',
     });
     await trigger.focus();
     await expect(trigger).toBeFocused();
