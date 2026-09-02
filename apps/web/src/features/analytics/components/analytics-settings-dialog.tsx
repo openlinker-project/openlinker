@@ -257,8 +257,9 @@ export function AnalyticsSettingsDialog({
                   <strong>Use the rate found in the product catalog</strong>
                   <span className="analytics-settings-dialog__toggle-desc">
                     Trust a tax rate found retroactively in the catalog and include such orders in Net
-                    Sales automatically. This is reversible — turning it off does not undo any figure
-                    already shown.
+                    Sales automatically. This applies to everyone and to every date range, not just the
+                    one you&rsquo;re viewing - turning it off removes these orders from Net Sales again
+                    the next time the figures are queried.
                   </span>
                 </span>
               </label>
