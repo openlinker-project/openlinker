@@ -10,6 +10,7 @@
  */
 import { useState, type ReactElement } from 'react';
 import { useConnectionsQuery } from '../../connections';
+import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { LoadingState, ErrorState } from '../../../shared/ui/feedback-state';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
@@ -20,6 +21,11 @@ import { useSalesDocumentRulesQuery } from '../hooks/use-sales-document-rules-qu
 import { useDeleteSalesDocumentRuleMutation } from '../hooks/use-delete-sales-document-rule-mutation';
 import { SalesDocumentRuleComposerDialog } from './sales-document-rule-composer-dialog';
 import { describeSalesDocumentCondition } from '../lib/describe-sales-document-condition';
+import {
+  countRulesUsingBuyerTaxId,
+  describeBuyerTaxIdRuleCount,
+  usesBuyerTaxIdCondition,
+} from '../lib/describe-sales-document-tax-id-coverage';
 import type { SalesDocumentRule } from '../api/sales-document-rules.types';
 
 interface SalesDocumentRulesListProps {
@@ -52,6 +58,7 @@ export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps)
 
   const rules = rulesQuery.data ?? [];
   const connections = connectionsQuery.data ?? [];
+  const taxIdRuleCount = countRulesUsingBuyerTaxId(rules);
 
   return (
     <div className="page-section">
@@ -65,9 +72,25 @@ export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps)
           </Button>
         </ReadOnlyLock>
       </div>
+      <p className="muted-text">
+        Exactly one rule must match an order. Rules have no order of priority — if two match, the
+        order is held instead of one winning.
+      </p>
+
+      {taxIdRuleCount > 0 ? (
+        <Alert tone="warning" title={describeBuyerTaxIdRuleCount(taxIdRuleCount)}>
+          A buyer-tax-ID condition matches only an order whose source records that fact — today
+          that is PrestaShop orders only. An order from Allegro or WooCommerce carries no buyer
+          tax ID at all, so a rule like this one never matches those orders, but it matches a
+          PrestaShop order normally.
+        </Alert>
+      ) : null}
 
       {rules.map((rule) => {
         const connectionName = connections.find((c) => c.id === rule.connectionId)?.name ?? rule.connectionId;
+        const isDeletingThisRule = deleteRule.isPending && deleteRule.variables === rule.id;
+        const deleteFailedForThisRule =
+          deleteRule.isError && deleteRule.variables === rule.id ? deleteRule.error : null;
         return (
           <div key={rule.id} className="rule-card">
             <div className="rule-card__flow">
@@ -85,6 +108,14 @@ export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps)
             </div>
             <div className="rule-card__meta">
               {rule.provenance ? <span className="provenance-tag">from: {rule.provenance}</span> : null}
+              {usesBuyerTaxIdCondition(rule) ? (
+                <span
+                  className="provenance-tag"
+                  title="Matches only orders from a source that records a buyer tax ID (today: PrestaShop)"
+                >
+                  PrestaShop orders only
+                </span>
+              ) : null}
               <span className="rule-card__dates">
                 {rule.effectiveTo ? `ends ${rule.effectiveTo}` : 'no end date'}
               </span>
@@ -92,13 +123,16 @@ export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps)
                 <Button
                   tone="secondary"
                   className="button--sm"
-                  disabled={!write.canWrite || deleteRule.isPending}
-                  onClick={() => void deleteRule.mutateAsync(rule.id)}
+                  disabled={!write.canWrite || isDeletingThisRule}
+                  onClick={() => deleteRule.mutate(rule.id)}
                 >
-                  Delete
+                  {isDeletingThisRule ? 'Deleting…' : 'Delete'}
                 </Button>
               </ReadOnlyLock>
             </div>
+            {deleteFailedForThisRule ? (
+              <Alert tone="error">{deleteFailedForThisRule.message}</Alert>
+            ) : null}
           </div>
         );
       })}

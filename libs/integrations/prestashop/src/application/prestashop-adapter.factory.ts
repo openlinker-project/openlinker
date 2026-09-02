@@ -48,6 +48,7 @@ import { PrestashopCategoryPathResolver } from '../infrastructure/provisioners/p
 import type { CustomerProjectionRepositoryPort } from '@openlinker/core/customers';
 import { Logger } from '@openlinker/shared/logging';
 import type { FetchLike } from '@openlinker/shared/http';
+import type { CachePort } from '@openlinker/shared/cache';
 
 /**
  * PrestaShop Adapter Factory
@@ -125,7 +126,8 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
     connection: Connection,
     identifierMapping: IdentifierMappingPort,
     credentialsResolver: CredentialsResolverPort,
-    fetchImpl: FetchLike
+    fetchImpl: FetchLike,
+    cache?: CachePort
   ): Promise<PrestashopAdapters> {
     this.logger.debug(`Creating PrestaShop adapters for connection: ${connection.id}`);
 
@@ -186,7 +188,11 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       identifierMapping,
       inventoryMapper,
       connection,
-      this.packResolver
+      this.packResolver,
+      // #2369: backs the adjustInventory idempotency window. Undefined is a
+      // supported state — the adapter then reports 'unsupported' rather than
+      // claiming a dedupe it cannot perform.
+      cache
     );
 
     const orderSource = new PrestashopOrderSourceAdapter(

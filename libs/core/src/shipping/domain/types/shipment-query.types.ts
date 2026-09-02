@@ -11,6 +11,7 @@
  */
 
 import type { Shipment } from '../entities/shipment.entity';
+import type { ShipmentDirection } from './shipment-direction.types';
 import type { ShipmentStatus } from './shipment-status.types';
 import type { ShippingMethod } from './shipping-method.types';
 
@@ -25,6 +26,18 @@ export interface ShipmentFilters {
    * not "non-terminal", so a future status addition is a deliberate edit.
    */
   statuses?: readonly ShipmentStatus[];
+  /**
+   * Direction discriminator (#2373). **Optional here, unlike the required
+   * argument on `findByOrderId` / `findActiveByOrderId` /
+   * `findBranchOneByOrderAndConnection`** — and the asymmetry is deliberate.
+   * Those three serve internal flows where an unstated cohort is a silent
+   * decline; `findMany` also backs the operator-facing `GET /shipments` list,
+   * where hard-filtering to outbound would make return labels permanently
+   * invisible with no signal. So the operator can filter by direction and see
+   * it on every row, while the status-sync scan passes `'outbound'`
+   * explicitly rather than inheriting it.
+   */
+  direction?: ShipmentDirection;
   /** Shipping-provider connection id (UUID). */
   connectionId?: string;
   shippingMethod?: ShippingMethod;

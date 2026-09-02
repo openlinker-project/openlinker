@@ -32,6 +32,7 @@ import { join, resolve } from 'node:path';
  */
 const PLUGIN_MIGRATION_DIRS_FROM_REPO_ROOT = [
   'libs/integrations/allegro/src/migrations',
+  'libs/oms/src/migrations',
 ];
 
 /**

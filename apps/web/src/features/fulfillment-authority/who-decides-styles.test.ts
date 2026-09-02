@@ -1,0 +1,217 @@
+/**
+ * Who-decides — stylesheet coverage
+ *
+ * Every `who-decides-*` class this feature (and its page) puts on an element
+ * must have a rule in `index.css`.
+ *
+ * The `features/returns` sibling exists because nine class names once shipped
+ * with no rule behind them and nothing failed: an undefined class is silently
+ * valid CSS, so the defect surfaced only as text run together on screen. A
+ * class name is a claim that a rule exists; this checks the claim.
+ *
+ * Scoped to the `who-decides` prefix — the shared primitives own their own
+ * classes and are guarded where they live.
+ *
+ * @module apps/web/src/features/fulfillment-authority
+ */
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+
+const WEB_SRC = join(__dirname, '..', '..');
+
+function collectSources(dir: string): string[] {
+  const files: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...collectSources(full));
+      continue;
+    }
+    if (entry.name.endsWith('.tsx') && !entry.name.includes('.test.')) files.push(full);
+  }
+  return files;
+}
+
+function whoDecidesClassNames(source: string): string[] {
+  const names = new Set<string>();
+  for (const match of source.matchAll(/className="([^"]+)"/g)) {
+    for (const name of match[1].split(/\s+/)) {
+      if (name.startsWith('who-decides')) names.add(name);
+    }
+  }
+  // The row and preset components build their class strings from an array, so
+  // the literal names never appear inside a `className="…"` attribute.
+  for (const match of source.matchAll(/'(who-decides[^']*)'/g)) {
+    const name = match[1].trim();
+    if (name.length > 0) names.add(name);
+  }
+  return [...names];
+}
+
+describe('who-decides stylesheet coverage', () => {
+  it('defines a rule for every who-decides-* class the feature renders', () => {
+    const css = readFileSync(join(WEB_SRC, 'index.css'), 'utf8');
+    const sources = [
+      ...collectSources(join(WEB_SRC, 'features', 'fulfillment-authority')),
+      join(WEB_SRC, 'pages', 'settings', 'who-decides-page.tsx'),
+    ];
+
+    const used = new Set<string>();
+    for (const file of sources) {
+      for (const name of whoDecidesClassNames(readFileSync(file, 'utf8'))) used.add(name);
+    }
+
+    // A guard over an empty set would pass forever; the classes are the point.
+    expect(used.size).toBeGreaterThan(0);
+
+    // ANCHORED, not `css.includes('.' + name)`: a substring test lets a class
+    // with no rule of its own pass on the strength of a longer sibling's
+    // selector (`.who-decides-attention` matched `.who-decides-attention__counts`),
+    // so the guard could not catch the very rendered-invisible defect it exists
+    // for. Collect the declared selectors and test membership instead.
+    const declared = new Set<string>();
+    for (const match of css.matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)) declared.add(match[1]);
+
+    // A BEM BLOCK ROOT is a namespace, not a claim of a rule: the attention
+    // section carries `who-decides-attention` only so its children can be named
+    // `who-decides-attention__*`, and takes its own layout from
+    // `who-decides__section`. Requiring the `__`/`--` separator keeps this exact
+    // — a LEAF with no rule still fails, because a longer sibling no longer
+    // covers it.
+    const isBlockRoot = (name: string) =>
+      css.includes(`.${name}__`) || css.includes(`.${name}--`);
+
+    const undefinedClasses = [...used].filter(
+      (name) => !declared.has(name) && !isBlockRoot(name),
+    );
+    expect(undefinedClasses).toEqual([]);
+
+    // The guard of the guard. Under the old substring test this name passed on
+    // the strength of `.who-decides-attention__counts`, so the check could not
+    // fail for the defect it exists to catch — and an assertion nobody has seen
+    // fail is a claim, not a guard.
+    const fabricatedLeaf = 'who-decides-attention__coun';
+    expect(declared.has(fabricatedLeaf)).toBe(false);
+    expect(isBlockRoot(fabricatedLeaf)).toBe(false);
+    expect(css.includes(`.${fabricatedLeaf}`)).toBe(true);
+  });
+
+  /**
+   * Every custom property a `who-decides-*` rule READS must be DECLARED.
+   *
+   * `check-design-tokens.mjs` runs catalog -> CSS only, so a reference to a
+   * property that was never declared is invisible to it. `var(--x)` with no
+   * declaration and no fallback is invalid at computed-value time, which makes
+   * the whole shorthand `unset` — `background: var(--surface-1)` shipped seven
+   * transparent rows and three transparent cards, and `--accent-strong` gave the
+   * selected preset card a `currentColor` border. Neither throws, neither shows
+   * up in a class-name check, and both look like a broken page.
+   */
+  it('references only declared custom properties from who-decides rules', () => {
+    const css = readFileSync(join(WEB_SRC, 'index.css'), 'utf8');
+
+    const declared = new Set<string>();
+    for (const match of css.matchAll(/--([a-zA-Z0-9-]+)\s*:/g)) declared.add(match[1]);
+
+    // Rule bodies whose selector list mentions a who-decides class.
+    const referenced = new Set<string>();
+    for (const block of css.matchAll(/([^{}]*who-decides[^{}]*)\{([^}]*)\}/g)) {
+      for (const use of block[2].matchAll(/var\(\s*--([a-zA-Z0-9-]+)\s*(\)|,)/g)) {
+        // A `var(--x, fallback)` reference is safe by construction.
+        if (use[2] === ',') continue;
+        referenced.add(use[1]);
+      }
+    }
+
+    expect(referenced.size).toBeGreaterThan(0);
+    expect([...referenced].filter((name) => !declared.has(name))).toEqual([]);
+  });
+
+  /**
+   * `__inactive` and `__candidates` must occupy DIFFERENT grid areas.
+   *
+   * CSS Grid STACKS items assigned to one area rather than flowing them, and the
+   * two are independently non-empty on the same row — inactive claimants are
+   * filtered on `!isActive`, ambiguity is computed over ACTIVE claimants only —
+   * so sharing `extras` printed the disabled-connection sentence THROUGH the
+   * candidate link list, at every breakpoint.
+   */
+  it('does not assign two who-decides row parts to one grid area', () => {
+    const css = readFileSync(join(WEB_SRC, 'index.css'), 'utf8');
+
+    const areaOf = (className: string): string[] => {
+      const areas: string[] = [];
+      for (const block of css.matchAll(/([^{}]*)\{([^}]*)\}/g)) {
+        if (!block[1].split(',').some((sel) => sel.trim().startsWith(`.${className}`))) continue;
+        for (const area of block[2].matchAll(/grid-area:\s*([a-zA-Z0-9_-]+)\s*;/g)) {
+          areas.push(area[1]);
+        }
+      }
+      return areas;
+    };
+
+    const inactive = areaOf('who-decides-row__inactive');
+    const candidates = areaOf('who-decides-row__candidates');
+    expect(inactive.length).toBeGreaterThan(0);
+    expect(candidates.length).toBeGreaterThan(0);
+    expect(inactive.filter((area) => candidates.includes(area))).toEqual([]);
+  });
+
+  /**
+   * The row's mobile reflow must land on the SAME breakpoint as the shared list
+   * primitive (#2388).
+   *
+   * `.who-decides-row` shipped guarded by `max-width: 768px`, which MATCHES at
+   * exactly 768 px — while `DataTable`'s own card/table switch and all three
+   * `hide-below` queries use `max-width: 767.98px`, which does not. Measured on
+   * `/settings/who-decides` at innerWidth 768 before the fix: `matchMedia`
+   * reported `767.98px` false and `768px` true, so this row rendered its
+   * single-column mobile layout while every table on the page was still in its
+   * desktop branch — two components disagreeing about which band they are in,
+   * at one of the three audited widths.
+   *
+   * Asserted against `.data-table__cell--hide-below-768` rather than against a
+   * hardcoded string, so the row follows the primitive if the house breakpoint
+   * ever moves, instead of pinning a number that would then be wrong.
+   */
+  it('reflows on the same breakpoint the shared table primitive uses', () => {
+    const css = readFileSync(join(WEB_SRC, 'index.css'), 'utf8');
+
+    // Brace-matched, so only a media block's OWN body is searched — the
+    // `ConnectionFold.test.tsx` primitive. A naive `split('@media ')` sweeps up
+    // every rule that follows a block until the next one, and these selectors
+    // also appear outside any media query, so a looser guard finds the wrong
+    // block and passes by luck.
+    const queryFor = (selector: string): string | undefined => {
+      for (let at = css.indexOf('@media '); at !== -1; at = css.indexOf('@media ', at + 1)) {
+        const open = css.indexOf('{', at);
+        let depth = 0;
+        let close = open;
+        for (; close < css.length; close += 1) {
+          if (css[close] === '{') depth += 1;
+          else if (css[close] === '}') {
+            depth -= 1;
+            if (depth === 0) break;
+          }
+        }
+        if (css.slice(open + 1, close).includes(`${selector} {`)) {
+          return css.slice(at + '@media '.length, open).trim();
+        }
+      }
+      return undefined;
+    };
+
+    const rowQuery = queryFor('.who-decides-row');
+    const primitiveQuery = queryFor('.data-table__cell--hide-below-768');
+
+    expect(rowQuery).toBeDefined();
+    expect(primitiveQuery).toBeDefined();
+    expect(rowQuery).toBe(primitiveQuery);
+
+    // Guard of the guard: a selector that appears in NO media block must return
+    // undefined, or `queryFor` has decayed into a substring scan and the
+    // equality above would be comparing two accidental hits.
+    expect(queryFor('.who-decides-row__nonexistent-leaf')).toBeUndefined();
+  });
+});

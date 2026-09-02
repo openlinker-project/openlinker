@@ -20,6 +20,7 @@ import { OrderRecord } from '../../domain/entities/order-record.entity';
 import type { OrderSyncStatus, SyncAttempt } from '../../domain/types/order-sync.types';
 import type { IOrderRecordService } from '../interfaces/order-record.service.interface';
 import type { IncomingOrder } from '../../domain/types/incoming-order.types';
+import { OrderRecordNotFoundException } from '../../domain/exceptions/order-record-not-found.exception';
 import type {
   FailedSyncValueSummary,
   OrderHealthSummaryFilters,
@@ -29,6 +30,11 @@ import type {
   PaginatedOrderRecords,
 } from '../../domain/types/order-record.types';
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
+import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
+import { IAutomationTriggerEmissionService } from '@openlinker/core/automation';
+import { AUTOMATION_TRIGGER_EMISSION_SERVICE_TOKEN } from '@openlinker/core/automation';
+import { redactAddress } from '../../domain/order-address-redaction';
+import type { OrderAmendmentChange } from '../../domain/order-amendment-diff';
 import { SALES_DOCUMENT_MARKET_DISCOVERY_WINDOW_DAYS } from '@openlinker/core/sales-documents';
 import type {
   SalesDocumentBlock,
@@ -38,7 +44,7 @@ import type {
   SalesAnalyticsFilters,
   SalesAndChannelAnalytics,
 } from '../../domain/types/order-sales-analytics.types';
-import { getPiiConfig } from '@openlinker/shared/config';
+import { getPiiConfig, hashAddress, normalizeAddress } from '@openlinker/shared/config';
 import { Logger } from '@openlinker/shared/logging';
 import {
   REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN,
@@ -51,9 +57,15 @@ import {
   ORDER_RECORD_REPOSITORY_TOKEN,
 } from '../../orders.tokens';
 import { deriveOrderAnalyticsScalars, deriveOrderLineItems } from '../../domain/order-analytics-projection';
+import { buildOrderAutomationFacts } from '../../domain/order-automation-facts-projection';
 import { buildSalesAndChannelAnalytics } from '../../domain/order-sales-aggregation';
 import { buildTopProducts } from '../../domain/top-products-aggregation';
-import type { TopProductFilters, TopProductsResult } from '../../domain/types/top-products.types';
+import { buildVariantSales } from '../../domain/variant-sales-aggregation';
+import type {
+  TopProductFilters,
+  TopProductsResult,
+  VariantSalesResult,
+} from '../../domain/types/top-products.types';
 
 /** One day in milliseconds, for the market-discovery window arithmetic (#2518). */
 const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -70,7 +82,9 @@ export class OrderRecordService implements IOrderRecordService {
     @Inject(ORDER_LINE_ITEM_REPOSITORY_TOKEN)
     private readonly lineItemRepository: OrderLineItemRepositoryPort,
     @Inject(REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN)
-    private readonly reportingCurrencySettings: IReportingCurrencySettingsService
+    private readonly reportingCurrencySettings: IReportingCurrencySettingsService,
+    @Inject(AUTOMATION_TRIGGER_EMISSION_SERVICE_TOKEN)
+    private readonly automationEmission: IAutomationTriggerEmissionService
   ) {}
 
   /**
@@ -131,12 +145,12 @@ export class OrderRecordService implements IOrderRecordService {
       totals: order.totals,
       shippingAddress: piiConfig.storePii
         ? order.shippingAddress
-        : this.sanitizeAddress(order.shippingAddress),
+        : redactAddress(order.shippingAddress),
       billingAddress: piiConfig.storePii
         ? order.billingAddress
-        : this.sanitizeAddress(order.billingAddress),
+        : redactAddress(order.billingAddress),
       // Buyer email (#948) — PII-gated + present-only. Unlike addresses (which
-      // get a `[REDACTED]` placeholder via sanitizeAddress), email is omitted
+      // get a `[REDACTED]` placeholder via redactAddress), email is omitted
       // entirely under hash-only mode: there's no meaningful redaction of an
       // atomic identifier, and the privacy model keeps only `emailHash` on the
       // customer projection. Needed for the Generate-Label recipient.
@@ -206,6 +220,28 @@ export class OrderRecordService implements IOrderRecordService {
       ? encodeBuyerTaxIdColumn(readBuyerTaxId(order))
       : null;
 
+    // Shipping-address hash (#2395) - stamped HERE, at ingestion, because this
+    // is the only place the un-redacted address is still in hand.
+    //
+    // It must NOT be derived later by hashing the persisted snapshot: under
+    // `OL_STORE_PII=false` that snapshot has already been through
+    // `redactAddress`, so hashing it yields ONE hash per country, shared by
+    // every order in the install - a plausible 64-hex string that groups
+    // everything while looking correct. And `customer_address_projections` are
+    // keyed by CUSTOMER, not by order, so they cannot answer "this order's
+    // address" either.
+    //
+    // Deliberately NOT PII-gated, unlike its `buyerTaxId` neighbour directly
+    // above - the inversion is subtle enough to state: this is a one-way hash
+    // carrying no recoverable address, and it is consumed by `RoutingShipTo`'s
+    // DEGRADED arm, i.e. by hash-only deployments specifically. Gating it would
+    // null the value exactly on the installs the degraded arm exists to serve.
+    //
+    // `getPiiConfig()` is already called at the top of this method and throws
+    // when `OL_PII_HASH_SALT` is unset regardless of the flag, so `hashAddress`
+    // introduces no new failure mode on this path.
+    const shippingAddressHash = this.deriveShippingAddressHash(order);
+
     const orderRecord = new OrderRecord(
       order.id,
       order.customerId || null,
@@ -224,11 +260,12 @@ export class OrderRecordService implements IOrderRecordService {
       analyticsScalars.currency,
       analyticsScalars.taxTreatment,
       analyticsScalars.totalAmount,
-      // The thirteen columns between here and `buyerTaxId` all default to
-      // `null` and are owned by their own narrow UPDATEs (cancellation, the
-      // three salesDocument* reasons, the six FX snapshot columns, the two
-      // block-episode timestamps, taxRateEra). Restated explicitly only because
-      // this is a positional constructor and the new argument sits past them.
+      // Params 18-34 of the positional constructor: cancelledAt, the three
+      // salesDocument* reasons, the six FX snapshot columns, packedAt /
+      // packedByUserId, lastAmendedAt / lastAmendmentChanges, the two
+      // block-episode timestamps and taxRateEra. All default and are owned by
+      // their own narrow UPDATEs; restated explicitly only because the new
+      // argument sits past them.
       null,
       null,
       null,
@@ -242,7 +279,16 @@ export class OrderRecordService implements IOrderRecordService {
       null,
       null,
       null,
-      buyerTaxId
+      null,
+      null,
+      null,
+      null,
+      // activeHoldReason (#2340) and omsAttention (#2352): projections owned by
+      // their own writers, never set on the ingestion path.
+      null,
+      [],
+      buyerTaxId,
+      shippingAddressHash
     );
 
     // #1985: persist the order record AND its order_line_items rows in one
@@ -250,6 +296,10 @@ export class OrderRecordService implements IOrderRecordService {
     // re-ingested order with a changed item list never leaves stale rows.
     const lineItems = deriveOrderLineItems(order, sourceConnectionId);
     const saved = await this.repository.upsertWithLineItems(orderRecord, lineItems);
+    // #2282 (ADR-057): the write path freezes source attribution, so a
+    // divergence between what we asked to persist and what came back means a
+    // cross-source re-ingestion was refused. Warn rather than throw.
+    this.warnOnAttributionDivergence(orderRecord, saved);
 
     // Two post-upsert writers, ONE refresh (#2125). Both write columns that
     // upsertWithLineItems() deliberately excludes from its statement, so
@@ -325,10 +375,10 @@ export class OrderRecordService implements IOrderRecordService {
       totals: incoming.totals,
       shippingAddress: piiConfig.storePii
         ? incoming.shippingAddress
-        : this.sanitizeAddress(incoming.shippingAddress),
+        : redactAddress(incoming.shippingAddress),
       billingAddress: piiConfig.storePii
         ? incoming.billingAddress
-        : this.sanitizeAddress(incoming.billingAddress),
+        : redactAddress(incoming.billingAddress),
       // Buyer email (#948) — PII-gated + present-only; see persistOrder for the
       // omit-vs-redact rationale. For "ready" orders this awaiting_mapping
       // snapshot is overwritten by persistOrder, so this write is for
@@ -373,6 +423,7 @@ export class OrderRecordService implements IOrderRecordService {
     );
 
     const saved = await this.repository.upsert(orderRecord);
+    this.warnOnAttributionDivergence(orderRecord, saved);
 
     // No FX stamp on this path, deliberately: an `awaiting_mapping` snapshot is
     // overwritten by `persistOrder` as soon as item resolution succeeds, so
@@ -386,6 +437,32 @@ export class OrderRecordService implements IOrderRecordService {
     );
 
     return cancellationWrote ? (await this.repository.findById(internalOrderId)) ?? saved : saved;
+  }
+
+  /**
+   * Report - never refuse - an attempted change of an order's source
+   * attribution (#2282).
+   *
+   * The write path itself is the enforcement point: `upsert` establishes
+   * `sourceConnectionId` on the first write and cannot move it afterwards, so
+   * the returned record carries the row's TRUE origin. When that differs from
+   * what this call asked for, the caller reached the write path for an order
+   * that belongs to another source - the #940 destination-echo shape, which the
+   * ADR-017 guard in `OrderIngestionService` normally catches upstream. Silently
+   * preserving and warn-logging is deliberate: throwing would turn a benign,
+   * already-correct outcome into a failed ingestion job.
+   */
+  private warnOnAttributionDivergence(requested: OrderRecord, saved: OrderRecord): void {
+    if (saved.sourceConnectionId === requested.sourceConnectionId) {
+      return;
+    }
+
+    this.logger.warn(
+      `Source attribution change refused for order ${requested.internalOrderId}: ` +
+        `write from connection ${requested.sourceConnectionId} left the record ` +
+        `attributed to its original source ${saved.sourceConnectionId} ` +
+        `(source attribution is immutable after the first write)`
+    );
   }
 
   /**
@@ -414,6 +491,31 @@ export class OrderRecordService implements IOrderRecordService {
     }
     const parsed = new Date(to);
     return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  /**
+   * Hash the order's shipping address (#2395) for `RoutingShipTo`'s degraded
+   * arm. Field mapping mirrors `OrderCustomerProjectionUpdaterService`
+   * verbatim, so the two hashes of one address agree.
+   *
+   * A blank or whitespace-only result is treated as `null`: a blank string is
+   * itself a shared grouping key, i.e. the exact failure this column exists to
+   * avoid, so it must never be forwarded as if it were a hash.
+   */
+  private deriveShippingAddressHash(order: Order): string | null {
+    if (!order.shippingAddress) {
+      return null;
+    }
+    const hash = hashAddress(
+      normalizeAddress({
+        address1: order.shippingAddress.address1,
+        address2: order.shippingAddress.address2,
+        city: order.shippingAddress.city,
+        postcode: order.shippingAddress.postalCode,
+        countryIso2: order.shippingAddress.country,
+      })
+    );
+    return hash.trim() === '' ? null : hash;
   }
 
   /**
@@ -535,6 +637,10 @@ export class OrderRecordService implements IOrderRecordService {
     return this.repository.findEarliestOrderDateByConnection(connectionIds);
   }
 
+  async countOrdersWithOmsAttention(): Promise<number> {
+    return this.repository.countOrdersWithOmsAttention();
+  }
+
   /**
    * Which markets the operator has orders from, and how many (#2518, ADR-066).
    *
@@ -628,6 +734,29 @@ export class OrderRecordService implements IOrderRecordService {
   }
 
   /**
+   * One product's sales split by variant, per channel (#2765) — see the
+   * interface doc for why this is a separate, lazily-fetched drill-down
+   * rather than a widening of {@link getTopProducts}'s list response.
+   *
+   * Unlike {@link getTopProducts}'s product-level pair, the ranking and
+   * breakdown reads here are independently scoped to the SAME already-known
+   * `productId` (no page-dependent id list to wait for), so they run in
+   * parallel.
+   */
+  async getTopProductVariantSales(
+    productId: string,
+    filters: SalesAnalyticsFilters
+  ): Promise<VariantSalesResult> {
+    const reportingCurrency = await this.reportingCurrencySettings.resolve();
+    const [ranking, breakdown] = await Promise.all([
+      this.lineItemRepository.getVariantRanking(productId, filters, reportingCurrency),
+      this.lineItemRepository.getVariantChannelBreakdown(productId, filters, reportingCurrency),
+    ]);
+
+    return buildVariantSales({ productId, ranking, breakdown });
+  }
+
+  /**
    * Record or clear the sales-document block (#2100). Thin pass-through to the
    * repository's narrow absolute-set — see
    * {@link OrderRecordRepositoryPort.updateSalesDocumentBlock}. `null` clears,
@@ -642,26 +771,113 @@ export class OrderRecordService implements IOrderRecordService {
   }
 
   /**
-   * Sanitize address by removing PII fields
-   *
-   * When PII storage is disabled, removes sensitive fields from addresses
-   * while keeping structural information (hash can be computed separately).
+   * #2396 — the write half of "gate reports, caller persists" for fulfilment
+   * routing. Thin by design: the decision belongs to the intercept, this only
+   * records it.
    */
-  private sanitizeAddress(
-    address:
-      | { address1?: string; city?: string; postalCode?: string; country?: string }
-      | null
-      | undefined
-  ): { address1: string; city: string; postalCode: string; country: string } | undefined {
-    if (!address) {
-      return undefined;
-    }
+  async markFulfillmentBlock(
+    internalOrderId: string,
+    block: FulfillmentBlock | null
+  ): Promise<void> {
+    await this.repository.updateFulfillmentBlock(internalOrderId, block);
+  }
 
-    return {
-      address1: '[REDACTED]',
-      city: '[REDACTED]',
-      postalCode: '[REDACTED]',
-      country: address.country ?? '', // Country code is not PII
-    };
+  /**
+   * Mark this order packed (#2287). The instant is stamped HERE rather than
+   * taken from the caller: unlike `markCancelled`, which relays an instant an
+   * external cancel event carries, "packed" is OpenLinker's own observation of
+   * an operator action, so accepting a caller-supplied timestamp would let a
+   * client backdate an audit fact.
+   *
+   * The repository write is guarded (`packedAt IS NULL`), so `false` means one
+   * of exactly two things and they must be told apart: the order is already
+   * packed (the idempotent replay — return the existing stamp untouched) or no
+   * such order exists (throw). Only the re-read can distinguish them, and it is
+   * also what makes the returned record authoritative on the winner's stamp
+   * rather than on this call's discarded one.
+   */
+  async markPacked(internalOrderId: string, packedByUserId: string): Promise<OrderRecord> {
+    const packedAt = new Date();
+    // The guard's boolean IS the T5 edge (#2360). The repository's WHERE carries
+    // `packedAt: IsNull()`, so `true` means THIS call performed the null -> value
+    // transition — which is exactly spec §5.2's rule that re-writing `packedAt`
+    // (a timestamp correction, a re-pack) must not re-fire. Capturing it costs
+    // nothing and needs no new state; discarding it, as this method used to,
+    // threw the transition signal away at the one layer that can emit.
+    const isFirstPack = await this.repository.markPacked(internalOrderId, packedAt, packedByUserId);
+    const record = await this.repository.findById(internalOrderId);
+    if (!record) {
+      throw new OrderRecordNotFoundException(internalOrderId);
+    }
+    if (isFirstPack) {
+      await this.emitPackedTrigger(record, packedAt);
+    }
+    return record;
+  }
+
+  /**
+   * Fire T5 `order.packed`, best-effort (#2360).
+   *
+   * **Never able to fail the pack.** The operator physically packed a box; an
+   * automation that cannot run is not a reason to refuse to record that, and a
+   * throw here would roll the caller back into retrying a write that already
+   * succeeded. The failure is logged and swallowed — the accepted cost is that a
+   * crash between the committed write and this call loses the firing silently,
+   * which is the safe direction (the alternative buys a second label).
+   */
+  async findDispatchDeadlineCandidates(
+    connectionId: string,
+    input: { windowEnd: Date; now: Date; limit: number; offset: number }
+  ): Promise<OrderRecord[]> {
+    return this.repository.findDispatchDeadlineCandidates(connectionId, input);
+  }
+
+  private async emitPackedTrigger(record: OrderRecord, packedAt: Date): Promise<void> {
+    try {
+      await this.automationEmission.emit({
+        trigger: 'order.packed',
+        facts: buildOrderAutomationFacts(
+          record,
+          // The transition instant, not `record.placedAt`: the fact this trigger
+          // is about is "an operator marked it packed", which happened now.
+          packedAt
+        ),
+        now: packedAt,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Automation emission failed for order.packed on ${record.internalOrderId}: ` +
+          `${(error as Error).message}`
+      );
+    }
+  }
+
+  /**
+   * Clear this order's packed fact (#2287). Same missing-row disambiguation as
+   * {@link markPacked}: the guarded write reports `false` both for an already-
+   * unpacked order and for an absent one, so the re-read decides.
+   */
+  async clearPacked(internalOrderId: string): Promise<OrderRecord> {
+    await this.repository.clearPacked(internalOrderId);
+    const record = await this.repository.findById(internalOrderId);
+    if (!record) {
+      throw new OrderRecordNotFoundException(internalOrderId);
+    }
+    return record;
+  }
+
+  /**
+   * Record a source-side amendment (#2283). A thin pass-through: the diff that
+   * produced `changes` is pure and lives in the domain, the no-op suppression
+   * lives in the repository's WHERE clause, and there is no re-read — unlike
+   * {@link markPacked}, no caller needs the resulting record, and this runs on
+   * the hot ingestion path where a second query would buy nothing.
+   */
+  async recordAmendment(
+    internalOrderId: string,
+    observedAt: Date,
+    changes: OrderAmendmentChange[]
+  ): Promise<void> {
+    await this.repository.recordAmendment(internalOrderId, observedAt, changes);
   }
 }

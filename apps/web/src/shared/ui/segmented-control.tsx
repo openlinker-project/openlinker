@@ -13,6 +13,16 @@ export interface SegmentedControlOption<T extends string> {
   label: ReactNode;
   /** Optional secondary hint rendered beside the label (decorative — aria-hidden). */
   hint?: ReactNode;
+  /**
+   * Render the option but refuse selection.
+   *
+   * Present so a caller whose option cannot currently be submitted can say so
+   * in place rather than hiding it — a missing option reads as a missing
+   * feature, while a disabled one plus an explanation is a state the operator
+   * can act on. Disabled options are skipped by arrow navigation and never take
+   * the group's tab stop, per the WAI-ARIA radio-group pattern.
+   */
+  disabled?: boolean;
 }
 
 export interface SegmentedControlProps<T extends string>
@@ -44,27 +54,49 @@ function SegmentedControlInner<T extends string>(
   const classes = ['segmented-control', className].filter(Boolean).join(' ');
   const optionRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const hasActive = options.some((option) => option.value === value);
+  // The tab stop when nothing is checked yet. Never a disabled option: parking
+  // the group's only tab stop on something unselectable would make the whole
+  // control keyboard-unreachable.
+  const firstEnabled = options.findIndex((option) => option.disabled !== true);
 
   const selectAt = (index: number): void => {
     const next = options[index];
-    if (next === undefined) return;
+    if (next === undefined || next.disabled === true) return;
     onChange(next.value);
     optionRefs.current[index]?.focus();
   };
 
-  const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number): void => {
+  /**
+   * The next selectable option in `step` direction, skipping disabled ones.
+   *
+   * Bounded by the option count so an all-disabled group terminates rather than
+   * looping forever.
+   */
+  const nextEnabledFrom = (index: number, step: number): number | null => {
     const count = options.length;
+    for (let hop = 1; hop <= count; hop += 1) {
+      const candidate = (index + step * hop + count * count) % count;
+      if (options[candidate]?.disabled !== true) return candidate;
+    }
+    return null;
+  };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number): void => {
     switch (event.key) {
       case 'ArrowRight':
-      case 'ArrowDown':
+      case 'ArrowDown': {
         event.preventDefault();
-        selectAt((index + 1) % count);
+        const next = nextEnabledFrom(index, 1);
+        if (next !== null) selectAt(next);
         break;
+      }
       case 'ArrowLeft':
-      case 'ArrowUp':
+      case 'ArrowUp': {
         event.preventDefault();
-        selectAt((index - 1 + count) % count);
+        const previous = nextEnabledFrom(index, -1);
+        if (previous !== null) selectAt(previous);
         break;
+      }
       default:
         break;
     }
@@ -74,9 +106,11 @@ function SegmentedControlInner<T extends string>(
     <div ref={ref} role="radiogroup" className={classes} {...rest}>
       {options.map((option, index) => {
         const active = option.value === value;
+        const isDisabled = option.disabled === true;
         const optionClasses = [
           'segmented-control__option',
           active ? 'segmented-control__option--active' : '',
+          isDisabled ? 'segmented-control__option--disabled' : '',
         ]
           .filter(Boolean)
           .join(' ');
@@ -91,11 +125,15 @@ function SegmentedControlInner<T extends string>(
             role="radio"
             className={optionClasses}
             aria-checked={active}
+            disabled={isDisabled}
             // Roving tabindex: the group is a single tab stop. The checked
             // option is tabbable; when nothing is checked yet the first option
             // takes the stop so the group is still keyboard-reachable.
-            tabIndex={active || (!hasActive && index === 0) ? 0 : -1}
-            onClick={() => onChange(option.value)}
+            tabIndex={active || (!hasActive && index === firstEnabled) ? 0 : -1}
+            onClick={() => {
+              if (isDisabled) return;
+              onChange(option.value);
+            }}
             onKeyDown={(event) => handleKeyDown(event, index)}
           >
             <span className="segmented-control__label">{option.label}</span>

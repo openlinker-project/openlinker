@@ -16,6 +16,7 @@ import type {
   AllegroOrderEventsResponse,
 } from '../../../domain/types/allegro-api.types';
 import { AllegroApiException } from '../../../domain/exceptions/allegro-api.exception';
+import type { OrderLifecycleEvent } from '@openlinker/core/orders';
 
 describe('AllegroOrderSourceAdapter', () => {
   let adapter: AllegroOrderSourceAdapter;
@@ -163,6 +164,22 @@ describe('AllegroOrderSourceAdapter', () => {
       const result = await adapter.write({ type: 'cancelled', externalOrderId: 'cf-1' });
       expect(result.outcome).toBe('rejected');
       expect(result.detail).toContain('conflict');
+    });
+
+    // #2286 — the runtime half of the exhaustiveness guard. Before the switch
+    // conversion an unrecognised member fell through to the cancel path and was
+    // reported `applied`; the regression to defend against is someone "fixing"
+    // the default arm back into that branch.
+    it('unknown member: returns unsupported without writing anything (never-default, #2286)', async () => {
+      const result = await adapter.write({
+        type: 'amended',
+        externalOrderId: 'cf-1',
+      } as unknown as OrderLifecycleEvent);
+
+      expect(result.outcome).toBe('unsupported');
+      expect(result.detail).toContain('amended');
+      expect(httpClient.put).not.toHaveBeenCalled();
+      expect(httpClient.post).not.toHaveBeenCalled();
     });
   });
 

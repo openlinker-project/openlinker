@@ -19,8 +19,10 @@ import { RefundRecord } from '../../../domain/entities/refund-record.entity';
 import { DuplicateRefundRecordException } from '../../../domain/exceptions/duplicate-refund-record.exception';
 import type { RefundRecordRepositoryPort } from '../../../domain/ports/refund-record-repository.port';
 import {
+  RefundExecutedByValues,
   RefundReasonValues,
   type CreateRefundRecordInput,
+  type RefundExecutedBy,
   type RefundReason,
   type RefundSummary,
 } from '../../../domain/types/refund-record.types';
@@ -67,6 +69,14 @@ export class RefundRecordRepository implements RefundRecordRepositoryPort {
     return entities.map((entity) => this.toDomain(entity));
   }
 
+  async findByReturnId(returnId: string): Promise<RefundRecord[]> {
+    const entities = await this.repository.find({
+      where: { returnId },
+      order: { recordedAt: 'DESC' },
+    });
+    return entities.map((entity) => this.toDomain(entity));
+  }
+
   async summarizeByOrderIds(internalOrderIds: string[]): Promise<Map<string, RefundSummary>> {
     if (internalOrderIds.length === 0) {
       return new Map();
@@ -108,6 +118,8 @@ export class RefundRecordRepository implements RefundRecordRepositoryPort {
     entity.note = input.note;
     entity.recordedAt = input.recordedAt;
     entity.idempotencyKey = input.idempotencyKey ?? null;
+    entity.returnId = input.returnId ?? null;
+    entity.executedBy = input.executedBy ?? 'operator_out_of_band';
     return entity;
   }
 
@@ -139,6 +151,27 @@ export class RefundRecordRepository implements RefundRecordRepositoryPort {
       entity.createdAt,
       entity.updatedAt,
       entity.idempotencyKey,
+      entity.returnId,
+      this.toExecutedBy(entity.executedBy),
     );
+  }
+
+  /**
+   * Narrow-or-fallback read of `executedBy`, mirroring {@link toRefundReason}.
+   *
+   * Falls back to `operator_out_of_band` rather than throwing, because that is
+   * the value every historical row carries and the only one OL can honestly
+   * assert about a refund it did not execute. A blind cast would hand a caller
+   * a value outside the union; #2382 renders this field, so a stray string
+   * would reach an operator as a claim about who moved their money.
+   */
+  private toExecutedBy(raw: string): RefundExecutedBy {
+    if ((RefundExecutedByValues as readonly string[]).includes(raw)) {
+      return raw as RefundExecutedBy;
+    }
+    this.logger.warn(
+      `Unrecognised refund executedBy "${raw}" — falling back to "operator_out_of_band"`
+    );
+    return 'operator_out_of_band';
   }
 }

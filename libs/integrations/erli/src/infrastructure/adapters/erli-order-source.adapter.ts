@@ -523,55 +523,75 @@ export class ErliOrderSourceAdapter
    * at info/warn (waybill = PII); error wrapping is message-only.
    */
   async write(event: OrderLifecycleEvent): Promise<OrderWritebackResult> {
-    if (event.type === 'cancelled') {
-      if (!this.offerManager || !this.inventoryQuery) {
+    switch (event.type) {
+      case 'cancelled': {
+        if (!this.offerManager || !this.inventoryQuery) {
+          return {
+            outcome: 'unsupported',
+            detail:
+              'Erli cancelled stock-restore is not wired: offerManager or inventoryQuery is absent.',
+          };
+        }
+        try {
+          await this.restockOnCancellation(
+            event.externalOrderId,
+            this.offerManager,
+            this.inventoryQuery,
+          );
+          return { outcome: 'applied' };
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : String(error);
+          this.logger.warn(
+            `OrderStatusWriteback 'cancelled' (stock-restore) rejected for Erli order ` +
+              `(connection: ${this.connectionId}): ${detail}`,
+          );
+          return { outcome: 'rejected', detail };
+        }
+      }
+
+      case 'dispatched': {
+        // #992 release gate (#1086 review): the writeback wire shapes
+        // (PATCH /orders/{id}/status {status:'sent'} + POST /shipping/external) are
+        // PROVISIONAL until the #992 sandbox confirms them. Default OFF so OL never
+        // writes to an unconfirmed endpoint on a LIVE order; opt in only once #992
+        // lands (mirrors the offer-status-sync opt-in posture, #1063). Reporting
+        // `unsupported` (not `applied`) surfaces the skip to the operator.
+        if (process.env.OL_ERLI_DISPATCH_WRITEBACK_ENABLED !== 'true') {
+          this.logger.warn(
+            `Erli dispatch writeback skipped — gated OFF until #992 ` +
+              `(set OL_ERLI_DISPATCH_WRITEBACK_ENABLED=true to enable) [connectionId=${this.connectionId}]`,
+          );
+          return {
+            outcome: 'unsupported',
+            detail:
+              'Erli dispatch writeback is gated OFF until #992 (OL_ERLI_DISPATCH_WRITEBACK_ENABLED).',
+          };
+        }
+
+        try {
+          await this.markDispatched(event.externalOrderId, event.trackingNumber, event.carrier);
+          return { outcome: 'applied' };
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : String(error);
+          // No PII: connectionId only, never order id / waybill.
+          this.logger.warn(
+            `OrderStatusWriteback 'dispatched' rejected for Erli order (connection: ${this.connectionId}): ${detail}`,
+          );
+          return { outcome: 'rejected', detail };
+        }
+      }
+
+      default: {
+        // Unreachable in-tree: the binding is the compile break when an
+        // `OrderLifecycleEvent` member is added without an arm here (#2286);
+        // the return keeps an out-of-tree caller on a surfaced no-op
+        // (ADR-055 forward-compat).
+        const unhandled: never = event;
         return {
           outcome: 'unsupported',
-          detail:
-            'Erli cancelled stock-restore is not wired: offerManager or inventoryQuery is absent.',
+          detail: `unsupported order lifecycle event: ${JSON.stringify(unhandled)}`,
         };
       }
-      try {
-        await this.restockOnCancellation(event.externalOrderId, this.offerManager, this.inventoryQuery);
-        return { outcome: 'applied' };
-      } catch (error) {
-        const detail = error instanceof Error ? error.message : String(error);
-        this.logger.warn(
-          `OrderStatusWriteback 'cancelled' (stock-restore) rejected for Erli order ` +
-            `(connection: ${this.connectionId}): ${detail}`,
-        );
-        return { outcome: 'rejected', detail };
-      }
-    }
-
-    // event.type === 'dispatched'
-    // #992 release gate (#1086 review): the writeback wire shapes
-    // (PATCH /orders/{id}/status {status:'sent'} + POST /shipping/external) are
-    // PROVISIONAL until the #992 sandbox confirms them. Default OFF so OL never
-    // writes to an unconfirmed endpoint on a LIVE order; opt in only once #992
-    // lands (mirrors the offer-status-sync opt-in posture, #1063). Reporting
-    // `unsupported` (not `applied`) surfaces the skip to the operator.
-    if (process.env.OL_ERLI_DISPATCH_WRITEBACK_ENABLED !== 'true') {
-      this.logger.warn(
-        `Erli dispatch writeback skipped — gated OFF until #992 ` +
-          `(set OL_ERLI_DISPATCH_WRITEBACK_ENABLED=true to enable) [connectionId=${this.connectionId}]`,
-      );
-      return {
-        outcome: 'unsupported',
-        detail: 'Erli dispatch writeback is gated OFF until #992 (OL_ERLI_DISPATCH_WRITEBACK_ENABLED).',
-      };
-    }
-
-    try {
-      await this.markDispatched(event.externalOrderId, event.trackingNumber, event.carrier);
-      return { outcome: 'applied' };
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
-      // No PII: connectionId only, never order id / waybill.
-      this.logger.warn(
-        `OrderStatusWriteback 'dispatched' rejected for Erli order (connection: ${this.connectionId}): ${detail}`,
-      );
-      return { outcome: 'rejected', detail };
     }
   }
 
@@ -631,6 +651,10 @@ export class ErliOrderSourceAdapter
     //    — output order is NOT guaranteed to match input order, so positional
     //    indexing would silently assign wrong quantities. `?? 0` is the zero-fill
     //    safety net for any variant id the service doesn't return a row for.
+    //    Deliberately still `totalAvailable` and not the additive
+    //    `availableToPromise` (#2323): moving this adapter's restore onto the
+    //    availability seam is a behaviour change to a plugin, out of scope for
+    //    the core rewire, and is tracked with the rest of the reservation work.
     const availability = await inventoryQuery.getAvailabilityByVariantIds(offerIds);
     const stockByVariantId = new Map(
       availability.map((row) => [row.productVariantId, row.totalAvailable]),

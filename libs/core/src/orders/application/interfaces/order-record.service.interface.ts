@@ -19,15 +19,21 @@ import type {
   PaginatedOrderRecords,
 } from '../../domain/types/order-record.types';
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
+import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
 import type {
   SalesDocumentBlock,
   SalesDocumentMarketDiscovery,
 } from '@openlinker/core/sales-documents';
+import type { OrderAmendmentChange } from '../../domain/order-amendment-diff';
 import type {
   SalesAnalyticsFilters,
   SalesAndChannelAnalytics,
 } from '../../domain/types/order-sales-analytics.types';
-import type { TopProductFilters, TopProductsResult } from '../../domain/types/top-products.types';
+import type {
+  TopProductFilters,
+  TopProductsResult,
+  VariantSalesResult,
+} from '../../domain/types/top-products.types';
 
 export interface IOrderRecordService {
   /**
@@ -137,6 +143,24 @@ export interface IOrderRecordService {
   getEarliestOrderDateByConnection(connectionIds: string[]): Promise<Map<string, Date>>;
 
   /**
+   * How many orders carry at least one COUNTED OMS inert state (#2352/#2353)?
+   *
+   * The cross-context seam for the `Needs attention (N)` count on the
+   * who-decides surface — the `getEarliestOrderDateByConnection` (#2083) and
+   * `getFailedSyncValueSummary` (#1983) precedent: a sibling context reads
+   * through this interface, never `OrderRecordRepositoryPort`, which is an
+   * intra-context contract.
+   *
+   * Install-wide and unscoped, deliberately distinct from the filter-scoped
+   * `omsAttention` count in the orders summary aggregate: the who-decides page
+   * has no filter scope to pass, and inventing one would make its number depend
+   * on a scope no operator chose. Both read one predicate, so they cannot drift.
+   *
+   * The ORDER half only — return-scoped states are counted on the returns side.
+   */
+  countOrdersWithOmsAttention(): Promise<number>;
+
+  /**
    * Which markets the operator has orders from, and how many (#2518, ADR-066).
    *
    * A clean instance has no sales-document routing, and nothing today says
@@ -226,6 +250,65 @@ export interface IOrderRecordService {
   ): Promise<void>;
 
   /**
+   * Persist why the fulfilment intercept HELD this order, or clear it (#2396).
+   *
+   * The `fulfillment` context REPORTS the routing outcome (it is a
+   * zero-sibling-edge leaf and may not inject an `orders` service); `orders`
+   * WRITES it. That one-way edge is what keeps `fulfillment -> orders` from
+   * becoming a DI cycle — the same shape #2100 established for the invoicing
+   * gate.
+   */
+  markFulfillmentBlock(
+    internalOrderId: string,
+    block: FulfillmentBlock | null
+  ): Promise<void>;
+
+  /**
+   * Mark this order packed (#2287), stamping the instant and the acting
+   * operator. A plain fact — it touches no state column (`recordStatus`,
+   * `fulfillmentState`, `slaState`, `OrderHealth` are all untouched) and gates
+   * nothing, so it applies to every order including `omp_fulfilled` ones OL
+   * never dispatches.
+   *
+   * Idempotent: a repeat call is a replay that returns the EXISTING stamp and
+   * actor rather than re-stamping. Throws `OrderRecordNotFoundException` when
+   * no record exists for `internalOrderId` — a missing row is a caller error
+   * here (an operator acting on an order), unlike the residual-race tolerance
+   * the event-driven writers carry.
+   */
+  markPacked(internalOrderId: string, packedByUserId: string): Promise<OrderRecord>;
+
+  /**
+   * Clear this order's packed fact (#2287), nulling both columns together.
+   * Clearing an already-unpacked order is a no-op that returns the record
+   * unchanged; an unknown order throws `OrderRecordNotFoundException`.
+   */
+  clearPacked(internalOrderId: string): Promise<OrderRecord>;
+
+  /**
+   * Record that the source amended this order after it was already ingested
+   * (#2283) — a line removed, added or re-quantified, or the shipping address
+   * edited. An internal FACT: it moves no status, fires no relay event and gates
+   * nothing; it exists because ingestion overwrites the snapshot wholesale and
+   * the change would otherwise leave no trace.
+   *
+   * Callers pass a non-empty change list — an empty one has nothing to record
+   * and must not reach here. Last-write-wins (the newest observation is the
+   * truthful one) and a re-observation of the SAME change list is suppressed at
+   * the write, so it neither bumps `updatedAt` nor re-dates the fact.
+   *
+   * No-op (no throw) when no record exists for `internalOrderId`: this is
+   * event-driven, so it carries the residual-race tolerance the other
+   * ingestion-path writers carry rather than the operator-error posture of
+   * {@link markPacked}.
+   */
+  recordAmendment(
+    internalOrderId: string,
+    observedAt: Date,
+    changes: OrderAmendmentChange[]
+  ): Promise<void>;
+
+  /**
    * Headline + per-channel sales analytics for a date range (#1987) — the
    * `/analytics` KPI-strip / by-channel-table read. The cross-context surface
    * `apps/api`'s `SalesAnalyticsController` uses — repository ports are
@@ -252,4 +335,36 @@ export interface IOrderRecordService {
    * separate, not-yet-scoped read (spec row C3).
    */
   getTopProducts(filters: TopProductFilters): Promise<TopProductsResult>;
+
+  /**
+   * One page of T4 `order.dispatch_deadline_near` candidates (#2360) — orders on
+   * this connection that still need dispatching and whose deadline falls inside
+   * `[now, windowEnd]`.
+   *
+   * The automation context never reads orders itself; the worker handler
+   * composes this read with the emission seam, which is what keeps
+   * `automation` free of any sibling-context import (#2100's direction).
+   */
+  findDispatchDeadlineCandidates(
+    connectionId: string,
+    input: { windowEnd: Date; now: Date; limit: number; offset: number }
+  ): Promise<OrderRecord[]>;
+
+  /**
+   * One product's sales split by variant, per channel (#2765) — the
+   * drill-down behind the Top Products expand panel, fetched lazily only
+   * when an operator actually expands a row (mirrors the products cockpit's
+   * own `ProductRowDetail` lazy-query precedent). Never embedded in {@link
+   * getTopProducts}'s list response, which pages up to 20 rows at once —
+   * running this query eagerly for every row would cost 20× the work for
+   * detail almost none of it gets opened.
+   *
+   * Same currency-correctness rules as {@link getTopProducts}. Catalog
+   * metadata (sku/attributes) and stock are NOT part of this core shape —
+   * composed at the apps/api layer, same reasoning as `getTopProducts`.
+   */
+  getTopProductVariantSales(
+    productId: string,
+    filters: SalesAnalyticsFilters
+  ): Promise<VariantSalesResult>;
 }

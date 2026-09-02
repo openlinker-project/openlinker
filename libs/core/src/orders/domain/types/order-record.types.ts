@@ -9,11 +9,35 @@
 import type { OrderRecord } from '../entities/order-record.entity';
 import type { SlaState } from './order-sla.types';
 import type { FulfillmentRollupState } from './order-fulfillment.types';
+import type { HoldReason, OrderLifecyclePhase } from '@openlinker/core/order-lifecycle';
 
 /**
- * Sync status filter values for order queries
+ * Per-destination sync status values (#2284).
+ *
+ * The single source of truth for the vocabulary: the persisted jsonb payload
+ * (`OrderSyncStatus` / `SyncAttempt`, `OrderSyncStatusJson` / `SyncAttemptJson`),
+ * the `/orders` query filter, and the response DTO all type off this one const —
+ * so the persisted set and the queryable set can never drift.
+ *
+ * `'skipped_cancelled'` (#2284) is **terminal**: the source cancelled the order
+ * before any destination order existed, so provisioning was deliberately
+ * withheld. It is never retried (`OrderDestinationRetryService` retries only
+ * `'failed'`) and must never read as a failure — nothing went wrong. Two
+ * consequences of typing the query filter off the same const, both intended:
+ * the response DTO widens with no edit, and `GET /orders?syncStatus=…`
+ * legitimately accepts the new value.
+ *
+ * Health partitioning is deliberately unchanged: a cancelled-and-skipped order
+ * falls into the residual `awaiting_dispatch` bucket. A dedicated bucket needs
+ * the SQL twin plus the FE KPI cards and is out of scope for #2284.
  */
-export const OrderSyncStatusFilterValues = ['pending', 'syncing', 'synced', 'failed'] as const;
+export const OrderSyncStatusFilterValues = [
+  'pending',
+  'syncing',
+  'synced',
+  'failed',
+  'skipped_cancelled',
+] as const;
 
 /**
  * Sync status filter type
@@ -110,6 +134,21 @@ export interface OrderHealthSummary {
    */
   taxRateConflict: number;
   /**
+   * Orders carrying at least one COUNTED OMS inert state (#2352/#2353).
+   *
+   * A THIRD orthogonal axis, beside `salesDocumentBlocked` and
+   * `taxRateConflict` and never inside either: an order can be invoicing-blocked
+   * AND short on stock, and printing one number under two labels is exactly what
+   * the separate fields avoid. Like both of those it deliberately carries no
+   * `notMappingOrDeleted` guard, so it is counted here AND in whichever health
+   * bucket the order belongs to - `total` still equals the sum of the five
+   * buckets.
+   *
+   * The ORDER half only. Return-scoped states (RB-L, OR-P) are counted on the
+   * returns side; a surface wanting both adds them.
+   */
+  omsAttention: number;
+  /**
    * When the OLDEST still-held order was held (#2254), or `null` when nothing
    * is held. Lets the blocked chip carry an age inside its label rather than
    * adding a third dotted badge to a row that already has two SLA badges.
@@ -144,6 +183,51 @@ export interface OrderHealthSummaryFilters {
   customerId?: string;
   createdFrom?: Date;
   createdTo?: Date;
+  /**
+   * Cancellation scope (#2306). The summary twin of `OrderRecordFilters.cancelled`
+   * — omitted means unscoped (byte-identical to pre-#2306 behaviour), `false`
+   * means `cancelledAt IS NULL`, `true` means `cancelledAt IS NOT NULL`.
+   *
+   * Honoured by `countBySla` ONLY. A cancelled order that never shipped still
+   * satisfies the `NOT_SHIPPED` guard, so without this scope its past deadline
+   * counts as `overdue` — the dispatch-risk surface passes `cancelled: false` to
+   * both the list read and this summary so rows and counts agree by construction.
+   * `countByHealth` deliberately ignores it: health is an orthogonal axis and
+   * silently re-scoping it would move numbers on surfaces not in scope here.
+   */
+  cancelled?: boolean;
+}
+
+/**
+ * Aggregate count of order records per derived lifecycle phase (#2309,
+ * ADR-059). One field per `OrderLifecyclePhaseValues` member, in that
+ * vocabulary's own precedence order.
+ *
+ * **`total` equals the sum of the nine buckets, by construction** — unlike
+ * `OrderHealthSummary`, whose bucket predicates are hand-composed, every bucket
+ * here tests the SAME single `CASE` expression for equality with a different
+ * phase, so no row can be counted twice or missed.
+ *
+ * **Three buckets are structurally zero in Wave 1a.** `vendor_authoritative`
+ * has no producer until posture-B columns land (Wave 4), and `held` /
+ * `amending` have no persisted source until Wave 2 — their SQL arms are
+ * documented `FALSE` placeholders, so a count of 0 is a correct report about a
+ * fact OL does not yet record, not a bug.
+ *
+ * Scope reuses `OrderHealthSummaryFilters`, whose `cancelled` arm this summary
+ * deliberately IGNORES — see `countByLifecyclePhase`.
+ */
+export interface OrderLifecyclePhaseSummary {
+  total: number;
+  cancelled: number;
+  vendorAuthoritative: number;
+  delivered: number;
+  inTransit: number;
+  fulfillmentFailed: number;
+  held: number;
+  amending: number;
+  blocked: number;
+  ready: number;
 }
 
 /**
@@ -223,6 +307,22 @@ export interface OrderRecordFilters {
    */
   salesDocumentBlocked?: boolean;
   /**
+   * Derived lifecycle-phase filter (#2309, ADR-059). Translated to a SQL
+   * predicate by `OrderRecordRepository.applyLifecyclePhaseFilter`, which tests
+   * the ONE `CASE` expression the phase count also tests — so the chip's number
+   * and the rows it yields agree by construction.
+   *
+   * The SQL is the **twin** of the pure `deriveOrderLifecyclePhase` (#2307),
+   * which stays authoritative per row and is what the response `lifecyclePhase`
+   * carries. Unlike `slaState`, the phase is CLOCK-FREE (ADR-059), so the row
+   * value and this filter can never disagree by milliseconds.
+   *
+   * A SECOND ORTHOGONAL PARTITION beside `health`, never a sixth health bucket
+   * (the #2100 trap): a held order is usually also `synced`, so this filter
+   * composes with `health` rather than competing with it.
+   */
+  lifecyclePhase?: OrderLifecyclePhase;
+  /**
    * Restrict to orders where the shop and the channel named different tax rates
    * (#2254). `undefined` means "don't filter".
    *
@@ -231,6 +331,38 @@ export interface OrderRecordFilters {
    * every other view.
    */
   taxRateConflict?: boolean;
+  /**
+   * Restrict to orders carrying at least one COUNTED OMS inert state
+   * (#2352/#2353). `undefined` means "don't filter"; both `true` and `false`
+   * are meaningful predicates.
+   *
+   * **Not the `needs_attention` HEALTH bucket.** That bucket is a member of a
+   * partition and means a sync failure; this is an orthogonal axis over the
+   * `omsAttention` jsonb and means OpenLinker stopped deciding something. The
+   * two populations overlap freely and neither implies the other - which is why
+   * this is ANDed with `health` rather than folded into it (the #2100 trap).
+   *
+   * A reason this build does not recognise never matches, because the predicate
+   * is an explicit list built from `AuthorityAttentionCountedReasonValues`
+   * rather than "the column is not empty" (spec §4.4 S2-5).
+   */
+  omsAttention?: boolean;
+  /**
+   * Restrict to orders whose OPEN hold carries this reason (#2342).
+   * `undefined` means "don't filter".
+   *
+   * Reads `order_records.activeHoldReason`, #2340's denormalised projection —
+   * the same column the lifecycle `CASE`'s `held` arm already tests. That is
+   * legitimate here for the same reason it is there: a filter is a display
+   * query over a display cache with an hourly repair window, never a gate.
+   * Whether an order is really held is decided against `order_holds`, which is
+   * what `OrderHoldService` does on both write paths.
+   *
+   * A REASON axis, deliberately not a boolean: `lifecyclePhase: 'held'` already
+   * answers "is it held", so a boolean here would be the same predicate twice.
+   * ANDed with every other axis, like its neighbours.
+   */
+  activeHoldReason?: HoldReason;
   /**
    * Result ordering (#927/#944/#1108). Maps to a SQL `ORDER BY` by
    * `OrderRecordRepository.applySort`. `dispatchBy` (ship-by deadline, NULLs

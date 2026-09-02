@@ -8,6 +8,18 @@ adjudicated by the orchestrating reviewer. This file is the adjudication record;
 ADRs have been amended per the ACCEPT verdicts below (Revision R1), with the larger restructurings
 recorded as directives in §6.
 
+**Post-merge verification (2026-08-23, #2298).** This record was produced while #2161 was an open
+PR. Every code claim in it was re-checked against the merged tree and stands: H8b's count is
+verified again (`CoreCapabilityValues` in `libs/core/src/integrations/domain/types/adapter.types.ts`
+has **9** members, so the design's 9→13 holds), and the #2047 precedent both the hexagonal and
+correctness panels lean on survives — `selectPrimaryInvoicingConnection` still exists in
+`invoicing`, and the shipped `resolveSalesDocumentRouting` mirrors its single-candidate and
+operator-primary rules rather than replacing them. This record carries no `file:line` citations by
+construction (symbol and path references only), so nothing here needed re-pointing. One panel
+finding gains shipped precedent rather than changing verdict: **P1**'s closed trigger×action
+automation layer now has a house pattern to copy in the `sales-documents` rule engine (#2170) —
+recorded in the design at §5.3(c) and §10, not re-adjudicated here.
+
 ---
 
 ## 1. Panel verdicts, and the synthesis

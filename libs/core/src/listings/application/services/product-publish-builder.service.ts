@@ -35,13 +35,13 @@ import {
   CONNECTION_PORT_TOKEN,
   ConnectionPort,
   applyPricingRule,
-  applyStockSafetyBuffer,
-  isPresentButInvalidStockSafetyBuffer,
-  isPresentButInvalidStockZeroThreshold,
   readPricingRule,
-  readStockSafetyBuffer,
-  readStockZeroThreshold,
 } from '@openlinker/core/identifier-mapping';
+import {
+  AVAILABILITY_SERVICE_TOKEN,
+  type IAvailabilityService,
+} from '@openlinker/core/inventory';
+import { AvailabilityUnknownError } from '../../domain/exceptions/availability-unknown.error';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import type {
   OfferParameter,
@@ -80,7 +80,9 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
     @Inject(ATTRIBUTE_PROJECTION_SERVICE_TOKEN)
-    private readonly attributeProjection: IAttributeProjectionService
+    private readonly attributeProjection: IAttributeProjectionService,
+    @Inject(AVAILABILITY_SERVICE_TOKEN)
+    private readonly availabilityService: IAvailabilityService
   ) {}
 
   async buildPublishProductCommand(
@@ -160,20 +162,32 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
     const siblings = await this.productsService.getVariantsByProductId(variant.productId);
     const variantGroup = this.resolveVariantGroup(variant, siblings);
 
+    // #1844 / #2323 — hold back the destination's per-connection stock safety
+    // buffer so a fast-moving item keeps a cushion and can't oversell between
+    // syncs. The availability seam owns the arithmetic now; default reserve 0
+    // => the caller's quantity passes through unchanged.
+    //
+    // `input.stock` is the caller's quantity, NOT master availability — see the
+    // matching note in `OfferBuilderService`.
+    const stockControl = await this.availabilityService.applyPublishControls({
+      quantity: input.stock,
+      scope: { kind: 'channel', connectionId: input.connectionId },
+    });
+    if (stockControl.quantity === null) {
+      // Raised BEFORE the command exists so no unbuffered quantity can escape.
+      throw new AvailabilityUnknownError(input.connectionId, input.internalVariantId);
+    }
+
     const command: PublishProductCommand = {
       internalVariantId: input.internalVariantId,
       connectionId: input.connectionId,
       destinationCategoryIds,
       // `price` is guaranteed defined here — `issues` would have caught it above.
       price: price as { amount: number; currency: string },
-      // #1844 — hold back the destination's per-connection stock safety buffer so
-      // a fast-moving item keeps a cushion and can't oversell between syncs.
-      // Default reserve 0 => master stock passes through unchanged.
-      stock: applyStockSafetyBuffer(
-        input.stock,
-        this.resolveStockReserve(input.connectionId, connection.config),
-        this.resolveStockZeroThreshold(connection.id, connection.config)
-      ),
+      // Both publish knobs — the #1844 reserve and the #2610 zero threshold —
+      // are applied inside `applyPublishControls`, which resolves the whole
+      // policy for the scope and warns on either knob being present-but-invalid.
+      stock: stockControl.quantity,
       status: input.status,
       // Thread the variant SKU so shop products publish with a reference the
       // shop can key on (reconciliation, inventory-by-SKU). Omitted when the
@@ -476,42 +490,4 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
     return typeof value === 'string' && value.length > 0 ? value : null;
   }
 
-  /**
-   * #1844 — resolve the per-connection stock reserve, warning when a present
-   * `config.stockSafetyBuffer` coerced to 0. A mistyped buffer (e.g. `"5"` or a
-   * negative number) silently drops the oversell protection the operator thinks
-   * they configured, so surface it rather than fail silently.
-   */
-  private resolveStockReserve(
-    connectionId: string,
-    config: Parameters<typeof readStockSafetyBuffer>[0]
-  ): number {
-    if (isPresentButInvalidStockSafetyBuffer(config)) {
-      this.logger.warn(
-        `Connection ${connectionId} has a stockSafetyBuffer that is present but invalid ` +
-          `(non-numeric, negative, or non-finite) — it coerces to 0, so no stock ` +
-          `reserve is applied. Set a positive integer to enable oversell protection.`
-      );
-    }
-    return readStockSafetyBuffer(config);
-  }
-
-  /**
-   * The connection's zero threshold, warning when the key is set to something
-   * that reads back as off. A mistyped threshold lets the destination sell the
-   * low stock the operator asked it to hide.
-   */
-  private resolveStockZeroThreshold(
-    connectionId: string,
-    config: Parameters<typeof readStockZeroThreshold>[0]
-  ): number {
-    if (isPresentButInvalidStockZeroThreshold(config)) {
-      this.logger.warn(
-        `Connection ${connectionId} has a stockZeroThreshold that is present but invalid ` +
-          `(non-numeric, negative, or non-finite) — it coerces to 0, so no low-stock floor ` +
-          `is applied. Set a positive integer to enable it.`
-      );
-    }
-    return readStockZeroThreshold(config);
-  }
 }

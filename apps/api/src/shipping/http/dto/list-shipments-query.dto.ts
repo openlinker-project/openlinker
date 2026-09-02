@@ -15,8 +15,10 @@ import { Transform, Type } from 'class-transformer';
 import { IsBoolean, IsDateString, IsEnum, IsInt, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  ShipmentDirectionValues,
   ShipmentStatusValues,
   ShippingMethodValues,
+  type ShipmentDirection,
   type ShipmentStatus,
   type ShippingMethod,
 } from '@openlinker/core/shipping';
@@ -41,6 +43,15 @@ export class ListShipmentsQueryDto {
   @IsOptional()
   @IsEnum(ShippingMethodValues)
   shippingMethod?: ShippingMethod;
+
+  @ApiPropertyOptional({
+    enum: ShipmentDirectionValues,
+    description:
+      'Filter by direction. Omitted returns both cohorts — deliberate, so a return label is never invisible to the operator (#2373).',
+  })
+  @IsOptional()
+  @IsEnum(ShipmentDirectionValues)
+  direction?: ShipmentDirection;
 
   @ApiPropertyOptional({
     description: 'true → only shipments with a tracking number; false → only those without',

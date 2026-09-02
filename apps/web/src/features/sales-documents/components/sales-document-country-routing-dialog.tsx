@@ -58,7 +58,7 @@
  */
 import { useState, type ReactElement, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Dialog, DialogContent, DialogFooter, DialogTitle } from '../../../shared/ui/dialog';
+import { Dialog, DialogClose, DialogContent, DialogFooter, DialogTitle } from '../../../shared/ui/dialog';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
@@ -187,27 +187,66 @@ export function SalesDocumentCountryRoutingDialog({
           <SalesDocumentCountryDefaults country={country} />
           {hasDualDefault ? (
             <Alert tone="warning" title="Both an Invoice and a Receipt default are set">
-              {displayName} has both an Invoice default and a Receipt default configured. Which one
-              applies depends entirely on which rule (or manual action) decides the document kind
-              for a given order — confirm this is the intended configuration, since nothing here
-              decides between them automatically.
+              A default only applies when no rule above matched. With two defaults set for{' '}
+              {displayName}, that step is disabled entirely — an order that matches no rule is
+              held rather than taking either default. Remove one of the two to restore a working
+              fallback.
             </Alert>
+          ) : (hasInvoiceDefault || hasReceiptDefault) ? (
+            <p className="muted-text">
+              This default applies only when no rule above matches this order. Setting a default
+              for the other document kind too disables this fallback — one default, not two, keeps
+              it working.
+            </p>
           ) : null}
         </>
       ),
     },
   ];
 
+  // A country with ANY rule or ANY default is "configured", and a configured
+  // country never falls through — `evaluateSalesDocumentRules` only reaches
+  // ★ Rest of world when `countryConfigured` is false (rules.length === 0 &&
+  // defaults.length === 0). A configured country whose rule/default simply
+  // didn't match resolves `unresolved`/`no-matching-rule` (or
+  // `ambiguous-connection-no-primary`) — the order is HELD, never passed to
+  // ★ Rest of world. The tier title and body below must say which one is
+  // true for THIS country, not a general claim that fall-through always
+  // applies once nothing above matches.
+  //
+  // `null` while the counts are still loading: `rules`/`defaults` read `?? []`,
+  // so a plain boolean would say "no rules and no default" about a configured
+  // country for as long as the queries are in flight, then flip — a false
+  // statement about the operator's own configuration, which is exactly the
+  // defect class this file exists to close. The tier renders neutral copy
+  // until the real counts arrive.
+  const isCountryConfigured: boolean | null = isSummaryLoading
+    ? null
+    : rules.length > 0 || defaults.length > 0;
+
   if (!isRestOfWorld) {
     tiers.push({
       key: 'rest-of-world',
-      title: 'Falls through to ★ Rest of world',
-      content: (
+      title:
+        isCountryConfigured === null
+          ? 'What happens to an unmatched order'
+          : isCountryConfigured
+            ? 'An unmatched order is held'
+            : 'Falls through to ★ Rest of world',
+      content: isCountryConfigured === null ? (
+        <p className="muted-text">Reading this market&apos;s rules and defaults…</p>
+      ) : isCountryConfigured ? (
+        <p className="muted-text">
+          {displayName} has its own routing, so an order that matches nothing here is{' '}
+          <strong>held</strong>. It does <strong>not</strong> go to{' '}
+          <span className="mono-text">★ Rest of world</span> — only a market with no rules and no
+          default at all falls through there.
+        </p>
+      ) : (
         <div>
           <p className="muted-text">
-            An order billed to {displayName} that matches no rule above and has no country default
-            here falls through to <span className="mono-text">★ Rest of world</span>
-            &apos;s own rules and defaults.
+            {displayName} has no rules and no default, so an order billed here goes to{' '}
+            <span className="mono-text">★ Rest of world</span>&apos;s own rules and defaults.
           </p>
           <Button
             tone="secondary"
@@ -228,7 +267,11 @@ export function SalesDocumentCountryRoutingDialog({
       <p className="muted-text">
         {isRestOfWorld
           ? 'If nothing above matches, the order has no configured fallback left and is reported unresolved.'
-          : `If ★ Rest of world also has no matching rule or default, the order is reported unresolved.`}
+          : isCountryConfigured === null
+            ? 'What happens here depends on whether this market has any routing of its own — reading that now.'
+            : isCountryConfigured
+              ? 'The order is held, as stated above — it is never passed to ★ Rest of world once this country has any rule or default of its own.'
+              : 'If ★ Rest of world also has no matching rule or default, the order is reported unresolved.'}
       </p>
     ),
   });
@@ -248,6 +291,9 @@ export function SalesDocumentCountryRoutingDialog({
           ) : null}
 
           <DialogTitle>Sales-document routing · {displayName}</DialogTitle>
+          <p className="muted-text sales-document-country-routing-dialog__save-note">
+            Every control here saves as you change it — there is nothing to submit.
+          </p>
 
           <div className="sales-document-country-routing-dialog__body">
             {isEmptyCountry ? (
@@ -316,18 +362,36 @@ export function SalesDocumentCountryRoutingDialog({
             ))}
 
             {resetError ? <Alert tone="error">{resetError}</Alert> : null}
+
+            {/* A genuinely unauthorized, non-demo session sees no reset
+                affordance at all rather than a disabled one — `visible` is
+                false only in that case (`useWriteAccess`'s own doc comment);
+                a demo viewer still sees it, disabled with a tooltip, via
+                `demoReadOnly` below. */}
+            {write.visible ? (
+              <div className="sales-document-country-routing-dialog__danger-zone">
+                <p className="muted-text">
+                  Resetting deletes every rule and default configured for {displayName} here in
+                  OpenLinker. It does not touch anything at the provider — no invoice or receipt
+                  already issued is affected.
+                </p>
+                <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                  <Button
+                    tone="danger"
+                    disabled={!write.canWrite || isSummaryLoading || hasNothingToReset || isResetting}
+                    onClick={() => setConfirmResetOpen(true)}
+                  >
+                    Reset country
+                  </Button>
+                </ReadOnlyLock>
+              </div>
+            ) : null}
           </div>
 
           <DialogFooter>
-            <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
-              <Button
-                tone="danger"
-                disabled={!write.canWrite || isSummaryLoading || hasNothingToReset || isResetting}
-                onClick={() => setConfirmResetOpen(true)}
-              >
-                Reset country
-              </Button>
-            </ReadOnlyLock>
+            <DialogClose asChild>
+              <Button tone="primary">Done</Button>
+            </DialogClose>
           </DialogFooter>
         </DialogContent>
       </Dialog>

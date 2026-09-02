@@ -57,7 +57,7 @@ describe('deriveOrderHealth', () => {
         recordStatus: 'source_deleted',
         syncStatus: [syncEntry({ status: 'failed' })],
         mappingFailureReason: 'variant ol_variant_b deleted at the master',
-      }),
+      })
     );
     expect(result.key).toBe('source_deleted');
     expect(result.tone).toBe('error');
@@ -71,7 +71,7 @@ describe('deriveOrderHealth', () => {
 
   it('should return awaiting_mapping when recordStatus is awaiting_mapping (highest precedence)', () => {
     const result = deriveOrderHealth(
-      order({ recordStatus: 'awaiting_mapping', syncStatus: [syncEntry({ status: 'failed' })] }),
+      order({ recordStatus: 'awaiting_mapping', syncStatus: [syncEntry({ status: 'failed' })] })
     );
     expect(result.key).toBe('awaiting_mapping');
     expect(result.tone).toBe('warning');
@@ -79,14 +79,14 @@ describe('deriveOrderHealth', () => {
 
   it('should surface mappingFailureReason on an awaiting_mapping order', () => {
     const result = deriveOrderHealth(
-      order({ recordStatus: 'awaiting_mapping', mappingFailureReason: 'no offer mapping yet' }),
+      order({ recordStatus: 'awaiting_mapping', mappingFailureReason: 'no offer mapping yet' })
     );
     expect(result.reason).toBe('no offer mapping yet');
   });
 
   it('should return needs_attention with the failed reason when a destination failed', () => {
     const result = deriveOrderHealth(
-      order({ syncStatus: [syncEntry({ status: 'failed', error: 'Carrier not mapped' })] }),
+      order({ syncStatus: [syncEntry({ status: 'failed', error: 'Carrier not mapped' })] })
     );
     expect(result.key).toBe('needs_attention');
     expect(result.tone).toBe('error');
@@ -100,7 +100,7 @@ describe('deriveOrderHealth', () => {
           syncEntry({ destinationConnectionId: 'a', status: 'synced' }),
           syncEntry({ destinationConnectionId: 'b', status: 'failed' }),
         ],
-      }),
+      })
     );
     expect(result.key).toBe('needs_attention');
   });
@@ -124,14 +124,14 @@ describe('deriveOrderHealth', () => {
           syncEntry({ destinationConnectionId: 'a', status: 'pending' }),
           syncEntry({ destinationConnectionId: 'b', status: 'syncing' }),
         ],
-      }),
+      })
     );
     expect(result.key).toBe('awaiting_dispatch');
   });
 
   it('should not set a reason for non-failed buckets', () => {
     expect(
-      deriveOrderHealth(order({ syncStatus: [syncEntry({ status: 'synced' })] })).reason,
+      deriveOrderHealth(order({ syncStatus: [syncEntry({ status: 'synced' })] })).reason
     ).toBeUndefined();
   });
 });
@@ -156,7 +156,16 @@ describe('rollupSyncStatus', () => {
       status({ status: 'pending' }),
       status({ status: 'syncing' }),
     ]);
-    expect(rollup).toEqual({ total: 4, failed: 1, synced: 1, pending: 2 });
+    expect(rollup).toEqual({ total: 4, failed: 1, synced: 1, pending: 2, skipped: 0 });
+  });
+
+  // #2284 — terminal, and neither failed nor pending.
+  it('counts skipped_cancelled in its own bucket', () => {
+    const rollup = rollupSyncStatus([
+      status({ status: 'skipped_cancelled' }),
+      status({ status: 'synced' }),
+    ]);
+    expect(rollup).toEqual({ total: 2, failed: 0, synced: 1, pending: 0, skipped: 1 });
   });
 });
 
@@ -168,13 +177,21 @@ describe('deriveHealthLevel + healthLabel', () => {
   });
 
   it('prioritises attention when any destination failed', () => {
-    const level = deriveHealthLevel(rollupSyncStatus([status({ status: 'failed' }), status({ status: 'synced' })]));
+    const level = deriveHealthLevel(
+      rollupSyncStatus([status({ status: 'failed' }), status({ status: 'synced' })])
+    );
     expect(level).toBe('attention');
     expect(healthLabel(level)).toBe('Needs attention');
   });
 
   it('reports pending when nothing failed but some are in flight', () => {
     expect(deriveHealthLevel(rollupSyncStatus([status({ status: 'syncing' })]))).toBe('pending');
+  });
+
+  it('does not read a skipped_cancelled destination as pending or attention', () => {
+    expect(deriveHealthLevel(rollupSyncStatus([status({ status: 'skipped_cancelled' })]))).toBe(
+      'healthy'
+    );
   });
 
   it('reports healthy when all synced', () => {
@@ -189,9 +206,16 @@ describe('syncCellLabel', () => {
     expect(syncCellLabel(rollupSyncStatus([status({ status: 'failed' })]))).toBe('1 of 1 failed');
   });
   it('reports synced count otherwise', () => {
-    expect(syncCellLabel(rollupSyncStatus([status({ status: 'synced' }), status({ status: 'syncing' })]))).toBe(
-      '1 of 2 synced',
-    );
+    expect(
+      syncCellLabel(rollupSyncStatus([status({ status: 'synced' }), status({ status: 'syncing' })]))
+    ).toBe('1 of 2 synced');
+  });
+  it('surfaces the skipped count alongside the synced count', () => {
+    expect(
+      syncCellLabel(
+        rollupSyncStatus([status({ status: 'synced' }), status({ status: 'skipped_cancelled' })])
+      )
+    ).toBe('1 of 2 synced (1 skipped)');
   });
   it('handles no destinations', () => {
     expect(syncCellLabel(rollupSyncStatus([]))).toBe('No destinations');
@@ -254,5 +278,58 @@ describe('fulfillmentBadge (#1108)', () => {
     expect(fulfillmentBadge('dispatched')).toEqual({ label: 'Dispatched', tone: 'info' });
     expect(fulfillmentBadge('delivered')).toEqual({ label: 'Delivered', tone: 'success' });
     expect(fulfillmentBadge('failed')).toEqual({ label: 'Dispatch failed', tone: 'error' });
+  });
+});
+
+describe('unrecognised state degradation (#2678)', () => {
+  // An unrecognised value is reachable without any bug in the union: a rolling
+  // deploy ships a new backend member before the browser bundle, a stale cached
+  // bundle outlives a deploy, or a cached API response is replayed. `GET /orders`
+  // is not schema-parsed, so the value arrives verbatim.
+  it('renders a neutral badge naming the value, rather than throwing', () => {
+    expect(fulfillmentBadge('teleported')).toEqual({
+      label: 'Unknown (teleported)',
+      tone: 'neutral',
+    });
+  });
+
+  it('never reports an unrecognised fulfillment state as not-shipped', () => {
+    // The tempting one-character fix (`?? 'not-shipped'` widened to cover the
+    // miss) would say "Not shipped" about an order in an unknown state. Absent
+    // and unrecognised must stay distinguishable.
+    const unknown = fulfillmentBadge('teleported');
+    expect(unknown).not.toEqual(fulfillmentBadge(undefined));
+    expect(unknown.label).not.toBe('Not shipped');
+  });
+
+  it('truncates a pathological value so one row cannot wreck the pill', () => {
+    const badge = fulfillmentBadge('x'.repeat(200));
+    expect(badge.tone).toBe('neutral');
+    expect(badge.label).toBe(`Unknown (${'x'.repeat(15)}…)`);
+  });
+
+  it('says only what is true when the value is blank, rather than quoting nothing', () => {
+    // `Unknown ()` claims to name the offending value and names nothing. A
+    // JSON "" is a real degenerate wire value, so both resolvers must reach the
+    // same answer for it — `slaBadge` previously swallowed it via `!slaState`
+    // into the same result as `none`, i.e. "no badge, nothing is wrong".
+    expect(fulfillmentBadge('')).toEqual({ label: 'Unknown', tone: 'neutral' });
+    expect(fulfillmentBadge('   ')).toEqual({ label: 'Unknown', tone: 'neutral' });
+    expect(slaBadge('')).toEqual({ label: 'Unknown', tone: 'neutral' });
+    // Absent still means absent, on both.
+    expect(slaBadge(undefined)).toBeNull();
+    expect(fulfillmentBadge(undefined)).toEqual({ label: 'Not shipped', tone: 'neutral' });
+  });
+
+  it('surfaces an unrecognised SLA bucket instead of silently dropping it', () => {
+    // This one never crashed — every call site guards on `sla ?`, so an
+    // unrecognised bucket rendered nothing at all. A silent drop of the signal
+    // is its own defect: `none` legitimately means "no badge", so collapsing an
+    // unknown bucket into it makes the two indistinguishable.
+    expect(slaBadge('quantum')).toEqual({
+      label: 'Unknown (quantum)',
+      tone: 'neutral',
+    });
+    expect(slaBadge('none')).toBeNull();
   });
 });

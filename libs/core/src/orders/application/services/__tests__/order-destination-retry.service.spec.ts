@@ -158,7 +158,9 @@ describe('OrderDestinationRetryService', () => {
       expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
     });
 
-    it.each(['pending', 'syncing', 'synced'] as const)(
+    // `'skipped_cancelled'` (#2284) is terminal: the source cancelled the order,
+    // so a retry must never re-attempt provisioning.
+    it.each(['pending', 'syncing', 'synced', 'skipped_cancelled'] as const)(
       'should throw OrderDestinationNotRetryableException when status is %s',
       async (status) => {
         orderRepo.findById.mockResolvedValue(

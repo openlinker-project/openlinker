@@ -35,6 +35,8 @@ describe('NeedsAttentionService', () => {
       connectionId: 'conn-a',
       masterStock: 0,
       stockSafetyBuffer: 5,
+      availableToPromise: 0,
+      shortfall: 0,
       stockZeroThreshold: 0,
     };
     const failedSyncValue = {
