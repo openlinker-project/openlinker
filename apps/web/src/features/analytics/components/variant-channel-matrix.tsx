@@ -174,7 +174,10 @@ export function VariantChannelMatrix({
 
   // One pass over (variant, channel) rather than three `reduce`s per channel
   // each re-scanning every variant with a `.find()` inside (#2766 review,
-  // finding 5). `currency` follows the same first-non-null rule as before.
+  // finding 5). `currency` merges null-on-conflict, mirroring the backend's
+  // `TopProductsService.mergeCurrency` (#2766 review, suggestion) — a mixed
+  // set of currencies has no single figure, so it must read as "no figure"
+  // rather than silently label a mixed sum with whichever currency came first.
   const totalsByConnection = new Map<
     string,
     { revenue: number; units: number; currency: string | null }
@@ -188,7 +191,10 @@ export function VariantChannelMatrix({
       };
       running.revenue += channel.netRevenue;
       running.units += channel.units;
-      running.currency = running.currency ?? channel.currency;
+      running.currency =
+        running.currency !== null && channel.currency !== null && running.currency !== channel.currency
+          ? null
+          : (running.currency ?? channel.currency);
       totalsByConnection.set(channel.sourceConnectionId, running);
     }
   }
