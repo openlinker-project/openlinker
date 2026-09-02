@@ -14,7 +14,7 @@
  *
  * @module apps/worker/src/sync/handlers
  */
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call -- test constructs the service with 39 interchangeable dummy handlers */
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call -- test constructs the service with 40 interchangeable dummy handlers */
 import type { SyncJobHandler } from '@openlinker/core/sync';
 import { JobTypeValues, SyncJobLaneValues } from '@openlinker/core/sync';
 import { SyncJobHandlerRegistry } from '../sync-job-handler.registry';
@@ -25,11 +25,11 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
 
   beforeEach(() => {
     registry = new SyncJobHandlerRegistry();
-    // The constructor takes the registry followed by 39 handler instances.
+    // The constructor takes the registry followed by 40 handler instances.
     // The dummies are DISTINCT objects so that "these two job types share one
     // handler instance" (#2594) is a real assertion rather than a tautology.
     const handlers = Array.from(
-      { length: 39 },
+      { length: 40 },
       () => ({ execute: jest.fn() }) as unknown as SyncJobHandler
     );
     const service = new (HandlerRegistrationService as any)(registry, ...handlers);
@@ -46,8 +46,9 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     // `master.product.syncBatch` sit beside the two sweep-triggered master
     // children #2594 moved out of `realtime`, #2621's
     // `marketplace.offerQuantity.reconcile` joins the same lane as a
-    // scan-style pass over adapter-internal pending state, and #2468 added
-    // the Data Coverage currency-restatement driver.
+    // scan-style pass over adapter-internal pending state, and #2468's
+    // `analytics.currency.recalculate` is another resumable, non-realtime
+    // sweep of the same shape.
     expect(registry.getJobTypesByLane('realtime')).toHaveLength(12);
     expect(registry.getJobTypesByLane('bulk')).toHaveLength(19);
     expect(registry.getJobTypesByLane('fiscal')).toHaveLength(5);
