@@ -18,14 +18,8 @@ import cookieParser from 'cookie-parser';
 import { VersioningType } from '@nestjs/common';
 import { createIntegrationTestHarness } from '@openlinker/test-kit';
 import { AppModule } from '../../src/app.module';
+import { buildGlobalExceptionFilters } from '../../src/common/filters/global-filters';
 import { API_VERSION } from '../../src/app-info/app-info.types';
-import { CapabilityNotSupportedFilter } from '../../src/common/filters/capability-not-supported.filter';
-import { ConnectionExceptionFilter } from '../../src/common/filters/connection-exception.filter';
-import { InventoryLocationExceptionFilter } from '../../src/common/filters/inventory-location-exception.filter';
-import { TaxonomySourceUnavailableFilter } from '../../src/common/filters/taxonomy-source-unavailable.filter';
-import { AvailabilityUnknownFilter } from '../../src/common/filters/availability-unknown.filter';
-import { ReturnsExceptionFilter } from '../../src/common/filters/returns-exception.filter';
-import { AutomationExceptionFilter } from '../../src/common/filters/automation-exception.filter';
 
 const harness = createIntegrationTestHarness({
   imports: [AppModule],
@@ -35,15 +29,10 @@ const harness = createIntegrationTestHarness({
   // main.ts registers — a partial mirror makes an int-spec assert a 500 the
   // running app never returns, which is a passing test about the wrong app.
   configureApp: (app) => {
-    app.useGlobalFilters(
-      new CapabilityNotSupportedFilter(),
-      new ConnectionExceptionFilter(),
-      new TaxonomySourceUnavailableFilter(),
-      new InventoryLocationExceptionFilter(),
-      new AvailabilityUnknownFilter(),
-      new ReturnsExceptionFilter(),
-      new AutomationExceptionFilter()
-    );
+    // The SAME roster main.ts registers, from the one producer — a second copy
+    // here is a copy that silently stops matching, and this copy is what decides
+    // what every status-code assertion in the suite is really testing.
+    app.useGlobalFilters(...buildGlobalExceptionFilters());
     // Mirror main.ts's URI versioning (#1133) so int-specs exercise the same
     // `/v1` routing prod serves. Only the version-neutral routes (the `/webhooks`
     // ingress and the root `/`) stay reachable without the prefix.

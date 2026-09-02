@@ -95,6 +95,7 @@ import {
   isFulfillmentWorkStatus,
   type FulfillmentWorkStatus,
 } from '../../../domain/types/fulfillment-work-status.types';
+import { TERMINAL_FULFILLMENT_WORK_STATUSES } from '../../../domain/types/fulfillment-supported-actions.types';
 import type { FulfillmentWorkRejection } from '../../../domain/types/fulfillment-work-rejection.types';
 import {
   clampWorklistLimit,
@@ -517,7 +518,16 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
           version: () => '"version" + 1',
         })
         .where('"id" = :id', { id: input.workId })
-        .andWhere('"status" NOT IN (:...terminal)', { terminal: ['cancelled', 'closed'] });
+        // The EXPORTED vocabulary, never a literal. The literal here read
+        // `['cancelled', 'closed']` and omitted `incomplete`, which
+        // `TERMINAL_FULFILLMENT_WORK_STATUSES` declares terminal and for which
+        // `deriveSupportedActions` withholds `force_cancel` — so this write
+        // guard was strictly WEAKER than the rule it enforces, and a work that
+        // became `incomplete` between derivation and write was stamped
+        // `cancelled` over its partial-fulfilment disposition.
+        .andWhere('"status" NOT IN (:...terminal)', {
+          terminal: [...TERMINAL_FULFILLMENT_WORK_STATUSES],
+        });
       return this.withVersionGuard(guarded, input.expectedVersion);
     });
   }
