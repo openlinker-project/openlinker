@@ -41,8 +41,8 @@ export interface SalesDocumentCellProps {
   view: SalesDocumentView | undefined;
   /**
    * `stack` lets the parent's `orders-cell-stack` lay the money-cluster lines
-   * out vertically (desktop); `row` wraps the line so a mobile `<dd>` still
-   * receives a single child. Layout only.
+   * out vertically (desktop); `row` widens the popover for the mobile card's
+   * narrower trigger column. Layout only.
    */
   layout: 'stack' | 'row';
   /**
@@ -51,6 +51,13 @@ export interface SalesDocumentCellProps {
    * same way the retired `OrderInvoicingCell`'s CTA did (#1713).
    */
   hasIssuingCapability: boolean;
+  /**
+   * connectionId → display name, so a duplicate-record warning or the
+   * Provider fact never renders a raw UUID to the operator
+   * (`frontend-ui-style-guide.md` § `EntityLabel`, #2761 review). Falls back
+   * to the id only when the connection is unknown to this lookup.
+   */
+  connectionNames: Map<string, string>;
 }
 
 function isKnownDocumentKind(kind: string | null): kind is DocumentKind {
@@ -127,6 +134,7 @@ export function SalesDocumentCell({
   view,
   layout,
   hasIssuingCapability,
+  connectionNames,
 }: SalesDocumentCellProps): ReactNode {
   const state = resolveSalesDocumentCellState(view);
   const otherRecords = view?.otherRecords ?? [];
@@ -175,8 +183,13 @@ export function SalesDocumentCell({
   const popoverBody = (
     <>
       {state.reasonDetail ? <p className="sales-doc-popover__why">{state.reasonDetail}</p> : null}
+      {view?.blockDetail ? <p className="sales-doc-popover__why">{view.blockDetail}</p> : null}
       {identity?.documentNumber ? <Fact label="Number">{identity.documentNumber}</Fact> : null}
-      {identity?.connectionId ? <Fact label="Provider">{identity.providerType ?? identity.connectionId}</Fact> : null}
+      {identity?.connectionId ? (
+        <Fact label="Provider">
+          {identity.providerType ?? connectionNames.get(identity.connectionId) ?? identity.connectionId}
+        </Fact>
+      ) : null}
       {regulatoryStatus ? (
         <Fact label="Authority">
           <span className={`sales-doc-tone sales-doc-tone--${REGULATORY_TONE[regulatoryStatus] ?? 'neutral'}`}>
@@ -186,7 +199,7 @@ export function SalesDocumentCell({
       ) : null}
       {dupeCount > 0 ? (
         <p className="sales-doc-popover__warn">
-          {otherRecords.map((r) => r.connectionId).join(', ')}{' '}
+          {otherRecords.map((r) => connectionNames.get(r.connectionId) ?? r.connectionId).join(', ')}{' '}
           {dupeCount === 1 ? 'also holds' : 'also hold'} a document for this sale. One sale
           should have one document.
         </p>

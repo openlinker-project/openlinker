@@ -26,6 +26,7 @@ function renderCell(props: Partial<Parameters<typeof SalesDocumentCell>[0]> = {}
         view={undefined}
         layout="stack"
         hasIssuingCapability
+        connectionNames={new Map()}
         {...props}
       />
     </MemoryRouter>,
@@ -207,6 +208,7 @@ describe('SalesDocumentCell (#2552/#2553)', () => {
               view={baseView({ documentKind: 'invoice' })}
               layout="stack"
               hasIssuingCapability
+              connectionNames={new Map()}
             />
           </div>
         </MemoryRouter>,
@@ -262,11 +264,18 @@ describe('SalesDocumentCell (#2552/#2553)', () => {
           },
           otherRecords: [{ recordId: 'r2', connectionId: 'conn_other', kind: 'invoice', blocksFurtherIssuance: true }],
         }),
+        connectionNames: new Map([
+          ['c1', 'Primary Shop'],
+          ['conn_other', 'Backup Shop'],
+        ]),
       });
 
       await user.click(screen.getByRole('button', { name: /invoice: issued/i }));
 
       expect(screen.getByText(/also holds a document for this sale/i)).toBeInTheDocument();
+      expect(screen.getByText(/Backup Shop also holds/i)).toBeInTheDocument();
+      expect(screen.queryByText(/conn_other/)).not.toBeInTheDocument();
+      expect(screen.getByText('Primary Shop')).toBeInTheDocument();
     });
   });
 });
