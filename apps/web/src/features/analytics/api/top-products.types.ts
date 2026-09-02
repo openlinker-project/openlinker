@@ -75,3 +75,45 @@ export interface TopProductsFilters {
   limit: number;
   offset: number;
 }
+
+/**
+ * One product's sales split by variant, per channel (#2765) — mirrors
+ * `apps/api/src/analytics/http/dto/top-product-variants-response.dto.ts`.
+ * Fetched lazily, only when a Top Products row is expanded — never part of
+ * `TopProductsResult` above, see `use-top-product-variant-sales-query.ts`.
+ */
+export interface VariantChannelSales {
+  sourceConnectionId: string;
+  units: number;
+  revenue: number;
+  unconvertedRevenue: number;
+  currency: string | null;
+  unconvertedCurrency: string | null;
+  netRevenue: number;
+  netExcludedRevenue: number;
+  netExcludedLineCount: number;
+}
+
+export interface TopProductVariantRow {
+  /** `null` is the "Unassigned" bucket — order lines that never resolved to a variant. Never merged into a real variant unless the product has exactly one. */
+  variantId: string | null;
+  sku: string | null;
+  attributes: Record<string, string> | null;
+  /** Current available quantity across all locations. `null` for the "Unassigned" bucket, or when the stock read failed/couldn't resolve this variant. */
+  totalAvailable: number | null;
+  units: number;
+  revenue: number;
+  unconvertedRevenue: number;
+  unconvertedOrderCount: number;
+  currency: string | null;
+  unconvertedCurrency: string | null;
+  channels: VariantChannelSales[];
+  netRevenue: number;
+  netExcludedRevenue: number;
+  netExcludedLineCount: number;
+}
+
+export interface TopProductVariantsResult {
+  productId: string;
+  variants: TopProductVariantRow[];
+}

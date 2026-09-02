@@ -4,9 +4,10 @@
  * Thin request module for the currency-remediation surface (#2468, extended
  * #2474 Phase 7): `POST .../recalculate` opens a run, `GET .../status/:runId`
  * polls its lifecycle (drives the `detail-currency` row's in-progress /
- * fixed / failed sub-states — never a client-only timer), and
+ * fixed / failed sub-states — never a client-only timer),
  * `GET .../orders` pages the affected-order list behind the `detail-currency`
- * modal.
+ * modal, and `POST .../cancel` recovers a run stuck at `in-progress` because
+ * its driver job died before it could terminalise itself (#2816).
  *
  * @module features/analytics/api
  */
@@ -21,6 +22,8 @@ export interface AnalyticsRemediationApi {
   recalculateCurrency: (input: RecalculateCurrencyInput) => Promise<AnalyticsRemediationRun>;
   getCurrencyRemediationStatus: (runId: string) => Promise<AnalyticsRemediationRun>;
   getCurrencyMismatchOrders: (input: GetCurrencyMismatchOrdersInput) => Promise<CurrencyMismatchOrdersPage>;
+  /** `POST .../cancel` - cancel a currency run stuck at `in-progress` (#2816). */
+  cancelStuckCurrencyRun: () => Promise<AnalyticsRemediationRun>;
 }
 
 interface ApiRequest {
@@ -54,5 +57,7 @@ export function createAnalyticsRemediationApi(request: ApiRequest): AnalyticsRem
       request(`/analytics/coverage/currency/status/${encodeURIComponent(runId)}`),
     getCurrencyMismatchOrders: (input) =>
       request(`/analytics/coverage/currency/orders?${buildOrdersQuery(input)}`),
+    cancelStuckCurrencyRun: () =>
+      request('/analytics/coverage/currency/cancel', { method: 'POST' }),
   };
 }

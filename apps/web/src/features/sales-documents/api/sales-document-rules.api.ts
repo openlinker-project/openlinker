@@ -4,6 +4,7 @@
  * @module apps/web/src/features/sales-documents/api
  */
 import { ApiError } from '../../../shared/api/api-error';
+import type { SalesDocumentMarketsResponse } from './sales-document-markets.types';
 import type {
   AdoptSalesDocumentTemplateInput,
   CreateSalesDocumentRuleInput,
@@ -34,6 +35,12 @@ export interface SalesDocumentRulesApi {
   acknowledgeNoDocument: (country: string) => Promise<SalesDocumentCountryAcknowledgment>;
   /** DELETE /sales-documents/countries/:country/acknowledgment (#2186, #2189). */
   clearAcknowledgment: (country: string) => Promise<void>;
+  /**
+   * GET /sales-documents/markets (#2518/#2540, ADR-066) — configured and
+   * detected markets merged, each with its effective routing outcome
+   * resolved through the same evaluator every real order resolves through.
+   */
+  listMarkets: () => Promise<SalesDocumentMarketsResponse>;
 }
 
 interface ApiRequest {
@@ -105,6 +112,9 @@ export function createSalesDocumentRulesApi(request: ApiRequest): SalesDocumentR
         `/sales-documents/countries/${encodeURIComponent(country)}/acknowledgment`,
         { method: 'DELETE' },
       );
+    },
+    listMarkets(): Promise<SalesDocumentMarketsResponse> {
+      return request<SalesDocumentMarketsResponse>('/sales-documents/markets');
     },
   };
 }

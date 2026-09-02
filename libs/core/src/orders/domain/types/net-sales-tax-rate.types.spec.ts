@@ -38,6 +38,34 @@ describe('resolveNetSalesTaxRate', () => {
   it('resolves a garbage string to unknown', () => {
     expect(resolveNetSalesTaxRate('not-a-rate')).toEqual({ kind: 'unknown' });
   });
+
+  it('resolves a non-numeric-prefixed string to unknown rather than coercing a leading digit (#2813)', () => {
+    // `Number.parseFloat` is prefix-lenient and would read '0x10' as `0`,
+    // silently confirming a 0% VAT rate for a value that never parsed as a
+    // number at all - exactly what this file's contract forbids.
+    expect(resolveNetSalesTaxRate('0x10')).toEqual({ kind: 'unknown' });
+  });
+
+  it('resolves a European decimal-comma string to unknown rather than dropping the comma (#2813)', () => {
+    // `Number.parseFloat('23,5')` reads as `23`, silently accepting a locale
+    // notation the SQL half's `^[0-9]+(\.[0-9]+)?$` predicate would reject.
+    expect(resolveNetSalesTaxRate('23,5')).toEqual({ kind: 'unknown' });
+  });
+
+  it('resolves a percent-suffixed string to unknown rather than stripping the sign (#2813)', () => {
+    expect(resolveNetSalesTaxRate('23%')).toEqual({ kind: 'unknown' });
+  });
+
+  it('resolves scientific notation to unknown rather than evaluating the exponent (#2813)', () => {
+    // `Number.parseFloat('1e2')` reads as `100`; the SQL shape predicate has
+    // no exponent notation, so this must resolve to unknown to keep the two
+    // halves aligned.
+    expect(resolveNetSalesTaxRate('1e2')).toEqual({ kind: 'unknown' });
+  });
+
+  it('still resolves a genuine "0" to a known 0% rate (#2813 regression guard)', () => {
+    expect(resolveNetSalesTaxRate('0')).toEqual({ kind: 'known', rateFraction: 0 });
+  });
 });
 
 describe('netSalesRateFractionSql', () => {
@@ -54,6 +82,27 @@ describe('netSalesRateFractionSql', () => {
     expect(resolveNetSalesTaxRate('0.23')).toEqual({ kind: 'unknown' });
     const sql = netSalesRateFractionSql('li."taxRate"');
     expect(sql).toContain('NOT (li."taxRate"::numeric > 0 AND li."taxRate"::numeric < 1)');
+  });
+
+  it.each(['0x10', '23,5', '23%', '1e2'])(
+    'declares the shape predicate that excludes %s from ever reaching ::numeric (#2813)',
+    (taxRate) => {
+      // Pin the literal Postgres shape predicate the CASE expression uses -
+      // `^[0-9]+(\.[0-9]+)?$` - so a future edit to netSalesRateFractionSql
+      // that widens or narrows it is caught here, not just by inspection.
+      const sql = netSalesRateFractionSql('li."taxRate"');
+      expect(sql).toContain(String.raw`li."taxRate" ~ '^[0-9]+(\.[0-9]+)?$'`);
+      // The equivalent JS regex (same anchors, same digit-only shape) must
+      // reject the same string resolveNetSalesTaxRate rejects, keeping both
+      // halves aligned on these four inputs.
+      expect(/^[0-9]+(\.[0-9]+)?$/.test(taxRate)).toBe(false);
+      expect(resolveNetSalesTaxRate(taxRate)).toEqual({ kind: 'unknown' });
+    }
+  );
+
+  it('the shape predicate still accepts a genuine "0" (#2813 regression guard)', () => {
+    expect(/^[0-9]+(\.[0-9]+)?$/.test('0')).toBe(true);
+    expect(resolveNetSalesTaxRate('0')).toEqual({ kind: 'known', rateFraction: 0 });
   });
 });
 
