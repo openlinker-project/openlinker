@@ -19627,6 +19627,24 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   align-items: center;
   justify-content: center;
 }
+/* #2806 review — a bare dot (mockup), not a `StatusBadge` chip: with no
+   visible text the chip's border/background/padding rendered as a wide pill
+   around one tiny dot instead of the plain small dot the mockup shows. */
+.sales-document-market-row__dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.sales-document-market-row__dot--warning {
+  background: var(--status-warning-fg);
+}
+.sales-document-market-row__dot--success {
+  background: var(--status-success-fg);
+}
+.sales-document-market-row__dot--neutral {
+  background: var(--text-muted);
+}
 
 .sales-document-market-row__identity {
   display: flex;
@@ -19750,6 +19768,16 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   display: flex;
   justify-content: flex-end;
   margin: var(--space-3) 0 var(--space-5);
+}
+/* #2806 review — the link to the now-separate "Connected providers" page.
+   A full-width top border is what makes this row read as leaving the market
+   table's section, rather than one more row stacked on top of it. */
+.sales-document-providers-link-row {
+  display: flex;
+  justify-content: flex-start;
+  padding-top: var(--space-5);
+  margin-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
 }
 
 .sales-document-advanced-disclosure {

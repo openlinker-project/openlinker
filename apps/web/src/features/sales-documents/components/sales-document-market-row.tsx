@@ -34,7 +34,7 @@
 import type { ReactElement } from 'react';
 import { Button } from '../../../shared/ui/button';
 import { DocumentKindGlyph } from '../../../shared/ui/document-kind-glyph';
-import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
+import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
 import {
   describeSalesDocumentMarketOutcome,
   type SalesDocumentMarketOutcomeCopy,
@@ -119,9 +119,16 @@ export function SalesDocumentMarketRow({
         .join(' ')}
     >
       <div className="sales-document-market-row__status">
-        <StatusBadge tone={toneFor(copy)} withDot compact>
-          <span className="sr-only">{copy.needsDecision ? 'Needs attention' : 'Set up'}</span>
-        </StatusBadge>
+        {/* #2806 review — the mockup's status signal is a bare colored dot;
+            `StatusBadge` is a full chip (border, background, padding), which
+            with no visible text still rendered as a wide pill around one
+            tiny dot. A plain dot matches the mockup and is still never the
+            only signal — the row's own outcome text/tone carries the rest. */}
+        <span
+          className={`sales-document-market-row__dot sales-document-market-row__dot--${toneFor(copy)}`}
+          aria-hidden="true"
+        />
+        <span className="sr-only">{copy.needsDecision ? 'Needs attention' : 'Set up'}</span>
       </div>
 
       <div className="sales-document-market-row__identity">

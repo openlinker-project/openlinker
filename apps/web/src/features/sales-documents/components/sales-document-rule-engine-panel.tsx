@@ -20,17 +20,21 @@
  * same page, clearly labelled, because the older resolver is still live and
  * reachable whenever a country has no rule-engine configuration.
  *
- * LAYOUT (#2806 — mockup alignment): the mockup's primary surface is exactly
- * two tables, "What each market issues" then "Connected providers", rendered
- * adjacent at the top of the page. This panel now composes both at the top
- * (`SalesDocumentMarketSection` + `SalesDocumentsPanel`) and moves every
- * other surface — the rule composer, starter templates, and the older
- * per-country `SalesDocumentCountryIndex` table — behind a closed-by-default
- * `<details>` disclosure below them. Nothing is removed; a country still
- * appearing in both the market table and the advanced per-country table is
- * expected (they answer different questions: "what happens right now" vs.
- * "how is that decided"), it is simply no longer the first thing an operator
- * sees.
+ * LAYOUT (#2806 review — providers split to its own page): the market table
+ * (`SalesDocumentMarketSection`, "what each market issues right now") is the
+ * only primary table left on this page. "Connected providers" — which
+ * connection is configured to issue automatically, and its priority — moved
+ * to `SalesDocumentProvidersPage` (`/settings/sales-documents/providers`):
+ * the two tables stacked directly on top of each other with no visual break
+ * read as one long table answering two unrelated questions, and a divider or
+ * card border on the same page could not fix that as reliably as a real page
+ * boundary (its own heading, its own description, an explicit navigation).
+ * Every other surface — the rule composer, starter templates, and the older
+ * per-country `SalesDocumentCountryIndex` table — stays behind the
+ * closed-by-default `<details>` disclosure below the market table. Nothing is
+ * removed; a country still appearing in both the market table and the
+ * advanced per-country table is expected (they answer different questions:
+ * "what happens right now" vs. "how is that decided").
  *
  * The shipped Poland starter template's `buyerHasTaxId` condition CANNOT
  * match a real order yet: `Order` carries no buyer-tax-id field, so the
@@ -43,11 +47,11 @@
  * @module apps/web/src/features/sales-documents/components
  */
 import { useRef, useState, type ReactElement } from 'react';
+import { Link } from 'react-router-dom';
 import { SalesDocumentCountryIndex } from './sales-document-country-index';
 import { SalesDocumentCountryRoutingDialog } from './sales-document-country-routing-dialog';
 import { SalesDocumentMarketSection } from './sales-document-market-section';
 import { SalesDocumentTemplateScreen } from './sales-document-template-screen';
-import { SalesDocumentsPanel } from './sales-documents-panel';
 
 interface RoutingDialogState {
   open: boolean;
@@ -107,11 +111,20 @@ export function SalesDocumentRuleEnginePanel(): ReactElement {
       </div>
 
       {/*
-       * #2806 — the mockup's second primary table, "Connected providers",
-       * sits directly under the market table, never below the advanced
-       * per-country editor.
+       * #2806 review — "Connected providers" moved to its own page
+       * (`SalesDocumentProvidersPage`): stacked directly under the market
+       * table with no visual break between them, an operator could not tell
+       * "what each market issues right now" apart from "which connection is
+       * configured to issue" — two different tables answering two different
+       * questions, reading as one long table. A page boundary (its own
+       * heading, its own description, a real navigation) separates them
+       * unambiguously; a divider or a card border on the same page would not.
        */}
-      <SalesDocumentsPanel />
+      <div className="sales-document-providers-link-row">
+        <Link to="/settings/sales-documents/providers" className="button button--secondary">
+          Manage connections &amp; priority →
+        </Link>
+      </div>
 
       <details ref={advancedRef} className="sales-document-advanced-disclosure">
         <summary className="sales-document-advanced-disclosure__summary">
