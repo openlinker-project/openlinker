@@ -28,3 +28,7 @@ export function usesBuyerTaxIdCondition(rule: SalesDocumentRule): boolean {
 export function countRulesUsingBuyerTaxId(rules: readonly SalesDocumentRule[]): number {
   return rules.filter(usesBuyerTaxIdCondition).length;
 }
+
+export function describeBuyerTaxIdRuleCount(count: number): string {
+  return count === 1 ? "1 rule reads the buyer's tax ID" : `${count} rules read the buyer's tax ID`;
+}
