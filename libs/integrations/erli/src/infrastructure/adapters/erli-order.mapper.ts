@@ -47,6 +47,7 @@ import type {
   OrderStatus,
   PaymentStatus,
 } from '@openlinker/core/orders';
+import { readSourceBuyerTaxId } from '@openlinker/core/orders';
 
 import type {
   ErliOrder,
@@ -260,6 +261,10 @@ function mapAddress(address?: ErliOrderAddress): IncomingOrderAddress | undefine
     postalCode: address.zip ?? '',
     country: address.country ?? '',
     phone: address.phone,
+    // `nip` only ever carries a value on `invoiceAddress` (#2822) — the
+    // delivery address's `nip` is always absent on the wire, so this is safe
+    // to route unconditionally through the shared mapper.
+    taxId: readSourceBuyerTaxId(address.nip),
   };
 }
 

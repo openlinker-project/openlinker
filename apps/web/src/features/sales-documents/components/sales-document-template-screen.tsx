@@ -98,9 +98,11 @@ export function SalesDocumentTemplateScreen({
 
         {template.rules.some((rule) => rule.usesBuyerHasTaxId) ? (
           <Alert tone="warning">
-            Every rule above keys off whether the buyer has a tax ID — a fact OpenLinker does not
-            capture on any order yet. None of these rules will fire until that data is available;
-            adopting the template today would silently route no orders at all.
+            Every rule above keys off whether the buyer has a tax ID — a fact only some sources
+            report. PrestaShop always reports it; Allegro and Erli report it only when the buyer
+            requested a VAT invoice; WooCommerce reports it only if the store runs a supported
+            VAT-number plugin. An order whose source didn&apos;t assert a tax ID never matches
+            these rules.
           </Alert>
         ) : null}
 

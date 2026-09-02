@@ -380,6 +380,91 @@ describe('AllegroOrderSourceAdapter', () => {
       expect(incoming.codToCollect).toBeUndefined();
     });
 
+    it('should leave billingAddress undefined when the checkout carries no VAT invoice block (#2822)', async () => {
+      const checkoutForm: AllegroCheckoutForm = {
+        id: 'checkout-no-invoice',
+        updatedAt: '2024-01-01T01:00:00Z',
+        buyer: { id: 'b1', email: 'b1@example.com', login: 'b1' },
+        lineItems: [
+          {
+            id: 'l1',
+            offer: { id: 'o1', name: 'O1' },
+            quantity: 1,
+            price: { amount: '10.00', currency: 'PLN' },
+          },
+        ],
+        summary: { totalToPay: { amount: '10.00', currency: 'PLN' } },
+        payment: { type: 'ONLINE' },
+      };
+      httpClient.get.mockResolvedValueOnce({ data: checkoutForm, status: 200, headers: {} });
+
+      const incoming = await adapter.getOrder({ externalOrderId: 'checkout-no-invoice' });
+
+      expect(incoming.billingAddress).toBeUndefined();
+    });
+
+    it('should read the buyer tax id from invoice.address.company.ids[] when present (#2822)', async () => {
+      const checkoutForm: AllegroCheckoutForm = {
+        id: 'checkout-invoice-ids',
+        updatedAt: '2024-01-01T01:00:00Z',
+        buyer: { id: 'b1', email: 'b1@example.com', login: 'b1' },
+        lineItems: [
+          {
+            id: 'l1',
+            offer: { id: 'o1', name: 'O1' },
+            quantity: 1,
+            price: { amount: '10.00', currency: 'PLN' },
+          },
+        ],
+        summary: { totalToPay: { amount: '10.00', currency: 'PLN' } },
+        payment: { type: 'ONLINE' },
+        invoice: {
+          address: {
+            company: {
+              name: 'Acme Sp. z o.o.',
+              ids: [{ type: 'PL_NIP', value: '5252674798' }],
+              vatPayerStatus: 'ACTIVE',
+              taxId: '525-26-74-798',
+            },
+          },
+        },
+      };
+      httpClient.get.mockResolvedValueOnce({ data: checkoutForm, status: 200, headers: {} });
+
+      const incoming = await adapter.getOrder({ externalOrderId: 'checkout-invoice-ids' });
+
+      expect(incoming.billingAddress?.taxId).toBe('5252674798');
+      expect(incoming.billingAddress?.company).toBe('Acme Sp. z o.o.');
+    });
+
+    it('should fall back to the deprecated flat taxId when ids[] is absent (#2822)', async () => {
+      const checkoutForm: AllegroCheckoutForm = {
+        id: 'checkout-invoice-deprecated',
+        updatedAt: '2024-01-01T01:00:00Z',
+        buyer: { id: 'b1', email: 'b1@example.com', login: 'b1' },
+        lineItems: [
+          {
+            id: 'l1',
+            offer: { id: 'o1', name: 'O1' },
+            quantity: 1,
+            price: { amount: '10.00', currency: 'PLN' },
+          },
+        ],
+        summary: { totalToPay: { amount: '10.00', currency: 'PLN' } },
+        payment: { type: 'ONLINE' },
+        invoice: {
+          address: {
+            company: { name: 'Acme Sp. z o.o.', taxId: '525-26-74-798' },
+          },
+        },
+      };
+      httpClient.get.mockResolvedValueOnce({ data: checkoutForm, status: 200, headers: {} });
+
+      const incoming = await adapter.getOrder({ externalOrderId: 'checkout-invoice-deprecated' });
+
+      expect(incoming.billingAddress?.taxId).toBe('525-26-74-798');
+    });
+
     it('should report pending status when the buyer has not yet completed payment', async () => {
       const checkoutForm: AllegroCheckoutForm = {
         id: 'checkout-2',

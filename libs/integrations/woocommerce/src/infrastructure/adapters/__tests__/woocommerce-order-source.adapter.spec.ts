@@ -259,6 +259,68 @@ describe('WooCommerceOrderSourceAdapter', () => {
   });
 
   describe('getOrder', () => {
+    it('should leave billingAddress.taxId undefined when meta_data carries no known VAT key (#2822)', async () => {
+      const order = makeOrder({ meta_data: [{ key: 'some_other_meta', value: 'x' }] });
+      const httpClient = makeHttpClient({ get: jest.fn().mockResolvedValue(order) });
+      const adapter = new WooCommerceOrderSourceAdapter(httpClient, makeConnection());
+
+      const result = await adapter.getOrder({ externalOrderId: '1' });
+
+      expect(result.billingAddress?.taxId).toBeUndefined();
+    });
+
+    it('should leave billingAddress.taxId undefined when meta_data is absent entirely (#2822)', async () => {
+      const order = makeOrder({ meta_data: undefined });
+      const httpClient = makeHttpClient({ get: jest.fn().mockResolvedValue(order) });
+      const adapter = new WooCommerceOrderSourceAdapter(httpClient, makeConnection());
+
+      const result = await adapter.getOrder({ externalOrderId: '1' });
+
+      expect(result.billingAddress?.taxId).toBeUndefined();
+    });
+
+    it('should read the buyer tax id from the Aelia "VAT Number" meta key (#2822)', async () => {
+      const order = makeOrder({ meta_data: [{ key: 'VAT Number', value: 'PL5252674798' }] });
+      const httpClient = makeHttpClient({ get: jest.fn().mockResolvedValue(order) });
+      const adapter = new WooCommerceOrderSourceAdapter(httpClient, makeConnection());
+
+      const result = await adapter.getOrder({ externalOrderId: '1' });
+
+      expect(result.billingAddress?.taxId).toBe('PL5252674798');
+    });
+
+    it('should read the buyer tax id from the _billing_eu_vat_number meta key (#2822)', async () => {
+      const order = makeOrder({
+        meta_data: [{ key: '_billing_eu_vat_number', value: 'PL5252674798' }],
+      });
+      const httpClient = makeHttpClient({ get: jest.fn().mockResolvedValue(order) });
+      const adapter = new WooCommerceOrderSourceAdapter(httpClient, makeConnection());
+
+      const result = await adapter.getOrder({ externalOrderId: '1' });
+
+      expect(result.billingAddress?.taxId).toBe('PL5252674798');
+    });
+
+    it('should read the buyer tax id from the _vat_number meta key (#2822)', async () => {
+      const order = makeOrder({ meta_data: [{ key: '_vat_number', value: 'PL5252674798' }] });
+      const httpClient = makeHttpClient({ get: jest.fn().mockResolvedValue(order) });
+      const adapter = new WooCommerceOrderSourceAdapter(httpClient, makeConnection());
+
+      const result = await adapter.getOrder({ externalOrderId: '1' });
+
+      expect(result.billingAddress?.taxId).toBe('PL5252674798');
+    });
+
+    it('should skip a blank VAT meta value rather than reporting an empty tax id (#2822)', async () => {
+      const order = makeOrder({ meta_data: [{ key: 'VAT Number', value: '' }] });
+      const httpClient = makeHttpClient({ get: jest.fn().mockResolvedValue(order) });
+      const adapter = new WooCommerceOrderSourceAdapter(httpClient, makeConnection());
+
+      const result = await adapter.getOrder({ externalOrderId: '1' });
+
+      expect(result.billingAddress?.taxId).toBeUndefined();
+    });
+
     it('should map placedAt from date_created_gmt, identical to createdAt (#2097)', async () => {
       const order = makeOrder({
         date_created_gmt: '2024-01-15T10:00:00',

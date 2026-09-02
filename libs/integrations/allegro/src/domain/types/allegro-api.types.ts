@@ -157,6 +157,26 @@ export interface AllegroCheckoutForm {
    * on `lineItems[].boughtAt` (#926).
    */
   updatedAt?: string;
+  /**
+   * Present only when the buyer requested a VAT invoice at checkout. Carries
+   * the buyer's company tax-id (#2822). Allegro is mid-migration between two
+   * shapes (allegro/allegro-api#9222): the new `ids[]` array
+   * (`{ type: 'PL_NIP' | 'CZ_ICO' | 'CZ_DIC' | 'OTHER' | ..., value }`, plus
+   * `vatPayerStatus`) and the older flat `taxId` string (Deprecated, still
+   * returned for back-compat). Both may be absent on a private (non-VAT-
+   * invoice) checkout — never guess a value from anything else on the order.
+   */
+  invoice?: {
+    address?: {
+      company?: {
+        name?: string;
+        ids?: Array<{ type: string; value: string }>;
+        vatPayerStatus?: string;
+        /** @deprecated superseded by `ids[]`; still returned for back-compat. */
+        taxId?: string;
+      };
+    };
+  };
 }
 
 /**

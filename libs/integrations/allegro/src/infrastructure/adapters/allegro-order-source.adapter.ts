@@ -10,7 +10,7 @@
  * @implements {OrderSourcePort}
  */
 
-import { PAYMENT_STATUS } from '@openlinker/core/orders';
+import { PAYMENT_STATUS, readSourceBuyerTaxId } from '@openlinker/core/orders';
 import type {
   OrderSourcePort,
   SourceOptionsReader,
@@ -820,7 +820,7 @@ export class AllegroOrderSourceAdapter
           taxTreatment: 'inclusive',
         },
         shippingAddress: this.resolveShippingAddress(checkoutForm),
-        billingAddress: undefined,
+        billingAddress: this.resolveBillingAddress(checkoutForm),
         shipping: this.resolveShipping(checkoutForm),
         pickupPoint: this.resolvePickupPoint(checkoutForm),
         deliverySmart: checkoutForm.delivery?.smart,
@@ -927,6 +927,33 @@ export class AllegroOrderSourceAdapter
    * Returns `{ methodId, methodName? }` when Allegro provides `delivery.method.id`.
    * Carrier mapping at the destination consumes `methodId`.
    */
+  /**
+   * Resolve `billingAddress` from the checkout form's VAT-invoice block
+   * (#2822). Present only when the buyer requested a VAT invoice — a
+   * private (non-invoice) checkout carries no `invoice.address.company` at
+   * all, and `taxId` then stays `undefined` (unknown), never a false
+   * asserted-none.
+   */
+  private resolveBillingAddress(
+    checkoutForm: AllegroCheckoutForm
+  ): IncomingOrderAddress | undefined {
+    const company = checkoutForm.invoice?.address?.company;
+    if (!company) {
+      return undefined;
+    }
+
+    const rawTaxId = company.ids?.[0]?.value ?? company.taxId;
+
+    return {
+      company: company.name,
+      address1: '',
+      city: '',
+      postalCode: '',
+      country: '',
+      taxId: readSourceBuyerTaxId(rawTaxId),
+    };
+  }
+
   private resolveShipping(checkoutForm: AllegroCheckoutForm): OrderShipping | undefined {
     const method = checkoutForm.delivery?.method;
     if (!method?.id) {
