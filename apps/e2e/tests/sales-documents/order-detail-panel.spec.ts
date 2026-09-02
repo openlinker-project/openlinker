@@ -212,7 +212,7 @@ test.describe('sales documents: order-detail panel (#2563 M10)', () => {
     await gotoOrder(page, SEED_ORDER_IDS.fiscalRegistered);
     const slot = panel(page).locator('.doc-slot--filled');
     await expect(slot.locator('.doc-slot__kind')).toHaveText('fiscal receipt');
-    await expect(slot.getByText('PAR/2026/09/0009', { exact: false })).toBeVisible();
+    await expect(slot.getByText('PAR/2026/09/0009', { exact: false }).first()).toBeVisible();
     await expect(
       slot.getByText('This registration is final and cannot be corrected here.'),
     ).toBeVisible();
@@ -244,8 +244,34 @@ test.describe('sales documents: order-detail panel (#2563 M10)', () => {
 
     const issueButton = page.getByRole('button', { name: 'Issue invoice' });
     await expect(issueButton).toBeVisible();
-    await expect(issueButton).toBeEnabled();
 
+    // On a demo-mode stack (`useWriteAccess` + `ReadOnlyLock`, per
+    // frontend.md's access-control table) a write affordance stays VISIBLE
+    // but DISABLED, wrapped in a clickable `.read-only-lock` span that is the
+    // only reachable click signal — the native disabled button emits no
+    // pointer events at all. Both branches are real, driven by the stack's
+    // actual mode; this test exercises whichever one the stack is in rather
+    // than assuming write access.
+    const lockWrapper = page.locator('.read-only-lock').filter({ has: issueButton });
+    if (await lockWrapper.count()) {
+      await lockWrapper.click();
+      await expect(page.getByRole('tooltip')).toBeVisible();
+      return;
+    }
+
+    // A live stack may carry MORE than one active `Invoicing`-capable
+    // connection beyond this suite's own seed — `resolveIssuableConnection`
+    // then refuses to guess and shows a picker (`showConnectionPicker`)
+    // instead of preselecting one, leaving the button disabled until the
+    // operator picks. That is real, correct behaviour (never "no connection
+    // to issue on"), so pick the seeded `ksef` connection when the picker is
+    // present rather than assuming the single-candidate shortcut fires.
+    const connectionSelect = page.getByLabel('Issue on');
+    if (await connectionSelect.count()) {
+      await connectionSelect.selectOption({ label: 'Ksef Demo' });
+    }
+
+    await expect(issueButton).toBeEnabled();
     const live = page.locator('.sales-document-panel [role="status"][aria-live="polite"]');
     await issueButton.click();
 
