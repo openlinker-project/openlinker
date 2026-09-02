@@ -20,7 +20,7 @@
     "@playwright/test": "^1.61.1",
     "@types/node": "20.11.30",
     "@types/pg": "^8.11.10",
-    "pg": "^8.13.1",
+    "pg": "8.11.3",
     "typescript": "5.4.3"
   }
 }
