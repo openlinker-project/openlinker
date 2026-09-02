@@ -22,6 +22,10 @@ import { SyncModule } from '@openlinker/core/sync';
 // core ListingsModule imports the CORE IntegrationsModule, a different class
 // from this host module, and libs/core cannot import apps/api at all.
 import { ListingsModule as CoreListingsModule } from '@openlinker/core/listings/services';
+// #2407 — provides LOCATION_SERVICE_TOKEN for the routing enablement guard.
+// Safe for the same reason CoreListingsModule is: the core InventoryModule
+// imports the CORE IntegrationsModule, a different class from this one.
+import { InventoryModule as CoreInventoryModule } from '@openlinker/core/inventory';
 import { WebhooksCoreModule } from '@openlinker/core/webhooks';
 import { RedisConfigModule } from '@openlinker/shared/redis';
 import { RateLimitModule } from '@openlinker/plugin-sdk';
@@ -47,6 +51,7 @@ import { DEMO_MODE_SERVICE_TOKEN } from '../auth/demo-mode.service.interface';
   imports: [
     CoreIntegrationsModule,
     CoreListingsModule, // #2084 taxonomy bootstrap on connection create/enable
+    CoreInventoryModule, // #2407 routing enablement guard reads the location count
     IdentifierMappingModule,
     SyncModule, // Required for cursor repository
     WebhooksCoreModule, // Webhook-delivery repository for the webhook-status projection (#1770)

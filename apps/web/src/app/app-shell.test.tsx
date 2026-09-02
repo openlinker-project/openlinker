@@ -129,24 +129,61 @@ describe('AppShell', () => {
     window.localStorage.clear();
   });
 
-  it('renders the three live nav groups plus a disabled Planned footer', () => {
+  it('renders the three live nav groups and no Planned footer (#2364)', () => {
     renderShell({ pathname: '/' });
 
     const primary = screen.getByRole('navigation', { name: 'Primary' });
     expect(within(primary).getByText('Operations')).toBeInTheDocument();
     expect(within(primary).getByText('Diagnostics')).toBeInTheDocument();
     expect(within(primary).getByText('Platform')).toBeInTheDocument();
-    expect(within(primary).getByText('Planned')).toBeInTheDocument();
+    // `Automations` was the group's only item; promoting it emptied the group,
+    // and an empty group heading is worse than no group.
+    expect(within(primary).queryByText('Planned')).toBeNull();
 
     expect(within(primary).getByText('Cursors').closest('a')).toHaveAttribute('href', '/cursors');
 
     expect(within(primary).queryByText('Add connection')).toBeNull();
+  });
 
-    const automations = within(primary).getByText('Automations');
-    expect(automations).toHaveAttribute('role', 'link');
-    expect(automations).toHaveAttribute('aria-disabled', 'true');
-    expect(automations).toHaveAttribute('tabindex', '-1');
-    expect(automations).toHaveAttribute('title', 'Coming in a future release');
+  it('links Automations into Operations rather than disabling it (#2364)', async () => {
+    renderShell({ pathname: '/' });
+
+    const primary = screen.getByRole('navigation', { name: 'Primary' });
+    // `find`, not `get`: the item is permission-gated on `automations:read`
+    // (#2358 review I5), so it appears only once the session resolves — the
+    // same reason the AI-group assertions below are async.
+    const automations = await within(primary).findByText('Automations');
+
+    expect(automations.closest('a')).toHaveAttribute('href', '/automations');
+    // The disabled-placeholder attributes must be GONE, not merely unasserted:
+    // a live link that still carried `aria-disabled` would read as unusable to
+    // a screen reader while working for everyone else.
+    expect(automations).not.toHaveAttribute('aria-disabled');
+    expect(automations).not.toHaveAttribute('tabindex', '-1');
+  });
+
+  it('hides Automations from a session without automations:read (#2358 I5)', async () => {
+    // A `viewer` holds no `automations:read`, and every AutomationsController
+    // route is `@Roles('admin', 'operator')` — so showing the entry offered a
+    // link whose first request 403s. Absence is the honest rendering.
+    const viewerAdapter = createAuthenticatedSessionAdapter({
+      id: 'u2',
+      username: 'viewer',
+      email: 'viewer@example.com',
+      role: 'viewer',
+      permissions: ['orders:read'],
+      analyticsConsent: true,
+    });
+    renderShell({ pathname: '/', sessionAdapter: viewerAdapter });
+
+    // Wait for the session to resolve before asserting absence, or the
+    // assertion passes on the pre-resolution render for the wrong reason.
+    await screen.findAllByText('viewer');
+    const primary = screen.getByRole('navigation', { name: 'Primary' });
+    expect(within(primary).queryByText('Automations')).toBeNull();
+    // The rest of Operations is untouched — the gate is per-item, not per-group.
+    expect(within(primary).getByText('Orders')).toBeInTheDocument();
+    expect(within(primary).getByText('Operations')).toBeInTheDocument();
   });
 
   it('renders the AI group with a Prompt templates link for admin sessions (#377)', async () => {

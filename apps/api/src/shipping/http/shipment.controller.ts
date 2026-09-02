@@ -66,6 +66,7 @@ import {
   ShippingProviderRejectionException,
   UndispatchableResolutionException,
   OrderNotDispatchablePaymentStatusException,
+  OrderNotDispatchableHeldException,
   ShipmentDispatchContendedException,
 } from '@openlinker/core/shipping';
 import {
@@ -125,6 +126,7 @@ export class ShipmentController {
     const filters: ShipmentFilters = {
       orderId: query.orderId,
       status: query.status,
+      direction: query.direction,
       connectionId: query.connectionId,
       shippingMethod: query.shippingMethod,
       hasTracking: query.hasTracking,
@@ -515,6 +517,10 @@ export class ShipmentController {
       error instanceof ShipmentCancellationNotSupportedException ||
       error instanceof UndispatchableResolutionException ||
       error instanceof OrderNotDispatchablePaymentStatusException ||
+      // #2339 — the hold gate. 422 like its payment-status sibling: the request
+      // is well-formed, the order's persisted state refuses it, and the remedy
+      // (release the hold) is the operator's, not the client's.
+      error instanceof OrderNotDispatchableHeldException ||
       error instanceof LabelDocumentNotSupportedException ||
       error instanceof LabelNotAvailableException ||
       error instanceof DispatchProtocolNotSupportedException

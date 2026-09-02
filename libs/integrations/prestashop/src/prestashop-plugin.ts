@@ -193,6 +193,10 @@ export function createPrestashopPlugin(deps: CreatePrestashopPluginDeps): Adapte
         host.identifierMapping,
         host.credentialsResolver,
         host.http.forConnection(connection, prestashopAdapterManifest.defaultRateLimit),
+        // #2369: backs adjustInventory's idempotency window. `HostServices.cache`
+        // is optional, so an unwired host degrades to 'unsupported' rather than
+        // claiming a dedupe that did not happen.
+        host.cache,
       );
 
       return dispatchCapability<T>(

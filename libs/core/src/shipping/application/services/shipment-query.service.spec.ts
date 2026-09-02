@@ -39,6 +39,9 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     overrides.deliveryIntent ?? null,
     overrides.providerCode ?? null,
     overrides.waybillRelayedAt ?? null,
+    overrides.direction ?? 'outbound',
+    overrides.reservationConsumedAt ?? null,
+    overrides.fulfillmentWorkId ?? null,
   );
 }
 
@@ -58,6 +61,9 @@ describe('ShipmentQueryService', () => {
       update: jest.fn(),
       claimWaybillRelay: jest.fn(),
       releaseWaybillRelay: jest.fn(),
+      listDispatchedAwaitingReservationConsume: jest.fn(),
+      claimReservationConsume: jest.fn(),
+      claimFulfillmentWorkLink: jest.fn(),
     };
     service = new ShipmentQueryService(repository);
   });
@@ -98,7 +104,46 @@ describe('ShipmentQueryService', () => {
       repository.findActiveByOrderId.mockResolvedValue(shipment);
 
       await expect(service.getActiveByOrderId('ol_order_1')).resolves.toBe(shipment);
-      expect(repository.findActiveByOrderId).toHaveBeenCalledWith('ol_order_1');
+      // The cohort is stated explicitly (#2373) — the panel shows the order's
+      // outbound shipment, never a return label.
+      expect(repository.findActiveByOrderId).toHaveBeenCalledWith('ol_order_1', 'outbound');
+    });
+  });
+
+  describe('hasConsumedReservations (#2348)', () => {
+    it('should be false when the order has no shipments at all', async () => {
+      repository.findByOrderId.mockResolvedValue([]);
+
+      await expect(service.hasConsumedReservations('ol_order_1')).resolves.toBe(false);
+    });
+
+    it('should be false when no shipment has claimed the marker', async () => {
+      repository.findByOrderId.mockResolvedValue([makeShipment({ reservationConsumedAt: null })]);
+
+      await expect(service.hasConsumedReservations('ol_order_1')).resolves.toBe(false);
+    });
+
+    it('should be true when a shipment carries the marker', async () => {
+      repository.findByOrderId.mockResolvedValue([
+        makeShipment({ reservationConsumedAt: new Date('2026-05-21T16:00:00Z') }),
+      ]);
+
+      await expect(service.hasConsumedReservations('ol_order_1')).resolves.toBe(true);
+    });
+
+    it('should be true when ANY shipment carries the marker', async () => {
+      // Partial dispatch is not modelled (`shipments` carries no line
+      // composition), so the conservative reading — do not restore — is the one
+      // that cannot oversell.
+      repository.findByOrderId.mockResolvedValue([
+        makeShipment({ id: 'ol_shipment_1', reservationConsumedAt: null }),
+        makeShipment({
+          id: 'ol_shipment_2',
+          reservationConsumedAt: new Date('2026-05-21T16:00:00Z'),
+        }),
+      ]);
+
+      await expect(service.hasConsumedReservations('ol_order_1')).resolves.toBe(true);
     });
   });
 });

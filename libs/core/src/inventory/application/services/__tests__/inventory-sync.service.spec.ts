@@ -13,14 +13,14 @@ import type {
   UpdateOfferQuantitiesBatchResult,
 } from '@openlinker/core/listings';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
-import type { Connection, ConnectionConfig, ConnectionPort } from '@openlinker/core/identifier-mapping';
+import type { IAvailabilityService } from '../availability.service.interface';
 import type { ISyncCursorsService, SyncLockPort } from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
 
 describe('InventorySyncService', () => {
   let service: InventorySyncService;
   let integrationsService: jest.Mocked<IIntegrationsService>;
-  let connectionPort: jest.Mocked<ConnectionPort>;
+  let availabilityService: jest.Mocked<IAvailabilityService>;
   let marketplace: jest.Mocked<OfferManagerPort & OfferQuantityBatchUpdater>;
   let syncLock: jest.Mocked<SyncLockPort>;
   let syncCursors: jest.Mocked<ISyncCursorsService>;
@@ -29,8 +29,32 @@ describe('InventorySyncService', () => {
 
   const connectionId = 'connection-123';
 
-  const connectionWithConfig = (config: ConnectionConfig): Connection =>
-    ({ id: connectionId, config } as unknown as Connection);
+  /** Seed the seam with the post-Control quantity a given reserve would produce. */
+  const withBuffer = (reserve: number): void => {
+    const apply = (quantity: number) => ({
+      quantity: Math.max(0, Math.max(0, quantity) - reserve),
+      provenance: 'computed' as const,
+    });
+    availabilityService.applyPublishControls.mockImplementation(({ quantity }) =>
+      Promise.resolve(apply(quantity))
+    );
+    // The write-back path uses the BATCH form (one connection read per batch,
+    // not per item); both are seeded so the helper stays usable either way.
+    availabilityService.applyPublishControlsBatch.mockImplementation(({ quantities }) =>
+      Promise.resolve(quantities.map(apply))
+    );
+  };
+
+  /** Seed the seam with the arm that means "OL could not resolve the Controls". */
+  const withUnknownControls = (): void => {
+    availabilityService.applyPublishControls.mockResolvedValue({
+      quantity: null,
+      provenance: 'unknown',
+    });
+    availabilityService.applyPublishControlsBatch.mockImplementation(({ quantities }) =>
+      Promise.resolve(quantities.map(() => ({ quantity: null, provenance: 'unknown' as const })))
+    );
+  };
 
   beforeEach(() => {
     marketplace = {
@@ -46,13 +70,13 @@ describe('InventorySyncService', () => {
       listCapabilityAdapters: jest.fn(),
     } as unknown as jest.Mocked<IIntegrationsService>;
 
-    connectionPort = {
-      get: jest.fn().mockResolvedValue(connectionWithConfig({})),
-      list: jest.fn(),
-      create: jest.fn(),
-      update: jest.fn(),
-      disable: jest.fn(),
-    } as unknown as jest.Mocked<ConnectionPort>;
+    availabilityService = {
+      getPromisableQuantities: jest.fn(),
+      applyPublishControls: jest.fn(),
+      applyPublishControlsBatch: jest.fn(),
+      getAppliedReserve: jest.fn().mockResolvedValue(0),
+    } as unknown as jest.Mocked<IAvailabilityService>;
+    withBuffer(0);
 
     marks = new Map<string, string>();
     syncCursors = {
@@ -88,7 +112,7 @@ describe('InventorySyncService', () => {
 
     service = new InventorySyncService(
       integrationsService,
-      connectionPort,
+      availabilityService,
       syncLock,
       syncCursors
     );
@@ -185,7 +209,8 @@ describe('InventorySyncService', () => {
   it('should auto-generate a deterministic idempotency key when an item omits one', async () => {
     // Single-item path (length === 1) forces per-item loop, which lets us inspect the
     // normalized item passed to updateOfferQuantity. The key is a SHA-256 truncation
-    // of (connectionId, offerId, quantity) — same tuple → same key, distinct tuple → distinct key.
+    // of (connectionId, offerId, quantity, observedAt) — same tuple → same key,
+    // distinct tuple → distinct key (#2285).
     marketplace.updateOfferQuantity.mockResolvedValue(undefined);
 
     await service.updateOfferQuantities(connectionId, {
@@ -212,9 +237,107 @@ describe('InventorySyncService', () => {
     expect(thirdCallArg.idempotencyKey).not.toBe(firstCallArg.idempotencyKey);
   });
 
-  describe('stock safety buffer (#1844)', () => {
+  describe('observation-token idempotency key (#2285)', () => {
+    const keyOf = (call: number): string | undefined =>
+      marketplace.updateOfferQuantity.mock.calls[call][0].idempotencyKey;
+
+    beforeEach(() => {
+      marketplace.updateOfferQuantity.mockResolvedValue(undefined);
+    });
+
+    it('should derive different keys when the quantity is identical but the observation differs', async () => {
+      await service.updateOfferQuantity(connectionId, {
+        offerId: 'o1',
+        quantity: 0,
+        observedAt: '2026-08-01T00:00:00.000Z',
+      });
+      await service.updateOfferQuantity(connectionId, {
+        offerId: 'o1',
+        quantity: 0,
+        observedAt: '2026-08-02T00:00:00.000Z',
+      });
+
+      expect(keyOf(0)).toMatch(/^inv:[a-f0-9]{16}$/);
+      expect(keyOf(1)).toMatch(/^inv:[a-f0-9]{16}$/);
+      expect(keyOf(1)).not.toBe(keyOf(0));
+    });
+
+    it('should derive the same key when the observation is the same', async () => {
+      const observedAt = '2026-08-01T00:00:00.000Z';
+      await service.updateOfferQuantity(connectionId, { offerId: 'o1', quantity: 3, observedAt });
+      await service.updateOfferQuantity(connectionId, { offerId: 'o1', quantity: 3, observedAt });
+
+      expect(keyOf(1)).toBe(keyOf(0));
+    });
+
+    it('should keep an explicit idempotency key ahead of the derived one', async () => {
+      await service.updateOfferQuantity(connectionId, {
+        offerId: 'o1',
+        quantity: 3,
+        idempotencyKey: 'caller-key',
+        observedAt: '2026-08-01T00:00:00.000Z',
+      });
+
+      expect(keyOf(0)).toBe('caller-key');
+    });
+
+    it('should fall back to an unversioned key and warn when no observation is supplied', async () => {
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+      await service.updateOfferQuantity(connectionId, { offerId: 'o1', quantity: 3 });
+
+      expect(keyOf(0)).toMatch(/^inv:[a-f0-9]{16}$/);
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('inventory_quantity_key_unversioned')
+      );
+      warnSpy.mockRestore();
+    });
+
+    it('should mint three distinct keys for a restock-to-the-same-quantity sequence', async () => {
+      // qty 5 @ t0 -> qty 0 @ t1 -> qty 5 @ t2. Pre-#2285 the third write reused the
+      // first write's key and was swallowed by the destination's command-id dedup,
+      // leaving the offer selling at a quantity it no longer had.
+      await service.updateOfferQuantity(connectionId, {
+        offerId: 'o1',
+        quantity: 5,
+        observedAt: '2026-08-01T00:00:00.000Z',
+      });
+      await service.updateOfferQuantity(connectionId, {
+        offerId: 'o1',
+        quantity: 0,
+        observedAt: '2026-08-02T00:00:00.000Z',
+      });
+      await service.updateOfferQuantity(connectionId, {
+        offerId: 'o1',
+        quantity: 5,
+        observedAt: '2026-08-03T00:00:00.000Z',
+      });
+
+      expect(marketplace.updateOfferQuantity).toHaveBeenCalledTimes(3);
+      expect(new Set([keyOf(0), keyOf(1), keyOf(2)]).size).toBe(3);
+    });
+
+    it('should never derive the key from wall-clock time', async () => {
+      const input = {
+        offerId: 'o1',
+        quantity: 5,
+        observedAt: '2026-08-01T00:00:00.000Z',
+      };
+
+      jest.useFakeTimers().setSystemTime(new Date('2026-08-10T00:00:00.000Z'));
+      await service.updateOfferQuantity(connectionId, input);
+      jest.setSystemTime(new Date('2027-01-01T00:00:00.000Z'));
+      await service.updateOfferQuantity(connectionId, input);
+      jest.useRealTimers();
+
+      expect(keyOf(1)).toBe(keyOf(0));
+    });
+  });
+
+
+  describe('publish controls — stock safety buffer (#1844, seam-owned since #2323)', () => {
     it('should pass master quantity through unchanged when the connection has no buffer (default 0)', async () => {
-      connectionPort.get.mockResolvedValue(connectionWithConfig({}));
+      withBuffer(0);
       marketplace.updateOfferQuantity.mockResolvedValue(undefined);
 
       await service.updateOfferQuantity(connectionId, { offerId: 'o1', quantity: 10 });
@@ -224,8 +347,24 @@ describe('InventorySyncService', () => {
       );
     });
 
+    it('should ask the seam for the destination connection scope', async () => {
+      withBuffer(0);
+      marketplace.updateOfferQuantity.mockResolvedValue(undefined);
+
+      await service.updateOfferQuantity(connectionId, { offerId: 'o1', quantity: 10 });
+
+      // The BATCH form: resolving the Controls per ITEM put one connection
+      // read per item on the hottest write path, where the pre-#2323 code did
+      // one per batch.
+      expect(availabilityService.applyPublishControlsBatch).toHaveBeenCalledWith({
+        quantities: [10],
+        scope: { kind: 'channel', connectionId },
+      });
+      expect(availabilityService.applyPublishControls).not.toHaveBeenCalled();
+    });
+
     it('should subtract the per-connection reserve from the written-back quantity', async () => {
-      connectionPort.get.mockResolvedValue(connectionWithConfig({ stockSafetyBuffer: 3 }));
+      withBuffer(3);
       marketplace.updateOfferQuantity.mockResolvedValue(undefined);
 
       await service.updateOfferQuantity(connectionId, { offerId: 'o1', quantity: 10 });
@@ -236,7 +375,7 @@ describe('InventorySyncService', () => {
     });
 
     it('should floor the written-back quantity at 0 when the reserve exceeds master stock', async () => {
-      connectionPort.get.mockResolvedValue(connectionWithConfig({ stockSafetyBuffer: 5 }));
+      withBuffer(5);
       marketplace.updateOfferQuantity.mockResolvedValue(undefined);
 
       await service.updateOfferQuantity(connectionId, { offerId: 'o1', quantity: 2 });
@@ -246,36 +385,8 @@ describe('InventorySyncService', () => {
       );
     });
 
-    it('should warn (but still pass through) when the buffer is present but invalid', async () => {
-      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
-      connectionPort.get.mockResolvedValue(
-        connectionWithConfig({ stockSafetyBuffer: -3 as unknown as number })
-      );
-      marketplace.updateOfferQuantity.mockResolvedValue(undefined);
-
-      await service.updateOfferQuantity(connectionId, { offerId: 'o1', quantity: 10 });
-
-      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('present but invalid'));
-      // Coerces to 0 reserve => quantity passes through unchanged.
-      expect(marketplace.updateOfferQuantity).toHaveBeenCalledWith(
-        expect.objectContaining({ offerId: 'o1', quantity: 10 })
-      );
-      warnSpy.mockRestore();
-    });
-
-    it('should not warn when the buffer is absent (default 0)', async () => {
-      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
-      connectionPort.get.mockResolvedValue(connectionWithConfig({}));
-      marketplace.updateOfferQuantity.mockResolvedValue(undefined);
-
-      await service.updateOfferQuantity(connectionId, { offerId: 'o1', quantity: 10 });
-
-      expect(warnSpy).not.toHaveBeenCalled();
-      warnSpy.mockRestore();
-    });
-
     it('should apply the reserve to every item in a batch update', async () => {
-      connectionPort.get.mockResolvedValue(connectionWithConfig({ stockSafetyBuffer: 2 }));
+      withBuffer(2);
       (marketplace.updateOfferQuantitiesBatch as unknown as jest.Mock).mockResolvedValueOnce({
         succeeded: ['o1', 'o2'],
         failed: [],
@@ -296,6 +407,48 @@ describe('InventorySyncService', () => {
           ],
         })
       );
+      // I6 — ONE Control resolution for the whole batch, not one per item.
+      // The buffer cannot vary within a batch (it is a property of the single
+      // destination connection), so a per-item resolve was N identical reads
+      // on the hottest write path in the system.
+      expect(availabilityService.applyPublishControlsBatch).toHaveBeenCalledTimes(1);
+      expect(availabilityService.applyPublishControlsBatch).toHaveBeenCalledWith({
+        quantities: [10, 1],
+        scope: { kind: 'channel', connectionId },
+      });
+    });
+  });
+
+  describe('availability unknown (#2323)', () => {
+    it('should write nothing and fail every item when the publish controls cannot be resolved', async () => {
+      withUnknownControls();
+
+      const result = await service.updateOfferQuantities(connectionId, {
+        items: [
+          { offerId: 'o1', quantity: 10, idempotencyKey: 'k1' },
+          { offerId: 'o2', quantity: 1, idempotencyKey: 'k2' },
+        ],
+      });
+
+      expect(result.succeeded).toEqual([]);
+      expect(result.failed).toEqual([
+        expect.objectContaining({ offerId: 'o1', errorCode: 'availability_unknown' }),
+        expect.objectContaining({ offerId: 'o2', errorCode: 'availability_unknown' }),
+      ]);
+    });
+
+    it('should not reach the marketplace at all when controls are unknown', async () => {
+      withUnknownControls();
+
+      await service.updateOfferQuantities(connectionId, {
+        items: [{ offerId: 'o1', quantity: 10, idempotencyKey: 'k1' }],
+      });
+
+      // Never publish the unbuffered quantity: that drives straight through the
+      // operator's oversell cushion. Nothing is even resolved.
+      expect(integrationsService.getCapabilityAdapter).not.toHaveBeenCalled();
+      expect(marketplace.updateOfferQuantity).not.toHaveBeenCalled();
+      expect(marketplace.updateOfferQuantitiesBatch).not.toHaveBeenCalled();
     });
   });
 

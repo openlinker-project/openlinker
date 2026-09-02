@@ -68,10 +68,20 @@ import {
   type SalesDocumentRulesApi,
 } from '../../features/sales-documents/api/sales-document-rules.api';
 import {
+  createFulfillmentAuthorityApi,
+  type FulfillmentAuthorityApi,
+} from '../../features/fulfillment-authority/api/who-decides.api';
+import {
+  createFulfillmentApi,
+  type FulfillmentApi,
+} from '../../features/fulfillment/api/fulfillment.api';
+import {
   createPosthogSettingsApi,
   type PosthogSettingsApi,
 } from '../../features/posthog-settings/api/posthog-settings.api';
 import { createProductsApi, type ProductsApi } from '../../features/products/api/products.api';
+import { createAutomationsApi, type AutomationsApi } from '../../features/automation';
+import { createReturnsApi, type ReturnsApi } from '../../features/returns';
 import { createShipmentsApi, type ShipmentsApi } from '../../features/shipments/api/shipments.api';
 import {
   createPromptTemplatesApi,
@@ -175,6 +185,7 @@ export interface CoreApiClient {
   invoicing: InvoicingApi;
   listings: ListingsApi;
   mailerSettings: MailerSettingsApi;
+  automations: AutomationsApi;
   mcpTokens: McpTokensApi;
   operationalSettings: OperationalSettingsApi;
   orders: OrdersApi;
@@ -185,7 +196,10 @@ export interface CoreApiClient {
   request: ApiRequest;
   requestBlob: ApiBlobRequest;
   requestStream: ApiStreamRequest;
+  returns: ReturnsApi;
   salesDocumentRules: SalesDocumentRulesApi;
+  fulfillmentAuthority: FulfillmentAuthorityApi;
+  fulfillment: FulfillmentApi;
   shipments: ShipmentsApi;
   syncJobs: SyncJobsApi;
   system: SystemApi;
@@ -407,6 +421,10 @@ export function createApiClient({
     requestBlob,
     requestStream,
     salesDocumentRules: createSalesDocumentRulesApi(request),
+    automations: createAutomationsApi(request),
+    fulfillmentAuthority: createFulfillmentAuthorityApi(request),
+    fulfillment: createFulfillmentApi(request),
+    returns: createReturnsApi(request),
     shipments: createShipmentsApi(request, requestBlob),
     syncJobs: createSyncJobsApi(request),
     system: createSystemApi(request),

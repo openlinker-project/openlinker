@@ -3,8 +3,9 @@
  * Libs Build-Script Invariant (#602)
  *
  * Asserts every workspace package under `libs/*` and `libs/integrations/*`
- * declares a non-empty `scripts.build`. Closes the silent-skip gap in
- * `pnpm -r --filter "./libs/**" build`:
+ * declares a non-empty `scripts.build`, `scripts.lint`, `scripts.type-check`
+ * and `scripts.test` (#2390 widened the original `build`-only rule). Closes
+ * the silent-skip gap in `pnpm -r <script>`:
  *
  *   $ pnpm -r --filter "./libs/**" run nonexistent-script
  *   Scope: 7 of 11 workspace projects
@@ -36,6 +37,17 @@ const REPO_ROOT = resolve(__dirname, '..');
 // Order matters for the diagnostic message — top-level libs first, then
 // nested integration packages.
 const LIBS_PARENTS = ['libs', 'libs/integrations'];
+
+/**
+ * Every script the root recursive commands drive. `build` was the original
+ * #602 subject; the other three were added by #2390 on the same reasoning —
+ * `pnpm -r <script>` silently no-ops for a package that lacks the script, so
+ * a package shipping `build` but not `lint` is silently unlinted in CI and in
+ * every local gate. All 16 packages under these parents already declared all
+ * four when the check was widened, so this closes a latent gap rather than
+ * grandfathering an existing one.
+ */
+const REQUIRED_SCRIPTS = ['build', 'lint', 'type-check', 'test'];
 
 const errors = [];
 
@@ -72,15 +84,14 @@ async function main() {
         throw err;
       }
       packagesChecked++;
-      const buildScript = pkg.scripts?.build;
-      if (
-        !buildScript ||
-        typeof buildScript !== 'string' ||
-        buildScript.trim() === ''
-      ) {
-        errors.push(
-          `${child}/package.json: missing or empty "scripts.build" — pnpm -r --filter "./libs/**" build will silently skip this package`,
-        );
+      for (const scriptName of REQUIRED_SCRIPTS) {
+        const declared = pkg.scripts?.[scriptName];
+        if (!declared || typeof declared !== 'string' || declared.trim() === '') {
+          errors.push(
+            `${child}/package.json: missing or empty "scripts.${scriptName}" — ` +
+              `pnpm -r ${scriptName} will silently skip this package`,
+          );
+        }
       }
     }
   }

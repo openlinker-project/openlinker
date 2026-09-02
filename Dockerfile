@@ -28,6 +28,7 @@ COPY libs/core/package.json ./libs/core/
 COPY libs/shared/package.json ./libs/shared/
 COPY libs/plugin-sdk/package.json ./libs/plugin-sdk/
 COPY libs/test-kit/package.json ./libs/test-kit/
+COPY libs/oms/package.json ./libs/oms/
 COPY libs/integrations/ai/package.json ./libs/integrations/ai/
 COPY libs/integrations/allegro/package.json ./libs/integrations/allegro/
 COPY libs/integrations/dpd-polska/package.json ./libs/integrations/dpd-polska/
@@ -77,6 +78,7 @@ COPY libs/core/package.json ./libs/core/
 COPY libs/shared/package.json ./libs/shared/
 COPY libs/plugin-sdk/package.json ./libs/plugin-sdk/
 COPY libs/test-kit/package.json ./libs/test-kit/
+COPY libs/oms/package.json ./libs/oms/
 COPY libs/integrations/ai/package.json ./libs/integrations/ai/
 COPY libs/integrations/allegro/package.json ./libs/integrations/allegro/
 COPY libs/integrations/dpd-polska/package.json ./libs/integrations/dpd-polska/
@@ -112,6 +114,7 @@ COPY --from=base --chown=node:node /app/apps/api/dist ./apps/api/dist
 COPY --from=base --chown=node:node /app/libs/core/dist ./libs/core/dist
 COPY --from=base --chown=node:node /app/libs/shared/dist ./libs/shared/dist
 COPY --from=base --chown=node:node /app/libs/plugin-sdk/dist ./libs/plugin-sdk/dist
+COPY --from=base --chown=node:node /app/libs/oms/dist ./libs/oms/dist
 COPY --from=base --chown=node:node /app/libs/integrations/ai/dist ./libs/integrations/ai/dist
 COPY --from=base --chown=node:node /app/libs/integrations/allegro/dist ./libs/integrations/allegro/dist
 COPY --from=base --chown=node:node /app/libs/integrations/dpd-polska/dist ./libs/integrations/dpd-polska/dist

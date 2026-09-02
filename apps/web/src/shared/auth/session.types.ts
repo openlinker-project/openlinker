@@ -29,6 +29,8 @@ export const PermissionValues = [
   'webhooks:read',
   'ai:suggest',
   'content:write',
+  'automations:read',
+  'automations:write',
 ] as const;
 
 export type Permission = (typeof PermissionValues)[number];

@@ -39,6 +39,7 @@ import { SubiektIntegrationModule } from '@openlinker/integrations-subiekt';
 import { InfaktIntegrationModule } from '@openlinker/integrations-infakt';
 import { EparagonyIntegrationModule } from '@openlinker/integrations-eparagony';
 import { FxIntegrationModule } from '@openlinker/integrations-fx';
+import { OmsModule } from '@openlinker/oms';
 
 export const apiPlugins: PluginEntry[] = [
   PrestashopIntegrationModule,
@@ -64,4 +65,14 @@ export const apiPlugins: PluginEntry[] = [
   // Registered API-side as well as worker-side so a future API restamp
   // endpoint fails at boot rather than at runtime against an empty registry.
   FxIntegrationModule,
+  // #2405 / ADR-055: OpenLinker's own OMS, registered through the same seam as
+  // any third-party plugin — no privileged path in core. Its manifest declares
+  // `requiresCredentials: false`, which is what lets an operator create the
+  // credential-less connection ADR-055 specifies; the row is created on enable
+  // and is NEVER seeded by a migration, because a seeded row would enter every
+  // existing install's authority candidate sets and flip previously-single
+  // candidate selections to `ambiguous`. `.register()` (the shipped
+  // `AiIntegrationModule` shape) keeps `OmsModule` a named class while handing
+  // back the descriptor-backed DynamicModule.
+  OmsModule.register(),
 ];

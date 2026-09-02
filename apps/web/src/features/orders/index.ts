@@ -22,6 +22,11 @@
  * the feature that owns what an order identity looks like (#1996).
  */
 export { ordersQueryKeys } from './api/orders.query-keys';
+// Exported for the #2366 automation dry-run order picker, which needs a
+// "last 30 days" list. The hook and its filter type are the whole surface it
+// consumes; `features/automation` imports them from this barrel like any other
+// cross-feature consumer.
+export { useOrdersQuery } from './hooks/use-orders-query';
 // #2254 — the invoice panel needs the parsed lines to decide WHICH remedy a
 // missing rate calls for; the reason alone cannot say.
 export { parseOrderSnapshot } from './api/order-snapshot.schema';
@@ -43,6 +48,59 @@ export type {
   SalesDocumentGateBlockReasonValue,
   SalesDocumentUnresolvedReasonValue,
 } from './api/orders.types';
+// #2441 review S9 — `OrderRecord.lifecyclePhase` is part of the shape the
+// `invoicing` and `shipments` features type-import from this barrel, so the
+// union naming its values belongs here too. Structural typing kept them
+// compiling without it, but no cross-feature consumer could NAME the type.
+// From the types-only module, never the label/tone lib (see S10).
+export type { OrderLifecyclePhaseValue } from './lib/order-lifecycle-phase.types';
+// #2350 — the SINGLE source for the shortfall sentence. AC1 requires the row
+// badge and `W2-19`'s attention-table title to be byte-identical, so #2356
+// imports these builders rather than restating the string; a second copy cannot
+// exist without deleting this import. `W2-20` (#2357) should ABSORB
+// `stock-at-risk-copy.ts` when it lands, not grow its own copy.
+export {
+  stockAtRiskTitle,
+  stockAtRiskBadge,
+  stockAtRiskCallout,
+  shortfallItemLabel,
+  STOCK_AT_RISK_BODY,
+} from './lib/stock-at-risk-copy';
+export { StockAtRiskBadge } from './components/stock-at-risk-badge';
+export { StockAtRiskCallout } from './components/stock-at-risk-callout';
+export type { OrderReservationShortfall } from './api/orders.types';
 export { ConnectionDot } from './components/connection-dot';
 export { OrderIdentityCell, formatOrderRef } from './components/order-identity-cell';
 export type { OrderIdentityCellProps } from './components/order-identity-cell';
+
+// #2382 — the refund confirmation form and its vocabulary live in `orders`
+// because `refund_records` and `IOrderRefundService` do; the returns money panel
+// is the first consumer and the order-level capture path is the second. The
+// barrel is the only route: eslint hard-blocks deep imports of `features/orders/**`.
+// They could not live in `shared/` — that layer must not import features and must
+// stay domain-agnostic (frontend-architecture.md § Dependency Rules).
+export { RefundConfirmationForm } from './components/refund-confirmation-form';
+export type { RefundConfirmationSubmission } from './components/refund-confirmation-form';
+export {
+  REFUND_REASON_LABELS,
+  REFUND_REASON_VALUES,
+  describeRefundReason,
+  isRefundReason,
+} from './lib/refund-reason';
+export type { RefundReason } from './lib/refund-reason';
+export { REFUND_CONFIRMATION_COPY } from './lib/refund-confirmation.copy';
+
+// #2383 — the returns feature maps its own acts into the orders timeline's row
+// shape. Exported as a TYPE only: the timeline component itself stays a deep
+// import for the one page that mounts it, and no sibling gains the ability to
+// render an orders timeline of its own.
+export type {
+  TimelineEvent,
+  DatedTimelineEvent,
+} from './components/order-activity-timeline';
+
+// #2411 — the work-grain fulfilment-task panel renders the SAME `HoldReason`
+// vocabulary at a different grain. It imports these rather than mirroring them:
+// a second frontend copy of one union would need a second guard script, and
+// `scripts/check-hold-reason-mirror.mjs` already pins this one against core.
+export { HOLD_REASON_COPY, HoldReasonValues, holdReasonLabel } from './lib/order-hold.types';

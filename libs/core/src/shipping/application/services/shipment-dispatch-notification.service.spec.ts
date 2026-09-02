@@ -54,6 +54,9 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     overrides.deliveryIntent ?? null,
     overrides.providerCode ?? null,
     overrides.waybillRelayedAt ?? null,
+    overrides.direction ?? 'outbound',
+    overrides.reservationConsumedAt ?? null,
+    overrides.fulfillmentWorkId ?? null,
   );
 }
 
@@ -89,6 +92,9 @@ describe('ShipmentDispatchNotificationService', () => {
       update: jest.fn(),
       claimWaybillRelay: jest.fn(),
       releaseWaybillRelay: jest.fn(),
+      listDispatchedAwaitingReservationConsume: jest.fn(),
+      claimReservationConsume: jest.fn(),
+      claimFulfillmentWorkLink: jest.fn(),
     };
     orderRecords = {
       persistOrder: jest.fn(),
@@ -102,9 +108,15 @@ describe('ShipmentDispatchNotificationService', () => {
       getFailedSyncValueSummary: jest.fn(),
       markCancelled: jest.fn(),
       markSalesDocumentBlock: jest.fn(),
+      markFulfillmentBlock: jest.fn(),
+      markPacked: jest.fn(),
+      clearPacked: jest.fn(),
+      recordAmendment: jest.fn(),
       getEarliestOrderDateByConnection: jest.fn(),
       getSalesAndChannelAnalytics: jest.fn(),
       getTopProducts: jest.fn(),
+      findDispatchDeadlineCandidates: jest.fn(),
+      countOrdersWithOmsAttention: jest.fn(),
       getTopProductVariantSales: jest.fn(),
       discoverSalesDocumentMarkets: jest.fn(),
     };

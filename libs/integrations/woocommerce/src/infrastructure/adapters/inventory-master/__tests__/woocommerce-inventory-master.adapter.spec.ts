@@ -20,6 +20,27 @@ import type { Connection } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { InMemoryIdentifierMappingAdapter } from '@openlinker/core/identifier-mapping/testing';
 import { DEFAULT_UNMANAGED_STOCK_QUANTITY } from '../../../../domain/types/woocommerce-config.types';
+import type { CachePort } from '@openlinker/shared/cache';
+
+/**
+ * Minimal in-memory {@link CachePort} for the #2368 idempotency window. TTL is
+ * accepted and ignored — no test asserts expiry, only presence.
+ */
+function makeCache(): CachePort & { store: Map<string, unknown> } {
+  const store = new Map<string, unknown>();
+  return {
+    store,
+    get: <T>(key: string): Promise<T | null> => Promise.resolve((store.get(key) as T) ?? null),
+    set: <T>(key: string, value: T): Promise<void> => {
+      store.set(key, value);
+      return Promise.resolve();
+    },
+    delete: (key: string): Promise<void> => {
+      store.delete(key);
+      return Promise.resolve();
+    },
+  };
+}
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -325,6 +346,189 @@ describe('WooCommerceInventoryMasterAdapter', () => {
       await expect(
         adapter.adjustInventory({ productId: 'ol-product-10', quantity: 1 }),
       ).rejects.toBeInstanceOf(WooCommerceNotSupportedException);
+    });
+
+    // ── #2368: idempotency key + reason ────────────────────────────────────
+
+    it('should report not_requested when no idempotency key is supplied', async () => {
+      seedProductMapping(identifierMapping, 'ol-product-11', 60);
+      httpClient.get.mockResolvedValue(makeSimpleProduct({ id: 60, stock_quantity: 4 }));
+      httpClient.put.mockResolvedValue({ id: 60, date_modified_gmt: '2026-08-26T10:00:00' });
+
+      const result = await adapter.adjustInventory({ productId: 'ol-product-11', quantity: 2 });
+
+      expect(result.adjustmentOutcome).toEqual({
+        disposition: 'applied',
+        idempotency: 'not_requested',
+        appliedAt: new Date('2026-08-26T10:00:00Z'),
+      });
+    });
+
+    it('should report unsupported when a key is supplied but no cache is wired', async () => {
+      seedProductMapping(identifierMapping, 'ol-product-12', 61);
+      httpClient.get.mockResolvedValue(makeSimpleProduct({ id: 61, stock_quantity: 4 }));
+      httpClient.put.mockResolvedValue({ id: 61 });
+
+      const result = await adapter.adjustInventory({
+        productId: 'ol-product-12',
+        quantity: 2,
+        idempotencyKey: 'return:r1:l1:1',
+      });
+
+      expect(httpClient.put).toHaveBeenCalledTimes(1);
+      expect(result.adjustmentOutcome).toEqual({
+        disposition: 'applied',
+        idempotency: 'unsupported',
+        appliedAt: null,
+      });
+    });
+
+    it('should apply once and report deduplicated on a repeat of the same key when a cache is wired', async () => {
+      const cache = makeCache();
+      const cachedAdapter = new WooCommerceInventoryMasterAdapter(
+        httpClient,
+        identifierMapping,
+        makeConnection(),
+        cache,
+      );
+      seedProductMapping(identifierMapping, 'ol-product-13', 62);
+      httpClient.get.mockResolvedValue(makeSimpleProduct({ id: 62, stock_quantity: 4 }));
+      httpClient.put.mockResolvedValue({ id: 62, date_modified_gmt: '2026-08-26T11:00:00' });
+
+      const first = await cachedAdapter.adjustInventory({
+        productId: 'ol-product-13',
+        quantity: 3,
+        idempotencyKey: 'return:r2:l1:1',
+      });
+      const second = await cachedAdapter.adjustInventory({
+        productId: 'ol-product-13',
+        quantity: 3,
+        idempotencyKey: 'return:r2:l1:1',
+      });
+
+      expect(httpClient.put).toHaveBeenCalledTimes(1);
+      expect(first.adjustmentOutcome).toEqual({
+        disposition: 'applied',
+        idempotency: 'honoured',
+        appliedAt: new Date('2026-08-26T11:00:00Z'),
+      });
+      expect(second.adjustmentOutcome).toEqual({
+        disposition: 'deduplicated',
+        idempotency: 'honoured',
+        appliedAt: null,
+      });
+      // The dedupe reports the master's CURRENT stock, never a replayed figure.
+      expect(second.quantity).toBe(4);
+    });
+
+    it('should not remember a key when the write failed, so the retry still applies', async () => {
+      const cache = makeCache();
+      const cachedAdapter = new WooCommerceInventoryMasterAdapter(
+        httpClient,
+        identifierMapping,
+        makeConnection(),
+        cache,
+      );
+      seedProductMapping(identifierMapping, 'ol-product-14', 63);
+      httpClient.get.mockResolvedValue(makeSimpleProduct({ id: 63, stock_quantity: 4 }));
+      httpClient.put.mockRejectedValueOnce(new Error('boom')).mockResolvedValueOnce({ id: 63 });
+
+      await expect(
+        cachedAdapter.adjustInventory({
+          productId: 'ol-product-14',
+          quantity: 3,
+          idempotencyKey: 'return:r3:l1:1',
+        }),
+      ).rejects.toThrow('boom');
+
+      const retry = await cachedAdapter.adjustInventory({
+        productId: 'ol-product-14',
+        quantity: 3,
+        idempotencyKey: 'return:r3:l1:1',
+      });
+
+      expect(httpClient.put).toHaveBeenCalledTimes(2);
+      expect(retry.adjustmentOutcome?.disposition).toBe('applied');
+    });
+
+    it('should scope the idempotency key per connection', async () => {
+      const cache = makeCache();
+      const cachedAdapter = new WooCommerceInventoryMasterAdapter(
+        httpClient,
+        identifierMapping,
+        makeConnection(),
+        cache,
+      );
+      seedProductMapping(identifierMapping, 'ol-product-15', 64);
+      httpClient.get.mockResolvedValue(makeSimpleProduct({ id: 64, stock_quantity: 4 }));
+      httpClient.put.mockResolvedValue({ id: 64 });
+
+      await cachedAdapter.adjustInventory({
+        productId: 'ol-product-15',
+        quantity: 1,
+        idempotencyKey: 'k1',
+      });
+
+      expect([...cache.store.keys()]).toEqual([`wc:inventory-adjust:${CONNECTION_ID}:k1`]);
+    });
+
+    it('should dedupe a variation adjustment without PUTting', async () => {
+      const cache = makeCache();
+      const cachedAdapter = new WooCommerceInventoryMasterAdapter(
+        httpClient,
+        identifierMapping,
+        makeConnection(),
+        cache,
+      );
+      seedProductMapping(identifierMapping, 'ol-product-16', 65);
+      identifierMapping.seed({
+        entityType: CORE_ENTITY_TYPE.ProductVariant,
+        externalId: '66',
+        connectionId: CONNECTION_ID,
+        internalId: 'ol-var-66',
+      });
+      httpClient.get.mockImplementation((path: string) =>
+        Promise.resolve(
+          path.includes('/variations/')
+            ? makeVariation(66, 7)
+            : ({ id: 65, type: 'variable' } as unknown),
+        ),
+      );
+      httpClient.put.mockResolvedValue({ id: 66 });
+
+      await cachedAdapter.adjustInventory({
+        productId: 'ol-product-16',
+        quantity: 2,
+        variantId: 'ol-var-66',
+        idempotencyKey: 'var-key',
+      });
+      const second = await cachedAdapter.adjustInventory({
+        productId: 'ol-product-16',
+        quantity: 2,
+        variantId: 'ol-var-66',
+        idempotencyKey: 'var-key',
+      });
+
+      expect(httpClient.put).toHaveBeenCalledTimes(1);
+      expect(second.adjustmentOutcome?.disposition).toBe('deduplicated');
+      expect(second.quantity).toBe(7);
+    });
+
+    it('should log the reason rather than sending it, since WC carries no reason field', async () => {
+      seedProductMapping(identifierMapping, 'ol-product-17', 67);
+      httpClient.get.mockResolvedValue(makeSimpleProduct({ id: 67, stock_quantity: 1 }));
+      httpClient.put.mockResolvedValue({ id: 67 });
+
+      await adapter.adjustInventory({
+        productId: 'ol-product-17',
+        quantity: 1,
+        reason: 'return_restock',
+      });
+
+      expect(httpClient.put).toHaveBeenCalledWith(
+        '/wp-json/wc/v3/products/67',
+        { stock_quantity: 2, manage_stock: true },
+      );
     });
   });
 

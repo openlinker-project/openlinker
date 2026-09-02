@@ -77,6 +77,7 @@ describe('BulkListingController', () => {
         batchId: 'b-1',
         jobIds: ['job-1', 'job-2'],
         skippedAlreadyListedCount: 0,
+        skippedAvailabilityUnknownCount: 0,
       });
 
       const dto: BulkOfferCreateRequestDto = {
@@ -97,6 +98,7 @@ describe('BulkListingController', () => {
         batchId: 'b-1',
         jobIds: ['job-1', 'job-2'],
         skippedAlreadyListedCount: 0,
+        skippedAvailabilityUnknownCount: 0,
       });
       expect(bulkSubmit.submit).toHaveBeenCalledWith({
         connectionId: dto.connectionId,
@@ -117,6 +119,7 @@ describe('BulkListingController', () => {
         batchId: 'b-1',
         jobIds: [],
         skippedAlreadyListedCount: 0,
+        skippedAvailabilityUnknownCount: 0,
       });
 
       const dto: BulkOfferCreateRequestDto = {

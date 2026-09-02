@@ -257,7 +257,13 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
   // walkthrough (#1468).
   const isViewerOnly =
     isReady && session.status === 'authenticated' && session.user?.role === 'viewer';
-  const groups = useMemo(() => buildNavGroups({ isAdmin, demoMode }), [isAdmin, demoMode]);
+  // Permission-gated nav items (#2358 review I5) need the session's permission
+  // list, not just the admin flag — `/automations` is admin + operator.
+  const permissions = session.user?.permissions;
+  const groups = useMemo(
+    () => buildNavGroups({ isAdmin, demoMode, permissions }),
+    [isAdmin, demoMode, permissions],
+  );
   const matches = useMatches();
 
   const closeDrawer = useCallback((): void => {

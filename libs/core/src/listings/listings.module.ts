@@ -15,6 +15,15 @@ import { InventoryModule } from '@openlinker/core/inventory';
 import { OrdersModule } from '@openlinker/core/orders';
 import { MappingsModule } from '@openlinker/core/mappings';
 import { SyncModule } from '@openlinker/core/sync';
+// #2348 — the cancellation sequence asks `IShipmentQueryService` whether the
+// order's goods already shipped (`Shipment.reservationConsumedAt`). ACYCLIC and
+// must stay so: no core module imports `ListingsModule`, and `shipping` must
+// never import `listings` back — `ShippingModule` already carries the same
+// standing rule about `inventory`. Note where that is ENFORCED: no script
+// covers this pair (`check-cross-context-imports` polices symbol SHAPES, not
+// module direction), so a cycle introduced here surfaces as a DI failure on the
+// app-boot integration specs, not as a lint error.
+import { ShippingModule } from '@openlinker/core/shipping';
 import { OfferLinkingService } from './application/services/offer-linking.service';
 import { OfferMappingSyncService } from './application/services/offer-mapping-sync.service';
 import { OfferMappingsService } from './application/services/offer-mappings.service';
@@ -194,6 +203,7 @@ export {
     OrdersModule,
     MappingsModule,
     SyncModule,
+    ShippingModule,
   ],
   providers: [
     OfferLinkingService,

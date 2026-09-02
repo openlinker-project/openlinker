@@ -11,7 +11,11 @@
 import { cleanup, fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
-import { renderWithProviders, createMockApiClient, createAuthenticatedSessionAdapter } from '../../test/test-utils';
+import {
+  renderWithProviders,
+  createMockApiClient,
+  createAuthenticatedSessionAdapter,
+} from '../../test/test-utils';
 import { OrdersListPage } from './orders-list-page';
 import type {
   PaginatedOrders,
@@ -129,7 +133,7 @@ function mockMobileViewport(): { restore: () => void } {
         addListener: () => {},
         removeListener: () => {},
         dispatchEvent: () => false,
-      }) as MediaQueryList,
+      }) as MediaQueryList
   );
   return { restore: () => spy.mockRestore() };
 }
@@ -266,7 +270,7 @@ describe('OrdersListPage', () => {
     expect(await screen.findByText('No orders found')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Manage connections' })).toHaveAttribute(
       'href',
-      '/connections',
+      '/connections'
     );
   });
 
@@ -280,9 +284,7 @@ describe('OrdersListPage', () => {
       route: '/orders?health=needs_attention',
     });
 
-    expect(
-      await screen.findByText('All clear — nothing needs your attention'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('All clear — nothing needs your attention')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'View all orders' })).toBeInTheDocument();
   });
 
@@ -314,7 +316,7 @@ describe('OrdersListPage', () => {
         // to /connections to debug an ingestion problem that does not exist.
         expect(screen.getByRole('button', { name: 'View all orders' })).toBeInTheDocument();
         expect(screen.queryByRole('link', { name: 'Manage connections' })).toBeNull();
-      },
+      }
     );
 
     it('should clear every filter in one write from the recovery button', async () => {
@@ -423,7 +425,7 @@ describe('OrdersListPage', () => {
 
     await vi.waitFor(() => {
       const values = Array.from(container.querySelectorAll('.metric-card__value')).map(
-        (el) => el.textContent,
+        (el) => el.textContent
       );
       expect(values).toContain('11'); // total
       expect(values).toContain('9'); // awaiting dispatch
@@ -445,9 +447,49 @@ describe('OrdersListPage', () => {
 
     await vi.waitFor(() => {
       const calledWithHealth = list.mock.calls.some(
-        ([filters]) => (filters as { health?: string } | undefined)?.health === 'needs_attention',
+        ([filters]) => (filters as { health?: string } | undefined)?.health === 'needs_attention'
       );
       expect(calledWithHealth).toBe(true);
+    });
+  });
+
+  it('should set ?attention=true, clear the offset and pass the filter when the chip is clicked (#2356)', async () => {
+    const user = userEvent.setup();
+    const list = vi.fn().mockResolvedValue(paginated([syncedOrder]));
+    const mockApi = createMockApiClient({
+      orders: {
+        list,
+        // The chip mounts on `filterActive || count`; the summary supplies the
+        // count so it is reachable from an unfiltered URL.
+        statusSummary: vi.fn().mockResolvedValue({
+          total: 1,
+          sourceDeleted: 0,
+          awaitingMapping: 0,
+          needsAttention: 0,
+          synced: 1,
+          awaitingDispatch: 0,
+          omsAttention: 2,
+        }),
+      },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    renderWithProviders(<OrdersListPage />, {
+      apiClient: mockApi,
+      // A non-zero offset, so the reset is observable rather than assumed.
+      route: '/orders?offset=25',
+    });
+
+    await screen.findByText('ALG-882414');
+    await user.click(screen.getByRole('button', { name: /OpenLinker stopped/ }));
+
+    await vi.waitFor(() => {
+      const calledWithAttention = list.mock.calls.some(
+        ([filters, pagination]) =>
+          (filters as { attention?: boolean } | undefined)?.attention === true &&
+          (pagination as { offset?: number } | undefined)?.offset === 0
+      );
+      expect(calledWithAttention).toBe(true);
     });
   });
 
@@ -607,7 +649,7 @@ describe('OrdersListPage', () => {
       await screen.findByText('ALG-882414');
       const pill = container.querySelector(`.channel-pill[data-channel="${platformType}"]`);
       expect(pill?.textContent).toBe(expectedLabel);
-    },
+    }
   );
 
   it('should fall back to a SHORTENED internalOrderId when the snapshot has no orderNumber (#2091)', async () => {
@@ -643,7 +685,10 @@ describe('OrdersListPage', () => {
       connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
     });
 
-    renderWithProviders(<OrdersListPage />, { apiClient: mockApi, sessionAdapter: createAuthenticatedSessionAdapter() });
+    renderWithProviders(<OrdersListPage />, {
+      apiClient: mockApi,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     await screen.findByText('ALG-FAIL');
     await user.click(screen.getByRole('button', { name: 'Retry' }));
@@ -693,7 +738,7 @@ describe('OrdersListPage', () => {
     await screen.findByText('ALG-882414');
     expect(list).toHaveBeenCalledWith(
       expect.objectContaining({ sort: 'dispatchBy' }),
-      expect.anything(),
+      expect.anything()
     );
   });
 
@@ -729,7 +774,8 @@ describe('OrdersListPage', () => {
 
     await vi.waitFor(() => {
       const calledWithDue = list.mock.calls.some(
-        ([filters]) => typeof (filters as { dueBefore?: string } | undefined)?.dueBefore === 'string',
+        ([filters]) =>
+          typeof (filters as { dueBefore?: string } | undefined)?.dueBefore === 'string'
       );
       expect(calledWithDue).toBe(true);
     });
@@ -752,7 +798,7 @@ describe('OrdersListPage', () => {
       const called = list.mock.calls.some(
         ([filters]) =>
           (filters as { sourceConnectionId?: string } | undefined)?.sourceConnectionId ===
-          'conn_allegro_1',
+          'conn_allegro_1'
       );
       expect(called).toBe(true);
     });
@@ -859,7 +905,7 @@ describe('OrdersListPage', () => {
       const called = list.mock.calls.some(
         ([filters]) =>
           (filters as { createdFrom?: string } | undefined)?.createdFrom ===
-          '2026-05-01T00:00:00.000Z',
+          '2026-05-01T00:00:00.000Z'
       );
       expect(called).toBe(true);
     });
@@ -895,7 +941,7 @@ describe('OrdersListPage', () => {
     expect(
       screen.getByRole('button', {
         name: 'Copy internal order ID for order 186d7a20-5b82-11f1-979b-098d4666d4ec',
-      }),
+      })
     ).toBeInTheDocument();
   });
 
@@ -960,7 +1006,10 @@ describe('OrdersListPage', () => {
         system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
       });
 
-      renderWithProviders(<OrdersListPage />, { apiClient: mockApi, sessionAdapter: viewerSession });
+      renderWithProviders(<OrdersListPage />, {
+        apiClient: mockApi,
+        sessionAdapter: viewerSession,
+      });
 
       await screen.findByText('ALG-FAIL');
       const retryButton = await screen.findByRole('button', { name: 'Retry' });
@@ -976,7 +1025,10 @@ describe('OrdersListPage', () => {
           system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
         });
 
-        renderWithProviders(<OrdersListPage />, { apiClient: mockApi, sessionAdapter: viewerSession });
+        renderWithProviders(<OrdersListPage />, {
+          apiClient: mockApi,
+          sessionAdapter: viewerSession,
+        });
 
         await screen.findAllByText('ALG-FAIL');
         const retryButton = await screen.findByRole('button', { name: 'Retry' });
@@ -992,7 +1044,10 @@ describe('OrdersListPage', () => {
         connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
       });
 
-      renderWithProviders(<OrdersListPage />, { apiClient: mockApi, sessionAdapter: viewerSession });
+      renderWithProviders(<OrdersListPage />, {
+        apiClient: mockApi,
+        sessionAdapter: viewerSession,
+      });
 
       await screen.findByText('ALG-FAIL');
       expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
@@ -1138,7 +1193,7 @@ describe('OrdersListPage', () => {
                   unresolvedReason: 'ambiguous-connection-no-primary',
                 }),
               }),
-            ]),
+            ])
           ),
         },
         connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
@@ -1196,7 +1251,7 @@ describe('OrdersListPage', () => {
                   },
                 }),
               }),
-            ]),
+            ])
           ),
         },
         connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
@@ -1242,7 +1297,7 @@ describe('OrdersListPage', () => {
                   },
                 }),
               }),
-            ]),
+            ])
           ),
         },
         connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
@@ -1274,7 +1329,7 @@ describe('OrdersListPage', () => {
                   blockReason: 'trigger-model-manual',
                 }),
               }),
-            ]),
+            ])
           ),
         },
         connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
@@ -1284,6 +1339,10 @@ describe('OrdersListPage', () => {
 
       await screen.findByText('ALG-882414');
       const row = container.querySelector('.data-table__row') as HTMLElement;
+
+      // "Two setups apply" beside an issued invoice is worse than no pill at all — and
+      // the backend gate refuses to persist a block here in the first place.
+      expect(within(row).queryByText('Two setups apply')).not.toBeInTheDocument();
 
       expect(within(row).getByText('Issued on request')).toBeInTheDocument();
       // Issuing by hand IS the configured workflow here, so the action stays
@@ -1325,7 +1384,7 @@ describe('OrdersListPage', () => {
                   },
                 }),
               }),
-            ]),
+            ])
           ),
         },
         connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
@@ -1431,7 +1490,7 @@ describe('OrdersListPage', () => {
                   unresolvedReason: 'ambiguous-connection-no-primary',
                 }),
               }),
-            ]),
+            ])
           ),
         },
         connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
@@ -1797,11 +1856,11 @@ describe('OrdersListPage — shared Order identity cell (#2091)', () => {
     // The thumbnail is what this column never had (#1996 frame 04).
     expect(cell.querySelector('.product-thumbnail img')).toHaveAttribute(
       'src',
-      'https://cdn.example.test/filtr.jpg',
+      'https://cdn.example.test/filtr.jpg'
     );
     expect(within(cell).getByRole('link', { name: 'ALG-882414' })).toHaveAttribute(
       'href',
-      '/orders/ol_order_synced',
+      '/orders/ol_order_synced'
     );
     expect(within(cell).getByText('Filtr kubełkowy AquaPro')).toBeInTheDocument();
     expect(container.querySelector('.orders-cell-stack .order-cell')).not.toBeNull();
@@ -1842,7 +1901,7 @@ describe('OrdersListPage — shared Order identity cell (#2091)', () => {
     fireEvent.click(
       within(table).getByRole('button', {
         name: 'Copy internal order ID for order ALG-882414',
-      }),
+      })
     );
 
     expect(writeText).toHaveBeenCalledWith('ol_order_a3f24b09c4d1486789abcdef01234567');
@@ -1940,7 +1999,7 @@ describe('OrdersListPage — shared Order identity cell (#2091)', () => {
       // the pre-#2091 card had its own hand-rolled `EntityLabel`.
       expect(within(cell).getByRole('link', { name: 'ALG-882414' })).toHaveAttribute(
         'href',
-        '/orders/ol_order_synced',
+        '/orders/ol_order_synced'
       );
       fireEvent.click(within(cell).getByRole('button', { name: /^Copy internal order ID/ }));
       expect(writeText).toHaveBeenCalledWith('ol_order_synced');
@@ -2001,7 +2060,7 @@ describe('OrdersListPage — shared Order identity cell (#2091)', () => {
     // Two `erli` pills render on the desktop row — the order cell's fold and the
     // Channel column. Exclude the fold to assert the column's own lookup.
     const columnPill = Array.from(
-      container.querySelectorAll('.channel-pill[data-channel="erli"]'),
+      container.querySelectorAll('.channel-pill[data-channel="erli"]')
     ).find((pill) => pill.closest('.orders-order-channel') === null);
     expect(columnPill?.textContent).toBe('Erli');
     expect(columnPill?.parentElement?.textContent).toContain('→ WooCommerce');
@@ -2016,7 +2075,9 @@ describe('OrdersListPage — shared Order identity cell (#2091)', () => {
 
       await screen.findAllByText('ALG-882414');
       const subtitle = container.querySelector('.orders-card-sub') as HTMLElement;
-      expect(subtitle.querySelector('.channel-pill[data-channel="erli"]')?.textContent).toBe('Erli');
+      expect(subtitle.querySelector('.channel-pill[data-channel="erli"]')?.textContent).toBe(
+        'Erli'
+      );
       expect(within(subtitle).getByText('→ WooCommerce')).toBeInTheDocument();
     } finally {
       viewport.restore();
@@ -2047,10 +2108,311 @@ describe('OrdersListPage — shared Order identity cell (#2091)', () => {
 
     await screen.findByText('ALG-882414');
     await user.click(
-      screen.getByRole('button', { name: /Expand details for order ol_order_crosschannel/ }),
+      screen.getByRole('button', { name: /Expand details for order ol_order_crosschannel/ })
     );
 
     const detail = container.querySelector('.orders-detail') as HTMLElement;
     expect(within(detail).getByText('WooCommerce')).toBeInTheDocument();
+  });
+});
+
+describe('OrdersListPage — lifecycle phase (#2310)', () => {
+  afterEach(cleanup);
+
+  const phaseSummary = {
+    total: 3,
+    cancelled: 0,
+    vendorAuthoritative: 0,
+    delivered: 0,
+    inTransit: 0,
+    fulfillmentFailed: 0,
+    held: 0,
+    amending: 0,
+    blocked: 2,
+    ready: 1,
+  };
+
+  it('should render the phase badge BESIDE the health badge, not instead of it', async () => {
+    // AC1 / ADR-059 — health answers "is something wrong", the phase answers
+    // "what stage is it at". Both must be readable on the same row.
+    const blocked: OrderRecord = { ...syncedOrder, lifecyclePhase: 'blocked' };
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([blocked])) },
+    });
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    const row = screen.getByText('ALG-882414').closest('tr') as HTMLElement;
+    expect(within(row).getByText('Synced')).toBeInTheDocument();
+    expect(within(row).getByText('Blocked')).toBeInTheDocument();
+  });
+
+  // #2441 review S1 — the ACCUMULATED row. #2288's packed tick, #1108's SLA
+  // badge and #2310's phase badge had never been rendered together, which is
+  // exactly the composition the style-guide amendment (#2081 rule 2, ADR-059
+  // exception) now permits. Pins I1/I2 empirically rather than by review.
+  it('should render the packed tick, SLA badge, phase badge and health badge on one row (#2441)', async () => {
+    const composed: OrderRecord = {
+      ...syncedOrder,
+      lifecyclePhase: 'blocked',
+      packedAt: '2026-01-15T11:00:00.000Z',
+      slaState: 'overdue',
+      fulfillmentState: 'not-shipped',
+      dispatchByAt: '2026-01-15T09:00:00.000Z',
+    };
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([composed])) },
+    });
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    const row = screen.getByText('ALG-882414').closest('tr') as HTMLElement;
+    // All four signal vocabularies coexist and stay independently readable —
+    // none replaces or suppresses another.
+    expect(within(row).getByText('Synced')).toBeInTheDocument();
+    expect(within(row).getByText('Blocked')).toBeInTheDocument();
+    expect(within(row).getByText('Packed')).toBeInTheDocument();
+    expect(within(row).getByText('Overdue')).toBeInTheDocument();
+  });
+
+  it('should render nothing for a payload predating the phase field', async () => {
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])) },
+    });
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    const row = (await screen.findByText('ALG-882414')).closest('tr') as HTMLElement;
+    expect(within(row).getByText('Synced')).toBeInTheDocument();
+    expect(within(row).queryByText('Ready')).toBeNull();
+  });
+
+  // #2441 review I3 — the dispatch-risk page's most useful states (the
+  // `on_track` bucket, and the `noDeadlinesAnywhere` configuration diagnostic)
+  // are only reachable when nothing is breaching, so gating its sole entry
+  // point on a breach made them unreachable from the UI.
+  it('should link to the dispatch-risk page even when nothing is breaching (#2441)', async () => {
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])) },
+    });
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    const link = await screen.findByRole('link', { name: /dispatch risk/i });
+    expect(link).toHaveAttribute('href', '/orders/dispatch-risk');
+    // #2441 review I4 — carries the ≥44 px coarse-pointer tap-target class.
+    expect(link).toHaveClass('nav-link');
+  });
+
+  it('should hide a zero-count chip and render the ones with orders behind them', async () => {
+    const mockApi = createMockApiClient({
+      orders: {
+        list: vi.fn().mockResolvedValue(paginated([syncedOrder])),
+        lifecycleSummary: vi.fn().mockResolvedValue(phaseSummary),
+      },
+    });
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    expect(await screen.findByRole('button', { name: /Blocked 2/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Ready 1/ })).toBeInTheDocument();
+    // Structurally 0 until Waves 2/4 supply a producer — a dead control, so hidden.
+    expect(screen.queryByRole('button', { name: /On hold/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Change pending/ })).toBeNull();
+  });
+
+  it('should set ?phase= when a chip is clicked and clear it when clicked again', async () => {
+    // AC2 — the round trip, including the deselect that must restore the full list.
+    const list = vi.fn().mockResolvedValue(paginated([syncedOrder]));
+    const mockApi = createMockApiClient({
+      orders: { list, lifecycleSummary: vi.fn().mockResolvedValue(phaseSummary) },
+    });
+    const user = userEvent.setup();
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    const chip = await screen.findByRole('button', { name: /Blocked 2/ });
+    await user.click(chip);
+
+    await vi.waitFor(() => {
+      expect(list.mock.calls[list.mock.calls.length - 1][0]).toMatchObject({ phase: 'blocked' });
+    });
+    expect(captureDemoEvent).toHaveBeenCalledWith('demo_orders_filtered', {
+      filter: 'phase',
+      value: 'blocked',
+    });
+
+    await user.click(await screen.findByRole('button', { name: /Blocked 2/ }));
+
+    await vi.waitFor(() => {
+      const [filters, pagination] = list.mock.calls[list.mock.calls.length - 1];
+      expect(filters.phase).toBeUndefined();
+      // Any filter change resets paging (the documented one-write rule).
+      expect(pagination).toMatchObject({ offset: 0 });
+    });
+  });
+
+  it('should arrive already filtered from a bookmarked ?phase= link and keep the chip mounted at zero', async () => {
+    const list = vi.fn().mockResolvedValue(paginated([]));
+    const mockApi = createMockApiClient({
+      orders: {
+        list,
+        lifecycleSummary: vi.fn().mockResolvedValue({ ...phaseSummary, total: 0, blocked: 0 }),
+      },
+    });
+
+    renderWithProviders(<OrdersListPage />, {
+      apiClient: mockApi,
+      route: '/orders?phase=blocked',
+    });
+
+    // Gating on the count alone would unmount the only control for an applied
+    // filter exactly when its last order moved on (#2100's lesson).
+    const chip = await screen.findByRole('button', { name: /Blocked/ });
+    expect(chip).toHaveAttribute('aria-pressed', 'true');
+    expect(list.mock.calls[0][0]).toMatchObject({ phase: 'blocked' });
+  });
+
+  it('should ignore an unrecognised phase in the URL rather than passing it through', async () => {
+    const list = vi.fn().mockResolvedValue(paginated([syncedOrder]));
+    const mockApi = createMockApiClient({ orders: { list } });
+
+    renderWithProviders(<OrdersListPage />, {
+      apiClient: mockApi,
+      route: '/orders?phase=returned',
+    });
+
+    await screen.findByText('ALG-882414');
+    // A stale bookmark shows the operator their orders, not a server rejection.
+    expect(list.mock.calls[0][0].phase).toBeUndefined();
+  });
+});
+
+describe('OrdersListPage — hold surfacing (#2342)', () => {
+  it('should badge a held order in the Status group from the shared renderer', async () => {
+    const list = vi
+      .fn()
+      .mockResolvedValue(paginated([{ ...syncedOrder, activeHoldReason: 'stock-shortfall' }]));
+    const mockApi = createMockApiClient({ orders: { list } });
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    // Whatever `OrderHoldBadge` renders is what BOTH the desktop cell and the
+    // mobile card show — one component, mounted twice.
+    expect(await screen.findByText('On hold — Stock shortfall')).toBeInTheDocument();
+  });
+
+  it('should render no hold badge for an order that is not held', async () => {
+    const list = vi.fn().mockResolvedValue(paginated([syncedOrder]));
+    const mockApi = createMockApiClient({ orders: { list } });
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findAllByText('ALG-882414');
+    expect(screen.queryByText(/^On hold — /)).not.toBeInTheDocument();
+  });
+
+  it('should round-trip ?hold= through the URL and reset the offset', async () => {
+    const list = vi.fn().mockResolvedValue(paginated([syncedOrder]));
+    const mockApi = createMockApiClient({ orders: { list } });
+    const user = userEvent.setup();
+
+    // Start on page 2 so the offset drop is observable.
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi, route: '/orders?offset=20' });
+
+    await user.selectOptions(
+      await screen.findByLabelText('Filter by hold reason'),
+      'address-invalid'
+    );
+
+    await vi.waitFor(() => {
+      const [filters, pagination] = list.mock.calls[list.mock.calls.length - 1];
+      expect(filters).toMatchObject({ holdReason: 'address-invalid' });
+      expect(pagination).toMatchObject({ offset: 0 });
+    });
+
+    // And back to unfiltered.
+    await user.selectOptions(screen.getByLabelText('Filter by hold reason'), '');
+
+    await vi.waitFor(() => {
+      expect(list.mock.calls[list.mock.calls.length - 1][0].holdReason).toBeUndefined();
+    });
+  });
+
+  it('should arrive already filtered from a bookmarked ?hold= link', async () => {
+    const list = vi.fn().mockResolvedValue(paginated([]));
+    const mockApi = createMockApiClient({ orders: { list } });
+
+    renderWithProviders(<OrdersListPage />, {
+      apiClient: mockApi,
+      route: '/orders?hold=fraud-review',
+    });
+
+    await vi.waitFor(() => {
+      expect(list.mock.calls[0][0]).toMatchObject({ holdReason: 'fraud-review' });
+    });
+  });
+
+  it('should ignore an unrecognised ?hold= rather than passing it through', async () => {
+    // A stale bookmark should show the operator their orders, not a 400 the
+    // server would answer for a reason this build does not know.
+    const list = vi.fn().mockResolvedValue(paginated([syncedOrder]));
+    const mockApi = createMockApiClient({ orders: { list } });
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi, route: '/orders?hold=nonsense' });
+
+    await vi.waitFor(() => {
+      expect(list.mock.calls[0][0].holdReason).toBeUndefined();
+    });
+  });
+});
+
+describe('unrecognised fulfillmentState degrades one cell, not the page (#2678)', () => {
+  // The regression this guards is NOT that the badge resolver returned the
+  // wrong object — a lib-only test would pass against a fix that still crashed
+  // the page. It is that the throw happened inside a `DataTable` cell renderer,
+  // so React unmounted the whole route. This test therefore drives the value
+  // through the real query -> page -> table -> cell path and asserts the page
+  // still rendered.
+  const unknownStateOrder = {
+    ...syncedOrder,
+    internalOrderId: 'ol_order_unknown_state',
+    orderSnapshot: { ...syncedOrder.orderSnapshot, orderNumber: 'ALG-UNKNOWN' },
+    // Deliberately cast: this is exactly the value the closed union promises
+    // cannot arrive, and exactly what a rolling deploy puts on the wire.
+    fulfillmentState: 'teleported',
+  } as unknown as OrderRecord;
+
+  it('still renders the list, and every other row, when a row carries an unknown state', async () => {
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([unknownStateOrder, syncedOrder])) },
+    });
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    // The page survived: the offending row renders...
+    expect(await screen.findByText('ALG-UNKNOWN')).toBeInTheDocument();
+    // ...and so does its neighbour, which the pre-fix crash also took down.
+    expect(screen.getByText('ALG-882414')).toBeInTheDocument();
+  });
+
+  it('names the unrecognised value rather than claiming the order is not shipped', async () => {
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([unknownStateOrder])) },
+    });
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-UNKNOWN');
+    expect(screen.getAllByText('Unknown (teleported)').length).toBeGreaterThan(0);
+    // No BADGE may claim "Not shipped" — the silent-fallback failure mode this
+    // fix exists to avoid. The filter dropdown legitimately offers it as an
+    // <option>, so the assertion is on what renders as a row signal, not on the
+    // string appearing anywhere on the page.
+    const notShipped = screen.queryAllByText('Not shipped');
+    expect(notShipped.every((el) => el.tagName === 'OPTION')).toBe(true);
   });
 });

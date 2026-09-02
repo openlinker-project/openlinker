@@ -89,6 +89,38 @@ describe('SettingsPage', () => {
     expect(screen.queryByText('Mailer', { selector: '.toolbar-chip' })).not.toBeInTheDocument();
   });
 
+  /**
+   * The opposite expectation, deliberately adjacent to the one above.
+   *
+   * Every other settings tile is `{isAdmin ? <XTile /> : null}`, so this one is
+   * the exception and a plan document is not enough to keep it — a lone
+   * deviation from five siblings is a deviation the next contributor "fixes".
+   * #2353 authorises `GET /fulfillment-authority/status` for a read-only role
+   * SPECIFICALLY so that role can see who decides what, and #2354's acceptance
+   * criteria require it; gating the tile would make the page unreachable for
+   * exactly the role the endpoint was widened for.
+   */
+  it('always renders the Who decides what tile, including for a non-admin session', async () => {
+    renderWithProviders(<SettingsPage />, {
+      sessionAdapter: createAuthenticatedSessionAdapter({
+        id: 'user_3',
+        username: 'viewer',
+        email: 'viewer2@example.com',
+        role: 'viewer',
+        permissions: [],
+        analyticsConsent: true,
+      }),
+    });
+
+    expect(await screen.findByText('viewer2@example.com')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: 'Who decides what' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Who decides what', { selector: '.toolbar-chip' }),
+    ).toBeInTheDocument();
+  });
+
   it('shows the PostHog tile for an admin session', async () => {
     renderWithProviders(<SettingsPage />, {
       sessionAdapter: createAuthenticatedSessionAdapter(),

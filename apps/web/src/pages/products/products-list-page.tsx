@@ -83,6 +83,11 @@ import { ListingsCoveragePills } from './listings-coverage-pills';
 import { ProductRowDetail } from './product-row-detail';
 import { OfferProductPickerModal } from '../../features/listings/components/offer-product-picker-modal';
 import { bucketCount, captureDemoEvent } from '../../features/demo';
+import {
+  ATTENTION_REASON_COPY,
+  attentionTitle,
+  useOmsAttentionQuery,
+} from '../../features/fulfillment-authority';
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -183,6 +188,12 @@ export function ProductsListPage(): ReactElement {
   // Per SESSION, not persisted: a permanent dismissal removes the only route to
   // the remedy with no way back (#2255).
   const [suggestionDismissed, setSuggestionDismissed] = useState(false);
+  // #2356 — one read for the page. A failed read costs the notice, never the
+  // list: the state is supplementary and losing a settings read must not cost
+  // the operator their catalogue.
+  const omsAttention = useOmsAttentionQuery();
+  const availabilityUnknown = omsAttention.forReason('availability-unknown');
+
   const rawTaxRateState = searchParams.get('taxRateState');
   const taxRateState =
     rawTaxRateState === 'missing' || rawTaxRateState === 'not-checked' || rawTaxRateState === 'known'
@@ -936,7 +947,7 @@ export function ProductsListPage(): ReactElement {
       <div className="ds-grid ds-grid--4 products-segments">
         <button
           type="button"
-          className={['products-segment', noKpiFilterActive ? 'products-segment--active' : '']
+          className={['card-button-reset', 'products-segment', noKpiFilterActive ? 'products-segment--active' : '']
             .filter(Boolean)
             .join(' ')}
           aria-pressed={noKpiFilterActive}
@@ -954,7 +965,7 @@ export function ProductsListPage(): ReactElement {
         </button>
         <button
           type="button"
-          className={['products-segment', stock === 'out' ? 'products-segment--active' : '']
+          className={['card-button-reset', 'products-segment', stock === 'out' ? 'products-segment--active' : '']
             .filter(Boolean)
             .join(' ')}
           aria-pressed={stock === 'out'}
@@ -970,7 +981,7 @@ export function ProductsListPage(): ReactElement {
         </button>
         <button
           type="button"
-          className={['products-segment', stock === 'low' ? 'products-segment--active' : '']
+          className={['card-button-reset', 'products-segment', stock === 'low' ? 'products-segment--active' : '']
             .filter(Boolean)
             .join(' ')}
           aria-pressed={stock === 'low'}
@@ -987,7 +998,7 @@ export function ProductsListPage(): ReactElement {
         {offerCreatorIds.length > 0 ? (
           <button
             type="button"
-            className={['products-segment', gapsActive ? 'products-segment--active' : '']
+            className={['card-button-reset', 'products-segment', gapsActive ? 'products-segment--active' : '']
               .filter(Boolean)
               .join(' ')}
             aria-pressed={gapsActive}
@@ -1013,6 +1024,7 @@ export function ProductsListPage(): ReactElement {
           <button
             type="button"
             className={[
+              'card-button-reset',
               'products-segment',
               taxRateState === 'missing' ? 'products-segment--active' : '',
             ]
@@ -1055,6 +1067,32 @@ export function ProductsListPage(): ReactElement {
         >
           Rates arrive with the ordinary product sync. Run one to find out which items have a rate
           and which are missing it.
+        </Alert>
+      ) : null}
+
+      {/*
+        #2356 — A1-U (`availability-unknown`) renders on PRODUCT rows per its
+        descriptor's `surfaces`, but it is derived from `Connection.config`, so
+        OpenLinker does not know WHICH products are affected. A per-row badge
+        would therefore assert knowledge it does not have; a page-level notice
+        states exactly what is true — publishing is paused, and the fix is on the
+        connections it names.
+
+        This is a stated deviation from the issue's "renders on its owning row",
+        recorded here and in the PR body rather than left to look like an
+        oversight. The title is produced by `attentionTitle`, so it is
+        byte-identical to the one the `Needs attention` section renders.
+      */}
+      {availabilityUnknown.length > 0 ? (
+        <Alert tone="error" title={attentionTitle('availability-unknown')}>
+          {ATTENTION_REASON_COPY['availability-unknown'].body}{' '}
+          {/*
+            The reason's own `.action` sentence says "the connections named
+            below" — true on the Needs attention section, which lists them, and
+            false here, where nothing is named. Deliberately not reused: the
+            link points at the surface that DOES name them instead.
+          */}
+          <Link to="/settings/who-decides">Who decides what</Link>
         </Alert>
       ) : null}
 

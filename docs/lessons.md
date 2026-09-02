@@ -430,6 +430,356 @@ decision 3 (#2165, epic #2162)
 **Applies to**: `libs/core/src/orders/infrastructure/persistence/repositories/order-line-item.repository.ts` (`unconvertedOrZeroTotal`); any raw-SQL-builder helper anywhere that stores a boolean sub-expression as a string constant for reuse across `FILTER (WHERE ...)`/`CASE WHEN ...` clauses.
 **Source**: #2172/#2191 (`top-products-ranking.int-spec.ts`, "labels a channel's own unconvertedCurrency...").
 
+## TypeORM `ORDER BY` must use property paths, not raw quoted SQL — `take`/`skip` plus any join resolves every term back to column metadata
+
+**Context**: `ReturnRepository.listReturns` had ordered by the raw string `'r."createdAt"'` since #2334 and worked in production for three slices. #2377 added a `stage` filter that `leftJoin`s a counters subquery, and every paged returns read began throwing `TypeError: Cannot read properties of undefined (reading 'databaseName')`.
+
+**Problem**: `.take()`/`.skip()` with **no** join emits a plain `LIMIT`/`OFFSET` and never inspects the `ORDER BY` terms, so a raw quoted string passes through untouched. Add *any* join and TypeORM switches to its **distinct-pagination** path — a two-query plan that first selects the distinct primary keys, which requires promoting every `ORDER BY` term into that inner select, which requires resolving each term back to its `ColumnMetadata`. `'r."createdAt"'` is a string TypeORM cannot map to a property, so the lookup returns `undefined` and the `.databaseName` read throws.
+
+The shape is the reason this is here rather than in a style guide: **the defect was latent and armed by a change somewhere else.** Nothing about the failing line changed — the ordering had been written that way for months, and the commit that broke it added a `leftJoin` fifty lines away for an unrelated feature. The stack trace points into TypeORM internals and names neither the join nor the `ORDER BY`, so the trigger is not guessable from the failure.
+
+**Rule**: write `ORDER BY` terms as **property paths** — `orderBy('r.createdAt', 'DESC')`, never `orderBy('r."createdAt"', 'DESC')`. The property form works on both pagination paths; the raw-string form works only until someone adds a join. When reviewing a change that adds a join to a query builder, check whether that builder also calls `take`/`skip`, and if so read its `ORDER BY` terms — the join is the trigger, but the ordering is the defect. An int-spec catches this and a unit spec with a mocked builder cannot, because the failure lives in TypeORM's SQL generation.
+
+**Applies to**: every `createQueryBuilder(...).take()/.skip()` call in the tree; especially any shared `buildListQuery`-style helper where a filter arm can conditionally add a join that the paged read then inherits.
+
+**Source**: #2377 (found by `returns-stage-projection.int-spec.ts` + `returns-read-api.int-spec.ts`; `libs/core/src/returns/infrastructure/persistence/repositories/return.repository.ts`).
+
+## A guard ordered behind a broader one is dead — and a unit test can keep it looking alive by constructing a state the real path never produces
+
+**Context**: `markReturnCustodyNotReturned` (#2367) carried two refusals: `illegal-transition` for a line not in `advised`/`in_transit`, and the more specific `partially-received` for a line that had already received units. The state check ran first. But receiving units is exactly what moves a line to `received` — so by the time `quantityReceived > 0`, the state check has already thrown, and `partially-received` was unreachable through every real path.
+
+**Problem**: the reason was not merely dead, it was replaced by a **wrong** one. An operator whose parcel arrived half-empty was told the line was *"already finished"* — false, and it points at the wrong remedy (the line is mid-flight and its shortfall is exactly what they were trying to record). The closed reason union, the exception filter's 409 mapping and the frontend copy map all carried an arm nothing could ever emit.
+
+The unit test covering it passed, and that is the part worth remembering: it constructed `line({ custodyState: 'in_transit', quantityReceived: 2 })` directly — a combination the receipt transition **cannot** produce, since a receipt sets both fields together. Hand-built fixtures let a test assert against a state the state machine forbids, so the test proved the branch worked *if reached* while saying nothing about whether anything reaches it. It was an integration test driving the real `POST /receive` then `POST /mark-not-returned` that produced `illegal-transition` where the code claimed `partially-received`.
+
+**Rule**: when a function has several refusal branches, check the **order** against the transitions that actually produce each state — a specific guard placed behind a broader one that subsumes it is dead code that type-checks and tests green. In a domain-rule test, build the "before" state by running the transition that produces it (`applyReturnCustodyReceipt(...)`) rather than by hand-constructing the fields; a fixture that assigns `custodyState` and its counters independently can describe a state the machine never enters. Where a closed reason union exists, treat each member as a claim that something can emit it, and pin the reachable ones through the real path.
+
+**Applies to**: `libs/core/src/returns/domain/domain-services/return-custody-transitions.domain-service.ts`; any pure rule engine with an ordered guard chain over a closed reason/refusal union — `checkRequiredToSell`, `checkParameterRestrictions`, `resolveSalesDocumentRouting` and the custody/lifecycle transitions all have this shape.
+
+**Source**: #2380 (found by `returns-write-api.int-spec.ts`, "should refuse a partially received line with an actionable 409 code").
+
+## A tsconfig with `"files": []` and only project references type-checks NOTHING — `tsc -p` on it exits 0 having compiled zero files
+
+**Context**: while gating #2380's frontend work, `npx tsc -p apps/web/tsconfig.json --noEmit` reported `EXIT=0` on code that did not compile — it passed `messages` to a `FormErrorSummary` whose prop is `errors`, which the component test then caught at runtime with `Cannot read properties of undefined (reading 'length')`.
+
+**Problem**: `apps/web/tsconfig.json` is a **solution-style** config — `"files": []` plus `"references"` to `tsconfig.app.json` and `tsconfig.node.json`. `tsc -p` on such a file has no inputs, so it succeeds instantly and reports success about nothing. Pointing at the referenced config directly is no better: `tsconfig.app.json` is written to be built through the reference graph, and invoking it standalone produced ~40 pre-existing errors across unrelated features (`downlevelIteration`, `AbortSignal.any`), i.e. a false RED to match the false GREEN. Compounding it, `tsc -b` **is** correct but incremental — a first run passed against stale `.tsbuildinfo` and only `tsc -b --force` surfaced the real errors.
+
+**Rule**: never invent a type-check invocation — run the command the package itself declares (`pnpm --filter <pkg> type-check`, here `tsc -b`). Before trusting any green type-check on a package you have just edited, confirm it actually compiled your files: a zero-input config and a clean build are indistinguishable from the exit code alone. When a build is incremental, pass `--force` for a gate you intend to rely on.
+
+**Applies to**: `apps/web/tsconfig.json` (and any other solution-style config in the tree); every ad-hoc `npx tsc -p <path>` used as a pre-commit gate.
+
+**Source**: #2380.
+
+## `pgrep -f <pattern>` from a shell whose own command line contains that pattern matches ITSELF — a watcher keyed that way reports on the watcher, never on the work
+
+**Context**: waiting for a long `pnpm test` gate to finish, I backgrounded `until ! pgrep -f "pnpm test" >/dev/null; do sleep 10; done`. The loop never exited. A second, identical watcher started later did not exit either.
+
+**Problem**: `pgrep -f` matches against the **full command line**, and the watcher's own command line contains the literal string `pnpm test` — as does every other watcher spawned the same way. So each loop matched itself and its sibling, the condition stayed true after the real `pnpm test` had long since exited, and `pgrep -f "pnpm test"` from any *other* shell then reported `RUNNING` about two sleep loops and nothing else. The failure has **no symptom other than a wrong answer delivered confidently**: no error, no hang in the thing being watched, just a monitor that says "still going" forever and a monitor-of-the-monitor that agrees. It also produced a second-order mistake — a detached PID doing real work was read as "nothing in flight", because the only evidence being consulted was the poisoned `pgrep`.
+
+**The mirror failure — a pattern that matches TOO LITTLE.** The same session then missed a *running* jest twice with `pgrep -f "jest --config ./test/jest-integration"`, because the real command line is `node /path/to/jest.js …` — the binary name never appears. That reported "not running" about a process consuming 13 containers. So the trap has two directions and both yield a confident wrong answer about whether work is in flight: a pattern matching too much (the self-matching watcher above) and one matching too little (the cmdline is not what you assume). The second was hit twice with the first already written down, which is the argument for consulting the ledger over trusting recollection.
+
+**Rule**: never key a wait loop on a pattern that appears in the loop's own command line. Wait on the **PID** (`while kill -0 "$PID" 2>/dev/null; do sleep 15; done`), or on a **marker the watcher cannot produce** — a sentinel line the watched command appends on exit, or its exit-code file. If a pattern really is the only handle available, exclude self and siblings (`pgrep -f "pattern" | grep -v $$`), and treat a non-empty result as evidence only after confirming what those PIDs actually are (`pgrep -fl`). More generally: **a check that can satisfy itself proves nothing** — the same shape as a mock easier to satisfy than the thing it replaces, or a `tsconfig` with no inputs exiting 0.
+
+**Applies to**: any backgrounded `until`/`while` poll used to serialise against a long build, test or migration run; `pgrep`/`pkill -f` used anywhere near a process whose name is a substring of the polling command.
+
+**Source**: #2380 (two stale watchers kept each other alive across several turns while the real gate ran undetected).
+
+## `getMany()` materialises entities and silently DROPS raw `addSelect` columns — a raw column needs `getRawMany` or its own aggregate query
+
+**Context**: planning a `restockBlocked` boolean for the returns list row (#2381), the obvious step was to `addSelect` the existing `RESTOCK_BLOCKED_EXISTS` SQL onto `ReturnRepository.listReturns`' paged query. That query ends in `.getMany()`.
+
+**Problem**: `getMany()` returns hydrated **entities**, built only from columns TypeORM knows as entity metadata. A raw expression added with `addSelect('<sql>', 'alias')` has no metadata, so it is computed by Postgres, returned on the wire, and then **thrown away** during hydration — no error, no warning, no log. The field is simply `undefined` forever.
+
+What makes it worth an entry is the shape of the resulting failure. It type-checks (the DTO field exists and is typed). It passes a unit test with a stubbed repository (the stub returns whatever the test author wrote). It reaches production as **a badge that never renders — for the one state whose entire purpose is to be impossible to miss**, on a surface whose whole job is to stop an operator believing stock came back when it did not. A silent no-op is the worst available outcome for a warning surface, and this is a silent no-op that every cheap gate reports as green.
+
+**Rule**: `getMany()` / `getOne()` return entities; **any raw or computed column needs `getRawMany()` / `getRawAndEntities()`**, or belongs in a separate aggregate query whose results are merged by id in application code. Before adding an `addSelect` of an expression, read how the query terminates. Prefer the separate-aggregate form when one already exists (in `ReturnRepository`, `aggregateCounters` is that query): it keeps the paged query free of joins, which also avoids the distinct-pagination trap in the entry above, and it correlates on the GROUP BY key so no `COUNT(*)` is fanned out — a `LEFT JOIN` to the child table would silently multiply every other counter instead. Pin the value with an int-spec against real Postgres; a mocked-repository unit spec cannot observe hydration at all.
+
+**Corollary — sharing a predicate across two scopes.** If the constant you want to reuse correlates on a different alias than the query you are adding it to (`r.id` vs `l."returnId"`), do **not** copy the SQL. Make it a function of the correlating expression and call it from both sites: two copies that agree today are two rules, which is the same defect `orphans` cost a round in #2378.
+
+**Applies to**: every `createQueryBuilder(...).addSelect('<raw sql>', 'alias')` in the tree; especially list reads that end in `.getMany()` and feed a DTO field a UI branches on.
+
+**Source**: #2381 (found by the `/pre-implement` readiness gate before any code was written; `libs/core/src/returns/infrastructure/persistence/repositories/return.repository.ts`).
+
+## Audit a plan's ONE-LINERS, not its paragraphs — and for each, ask what supplies it
+
+**Context**: `/tech-review` on the #2381 plan returned four findings. Every one of them was a step the plan stated in a **single line** and never traced to a data source. Every part the plan had reasoned hardest about — the `getMany()` correction, the parameterised correlating predicate, the event-vs-state split between a mutation response and a read — was sound.
+
+The four, and what each was missing:
+
+| One-liner | What was missing |
+|---|---|
+| *"Post-attestation row"* | No read supplies it. Attesting flips the act out of the outstanding set, so the read the plan added returns `[]` exactly when the row must render. |
+| *"the `ReturnRecord`/counters projection"* | Ambiguous placement. A boolean fact would have landed inside a published `ReturnCounters` type whose whole contract is that a derived stage is computed from it. |
+| *"an unreadable value degrades to the safe direction"* | Stated for one surface, unspecified for the other — and the other's answer is harder, because `false` asserts the operator's stock is fine while `true` cries wolf page-wide. |
+| *"Stock added manually by `{user}`"* | No name is obtainable. `actorUserId` is written everywhere and resolved nowhere; there is no `IUsersService`. |
+
+**Problem**: a one-line step reads as settled precisely because it is short. Prose invites scrutiny; a bullet that names a UI element sounds like a rendering detail, so a reviewer's eye skips it and the author never asked the question either. The failure surfaces mid-implementation, when the tempting fix is whatever is nearest to hand — the mutation's own response for the row, the raw UUID for the name — and that is how a placeholder ships.
+
+**The harder variant — a parenthetical that NAMES an additional source is not a design for reading it, and is more dangerous than saying nothing.** #2383's plan described its read as *"an order-scoped read of return events (acts — receive, dispose, attestation — plus record-level facts)"*, then designed a single query over `return_line_events`. That ledger has four kinds and supplies only the acts: `opened` and `declined` are header COLUMNS on `returns`, `refund confirmed` is a money state, and `credit note issued` lives in another bounded context entirely. The hedge is what let it through review — it reads as already thought through, so it **satisfies the audit it should have failed**. **Naming a thing is not sourcing it.** When a step names more than one source, the audit is per SOURCE, not per step.
+
+**Rule**: when reviewing a plan (your own especially), **list every step stated in one line and ask of each: what supplies this?** A field needs a read, a control needs a write, a badge needs a flag on the wire, and **a copy string is a contract too** — `{user}` in a spec is a promise that a name is obtainable, exactly as a button is a promise that a write exists. If the answer is "the response of the action that caused it", check what happens on reload. It is a cheap pass and it would have caught all four here before a review round.
+
+**Applies to**: every `docs/plans/implementation-plan-*.md`; the `/pre-implement` and `/tech-review` gates when the target is a plan rather than a diff.
+
+**Source**: #2381 (four findings, four one-liners, zero from the reasoned paragraphs).
+
+## "Would pass the demo / would pass the harness" is a reliable marker for a whole family of defects — ask what the state is when nobody is looking on purpose
+
+**Context**: #2380/#2381 produced four defects with one shape, found at four different stages:
+
+| Defect | Why it looked fine |
+|---|---|
+| A persistent inline error rendered inside a **collapsed** `DataTable` expansion | A demo expands the row. |
+| The same notice fed from a mutation **response** rather than a read | Nobody reloads mid-demo. |
+| A row badge from a raw `addSelect` on a `getMany()` query | Type-checks; passes a stubbed unit test. |
+| `earliest-order-date.int-spec` asserting the host timezone | Passes in UTC CI. |
+
+**Problem**: each is a surface whose entire purpose is to be **noticed**, failing in exactly the state where nobody is deliberately looking at it — collapsed, reloaded, unmocked, in another timezone. That state is never the one a demo, a review, or a hand-written test exercises, because all three involve someone attending to the thing on purpose. So the defect survives every cheap check and reaches an operator who was not attending, which is the only audience the surface was built for.
+
+The inline-error case is the sharpest: a persistent error behind a disclosure is **not a weaker version of the requirement** — it is precisely the silent no-op the requirement exists to prevent, shipped under the requirement's own name.
+
+**Rule**: for any surface whose job is to be noticed — an alarm, a badge, a warning, a blocked state — ask **"what is this in the state where nobody is looking at it on purpose?"** Collapsed. Reloaded. Filtered out. On a page that was already open. In a locale that is not yours. If the answer is "absent", it does not meet the requirement however good it looks when attended to. This is the same check as the one-liner audit above, applied from the other end: that one asks *what supplies this*; this one asks *who sees it when nobody is trying to*.
+
+**The sharpest instance — "is this MOUNTED?"** #2382 built a credit-note proposal panel with nine passing component tests, exported from nothing and rendered by nothing. Every gate went green: it type-checked, it linted, its tests passed. A component test **renders the component itself**, so it can only prove the panel *would* render if something rendered it — a true statement about a counterfactual that says nothing about the product. The check and the subject were the same object, exactly as with the mock easier to satisfy than the thing it replaced, and with `pgrep` matching its own watcher.
+
+So **mounting needs an assertion one level up** — a page test that finds the surface on the page, not a component test that renders it directly. And expect the repair to be bigger than a re-export: in #2382 the panel read a *separate* `GET`, so nothing was fetching it and the fix was a query, a query key, a parse module, a barrel export and a mount. A missing export looks like a one-line oversight; a missing seam does not. The better of the two closing tests was not the one asserting it renders — it was the one asserting the proposal is **not requested for an orphan**, because that pins a decision (the route answers 409, and asking anyway renders an error for a state the page already explains) rather than pinning wiring.
+
+**A scoped lint run does not stand in for `pnpm lint`.** #2382 fixed two ESLint errors, verified with `npx eslint src/features/returns src/features/orders`, got a clean result — and the full gate stayed red. The remaining failure was `check-ui-vocabulary`, which runs from `pnpm check:invariants` and **is not ESLint at all**, so no folder-scoped ESLint invocation can ever surface it. The narrower check answered truthfully; it just answered a different question than the one being asked. Verify a gate with the gate's own command, and remember that `pnpm lint` chains the invariant scripts — a targeted run is a debugging aid, never a substitute.
+
+**A long gate needs its RESULT to outlive the process — and use the harness's own background mechanism to get that, not a hand-rolled one.** #2382's integration run was cut short three times, each time leaving no exit code and only a fragment of output; a fragment is not a result, and reporting one as a result is how a partial red gets remembered as a real one. Writing the exit code to a file is right on its own merits. But a hand-rolled `nohup setsid bash -c '…' &` from inside a tool call produced **no log file at all**, while the harness's own background flag carried complete 126-suite runs in the same session — so the property that matters is the result outliving the process, not the detachment trick. Prune orphaned containers before relaunching: a killed run leaves its Testcontainers behind (9 and 13 of them here), and a long session degrading the Docker daemon is a far likelier cause of a cut-short run than any lifecycle limit.
+
+**Corollary — a promised test that was never written is indistinguishable from a passing one.** #2381's plan specified a toast/notice overlap test; the implementation did not write it, and nothing failed, because nothing compares a plan's test list against a diff's. When a plan names a test, check it exists by name before calling the work done.
+
+**Corollary, same shape — a cited SAFEGUARD that does not exist.** #2382's plan justified an editable-currency decision by pointing at an "existing refund-currency-mismatch guard". There is none; the only `currency-mismatch` in the tree belongs to `sales-documents`' threshold evaluator, an unrelated rule. A claim about a protection nothing verifies is load-bearing until somebody greps for it — and it is worse than a missing test, because it makes a reviewer *relax*. When a plan or a docblock leans on a guard, check the guard exists by name.
+
+**Applies to**: any operator-facing alarm/badge/notice; any plan whose acceptance criteria name specific tests, or whose reasoning rests on a named guard.
+
+**Source**: #2380 / #2381.
+
+### An int-spec that cannot reach the route proves nothing — and it will say so as a business failure
+
+**#2383.** A new `GET /returns/events` route was added, correctly declared before
+`@Get(':returnId')`, and its integration spec failed **every** assertion with
+`404 Not Found`. Read at face value that is a routing-order defect, and the
+obvious "fix" is to move a decorator that was already in the right place.
+
+The route was fine. The **spec** was requesting `/returns/events` while the
+harness enables URI versioning, so every path needs `/v1`. Two details made this
+worth an entry rather than a shrug:
+
+1. **The 404 was indistinguishable from the real defect the test exists to
+   catch.** A literal segment swallowed by a parameter route ALSO returns 404 —
+   via `ReturnNotFoundError` → the global filter — so the symptom pointed
+   straight at the hypothesis that was wrong. Debugging by hypothesis would have
+   churned the controller indefinitely.
+2. **The cheap discriminator is to probe a route you did not write.** One
+   throwaway spec hitting `/returns` and `/returns/ingestion-availability` — both
+   long-shipped, both passing in their own spec — returned 404 too. That
+   collapses the search instantly: *nothing* on the controller is reachable, so
+   the fault is in the request, not the routing. `Cannot GET /returns/events` in
+   the body (Nest's own 404) versus a domain-shaped body is the same tell, one
+   layer cheaper.
+
+**When a new test fails in a way that indicts your new code, first check whether
+it also indicts code you did not touch.** If it does, the test is wrong.
+
+### A test expectation written before the seed path was read is a guess
+
+**#2383, same spec.** Two assertions expected `['dispose', 'receive']` and got
+`['opened', 'opened', 'dispose', 'receive']`. The extra entries were **correct** —
+`upsertFromObservation` stamps `openedAt` from the observation, so a seeded
+return really does contribute an `opened` fact. The expectations had been written
+from the plan's source table rather than from what the seed helper actually
+writes.
+
+Harmless here because the surplus was visible. The dangerous direction is the
+same mistake with a *narrower* expectation that happens to pass — `toContain`
+where `toEqual` was meant, or a filter that quietly drops the rows a defect would
+have produced. **Write the assertion against what the seed path writes, not
+against what the design says it should.** And when a test's actual output is
+richer than expected, establish whether the surplus is a defect or a fact before
+editing either side — here it was the feature working.
+
+### A barrel import and a module edge are different facts — "the edge already exists" must name which
+
+**#2383.** A plan justified a new cross-context read with *"`orders` is an edge
+`returns` **already has** — this is a new method on it, not a new edge."* That
+was **true of the TypeScript barrel** (`libs/core/src/returns/**` really does
+import `@openlinker/core/orders`) and **false of the NestJS module graph**, which
+is the level dependency injection actually runs on: `ReturnsModule` deliberately
+excludes `OrdersModule` and says so in three separate docblocks (*"NOT
+`OrdersModule`, which imports seven siblings this context has no business
+pulling in"*), reaching `orders` only through the leaf `OrderChangesModule` and a
+report-don't-persist seam.
+
+Injecting the service into `ReturnsService` would therefore have added exactly
+the edge that module was designed to avoid — and the claim would have survived
+review, because a reviewer checking "does returns import orders?" gets `yes`.
+
+**The claim survives review precisely because it is true in one sense.** That is
+the tell: a dependency assertion that does not name its LEVEL is not yet a fact.
+There are at least three, and they disagree routinely:
+
+1. **Barrel/type import** — `import type { X } from '@openlinker/core/orders'`.
+   Costs nothing at runtime, so a context can carry dozens.
+2. **NestJS module edge** — `imports: [OrdersModule]`. Pulls that module's whole
+   transitive provider graph into this one, which is what the exclusion above is
+   protecting against.
+3. **Constructor DI on an injected token** — needs (2) to be satisfied
+   *somewhere*, which is why "the interface layer already holds it" can be a
+   complete answer while "the context already imports it" is not.
+
+**Check the module file, not the import list.** And when the answer is that the
+edge exists one layer up, that is usually the better place for the code: here it
+moved the refund read to a controller whose module already imported
+`OrdersModule`, which produced **strictly less coupling than the plan
+described** — the rare direction for a mid-implementation correction.
+
+### A safe fallback beside a confident wrong one is worse than two loud failures
+
+**#2645 review, #2383's mapper.** One module authored the rule *"an act whose
+actor is unknown gets NO eyebrow rather than a guessed one: an omitted
+attribution is silent, a wrong one is a claim"* — and two functions below it,
+`resolveBy` used a ternary that sent every `executedBy` value except one to
+`"an operator"`. `null` included, and every future member.
+
+Unreachable today (the column is `NOT NULL` with two members), so it would have
+survived indefinitely. But `refundExecutedBy` is an **open string on the wire**,
+so the day a `MasterRefundExecutor` writes a third value, every such row reads
+`Refund confirmed · an operator` — OpenLinker attributing to a human a refund a
+machine made, silently, on a surface built to be auditable.
+
+**The tell was the asymmetry, not the ternary.** `resolveTitle`, twelve lines
+down, already had an honest `unknownKind` arm. So the title failed safe while
+the attribution failed loud and wrong, and *that combination is the dangerous
+one*: **a safe title beside a confident wrong actor is more dangerous than both
+failing, because the safe half makes the row look checked.** A reader who sees
+`Refund confirmed` rendered correctly has no reason to doubt the `an operator`
+beside it.
+
+Two rules follow.
+
+1. **Where one arm of a shape degrades honestly, every arm must.** When you write
+   an unknown-value fallback, grep the same file for its siblings — the one that
+   guesses is rarely the one you were editing.
+2. **A closed-looking ternary over an open string is a default arm in
+   disguise.** `x === 'a' ? A : B` is a total map only if the type is `'a' | 'b'`.
+   Over `string`, it silently claims every future value is `b`. Use a
+   `Record<string, T>` lookup and let the miss be `undefined`.
+
+## A denormalised counter that sums two semantic classes must be scoped by EVERY reader, and "the published quantity is unaffected" is only half the blast radius
+
+**Context**: ADR-061's advisory reservation ledger. A hold carries an immutable `atpEffect` stamp —
+`published` reduces what OpenLinker promises, `diagnostic` records the hold and is contractually
+inert. `inventory_items.olReservedQuantity` is denormalised over the ledger and legitimately sums
+**both** stamps.
+
+**Problem**: the design was justified with *"on a default install every hold is `diagnostic`, so
+nothing published moves"*. That is true about the **published quantity** and silent about the
+**counter**. Two shipped readers subtracted the raw counter — the admission guard
+(`availableQuantity - olReservedQuantity >= q`) and the shortfall reconciler
+(`olReservedQuantity > availableQuantity`) — so a stamp that promises nothing still refused
+reservations and opened operator-visible "stock at risk" episodes naming real orders. It was not a
+tail case: on the DEFAULT `omp_fulfilled` topology the marketplace ships, OL creates no `Shipment`,
+no cancellation arrives, and the expiry sweep is fail-closed — so nothing ever closes a hold and the
+counter grows monotonically for the life of the install. A healthy catalogue degrades on a clock.
+
+**Rule**: when a denormalised aggregate sums rows of more than one semantic class, enumerate its
+readers and scope each one, at the same time as the class is introduced. Reviewing "does the
+headline output change?" is not enough — walk every consumer of the aggregate, including guards and
+reconcilers that never surface a number of their own. And a value class whose whole contract is
+*"record this, let it restrict nothing"* must be checked against that contract literally: any
+operator-visible consequence at all — a refusal, an episode, a badge — contradicts it. Prefer one
+shared SQL/expression definition for the scoped sum over per-reader copies, so a new reader inherits
+the scoping instead of re-deriving it.
+
+**Applies to**: `libs/core/src/inventory/**` (`ReservationRepository.applyGuardedAdd`,
+`ReservationShortfallRepository`, `publishedReservedSum`); generally any denormalised counter or
+cached aggregate in `libs/core`.
+
+**Source**: PR #2628 review (ADR-061).
+
+## When a test you wrote fails against an implementation you also wrote, decide which one encodes the decision you actually made — before changing either
+
+**Context**: a narrowing where the same author owns both sides. In PR #2628 the fix scoped a
+guard's *subtrahend* to one class of rows, and deliberately did **not** exempt the other class from
+the guard's headroom requirement — a considered line, argued in the commit and the docblock. The
+acceptance fixture written in the same sitting then asked for more units than that line permits, and
+went red against correct code.
+
+**Problem**: this is the inverse of the failure shape the rest of this ledger warns about. The
+familiar danger is a test that passes for the wrong reason — self-satisfying, or green against a
+harness rather than the behaviour. This one is rarer and worse: **the fixture encoded the design the
+author had considered and rejected**, so the *correct* implementation is what makes it fail. The
+instinct on a red test is to move the code toward the test, and here that would have reinstated the
+rejected exemption and silently undone the fix the whole change existed to make — with a green suite
+afterwards, and the review already passed. Author-owns-both-sides removes the usual protection: when
+a test and an implementation come from different people, the disagreement surfaces as a
+conversation; when they come from one person, it surfaces only as a red line that is cheapest to
+make green.
+
+**Rule**: a red test is a *disagreement between two artefacts*, not automatically a defect report
+about the code. Before touching either side, name the decision in dispute out loud and check which
+artefact encodes it — the one that can cite the ADR, the docblock, or the commit message wins, and
+the other is the bug. Be most suspicious when the failure is *convenient*: if making the test pass
+would relax a constraint you deliberately chose, treat that as the signal, not the fix. Then say so
+in the report rather than quietly re-sizing the fixture, because "my test assumed the behaviour I
+rejected" is evidence the constraint is easy to forget and belongs where the next person will see
+it. A fixture corrected this way should carry a comment recording *why* its value is the ceiling, so
+the next author does not re-derive the same wrong assumption.
+
+**Applies to**: any test the change's own author writes against a constraint that change introduces
+— guards, gates, validators, narrowings, refusals. Sharpest where the constraint is a *deliberate
+non-exemption*, since nothing in the type system marks one.
+
+**Source**: PR #2628 review (ADR-061) — `diagnostic-holds-are-inert.int-spec.ts`, where the guard's
+subtrahend was scoped by `atpEffect` but a `diagnostic` claim still needs headroom the size of the
+claim.
+
+## A merge that drops a closing brace leaves no marker — check the seam, in a language a gate parses
+
+**Context**: integrating OMS Wave 2 bodies A and C into body B. Both sides had appended a new block
+at the same place in two files, so git produced a textbook additive conflict and the union looked
+obviously right. In `orders.controller.ts` it aligned body A's trailing `};`/`}` with the closing
+braces of body B's `toReservationShortfallDto`, silently truncating that method. In
+`apps/web/src/index.css` it did the identical thing to `.stock-at-risk-callout__items`.
+
+**Problem**: the two defects were caught by completely different luck. The controller is TypeScript,
+so `pnpm type-check` failed loudly — but only because a resolution one line different would have
+compiled and been *wrong* rather than unparseable. The CSS was not caught at all: it shipped through
+lint, type-check, 4142 web unit tests and 130 integration suites in the previous merge round and was
+only found a round later, by eye. **Nothing in the pipeline parses `index.css`**, so an unclosed rule
+is invisible to every gate — and under CSS nesting it does not even error, it silently re-scopes the
+following rules as descendants, so the styles are still "there" and simply never apply. Absent
+conflict markers are not evidence of a correct merge; a green suite is not evidence either, for any
+artefact no gate parses.
+
+**Rule**: after resolving a conflict, re-read the **seam itself** — the last lines of the first block
+and the first lines of the second — and confirm the first block still *closes*. Do it structurally,
+not by eye: strip comments and compare `{` / `}` counts for the whole file, which takes seconds and
+catches the whole class. Prefer this specifically where both sides append to one list and the
+resolution is "obviously" a union, because that is exactly the shape whose closing punctuation is
+identical on both sides and therefore eligible to be treated as shared context. And when the file is
+one no gate parses (CSS, YAML, JSON fixtures), treat the structural check as **mandatory** rather
+than a double-check, since nothing downstream will do it for you.
+
+**Partly graduated (#2674)**: the stylesheet half of this lesson is now a gate.
+`scripts/check-css-structure.mjs` runs under `pnpm lint` (chained into `check:invariants`) and fails
+on an unclosed block, a stray `}`, an unclosed comment or an unterminated string in any `.css` /
+`.scss` / `.sass` / `.less` file, reporting `file:line:column`. Two things it deliberately does not
+do, so the manual habit above still matters everywhere else: it does not parse **YAML or JSON
+fixtures**, and it does not check **parenthesis balance** (a dropped `)` in `@media (min-width: 700px {`
+leaves braces balanced and still kills the block - deferred as #2677). The seam re-read remains the rule for every
+artefact the gate does not cover.
+
+**Applies to**: any merge or rebase touching an append-heavy file — a stylesheet, a barrel, a job-type
+union, a DI provider list, a long positional constructor. Sharpest when several parallel bodies of
+work land in one integration branch, because every one of them appends at the same seam.
+
+**Source**: PR #2628 Wave-2 integration merges (bodies A and C). Also surfaced two stale counts of
+the same family: the ADR-050 lane tripwire's dummy-handler count was wrong on *both* sides and its
+test could not fail (surplus constructor args become `undefined`), and the orders Status-cell row
+height was documented as four lines by two bodies independently when the composition is six.
 ## A paged read that stops on a budget must throw, never return a short array
 
 **Context**: epic #2590 hit this three separate times in the PrestaShop adapter - the pack-component read (#2598), a filtered list read (#2616), and the shared helper itself (#2608).
@@ -465,3 +815,132 @@ decision 3 (#2165, epic #2162)
 **Applies to**: `apps/worker/src/sync/handlers/handler-registration.service.ts` (every `register(jobType, handler, lane)` call); any enqueue site supplying a `connectionId` that is not a real connection.
 
 **Source**: #2594 (the split + the first measured `bulk` caps), #2609 (the scope), [ADR-050](./architecture/adrs/050-workload-isolation-concurrency-lanes.md) § Amendment (#2594) and § Amendment (#2609).
+
+---
+
+## `overflow` only clips a descendant the box is a containing block for — a `position: static` scroller clips nothing absolute
+
+**Context**: the Wave-2 responsive audit (#2388), measuring `/orders` at 768 px.
+
+**Problem**: `.data-table__container` declared `overflow-x: auto` and was believed to bound its
+contents. It does not bound an **absolutely-positioned** descendant, because an element only clips a
+descendant for which it is in that descendant's containing-block chain, and a `position: static` box
+never is. `.sr-only` is `position: absolute`, so every screen-reader label sat at its static x —
+inside the 1176 px-wide table — escaped the container entirely, and extended the **document's** own
+scroll area: `documentElement.scrollWidth` 947 against `clientWidth` 768, with the page really
+scrolling ~180 px sideways onto blank space.
+
+It was invisible to the obvious diagnostic. Scanning for elements whose `right` exceeded the viewport
+and excluding the allowed scroll containers returned **zero** offenders, because the only offenders
+were 1 px and `clip`ped — visually absent, structurally load-bearing. `document.body.scrollWidth`
+also read a clean 768; only `documentElement` disagreed.
+
+**Rule**: a scroll container that must actually bound its contents needs `position: relative` as well
+as `overflow`. When `documentElement.scrollWidth > clientWidth` but nothing visible overflows, look
+for absolutely-positioned descendants — `.sr-only` first — and check whether their nearest scrolling
+ancestor is positioned. Confirm a page really scrolls by assigning `scrollLeft` and reading it back;
+`scrollWidth` alone does not prove a user can reach it, and `body.scrollWidth` can disagree with
+`documentElement`'s.
+
+**Applies to**: `apps/web/src/index.css` — any rule pairing `overflow` with content that may contain
+absolutely-positioned descendants.
+
+**Source**: PR #2676 (#2388).
+
+## A `max-width` breakpoint must be the fractional complement of its `min-width` partner, or the two bands overlap by one pixel
+
+**Context**: same audit; `/settings/who-decides` at exactly 768 px.
+
+**Problem**: `.who-decides-row` was guarded by `@media (max-width: 768px)`, which **matches at
+768 px**, while `DataTable`'s own card/table switch and all three `hide-below` queries use
+`767.98px`, which does not. At that one width `matchMedia('(max-width: 767.98px)')` was `false` while
+`matchMedia('(max-width: 768px)')` was `true`, so the authority row rendered its single-column mobile
+layout while every table on the page was still in its desktop branch — two components disagreeing
+about which band they were in, at one of the three audited widths.
+
+**Rule**: the house complement of a `min-width: N` band is `max-width: (N - 0.02)`, not
+`max-width: N`. `apps/web/src/index.css` uses `479.98` / `767.98` / `1023.98`, and
+`data-table.tsx` reads `(max-width: 767.98px)` — match those exactly rather than rounding. Test the
+boundary AT the breakpoint, not one pixel either side, and read the branch off `matchMedia` rather
+than inferring it from a rect: a classic scrollbar makes `clientWidth` ~15 px narrower than the width
+media queries evaluate against, which at a boundary inverts the reading.
+
+**Applies to**: `apps/web/src/index.css`; any component pairing its own media query with
+`DataTable`'s card/table switch.
+
+**Source**: PR #2676 (#2388), asserted by `who-decides-styles.test.ts`.
+
+---
+
+## A captured exit file proves nothing unless its mtime belongs to THIS run — and HEAD, not an exit code, is what proves a commit happened
+
+**Context**: the long-running-gate pattern this repo leans on for anything past the Bash tool's timeout — launch detached, redirect to a log, capture `echo $? > <name>.exit`, then poll for the file. Used across a session for `pnpm lint`, `type-check`, `test`, `test:integration` and finally `git commit` (whose pre-commit hook runs the full lint + test and comfortably exceeds ten minutes).
+
+**Problem**: **a stale artifact and a fresh one are identical by content.** A `.exit` holding `0` and a `.log` ending in plausible output look exactly the same whether they were written thirty seconds ago or in a previous session, and nothing in the pattern forces a freshness check. It failed twice in one session, escalating each time. First a `tc.log` left over from an earlier run was read as the current type-check — the log even ended in `apps/api type-check: Done`, so the wrong answer was the *reassuring* one. Then, at the worst possible moment, a `commit.exit` dated 34 minutes earlier held `0` while the real `git commit` was still executing its hook: the pattern reported a successful commit, and `git log` showed `HEAD` still on the base commit. The failure mode has no error anywhere in it — the danger is precisely that the stale answer is plausible, and a stale `0` next to a still-running command is indistinguishable from success. Shared or long-lived scratch paths make it worse, since a concurrent agent's run can supply the plausible file.
+
+**Rule**: an artefact is evidence only when its mtime belongs to **this run** *and* its path **cannot be reached by a sibling** — two conditions, not one; satisfying either alone still admits a plausible wrong answer. Cheapest sufficient practice, in the pattern itself: **delete the `.exit` and `.log` immediately before launching**, use a session-scoped (never shared `/tmp`) path, and when a result is surprising or load-bearing, check the file's mtime — or have the runner write its own start timestamp — before trusting it. If a `.exit` exists but the log is still growing, the file is stale by definition; the live process is the authority, not the file. And for anything with a durable side effect, **verify the side effect, not the exit code**: `git rev-parse HEAD` is the only proof a commit landed (the absence of an error is not), and the remote ref (`git rev-parse origin/<branch>` equalling local `HEAD`) is the only proof a push did. **The path itself is half the freshness question**: a bare `/tmp/<gate>.log` is reachable by every concurrent agent, so "is this mine?" and "is this from this run?" are two separate checks and the first one has no mtime to consult. Observed live on #2404 — a `/tmp/lint.log` read as the current lint belonged to a **sibling worktree** running its own gate at the same moment, which is worse than the own-stale-run case above because the file was genuinely fresh, plausible, and about a different tree. Namespace gate artifacts by issue *and* worktree (`/tmp/2404-lint.log`), delete them before each launch, and never a bare `/tmp/lint.log`. This sharpens the existing "never pipe `git commit` through `tail`/`head`" lesson — the pipe was one way to lose the exit code, and a stale file is another, but both are covered by checking the thing the command was supposed to change.
+
+**Applies to**: every detached long-running gate (`pnpm lint` / `type-check` / `test` / `test:integration` / `build`, `git commit` under the pre-commit hook); any agent workflow using a scratchpad `*.exit` / `*.log` convention.
+
+**Source**: #2390 (two occurrences, the second a falsely-reported commit); sharpened by #2404 (a concurrent sibling worktree's log read as this run's).
+
+## A zero-rows assertion about what a MIGRATION does is vacuous under a `synchronize`-built harness
+
+**Context**: #2405 had to prove that no migration seeds an `openlinker` connection row — ADR-055's zero-config non-negotiable, because a seeded row enters every existing install's authority candidate sets and flips previously-single-candidate selections to `ambiguous`.
+
+**Problem**: the obvious test — boot the integration harness, assert `COUNT(*) = 0` — **cannot fail**. `libs/shared/src/database/database.module.ts` sets `synchronize: NODE_ENV !== 'production'` and `migrationsRun: false`, so the harness schema is entity-derived and **no migration runs in that path**. The assertion is green whether or not a seeding migration exists, which is worse than no test because it reads like coverage. This is the same root cause as the pre-existing "migration-only FKs don't exist there" entry, one step further: there, a real constraint was *absent*; here, a whole class of migration *effects* is unobservable.
+
+**Rule**: to assert anything about what the migration chain **does** (or does not do), build it for real — a second database on the same Testcontainers Postgres with `synchronize: false`, then `runMigrations()`. Copy `apps/api/test/integration/fulfillment-work-migration-parity.int-spec.ts` (#2392), which also carries the `uuid-ossp` workaround (#2684) and the teardown order. Always include a **non-vacuity** assertion that the chain built the table first, or two empty result sets compare equal and the file asserts nothing. And prove the test can fail: add a temporary seeding migration, watch it go red **for the right reason** (an assertion failure with `Tests: N failed`, not a compile error with `Tests: 0 total`), then delete it.
+
+**Applies to**: any claim about migration behaviour; `apps/api/test/integration/**`.
+
+**Source**: #2405 (the parity spec from #2392 is now load-bearing for a second issue).
+
+## A manifest that advertises no capabilities stamps an EMPTY `enabledCapabilities`, permanently
+
+**Context**: #2405 shipped the OL-OMS manifest with `supportedCapabilities: []`, following the Erli #980 precedent that a capability name enters the manifest together with the adapter that delivers it.
+
+**Problem**: `ConnectionService.create` defaults `enabledCapabilities` from the manifest when the caller omits it, and that column is stamped at create and **never retro-filled** (the #2085 shape). So a connection created against an empty manifest carries `enabledCapabilities: []` for ever, and both `getCapabilityAdapter` and `listCapabilityAdapters` gate on it — meaning a capability added to the manifest *later* is unusable on every connection created before it, throwing `CapabilityNotEnabled` with a log line reading `enabled: <none>`.
+
+**Rule**: when a PR adds a capability name to a manifest that previously advertised fewer, it must also retro-fill `enabledCapabilities` on existing connections of that `platformType` **in the same PR**. An UPDATE-only migration is the right shape and does not conflict with a "nothing is seeded" assertion, which is about INSERTs. Say so explicitly in the issue that defers the capability, or the obligation is discovered by an operator instead.
+
+**Applies to**: `apps/api/src/integrations/application/services/connection.service.ts`; any adapter manifest whose `supportedCapabilities` grows after connections exist. **Named obligation: #2409**, which adds `FulfillmentExecutor` to the OMS manifest.
+
+**Source**: #2405.
+
+## A "bootstrap the missing prerequisite" remedy wired as an automatic side effect makes its own guard unreachable
+
+**Context**: #2407 refuses to enable fulfilment routing until at least one active `inventory_location` exists, and offers a one-click bootstrap that mints `MAIN` as the remedy.
+
+**Problem**: the tempting wiring is to mint the location automatically — on connection create, on enable, or from a migration. Every one of those makes the refusal **unreachable**: the precondition is satisfied by the same act that would have violated it, so the guard is dead code that no test can exercise except by deleting the seeding it was written against. Worse, the automatic row is a *fabrication* — a bootstrapped location holds no stock and has no country, so seeding it silently converts "this install has not been configured" into "this install has a warehouse", which is a claim about the operator's business that OpenLinker is not in a position to make.
+
+**Rule**: a remedy offered by a guard must be an **explicit operator action**, never a side effect of the transition the guard sits on and never a migration. Keep the mint idempotent (insert-then-recover on the unique key, not a read-then-write), report what it did and did not create so a re-run is visibly a no-op, and keep the guarded write and the remedy on separate routes so a test can drive the refusal, apply the remedy, and re-drive the same request as the control.
+
+**Applies to**: any first-run precondition guard and its bootstrap; `apps/api/src/integrations/application/services/connection.service.ts`, `libs/core/src/inventory/application/services/location.service.ts`.
+
+**Source**: #2407.
+
+## A hidden control is not a guard — assert the endpoint refuses independently
+
+- **Context**: #2666, the automation retry chain. `resolveRetryEligibility` is read by two
+  surfaces: the run projection (which decides whether `Try again` renders enabled) and the
+  retry endpoint (which enforces the refusal). Its own docblock already states the rule —
+  *"the projection is a rendering fact and this is the guard. If only the endpoint knew, the
+  UI would lie; if only the UI knew, a direct call would bypass it."*
+- **Problem**: the terminality fix bounded a retry chain by an attempt budget, and the design
+  read as complete because the frontend hides the `Try again` control on a superseded row
+  (`AutomationRunActions` returns `null` on `!needsAttention`). But the eligibility rule never
+  tested supersession, so `POST /automations/runs/{id}/retry` on an already-retried parent
+  still succeeded — minting a second chain head whose budget restarted at 1. The budget
+  bounded each branch while the number of branches stayed unbounded, and the attention count
+  grew a second row for one underlying failure: the exact defect the issue existed to close,
+  restored through the API path. No test failed, because every test drove the UI's predicate.
+- **Rule**: when one predicate gates both a rendered affordance and an endpoint, write a test
+  that calls the **endpoint** with the affordance's precondition violated. "The button is
+  hidden" is not evidence the request is refused. Ask specifically: *which arm of this rule
+  does only the UI know about?*
+- **Applies to**: any pure rule consumed by both a projection/DTO and a controller —
+  `resolveRetryEligibility`, `isAutomationRunAttentionWorthy`, `checkRequiredToSell`,
+  `resolveSalesDocumentRouting`, and the `check-*-mirror.mjs` family that exists for the same
+  class of split-brain.
+- **Source**: #2666 (plan-stage `/tech-review`, escalated to BLOCKING before implementation).

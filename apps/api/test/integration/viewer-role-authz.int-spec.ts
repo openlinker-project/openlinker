@@ -302,6 +302,48 @@ describe('Viewer Role Authorization', () => {
         .expect(403);
     });
 
+    it('GET /inventory/duplicate-positions (#2319 — admin-only diagnostic)', async () => {
+      const { http, viewerToken } = await seeds();
+      // A read, but an admin-only one: it enumerates raw row ids for a manual
+      // DELETE remediation, so it lives with the writes here rather than with
+      // the viewer-readable reads above.
+      await http
+        .get('/v1/inventory/duplicate-positions')
+        .set('Authorization', `Bearer ${viewerToken}`)
+        .expect(403);
+    });
+
+    // #2316 — all three location writes, not the create alone. RolesGuard is
+    // declared per HANDLER here, so asserting one method says nothing about
+    // the other two: a missing @Roles('admin') on PATCH or DELETE would let a
+    // viewer rename or delete a warehouse with the suite still green.
+    it('POST /inventory/locations', async () => {
+      const { http, viewerToken } = await seeds();
+      await http
+        .post('/v1/inventory/locations')
+        .set('Authorization', `Bearer ${viewerToken}`)
+        .send({ code: 'WH-BLOCKED', name: 'blocked', kind: 'warehouse' })
+        .expect(403);
+    });
+
+    it('PATCH /inventory/locations/:id', async () => {
+      const { http, viewerToken } = await seeds();
+      // Guard fires before the handler body, so the id need not exist.
+      await http
+        .patch('/v1/inventory/locations/ol_location_doesnotexist')
+        .set('Authorization', `Bearer ${viewerToken}`)
+        .send({ name: 'should-be-blocked' })
+        .expect(403);
+    });
+
+    it('DELETE /inventory/locations/:id', async () => {
+      const { http, viewerToken } = await seeds();
+      await http
+        .delete('/v1/inventory/locations/ol_location_doesnotexist')
+        .set('Authorization', `Bearer ${viewerToken}`)
+        .expect(403);
+    });
+
     it('POST /sync/jobs', async () => {
       const { http, viewerToken } = await seeds();
       await http

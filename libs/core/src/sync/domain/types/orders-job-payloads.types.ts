@@ -24,3 +24,23 @@ export interface OrdersTaxRateBackfillPayloadV1 {
    */
   cursorKey?: string;
 }
+
+/**
+ * Payload for `orders.holds.reconcile` (#2340).
+ *
+ * Global rather than connection-scoped: a divergence between `order_holds` and
+ * `order_records.activeHoldReason` has no connection axis at all — both tables
+ * are OL's own and neither write path involves a platform. The job nonetheless
+ * carries a `connectionId` because `SyncJob.connectionId` is non-nullable; the
+ * scheduler supplies the nil-UUID system id (the `inventory.provenance.backfill`
+ * shape).
+ *
+ * Carries no cursor: the pass is frontier-as-query, so its remaining work is
+ * re-derived from the divergence predicate on every tick rather than resumed
+ * from an offset. See `IOrderHoldProjectionReconcileService.runPage`.
+ */
+export interface OrdersHoldsReconcilePayloadV1 {
+  schemaVersion: 1;
+  /** Rows repaired per run. Handler clamps regardless of this value. */
+  pageLimit?: number;
+}

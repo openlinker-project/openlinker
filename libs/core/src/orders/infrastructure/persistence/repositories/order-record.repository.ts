@@ -11,7 +11,15 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { DataSource, EntityManager, SelectQueryBuilder } from 'typeorm';
-import { In, IsNull, LessThan, MoreThanOrEqual, Repository } from 'typeorm';
+import {
+  getMetadataArgsStorage,
+  In,
+  IsNull,
+  LessThan,
+  MoreThanOrEqual,
+  Not,
+  Repository,
+} from 'typeorm';
 import type { OrderSyncStatusJson, SyncAttemptJson } from '../entities/order-record.orm-entity';
 import { OrderRecordOrmEntity } from '../entities/order-record.orm-entity';
 import { OrderLineItemOrmEntity } from '../entities/order-line-item.orm-entity';
@@ -32,15 +40,29 @@ import type {
   OrderRecordSort,
   OrderRecordSortDirection,
   FailedSyncValueSummary,
+  OrderLifecyclePhaseSummary,
 } from '../../../domain/types/order-record.types';
 import type { SlaState, OrderSlaSummary } from '../../../domain/types/order-sla.types';
+import type { OrderLifecyclePhase } from '@openlinker/core/order-lifecycle';
+import { isHoldReason, OrderLifecyclePhaseValues } from '@openlinker/core/order-lifecycle';
 import { SLA_AT_RISK_WINDOW_MS } from '../../../domain/types/order-sla.types';
 import type { FulfillmentRollupState } from '../../../domain/types/order-fulfillment.types';
 import {
   netSalesLineNetAmountSql,
   netSalesOrderNetEligibleSql,
 } from '../../../domain/types/net-sales-tax-rate.types';
+import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
+import {
+  AuthorityAttentionCountedReasonValues,
+  buildAuthorityAttentionPayload,
+  buildAuthorityAttentionUpsertSql,
+  readAuthorityAttentionEntries,
+} from '@openlinker/core/fulfillment-authority';
+import type {
+  AuthorityAttentionOutcome,
+  AuthorityAttentionProducer,
+} from '@openlinker/core/fulfillment-authority';
 import {
   SalesDocumentAttentionReasonValues,
   isSalesDocumentGateBlockReason,
@@ -50,10 +72,42 @@ import {
 import type { PriceTaxTreatment } from '../../../domain/types/order.types';
 import type { OrderFxIntent, OrderFxStamp } from '../../../domain/types/order-fx.types';
 import type { StampedReportingCurrencyCount } from '../../../domain/types/order-fx-read.types';
+import type { OrderAmendmentChange } from '../../../domain/order-amendment-diff';
 import type {
   DailyOrderAggregateRow,
   SalesAnalyticsFilters,
 } from '../../../domain/types/order-sales-analytics.types';
+
+/**
+ * Empty defaults for the columns whose "unwritten" value is not `null`, keyed
+ * by ORM property name. Consumed by `fromRawRow`'s derived reset; every other
+ * column resets to `null`. Factories, not shared literals, so no two returned
+ * entities can alias one array.
+ */
+const EMPTY_COLUMN_DEFAULTS: Record<string, (() => unknown) | undefined> = {
+  syncStatus: () => [],
+  syncAttempts: () => [],
+};
+
+/**
+ * Every mapped column of `order_records`, by ORM property name.
+ *
+ * Read from TypeORM's decorator metadata storage rather than from the injected
+ * `Repository`'s `metadata`, so the derivation holds under a unit test's mocked
+ * repository — a reset guarantee that only works when a DataSource happens to
+ * be initialised is not a guarantee. The result is memoised: the decorators run
+ * once at module load and the answer cannot change afterwards.
+ */
+let orderRecordColumnPropertiesCache: readonly string[] | null = null;
+
+function orderRecordColumnProperties(): readonly string[] {
+  if (orderRecordColumnPropertiesCache === null) {
+    orderRecordColumnPropertiesCache = getMetadataArgsStorage()
+      .filterColumns(OrderRecordOrmEntity)
+      .map((column) => column.propertyName);
+  }
+  return orderRecordColumnPropertiesCache;
+}
 
 @Injectable()
 export class OrderRecordRepository implements OrderRecordRepositoryPort {
@@ -246,6 +300,13 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       );
     }
 
+    if (filters.lifecyclePhase) {
+      // #2309 — the derived-phase axis, deliberately ANDed with `health` rather
+      // than folded into it (ADR-059, the #2100 trap): a held order is usually
+      // also `synced`.
+      this.applyLifecyclePhaseFilter(qb, filters.lifecyclePhase);
+    }
+
     if (filters.taxRateConflict !== undefined) {
       // #2254 — its own axis, ANDed with the others exactly like
       // `salesDocumentBlocked`: "issued AND the rates disagree" is the shape
@@ -255,6 +316,33 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
           ? OrderRecordRepository.HAS_TAX_RATE_CONFLICT
           : `NOT (${OrderRecordRepository.HAS_TAX_RATE_CONFLICT})`,
       );
+    }
+
+    if (filters.omsAttention !== undefined) {
+      // #2353 - the OMS inert-state axis, ANDed with `health` exactly like
+      // `salesDocumentBlocked` and `taxRateConflict`. It is NOT the
+      // `needs_attention` health bucket: that bucket partitions the set and
+      // means a sync failure, this means OpenLinker stopped deciding something,
+      // and an order is routinely one, the other, or both.
+      qb.andWhere(
+        filters.omsAttention
+          ? OrderRecordRepository.HAS_OMS_ATTENTION
+          : `NOT (${OrderRecordRepository.HAS_OMS_ATTENTION})`,
+      );
+    }
+
+    if (filters.activeHoldReason) {
+      // #2342 — the hold REASON axis, ANDed with the others. It reads the same
+      // #2340 projection column the lifecycle `CASE`'s `held` arm tests, which
+      // is what keeps `?phase=held` and `?hold=<reason>` consistent with each
+      // other: the second is a strict subset of the first, by construction.
+      //
+      // A bound parameter, never interpolated: the value reaches here from a
+      // request DTO, unlike the phase literals the `CASE` composes, which are
+      // compile-time constants off a frozen vocabulary.
+      qb.andWhere('rec."activeHoldReason" = :activeHoldReason', {
+        activeHoldReason: filters.activeHoldReason,
+      });
     }
 
     this.applySort(qb, filters.sort, filters.dir);
@@ -323,6 +411,15 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       // #2254 — the oldest still-held order, so the chip label can carry an age
       // rather than a bare count. MIN over the held population only; NULL when
       // nothing is held, which the caller renders as no age clause at all.
+      // #2353 - the OMS inert-state count, folded here so the chip's number is
+      // scoped by the same filters as the rows beneath it. `countOrdersWithOmsAttention`
+      // is retained beside it and is NOT redundant: it answers the unscoped
+      // question the who-decides page asks, which has no filter scope to pass.
+      // Both read HAS_OMS_ATTENTION, so there is one predicate and no drift.
+      .addSelect(
+        `COUNT(*) FILTER (WHERE ${OrderRecordRepository.HAS_OMS_ATTENTION})`,
+        'oms_attention'
+      )
       .addSelect(
         `MIN(rec."salesDocumentBlockedAt") FILTER (WHERE ${OrderRecordRepository.IS_SALES_DOCUMENT_BLOCKED})`,
         'sales_document_blocked_oldest_at'
@@ -336,20 +433,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         'sales_document_issued_on_request'
       );
 
-    if (filters.sourceConnectionId) {
-      qb.andWhere('rec.sourceConnectionId = :sourceConnectionId', {
-        sourceConnectionId: filters.sourceConnectionId,
-      });
-    }
-    if (filters.customerId) {
-      qb.andWhere('rec.customerId = :customerId', { customerId: filters.customerId });
-    }
-    if (filters.createdFrom) {
-      qb.andWhere('rec.createdAt >= :createdFrom', { createdFrom: filters.createdFrom });
-    }
-    if (filters.createdTo) {
-      qb.andWhere('rec.createdAt <= :createdTo', { createdTo: filters.createdTo });
-    }
+    OrderRecordRepository.applySummaryScope(qb, filters);
 
     const raw = await qb.getRawOne<{
       total: string;
@@ -360,6 +444,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       awaiting_dispatch: string;
       sales_document_blocked: string;
       tax_rate_conflict: string;
+      oms_attention: string;
       sales_document_blocked_oldest_at: Date | null;
       sales_document_issued_on_request: string;
     }>();
@@ -373,6 +458,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       awaitingDispatch: Number(raw?.awaiting_dispatch ?? 0),
       salesDocumentBlocked: Number(raw?.sales_document_blocked ?? 0),
       taxRateConflict: Number(raw?.tax_rate_conflict ?? 0),
+      omsAttention: Number(raw?.oms_attention ?? 0),
       salesDocumentBlockedOldestAt: raw?.sales_document_blocked_oldest_at ?? null,
       salesDocumentIssuedOnRequest: Number(raw?.sales_document_issued_on_request ?? 0),
     };
@@ -400,20 +486,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         'oldest_failed_at'
       );
 
-    if (filters.sourceConnectionId) {
-      qb.andWhere('rec.sourceConnectionId = :sourceConnectionId', {
-        sourceConnectionId: filters.sourceConnectionId,
-      });
-    }
-    if (filters.customerId) {
-      qb.andWhere('rec.customerId = :customerId', { customerId: filters.customerId });
-    }
-    if (filters.createdFrom) {
-      qb.andWhere('rec.createdAt >= :createdFrom', { createdFrom: filters.createdFrom });
-    }
-    if (filters.createdTo) {
-      qb.andWhere('rec.createdAt <= :createdTo', { createdTo: filters.createdTo });
-    }
+    OrderRecordRepository.applySummaryScope(qb, filters);
 
     const raw = await qb.getRawOne<{
       count: string;
@@ -756,6 +829,45 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   ).join(', ')})`;
 
   /**
+   * Does this order carry at least one COUNTED OMS inert state (#2352)?
+   *
+   * Like {@link IS_SALES_DOCUMENT_BLOCKED} this is an explicit list of
+   * attention-worthy reasons rather than "the column is not empty", for the same
+   * two reasons: a routine state must never be counted, and a reason string
+   * written by a newer release and then rolled back must not contribute a number
+   * with no reachable explanation (`readAuthorityAttentionEntries` already drops
+   * such an entry on read, so `jsonb_array_length(…) > 0` would count rows that
+   * then render no badge anywhere — spec §4.4 S2-5).
+   *
+   * Built from `AuthorityAttentionCountedReasonValues` at class-definition time,
+   * so a state added to the union is attention-worthy by default and opting one
+   * out is a deliberate edit in the leaf. Literal-only — the values are
+   * compile-time constants, never request data.
+   *
+   * `jsonb_path_exists` (the `HAS_TAX_RATE_CONFLICT` precedent) rather than an
+   * `IN` over an unnested column: the negation is then TOTAL by construction on
+   * a NULL column, which is the trap `IS_SALES_DOCUMENT_BLOCKED` needs its
+   * `COALESCE(…, '')` for — `jsonb_path_exists(NULL, …)` yields NULL, so the
+   * column is coalesced to an empty array before the test rather than after.
+   */
+  private static readonly HAS_OMS_ATTENTION =
+    AuthorityAttentionCountedReasonValues.length === 0
+      ? // An empty counted set means nothing is attention-worthy, so the honest
+        // predicate is `false`. Unreachable today (all eight members are
+        // `counted: true`), but interpolating an empty array yields the
+        // jsonpath `$[*].reason ? ()`, which Postgres rejects at PARSE time —
+        // taking down the orders list, the summary aggregate and
+        // `countOrdersWithOmsAttention` together. `IS_SALES_DOCUMENT_BLOCKED`
+        // already carries the `IN ()` guard for the same class of defect.
+        'false'
+      : `jsonb_path_exists(
+    COALESCE(rec."omsAttention", '[]'::jsonb),
+    '$[*].reason ? (${AuthorityAttentionCountedReasonValues.map(
+      (reason) => `@ == "${reason}"`,
+    ).join(' || ')})'
+  )`;
+
+  /**
    * Per-row earliest **failed sync attempt** timestamp, read from the
    * append-only `syncAttempts` history rather than `rec."createdAt"` (the
    * record's creation time, not a failure time) — `getFailedSyncValueSummary`'s
@@ -946,6 +1058,40 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * "cleared once shipped" guard — the SQL twin of `deriveSlaState`; keep both
    * in lockstep. NULL deadlines / shipped orders are `none`.
    */
+  /**
+   * One page of T4 `order.dispatch_deadline_near` candidates (#2360).
+   *
+   * "Still needs dispatching, and its deadline falls inside the window."
+   * **Reuses `NOT_SHIPPED`** rather than spelling the predicate again: a second
+   * definition of "still needs dispatching" would drift from the SLA buckets,
+   * and the operator's SLA badge and their automation would then disagree about
+   * the same order.
+   *
+   * Deliberately NOT filtered on `automation_trigger_firings`: that is an
+   * `automation` table (a cross-context read-model join needing ADR-036
+   * treatment), and the firing key is per RULE, a grain this query cannot see.
+   * Dedup is the firing claim, so an already-fired pair is simply re-read and
+   * loses its claim. Ordered by `dispatchByAt` so paging is stable.
+   */
+  async findDispatchDeadlineCandidates(
+    connectionId: string,
+    input: { windowEnd: Date; now: Date; limit: number; offset: number }
+  ): Promise<OrderRecord[]> {
+    const rows = await this.repository
+      .createQueryBuilder('rec')
+      .where('rec."sourceConnectionId" = :connectionId', { connectionId })
+      .andWhere(OrderRecordRepository.NOT_SHIPPED)
+      .andWhere('rec."dispatchByAt" IS NOT NULL')
+      .andWhere('rec."dispatchByAt" > :now', { now: input.now })
+      .andWhere('rec."dispatchByAt" <= :windowEnd', { windowEnd: input.windowEnd })
+      .orderBy('rec."dispatchByAt"', 'ASC')
+      .addOrderBy('rec."internalOrderId"', 'ASC')
+      .skip(input.offset)
+      .take(input.limit)
+      .getMany();
+    return rows.map((row) => this.toDomain(row));
+  }
+
   private applySlaFilter(qb: SelectQueryBuilder<OrderRecordOrmEntity>, slaState: SlaState): void {
     const now = new Date();
     const riskCutoff = new Date(now.getTime() + SLA_AT_RISK_WINDOW_MS);
@@ -1007,19 +1153,13 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       )
       .setParameters({ slaNow: now, slaCutoff: riskCutoff });
 
-    if (filters.sourceConnectionId) {
-      qb.andWhere('rec.sourceConnectionId = :sourceConnectionId', {
-        sourceConnectionId: filters.sourceConnectionId,
-      });
-    }
-    if (filters.customerId) {
-      qb.andWhere('rec.customerId = :customerId', { customerId: filters.customerId });
-    }
-    if (filters.createdFrom) {
-      qb.andWhere('rec.createdAt >= :createdFrom', { createdFrom: filters.createdFrom });
-    }
-    if (filters.createdTo) {
-      qb.andWhere('rec.createdAt <= :createdTo', { createdTo: filters.createdTo });
+    OrderRecordRepository.applySummaryScope(qb, filters);
+    if (filters.cancelled !== undefined) {
+      // #2306 — the summary twin of the `findMany` clause above; the two MUST stay
+      // in lockstep, or the dispatch-risk page's bucket counts stop agreeing with
+      // the rows it lists. A cancelled order that never shipped passes NOT_SHIPPED,
+      // so without this scope its past deadline is counted `overdue`.
+      qb.andWhere(filters.cancelled ? 'rec.cancelledAt IS NOT NULL' : 'rec.cancelledAt IS NULL');
     }
 
     const raw = await qb.getRawOne<{
@@ -1036,6 +1176,210 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       atRisk: Number(raw?.at_risk ?? 0),
       overdue: Number(raw?.overdue ?? 0),
       none: Number(raw?.none ?? 0),
+    };
+  }
+
+  /**
+   * Fulfillment rollup with the documented `NULL ≡ 'not-shipped'` rule applied
+   * ONCE (#2309) — the SQL counterpart of the single normalisation at the top of
+   * `deriveOrderLifecyclePhase`, so no arm of the `CASE` below re-tests for null.
+   *
+   * Note the deliberate idiom divergence from `NOT_SHIPPED` above, which spells
+   * the same rule as an explicit `IS NULL OR ...`: that fragment is a boolean
+   * PREDICATE, this one is a VALUE the `CASE` arms compare against, so folding
+   * them into one form is not possible without making one of the two clumsier.
+   */
+  private static readonly LIFECYCLE_FULFILLMENT = `COALESCE(rec."fulfillmentState", 'not-shipped')`;
+
+  /**
+   * The per-phase SQL predicates of the derived-lifecycle `CASE` (#2309,
+   * ADR-059) — the twin of `deriveOrderLifecyclePhase`'s `if` ladder, arm for
+   * arm.
+   *
+   * **Typed `Record<OrderLifecyclePhase, string>` on purpose**: a phase added to
+   * the vocabulary is then a COMPILE error here rather than a silently missing
+   * `WHEN`, which would misfile every row that should have matched it.
+   *
+   * **Three arms are documented `FALSE` placeholders**, kept textually in
+   * precedence position rather than deleted, so the ladder reads top-to-bottom
+   * identically to the TS file and #2311's mirror-check script can diff the two.
+   * `FALSE` is the only honest twin while the facts they test have no persisted
+   * source: writing anything else would claim a state OL does not record.
+   */
+  private static readonly LIFECYCLE_PHASE_PREDICATES: Record<OrderLifecyclePhase, string> = {
+    // 1. A cancel wins over everything, incl. a dispatched or delivered shipment.
+    cancelled: `rec."cancelledAt" IS NOT NULL`,
+    // 2. Posture B — no persisted source until Wave 4 (`authority` lives on
+    //    `Connection.config`, not on `order_records`, so it is not even joinable
+    //    here). NOTE FOR #2311: this is NOT a single-phase equivalence in TS —
+    //    the corresponding arm is a declared-phase PASSTHROUGH that can return
+    //    ANY phase in the vocabulary (`vendorDeclaredPhase ?? 'vendor_authoritative'`).
+    //    A mirror check must therefore not read `FALSE` as "this arm means
+    //    `vendor_authoritative`"; it means "unreachable until Wave 4".
+    vendor_authoritative: 'FALSE',
+    // 3-5. Observed fulfilment outcomes, in rollup precedence. The rollup has no
+    //      `in-transit` value: `dispatched` is what derives to `in_transit`.
+    delivered: `${OrderRecordRepository.LIFECYCLE_FULFILLMENT} = 'delivered'`,
+    in_transit: `${OrderRecordRepository.LIFECYCLE_FULFILLMENT} = 'dispatched'`,
+    fulfillment_failed: `${OrderRecordRepository.LIFECYCLE_FULFILLMENT} = 'failed'`,
+    // 6. A hold is a DECISION. Reads the #2340 projection, never `order_holds`
+    //    directly: this `CASE` backs the phase-summary buckets and `?phase=`,
+    //    and a correlated join per bucket over an already non-sargable
+    //    expression is not a cost the list can carry. The column is a cache and
+    //    `orders.holds.reconcile` repairs it; the hold GATES still read the
+    //    table. Note this arm is deliberately WIDER than the TS ladder's, which
+    //    coerces via `isHoldReason` - an unrecognised persisted value derives
+    //    `ready` there and `held` here. Unreachable while `OrderHoldService` is
+    //    the only writer, and the reconcile clears such a value.
+    held: `rec."activeHoldReason" IS NOT NULL`,
+    // 7. An OL-authored intention in flight; no persisted source until Wave 2
+    //    widens `order_changes.kind`.
+    amending: 'FALSE',
+    // 8. OL's own ingest incompleteness.
+    blocked: `rec."recordStatus" IN ('awaiting_mapping','source_deleted')`,
+    // 9. Residual — always matches, which is what makes the `CASE` total.
+    ready: 'TRUE',
+  };
+
+  /**
+   * The one derived-phase expression (#2309). Built by ITERATING
+   * `OrderLifecyclePhaseValues`, which is declared in precedence order, so the
+   * precedence is **imported here, never restated** — reordering the vocabulary
+   * propagates to this `CASE` for free, the same property the pure derivation
+   * holds.
+   *
+   * Every phase literal is a compile-time constant off that frozen vocabulary
+   * and never request data (same posture as `IS_SALES_DOCUMENT_BLOCKED`), so the
+   * interpolation carries no injection surface. The trailing `ELSE` is
+   * unreachable given the `ready: 'TRUE'` arm and exists only so the expression
+   * can never evaluate to NULL.
+   */
+  private static readonly LIFECYCLE_PHASE_EXPR = `CASE ${OrderLifecyclePhaseValues.map(
+    (phase) => `WHEN ${OrderRecordRepository.LIFECYCLE_PHASE_PREDICATES[phase]} THEN '${phase}'`
+  ).join(' ')} ELSE 'ready' END`;
+
+  /**
+   * Narrow a `findMany` query to a single derived lifecycle phase (#2309).
+   *
+   * Tests the SAME single expression the phase summary buckets test — so no
+   * per-arm predicate can drift from its own count, unlike the hand-composed
+   * health pair. Parameterised on the requested phase.
+   *
+   * Clock-free by ADR-059, so unlike `applySlaFilter` this can never disagree
+   * with the row's own `lifecyclePhase` by milliseconds.
+   *
+   * **Cost, recorded as known rather than discovered (#2441 review S-2):** the
+   * predicate is a `CASE` over four columns, so it is NON-SARGABLE — no index
+   * can serve it — and `findMany` ends in `getManyAndCount()`, which evaluates
+   * it twice per request (once for the page, once for the count). This matches
+   * the `IS_SALES_DOCUMENT_BLOCKED` precedent above, so it is consistent rather
+   * than novel. The escape hatch, if `?phase=` ever becomes a default chip on
+   * `/orders` rather than an opt-in one, is an expression index on this same
+   * `LIFECYCLE_PHASE_EXPR` — which is available precisely because the filter and
+   * the summary buckets test ONE expression rather than per-arm predicates.
+   */
+  /**
+   * The three scope arms every summary reader shares (#2441 review S-3).
+   *
+   * `countByHealth`, `countFailedSyncValue`, `countBySla` and
+   * `countByLifecyclePhase` each hand-copied this identical block, which
+   * `countByLifecyclePhase`'s own docblock flagged as a drift hazard — a fifth
+   * filter added to `OrderHealthSummaryFilters` had to be remembered in four
+   * places, and being remembered in three of them is the silent failure.
+   *
+   * **`cancelled` is deliberately NOT here.** It is the one arm the four readers
+   * genuinely disagree about — `countBySla` honours it (#2306), the other three
+   * ignore it, each for its own documented reason — so it stays an explicit
+   * statement at the call site that wants it. Folding it in would either impose
+   * one reader's stance on all four or need a flag, and a flag is how the
+   * disagreement stops being visible. This helper carries only what is
+   * genuinely common; the asymmetry stays where a reader can see it.
+   */
+  private static applySummaryScope(
+    qb: SelectQueryBuilder<OrderRecordOrmEntity>,
+    filters: OrderHealthSummaryFilters
+  ): void {
+    if (filters.sourceConnectionId) {
+      qb.andWhere('rec.sourceConnectionId = :sourceConnectionId', {
+        sourceConnectionId: filters.sourceConnectionId,
+      });
+    }
+    if (filters.customerId) {
+      qb.andWhere('rec.customerId = :customerId', { customerId: filters.customerId });
+    }
+    if (filters.createdFrom) {
+      qb.andWhere('rec.createdAt >= :createdFrom', { createdFrom: filters.createdFrom });
+    }
+    if (filters.createdTo) {
+      qb.andWhere('rec.createdAt <= :createdTo', { createdTo: filters.createdTo });
+    }
+  }
+
+  private applyLifecyclePhaseFilter(
+    qb: SelectQueryBuilder<OrderRecordOrmEntity>,
+    lifecyclePhase: OrderLifecyclePhase
+  ): void {
+    qb.andWhere(`${OrderRecordRepository.LIFECYCLE_PHASE_EXPR} = :lifecyclePhase`, {
+      lifecyclePhase,
+    });
+  }
+
+  /**
+   * Derived lifecycle-phase count summary (#2309, ADR-059) — the lifecycle twin
+   * of `countByHealth` / `countBySla`.
+   *
+   * Every bucket tests the SAME `LIFECYCLE_PHASE_EXPR` for equality with a
+   * different phase, so the partition invariant (`total` = Σ buckets) holds by
+   * construction rather than by review, and the chip counts always match the
+   * rows `?phase=` returns.
+   *
+   * **`filters.cancelled` is deliberately IGNORED**, mirroring `countByHealth`'s
+   * stance (`countBySla` is the one honouring it, #2306) and for a stronger
+   * reason of its own: cancellation is this partition's TOP arm, so scoping by it
+   * would re-scope the very axis the partition expresses — `cancelled: false`
+   * would report a `cancelled` bucket of 0 while still labelling it a count of
+   * cancellations. The source/customer/date arms it DOES honour now come from
+   * the shared `applySummaryScope` (#2441 review S-3), so a filter added to
+   * `OrderHealthSummaryFilters` reaches all four summary readers at once
+   * instead of needing to be remembered in four places.
+   *
+   * **Cost, recorded as known rather than discovered (#2441 review S-1):**
+   * Postgres does not CSE the repeated `CASE` across the nine `FILTER` clauses,
+   * so this evaluates the 9-arm expression up to nine times per scanned row. A
+   * `SELECT <expr> AS phase … GROUP BY 1` would evaluate it once. It is kept in
+   * the `FILTER` shape deliberately: it is the shape `countByHealth` and
+   * `countBySla` both use, and it returns ONE row whose `total` and buckets are
+   * computed in the same pass — which is what makes `total` = Σ buckets true by
+   * construction rather than by reassembly in application code. Revisit if this
+   * summary ever shows up in profiling; the rewrite is local to this method.
+   */
+  async countByLifecyclePhase(
+    filters: OrderHealthSummaryFilters
+  ): Promise<OrderLifecyclePhaseSummary> {
+    const qb = this.repository.createQueryBuilder('rec').select('COUNT(*)', 'total');
+    for (const phase of OrderLifecyclePhaseValues) {
+      qb.addSelect(
+        `COUNT(*) FILTER (WHERE ${OrderRecordRepository.LIFECYCLE_PHASE_EXPR} = '${phase}')`,
+        phase
+      );
+    }
+
+    OrderRecordRepository.applySummaryScope(qb, filters);
+
+    const raw = await qb.getRawOne<Record<string, string>>();
+    const count = (key: string): number => Number(raw?.[key] ?? 0);
+
+    return {
+      total: count('total'),
+      cancelled: count('cancelled'),
+      vendorAuthoritative: count('vendor_authoritative'),
+      delivered: count('delivered'),
+      inTransit: count('in_transit'),
+      fulfillmentFailed: count('fulfillment_failed'),
+      held: count('held'),
+      amending: count('amending'),
+      blocked: count('blocked'),
+      ready: count('ready'),
     };
   }
 
@@ -1151,6 +1495,98 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   }
 
   /**
+   * Persist why the fulfilment intercept HELD this order (#2396), or clear it.
+   *
+   * Modelled on {@link updateSalesDocumentBlock}, and last-write-wins for the
+   * same reason: the intercept re-decides on every transition, so the NEWEST
+   * answer is the truthful one and an older reason must not survive it.
+   *
+   * The no-op guard lives HERE, in the `WHERE` clause, rather than in the
+   * caller. `IS DISTINCT FROM` is NULL-safe, so it is exact for the clear case
+   * too, and it keeps the `@UpdateDateColumn` bump off the overwhelmingly
+   * common `null -> null` path — which is EVERY ingestion on every install
+   * today, since no router is wired. `updatedAt` is a live filter axis
+   * (`FulfillmentStatusSyncService` scans `updatedSince`), so bumping it on
+   * every order for a column that did not change would be a real cost.
+   *
+   * No-op (no throw) when the order row doesn't exist, mirroring
+   * {@link updateFulfillmentState}'s residual-race tolerance.
+   */
+  async updateFulfillmentBlock(
+    internalOrderId: string,
+    block: FulfillmentBlock | null
+  ): Promise<void> {
+    await this.repository.query(
+      `UPDATE "order_records"
+          SET "fulfillmentBlockReason" = $1,
+              "fulfillmentBlockDetail" = $2,
+              "updatedAt" = now()
+        WHERE "internalOrderId" = $3
+          AND ("fulfillmentBlockReason" IS DISTINCT FROM $1
+            OR "fulfillmentBlockDetail" IS DISTINCT FROM $2)`,
+      [block?.reason ?? null, block?.detail ?? null, internalOrderId]
+    );
+  }
+
+  /**
+   * How many orders carry at least one COUNTED OMS inert state (#2352)?
+   *
+   * The `Needs attention (N)` count's order half. Deliberately a COUNT of ORDERS
+   * rather than of entries: the surface renders one row per affected order, and
+   * an order carrying two states is one thing for the operator to look at, not two.
+   *
+   * Unrecognised reasons are excluded by {@link HAS_OMS_ATTENTION}'s explicit
+   * list, so a value from a newer release that was then rolled back cannot become
+   * a red number with no badge anywhere to explain it (spec §4.4 S2-5).
+   */
+  async countOrdersWithOmsAttention(): Promise<number> {
+    const rows = (await this.repository.query(
+      `SELECT COUNT(*)::int AS count
+         FROM "order_records" rec
+        WHERE ${OrderRecordRepository.HAS_OMS_ATTENTION}`
+    )) as Array<{ count: number }>;
+    return rows[0]?.count ?? 0;
+  }
+
+  /**
+   * Set — or clear — ONE producer's OMS inert state (#2352).
+   *
+   * The statement itself is `buildAuthorityAttentionUpsertSql`, shared with
+   * `ReturnRepository.updateOmsAttention`: its correctness rests on four
+   * clauses — a `FOR UPDATE` read that closes the lost-update window, the
+   * producer-scoped removal and replacement, `since` carried forward, and a
+   * deterministic order that makes the no-op guard exact — and two
+   * hand-maintained copies of that is the drift hazard the repo's mirror scripts
+   * exist for. Its docblock carries the reasoning; this method owns only the
+   * outcome-to-payload mapping and the error posture.
+   */
+  async updateOmsAttention<P extends AuthorityAttentionProducer>(
+    internalOrderId: string,
+    producer: P,
+    outcome: AuthorityAttentionOutcome<P>
+  ): Promise<void> {
+    if (outcome.kind === 'indeterminate') {
+      // Leave the stored entry alone. Clearing on a transient failure would
+      // erase a true reason and replace it with silence (#2100).
+      return;
+    }
+
+    await this.repository.query(
+      buildAuthorityAttentionUpsertSql({
+        table: 'order_records',
+        idColumn: 'internalOrderId',
+        alias: 'rec',
+      }),
+      [
+        internalOrderId,
+        producer,
+        buildAuthorityAttentionPayload(producer, outcome.kind === 'blocked' ? outcome : null),
+        new Date().toISOString(),
+      ]
+    );
+  }
+
+  /**
    * Claim the first-attempt FX intent (#2124). Conditional write — `IsNull()`
    * in the WHERE is what makes this atomic under two concurrent first attempts:
    * exactly one UPDATE can affect the row, and the loser adopts the winner's
@@ -1188,6 +1624,76 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       }
     );
     return (result.affected ?? 0) > 0;
+  }
+
+  /**
+   * Mark this order packed (#2287). Conditional write in the
+   * `claimFxIntentIfAbsent` / `ShipmentRepository.claimWaybillRelay` shape:
+   * `packedAt: IsNull()` in the WHERE is what makes the first mark win, so a
+   * second POST (double-click, retry, a second operator) affects zero rows and
+   * leaves the original instant AND the original actor intact.
+   *
+   * Both columns move in the same statement deliberately. A `markCancelled`-style
+   * `COALESCE("packedAt", $1)` would keep the timestamp but still overwrite
+   * `packedByUserId` — the two are one fact and must move together.
+   */
+  async markPacked(
+    internalOrderId: string,
+    packedAt: Date,
+    packedByUserId: string
+  ): Promise<boolean> {
+    const result = await this.repository.update(
+      { internalOrderId, packedAt: IsNull() },
+      { packedAt, packedByUserId, updatedAt: new Date() }
+    );
+    return (result.affected ?? 0) > 0;
+  }
+
+  /**
+   * Clear this order's packed fact (#2287). The `Not(IsNull())` guard is the
+   * no-op idea `updateSalesDocumentBlock` puts in its WHERE: unmarking an
+   * already-unpacked order affects no row, so it neither bumps `updatedAt` nor
+   * is distinguishable from a missing row without a re-read (the service does
+   * that re-read).
+   */
+  async clearPacked(internalOrderId: string): Promise<boolean> {
+    const result = await this.repository.update(
+      { internalOrderId, packedAt: Not(IsNull()) },
+      { packedAt: null, packedByUserId: null, updatedAt: new Date() }
+    );
+    return (result.affected ?? 0) > 0;
+  }
+
+  /**
+   * Record a source-side amendment (#2283). Narrow absolute-set on the two
+   * amendment columns only, in `updateSalesDocumentBlock`'s shape: raw
+   * parameterized statement, no read-modify-write, last-write-wins.
+   *
+   * The `IS DISTINCT FROM` guard compares ONLY `lastAmendmentChanges`, never
+   * `lastAmendedAt`. Every call carries a fresh instant, so including the
+   * timestamp in the comparison would make the row always look changed and the
+   * guard would suppress nothing — the caller's `changes.length > 0` gate is the
+   * primary suppressor, and this is the second line of defence against a source
+   * that re-reports the SAME amendment on every poll (which is the steady state
+   * for as long as the amended snapshot is what we hold).
+   *
+   * `$1::jsonb` is explicit because the binder cannot infer the type of a
+   * parameter that appears only inside `IS DISTINCT FROM`.
+   */
+  async recordAmendment(
+    internalOrderId: string,
+    observedAt: Date,
+    changes: OrderAmendmentChange[]
+  ): Promise<void> {
+    await this.repository.query(
+      `UPDATE "order_records"
+          SET "lastAmendmentChanges" = $1::jsonb,
+              "lastAmendedAt" = $2,
+              "updatedAt" = now()
+        WHERE "internalOrderId" = $3
+          AND "lastAmendmentChanges" IS DISTINCT FROM $1::jsonb`,
+      [JSON.stringify(changes), observedAt, internalOrderId]
+    );
   }
 
   /**
@@ -1376,14 +1882,15 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * Full-row upsert of the ingestion-owned columns, keyed on the primary key.
    *
    * `syncStatus` / `syncAttempts` (#2140), `fulfillmentState` (#2101),
-   * `cancelledAt` (#1984), the three `salesDocument*` columns (#2100), the
-   * six FX snapshot columns (#2124), and the four analytics scalars (#1985 —
-   * `placedAt` / `currency` / `taxTreatment` / `totalAmount`) are deliberately
-   * outside the write set - see the {@link toOrm} comments. A consequence is
-   * that the returned record reports all of them as empty (`[]` / `null`)
-   * regardless of what the row holds, because none of those columns was part
-   * of the statement; callers needing their true value re-read via
-   * {@link findById}.
+   * `cancelledAt` (#1984), the three `salesDocument*` columns (#2100), the six
+   * FX snapshot columns (#2124), the two packed columns (#2287), the two
+   * amendment columns `lastAmendedAt` / `lastAmendmentChanges` (#2283) and the
+   * four analytics scalars (#1985 - `placedAt` / `currency` / `taxTreatment` /
+   * `totalAmount`) are deliberately outside the write set - see the
+   * {@link toOrm} comments. A consequence is that the returned record reports
+   * all of them as empty (`[]` / `null`) regardless of what the row holds,
+   * because none of those columns was part of the statement; callers needing
+   * their true value re-read via {@link findById}.
    *
    * This is the sole writer reached by `persistIncomingSnapshot`, which never
    * has a resolved analytics figure to offer (its `OrderRecord` carries the
@@ -1392,12 +1899,226 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * re-poll of an already-`ready` order, and leave them permanently NULL if
    * item resolution then fails, orphaning any `order_line_items` rows that
    * survive the narrower `markItemResolutionFailure` update.
+   *
+   * ## Source attribution is immutable at the write path (#2282, ADR-057)
+   *
+   * `sourceConnectionId` is INSERT-ONLY: it is absent from the `DO UPDATE` set,
+   * so the first write establishes the order's origin and no later re-ingestion
+   * can move it. `sourceEventId` follows the rule *same-source may advance,
+   * cross-source frozen*: a write arriving from the row's own source still
+   * refreshes it to the latest event id (byte-identical to the pre-#2282
+   * behaviour), while a write arriving from any other connection leaves it as
+   * committed.
+   *
+   * This is why the statement is raw SQL rather than the previous full-object
+   * `save()`. `sourceConnectionId` is `uuid NOT NULL` with no DB default, so it
+   * MUST be on the INSERT half and MUST NOT be on the UPDATE half - a shape
+   * `save()` cannot express, and one a read-before-write cannot emulate safely
+   * (see the race doctrine in {@link toOrm}). The `markCancelled` COALESCE
+   * statement is the same precedent.
+   *
+   * The caller-side ADR-017 destination-echo guard in `OrderIngestionService`
+   * stays in place as defence in depth; this makes the invariant hold for every
+   * caller of the write path, not just that one.
    */
   async upsert(orderRecord: OrderRecord): Promise<OrderRecord> {
+    // The write set is defined once, by `toOrm` - the parameter tuple below is
+    // built from it so the two cannot drift. Every column NOT named here keeps
+    // its committed value (on conflict) or its DB default (on insert):
+    // `syncStatus`, `syncAttempts` (#2140), `fulfillmentState` (#2101),
+    // `cancelledAt` (#1984), the three `salesDocument*` columns (#2100) and the
+    // six FX snapshot columns `reportingCurrency` / `reportingTotalAmount` /
+    // `exchangeRateId` / `fxRule` / `fxStampedAt` / `fxIntendedCurrency`
+    // (#2124), `packedAt` / `packedByUserId` (#2287), `lastAmendedAt` /
+    // `lastAmendmentChanges` (#2283), `salesDocumentBlockedAt` /
+    // `salesDocumentBlockReleasedAt`, `taxRateEra`, the two `fulfillmentBlock*`
+    // columns (#2396 - sole writer `updateFulfillmentBlock`; `persistOrder` runs
+    // BEFORE the intercept on every ingestion, so a round-trip would null the
+    // reason the previous transition wrote and then re-add none),
+    // `omsAttention` (#2352 -
+    // sole writer `updateOmsAttention`, whose whole contract is that it edits
+    // ONE producer's entry; a round-trip here would drop every producer's entry
+    // on every ingestion and then re-add none), and the four #1985
+    // analytics scalars (`placedAt` / `currency` / `taxTreatment` /
+    // `totalAmount`, which only `upsertWithLineItems` writes). Do not add one
+    // of them to either half of this statement - each has a narrow, atomic
+    // out-of-band writer that owns it. This list is illustrative only:
+    // `fromRawRow` DERIVES the reset from the statement's write set, so it
+    // does not need maintaining when a column is added.
     const entity = this.toOrm(orderRecord);
-    // TypeORM save() performs upsert on primary key (internalOrderId)
-    const saved = await this.repository.save(entity);
-    return this.toDomain(saved);
+    const { sql, params, writeSet } = this.buildFrozenAttributionUpsert(entity, false);
+
+    const rows = (await this.repository.query(sql, params)) as unknown;
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+      // Unreachable: `ON CONFLICT ... DO UPDATE` always produces a row.
+      throw new OrderRecordNotFoundException(orderRecord.internalOrderId);
+    }
+
+    return this.toDomain(this.fromRawRow(rows[0] as Record<string, unknown>, writeSet));
+  }
+
+  /**
+   * The single frozen-attribution upsert statement, shared by BOTH writers of
+   * `order_records` — {@link upsert} and {@link upsertWithLineItems}.
+   *
+   * There is one statement rather than two agreeing copies on purpose. The
+   * defect this closes existed precisely because a second write path (#2014's
+   * `upsertWithLineItems`, a full-object `save()`) appeared beside a guarantee
+   * (#2282 / ADR-057) that only covered the first, and re-attributed an order
+   * on re-ingestion from another connection. Duplicating the `CASE` would
+   * recreate that drift one edit later, so where the two paths' write sets
+   * differ the statement is PARAMETERISED, never forked.
+   *
+   * The invariants, identical on both paths:
+   * - `sourceConnectionId` is INSERT-ONLY (absent from the `DO UPDATE` set).
+   * - `sourceEventId` follows *same-source advances, cross-source frozen*.
+   * - `createdAt` is never updated: it records the first write.
+   *
+   * `includeReadyPathColumns` adds the columns only `upsertWithLineItems`
+   * resolves — the four #1985 analytics scalars and the #2599 `buyerTaxId`.
+   * `persistIncomingSnapshot`, which reaches `upsert`, has no figure or resolved
+   * billing address to offer yet and must not null them out. They are appended
+   * after the shared tuple so the shared placeholders — including the
+   * `$5::jsonb` cast — keep their positions.
+   */
+  private buildFrozenAttributionUpsert(
+    entity: OrderRecordOrmEntity,
+    includeReadyPathColumns: boolean
+  ): { sql: string; params: unknown[]; writeSet: ReadonlySet<string> } {
+    const insertColumns: string[] = [];
+    const insertValues: string[] = [];
+    const updateAssignments: string[] = [];
+    const params: unknown[] = [];
+    const writeSet = new Set<string>();
+
+    /**
+     * The one place a column joins the statement. Column name, value and
+     * placeholder are pushed together, so the three arrays cannot fall out of
+     * alignment — the previous hand-maintained parallel form needed three
+     * coordinated edits per column, and an off-by-one there wrote a column
+     * with the WRONG value rather than erroring.
+     *
+     * `cast` carries the `::jsonb` the snapshot column needs; `update` is the
+     * SET-half expression, `null` for a column that is INSERT-ONLY.
+     */
+    const add = (
+      column: string,
+      value: unknown,
+      options: { cast?: string; update?: string | null } = {}
+    ): void => {
+      params.push(value);
+      insertColumns.push(`"${column}"`);
+      insertValues.push(`$${params.length}${options.cast ?? ''}`);
+      writeSet.add(column);
+      const update =
+        options.update === undefined ? `"${column}" = EXCLUDED."${column}"` : options.update;
+      if (update !== null) {
+        updateAssignments.push(update);
+      }
+    };
+
+    // "internalOrderId" is the conflict target; updating it is meaningless.
+    add('internalOrderId', entity.internalOrderId, { update: null });
+    add('customerId', entity.customerId);
+    // Source attribution (#2282): "sourceConnectionId" is INSERT-ONLY.
+    add('sourceConnectionId', entity.sourceConnectionId, { update: null });
+    // "sourceEventId" advances only when the write comes from the row's own
+    // source; a cross-source write leaves it as committed.
+    add('sourceEventId', entity.sourceEventId, {
+      update: `"sourceEventId" = CASE
+           WHEN "order_records"."sourceConnectionId" = EXCLUDED."sourceConnectionId"
+             THEN EXCLUDED."sourceEventId"
+           ELSE "order_records"."sourceEventId"
+         END`,
+    });
+    // Serialized explicitly rather than relying on the driver's object
+    // handling, so the jsonb column receives a document in every case.
+    add('orderSnapshot', JSON.stringify(entity.orderSnapshot ?? {}), { cast: '::jsonb' });
+    add('recordStatus', entity.recordStatus);
+    add('mappingFailureReason', entity.mappingFailureReason);
+    add('dispatchByAt', entity.dispatchByAt);
+    // "createdAt" is deliberately NOT updated: it records the first write.
+    add('createdAt', entity.createdAt, { update: null });
+    add('updatedAt', entity.updatedAt);
+
+    if (includeReadyPathColumns) {
+      add('placedAt', entity.placedAt ?? null);
+      add('currency', entity.currency ?? null);
+      add('taxTreatment', entity.taxTreatment ?? null);
+      add('totalAmount', entity.totalAmount ?? null);
+      // #2599, and it MUST be added here rather than left to the caller's
+      // `entity.buyerTaxId = ...`: this statement enumerates its columns, so a
+      // column the caller stamps on the entity but never adds here is simply
+      // not written. It belongs to the ready path for the same reason the four
+      // scalars do — `persistIncomingSnapshot` has no resolved billing address
+      // to read a tax id off, and writing it there would NULL a value a
+      // previous ready-path write settled.
+      add('buyerTaxId', entity.buyerTaxId ?? null);
+      // #2395, added here for exactly the reason `buyerTaxId` is: this
+      // statement enumerates its own columns, so a column the caller stamps on
+      // the entity but never adds here is simply not written. Ready-path only -
+      // `persistIncomingSnapshot` has no resolved shipping address to hash, and
+      // writing it there would NULL a hash a previous ready-path write settled.
+      add('shippingAddressHash', entity.shippingAddressHash ?? null);
+    }
+
+    const sql = `INSERT INTO "order_records" (
+         ${insertColumns.join(', ')}
+       ) VALUES (${insertValues.join(', ')})
+       ON CONFLICT ("internalOrderId") DO UPDATE SET
+         ${updateAssignments.join(',\n         ')}
+       RETURNING *`;
+
+    return { sql, params, writeSet };
+  }
+
+  /**
+   * Project a `RETURNING *` row onto an {@link OrderRecordOrmEntity}, resetting
+   * every column outside the upsert's write set to its empty default.
+   *
+   * The reset is the point, not tidiness. `RETURNING *` carries the row's TRUE
+   * values for the out-of-band columns, whereas the pre-#2282 `save()` returned
+   * only what it wrote - and {@link upsert}'s contract (repeated on the port)
+   * promises callers that those columns read empty and must be re-read via
+   * {@link findById}. Passing the true values through would silently change
+   * what both `OrderRecordService` call sites return.
+   *
+   * The reset set is DERIVED, not enumerated: every mapped column of
+   * `order_records` that the statement did not write is reset. A hand-kept
+   * list is what let six columns brought forward from main
+   * (`salesDocumentBlockedAt` / `salesDocumentBlockReleasedAt`, plus
+   * `placedAt` / `currency` / `taxTreatment` / `totalAmount` on the
+   * analytics-free `upsert` path) escape the guarantee the docblock states —
+   * the same drift argument {@link buildFrozenAttributionUpsert} makes about
+   * forked statements, one layer up. Deriving it means a column added to the
+   * ORM entity is covered on the day it is added.
+   *
+   * Two standing assumptions, both asserted by the repository's unit spec: the
+ * statement quotes PROPERTY names, so this match is sound only while no column
+ * renames its database name; and the write set is the statement's own, so the
+ * two can never disagree about which columns were written.
+ *
+ * The empty default is `null` for every column except the two `jsonb`
+   * array columns whose DB default is `'[]'` (mapped in
+   * {@link EMPTY_COLUMN_DEFAULTS}); a future NOT NULL column with a scalar
+   * DB default would surface loudly at the domain mapping rather than
+   * silently reporting a true out-of-band value.
+   */
+  private fromRawRow(
+    row: Record<string, unknown>,
+    writeSet: ReadonlySet<string>
+  ): OrderRecordOrmEntity {
+    const entity = Object.assign(new OrderRecordOrmEntity(), row);
+
+    for (const property of orderRecordColumnProperties()) {
+      if (writeSet.has(property)) {
+        continue;
+      }
+      entity[property] = EMPTY_COLUMN_DEFAULTS[property]?.() ?? null;
+    }
+
+    return entity;
   }
 
   /**
@@ -1412,6 +2133,14 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * entity here, not in the shared {@link toOrm}, because `upsert()` above
    * reaches the same conversion from `persistIncomingSnapshot`, which has no
    * resolved figure to offer yet (see its comment there).
+   *
+   * The order-record half is {@link buildFrozenAttributionUpsert}, the SAME
+   * statement `upsert` runs, with the four scalars parameterised on. It used to
+   * be a full-object `manager.save()` - the exact shape #2282 abandoned - which
+   * UPDATEd `sourceConnectionId` and so let a re-ingestion from a second
+   * connection silently rewrite an order's origin, bypassing a freeze the other
+   * write path enforced. It runs on the transactional `EntityManager`, so the
+   * upsert and the line-item replacement still commit or roll back together.
    */
   async upsertWithLineItems(
     orderRecord: OrderRecord,
@@ -1427,8 +2156,22 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // which has no resolved billing address to read a tax id off, so mapping
     // the column there would NULL a value a previous ready-path write settled.
     entity.buyerTaxId = orderRecord.buyerTaxId;
+    // #2395 - stamped here, NOT in the shared `toOrm`, for the same
+    // single-writer reason (`cancelledAt` / the `salesDocument*` columns,
+    // #2100): `persistOrder` runs on EVERY ingestion, and an
+    // `awaiting_mapping` re-ingestion reaching `toOrm` would write `null` over
+    // a hash a previous ready-path ingestion had settled.
+    entity.shippingAddressHash = orderRecord.shippingAddressHash;
+    const { sql, params, writeSet } = this.buildFrozenAttributionUpsert(entity, true);
     const savedRecord = await this.dataSource.transaction(async (manager: EntityManager) => {
-      const saved = await manager.save(OrderRecordOrmEntity, entity);
+      // Same statement as `upsert`, one parameter apart (#2282): a full-object
+      // `save()` here UPDATEd `sourceConnectionId` and re-attributed the order.
+      const rows = (await manager.query(sql, params)) as unknown;
+      if (!Array.isArray(rows) || rows.length === 0) {
+        // Unreachable: `ON CONFLICT ... DO UPDATE` always produces a row.
+        throw new OrderRecordNotFoundException(orderRecord.internalOrderId);
+      }
+      const saved = this.fromRawRow(rows[0] as Record<string, unknown>, writeSet);
       await manager.delete(OrderLineItemOrmEntity, { orderRecordId: orderRecord.internalOrderId });
       if (lineItems.length > 0) {
         await manager.save(
@@ -1598,6 +2341,14 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       entity.fxRule ?? null,
       entity.fxStampedAt ?? null,
       entity.fxIntendedCurrency ?? null,
+      entity.packedAt ?? null,
+      entity.packedByUserId ?? null,
+      entity.lastAmendedAt ?? null,
+      // The jsonb column is written only by `recordAmendment`, which always
+      // stores an array; `?? null` covers the never-amended row and a hand-edited
+      // value is passed through rather than coerced - the FE renders what it
+      // recognises and a change kind from a newer release must not vanish.
+      entity.lastAmendmentChanges ?? null,
       entity.salesDocumentBlockedAt ?? null,
       entity.salesDocumentBlockReleasedAt ?? null,
       // Coerced through the guard rather than cast, for the same reason the two
@@ -1605,7 +2356,17 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       // this build does not recognise must read as "no era" - i.e. the tax-rate
       // guard applies - rather than silently exempting the order from it.
       isTaxRateEra(entity.taxRateEra) ? entity.taxRateEra : null,
-      entity.buyerTaxId ?? null
+      // #2340 - coerced, never defaulted: an unrecognised persisted reason must
+      // read as "not a hold reason" rather than becoming `operator`.
+      isHoldReason(entity.activeHoldReason) ? entity.activeHoldReason : null,
+      // Coerced at the mapping boundary rather than at every consumer, so an
+      // entry written by a newer release and then rolled back is ABSENT from
+      // the domain record instead of present-and-unrenderable. That is spec
+      // §4.4 S2-5 ("an unrecognised state degrades safely") held once, and it
+      // is the same call the two reason guards above make.
+      readAuthorityAttentionEntries(entity.omsAttention),
+      entity.buyerTaxId ?? null,
+      entity.shippingAddressHash ?? null
     );
   }
 
@@ -1620,7 +2381,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * property unset makes TypeORM omit the column from the generated statement
    * entirely, so the row's committed value survives untouched.
    *
-   * This is not optional tidiness. `upsert()` is a full-object `save()` with no
+   * This is not optional tidiness. `upsert()` is a single statement with no
    * per-order lock around it (webhook + reconciliation poll legitimately race
    * for the same order, per `docs/architecture-overview.md` § "Webhook =
    * trigger, poll = reconciliation backstop"), so mapping any of them lets the
@@ -1648,10 +2409,39 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    *   ingestion, so round-tripping them here would null the columns and then
    *   immediately re-set them - a visible flicker for any concurrent read, and
    *   a stomp against a reason a peer transition just wrote.
+   * - `omsAttention` (#2352) - sole writer `updateOmsAttention`. It carries the
+   *   sharpest version of the same hazard: the column is an ARRAY shared by
+   *   three unrelated producers, and its writer's entire contract is that it
+   *   edits exactly ONE producer's entry. Round-tripping it here would drop
+   *   every producer's entry on every ingestion and re-add none of them, so a
+   *   reservation shortfall would silently disappear the next time the order
+   *   was re-polled - and nothing would ever put it back, because the ledger
+   *   only writes when its own answer CHANGES.
    * - The six FX snapshot columns (#2124) - sole writers `claimFxIntentIfAbsent`
    *   + `stampFxIfAbsent` (both guarded, both single-statement). Mapping them
    *   here would let a re-poll of an already-stamped order overwrite a
    *   REPORTED FINANCIAL FIGURE with the ingestion path's in-memory `null`.
+   * - `packedAt` / `packedByUserId` (#2287) - sole writers {@link markPacked} +
+   *   {@link clearPacked} (both guarded, both single-statement). No order source
+   *   reports whether an operator packed a box, so the ingestion path's value is
+   *   always `null`; mapping them here would silently un-pack an order on every
+   *   re-poll, and the operator would have no way to tell the un-pack from a
+   *   colleague's deliberate one.
+   *
+   * - `activeHoldReason` (#2340) - sole writer
+   *   `OrderHoldProjectionRepository.setActiveHoldReason`, reached from
+   *   `OrderHoldService.place`/`.release` and the `orders.holds.reconcile`
+   *   repair. Same shared reason, with the `salesDocument*` sharpening: an
+   *   ingestion carries no hold knowledge at all, so round-tripping it would
+   *   null a peer's reason on every re-poll and leave the order reading `ready`
+   *   while a hold is open. **It is excluded from `upsert()`'s raw column tuple
+   *   too** - the `toOrm` exclusion alone is only half the job there.
+   * - `lastAmendedAt` / `lastAmendmentChanges` (#2283) - sole writer
+   *   {@link recordAmendment}. The sharpest case of the shared reason: the write
+   *   is triggered BY an ingestion, from a diff taken against the snapshot this
+   *   very upsert is about to overwrite, so mapping them here would have the
+   *   detecting re-poll erase its own finding. No source payload carries them
+   *   either - they are OpenLinker's observation, not the source's report.
    * - The four analytics scalars (#1985) - `placedAt` / `currency` /
    *   `taxTreatment` / `totalAmount` - are mapped by {@link upsertWithLineItems}
    *   directly, NOT here, because this shared conversion also backs
@@ -1660,6 +2450,14 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    *   already-`ready` order's analytics figures on every re-poll, and leave
    *   them permanently NULL once item resolution starts failing (see
    *   `upsert()`'s own comment).
+   *
+   * ## The insert-only column
+   *
+   * `sourceConnectionId` IS assigned here, but it is insert-only at the
+   * statement level (#2282): {@link upsert} places it on the INSERT half and
+   * omits it from `DO UPDATE`. It cannot simply be left unset like the columns
+   * above, because it is `uuid NOT NULL` with no DB default and so must be
+   * present on a first write.
    *
    * Before adding an assignment here, ask which out-of-band writer owns that
    * column: #2101 excluded only `fulfillmentState` and left the two columns
