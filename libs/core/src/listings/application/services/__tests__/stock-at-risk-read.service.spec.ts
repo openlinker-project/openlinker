@@ -39,6 +39,7 @@ describe('StockAtRiskReadService', () => {
     inventoryQueryService = {
       listInventoryItems: jest.fn(),
       getAvailabilityByVariantIds: jest.fn().mockResolvedValue([]),
+      findAvailabilityByVariantIds: jest.fn().mockResolvedValue([]),
       getProductStockAggregates: jest.fn(),
     };
     service = new StockAtRiskReadService(

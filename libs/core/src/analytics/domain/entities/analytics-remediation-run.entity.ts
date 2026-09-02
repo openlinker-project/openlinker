@@ -19,7 +19,7 @@
  *
  * @module libs/core/src/analytics/domain/entities
  */
-import type { CoverageResolutionStatus } from '@openlinker/core/orders';
+import type { CoverageResolutionStatus } from '@openlinker/core/orders/types';
 
 export class AnalyticsRemediationRun {
   constructor(

@@ -77,7 +77,7 @@ import {
   deriveStockStatus,
   STOCK_STATUS_BADGE_TONE,
   STOCK_STATUS_LABEL,
-} from './product-stock-status';
+} from '../../features/products';
 import { deriveProductStaleness } from '../../features/products/lib/product-staleness';
 import { ListingsCoveragePills } from './listings-coverage-pills';
 import { ProductRowDetail } from './product-row-detail';

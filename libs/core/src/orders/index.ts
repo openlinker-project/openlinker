@@ -177,7 +177,9 @@ export type {
 } from './domain/types/coverage-detection.types';
 
 // Top products analytics (#1988) — response shapes for
-// IOrderRecordService.getTopProducts.
+// IOrderRecordService.getTopProducts. VariantRankingRow/VariantChannelBreakdownRow/
+// VariantSalesView/VariantSalesResult (#2765) are the per-product variant-sales
+// drill-down's shapes, for IOrderRecordService.getTopProductVariantSales.
 export { TopProductSortByValues } from './domain/types/top-products.types';
 export type {
   TopProductSortBy,
@@ -185,6 +187,10 @@ export type {
   TopProductView,
   TopProductsResult,
   ProductChannelBreakdownRow,
+  VariantRankingRow,
+  VariantChannelBreakdownRow,
+  VariantSalesView,
+  VariantSalesResult,
 } from './domain/types/top-products.types';
 
 // Refund record capture (#2036).
@@ -195,14 +201,13 @@ export {
   CreateRefundRecordInput,
 } from './domain/types/refund-record.types';
 
-// Analytics display-currency conversion read model (#2458, ADR-064).
+// Analytics display-currency conversion read model (#2458, ADR-064, pending in PR #2485).
 export {
   DISPLAY_CURRENCY_RATE_BASIS_VALUES,
   MIXED_NATIVE_CURRENCIES_LABEL,
   isDisplayCurrencyRateBasis,
 } from './domain/types/display-currency.types';
 export type {
-  AppliedRate,
   DisplayCurrencyRateBasis,
   NativeCurrencyAmount,
   CurrentRateConversionInput,

@@ -8,8 +8,9 @@
  *
  * @module apps/api/src/analytics/application/services
  */
-import type { TopProductFilters } from '@openlinker/core/orders';
+import type { SalesAnalyticsFilters, TopProductFilters } from '@openlinker/core/orders';
 import type { TopProductsResponseDto } from '../../http/dto/top-products-response.dto';
+import type { TopProductVariantsResponseDto } from '../../http/dto/top-product-variants-response.dto';
 
 export const TOP_PRODUCTS_SERVICE_TOKEN = Symbol('ITopProductsService');
 
@@ -18,4 +19,15 @@ export interface ITopProductsService {
     filters: TopProductFilters,
     includeBackfilledTaxRatesInNetSales?: boolean
   ): Promise<TopProductsResponseDto>;
+
+  /**
+   * One product's sales split by variant, per channel (#2765) — the
+   * lazily-fetched drill-down behind the Top Products expand panel. See
+   * `IOrderRecordService.getTopProductVariantSales` for why this is a
+   * separate read rather than a widening of `getTopProducts`.
+   */
+  getTopProductVariantSales(
+    productId: string,
+    filters: SalesAnalyticsFilters
+  ): Promise<TopProductVariantsResponseDto>;
 }
