@@ -83,6 +83,10 @@ const VALUE_EXPORT_ALLOWED = new Map([
         '#2599 - `toSalesDocumentOrderFacts` (invoicing) value-imports it, which is the same cycle this seam breaks: the main barrel re-exports OrdersModule, whose module file value-imports @openlinker/core/invoicing.',
       ],
       ['buyerHasTaxId', '#2599 - the three-state predicate beside readBuyerTaxId, same consumer.'],
+      [
+        'CoverageResolutionStatusValues',
+        'epic #2452 - AnalyticsRemediationRunRepository.isCoverageResolutionStatus (analytics) value-imports it to type-guard a DB-read string; the main barrel re-exports OrdersModule so this seam is what keeps the analytics --> orders edge from pulling that in.',
+      ],
     ]),
   ],
 ]);

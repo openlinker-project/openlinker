@@ -71,6 +71,7 @@ describe('AnalyticsCurrencyRecalculateHandler', () => {
       getOpenRun: jest.fn(),
       markResolved: jest.fn().mockResolvedValue(true),
       markFailed: jest.fn().mockResolvedValue(true),
+      cancelOpenRun: jest.fn().mockResolvedValue(true),
     };
     restatement = {
       restatePage: jest

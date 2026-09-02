@@ -1,7 +1,7 @@
 /**
  * Display Currency Conversion Types
  *
- * Shapes for the `/analytics` display-currency read model (#2458, ADR-064).
+ * Shapes for the `/analytics` display-currency read model (#2458, ADR-064, pending in PR #2485).
  * Two conversion modes back the operator-facing display-currency picker:
  *
  *  - `current-rate`: groups the RAW native `currency`/`totalAmount` figures
@@ -16,17 +16,8 @@
  * ADR-040 stamp service, and this is a read-only display transform layered
  * on top of it, never a second writer.
  *
- * **Rate provenance (#2778).** Every converted figure carries the
- * {@link AppliedRate} that produced it, so an operator can trace "12 345 PLN"
- * back to a specific published rate rather than trusting an opaque number —
- * the same reasoning ADR-040 states for why the `exchange_rates` registry is
- * append-only. `AppliedRate` is never a statutory rate (see ADR-040 § the
- * FA(3) `KursWaluty` warning) — it is this display transform's own working,
- * nothing more.
- *
  * @module libs/core/src/orders/domain/types
  */
-import type { RateDerivationKind } from '@openlinker/core/currency';
 
 /**
  * The two display-currency conversion modes a caller can request. Kept as an
@@ -79,28 +70,6 @@ export interface NativeCurrencyAmount {
   readonly count: number;
 }
 
-/**
- * What produced one converted figure (#2778). Never a statutory rate — see
- * this file's header.
- *
- * `rate` stays a STRING end to end, matching `ExchangeRate.rate` against its
- * `numeric(18,8)` column — `Number()`-ing it here would reintroduce
- * binary-float error into the one figure whose purpose is to be auditable.
- * A caller that needs to multiply reads the rate from the
- * `StoredExchangeRate` it already has in hand before building this shape.
- */
-export interface AppliedRate {
-  readonly from: string;
-  readonly to: string;
-  readonly rate: string;
-  /** The day the SOURCE published for, ISO `YYYY-MM-DD`. */
-  readonly rateDate: string;
-  readonly source: string;
-  readonly derivation: RateDerivationKind;
-  /** NBP's own table number, e.g. `149/A/NBP/2026`; `null` for ECB. */
-  readonly sourceRef: string | null;
-}
-
 /** Input to {@link IDisplayCurrencyConversionService.convertAtCurrentRate}. */
 export interface CurrentRateConversionInput {
   readonly amounts: readonly NativeCurrencyAmount[];
@@ -123,13 +92,6 @@ export interface NativeCurrencyBreakdown {
    * contributes to {@link CurrentRateConversionResult.unresolvedNativeCurrencies}.
    */
   readonly convertedTotal: number | null;
-  /**
-   * What produced `convertedTotal` (#2778). `null` in two cases: no lookup
-   * could be resolved (`convertedTotal` is also `null` there), or `currency`
-   * already equalled the display currency — an identity, not a rate, so
-   * reporting one would assert a lookup that never happened.
-   */
-  readonly appliedRate: AppliedRate | null;
 }
 
 /**
@@ -180,11 +142,4 @@ export interface OrderDateConversionResult {
   readonly sourceCurrency: string | null;
   /** `true` only when a rate lookup was attempted and failed — never `true` merely because there was nothing to convert. */
   readonly unresolved: boolean;
-  /**
-   * What produced `convertedTotal` (#2778). `null` in three cases: nothing
-   * was stamped in range (`reportingCurrency` was `null`), the lookup failed
-   * (`unresolved: true`), or `reportingCurrency` already equalled the display
-   * currency — an identity, not a rate.
-   */
-  readonly appliedRate: AppliedRate | null;
 }
