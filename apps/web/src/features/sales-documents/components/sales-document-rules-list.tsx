@@ -23,6 +23,7 @@ import { SalesDocumentRuleComposerDialog } from './sales-document-rule-composer-
 import { describeSalesDocumentCondition } from '../lib/describe-sales-document-condition';
 import {
   countRulesUsingBuyerTaxId,
+  describeBuyerTaxIdRuleCount,
   usesBuyerTaxIdCondition,
 } from '../lib/describe-sales-document-tax-id-coverage';
 import type { SalesDocumentRule } from '../api/sales-document-rules.types';
@@ -77,7 +78,7 @@ export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps)
       </p>
 
       {taxIdRuleCount > 0 ? (
-        <Alert tone="warning" title={`${taxIdRuleCount} of these rules read the buyer's tax ID`}>
+        <Alert tone="warning" title={describeBuyerTaxIdRuleCount(taxIdRuleCount)}>
           A buyer-tax-ID condition matches only an order whose source records that fact — today
           that is PrestaShop orders only. An order from Allegro or WooCommerce carries no buyer
           tax ID at all, so a rule like this one never matches those orders, but it matches a

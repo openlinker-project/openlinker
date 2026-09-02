@@ -183,17 +183,14 @@ export function SalesDocumentsPanel(): ReactElement {
                   <td>
                     <span>{row.name}</span>
                     <br />
-                    <span className="text-muted mono-text">{row.platformType}</span>
+                    <span className="muted-text mono-text">{row.platformType}</span>
                   </td>
                   <td>
                     <StatusBadge tone={toStatusTone(row.status)} compact>
                       {row.status}
                     </StatusBadge>
                     {row.status === 'needs_reauth' ? (
-                      <>
-                        <br />
-                        <span className="muted-text">Cannot issue until reconnected</span>
-                      </>
+                      <div className="muted-text">Cannot issue until reconnected</div>
                     ) : null}
                   </td>
                   <td>
@@ -217,10 +214,7 @@ export function SalesDocumentsPanel(): ReactElement {
                       </Select>
                     </ReadOnlyLock>
                     {row.documentKind === null ? (
-                      <>
-                        <br />
-                        <span className="muted-text">Not a routing candidate</span>
-                      </>
+                      <div className="muted-text">Not a routing candidate</div>
                     ) : null}
                   </td>
                   <td>
@@ -234,7 +228,7 @@ export function SalesDocumentsPanel(): ReactElement {
                           onChange={() => handleSelectPrimary(row)}
                           aria-label={`Mark ${row.name} as the primary sales-document connection`}
                         />
-                        <span className="text-muted">{row.isPrimary ? 'Primary' : '—'}</span>
+                        <span className="muted-text">{row.isPrimary ? 'Primary' : '—'}</span>
                       </label>
                     </ReadOnlyLock>
                   </td>
