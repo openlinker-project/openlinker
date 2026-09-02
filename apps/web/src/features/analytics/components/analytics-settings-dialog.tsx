@@ -196,8 +196,8 @@ export function AnalyticsSettingsDialog({
             <span>
               <strong>Rate on order date</strong>
               <span className="analytics-settings-dialog__rate-basis-desc">
-                A stable, accounting-grade figure — depends on whether this order&rsquo;s rate has
-                already been recalculated (see below).
+                Keeps each order at its own order-date rate. Showing a different currency converts
+                that total at today&rsquo;s rate - analytics only, not a figure for tax filings.
               </span>
             </span>
           </label>
