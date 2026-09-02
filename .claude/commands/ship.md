@@ -72,15 +72,17 @@ Re-run the quality gate after any fixes.
 
 ## Phase 4 — Documentation
 
-Update documentation only where the implementation introduces a new pattern, convention, or architectural decision that is not already captured:
+Follow the **same documentation step as `/work` Phase 4.5** - do not use a thinner standard here (an author running `/ship` must not silently escape the doc-upkeep convention that `/work` follows). In short:
 
-- If a **new port or capability abstraction** was introduced → add to `docs/architecture-overview.md`
-- If a **new naming convention or file pattern** was established → add to `docs/engineering-standards.md`
-- If a **new test pattern** was established → add to `docs/testing-guide.md`
-- If a **new migration workflow step** was needed → add to `docs/migrations.md`
-- If a **new frontend pattern** was introduced → add to `docs/frontend-architecture.md`
+- Documentation lives at three levels - check **all three**, using the canonical Reference Documentation table in `CLAUDE.md` as the routing map:
+  - **(a) Central reference docs** (`docs/`) - including `docs/capabilities.md` (authoritative full inventory for any port/capability change) alongside `docs/architecture-overview.md` (curated subset), plus `docs/engineering-standards.md`, `docs/testing-guide.md`, `docs/migrations.md`, `docs/frontend-architecture.md`, `docs/frontend-ui-style-guide.md`, and `docs/lessons.md` (empirical gotchas only - rules go in the canonical doc with a pointer left here).
+  - **(b) Package-local docs** - whatever package you touched (its `README.md`, its `docs/` folder, in-tree notes); especially integration adapters, `apps/web/`, and the root `README.md`.
+  - **(c) ADRs** - add or supersede one under `docs/architecture/adrs/` if the change embodies a decision with trade-offs; skip for local refactors and routine work.
+  - **(d) In-code comments** - fix any existing `why` comment your change made false. Do not add inline comments that explain *what* the code does.
+- **Don't over-document.** Update *intent and current state*, not a changelog of your diff, and do not add docs for things already covered.
+- Produce an explicit **doc-impact statement** - a short list of `path -> what changed`, or `None - <one-line reason>` for a genuinely doc-neutral change. This statement is carried into the PR body's `## Docs` section (below).
 
-Do not add documentation for things already covered. Do not add inline comments that explain *what* the code does.
+See `/work` Phase 4.5 for the full classifier and rationale; this phase intentionally mirrors it so the two PR-producing skills stay in sync.
 
 ---
 
@@ -107,6 +109,9 @@ Do not add documentation for things already covered. Do not add inline comments 
 
      ## Tech review
      <paste the verdict and any open SUGGESTION items here>
+
+     ## Docs
+     <the Phase 4 doc-impact statement: `path -> what changed` for each doc/level touched, or `None - <reason>`>
 
      Closes #<issue-number>
 
