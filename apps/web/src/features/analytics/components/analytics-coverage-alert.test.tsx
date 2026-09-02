@@ -10,7 +10,11 @@ describe('AnalyticsCoverageAlert (#2478)', () => {
 
     render(<AnalyticsCoverageAlert affectedCount={23} onDismiss={onDismiss} />);
 
-    expect(screen.getByText('23 orders recalculated')).toBeInTheDocument();
+    expect(
+      screen.getByText((_, element) =>
+        element?.textContent === 'Recalculation finished for the 23 orders you selected'
+      )
+    ).toBeInTheDocument();
     await user.click(screen.getByLabelText('Dismiss'));
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
@@ -18,6 +22,10 @@ describe('AnalyticsCoverageAlert (#2478)', () => {
   it('should use singular copy for a single order', () => {
     render(<AnalyticsCoverageAlert affectedCount={1} onDismiss={() => {}} />);
 
-    expect(screen.getByText('1 order recalculated')).toBeInTheDocument();
+    expect(
+      screen.getByText((_, element) =>
+        element?.textContent === 'Recalculation finished for the 1 order you selected'
+      )
+    ).toBeInTheDocument();
   });
 });

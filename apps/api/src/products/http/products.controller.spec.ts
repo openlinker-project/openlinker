@@ -87,6 +87,7 @@ function createMockInventoryQuery(): jest.Mocked<IInventoryQueryService> {
   return {
     listInventoryItems: jest.fn(),
     getAvailabilityByVariantIds: jest.fn(),
+    findAvailabilityByVariantIds: jest.fn(),
     getProductStockAggregates: jest.fn(),
   };
 }

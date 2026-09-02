@@ -19,7 +19,13 @@
  */
 import type { OrderLineItem } from '../entities/order-line-item.entity';
 import type { ConnectionUnitsSold, SalesAnalyticsFilters } from '../types/order-sales-analytics.types';
-import type { ProductChannelBreakdownRow, ProductRankingRow, TopProductFilters } from '../types/top-products.types';
+import type {
+  ProductChannelBreakdownRow,
+  ProductRankingRow,
+  TopProductFilters,
+  VariantChannelBreakdownRow,
+  VariantRankingRow,
+} from '../types/top-products.types';
 
 export interface OrderLineItemRepositoryPort {
   /**
@@ -98,6 +104,32 @@ export interface OrderLineItemRepositoryPort {
     reportingCurrency: string,
     includeBackfilledPreRollout?: boolean
   ): Promise<ProductChannelBreakdownRow[]>;
+
+  /**
+   * One product's variants ranked across every channel — the per-product
+   * variant-sales drill-down's ranking half (#2765). Same
+   * `recordStatus = 'ready' AND cancelledAt IS NULL` scope and currency-
+   * correctness rules as {@link getTopProductRanking}, grouped by
+   * `variantId` instead of `productId` and pre-filtered to one product (no
+   * pagination — a product's variant count is small and bounded by the
+   * catalog, never by order volume).
+   */
+  getVariantRanking(
+    productId: string,
+    filters: SalesAnalyticsFilters,
+    reportingCurrency: string
+  ): Promise<VariantRankingRow[]>;
+
+  /**
+   * Per-channel breakdown of one product's variants — the per-product
+   * variant-sales drill-down's channel-split half (#2765), the variant-scoped
+   * counterpart to {@link getProductChannelBreakdown}.
+   */
+  getVariantChannelBreakdown(
+    productId: string,
+    filters: SalesAnalyticsFilters,
+    reportingCurrency: string
+  ): Promise<VariantChannelBreakdownRow[]>;
 
   /**
    * A page of one connection's rate-less lines for the tax-rate backfill

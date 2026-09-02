@@ -35,6 +35,7 @@ export class ProductMatchingOrderDto {
   @ApiPropertyOptional({
     description:
       'Always `null` (#2799) — an order in this category never resolved its item reference to an internal product id in the first place, so there is no honest value to report. `product-sales-table.tsx` must not cross-reference this category. See `ProductMatchingErrorOrderRow.productId`\'s doc comment for the full rationale.',
+    type: String,
     nullable: true,
   })
   productId!: null;
@@ -42,6 +43,7 @@ export class ProductMatchingOrderDto {
   @ApiPropertyOptional({
     description:
       'Always `null` (#2799) — same reasoning as `productId` above: this category never resolves a variant reference either.',
+    type: String,
     nullable: true,
   })
   variantId!: null;

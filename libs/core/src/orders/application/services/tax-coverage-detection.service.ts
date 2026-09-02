@@ -264,20 +264,6 @@ export class TaxCoverageDetectionService implements ITaxCoverageDetectionService
     }
 
     const lines = await this.orderLineItemRepository.findByOrderId(candidate.internalOrderId);
-    const unresolvedLines = lines.filter(
-      (line) => resolveNetSalesTaxRate(line.taxRate).kind === 'unknown'
-    );
-
-    // Every line already resolves (e.g. the backfill sweep already wrote a
-    // rate to each one) — the order is fully resolvable, just blocked by
-    // the blanket pre-rollout exclusion.
-    if (unresolvedLines.length === 0) {
-      return {
-        category: 'tax-a',
-        lineRates: await this.resolveLineRates(lines, candidate.internalOrderId),
-      };
-    }
-
     const lineRates = await this.resolveLineRates(lines, candidate.internalOrderId);
 
     let anyConfirmedNoRate = false;
