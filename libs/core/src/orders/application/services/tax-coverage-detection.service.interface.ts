@@ -13,6 +13,7 @@ import type {
   PaginatedTaxCoverageOrders,
   TaxCoverageCategory,
   TaxCoverageClassification,
+  CoverageConnectionAggregateRow,
 } from '../../domain/types/coverage-detection.types';
 
 export interface ITaxCoverageDetectionService {
@@ -76,4 +77,17 @@ export interface ITaxCoverageDetectionService {
     pagination: CoverageDetectionPagination,
     includeBackfilledPreRollout?: boolean
   ): Promise<Record<TaxCoverageCategory, PaginatedTaxCoverageOrders>>;
+
+  /**
+   * All three categories' per-connection affected-order counts in ONE
+   * {@link classify} pass (#2713) — the aggregate-by-connection counterpart
+   * of {@link getAllCategoryPages}, for the identical reason: three separate
+   * calls would re-run the live-catalogue classification pass three times
+   * over the SAME candidate population.
+   */
+  getAllCategoryCountsByConnection(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string,
+    includeBackfilledPreRollout?: boolean
+  ): Promise<Record<TaxCoverageCategory, CoverageConnectionAggregateRow[]>>;
 }

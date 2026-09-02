@@ -411,6 +411,123 @@ describe('Sales analytics daily aggregates (integration, #1987)', () => {
     });
   });
 
+  describe('findCurrencyMismatchOrdersByConnection (#2713)', () => {
+    const OTHER_CONNECTION = '22222222-2222-4222-8222-222222222222';
+
+    it('groups mismatch counts across ≥2 connections, matching findCurrencyMismatchOrders.total per connection', async () => {
+      const day = new Date('2026-08-02T10:00:00.000Z');
+      // Two mismatches on the default CONNECTION.
+      await seedStampedOrder({
+        placedAt: day,
+        currency: 'PLN',
+        totalAmount: 10,
+        reportingCurrency: null,
+        reportingTotalAmount: null,
+        fxStampedAt: null,
+      });
+      await seedStampedOrder({
+        placedAt: day,
+        currency: 'USD',
+        totalAmount: 20,
+        reportingCurrency: 'EUR',
+        reportingTotalAmount: 18,
+        fxStampedAt: new Date('2026-05-01T00:00:00.000Z'),
+      });
+      // One mismatch on a SECOND, distinct connection.
+      await seedStampedOrder({
+        placedAt: day,
+        sourceConnectionId: OTHER_CONNECTION,
+        currency: 'PLN',
+        totalAmount: 30,
+        reportingCurrency: null,
+        reportingTotalAmount: null,
+        fxStampedAt: null,
+      });
+      // Current-era stamped on the second connection — must not be counted.
+      await seedStampedOrder({
+        placedAt: day,
+        sourceConnectionId: OTHER_CONNECTION,
+        currency: 'EUR',
+        totalAmount: 40,
+        reportingCurrency: 'EUR',
+        reportingTotalAmount: 40,
+        fxStampedAt: new Date('2026-08-02T00:00:00Z'),
+      });
+
+      const filters = {
+        from: new Date('2026-08-01T00:00:00.000Z'),
+        to: new Date('2026-08-08T00:00:00.000Z'),
+      };
+
+      const rows = await repository.findCurrencyMismatchOrdersByConnection(filters, 'EUR');
+
+      const byConnection = new Map(rows.map((row) => [row.sourceConnectionId, row.affectedCount]));
+      expect(byConnection.get(CONNECTION)).toBe(2);
+      expect(byConnection.get(OTHER_CONNECTION)).toBe(1);
+      expect(rows).toHaveLength(2);
+
+      // Cross-check against the paginated read's per-connection total, so a
+      // regression that lets the two predicates drift is caught here rather
+      // than only by the source-level "identical predicate" comment.
+      const [connectionPage, otherConnectionPage] = await Promise.all([
+        repository.findCurrencyMismatchOrders(
+          { ...filters, sourceConnectionId: CONNECTION },
+          'EUR',
+          { limit: 20, offset: 0 }
+        ),
+        repository.findCurrencyMismatchOrders(
+          { ...filters, sourceConnectionId: OTHER_CONNECTION },
+          'EUR',
+          { limit: 20, offset: 0 }
+        ),
+      ]);
+      expect(byConnection.get(CONNECTION)).toBe(connectionPage.total);
+      expect(byConnection.get(OTHER_CONNECTION)).toBe(otherConnectionPage.total);
+    });
+
+    it('excludes cancelled orders from the count, matching the paginated read', async () => {
+      await seedStampedOrder({
+        placedAt: new Date('2026-08-03T10:00:00.000Z'),
+        currency: 'PLN',
+        totalAmount: 10,
+        reportingCurrency: null,
+        reportingTotalAmount: null,
+        fxStampedAt: null,
+        cancelledAt: new Date('2026-08-03T12:00:00.000Z'),
+      });
+
+      const filters = {
+        from: new Date('2026-08-01T00:00:00.000Z'),
+        to: new Date('2026-08-08T00:00:00.000Z'),
+      };
+
+      const rows = await repository.findCurrencyMismatchOrdersByConnection(filters, 'EUR');
+
+      expect(rows).toEqual([]);
+    });
+
+    it('returns an empty array — a connection with zero mismatches is simply absent — when every order is current-era stamped', async () => {
+      await seedStampedOrder({
+        placedAt: new Date('2026-08-04T10:00:00.000Z'),
+        currency: 'EUR',
+        totalAmount: 50,
+        reportingCurrency: 'EUR',
+        reportingTotalAmount: 50,
+        fxStampedAt: new Date('2026-08-04T00:00:00.000Z'),
+      });
+
+      const rows = await repository.findCurrencyMismatchOrdersByConnection(
+        {
+          from: new Date('2026-08-01T00:00:00.000Z'),
+          to: new Date('2026-08-08T00:00:00.000Z'),
+        },
+        'EUR'
+      );
+
+      expect(rows).toEqual([]);
+    });
+  });
+
   describe('findProductMatchingErrorOrders (#2466)', () => {
     it(
       'reports the SAME total as countByHealth.sourceDeleted + awaitingMapping, mapping both ' +

@@ -58,6 +58,7 @@ import type {
   CoverageDetectionPagination,
   PaginatedCurrencyMismatchOrders,
   PaginatedProductMatchingErrorOrders,
+  CoverageConnectionAggregateRow,
 } from '../../domain/types/coverage-detection.types';
 
 /** One day in milliseconds, for the market-discovery window arithmetic (#2518). */
@@ -689,6 +690,23 @@ export class OrderRecordService implements IOrderRecordService {
         };
       }),
     };
+  }
+
+  /**
+   * Data Coverage `'currency'` category aggregate-by-connection (#2713) —
+   * thin pass-through to {@link
+   * OrderRecordRepositoryPort.findCurrencyMismatchOrdersByConnection}. No
+   * line-item enrichment here (unlike {@link getCurrencyMismatchOrders}) — a
+   * count carries no `productId`/`variantId` to attach.
+   */
+  async getCurrencyMismatchOrdersByConnection(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string
+  ): Promise<CoverageConnectionAggregateRow[]> {
+    return this.repository.findCurrencyMismatchOrdersByConnection(
+      filters,
+      currentReportingCurrency
+    );
   }
 
   /**
