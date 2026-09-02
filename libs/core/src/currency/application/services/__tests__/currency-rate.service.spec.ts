@@ -119,6 +119,44 @@ describe('CurrencyRateService', () => {
     });
   });
 
+  describe('resolveLikelyPublicationDay probe (#2777)', () => {
+    it('should key the pre-fetch read on the resolved publication day when the provider declares the method', async () => {
+      provider.resolveLikelyPublicationDay = jest.fn().mockReturnValue('2026-08-14');
+      repository.findByKey.mockResolvedValue(STORED);
+      const saturdayCandidate = { ...INPUT, rateDate: '2026-08-15' };
+
+      const result = await service.getRateFor(saturdayCandidate);
+
+      expect(provider.resolveLikelyPublicationDay).toHaveBeenCalledWith('2026-08-15');
+      expect(repository.findByKey).toHaveBeenCalledWith({ ...saturdayCandidate, rateDate: '2026-08-14' });
+      expect(provider.fetchRate).not.toHaveBeenCalled();
+      expect(result).toBe(STORED);
+    });
+
+    it('should key the pre-fetch read on the raw candidate when the provider declares nothing', async () => {
+      // `provider` (the beforeEach default) carries no `resolveLikelyPublicationDay`
+      // property at all — proving the probe, not the type, governs behaviour.
+      expect('resolveLikelyPublicationDay' in provider).toBe(false);
+
+      await service.getRateFor(INPUT);
+
+      expect(repository.findByKey).toHaveBeenCalledWith(INPUT);
+    });
+
+    it('should fall through to fetchRate when the resolved day still misses the cache', async () => {
+      provider.resolveLikelyPublicationDay = jest.fn().mockReturnValue('2026-08-14');
+      repository.findByKey.mockResolvedValue(null);
+      const saturdayCandidate = { ...INPUT, rateDate: '2026-08-15' };
+
+      const result = await service.getRateFor(saturdayCandidate);
+
+      expect(repository.findByKey).toHaveBeenCalledWith({ ...saturdayCandidate, rateDate: '2026-08-14' });
+      expect(provider.fetchRate).toHaveBeenCalledWith({ from: 'EUR', to: 'PLN', on: '2026-08-15' });
+      expect(repository.insertIfAbsent).toHaveBeenCalledWith(FETCHED);
+      expect(result).toBe(STORED);
+    });
+  });
+
   describe('duplicate recovery', () => {
     it('should re-select the winner rather than propagating DuplicateExchangeRateError', async () => {
       repository.insertIfAbsent.mockRejectedValue(

@@ -152,6 +152,28 @@ describe('NbpExchangeRateAdapter', () => {
     });
   });
 
+  describe('resolveLikelyPublicationDay (#2777)', () => {
+    it('should return the Friday before a Saturday candidate, with no HTTP call', () => {
+      const { fetchImpl, urls } = fakeFetch(() => ok(nbpBody(4.25, '2026-08-14')));
+      const adapter = new NbpExchangeRateAdapter({ fetchImpl });
+
+      const resolved = adapter.resolveLikelyPublicationDay('2026-08-15');
+
+      expect(resolved).toBe('2026-08-14');
+      expect(urls).toHaveLength(0);
+    });
+
+    it('should return the candidate itself for an ordinary working day', () => {
+      const { fetchImpl, urls } = fakeFetch(() => ok(nbpBody(4.25, '2026-08-13')));
+      const adapter = new NbpExchangeRateAdapter({ fetchImpl });
+
+      const resolved = adapter.resolveLikelyPublicationDay('2026-08-13');
+
+      expect(resolved).toBe('2026-08-13');
+      expect(urls).toHaveLength(0);
+    });
+  });
+
   describe('direct resolution (X -> PLN)', () => {
     it('should return the published mid verbatim at 8 decimal places', async () => {
       const { fetchImpl } = fakeFetch(() => ok(nbpBody(4.25, '2026-06-10')));
