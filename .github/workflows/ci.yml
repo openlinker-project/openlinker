@@ -311,11 +311,13 @@ jobs:
           # it, surfacing as `failed to set up container networking: network
           # <id> not found` the moment that job's first container tried to
           # attach. The network only needs to survive until its FIRST
-          # container attaches: the MySQL companion container, bounded
-          # by its own 240s (4 min) `withStartupTimeout`, not the
-          # full PS-install time. The `until=` filter gives every in-flight
-          # network a 15-minute grace window (comfortably above that 4-min
-          # bound) before it's eligible for pruning, while still reclaiming
+          # container attaches: the MySQL companion container, bounded by
+          # its own startup timeout — 240s (4 min) explicitly for
+          # PrestaShop's, ~120s (the @testcontainers/mysql default) for
+          # WooCommerce's — not the full PS-install time. The `until=`
+          # filter gives every in-flight network a 15-minute grace window
+          # (comfortably above either bound) before it's eligible for
+          # pruning, while still reclaiming
           # genuinely orphaned empty networks (left behind by a
           # SIGKILLed/cancelled run, since Ryuk is disabled here) promptly.
           docker network prune -f --filter "label=org.testcontainers=true" --filter "until=15m" || true
