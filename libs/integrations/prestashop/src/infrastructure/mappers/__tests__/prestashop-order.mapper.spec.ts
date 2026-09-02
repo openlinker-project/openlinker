@@ -122,6 +122,9 @@ describe('PrestashopOrderMapper', () => {
       expect(result.totals).not.toHaveProperty('currency');
       // Line prices (`order_details.product_price`) are net (#2440).
       expect(result.totals.taxTreatment).toBe('exclusive');
+      // `total` (`total_paid_tax_incl`) is genuinely gross, independent of the
+      // (net) line-price treatment above (#2829).
+      expect(result.totals.totalTaxTreatment).toBe('inclusive');
     });
 
     it('should parse dates correctly', () => {
