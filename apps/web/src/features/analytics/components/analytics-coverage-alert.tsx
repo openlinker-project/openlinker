@@ -18,7 +18,15 @@
 import type { ReactElement } from 'react';
 
 interface AnalyticsCoverageAlertProps {
-  /** Orders the resolved run repaired — the count it was opened with. */
+  /**
+   * `AnalyticsRemediationRunResponseDto.affectedCount` is a point-in-time
+   * figure taken when the run was opened, not a count of what it actually
+   * repaired (completion is decided by re-reading the population, not by
+   * counting down from this) — so the banner names it as the population the
+   * run was authorized against, never as a confirmed "recalculated" count
+   * (#2668 review, finding 17). A `0` here is real (the run found nothing
+   * to do at open time), not a fallback masking a missing figure.
+   */
   affectedCount: number;
   onDismiss: () => void;
 }
@@ -34,7 +42,8 @@ export function AnalyticsCoverageAlert({
       </span>
       <span className="coverage-alert__body">
         <span className="coverage-alert__title">
-          {affectedCount} order{affectedCount === 1 ? '' : 's'} recalculated
+          Recalculation finished for the {affectedCount} order{affectedCount === 1 ? '' : 's'} you
+          selected
         </span>
         <span className="coverage-alert__sub">
           The real exchange rate from each order&rsquo;s own date, saved for good. Logged in Jobs &amp;

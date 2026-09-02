@@ -30,7 +30,7 @@ import { randomUUID } from 'crypto';
 import {
   CoverageResolutionStatusValues,
   type CoverageResolutionStatus,
-} from '@openlinker/core/orders';
+} from '@openlinker/core/orders/types';
 import { AnalyticsRemediationRun } from '../../../domain/entities/analytics-remediation-run.entity';
 import { OpenRemediationRunExistsError } from '../../../domain/exceptions/open-remediation-run-exists.error';
 import type { AnalyticsRemediationRunRepositoryPort } from '../../../domain/ports/analytics-remediation-run-repository.port';

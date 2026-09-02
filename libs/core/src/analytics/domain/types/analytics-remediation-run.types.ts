@@ -23,7 +23,7 @@
  *
  * @module libs/core/src/analytics/domain/types
  */
-import type { CoverageResolutionStatus } from '@openlinker/core/orders';
+import type { CoverageResolutionStatus } from '@openlinker/core/orders/types';
 
 /**
  * Internal-id prefix for a run row (`ol_remrun_{uuid}`), following the
