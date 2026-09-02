@@ -153,6 +153,12 @@ export function SalesDocumentsPanel(): ReactElement {
         </Alert>
       ) : null}
 
+      <p className="muted-text">
+        What each connection may issue, whether it goes first, and when. Only one connection may
+        go first across ALL of them, whatever it issues — the Primary column is a single choice,
+        not one per row. A connection with nothing set here is not a routing candidate at all.
+      </p>
+
       <div className="data-table__container">
         <table className="data-table" aria-label="Sales-document routing per connection">
           <caption className="sr-only">
@@ -177,12 +183,15 @@ export function SalesDocumentsPanel(): ReactElement {
                   <td>
                     <span>{row.name}</span>
                     <br />
-                    <span className="text-muted mono-text">{row.platformType}</span>
+                    <span className="muted-text mono-text">{row.platformType}</span>
                   </td>
                   <td>
                     <StatusBadge tone={toStatusTone(row.status)} compact>
                       {row.status}
                     </StatusBadge>
+                    {row.status === 'needs_reauth' ? (
+                      <div className="muted-text">Cannot issue until reconnected</div>
+                    ) : null}
                   </td>
                   <td>
                     <StatusBadge tone="neutral" compact>
@@ -204,6 +213,9 @@ export function SalesDocumentsPanel(): ReactElement {
                         ))}
                       </Select>
                     </ReadOnlyLock>
+                    {row.documentKind === null ? (
+                      <div className="muted-text">Not a routing candidate</div>
+                    ) : null}
                   </td>
                   <td>
                     <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
@@ -216,7 +228,7 @@ export function SalesDocumentsPanel(): ReactElement {
                           onChange={() => handleSelectPrimary(row)}
                           aria-label={`Mark ${row.name} as the primary sales-document connection`}
                         />
-                        <span className="text-muted">{row.isPrimary ? 'Primary' : '—'}</span>
+                        <span className="muted-text">{row.isPrimary ? 'Primary' : '—'}</span>
                       </label>
                     </ReadOnlyLock>
                   </td>
@@ -243,9 +255,8 @@ export function SalesDocumentsPanel(): ReactElement {
         </table>
       </div>
       <p className="muted-text">
-        One radio group across ALL rows, regardless of capability — decision 3a (ADR-041) is
-        singular: invoice XOR receipt, never both. Trigger is greyed out for a non-primary row
-        since the timing choice does not matter until a connection is actually the one issuing.
+        Trigger is greyed out for a non-primary row since the timing choice does not matter until
+        a connection is actually the one issuing.
       </p>
     </div>
   );

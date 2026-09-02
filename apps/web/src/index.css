@@ -3673,6 +3673,20 @@ a.delivery-rider-banner__button:focus-visible {
   gap: var(--space-5);
 }
 
+.sales-document-country-routing-dialog__save-note {
+  margin: calc(-1 * var(--space-2)) 0 0;
+}
+
+/* Reset lives in its own zone below the tiers, never beside the footer's
+   primary "Done" action (#2549) — a destructive control next to the ordinary
+   close action reads as a choice between two equally weighted buttons. */
+.sales-document-country-routing-dialog__danger-zone {
+  display: grid;
+  gap: var(--space-2);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+
 .trigger-sync-dialog__description {
   margin: 0;
 }
