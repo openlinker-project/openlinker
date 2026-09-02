@@ -99,6 +99,18 @@ export interface CurrencyMismatchOrderRow {
   stampedCurrency: string | null;
   /** `order_records.fxStampedAt` — `null` while a stamp attempt is still deferred (or never attempted). */
   stampedAt: Date | null;
+  /**
+   * One representative line's `productId` for this order (#2799) — a
+   * cross-reference join key against `TopProductRow.productId`, so
+   * `product-sales-table.tsx` can annotate a product row under-counted by
+   * this category, mirroring what the channel table already does. This
+   * category's scope is always `recordStatus = 'ready'` (#1985), so its
+   * orders always have persisted `order_line_items` rows in practice;
+   * `null` only if an order genuinely carries no line items.
+   */
+  productId: string | null;
+  /** The representative line's `variantId`, alongside `productId`. */
+  variantId: string | null;
 }
 
 /**
@@ -256,6 +268,27 @@ export interface ProductMatchingErrorOrderRow {
   mappingFailureReason: string | null;
   /** `order_records.createdAt` — always populated, unlike `placedAt` for this category (see class doc comment). */
   createdAt: Date;
+  /**
+   * Always `null` — declared for shape parity with {@link
+   * CurrencyMismatchOrderRow} / {@link TaxCoverageOrderRow} (#2799), not
+   * because a value ever exists. A `product-matching` row is BY
+   * CONSTRUCTION an order whose item reference never resolved to an
+   * internal product id (that failed resolution is the entire reason the
+   * row exists), and #1985 only populates `order_line_items` for
+   * `recordStatus = 'ready'` records — this category's two statuses
+   * (`awaiting_mapping` / `source_deleted`) are never `'ready'`. The raw
+   * `orderSnapshot.items` this category's snapshot carries holds the
+   * SOURCE's own external item reference, never an internal `productId`,
+   * so there is no honest value to put here — approximating one (e.g. the
+   * first line's external id) would misrepresent an unresolved reference as
+   * a resolved one. `product-sales-table.tsx` must not attempt to
+   * cross-reference this category for that reason; it is excluded from
+   * `CROSS_REFERENCEABLE_CATEGORIES` for the identical reason the by-channel
+   * table already excludes it (an order that never resolved to any
+   * channel-scoped total was never counted anywhere to be silently missing
+   * from — here, never counted against any product either).
+   */
+  productId: null;
 }
 
 /**

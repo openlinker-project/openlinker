@@ -32,6 +32,7 @@ describe('AnalyticsMatchingCoverageController (#2474)', () => {
             recordStatus: 'awaiting_mapping',
             mappingFailureReason: 'no barcode match',
             createdAt: new Date('2026-08-20T00:00:00Z'),
+            productId: null,
           },
         ],
         total: 1,
@@ -52,6 +53,7 @@ describe('AnalyticsMatchingCoverageController (#2474)', () => {
         internalOrderId: 'ol_order_a',
         recordStatus: 'awaiting_mapping',
         mappingFailureReason: 'no barcode match',
+        productId: null,
       });
     });
 

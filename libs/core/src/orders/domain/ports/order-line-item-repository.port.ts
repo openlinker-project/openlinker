@@ -133,4 +133,19 @@ export interface OrderLineItemRepositoryPort {
     id: string,
     patch: { taxRate: string; taxSource: 'backfill'; taxRateReadAt: Date }
   ): Promise<void>;
+
+  /**
+   * One representative line (lowest `lineNumber`) per order, batched across
+   * every id in `orderRecordIds` in a single query (#2799) — the Data
+   * Coverage `'currency'` category drill-down's cross-reference into
+   * `TopProductRow.productId` needs *a* product per affected order, and
+   * fetching that one line per order individually (`findByOrderId` in a
+   * loop) would turn a bounded page read into an N+1. An order absent from
+   * the returned Map carries no line items at all (should not happen for a
+   * `recordStatus = 'ready'` order per #1985, but the caller must not
+   * assume presence).
+   */
+  findRepresentativeLinesByOrderIds(
+    orderRecordIds: string[]
+  ): Promise<Map<string, { productId: string; variantId: string | null }>>;
 }

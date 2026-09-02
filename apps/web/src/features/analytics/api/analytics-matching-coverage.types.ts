@@ -18,6 +18,14 @@ export interface ProductMatchingOrder {
   recordStatus: ProductMatchingRecordStatus;
   mappingFailureReason: string | null;
   createdAt: string;
+  /**
+   * Always `null` (#2799) — this category's order never resolved its item
+   * reference to an internal product id in the first place, so there is no
+   * honest value to report. `product-sales-table.tsx` must not
+   * cross-reference this category; see `CROSS_REFERENCEABLE_CATEGORIES`'
+   * doc comment.
+   */
+  productId: null;
 }
 
 export interface ProductMatchingOrdersPage {

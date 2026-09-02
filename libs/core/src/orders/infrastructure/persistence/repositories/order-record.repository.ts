@@ -638,6 +638,12 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         nativeCurrency: entity.currency,
         stampedCurrency: entity.reportingCurrency,
         stampedAt: entity.fxStampedAt,
+        // Filled in by `OrderRecordService.getCurrencyMismatchOrders`
+        // (#2799), which owns the batched `order_line_items` join — this
+        // repository has no line-item access of its own (see the service's
+        // doc comment for why the enrichment lives one layer up).
+        productId: null,
+        variantId: null,
       })),
       total,
     };
@@ -842,6 +848,9 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         recordStatus: entity.recordStatus as 'awaiting_mapping' | 'source_deleted',
         mappingFailureReason: entity.mappingFailureReason,
         createdAt: entity.createdAt,
+        // Always null — see `ProductMatchingErrorOrderRow.productId`'s doc
+        // comment (#2799) for why this category can never resolve one.
+        productId: null,
       })),
       total,
     };

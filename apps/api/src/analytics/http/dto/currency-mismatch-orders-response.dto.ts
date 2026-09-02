@@ -42,6 +42,19 @@ export class CurrencyMismatchOrderDto {
   })
   stampedAt!: Date | null;
 
+  @ApiPropertyOptional({
+    description:
+      "One representative line's product id (#2799) — the cross-reference join key against `TopProductRow.productId`. `null` only if this order genuinely carries no line items.",
+    nullable: true,
+  })
+  productId!: string | null;
+
+  @ApiPropertyOptional({
+    description: "The representative line's variant id, alongside `productId`.",
+    nullable: true,
+  })
+  variantId!: string | null;
+
   static fromRow(row: CurrencyMismatchOrderRow): CurrencyMismatchOrderDto {
     const dto = new CurrencyMismatchOrderDto();
     dto.internalOrderId = row.internalOrderId;
@@ -49,6 +62,8 @@ export class CurrencyMismatchOrderDto {
     dto.nativeCurrency = row.nativeCurrency;
     dto.stampedCurrency = row.stampedCurrency;
     dto.stampedAt = row.stampedAt;
+    dto.productId = row.productId;
+    dto.variantId = row.variantId;
     return dto;
   }
 }
