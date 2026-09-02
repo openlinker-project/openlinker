@@ -3357,7 +3357,9 @@ a.delivery-rider-banner__button:focus-visible {
   border-radius: var(--radius-sm);
 }
 
-.data-table-skeleton__bar {
+.data-table-skeleton__bar,
+.sales-document-market-row .skeleton-bar,
+.sales-document-market-section__summary-skeleton {
   display: block;
   height: 10px;
   width: 100%;
@@ -3416,7 +3418,9 @@ a.delivery-rider-banner__button:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .data-table-skeleton__bar {
+  .data-table-skeleton__bar,
+  .sales-document-market-row .skeleton-bar,
+  .sales-document-market-section__summary-skeleton {
     animation: none;
     background-image: none;
   }
@@ -19388,6 +19392,153 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   .frame-grid--2 {
     grid-template-columns: 1fr;
   }
+}
+
+/* ── Sales-document market section (#2540/#2541) ── */
+.sales-document-market-section__summary {
+  margin: 0 0 var(--space-4);
+  font-size: 0.9375rem;
+  color: var(--text-secondary);
+}
+.sales-document-market-section__summary--attention {
+  color: var(--status-warning-fg);
+}
+.sales-document-market-section__summary--all-set {
+  color: var(--status-success-fg);
+}
+
+.sales-document-market-row-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sales-document-market-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1.4fr) minmax(0, 1.6fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  min-height: 4.25rem;
+}
+.sales-document-market-row--attention {
+  border-color: var(--status-warning-border);
+  background: var(--status-warning-soft);
+}
+
+.sales-document-market-row__status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sales-document-market-row__identity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.sales-document-market-row__name {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 0.9375rem;
+}
+.sales-document-market-row__meta {
+  font-size: 0.75rem;
+}
+
+.sales-document-market-row__outcome {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.sales-document-market-row__outcome-headline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.875rem;
+  color: var(--text-primary);
+}
+.sales-document-market-row__reason {
+  font-size: 0.75rem;
+}
+
+.sales-document-market-row__action {
+  display: flex;
+  justify-content: flex-end;
+}
+
+@media (max-width: 767.98px) {
+  .sales-document-market-row {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+  .sales-document-market-row__status {
+    justify-content: flex-start;
+  }
+  .sales-document-market-row__action {
+    justify-content: stretch;
+  }
+  .sales-document-market-row__action .button {
+    width: 100%;
+  }
+}
+
+/* Loading skeleton (#2543) — sized off the real row above so arrival never
+   reflows the section. Shimmer + reduced-motion guard come from the shared
+   `data-table-skeleton__bar` primitive (extended above); only per-slot sizing
+   is page-local. */
+.sales-document-market-section__summary-skeleton {
+  width: min(32rem, 80%);
+  height: 0.9375rem;
+  margin-bottom: var(--space-4);
+  border-radius: var(--radius-sm);
+}
+
+.sales-document-market-row--skeleton {
+  background: var(--bg-surface);
+}
+
+/* Shimmer itself is the shared `data-table-skeleton__bar` primitive (extended
+   above, with its `prefers-reduced-motion` guard); only the per-slot sizing is
+   page-local. */
+.sales-document-market-row .skeleton-bar {
+  display: block;
+  border-radius: var(--radius-sm);
+}
+.sales-document-market-row .skeleton-bar--dot {
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: var(--radius-pill);
+}
+.sales-document-market-row .skeleton-bar--name {
+  width: 60%;
+  height: 0.875rem;
+}
+.sales-document-market-row .skeleton-bar--meta {
+  width: 40%;
+  height: 0.6875rem;
+  margin-top: var(--space-1);
+}
+.sales-document-market-row .skeleton-bar--outcome {
+  width: 70%;
+  height: 0.8125rem;
+}
+.sales-document-market-row .skeleton-bar--reason {
+  width: 50%;
+  height: 0.6875rem;
+  margin-top: var(--space-1);
+}
+.sales-document-market-row .skeleton-bar--action {
+  width: 6rem;
+  height: 1.75rem;
 }
 
 /* ── Sales-document country index (#2187) ── */
