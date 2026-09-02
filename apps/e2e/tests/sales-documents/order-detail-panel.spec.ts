@@ -178,12 +178,27 @@ test.describe('sales documents: order-detail panel (#2563 M10)', () => {
     await expect(slot.getByRole('button', { name: 'Register receipt' })).toHaveCount(0);
   });
 
-  test('empty — no routing decided offers both manual overrides to an admin', async ({
+  test('empty — no routing decided demotes both manual overrides behind a disclosure for an admin', async ({
     page,
   }) => {
     await gotoOrder(page, SEED_ORDER_IDS.noRouting);
     const slot = panel(page).locator('.doc-slot').filter({ hasNot: page.locator('.doc-slot--filled') });
     await expect(slot.locator('.doc-slot__kind')).toHaveText('nothing issued');
+
+    // #2807 — the manual override is demoted behind a closed-by-default
+    // disclosure — the buttons are not visible until it is opened. (This
+    // seeded order's candidate pool spans BOTH kinds — `blockCopyKind` is
+    // `'mixed'` — so `resolveSalesDocumentBlockCopy`'s client-derived
+    // ambiguity copy, which only fires for a pure-invoice pool, does not
+    // render here and there is no primary "Fix routing settings" CTA to
+    // assert against this particular fixture; that CTA is exercised by
+    // `sales-document-panel.test.tsx` at the unit level instead.)
+    const overrideSummary = page.getByText('Issue or register manually instead');
+    await expect(overrideSummary).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Issue invoice' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Register receipt' })).toHaveCount(0);
+
+    await overrideSummary.click();
     await expect(page.getByRole('button', { name: 'Issue invoice' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Register receipt' })).toBeVisible();
     await expect(
