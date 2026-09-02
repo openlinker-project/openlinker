@@ -413,14 +413,16 @@ decision 3 (#2165, epic #2162)
 
 ## An exact dependency pin whose reason lives only in a source comment will be lifted by the next upgrade PR
 
-**Symptom.** `libs/shared` pins `sanitize-html` to `2.17.5` exactly - no caret - on the library that IS the XSS boundary. A dependency-bump PR (or Dependabot) touches `package.json`, not `libs/shared/src/html/sanitize-stored-html.ts`, so the person best placed to break it never sees why it is pinned.
+**Symptom.** `libs/shared` pinned `sanitize-html` to `2.17.5` exactly - no caret - on the library that IS the XSS boundary. A dependency-bump PR (or Dependabot) touches `package.json`, not `libs/shared/src/html/sanitize-stored-html.ts`, so the person best placed to break it never saw why it was pinned.
 
-**Cause.** From `2.17.6` it depends on `htmlparser2@^12`, which is ESM-only; Jest 29 loads the repo's CJS build, so the bump turns every `libs/shared` spec red with a module-resolution error rather than a test failure - a symptom that reads like a broken test, not a deliberate constraint.
+**Cause.** From `2.17.6` it depends on `htmlparser2@^12`, which is ESM-only; Jest 29 loads the repo's CJS build, so the bump turned every `libs/shared` spec red with a module-resolution error rather than a test failure - a symptom that reads like a broken test, not a deliberate constraint.
 
-**Rule.** A pin that exists for a reason belongs in this file as well as in a header comment, and the header should cite the entry. The pin is not a preference: it is a liability, so lift it immediately if an advisory lands on `2.17.5` - re-check `pnpm audit` first, and expect to have to solve the ESM/CJS question in the same change rather than deferring it.
+**Rule.** A pin that exists for a reason belongs in this file as well as in a header comment, and the header should cite the entry. The pin is not a preference: it is a liability, so lift it immediately if an advisory lands on the pinned version - re-check `pnpm audit` first, and expect to have to solve the ESM/CJS question in the same change rather than deferring it.
 
-**Applies to**: `libs/shared/package.json`, `libs/shared/src/html/sanitize-stored-html.ts`, and any future exact pin on a security-relevant transitive.
-**Tracked**: [#2233](https://github.com/openlinker-project/openlinker/issues/2233) - the periodic `pnpm audit` re-check against `2.17.5`, so the pin is somebody's assigned item and not only a rule in this file.
+**Resolution (#2233, 2026-09-02).** `pnpm audit` found GHSA-g8qq-57p8-ggw5 (stored XSS via SVG SMIL) against every `sanitize-html` version up to and including `2.17.6`, patched in `2.17.7` - so per the rule above the pin was lifted immediately rather than left for a future PR. `2.17.7` still depends on `htmlparser2@^12` (ESM-only, and so is its whole transitive closure: `domutils`, `dom-serializer`, `domhandler`, `domelementtype`, `entities`), so the ESM/Jest question had to be solved in the same change. `libs/shared/jest.config.js` now routes `.js` files through `babel-jest` (`libs/shared/babel.config.cjs`, `@babel/preset-env` targeting `node: current`) instead of leaving them untransformed, with a `transformIgnorePatterns` override naming exactly those six packages (matched against pnpm's `.pnpm/<pkg>@<version>/...` store layout, not the naive `node_modules/(?!pkg)/` recipe, which never matches a pnpm-nested path). `sanitize-html` now carries a normal caret range (`^2.17.7`).
+
+**Applies to**: `libs/shared/package.json`, `libs/shared/jest.config.js`, `libs/shared/babel.config.cjs`, `libs/shared/src/html/sanitize-stored-html.ts`, and any future exact pin on a security-relevant transitive.
+**Tracked**: [#2233](https://github.com/openlinker-project/openlinker/issues/2233) - closed by this resolution.
 
 ## A gating primitive built for write affordances does not gate content — check which policy demo mode needs before reusing it
 

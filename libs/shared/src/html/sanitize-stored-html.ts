@@ -7,9 +7,10 @@
  * `ProductMasterPort` - and neither was sanitized before, which was harmless
  * only for as long as no frontend surface rendered a description as HTML.
  *
- * The exact version pin on `sanitize-html` is explained in `docs/lessons.md`
- * ("An exact dependency pin whose reason lives only in a source comment…") as
- * well as below - a bump PR reads the manifest, not this file.
+ * The `sanitize-html` version history and how its ESM transitive was made to
+ * run under Jest 29 is explained in `docs/lessons.md` ("An exact dependency
+ * pin whose reason lives only in a source comment…") as well as below - a
+ * bump PR reads the manifest, not this file.
  *
  * ## This is the XSS boundary, unlike `applyDescriptionFormat`
  *
@@ -33,21 +34,32 @@
  * transitive `htmlparser2` + `postcss` install for every package that depends
  * on `@openlinker/shared`; that is accepted rather than hand-rolling this.
  *
- * ## Why the version is pinned exactly
+ * ## Why the version was pinned, and why it moved (#2233)
  *
- * `sanitize-html` is pinned to `2.17.5` in `package.json`, not a caret range.
- * From `2.17.6` it depends on `htmlparser2@^12`, which is ESM-only. Node 22
- * loads that fine (`require(esm)`), so this is purely a TEST-RUNNER constraint:
- * Jest 29's CJS runtime cannot `require` it, and every suite that transitively
- * loads this module fails with "Cannot use import statement outside a module".
- * `2.17.5` resolves `htmlparser2@^10`, which ships a CommonJS build.
+ * `sanitize-html` was pinned to `2.17.5` exactly in `package.json` because,
+ * from `2.17.6`, it depends on `htmlparser2@^12`, which is ESM-only. Node 22
+ * loads that fine (`require(esm)`), so this was purely a TEST-RUNNER
+ * constraint: Jest 29's CJS runtime cannot `require` it, and every suite that
+ * transitively loads this module failed with "Cannot use import statement
+ * outside a module". `2.17.5` resolved `htmlparser2@^10`, which ships a
+ * CommonJS build.
  *
- * The pin sits on a security-relevant library, so it is a liability rather than
- * a preference: `pnpm audit` reported no advisory against `2.17.5` when it was
- * pinned, and that has to be re-checked rather than assumed. Lift it once the
- * repo can load ESM under Jest - and if an advisory lands against `2.17.5`
- * first, lift it immediately and solve the runner problem then. The periodic
- * re-check is tracked as #2233 so it is an assigned item, not a remembered one.
+ * The pin was a liability, not a preference: a stored-XSS advisory
+ * (GHSA-g8qq-57p8-ggw5, SVG SMIL URI-list scheme-policy bypass) landed
+ * against every `sanitize-html` version up to and including `2.17.6`,
+ * patched in `2.17.7`. Per the rule this file states, the pin was lifted
+ * immediately (#2233) rather than waiting for the ESM/Jest question to be
+ * solved separately. `libs/shared/jest.config.js` now runs the ESM-only
+ * closure `sanitize-html@2.17.7` pulls in (`htmlparser2`, `domutils`,
+ * `dom-serializer`, `domhandler`, `domelementtype`, `entities`) through
+ * `babel-jest` (config: `libs/shared/babel.config.cjs`) instead of ts-jest,
+ * with a `transformIgnorePatterns` override scoped to exactly those packages
+ * (matched against pnpm's `.pnpm/<pkg>@<version>/...` store layout). Every
+ * other file under `node_modules` stays untransformed as before.
+ *
+ * `sanitize-html` now carries no exact pin - a caret range is safe again.
+ * The next `pnpm audit` re-check for this boundary is whenever Dependabot (or
+ * a manual bump) next touches `sanitize-html` or its transitive closure.
  *
  * DOMPurify is the browser-side counterpart and is NOT usable here: its own
  * README states Node use requires a current jsdom and that `happy-dom` is not

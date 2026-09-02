@@ -4,8 +4,15 @@ module.exports = {
   testRegex: '.*\\.spec\\.ts$',
   testSequencer: '<rootDir>/../test/openlinker.sequencer.cjs',
   transform: {
-    '^.+\\.(t|j)s$': 'ts-jest',
+    '^.+\\.ts$': 'ts-jest',
+    '^.+\\.js$': ['babel-jest', { configFile: require.resolve('./babel.config.cjs') }],
   },
+  // htmlparser2 (pulled in by sanitize-html >=2.17.6) and its own dependency
+  // chain (domutils, domhandler, domelementtype, entities) ship ESM-only —
+  // see docs/lessons.md and src/html/sanitize-stored-html.ts.
+  transformIgnorePatterns: [
+    'node_modules/(?!(?:\\.pnpm/)?(?:htmlparser2|domutils|dom-serializer|domhandler|domelementtype|entities)(?:@[^/]+)?/)',
+  ],
   collectCoverageFrom: ['**/*.(t|j)s'],
   coverageDirectory: '../coverage',
   testEnvironment: 'node',
