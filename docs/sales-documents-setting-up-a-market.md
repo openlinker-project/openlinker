@@ -6,6 +6,8 @@ This page gets you from an empty setup to one that issues documents.
 
 > Why an order got the document it got: see [How OpenLinker decides](./sales-documents-how-routing-decides.md).
 > What a state on an order means: see [Sales document states](./sales-documents-state-reference.md).
+>
+> `Settings → Sales documents` and the rule-based routing described here are the #2513 redesign, proposed with no code yet — see `docs/architecture-overview.md § 17. Sales Documents`.
 
 Everything below happens on **Settings → Sales documents**.
 

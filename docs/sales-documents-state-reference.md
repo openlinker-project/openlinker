@@ -6,6 +6,8 @@ The two document kinds have different states, because they are different things.
 
 > How a document kind is chosen: see [How OpenLinker decides](./sales-documents-how-routing-decides.md).
 > Setting a market up: see [Setting up a market](./sales-documents-setting-up-a-market.md).
+>
+> The fiscal-receipt states, the invoice document states, and the "check with the provider" flow already ship. The routing terms this page uses (rules, defaults, "not yet distinguished" reasons) belong to the #2513 redesign, proposed with no code yet.
 
 ## The one you should read first
 
@@ -46,22 +48,23 @@ An invoice has a state of its own, and separately an answer from the tax authori
 | State | What it means | Waiting on you? | What to do |
 |---|---|---|---|
 | **Not issued** | Nothing has been issued yet | Yes, if the provider issues on request | Issue it, or leave it if it issues automatically |
-| **Pending** | Queued at the provider | No | Nothing |
-| **Issuing** | Being created right now | No | Wait |
+| **Issuing** | Queued or being created right now (both read the same badge) | No | Wait |
 | **Issued** | The invoice exists and is numbered | No | Nothing, unless the authority answer below needs attention |
 | **Failed** | The provider refused | Yes | Read the reason, fix it, issue again |
 | **Needs review** | We cannot confirm whether it was created | Yes | Check with the provider before issuing again |
+
+> The `/orders` list today shows this on one badge, not the two separate rows above: **Issuing**, **Issued**, **Failed**. It does not yet split "queued" from "being created" — that split is part of the #2513 redesign this page describes.
 
 ### The authority answer
 
 | State | What it means | Waiting on you? | What to do |
 |---|---|---|---|
 | **N/A** | This provider has no authority step at all | No | Nothing. Not every invoice provider has one |
-| **Awaiting submission** | Issued, not yet sent to the authority | No | Nothing |
 | **Submitted** | Sent, no answer yet | No | Nothing. OpenLinker keeps checking |
-| **Clearing** | The authority is processing it | No | Nothing |
-| **Accepted** | The authority accepted it. Fully done | No | Nothing |
+| **Cleared** | The authority accepted it. Fully done | No | Nothing |
 | **Rejected** | The authority refused it | Yes | Read the reason, fix it, then send it again |
+
+> Today's `/orders` badge renders this as **Cleared** (not "Clearing" — the authority has already accepted it, this isn't a processing state), **Submitted**, **Rejected**, or falls back to **Issued** when there is no authority answer yet or none applies.
 
 An invoice can be **Issued** and **Rejected** at the same time: the document exists in OpenLinker, and the authority has not accepted it. Both facts are true and both are shown.
 

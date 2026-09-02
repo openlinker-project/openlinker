@@ -6,6 +6,8 @@ This page explains how it follows it, so you can work out why any given order go
 
 > Setting a market up for the first time: see [Setting up a market](./sales-documents-setting-up-a-market.md).
 > What a state on an order means: see [Sales document states](./sales-documents-state-reference.md).
+>
+> This page describes the routing settings and screens that ship with the #2513 redesign, which is proposed but has no code yet — see `docs/architecture-overview.md § 17. Sales Documents`. Today's routing is the simpler operator-configured model this page's own "not yet distinguished" notes point to.
 
 ## The short version
 
