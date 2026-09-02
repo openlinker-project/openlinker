@@ -194,9 +194,15 @@ export class InpostHttpClient implements IInpostHttpClient {
       throw new RetryableHttpError(message, response.status);
     }
     const flatDetails = flattenShipXFieldErrors(errorBody?.details);
+    // ShipX's `details` map is the primary classifier (it names the offending
+    // FIELD). When it's empty — no field-level info at all, e.g. a purged/
+    // unfetchable label document — fall back to ShipX's own short `error`
+    // code so the caller still gets a stable, non-null `providerCode` instead
+    // of `null` with nothing but the carrier's generic prose message (#2804).
+    const providerCode = firstDetailKey(flatDetails) ?? errorBody?.error ?? null;
     throw new ShippingProviderRejectionException(
       'inpost',
-      firstDetailKey(flatDetails),
+      providerCode,
       message,
       Object.keys(flatDetails).length > 0 ? { fieldErrors: flatDetails } : undefined,
     );

@@ -142,6 +142,52 @@ describe('InpostHttpClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('should fall back to the response body\'s `error` code as providerCode when `details` is empty (#2804)', async () => {
+    // Live-reproduced shape for an unfetchable label document: ShipX answers
+    // with an `error` code but no `details` object at all, so the field-level
+    // classifier above has nothing to key on. Without the fallback,
+    // `providerCode` was `null` and the operator saw only the generic
+    // `message` with no actionable reference.
+    fetchMock.mockResolvedValue(
+      fakeResponse({
+        ok: false,
+        status: 400,
+        body: '{"error":"not_found","message":"There was a problem with label generation. Check details object for more info."}',
+      }),
+    );
+
+    const error = await client
+      .request({ method: 'GET', path: '/v1/shipments/1/label' })
+      .then(() => null)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ShippingProviderRejectionException);
+    expect(error).toMatchObject({
+      providerName: 'inpost',
+      providerCode: 'not_found',
+      providerDetails: undefined,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('should still report providerCode: null when neither `details` nor `error` are present (#2804)', async () => {
+    fetchMock.mockResolvedValue(
+      fakeResponse({
+        ok: false,
+        status: 400,
+        body: '{"message":"unmodeled failure shape"}',
+      }),
+    );
+
+    const error = await client
+      .request({ method: 'GET', path: '/v1/x' })
+      .then(() => null)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ShippingProviderRejectionException);
+    expect(error).toMatchObject({ providerName: 'inpost', providerCode: null });
+  });
+
   it('should flatten a nested ShipX field-error map (custom_attributes.target_point) onto its leaf key, not the outer field (#1807)', async () => {
     // Live-reproduced shape for a paczkomat id ShipX doesn't recognise: the
     // offending field (`target_point`) is nested one level inside the outer
