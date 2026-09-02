@@ -12,6 +12,11 @@
  *   GET  /analytics/coverage/currency/status/:runId — poll one run's lifecycle.
  *   GET  /analytics/coverage/currency/orders — the paginated affected-order list
  *        behind the mockup's `detail-currency` modal.
+ *   POST /analytics/coverage/currency/cancel - `@Roles('admin')`. Recovery path
+ *        for a run stranded at `'in-progress'` because its driver job died
+ *        before it could terminalise itself (#2816) - see that method's own
+ *        doc comment for why this is an explicit operator action rather than a
+ *        staleness heuristic.
  *
  * THE REQUEST THREAD NEVER REPAIRS ANYTHING. The repair clears an ADR-040 FX
  * stamp on every affected order and enqueues a stamp job for each; that is
@@ -186,6 +191,40 @@ export class AnalyticsRemediationController {
       ),
     });
 
+    return AnalyticsRemediationRunResponseDto.fromView(run);
+  }
+
+  @Post('cancel')
+  @Roles('admin')
+  @ApiOperation({
+    summary:
+      'Cancel a currency recalculation stranded at in-progress (its driver job died without terminalising it)',
+  })
+  @ApiResponse({ status: 200, type: AnalyticsRemediationRunResponseDto })
+  async cancel(): Promise<AnalyticsRemediationRunResponseDto> {
+    const openRun = await this.runs.getOpenRun(CURRENCY_REMEDIATION_CATEGORY);
+    if (!openRun) {
+      throw new NotFoundException(
+        'No currency recalculation is currently in progress; nothing to cancel'
+      );
+    }
+
+    const cancelled = await this.runs.cancelOpenRun(
+      CURRENCY_REMEDIATION_CATEGORY,
+      'Cancelled by operator - previous attempt did not resolve'
+    );
+    if (!cancelled) {
+      // Raced with the run resolving/failing on its own between the read
+      // above and the conditional transition - nothing is left to cancel.
+      throw new NotFoundException(
+        'No currency recalculation is currently in progress; nothing to cancel'
+      );
+    }
+
+    const run = await this.runs.getRun(openRun.id);
+    if (!run) {
+      throw new NotFoundException(`Remediation run '${openRun.id}' not found`);
+    }
     return AnalyticsRemediationRunResponseDto.fromView(run);
   }
 

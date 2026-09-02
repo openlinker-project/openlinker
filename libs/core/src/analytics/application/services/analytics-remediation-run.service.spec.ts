@@ -89,6 +89,41 @@ describe('AnalyticsRemediationRunService', () => {
     });
   });
 
+  describe('cancelOpenRun (#2816)', () => {
+    it('should terminalise the open run as failed with the given reason and report success', async () => {
+      repository.findOpenByCategory.mockResolvedValue(run());
+      repository.transitionIfOpen.mockResolvedValue(true);
+
+      const result = await service.cancelOpenRun('currency', 'Cancelled by operator');
+
+      expect(repository.findOpenByCategory).toHaveBeenCalledWith('currency');
+      expect(repository.transitionIfOpen).toHaveBeenCalledWith(
+        'ol_remrun_abc',
+        'failed',
+        'Cancelled by operator'
+      );
+      expect(result).toBe(true);
+    });
+
+    it('should return false without throwing when the category has no open run', async () => {
+      repository.findOpenByCategory.mockResolvedValue(null);
+
+      await expect(service.cancelOpenRun('currency', 'Cancelled by operator')).resolves.toBe(
+        false
+      );
+      expect(repository.transitionIfOpen).not.toHaveBeenCalled();
+    });
+
+    it('should return false without throwing when the run resolved on its own between the read and the transition', async () => {
+      repository.findOpenByCategory.mockResolvedValue(run());
+      repository.transitionIfOpen.mockResolvedValue(false);
+
+      await expect(service.cancelOpenRun('currency', 'Cancelled by operator')).resolves.toBe(
+        false
+      );
+    });
+  });
+
   describe('lifecycle read', () => {
     it('should return null for an unknown run id', async () => {
       repository.findById.mockResolvedValue(null);
