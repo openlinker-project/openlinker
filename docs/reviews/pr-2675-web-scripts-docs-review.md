@@ -124,7 +124,9 @@ All 43. `RED` = the gate failed as it claims to.
 
 - Lane caps sum to **26** (`4 + 12 + 2 + 8`) — matches ADR-050.
 - **23** scheduler task descriptors — matches ADR-051.
-- **64** `JobTypeValues` members; **7** Allegro scheduler tasks, **all 7 default-ON**
+- **54** `JobTypeValues` members (16 realtime / 26 bulk / 5 fiscal / 7 fan-out,
+  summing to 54 — the property `assertFullLaneCoverage` exists to hold); **7**
+  Allegro scheduler tasks, **all 7 default-ON**
   (`enabledDefault` defaults `true` and none opts out).
 - Cross-context allow-list: **112** entries / **99** files — `architecture-overview.md`
   said 20/64; corrected.
