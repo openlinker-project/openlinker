@@ -28,6 +28,7 @@
  *
  * @module libs/core/src/orders/domain/types
  */
+import type { TaxRateState } from '@openlinker/core/products';
 
 /**
  * Data Coverage category values. `'currency'` was populated by #2464,
@@ -142,6 +143,31 @@ export const TaxCoverageCategoryValues = ['tax-a', 'tax-b', 'tax-c'] as const;
 export type TaxCoverageCategory = (typeof TaxCoverageCategoryValues)[number];
 
 /**
+ * One line's resolved (or unresolved) tax-rate observation within a
+ * {@link TaxCoverageOrderRow} (#2798) — carried per line rather than
+ * collapsed to one order-level value, since a mixed-rate order can
+ * legitimately carry a different real rate per line, and the mockup's
+ * earlier "hardcoded 23%" bug is exactly the regression this guards
+ * against.
+ *
+ * `rateCode` is the resolved code (a percent-as-string like `'23'`, or an
+ * exemption code) when `state === 'known'` and `line.taxRate` already
+ * carries a resolvable value; otherwise `null` — a `'no-rate'` or
+ * `'not-checked'` state never fabricates a code. `TaxRateState` is the same
+ * derived vocabulary `TaxCoverageDetectionService` already computes via
+ * `taxRateState()` (`@openlinker/core/products`) — reused here rather than
+ * re-derived, so the row can never disagree with the classification that
+ * produced it.
+ */
+export interface TaxCoverageLineRateObservation {
+  productId: string;
+  variantId: string | null;
+  /** Resolved rate code, or `null` when `state` is `'no-rate'` / `'not-checked'`. */
+  rateCode: string | null;
+  state: TaxRateState;
+}
+
+/**
  * One order in a tax coverage sub-category's drill-down list. Deliberately
  * as minimal as {@link CurrencyMismatchOrderRow} — no thumbnail/order-number
  * field, since `OrderRecord` denormalizes no such column.
@@ -151,6 +177,12 @@ export interface TaxCoverageOrderRow {
   sourceConnectionId: string;
   /** `order_records.placedAt` — `null` for a historical row with no resolvable placement date. */
   placedAt: Date | null;
+  /**
+   * Per-line rate observations for every one of the order's lines (#2798)
+   * — never a single order-level rate. Empty when the order carries no
+   * line items at all.
+   */
+  lineRates: TaxCoverageLineRateObservation[];
 }
 
 /**

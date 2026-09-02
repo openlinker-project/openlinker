@@ -54,7 +54,7 @@ import {
 } from '../lib/data-coverage-copy.lib';
 import type { AnalyticsCoverageFilters, CoverageCategory, CoverageCategoryRow } from '../api/analytics-coverage.types';
 import type { CurrencyMismatchOrder } from '../api/analytics-remediation.types';
-import type { TaxCoverageCategory, TaxCoverageOrder } from '../api/analytics-tax-coverage.types';
+import type { TaxCoverageCategory, TaxCoverageOrder, TaxCoverageLineRate } from '../api/analytics-tax-coverage.types';
 import type { ProductMatchingOrder } from '../api/analytics-matching-coverage.types';
 
 const PAGE_SIZE = 10;
@@ -491,7 +491,40 @@ function CurrencyOrderRow({
   );
 }
 
+/**
+ * Renders each line's own resolved/candidate rate (#2798) — a mixed-rate
+ * order shows its per-line rates, never one shared/hardcoded value across
+ * every row (the mockup's earlier "hardcoded 23%" regression this guards
+ * against). Distinct labels are deduplicated so a large order with many
+ * identically-taxed lines doesn't repeat the same tag.
+ */
+function describeLineRate(observation: TaxCoverageLineRate): string {
+  if (observation.state === 'known' && observation.rateCode !== null) {
+    return /^\d+(\.\d+)?$/.test(observation.rateCode.trim())
+      ? `${observation.rateCode}%`
+      : observation.rateCode;
+  }
+  if (observation.state === 'no-rate') {
+    return 'no rate';
+  }
+  return 'not checked yet';
+}
+
+function summarizeLineRates(lineRates: TaxCoverageLineRate[]): string[] {
+  const seen = new Set<string>();
+  const labels: string[] = [];
+  for (const observation of lineRates) {
+    const label = describeLineRate(observation);
+    if (!seen.has(label)) {
+      seen.add(label);
+      labels.push(label);
+    }
+  }
+  return labels;
+}
+
 function TaxOrderRow({ item, connectionName }: { item: TaxCoverageOrder; connectionName: string }): ReactElement {
+  const rateLabels = summarizeLineRates(item.lineRates);
   return (
     <>
       <span className="coverage-detail-row__body">
@@ -506,6 +539,15 @@ function TaxOrderRow({ item, connectionName }: { item: TaxCoverageOrder; connect
           ) : null}
         </span>
       </span>
+      {rateLabels.length > 0 ? (
+        <span className="coverage-detail-row__trail">
+          {rateLabels.map((label) => (
+            <span key={label} className="coverage-detail-row__tag coverage-detail-row__tag--neutral">
+              {label}
+            </span>
+          ))}
+        </span>
+      ) : null}
     </>
   );
 }

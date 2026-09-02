@@ -81,7 +81,7 @@ describe('AnalyticsTaxRemediationController (#2469)', () => {
 
     it('should resolve the reporting currency and the display setting, then page the classified category', async () => {
       taxCoverageDetectionService.getCategoryPage.mockResolvedValue({
-        items: [{ internalOrderId: 'ol_order_a', sourceConnectionId: 'conn-1', placedAt: null }],
+        items: [{ internalOrderId: 'ol_order_a', sourceConnectionId: 'conn-1', placedAt: null, lineRates: [] }],
         total: 1,
       });
 

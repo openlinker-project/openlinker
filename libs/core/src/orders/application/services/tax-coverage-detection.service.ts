@@ -66,8 +66,10 @@ import {
   type PaginatedTaxCoverageOrders,
   type TaxCoverageCategory,
   type TaxCoverageClassification,
+  type TaxCoverageLineRateObservation,
   type TaxCoverageOrderRow,
 } from '../../domain/types/coverage-detection.types';
+import type { OrderLineItem } from '../../domain/entities/order-line-item.entity';
 
 const PRE_ROLLOUT_ERA = 'pre-rollout';
 
@@ -102,8 +104,8 @@ export class TaxCoverageDetectionService implements ITaxCoverageDetectionService
     };
 
     for (const candidate of candidates) {
-      const category = await this.classifyOne(candidate);
-      result[category].push(this.toRow(candidate));
+      const { category, lineRates } = await this.classifyOne(candidate);
+      result[category].push(this.toRow(candidate, lineRates));
     }
 
     return result;
@@ -167,40 +169,47 @@ export class TaxCoverageDetectionService implements ITaxCoverageDetectionService
     return pages as Record<TaxCoverageCategory, PaginatedTaxCoverageOrders>;
   }
 
-  private toRow(candidate: NetExcludedOrderCandidate): TaxCoverageOrderRow {
+  private toRow(
+    candidate: NetExcludedOrderCandidate,
+    lineRates: TaxCoverageLineRateObservation[]
+  ): TaxCoverageOrderRow {
     return {
       internalOrderId: candidate.internalOrderId,
       sourceConnectionId: candidate.sourceConnectionId,
       placedAt: candidate.placedAt,
+      lineRates,
     };
   }
 
   /**
-   * Classify one candidate. A non-pre-rollout candidate is always `'tax-b'`
-   * — the A/C split only applies to the pre-rollout blanket-exclusion case
-   * (see the class doc comment).
+   * Resolve one observation per line (#2798) — never discarded after
+   * computing the bucket, since a mixed-rate order needs its own per-line
+   * rates rather than one order-level value. A line whose own
+   * `order_line_items.taxRate` already resolves (the backfill sweep
+   * already wrote it, or it was never excluded in the first place) reports
+   * that value directly with no catalogue call; only a line
+   * `resolveNetSalesTaxRate` reads as `'unknown'` triggers the live
+   * `IProductsService.getEffectiveTaxRate` read `classifyOne` already made
+   * for that same line — this mirrors that call exactly rather than adding
+   * a second one.
    */
-  private async classifyOne(candidate: NetExcludedOrderCandidate): Promise<TaxCoverageCategory> {
-    if (candidate.taxRateEra !== PRE_ROLLOUT_ERA) {
-      return 'tax-b';
-    }
+  private async resolveLineRates(
+    lines: OrderLineItem[],
+    orderId: string
+  ): Promise<TaxCoverageLineRateObservation[]> {
+    const observations: TaxCoverageLineRateObservation[] = [];
 
-    const lines = await this.orderLineItemRepository.findByOrderId(candidate.internalOrderId);
-    const unresolvedLines = lines.filter(
-      (line) => resolveNetSalesTaxRate(line.taxRate).kind === 'unknown'
-    );
+    for (const line of lines) {
+      if (resolveNetSalesTaxRate(line.taxRate).kind === 'known') {
+        observations.push({
+          productId: line.productId,
+          variantId: line.variantId,
+          rateCode: line.taxRate,
+          state: 'known',
+        });
+        continue;
+      }
 
-    // Every line already resolves (e.g. the backfill sweep already wrote a
-    // rate to each one) — the order is fully resolvable, just blocked by
-    // the blanket pre-rollout exclusion.
-    if (unresolvedLines.length === 0) {
-      return 'tax-a';
-    }
-
-    let anyConfirmedNoRate = false;
-    let anyNotChecked = false;
-
-    for (const line of unresolvedLines) {
       let rate: StoredTaxRate;
       try {
         rate = await this.productsService.getEffectiveTaxRate(
@@ -212,33 +221,85 @@ export class TaxCoverageDetectionService implements ITaxCoverageDetectionService
         // existence — treat like 'not-checked' rather than assuming the
         // worst (a permanent 'no-rate' claim this order does not support).
         this.logger.warn(
-          `Tax coverage classification: catalogue read failed for order ${candidate.internalOrderId} ` +
+          `Tax coverage classification: catalogue read failed for order ${orderId} ` +
             `line [productId=${line.productId}, variantId=${line.variantId ?? 'none'}]: ${(error as Error).message}`
         );
-        anyNotChecked = true;
+        observations.push({
+          productId: line.productId,
+          variantId: line.variantId,
+          rateCode: null,
+          state: 'not-checked',
+        });
         continue;
       }
 
       const state = taxRateState(rate);
-      if (state === 'known') {
-        continue;
-      }
-      if (state === 'no-rate') {
+      observations.push({
+        productId: line.productId,
+        variantId: line.variantId,
+        rateCode: state === 'known' ? rate.code : null,
+        state,
+      });
+    }
+
+    return observations;
+  }
+
+  /**
+   * Classify one candidate. A non-pre-rollout candidate is always `'tax-b'`
+   * — the A/C split only applies to the pre-rollout blanket-exclusion case
+   * (see the class doc comment) — and, exactly as before #2798, without
+   * touching line items or the catalogue at all: nothing about the
+   * candidate's own lines decided this bucket, so `lineRates` is `[]`
+   * rather than paying for a read whose result classification never
+   * consults. The pre-rollout branches below resolve and return the
+   * per-line rate observations, so a row IN THOSE buckets is never missing
+   * the data behind its own classification.
+   */
+  private async classifyOne(
+    candidate: NetExcludedOrderCandidate
+  ): Promise<{ category: TaxCoverageCategory; lineRates: TaxCoverageLineRateObservation[] }> {
+    if (candidate.taxRateEra !== PRE_ROLLOUT_ERA) {
+      return { category: 'tax-b', lineRates: [] };
+    }
+
+    const lines = await this.orderLineItemRepository.findByOrderId(candidate.internalOrderId);
+    const unresolvedLines = lines.filter(
+      (line) => resolveNetSalesTaxRate(line.taxRate).kind === 'unknown'
+    );
+
+    // Every line already resolves (e.g. the backfill sweep already wrote a
+    // rate to each one) — the order is fully resolvable, just blocked by
+    // the blanket pre-rollout exclusion.
+    if (unresolvedLines.length === 0) {
+      return {
+        category: 'tax-a',
+        lineRates: await this.resolveLineRates(lines, candidate.internalOrderId),
+      };
+    }
+
+    const lineRates = await this.resolveLineRates(lines, candidate.internalOrderId);
+
+    let anyConfirmedNoRate = false;
+    let anyNotChecked = false;
+
+    for (const observation of lineRates) {
+      if (observation.state === 'no-rate') {
         anyConfirmedNoRate = true;
-      } else {
+      } else if (observation.state === 'not-checked') {
         anyNotChecked = true;
       }
     }
 
     if (!anyConfirmedNoRate && !anyNotChecked) {
-      return 'tax-a';
+      return { category: 'tax-a', lineRates };
     }
     // A confirmed no-rate line makes the order permanently unresolvable —
     // takes precedence over a merely not-yet-checked sibling line, since
     // "no remediation exists" is the stronger, more actionable fact.
     if (anyConfirmedNoRate) {
-      return 'tax-b';
+      return { category: 'tax-b', lineRates };
     }
-    return 'tax-c';
+    return { category: 'tax-c', lineRates };
   }
 }

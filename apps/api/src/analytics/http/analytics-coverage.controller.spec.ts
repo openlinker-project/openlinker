@@ -208,12 +208,12 @@ describe('AnalyticsCoverageController (#2466)', () => {
     });
     taxCoverageDetectionService.getAllCategoryPages.mockResolvedValue({
       'tax-a': {
-        items: [{ internalOrderId: 'order-tax-a-1', sourceConnectionId: 'conn-a', placedAt: null }],
+        items: [{ internalOrderId: 'order-tax-a-1', sourceConnectionId: 'conn-a', placedAt: null, lineRates: [] }],
         total: 1,
       },
       'tax-b': { items: [], total: 0 },
       'tax-c': {
-        items: [{ internalOrderId: 'order-tax-c-1', sourceConnectionId: 'conn-a', placedAt: null }],
+        items: [{ internalOrderId: 'order-tax-c-1', sourceConnectionId: 'conn-a', placedAt: null, lineRates: [] }],
         total: 2,
       },
     });

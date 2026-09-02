@@ -15,11 +15,29 @@ import type { CoverageCategory } from './analytics-coverage.types';
 /** Tax A/B/C only — never `'currency'` / `'product-matching'`. */
 export type TaxCoverageCategory = Extract<CoverageCategory, 'tax-a' | 'tax-b' | 'tax-c'>;
 
+/** Mirrors `TaxRateState` (`@openlinker/core/products`) — the frontend cannot import core (#591). */
+export type TaxCoverageLineRateState = 'not-checked' | 'no-rate' | 'known';
+
+/**
+ * One line's resolved (or unresolved) rate observation (#2798), mirroring
+ * `TaxCoverageLineRateDto` — carried per line so a mixed-rate order's
+ * modal row never collapses to a single shared value.
+ */
+export interface TaxCoverageLineRate {
+  productId: string;
+  variantId: string | null;
+  /** Resolved rate code, or `null` unless `state === 'known'`. */
+  rateCode: string | null;
+  state: TaxCoverageLineRateState;
+}
+
 export interface TaxCoverageOrder {
   internalOrderId: string;
   sourceConnectionId: string;
   /** `null` for a historical row with no resolvable placement date. */
   placedAt: string | null;
+  /** Per-line rate observations for every one of the order's lines — never a single order-level rate. */
+  lineRates: TaxCoverageLineRate[];
 }
 
 export interface TaxCoverageOrdersPage {
