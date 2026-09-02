@@ -169,6 +169,7 @@ export type {
   PaginatedCurrencyMismatchOrders,
   TaxCoverageCategory,
   TaxCoverageOrderRow,
+  TaxCoverageLineRateObservation,
   PaginatedTaxCoverageOrders,
   NetExcludedOrderCandidate,
   TaxCoverageClassification,

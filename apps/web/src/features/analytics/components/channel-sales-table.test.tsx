@@ -353,10 +353,10 @@ describe('ChannelSalesTable', () => {
           getTaxCoverageOrders: vi.fn((input: { category: string }) =>
             Promise.resolve(
               input.category === 'tax-a'
-                ? { items: [{ internalOrderId: 'ol_order_2', sourceConnectionId: 'conn-1', placedAt: null }], total: 1 }
+                ? { items: [{ internalOrderId: 'ol_order_2', sourceConnectionId: 'conn-1', placedAt: null, lineRates: [] }], total: 1 }
                 : input.category === 'tax-b'
-                  ? { items: [{ internalOrderId: 'ol_order_3', sourceConnectionId: 'conn-1', placedAt: null }], total: 1 }
-                  : { items: [{ internalOrderId: 'ol_order_4', sourceConnectionId: 'conn-1', placedAt: null }], total: 1 }
+                  ? { items: [{ internalOrderId: 'ol_order_3', sourceConnectionId: 'conn-1', placedAt: null, lineRates: [] }], total: 1 }
+                  : { items: [{ internalOrderId: 'ol_order_4', sourceConnectionId: 'conn-1', placedAt: null, lineRates: [] }], total: 1 }
             )
           ),
         },
