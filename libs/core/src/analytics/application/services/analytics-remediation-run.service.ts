@@ -92,6 +92,23 @@ export class AnalyticsRemediationRunService implements IAnalyticsRemediationRunS
     return won;
   }
 
+  async cancelOpenRun(category: string, reason: string): Promise<boolean> {
+    const openRun = await this.getOpenRun(category);
+    if (!openRun) {
+      this.logger.debug(
+        `analytics_remediation_runs.cancel skipped: no open run for category=${category}`
+      );
+      return false;
+    }
+    const cancelled = await this.markFailed(openRun.id, reason);
+    if (cancelled) {
+      this.logger.warn(
+        `analytics_remediation_runs.cancelled category=${category} run=${openRun.id} reason=${reason}`
+      );
+    }
+    return cancelled;
+  }
+
   private toView(run: AnalyticsRemediationRun): AnalyticsRemediationRunView {
     return {
       id: run.id,
