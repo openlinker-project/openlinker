@@ -11,7 +11,7 @@ The guide is organized around the left-navigation groups in the admin UI:
 ## Sections
 
 1. **[Overview & First Login](./01-overview.md)**
-   Shell layout, nav groups, dashboard orientation, and first-login flow.
+   Shell layout, nav groups, Analytics and Insights orientation, and first-login flow.
 
 2. **[Connecting a Platform](./02-connecting-a-platform.md)**
    Full walkthrough: pick a platform, run the setup wizard, test the connection, read connection health. Uses PrestaShop as the worked example.

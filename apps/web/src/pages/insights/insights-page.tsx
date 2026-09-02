@@ -1,11 +1,11 @@
 /**
- * Dashboard Page — Operations overview
+ * Insights Page — Operations overview
  *
- * Triage-first dashboard. KPI strip + "What's broken right now" pattern +
+ * Triage-first ops surface. KPI strip + "What's broken right now" pattern +
  * connection health roll-up. Failed-jobs KPI links to `/jobs-logs?status=dead`
  * and the grouped triage surface exposes Retry / View actions per group.
  *
- * @module pages/dashboard
+ * @module pages/insights
  */
 import { useCallback, useMemo, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
@@ -31,7 +31,7 @@ import type {
   SyncJob,
   SyncJobGroup,
 } from '../../features/sync-jobs/api/sync-jobs.types';
-import { DASHBOARD_HEALTH_INTERVAL_MS, DASHBOARD_JOBS_INTERVAL_MS } from './intervals';
+import { INSIGHTS_HEALTH_INTERVAL_MS, INSIGHTS_JOBS_INTERVAL_MS } from './intervals';
 import { Button } from '../../shared/ui/button';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { ErrorState, LoadingState } from '../../shared/ui/feedback-state';
@@ -41,14 +41,14 @@ import { StatusBadge } from '../../shared/ui/status-badge';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { useToast } from '../../shared/ui/toast-provider';
 
-type DashboardTone = 'success' | 'warning' | 'error' | 'neutral';
+type InsightsTone = 'success' | 'warning' | 'error' | 'neutral';
 
 /** Stable row key for the grouped dead-job table; also used to track per-row pending state. */
 function groupKey(group: Pick<SyncJobGroup, 'connectionId' | 'jobType'>): string {
   return `${group.connectionId}::${group.jobType}`;
 }
 
-function toRowStatusTone(status: ConnectionStatus | JobStatus): DashboardTone {
+function toRowStatusTone(status: ConnectionStatus | JobStatus): InsightsTone {
   if (status === 'active' || status === 'succeeded') return 'success';
   if (status === 'error' || status === 'dead') return 'error';
   if (status === 'needs_reauth') return 'warning';
@@ -58,7 +58,7 @@ function toRowStatusTone(status: ConnectionStatus | JobStatus): DashboardTone {
 function mapHealthTone(
   status: ServiceStatus | OverallStatus | undefined,
   hasError: boolean
-): DashboardTone {
+): InsightsTone {
   if (hasError || status === 'error') return 'error';
   if (status === 'warning' || status === 'degraded') return 'warning';
   if (status === 'ok') return 'success';
@@ -127,7 +127,7 @@ interface ConnectionFailureSignal {
 interface RolledUpConnection {
   connection: Connection;
   deadJobCount: number;
-  rollupTone: DashboardTone;
+  rollupTone: InsightsTone;
 }
 
 /**
@@ -159,7 +159,7 @@ function rollUpConnectionHealth(
 ): RolledUpConnection[] {
   return connections.map((connection) => {
     const deadJobCount = failureSignals.get(connection.id)?.deadJobCount ?? 0;
-    let rollupTone: DashboardTone = toRowStatusTone(connection.status);
+    let rollupTone: InsightsTone = toRowStatusTone(connection.status);
     // Job-signal roll-up: even if the DB row still says `active`, a connection
     // that is spilling dead jobs is not healthy. This replaces the
     // reassuring "All channels active" message with something actionable.
@@ -200,24 +200,24 @@ function ConnectionHealthList({ rows }: { rows: RolledUpConnection[] }): ReactEl
   );
 }
 
-export function DashboardPage(): ReactElement {
+export function InsightsPage(): ReactElement {
   const connectionsQuery = useConnectionsQuery(undefined, {
-    refetchInterval: DASHBOARD_HEALTH_INTERVAL_MS,
+    refetchInterval: INSIGHTS_HEALTH_INTERVAL_MS,
   });
-  const healthQuery = useDevStackHealthQuery({ refetchInterval: DASHBOARD_HEALTH_INTERVAL_MS });
+  const healthQuery = useDevStackHealthQuery({ refetchInterval: INSIGHTS_HEALTH_INTERVAL_MS });
   const recentJobsQuery = useSyncJobsQuery(
     undefined,
     { limit: 5 },
-    { refetchInterval: DASHBOARD_JOBS_INTERVAL_MS }
+    { refetchInterval: INSIGHTS_JOBS_INTERVAL_MS }
   );
   const queuedJobsQuery = useSyncJobsQuery(
     { status: 'queued' },
     { limit: 1 },
-    { refetchInterval: DASHBOARD_JOBS_INTERVAL_MS }
+    { refetchInterval: INSIGHTS_JOBS_INTERVAL_MS }
   );
   const deadGroupsQuery = useFailedJobGroupsQuery(
     { status: 'dead' },
-    { refetchInterval: DASHBOARD_JOBS_INTERVAL_MS }
+    { refetchInterval: INSIGHTS_JOBS_INTERVAL_MS }
   );
   const retryGrouped = useRetryGroupedSyncJobsMutation();
   const { showToast } = useToast();
@@ -256,7 +256,7 @@ export function DashboardPage(): ReactElement {
   const totalGroups = deadGroupsQuery.data?.totalGroups ?? 0;
   const queuedTotal = queuedJobsQuery.data?.total ?? 0;
 
-  const integrationTone: DashboardTone =
+  const integrationTone: InsightsTone =
     errorCount > 0 ? 'warning' : warningCount > 0 ? 'warning' : 'neutral';
   const integrationDescription =
     errorCount > 0
@@ -386,7 +386,7 @@ export function DashboardPage(): ReactElement {
           const connectionName = connectionNameById.get(group.connectionId) ?? group.connectionId;
           const signature = `${formatJobType(group.jobType)} on ${connectionName}`;
           return (
-            <div className="dashboard-incidents__actions">
+            <div className="insights-incidents__actions">
               <Button
                 tone="secondary"
                 onClick={() => void handleRetryGroup(group)}
@@ -510,7 +510,7 @@ export function DashboardPage(): ReactElement {
       </section>
 
       {/* ── What's broken right now (primary triage surface) ──────── */}
-      <article className="panel panel--dense dashboard-incidents">
+      <article className="panel panel--dense insights-incidents">
         <div className="panel__header">
           <div>
             <p className="eyebrow">Incidents</p>
