@@ -1,13 +1,14 @@
 /**
- * Sales Documents Panel (#2159, ADR-041 mockup tab 02 "Configuration")
+ * Sales Documents Panel — "Connected providers" (#2159, ADR-041 mockup tab
+ * 02 "Configuration")
  *
  * The ONLY editable surface for sales-document routing config. Lists every
  * connection with `Invoicing` or `Fiscalization` enabled and lets an operator
  * set, per row: what it issues (Issues), whether it is the one that auto-
- * issues (Primary — a SINGLE radio group across ALL rows, so the UI cannot
- * express two primaries by construction), and when (Trigger, disabled for a
- * non-primary row since timing is meaningless until a connection is actually
- * the one issuing).
+ * issues ("Goes first" — a SINGLE radio group across ALL rows, so the UI
+ * cannot express two primaries by construction), and when it fires ("Issues
+ * when", disabled for a row that doesn't go first, since timing is
+ * meaningless until a connection is actually the one issuing).
  *
  * `EditConnectionForm`'s per-connection section was demoted to a read-only
  * summary + a link here — see `sales-document-status-section.tsx`. This is
@@ -15,6 +16,14 @@
  * editable checkbox and was rejected in review, because "primary" can only be
  * set correctly by seeing every candidate at once (N independent checkboxes
  * across N connection forms is exactly the shape that produces a conflict).
+ *
+ * COLUMNS (#2806 — mockup alignment): rendered column set is PROVIDER /
+ * ISSUES / GOES FIRST / ISSUES WHEN / CONNECTION, matching
+ * `docs/plans/mockups/sales-document-routing.html`. The connection's live
+ * status and capability — which the mockup doesn't carry as separate columns
+ * — ride as inline badges under the provider name instead of losing the
+ * information, rather than becoming two more columns the mockup doesn't
+ * have.
  *
  * @module apps/web/src/features/sales-documents/components
  */
@@ -155,8 +164,9 @@ export function SalesDocumentsPanel(): ReactElement {
 
       <p className="muted-text">
         What each connection may issue, whether it goes first, and when. Only one connection may
-        go first across ALL of them, whatever it issues — the Primary column is a single choice,
-        not one per row. A connection with nothing set here is not a routing candidate at all.
+        go first across ALL of them, whatever it issues — the &quot;Goes first&quot; column is a
+        single choice, not one per row. A connection with nothing set here is not a routing
+        candidate at all.
       </p>
 
       <div className="data-table__container">
@@ -167,11 +177,10 @@ export function SalesDocumentsPanel(): ReactElement {
           <thead>
             <tr>
               <th scope="col">Provider</th>
-              <th scope="col">Status</th>
-              <th scope="col">Capability</th>
               <th scope="col">Issues</th>
-              <th scope="col">Primary</th>
-              <th scope="col">Trigger</th>
+              <th scope="col">Goes first</th>
+              <th scope="col">Issues when</th>
+              <th scope="col">Connection</th>
             </tr>
           </thead>
           <tbody>
@@ -184,19 +193,7 @@ export function SalesDocumentsPanel(): ReactElement {
                     <span>{row.name}</span>
                     <br />
                     <span className="text-muted mono-text">{row.platformType}</span>
-                  </td>
-                  <td>
-                    <StatusBadge tone={toStatusTone(row.status)} compact>
-                      {row.status}
-                    </StatusBadge>
-                    {row.status === 'needs_reauth' ? (
-                      <>
-                        <br />
-                        <span className="text-muted">Cannot issue until reconnected</span>
-                      </>
-                    ) : null}
-                  </td>
-                  <td>
+                    <br />
                     <StatusBadge tone="neutral" compact>
                       {row.capability}
                     </StatusBadge>
@@ -232,9 +229,9 @@ export function SalesDocumentsPanel(): ReactElement {
                           checked={row.isPrimary}
                           disabled={rowDisabled}
                           onChange={() => handleSelectPrimary(row)}
-                          aria-label={`Mark ${row.name} as the primary sales-document connection`}
+                          aria-label={`Mark ${row.name} as the connection that goes first`}
                         />
-                        <span className="text-muted">{row.isPrimary ? 'Primary' : '—'}</span>
+                        <span className="text-muted">{row.isPrimary ? 'Goes first' : '—'}</span>
                       </label>
                     </ReadOnlyLock>
                   </td>
@@ -254,6 +251,17 @@ export function SalesDocumentsPanel(): ReactElement {
                       </Select>
                     </ReadOnlyLock>
                   </td>
+                  <td>
+                    <StatusBadge tone={toStatusTone(row.status)} compact>
+                      {row.status}
+                    </StatusBadge>
+                    {row.status === 'needs_reauth' ? (
+                      <>
+                        <br />
+                        <span className="text-muted">Cannot issue until reconnected</span>
+                      </>
+                    ) : null}
+                  </td>
                 </tr>
               );
             })}
@@ -261,8 +269,8 @@ export function SalesDocumentsPanel(): ReactElement {
         </table>
       </div>
       <p className="muted-text">
-        Trigger is greyed out for a non-primary row since the timing choice does not matter until
-        a connection is actually the one issuing.
+        &quot;Issues when&quot; is greyed out for a row that doesn&apos;t go first, since the timing
+        choice does not matter until a connection is actually the one issuing.
       </p>
     </div>
   );

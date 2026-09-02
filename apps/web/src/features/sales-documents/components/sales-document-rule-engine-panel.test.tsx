@@ -85,6 +85,10 @@ describe('SalesDocumentRuleEnginePanel — Reset country reflects everywhere (#2
       sessionAdapter: createAuthenticatedSessionAdapter(),
     });
 
+    // The per-country index now lives behind the closed-by-default "Advanced"
+    // disclosure (#2806) — open it before reaching into its rows.
+    await userEvent.click(await screen.findByText('Advanced: per-country rules'));
+
     // Sanity: DE starts out "Configured".
     await screen.findByText('DE');
     const deRow = screen.getByText('DE').closest('tr');
@@ -143,6 +147,8 @@ describe('SalesDocumentRuleEnginePanel — Enter key in "Add country" opens the 
       apiClient,
       sessionAdapter: createAuthenticatedSessionAdapter(),
     });
+
+    await userEvent.click(await screen.findByText('Advanced: per-country rules'));
 
     const addCountryInput = await screen.findByLabelText('New country ISO code');
     await userEvent.type(addCountryInput, 'FR{Enter}');

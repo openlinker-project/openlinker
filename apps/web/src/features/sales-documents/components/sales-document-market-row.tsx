@@ -57,6 +57,27 @@ function actionLabel(row: MarketRowData, copy: SalesDocumentMarketOutcomeCopy): 
   return row.hasTemplate ? 'Use starter setup' : 'Set up';
 }
 
+// #2806 — plain-sentence meta copy, replacing the mono "PL · 0 rules · 3
+// orders in the last 30 days" fragment with prose an operator can read
+// without decoding a delimiter convention.
+function describeMarketMeta(
+  row: MarketRowData,
+  isDetectedOnly: boolean,
+  windowDays?: number,
+): string {
+  const ruleClause = row.ruleCount === 1 ? '1 rule configured' : `${row.ruleCount} rules configured`;
+  if (!isDetectedOnly) return ruleClause;
+  const orderClause =
+    row.orderCount === 1
+      ? windowDays !== undefined
+        ? `1 order in the last ${windowDays} days`
+        : '1 order'
+      : windowDays !== undefined
+        ? `${row.orderCount} orders in the last ${windowDays} days`
+        : `${row.orderCount} orders`;
+  return `${orderClause}, ${ruleClause}`;
+}
+
 export interface SalesDocumentMarketRowProps {
   row: MarketRowData;
   /** Fired with the row's country when the action is clicked. */
@@ -105,14 +126,8 @@ export function SalesDocumentMarketRow({
 
       <div className="sales-document-market-row__identity">
         <span className="sales-document-market-row__name">{countryLabel(row.country)}</span>
-        <span className="sales-document-market-row__meta muted-text mono-text">
-          {row.country === SALES_DOCUMENT_REST_OF_WORLD_COUNTRY ? 'Catch-all' : row.country} ·{' '}
-          {row.ruleCount === 1 ? '1 rule' : `${row.ruleCount} rules`}
-          {isDetectedOnly
-            ? ` · ${row.orderCount} orders${
-                windowDays !== undefined ? ` in the last ${windowDays} days` : ''
-              }`
-            : ''}
+        <span className="sales-document-market-row__meta muted-text">
+          {describeMarketMeta(row, isDetectedOnly, windowDays)}
         </span>
       </div>
 
