@@ -197,9 +197,27 @@ export class InpostHttpClient implements IInpostHttpClient {
     // ShipX's `details` map is the primary classifier (it names the offending
     // FIELD). When it's empty — no field-level info at all, e.g. a purged/
     // unfetchable label document — fall back to ShipX's own short `error`
-    // code so the caller still gets a stable, non-null `providerCode` instead
-    // of `null` with nothing but the carrier's generic prose message (#2804).
-    const providerCode = firstDetailKey(flatDetails) ?? errorBody?.error ?? null;
+    // code (a distinct tier: a field name vs. an error code) so the caller
+    // still gets a stable, non-null `providerCode` instead of `null` with
+    // nothing but the carrier's generic prose message (#2804). `errorBody`
+    // is an untrusted cast (`safeParseError`), so a non-string or blank
+    // `error` is rejected rather than passed through as a code.
+    const shipxErrorCode =
+      typeof errorBody?.error === 'string' && errorBody.error.trim().length > 0
+        ? errorBody.error.trim()
+        : null;
+    const providerCode = firstDetailKey(flatDetails) ?? shipxErrorCode;
+    if (Object.keys(flatDetails).length === 0) {
+      // No field-level classifier available — log the resolved fallback (or
+      // its absence) at warn so a `providerCode: null` case still leaves a
+      // record of what ShipX actually said (#2804 review; mirrors the DPD
+      // `dpd-shipping.adapter.ts` precedent for an unclassifiable rejection).
+      // Never logs `errorBody.details` itself — it can echo a rejected
+      // address fragment, and this line is not `providerDetails`.
+      this.logger.warn(
+        `ShipX ${options.method} ${options.path} failed (${response.status}) with no field-level details; resolved providerCode=${String(providerCode)}, message=${message}`,
+      );
+    }
     throw new ShippingProviderRejectionException(
       'inpost',
       providerCode,
@@ -264,6 +282,13 @@ function parseRetryAfterMs(header: string | null): number | undefined {
  * typed error code is the field that triggered the rejection (e.g.
  * `'target_point'`, `'sender'`, `'parcels'`). Returns `null` when no details
  * are available.
+ *
+ * `providerCode` therefore carries one of two distinct tiers depending on
+ * which classifier answered: a ShipX FIELD NAME from this function, or a
+ * ShipX ERROR CODE (e.g. `'not_found'`, `'validation_failed'`) from the
+ * `errorBody.error` fallback in `throwIfNotOk` when no field-level details
+ * exist (#2804). A consumer matching on `providerCode` cannot tell which
+ * tier answered from the value alone.
  */
 function firstDetailKey(
   details: Record<string, readonly string[]> | undefined,

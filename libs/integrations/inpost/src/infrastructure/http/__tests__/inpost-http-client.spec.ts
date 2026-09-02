@@ -143,21 +143,25 @@ describe('InpostHttpClient', () => {
   });
 
   it('should fall back to the response body\'s `error` code as providerCode when `details` is empty (#2804)', async () => {
-    // Live-reproduced shape for an unfetchable label document: ShipX answers
-    // with an `error` code but no `details` object at all, so the field-level
-    // classifier above has nothing to key on. Without the fallback,
-    // `providerCode` was `null` and the operator saw only the generic
-    // `message` with no actionable reference.
+    // Shape modelled on ShipX's documented error envelope for an unfetchable
+    // label document: ShipX answers with an `error` code but no `details`
+    // object at all, so the field-level classifier above has nothing to key
+    // on. The exact `error` code ShipX returns in this situation has not
+    // been live-confirmed against the sandbox (#2804 review) — `not_found`
+    // is a plausible placeholder, not a verified value. Without the
+    // fallback, `providerCode` was `null` and the operator saw only the
+    // generic `message` with no actionable reference.
     fetchMock.mockResolvedValue(
       fakeResponse({
         ok: false,
         status: 400,
+        contentType: 'application/pdf',
         body: '{"error":"not_found","message":"There was a problem with label generation. Check details object for more info."}',
       }),
     );
 
     const error = await client
-      .request({ method: 'GET', path: '/v1/shipments/1/label' })
+      .requestBinary({ method: 'GET', path: '/v1/shipments/1/label' })
       .then(() => null)
       .catch((e: unknown) => e);
 
@@ -168,6 +172,24 @@ describe('InpostHttpClient', () => {
       providerDetails: undefined,
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('should ignore a non-string or blank `error` field rather than surfacing it as providerCode (#2804 review)', async () => {
+    fetchMock.mockResolvedValue(
+      fakeResponse({
+        ok: false,
+        status: 400,
+        body: '{"error":"   ","message":"blank error code"}',
+      }),
+    );
+
+    const error = await client
+      .request({ method: 'GET', path: '/v1/x' })
+      .then(() => null)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ShippingProviderRejectionException);
+    expect(error).toMatchObject({ providerName: 'inpost', providerCode: null });
   });
 
   it('should still report providerCode: null when neither `details` nor `error` are present (#2804)', async () => {
