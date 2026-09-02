@@ -7,7 +7,7 @@
   "type": "module",
   "scripts": {
     "test:e2e": "pnpm test:e2e:unattended",
-    "test:e2e:unattended": "playwright test --project=setup --project=smoke --project=golden-path --project=webhooks --project=woocommerce-parity --project=lifecycle --project=access-control --project=shipping --project=invoicing --project=rich-text",
+    "test:e2e:unattended": "playwright test --project=setup --project=smoke --project=golden-path --project=webhooks --project=woocommerce-parity --project=lifecycle --project=access-control --project=shipping --project=invoicing --project=rich-text --project=sales-documents",
     "test:e2e:full-flow": "E2E_ATTENDED=1 playwright test --project=full-flow --headed",
     "test:e2e:perf": "playwright test --project=perf",
     "test:e2e:ui": "playwright test --ui",
@@ -19,6 +19,8 @@
   "devDependencies": {
     "@playwright/test": "^1.61.1",
     "@types/node": "20.11.30",
+    "@types/pg": "^8.11.10",
+    "pg": "^8.13.1",
     "typescript": "5.4.3"
   }
 }

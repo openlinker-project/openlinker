@@ -819,3 +819,44 @@ export interface DescriptionFormatView {
   declared: boolean;
   resolvedVia: 'OfferManager' | 'ProductPublisher' | null;
 }
+
+// ── Sales-document markets (#2563 M10, ADR-066) ─────────────────────────────
+// Mirrored from `apps/api/src/sales-documents/http/dto/sales-document-market-response.dto.ts`.
+
+export interface SalesDocumentMarketOutcome {
+  kind: 'route' | 'aggregate' | 'unresolved' | 'acknowledged';
+  documentKind?: string | null;
+  connectionId?: string;
+  reason?: string;
+}
+
+export interface SalesDocumentMarketRow {
+  /** ISO 3166-1 alpha-2, or '*' for Rest of world. */
+  country: string;
+  /** Orders in the discovery window, or null when the country is configured-only. */
+  orderCount: number | null;
+  hasTemplate: boolean;
+  ruleCount: number;
+  invoiceDefaultConnectionId: string | null;
+  receiptDefaultConnectionId: string | null;
+  acknowledgedNoDocumentAt: string | null;
+  outcome: SalesDocumentMarketOutcome;
+}
+
+export interface SalesDocumentMarketsResponse {
+  windowDays: number;
+  since: string;
+  markets: SalesDocumentMarketRow[];
+}
+
+export interface SalesDocumentCountryDefault {
+  id: string;
+  country: string;
+  documentKind: string;
+  connectionId: string;
+}
+
+export interface SalesDocumentCountryAcknowledgment {
+  country: string;
+  acknowledgedAt: string;
+}
