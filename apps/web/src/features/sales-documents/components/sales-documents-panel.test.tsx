@@ -119,7 +119,7 @@ describe('SalesDocumentsPanel', () => {
 
     await screen.findByText('inFakt');
     const eparagonyRadio = screen.getByRole('radio', {
-      name: /Mark eparagony\.pl as the primary/i,
+      name: /Mark eparagony\.pl as the connection that goes first/i,
     });
 
     await userEvent.click(eparagonyRadio);

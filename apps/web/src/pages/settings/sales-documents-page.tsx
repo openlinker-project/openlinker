@@ -11,7 +11,7 @@ import type { ReactElement } from 'react';
 import { useSession } from '../../shared/auth/use-session';
 import { ErrorState } from '../../shared/ui/feedback-state';
 import { PageLayout } from '../../shared/ui/page-layout';
-import { SalesDocumentsPanel, SalesDocumentRuleEnginePanel } from '../../features/sales-documents';
+import { SalesDocumentRuleEnginePanel } from '../../features/sales-documents';
 
 export function SalesDocumentsPage(): ReactElement {
   const { session } = useSession();
@@ -35,18 +35,13 @@ export function SalesDocumentsPage(): ReactElement {
       backTo={{ to: '/settings', label: 'Settings' }}
     >
       {/*
-       * #2170 — the country-agnostic rule engine is the page's primary
-       * authoring surface (M7 / #2550): it runs FIRST and consults
-       * `evaluateSalesDocumentRules` before the #2156 operator-configured
-       * table below ever applies. The table is demoted below it, not
-       * stripped — it is the only place document kind, "goes first" and
-       * the trigger are set at all, and a connection with nothing set
-       * there is not a routing candidate for the rule engine either. See
-       * `SalesDocumentRuleEnginePanel`'s own doc comment for the full
-       * precedence.
+       * #2806 — `SalesDocumentRuleEnginePanel` now composes both primary
+       * tables (markets + connected providers) at the top of the page and
+       * houses the older rule-engine / per-country surfaces behind an
+       * advanced disclosure. See its own doc comment for the full
+       * precedence and layout rationale.
        */}
       <SalesDocumentRuleEnginePanel />
-      <SalesDocumentsPanel />
     </PageLayout>
   );
 }

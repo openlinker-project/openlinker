@@ -19576,9 +19576,13 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   background: var(--bg-surface);
   min-height: 4.25rem;
 }
+/* #2806 — the mockup signals "needs a decision" with a small status dot on
+   an otherwise plain row, not a full-row tint; the dot + reason text already
+   carry the meaning (color is never the only signal), so this rule stays
+   deliberately minimal rather than repeating the warning color a second
+   time across the whole row. */
 .sales-document-market-row--attention {
   border-color: var(--status-warning-border);
-  background: var(--status-warning-soft);
 }
 
 .sales-document-market-row__status {
@@ -19702,6 +19706,40 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   50% {
     opacity: 1;
   }
+}
+
+/* ── Sales-document market table layout (#2806) ── */
+.sales-document-add-market-row {
+  display: flex;
+  justify-content: flex-end;
+  margin: var(--space-3) 0 var(--space-5);
+}
+
+.sales-document-advanced-disclosure {
+  margin-top: var(--space-6);
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--space-4);
+}
+.sales-document-advanced-disclosure__summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text-secondary);
+  list-style: none;
+}
+.sales-document-advanced-disclosure__summary::-webkit-details-marker {
+  display: none;
+}
+.sales-document-advanced-disclosure__summary::before {
+  content: '▸';
+  display: inline-block;
+  margin-right: var(--space-2);
+  color: var(--text-muted);
+}
+.sales-document-advanced-disclosure[open] > .sales-document-advanced-disclosure__summary::before {
+  content: '▾';
+}
+.sales-document-advanced-disclosure__body {
+  margin-top: var(--space-4);
 }
 
 /* ── Sales-document country index (#2187) ── */

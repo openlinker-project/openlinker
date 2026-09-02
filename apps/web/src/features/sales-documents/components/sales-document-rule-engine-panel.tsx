@@ -16,12 +16,21 @@
  *
  * WIRED TO AUTO-ISSUE (#2173): `AutoIssueTriggerService` consults
  * `evaluateSalesDocumentRules` FIRST, ahead of the #2156 operator-configured
- * single-primary model (`SalesDocumentsPanel`, rendered above this section on
- * the same page) — only a `'no-configuration-for-country'` result (or an
- * order the engine can't place at all) falls through to that older resolver.
- * Both surfaces stay on the same page, clearly labelled, because the older
- * resolver is still live and reachable whenever a country has no rule-engine
- * configuration.
+ * single-primary model (`SalesDocumentsPanel`). Both surfaces stay on the
+ * same page, clearly labelled, because the older resolver is still live and
+ * reachable whenever a country has no rule-engine configuration.
+ *
+ * LAYOUT (#2806 — mockup alignment): the mockup's primary surface is exactly
+ * two tables, "What each market issues" then "Connected providers", rendered
+ * adjacent at the top of the page. This panel now composes both at the top
+ * (`SalesDocumentMarketSection` + `SalesDocumentsPanel`) and moves every
+ * other surface — the rule composer, starter templates, and the older
+ * per-country `SalesDocumentCountryIndex` table — behind a closed-by-default
+ * `<details>` disclosure below them. Nothing is removed; a country still
+ * appearing in both the market table and the advanced per-country table is
+ * expected (they answer different questions: "what happens right now" vs.
+ * "how is that decided"), it is simply no longer the first thing an operator
+ * sees.
  *
  * The shipped Poland starter template's `buyerHasTaxId` condition CANNOT
  * match a real order yet: `Order` carries no buyer-tax-id field, so the
@@ -33,11 +42,12 @@
  *
  * @module apps/web/src/features/sales-documents/components
  */
-import { useState, type ReactElement } from 'react';
+import { useRef, useState, type ReactElement } from 'react';
 import { SalesDocumentCountryIndex } from './sales-document-country-index';
 import { SalesDocumentCountryRoutingDialog } from './sales-document-country-routing-dialog';
 import { SalesDocumentMarketSection } from './sales-document-market-section';
 import { SalesDocumentTemplateScreen } from './sales-document-template-screen';
+import { SalesDocumentsPanel } from './sales-documents-panel';
 
 interface RoutingDialogState {
   open: boolean;
@@ -45,8 +55,11 @@ interface RoutingDialogState {
   cameFrom: string | null;
 }
 
+const ADD_COUNTRY_INPUT_ID = 'sales-document-add-country-input';
+
 export function SalesDocumentRuleEnginePanel(): ReactElement {
   const [routingDialog, setRoutingDialog] = useState<RoutingDialogState | null>(null);
+  const advancedRef = useRef<HTMLDetailsElement>(null);
 
   function handleSelectCountry(selected: string): void {
     setRoutingDialog({ open: true, country: selected, cameFrom: null });
@@ -60,37 +73,68 @@ export function SalesDocumentRuleEnginePanel(): ReactElement {
     setRoutingDialog((prev) => (prev ? { ...prev, open } : prev));
   }
 
+  // "Add a market" (mockup) reveals the advanced disclosure that still owns
+  // the country-add flow, rather than duplicating a second country-entry
+  // control — one input, one place it lives.
+  function handleAddMarket(): void {
+    if (advancedRef.current) advancedRef.current.open = true;
+    requestAnimationFrame(() => {
+      document.getElementById(ADD_COUNTRY_INPUT_ID)?.focus();
+    });
+  }
+
   return (
     <div className="page-section" style={{ marginTop: 'var(--space-6)' }}>
       <header style={{ marginBottom: 'var(--space-4)' }}>
-        <p className="eyebrow">Per-country rules</p>
-        <h3 className="detail-section__title">Sales-document rule engine</h3>
+        <p className="eyebrow">Sales documents</p>
+        <h3 className="detail-section__title">What each market issues</h3>
         <p className="page-description">
-          A rule is <span className="mono-text">conditions → document type → integration</span>,
-          scoped to one country; no rule matched falls through to that country&apos;s default
-          integration per document type. Legal responsibility for what a sale requires stays with
-          the operator — OpenLinker executes the configured routing, it doesn&apos;t decide tax
-          obligations.
+          Legal responsibility for what a sale requires stays with the operator — OpenLinker
+          executes the configured routing, it doesn&apos;t decide tax obligations.
         </p>
       </header>
 
       {/*
        * #2539/M6 — the settings page's headline: what does each market
-       * issue, right now. Renders above the country index rather than
-       * replacing it, since the index still backs "Add country" for a
-       * market with neither orders nor configuration yet — a case this
-       * merged-read section correctly never lists a row for.
+       * issue, right now.
        */}
       <SalesDocumentMarketSection onSelectCountry={handleSelectCountry} />
 
-      <SalesDocumentCountryIndex onSelectCountry={handleSelectCountry} />
+      <div className="sales-document-add-market-row">
+        <button type="button" className="button button--secondary button--sm" onClick={handleAddMarket}>
+          Add a market
+        </button>
+      </div>
 
-      {/* Only shown while nothing else is open, or while the operator is actually
-          configuring PL — otherwise it's clutter on every other market's dialog
-          (review finding, optional improvements). */}
-      {routingDialog === null || routingDialog.country === 'PL' ? (
-        <SalesDocumentTemplateScreen country="PL" />
-      ) : null}
+      {/*
+       * #2806 — the mockup's second primary table, "Connected providers",
+       * sits directly under the market table, never below the advanced
+       * per-country editor.
+       */}
+      <SalesDocumentsPanel />
+
+      <details ref={advancedRef} className="sales-document-advanced-disclosure">
+        <summary className="sales-document-advanced-disclosure__summary">
+          Advanced: per-country rules
+        </summary>
+
+        <div className="sales-document-advanced-disclosure__body">
+          <p className="page-description">
+            A rule is <span className="mono-text">conditions → document type → integration</span>,
+            scoped to one country; no rule matched falls through to that country&apos;s default
+            integration per document type.
+          </p>
+
+          <SalesDocumentCountryIndex onSelectCountry={handleSelectCountry} />
+
+          {/* Only shown while nothing else is open, or while the operator is actually
+              configuring PL — otherwise it's clutter on every other market's dialog
+              (review finding, optional improvements). */}
+          {routingDialog === null || routingDialog.country === 'PL' ? (
+            <SalesDocumentTemplateScreen country="PL" />
+          ) : null}
+        </div>
+      </details>
 
       {routingDialog ? (
         <SalesDocumentCountryRoutingDialog
