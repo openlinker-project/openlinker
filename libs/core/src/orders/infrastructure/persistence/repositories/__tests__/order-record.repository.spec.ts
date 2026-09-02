@@ -666,7 +666,7 @@ describe('OrderRecordRepository', () => {
       );
     });
 
-    it('returns bare ids — #2776 removed the child job that once needed sourceConnectionId alongside them', async () => {
+    it('returns bare internalOrderIds — the page now stamps in-process (#2776)', async () => {
       (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
         select: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
