@@ -289,6 +289,12 @@ export interface ProductMatchingErrorOrderRow {
    * from — here, never counted against any product either).
    */
   productId: null;
+  /**
+   * Always `null` — same reasoning as {@link ProductMatchingErrorOrderRow.productId}
+   * above: this category never resolves a variant reference either, so there
+   * is no honest value to put here.
+   */
+  variantId: null;
 }
 
 /**
