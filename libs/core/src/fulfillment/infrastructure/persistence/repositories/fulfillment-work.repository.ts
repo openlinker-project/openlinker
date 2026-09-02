@@ -91,6 +91,7 @@ import {
   isFulfillmentRequestStatus,
   type FulfillmentRequestStatus,
 } from '../../../domain/types/fulfillment-request-status.types';
+import { TERMINAL_FULFILLMENT_WORK_STATUSES } from '../../../domain/types/fulfillment-supported-actions.types';
 import {
   isFulfillmentWorkStatus,
   type FulfillmentWorkStatus,
@@ -508,6 +509,19 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
     // statement as the status, and a cancelled row can never lack one.
     // Terminal states are excluded from `from`: re-cancelling reports
     // not-applied rather than moving `cancelledAt`.
+    //
+    // The set is `TERMINAL_FULFILLMENT_WORK_STATUSES`, not a literal (#2675
+    // review). It used to be `['cancelled', 'closed']`, which omitted
+    // `incomplete` — a status the domain declares terminal ("come to rest and
+    // cannot move again") and for which `deriveSupportedActions` therefore
+    // withholds `force_cancel`. So the write guard was strictly weaker than the
+    // rule it exists to enforce, and nothing could go red on the disagreement:
+    // an `incomplete` work reached through a caller that does not re-derive, or
+    // through the ordinary race where a work becomes `incomplete` between the
+    // derivation and this write, was stamped `cancelled` with a reason and a
+    // `cancelledAt`, overwriting the partial-fulfilment disposition it had come
+    // to rest in. Reading the exported vocabulary makes a fourth terminal status
+    // enrol itself here instead of silently staying cancellable.
     return this.applyGuardedUpdate('cancel', (qb) => {
       const guarded = qb
         .set({
@@ -517,7 +531,9 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
           version: () => '"version" + 1',
         })
         .where('"id" = :id', { id: input.workId })
-        .andWhere('"status" NOT IN (:...terminal)', { terminal: ['cancelled', 'closed'] });
+        .andWhere('"status" NOT IN (:...terminal)', {
+          terminal: [...TERMINAL_FULFILLMENT_WORK_STATUSES],
+        });
       return this.withVersionGuard(guarded, input.expectedVersion);
     });
   }

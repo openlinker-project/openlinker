@@ -4,6 +4,7 @@
  * @module libs/core/src/sync/application/services/__tests__
  */
 import type { CanonicalInboundEvent } from '@openlinker/core/integrations';
+import { OrderFeedEventTypeValues } from '@openlinker/core/orders';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { InboundRoutingPolicyService } from '../inbound-routing-policy.service';
 import type { JobEnqueuePort } from '../../../domain/ports/job-enqueue.port';
@@ -55,6 +56,37 @@ describe('InboundRoutingPolicyService', () => {
       idempotencyKey: 'prestashop:conn-1:evt-9',
     });
   });
+
+  /**
+   * The mirror's OTHER direction (#2675 review).
+   *
+   * `ORDER_FEED_EVENT_TYPES` in the service is pinned upstream with
+   * `satisfies readonly OrderFeedEventType[]`, which asserts every element IS
+   * an `OrderFeedEventType` and therefore catches a token REMOVED upstream. It
+   * asserts nothing about coverage, so a token ADDED to
+   * `OrderFeedEventTypeValues` compiles, leaves every test green, and is
+   * silently coerced to `'updated'` on the routing path — the inbound webhook
+   * for the new event type would be routed as an ordinary update forever.
+   *
+   * Asserted BEHAVIOURALLY rather than as a type-level `Exclude`: the property
+   * that matters is what reaches the payload, and a behavioural check cannot be
+   * satisfied by widening a type. Driven off the runtime
+   * `OrderFeedEventTypeValues` array, so a new member enrols itself here.
+   */
+  it.each(OrderFeedEventTypeValues)(
+    'should carry the canonical order eventType %s through to the payload rather than coercing it',
+    async (eventType) => {
+      await service.route(
+        event({ domain: 'order', eventType }),
+        connection(['OrderSource']),
+        ['OrderSource'],
+        'evt-9'
+      );
+
+      const enqueued = jobEnqueue.enqueueJob.mock.calls[0][0];
+      expect((enqueued.payload as { eventType: string }).eventType).toBe(eventType);
+    }
+  );
 
   it('should coerce an unknown order eventType to updated', async () => {
     await service.route(
