@@ -491,6 +491,7 @@ export class SchedulerService implements OnModuleDestroy {
       // Likewise bespoke, for the opposite reason (#2317): this one has no
       // capability and no connection at all.
       this.registerInventoryProvenanceBackfillTask();
+      this.registerReservationSweepTasks();
       this.registerOrderHoldReconcileTask();
 
       // Drain plugin-contributed tasks — populated at `onModuleInit`, complete
@@ -885,6 +886,29 @@ export class SchedulerService implements OnModuleDestroy {
   }
 
   /**
+   * The nil-UUID pseudo-connection a connection-less scheduled pass runs under.
+   *
+   * A real `Connection` built through its own constructor rather than a cast:
+   * the scheduler reads only `id` (for the job row and the idempotency key) and
+   * `name` (for logs), and the remaining positional arguments are inert filler
+   * that no code path on these tasks touches.
+   */
+  private buildSystemConnection(): Connection {
+    return new Connection(
+      SYSTEM_CONNECTION_ID,
+      'system',
+      'system',
+      'active',
+      {},
+      '',
+      new Date(0),
+      new Date(0),
+      undefined,
+      []
+    );
+  }
+
+  /**
    * Register the connection-provenance backfill (#2317, ADR-058 ladder step
    * (ii)).
    *
@@ -927,18 +951,7 @@ export class SchedulerService implements OnModuleDestroy {
     );
 
     // No connection axis exists for this pass — see the method docblock.
-    const systemConnection = new Connection(
-      SYSTEM_CONNECTION_ID,
-      'system',
-      'system',
-      'active',
-      {},
-      '',
-      new Date(0),
-      new Date(0),
-      undefined,
-      []
-    );
+    const systemConnection = this.buildSystemConnection();
 
     this.tasks.push({
       taskId: 'inventory-provenance-backfill',
@@ -951,6 +964,27 @@ export class SchedulerService implements OnModuleDestroy {
       generateIdempotencyKey: (_connection, timestamp) =>
         `inventory:provenance:backfill:${timestamp}`,
     });
+  }
+
+  /**
+   * Register the three reservation sweeps (#2346 / #2347 / #2349).
+   *
+   * Its own method, and that separation is load-bearing rather than tidiness.
+   * These three were originally pushed from inside
+   * `registerInventoryProvenanceBackfillTask`, behind that method's early
+   * return — so setting `OL_INVENTORY_PROVENANCE_BACKFILL_ENABLED=false` also
+   * unregistered reservation expiry, consume and shortfall, silently and with
+   * no log line. That flag belongs to a LATCHING, completing pass whose own
+   * docblock anticipates an operator eventually switching it off, and doing so
+   * would have stopped releasing available-to-promise on a live install. Each
+   * sweep's own `enabledEnvVar` is honoured per tick, so registration must not
+   * be coupled to a foreign concern's flag.
+   *
+   * They share the nil-UUID system scope for one reason: reservations key on
+   * (order, line, position) and carry no connection axis at all.
+   */
+  private registerReservationSweepTasks(): void {
+    const systemConnection = this.buildSystemConnection();
 
     // #2346 — the state-dependent reservation expiry sweep. Global scope for the
     // same reason: reservations key on (order, line, position) and carry no
@@ -1060,18 +1094,7 @@ export class SchedulerService implements OnModuleDestroy {
     );
 
     // No connection axis exists for this pass — see the method docblock.
-    const systemConnection = new Connection(
-      SYSTEM_CONNECTION_ID,
-      'system',
-      'system',
-      'active',
-      {},
-      '',
-      new Date(0),
-      new Date(0),
-      undefined,
-      []
-    );
+    const systemConnection = this.buildSystemConnection();
 
     this.tasks.push({
       taskId: 'order-hold-reconcile',

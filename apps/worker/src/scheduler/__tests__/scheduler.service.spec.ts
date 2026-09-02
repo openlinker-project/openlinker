@@ -1041,6 +1041,28 @@ describe('SchedulerService', () => {
       expect(registeredJobs).not.toContain('inventory-provenance-backfill');
     });
 
+    it('does not unregister the reservation sweeps when the backfill flag is "false"', () => {
+      // Regression: the three reservation sweeps (#2346 / #2347 / #2349) were
+      // pushed from INSIDE registerInventoryProvenanceBackfillTask, behind its
+      // early return, so this flag silently unregistered all three. That flag
+      // belongs to a latching, completing pass whose own docblock anticipates an
+      // operator switching it off once it drains - and doing so stopped
+      // releasing available-to-promise (#2347) on a live install, with no log
+      // line. Each sweep owns an `enabledEnvVar` honoured per tick, so
+      // REGISTRATION must not be coupled to a foreign concern's flag.
+      configService.get.mockImplementation((key: string, defaultValue?: unknown) => {
+        if (key === 'OL_INVENTORY_PROVENANCE_BACKFILL_ENABLED') return 'false';
+        return defaultConfigGet(key, defaultValue);
+      });
+
+      service.start();
+
+      const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
+      expect(registeredJobs).toContain('reservation-expiry-sweep');
+      expect(registeredJobs).toContain('reservation-consume-sweep');
+      expect(registeredJobs).toContain('reservation-shortfall-sweep');
+    });
+
     it('runs ONCE for the deployment, under the system connection id', async () => {
       service.start();
       const connections = await getRegisteredTask()!.connectionFilter!();
