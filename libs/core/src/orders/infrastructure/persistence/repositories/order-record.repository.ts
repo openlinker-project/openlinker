@@ -60,6 +60,7 @@ import type {
   PaginatedCurrencyMismatchOrders,
   NetExcludedOrderCandidate,
   PaginatedProductMatchingErrorOrders,
+  CoverageConnectionAggregateRow,
 } from '../../../domain/types/coverage-detection.types';
 
 @Injectable()
@@ -647,6 +648,39 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       })),
       total,
     };
+  }
+
+  /**
+   * Data Coverage `'currency'` category aggregate-by-connection (#2713) —
+   * see the port's JSDoc. Same predicate as {@link findCurrencyMismatchOrders}
+   * (`cancelledAt IS NULL`, the currency-mismatch condition, and
+   * {@link applySalesAnalyticsScope}), swapping the paginated row hydration
+   * for a `GROUP BY rec.sourceConnectionId` count — mirrors
+   * {@link getDailyOrderAggregates}'s own `sourceConnectionId` grouping.
+   */
+  async findCurrencyMismatchOrdersByConnection(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string
+  ): Promise<CoverageConnectionAggregateRow[]> {
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .select('rec.sourceConnectionId', 'source_connection_id')
+      .addSelect('COUNT(*)', 'affected_count')
+      .andWhere('rec."cancelledAt" IS NULL')
+      .andWhere(
+        '(rec."reportingCurrency" IS NULL OR rec."reportingCurrency" != :currentReportingCurrency)',
+        { currentReportingCurrency }
+      )
+      .groupBy('rec.sourceConnectionId');
+
+    this.applySalesAnalyticsScope(qb, filters);
+
+    const rows = await qb.getRawMany<{ source_connection_id: string; affected_count: string }>();
+
+    return rows.map((row) => ({
+      sourceConnectionId: row.source_connection_id,
+      affectedCount: Number(row.affected_count),
+    }));
   }
 
   /**

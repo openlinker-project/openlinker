@@ -50,6 +50,7 @@ describe('RefundsController', () => {
       getSalesAndChannelAnalytics: jest.fn(),
       getTopProducts: jest.fn(),
       getCurrencyMismatchOrders: jest.fn(),
+      getCurrencyMismatchOrdersByConnection: jest.fn(),
       getProductMatchingErrorOrders: jest.fn(),
       discoverSalesDocumentMarkets: jest.fn(),
     };
