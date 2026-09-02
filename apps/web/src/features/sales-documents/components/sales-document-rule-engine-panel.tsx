@@ -36,6 +36,7 @@
 import { useState, type ReactElement } from 'react';
 import { SalesDocumentCountryIndex } from './sales-document-country-index';
 import { SalesDocumentCountryRoutingDialog } from './sales-document-country-routing-dialog';
+import { SalesDocumentMarketSection } from './sales-document-market-section';
 import { SalesDocumentTemplateScreen } from './sales-document-template-screen';
 
 interface RoutingDialogState {
@@ -72,6 +73,15 @@ export function SalesDocumentRuleEnginePanel(): ReactElement {
           obligations.
         </p>
       </header>
+
+      {/*
+       * #2539/M6 — the settings page's headline: what does each market
+       * issue, right now. Renders above the country index rather than
+       * replacing it, since the index still backs "Add country" for a
+       * market with neither orders nor configuration yet — a case this
+       * merged-read section correctly never lists a row for.
+       */}
+      <SalesDocumentMarketSection onSelectCountry={handleSelectCountry} />
 
       <SalesDocumentCountryIndex onSelectCountry={handleSelectCountry} />
 
