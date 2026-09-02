@@ -15,6 +15,13 @@ import {
 } from '@openlinker/core/orders';
 import { OrderRecordStatus, SlaState, FulfillmentRollupState } from '@openlinker/core/orders';
 import {
+  OrderLifecyclePhaseValues,
+  HoldReasonValues,
+  type OrderLifecyclePhase,
+  type HoldReason,
+} from '@openlinker/core/order-lifecycle';
+import { OrderHoldDto } from './order-hold-response.dto';
+import {
   SalesDocumentGateBlockReasonValues,
   SalesDocumentUnresolvedReasonValues,
 } from '@openlinker/core/sales-documents';
@@ -22,9 +29,12 @@ import type {
   SalesDocumentGateBlockReason,
   SalesDocumentUnresolvedReason,
 } from '@openlinker/core/sales-documents';
+import { OrderAmendmentChangeDto } from './order-amendment-change.dto';
+import { OrderOmsAttentionEntryDto } from './order-oms-attention-entry.dto';
 import { OrderSyncStatusResponseDto } from './order-sync-status-response.dto';
 import { SyncAttemptResponseDto } from './sync-attempt-response.dto';
 import type { OrderInvoiceProjectionDto } from './order-invoice-projection.dto';
+import { OrderReservationShortfallDto } from './order-reservation-shortfall.dto';
 import { OrderDeliveryResolutionDto } from './order-delivery-resolution.dto';
 import { OrderDeliveryRiderDto } from './order-delivery-rider.dto';
 import { SalesDocumentViewResponseDto } from './sales-document-view-response.dto';
@@ -113,6 +123,17 @@ export class OrderRecordResponseDto {
   })
   salesDocumentBlockDetail!: string | null;
 
+  @ApiProperty({
+    type: [OrderOmsAttentionEntryDto],
+    description:
+      'Inert states this order carries (#2352/#2356) — what OpenLinker STOPPED deciding about it. ' +
+      'Empty for an ordinary order, and empty on every install until a producer writes the column. ' +
+      'This is NOT the `needs_attention` health bucket: that bucket is a member of a partition and ' +
+      'means a sync failure, while this is an orthogonal axis, so an order is routinely one, the ' +
+      'other, or both. Keyed by PRODUCER, so an order can carry several at once.',
+  })
+  omsAttention!: OrderOmsAttentionEntryDto[];
+
   @ApiPropertyOptional({
     nullable: true,
     description:
@@ -133,6 +154,20 @@ export class OrderRecordResponseDto {
   })
   salesDocumentBlockReleasedAt!: string | null;
 
+  @ApiPropertyOptional({
+    type: [OrderReservationShortfallDto],
+    description:
+      'Still-open reservation shortfall episodes for this order (#2349) — the ' +
+      'master dropped below what OpenLinker already promised, and this order ' +
+      'is one the shortfall lands on. Nothing was silently reduced. Carried by ' +
+      'BOTH the detail read and the list read (#2350) — the list read batches ' +
+      'one projection across the whole page rather than an N+1 of per-row ' +
+      'lookups, so it costs no per-row cost either. Absent means nothing was ' +
+      'reported for this order, never a positive assertion that it is fine: ' +
+      'the projection is best-effort and degrades to absent on failure.',
+  })
+  reservationShortfalls?: OrderReservationShortfallDto[];
+
   @ApiProperty({ description: 'Order last-update timestamp (ISO 8601)' })
   updatedAt!: string;
 
@@ -152,6 +187,42 @@ export class OrderRecordResponseDto {
       'Set once and never cleared — a later re-poll of a cancelled order cannot change this timestamp.',
   })
   cancelledAt!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Instant an operator marked this order packed (ISO 8601, #2287). null = not packed. ' +
+      'A fact, not a state: independent of recordStatus / fulfillmentState / slaState, and it gates nothing. ' +
+      'Set once — a repeat mark replays the original stamp rather than re-stamping.',
+  })
+  packedAt!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'OL user id of whoever marked this order packed (#2287). null when not packed. ' +
+      'Moves as one group with packedAt, so the FIRST actor is never overwritten.',
+  })
+  packedByUserId!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Instant OpenLinker last observed the SOURCE amend this order after ingestion (ISO 8601, #2283) — ' +
+      'a line removed, added or re-quantified, or the shipping address edited. null = never observed amended. ' +
+      'An internal fact: it moves no status and gates nothing.',
+  })
+  lastAmendedAt!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    type: [OrderAmendmentChangeDto],
+    description:
+      'What changed at lastAmendedAt (#2283) — the most recent observation only, not a history. ' +
+      'PII-free by construction: line ids, SKUs and quantities verbatim, and for an address change only ' +
+      'the NAMES of the fields that moved, never their values.',
+  })
+  lastAmendmentChanges!: OrderAmendmentChangeDto[] | null;
 
   @ApiProperty({
     description:
@@ -176,6 +247,18 @@ export class OrderRecordResponseDto {
       'Ship-by SLA bucket (#1108), server-derived from dispatchByAt + fulfillmentState (cleared to "none" once shipped). The single source of truth the list badge + filter agree on; the FE renders only the live countdown from dispatchByAt.',
   })
   slaState!: SlaState;
+
+  @ApiProperty({
+    enum: OrderLifecyclePhaseValues,
+    description:
+      'Derived lifecycle phase (#2309, ADR-059) — "what is this order waiting on, and who holds ' +
+      'it up". Server-derived by the one pure `deriveOrderLifecyclePhase`, whose SQL twin backs ' +
+      'the `?phase=` filter, so the badge and the filter always agree. CLOCK-FREE, unlike ' +
+      'slaState: two reads of an unchanged order can never differ. A SECOND ORTHOGONAL ' +
+      'PARTITION beside the order-health buckets, never a sixth one — a held order is usually ' +
+      'also synced. Nothing persists a phase; it is recomputed from facts each read.',
+  })
+  lifecyclePhase!: OrderLifecyclePhase;
 
   @ApiPropertyOptional({
     type: OrderDeliveryResolutionDto,
@@ -208,6 +291,35 @@ export class OrderRecordResponseDto {
     description: 'Source delivery method label (#1791).',
   })
   sourceDeliveryMethodName?: string | null;
+
+  @ApiPropertyOptional({
+    enum: HoldReasonValues,
+    nullable: true,
+    description:
+      'Why this order is currently held, or null (#2340/#2341). On the SHARED projection, so it ' +
+      'reaches the list and the detail read from one place at no query cost — the column is ' +
+      'already loaded. It is #2340\'s DISPLAY CACHE with an hourly repair window: a badge may ' +
+      'render it, and no GATE may read it. Whether an order is held is decided through ' +
+      'IOrderHoldService.getOpenHold against order_holds (the epic\'s L4 exit criterion).',
+  })
+  activeHoldReason!: HoldReason | null;
+
+  @ApiPropertyOptional({
+    type: OrderHoldDto,
+    nullable: true,
+    description:
+      'The open hold on this order, or null (#2341). DETAIL READ ONLY — absent on the list, where ' +
+      'resolving it would be one query per row. Read it as `.nullish()`, never `.optional()` (#939).',
+  })
+  activeHold?: OrderHoldDto | null;
+
+  @ApiPropertyOptional({
+    type: [OrderHoldDto],
+    description:
+      'Every hold this order has carried, newest first — the operator-facing audit trail (#2341). ' +
+      'DETAIL READ ONLY, same as activeHold above.',
+  })
+  holdHistory?: OrderHoldDto[];
 
   @ApiPropertyOptional({
     type: SalesDocumentViewResponseDto,

@@ -28,6 +28,10 @@ function makeShipment(): Shipment {
     null,
     null,
     null,
+    'outbound',
+    null,
+    // #2402 fulfillmentWorkId — no work linkage in this fixture.
+    null,
   );
 }
 

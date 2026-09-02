@@ -287,44 +287,61 @@ export class WooCommerceOrderProcessorAdapter
         };
       }
 
-      if (event.type === 'dispatched') {
-        await this.updateFulfillment({
-          externalOrderId: event.externalOrderId,
-          status: 'shipped',
-          trackingNumber: event.trackingNumber,
-        });
-        return { outcome: 'applied' };
+      switch (event.type) {
+        case 'dispatched': {
+          await this.updateFulfillment({
+            externalOrderId: event.externalOrderId,
+            status: 'shipped',
+            trackingNumber: event.trackingNumber,
+          });
+          return { outcome: 'applied' };
+        }
+
+        case 'cancelled': {
+          // One read to honour the shop's authoritative live state before
+          // forcing a regressive transition.
+          const order = await this.httpClient.get<WooCommerceOrderResponse>(
+            `/wp-json/wc/v3/orders/${event.externalOrderId}`,
+          );
+          const currentStatus = order.status;
+
+          if (currentStatus === 'completed' || currentStatus === 'refunded') {
+            this.logger.warn(
+              `WooCommerce order ${event.externalOrderId} already in terminal state ` +
+                `'${currentStatus}' — refusing cancel writeback (connection: ${this.connection.id})`,
+            );
+            return { outcome: 'rejected', detail: `order already ${currentStatus}` };
+          }
+
+          if (currentStatus === 'cancelled') {
+            this.logger.debug(
+              `WooCommerce order ${event.externalOrderId} already cancelled — cancel writeback is a no-op ` +
+                `(connection: ${this.connection.id})`,
+            );
+            return { outcome: 'applied' };
+          }
+
+          const wcStatus = WC_ORDER_STATUS_MAP.cancelled;
+          await this.httpClient.put<WooCommerceOrderUpdateRequest>(
+            `/wp-json/wc/v3/orders/${event.externalOrderId}`,
+            { status: wcStatus } satisfies WooCommerceOrderUpdateRequest,
+          );
+          return { outcome: 'applied' };
+        }
+
+        default: {
+          // Unreachable in-tree: the binding is the compile break when an
+          // `OrderLifecycleEvent` member is added without an arm here (#2286).
+          // It returns rather than throwing so a caller compiled against a
+          // widened union gets a surfaced no-op, not a `rejected` from the
+          // enclosing catch (ADR-055 forward-compat).
+          const unhandled: never = event;
+          return {
+            outcome: 'unsupported',
+            detail: `unsupported order lifecycle event: ${JSON.stringify(unhandled)}`,
+          };
+        }
       }
-
-      // event.type === 'cancelled' — one read to honour the shop's authoritative
-      // live state before forcing a regressive transition.
-      const order = await this.httpClient.get<WooCommerceOrderResponse>(
-        `/wp-json/wc/v3/orders/${event.externalOrderId}`,
-      );
-      const currentStatus = order.status;
-
-      if (currentStatus === 'completed' || currentStatus === 'refunded') {
-        this.logger.warn(
-          `WooCommerce order ${event.externalOrderId} already in terminal state ` +
-            `'${currentStatus}' — refusing cancel writeback (connection: ${this.connection.id})`,
-        );
-        return { outcome: 'rejected', detail: `order already ${currentStatus}` };
-      }
-
-      if (currentStatus === 'cancelled') {
-        this.logger.debug(
-          `WooCommerce order ${event.externalOrderId} already cancelled — cancel writeback is a no-op ` +
-            `(connection: ${this.connection.id})`,
-        );
-        return { outcome: 'applied' };
-      }
-
-      const wcStatus = WC_ORDER_STATUS_MAP.cancelled;
-      await this.httpClient.put<WooCommerceOrderUpdateRequest>(
-        `/wp-json/wc/v3/orders/${event.externalOrderId}`,
-        { status: wcStatus } satisfies WooCommerceOrderUpdateRequest,
-      );
-      return { outcome: 'applied' };
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       this.logger.error(

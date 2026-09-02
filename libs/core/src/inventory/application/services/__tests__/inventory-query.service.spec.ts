@@ -12,6 +12,7 @@ import { InventoryQueryService } from '../inventory-query.service';
 import { InventoryItem } from '../../../domain/entities/inventory-item.entity';
 import type { InventoryRepositoryPort } from '../../../domain/ports/inventory-repository.port';
 import type { IProductsService, Product } from '@openlinker/core/products';
+import type { IAvailabilityService } from '../availability.service.interface';
 
 // Only the products-service method the SUT actually calls — keeps the
 // mock surface tight per #718 review.
@@ -21,6 +22,7 @@ describe('InventoryQueryService', () => {
   let service: InventoryQueryService;
   let inventoryRepository: jest.Mocked<InventoryRepositoryPort>;
   let productsService: jest.Mocked<ProductsServiceMock>;
+  let availabilityService: jest.Mocked<IAvailabilityService>;
 
   const itemA = new InventoryItem(
     'inv-a',
@@ -75,17 +77,44 @@ describe('InventoryQueryService', () => {
       upsert: jest.fn(),
       findMany: jest.fn(),
       findAvailabilityByVariantIds: jest.fn(),
+      findLivePositionsByProductIds: jest.fn(),
       findStockAggregatesByProductIds: jest.fn(),
       markStaleExceptVariants: jest.fn(),
+      markLocationlessStaleForSource: jest.fn(),
+      findDuplicatePositions: jest.fn(),
+      backfillLegacyProvenance: jest.fn(),
+      countMissingProvenance: jest.fn(),
     };
 
     productsService = {
       getProductsByIds: jest.fn(),
     };
 
+    availabilityService = {
+      // Default: the Wave-1b answer for an empty ledger with no buffer — ATP
+      // equals whatever the repository summed, so `availableToPromise` mirrors
+      // `totalAvailable` unless a test says otherwise.
+      getPromisableQuantities: jest
+        .fn()
+        .mockImplementation(async ({ variantIds }: { variantIds: readonly string[] }) => {
+          const rows = await inventoryRepository.findAvailabilityByVariantIds(variantIds);
+          const byId = new Map(rows.map((r) => [r.productVariantId, r.totalAvailable]));
+          return variantIds.map((id) => ({
+            productVariantId: id,
+            quantity: byId.get(id) ?? 0,
+            provenance: 'computed' as const,
+            observedAt: null,
+            stalenessMs: null,
+          }));
+        }),
+      applyPublishControls: jest.fn(),
+      getAppliedReserve: jest.fn().mockResolvedValue(0),
+    } as unknown as jest.Mocked<IAvailabilityService>;
+
     service = new InventoryQueryService(
       inventoryRepository,
       productsService as unknown as IProductsService,
+      availabilityService,
     );
   });
 
@@ -187,8 +216,8 @@ describe('InventoryQueryService', () => {
       const result = await service.getAvailabilityByVariantIds(['var-a', 'var-b']);
 
       expect(result).toEqual([
-        { productVariantId: 'var-a', totalAvailable: 3, locationCount: 1 },
-        { productVariantId: 'var-b', totalAvailable: 7, locationCount: 2 },
+        { productVariantId: 'var-a', totalAvailable: 3, locationCount: 1, availableToPromise: 3 },
+        { productVariantId: 'var-b', totalAvailable: 7, locationCount: 2, availableToPromise: 7 },
       ]);
     });
 
@@ -200,9 +229,9 @@ describe('InventoryQueryService', () => {
       const result = await service.getAvailabilityByVariantIds(['var-a', 'var-missing', 'var-also-missing']);
 
       expect(result).toEqual([
-        { productVariantId: 'var-a', totalAvailable: 5, locationCount: 1 },
-        { productVariantId: 'var-missing', totalAvailable: 0, locationCount: 0 },
-        { productVariantId: 'var-also-missing', totalAvailable: 0, locationCount: 0 },
+        { productVariantId: 'var-a', totalAvailable: 5, locationCount: 1, availableToPromise: 5 },
+        { productVariantId: 'var-missing', totalAvailable: 0, locationCount: 0, availableToPromise: 0 },
+        { productVariantId: 'var-also-missing', totalAvailable: 0, locationCount: 0, availableToPromise: 0 },
       ]);
     });
 
@@ -215,7 +244,7 @@ describe('InventoryQueryService', () => {
       const result = await service.getAvailabilityByVariantIds(['var-a', 'var-m', 'var-z']);
 
       expect(result.map((r) => r.productVariantId)).toEqual(['var-a', 'var-m', 'var-z']);
-      expect(result[1]).toEqual({ productVariantId: 'var-m', totalAvailable: 0, locationCount: 0 });
+      expect(result[1]).toEqual({ productVariantId: 'var-m', totalAvailable: 0, locationCount: 0, availableToPromise: 0 });
     });
   });
 
@@ -256,6 +285,73 @@ describe('InventoryQueryService', () => {
         /at most 200 productIds/
       );
       expect(inventoryRepository.findStockAggregatesByProductIds).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getDuplicatePositionReport (#2319)', () => {
+    const cleanReport = {
+      groupCount: 0,
+      rowCount: 0,
+      excessRowCount: 0,
+      groups: [],
+      truncated: false,
+    };
+
+    it('defaults the detail cap to 100', async () => {
+      inventoryRepository.findDuplicatePositions.mockResolvedValue(cleanReport);
+
+      await service.getDuplicatePositionReport();
+
+      expect(inventoryRepository.findDuplicatePositions).toHaveBeenCalledWith(100);
+    });
+
+    it('passes an explicit cap straight through', async () => {
+      inventoryRepository.findDuplicatePositions.mockResolvedValue(cleanReport);
+
+      await service.getDuplicatePositionReport(25);
+
+      expect(inventoryRepository.findDuplicatePositions).toHaveBeenCalledWith(25);
+    });
+
+    it('throws rather than clamping when the cap is exceeded', async () => {
+      // Matches the MAX_STOCK_AGGREGATE_PRODUCT_IDS precedent above: a caller
+      // that asked for more than it can have learns so, instead of silently
+      // receiving a different answer than the one it requested.
+      await expect(service.getDuplicatePositionReport(501)).rejects.toThrow(
+        /at most 500 groups/
+      );
+      expect(inventoryRepository.findDuplicatePositions).not.toHaveBeenCalled();
+    });
+
+    it('rejects a non-positive or non-integer cap', async () => {
+      await expect(service.getDuplicatePositionReport(0)).rejects.toThrow(/positive integer/);
+      await expect(service.getDuplicatePositionReport(1.5)).rejects.toThrow(/positive integer/);
+      expect(inventoryRepository.findDuplicatePositions).not.toHaveBeenCalled();
+    });
+
+    it('returns the repository report verbatim, including uncapped totals', async () => {
+      // groupCount is the #2325 gate and must survive the service layer
+      // untouched even when the detail was truncated.
+      const truncated = {
+        groupCount: 3,
+        rowCount: 9,
+        excessRowCount: 6,
+        groups: [
+          {
+            productId: 'prod-1',
+            productVariantId: null,
+            locationId: null,
+            sourceConnectionId: null,
+            rowCount: 4,
+            liveRowCount: 2,
+            rows: [],
+          },
+        ],
+        truncated: true,
+      };
+      inventoryRepository.findDuplicatePositions.mockResolvedValue(truncated);
+
+      await expect(service.getDuplicatePositionReport(1)).resolves.toBe(truncated);
     });
   });
 });

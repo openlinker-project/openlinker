@@ -30,6 +30,7 @@ import { IntegrationsModule as CoreIntegrationsModule } from '@openlinker/core/i
 import { ProductsModule } from '@openlinker/core/products';
 import { InventoryModule } from '@openlinker/core/inventory';
 import { SyncModule } from '@openlinker/core/sync';
+import { FulfillmentModule } from '@openlinker/core/fulfillment';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { SyncWorkerModule } from './sync/sync-worker.module';
 import { EventsConsumerModule } from './events/events-consumer.module';
@@ -65,6 +66,11 @@ export class AppModule {
         ProductsModule,
         InventoryModule,
         SyncModule,
+        // #2392: the fulfillment persistence graph. Goes in the SHARED array
+        // rather than ROLE_MODULES on purpose — entities registered per-role
+        // would be invisible to `autoLoadEntities` under any other role set,
+        // so the tables would exist for some workers and not others.
+        FulfillmentModule,
         ...roles.map((role) => ROLE_MODULES[role]),
       ],
       providers: [WorkerHeartbeatService],

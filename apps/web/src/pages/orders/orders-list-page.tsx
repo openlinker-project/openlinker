@@ -34,7 +34,7 @@ import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { Button } from '../../shared/ui/button';
 import { BulkActionBar } from '../../shared/ui/bulk-action-bar';
 import { CheckboxCell } from '../../shared/ui/checkbox-cell';
-import { Chip } from '../../shared/ui/chip';
+import { Chip, type ChipTone } from '../../shared/ui/chip';
 import { Select } from '../../shared/ui/select';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
@@ -46,6 +46,21 @@ import type { LocaleCode } from '../../shared/i18n';
 import { useOrdersQuery } from '../../features/orders/hooks/use-orders-query';
 import { useOrderStatusSummaryQuery } from '../../features/orders/hooks/use-order-status-summary-query';
 import { useOrderSlaSummaryQuery } from '../../features/orders/hooks/use-order-sla-summary-query';
+import { useOrderLifecycleSummaryQuery } from '../../features/orders/hooks/use-order-lifecycle-summary-query';
+import { OmsAttentionBadges } from '../../features/fulfillment-authority';
+import { OrderPhaseBadge } from '../../features/orders/components/order-phase-badge';
+import { OrderHoldBadge } from '../../features/orders/components/order-hold-badge';
+import {
+  HOLD_REASON_COPY,
+  HoldReasonValues,
+  isHoldReason,
+} from '../../features/orders/lib/order-hold.types';
+import {
+  OrderLifecyclePhaseValues,
+  ORDER_LIFECYCLE_PHASE_META,
+  isOrderLifecyclePhase,
+  type OrderLifecyclePhaseValue,
+} from '../../features/orders/lib/order-lifecycle-phase';
 import { useRetryOrderDestinationMutation } from '../../features/orders/hooks/use-retry-order-destination-mutation';
 import { ReadOnlyLock } from '../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../shared/auth/use-permission';
@@ -57,6 +72,8 @@ import { deriveOrderHealth, slaBadge, fulfillmentBadge } from '../../features/or
 import { paymentBadge } from '../../features/orders/lib/order-row';
 import { OrderIdentityCell } from '../../features/orders';
 import { OrderInvoicingCell } from '../../features/orders/components/order-invoicing-cell';
+import { StockAtRiskBadge } from '../../features/orders/components/stock-at-risk-badge';
+import { OrderPackedTick } from '../../features/orders/components/order-packed-tick';
 import { deriveDeliveryOutcome, hasLiveOlCarrierRoute } from '../../features/orders/lib/delivery-outcome';
 import { DeliveryOutcomeChip } from '../../features/orders/components/delivery-chip';
 import { resolveDeliveryOwner } from '../../features/orders/lib/delivery-owner';
@@ -73,6 +90,7 @@ import type {
   OrderSortDirection,
   SlaStateValue,
   FulfillmentRollupStateValue,
+  OrderLifecyclePhaseSummary,
 } from '../../features/orders/api/orders.types';
 import {
   OrderHealthValues,
@@ -244,11 +262,12 @@ function formatFreshness(items: readonly OrderRecord[], locale: LocaleCode): str
  * Excluded deliberately: `sort` / `dir` change presentation, not membership (an empty
  * result is never their doing, and "View all orders" has no business resetting the
  * operator's column sort); `syncStatus` / `customerId` / `recordStatus` are query-only
- * filters this page's UI does not expose as controls.
+ * filters this page's UI does not expose as controls — `cancelled` (#2306) joins
+ * that group: the dispatch-risk page pins it, this list does not surface it.
  */
 type NarrowingOrderFilterKey = Exclude<
   keyof OrderFilters,
-  'sort' | 'dir' | 'syncStatus' | 'customerId' | 'recordStatus'
+  'sort' | 'dir' | 'syncStatus' | 'customerId' | 'recordStatus' | 'cancelled'
 >;
 
 const NARROWING_FILTER_URL_PARAM: Record<NarrowingOrderFilterKey, string> = {
@@ -260,7 +279,49 @@ const NARROWING_FILTER_URL_PARAM: Record<NarrowingOrderFilterKey, string> = {
   slaState: 'slaState',
   fulfillmentState: 'fulfillmentState',
   salesDocumentBlocked: 'invoicing',
+  phase: 'phase',
   taxRateConflict: 'taxRate',
+  holdReason: 'hold',
+  attention: 'attention',
+};
+
+/**
+ * Phase → `OrderLifecyclePhaseSummary` field (#2310). The summary is camelCase
+ * per bucket while the phase union is snake_case, so the two cannot be derived
+ * from one another; an exhaustive `Record` makes a new phase a compile error
+ * here rather than a silently missing count.
+ */
+/**
+ * `StatusBadgeTone` -> `ChipTone` (#2310). `StatusBadgeTone` carries two values
+ * `Chip` does not model — `review` and, since #2253, `conflict` — so the map is
+ * exhaustive rather than a ternary: a tone added to the badge family becomes a
+ * compile error here instead of silently type-widening the chip. `conflict`
+ * lands on `warning` (attention, but the thing still worked), `review` on
+ * `neutral`, matching how each already reads elsewhere.
+ */
+const CHIP_TONE_FOR_PHASE_TONE: Record<StatusBadgeTone, ChipTone> = {
+  conflict: 'warning',
+  error: 'error',
+  info: 'info',
+  neutral: 'neutral',
+  review: 'neutral',
+  success: 'success',
+  warning: 'warning',
+};
+
+const PHASE_SUMMARY_KEY: Record<
+  OrderLifecyclePhaseValue,
+  keyof Omit<OrderLifecyclePhaseSummary, 'total'>
+> = {
+  cancelled: 'cancelled',
+  vendor_authoritative: 'vendorAuthoritative',
+  delivered: 'delivered',
+  in_transit: 'inTransit',
+  fulfillment_failed: 'fulfillmentFailed',
+  held: 'held',
+  amending: 'amending',
+  blocked: 'blocked',
+  ready: 'ready',
 };
 
 /** Every URL param that narrows the result set — derived, not hand-maintained (#2148). */
@@ -349,10 +410,27 @@ export function OrdersListPage(): ReactElement {
   // `health` rather than replacing it. Present-only toggle: the URL never carries
   // `invoicing=false`, so the filter is either "blocked only" or absent.
   const invoicingBlocked = searchParams.get('invoicing') === 'blocked';
+  // #2310 — the derived lifecycle phase. An unrecognised value falls back to
+  // "unfiltered" rather than being passed through: the server would reject it,
+  // and an operator with a stale bookmark should see their orders, not an error.
+  const rawPhase = searchParams.get('phase');
+  const phase = isOrderLifecyclePhase(rawPhase) ? rawPhase : undefined;
   // #2254 — a THIRD axis, in its own param for the same reason: the rows it
   // finds are usually already invoiced, so it composes with the other two
   // rather than replacing either. Present-only, like its neighbour.
   const rateConflict = searchParams.get('taxRate') === 'conflict';
+  // #2342 — the hold REASON axis. An unrecognised value falls back to
+  // "unfiltered" rather than being passed through: the server would reject it,
+  // and an operator with a stale bookmark should see their orders, not an error.
+  const rawHoldReason = searchParams.get('hold');
+  const holdReason = isHoldReason(rawHoldReason) ? rawHoldReason : undefined;
+  // #2353 — a FOURTH axis, present-only like its two neighbours. The URL never
+  // carries `attention=false`, which would mean "hide orders OpenLinker stopped
+  // deciding about" and is not something the UI offers. Deliberately not
+  // `health=needs_attention`: that bucket means a sync failure and partitions
+  // the set, this means OpenLinker stopped deciding, and an order is routinely
+  // both.
+  const omsAttention = searchParams.get('attention') === 'true';
   const offset = Number(searchParams.get('offset') ?? '0');
 
   // "Breaching soon / overdue" cutoff — stable per toggle (not recomputed each
@@ -378,7 +456,13 @@ export function OrdersListPage(): ReactElement {
     // never `false`, which would mean "hide blocked orders" and is not something
     // the UI offers.
     salesDocumentBlocked: invoicingBlocked ? true : undefined,
+    // #2310 — orthogonal to `health`; both compose server-side.
+    phase,
     taxRateConflict: rateConflict ? true : undefined,
+    // #2342 — composes with `phase` and `health` server-side, like every other axis.
+    holdReason,
+    // Present-only (#2353): `true` when the chip is on, `undefined` otherwise.
+    attention: omsAttention ? true : undefined,
   };
   const pagination = { limit: PAGE_SIZE, offset };
 
@@ -401,6 +485,10 @@ export function OrdersListPage(): ReactElement {
   // SLA KPI counts (#1108) — same scope as the health summary.
   const slaSummaryQuery = useOrderSlaSummaryQuery(summaryScope);
   const slaSummary = slaSummaryQuery.data;
+  // Lifecycle-phase chip counts (#2310) — same scope again, so the chips cannot
+  // be self-filtered by the phase they set.
+  const lifecycleSummaryQuery = useOrderLifecycleSummaryQuery(summaryScope);
+  const lifecycleSummary = lifecycleSummaryQuery.data;
 
   const retryMutation = useRetryOrderDestinationMutation();
   const demoMode = useDemoMode();
@@ -820,6 +908,29 @@ export function OrdersListPage(): ReactElement {
               <StatusBadge tone={h.tone} withDot compact>
                 {h.label}
               </StatusBadge>
+              {/* #2310 — BESIDE the health badge, never instead of it: health
+                  says "is something wrong", the phase says "what stage is it
+                  at" (ADR-059). */}
+              <OrderPhaseBadge phase={order.lifecyclePhase} compact />
+              {/* #2350 — an exception, so a badge, and it belongs in the STATUS
+                  group beside failure reasons (style guide § order-row signal
+                  placement). BESIDE health for the same reason the phase is:
+                  `OrderHealthValues` is a partition whose values sum to the KPI
+                  cards, so a shortfall value there would double-count or hide a
+                  sync failure behind a stock one. Shared verbatim with the
+                  mobile card. */}
+              <StockAtRiskBadge shortfalls={order.reservationShortfalls} />
+              {/* #2342 — the STATUS group: an exception is a badge and belongs
+                  beside the failure reasons (style guide § Order-row signal
+                  placement rule 2), never in Shipment or Money. */}
+              <OrderHoldBadge reason={order.activeHoldReason} compact />
+              {/* #2356 — an inert state is an EXCEPTION, and rule 2 of the style
+                  guide's order-row signal placement puts exceptions in the
+                  Status group beside failure reasons. It is another badge
+                  vocabulary in that group; the ordinal it originally carried was
+                  dropped on the Wave-2 merge, where #2350's badge claimed the
+                  same one. The guide's composition note is the authority. */}
+              <OmsAttentionBadges entries={order.omsAttention ?? []} compact />
               {h.reason ? (
                 <span className="orders-status-reason" title={h.reason}>
                   {h.reason}
@@ -900,6 +1011,11 @@ export function OrdersListPage(): ReactElement {
             hasLiveOlCarrierRoute(order.deliveryResolution);
           return (
             <span className="orders-cell-stack">
+              {/* Packed sits FIRST: the shipment cell reads as time (packed →
+                  shipped → due → carrier), and packing precedes everything else
+                  in it. It is also the one slot that never depends on a sibling —
+                  the fulfillment badge below is conditional. */}
+              <OrderPackedTick packedAt={order.packedAt} layout="stack" emptyFallback={null} />
               {/* When the row offers "Generate label" the CTA is deferred to sit
                   directly under the Awaiting-label delivery chip (the state it
                   resolves), so the top slot only carries the passive fulfillment
@@ -1130,6 +1246,24 @@ export function OrdersListPage(): ReactElement {
     });
   }
 
+  /** #2353 — the OMS inert-state axis, same present-only shape as its neighbours. */
+  function toggleOmsAttention(): void {
+    captureDemoEvent('demo_orders_filtered', {
+      filter: 'oms_attention',
+      value: String(!omsAttention),
+    });
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      if (omsAttention) {
+        p.delete('attention');
+      } else {
+        p.set('attention', 'true');
+      }
+      p.delete('offset');
+      return p;
+    });
+  }
+
   /** #2100 — mirrors `toggleBreaching`: an independent, present-only chip filter. */
   function toggleInvoicingBlocked(): void {
     captureDemoEvent('demo_orders_filtered', {
@@ -1144,6 +1278,31 @@ export function OrdersListPage(): ReactElement {
         p.set('invoicing', 'blocked');
       }
       // Any filter change invalidates the current page offset.
+      p.delete('offset');
+      return p;
+    });
+  }
+
+  /**
+   * Select / deselect a lifecycle-phase chip (#2310). ONE `setSearchParams`
+   * write, like every sibling handler: two calls in one handler both build from
+   * the current render's params, so the second supersedes the first and all but
+   * the last change is lost. Clicking the active chip clears the param, which
+   * restores the unfiltered list.
+   */
+  function togglePhase(next: OrderLifecyclePhaseValue): void {
+    const clearing = phase === next;
+    captureDemoEvent('demo_orders_filtered', {
+      filter: 'phase',
+      value: clearing ? 'all' : next,
+    });
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      if (clearing) {
+        p.delete('phase');
+      } else {
+        p.set('phase', next);
+      }
       p.delete('offset');
       return p;
     });
@@ -1219,7 +1378,7 @@ export function OrdersListPage(): ReactElement {
       <div className="ds-grid ds-grid--5 orders-segments">
         <button
           type="button"
-          className={['orders-segment', health === undefined ? 'orders-segment--active' : '']
+          className={['card-button-reset', 'orders-segment', health === undefined ? 'orders-segment--active' : '']
             .filter(Boolean)
             .join(' ')}
           aria-pressed={health === undefined}
@@ -1234,7 +1393,7 @@ export function OrdersListPage(): ReactElement {
           <button
             key={segment.key}
             type="button"
-            className={['orders-segment', health === segment.key ? 'orders-segment--active' : '']
+            className={['card-button-reset', 'orders-segment', health === segment.key ? 'orders-segment--active' : '']
               .filter(Boolean)
               .join(' ')}
             aria-pressed={health === segment.key}
@@ -1309,6 +1468,30 @@ export function OrdersListPage(): ReactElement {
               </option>
             ))}
           </Select>
+          {/*
+            #2342 — a Select rather than a chip row, and reason-scoped rather
+            than boolean. `?phase=held` already answers "show me held orders"
+            and carries a real count, so a boolean chip here would be a second
+            control meaning the same thing; the reason is the axis the phase
+            chip cannot express. Eight countless chips for a state most installs
+            rarely hit would be noise, and the chip row is for partitions that
+            carry counts.
+          */}
+          <Select
+            aria-label="Filter by hold reason"
+            value={holdReason ?? ''}
+            // `setFilterParam` writes the key VERBATIM, so this is the URL param
+            // name (`hold`), not the filter field (`holdReason`) — the two differ
+            // here, like `phase` -> `lifecyclePhase` does server-side.
+            onChange={(e) => { setFilterParam('hold', e.target.value); }}
+          >
+            <option value="">Any hold reason</option>
+            {HoldReasonValues.map((value) => (
+              <option key={value} value={value}>
+                {HOLD_REASON_COPY[value].label}
+              </option>
+            ))}
+          </Select>
         </div>
       </div>
 
@@ -1357,17 +1540,60 @@ export function OrdersListPage(): ReactElement {
             {summary?.taxRateConflict === undefined ? '' : ` ${summary.taxRateConflict}`}
           </Chip>
         ) : null}
-        {/* SLA KPI affordance (#1108) — at-a-glance overdue / at-risk counts. */}
-        {slaSummary && (slaSummary.overdue > 0 || slaSummary.atRisk > 0) && (
-          <span className="ds-row" style={{ gap: 'var(--space-2)', alignItems: 'center' }}>
-            <StatusBadge tone="error" withDot compact>
-              {slaSummary.overdue} overdue
-            </StatusBadge>
-            <StatusBadge tone="warning" withDot compact>
-              {slaSummary.atRisk} at risk
-            </StatusBadge>
-          </span>
-        )}
+        {/* #2356 — the OMS inert-state axis. Mounts on `filterActive || count`
+            for the same nine-line reason its two neighbours do: gating on the
+            count alone unmounts the only way to clear the filter the moment the
+            remediation succeeds, leaving an applied filter and an empty state
+            that claims nothing has synced. `error` tone follows the invoicing
+            chip rather than the untoned rate-conflict one — that neighbour is
+            untoned because `.chip--active` overrides `.chip--conflict` and an
+            inactive conflict chip reads as pressed; `error` does not have that
+            problem, and this axis is genuinely error-toned. */}
+        {omsAttention || summary?.omsAttention ? (
+          <Chip tone="error" active={omsAttention} onClick={toggleOmsAttention}>
+            OpenLinker stopped
+            {summary?.omsAttention === undefined ? '' : ` ${summary.omsAttention}`}
+          </Chip>
+        ) : null}
+        {/* SLA KPI affordance (#1108) — at-a-glance overdue / at-risk counts.
+            The BADGES stay conditional (a zero-count badge is a dead signal),
+            but the LINK below is not: see its comment. */}
+        <span className="ds-row" style={{ gap: 'var(--space-2)', alignItems: 'center' }}>
+          {slaSummary && (slaSummary.overdue > 0 || slaSummary.atRisk > 0) ? (
+            <>
+              <StatusBadge tone="error" withDot compact>
+                {slaSummary.overdue} overdue
+              </StatusBadge>
+              <StatusBadge tone="warning" withDot compact>
+                {slaSummary.atRisk} at risk
+              </StatusBadge>
+            </>
+          ) : null}
+          {/* #2306 — the ranked triage surface; this list keeps SLA as one
+              column among many, the risk page makes it the primary axis.
+
+              Rendered UNCONDITIONALLY (#2441 review I3). Gating it on
+              `overdue > 0 || atRisk > 0` made this the sole entry point in the
+              app to a page whose two most useful states are only reachable when
+              nothing is breaching: the `on_track` bucket, and the
+              `noDeadlinesAnywhere` empty state whose copy is a *configuration*
+              answer ("deadlines come from the marketplace dispatch window") —
+              i.e. the diagnostic an install needs, gated behind the condition
+              that proves it does not need it. The page's own empty states do
+              the talking; only the copy varies here.
+
+              `.nav-link` for the ≥44 px coarse-pointer floor (#2441 review I4)
+              — a bare `<a>` gets none of it, and orders is a mobile surface.
+              As a flex item the link is blockified, so `min-height` applies. */}
+          <Link className="nav-link" to="/orders/dispatch-risk">
+            {/* Copy varies with the state, so a clear install is not told to
+                "review risk" it does not have — the counts themselves stay on
+                the badges beside this link rather than being repeated here. */}
+            {slaSummary && (slaSummary.overdue > 0 || slaSummary.atRisk > 0)
+              ? 'Review dispatch risk'
+              : 'Dispatch risk overview'}
+          </Link>
+        </span>
         {query.data && (
           <span
             className="text-muted mono tabular"
@@ -1376,6 +1602,46 @@ export function OrdersListPage(): ReactElement {
             {query.data.total.toLocaleString()} results
           </span>
         )}
+      </div>
+
+      {/*
+        Lifecycle-phase chips (#2310) — a SECOND orthogonal partition beside the
+        health segments above, deliberately NOT a sixth health segment: the KPI
+        cards are a partition whose counts must keep summing to the total, and a
+        held order is usually also `synced` (ADR-059).
+
+        Visibility follows the invoicing chip (#2100): a zero-count chip is
+        hidden so an install that never reaches a phase sees no dead control —
+        but the ACTIVE chip is always rendered, even at zero, or the only way to
+        clear an applied `?phase=` unmounts the moment its last order moves on.
+        `vendor_authoritative` / `held` / `amending` are therefore simply absent
+        until Waves 2 and 4 give them producers, which is correct, not a gap.
+      */}
+      <div
+        className="ds-row orders-phase-chips"
+        style={{ gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}
+        role="group"
+        aria-label="Filter by lifecycle phase"
+      >
+        {OrderLifecyclePhaseValues.map((value) => {
+          const count = lifecycleSummary?.[PHASE_SUMMARY_KEY[value]];
+          const active = phase === value;
+          if (!active && !count) return null;
+          const meta = ORDER_LIFECYCLE_PHASE_META[value];
+          return (
+            <Chip
+              key={value}
+              tone={CHIP_TONE_FOR_PHASE_TONE[meta.tone]}
+              active={active}
+              onClick={() => { togglePhase(value); }}
+            >
+              {/* The count is omitted until the summary resolves rather than
+                  defaulted to 0 — the same rule the invoicing chip follows. */}
+              {meta.label}
+              {count === undefined ? '' : ` ${count}`}
+            </Chip>
+          );
+        })}
       </div>
 
       {query.isLoading ? (
@@ -1650,6 +1916,19 @@ export function OrdersListPage(): ReactElement {
                         </dd>
                       </div>
                       <div>
+                        <dt>Stock</dt>
+                        <dd>
+                          {/* SAME component as the desktop status cell. An
+                              absent value renders an em dash, never a "fine"
+                              claim — see `stock-at-risk-copy.ts`. */}
+                          <StockAtRiskBadge
+                            shortfalls={order.reservationShortfalls}
+                            layout="row"
+                            emptyFallback="—"
+                          />
+                        </dd>
+                      </div>
+                      <div>
                         <dt>Invoice</dt>
                         <dd>
                           {/* SAME component as the desktop cell — this used to be a
@@ -1670,6 +1949,20 @@ export function OrdersListPage(): ReactElement {
                       <div>
                         <dt>Customer</dt>
                         <dd>{cust ?? '—'}</dd>
+                      </div>
+                      <div>
+                        <dt>Packed</dt>
+                        <dd>
+                          {/* SAME component as the desktop cell. On a narrow
+                              viewport the desktop tick becomes a labelled fact,
+                              so the empty case needs a dash rather than nothing —
+                              a <dd> may not be empty. */}
+                          <OrderPackedTick
+                            packedAt={order.packedAt}
+                            layout="row"
+                            emptyFallback="—"
+                          />
+                        </dd>
                       </div>
                       <div className="orders-card-facts__wide">
                         <dt>Shipment</dt>
@@ -1733,6 +2026,9 @@ export function OrdersListPage(): ReactElement {
                     <StatusBadge tone={h.tone} withDot compact>
                       {h.label}
                     </StatusBadge>
+                    <OrderPhaseBadge phase={order.lifecyclePhase} compact />
+                    <OrderHoldBadge reason={order.activeHoldReason} compact />
+                    <OmsAttentionBadges entries={order.omsAttention ?? []} compact />
                     <StatusBadge tone={fulfillment.tone} withDot compact>
                       {fulfillment.label}
                     </StatusBadge>

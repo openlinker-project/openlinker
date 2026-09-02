@@ -27,6 +27,7 @@ import {
   SlaStateValues,
   FulfillmentRollupStateValues,
 } from '@openlinker/core/orders';
+import { HoldReasonValues, type HoldReason } from '@openlinker/core/order-lifecycle';
 import {
   OrderSyncStatusFilter,
   OrderRecordStatus,
@@ -36,6 +37,7 @@ import {
   SlaState,
   FulfillmentRollupState,
 } from '@openlinker/core/orders';
+import { OrderLifecyclePhaseValues, type OrderLifecyclePhase } from '@openlinker/core/order-lifecycle';
 
 export class ListOrdersQueryDto {
   @ApiPropertyOptional({ description: 'Filter by source connection ID (UUID)' })
@@ -137,6 +139,20 @@ export class ListOrdersQueryDto {
   fulfillmentState?: FulfillmentRollupState;
 
   @ApiPropertyOptional({
+    enum: HoldReasonValues,
+    description:
+      'Hold-reason filter (#2342), sent as `?hold=`: keeps only orders whose OPEN hold carries ' +
+      'this reason. Reason-scoped with no "any" value on purpose — `?phase=held` already answers ' +
+      '"show me held orders" and carries a count, so this is the narrower axis that chip cannot ' +
+      'express, and its result set is a strict subset of that one. Composes with `phase` and ' +
+      '`health` rather than replacing either. An unrecognised reason is rejected with a 400 ' +
+      'rather than silently returning the unfiltered list.',
+  })
+  @IsOptional()
+  @IsEnum(HoldReasonValues)
+  hold?: HoldReason;
+
+  @ApiPropertyOptional({
     type: Boolean,
     description:
       'Sales-document block filter (#2100): true keeps only orders carrying an ATTENTION-WORTHY ' +
@@ -161,6 +177,44 @@ export class ListOrdersQueryDto {
   @ApiPropertyOptional({
     type: Boolean,
     description:
+      'Cancellation filter (#1984, exposed on this route by #2306): true keeps only cancelled ' +
+      'orders, false excludes them, omitted does not filter. Maps directly to ' +
+      '`cancelledAt IS [NOT] NULL` — the repository already honoured this field, it simply had ' +
+      'no query surface. The dispatch-risk page passes false so the rows it lists match the ' +
+      'bucket counts GET /orders/sla-summary returns under the same scope. NOT orthogonal to ' +
+      '`phase`: the lifecycle phase `cancelled` IS this filter\'s `true` set, so a ' +
+      'contradictory pair (`cancelled=false&phase=cancelled`, or `cancelled=true` with any ' +
+      'other phase) is rejected with a 400 rather than returning a structurally empty list.',
+  })
+  @IsOptional()
+  // Same string-literal mapping + pass-through-to-400 posture as
+  // `salesDocumentBlocked` above; see that comment for why a stray value must not
+  // collapse to `undefined`.
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  cancelled?: boolean;
+
+  @ApiPropertyOptional({
+    enum: OrderLifecyclePhaseValues,
+    description:
+      'Derived lifecycle-phase filter (#2309, ADR-059): cancelled | vendor_authoritative | ' +
+      'delivered | in_transit | fulfillment_failed | held | amending | blocked | ready. ' +
+      'Server-derived from the order\'s own facts and clock-free, so it always matches the ' +
+      '`lifecyclePhase` the same order carries on its response. A SECOND ORTHOGONAL PARTITION ' +
+      'beside `health`, not a sixth health bucket — it composes with `health` rather than ' +
+      'competing with it (a held order is usually also synced). Three values ' +
+      '(vendor_authoritative, held, amending) have no persisted source yet and match nothing ' +
+      'until Waves 2 and 4 wire their facts. Orthogonal to `health`, but NOT to `cancelled`: ' +
+      'the `cancelled` phase is derived from the same `cancelledAt IS NOT NULL` fact that ' +
+      'filter reads, so a contradictory pair is rejected with a 400 — see `cancelled`.',
+  })
+  @IsOptional()
+  @IsEnum(OrderLifecyclePhaseValues)
+  phase?: OrderLifecyclePhase;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
       'Tax-rate conflict filter (#2254): true keeps only orders where the shop and the channel ' +
       'named DIFFERENT rates, false keeps only the rest, omitted does not filter. A SEPARATE ' +
       'axis from salesDocumentBlocked, and it has to be — a conflict does not stop the invoice, ' +
@@ -170,6 +224,27 @@ export class ListOrdersQueryDto {
   @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
   @IsBoolean()
   taxRateConflict?: boolean;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    name: 'attention',
+    description:
+      'THIS IS NOT `health=needs_attention`. That value is a member of the health PARTITION and ' +
+      'means a sync failure; this is an orthogonal axis (#2352/#2353) meaning OpenLinker stopped ' +
+      'deciding something about the order - two systems claiming one thing, a stock shortfall ' +
+      'against what was promised, a line nothing can ship, an unaccepted job. An order is ' +
+      'routinely one, the other, or both, so this composes with `health` rather than competing ' +
+      'with it. true keeps only orders carrying at least one COUNTED inert state, false keeps ' +
+      'only the rest, omitted does not filter. A reason this build does not recognise never ' +
+      'matches and is never counted.',
+  })
+  @IsOptional()
+  // Same string-literal mapping + pass-through-to-400 posture as
+  // `salesDocumentBlocked` above; see that comment for why a stray value must not
+  // collapse to `undefined`.
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  attention?: boolean;
 
   @ApiPropertyOptional({ default: 0, minimum: 0, description: 'Number of items to skip' })
   @IsOptional()

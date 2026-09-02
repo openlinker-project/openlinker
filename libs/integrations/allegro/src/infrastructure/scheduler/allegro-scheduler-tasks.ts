@@ -2,7 +2,7 @@
  * Allegro Scheduler Tasks
  *
  * Builds the `SchedulerTaskConfig` instances Allegro contributes to the core
- * `SchedulerTaskRegistryService` (#584). Five tasks today:
+ * `SchedulerTaskRegistryService` (#584). Seven tasks today:
  *
  *   - `allegro-orders-poll` — incremental `/order/events` ingest, default
  *     every minute (#2620 — shortened from 5 minutes). A tick costs exactly
@@ -32,6 +32,16 @@
  *     to the destination OMP (PrestaShop via capability B). Default every
  *     15 minutes. Rolling scan-offset cursor key
  *     `allegro.shipmentStatus.scanOffset`.
+ *   - `allegro-returns-poll` (#2330) — cursor-paged discovery over the `[BETA]`
+ *     customer-returns feed, fanning out one `marketplace.return.sync` child per
+ *     item. Default every 15 minutes. Cursor key
+ *     `allegro.customerReturns.lastReturnId`.
+ *   - `allegro-returns-status-sync` (#2330) — the lifecycle counterpart:
+ *     Allegro's `CustomerReturn` carries no `updatedAt` and its order-event
+ *     journal has no return event type, so a bounded re-read of OL's own
+ *     non-terminal returns is the ONLY way a transition is ever observed.
+ *     Default hourly. Rolling scan-offset cursor key
+ *     `allegro.customerReturns.scanOffset`.
  *
  * Env-var gating is preserved verbatim from the previous core implementation
  * for deployer back-compat: when `OL_ALLEGRO_POLL_SCHEDULER_ENABLED=false`
@@ -49,8 +59,29 @@ import type { ConfigService } from '@nestjs/config';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { SchedulerTaskConfig } from '@openlinker/core/sync';
 
-const isEnabled = (configService: ConfigService, key: string): boolean =>
-  configService.get<string>(key, 'true') !== 'false';
+/**
+ * Whether a task's `OL_ALLEGRO_*_SCHEDULER_ENABLED` gate lets it register.
+ *
+ * `defaultValue` exists for #2330's two returns tasks and defaults to `'true'`
+ * so every pre-existing caller is byte-identical. Both returns tasks pass
+ * `'false'`: they drive an endpoint Allegro marks `[BETA]` (whose media type may
+ * change without the usual deprecation ladder), across a cursor whose
+ * composition and ordering guarantees are documented nowhere, and which no one
+ * has been able to exercise against real buyer-initiated returns — see
+ * SPIKE-2289 risks 1, 3, 6 and 7. Shipping it ON would enable new recurring
+ * marketplace load on every existing Allegro connection at deploy, on evidence
+ * that is fixture-deep. Opt-in for one release, then flip.
+ *
+ * This is a per-ADAPTER helper deliberately: the shared core `SchedulerTaskConfig`
+ * has its own `enabledDefault` serving the core-owned task path, and widening
+ * that to carry a plugin's registration policy would put an Allegro decision in
+ * a type every plugin shares.
+ */
+const isEnabled = (
+  configService: ConfigService,
+  key: string,
+  defaultValue: 'true' | 'false' = 'true'
+): boolean => configService.get<string>(key, defaultValue) !== 'false';
 
 /**
  * Reads the `masterCatalogConnectionId` field off a connection's `config`
@@ -64,8 +95,9 @@ const getMasterCatalogConnectionId = (connection: Connection): string | null => 
 };
 
 /**
- * Build the Allegro scheduler-task list. Returns 0–5 tasks depending on
- * the `OL_ALLEGRO_*_SCHEDULER_ENABLED` env-var gates.
+ * Build the Allegro scheduler-task list. Returns 0–7 tasks depending on
+ * the `OL_ALLEGRO_*_SCHEDULER_ENABLED` env-var gates. The two returns tasks
+ * (#2330) are the only ones that default OFF — see `isEnabled`.
  */
 export function buildAllegroSchedulerTasks(configService: ConfigService): SchedulerTaskConfig[] {
   const tasks: SchedulerTaskConfig[] = [];
@@ -210,6 +242,73 @@ export function buildAllegroSchedulerTasks(configService: ConfigService): Schedu
       }),
       generateIdempotencyKey: (connection, timestamp) =>
         `marketplace:${connection.id}:shipment:status:sync:${timestamp}`,
+    });
+  }
+
+  // #2330 pass 1 — discovery. `requiredCapability: 'OrderSource'` and NOT
+  // `'ReturnSourceReader'`: the latter is advertised-without-dispatch, so naming
+  // it here would pass the manifest gate and then throw inside
+  // `dispatchCapability`. The service narrows with `isReturnSourceReader` and
+  // no-ops on a connection whose adapter cannot read returns.
+  if (isEnabled(configService, 'OL_ALLEGRO_RETURNS_POLL_SCHEDULER_ENABLED', 'false')) {
+    const cronExpression = configService.get<string>(
+      'OL_ALLEGRO_RETURNS_POLL_INTERVAL_CRON',
+      '*/15 * * * *'
+    );
+    const pageLimitRaw = Number(
+      configService.get<string>('OL_ALLEGRO_RETURNS_POLL_PAGE_LIMIT', '100')
+    );
+    const pageLimit = Number.isFinite(pageLimitRaw) && pageLimitRaw > 0 ? pageLimitRaw : 100;
+
+    tasks.push({
+      taskId: 'allegro-returns-poll',
+      platformType: 'allegro',
+      requiredCapability: 'OrderSource',
+      jobType: 'marketplace.returns.poll',
+      cronExpression,
+      enabledEnvVar: 'OL_ALLEGRO_RETURNS_POLL_SCHEDULER_ENABLED',
+      generatePayload: () => ({
+        schemaVersion: 1,
+        cursorKey: 'allegro.customerReturns.lastReturnId',
+        limit: pageLimit,
+      }),
+      generateIdempotencyKey: (connection, timestamp) =>
+        `marketplace:${connection.id}:returns:poll:${timestamp}`,
+    });
+  }
+
+  // #2330 pass 2 — lifecycle. Separate task, separate cadence and separate
+  // cursor namespace from pass 1, because the two answer different questions and
+  // sharing either would let discovery starve status (or the reverse).
+  if (isEnabled(configService, 'OL_ALLEGRO_RETURNS_STATUS_SYNC_SCHEDULER_ENABLED', 'false')) {
+    const cronExpression = configService.get<string>(
+      'OL_ALLEGRO_RETURNS_STATUS_SYNC_INTERVAL_CRON',
+      '0 * * * *'
+    );
+    const pageLimitRaw = Number(
+      configService.get<string>('OL_ALLEGRO_RETURNS_STATUS_SYNC_PAGE_LIMIT', '50')
+    );
+    const pageLimit = Number.isFinite(pageLimitRaw) && pageLimitRaw > 0 ? pageLimitRaw : 50;
+    const lookbackRaw = Number(
+      configService.get<string>('OL_ALLEGRO_RETURNS_STATUS_SYNC_LOOKBACK_DAYS', '90')
+    );
+    const lookbackDays = Number.isFinite(lookbackRaw) && lookbackRaw > 0 ? lookbackRaw : 90;
+
+    tasks.push({
+      taskId: 'allegro-returns-status-sync',
+      platformType: 'allegro',
+      requiredCapability: 'OrderSource',
+      jobType: 'marketplace.returns.statusSync',
+      cronExpression,
+      enabledEnvVar: 'OL_ALLEGRO_RETURNS_STATUS_SYNC_SCHEDULER_ENABLED',
+      generatePayload: () => ({
+        schemaVersion: 1,
+        limit: pageLimit,
+        cursorKey: 'allegro.customerReturns.scanOffset',
+        lookbackDays,
+      }),
+      generateIdempotencyKey: (connection, timestamp) =>
+        `marketplace:${connection.id}:returns:status:sync:${timestamp}`,
     });
   }
 

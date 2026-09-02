@@ -163,6 +163,18 @@ export interface BulkListingSubmitResult {
    * count.
    */
   skippedAlreadyListedCount: number;
+  /**
+   * Count of expanded jobs dropped because OpenLinker could not resolve the
+   * variant's availability (#2323). Zero when nothing was skipped.
+   *
+   * Reported for the reason `skippedAlreadyListedCount` is (#1933 precedent):
+   * a partial exclusion silently shrinks the batch, so a caller that reports
+   * its own pre-filter selection count tells the operator more offers were
+   * submitted than really were. Unlike the already-listed skip this one is
+   * TRANSIENT — the excluded variants are worth re-submitting once the read
+   * recovers.
+   */
+  skippedAvailabilityUnknownCount: number;
 }
 
 /**

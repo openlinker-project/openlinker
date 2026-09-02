@@ -23,8 +23,9 @@ import { Injectable, Inject } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { CronJob } from 'cron';
-import type { Connection } from '@openlinker/core/identifier-mapping';
-import { ConnectionPort, CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
+// Value import: the #2317 backfill constructs a synthetic single-element
+// connection list for a pass that has no connection axis.
+import { Connection, ConnectionPort, CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
 import type { SyncJobRequest, SchedulerTaskConfig, JobType } from '@openlinker/core/sync';
 import {
   JobEnqueuePort,
@@ -77,6 +78,31 @@ const STALE_OFFER_PAUSE_DEFAULT_LIMIT = 200;
  */
 const ORDER_FX_STAMP_SWEEP_DEFAULT_LIMIT = 100;
 const ORDER_FX_STAMP_SWEEP_DEFAULT_MAX_AGE_DAYS = 30;
+
+/**
+ * The nil-UUID connection a pass with NO connection axis is enqueued under.
+ *
+ * Named for what it is, not for its first caller: `SyncJob.connectionId` is
+ * non-nullable, so every connection-less scheduled pass needs this value. The
+ * inventory provenance backfill (#2317) was merely the first; the orders hold
+ * reconcile (#2340) is the second, and the provenance backfill is a latching,
+ * completing pass someone will eventually retire — under the old name
+ * (`INVENTORY_PROVENANCE_SCOPE_ID`) they would have read it as inventory-owned
+ * and deleted an orders cron's scope with it.
+ *
+ * Declared HERE rather than imported from
+ * `sync/handlers/inventory-provenance-backfill.handler`: this file belongs to
+ * the `scheduler` role and that one to `jobs`, and ADR-051's whole point is
+ * that a role which is off contributes no module at all — an import across the
+ * boundary makes the scheduler pull in a handler module it can never run.
+ *
+ * A local constant is the established convention for exactly this
+ * (`InventoryService.SYSTEM_CONNECTION_ID`, whose
+ * name this now matches): the value is the nil UUID, which
+ * is a well-known literal rather than something derived, so the two cannot
+ * drift into different values without one of them being plainly wrong.
+ */
+const SYSTEM_CONNECTION_ID = '00000000-0000-0000-0000-000000000000';
 
 /**
  * Default page size for the tax-rate backfill sweep (#2440). Bounds the
@@ -144,6 +170,27 @@ interface CoreCapabilityTaskDescriptor {
  * jobTypes, capabilities, env vars, default crons, key namespaces, and payloads.
  */
 const CORE_CAPABILITY_TASKS: readonly CoreCapabilityTaskDescriptor[] = [
+  {
+    // Automation v1's only time-based mode (#2360). Spec §5.2: every 15 minutes.
+    // The cron is the TICK, not the cycle — a connection with many candidates
+    // spans several ticks, and the scan-offset cursor is what says a cycle is
+    // still in flight.
+    //
+    // The `timestamp` in this key is the SCHEDULER's per-tick discriminator and
+    // is deliberately wall-clock: without it the second tick would dedup against
+    // the first forever. It is not a trigger idempotency key. #2360's
+    // "no wall-clock in an idempotency key" rule is about the FIRING record,
+    // whose key is `(ruleId, subjectKind, subjectId)` and carries no clock —
+    // which is what makes a standing deadline fire once rather than every tick.
+    taskId: 'automation-deadline-sweep',
+    jobType: 'automation.trigger.deadlineSweep',
+    capability: 'OrderSource',
+    enabledEnvVar: 'OL_AUTOMATION_DEADLINE_SWEEP_ENABLED',
+    cronEnvVar: 'OL_AUTOMATION_DEADLINE_SWEEP_CRON',
+    defaultCron: '*/15 * * * *',
+    idempotencyKey: (connectionId, timestamp) =>
+      `automation:${connectionId}:deadlineSweep:${timestamp}`,
+  },
   {
     taskId: 'master-inventory-sync',
     jobType: 'master.inventory.syncAll',
@@ -217,6 +264,28 @@ const CORE_CAPABILITY_TASKS: readonly CoreCapabilityTaskDescriptor[] = [
     cadenceFromSettings: (settings) => settings.deletionAuditCadence.value,
     idempotencyKey: (connectionId, timestamp) =>
       `master:${connectionId}:product:reconcile:${timestamp}`,
+  },
+  {
+    // Orphan return re-attribution (#2332, ADR-060). Re-checks OL's own orphan returns
+    // against `identifier_mappings` so a return that arrived before its order stops
+    // being permanently unattributable — and therefore permanently blocked from every
+    // downstream trigger.
+    //
+    // Gated on `OrderSource` purely to SCOPE which connections can have returns at all;
+    // the pass resolves no adapter and makes no platform call, so the capability is not a
+    // dispatch requirement here.
+    //
+    // Default ON, unlike the two #2330 returns ingestion tasks. They are opt-in because
+    // they call a marketplace; this one's worst case is a bounded local read that
+    // resolves nothing.
+    taskId: 'returns-orphan-reconcile',
+    jobType: 'returns.orphan.reconcile',
+    capability: 'OrderSource',
+    enabledEnvVar: 'OL_RETURNS_ORPHAN_RECONCILE_ENABLED',
+    cronEnvVar: 'OL_RETURNS_ORPHAN_RECONCILE_CRON',
+    defaultCron: '*/30 * * * *',
+    idempotencyKey: (connectionId, timestamp) =>
+      `returns:${connectionId}:orphan:reconcile:${timestamp}`,
   },
   {
     taskId: 'pickup-point-refresh',
@@ -418,6 +487,12 @@ export class SchedulerService implements OnModuleDestroy {
 
       // Registered bespoke rather than as a CORE_CAPABILITY_TASKS row (#1979).
       this.registerDestinationTaxonomyTask();
+
+      // Likewise bespoke, for the opposite reason (#2317): this one has no
+      // capability and no connection at all.
+      this.registerInventoryProvenanceBackfillTask();
+      this.registerReservationSweepTasks();
+      this.registerOrderHoldReconcileTask();
 
       // Drain plugin-contributed tasks — populated at `onModuleInit`, complete
       // by the time any post-bootstrap start() runs.
@@ -807,6 +882,229 @@ export class SchedulerService implements OnModuleDestroy {
           ? `taxonomy:owner:${owner}:sync:${timestamp}`
           : `taxonomy:connection:${connection.id}:sync:${timestamp}`;
       },
+    });
+  }
+
+  /**
+   * The nil-UUID pseudo-connection a connection-less scheduled pass runs under.
+   *
+   * A real `Connection` built through its own constructor rather than a cast:
+   * the scheduler reads only `id` (for the job row and the idempotency key) and
+   * `name` (for logs), and the remaining positional arguments are inert filler
+   * that no code path on these tasks touches.
+   */
+  private buildSystemConnection(): Connection {
+    return new Connection(
+      SYSTEM_CONNECTION_ID,
+      'system',
+      'system',
+      'active',
+      {},
+      '',
+      new Date(0),
+      new Date(0),
+      undefined,
+      []
+    );
+  }
+
+  /**
+   * Register the connection-provenance backfill (#2317, ADR-058 ladder step
+   * (ii)).
+   *
+   * Bespoke rather than a `CORE_CAPABILITY_TASKS` row because it has no
+   * capability to scope by and no connection to run for. Its subject is a
+   * predicate over one OL-owned table — `inventory_items.sourceConnectionId IS
+   * NULL` — which is precisely the absence of a connection axis, so it runs
+   * ONCE for the deployment under the nil-UUID system id via a synthetic
+   * single-element `connectionFilter`.
+   *
+   * The pseudo-connection is a real `Connection` built through its own
+   * constructor rather than a cast: the scheduler reads only `id` (for the job
+   * row and the idempotency key) and `name` (for logs), and the remaining
+   * positional arguments are inert filler that no code path on this task
+   * touches. Constructing it honestly keeps the task type-checked against
+   * `SchedulerTaskConfig` with no `as` anywhere.
+   *
+   * **Default ON.** It makes zero platform calls, is bounded per tick,
+   * idempotent, and self-latches the moment it finishes — and until it does,
+   * #2325 cannot run at all. That is the `master.product.reconcile` rationale:
+   * a pass that unblocks a correctness fix and costs nothing external should
+   * not wait for an operator to discover a flag.
+   */
+  private registerInventoryProvenanceBackfillTask(): void {
+    const enabled = this.configService.get<string>(
+      'OL_INVENTORY_PROVENANCE_BACKFILL_ENABLED',
+      'true'
+    );
+    if (enabled === 'false') {
+      return;
+    }
+
+    const cronExpression = this.configService.get<string>(
+      'OL_INVENTORY_PROVENANCE_BACKFILL_CRON',
+      // Every 5 minutes: the page is a single local UPDATE, so the cadence is
+      // what sets the drain rate (~6k rows/hour at the default page). Once the
+      // drain completes the handler short-circuits on its own latch, so the
+      // steady-state cost of this frequency is one cursor read per tick.
+      '*/5 * * * *'
+    );
+
+    // No connection axis exists for this pass — see the method docblock.
+    const systemConnection = this.buildSystemConnection();
+
+    this.tasks.push({
+      taskId: 'inventory-provenance-backfill',
+      jobType: 'inventory.provenance.backfill',
+      cronExpression,
+      enabledEnvVar: 'OL_INVENTORY_PROVENANCE_BACKFILL_ENABLED',
+      enabledDefault: true,
+      connectionFilter: () => Promise.resolve([systemConnection]),
+      generatePayload: () => ({ schemaVersion: 1 }),
+      generateIdempotencyKey: (_connection, timestamp) =>
+        `inventory:provenance:backfill:${timestamp}`,
+    });
+  }
+
+  /**
+   * Register the three reservation sweeps (#2346 / #2347 / #2349).
+   *
+   * Its own method, and that separation is load-bearing rather than tidiness.
+   * These three were originally pushed from inside
+   * `registerInventoryProvenanceBackfillTask`, behind that method's early
+   * return — so setting `OL_INVENTORY_PROVENANCE_BACKFILL_ENABLED=false` also
+   * unregistered reservation expiry, consume and shortfall, silently and with
+   * no log line. That flag belongs to a LATCHING, completing pass whose own
+   * docblock anticipates an operator eventually switching it off, and doing so
+   * would have stopped releasing available-to-promise on a live install. Each
+   * sweep's own `enabledEnvVar` is honoured per tick, so registration must not
+   * be coupled to a foreign concern's flag.
+   *
+   * They share the nil-UUID system scope for one reason: reservations key on
+   * (order, line, position) and carry no connection axis at all.
+   */
+  private registerReservationSweepTasks(): void {
+    const systemConnection = this.buildSystemConnection();
+
+    // #2346 — the state-dependent reservation expiry sweep. Global scope for the
+    // same reason: reservations key on (order, line, position) and carry no
+    // connection axis.
+    //
+    // Default ON. On a default install every hold is stamped `diagnostic`
+    // (#2344), so neither an extension nor a release moves a published number;
+    // and while `order_holds` (#2339) is absent the pass releases NOTHING at all.
+    // It is registered now so the sweep exists the moment a real obligation
+    // reader is bound, rather than being remembered later.
+    this.tasks.push({
+      taskId: 'reservation-expiry-sweep',
+      jobType: 'inventory.reservations.expire',
+      cronExpression: '15 * * * *',
+      enabledEnvVar: 'OL_RESERVATION_EXPIRY_SWEEP_ENABLED',
+      enabledDefault: true,
+      connectionFilter: () => Promise.resolve([systemConnection]),
+      generatePayload: () => ({ schemaVersion: 1 }),
+      generateIdempotencyKey: (_connection, timestamp) =>
+        `inventory:reservations:expire:${timestamp}`,
+    });
+
+    // #2347 — the reservation CONSUME sweep. Global scope for the same reason as
+    // its expiry sibling: reservations key on (order, line, position) and
+    // shipments on the order, so neither carries a connection axis.
+    //
+    // More frequent than expiry's hourly tick, deliberately: this pass RELEASES
+    // available-to-promise the operator can resell, so lag here is lost sales
+    // rather than a safety risk — the opposite direction from expiry, where
+    // waiting is the safe choice.
+    //
+    // Default ON. On a default install every hold is stamped `diagnostic`
+    // (#2344), so consuming moves no published number; on an existing install
+    // the first cycles are a one-time, self-limiting marker backfill over
+    // historical shipments (see the handler docblock).
+    this.tasks.push({
+      taskId: 'reservation-consume-sweep',
+      jobType: 'inventory.reservations.consume',
+      cronExpression: '*/10 * * * *',
+      enabledEnvVar: 'OL_RESERVATION_CONSUME_SWEEP_ENABLED',
+      enabledDefault: true,
+      connectionFilter: () => Promise.resolve([systemConnection]),
+      generatePayload: () => ({ schemaVersion: 1 }),
+      generateIdempotencyKey: (_connection, timestamp) =>
+        `inventory:reservations:consume:${timestamp}`,
+    });
+
+    // #2349 — the reservation SHORTFALL reconciler. Global scope for the same
+    // reason as its two siblings: reservations key on (order, line, position)
+    // and carry no connection axis.
+    //
+    // Default ON, and safe to be: it makes no platform call, writes only its
+    // own episodes table, and REPAIRS nothing — no counter is clamped, no
+    // reservation is touched, no quantity is published. The worst a
+    // misconfiguration can do is record a fact nobody reads.
+    //
+    // Every 20 minutes rather than expiry's hourly tick: this pass is how an
+    // operator learns an order is at risk, and the remediation is off-system
+    // (buy stock, cancel, contact the buyer), so latency here is the operator's
+    // reaction time.
+    this.tasks.push({
+      taskId: 'reservation-shortfall-sweep',
+      jobType: 'inventory.reservations.shortfall',
+      cronExpression: '*/20 * * * *',
+      enabledEnvVar: 'OL_RESERVATION_SHORTFALL_SWEEP_ENABLED',
+      enabledDefault: true,
+      connectionFilter: () => Promise.resolve([systemConnection]),
+      generatePayload: () => ({ schemaVersion: 1 }),
+      generateIdempotencyKey: (_connection, timestamp) =>
+        `inventory:reservations:shortfall:${timestamp}`,
+    });
+  }
+
+  /**
+   * Register the order-hold projection reconcile (#2340, DESIGN §6.3).
+   *
+   * Bespoke rather than a `CORE_CAPABILITY_TASKS` row for the same reason the
+   * provenance backfill above is: it has no capability to scope by and no
+   * connection to run for. Its subject is a disagreement between two OL-owned
+   * tables — `order_holds` and the `order_records.activeHoldReason` cache — and
+   * neither write path involves a platform at all, so it runs ONCE for the
+   * deployment under the nil-UUID system id via a synthetic single-element
+   * `connectionFilter`.
+   *
+   * **Default ON.** It makes zero platform calls, is bounded per tick, is
+   * idempotent, and repairs a cache whose authority write is deliberately
+   * best-effort — the `master.product.reconcile` rationale: a pass that closes a
+   * correctness gap and costs nothing external should not wait for an operator
+   * to discover a flag.
+   *
+   * **Hourly, and unlike the provenance backfill it never latches off** —
+   * divergence can reappear at any time, so there is no completion stamp. The
+   * steady-state cost of a tick is one indexed query returning zero rows.
+   *
+   * The drift window this cadence buys shows a stale phase badge, never a wrong
+   * gate: both #2339 hold gates read `order_holds` directly.
+   */
+  private registerOrderHoldReconcileTask(): void {
+    const enabled = this.configService.get<string>('OL_ORDER_HOLD_RECONCILE_ENABLED', 'true');
+    if (enabled === 'false') {
+      return;
+    }
+
+    const cronExpression = this.configService.get<string>(
+      'OL_ORDER_HOLD_RECONCILE_CRON',
+      '0 * * * *'
+    );
+
+    // No connection axis exists for this pass — see the method docblock.
+    const systemConnection = this.buildSystemConnection();
+
+    this.tasks.push({
+      taskId: 'order-hold-reconcile',
+      jobType: 'orders.holds.reconcile',
+      cronExpression,
+      enabledEnvVar: 'OL_ORDER_HOLD_RECONCILE_ENABLED',
+      enabledDefault: true,
+      connectionFilter: () => Promise.resolve([systemConnection]),
+      generatePayload: () => ({ schemaVersion: 1 }),
+      generateIdempotencyKey: (_connection, timestamp) => `orders:holds:reconcile:${timestamp}`,
     });
   }
 

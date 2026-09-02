@@ -8,7 +8,7 @@
  * Implements InventoryRepositoryPort to maintain proper dependency
  * direction and enable easy testing/mocking.
  *
- * The update path is column-scoped (#2071): the three exported column groups
+ * The update path is column-scoped (#2071): the four exported column groups
  * below state which columns the master sync owns, and a spec asserts every
  * declared entity column is classified into exactly one of them — so a column
  * added later cannot silently join the write set on the row every published
@@ -20,25 +20,32 @@
  * @see {@link InventoryRepositoryPort} for the port interface
  */
 import { Injectable } from '@nestjs/common';
+import { Logger } from '@openlinker/shared/logging';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, Repository } from 'typeorm';
+import { Brackets, QueryFailedError, Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
 import { InventoryItemOrmEntity } from '../entities/inventory-item.orm-entity';
 import type { InventoryRepositoryPort } from '../../../domain/ports/inventory-repository.port';
 import { InventoryItem } from '../../../domain/entities/inventory-item.entity';
 import { InventoryReturningUnsupportedError } from '../../../domain/exceptions/inventory-returning-unsupported.error';
 import { InventoryRowVanishedError } from '../../../domain/exceptions/inventory-row-vanished.error';
+import { InventoryCrossSourcePositionConflictError } from '../../../domain/exceptions/inventory-cross-source-position-conflict.error';
+import { LEGACY_SOURCE_CONNECTION_ID } from '../../../domain/types/inventory.types';
 import type {
   InventoryFilters,
   InventoryPagination,
   PaginatedInventoryItems,
-  VariantAvailability,
+  VariantStockRow,
   ProductStockAggregate,
   PruneStaleVariantsResult,
+  ProvenanceScope,
+  DuplicatePositionReport,
+  InventoryPositionCandidate,
+  DuplicatePositionGroup,
 } from '../../../domain/types/inventory.types';
 
 /**
- * The three column groups below are exported for the classification spec, which
+ * The four column groups below are exported for the classification spec, which
  * asserts every declared entity column falls into exactly one of them — so a new
  * column fails the build until someone decides who owns it. They are NOT part of
  * the context's public surface (deliberately absent from `inventory/index.ts`)
@@ -51,6 +58,15 @@ import type {
  * `findByProductAndVariant` matches on the last three, so these ARE the lookup
  * key: writing them back on an update is a no-op at best and a row-identity
  * change at worst. Never in an update's SET clause.
+ *
+ * **`sourceConnectionId` participates in the lookup since #2320 and still does
+ * NOT belong here.** The two facts are separate: it narrows WHICH row a scoped
+ * lookup matches, but it remains master-OWNED and therefore writable, because a
+ * pre-existing unattributed row has to be able to acquire provenance in place.
+ * Moving it into this group would take it out of the UPDATE set, and #2314's
+ * "stamps provenance onto an existing NULL row in place" spec would fail — the
+ * row would never be claimed at all. Membership here means "never written",
+ * not "used when matching".
  */
 export const INVENTORY_IDENTITY_COLUMNS = [
   'id',
@@ -74,11 +90,22 @@ export const INVENTORY_IDENTITY_COLUMNS = [
  *   disjoint and an upsert cannot un-stale a row the same run just flagged.
  *   **Precondition:** any new `upsert` caller must preserve that ordering, or
  *   `isStale` has to leave this set.
+ * - `sourceConnectionId` — connection provenance (ADR-058 ladder step (i),
+ *   #2314), written by whichever sync creates or refreshes the row. It is in
+ *   the UPDATE set deliberately, so a pre-existing row acquires provenance on
+ *   its next sync rather than waiting for the #2317 backfill. The consequence
+ *   is accepted and known: where two `InventoryMaster` connections claim the
+ *   same internal product id, each sync rewrites the other's value and the
+ *   column flaps. That is exactly the condition the #1904 rival-claimant guard
+ *   already detects (and withholds the prune for), so the guard stays until
+ *   ladder step (iii) makes the column authoritative; #2320 inherits the
+ *   flapping as a known state.
  */
 export const INVENTORY_MASTER_OWNED_COLUMNS = [
   'availableQuantity',
   'reservedQuantity',
   'isStale',
+  'sourceConnectionId',
 ] as const;
 
 /**
@@ -93,43 +120,158 @@ export const INVENTORY_MASTER_OWNED_COLUMNS = [
  */
 export const INVENTORY_DB_MANAGED_COLUMNS = ['updatedAt'] as const;
 
+/**
+ * Columns OpenLinker itself owns, which the master sync must NOT write (#2314).
+ *
+ * **Filled by #2343.** ADR-058 decision 4 named exactly one such column —
+ * `olReservedQuantity`, OL's own reservation counter — and ADR-061's ledger
+ * landed it. The group was declared empty in Wave 1b so the fourth ownership
+ * answer existed before there was a column needing it: the classification spec
+ * forces every new column into exactly one group, and without this group the
+ * only available answer for an OL-owned column would have been the master-owned
+ * set, which is the one place it must never go.
+ *
+ * The consequence is live rather than notional now: `olReservedQuantity` is
+ * denormalised over the `reservations` ledger and corrected by #2349's
+ * reconciler, so a master sync writing it would silently destroy OL's own
+ * promises on every pull.
+ *
+ * Note the neighbouring trap this group exists to keep separate:
+ * `reservedQuantity` reads like an OL counter and is not — it is a mirror of
+ * the master's value, rewritten every sync.
+ *
+ * The type annotation is explicit because `[] as const` infers `readonly []`,
+ * whose element type is `never` — a spread of that into the classification
+ * union would type-check today and silently reject the Wave-2 append.
+ */
+export const INVENTORY_OL_OWNED_COLUMNS: readonly (keyof InventoryItemOrmEntity)[] = [
+  'olReservedQuantity',
+];
+
 @Injectable()
 export class InventoryRepository implements InventoryRepositoryPort {
+  private readonly logger = new Logger(InventoryRepository.name);
+
   constructor(
     @InjectRepository(InventoryItemOrmEntity)
     private readonly repository: Repository<InventoryItemOrmEntity>
   ) {}
 
+  /**
+   * See {@link InventoryRepositoryPort.findByProductAndVariant} for the
+   * null/undefined asymmetry between the identity columns and the provenance
+   * axis — it is the one thing about this method a caller can get wrong.
+   */
   async findByProductAndVariant(
     productId: string,
     productVariantId?: string | null,
-    locationId?: string | null
+    locationId?: string | null,
+    sourceConnectionId?: string | null
   ): Promise<InventoryItem | null> {
-    const where: Record<string, unknown> = {
-      productId,
-    };
+    const resolvedVariantId =
+      productVariantId !== undefined && productVariantId !== null ? productVariantId : null;
+    const resolvedLocationId =
+      locationId !== undefined && locationId !== null ? locationId : null;
 
-    if (productVariantId !== undefined && productVariantId !== null) {
-      where.productVariantId = productVariantId;
-    } else {
-      where.productVariantId = null;
+    // No provenance axis: keep the exact pre-#2320 `findOne` path rather than
+    // routing every axis-less caller through the query builder. Same query,
+    // same plan, nothing to re-verify — the scoped branch is the new behaviour
+    // and is the only thing that should have to be argued about.
+    if (sourceConnectionId === undefined || sourceConnectionId === null) {
+      // `Record<string, unknown>` as before: TypeORM's `FindOptionsWhere` does
+      // not admit a literal `null`, and matching `IS NULL` is precisely what
+      // this method has always needed to do for a product-level or
+      // location-less row.
+      const where: Record<string, unknown> = {
+        productId,
+        productVariantId: resolvedVariantId,
+        locationId: resolvedLocationId,
+      };
+      const entity = await this.repository.findOne({ where });
+      return entity ? this.toDomain(entity) : null;
     }
 
-    if (locationId !== undefined && locationId !== null) {
-      where.locationId = locationId;
-    } else {
-      where.locationId = null;
-    }
+    // Scoped: the row is this connection's own, or is unattributed and
+    // therefore claimable (NULL and the 'legacy' sentinel are one class).
+    const qb = this.repository
+      .createQueryBuilder('inv')
+      .where('inv.productId = :productId', { productId })
+      .andWhere(
+        resolvedVariantId === null
+          ? 'inv.productVariantId IS NULL'
+          : 'inv.productVariantId = :productVariantId',
+        resolvedVariantId === null ? {} : { productVariantId: resolvedVariantId }
+      )
+      .andWhere(
+        resolvedLocationId === null ? 'inv.locationId IS NULL' : 'inv.locationId = :locationId',
+        resolvedLocationId === null ? {} : { locationId: resolvedLocationId }
+      );
 
-    const entity = await this.repository.findOne({
-      where,
-    });
+    this.applyProvenanceScope(
+      qb,
+      {
+        sourceConnectionId,
+        includeUnattributedProvenance: true,
+      },
+      'inv."sourceConnectionId"'
+    );
 
-    if (!entity) {
-      return null;
-    }
+    // Deterministic by construction: a scoped match can legitimately hit both
+    // this connection's own row and an unattributed one, and picking
+    // arbitrarily between them would make repeated syncs alternate between two
+    // positions. Own provenance wins; `id` breaks the remaining tie so the
+    // choice is stable across runs (an `updatedAt` tiebreak would not be — two
+    // rows written in the same statement share a timestamp).
+    const entity = await qb
+      .orderBy('CASE WHEN inv."sourceConnectionId" = :ownConnectionId THEN 0 ELSE 1 END', 'ASC')
+      .setParameter('ownConnectionId', sourceConnectionId)
+      .addOrderBy('inv.id', 'ASC')
+      .getOne();
 
-    return this.toDomain(entity);
+    return entity ? this.toDomain(entity) : null;
+  }
+
+  /**
+   * The provenance predicate shared by the scoped lookup and the scoped prune
+   * (#2320). #2322 consumes the same {@link ProvenanceScope} shape, so this is
+   * the single place the claim rule is expressed.
+   *
+   * **Always wrapped in `Brackets`.** The prune composes it with the
+   * variant-keep predicate, which is itself an OR-group: an unbracketed
+   * `a OR b` appended beside `c OR d` re-associates into
+   * `... AND c OR d OR a OR b` and would stale rows belonging to another
+   * connection entirely. That is a real bug, not a style preference.
+   *
+   * A `null` scope contributes nothing at all, which is what keeps every
+   * pre-#2320 caller byte-identical.
+   *
+   * `column` is passed rather than assumed because the two call sites build
+   * different statements: the SELECT is aliased (`inv."sourceConnectionId"`)
+   * while TypeORM's UPDATE builder takes bare quoted column names.
+   */
+  private applyProvenanceScope(
+    qb: { andWhere(condition: Brackets): unknown },
+    scope: ProvenanceScope | undefined,
+    column: string
+  ): void {
+    if (!scope) return;
+
+    qb.andWhere(
+      new Brackets((inner) => {
+        inner.where(`${column} = :scopeConnectionId`, {
+          scopeConnectionId: scope.sourceConnectionId,
+        });
+        if (scope.includeUnattributedProvenance) {
+          // NULL and 'legacy' are ONE class ("unattributed"), which is what
+          // makes the #2317 backfill's progress irrelevant to correctness here:
+          // a row mid-sweep matches identically either side of being stamped.
+          inner.orWhere(`${column} IS NULL`);
+          inner.orWhere(`${column} = :legacyProvenance`, {
+            legacyProvenance: LEGACY_SOURCE_CONNECTION_ID,
+          });
+        }
+      })
+    );
   }
 
   async findMany(
@@ -147,6 +289,11 @@ export class InventoryRepository implements InventoryRepositoryPort {
     if (filters.locationId) {
       where.locationId = filters.locationId;
     }
+    // Strict equality, never the write path's claim rule (#2320): a read must
+    // not report another connection's unattributed rows as this one's.
+    if (filters.sourceConnectionId) {
+      where.sourceConnectionId = filters.sourceConnectionId;
+    }
 
     const [entities, total] = await this.repository.findAndCount({
       where,
@@ -163,7 +310,7 @@ export class InventoryRepository implements InventoryRepositoryPort {
 
   async findAvailabilityByVariantIds(
     variantIds: readonly string[]
-  ): Promise<readonly VariantAvailability[]> {
+  ): Promise<readonly VariantStockRow[]> {
     if (variantIds.length === 0) return [];
 
     const rows = await this.repository
@@ -171,6 +318,7 @@ export class InventoryRepository implements InventoryRepositoryPort {
       .select('inv.productVariantId', 'productVariantId')
       .addSelect('COALESCE(SUM(inv.availableQuantity), 0)', 'totalAvailable')
       .addSelect('COUNT(DISTINCT inv.locationId)', 'locationCount')
+      .addSelect('MAX(inv.updatedAt)', 'stockUpdatedAt')
       .where('inv.productVariantId IN (:...variantIds)', { variantIds: [...variantIds] })
       // Exclude soft-deleted rows so offer flows never act on dead stock (#1478).
       .andWhere('inv.isStale = false')
@@ -179,15 +327,64 @@ export class InventoryRepository implements InventoryRepositoryPort {
         productVariantId: string;
         totalAvailable: string;
         locationCount: string;
+        stockUpdatedAt: Date | string;
       }>();
 
     // Postgres returns SUM as numeric (string) and COUNT(DISTINCT) as bigint
     // (string) through TypeORM's raw-query path — explicit Number() cast
-    // surfaces the right shape to consumers.
+    // surfaces the right shape to consumers. MAX(timestamptz) comes back as a
+    // Date via the pg driver but is defensively normalised in case the driver
+    // hands back a string (the findStockAggregatesByProductIds precedent).
     return rows.map((row) => ({
       productVariantId: row.productVariantId,
       totalAvailable: Number(row.totalAvailable),
       locationCount: Number(row.locationCount),
+      stockUpdatedAt:
+        row.stockUpdatedAt instanceof Date ? row.stockUpdatedAt : new Date(row.stockUpdatedAt),
+    }));
+  }
+
+  async findLivePositionsByProductIds(
+    productIds: readonly string[],
+    productVariantIds: readonly string[]
+  ): Promise<readonly InventoryPositionCandidate[]> {
+    if (productIds.length === 0) return [];
+
+    const query = this.repository
+      .createQueryBuilder('inv')
+      .select('inv.id', 'inventoryItemId')
+      .addSelect('inv.productId', 'productId')
+      .addSelect('inv.productVariantId', 'productVariantId')
+      .addSelect('inv.locationId', 'locationId')
+      .where('inv.productId IN (:...productIds)', { productIds: [...productIds] })
+      // A stale position must never accept a new promise (§ 6I's claim
+      // predicate), mirroring findAvailabilityByVariantIds.
+      .andWhere('inv.isStale = false');
+
+    // Narrow to the variants actually asked about, plus product-level rows — a
+    // line with no variant resolves against exactly those. Without this a
+    // many-variant product returns every one of its positions for a single line.
+    if (productVariantIds.length > 0) {
+      query.andWhere(
+        '(inv.productVariantId IN (:...productVariantIds) OR inv.productVariantId IS NULL)',
+        { productVariantIds: [...productVariantIds] }
+      );
+    } else {
+      query.andWhere('inv.productVariantId IS NULL');
+    }
+
+    const rows = await query.getRawMany<{
+      inventoryItemId: string;
+      productId: string;
+      productVariantId: string | null;
+      locationId: string | null;
+    }>();
+
+    return rows.map((row) => ({
+      inventoryItemId: row.inventoryItemId,
+      productId: row.productId,
+      productVariantId: row.productVariantId ?? null,
+      locationId: row.locationId ?? null,
     }));
   }
 
@@ -227,12 +424,13 @@ export class InventoryRepository implements InventoryRepositoryPort {
 
   async markStaleExceptVariants(
     productId: string,
-    keepVariantIds: readonly (string | null)[]
+    keepVariantIds: readonly (string | null)[],
+    scope?: ProvenanceScope
   ): Promise<PruneStaleVariantsResult> {
     const nonNullKeep = keepVariantIds.filter((v): v is string => v !== null);
     const keepNull = keepVariantIds.includes(null);
 
-    const result = await this.repository
+    const qb = this.repository
       .createQueryBuilder()
       .update(InventoryItemOrmEntity)
       .set({ isStale: true })
@@ -255,9 +453,20 @@ export class InventoryRepository implements InventoryRepositoryPort {
             qb.orWhere('productVariantId IS NULL');
           }
         })
-      )
-      .returning(['productVariantId'])
-      .execute();
+      );
+
+    // Provenance restriction, if any (#2320) — bracketed, and appended AFTER
+    // the variant-keep group so the two OR-groups stay independent.
+    this.applyProvenanceScope(qb, scope, '"sourceConnectionId"');
+
+    // NOTE (pre-existing, #1478 shape — deliberately unchanged in this pass):
+    // this is a query-builder update, so TypeORM auto-appends the
+    // `@UpdateDateColumn` and `updatedAt` DOES move on every staled row. The
+    // bump is inert here because a staled row is excluded from every
+    // availability read, so no published quantity derives from it. Its raw-SQL
+    // sibling `markLocationlessStaleForSource` avoids the bump because its rows
+    // stay readable. Do not restate the no-bump claim on this method.
+    const result = await qb.returning(['productVariantId']).execute();
 
     // RETURNING yields one raw row per flagged inventory row; distinct non-null
     // variant ids feed the master-deletion event payload (#1599). Product-level
@@ -269,12 +478,292 @@ export class InventoryRepository implements InventoryRepositoryPort {
     return { markedCount: result.affected ?? raw.length, variantIds };
   }
 
+  /**
+   * Second `isStale` writer on this table (#2322, ADR-058 decision (2)) —
+   * see the port docblock for what the rule is and why it is a repair.
+   *
+   * Two preconditions the SQL itself cannot state. It is called AFTER the
+   * `setInventory` loop, so the located rows it is reacting to are already
+   * committed and a contradiction inside one payload resolves deterministically
+   * (located wins). And it is called only where the caller has established sole
+   * claim, which is what makes `includeUnattributedProvenance` safe.
+   *
+   * The empty-set early return is behavioural, not an optimisation: with no
+   * located variants there is nothing to enforce, and a round-trip that could
+   * only ever match zero rows should not touch storage at all.
+   */
+  async markLocationlessStaleForSource(
+    productId: string,
+    locatedVariantKeys: readonly (string | null)[],
+    scope: ProvenanceScope
+  ): Promise<PruneStaleVariantsResult> {
+    if (locatedVariantKeys.length === 0) {
+      return { markedCount: 0, variantIds: [] };
+    }
+
+    const nonNullLocated = locatedVariantKeys.filter((v): v is string => v !== null);
+    const locatedNull = locatedVariantKeys.includes(null);
+
+    // RAW SQL, for exactly the reason `backfillLegacyProvenance` is raw (see
+    // its docblock): TypeORM auto-appends the `@UpdateDateColumn` to any
+    // `.update().set()` whose SET clause does not already name it, so a
+    // query-builder update here would move `updatedAt` on every row it staled.
+    // This pass changes no stock — only liveness — while
+    // `InventorySyncService` derives the propagation dedupe key from
+    // `updatedAt` and #2321's `stockUpdatedAt` read reports it as when stock
+    // was last OBSERVED. A raw statement writes precisely the columns it
+    // names, which is what makes the no-bump claim TRUE rather than intended.
+    const params: unknown[] = [productId];
+
+    // A row is an orphan iff its variant is one the master just located. Each
+    // branch guards its own NULL so the predicate stays total, and the array
+    // membership test is only applied to guaranteed-non-null values — the same
+    // discipline `markStaleExceptVariants` keeps, in the mirror direction.
+    const variantClauses: string[] = [];
+    if (nonNullLocated.length > 0) {
+      params.push(nonNullLocated);
+      variantClauses.push(`"productVariantId" = ANY($${params.length}::text[])`);
+    }
+    if (locatedNull) {
+      variantClauses.push('"productVariantId" IS NULL');
+    }
+
+    // Per-source restriction (#2320), kept as its own parenthesised group
+    // beside the variant group so the two OR-groups cannot re-associate.
+    // REQUIRED here: an unscoped sweep would stale a rival master's pooled row
+    // over this master's own choice. The membership rule mirrors
+    // `applyProvenanceScope` exactly — the two must not drift.
+    params.push(scope.sourceConnectionId);
+    const provenanceClauses = [`"sourceConnectionId" = $${params.length}`];
+    if (scope.includeUnattributedProvenance) {
+      // NULL and the 'legacy' sentinel are ONE class ("unattributed").
+      provenanceClauses.push('"sourceConnectionId" IS NULL');
+      params.push(LEGACY_SOURCE_CONNECTION_ID);
+      provenanceClauses.push(`"sourceConnectionId" = $${params.length}`);
+    }
+
+    const rows = (await this.repository.query(
+      `UPDATE "inventory_items"
+          SET "isStale" = true
+        WHERE "productId" = $1
+          AND "isStale" = false
+          -- The pooled half of the rule: only a row that declines to locate is
+          -- an orphan of a located write. A row AT a location IS the write.
+          AND "locationId" IS NULL
+          AND (${variantClauses.join(' OR ')})
+          AND (${provenanceClauses.join(' OR ')})
+    RETURNING "productVariantId"`,
+      params
+    )) as unknown;
+
+    // node-postgres surfaces an UPDATE as `[rows, affectedCount]` through
+    // TypeORM's raw query — RETURNING or not (the same shape
+    // `backfillLegacyProvenance` documents). Reading the outer array AS the row
+    // list is what made `markedCount` a constant 2 and `variantIds` a constant
+    // `[]`, so the caller's propagation fired on every sync and carried nothing.
+    // Normalised rather than trusted: the driver's typing for a raw query is
+    // `any`, and a driver that returns the plain row array must still work.
+    const outer = Array.isArray(rows) ? rows : [];
+    const raw = (Array.isArray(outer[0]) ? outer[0] : outer) as {
+      productVariantId: string | null;
+    }[];
+    const variantIds = [
+      ...new Set(raw.map((r) => r.productVariantId).filter((v): v is string => v !== null)),
+    ];
+    // A NULL-variant row is a product-level position: it is COUNTED but has no
+    // id to surface, so without this flag a caller cannot tell a MIXED pull
+    // (variant-keyed rows staled AND the product-level one) apart from a
+    // variant-only pull — and would silently drop the product-level
+    // propagation target.
+    const markedProductLevel = raw.some((r) => r.productVariantId === null);
+    return { markedCount: raw.length, variantIds, markedProductLevel };
+  }
+
+
+  /**
+   * Read-only duplicate-position scan (#2319, ADR-058 ladder step (iii)).
+   *
+   * ## Why this is raw SQL — a first for this repository
+   *
+   * Two things the query builder cannot express drive the departure, and both
+   * are load-bearing rather than stylistic:
+   *
+   * 1. **`IS NOT DISTINCT FROM`.** The detail query has to join the capped set
+   *    of duplicate keys back to the rows carrying them, and three of the four
+   *    key columns are nullable. A naive `=` join drops every group whose
+   *    variant, location or provenance is NULL — which is most of them on a
+   *    pre-#2317 install, i.e. it would report a clean table while the very
+   *    rows #2325 will trip over sit there unlisted.
+   * 2. **A CTE with `LIMIT` feeding a self-join.** The cap has to be applied to
+   *    the GROUPS, not to the rows, or a single large group would consume the
+   *    whole budget and hide every other one.
+   *
+   * ## Two statements on purpose
+   *
+   * The totals are computed by their own uncapped statement. `groupCount` is
+   * the #2325 readiness gate, so it must count the whole table; deriving it
+   * from the capped detail would silently report "clean" the moment detail
+   * truncates. Precedent for `repository.query` in `libs/core`:
+   * `order-record.repository.ts` and `user.repository.ts`.
+   *
+   * ## Deliberate non-optimisations
+   *
+   * Both statements are full scans of `inventory_items` and there is no index
+   * that helps a four-column grouping including two nullable columns. That is
+   * accepted: this is an operator-run diagnostic, not a hot path. Do **not**
+   * "optimise" it onto either partial unique index — those indexes are
+   * NULL-distinct, which is precisely the semantics that admitted these rows,
+   * so an index-backed scan would fail to see what it is looking for.
+   *
+   * There is **no `WHERE` clause restricting rows** in either statement: stale
+   * rows are included, because a stale duplicate still collides under the index
+   * #2325 creates. `liveRowCount` reports the live subset instead. A unit test
+   * asserts the absence of that predicate so a later refactor cannot blind the
+   * gate.
+   *
+   * The table name is the literal `inventory_items` (matching the `@Entity`
+   * decorator); `maxGroups` is a bound parameter, never interpolated.
+   */
+  async findDuplicatePositions(maxGroups: number): Promise<DuplicatePositionReport> {
+    const [totals] = (await this.repository.query(
+      `SELECT COUNT(*)::int AS "groupCount",
+              COALESCE(SUM(dup.row_count), 0)::int AS "rowCount"
+         FROM (
+           SELECT COUNT(*) AS row_count
+             FROM "inventory_items"
+            GROUP BY "productId", "productVariantId", "locationId", "sourceConnectionId"
+           HAVING COUNT(*) > 1
+         ) dup`
+    )) as { groupCount: number | string; rowCount: number | string }[];
+
+    // `::int` already narrows these, but the pg driver's typing for a raw query
+    // is `any`, and COUNT/SUM have come back as strings on other paths in this
+    // file — normalise rather than trust.
+    const groupCount = Number(totals?.groupCount ?? 0);
+    const rowCount = Number(totals?.rowCount ?? 0);
+
+    if (groupCount === 0) {
+      return { groupCount: 0, rowCount: 0, excessRowCount: 0, groups: [], truncated: false };
+    }
+
+    const rows = (await this.repository.query(
+      `WITH dup_keys AS (
+         SELECT "productId",
+                "productVariantId",
+                "locationId",
+                "sourceConnectionId",
+                COUNT(*) AS row_count,
+                COUNT(*) FILTER (WHERE NOT "isStale") AS live_row_count
+           FROM "inventory_items"
+          GROUP BY "productId", "productVariantId", "locationId", "sourceConnectionId"
+         HAVING COUNT(*) > 1
+          ORDER BY row_count DESC,
+                   "productId" ASC,
+                   "productVariantId" ASC NULLS FIRST,
+                   "locationId" ASC NULLS FIRST,
+                   "sourceConnectionId" ASC NULLS FIRST
+          LIMIT $1
+       )
+       SELECT k."productId"           AS "productId",
+              k."productVariantId"    AS "productVariantId",
+              k."locationId"          AS "locationId",
+              k."sourceConnectionId"  AS "sourceConnectionId",
+              k.row_count::int        AS "rowCount",
+              k.live_row_count::int   AS "liveRowCount",
+              i."id"                  AS "id",
+              i."availableQuantity"   AS "availableQuantity",
+              i."reservedQuantity"    AS "reservedQuantity",
+              i."isStale"             AS "isStale",
+              i."updatedAt"           AS "updatedAt"
+         FROM dup_keys k
+         JOIN "inventory_items" i
+           ON i."productId" = k."productId"
+          -- IS NOT DISTINCT FROM, not =: NULL variant / location / provenance
+          -- must match its NULL counterpart or the group vanishes from the report.
+          AND i."productVariantId"   IS NOT DISTINCT FROM k."productVariantId"
+          AND i."locationId"         IS NOT DISTINCT FROM k."locationId"
+          AND i."sourceConnectionId" IS NOT DISTINCT FROM k."sourceConnectionId"
+        ORDER BY k.row_count DESC,
+                 k."productId" ASC,
+                 k."productVariantId" ASC NULLS FIRST,
+                 k."locationId" ASC NULLS FIRST,
+                 k."sourceConnectionId" ASC NULLS FIRST,
+                 -- Newest first inside a group: the documented survivor rule
+                 -- picks the most recently written live row.
+                 i."updatedAt" DESC,
+                 i."id" ASC`,
+      [maxGroups]
+    )) as {
+      productId: string;
+      productVariantId: string | null;
+      locationId: string | null;
+      sourceConnectionId: string | null;
+      rowCount: number | string;
+      liveRowCount: number | string;
+      id: string;
+      availableQuantity: number | string;
+      reservedQuantity: number | string;
+      isStale: boolean;
+      updatedAt: Date | string;
+    }[];
+
+    // The ORDER BY keeps a group's rows contiguous, so folding is a single pass
+    // keyed on the four columns (JSON-encoded so a NULL cannot collide with the
+    // literal string 'null').
+    const groups: DuplicatePositionGroup[] = [];
+    const byKey = new Map<string, DuplicatePositionGroup>();
+    for (const row of rows) {
+      const key = JSON.stringify([
+        row.productId,
+        row.productVariantId,
+        row.locationId,
+        row.sourceConnectionId,
+      ]);
+      let group = byKey.get(key);
+      if (!group) {
+        group = {
+          productId: row.productId,
+          productVariantId: row.productVariantId,
+          locationId: row.locationId,
+          sourceConnectionId: row.sourceConnectionId,
+          rowCount: Number(row.rowCount),
+          liveRowCount: Number(row.liveRowCount),
+          rows: [],
+        };
+        byKey.set(key, group);
+        groups.push(group);
+      }
+      group.rows.push({
+        id: row.id,
+        availableQuantity: Number(row.availableQuantity),
+        reservedQuantity: Number(row.reservedQuantity),
+        isStale: row.isStale,
+        updatedAt: row.updatedAt instanceof Date ? row.updatedAt : new Date(row.updatedAt),
+      });
+    }
+
+    return {
+      groupCount,
+      rowCount,
+      // Rows that must disappear before the #2325 index can build: one row per
+      // group is allowed to survive.
+      excessRowCount: rowCount - groupCount,
+      groups,
+      truncated: groups.length < groupCount,
+    };
+  }
+
   async upsert(item: InventoryItem): Promise<InventoryItem> {
     // Try to find existing inventory by unique constraint first
+    // The provenance axis is DERIVED from the item, never passed separately
+    // (#2320): the item already carries the only value a caller could supply,
+    // and a second argument would create a way for the two to disagree. A null
+    // here keeps the pre-#2320 unscoped lookup exactly.
     const existing = await this.findByProductAndVariant(
       item.productId,
       item.productVariantId,
-      item.locationId
+      item.locationId,
+      item.sourceConnectionId
     );
 
     if (existing) {
@@ -302,6 +791,7 @@ export class InventoryRepository implements InventoryRepositoryPort {
           availableQuantity: item.availableQuantity,
           reservedQuantity: item.reservedQuantity,
           isStale: item.isStale,
+          sourceConnectionId: item.sourceConnectionId,
         })
         .where('id = :id', { id: existing.id })
         .returning(['updatedAt'])
@@ -332,7 +822,8 @@ export class InventoryRepository implements InventoryRepositoryPort {
         item.reservedQuantity,
         existing.locationId,
         persistedUpdatedAt,
-        item.isStale
+        item.isStale,
+        item.sourceConnectionId
       );
     } else {
       // Insert new inventory item.
@@ -343,22 +834,87 @@ export class InventoryRepository implements InventoryRepositoryPort {
       //
       // If the provided ID is not a valid UUID or doesn't exist, let TypeORM generate it
       // This handles the case where adapter's identifier mapping ID is used
+      //
+      // Newly reachable since #2320: with the lookup scoped, a second source no
+      // longer matches (and clobbers) the first source's row, so it arrives
+      // here intending its own. At a NULL `locationId` the partial unique
+      // indexes are NULL-distinct and both rows are admitted — cross-source
+      // coexistence, per ADR-058 decision (2). At a NON-NULL `locationId` there
+      // is no NULL to be distinct about and the insert is refused; that is a
+      // permanent condition, so it is translated rather than left to burn a
+      // retry ladder. See InventoryCrossSourcePositionConflictError.
       const entity = this.toOrmEntity(item);
-      if (!this.isValidUUID(item.id)) {
-        // Clear ID - create new entity without ID property
-        // TypeORM will require an ID, so we'll use a new UUID
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars -- strip caller-provided id via destructure so TypeORM regenerates a fresh UUID below
-        const { id: _unused, ...entityWithoutId } = entity;
-        const newEntity = this.repository.create({
-          ...entityWithoutId,
-          id: randomUUID(),
-        });
-        const saved = await this.repository.save(newEntity);
-        return this.toDomainWithStampedUpdatedAt(saved);
+      try {
+        return await this.insertNewRow(entity, item);
+      } catch (error) {
+        if (this.isPositionUniqueViolation(error)) {
+          this.logger.error(
+            `inventory_cross_source_position_conflict product=${item.productId} ` +
+              `variant=${item.productVariantId ?? 'base'} location=${item.locationId ?? 'default'} ` +
+              `source=${item.sourceConnectionId ?? 'unattributed'}`
+          );
+          throw new InventoryCrossSourcePositionConflictError(
+            item.productId,
+            item.productVariantId,
+            item.locationId,
+            item.sourceConnectionId
+          );
+        }
+        throw error;
       }
-      const saved = await this.repository.save(entity);
+    }
+  }
+
+  /** The insert half of {@link upsert}, extracted so its one failure mode can be caught. */
+  private async insertNewRow(
+    entity: InventoryItemOrmEntity,
+    item: InventoryItem
+  ): Promise<InventoryItem> {
+    if (!this.isValidUUID(item.id)) {
+      // Clear ID - create new entity without ID property
+      // TypeORM will require an ID, so we'll use a new UUID
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- strip caller-provided id via destructure so TypeORM regenerates a fresh UUID below
+      const { id: _unused, ...entityWithoutId } = entity;
+      const newEntity = this.repository.create({
+        ...entityWithoutId,
+        id: randomUUID(),
+      });
+      const saved = await this.repository.save(newEntity);
       return this.toDomainWithStampedUpdatedAt(saved);
     }
+    const saved = await this.repository.save(entity);
+    return this.toDomainWithStampedUpdatedAt(saved);
+  }
+
+  /**
+   * Recognise a rejection from either partial unique index on `inventory_items`
+   * (#2320).
+   *
+   * A bare `duplicate key` test is deliberately NOT enough: it matches EVERY
+   * unique violation on the table, primary-key collisions included, and
+   * translates them into a permanent, non-retryable
+   * `InventoryCrossSourcePositionConflictError` describing something that did
+   * not happen. The violation must be identified as the POSITION key's.
+   *
+   * Identified two ways, because the index NAME is not stable across
+   * environments: the migration creates descriptive names, while a
+   * `synchronize`-built schema (the integration harness) mints `IDX_<hash>`
+   * from the unnamed `@Index` decorators on the ORM entity. The reported
+   * COLUMNS are stable in both, and a primary-key collision reports `(id)` —
+   * so the column test is the one that actually discriminates, with the name
+   * test kept for a driver that reports a constraint but no detail.
+   */
+  private isPositionUniqueViolation(error: unknown): boolean {
+    if (!(error instanceof QueryFailedError)) return false;
+    const driverError = error as unknown as { code?: string; detail?: string };
+    const isUnique =
+      driverError.code === '23505' || /duplicate key/i.test(error.message);
+    if (!isUnique) return false;
+
+    const named = /IDX_inventory_items_product_(variant|base)_unique/i.test(error.message);
+    // `Key ("productId", "productVariantId", "locationId")=(…) already exists.`
+    const positionKeyed = /"?productId"?/i.test(driverError.detail ?? '');
+    return named || positionKeyed;
   }
 
   /**
@@ -401,6 +957,88 @@ export class InventoryRepository implements InventoryRepositoryPort {
   }
 
   /**
+   * One bounded page of the `'legacy'` provenance backfill (#2317, ADR-058
+   * ladder step (ii)).
+   *
+   * ## Why raw SQL is mandatory here, not merely preferred
+   *
+   * `updatedAt` is an `@UpdateDateColumn`, and the docblocks above
+   * ({@link INVENTORY_DB_MANAGED_COLUMNS}, and the upsert's update branch)
+   * record the behaviour that decides this: TypeORM APPENDS its auto-timestamp
+   * to any `.update().set()` whose SET clause does not already name the column.
+   * That is exactly right for the master-sync upsert — a real stock write
+   * SHOULD move `updatedAt` — and exactly wrong here. This pass changes no
+   * stock, yet a query-builder update would bump `updatedAt` on every row it
+   * touched, and `InventorySyncService` builds the propagation job's dedupe key
+   * from that value. A table-wide bump would either replay a propagation for
+   * every SKU on every marketplace, or collide the keys and drop them silently.
+   * Neither is acceptable from a backfill whose entire job is to be invisible.
+   *
+   * A raw statement writes precisely the columns it names. Precedent:
+   * `order-record.repository.ts` `markCancelled`, raw for the same reason — and
+   * its sibling `updateSalesDocumentBlock`, which names `"updatedAt" = now()`
+   * explicitly where it DOES want the bump. The two together are the proof that
+   * this is a deliberate choice in both directions rather than an idiom.
+   *
+   * ## The sub-select, clause by clause
+   *
+   * - `WHERE "sourceConnectionId" IS NULL` appears in BOTH the sub-select and
+   *   the outer UPDATE. The inner one selects the page; the outer one re-checks
+   *   under the row lock, so a row a live sync claimed in between is not
+   *   stamped back down to the sentinel. The sentinel may only ever lose to a
+   *   real connection id, never overwrite one.
+   * - `ORDER BY "id"` makes a page deterministic, which is what lets the e2e
+   *   spec assert a drain sequence rather than only a total.
+   * - `FOR UPDATE SKIP LOCKED`, never a plain `FOR UPDATE`: a row mid-write by
+   *   `setInventory` is skipped and collected next tick. Waiting on it would put
+   *   a backfill in the blocking path of a buyer-facing stock write.
+   * - It is a sub-select because Postgres has no `LIMIT` on `UPDATE`. Never
+   *   rewrite this as a predicate-less `COALESCE` over the table: that locks
+   *   every row in one statement, which is the hazard the whole bounded-pass
+   *   design exists to avoid.
+   *
+   * The sentinel is the shared {@link LEGACY_SOURCE_CONNECTION_ID} and `limit`
+   * is bound too — nothing is interpolated into the statement.
+   */
+  async backfillLegacyProvenance(limit: number): Promise<number> {
+    const result = (await this.repository.query(
+      `UPDATE "inventory_items"
+          SET "sourceConnectionId" = $1
+        WHERE "id" IN (
+                SELECT "id"
+                  FROM "inventory_items"
+                 WHERE "sourceConnectionId" IS NULL
+                 ORDER BY "id"
+                 LIMIT $2
+                 FOR UPDATE SKIP LOCKED
+              )
+          AND "sourceConnectionId" IS NULL`,
+      [LEGACY_SOURCE_CONNECTION_ID, limit]
+    )) as [unknown[], number] | undefined;
+
+    // node-postgres surfaces a non-RETURNING UPDATE as `[rows, affectedCount]`
+    // through TypeORM's raw query. Normalised rather than trusted: the driver's
+    // typing for a raw query is `any`.
+    return Number(result?.[1] ?? 0);
+  }
+
+  /**
+   * Uncapped, unfiltered count of rows still missing provenance (#2317).
+   *
+   * Unfiltered on purpose — including stale rows, which #2325's `SET NOT NULL`
+   * will trip over exactly as readily as live ones.
+   */
+  async countMissingProvenance(): Promise<number> {
+    const [row] = (await this.repository.query(
+      `SELECT COUNT(*)::int AS "remaining"
+         FROM "inventory_items"
+        WHERE "sourceConnectionId" IS NULL`
+    )) as { remaining: number | string }[];
+
+    return Number(row?.remaining ?? 0);
+  }
+
+  /**
    * `toDomain` for the insert branch, asserting the DB stamped `updatedAt`.
    *
    * The update branch fails loudly when the stamp is missing; without this the
@@ -424,7 +1062,8 @@ export class InventoryRepository implements InventoryRepositoryPort {
       entity.reservedQuantity,
       entity.locationId,
       entity.updatedAt,
-      entity.isStale
+      entity.isStale,
+      entity.sourceConnectionId
     );
   }
 
@@ -442,6 +1081,10 @@ export class InventoryRepository implements InventoryRepositoryPort {
     // A freshly-synced/upserted row is always live — this is what clears a
     // previously-stale flag when a deleted variant reappears at the master (#1478).
     entity.isStale = item.isStale;
+    // Connection provenance (#2314). `null` here is legal and means "unknown" —
+    // an insert from a caller that carries no connection axis, which the #2317
+    // sweep later stamps with the `'legacy'` sentinel.
+    entity.sourceConnectionId = item.sourceConnectionId;
     // `updatedAt` is deliberately NOT assigned (#2071). Assigning an
     // @UpdateDateColumn puts it in the change map and suppresses
     // CURRENT_TIMESTAMP, which would persist the master's timestamp on INSERT

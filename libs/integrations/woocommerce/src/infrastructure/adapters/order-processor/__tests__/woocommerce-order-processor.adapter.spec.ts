@@ -19,7 +19,12 @@ import { WC_ORDER_STATUS_LABELS } from '../woocommerce-options.types';
 import type { IWooCommerceHttpClient } from '../../../http/woocommerce-http-client.interface';
 import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE, DuplicateIdentifierMappingError } from '@openlinker/core/identifier-mapping';
-import type { OrderCreate, OrderItem, OrderStatus } from '@openlinker/core/orders';
+import type {
+  OrderCreate,
+  OrderItem,
+  OrderStatus,
+  OrderLifecycleEvent,
+} from '@openlinker/core/orders';
 import type { CustomerProjectionRepositoryPort } from '@openlinker/core/customers';
 import { DestinationAddressMapping } from '@openlinker/core/customers';
 import type { SyncLockPort } from '@openlinker/core/sync';
@@ -1004,6 +1009,25 @@ describe('WooCommerceOrderProcessorAdapter — OrderStatusWriteback', () => {
 
     expect(result.outcome).toBe('rejected');
     expect(result.detail).toBeDefined();
+  });
+
+  // ── unknown member (never-default, #2286) ──
+  //
+  // Before the switch conversion an unrecognised member fell into the cancel
+  // branch and could PUT `cancelled` onto a live shop order.
+  it('should return unsupported for an unknown member without reading or writing', async () => {
+    const httpClient = makeHttpClient();
+    const adapter = makeAdapter(httpClient, makeIdentifierMapping());
+
+    const result = await adapter.write({
+      type: 'amended',
+      externalOrderId: '55',
+    } as unknown as OrderLifecycleEvent);
+
+    expect(result.outcome).toBe('unsupported');
+    expect(result.detail).toContain('amended');
+    expect(httpClient.get).not.toHaveBeenCalled();
+    expect(httpClient.put).not.toHaveBeenCalled();
   });
 });
 

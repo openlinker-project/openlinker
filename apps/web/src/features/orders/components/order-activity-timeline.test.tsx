@@ -1,9 +1,15 @@
 import { cleanup, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { OrderActivityTimeline } from './order-activity-timeline';
+import {
+  OrderActivityTimeline,
+  mergeTimelineEvents,
+  type DatedTimelineEvent,
+  type TimelineEvent,
+} from './order-activity-timeline';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 import {
   SYNC_ATTEMPTS_PER_DESTINATION_CAP,
+  type OrderHold,
   type SyncAttempt,
 } from '../api/orders.types';
 
@@ -238,5 +244,326 @@ describe('OrderActivityTimeline', () => {
 
       expect(screen.queryByText('No invoice issued')).toBeNull();
     });
+  });
+
+  describe('source amendment (#2283)', () => {
+    it('renders a dated warning entry naming the lines that changed', () => {
+      renderTimeline({
+        createdAt: '2026-04-20T10:00:00.000Z',
+        recordStatus: 'ready',
+        syncAttempts: [],
+        sourceConnectionId: SOURCE_CONNECTION_ID,
+        lastAmendedAt: '2026-04-21T08:15:00.000Z',
+        lastAmendmentChanges: [
+          { kind: 'line-removed', lineId: 'l2', sku: 'SKU-2', fromQuantity: 1 },
+          { kind: 'line-quantity-changed', lineId: 'l1', sku: 'SKU-1', fromQuantity: 2, toQuantity: 1 },
+        ],
+      });
+
+      const entry = screen.getByText('Order changed at the source').closest('li');
+      expect(entry).not.toBeNull();
+      // Dated, unlike the #2100 block entry: a real instant is persisted.
+      expect(entry?.querySelector('time')?.getAttribute('dateTime')).toBe(
+        '2026-04-21T08:15:00.000Z',
+      );
+      expect(entry?.querySelector('.order-activity__dot--warning')).not.toBeNull();
+      expect(within(entry as HTMLElement).getByText(/line SKU-2 removed/)).toBeTruthy();
+      expect(within(entry as HTMLElement).getByText(/line SKU-1 quantity 2 → 1/)).toBeTruthy();
+    });
+
+    it('names the address fields that changed and shows no address values', () => {
+      renderTimeline({
+        createdAt: '2026-04-20T10:00:00.000Z',
+        recordStatus: 'ready',
+        syncAttempts: [],
+        sourceConnectionId: SOURCE_CONNECTION_ID,
+        lastAmendedAt: '2026-04-21T08:15:00.000Z',
+        lastAmendmentChanges: [
+          { kind: 'shipping-address-changed', fields: ['city', 'postalCode'] },
+        ],
+      });
+
+      const entry = screen.getByText('Order changed at the source').closest('li');
+      expect(
+        within(entry as HTMLElement).getByText(/shipping address changed \(city, postalCode\)/),
+      ).toBeTruthy();
+    });
+
+    it('renders no amendment entry when the order was never amended', () => {
+      renderTimeline({
+        createdAt: '2026-04-20T10:00:00.000Z',
+        recordStatus: 'ready',
+        syncAttempts: [],
+        sourceConnectionId: SOURCE_CONNECTION_ID,
+        lastAmendedAt: null,
+        lastAmendmentChanges: null,
+      });
+
+      expect(screen.queryByText('Order changed at the source')).toBeNull();
+    });
+  });
+
+  describe('packed (#2288)', () => {
+    it('renders a DATED packed entry naming the operator', () => {
+      renderTimeline({
+        createdAt: '2026-04-20T10:00:00.000Z',
+        recordStatus: 'ready',
+        syncAttempts: [],
+        sourceConnectionId: SOURCE_CONNECTION_ID,
+        packedAt: '2026-04-21T09:00:00.000Z',
+        packedByUserId: 'user_7',
+      });
+
+      const entry = screen.getByText('Order packed').closest('li');
+      expect(within(entry as HTMLElement).getByText(/Marked packed by user_7\./)).toBeTruthy();
+      // A real instant is persisted, so the entry carries a <time> — unlike the
+      // deliberately undated invoicing-block entry.
+      expect(
+        (entry as HTMLElement).querySelector('time[datetime="2026-04-21T09:00:00.000Z"]'),
+      ).toBeTruthy();
+    });
+
+    it('renders no packed entry when the order was never packed', () => {
+      renderTimeline({
+        createdAt: '2026-04-20T10:00:00.000Z',
+        recordStatus: 'ready',
+        syncAttempts: [],
+        sourceConnectionId: SOURCE_CONNECTION_ID,
+        packedAt: null,
+        packedByUserId: null,
+      });
+
+      expect(screen.queryByText('Order packed')).toBeNull();
+    });
+
+    it('places the packed entry BEFORE the undated invoicing-block entry', () => {
+      renderTimeline({
+        createdAt: '2026-04-20T10:00:00.000Z',
+        recordStatus: 'ready',
+        syncAttempts: [],
+        sourceConnectionId: SOURCE_CONNECTION_ID,
+        packedAt: '2026-04-21T09:00:00.000Z',
+        packedByUserId: 'user_7',
+        salesDocumentBlockReason: 'trigger-model-manual',
+      });
+
+      const titles = Array.from(document.querySelectorAll('.order-activity__item')).map(
+        (li) => li.textContent ?? '',
+      );
+      const packedIndex = titles.findIndex((t) => t.includes('Order packed'));
+      const blockedIndex = titles.findIndex((t) => t.includes('No invoice issued'));
+
+      expect(packedIndex).toBeGreaterThanOrEqual(0);
+      expect(blockedIndex).toBeGreaterThan(packedIndex);
+    });
+  });
+});
+
+describe('mergeTimelineEvents (#2383)', () => {
+  const authored: TimelineEvent[] = [
+    { id: 'created', timestamp: '2026-08-20T10:00:00.000Z', title: 'Order created', tone: 'default' },
+    // An UNDATED authored entry, deliberately kept in the middle: `buildEvents`
+    // really emits these (`timestamp: … ?? null`), and the merge must not use it
+    // as a comparison key nor float it to either end.
+    { id: 'undated', timestamp: null, title: 'Undated authored entry', tone: 'default' },
+    { id: 'packed', timestamp: '2026-08-20T14:00:00.000Z', title: 'Packed', tone: 'success' },
+  ];
+
+  const ids = (events: TimelineEvent[]): string[] => events.map((event) => event.id);
+
+  it('returns the authored sequence UNCHANGED when there is nothing to merge', () => {
+    // The invariant that makes the prop safe: it is about ORDER, not merely
+    // about the component still rendering.
+    expect(ids(mergeTimelineEvents(authored, []))).toEqual(['created', 'undated', 'packed']);
+    expect(mergeTimelineEvents(authored, [])).toBe(authored);
+  });
+
+  it('places an injected event by timestamp rather than appending it', () => {
+    const extra: DatedTimelineEvent[] = [
+      { id: 'r1', timestamp: '2026-08-20T12:00:00.000Z', title: 'Return received', tone: 'default' },
+    ];
+
+    expect(ids(mergeTimelineEvents(authored, extra))).toEqual([
+      'created',
+      'undated',
+      'r1',
+      'packed',
+    ]);
+  });
+
+  it('keeps the undated authored entry in its authored position', () => {
+    const extra: DatedTimelineEvent[] = [
+      { id: 'early', timestamp: '2026-08-20T09:00:00.000Z', title: 'Return opened', tone: 'default' },
+    ];
+
+    // `early` precedes `created`, and `undated` does not move to accommodate it.
+    expect(ids(mergeTimelineEvents(authored, extra))).toEqual([
+      'early',
+      'created',
+      'undated',
+      'packed',
+    ]);
+  });
+
+  it('never reorders authored events relative to each other', () => {
+    const extra: DatedTimelineEvent[] = [
+      { id: 'x', timestamp: '2026-08-20T23:00:00.000Z', title: 'Late', tone: 'default' },
+      { id: 'y', timestamp: '2026-08-20T11:00:00.000Z', title: 'Mid', tone: 'default' },
+    ];
+
+    const merged = ids(mergeTimelineEvents(authored, extra));
+
+    expect(merged.filter((id) => ['created', 'undated', 'packed'].includes(id))).toEqual([
+      'created',
+      'undated',
+      'packed',
+    ]);
+  });
+
+  it('keeps the authored entry first on a tie — it described the order first', () => {
+    const extra: DatedTimelineEvent[] = [
+      { id: 'tie', timestamp: '2026-08-20T14:00:00.000Z', title: 'Return received', tone: 'default' },
+    ];
+
+    expect(ids(mergeTimelineEvents(authored, extra))).toEqual([
+      'created',
+      'undated',
+      'packed',
+      'tie',
+    ]);
+  });
+
+  it('renders injected events in the timeline', () => {
+    renderTimeline({
+      createdAt: '2026-08-20T10:00:00.000Z',
+      recordStatus: 'ready',
+      syncAttempts: [],
+      sourceConnectionId: SOURCE_CONNECTION_ID,
+      extraEvents: [
+        {
+          id: 'return:ev1',
+          timestamp: '2026-08-20T12:00:00.000Z',
+          title: 'Return received',
+          tone: 'default',
+        },
+      ],
+    });
+
+    expect(screen.getByText('Return received')).toBeInTheDocument();
+  });
+});
+
+describe('OrderActivityTimeline — order holds (#2342)', () => {
+  afterEach(cleanup);
+
+  function hold(overrides: Partial<OrderHold> = {}): OrderHold {
+    return {
+      id: 'hold_1',
+      internalOrderId: 'ol_order_1',
+      reason: 'operator',
+      note: null,
+      placedByUserId: 'user_7',
+      placedByService: null,
+      placedAt: '2026-08-20T10:00:00.000Z',
+      releasedAt: null,
+      releasedByUserId: null,
+      releaseNote: null,
+      createdAt: '2026-08-20T10:00:00.000Z',
+      updatedAt: '2026-08-20T10:00:00.000Z',
+      ...overrides,
+    };
+  }
+
+  const base = {
+    createdAt: '2026-08-20T09:00:00.000Z',
+    recordStatus: 'ready',
+    syncAttempts: [] as SyncAttempt[],
+    sourceConnectionId: SOURCE_CONNECTION_ID,
+  };
+
+  it('narrates a hold with its reason and its note', () => {
+    renderTimeline({ ...base, holds: [hold({ note: 'Supplier is late' })] });
+
+    expect(screen.getByText('Put on hold — Held by operator')).toBeInTheDocument();
+    expect(screen.getByText(/Supplier is late/)).toBeInTheDocument();
+  });
+
+  it('names the placing SERVICE when a hold was not placed by a person', () => {
+    renderTimeline({
+      ...base,
+      holds: [hold({ placedByUserId: null, placedByService: 'stock-monitor' })],
+    });
+
+    expect(screen.getByText('system · stock-monitor')).toBeInTheDocument();
+  });
+
+  it('adds a second entry once the hold is released, carrying the release note', () => {
+    renderTimeline({
+      ...base,
+      holds: [
+        hold({
+          releasedAt: '2026-08-21T08:00:00.000Z',
+          releasedByUserId: 'user_9',
+          releaseNote: 'Stock arrived',
+        }),
+      ],
+    });
+
+    expect(screen.getByText('Put on hold — Held by operator')).toBeInTheDocument();
+    expect(screen.getByText('Hold released')).toBeInTheDocument();
+    expect(screen.getByText(/Stock arrived/)).toBeInTheDocument();
+  });
+
+  it('renders a hold whose reason this build does not recognise rather than dropping it', () => {
+    // A hold the operator cannot see is worse than one labelled awkwardly.
+    renderTimeline({ ...base, holds: [hold({ reason: 'reason-from-a-newer-build' as never })] });
+
+    expect(screen.getByText('Put on hold — reason-from-a-newer-build')).toBeInTheDocument();
+  });
+
+  it('does NOT claim a person held the order when the payload names no placer', () => {
+    // The XOR that made "not a service ⇒ a human" total is a SQL CHECK this
+    // bundle cannot import (#591), so a payload with neither field rendered
+    // "Held by operator" — asserting a person acted, which the types file
+    // forbids by name, and contradicting the panel's own `placedBy()` on the
+    // same page.
+    renderTimeline({
+      ...base,
+      holds: [hold({ placedByUserId: null, placedByService: null })],
+    });
+
+    const title = screen.getByText('Put on hold — Held by operator');
+    // The actor eyebrow lives inside the entry's own title element, so scope the
+    // assertion there — the ingestion entry above legitimately carries one.
+    expect(title.querySelector('.order-activity__by')).toBeNull();
+  });
+
+  it('does NOT claim a system released the hold when no releasing user is recorded', () => {
+    // `order_holds` has no `releasedByService` column, so "no releasing user"
+    // does not mean a service did it — a service release is recorded by nobody.
+    renderTimeline({
+      ...base,
+      holds: [
+        hold({
+          placedByUserId: null,
+          placedByService: 'stock-monitor',
+          releasedAt: '2026-08-21T08:00:00.000Z',
+          releasedByUserId: null,
+        }),
+      ],
+    });
+
+    const title = screen.getByText('Hold released');
+    expect(title.querySelector('.order-activity__by')).toBeNull();
+  });
+
+  it('adds nothing when the payload carries no holds', () => {
+    // Absent and null mean the same on this optional wire field.
+    renderTimeline({ ...base, holds: undefined });
+    expect(screen.queryByText(/^Put on hold/)).not.toBeInTheDocument();
+
+    cleanup();
+    renderTimeline({ ...base, holds: null });
+    expect(screen.queryByText(/^Put on hold/)).not.toBeInTheDocument();
   });
 });

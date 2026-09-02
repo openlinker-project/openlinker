@@ -35,7 +35,9 @@ describe('InventoryService', () => {
       overrides?.availableQuantity ?? base.availableQuantity,
       overrides?.reservedQuantity ?? base.reservedQuantity,
       overrides?.locationId ?? base.locationId,
-      overrides?.updatedAt ?? base.updatedAt
+      overrides?.updatedAt ?? base.updatedAt,
+      overrides?.isStale ?? base.isStale,
+      overrides?.sourceConnectionId ?? base.sourceConnectionId
     );
   };
 
@@ -44,6 +46,7 @@ describe('InventoryService', () => {
       findByProductAndVariant: jest.fn(),
       upsert: jest.fn(),
       markStaleExceptVariants: jest.fn().mockResolvedValue(0),
+      markLocationlessStaleForSource: jest.fn().mockResolvedValue({ markedCount: 0, variantIds: [] }),
     } as unknown as jest.Mocked<InventoryRepositoryPort>;
 
     jobQueue = {
@@ -81,6 +84,31 @@ describe('InventoryService', () => {
         dedupeKey: 'inventory:propagate:product-id:base:2026-01-01T12:00:00.000Z',
       },
     });
+  });
+
+  // B1 (#2320) — the no-change guard's `previous` lookup MUST carry the same
+  // provenance axis `upsert`'s own lookup derives from the item. Unscoped, the
+  // two reads can resolve DIFFERENT rows in a two-master configuration, so the
+  // guard compares a foreign connection's quantity against ours: it suppresses
+  // a propagation whose aggregate really did change, nondeterministically.
+  it('scopes the previous-row lookup to the item source connection', async () => {
+    const input = createItem({
+      availableQuantity: 7,
+      sourceConnectionId: 'connection-a',
+      updatedAt: new Date('2026-01-01T12:00:00.000Z'),
+    });
+
+    inventoryRepository.findByProductAndVariant.mockResolvedValue(null);
+    inventoryRepository.upsert.mockResolvedValue(input);
+
+    await service.setInventory(input);
+
+    expect(inventoryRepository.findByProductAndVariant).toHaveBeenCalledWith(
+      'product-id',
+      null,
+      null,
+      'connection-a'
+    );
   });
 
   it('scopes propagation to the master connection the stock was read from', async () => {
@@ -136,13 +164,78 @@ describe('InventoryService', () => {
     expect(jobQueue.enqueue).not.toHaveBeenCalled();
   });
 
-  it('skips enqueue for non-default location inventory', async () => {
+  // #2324 (ADR-058 decision 5) — INVERTED. A located write used to be skipped,
+  // which meant a locating master never propagated at all.
+  it('enqueues propagation for a located write', async () => {
     const input = createItem({
+      productVariantId: 'variant-1',
       locationId: 'warehouse-a',
       availableQuantity: 7,
+      updatedAt: new Date('2026-01-01T12:00:00.000Z'),
     });
 
     inventoryRepository.findByProductAndVariant.mockResolvedValue(null);
+    inventoryRepository.upsert.mockResolvedValue(input);
+
+    await service.setInventory(input);
+
+    expect(jobQueue.enqueue).toHaveBeenCalledTimes(1);
+    expect(jobQueue.enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'inventory.propagateToMarketplaces',
+        payload: {
+          productId: 'product-id',
+          variantId: 'variant-1',
+          inventoryUpdatedAt: '2026-01-01T12:00:00.000Z',
+        },
+        options: {
+          // Variant-keyed and LOCATION-FREE: the location is deliberately
+          // absent from the key.
+          dedupeKey: 'inventory:propagate:product-id:variant-1:2026-01-01T12:00:00.000Z',
+        },
+      })
+    );
+  });
+
+  it('collapses sibling located writes sharing an updatedAt onto one dedupe key', async () => {
+    const updatedAt = new Date('2026-01-01T12:00:00.000Z');
+    const keys: string[] = [];
+
+    for (const locationId of ['warehouse-a', 'warehouse-b', 'warehouse-c']) {
+      const input = createItem({
+        productVariantId: 'variant-1',
+        locationId,
+        availableQuantity: 3,
+        updatedAt,
+      });
+      inventoryRepository.findByProductAndVariant.mockResolvedValue(null);
+      inventoryRepository.upsert.mockResolvedValue(input);
+      await service.setInventory(input);
+    }
+
+    for (const call of jobQueue.enqueue.mock.calls) {
+      keys.push((call[0] as { options: { dedupeKey: string } }).options.dedupeKey);
+    }
+
+    expect(keys).toHaveLength(3);
+    expect(new Set(keys).size).toBe(1);
+  });
+
+  it('still suppresses a located write whose own row quantity did not change', async () => {
+    const input = createItem({
+      productVariantId: 'variant-1',
+      locationId: 'warehouse-a',
+      availableQuantity: 5,
+      updatedAt: new Date('2026-01-01T12:00:00.000Z'),
+    });
+    const previous = createItem({
+      productVariantId: 'variant-1',
+      locationId: 'warehouse-a',
+      availableQuantity: 5,
+      updatedAt: new Date('2026-01-01T11:00:00.000Z'),
+    });
+
+    inventoryRepository.findByProductAndVariant.mockResolvedValue(previous);
     inventoryRepository.upsert.mockResolvedValue(input);
 
     await service.setInventory(input);
@@ -222,11 +315,50 @@ describe('InventoryService', () => {
 
     const result = await service.pruneStaleVariants('product-id', ['ol_variant_a', null]);
 
-    expect(inventoryRepository.markStaleExceptVariants).toHaveBeenCalledWith('product-id', [
+    // `undefined` is forwarded verbatim rather than normalised: the repository
+    // distinguishes "no provenance scope" from every real value (#2320).
+    expect(inventoryRepository.markStaleExceptVariants).toHaveBeenCalledWith(
+      'product-id',
+      ['ol_variant_a', null],
+      undefined
+    );
+    expect(result).toEqual({ markedCount: 3, variantIds: ['ol_variant_b'] });
+  });
+
+  it('forwards a provenance scope to the repository prune verbatim (#2320)', async () => {
+    (inventoryRepository.markStaleExceptVariants as jest.Mock).mockResolvedValue({
+      markedCount: 0,
+      variantIds: [],
+    });
+    const scope = { sourceConnectionId: 'conn-alpha', includeUnattributedProvenance: true };
+
+    await service.pruneStaleVariants('product-id', [], scope);
+
+    expect(inventoryRepository.markStaleExceptVariants).toHaveBeenCalledWith(
+      'product-id',
+      [],
+      scope
+    );
+  });
+
+  it('forwards the getInventory provenance axis verbatim, undefined included (#2320)', async () => {
+    (inventoryRepository.findByProductAndVariant as jest.Mock).mockResolvedValue(null);
+
+    await service.getInventory('product-id', 'ol_variant_a', null, 'conn-alpha');
+    expect(inventoryRepository.findByProductAndVariant).toHaveBeenLastCalledWith(
+      'product-id',
       'ol_variant_a',
       null,
-    ]);
-    expect(result).toEqual({ markedCount: 3, variantIds: ['ol_variant_b'] });
+      'conn-alpha'
+    );
+
+    await service.getInventory('product-id', 'ol_variant_a', null);
+    expect(inventoryRepository.findByProductAndVariant).toHaveBeenLastCalledWith(
+      'product-id',
+      'ol_variant_a',
+      null,
+      undefined
+    );
   });
 
   it('uses persisted updatedAt as write event token', async () => {

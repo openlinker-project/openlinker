@@ -66,7 +66,7 @@ import {
 } from '@openlinker/core/identifier-mapping';
 import { ORDER_INGESTION_SERVICE_TOKEN, IOrderIngestionService } from '@openlinker/core/orders';
 import { ProductOrmEntity, ProductVariantOrmEntity } from '@openlinker/core/products/orm-entities';
-import { destinationOrderIdFromRef } from '../helpers/order-ref.helper';
+import { describeUnsuccessfulSync, destinationOrderIdFromRef } from '../helpers/order-ref.helper';
 import { getTestHarness, IntegrationTestHarness } from '../setup';
 import {
   PRESTASHOP_IMAGE,
@@ -377,7 +377,7 @@ describe('Allegro → PrestaShop carrier mapping (#535, #692)', () => {
         if (results[0].status !== 'success') {
           dumpPrestashopErrorLogs();
           throw new Error(
-            `S-1 order sync failed: destination=${results[0].destinationConnectionId} message=${results[0].error.message}`
+            `S-1 order sync failed: destination=${results[0].destinationConnectionId} reason=${describeUnsuccessfulSync(results[0])}`
           );
         }
         expect(results[0].destinationConnectionId).toBe(prestashopConnectionId);
@@ -416,7 +416,7 @@ describe('Allegro → PrestaShop carrier mapping (#535, #692)', () => {
         if (results[0].status !== 'success') {
           dumpPrestashopErrorLogs();
           throw new Error(
-            `S-2 order sync failed: destination=${results[0].destinationConnectionId} message=${results[0].error.message}`
+            `S-2 order sync failed: destination=${results[0].destinationConnectionId} reason=${describeUnsuccessfulSync(results[0])}`
           );
         }
 
@@ -468,7 +468,7 @@ describe('Allegro → PrestaShop carrier mapping (#535, #692)', () => {
         if (results[0].status !== 'success') {
           dumpPrestashopErrorLogs();
           throw new Error(
-            `S-3 order sync failed: destination=${results[0].destinationConnectionId} message=${results[0].error.message}`
+            `S-3 order sync failed: destination=${results[0].destinationConnectionId} reason=${describeUnsuccessfulSync(results[0])}`
           );
         }
         expect(results[0].destinationConnectionId).toBe(prestashopConnectionId);
@@ -556,7 +556,7 @@ describe('Allegro → PrestaShop carrier mapping (#535, #692)', () => {
         if (results[0].status !== 'success') {
           dumpPrestashopErrorLogs();
           throw new Error(
-            `S-4 order sync failed: destination=${results[0].destinationConnectionId} message=${results[0].error.message}`
+            `S-4 order sync failed: destination=${results[0].destinationConnectionId} reason=${describeUnsuccessfulSync(results[0])}`
           );
         }
 

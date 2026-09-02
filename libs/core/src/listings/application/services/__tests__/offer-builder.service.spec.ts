@@ -11,6 +11,7 @@ import type { ConnectionPort, Connection } from '@openlinker/core/identifier-map
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import type { OfferManagerPort } from '@openlinker/core/listings';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
+import { AVAILABILITY_SERVICE_TOKEN } from '@openlinker/core/inventory';
 import { PRODUCTS_SERVICE_TOKEN } from '@openlinker/core/products';
 import type { IProductsService, ProductVariant } from '@openlinker/core/products';
 
@@ -24,6 +25,7 @@ import type { IAttributeProjectionService } from '../../interfaces/attribute-pro
 import type { AttributeProjectionResult } from '../../types/attribute-projection.types';
 import { OfferBuilderValidationException } from '../../../domain/exceptions/offer-builder-validation.exception';
 import { MasterCatalogConnectionNotConfiguredException } from '../../../domain/exceptions/master-catalog-connection-not-configured.exception';
+import { createFakeAvailabilityService } from './fake-availability-service';
 
 describe('OfferBuilderService', () => {
   let service: OfferBuilderService;
@@ -110,6 +112,13 @@ describe('OfferBuilderService', () => {
         { provide: INTEGRATIONS_SERVICE_TOKEN, useValue: integrationsService },
         { provide: CATEGORY_RESOLUTION_SERVICE_TOKEN, useValue: categoryResolution },
         { provide: ATTRIBUTE_PROJECTION_SERVICE_TOKEN, useValue: attributeProjection },
+        {
+          provide: AVAILABILITY_SERVICE_TOKEN,
+          // #2323 - the seam owns the stock safety buffer now; the fake reads it
+          // from this spec's own connectionPort mock so every buffer assertion
+          // below still exercises the number an operator configured.
+          useValue: createFakeAvailabilityService((id) => connectionPort.get(id)),
+        },
       ],
     }).compile();
 

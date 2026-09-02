@@ -20,6 +20,7 @@ export {
   EnqueueJobOptions,
 } from './application/ports/sync-job-queue.port';
 export { SyncLockPort, SyncLockToken } from './application/ports/sync-lock.port';
+export { shipmentDispatchLockKey } from './application/services/order-scoped-lock-keys';
 
 // Domain Entities
 // NOTE: the entity CLASS is aliased to `SyncJobEntity` because the `SyncJob`
@@ -124,6 +125,13 @@ export {
   MasterProductSyncDeltaPayloadV1,
   MasterProductReconcilePayloadV1,
 } from './domain/types/master-job-payloads.types';
+export type {
+  MarketplaceReturnsPollPayloadV1,
+  MarketplaceReturnSyncPayloadV1,
+  MarketplaceReturnsStatusSyncPayloadV1,
+  ReturnsOrphanReconcilePayloadV1,
+} from './domain/types/returns-job-payloads.types';
+export type { InventoryProvenanceBackfillPayloadV1 } from './domain/types/inventory-job-payloads.types';
 export {
   ShopProductPublishPayloadV1,
   ShopProductPublishPayloadV2,
@@ -136,11 +144,15 @@ export type {
   InvoicingIssueBuyerV1,
 } from './domain/types/invoicing-job-payloads.types';
 export type { RegulatoryStatusReconcilePayloadV1 } from './domain/types/invoicing-job-payloads.types';
+export type { FulfillmentWorkDispatchPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
+export type { FulfillmentWorkRoutePayloadV1 } from './domain/types/fulfillment-job-payloads.types';
 export type { OfflineResubmitPayloadV1 } from './domain/types/invoicing-job-payloads.types';
 export type { PendingRecoverySweepPayloadV1 } from './domain/types/invoicing-job-payloads.types';
 export type { PaymentStatusRefreshByExternalIdPayloadV1 } from './domain/types/invoicing-job-payloads.types';
 export type { FiscalizationRegisterPayloadV1 } from './domain/types/fiscalization-job-payloads.types';
 export type { OrdersTaxRateBackfillPayloadV1 } from './domain/types/orders-job-payloads.types';
+export type { OrdersHoldsReconcilePayloadV1 } from './domain/types/orders-job-payloads.types';
+export type { FulfillmentWorkStatusSyncPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
 
 // Exceptions
 export { SyncJobExecutionError } from './domain/exceptions/sync-job-execution.error';
@@ -165,6 +177,7 @@ export {
   MasterSweepKindValues,
   masterSweepCursorKey,
   masterSweepCompletedAtCursorKey,
+  masterSweepRemainingCountCursorKey,
 } from './domain/types/master-sweep-cursor.types';
 
 // Application Services (interfaces)
