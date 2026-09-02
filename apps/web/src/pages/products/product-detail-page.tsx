@@ -24,7 +24,7 @@ import {
   deriveStockStatus,
   STOCK_STATUS_BADGE_TONE,
   STOCK_STATUS_LABEL,
-} from './product-stock-status';
+} from '../../features/products';
 
 const VIEW_PARAM = 'view';
 const VIEW_OVERVIEW = 'overview';
