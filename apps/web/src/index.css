@@ -15241,6 +15241,23 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   margin-bottom: var(--space-2);
 }
 
+/* ─ Empty-state "routing could not decide" lead block (#2807) ─
+ * Mirrors the mockup: the headline + explanation + primary "fix it in
+ * Settings" action lead the empty state, ahead of the demoted manual
+ * override disclosure below. */
+.sales-document-panel__routing-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.sales-document-panel__routing-block-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
 /* ── KSeF UPO inline preview dialog (#1234) ─────────────────────────
  * Wider dialog hosting a sandboxed <iframe> render of the official UPO
  * confirmation (PDF / XML). The frame fills the available height so the

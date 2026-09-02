@@ -195,6 +195,28 @@ describe('SalesDocumentPanel — state 2: empty + gate-block reason', () => {
     expect(screen.queryByText(/would create a second document/i)).toBeNull();
   });
 
+  it('leads with a primary fix-routing action and demotes the manual override behind a disclosure (#2807)', async () => {
+    const a = { ...invoicingConnection, id: 'conn_aaa', name: 'Alpha' };
+    const b = { ...invoicingConnection, id: 'conn_zzz', name: 'Zeta' };
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([b, a]) },
+        invoicing: { getForOrder: vi.fn().mockRejectedValue(notFound()) },
+      }),
+      ...adminSession,
+    });
+    await screen.findByText(/Automatic invoicing is off for this order/i);
+
+    const fixRoutingLink = screen.getByRole('link', { name: /fix routing settings/i });
+    expect(fixRoutingLink).toHaveAttribute('href', '/settings/sales-documents');
+
+    const overrideSummary = screen.getByText(/issue or register manually instead/i);
+    expect(overrideSummary.closest('details')).not.toBeNull();
+    expect(overrideSummary.closest('details')).toContainElement(
+      screen.getByRole('button', { name: /issue invoice/i }),
+    );
+  });
+
   it('renders fiscal-receipt-flavored copy for a persisted block when the candidate pool is fiscal-only (#2156)', async () => {
     renderWithProviders(
       <SalesDocumentPanel
