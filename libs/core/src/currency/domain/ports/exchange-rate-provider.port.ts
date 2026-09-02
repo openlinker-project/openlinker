@@ -57,4 +57,22 @@ export interface ExchangeRateProviderPort {
    * @throws RateUnavailableTransientError retryable - the source is unreachable
    */
   fetchRate(input: FetchRateInput): Promise<ExchangeRate>;
+
+  /**
+   * A day <= `candidate` such that no day in `(returned, candidate]` is a
+   * publication day for this source. Pure, synchronous, no I/O.
+   *
+   * Optional (ADR-046 probe-not-trust pattern - see
+   * `description-format-resolution.ts` for the precedent): an adapter that
+   * declares nothing keeps the pre-#2777 behaviour, where the cache read is
+   * keyed on the candidate itself.
+   *
+   * A WRONG answer can only ever cause a cache *miss*, which falls through
+   * to the existing `fetchRate` path unchanged - it can never produce a
+   * wrong stamp. A HIT is provably the right row: a row exists under day
+   * `X` only because the source supplied `effectiveDate = X`, and this
+   * contract guarantees no publication day lies between `X` and the
+   * candidate, so the hit equals what `fetchRate` would have returned.
+   */
+  resolveLikelyPublicationDay?(candidate: string): string;
 }

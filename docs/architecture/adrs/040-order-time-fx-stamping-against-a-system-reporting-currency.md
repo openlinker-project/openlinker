@@ -216,7 +216,11 @@ is the one being priced — what the registry stores as `fromCurrency`, i.e. the
   why this ADR anchors on placement and says so rather than claiming the rate of the day the buyer paid.
 - **The two providers publish on different calendars** (Polish working days versus TARGET) and cut-offs, so
   the rule yields a candidate day and each adapter absorbs its own calendar via walk-back-on-miss — a
-  further reason both live in one package.
+  further reason both live in one package. As of **#2777**, each adapter also declares the optional
+  `ExchangeRateProviderPort.resolveLikelyPublicationDay`, so `CurrencyRateService`'s pre-fetch cache read
+  can key on the day the source will actually publish for instead of the raw candidate — closing what was
+  previously a permanent cache miss for every weekend/holiday candidate (the row was written under the
+  published day but the read was keyed on the candidate, so it never hit).
 
 **Migration path (if applicable):**
 - Existing orders carry no stamp (`reportingCurrency IS NULL`). **No backfill of pre-feature orders ships
