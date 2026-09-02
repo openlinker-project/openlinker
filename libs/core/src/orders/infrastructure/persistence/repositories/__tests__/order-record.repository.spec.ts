@@ -988,6 +988,7 @@ describe('OrderRecordRepository', () => {
           mappingFailureReason: 'no variant mapping for SKU-123',
           createdAt: entity.createdAt,
           productId: null,
+          variantId: null,
         },
       ]);
     });
