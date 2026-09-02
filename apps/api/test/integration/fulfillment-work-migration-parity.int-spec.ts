@@ -62,6 +62,22 @@ const TABLES = [
   'fulfillment_work_rejections',
   'fulfillment_progress_claims',
   'routing_decisions',
+  // Waves 1b/1c/2, added under review of PR #2675: their migrations were as
+  // unexercised as the fulfilment ones were before #2392 - the harness builds
+  // by `synchronize`, so nothing had ever run them. They cost one row each in
+  // the three catalogue queries, which is why they join this file rather than
+  // getting a sibling that would re-run the whole chain.
+  'inventory_locations',
+  'returns',
+  'return_lines',
+  'return_line_events',
+  'order_holds',
+  'order_changes',
+  'reservations',
+  'reservation_shortfall_episodes',
+  'automation_rules',
+  'automation_runs',
+  'automation_trigger_firings',
 ] as const;
 
 const COLUMNS_SQL = `
@@ -258,9 +274,86 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
     // This is what makes "declared class-level under the SAME NAME the migration
     // uses" an enforced property: an anonymous @Check or a renamed index shows
     // up here as a name mismatch.
+    //
+    // ## The one carve-out: the PRIMARY KEY constraint's NAME
+    //
+    // The Wave 1b/1c/2 migrations name their primary keys explicitly
+    // (`PK_automation_rules`), while their entities let TypeORM mint a hash
+    // (`PK_378bed501eacc036895837121c2`) — so those eleven tables' PK NAMES
+    // differ between the migration-built and `synchronize`-built schemas. It is
+    // a real divergence and it is reported as a review finding, not silently
+    // tolerated: it is carved out here rather than asserted because the fix
+    // belongs to the ORM entities in `libs/core`, and asserting it would fail
+    // this file for something it cannot fix — the same reasoning the
+    // `order_records` docblock above gives.
+    //
+    // **The carve-out is name-only, and deliberately narrow.** The PK's
+    // uniqueness, its columns and their order are still compared (the
+    // normalisation rewrites only the identifier, keeping `USING btree (id)`),
+    // so a PK moving to a different column still fails here. Every non-PK index
+    // — including the partial predicates — is compared untouched.
+    const stripPkName = (rows: unknown[]): unknown[] =>
+      (rows as { indexname: string; indexdef: string; tablename: string }[]).map((row) =>
+        /^PK_/.test(row.indexname)
+          ? {
+              ...row,
+              indexname: `PK_<generated>_${row.tablename}`,
+              indexdef: row.indexdef.replace(/"PK_[^"]+"/, '"PK_<generated>"'),
+            }
+          : row
+      );
+
     const [synchronized, fromMigration] = await bothSides(INDEXES_SQL);
-    expect(fromMigration).toEqual(synchronized);
+
+    // ## A REAL divergence, pinned rather than carved out
+    //
+    // Two `returns` indexes are `"createdAt" DESC` in the migration and plain
+    // ascending in the ORM entity, so the index production builds is not the one
+    // every test exercises. It is a live finding of this review, owned by the
+    // entity in `libs/core` — which is why it is pinned here instead of fixed
+    // here.
+    //
+    // Pinned, not skipped: each entry asserts BOTH sides' exact definitions, so
+    // the moment the entity is corrected this test fails and tells whoever fixed
+    // it to delete the entry. A bare exclusion would let the drift outlive its
+    // own remedy.
+    const KNOWN_DIVERGENCES: Record<string, { migration: string; entity: string }> = {
+      IDX_returns_orphan_reattribution: {
+        migration:
+          'CREATE INDEX "IDX_returns_orphan_reattribution" ON public.returns USING btree ("sourceConnectionId", "createdAt" DESC) WHERE (("internalOrderId" IS NULL) AND ("externalOrderId" IS NOT NULL))',
+        entity:
+          'CREATE INDEX "IDX_returns_orphan_reattribution" ON public.returns USING btree ("sourceConnectionId", "createdAt") WHERE (("internalOrderId" IS NULL) AND ("externalOrderId" IS NOT NULL))',
+      },
+      IDX_returns_orphans: {
+        migration:
+          'CREATE INDEX "IDX_returns_orphans" ON public.returns USING btree ("createdAt" DESC) WHERE ("internalOrderId" IS NULL)',
+        entity:
+          'CREATE INDEX "IDX_returns_orphans" ON public.returns USING btree ("createdAt") WHERE ("internalOrderId" IS NULL)',
+      },
+    };
+
+    const defOf = (rows: unknown[], name: string): string | undefined =>
+      (rows as { indexname: string; indexdef: string }[]).find((row) => row.indexname === name)
+        ?.indexdef;
+
+    for (const [name, expected] of Object.entries(KNOWN_DIVERGENCES)) {
+      expect(defOf(fromMigration, name)).toBe(expected.migration);
+      expect(defOf(synchronized, name)).toBe(expected.entity);
+    }
+
+    const withoutKnown = (rows: unknown[]): unknown[] =>
+      (rows as { indexname: string }[]).filter((row) => !(row.indexname in KNOWN_DIVERGENCES));
+
+    expect(stripPkName(withoutKnown(fromMigration))).toEqual(
+      stripPkName(withoutKnown(synchronized))
+    );
     expect(fromMigration.length).toBeGreaterThan(0);
+
+    // Non-vacuity for the carve-out itself: if the normalisation ever matched
+    // every row, the comparison above would be meaningless.
+    expect(
+      (fromMigration as { indexname: string }[]).filter((row) => !/^PK_/.test(row.indexname)).length
+    ).toBeGreaterThan(0);
   });
 
   it('should carry the CASCADE foreign keys ONLY in the migration-built schema', async () => {
@@ -287,10 +380,16 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
 
     // CHECKs come from the entity decorators, so both schemas must carry them.
     expect(checksOf(fromMigration)).toEqual(checksOf(synchronized));
-    expect(checksOf(fromMigration).map((entry) => entry.split(' ')[0])).toEqual([
+    // Non-vacuity, expressed as a CONTAINMENT rather than an exhaustive roster.
+    // The roster was the same trap the `TABLES`-derived assertion above names:
+    // adding a table failed here first, for a reason unrelated to the schema
+    // being checked. Naming the two the file's own prose reasons about keeps the
+    // guard real without making every new @Check a two-place edit.
+    const checkNames = checksOf(fromMigration).map((entry) => entry.split(' ')[0]);
+    expect(checkNames).toEqual(expect.arrayContaining([
       'CHK_fulfillment_holds_actor',
       'CHK_fulfillment_work_lines_capacity',
-    ]);
+    ]));
 
     // The capacity predicate spelled out clause by clause, so a weakening
     // applied to BOTH sides at once still fails here.
@@ -307,17 +406,67 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
     }
 
     const foreignKeys = fromMigration.filter((r) => r.contype === 'f');
-    expect(foreignKeys.map((r) => r.conname).sort()).toEqual([
+    // Containment, not an exhaustive roster — the same trap the `TABLES`-derived
+    // assertion above names. The four fulfilment FKs are the ones this file's
+    // CASCADE test exercises and are asserted by name; the wave 1b/1c tables add
+    // their own, and every FK found is checked for CASCADE below regardless.
+    expect(foreignKeys.map((r) => r.conname).sort()).toEqual(expect.arrayContaining([
       'FK_fulfillment_holds_work',
       'FK_fulfillment_progress_claims_work',
       'FK_fulfillment_work_lines_work',
       'FK_fulfillment_work_rejections_work',
-    ]);
+    ]));
+    // Each FK's DELETE RULE asserted individually, because they are not one
+    // rule: the fulfilment children CASCADE with their parent work, a return's
+    // lines CASCADE with the return, a location's owning connection is nulled
+    // rather than taking the location with it, and a position carrying live
+    // reservations must not vanish at all. Asserting "CASCADE everywhere" over a
+    // derived list would have been a check that quietly weakened as the list grew.
+    const EXPECTED_DELETE_RULE: Record<string, string> = {
+      FK_fulfillment_holds_work: 'ON DELETE CASCADE',
+      FK_fulfillment_progress_claims_work: 'ON DELETE CASCADE',
+      FK_fulfillment_work_lines_work: 'ON DELETE CASCADE',
+      FK_fulfillment_work_rejections_work: 'ON DELETE CASCADE',
+      FK_return_lines_return: 'ON DELETE CASCADE',
+      FK_inventory_locations_owner_connection: 'ON DELETE SET NULL',
+      FK_reservations_inventory_item: 'ON DELETE RESTRICT',
+    };
     for (const fk of foreignKeys) {
-      expect(fk.definition).toContain('ON DELETE CASCADE');
+      const rule = EXPECTED_DELETE_RULE[fk.conname];
+      // An unlisted FK fails rather than passing silently: a new one arriving
+      // with no declared delete rule is exactly what this file exists to notice.
+      expect({ fk: fk.conname, declared: rule !== undefined }).toEqual({
+        fk: fk.conname,
+        declared: true,
+      });
+      expect(fk.definition).toContain(rule);
     }
-    // The stated asymmetry, asserted so it cannot silently stop being true.
-    expect(synchronized.filter((r) => r.contype === 'f')).toEqual([]);
+    // The stated asymmetry, asserted so it cannot silently stop being true —
+    // narrowed to the FULFILMENT foreign keys, which is what the claim was ever
+    // about. Extending `TABLES` showed the blanket form was too strong: the
+    // reservations entity DOES declare its `inventory_items` relation, so
+    // `synchronize` builds that one FK. Blanket-asserting an empty set would
+    // have forced deleting a real entity relation to keep a test green.
+    const syncForeignKeys = synchronized.filter((r) => r.contype === 'f');
+    for (const name of [
+      'FK_fulfillment_holds_work',
+      'FK_fulfillment_progress_claims_work',
+      'FK_fulfillment_work_lines_work',
+      'FK_fulfillment_work_rejections_work',
+    ]) {
+      expect(syncForeignKeys.map((r) => r.conname)).not.toContain(name);
+    }
+
+    // Where BOTH schemas declare an FK it must be the SAME FK — a stronger
+    // statement than the emptiness assertion it replaces, and the one that
+    // matters now that the entity side is no longer empty.
+    const migrationByName = new Map(foreignKeys.map((r) => [r.conname, r.definition]));
+    for (const fk of syncForeignKeys) {
+      expect({ fk: fk.conname, definition: migrationByName.get(fk.conname) }).toEqual({
+        fk: fk.conname,
+        definition: fk.definition,
+      });
+    }
   });
 
   it('should delete lines, holds, rejections and progress claims when their parent work is deleted', async () => {

@@ -242,6 +242,47 @@ describe('Fulfillment Work Transitions Integration', () => {
       ).resolves.toBe(false);
     });
 
+    /**
+     * The guard must exclude EVERY terminal state, not the two that are easy to
+     * name (review of PR #2675, prompted by the core-side finding).
+     *
+     * `TERMINAL_FULFILLMENT_WORK_STATUSES` declares three — `closed`,
+     * `cancelled` and `incomplete` — and `deriveSupportedActions` withholds
+     * `force_cancel` from all three. The repository's `cancel` guard listed only
+     * the first two, so it was strictly WEAKER than the rule it enforces: an
+     * `incomplete` work reached through a caller that does not re-derive, or
+     * through the ordinary race where a work becomes `incomplete` between
+     * derivation and write, was stamped `cancelled` with a reason and a
+     * `cancelledAt` — overwriting the partial-fulfilment disposition, which is a
+     * real operator-facing fact and not a placeholder.
+     *
+     * **Written to fail against the old `['cancelled', 'closed']` literal.** The
+     * `resolves.toBe(false)` is what goes red there; the field assertions below
+     * it say WHY it matters, by naming the disposition the write would have
+     * destroyed. A test that only asserted the status would have passed either
+     * way once the row already read `cancelled`.
+     */
+    it('should refuse to cancel an INCOMPLETE work, which is terminal too', async () => {
+      const work = await createWork();
+
+      await expect(
+        repository.transitionStatus({ workId: work.id, from: ['open'], to: 'incomplete' })
+      ).resolves.toBe(true);
+
+      await expect(
+        repository.cancel({
+          workId: work.id,
+          reason: 'operator_forced',
+          cancelledAt: new Date(),
+        })
+      ).resolves.toBe(false);
+
+      const after = await repository.findById(work.id);
+      expect(after?.status).toBe('incomplete');
+      expect(after?.cancellationReason).toBeNull();
+      expect(after?.cancelledAt).toBeNull();
+    });
+
     it('should move the line counters without touching a status', async () => {
       const work = await createWork();
 
