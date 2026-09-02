@@ -771,6 +771,13 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * EXACTLY (non-cancelled, current-era stamped, `NOT` net-eligible) so
    * `candidates.length` is always the same figure as `netExcludedCount`
    * for the identical filters/currency.
+   *
+   * Reads only the four columns {@link NetExcludedOrderCandidate} needs via
+   * `getRawMany`, not `getMany` (#2826) — the full `OrderRecordOrmEntity`
+   * additionally carries `orderSnapshot` (an arbitrary-size JSONB column)
+   * that this classification pass never reads, so hydrating it for every
+   * candidate in the window was pure waste on top of an already-unpaged
+   * read (unpaged by design — see this method's port-level doc comment).
    */
   async findNetExcludedOrderCandidates(
     filters: SalesAnalyticsFilters,
@@ -782,18 +789,27 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
 
     const qb = this.repository
       .createQueryBuilder('rec')
+      .select('rec."internalOrderId"', 'internal_order_id')
+      .addSelect('rec."sourceConnectionId"', 'source_connection_id')
+      .addSelect('rec."placedAt"', 'placed_at')
+      .addSelect('rec."taxRateEra"', 'tax_rate_era')
       .andWhere(netExcludedAndNotCancelled, { currentReportingCurrency })
       .orderBy('rec."placedAt"', 'DESC');
 
     this.applySalesAnalyticsScope(qb, filters);
 
-    const entities = await qb.getMany();
+    const rows = await qb.getRawMany<{
+      internal_order_id: string;
+      source_connection_id: string;
+      placed_at: Date | null;
+      tax_rate_era: string | null;
+    }>();
 
-    return entities.map((entity) => ({
-      internalOrderId: entity.internalOrderId,
-      sourceConnectionId: entity.sourceConnectionId,
-      placedAt: entity.placedAt,
-      taxRateEra: entity.taxRateEra,
+    return rows.map((row) => ({
+      internalOrderId: row.internal_order_id,
+      sourceConnectionId: row.source_connection_id,
+      placedAt: row.placed_at,
+      taxRateEra: row.tax_rate_era,
     }));
   }
 

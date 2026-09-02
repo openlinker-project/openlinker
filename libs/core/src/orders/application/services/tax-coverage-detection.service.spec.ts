@@ -12,7 +12,7 @@ describe('TaxCoverageDetectionService (#2465)', () => {
   let recordRepository: jest.Mocked<
     Pick<OrderRecordRepositoryPort, 'findNetExcludedOrderCandidates'>
   >;
-  let lineItemRepository: jest.Mocked<Pick<OrderLineItemRepositoryPort, 'findByOrderId'>>;
+  let lineItemRepository: jest.Mocked<Pick<OrderLineItemRepositoryPort, 'findByOrderIds'>>;
   let productsService: jest.Mocked<Pick<IProductsService, 'getEffectiveTaxRate'>>;
 
   const baseFilters = {
@@ -53,9 +53,20 @@ describe('TaxCoverageDetectionService (#2465)', () => {
   const noRate: StoredTaxRate = { code: null, countryIso2: 'PL', readAt: new Date('2026-08-24T00:00:00Z') };
   const notChecked: StoredTaxRate = { code: null, countryIso2: null, readAt: null };
 
+  /** Groups lines by `orderRecordId` into the `Map` shape `findByOrderIds` returns. */
+  const linesMap = (...lines: OrderLineItem[]): Map<string, OrderLineItem[]> => {
+    const map = new Map<string, OrderLineItem[]>();
+    for (const line of lines) {
+      const existing = map.get(line.orderRecordId) ?? [];
+      existing.push(line);
+      map.set(line.orderRecordId, existing);
+    }
+    return map;
+  };
+
   beforeEach(() => {
     recordRepository = { findNetExcludedOrderCandidates: jest.fn() };
-    lineItemRepository = { findByOrderId: jest.fn() };
+    lineItemRepository = { findByOrderIds: jest.fn().mockResolvedValue(new Map()) };
     productsService = { getEffectiveTaxRate: jest.fn() };
 
     service = new TaxCoverageDetectionService(
@@ -77,16 +88,16 @@ describe('TaxCoverageDetectionService (#2465)', () => {
       expect(result['tax-b'][0].internalOrderId).toBe('order-post-rollout');
       expect(result['tax-a']).toHaveLength(0);
       expect(result['tax-c']).toHaveLength(0);
-      expect(lineItemRepository.findByOrderId).not.toHaveBeenCalled();
+      expect(lineItemRepository.findByOrderIds).toHaveBeenCalledWith([]);
     });
 
     it('reports tax-a when a pre-rollout order already has every line resolved (backfill already ran)', async () => {
       recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([
         candidate({ internalOrderId: 'order-a', taxRateEra: 'pre-rollout' }),
       ]);
-      lineItemRepository.findByOrderId.mockResolvedValue([
-        makeLine({ orderRecordId: 'order-a', taxRate: '23' }),
-      ]);
+      lineItemRepository.findByOrderIds.mockResolvedValue(
+        linesMap(makeLine({ orderRecordId: 'order-a', taxRate: '23' }))
+      );
 
       const result = await service.classify(baseFilters, 'EUR');
 
@@ -99,9 +110,9 @@ describe('TaxCoverageDetectionService (#2465)', () => {
       recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([
         candidate({ internalOrderId: 'order-a', taxRateEra: 'pre-rollout' }),
       ]);
-      lineItemRepository.findByOrderId.mockResolvedValue([
-        makeLine({ orderRecordId: 'order-a', productId: 'ol_product_x', taxRate: null }),
-      ]);
+      lineItemRepository.findByOrderIds.mockResolvedValue(
+        linesMap(makeLine({ orderRecordId: 'order-a', productId: 'ol_product_x', taxRate: null }))
+      );
       productsService.getEffectiveTaxRate.mockResolvedValue(known('23'));
 
       const result = await service.classify(baseFilters, 'EUR');
@@ -116,9 +127,9 @@ describe('TaxCoverageDetectionService (#2465)', () => {
       recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([
         candidate({ internalOrderId: 'order-b', taxRateEra: 'pre-rollout' }),
       ]);
-      lineItemRepository.findByOrderId.mockResolvedValue([
-        makeLine({ orderRecordId: 'order-b', taxRate: null }),
-      ]);
+      lineItemRepository.findByOrderIds.mockResolvedValue(
+        linesMap(makeLine({ orderRecordId: 'order-b', taxRate: null }))
+      );
       productsService.getEffectiveTaxRate.mockResolvedValue(noRate);
 
       const result = await service.classify(baseFilters, 'EUR');
@@ -132,9 +143,9 @@ describe('TaxCoverageDetectionService (#2465)', () => {
       recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([
         candidate({ internalOrderId: 'order-c', taxRateEra: 'pre-rollout' }),
       ]);
-      lineItemRepository.findByOrderId.mockResolvedValue([
-        makeLine({ orderRecordId: 'order-c', taxRate: null }),
-      ]);
+      lineItemRepository.findByOrderIds.mockResolvedValue(
+        linesMap(makeLine({ orderRecordId: 'order-c', taxRate: null }))
+      );
       productsService.getEffectiveTaxRate.mockResolvedValue(notChecked);
 
       const result = await service.classify(baseFilters, 'EUR');
@@ -148,13 +159,27 @@ describe('TaxCoverageDetectionService (#2465)', () => {
       recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([
         candidate({ internalOrderId: 'order-mixed', taxRateEra: 'pre-rollout' }),
       ]);
-      lineItemRepository.findByOrderId.mockResolvedValue([
-        makeLine({ id: 'line-1', lineNumber: 0, productId: 'p1', taxRate: null }),
-        makeLine({ id: 'line-2', lineNumber: 1, productId: 'p2', taxRate: null }),
-      ]);
-      productsService.getEffectiveTaxRate
-        .mockResolvedValueOnce(noRate)
-        .mockResolvedValueOnce(notChecked);
+      lineItemRepository.findByOrderIds.mockResolvedValue(
+        linesMap(
+          makeLine({
+            id: 'line-1',
+            orderRecordId: 'order-mixed',
+            lineNumber: 0,
+            productId: 'p1',
+            taxRate: null,
+          }),
+          makeLine({
+            id: 'line-2',
+            orderRecordId: 'order-mixed',
+            lineNumber: 1,
+            productId: 'p2',
+            taxRate: null,
+          })
+        )
+      );
+      productsService.getEffectiveTaxRate.mockImplementation((productId: string) =>
+        Promise.resolve(productId === 'p1' ? noRate : notChecked)
+      );
 
       const result = await service.classify(baseFilters, 'EUR');
 
@@ -166,15 +191,35 @@ describe('TaxCoverageDetectionService (#2465)', () => {
       recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([
         candidate({ internalOrderId: 'order-fail', taxRateEra: 'pre-rollout' }),
       ]);
-      lineItemRepository.findByOrderId.mockResolvedValue([
-        makeLine({ orderRecordId: 'order-fail', taxRate: null }),
-      ]);
+      lineItemRepository.findByOrderIds.mockResolvedValue(
+        linesMap(makeLine({ orderRecordId: 'order-fail', taxRate: null }))
+      );
       productsService.getEffectiveTaxRate.mockRejectedValue(new Error('catalogue unavailable'));
 
       const result = await service.classify(baseFilters, 'EUR');
 
       expect(result['tax-c']).toHaveLength(1);
       expect(result['tax-b']).toHaveLength(0);
+    });
+
+    it('resolves the catalogue rate ONCE per distinct (productId, variantId) pair, even when several orders/lines share it (#2826)', async () => {
+      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([
+        candidate({ internalOrderId: 'order-x', taxRateEra: 'pre-rollout' }),
+        candidate({ internalOrderId: 'order-y', taxRateEra: 'pre-rollout' }),
+      ]);
+      lineItemRepository.findByOrderIds.mockResolvedValue(
+        linesMap(
+          makeLine({ id: 'line-x1', orderRecordId: 'order-x', productId: 'shared-product', taxRate: null }),
+          makeLine({ id: 'line-x2', orderRecordId: 'order-x', lineNumber: 1, productId: 'shared-product', taxRate: null }),
+          makeLine({ id: 'line-y1', orderRecordId: 'order-y', productId: 'shared-product', taxRate: null })
+        )
+      );
+      productsService.getEffectiveTaxRate.mockResolvedValue(known('23'));
+
+      const result = await service.classify(baseFilters, 'EUR');
+
+      expect(productsService.getEffectiveTaxRate).toHaveBeenCalledTimes(1);
+      expect(result['tax-a']).toHaveLength(2);
     });
 
     it('partitions a mixed candidate set with categories summing to the full candidate count (regression guard)', async () => {
@@ -184,12 +229,12 @@ describe('TaxCoverageDetectionService (#2465)', () => {
         candidate({ internalOrderId: 'order-3', taxRateEra: 'pre-rollout' }),
       ];
       recordRepository.findNetExcludedOrderCandidates.mockResolvedValue(candidates);
-      lineItemRepository.findByOrderId.mockImplementation((orderRecordId: string) => {
-        if (orderRecordId === 'order-2') {
-          return Promise.resolve([makeLine({ orderRecordId, taxRate: '23' })]);
-        }
-        return Promise.resolve([makeLine({ orderRecordId, taxRate: null })]);
-      });
+      lineItemRepository.findByOrderIds.mockResolvedValue(
+        linesMap(
+          makeLine({ orderRecordId: 'order-2', productId: 'p-order-2', taxRate: '23' }),
+          makeLine({ orderRecordId: 'order-3', productId: 'p-order-3', taxRate: null })
+        )
+      );
       productsService.getEffectiveTaxRate.mockResolvedValue(notChecked);
 
       const result = await service.classify(baseFilters, 'EUR');
@@ -240,9 +285,9 @@ describe('TaxCoverageDetectionService (#2465)', () => {
         candidate({ internalOrderId: 'order-2', taxRateEra: 'pre-rollout' }),
       ];
       recordRepository.findNetExcludedOrderCandidates.mockResolvedValue(candidates);
-      lineItemRepository.findByOrderId.mockResolvedValue([
-        makeLine({ orderRecordId: 'order-2', taxRate: '23' }),
-      ]);
+      lineItemRepository.findByOrderIds.mockResolvedValue(
+        linesMap(makeLine({ orderRecordId: 'order-2', taxRate: '23' }))
+      );
 
       const pages = await service.getAllCategoryPages(baseFilters, 'EUR', {
         limit: 10,
