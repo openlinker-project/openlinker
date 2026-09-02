@@ -205,6 +205,7 @@ describe('AnalyticsCoverageController (#2466)', () => {
           mappingFailureReason: 'no variant mapping',
           createdAt: new Date('2026-08-02T00:00:00Z'),
           productId: null,
+          variantId: null,
         },
       ],
       total: 7,

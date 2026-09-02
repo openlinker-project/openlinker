@@ -39,6 +39,13 @@ export class ProductMatchingOrderDto {
   })
   productId!: null;
 
+  @ApiPropertyOptional({
+    description:
+      'Always `null` (#2799) — same reasoning as `productId` above: this category never resolves a variant reference either.',
+    nullable: true,
+  })
+  variantId!: null;
+
   static fromRow(row: ProductMatchingErrorOrderRow): ProductMatchingOrderDto {
     const dto = new ProductMatchingOrderDto();
     dto.internalOrderId = row.internalOrderId;
@@ -47,6 +54,7 @@ export class ProductMatchingOrderDto {
     dto.mappingFailureReason = row.mappingFailureReason;
     dto.createdAt = row.createdAt;
     dto.productId = row.productId;
+    dto.variantId = row.variantId;
     return dto;
   }
 }

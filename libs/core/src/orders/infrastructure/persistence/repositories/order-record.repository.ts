@@ -851,6 +851,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         // Always null — see `ProductMatchingErrorOrderRow.productId`'s doc
         // comment (#2799) for why this category can never resolve one.
         productId: null,
+        variantId: null,
       })),
       total,
     };

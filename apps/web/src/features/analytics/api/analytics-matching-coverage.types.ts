@@ -26,6 +26,8 @@ export interface ProductMatchingOrder {
    * doc comment.
    */
   productId: null;
+  /** Always `null` (#2799) — same reasoning as `productId` above. */
+  variantId: null;
 }
 
 export interface ProductMatchingOrdersPage {

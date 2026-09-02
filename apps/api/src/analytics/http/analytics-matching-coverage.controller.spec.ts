@@ -33,6 +33,7 @@ describe('AnalyticsMatchingCoverageController (#2474)', () => {
             mappingFailureReason: 'no barcode match',
             createdAt: new Date('2026-08-20T00:00:00Z'),
             productId: null,
+            variantId: null,
           },
         ],
         total: 1,
