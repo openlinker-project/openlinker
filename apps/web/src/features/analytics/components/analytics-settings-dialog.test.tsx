@@ -41,6 +41,23 @@ describe('AnalyticsSettingsDialog', () => {
     ).toBeInTheDocument();
   });
 
+  it('should describe the tax-rate toggle truthfully: org-wide/every-date-range scope, and reverting removes the orders again (#2815)', async () => {
+    renderWithProviders(<AnalyticsSettingsDialog {...baseProps} />, {
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    const toggleDescription = await screen.findByText(/Trust a tax rate found retroactively/);
+    // Must not claim already-shown figures survive turning the setting off —
+    // it is a query-time gate, so reverting removes those orders from Net
+    // Sales again at the next query.
+    expect(toggleDescription).not.toHaveTextContent(/does not undo/);
+    expect(toggleDescription).toHaveTextContent(/removes these orders from Net Sales again/);
+    // Must state the change is org-wide and applies to every date range, not
+    // just the one currently being viewed.
+    expect(toggleDescription).toHaveTextContent(/everyone/);
+    expect(toggleDescription).toHaveTextContent(/every date range/);
+  });
+
   it('should render the reporting currency as the default "Show amounts in" option', () => {
     renderWithProviders(<AnalyticsSettingsDialog {...baseProps} />);
 
