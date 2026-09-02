@@ -161,6 +161,7 @@ One pointer per section, identical format every time.
 | [ADR-067](./067-freshness-token-write-ordering.md) | Ordering a concurrent write by a single-clock freshness token plus a short per-target lock | Accepted | 2026-08-27 |
 | [ADR-068](./068-page-to-the-end-or-fail-loudly.md) | Page to the end or fail loudly - a truncated read must never be indistinguishable from a complete one | Accepted | 2026-08-27 |
 | [ADR-069](./069-operator-settable-sweep-pacing.md) | Sweep pacing is the operator's decision, bounded by a two-tier ceiling, and reported must equal enforced | Accepted | 2026-08-28 |
+| [ADR-070](./070-sales-document-market-discovery.md) | Market discovery, and what OpenLinker may recommend | Proposed | 2026-08-26 |
 
 > *Dates for pre-trail ADRs (001, 004) are approximate to the month — the underlying decisions predate the project's current git history. Other dates are merge-date of the cited PR.*
 
