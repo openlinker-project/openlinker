@@ -113,7 +113,6 @@ import {
   resolveIssuingConnection,
   selectInvoicingCandidates,
   selectReauthInvoicingConnections,
-  InvoiceConnectionLock,
   RegulatoryStatusBadge,
   DocumentTypeSelect,
   DOCUMENT_TYPE_LABEL_FALLBACK,
@@ -735,15 +734,6 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                 'Check both providers and correct whichever document should not have been issued.',
               )}
             </Alert>
-          ) : null}
-
-          {invoiceSettled && invoice && lock ? (
-            <InvoiceConnectionLock
-              status={invoiceDisplayStatus}
-              connectionName={lock.connection?.name ?? lock.connectionId}
-              tag={lock.isStale ? t('invoice.lock.tagDisconnected', 'disconnected') : (lock.connection?.platformType ?? '')}
-              isStale={lock.isStale}
-            />
           ) : null}
 
           {invoiceSettled && invoiceDisplayStatus === 'issuing' ? (
