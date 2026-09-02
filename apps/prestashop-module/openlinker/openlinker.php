@@ -2150,11 +2150,21 @@ class OpenLinker extends CarrierModule
         }
         self::$fastPathDrainScheduled = true;
 
+        $classesDir = dirname(__FILE__) . '/classes/';
+
+        // Found live (#2624 review): this call site referenced WebhookSender
+        // without the same class_exists/require_once guard the module's other
+        // WebhookSender call sites use, so on a request where nothing had
+        // loaded it yet this threw a fatal "Class WebhookSender not found"
+        // straight out of hookActionValidateOrderAfter/hookActionUpdateQuantity,
+        // aborting order validation and stock-change hooks entirely.
+        if (!class_exists('WebhookSender')) {
+            require_once($classesDir . 'WebhookSender.php');
+        }
+
         if (!WebhookSender::fastPathAvailable()) {
             return;
         }
-
-        $classesDir = dirname(__FILE__) . '/classes/';
 
         register_shutdown_function(function () use ($classesDir) {
             // Flush and close the buyer's connection now. Everything below
