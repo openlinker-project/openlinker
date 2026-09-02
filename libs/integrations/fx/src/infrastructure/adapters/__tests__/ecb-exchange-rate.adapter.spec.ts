@@ -152,6 +152,42 @@ describe('EcbExchangeRateAdapter', () => {
     });
   });
 
+  describe('resolveLikelyPublicationDay (#2777)', () => {
+    it('should return the Friday before a Saturday candidate, with no HTTP call', () => {
+      const { fetchImpl, urls } = fakeFetch(() => ok(csv('PLN', '2026-08-14', '4.2680')));
+      const adapter = new EcbExchangeRateAdapter({ fetchImpl });
+
+      const resolved = adapter.resolveLikelyPublicationDay('2026-08-15');
+
+      expect(resolved).toBe('2026-08-14');
+      expect(urls).toHaveLength(0);
+    });
+
+    it('should return the Corpus Christi date ITSELF, proving no Polish-calendar dependency', () => {
+      // Thursday 2026-06-04, a genuine Polish public holiday. A Polish-calendar
+      // walk-back would resolve this to 2026-06-03 - exactly the bug the class
+      // header's "server-side day resolution" tests above pin against for
+      // `fetchRate`. This method must make the same non-decision.
+      const { fetchImpl, urls } = fakeFetch(() => ok(csv('PLN', '2026-06-04', '4.2368')));
+      const adapter = new EcbExchangeRateAdapter({ fetchImpl });
+
+      const resolved = adapter.resolveLikelyPublicationDay('2026-06-04');
+
+      expect(resolved).toBe('2026-06-04');
+      expect(urls).toHaveLength(0);
+    });
+
+    it('should return the candidate itself for an ordinary weekday', () => {
+      const { fetchImpl, urls } = fakeFetch(() => ok(csv('PLN', '2026-08-13', '4.2680')));
+      const adapter = new EcbExchangeRateAdapter({ fetchImpl });
+
+      const resolved = adapter.resolveLikelyPublicationDay('2026-08-13');
+
+      expect(resolved).toBe('2026-08-13');
+      expect(urls).toHaveLength(0);
+    });
+  });
+
   describe('direct resolution (EUR -> X)', () => {
     it('should return the observation verbatim at 8 decimal places', async () => {
       const { fetchImpl } = fakeFetch(() => ok(csv('PLN', '2026-08-13', '4.2712')));
