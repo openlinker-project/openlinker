@@ -15,7 +15,12 @@ import type { CoverageCategory } from './analytics-coverage.types';
 /** Tax A/B/C only — never `'currency'` / `'product-matching'`. */
 export type TaxCoverageCategory = Extract<CoverageCategory, 'tax-a' | 'tax-b' | 'tax-c'>;
 
-/** Mirrors `TaxRateState` (`@openlinker/core/products`) — the frontend cannot import core (#591). */
+/**
+ * Mirrors `TaxRateState` (`@openlinker/core/products`) — the frontend cannot import core (#591).
+ * Uncontracted: unlike `check-shipping-tax-split-mirror.mjs` and its siblings, no invariant
+ * script asserts this stays in sync with core's `TaxRateStateValues` — a new member added there
+ * would not fail `pnpm check:invariants` here.
+ */
 export type TaxCoverageLineRateState = 'not-checked' | 'no-rate' | 'known';
 
 /**
