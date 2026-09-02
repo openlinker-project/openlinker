@@ -5,7 +5,12 @@
  *
  * @module features/analytics/lib
  */
-import type { ProductChannelSales, TopProductRow } from '../api/top-products.types';
+import type {
+  ProductChannelSales,
+  TopProductRow,
+  TopProductVariantRow,
+  VariantChannelSales,
+} from '../api/top-products.types';
 
 /**
  * Union of channel connection ids across every row, in first-seen order.
@@ -43,4 +48,12 @@ export function channelCellFor(row: TopProductRow, connectionId: string): Produc
 
 export function isMissingFrom(row: TopProductRow, connectionId: string): boolean {
   return row.missingFromConnectionIds.includes(connectionId);
+}
+
+/** Variant-scoped counterpart of {@link channelCellFor} (#2765). */
+export function variantChannelCellFor(
+  variant: TopProductVariantRow,
+  connectionId: string
+): VariantChannelSales | undefined {
+  return variant.channels.find((channel) => channel.sourceConnectionId === connectionId);
 }

@@ -41,6 +41,7 @@ describe('AnalyticsRemediationController (#2468)', () => {
       getOpenRun: jest.fn(),
       markResolved: jest.fn(),
       markFailed: jest.fn(),
+      cancelOpenRun: jest.fn(),
     };
     orderRecordService = {
       getCurrencyMismatchOrders: jest.fn().mockResolvedValue({ items: [], total: 13 }),
@@ -144,6 +145,65 @@ describe('AnalyticsRemediationController (#2468)', () => {
         'EUR',
         { limit: 1, offset: 0 }
       );
+    });
+  });
+
+  describe('cancel (#2816)', () => {
+    it('should cancel the open run and return it as failed, so the panel can retry afterwards', async () => {
+      runs.getOpenRun.mockResolvedValue(RUN);
+      runs.cancelOpenRun.mockResolvedValue(true);
+      runs.getRun.mockResolvedValue({
+        ...RUN,
+        status: 'failed',
+        detail: 'Cancelled by operator - previous attempt did not resolve',
+      });
+
+      const response = await controller.cancel();
+
+      expect(runs.getOpenRun).toHaveBeenCalledWith('currency');
+      expect(runs.cancelOpenRun).toHaveBeenCalledWith(
+        'currency',
+        'Cancelled by operator - previous attempt did not resolve'
+      );
+      expect(response).toMatchObject({
+        id: 'ol_remrun_abc',
+        status: 'failed',
+        detail: 'Cancelled by operator - previous attempt did not resolve',
+      });
+    });
+
+    it('should 404 when there is nothing in flight to cancel', async () => {
+      runs.getOpenRun.mockResolvedValue(null);
+
+      await expect(controller.cancel()).rejects.toBeInstanceOf(NotFoundException);
+      expect(runs.cancelOpenRun).not.toHaveBeenCalled();
+    });
+
+    it('should 404 when the run resolved on its own between the read and the cancel (no false claim of a cancellation)', async () => {
+      runs.getOpenRun.mockResolvedValue(RUN);
+      runs.cancelOpenRun.mockResolvedValue(false);
+
+      await expect(controller.cancel()).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('should prove the actual bug scenario: a stuck in-progress run blocks recalculate with 409, and cancel unblocks it', async () => {
+      // Simulate the driver job dying: a run sits at 'in-progress' forever.
+      runs.getOpenRun.mockResolvedValue(RUN);
+
+      // Before cancelling, a fresh recalculate attempt is refused.
+      runs.openRun.mockRejectedValueOnce(new OpenRemediationRunExistsError('currency'));
+      await expect(controller.recalculate(body, USER)).rejects.toBeInstanceOf(ConflictException);
+
+      // The operator cancels the stuck run.
+      runs.cancelOpenRun.mockResolvedValue(true);
+      runs.getRun.mockResolvedValue({ ...RUN, status: 'failed', detail: 'Cancelled by operator' });
+      await controller.cancel();
+
+      // A subsequent recalculate now succeeds instead of throwing 409.
+      runs.openRun.mockResolvedValueOnce(RUN);
+      await expect(controller.recalculate(body, USER)).resolves.toMatchObject({
+        id: 'ol_remrun_abc',
+      });
     });
   });
 

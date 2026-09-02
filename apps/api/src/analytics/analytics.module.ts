@@ -18,8 +18,9 @@
  *    service — see `SalesAnalyticsController`'s own header.
  * 4. **`/analytics/top-products`** (`TopProductsController`, #1988) — products
  *    ranked by revenue/units with an inline per-channel breakdown, catalog
- *    metadata, and a listing-coverage flag. Fans out across THREE core
- *    contexts (`orders`, `products`, `listings`), so — like
+ *    metadata, and a listing-coverage flag. Fans out across FOUR core
+ *    contexts (`orders`, `products`, `listings`, and — since #2765's
+ *    per-variant sales drill-down — `inventory` for live stock), so — like
  *    `NeedsAttentionService` — it composes them via `TopProductsService` at
  *    this layer rather than adding a new core-to-core dependency edge; see
  *    that service's own header.
@@ -72,6 +73,7 @@
 import { Module } from '@nestjs/common';
 import { AnalyticsModule as CoreAnalyticsModule } from '@openlinker/core/analytics';
 import { CurrencyModule } from '@openlinker/core/currency';
+import { InventoryModule } from '@openlinker/core/inventory';
 import { ListingsModule } from '@openlinker/core/listings/services';
 import { OrdersModule } from '@openlinker/core/orders';
 import { SyncModule } from '@openlinker/core/sync';
@@ -99,6 +101,7 @@ import { TOP_PRODUCTS_SERVICE_TOKEN } from './application/services/top-products.
   imports: [
     CoreAnalyticsModule,
     CurrencyModule,
+    InventoryModule,
     ListingsModule,
     OrdersModule,
     ProductsModule,

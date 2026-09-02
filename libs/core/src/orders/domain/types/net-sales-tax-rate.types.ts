@@ -77,7 +77,19 @@ export function resolveNetSalesTaxRate(
   if ((NetSalesExemptTaxRateCodeValues as readonly string[]).includes(trimmed)) {
     return { kind: 'known', rateFraction: 0 };
   }
-  const parsed = Number.parseFloat(trimmed);
+  // Require the same numeric shape the SQL half enforces
+  // (`~ '^[0-9]+(\.[0-9]+)?$'`) before converting to a number.
+  // `Number.parseFloat` is prefix-lenient - it reads '0x10' as `0` and
+  // '23,5' as `23`, silently confirming a rate for a value the SQL
+  // predicate would reject outright as `NULL` - exactly the "0% VAT" false
+  // claim this file's contract forbids. Anything not matching this shape
+  // resolves to `unknown`, same as the SQL predicate; `Number()` is used
+  // afterwards rather than `parseFloat` so nothing with trailing garbage
+  // past a leading number can slip through even once the shape is confirmed.
+  if (!/^\d+(\.\d+)?$/.test(trimmed)) {
+    return { kind: 'unknown' };
+  }
+  const parsed = Number(trimmed);
   if (!Number.isFinite(parsed)) {
     return { kind: 'unknown' };
   }
@@ -129,8 +141,10 @@ export function deriveNetLineAmount(
  * numeric/exempt-code rule, parameterized on a qualified column reference
  * (e.g. `li."taxRate"`) so every SQL call site shares one expression instead
  * of hand-retyping it. Evaluates to `NULL` for the `unknown` outcome — a
- * caller sums `<gross> * (1 - <this>)` and must gate on `IS NOT NULL`
- * separately (there is no SQL equivalent of the tagged-union `kind` field).
+ * caller divides `<gross> / (1 + <this>)` (never multiplies by
+ * `(1 - <this>)`, which understates net — see {@link netSalesLineNetAmountSql})
+ * and must gate on `IS NOT NULL` separately (there is no SQL equivalent of
+ * the tagged-union `kind` field).
  *
  * Both halves of this file change together: adding a member to
  * {@link NetSalesExemptTaxRateCodeValues} or changing the numeric bounds
