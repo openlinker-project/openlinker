@@ -94,7 +94,6 @@
  * @module features/analytics/components
  */
 import { type ReactElement, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { DataTable, type DataTableColumn } from '../../../shared/ui/data-table';
 import { Button } from '../../../shared/ui/button';
 import { EmptyValue } from '../../../shared/ui/empty-value';
@@ -193,11 +192,6 @@ interface ProductSalesTableProps {
   coverageFilters?: AnalyticsCoverageFilters;
   /** Opens the matching Data Coverage detail modal — omit to keep every row's notes absent. */
   onOpenCategory?: (category: CoverageCategory) => void;
-}
-
-function buildPublishHref(productId: string, connectionId: string): string {
-  const params = new URLSearchParams({ productIds: productId, connectionId });
-  return `/listings/bulk-create/wizard?${params.toString()}`;
 }
 
 function ProductExclusionNotes({
