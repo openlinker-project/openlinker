@@ -206,6 +206,64 @@ test.describe('sales documents: order-detail panel (#2563 M10)', () => {
     ).toBeVisible();
   });
 
+  test('filled — a registered fiscal receipt shows the artefact and a final-registration notice', async ({
+    page,
+  }) => {
+    await gotoOrder(page, SEED_ORDER_IDS.fiscalRegistered);
+    const slot = panel(page).locator('.doc-slot--filled');
+    await expect(slot.locator('.doc-slot__kind')).toHaveText('fiscal receipt');
+    await expect(slot.getByText('PAR/2026/09/0009', { exact: false })).toBeVisible();
+    await expect(
+      slot.getByText('This registration is final and cannot be corrected here.'),
+    ).toBeVisible();
+    // A registered receipt is TERMINAL, so no retry/register affordance
+    // belongs beside it, and this order's active `Invoicing`-capable
+    // connection (ksef, seeded for a different order's routing default) makes
+    // it ALSO a cross-kind candidate — the same real guard exercised by the
+    // `fiscalRegistering` state above, now against a settled record.
+    await expect(slot.getByRole('button', { name: 'Register receipt' })).toHaveCount(0);
+    await expect(
+      slot.getByText('This order already has a fiscal receipt.', { exact: false }),
+    ).toBeVisible();
+  });
+
+  test('real UX: opening the manual-override disclosure and clicking Issue invoice actually performs the issue request', async ({
+    page,
+  }) => {
+    // `invoiceNotIssued` is routed to a real connection (ksef, DE default) but
+    // carries no document yet, so the primary action is genuinely clickable —
+    // unlike `noRouting`, whose disclosure has no resolvable connection to
+    // issue on. Clicking it round-trips through the REAL `POST /invoices`
+    // endpoint against the seeded (fake-credentialed) `ksef` connection, so
+    // this asserts the button actually performs an action with an observable
+    // result — not just that it exists and is clickable in the DOM.
+    await gotoOrder(page, SEED_ORDER_IDS.invoiceNotIssued);
+    const overrideSummary = page.getByText('Issue or register manually instead');
+    await expect(overrideSummary).toBeVisible();
+    await overrideSummary.click();
+
+    const issueButton = page.getByRole('button', { name: 'Issue invoice' });
+    await expect(issueButton).toBeVisible();
+    await expect(issueButton).toBeEnabled();
+
+    const live = page.locator('.sales-document-panel [role="status"][aria-live="polite"]');
+    await issueButton.click();
+
+    // The live region announces "issuing" the instant the mutation starts —
+    // real state driven by a real click, not a static fixture.
+    await expect(live).toHaveText('Issuing the invoice.');
+
+    // The seeded `ksef` connection carries a fake `credentialsRef`
+    // ('seed-ksef'), so the real adapter call is expected to fail — that
+    // failure IS the assertion that a genuine network round trip happened:
+    // either a toast reports it, or the panel re-reads and shows a resolved
+    // document. Either outcome proves the click drove real backend work
+    // rather than a decorative disabled/enabled toggle.
+    await expect(
+      page.locator('.toast--error, .toast--success').first(),
+    ).toBeVisible({ timeout: 15_000 });
+  });
+
   test('the live region announces state changes for assistive tech', async ({ page }) => {
     await gotoOrder(page, SEED_ORDER_IDS.invoiceIssued);
     const live = page.locator('.sales-document-panel [role="status"][aria-live="polite"]');
@@ -229,6 +287,18 @@ test.describe('sales documents: order-detail panel (#2563 M10)', () => {
       await gotoOrder(page, SEED_ORDER_IDS.noRouting);
       await page.screenshot({
         path: path.join(SCREENSHOT_DIR, `${viewport.label}-panel-empty-override.png`),
+      });
+    });
+
+    // #2807 review — no fiscal-receipt state had ever been captured in a
+    // screenshot; only invoice-filled and empty-override were. This closes
+    // that gap with the "registered" (terminal, successful) sub-state, the
+    // one an operator sees most often.
+    test(`the filled-fiscal state renders at ${viewport.label}`, async ({ page }) => {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      await gotoOrder(page, SEED_ORDER_IDS.fiscalRegistered);
+      await page.screenshot({
+        path: path.join(SCREENSHOT_DIR, `${viewport.label}-panel-filled-fiscal.png`),
       });
     });
   }

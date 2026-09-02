@@ -45,6 +45,7 @@ export const SEED_ORDER_IDS = {
   invoiceAuthorityRejected: 'ol_order_m10seed0003invoicerejected',
   fiscalRegistering: 'ol_order_m10seed0004fiscalregistering',
   fiscalUnconfirmed: 'ol_order_m10seed0005fiscalunconfirmed',
+  fiscalRegistered: 'ol_order_m10seed0009fiscalregistered',
   noRouting: 'ol_order_m10seed0006noroutingcz0000',
   invoiceNotIssued: 'ol_order_m10seed0007invoicenotissued',
   invoiceAtAuthorityDuplicate: 'ol_order_m10seed0008invoiceatauth00',
@@ -191,6 +192,15 @@ export async function seedSalesDocumentStates(): Promise<void> {
         'EUR',
         526.95,
       ],
+      [
+        SEED_ORDER_IDS.fiscalRegistered,
+        SEED_CONNECTION_IDS.eparagony,
+        'PL',
+        'Poznan',
+        'Ewa Malinowska',
+        'PLN',
+        128.5,
+      ],
     ];
 
     for (const [orderId, sourceConnectionId, country, city, customerName, currency, total] of
@@ -233,6 +243,30 @@ export async function seedSalesDocumentStates(): Promise<void> {
          (id, "connectionId", "orderId", "providerType", "idempotencyKey", status, "failureMode", "failureReason", "createdAt", "updatedAt")
        VALUES (uuid_generate_v4(), $1, $2, 'eparagony', 'm10seed-key-fiscal-unconfirmed', 'failed', 'in-doubt', 'Provider did not confirm before the wait budget elapsed.', now(), now())`,
       [SEED_CONNECTION_IDS.eparagony, SEED_ORDER_IDS.fiscalUnconfirmed],
+    );
+
+    // Fiscal receipt: registered — a terminal, successful registration with a
+    // customer-facing artefact. This is the "filled — fiscal receipt" screen
+    // an operator sees most often, and until this seed row existed no e2e
+    // screenshot ever captured it (only the transient `registering` and
+    // `failed(in-doubt)` sub-states were covered).
+    await client.query(
+      `INSERT INTO fiscal_registration_records
+         (id, "connectionId", "orderId", "providerType", "idempotencyKey", status, "providerReference", "documentReference", "registeredAt", artefacts, "createdAt", "updatedAt")
+       VALUES (uuid_generate_v4(), $1, $2, 'eparagony', 'm10seed-key-fiscal-registered', 'registered', 'm10seed-provider-ref', 'PAR/2026/09/0009', now(), $3::jsonb, now(), now())`,
+      [
+        SEED_CONNECTION_IDS.eparagony,
+        SEED_ORDER_IDS.fiscalRegistered,
+        JSON.stringify([
+          {
+            medium: 'link',
+            disposition: 'display',
+            content: 'https://eparagony.example/r/m10seed-9',
+            contentType: null,
+            label: 'View receipt',
+          },
+        ]),
+      ],
     );
 
     // Invoice: submitted to the authority (winner, newer), plus a SECOND

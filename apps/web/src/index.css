@@ -19576,22 +19576,29 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .sales-document-market-row-list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--space-3);
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
+/* #2807 review — the mockup renders each market as a distinct card with real
+   breathing room; the shipped rows were tighter and flatter (thin 1px border,
+   small gap, no lift), which read as denser and busier side by side. Wider
+   padding + a soft shadow gets the same information closer to that rhythm
+   without touching the underlying markup, colors, or the "no full-row tint"
+   rule directly above. */
 .sales-document-market-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1.4fr) minmax(0, 1.6fr) auto;
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: var(--bg-surface);
-  min-height: 4.25rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  min-height: 4.5rem;
 }
 /* #2806 — the mockup signals "needs a decision" with a small status dot on
    an otherwise plain row, not a full-row tint; the dot + reason text already
