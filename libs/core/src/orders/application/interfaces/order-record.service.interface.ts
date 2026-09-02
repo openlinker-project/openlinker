@@ -29,7 +29,11 @@ import type {
   SalesAnalyticsFilters,
   SalesAndChannelAnalytics,
 } from '../../domain/types/order-sales-analytics.types';
-import type { TopProductFilters, TopProductsResult } from '../../domain/types/top-products.types';
+import type {
+  TopProductFilters,
+  TopProductsResult,
+  VariantSalesResult,
+} from '../../domain/types/top-products.types';
 
 export interface IOrderRecordService {
   /**
@@ -345,4 +349,22 @@ export interface IOrderRecordService {
     connectionId: string,
     input: { windowEnd: Date; now: Date; limit: number; offset: number }
   ): Promise<OrderRecord[]>;
+
+  /**
+   * One product's sales split by variant, per channel (#2765) — the
+   * drill-down behind the Top Products expand panel, fetched lazily only
+   * when an operator actually expands a row (mirrors the products cockpit's
+   * own `ProductRowDetail` lazy-query precedent). Never embedded in {@link
+   * getTopProducts}'s list response, which pages up to 20 rows at once —
+   * running this query eagerly for every row would cost 20× the work for
+   * detail almost none of it gets opened.
+   *
+   * Same currency-correctness rules as {@link getTopProducts}. Catalog
+   * metadata (sku/attributes) and stock are NOT part of this core shape —
+   * composed at the apps/api layer, same reasoning as `getTopProducts`.
+   */
+  getTopProductVariantSales(
+    productId: string,
+    filters: SalesAnalyticsFilters
+  ): Promise<VariantSalesResult>;
 }

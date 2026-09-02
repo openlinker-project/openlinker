@@ -172,7 +172,18 @@ describe('Allegro Order Sync End-to-End Integration', () => {
 
       expect(persistedPollJob.status).toBe('queued');
 
-      const enqueueSpy = jest.spyOn(jobEnqueue, 'enqueueJob');
+      // Stub the publish rather than merely spying on it: the harness boots
+      // the full role set, so a real publish here reaches the live
+      // JobIntakeConsumer + SyncJobRunner (only OL_SCHEDULER_ENABLED is
+      // disabled for tests — see harness.ts), which can pick up and process
+      // the SAME order concurrently with step 6's manual handler call below.
+      // Both resolve the same internal order id + destination connection, so
+      // that race intermittently trips the per-(order, destination) create
+      // lock with a retryable OrderCreateContendedException. Stubbing keeps
+      // the call-shape assertion while removing the double-processing.
+      const enqueueSpy = jest
+        .spyOn(jobEnqueue, 'enqueueJob')
+        .mockResolvedValue({ jobId: randomUUID(), isExisting: false });
 
       // 4. Execute poll handler
       const { OrdersPollHandler } = require('../../src/sync/handlers/orders-poll.handler');
@@ -182,9 +193,8 @@ describe('Allegro Order Sync End-to-End Integration', () => {
       // Mark poll job as succeeded
       await jobRepository.markSucceeded(persistedPollJob.id, 'ok');
 
-      // 5. Verify order sync jobs were enqueued to the queue (published)
-      // Note: the poll handler enqueues via SyncJobQueueService -> JobEnqueuePort.
-      // We can't rely on JobIntakeConsumer persisting jobs in this test, so we assert publish calls.
+      // 5. Verify order sync jobs were enqueued to the queue (stubbed above,
+      // so we assert the call shape rather than a real publish).
       expect(enqueueSpy).toHaveBeenCalledWith(
         expect.objectContaining({
           jobType: 'marketplace.order.sync',

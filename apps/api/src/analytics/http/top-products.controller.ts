@@ -10,12 +10,18 @@
  * `listings` — see that service's header for why the composition lives here
  * rather than in a core context.
  *
+ * Also carries the per-product variant-sales drill-down (#2765) — a
+ * separate, lazily-fetched route (`GET .../:productId/variants`), never a
+ * field on the list rows above: see `ITopProductsService`'s doc for why.
+ *
  * @module apps/api/src/analytics/http
  */
-import { BadRequestException, Controller, Get, Inject, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { BadRequestException, Controller, Get, Inject, Param, Query } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { TopProductsQueryDto } from './dto/top-products-query.dto';
 import { TopProductsResponseDto } from './dto/top-products-response.dto';
+import { SalesAnalyticsQueryDto } from './dto/sales-analytics-query.dto';
+import { TopProductVariantsResponseDto } from './dto/top-product-variants-response.dto';
 import {
   TOP_PRODUCTS_SERVICE_TOKEN,
   type ITopProductsService,
@@ -52,6 +58,31 @@ export class TopProductsController {
       sortBy: query.sortBy ?? 'revenue',
       limit: query.limit ?? 20,
       offset: query.offset ?? 0,
+    });
+  }
+
+  @Get('top-products/:productId/variants')
+  @ApiParam({ name: 'productId', description: 'Internal product id' })
+  @ApiOperation({
+    summary: 'One product’s sales split by variant, per channel',
+    description:
+      'Lazy drill-down for the Top Products expand panel — fetch only when an operator expands the row, never for every row on the page. A variantId: null row is the "Unassigned" bucket (order lines that never resolved to a variant), reported as its own row unless the product has exactly one real variant.',
+  })
+  @ApiResponse({ status: 200, type: TopProductVariantsResponseDto })
+  async getTopProductVariantSales(
+    @Param('productId') productId: string,
+    @Query() query: SalesAnalyticsQueryDto
+  ): Promise<TopProductVariantsResponseDto> {
+    const from = new Date(query.from);
+    const to = new Date(query.to);
+    if (to.getTime() <= from.getTime()) {
+      throw new BadRequestException('to must be after from');
+    }
+
+    return this.topProductsService.getTopProductVariantSales(productId, {
+      from,
+      to,
+      sourceConnectionId: query.sourceConnectionId,
     });
   }
 }

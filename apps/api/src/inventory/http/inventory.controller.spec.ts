@@ -57,6 +57,7 @@ describe('InventoryController', () => {
     const mockQueryService: jest.Mocked<IInventoryQueryService> = {
       listInventoryItems: jest.fn(),
       getAvailabilityByVariantIds: jest.fn(),
+      findAvailabilityByVariantIds: jest.fn(),
       getProductStockAggregates: jest.fn(),
       getDuplicatePositionReport: jest.fn(),
     };

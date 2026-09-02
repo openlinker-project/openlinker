@@ -60,7 +60,12 @@ import { deriveOrderAnalyticsScalars, deriveOrderLineItems } from '../../domain/
 import { buildOrderAutomationFacts } from '../../domain/order-automation-facts-projection';
 import { buildSalesAndChannelAnalytics } from '../../domain/order-sales-aggregation';
 import { buildTopProducts } from '../../domain/top-products-aggregation';
-import type { TopProductFilters, TopProductsResult } from '../../domain/types/top-products.types';
+import { buildVariantSales } from '../../domain/variant-sales-aggregation';
+import type {
+  TopProductFilters,
+  TopProductsResult,
+  VariantSalesResult,
+} from '../../domain/types/top-products.types';
 
 /** One day in milliseconds, for the market-discovery window arithmetic (#2518). */
 const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -726,6 +731,29 @@ export class OrderRecordService implements IOrderRecordService {
     );
 
     return buildTopProducts({ ranking, total, breakdown });
+  }
+
+  /**
+   * One product's sales split by variant, per channel (#2765) — see the
+   * interface doc for why this is a separate, lazily-fetched drill-down
+   * rather than a widening of {@link getTopProducts}'s list response.
+   *
+   * Unlike {@link getTopProducts}'s product-level pair, the ranking and
+   * breakdown reads here are independently scoped to the SAME already-known
+   * `productId` (no page-dependent id list to wait for), so they run in
+   * parallel.
+   */
+  async getTopProductVariantSales(
+    productId: string,
+    filters: SalesAnalyticsFilters
+  ): Promise<VariantSalesResult> {
+    const reportingCurrency = await this.reportingCurrencySettings.resolve();
+    const [ranking, breakdown] = await Promise.all([
+      this.lineItemRepository.getVariantRanking(productId, filters, reportingCurrency),
+      this.lineItemRepository.getVariantChannelBreakdown(productId, filters, reportingCurrency),
+    ]);
+
+    return buildVariantSales({ productId, ranking, breakdown });
   }
 
   /**

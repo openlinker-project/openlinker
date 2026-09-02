@@ -19,8 +19,10 @@
  * split this way.
  *
  * Grouping is at PRODUCT granularity only (spec rows C1/C2/D1) — variant-level
- * ranking is spec row C3, explicitly out of scope for this read (see the
- * #1988 implementation plan's non-goals).
+ * ranking was spec row C3, deferred as out of scope for the original #1988
+ * read. {@link VariantRankingRow}/{@link VariantChannelBreakdownRow} below
+ * are that follow-up (#2765): a per-product drill-down, not a widening of
+ * this list response — see their own doc comments for why.
  *
  * @module libs/core/src/orders/domain/types
  */
@@ -142,4 +144,85 @@ export interface TopProductView {
 export interface TopProductsResult {
   items: TopProductView[];
   total: number;
+}
+
+/**
+ * One ranked row from `OrderLineItemRepositoryPort.getVariantRanking` (#2765)
+ * — `order_line_items` grouped by `variantId` WITHIN one product, across
+ * every channel. Same currency-correctness fields and rules as
+ * {@link ProductRankingRow}, scoped one level finer.
+ *
+ * `variantId: null` is a real, distinct bucket — `order_line_items.variantId`
+ * is nullable "for a simple product's synthetic-variant edge case"
+ * (`OrderLineItem` entity doc), so a historical line can carry no variant id
+ * even though the product's catalog entry has one. This read reports that
+ * bucket as its own row rather than dropping it or guessing which variant it
+ * belongs to; the apps/api composition layer decides how to present it (see
+ * `TopProductsService`).
+ */
+export interface VariantRankingRow {
+  variantId: string | null;
+  units: number;
+  revenue: number;
+  unconvertedRevenue: number;
+  unconvertedOrderCount: number;
+  currency: string | null;
+  unconvertedCurrency: string | null;
+  netRevenue: number;
+  netExcludedRevenue: number;
+  netExcludedLineCount: number;
+}
+
+/**
+ * One row from `OrderLineItemRepositoryPort.getVariantChannelBreakdown`
+ * (#2765) — a single variant's contribution on a single source connection,
+ * within one product. Same shape/semantics as {@link ProductChannelBreakdownRow},
+ * keyed by `variantId` instead of `productId`. `variantId: null` mirrors
+ * {@link VariantRankingRow}'s own bucket.
+ */
+export interface VariantChannelBreakdownRow {
+  variantId: string | null;
+  sourceConnectionId: string;
+  units: number;
+  revenue: number;
+  unconvertedRevenue: number;
+  currency: string | null;
+  unconvertedCurrency: string | null;
+  netRevenue: number;
+  netExcludedRevenue: number;
+  netExcludedLineCount: number;
+}
+
+/**
+ * One fully-assembled variant row for the per-product variant-sales
+ * drill-down (#2765) — a variant ranking row plus its own per-channel
+ * breakdown. Catalog metadata (sku/attributes) and stock are NOT part of
+ * this core shape; composed at the apps/api layer, same reasoning as
+ * {@link TopProductView}.
+ */
+export interface VariantSalesView {
+  variantId: string | null;
+  units: number;
+  revenue: number;
+  unconvertedRevenue: number;
+  unconvertedOrderCount: number;
+  currency: string | null;
+  unconvertedCurrency: string | null;
+  netRevenue: number;
+  netExcludedRevenue: number;
+  netExcludedLineCount: number;
+  channels: VariantChannelBreakdownRow[];
+}
+
+/**
+ * Full result of `IOrderRecordService.getTopProductVariantSales` (#2765) — a
+ * single product's per-variant sales split. Unlike {@link TopProductsResult},
+ * never paginated: this is a drill-down for one already-identified product,
+ * fetched lazily only when its row is expanded (mirrors the products
+ * cockpit's own `ProductRowDetail` lazy-query precedent), not embedded in
+ * the `/analytics/top-products` list response.
+ */
+export interface VariantSalesResult {
+  productId: string;
+  variants: VariantSalesView[];
 }

@@ -115,6 +115,17 @@ export class InventoryQueryService implements IInventoryQueryService {
     });
   }
 
+  async findAvailabilityByVariantIds(
+    variantIds: readonly string[]
+  ): Promise<readonly VariantAvailability[]> {
+    // No zero-fill, deliberately — see the interface docblock. The
+    // repository read already returns one row per variant that HAS
+    // non-stale inventory rows and nothing for the rest, so this is a
+    // pass-through whose value is entirely in what it does NOT invent.
+    if (variantIds.length === 0) return [];
+    return this.inventoryRepository.findAvailabilityByVariantIds(variantIds);
+  }
+
   async getProductStockAggregates(
     productIds: readonly string[]
   ): Promise<readonly ProductStockAggregate[]> {
