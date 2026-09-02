@@ -13,7 +13,7 @@
  *
  * @module libs/core/src/analytics/domain/ports
  */
-import type { CoverageResolutionStatus } from '@openlinker/core/orders';
+import type { CoverageResolutionStatus } from '@openlinker/core/orders/types';
 import type { AnalyticsRemediationRun } from '../entities/analytics-remediation-run.entity';
 import type { AnalyticsRemediationRunInput } from '../types/analytics-remediation-run.types';
 

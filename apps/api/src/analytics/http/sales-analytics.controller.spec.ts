@@ -231,29 +231,15 @@ describe('SalesAnalyticsController', () => {
         displayCurrency: 'PLN',
         convertedTotal: 82000,
         breakdown: [
-          {
-            currency: 'EUR',
-            orderCount: 140,
-            nativeTotal: 18420.5,
-            convertedTotal: 79200,
-            appliedRate: null,
-          },
-          { currency: 'PLN', orderCount: 2, nativeTotal: 145, convertedTotal: null, appliedRate: null },
+          { currency: 'EUR', orderCount: 140, nativeTotal: 18420.5, convertedTotal: 79200 },
+          { currency: 'PLN', orderCount: 2, nativeTotal: 145, convertedTotal: null },
         ],
         unresolvedNativeCurrencies: ['XXX'],
       };
       const channelResult: CurrentRateConversionResult = {
         displayCurrency: 'PLN',
         convertedTotal: 52000,
-        breakdown: [
-          {
-            currency: 'EUR',
-            orderCount: 90,
-            nativeTotal: 11980,
-            convertedTotal: 52000,
-            appliedRate: null,
-          },
-        ],
+        breakdown: [{ currency: 'EUR', orderCount: 90, nativeTotal: 11980, convertedTotal: 52000 }],
         unresolvedNativeCurrencies: [],
       };
       displayCurrencyConversionService.convertAtCurrentRate
@@ -290,14 +276,12 @@ describe('SalesAnalyticsController', () => {
         rateBasis: 'current-rate',
         convertedRevenue: 82000,
         unresolvedNativeCurrencies: ['XXX'],
-        appliedRates: [],
       });
       expect(result.channels[0].displayCurrencyConversion).toEqual({
         displayCurrency: 'PLN',
         rateBasis: 'current-rate',
         convertedRevenue: 52000,
         unresolvedNativeCurrencies: [],
-        appliedRates: [],
       });
     });
 
@@ -310,14 +294,12 @@ describe('SalesAnalyticsController', () => {
         convertedTotal: 79200,
         sourceCurrency: 'EUR',
         unresolved: false,
-        appliedRate: null,
       };
       const channelResult: OrderDateConversionResult = {
         displayCurrency: 'PLN',
         convertedTotal: 51500,
         sourceCurrency: 'EUR',
         unresolved: false,
-        appliedRate: null,
       };
       displayCurrencyConversionService.convertAtOrderDate
         .mockResolvedValueOnce(headlineResult)
@@ -347,14 +329,12 @@ describe('SalesAnalyticsController', () => {
         rateBasis: 'order-date',
         convertedRevenue: 79200,
         unresolvedNativeCurrencies: [],
-        appliedRates: [],
       });
       expect(result.channels[0].displayCurrencyConversion).toEqual({
         displayCurrency: 'PLN',
         rateBasis: 'order-date',
         convertedRevenue: 51500,
         unresolvedNativeCurrencies: [],
-        appliedRates: [],
       });
     });
 
@@ -403,7 +383,6 @@ describe('SalesAnalyticsController', () => {
         convertedTotal: null,
         sourceCurrency: 'EUR',
         unresolved: true,
-        appliedRate: null,
       };
       displayCurrencyConversionService.convertAtOrderDate.mockResolvedValue(unresolvedResult);
       const controller = createController(orderRecordService, displayCurrencyConversionService);
@@ -420,7 +399,6 @@ describe('SalesAnalyticsController', () => {
         rateBasis: 'order-date',
         convertedRevenue: null,
         unresolvedNativeCurrencies: ['EUR'],
-        appliedRates: [],
       });
     });
   });
