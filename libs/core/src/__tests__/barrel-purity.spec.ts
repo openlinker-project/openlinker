@@ -74,15 +74,32 @@ const CONTEXT_BARRELS = [
  * classified as a VALUE import and therefore fails. That is the safe direction
  * (a false positive, never a false negative), but it does mean the repo's
  * inline-type style cannot be used inside a leaf: write `import type { … }`.
+ *
+ * **The BARE side-effect form is matched too (#2675 review).** `import
+ * '@openlinker/core/products';` carries no clause and no `from`, so the
+ * `from`-anchored alternative above saw nothing and the leaf assertion passed
+ * — while the statement emits an unconditional `require()` and closes exactly
+ * the CJS cycle this spec is the sole guard against. It is strictly worse than
+ * the #2441 `export … from` evasion it sits beside: that one at least binds a
+ * symbol somebody might notice in review, whereas this one is a single line
+ * that reads as an ordinary import and pulls the whole sibling barrel in. A
+ * side-effect import can never be type-only, so it is always classified as a
+ * VALUE import (`typeOnly` undefined) and is therefore forbidden
+ * unconditionally, allow-set or not. The two alternatives cannot overlap:
+ * `[^'";]*?` cannot cross a quote, so the `from`-anchored branch can never
+ * start at a bare `import '…'` and then reach a LATER statement's `from`.
  */
 const findModuleSpecifierStatements = (
   withoutComments: string
 ): Array<[typeOnly: string | undefined, specifier: string]> =>
   [
     ...withoutComments.matchAll(
-      /(?:import|export)\s+(type\s+)?[^'";]*?from\s+['"]([^'"]+)['"]/g
+      /(?:import|export)\s+(type\s+)?[^'";]*?from\s+['"]([^'"]+)['"]|import\s+['"]([^'"]+)['"]/g
     ),
-  ].map(([, typeOnly, specifier]) => [typeOnly, specifier]);
+  ].map(([, typeOnly, fromSpecifier, bareSpecifier]) => [
+    typeOnly,
+    fromSpecifier ?? bareSpecifier,
+  ]);
 
 describe('@openlinker/core/<context> barrel purity (#598)', () => {
   it.each(CONTEXT_BARRELS)('imports @openlinker/core/%s without throwing', (context) => {
@@ -297,6 +314,11 @@ describe('@openlinker/core/<context> barrel purity (#598)', () => {
       "export { deriveOrderLifecyclePhase } from './domain/types/order-lifecycle-phase.types';",
       "export * from '@openlinker/core/products';",
       "export type { Order } from '@openlinker/core/orders/types';",
+      // The second evasion (#2675 review): no clause, no `from`, a real
+      // `require()`. Must be seen, and must be seen as a VALUE import.
+      "import '@openlinker/core/inventory';",
+      // …and it must not swallow, or be swallowed by, the statement after it.
+      "import { Trailing } from './trailing';",
     ].join('\n');
 
     expect(findModuleSpecifierStatements(leafBarrelShape)).toEqual([
@@ -306,6 +328,8 @@ describe('@openlinker/core/<context> barrel purity (#598)', () => {
       [undefined, '@openlinker/core/products'],
       // …and `export type { … } from` is still correctly type-only.
       ['type ', '@openlinker/core/orders/types'],
+      [undefined, '@openlinker/core/inventory'],
+      [undefined, './trailing'],
     ]);
   });
 
