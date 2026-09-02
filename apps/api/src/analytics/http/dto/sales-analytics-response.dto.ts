@@ -14,21 +14,17 @@
  * Gross/net tax-treatment normalization remains a separate, not-yet-scoped
  * effort.
  *
- * Display-currency conversion (#2459, ADR-064): `displayCurrencyConversion` is
+ * Display-currency conversion (#2459, ADR-064, pending in PR #2485): `displayCurrencyConversion` is
  * `undefined` unless the request carried `displayCurrency` — that's the
  * regression guard for every pre-#2459 caller. When present, it's populated
  * on the headline and on every channel row, using whichever of the two
  * `IDisplayCurrencyConversionService` modes the request's `rateBasis` named.
- *
- * Rate provenance (#2778): `appliedRates` carries what produced each
- * converted figure — see `AppliedRateDto`.
  *
  * @module apps/api/src/analytics/http/dto
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { DisplayCurrencyRateBasis } from '@openlinker/core/orders';
 import type {
-  AppliedRate,
   ChannelSalesAnalytics,
   CurrentRateConversionResult,
   DailyTrendPoint,
@@ -36,61 +32,6 @@ import type {
   SalesAnalyticsHeadline,
   SalesAndChannelAnalytics,
 } from '@openlinker/core/orders';
-
-/**
- * What produced one converted figure (#2778) — the wire projection of the
- * domain `AppliedRate`. Never a statutory rate; see ADR-040's own warning
- * about the FA(3) `KursWaluty` distinction.
- */
-export class AppliedRateDto {
-  @ApiProperty({ description: 'The native currency this rate converts FROM (ISO-4217).' })
-  from!: string;
-
-  @ApiProperty({ description: 'The currency this rate converts TO (ISO-4217).' })
-  to!: string;
-
-  @ApiProperty({
-    type: String,
-    description:
-      'to units per one from unit, as a string — never Number()’d, matching the ' +
-      'numeric(18,8) registry column this figure is audited against. ' +
-      'Analytics provenance only; never a statutory/fiscal conversion rate (ADR-040).',
-  })
-  rate!: string;
-
-  @ApiProperty({ description: 'The day the source published this rate for, ISO YYYY-MM-DD.' })
-  rateDate!: string;
-
-  @ApiProperty({ description: "Which publisher this rate came from, e.g. 'nbp' or 'ecb'." })
-  source!: string;
-
-  @ApiProperty({
-    enum: ['direct', 'inverted', 'pivot'],
-    description: 'How the stored rate was obtained from the source’s own published quotes.',
-  })
-  derivation!: 'direct' | 'inverted' | 'pivot';
-
-  @ApiProperty({
-    type: String,
-    nullable: true,
-    description:
-      "The source's own document reference (e.g. NBP's table number 149/A/NBP/2026), " +
-      'or null — ECB assigns none.',
-  })
-  sourceRef!: string | null;
-
-  static fromDomain(rate: AppliedRate): AppliedRateDto {
-    const dto = new AppliedRateDto();
-    dto.from = rate.from;
-    dto.to = rate.to;
-    dto.rate = rate.rate;
-    dto.rateDate = rate.rateDate;
-    dto.source = rate.source;
-    dto.derivation = rate.derivation;
-    dto.sourceRef = rate.sourceRef;
-    return dto;
-  }
-}
 
 /**
  * The uniform shape both `IDisplayCurrencyConversionService` modes project
@@ -126,15 +67,6 @@ export class DisplayCurrencyConversionDto {
   })
   unresolvedNativeCurrencies!: string[];
 
-  @ApiProperty({
-    type: [AppliedRateDto],
-    description:
-      'What produced each converted figure (#2778). For current-rate, one entry per resolved ' +
-      "native-currency row (never for an identity or an unresolved row). For order-date, 0- or " +
-      "1-element — the same normalisation unresolvedNativeCurrencies already uses for that mode.",
-  })
-  appliedRates!: AppliedRateDto[];
-
   static fromCurrentRateResult(
     result: CurrentRateConversionResult,
     rateBasis: DisplayCurrencyRateBasis
@@ -144,9 +76,6 @@ export class DisplayCurrencyConversionDto {
     dto.rateBasis = rateBasis;
     dto.convertedRevenue = result.convertedTotal;
     dto.unresolvedNativeCurrencies = [...result.unresolvedNativeCurrencies];
-    dto.appliedRates = result.breakdown
-      .filter((row) => row.appliedRate !== null)
-      .map((row) => AppliedRateDto.fromDomain(row.appliedRate as AppliedRate));
     return dto;
   }
 
@@ -158,8 +87,6 @@ export class DisplayCurrencyConversionDto {
     dto.displayCurrency = result.displayCurrency;
     dto.rateBasis = rateBasis;
     dto.convertedRevenue = result.convertedTotal;
-    dto.appliedRates =
-      result.appliedRate !== null ? [AppliedRateDto.fromDomain(result.appliedRate)] : [];
     dto.unresolvedNativeCurrencies =
       result.unresolved && result.sourceCurrency !== null ? [result.sourceCurrency] : [];
     return dto;

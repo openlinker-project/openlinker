@@ -5,16 +5,16 @@
  * registered with exactly one lane, the per-lane counts match the ADR's
  * table (12 realtime / 19 bulk / 5 fiscal / 6 fan-out — `fiscalization.register`
  * joined `fiscal` post-ADR, #2156; `orders.taxRate.backfill` joined `bulk`,
- * #2440; `analytics.currency.recalculate` joined `bulk`, #2468; the two
- * sweep-triggered master children joined `bulk`, #2594; `master.product.syncBatch`
- * joined `bulk` as another catalogue-sweep child, #2593; `master.inventory.syncBatch`
- * joined `bulk` alongside it, #2648; #2609 changed no assignment at all;
- * `marketplace.offerQuantity.reconcile` joined `bulk`, #2621), and the
- * consequential assignments the ADR calls out cannot silently churn.
+ * #2440; the two sweep-triggered master children joined `bulk`, #2594;
+ * `master.product.syncBatch` joined `bulk` as another catalogue-sweep child,
+ * #2593; `master.inventory.syncBatch` joined `bulk` the same way, #2648;
+ * #2609 changed no assignment at all; `marketplace.offerQuantity.reconcile`
+ * joined `bulk`, #2621; `analytics.currency.recalculate` joined `bulk`, #2468),
+ * and the consequential assignments the ADR calls out cannot silently churn.
  *
  * @module apps/worker/src/sync/handlers
  */
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call -- test constructs the service with 39 interchangeable dummy handlers */
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call -- test constructs the service with 40 interchangeable dummy handlers */
 import type { SyncJobHandler } from '@openlinker/core/sync';
 import { JobTypeValues, SyncJobLaneValues } from '@openlinker/core/sync';
 import { SyncJobHandlerRegistry } from '../sync-job-handler.registry';
@@ -25,11 +25,11 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
 
   beforeEach(() => {
     registry = new SyncJobHandlerRegistry();
-    // The constructor takes the registry followed by 39 handler instances.
+    // The constructor takes the registry followed by 40 handler instances.
     // The dummies are DISTINCT objects so that "these two job types share one
     // handler instance" (#2594) is a real assertion rather than a tautology.
     const handlers = Array.from(
-      { length: 39 },
+      { length: 40 },
       () => ({ execute: jest.fn() }) as unknown as SyncJobHandler
     );
     const service = new (HandlerRegistrationService as any)(registry, ...handlers);
@@ -83,13 +83,13 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     expect(registry.getLane('shop.product.publish')).toBe('bulk');
     // Invoicing sweeps are fiscal by cost-of-starvation, not by paged shape.
     expect(registry.getLane('invoicing.pendingRecovery.sweep')).toBe('fiscal');
-    // An operator-triggered batch repair must never delay a queued realtime
-    // order sync or a fiscal document (#2468).
-    expect(registry.getLane('analytics.currency.recalculate')).toBe('bulk');
     // The batched catalogue child does the same work as the per-product job it
     // replaces, so it carries the same starvation cost and the same lane (#2593).
     expect(registry.getLane('master.product.syncBatch')).toBe('bulk');
     expect(registry.getLane('master.product.syncByExternalId')).toBe('realtime');
+    // An operator-triggered batch repair must never delay a queued realtime
+    // order sync or a fiscal document (#2468).
+    expect(registry.getLane('analytics.currency.recalculate')).toBe('bulk');
     // Post-ADR registration joins fiscal (#2156).
     expect(registry.getLane('fiscalization.register')).toBe('fiscal');
     // The buyer-facing path stays realtime.
