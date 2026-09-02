@@ -157,7 +157,15 @@ export function SalesDocumentCell({
   const regulatoryStatus =
     view?.document?.kind === 'invoice' ? view.document.regulatoryStatus : null;
 
-  const popoverBody = (
+  // A "Not issued"/"No routing" row with no reason, no identity yet, and no
+  // duplicate has literally nothing to say here — rendering the `__body`
+  // wrapper anyway left its padding standing between the head's bottom
+  // border and the foot's top border, reading as two separators around an
+  // empty gap instead of one line between two real sections.
+  const hasPopoverBody = Boolean(
+    state.reasonDetail || identity?.documentNumber || identity?.connectionId || regulatoryStatus || dupeCount > 0,
+  );
+  const popoverBody = hasPopoverBody ? (
     <>
       {state.reasonDetail ? <p className="sales-doc-popover__why">{state.reasonDetail}</p> : null}
       {identity?.documentNumber ? <Fact label="Number">{identity.documentNumber}</Fact> : null}
@@ -176,7 +184,7 @@ export function SalesDocumentCell({
         </p>
       ) : null}
     </>
-  );
+  ) : null;
 
   return (
     <Popover dismissOnViewportChange>
@@ -198,7 +206,7 @@ export function SalesDocumentCell({
             </span>
           </span>
         </div>
-        <div className="sales-doc-popover__body">{popoverBody}</div>
+        {hasPopoverBody ? <div className="sales-doc-popover__body">{popoverBody}</div> : null}
         <div className="sales-doc-popover__foot">
           <Link className="orders-row-cta" to={`/orders/${internalOrderId}#invoicing`}>
             Open order
