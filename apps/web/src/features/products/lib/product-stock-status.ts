@@ -5,14 +5,18 @@
  * an aggregate available-quantity value, and mapping it to the StatusBadge
  * and KpiCard tones used on the product-detail hero and KPI strip.
  *
- * Page-local logic (not shared across features) — originally colocated as a
- * copy of the same pattern the standalone Inventory detail page used before
- * that page was removed (its stock/listings data is now merged into this one).
+ * Promoted from `pages/products/` (#2765 follow-up) once Analytics' Top
+ * Products variant-sales panel became a second real consumer — the same
+ * `ok`/`low`/`out` distinction the products cockpit already renders per
+ * variant, so it belongs in `features/products` rather than being
+ * recopied. `DEFAULT_LOW_STOCK_THRESHOLD` mirrors the backend's own
+ * `LOW_STOCK_THRESHOLD` (`@openlinker/core/products`) by value, not by
+ * import — `apps/web` cannot depend on `@openlinker/core` (#591).
  *
- * @module pages/products
+ * @module apps/web/src/features/products/lib
  */
-import type { KpiCardTone } from '../../shared/ui/kpi-card';
-import type { StatusBadgeTone } from '../../shared/ui/status-badge';
+import type { KpiCardTone } from '../../../shared/ui/kpi-card';
+import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
 
 export type StockStatus = 'oversold' | 'out-of-stock' | 'low-stock' | 'in-stock';
 

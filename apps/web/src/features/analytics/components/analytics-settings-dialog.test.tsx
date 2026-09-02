@@ -41,6 +41,23 @@ describe('AnalyticsSettingsDialog', () => {
     ).toBeInTheDocument();
   });
 
+  it('should describe the tax-rate toggle truthfully: org-wide/every-date-range scope, and reverting removes the orders again (#2815)', async () => {
+    renderWithProviders(<AnalyticsSettingsDialog {...baseProps} />, {
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    const toggleDescription = await screen.findByText(/Trust a tax rate found retroactively/);
+    // Must not claim already-shown figures survive turning the setting off —
+    // it is a query-time gate, so reverting removes those orders from Net
+    // Sales again at the next query.
+    expect(toggleDescription).not.toHaveTextContent(/does not undo/);
+    expect(toggleDescription).toHaveTextContent(/removes these orders from Net Sales again/);
+    // Must state the change is org-wide and applies to every date range, not
+    // just the one currently being viewed.
+    expect(toggleDescription).toHaveTextContent(/everyone/);
+    expect(toggleDescription).toHaveTextContent(/every date range/);
+  });
+
   it('should render the reporting currency as the default "Show amounts in" option', () => {
     renderWithProviders(<AnalyticsSettingsDialog {...baseProps} />);
 
@@ -95,6 +112,9 @@ describe('AnalyticsSettingsDialog', () => {
     expect(await screen.findByText('23 orders waiting to be recalculated')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Recalculate now' }));
+    // Opens a confirmation before writing anything (#2668 review, finding 14)
+    // — a real, permanent financial write on one click had no confirm.
+    await userEvent.click(await screen.findByRole('button', { name: 'Recalculate' }));
 
     await waitFor(() => {
       expect(recalculateCurrency).toHaveBeenCalledWith(baseProps.coverageFilters);
@@ -139,6 +159,41 @@ describe('AnalyticsSettingsDialog', () => {
     await waitFor(() => {
       expect(updateSettings).toHaveBeenCalledWith({
         displayCurrency: 'EUR',
+        rateBasis: 'current',
+        includeBackfilledTaxRatesInNetSales: true,
+      });
+    });
+  });
+
+  it('should send null displayCurrency when the resolved value is only the default, not a stored override (#2668 review, finding 10)', async () => {
+    const updateSettings = vi.fn().mockResolvedValue(undefined);
+    const apiClient = createMockApiClient({
+      analyticsSettings: {
+        getSettings: vi.fn().mockResolvedValue({
+          displayCurrency: 'PLN',
+          displayCurrencySource: 'default',
+          rateBasis: 'current',
+          includeBackfilledTaxRatesInNetSales: false,
+          updatedAt: null,
+          updatedByUserId: null,
+        }),
+        updateSettings,
+      },
+    });
+
+    renderWithProviders(<AnalyticsSettingsDialog {...baseProps} />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    const taxToggle = await screen.findByRole('checkbox', {
+      name: /Use the rate found in the product catalog/,
+    });
+    await userEvent.click(taxToggle);
+
+    await waitFor(() => {
+      expect(updateSettings).toHaveBeenCalledWith({
+        displayCurrency: null,
         rateBasis: 'current',
         includeBackfilledTaxRatesInNetSales: true,
       });

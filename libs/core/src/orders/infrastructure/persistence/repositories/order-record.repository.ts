@@ -439,7 +439,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * unstamped slice reported separately as `unconverted_count`/
    * `unconverted_value` (native `totalAmount`, informational only) rather
    * than silently mixed in or silently dropped. `cancelled_value` now follows
-   * the SAME split (#currency-fix): `SUM(reportingTotalAmount)` restricted to
+   * the SAME split (epic #2452): `SUM(reportingTotalAmount)` restricted to
    * the current-era-stamped, cancelled population, with the unstamped
    * remainder reported separately as `cancelled_unconverted_count`/
    * `cancelled_unconverted_value` — it previously summed raw, unrestricted

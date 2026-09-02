@@ -192,9 +192,23 @@ export function createMockApiClient(
         updatedAt: '2026-01-01T00:00:00.000Z',
       }),
       getCurrencyMismatchOrders: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+      cancelStuckCurrencyRun: vi.fn().mockResolvedValue({
+        id: 'ol_remrun_test',
+        category: 'currency',
+        status: 'failed',
+        detail: 'Cancelled by operator - previous attempt did not resolve',
+        affectedCount: 0,
+        triggeredByUserId: 'user-1',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      }),
       getTaxCoverageOrders: vi.fn().mockResolvedValue({ items: [], total: 0 }),
       rerunTaxBackfill: vi.fn().mockResolvedValue({ scanned: 0, updated: 0 }),
       getProductMatchingOrders: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+      getTopProductVariantSales: vi.fn().mockResolvedValue({
+        productId: '',
+        variants: [],
+      }),
       ...overrides.analytics,
     } as ApiClient['analytics'],
     analyticsSettings: {
@@ -728,6 +742,11 @@ export function createMockApiClient(
         acknowledgedAt: '2026-01-01T00:00:00.000Z',
       }),
       clearAcknowledgment: vi.fn().mockResolvedValue(undefined),
+      listMarkets: vi.fn().mockResolvedValue({
+        windowDays: 30,
+        since: '2026-01-01T00:00:00.000Z',
+        markets: [],
+      }),
       ...overrides.salesDocumentRules,
     } as ApiClient['salesDocumentRules'],
     shipments: {

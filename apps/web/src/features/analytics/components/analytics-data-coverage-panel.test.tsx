@@ -7,6 +7,7 @@ import {
   createAuthenticatedSessionAdapter,
 } from '../../../test/test-utils';
 import { AnalyticsDataCoveragePanel } from './analytics-data-coverage-panel';
+import { ApiError } from '../../../shared/api/api-error';
 import type { AnalyticsCoverage } from '../api/analytics-coverage.types';
 
 const FILTERS = { from: '2026-08-01T00:00:00.000Z', to: '2026-08-27T00:00:00.000Z' };
@@ -168,14 +169,75 @@ describe('AnalyticsDataCoveragePanel (#2474)', () => {
 
     expect(await screen.findByText('Recalculated and saved — closing…')).toBeInTheDocument();
 
-    await waitFor(() => expect(screen.getByText('5 orders recalculated')).toBeInTheDocument(), {
-      timeout: 5000,
-    });
+    await waitFor(
+      () => expect(screen.getByText('Recalculation finished for the 5 orders you selected')).toBeInTheDocument(),
+      {
+        timeout: 5000,
+      }
+    );
 
     await user.click(screen.getByLabelText('Dismiss'));
-    expect(screen.queryByText('5 orders recalculated')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Recalculation finished for the 5 orders you selected')
+    ).not.toBeInTheDocument();
 
     vi.useRealTimers();
+  });
+
+  it('should offer "Cancel stuck run" when recalculate answers 409, and clear it once cancelled (#2816)', async () => {
+    const user = userEvent.setup();
+    const cancelStuckCurrencyRun = vi.fn().mockResolvedValue({
+      id: 'ol_remrun_1',
+      category: 'currency',
+      status: 'failed',
+      detail: 'Cancelled by operator - previous attempt did not resolve',
+      affectedCount: 5,
+      triggeredByUserId: 'user-1',
+      createdAt: '2026-08-26T09:00:00.000Z',
+      updatedAt: '2026-08-26T09:00:05.000Z',
+    });
+    const apiClient = createMockApiClient({
+      analytics: {
+        getCoverage: vi.fn().mockResolvedValue(
+          coverage({
+            categories: [
+              { category: 'currency', status: 'open', affectedCount: 5, sampleOrderIds: [] },
+              { category: 'tax-a', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+              { category: 'tax-b', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+              { category: 'tax-c', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+              { category: 'product-matching', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+            ],
+          })
+        ),
+        getCurrencyMismatchOrders: vi.fn().mockResolvedValue({ items: [], total: 5 }),
+        recalculateCurrency: vi
+          .fn()
+          .mockRejectedValue(
+            new ApiError('A currency recalculation is already in progress', 409, {
+              message: 'A currency recalculation is already in progress',
+            })
+          ),
+        cancelStuckCurrencyRun,
+      },
+    });
+
+    renderWithProviders(<AnalyticsDataCoveragePanel filters={FILTERS} onOpenSettings={() => {}} />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    await user.click(await screen.findByText('5 orders counted in an outdated currency'));
+    await user.click(await screen.findByText('Recalculate all 5 now'));
+
+    expect(await screen.findByText("Recalculation didn't start")).toBeInTheDocument();
+    const cancelButton = await screen.findByText('Cancel stuck run');
+
+    await user.click(cancelButton);
+
+    expect(cancelStuckCurrencyRun).toHaveBeenCalledTimes(1);
+    await waitFor(() =>
+      expect(screen.queryByText("Recalculation didn't start")).not.toBeInTheDocument()
+    );
   });
 
   describe('admin-only write affordances (tech-review finding)', () => {

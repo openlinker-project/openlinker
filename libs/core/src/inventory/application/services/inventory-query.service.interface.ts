@@ -43,6 +43,23 @@ export interface IInventoryQueryService {
   ): Promise<readonly VariantAvailability[]>;
 
   /**
+   * Presence-preserving counterpart of {@link getAvailabilityByVariantIds}
+   * (#2765): returns a row ONLY for a variant that actually has non-stale
+   * inventory rows, so an absent variant is absent rather than a `0`.
+   *
+   * The zero-fill above is right for a caller that publishes a quantity —
+   * master is authoritative including 0 (#824). It is wrong for a caller
+   * that RENDERS stock, because `0` and "never synced by an inventory
+   * master" are then indistinguishable, and the operator is shown a red
+   * "Out of stock" badge asserting something no adapter ever reported.
+   * Ask for this read when the difference matters; keep the zero-filled one
+   * when it does not.
+   */
+  findAvailabilityByVariantIds(
+    variantIds: readonly string[]
+  ): Promise<readonly VariantAvailability[]>;
+
+  /**
    * Product-level stock aggregates for the given product IDs (#1720).
    *
    * Cross-context display-enrichment seam for the products catalog cockpit:
