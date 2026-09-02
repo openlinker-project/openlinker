@@ -213,6 +213,23 @@ export async function seedSalesDocumentStates(): Promise<void> {
       );
     }
 
+    // #2807 review — `noRouting` (CZ, no rule, no default, no primary) is
+    // exactly the shape `AutoIssueTriggerService` would persist as
+    // `salesDocumentBlockReason: 'unresolved-routing'` /
+    // `salesDocumentUnresolvedReason: 'no-configuration-for-country'` (ADR-041
+    // §107). Without writing these columns the panel's own
+    // `resolveSalesDocumentBlockCopy` returns `null` for `reason === null`
+    // (no `derivedAmbiguity` signal exists for a zero-candidate country), so
+    // the mockup's "ROUTING COULD NOT DECIDE" callout + remedy copy the
+    // component already implements never had a fixture that reached it.
+    await client.query(
+      `UPDATE order_records
+         SET "salesDocumentBlockReason" = 'unresolved-routing',
+             "salesDocumentUnresolvedReason" = 'no-configuration-for-country'
+       WHERE "internalOrderId" = $1`,
+      [SEED_ORDER_IDS.noRouting],
+    );
+
     // Invoice: issued, no clearance conflict.
     await client.query(
       `INSERT INTO invoice_records

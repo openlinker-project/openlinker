@@ -14851,9 +14851,22 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   padding: 1px 7px;
 }
 .invoice-connection-lock__hint {
-  grid-column: 2;
   font-size: 0.75rem;
   color: var(--text-muted);
+}
+/* #2807 review — a settled document's hint is wrapped in a "Why this
+   document?" disclosure instead of rendered as a bare grid item (the mockup
+   keeps routing rationale secondary/collapsed); the wrapper needs the grid
+   placement its bare `__hint` sibling used to carry. */
+.invoice-connection-lock__why {
+  grid-column: 2;
+}
+.invoice-connection-lock__why > summary {
+  font-size: 0.75rem;
+}
+.invoice-connection-lock__why .invoice-connection-lock__hint {
+  display: block;
+  margin-top: var(--space-1);
 }
 
 /* ── Regulatory section card (#1282) ──────────────────────────────────

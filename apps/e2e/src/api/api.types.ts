@@ -282,6 +282,16 @@ export interface OrderRecord {
   salesDocumentUnresolvedReason?: string | null;
   /** PII-free elaboration of the block reason (ids and counts only). */
   salesDocumentBlockDetail?: string | null;
+  /**
+   * The batched per-order sales-document projection (#2516/#2552, ADR-065).
+   * Optional/loosely-typed here — this suite only reads a handful of fields
+   * off it and is not the FE-001 contract mirror for the full shape.
+   */
+  salesDocument?: {
+    documentKind: string | null;
+    document: { kind: string; regulatoryStatus?: string | null } | null;
+    otherRecords?: unknown[];
+  };
 }
 
 /**

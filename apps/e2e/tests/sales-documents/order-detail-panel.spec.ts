@@ -178,32 +178,36 @@ test.describe('sales documents: order-detail panel (#2563 M10)', () => {
     await expect(slot.getByRole('button', { name: 'Register receipt' })).toHaveCount(0);
   });
 
-  test('empty — no routing decided demotes both manual overrides behind a disclosure for an admin', async ({
+  test('empty — no rule/default for this country leads with the routing fix, no per-order override', async ({
     page,
   }) => {
+    // #2807 review — this fixture now carries the PERSISTED gate-block reason
+    // (`unresolved-routing` / `no-configuration-for-country`) that
+    // `AutoIssueTriggerService` actually writes for a zero-candidate country,
+    // matching the mockup's "ROUTING COULD NOT DECIDE" empty state: the
+    // primary remedy is fixing routing in Settings, and — because this reason
+    // does NOT `keepsAction` (ADR-041 §107: nothing was decided, so nothing
+    // is safe to override per order) — the manual-issue disclosure is not
+    // offered at all, matching the mockup's own no-routing screenshot, which
+    // shows no per-order override either.
     await gotoOrder(page, SEED_ORDER_IDS.noRouting);
     const slot = panel(page).locator('.doc-slot').filter({ hasNot: page.locator('.doc-slot--filled') });
     await expect(slot.locator('.doc-slot__kind')).toHaveText('nothing issued');
 
-    // #2807 — the manual override is demoted behind a closed-by-default
-    // disclosure — the buttons are not visible until it is opened. (This
-    // seeded order's candidate pool spans BOTH kinds — `blockCopyKind` is
-    // `'mixed'` — so `resolveSalesDocumentBlockCopy`'s client-derived
-    // ambiguity copy, which only fires for a pure-invoice pool, does not
-    // render here and there is no primary "Fix routing settings" CTA to
-    // assert against this particular fixture; that CTA is exercised by
-    // `sales-document-panel.test.tsx` at the unit level instead.)
-    const overrideSummary = page.getByText('Issue or register manually instead');
-    await expect(overrideSummary).toBeVisible();
+    const block = page.locator('.sales-document-panel__routing-block');
+    await expect(block).toBeVisible();
+    await expect(
+      block.getByText('Not issued: no rules configured for this country.'),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('link', { name: 'Fix routing settings' }),
+    ).toBeVisible();
+
+    // No manual per-order override for THIS reason — a zero-candidate
+    // country has no connection a click could safely issue on.
+    await expect(page.getByText('Issue or register manually instead')).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Issue invoice' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Register receipt' })).toHaveCount(0);
-
-    await overrideSummary.click();
-    await expect(page.getByRole('button', { name: 'Issue invoice' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Register receipt' })).toBeVisible();
-    await expect(
-      page.getByText('This applies to this order only.').first(),
-    ).toBeVisible();
   });
 
   test('filled — a registered fiscal receipt shows the artefact and a final-registration notice', async ({

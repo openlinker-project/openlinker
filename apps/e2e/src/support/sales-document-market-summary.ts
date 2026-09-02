@@ -97,7 +97,7 @@ export function summarizeSalesDocumentMarkets(
     tone: 'attention',
     sentence:
       blocked.length === 1
-        ? `${namesSentenceFragment(blocked)} issues nothing right now. Nothing is lost while it's unconfigured — set up routing to start issuing.`
-        : `${blocked.length} markets — ${namesSentenceFragment(blocked)} — issue nothing right now. Nothing is lost while they're unconfigured — set up routing to start issuing.`,
+        ? `1 of ${rows.length} markets — ${namesSentenceFragment(blocked)} — issues nothing right now. Nothing is lost while it's unconfigured — set up routing to start issuing.`
+        : `${blocked.length} of ${rows.length} markets — ${namesSentenceFragment(blocked)} — issue nothing right now. Nothing is lost while they're unconfigured — set up routing to start issuing.`,
   };
 }
