@@ -15,15 +15,22 @@ import type {
   PaginatedOrderRecords,
   OrderHealthSummary,
   OrderHealthSummaryFilters,
+  OrderLifecyclePhaseSummary,
   OrderRecordStatus,
   FailedSyncValueSummary,
 } from '../types/order-record.types';
 import type { OrderSlaSummary } from '../types/order-sla.types';
 import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
 import type { SyncAttempt } from '../types/order-sync.types';
+import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
+import type {
+  AuthorityAttentionOutcome,
+  AuthorityAttentionProducer,
+} from '@openlinker/core/fulfillment-authority';
 import type { OrderFxIntent, OrderFxStamp } from '../types/order-fx.types';
 import type { StampedReportingCurrencyCount } from '../types/order-fx-read.types';
+import type { OrderAmendmentChange } from '../order-amendment-diff';
 import type { DailyOrderAggregateRow, SalesAnalyticsFilters } from '../types/order-sales-analytics.types';
 
 export interface OrderRecordRepositoryPort {
@@ -98,11 +105,22 @@ export interface OrderRecordRepositoryPort {
    * {@link updateFulfillmentState}), `cancelledAt` (#1984,
    * {@link markCancelled}), the three `salesDocument*` columns (#2100,
    * {@link updateSalesDocumentBlock}) and the six FX snapshot columns (#2124,
-   * {@link claimFxIntentIfAbsent} / {@link stampFxIfAbsent}) - are NOT part of
+   * {@link claimFxIntentIfAbsent} / {@link stampFxIfAbsent}) and the two packed
+   * columns (#2287, {@link markPacked} / {@link clearPacked}) - are NOT part of
    * the write set, so a re-ingestion of the same order cannot reset them. The
    * returned record therefore reports all of them as empty (`[]` / `null`)
    * whatever the row holds; re-read via {@link findById} when their live value
    * matters.
+   *
+   * Source attribution is immutable at this write path (#2282, ADR-057). The
+   * rule is: *same-source may advance, cross-source frozen*. `sourceConnectionId`
+   * is established by the first write and can never be changed by a later one;
+   * `sourceEventId` is refreshed only when the write arrives from the row's own
+   * `sourceConnectionId`, and is left as committed otherwise. An implementation
+   * MUST enforce this in the statement itself, so the invariant holds for every
+   * caller and not only for the ADR-017 destination-echo guard in
+   * `OrderIngestionService`. The returned record therefore reports the row's
+   * true, possibly pre-existing attribution rather than what was requested.
    */
   upsert(orderRecord: OrderRecord): Promise<OrderRecord>;
 
@@ -164,6 +182,25 @@ export interface OrderRecordRepositoryPort {
    * server clock.
    */
   countBySla(filters: OrderHealthSummaryFilters): Promise<OrderSlaSummary>;
+
+  /**
+   * Count order records per derived lifecycle phase (#2309, ADR-059) — the
+   * lifecycle twin of {@link countByHealth}. One aggregate query testing the
+   * single `CASE` expression `applyLifecyclePhaseFilter` also tests, so the
+   * counts and the rows a `lifecyclePhase` filter yields agree by construction
+   * and `total` equals the sum of the nine buckets.
+   *
+   * Scope is the source/customer/date subset only. **`cancelled` is
+   * deliberately IGNORED** — mirroring `countByHealth`'s stance and for a
+   * stronger reason: cancellation is already this partition's TOP arm, so
+   * scoping by it would re-scope the axis the partition itself expresses (asking
+   * for `cancelled: false` would empty the `cancelled` bucket while leaving the
+   * label claiming to count cancellations). `lifecyclePhase` itself is likewise
+   * not a valid input.
+   */
+  countByLifecyclePhase(
+    filters: OrderHealthSummaryFilters
+  ): Promise<OrderLifecyclePhaseSummary>;
 
   /**
    * "Value stuck in failed syncs" — the needs-attention aggregate (#1983).
@@ -303,6 +340,86 @@ export interface OrderRecordRepositoryPort {
   ): Promise<void>;
 
   /**
+   * Persist why the fulfilment intercept HELD this order (#2396), or clear it.
+   *
+   * Level-triggered like {@link updateSalesDocumentBlock}: the intercept
+   * re-decides on every transition and writes the answer INCLUDING `null`,
+   * which is the only thing that clears a stale reason. Outside the ingestion
+   * write set, so a re-poll cannot reset it.
+   *
+   * No-op (no throw) when the order row doesn't exist.
+   */
+  updateFulfillmentBlock(
+    internalOrderId: string,
+    block: FulfillmentBlock | null
+  ): Promise<void>;
+
+  /**
+   * How many orders carry at least one COUNTED OMS inert state (#2352)?
+   *
+   * One row per affected ORDER, not per entry — the surface renders one row per
+   * order, and an order carrying two states is one thing for the operator to
+   * look at, not two. A reason this build does not recognise is never counted
+   * (spec §4.4 S2-5).
+   *
+   * **The order half only.** The return-scoped states (RB-L, OR-P) are counted
+   * on the returns side, and OR-P in particular is DERIVED
+   * (`ReturnRecord.isOrphan()`), so it cannot be reached by this predicate at
+   * all. A surface summing the two adds them; it must not invent a third filter
+   * at the call site, which is what `AUTHORITY_ATTENTION_REASON_DESCRIPTORS`'
+   * `counted` flag exists to prevent.
+   *
+   * **Retained ALONGSIDE the summary fold (#2353), not superseded by it.** The
+   * orders summary now carries an `omsAttention` count so the `/orders` chip is
+   * scoped by the same filters as the rows beneath it. This read answers a
+   * different question: the who-decides page's `Needs attention (N)` is
+   * install-wide and has no filter scope to pass, so deriving it from the
+   * summary would make its number depend on a scope no operator chose. Both
+   * read the same `HAS_OMS_ATTENTION` predicate, so there is one definition and
+   * the two can never disagree.
+   */
+  countOrdersWithOmsAttention(): Promise<number>;
+
+  /**
+   * Set — or clear — ONE producer's OMS inert state for this order (#2352,
+   * Wave-2 product spec §4.2).
+   *
+   * **Level-triggered PER PRODUCER, which is the whole contract.** The eventual
+   * callers are three unrelated subsystems (the reservation ledger, routing, the
+   * execution handshake) and an order can genuinely carry two states at once, so
+   * `{ kind: 'none' }` means *"I, this producer, have nothing to report"* and
+   * removes only this producer's entry — never the row's. A single scalar column
+   * would make each producer's clear a statement about the others' questions
+   * too, and the `Needs attention (N)` count would then depend on which
+   * subsystem ran last.
+   *
+   * `{ kind: 'indeterminate' }` LEAVES the stored entry alone: clearing on a
+   * transient failure erases a true reason and replaces it with silence, which
+   * is worse than a stale one (#2100).
+   *
+   * `since` is stamped when this producer's entry first appears and PRESERVED
+   * across a change of reason within the same episode, so an operator watching
+   * "how long has this been stuck" does not see the clock reset because the
+   * reason was refined (#2248's `blockedAt` rule, applied per entry).
+   *
+   * Narrow absolute-set on the `omsAttention` column only, so it cannot clobber
+   * a concurrent write to any other column on the row. The read it rebuilds from
+   * is taken `FOR UPDATE`, so a peer producer committing concurrently cannot be
+   * dropped. No-op (no throw) when the order row doesn't exist, mirroring
+   * {@link updateFulfillmentState}'s residual-race tolerance.
+   *
+   * `outcome` is generic in the producer, so a producer can persist only the state
+   * {@link AUTHORITY_ATTENTION_PRODUCER_REASONS} assigns it: a DERIVED state (one the
+   * read model recomputes from config on every read) and a peer producer's state are
+   * both unrepresentable here rather than merely discouraged.
+   */
+  updateOmsAttention<P extends AuthorityAttentionProducer>(
+    internalOrderId: string,
+    producer: P,
+    outcome: AuthorityAttentionOutcome<P>
+  ): Promise<void>;
+
+  /**
    * Claim the first-attempt FX intent (#2124, ADR-040 § Decision 5) — writes
    * `fxIntendedCurrency` + `fxRule` and nothing else, guarded on
    * `fxIntendedCurrency IS NULL` so exactly one concurrent attempt can win.
@@ -319,6 +436,62 @@ export interface OrderRecordRepositoryPort {
    * NULL by definition.
    */
   claimFxIntentIfAbsent(internalOrderId: string, intent: OrderFxIntent): Promise<boolean>;
+
+  /**
+   * Mark this order packed (#2287) — writes `packedAt` + `packedByUserId` and
+   * nothing else, guarded on `packedAt IS NULL` so the FIRST mark wins.
+   *
+   * Both columns move in ONE guarded statement rather than via a per-column
+   * `COALESCE`: they are one fact, and a `COALESCE` on `packedAt` alone would
+   * preserve the original instant while letting a second caller overwrite
+   * `packedByUserId` — "who packed it first is never overwritten" is the
+   * explicit requirement.
+   *
+   * Returns `true` when this call wrote and `false` when it did not — either
+   * because the order is already packed (an idempotent replay) or because no
+   * row matches the id at all. It never throws, so a caller that must tell
+   * those two apart re-reads via {@link findById}.
+   */
+  markPacked(
+    internalOrderId: string,
+    packedAt: Date,
+    packedByUserId: string
+  ): Promise<boolean>;
+
+  /**
+   * Clear this order's packed fact (#2287) — nulls `packedAt` +
+   * `packedByUserId` together, guarded on `packedAt IS NOT NULL` so unmarking
+   * an already-unpacked order affects no row and does not bump `updatedAt`.
+   *
+   * Returns `true` when this call cleared, `false` otherwise (already unpacked,
+   * or no row matched). Never throws — same disambiguation rule as
+   * {@link markPacked}.
+   */
+  clearPacked(internalOrderId: string): Promise<boolean>;
+
+  /**
+   * Record that the source amended this order after ingestion (#2283) — writes
+   * `lastAmendedAt` + `lastAmendmentChanges` together and nothing else.
+   *
+   * Last-write-wins, like {@link updateSalesDocumentBlock} and unlike
+   * {@link markCancelled}: an amendment is always NEWER information about the
+   * source, so the freshest observation is the truthful one. Only the most
+   * recent observation is kept — this is a fact, not a history.
+   *
+   * The implementation MUST suppress a no-op write, and MUST compare only
+   * `lastAmendmentChanges` when doing so. Comparing the timestamp too would
+   * defeat the guard entirely: every call carries a fresh instant, so the row
+   * would always look changed and `updatedAt` would be bumped on writes that
+   * changed nothing.
+   *
+   * No-op (no throw) when the order row doesn't exist, mirroring
+   * {@link updateFulfillmentState}'s residual-race tolerance.
+   */
+  recordAmendment(
+    internalOrderId: string,
+    observedAt: Date,
+    changes: OrderAmendmentChange[]
+  ): Promise<void>;
 
   /**
    * Stamp the order's reporting-currency figures at most once (#2124) — one
@@ -456,4 +629,10 @@ export interface OrderRecordRepositoryPort {
     lineNumber: number,
     patch: { taxRate: string; taxSource: 'backfill'; taxRateReadAt: Date }
   ): Promise<void>;
+
+  /** One page of T4 deadline candidates (#2360). See the repository for the predicate reuse note. */
+  findDispatchDeadlineCandidates(
+    connectionId: string,
+    input: { windowEnd: Date; now: Date; limit: number; offset: number }
+  ): Promise<OrderRecord[]>;
 }

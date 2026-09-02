@@ -12,10 +12,13 @@ import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { ProductsModule } from '@openlinker/core/products';
 import { InventoryModule } from '@openlinker/core/inventory';
+import { AutomationModule } from '@openlinker/core/automation';
 import { OperationalSettingsModule } from '@openlinker/core/operational-settings';
 import { OrdersModule } from '@openlinker/core/orders';
+import { ReturnsModule } from '@openlinker/core/returns';
 import { ListingsModule } from '@openlinker/core/listings/services';
 import { ShippingModule } from '@openlinker/core/shipping';
+import { FulfillmentModule } from '@openlinker/core/fulfillment';
 import { InvoicingModule } from '@openlinker/core/invoicing';
 import { FiscalizationModule } from '@openlinker/core/fiscalization';
 import { WorkerContentModule } from '../content/worker-content.module';
@@ -35,6 +38,10 @@ import { MarketplaceOfferCreateHandler } from './handlers/marketplace-offer-crea
 import { MarketplaceOfferPollCreationStatusHandler } from './handlers/marketplace-offer-poll-creation-status.handler';
 import { MarketplaceOffersSyncHandler } from './handlers/marketplace-offers-sync.handler';
 import { MarketplaceOfferStatusSyncHandler } from './handlers/marketplace-offer-status-sync.handler';
+import { MarketplaceReturnsPollHandler } from './handlers/marketplace-returns-poll.handler';
+import { MarketplaceReturnSyncHandler } from './handlers/marketplace-return-sync.handler';
+import { MarketplaceReturnsStatusSyncHandler } from './handlers/marketplace-returns-status-sync.handler';
+import { ReturnsOrphanReconcileHandler } from './handlers/returns-orphan-reconcile.handler';
 import { MarketplaceOfferRefreshSnapshotHandler } from './handlers/marketplace-offer-refresh-snapshot.handler';
 import { MarketplaceOfferStockRestoreHandler } from './handlers/marketplace-offer-stock-restore.handler';
 import { MarketplaceOfferPauseStaleHandler } from './handlers/marketplace-offer-pause-stale.handler';
@@ -42,6 +49,7 @@ import { MarketplaceOfferPauseStaleSweepHandler } from './handlers/marketplace-o
 import { MarketplaceShipmentStatusSyncHandler } from './handlers/marketplace-shipment-status-sync.handler';
 import { MarketplaceShipmentSyncByExternalIdHandler } from './handlers/marketplace-shipment-sync-by-external-id.handler';
 import { MarketplaceFulfillmentStatusSyncHandler } from './handlers/marketplace-fulfillment-status-sync.handler';
+import { FulfillmentWorkStatusSyncHandler } from './handlers/fulfillment-work-status-sync.handler';
 import { MasterProductSyncHandler } from './handlers/master-product-sync.handler';
 import { MasterProductSyncBatchHandler } from './handlers/master-product-sync-batch.handler';
 import { MasterInventorySyncHandler } from './handlers/master-inventory-sync.handler';
@@ -51,8 +59,14 @@ import { MasterInventorySyncAllHandler } from './handlers/master-inventory-sync-
 import { MasterProductSyncAllHandler } from './handlers/master-product-sync-all.handler';
 import { MasterProductSyncDeltaHandler } from './handlers/master-product-sync-delta.handler';
 import { MasterProductReconcileHandler } from './handlers/master-product-reconcile.handler';
+import { InventoryProvenanceBackfillHandler } from './handlers/inventory-provenance-backfill.handler';
+import { ReservationExpiryHandler } from './handlers/reservation-expiry.handler';
+import { ReservationShortfallHandler } from './handlers/reservation-shortfall.handler';
+import { ReservationConsumeHandler } from './handlers/reservation-consume.handler';
+import { OrdersHoldsReconcileHandler } from './handlers/orders-holds-reconcile.handler';
 import { PickupPointRefreshHandler } from './handlers/pickup-point-refresh.handler';
 import { ShopProductPublishHandler } from './handlers/shop-product-publish.handler';
+import { AutomationTriggerDeadlineSweepHandler } from './handlers/automation-trigger-deadline-sweep.handler';
 import { ShopProductStatusSyncHandler } from './handlers/shop-product-status-sync.handler';
 import { DestinationTaxonomySyncHandler } from './handlers/destination-taxonomy-sync.handler';
 import { InvoicingIssueHandler } from './handlers/invoicing-issue.handler';
@@ -60,6 +74,8 @@ import { FiscalizationRegisterHandler } from './handlers/fiscalization-register.
 import { RegulatoryStatusReconcileHandler } from './handlers/regulatory-status-reconcile.handler';
 import { OfflineResubmitHandler } from './handlers/offline-resubmit.handler';
 import { PendingRecoveryHandler } from './handlers/pending-recovery.handler';
+import { FulfillmentWorkDispatchHandler } from './handlers/fulfillment-work-dispatch.handler';
+import { FulfillmentWorkRouteHandler } from './handlers/fulfillment-work-route.handler';
 import { PaymentStatusRefreshHandler } from './handlers/payment-status-refresh.handler';
 import { HandlerRegistrationService } from './handlers/handler-registration.service';
 
@@ -73,10 +89,18 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     OperationalSettingsModule, // #2651 — operator-settable sweep budgets, read per tick by the sweep handlers
     OrdersModule, // Import OrdersModule to access ORDER_SYNC_SERVICE_TOKEN
     ListingsModule, // Import ListingsModule to access OFFER_MAPPING_SYNC_SERVICE_TOKEN
+    ReturnsModule, // #2330 — exposes RETURN_INGESTION_SERVICE_TOKEN + RETURN_STATUS_SYNC_SERVICE_TOKEN
     ShippingModule, // Import ShippingModule to access SHIPMENT_STATUS_SYNC_SERVICE_TOKEN (#838)
+    // #2399 — exposes FULFILLMENT_HANDSHAKE_SERVICE_TOKEN. A leaf module: it
+    // imports no sibling context, so this edge adds no cycle risk.
+    FulfillmentModule,
     InvoicingModule, // OL #1120/#1121 — exposes INVOICE_SERVICE_TOKEN + AUTO_ISSUE_TRIGGER_SERVICE_TOKEN (OrderIngestionService) + REGULATORY_STATUS_RECONCILIATION_SERVICE_TOKEN
     FiscalizationModule, // #2156 — exposes FISCAL_REGISTRATION_SERVICE_TOKEN for the fiscalization.register handler
     WorkerContentModule, // Worker-side ContentModule for #737 — exposes CONTENT_SUGGESTION_SERVICE_TOKEN
+    // #2360 — exposes AUTOMATION_RULES_SERVICE_TOKEN + AUTOMATION_TRIGGER_EMISSION_SERVICE_TOKEN
+    // for `automation.trigger.deadlineSweep`. OrdersModule imports AutomationModule too (for T5's
+    // write-site emission) but does not re-export it, and Nest imports are not transitive.
+    AutomationModule,
   ],
   providers: [
     JobIntakeConsumer,
@@ -95,6 +119,10 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     MarketplaceOfferPollCreationStatusHandler,
     MarketplaceOffersSyncHandler,
     MarketplaceOfferStatusSyncHandler,
+    MarketplaceReturnsPollHandler,
+    MarketplaceReturnSyncHandler,
+    MarketplaceReturnsStatusSyncHandler,
+    ReturnsOrphanReconcileHandler,
     MarketplaceOfferRefreshSnapshotHandler,
     MarketplaceOfferStockRestoreHandler,
     MarketplaceOfferPauseStaleHandler,
@@ -102,6 +130,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     MarketplaceShipmentStatusSyncHandler,
     MarketplaceShipmentSyncByExternalIdHandler,
     MarketplaceFulfillmentStatusSyncHandler,
+    FulfillmentWorkStatusSyncHandler,
     MasterProductSyncHandler,
     MasterProductSyncBatchHandler,
     MasterInventorySyncHandler,
@@ -111,8 +140,14 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     MasterProductSyncAllHandler,
     MasterProductSyncDeltaHandler,
     MasterProductReconcileHandler,
+    InventoryProvenanceBackfillHandler,
+    ReservationExpiryHandler,
+    ReservationShortfallHandler,
+    ReservationConsumeHandler,
+    OrdersHoldsReconcileHandler,
     PickupPointRefreshHandler,
     ShopProductPublishHandler,
+    AutomationTriggerDeadlineSweepHandler,
     ShopProductStatusSyncHandler,
     DestinationTaxonomySyncHandler,
     InvoicingIssueHandler,
@@ -121,6 +156,8 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     OfflineResubmitHandler,
     PendingRecoveryHandler,
     PaymentStatusRefreshHandler,
+    FulfillmentWorkDispatchHandler,
+    FulfillmentWorkRouteHandler,
     HandlerRegistrationService,
   ],
 })

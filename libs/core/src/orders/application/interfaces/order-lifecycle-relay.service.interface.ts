@@ -11,8 +11,26 @@
  * @module libs/core/src/orders/application/interfaces
  * @see {@link OrderStatusWriteback} for the per-participant writeback contract
  */
-import type { DispatchCarrierHint } from '../../domain/types/dispatch-carrier-hint.types';
-import type { OrderWritebackOutcome } from '../../domain/types/order-lifecycle-event.types';
+import type {
+  OrderLifecycleEvent,
+  OrderWritebackOutcome,
+} from '../../domain/types/order-lifecycle-event.types';
+
+/**
+ * The relay-facing projection of {@link OrderLifecycleEvent}: the same union,
+ * minus the per-participant `externalOrderId` the relay resolves itself.
+ *
+ * **Derived, never restated (#2286).** This union used to be hand-written, so a
+ * new `OrderLifecycleEvent` member did not widen the relay input and the relay's
+ * own branch kept compiling — defeating the exhaustiveness guard everywhere else.
+ * The distribution over the union (rather than a plain `Omit`) is what preserves
+ * the discriminated shape: a non-distributed `Omit` would collapse the members
+ * into one object with optional fields, which narrows on `type` but no longer
+ * fails to compile when a member is added.
+ */
+export type OrderLifecycleRelayEvent<E = OrderLifecycleEvent> = E extends unknown
+  ? Omit<E, 'externalOrderId'>
+  : never;
 
 /**
  * A lifecycle event to relay, keyed on the internal order. The relay resolves
@@ -23,9 +41,26 @@ export interface OrderLifecycleRelayInput {
   internalOrderId: string;
   /** The participant that authored the event — excluded from the targets (self-echo suppression at the participant level). */
   originConnectionId: string;
-  event:
-    | { type: 'dispatched'; trackingNumber?: string; carrier?: DispatchCarrierHint }
-    | { type: 'cancelled'; reason?: string };
+  /**
+   * The connection that AUTHORED the event, when the caller knows it and it is not
+   * the same thing as `originConnectionId` (#2401, DESIGN §5.5).
+   *
+   * **Absent reproduces today's exclusion set exactly** — origin only — so no
+   * existing caller changes behaviour. Present, it is UNIONED with the origin.
+   *
+   * It is not redundant with `originConnectionId`, because that field is not an
+   * authorship claim in practice: `ShipmentDispatchNotificationService` passes the
+   * CARRIER connection and `relay-status-to-source-executor` passes the sentinel
+   * `'openlinker:automation'`, both non-participants chosen precisely to exclude
+   * nothing. A caller that genuinely knows who authored the fact can now say so.
+   *
+   * The case this exists for: a fulfilment work dispatched by a 3PL that is ALSO a
+   * participant of the order (a marketplace that fulfils its own orders). Without
+   * this, a `dispatched` relay tells the 3PL that just shipped the parcel that the
+   * parcel shipped.
+   */
+  authoredByConnectionId?: string;
+  event: OrderLifecycleRelayEvent;
 }
 
 /**
@@ -60,7 +95,15 @@ export interface OrderLifecycleRelayTargetResult {
   connectionId: string;
   outcome: OrderWritebackOutcome;
   detail?: string;
-  /** Present iff `outcome === 'unsupported'`. See the reason type's docs. */
+  /**
+   * Set only for an `unsupported` outcome — but **an `unsupported` outcome does
+   * not imply it is set** (corrected #2401). This field is populated by the
+   * RELAY, for the two conditions it can tell apart itself; `writeToTarget`
+   * passes an adapter's own `OrderWritebackResult` through verbatim, and several
+   * shipped adapters return a bare `unsupported` from their own `default:` arm.
+   * A consumer switching on this MUST handle `undefined` as its own case rather
+   * than assuming one of the two members. See the reason type's docs.
+   */
   unsupportedReason?: OrderWritebackUnsupportedReason;
 }
 

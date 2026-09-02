@@ -84,7 +84,10 @@ const orderTotalsSchema = z.object({
   currency: z.string(),
   /** Whether `total` is tax-inclusive (gross) or tax-exclusive (net). Optional —
    *  absent for sources that don't report it. */
-  taxTreatment: z.enum(ParsedOrderTaxTreatmentValues).optional(),
+  // `.nullish()`, not `.optional()` (#939): core documents `null` as "the source
+  // did not assert a treatment", and totals are parsed as ONE section — so a
+  // `null` here dropped subtotal, tax, shipping, total and currency together.
+  taxTreatment: z.enum(ParsedOrderTaxTreatmentValues).nullish(),
 });
 
 const orderShippingSchema = z.object({

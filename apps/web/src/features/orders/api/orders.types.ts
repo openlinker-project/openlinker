@@ -7,8 +7,31 @@
  *
  * @module apps/web/src/features/orders/api
  */
+// #2441 review S10 — the types-only sibling, never `order-lifecycle-phase.ts`:
+// that module imports `StatusBadgeTone`, which would have this wire-shape module
+// transitively naming a component module.
+import type { OrderLifecyclePhaseValue } from '../lib/order-lifecycle-phase.types';
+import type { HoldReason, ProvisioningResume } from '../lib/order-hold.types';
 
-export const OrderSyncStatusValues = ['pending', 'syncing', 'synced', 'failed'] as const;
+// Re-exported so a consumer of the orders transport types can name a hold's
+// reason and the release outcome without also reaching into `lib/`.
+export type { HoldReason, ProvisioningResume };
+
+/**
+ * Mirrors CORE `OrderSyncStatusFilterValues` (`order-record.types.ts`).
+ *
+ * `'skipped_cancelled'` (#2284) is terminal and is NOT a failure: the source
+ * cancelled the order before any destination order existed, so provisioning was
+ * deliberately withheld. It must never borrow an error colour and is never
+ * retryable.
+ */
+export const OrderSyncStatusValues = [
+  'pending',
+  'syncing',
+  'synced',
+  'failed',
+  'skipped_cancelled',
+] as const;
 export type OrderSyncStatusValue = (typeof OrderSyncStatusValues)[number];
 
 export interface OrderSyncStatus {
@@ -63,11 +86,37 @@ export const FulfillmentRollupStateValues = [
 ] as const;
 export type FulfillmentRollupStateValue = (typeof FulfillmentRollupStateValues)[number];
 
+/**
+ * Coerce an untrusted value — a field on a payload from a newer backend than
+ * this bundle, or a replayed cached response — to the union.
+ *
+ * Deliberately no fallback, matching `isOrderLifecyclePhase`: defaulting an
+ * unrecognised state to `not-shipped` would report "this order has not shipped"
+ * about an order whose real state this build cannot name. `fulfillmentBadge`
+ * (lib/order-health.ts) uses this to degrade one cell instead of throwing
+ * (#2678).
+ */
+export function isFulfillmentRollupState(value: unknown): value is FulfillmentRollupStateValue {
+  return (
+    typeof value === 'string' && (FulfillmentRollupStateValues as readonly string[]).includes(value)
+  );
+}
+
 // Ship-by SLA bucket (#1108). Hand-mirrored from `SlaStateValues` in
 // `@openlinker/core/orders`. BE-owned (single source of truth): the FE consumes
 // `slaState` and only renders the live countdown from `dispatchByAt`.
 export const SlaStateValues = ['none', 'on_track', 'at_risk', 'overdue'] as const;
 export type SlaStateValue = (typeof SlaStateValues)[number];
+
+/**
+ * Coerce an untrusted `slaState` to the union, same contract and same reason as
+ * `isFulfillmentRollupState` above. An unrecognised bucket must never collapse
+ * into `none` — `none` renders no badge at all, which would silently drop the
+ * one signal telling the operator this order's SLA is in a state OL cannot read.
+ */
+export function isSlaState(value: unknown): value is SlaStateValue {
+  return typeof value === 'string' && (SlaStateValues as readonly string[]).includes(value);
+}
 
 // Why OpenLinker issued no sales document (invoice or fiscal receipt) for an
 // order (#2100/#2156, ADR-041 decision 11). Hand-mirrored from
@@ -87,8 +136,7 @@ export const SalesDocumentGateBlockReasonValues = [
   'trigger-model-manual',
   'trigger-model-batched',
 ] as const;
-export type SalesDocumentGateBlockReasonValue =
-  (typeof SalesDocumentGateBlockReasonValues)[number];
+export type SalesDocumentGateBlockReasonValue = (typeof SalesDocumentGateBlockReasonValues)[number];
 
 export const SalesDocumentUnresolvedReasonValues = [
   'no-matching-rule',
@@ -252,6 +300,62 @@ export interface OrderDeliveryRider {
   candidateCarrier?: DeliveryRiderCandidateCarrier;
 }
 
+// Source-side amendment kinds (#2283). Hand-mirrored from
+// `OrderAmendmentChangeKindValues` in `@openlinker/core/orders` per the FE-001
+// contract strategy — keep in sync.
+export const OrderAmendmentChangeKindValues = [
+  'line-removed',
+  'line-added',
+  'line-quantity-changed',
+  'shipping-address-changed',
+] as const;
+export type OrderAmendmentChangeKindValue = (typeof OrderAmendmentChangeKindValues)[number];
+
+/**
+ * One observed source amendment. PII-free by backend contract: ids, SKUs and
+ * quantities verbatim, and for an address change only the NAMES of the fields
+ * that moved.
+ */
+export interface OrderAmendmentChange {
+  kind: OrderAmendmentChangeKindValue;
+  lineId?: string;
+  sku?: string;
+  fromQuantity?: number;
+  toQuantity?: number;
+  fields?: string[];
+}
+
+/**
+ * One still-open reservation shortfall episode on an order (#2349/#2350).
+ *
+ * OpenLinker promised more of this sku than the stock master now has, and this
+ * order is one the shortfall lands on. Nothing was silently reduced — that is
+ * the whole point of the episode existing.
+ *
+ * `sku` and `productVariantId` are `T | null` rather than optional: the API
+ * serialises an absent value as JSON `null`, so `null` must be a representable
+ * value rather than a parse gap (#939). There is no Zod schema over
+ * `OrderRecord` — only the opaque `orderSnapshot` sub-tree is parsed — so the
+ * S3 `.nullish()` rule has nothing to attach to here; this is its equivalent in
+ * the file's own convention.
+ */
+export interface OrderReservationShortfall {
+  /**
+   * Stable occurrence id. Opened once on the transition into shortfall and
+   * closed by an explicit write, so it survives re-detection unchanged — which
+   * is what lets a downstream automation key on it (#2349).
+   */
+  episodeId: string;
+  inventoryItemId: string;
+  productVariantId: string | null;
+  sku: string | null;
+  /** This order's attributed share of the shortfall. */
+  shortQuantity: number;
+  /** The whole position's shortfall, so a share can be told from the total. */
+  positionShortfall: number;
+  openedAt: string;
+}
+
 export interface OrderRecord {
   internalOrderId: string;
   customerId: string | null;
@@ -326,6 +430,51 @@ export interface OrderRecord {
   /** PII-free elaboration of the block reason (ids and counts only). */
   salesDocumentBlockDetail?: string | null;
   /**
+   * Instant OpenLinker last observed the SOURCE amend this order after it was
+   * already ingested (#2283) — a line removed, added or re-quantified, or the
+   * shipping address edited. `null`/absent = never observed amended. An internal
+   * fact: it moves no status and gates nothing, so it is rendered as one more
+   * timeline entry rather than a state.
+   */
+  lastAmendedAt?: string | null;
+  /**
+   * What changed at `lastAmendedAt` (#2283) — most recent observation only.
+   * PII-free by contract: an address change names the FIELDS that moved and
+   * never their values, so this is safe to render verbatim.
+   */
+  lastAmendmentChanges?: OrderAmendmentChange[] | null;
+  /**
+   * Instant an operator marked this order packed (#2287/#2288). `null`/absent =
+   * not packed. A plain operator fact: it moves no status, gates nothing and is
+   * owned by neither the source nor a destination — which is why the list shows
+   * it as a tick rather than a badge, and the detail page (not the row) acts.
+   * Optional for graceful degradation on a pre-#2287 payload.
+   */
+  packedAt?: string | null;
+  /**
+   * OL user id of whoever marked it packed (#2287). Moves as one group with
+   * `packedAt`, so it is non-null exactly when `packedAt` is.
+   */
+  packedByUserId?: string | null;
+  /**
+   * The derived lifecycle phase (#2305/#2309) — "what is this order waiting on".
+   * Derived server-side on every read; the FE never re-derives it. A SECOND
+   * orthogonal partition beside the health bucket, never a sixth health value
+   * (ADR-059). Optional for graceful degradation on a pre-#2309 payload, which
+   * is the one case the phase badge renders nothing.
+   */
+  lifecyclePhase?: OrderLifecyclePhaseValue;
+  /**
+   * Still-open reservation shortfall episodes (#2350).
+   *
+   * **An absent or empty value is NOT a positive claim that this order is
+   * fine.** Both the detail loader and the list's batched read catch to
+   * empty on failure, so absence and failure are indistinguishable here by
+   * design. Only the PRESENCE of an episode is a claim — never render a
+   * "no shortfalls" reassurance from this field.
+   */
+  reservationShortfalls?: OrderReservationShortfall[];
+  /**
    * When the current sales-document hold started (ISO 8601), or null (#2248).
    * The only clock an operator-facing age can run on: the reason itself is
    * level-triggered and nulled the moment it clears.
@@ -340,6 +489,124 @@ export interface OrderRecord {
    * does for `documentKind: null`, never treat absence as an error.
    */
   salesDocument?: SalesDocumentView;
+  /**
+   * Inert states this order carries (#2352/#2356) — what OpenLinker STOPPED
+   * deciding about it.
+   *
+   * NOT the `needs_attention` health bucket: that is a member of a partition and
+   * means a sync failure, while this is an orthogonal axis. An order is
+   * routinely one, the other, or both, which is why the row renders them as two
+   * independent badges rather than choosing between them.
+   *
+   * Optional for graceful degradation on a pre-#2356 payload; empty on every
+   * install until a producer writes the column (#2352 shipped it undriven).
+   * `reason` stays a plain string: the column is jsonb and a value written by a
+   * newer release must round-trip rather than break the read — the frontend
+   * narrows it and renders an unrecognised one neutrally and uncounted.
+   */
+  omsAttention?: OrderOmsAttentionEntry[] | null;
+  /**
+   * The reason of this order's OPEN hold, or null when it is not held (#2340).
+   * Present on EVERY row — list and detail — because the column is already
+   * loaded, which is what lets the list badge it for free.
+   *
+   * A DISPLAY CACHE with an hourly repair window: a badge may render it, and
+   * nothing gate-like may read it. Whether an order is really held is decided
+   * server-side against `order_holds`, which is what both write routes do.
+   */
+  activeHoldReason?: HoldReason | null;
+  /**
+   * The open hold in full (#2341). **Detail read only** — attached by
+   * `GET /orders/:id`, never by the paged list, where one query per order would
+   * be an N+1. `null` when the order is not held.
+   *
+   * Optional on the wire, so `undefined` and `null` mean the same thing here
+   * and every read must treat them identically (#939).
+   */
+  activeHold?: OrderHold | null;
+  /** Every hold this order has ever carried, open and released (#2341). Detail only. */
+  holdHistory?: OrderHold[] | null;
+}
+
+/** One inert state as an order row carries it (#2352). */
+export interface OrderOmsAttentionEntry {
+  /** Which subsystem wrote it. An order can carry one entry per producer. */
+  producer: string;
+  /** The § 4.2 code, narrowed client-side; an unknown value renders neutrally. */
+  reason: string;
+  /** PII-free elaboration, rendered verbatim or not at all. */
+  detail?: string | null;
+  /** The sub-object it is really about — an order line — when the row is not. */
+  subjectRef?: string | null;
+  /** When THIS producer's entry first appeared (ISO 8601). */
+  since?: string | null;
+}
+
+/**
+ * One `order_holds` row (#2341). Every column is projected: all of it is
+ * operator-facing audit data and none of it is a secret — `note` and
+ * `releaseNote` are operator free text, never buyer data.
+ */
+export interface OrderHold {
+  /** Plain uuid — a hold is not an `ol_*` internal id. */
+  id: string;
+  internalOrderId: string;
+  reason: HoldReason;
+  note: string | null;
+  /** Exactly one of `placedByUserId` / `placedByService` is set on every row. */
+  placedByUserId: string | null;
+  placedByService: string | null;
+  /** ISO 8601. Stamped from OpenLinker's clock — a hold is an internal act. */
+  placedAt: string;
+  /** ISO 8601, or null while the hold is open. */
+  releasedAt: string | null;
+  releasedByUserId: string | null;
+  releaseNote: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** `POST /orders/:internalOrderId/holds` (#2341). */
+export interface PlaceOrderHoldRequest {
+  reason: HoldReason;
+  /** Operator free text. Never buyer data. */
+  note?: string;
+}
+
+export interface PlaceOrderHoldResult {
+  hold: OrderHold;
+  /**
+   * A dispatch of this order was in flight when the hold landed, so a carrier
+   * label may already have been minted for an order that now reads held.
+   *
+   * The hold IS placed either way — this reports an overlap OpenLinker could
+   * not prevent. Optional because a backend predating the review does not send
+   * it; absent must never read as "an overlap happened".
+   */
+  dispatchInFlight?: boolean;
+}
+
+/**
+ * `POST /orders/:internalOrderId/holds/:holdId/release` (#2341).
+ *
+ * `note` is optional on the wire and conditionally required by the domain — a
+ * user releasing a SERVICE-placed hold must supply one, and a 400 names that
+ * case. Making it unconditionally required here would refuse a perfectly valid
+ * note-less release of a user-placed hold.
+ */
+export interface ReleaseOrderHoldRequest {
+  note?: string;
+}
+
+export interface ReleaseOrderHoldResult {
+  hold: OrderHold;
+  /**
+   * What OpenLinker did about the provisioning run the hold was suppressing.
+   * REPORTED rather than assumed — a `failed` here means the hold is gone and
+   * the order is still un-provisioned. Optional so an API predating #2341
+   * degrades to "released" rather than to a fabricated success.
+   */
+  provisioningResume?: ProvisioningResume;
 }
 
 // Result ordering for the orders list (#927, extended #944). Mirrors
@@ -417,6 +684,14 @@ export interface OrderHealthSummary {
    * for graceful degradation against an older API.
    */
   salesDocumentIssuedOnRequest?: number;
+  /**
+   * Orders carrying at least one COUNTED OMS inert state (#2353). A third
+   * orthogonal axis: never inside `salesDocumentBlocked` or `taxRateConflict`,
+   * and never part of the health partition, so it must not be added to their
+   * sum. A reason this build does not recognise is never counted.
+   * Optional for graceful degradation against an older API.
+   */
+  omsAttention?: number;
 }
 
 export interface OrderFilters {
@@ -444,11 +719,43 @@ export interface OrderFilters {
    */
   salesDocumentBlocked?: boolean;
   /**
+   * Cancellation filter (#2306): `false` excludes cancelled orders, `true` keeps
+   * only them, omitted does not filter. The dispatch-risk page passes `false` so
+   * its rows match the counts `slaSummary` returns under the same scope.
+   */
+  cancelled?: boolean;
+  /**
+   * Filter to a single derived lifecycle phase (#2310), `?phase=`. Composes with
+   * `health` rather than replacing it — the two axes are orthogonal, so "synced
+   * AND blocked" is a real and common shape.
+   */
+  phase?: OrderLifecyclePhaseValue;
+  /**
    * Tax-rate conflict filter (#2254). A separate axis, and it has to be: the
    * rows it finds are usually already invoiced, which is exactly why they are
    * invisible in every other view.
    */
   taxRateConflict?: boolean;
+  /**
+   * OMS inert-state filter (#2353), `?attention=`. A THIRD orthogonal axis
+   * beside `health` and `salesDocumentBlocked`, ANDed with both server-side.
+   *
+   * Deliberately NOT `health=needs_attention` — two params one word apart
+   * meaning different things is the trap the backend named when it kept the
+   * repository filter as the full `omsAttention` axis while the query param
+   * stayed the operator-facing `attention`.
+   */
+  attention?: boolean;
+  /**
+   * Narrow to orders held for ONE reason (#2342), sent as `?hold=`.
+   *
+   * Deliberately reason-scoped with no "any" value: `?phase=held` (#2310)
+   * already answers "show me held orders" and carries a real count, so a second
+   * boolean control would mean the same thing twice. This is the axis the phase
+   * chip cannot express. Composes with `phase` and `health` like every other
+   * filter on the page.
+   */
+  holdReason?: HoldReason;
 }
 
 /**
@@ -473,6 +780,13 @@ export interface OrderHealthSummaryFilters {
   customerId?: string;
   createdFrom?: string;
   createdTo?: string;
+  /**
+   * Cancellation scope (#2306). Honoured by `GET /orders/sla-summary` only —
+   * `status-summary` ignores it, since health is an orthogonal axis. Omitted
+   * means unscoped; the dispatch-risk page passes `false` because a cancelled,
+   * never-shipped order otherwise counts as `overdue`.
+   */
+  cancelled?: boolean;
 }
 
 export interface OrderPagination {
@@ -492,4 +806,26 @@ export interface RetryOrderDestinationResult {
   destinationConnectionId: string;
   jobId: string;
   jobType: string;
+}
+
+/**
+ * Per-lifecycle-phase counts from `GET /orders/lifecycle-summary` (#2309).
+ * Mirrors `OrderLifecyclePhaseSummaryResponseDto` (BE), camelCase per phase.
+ * The phases partition the set, so the nine buckets sum to `total`.
+ *
+ * `vendorAuthoritative`, `held` and `amending` are structurally 0 until Waves 2
+ * and 4 supply their producers — a correct report about a fact OL does not yet
+ * record, not a gap.
+ */
+export interface OrderLifecyclePhaseSummary {
+  total: number;
+  cancelled: number;
+  vendorAuthoritative: number;
+  delivered: number;
+  inTransit: number;
+  fulfillmentFailed: number;
+  held: number;
+  amending: number;
+  blocked: number;
+  ready: number;
 }

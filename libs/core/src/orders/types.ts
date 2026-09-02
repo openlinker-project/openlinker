@@ -23,6 +23,43 @@
  * `@openlinker/core/shipping`; both erase at build time, so re-exporting
  * `Order` here adds NO runtime edge beyond `PAYMENT_STATUS`'s existing one.
  *
+ * `OrderStatus` / `OrderStatusValues` (#2305, ADR-059) are exported for the
+ * `order-lifecycle` vocabulary leaf, which projects its derived phase one-way
+ * onto the transport vocabulary via `phaseToOrderStatus`. The leaf satisfies
+ * both gate conditions above: `OrderStatusValues` is a dependency-free `as
+ * const` leaf, and the leaf cannot use the main `@openlinker/core/orders`
+ * barrel without acquiring the very sibling-context value edge ADR-053 forbids
+ * it. `phaseToOrderStatus` imports the TYPE only (erasing at build time, so no
+ * runtime edge is added); the runtime `OrderStatusValues` array is exported for
+ * the leaf's totality spec, which iterates it — specs are walker-exempt.
+ *
+ * `FulfillmentRollupState` / `FulfillmentRollupStateOrNull` /
+ * `OrderRecordStatus` (#2307, ADR-059) are exported TYPE-ONLY for the same
+ * leaf, whose pure `deriveOrderLifecyclePhase` takes both as caller-supplied
+ * VALUE PARAMETERS and switches exhaustively over them. Both satisfy the gate
+ * conditions: each is an `as const`-derived union in a dependency-free
+ * domain-types file, and the leaf cannot reach the main `@openlinker/core/orders`
+ * barrel without acquiring the sibling-context value edge ADR-053 forbids it.
+ * `import type` erases at build time, so no runtime edge is added. Restating
+ * the four rollup values and three record statuses inside the leaf was
+ * considered and rejected: the SQL `CASE` twin (#2309) must match these
+ * vocabularies exactly, and a local copy would make the derivation's
+ * `never`-typed default arms — the whole point of which is to fail the build
+ * when a value is added here — vacuous.
+ *
+ * `RefundReason` / `RefundReasonValues` (#2327, ADR-060) are exported for the
+ * new `returns` context, whose `ReturnLine.reason` reuses the refund vocabulary
+ * VERBATIM so returns-by-reason and refunds-by-reason report on one axis. Both
+ * gate conditions hold: `refund-record.types.ts` is a dependency-free `as
+ * const` leaf, and `returns` would otherwise have to reach the main
+ * `@openlinker/core/orders` barrel — which re-exports `OrdersModule` — to read
+ * back a stored reason. The runtime array is exported because the read
+ * coercion (`ReturnRepository.toRefundReason`, the `RefundRecordRepository`
+ * narrow-or-fallback precedent) iterates it; restating the five values inside
+ * `returns` was rejected for the same reason `order-lifecycle` rejected
+ * restating `OrderStatusValues` — two sources of truth for one reporting axis
+ * is exactly the drift the verbatim reuse exists to prevent.
+ *
  * @module libs/core/src/orders/types
  */
 export {
@@ -31,5 +68,14 @@ export {
 } from './domain/types/payment-status.types';
 export type { PaymentStatus } from './domain/types/payment-status.types';
 export type { Order } from './domain/types/order.types';
+export { OrderStatusValues } from './domain/types/order.types';
+export type { OrderStatus } from './domain/types/order.types';
+export type {
+  FulfillmentRollupState,
+  FulfillmentRollupStateOrNull,
+} from './domain/types/order-fulfillment.types';
+export type { OrderRecordStatus } from './domain/types/order-record.types';
+export { RefundReasonValues } from './domain/types/refund-record.types';
+export type { RefundReason } from './domain/types/refund-record.types';
 export type { BuyerTaxId } from './domain/types/buyer-tax-id.types';
 export { readBuyerTaxId, buyerHasTaxId } from './domain/types/buyer-tax-id.types';

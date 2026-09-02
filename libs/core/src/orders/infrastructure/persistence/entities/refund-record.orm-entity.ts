@@ -35,6 +35,9 @@ import {
   unique: true,
   where: '"idempotencyKey" IS NOT NULL',
 })
+// Refunds against one return (#2327). Partial: the overwhelming majority of
+// refunds have no return, and indexing those NULLs would be dead weight.
+@Index('IDX_refund_records_return_id', ['returnId'], { where: '"returnId" IS NOT NULL' })
 export class RefundRecordOrmEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -65,4 +68,42 @@ export class RefundRecordOrmEntity {
 
   @Column({ type: 'text', nullable: true })
   idempotencyKey: string | null = null;
+
+  /**
+   * The return this refund settles, when there is one (#2327, ADR-060).
+   *
+   * **Linked, not extended.** Refunds exist without returns (a goodwill
+   * gesture, a price correction) and returns exist without refunds (a warranty
+   * swap), so folding return fields onto `RefundRecord` would have widened a
+   * shape whose every live row predates returns entirely — falsifying the
+   * analytics those rows already feed. A nullable pointer adds a fact without
+   * restating any existing one; **no other refund column is touched by #2327**,
+   * and the returns int-spec snapshots this table's column list so a later
+   * "while we're here" edit fails loudly.
+   *
+   * No FK to `returns` — the `internalOrderId` precedent directly above (an
+   * indexed reference by value, no cross-table lock coupling).
+   *
+   * **Persistence-only until #2371**, which is the Wave-2 writer #2327 named:
+   * the domain `RefundRecord`, its create-input and the repository mapping now
+   * carry the field. Still nullable, and still no FK — a refund legitimately
+   * exists without a return (goodwill, price correction), which is why
+   * `RefundRecord` was LINKED to returns rather than extended by them (ADR-060).
+   */
+  @Column({ type: 'text', nullable: true })
+  returnId: string | null = null;
+
+  /**
+   * WHO moved the buyer's money (#2371, ADR-056).
+   *
+   * `NOT NULL DEFAULT 'operator_out_of_band'`, and the default IS the backfill:
+   * OpenLinker has never shipped a refund write, so every row that predates
+   * this column was recorded by a human who moved the money elsewhere. The
+   * default states that truthfully rather than leaving it unknown.
+   *
+   * Stored as `varchar` rather than a DB enum — the house convention, so
+   * widening `RefundExecutedByValues` never needs an `ALTER TYPE`.
+   */
+  @Column({ type: 'varchar', length: 32, default: 'operator_out_of_band' })
+  executedBy!: string;
 }

@@ -5,25 +5,41 @@
  */
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
-import { ConflictException, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
 import { OrdersController } from './orders.controller';
 import {
   ORDER_RECORD_REPOSITORY_TOKEN,
   ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
+  ORDER_RECORD_SERVICE_TOKEN,
   SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
   OrderRecord,
   OrderRecordNotFoundException,
   OrderDestinationNotFoundException,
   OrderDestinationNotRetryableException,
   MissingSourceExternalIdException,
+  ORDER_HOLD_SERVICE_TOKEN,
+  ORDER_PROVISIONING_RESUME_SERVICE_TOKEN,
+  OrderAlreadyOnHoldError,
+  HoldAlreadyReleasedError,
+  HoldReleaseNoteRequiredError,
 } from '@openlinker/core/orders';
 import type {
   OrderRecordRepositoryPort,
   IOrderDestinationRetryService,
+  IOrderRecordService,
+  IOrderHoldService,
+  IOrderProvisioningResumeService,
+  OrderHold,
   ISalesDocumentViewService,
 } from '@openlinker/core/orders';
 import type { SalesDocumentView } from '@openlinker/core/sales-documents';
 import { INVOICE_SERVICE_TOKEN } from '@openlinker/core/invoicing';
+import { RESERVATION_SHORTFALL_SERVICE_TOKEN } from '@openlinker/core/inventory';
 import type { IInvoiceService } from '@openlinker/core/invoicing';
 import { InvoiceRecord } from '@openlinker/core/invoicing';
 import {
@@ -38,10 +54,13 @@ import type {
 describe('OrdersController', () => {
   let controller: OrdersController;
   let repository: jest.Mocked<OrderRecordRepositoryPort>;
+  let orderRecordService: jest.Mocked<IOrderRecordService>;
   let retryService: jest.Mocked<IOrderDestinationRetryService>;
   let invoiceService: jest.Mocked<IInvoiceService>;
   let fulfillmentRouting: jest.Mocked<IFulfillmentRoutingService>;
   let deliveryRider: jest.Mocked<IDeliveryRiderService>;
+  let holdService: jest.Mocked<IOrderHoldService>;
+  let provisioningResume: jest.Mocked<IOrderProvisioningResumeService>;
   let salesDocumentView: jest.Mocked<ISalesDocumentViewService>;
 
   const mockOrder = new OrderRecord(
@@ -77,21 +96,35 @@ describe('OrdersController', () => {
       countByHealth: jest.fn(),
       getFailedSyncValueSummary: jest.fn(),
       countBySla: jest.fn(),
+      countByLifecyclePhase: jest.fn(),
       updateFulfillmentState: jest.fn(),
       updateItemResolutionFailure: jest.fn(),
       markCancelled: jest.fn(),
       updateSalesDocumentBlock: jest.fn(),
+      updateFulfillmentBlock: jest.fn(),
+      updateOmsAttention: jest.fn(),
+      countOrdersWithOmsAttention: jest.fn(),
       claimFxIntentIfAbsent: jest.fn(),
       stampFxIfAbsent: jest.fn(),
       markFxTerminal: jest.fn(),
       findUnstampedFxOrderIds: jest.fn(),
       listDistinctNativeCurrencies: jest.fn(),
       countStampedByReportingCurrency: jest.fn(),
+      markPacked: jest.fn(),
+      clearPacked: jest.fn(),
+      recordAmendment: jest.fn(),
       getDailyOrderAggregates: jest.fn(),
       getMedianOrderValue: jest.fn(),
       patchSnapshotTaxRates: jest.fn(),
       getNetMedianOrderValue: jest.fn(),
+      findDispatchDeadlineCandidates: jest.fn(),
     };
+
+    const mockOrderRecordService = {
+      markPacked: jest.fn(),
+      clearPacked: jest.fn(),
+      recordAmendment: jest.fn(),
+    } as unknown as jest.Mocked<IOrderRecordService>;
 
     const mockRetryService: jest.Mocked<IOrderDestinationRetryService> = {
       retry: jest.fn(),
@@ -100,6 +133,8 @@ describe('OrdersController', () => {
     const mockInvoiceService: jest.Mocked<IInvoiceService> = {
       getInvoiceById: jest.fn(),
       getLatestInvoiceForOrder: jest.fn(),
+      // #2374 — the correction-proposal read.
+      getLatestIssuedInvoiceForOrder: jest.fn().mockResolvedValue(null),
       getInFlightIssuance: jest.fn().mockResolvedValue(null),
       findBlockingInvoiceForOrder: jest.fn().mockResolvedValue(null),
       listInvoiceConnectionIdsForOrder: jest.fn().mockResolvedValue([]),
@@ -131,6 +166,24 @@ describe('OrdersController', () => {
         ),
     };
 
+    // #2349 — the order-detail read projects still-open shortfall episodes.
+    // Default: none, so every pre-existing expectation is unaffected.
+    const mockReservationShortfalls = {
+      detectShortfalls: jest.fn(),
+      listOpenForOrder: jest.fn().mockResolvedValue([]),
+    };
+    const mockHoldService = {
+      place: jest.fn(),
+      release: jest.fn(),
+      getOpenHold: jest.fn(),
+      listHolds: jest.fn().mockResolvedValue([]),
+    } as unknown as jest.Mocked<IOrderHoldService>;
+
+    const mockProvisioningResume = {
+      resume: jest
+        .fn()
+        .mockResolvedValue({ status: 'enqueued', jobId: 'job-1', jobType: 'marketplace.order.sync' }),
+    } as unknown as jest.Mocked<IOrderProvisioningResumeService>;
     const mockSalesDocumentView: jest.Mocked<ISalesDocumentViewService> = {
       getForOrders: jest.fn().mockResolvedValue(new Map()),
       getForOrder: jest.fn().mockResolvedValue(null),
@@ -142,6 +195,10 @@ describe('OrdersController', () => {
         {
           provide: ORDER_RECORD_REPOSITORY_TOKEN,
           useValue: mockRepository,
+        },
+        {
+          provide: ORDER_RECORD_SERVICE_TOKEN,
+          useValue: mockOrderRecordService,
         },
         {
           provide: ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
@@ -156,8 +213,20 @@ describe('OrdersController', () => {
           useValue: mockFulfillmentRouting,
         },
         {
+          provide: ORDER_HOLD_SERVICE_TOKEN,
+          useValue: mockHoldService,
+        },
+        {
+          provide: ORDER_PROVISIONING_RESUME_SERVICE_TOKEN,
+          useValue: mockProvisioningResume,
+        },
+        {
           provide: DELIVERY_RIDER_SERVICE_TOKEN,
           useValue: mockDeliveryRider,
+        },
+        {
+          provide: RESERVATION_SHORTFALL_SERVICE_TOKEN,
+          useValue: mockReservationShortfalls,
         },
         {
           provide: SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
@@ -168,10 +237,13 @@ describe('OrdersController', () => {
 
     controller = module.get<OrdersController>(OrdersController);
     repository = module.get(ORDER_RECORD_REPOSITORY_TOKEN);
+    orderRecordService = module.get(ORDER_RECORD_SERVICE_TOKEN);
     retryService = module.get(ORDER_DESTINATION_RETRY_SERVICE_TOKEN);
     invoiceService = module.get(INVOICE_SERVICE_TOKEN);
     fulfillmentRouting = module.get(FULFILLMENT_ROUTING_SERVICE_TOKEN);
     deliveryRider = module.get(DELIVERY_RIDER_SERVICE_TOKEN);
+    holdService = module.get(ORDER_HOLD_SERVICE_TOKEN);
+    provisioningResume = module.get(ORDER_PROVISIONING_RESUME_SERVICE_TOKEN);
     salesDocumentView = module.get(SALES_DOCUMENT_VIEW_SERVICE_TOKEN);
   });
 
@@ -325,6 +397,94 @@ describe('OrdersController', () => {
 
       expect(repository.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ health: 'needs_attention' }),
+        { limit: 20, offset: 0 }
+      );
+    });
+
+    // #2441 review I-1 / S-4 — `?cancelled=` and `?phase=` read the same
+    // `cancelledAt IS NOT NULL` fact, so a contradictory pair can never match a row.
+    it('should reject ?phase=cancelled combined with ?cancelled=false with a 400 (#2441)', async () => {
+      repository.findMany.mockResolvedValue({ items: [], total: 0 });
+
+      await expect(
+        controller.listOrders({ phase: 'cancelled', cancelled: false, limit: 20, offset: 0 })
+      ).rejects.toThrow(BadRequestException);
+      expect(repository.findMany).not.toHaveBeenCalled();
+    });
+
+    it('should reject ?cancelled=true combined with a non-cancelled phase with a 400 (#2441)', async () => {
+      repository.findMany.mockResolvedValue({ items: [], total: 0 });
+
+      await expect(
+        controller.listOrders({ phase: 'ready', cancelled: true, limit: 20, offset: 0 })
+      ).rejects.toThrow(BadRequestException);
+      expect(repository.findMany).not.toHaveBeenCalled();
+    });
+
+    it('should pass a compatible ?phase= / ?cancelled= pair straight through (#2441)', async () => {
+      repository.findMany.mockResolvedValue({ items: [], total: 0 });
+
+      await controller.listOrders({ phase: 'ready', cancelled: false, limit: 20, offset: 0 });
+
+      expect(repository.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ lifecyclePhase: 'ready', cancelled: false }),
+        { limit: 20, offset: 0 }
+      );
+    });
+
+    // #2441 review S-4 — `cancelled=true` was never exercised; the `IS NOT NULL`
+    // branch of the repository's ternary was dead in test.
+    it('should pass ?cancelled=true through to the repository on its own (#2441)', async () => {
+      repository.findMany.mockResolvedValue({ items: [], total: 0 });
+
+      await controller.listOrders({ cancelled: true, limit: 20, offset: 0 });
+
+      expect(repository.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ cancelled: true }),
+        { limit: 20, offset: 0 }
+      );
+    });
+
+    it('should apply ?phase= alongside pagination without disturbing it (#2441)', async () => {
+      repository.findMany.mockResolvedValue({ items: [], total: 0 });
+
+      await controller.listOrders({ phase: 'in_transit', limit: 50, offset: 100 });
+
+      expect(repository.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ lifecyclePhase: 'in_transit' }),
+        { limit: 50, offset: 100 }
+      );
+    });
+
+    it('should map ?attention= onto the omsAttention repository axis (#2353)', async () => {
+      repository.findMany.mockResolvedValue({ items: [], total: 0 });
+
+      await controller.listOrders({ attention: true, limit: 20, offset: 0 });
+
+      expect(repository.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ omsAttention: true }),
+        { limit: 20, offset: 0 }
+      );
+    });
+
+    it('should forward attention=false as a predicate rather than dropping it (#2353)', async () => {
+      repository.findMany.mockResolvedValue({ items: [], total: 0 });
+
+      await controller.listOrders({ attention: false, limit: 20, offset: 0 });
+
+      expect(repository.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ omsAttention: false }),
+        { limit: 20, offset: 0 }
+      );
+    });
+
+    it('should not filter on the OMS axis when ?attention= is omitted (#2353)', async () => {
+      repository.findMany.mockResolvedValue({ items: [], total: 0 });
+
+      await controller.listOrders({ limit: 20, offset: 0 });
+
+      expect(repository.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ omsAttention: undefined }),
         { limit: 20, offset: 0 }
       );
     });
@@ -539,7 +699,7 @@ describe('OrdersController', () => {
         needsAttention: 1,
         synced: 1,
         awaitingDispatch: 9,
-        salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0,
+        salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0,
       });
 
       const result = await controller.statusSummary({});
@@ -557,7 +717,7 @@ describe('OrdersController', () => {
         needsAttention: 0,
         synced: 0,
         awaitingDispatch: 0,
-        salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0,
+        salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0,
       });
 
       await controller.statusSummary({
@@ -823,6 +983,273 @@ describe('OrdersController', () => {
       await expect(
         controller.retryDestination(internalOrderId, connectionId)
       ).rejects.toBeInstanceOf(InternalServerErrorException);
+    });
+  });
+  describe('packed (#2287)', () => {
+    const actor = {
+      id: 'user-op-001',
+      email: 'op@example.com',
+      role: 'operator',
+    } as unknown as Parameters<typeof controller.markPacked>[1];
+
+    const packedOrder = new OrderRecord(
+      'ol_order_001',
+      'ol_customer_001',
+      'conn-source-001',
+      'event-001',
+      { externalOrderId: 'EXT-123', items: [] },
+      [],
+      'ready',
+      new Date('2026-04-01T00:00:00Z'),
+      new Date('2026-04-01T12:00:00Z'),
+      [],
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      new Date('2026-04-02T09:30:00Z'),
+      'user-op-001'
+    );
+
+    it('should pass the acting user id when marking packed', async () => {
+      orderRecordService.markPacked.mockResolvedValue(packedOrder);
+
+      const result = await controller.markPacked('ol_order_001', actor);
+
+      expect(orderRecordService.markPacked).toHaveBeenCalledWith('ol_order_001', 'user-op-001');
+      expect(result.packedAt).toBe('2026-04-02T09:30:00.000Z');
+      expect(result.packedByUserId).toBe('user-op-001');
+    });
+
+    it('should project null packed fields for an unpacked order', async () => {
+      orderRecordService.clearPacked.mockResolvedValue(mockOrder);
+
+      const result = await controller.clearPacked('ol_order_001');
+
+      expect(orderRecordService.clearPacked).toHaveBeenCalledWith('ol_order_001');
+      expect(result.packedAt).toBeNull();
+      expect(result.packedByUserId).toBeNull();
+    });
+
+    it('should map OrderRecordNotFoundException to NotFoundException when marking', async () => {
+      orderRecordService.markPacked.mockRejectedValue(
+        new OrderRecordNotFoundException('ol_order_missing')
+      );
+
+      await expect(controller.markPacked('ol_order_missing', actor)).rejects.toBeInstanceOf(
+        NotFoundException
+      );
+    });
+
+    it('should map OrderRecordNotFoundException to NotFoundException when clearing', async () => {
+      orderRecordService.clearPacked.mockRejectedValue(
+        new OrderRecordNotFoundException('ol_order_missing')
+      );
+
+      await expect(controller.clearPacked('ol_order_missing')).rejects.toBeInstanceOf(
+        NotFoundException
+      );
+    });
+  });
+  describe('order holds (#2341)', () => {
+    const USER = { id: 'user-1', username: 'op', role: 'admin' } as never;
+
+    const heldAt = new Date('2026-08-20T10:00:00.000Z');
+    const openHold = {
+      id: 'hold-1',
+      internalOrderId: 'ol_order_001',
+      reason: 'operator',
+      note: 'waiting on buyer',
+      placedByUserId: 'user-1',
+      placedByService: null,
+      placedAt: heldAt,
+      releasedAt: null,
+      releasedByUserId: null,
+      releaseNote: null,
+      createdAt: heldAt,
+      updatedAt: heldAt,
+    } as unknown as OrderHold;
+
+    const releasedHold = {
+      ...openHold,
+      releasedAt: new Date('2026-08-21T10:00:00.000Z'),
+      releasedByUserId: 'user-1',
+    } as unknown as OrderHold;
+
+    describe('placeHold', () => {
+      it('should place a hold and project it when the order exists', async () => {
+        repository.findById.mockResolvedValue(mockOrder);
+        holdService.place.mockResolvedValue({
+          hold: openHold,
+          fact: { type: 'held', internalOrderId: 'ol_order_001', reason: 'operator' },
+        } as never);
+
+        const result = await controller.placeHold(
+          'ol_order_001',
+          { reason: 'operator', note: 'waiting on buyer' },
+          USER
+        );
+
+        expect(result.hold.id).toBe('hold-1');
+        expect(result.hold.placedAt).toBe('2026-08-20T10:00:00.000Z');
+        expect(result.hold.releasedAt).toBeNull();
+      });
+
+      it('should stamp the acting user from the session, never the body', async () => {
+        repository.findById.mockResolvedValue(mockOrder);
+        holdService.place.mockResolvedValue({
+          hold: openHold,
+          fact: { type: 'held', internalOrderId: 'ol_order_001', reason: 'operator' },
+        } as never);
+
+        await controller.placeHold('ol_order_001', { reason: 'operator' }, USER);
+
+        expect(holdService.place).toHaveBeenCalledWith(
+          expect.objectContaining({ placedBy: { kind: 'user', userId: 'user-1' } })
+        );
+      });
+
+      it('should throw NotFoundException when the order does not exist', async () => {
+        repository.findById.mockResolvedValue(null);
+
+        await expect(
+          controller.placeHold('ol_order_missing', { reason: 'operator' }, USER)
+        ).rejects.toBeInstanceOf(NotFoundException);
+        expect(holdService.place).not.toHaveBeenCalled();
+      });
+
+      it('should answer 409 with a distinguishable code when the order is already held', async () => {
+        repository.findById.mockResolvedValue(mockOrder);
+        holdService.place.mockRejectedValue(new OrderAlreadyOnHoldError('ol_order_001', 'hold-1'));
+
+        await expect(
+          controller.placeHold('ol_order_001', { reason: 'operator' }, USER)
+        ).rejects.toMatchObject({
+          response: expect.objectContaining({ error: 'ORDER_ALREADY_ON_HOLD' }),
+        });
+      });
+    });
+
+    describe('releaseHold', () => {
+      beforeEach(() => {
+        holdService.listHolds.mockResolvedValue([openHold]);
+        holdService.release.mockResolvedValue({
+          hold: releasedHold,
+          fact: { type: 'released', internalOrderId: 'ol_order_001', reason: 'operator' },
+        } as never);
+      });
+
+      it('should release the hold and report the provisioning resume', async () => {
+        const result = await controller.releaseHold('ol_order_001', 'hold-1', {}, USER);
+
+        expect(result.hold.releasedAt).toBe('2026-08-21T10:00:00.000Z');
+        expect(result.provisioningResume).toEqual({
+          status: 'enqueued',
+          jobId: 'job-1',
+          reason: null,
+        });
+        expect(provisioningResume.resume).toHaveBeenCalledWith('ol_order_001');
+      });
+
+      it('should 404 without attempting the release when the hold belongs to another order', async () => {
+        holdService.listHolds.mockResolvedValue([]);
+
+        await expect(
+          controller.releaseHold('ol_order_001', 'hold-of-another-order', {}, USER)
+        ).rejects.toBeInstanceOf(NotFoundException);
+        // The refusal path must perform no side effect.
+        expect(holdService.release).not.toHaveBeenCalled();
+      });
+
+      it('should answer 409 with a distinguishable code when the hold is already released', async () => {
+        holdService.release.mockRejectedValue(new HoldAlreadyReleasedError('hold-1', new Date('2026-08-21T10:00:00.000Z')));
+
+        await expect(
+          controller.releaseHold('ol_order_001', 'hold-1', {}, USER)
+        ).rejects.toMatchObject({
+          response: expect.objectContaining({ error: 'HOLD_ALREADY_RELEASED' }),
+        });
+      });
+
+      it('should answer 400 when a note is required and missing', async () => {
+        holdService.release.mockRejectedValue(
+          new HoldReleaseNoteRequiredError('hold-1', 'automation')
+        );
+
+        await expect(
+          controller.releaseHold('ol_order_001', 'hold-1', {}, USER)
+        ).rejects.toBeInstanceOf(BadRequestException);
+      });
+
+      it('should still succeed, reporting the failure code, when the resume enqueue fails', async () => {
+        provisioningResume.resume.mockResolvedValue({
+          status: 'failed',
+          reason: 'enqueue-failed',
+        });
+
+        const result = await controller.releaseHold('ol_order_001', 'hold-1', {}, USER);
+
+        expect(result.hold.releasedAt).not.toBeNull();
+        expect(result.provisioningResume).toEqual({
+          status: 'failed',
+          jobId: null,
+          reason: 'enqueue-failed',
+        });
+      });
+
+      it('should not fail the release when the resume service itself throws', async () => {
+        provisioningResume.resume.mockRejectedValue(new Error('unmodelled'));
+
+        const result = await controller.releaseHold('ol_order_001', 'hold-1', {}, USER);
+
+        expect(result.hold.releasedAt).not.toBeNull();
+        expect(result.provisioningResume.status).toBe('failed');
+      });
+    });
+
+    describe('detail projection', () => {
+      it('should attach holdHistory and derive activeHold from the same read', async () => {
+        repository.findById.mockResolvedValue(mockOrder);
+        holdService.listHolds.mockResolvedValue([openHold, releasedHold]);
+
+        const dto = await controller.getOrder('ol_order_001');
+
+        expect(dto.holdHistory).toHaveLength(2);
+        expect(dto.activeHold?.id).toBe('hold-1');
+        expect(holdService.listHolds).toHaveBeenCalledTimes(1);
+      });
+
+      it('should report activeHold as null when every hold is released', async () => {
+        repository.findById.mockResolvedValue(mockOrder);
+        holdService.listHolds.mockResolvedValue([releasedHold]);
+
+        const dto = await controller.getOrder('ol_order_001');
+
+        expect(dto.activeHold).toBeNull();
+        expect(dto.holdHistory).toHaveLength(1);
+      });
+
+      it('should not resolve holds per row on the list read', async () => {
+        repository.findMany.mockResolvedValue({ items: [mockOrder], total: 1 });
+        holdService.listHolds.mockClear();
+
+        await controller.listOrders({ limit: 20, offset: 0 });
+
+        expect(holdService.listHolds).not.toHaveBeenCalled();
+      });
     });
   });
 

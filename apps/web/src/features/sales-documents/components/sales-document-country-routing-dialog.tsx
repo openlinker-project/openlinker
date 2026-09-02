@@ -234,15 +234,29 @@ export function SalesDocumentCountryRoutingDialog({
   // ★ Rest of world. The tier title and body below must say which one is
   // true for THIS country, not a general claim that fall-through always
   // applies once nothing above matches.
-  const isCountryConfigured = rules.length > 0 || defaults.length > 0;
+  //
+  // `null` while the counts are still loading: `rules`/`defaults` read `?? []`,
+  // so a plain boolean would say "no rules and no default" about a configured
+  // country for as long as the queries are in flight, then flip — a false
+  // statement about the operator's own configuration, which is exactly the
+  // defect class this file exists to close. The tier renders neutral copy
+  // until the real counts arrive.
+  const isCountryConfigured: boolean | null = isSummaryLoading
+    ? null
+    : rules.length > 0 || defaults.length > 0;
 
   if (!isRestOfWorld) {
     tiers.push({
       key: 'rest-of-world',
-      title: isCountryConfigured
-        ? 'An unmatched order is held'
-        : 'Falls through to ★ Rest of world',
-      content: isCountryConfigured ? (
+      title:
+        isCountryConfigured === null
+          ? 'What happens to an unmatched order'
+          : isCountryConfigured
+            ? 'An unmatched order is held'
+            : 'Falls through to ★ Rest of world',
+      content: isCountryConfigured === null ? (
+        <p className="muted-text">Reading this market&apos;s rules and defaults…</p>
+      ) : isCountryConfigured ? (
         <p className="muted-text">
           {displayName} has its own routing, so an order that matches nothing here is{' '}
           <strong>held</strong>. It does <strong>not</strong> go to{' '}
@@ -274,9 +288,11 @@ export function SalesDocumentCountryRoutingDialog({
       <p className="muted-text">
         {isRestOfWorld
           ? 'If nothing above matches, the order has no configured fallback left and is reported unresolved.'
-          : isCountryConfigured
-            ? 'The order is held, as stated above — it is never passed to ★ Rest of world once this country has any rule or default of its own.'
-            : 'If ★ Rest of world also has no matching rule or default, the order is reported unresolved.'}
+          : isCountryConfigured === null
+            ? 'What happens here depends on whether this market has any routing of its own — reading that now.'
+            : isCountryConfigured
+              ? 'The order is held, as stated above — it is never passed to ★ Rest of world once this country has any rule or default of its own.'
+              : 'If ★ Rest of world also has no matching rule or default, the order is reported unresolved.'}
       </p>
     ),
   });

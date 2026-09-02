@@ -19,6 +19,21 @@ import type { ConnectionRateLimit } from '@openlinker/core/identifier-mapping';
  * `AdapterMetadata.supportedCapabilities`, which is the source of truth for
  * "is this capability supported?", regardless of whether the name appears
  * in `CoreCapabilityValues`.
+ *
+ * A name enters this array iff a call site resolves it BY CONNECTION ID through
+ * `getCapabilityAdapter`. That rule is why `'FulfillmentRouter'` (ADR-052 A2,
+ * sourcing) is deliberately absent: A2 is declared `capability: 'config-only'`
+ * in `fulfillment-authority/domain/types/authority-kind.types.ts`, because
+ * ADR-054/ADR-055 ship the router as a connection-backed plugin — candidacy is
+ * configuration rather than a narrowed capability, and `resolveAuthorities`
+ * skips the `supportedCapabilities` gate entirely for it. Landing the name
+ * early would not be merely inert: an advertised name INVITES a later gate, and
+ * because `enabledCapabilities` is stamped at connection-create and never
+ * retro-filled (#2085), that gate would silently drain nothing for every
+ * connection that already exists. This is exactly why #2220 kept
+ * `ModifiedProductLister` out of this array and out of every manifest. The name
+ * is re-admitted by whichever wave takes A2 off `'config-only'`; #2403 is the
+ * record until then.
  */
 export const CoreCapabilityValues = [
   'ProductMaster',
@@ -39,6 +54,26 @@ export const CoreCapabilityValues = [
   // Deliberately NOT a document type on `Invoicing`: different issuer, device
   // dependency, legal basis and retry semantics.
   'Fiscalization',
+  // Returns disposition authority (ADR-052 / #2351): who decides what happens
+  // to goods a customer sends back. Unlike `ReturnSourceReader` / `ReturnDecliner`
+  // — read off an adapter manifest and never written — this name is written by an
+  // operator into `enabledCapabilities`, which both connection DTOs `@IsIn`-validate
+  // against this array. Keeping it out would make it unwritable — necessary, but on
+  // its own NOT sufficient: `ConnectionService` also validates the name against the
+  // resolved adapter's `supportedCapabilities`, and no shipped manifest advertises
+  // `ReturnsAuthority` yet, so A5 cannot resolve to a non-OpenLinker holder until an
+  // adapter declares it.
+  'ReturnsAuthority',
+  // Availability read authority (ADR-052 A1 / #2403): who answers "how many can
+  // I sell?" for a connection. `AUTHORITY_KIND_DESCRIPTORS.availability.capability`
+  // names this string as A1's gate, so it is resolved by narrowing a dispatched
+  // adapter — a dispatch name, not an advertised-without-dispatch one. No shipped
+  // manifest advertises it yet, so it stays unassignable until one does.
+  'AvailabilityAuthority',
+  // Fulfilment execution authority (ADR-052 A3 / #2403): who holds a work object
+  // and is allowed to act on it. `AUTHORITY_KIND_DESCRIPTORS['fulfillment-execution']
+  // .capability` names this string as A3's gate. ADVERTISED since #2409 (openlinker.oms.v1).
+  'FulfillmentExecutor',
 ] as const;
 
 /**
@@ -144,6 +179,31 @@ export interface AdapterMetadata {
    * `AdapterMetadata` itself, so the value is threaded in structurally.
    */
   defaultRateLimit?: ConnectionRateLimit;
+
+  /**
+   * Whether a connection for this adapter must carry credentials (#2405,
+   * ADR-055). Absent means `true` — every adapter that crosses a network
+   * boundary needs them, so an adapter declaring nothing is unchanged.
+   *
+   * `false` relaxes `ConnectionService.create`'s credential guard
+   * **capability-wise**: the OL-OMS holds no credentials because it crosses no
+   * network boundary at all, answering from OpenLinker's own tables. The
+   * relaxation deliberately keys on this declared field rather than on a
+   * privileged `platformType === 'openlinker'` check, which would make the
+   * host privilege one plugin by name and be unavailable to any third-party
+   * OMS adapter.
+   *
+   * It relaxes ONLY the "neither supplied" arm. Supplying *both* credentials
+   * and a `credentialsRef` stays a 400 at every setting — it is contradictory
+   * input, and letting it through would encrypt and persist a credential row
+   * nothing ever reads while silently discarding the caller's own ref.
+   *
+   * The resulting row carries `credentialsRef: ''` (the shipped Subiekt
+   * precedent), which every resolution site already guards with
+   * `if (credentialsRef)`. Read it through {@link resolveRequiresCredentials}
+   * rather than directly, so the safe default is always applied.
+   */
+  requiresCredentials?: boolean;
 }
 
 /**
@@ -180,5 +240,23 @@ export function resolveVariantGroupingModel(
   metadata: Pick<AdapterMetadata, 'variantGrouping'> | undefined | null
 ): VariantGroupingModel {
   return metadata?.variantGrouping ?? 'parent-child';
+}
+
+/**
+ * Resolve whether an adapter's connections must carry credentials, defaulting
+ * to `true` when the adapter declares nothing (#2405, ADR-055). The safe
+ * default is the restrictive one: an unresolvable or silent adapter keeps the
+ * credential guard it has always had, so relaxing it is always an explicit act
+ * by the adapter author.
+ *
+ * Pure, no I/O — the `resolveVariantGroupingModel` shape directly above, and
+ * admissible in a `*.types.ts` under the same rule
+ * (`docs/engineering-standards.md` § the pure-rule exception, #2231): it is
+ * the coercion rule for the field it sits beside, and the two change together.
+ */
+export function resolveRequiresCredentials(
+  metadata: Pick<AdapterMetadata, 'requiresCredentials'> | undefined | null
+): boolean {
+  return metadata?.requiresCredentials ?? true;
 }
 

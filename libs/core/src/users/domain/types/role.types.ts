@@ -58,6 +58,14 @@ export const PermissionValues = [
   'webhooks:read',
   'ai:suggest',
   'content:write',
+  // Automation v1 (#2364). The roles holding these MUST stay identical to the
+  // `@Roles` lists on `AutomationsController`: every read and the dry run are
+  // `admin` + `operator`, every write is `admin`. Arming a rule is a standing,
+  // uncounted grant of authority to act for the operator — one rule can buy a
+  // thousand labels — so the write stays admin-only, matching that controller's
+  // own reasoning. Same discipline as `shipments:write` above.
+  'automations:read',
+  'automations:write',
 ] as const;
 
 /**
@@ -94,6 +102,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'invoices:read',
     'webhooks:read',
     'content:write',
+    'automations:read',
   ],
   viewer: [
     'connections:read',

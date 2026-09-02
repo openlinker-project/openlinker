@@ -23,7 +23,12 @@ import {
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
   CORE_ENTITY_TYPE,
 } from '@openlinker/core/identifier-mapping';
-import { IInventoryService, INVENTORY_SERVICE_TOKEN } from '@openlinker/core/inventory';
+import {
+  IInventoryService,
+  INVENTORY_SERVICE_TOKEN,
+  IAvailabilityService,
+  AVAILABILITY_SERVICE_TOKEN,
+} from '@openlinker/core/inventory';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { IProductsService, PRODUCTS_SERVICE_TOKEN } from '@openlinker/core/products';
 
@@ -65,7 +70,9 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
     @Inject(PRODUCTS_SERVICE_TOKEN)
-    private readonly productsService: IProductsService
+    private readonly productsService: IProductsService,
+    @Inject(AVAILABILITY_SERVICE_TOKEN)
+    private readonly availabilityService: IAvailabilityService
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
@@ -78,24 +85,92 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
       // Step 1: Validate payload
       const payload = this.validatePayload(job);
 
-      // Step 2: Get current inventory
-      const inventory = await this.inventoryService.getInventory(
-        payload.productId,
-        payload.variantId || null,
-        null // Location ID - MVP assumes single location
-      );
+      // Step 2: resolve the quantity to publish.
+      //
+      // #2324 (ADR-058 decision 5): the variant-keyed path reads the
+      // AGGREGATE through the availability seam rather than one
+      // `(product, variant, location=null)` row. That single-row read was the
+      // other half of the retired located-write skip - it summed nothing, so a
+      // located master's stock was invisible here even once a job reached it.
+      //
+      // The scope is GLOBAL, not `channel`, and that is deliberate: the
+      // per-connection stock safety buffer (#1844) is a destination Control
+      // applied EXACTLY ONCE downstream, per item, by
+      // `InventorySyncService.updateOfferQuantities` via
+      // `applyPublishControls` (#2323). Asking for a channel scope here would
+      // buffer the same number twice - see the "so nothing double-buffers" note
+      // on `VariantAvailability.availableToPromise` in `inventory.types.ts`.
+      // This handler also fans out to MANY connections from one read, so there
+      // is no single channel whose cushion it could defensibly borrow.
+      let promisableQuantity: number;
+      if (payload.variantId) {
+        const [availability] = await this.availabilityService.getPromisableQuantities({
+          variantIds: [payload.variantId],
+          scope: { kind: 'global' },
+        });
 
-      if (!inventory) {
-        this.logger.warn(
-          `No inventory found for product ${payload.productId}${payload.variantId ? `, variant ${payload.variantId}` : ''}. Skipping propagation.`
+        // ADR-061 three-arm switch. `unknown` means the reservation-ledger read
+        // failed - OpenLinker does not know the number. Publishing anything
+        // here would oversell by the outstanding holds, and swallowing it as
+        // `outcome: 'ok'` would be worse than on a cron path: this job is
+        // EVENT-DRIVEN with no cron backstop, so a silently-dropped propagation
+        // is stock drift until the next unrelated write. Throw, and let the
+        // runner's retry ladder re-read a ledger that is probably transiently
+        // unavailable. (Posture parity with #2323's write-back arm.)
+        if (availability.provenance === 'unknown') {
+          this.logger.error(
+            `inventory_propagation_suppressed_availability_unknown product=${payload.productId} ` +
+              `variant=${payload.variantId} — available-to-promise could not be resolved; no ` +
+              `quantity update was enqueued`
+          );
+          throw new SyncJobExecutionError(
+            'Available-to-promise could not be resolved for this variant; the propagation was ' +
+              'suppressed rather than publishing a quantity that ignores outstanding reservations.',
+            job.id,
+            job.jobType,
+            job.connectionId || 'N/A'
+          );
+        }
+
+        // `computed` / `authority` — a real number. Non-null by the seam's
+        // contract (`quantity === null` iff `provenance === 'unknown'`).
+        promisableQuantity = availability.quantity as number;
+
+        // A variant with no live positions at all is a KNOWN zero, not an
+        // absence of knowledge (see `toPromisableQuantity`), and publishing
+        // that 0 is correct - it is exactly what #1689's stale-variant pause
+        // and #1844's master-is-authoritative-including-zero rule require. It
+        // is still worth a line: before #2324 this handler returned early and
+        // published nothing at all in that state.
+        if (availability.observedAt === null) {
+          this.logger.warn(
+            `inventory_propagation_no_observed_positions product=${payload.productId} variant=${payload.variantId} — publishing a known zero`
+          );
+        }
+      } else {
+        // Legacy product-level tail: a payload with no variantId has no variant
+        // to ask the seam about, and the seam is variant-keyed by contract.
+        // Master inventory has been variant-keyed since #822/#823, so this arm
+        // only serves pre-existing product-level rows; the ShopProduct fan-out
+        // below already skips it entirely.
+        const inventory = await this.inventoryService.getInventory(
+          payload.productId,
+          null,
+          null // Location ID - legacy product-level rows are pooled by definition
         );
-        return { outcome: 'ok' };
+
+        if (!inventory) {
+          this.logger.warn(
+            `No product-level inventory found for product ${payload.productId}. Skipping propagation.`
+          );
+          return { outcome: 'ok' };
+        }
+
+        promisableQuantity = inventory.availableQuantity;
       }
 
-      const availableQuantity = inventory.availableQuantity;
-
       this.logger.debug(
-        `Current inventory for product ${payload.productId}: ${availableQuantity} available`
+        `Resolved publish quantity for product ${payload.productId}: ${promisableQuantity}`
       );
 
       // Stale-variant guard (#1689): a variant just zeroed by the stale-offer-
@@ -140,10 +215,10 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
           offerMappings.map((mapping) =>
             this.enqueueQuantityUpdate(
               mapping,
-              availableQuantity,
+              promisableQuantity,
               // Include write-event token to avoid suppressing legitimate
               // quantity oscillations (e.g. 5->6->5).
-              `inventory:${mapping.connectionId}:${payload.productId}:${payload.variantId || 'base'}:${availableQuantity}:${writeEventToken}`,
+              `inventory:${mapping.connectionId}:${payload.productId}:${payload.variantId || 'base'}:${promisableQuantity}:${writeEventToken}`,
               payload.inventoryUpdatedAt
             )
           )
@@ -199,12 +274,12 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
           eligibleShopMappings.map((mapping) =>
             this.enqueueQuantityUpdate(
               mapping,
-              availableQuantity,
+              promisableQuantity,
               // Same key scheme as the Offer branch PLUS a branch discriminator
               // + external id: the Offer key omits the target id, so reusing it
               // verbatim would dedupe an Offer update against a ShopProduct
               // update for the same connection/variant/quantity.
-              `inventory:${mapping.connectionId}:${payload.productId}:${payload.variantId || 'base'}:${availableQuantity}:${writeEventToken}:shop:${mapping.externalId}`,
+              `inventory:${mapping.connectionId}:${payload.productId}:${payload.variantId || 'base'}:${promisableQuantity}:${writeEventToken}:shop:${mapping.externalId}`,
               payload.inventoryUpdatedAt
             )
           )

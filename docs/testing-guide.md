@@ -501,6 +501,31 @@ pnpm test && pnpm test:integration
 
 ---
 
+## Port-contract suites
+
+A **port-contract suite** is a parameterized spec every implementation of a port must pass — one shared statement of what the contract means, so the first implementer is bound to the contract rather than the contract silently becoming whatever that implementer did. Three ship today:
+
+| Suite | Entry point | Location |
+|---|---|---|
+| KSeF HTTP client | `runKsefHttpClientContract` | `libs/integrations/ksef/src/testing/` |
+| Subiekt bridge | `runSubiektBridgeContractTests` | `libs/integrations/subiekt/src/testing/` |
+| Fulfilment router + executor (#2404) | `runFulfillmentRouterContract` / `runFulfillmentExecutorContract` | `libs/core/src/fulfillment/testing/` |
+
+**Each package owns the suite for its own port** — "one kit" means one consistently-shaped suite per port, not one file — and each lives on a dedicated `./testing` subpath that the package's main barrel does **not** re-export, because a suite names ambient Jest globals (`describe` / `it` / `expect`) and a runtime `require()` reaching it dies with `describe is not defined`.
+
+### Writing one
+
+Follow the fulfilment kit's shape rather than the two older ones, for one reason: **a contract suite is exactly the machinery that can look thorough and assert nothing**, and a jest-coupled suite cannot answer "did this actually assert anything?" from outside jest, where an `it` that asserts nothing is indistinguishable from one that passes.
+
+Split the rules into a **pure checker** (`check*Contract`, naming no jest global, returning per-case `{id, checks, failures[]}`) plus a **thin jest wrapper** (`run*Contract`). Then:
+
+- **Refuse, never skip.** No usable subject and an empty case table must THROW. Reporting them lets a caller render "0 failures" over an unasked question — the shape that reported green over a live divergence for months in #2673.
+- **Give every declared case one deliberate breakage fixture**, and assert `declared === covered` failing on **either** side. This is the primary guard: a self-reported `checks` counter only catches a case that never RAN, not one that ran and compared nothing.
+- **Assert each fixture fails its OWN case** plus only the collateral it declares. "At least the target failed" would pass a fixture that broke everything.
+- **Handle an optional sub-capability by ABSENCE asserted in both directions**, never `it.skip` — otherwise a broken optional read is indistinguishable from an absent one. Decide applicability in ONE function both the checker and the wrapper call, so what is reported and what ran cannot drift.
+- **Cite the declaration each rule rests on, and ship no rule without one.** A mirror stricter than the gate refuses work the destination would have accepted (#2240). Where a stated guarantee is only half-observable, assert the observable half and say so.
+- **Verify red first**, and check the red is for the right reason: a mutation that fails to compile reports `Tests: 0 total`, which is a false pass, not evidence.
+
 ## Test Organization
 
 > **Plugin authors**: the integration-test harness is published as
@@ -571,7 +596,8 @@ integration job builds `dist` first). This bit #916 (api missing `inpost`) and
 `scripts/check-jest-integration-mappers.mjs` (run from `pnpm lint` via
 `pnpm check:invariants`) guards it: for `apps/api` and `apps/worker`, every
 `@openlinker/integrations-*` package imported in `plugins.ts` — plus the base set
-`@openlinker/core` / `@openlinker/shared` / `@openlinker/plugin-sdk` — must have
+`@openlinker/core` / `@openlinker/shared` / `@openlinker/plugin-sdk` /
+`@openlinker/oms` — must have
 **both** a `^<pkg>$` and a `^<pkg>/(.*)$` entry in that app's
 `jest-integration.cjs`, and the bare entry's target file must exist (catches a
 typo'd `src` path). A failure names the app, the package, and the fix (the exact

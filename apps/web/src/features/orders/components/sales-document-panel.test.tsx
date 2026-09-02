@@ -20,6 +20,7 @@ import {
 } from '../../../test/test-utils';
 import { ApiError } from '../../../shared/api/api-error';
 import { formatAmount } from '../../../shared/format/format-amount';
+import { PermissionValues } from '../../../shared/auth/session.types';
 import type { Connection } from '../../connections';
 import type { OrderRecord } from '../api/orders.types';
 import type { InvoiceRecord } from '../../invoicing';
@@ -195,28 +196,6 @@ describe('SalesDocumentPanel — state 2: empty + gate-block reason', () => {
     expect(screen.queryByText(/would create a second document/i)).toBeNull();
   });
 
-  it('leads with a primary fix-routing action and demotes the manual override behind a disclosure (#2807)', async () => {
-    const a = { ...invoicingConnection, id: 'conn_aaa', name: 'Alpha' };
-    const b = { ...invoicingConnection, id: 'conn_zzz', name: 'Zeta' };
-    renderWithProviders(<SalesDocumentPanel order={order} />, {
-      apiClient: createMockApiClient({
-        connections: { list: vi.fn().mockResolvedValue([b, a]) },
-        invoicing: { getForOrder: vi.fn().mockRejectedValue(notFound()) },
-      }),
-      ...adminSession,
-    });
-    await screen.findByText(/Automatic invoicing is off for this order/i);
-
-    const fixRoutingLink = screen.getByRole('link', { name: /fix routing settings/i });
-    expect(fixRoutingLink).toHaveAttribute('href', '/settings/sales-documents');
-
-    const overrideSummary = screen.getByText(/issue or register manually instead/i);
-    expect(overrideSummary.closest('details')).not.toBeNull();
-    expect(overrideSummary.closest('details')).toContainElement(
-      screen.getByRole('button', { name: /issue invoice/i }),
-    );
-  });
-
   it('renders fiscal-receipt-flavored copy for a persisted block when the candidate pool is fiscal-only (#2156)', async () => {
     renderWithProviders(
       <SalesDocumentPanel
@@ -256,7 +235,7 @@ describe('SalesDocumentPanel — state 2: empty + gate-block reason', () => {
 });
 
 describe('SalesDocumentPanel — state 3: register-receipt blocked by an existing invoice', () => {
-  it('renders no dead action, and no restated "one document" alert either (#2561, review: alert removed as noise)', async () => {
+  it('states the fact with no dead action, distinct from state 2 (#2561)', async () => {
     renderWithProviders(<SalesDocumentPanel order={order} />, {
       apiClient: createMockApiClient({
         connections: { list: vi.fn().mockResolvedValue([invoicingConnection, fiscalConnection]) },
@@ -265,11 +244,11 @@ describe('SalesDocumentPanel — state 3: register-receipt blocked by an existin
       ...adminSession,
     });
     expect(await screen.findByText('FV/2026/06/001')).toBeInTheDocument();
-    // The other kind's action is simply absent — no disabled button, and no
-    // longer a standing "already has a document" alert either: the filled
-    // invoice slot already states the whole fact.
+    expect(screen.getByText(/This order already has a document/i)).toBeInTheDocument();
+    expect(screen.getByText(/already has an invoice from Subiekt GT/i)).toBeInTheDocument();
+    // #2561 — the override is unreachable from a state that already carries a
+    // document, so there is no disabled "Register receipt" button here at all.
     expect(screen.queryByRole('button', { name: 'Register receipt' })).toBeNull();
-    expect(screen.queryByText(/This order already has a document/i)).toBeNull();
   });
 
   it('does NOT block when the existing invoice is a retryable rejected failure', async () => {
@@ -291,7 +270,7 @@ describe('SalesDocumentPanel — state 3: register-receipt blocked by an existin
 });
 
 describe('SalesDocumentPanel — state 4: issue-invoice blocked by an existing receipt', () => {
-  it('renders no dead action, and no restated "one document" alert either (#2561, review: alert removed as noise)', async () => {
+  it('states the fact with no dead action, distinct from state 2 (#2561)', async () => {
     renderWithProviders(<SalesDocumentPanel order={order} />, {
       apiClient: createMockApiClient({
         connections: { list: vi.fn().mockResolvedValue([invoicingConnection, fiscalConnection]) },
@@ -301,10 +280,9 @@ describe('SalesDocumentPanel — state 4: issue-invoice blocked by an existing r
       ...adminSession,
     });
     expect(await screen.findByText('1/2026/08/14')).toBeInTheDocument();
-    // #2561 — no disabled "Issue invoice" button when a document already
-    // exists, and (review finding) no restated alert either.
+    expect(screen.getByText(/This order already has a document/i)).toBeInTheDocument();
+    // #2561 — no disabled "Issue invoice" button when a document already exists.
     expect(screen.queryByRole('button', { name: 'Issue invoice' })).toBeNull();
-    expect(screen.queryByText(/This order already has a document/i)).toBeNull();
   });
 });
 
@@ -831,5 +809,116 @@ describe('SalesDocumentPanel — header agrees with body (#2527)', () => {
     });
 
     expect(await screen.findByText('Nothing is running for this receipt')).toBeInTheDocument();
+  });
+});
+
+describe('SalesDocumentPanel — the gates that decide whether a write control renders', () => {
+  // ── contended (#2559) ────────────────────────────────────────────────────
+  it('should report a refused second attempt as in-progress-elsewhere, not as a failure', async () => {
+    const user = userEvent.setup();
+    const register = vi
+      .fn()
+      .mockRejectedValue(
+        new ApiError('Another attempt is in flight', 409, { message: 'in flight' }),
+      );
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([fiscalConnection]) },
+        fiscalization: { listForOrder: vi.fn().mockResolvedValue([]), register },
+      }),
+      ...adminSession,
+    });
+
+    await user.click(await screen.findByRole('button', { name: /register receipt/i }));
+
+    expect(
+      await screen.findByText('Another attempt is already running'),
+    ).toBeInTheDocument();
+    // The headline follows, and carries no elapsed counter: `SalesDocumentInFlight`
+    // is a lower bound on elapsed time, never a completion estimate (#2559).
+    await waitFor(() =>
+      expect(document.querySelector('.document-headline__word')?.textContent).toContain(
+        'In progress elsewhere',
+      ),
+    );
+    // A 409 is the exactly-once claim working, not a failed request.
+    expect(screen.queryByText(/Could not register receipt/i)).toBeNull();
+  });
+
+  // ── canOverride (#2561) ──────────────────────────────────────────────────
+  it('should hide the manual issue control from a non-admin session outside demo mode', async () => {
+    const operator = createAuthenticatedSessionAdapter({
+      id: 'user_2',
+      username: 'operator',
+      email: null,
+      // Every invoicing permission, but not the admin role the write path
+      // (`@Roles('admin')`) actually gates on.
+      role: 'operator',
+      permissions: [...PermissionValues],
+    });
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([invoicingConnection, fiscalConnection]) },
+        invoicing: { getForOrder: vi.fn().mockRejectedValue(notFound()) },
+        fiscalization: { listForOrder: vi.fn().mockResolvedValue([]) },
+      }),
+      sessionAdapter: operator,
+    });
+
+    expect(await screen.findByText('Sales document')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /issue invoice/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /register receipt/i })).toBeNull();
+  });
+
+  it('should offer the manual issue control to an admin session on the same order', async () => {
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([invoicingConnection, fiscalConnection]) },
+        invoicing: { getForOrder: vi.fn().mockRejectedValue(notFound()) },
+        fiscalization: { listForOrder: vi.fn().mockResolvedValue([]) },
+      }),
+      ...adminSession,
+    });
+
+    expect(await screen.findByRole('button', { name: /issue invoice/i })).toBeInTheDocument();
+  });
+
+  // ── hardBlockedNoAction (#2560) ──────────────────────────────────────────
+  it('should hide the action entirely for a hard block, rather than offering one that would refuse', async () => {
+    renderWithProviders(
+      <SalesDocumentPanel
+        order={{ ...order, salesDocumentBlockReason: 'missing-required-tax-id' }}
+      />,
+      {
+        apiClient: createMockApiClient({
+          connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) },
+          invoicing: { getForOrder: vi.fn().mockRejectedValue(notFound()) },
+        }),
+        ...adminSession,
+      },
+    );
+
+    expect(
+      await screen.findByText(/cannot be issued without the buyer tax ID/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /issue invoice/i })).toBeNull();
+  });
+
+  it('should keep a disabled-with-reason control for missing-tax-rate rather than hiding it', async () => {
+    // The one carve-out: this reason already closes the action through its own
+    // refusal copy, which names the rate-less lines. Hiding it too would drop
+    // that information.
+    renderWithProviders(
+      <SalesDocumentPanel order={{ ...order, salesDocumentBlockReason: 'missing-tax-rate' }} />,
+      {
+        apiClient: createMockApiClient({
+          connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) },
+          invoicing: { getForOrder: vi.fn().mockRejectedValue(notFound()) },
+        }),
+        ...adminSession,
+      },
+    );
+
+    expect(await screen.findByRole('button', { name: /issue invoice/i })).toBeDisabled();
   });
 });

@@ -48,6 +48,7 @@ import { erliPlugin } from './erli';
 import { infaktPlugin } from './infakt';
 import { inpostPlugin } from './inpost';
 import { ksefPlugin } from './ksef';
+import { omsPlugin } from './oms';
 import { prestashopPlugin } from './prestashop';
 import { subiektPlugin } from './subiekt';
 import { woocommercePlugin } from './woocommerce';
@@ -63,6 +64,7 @@ export const plugins: readonly OpenLinkerPlugin[] = [
   ksefPlugin,
   infaktPlugin,
   eparagonyPlugin,
+  omsPlugin,
 ];
 
 assertUniquePluginInvariants(plugins);

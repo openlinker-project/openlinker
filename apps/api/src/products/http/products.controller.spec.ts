@@ -87,7 +87,10 @@ function createMockInventoryQuery(): jest.Mocked<IInventoryQueryService> {
   return {
     listInventoryItems: jest.fn(),
     getAvailabilityByVariantIds: jest.fn(),
+    findAvailabilityByVariantIds: jest.fn(),
     getProductStockAggregates: jest.fn(),
+    // Unused here — the mock satisfies the full IInventoryQueryService shape (#2319).
+    getDuplicatePositionReport: jest.fn(),
   };
 }
 

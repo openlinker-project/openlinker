@@ -4,6 +4,7 @@
  * @module libs/core/src/sync/application/services/__tests__
  */
 import type { CanonicalInboundEvent } from '@openlinker/core/integrations';
+import { OrderFeedEventTypeValues } from '@openlinker/core/orders';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { InboundRoutingPolicyService } from '../inbound-routing-policy.service';
 import type { JobEnqueuePort } from '../../../domain/ports/job-enqueue.port';
@@ -55,6 +56,37 @@ describe('InboundRoutingPolicyService', () => {
       idempotencyKey: 'prestashop:conn-1:evt-9',
     });
   });
+
+  /**
+   * The mirror's OTHER direction (#2675 review).
+   *
+   * `ORDER_FEED_EVENT_TYPES` in the service is pinned upstream with
+   * `satisfies readonly OrderFeedEventType[]`, which asserts every element IS
+   * an `OrderFeedEventType` and therefore catches a token REMOVED upstream. It
+   * asserts nothing about coverage, so a token ADDED to
+   * `OrderFeedEventTypeValues` compiles, leaves every test green, and is
+   * silently coerced to `'updated'` on the routing path — the inbound webhook
+   * for the new event type would be routed as an ordinary update forever.
+   *
+   * Asserted BEHAVIOURALLY rather than as a type-level `Exclude`: the property
+   * that matters is what reaches the payload, and a behavioural check cannot be
+   * satisfied by widening a type. Driven off the runtime
+   * `OrderFeedEventTypeValues` array, so a new member enrols itself here.
+   */
+  it.each(OrderFeedEventTypeValues)(
+    'should carry the canonical order eventType %s through to the payload rather than coercing it',
+    async (eventType) => {
+      await service.route(
+        event({ domain: 'order', eventType }),
+        connection(['OrderSource']),
+        ['OrderSource'],
+        'evt-9'
+      );
+
+      const enqueued = jobEnqueue.enqueueJob.mock.calls[0][0];
+      expect((enqueued.payload as { eventType: string }).eventType).toBe(eventType);
+    }
+  );
 
   it('should coerce an unknown order eventType to updated', async () => {
     await service.route(
@@ -240,4 +272,125 @@ describe('InboundRoutingPolicyService', () => {
     expect(outcome.status).toBe('ungated');
     expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
   });
+
+  // ---- #2400: the two new inbound domains -------------------------------
+
+  describe('fulfillment domain (#2400)', () => {
+    it('should route a fulfillment event to fulfillment.work.statusSync when FulfillmentExecutor is supported and enabled', async () => {
+      const outcome = await service.route(
+        event({ domain: 'fulfillment', externalId: 'vendor-work-7', eventType: 'picked' }),
+        connection(['FulfillmentExecutor']),
+        ['FulfillmentExecutor'],
+        'evt-11'
+      );
+
+      expect(outcome).toEqual({
+        status: 'enqueued',
+        jobId: 'job-1',
+        jobType: 'fulfillment.work.statusSync',
+      });
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith({
+        jobType: 'fulfillment.work.statusSync',
+        connectionId: 'conn-1',
+        payload: {
+          schemaVersion: 1,
+          externalWorkId: 'vendor-work-7',
+          sourceEventId: 'evt-11',
+          eventType: 'picked',
+          occurredAt: '2026-01-01T00:00:00.000Z',
+        },
+        idempotencyKey: 'prestashop:conn-1:evt-11',
+      });
+    });
+
+    it('should carry NO progress deltas in the payload, because a webhook body is never a source of truth', async () => {
+      // Guards the #904 discipline structurally. A future change that "makes the
+      // handler work" by widening the payload to carry quantities would move
+      // real fulfilment counters off an unauthenticated body; this fails first.
+      await service.route(
+        event({ domain: 'fulfillment', externalId: 'vendor-work-7' }),
+        connection(['FulfillmentExecutor']),
+        ['FulfillmentExecutor'],
+        'evt-11'
+      );
+
+      const payload = jobEnqueue.enqueueJob.mock.calls[0][0].payload;
+      expect(Object.keys(payload).sort()).toEqual([
+        'eventType',
+        'externalWorkId',
+        'occurredAt',
+        'schemaVersion',
+        'sourceEventId',
+      ]);
+    });
+
+    it('should resolve ungated when FulfillmentExecutor is absent — every connection that has not enabled it', async () => {
+      // Until #2409 no manifest advertised `FulfillmentExecutor` at all, so this
+      // was what every shipped deployment did. `openlinker.oms.v1` advertises it
+      // now, which narrows this case rather than retiring it: it is still what
+      // happens for any connection whose operator has not enabled the capability,
+      // which is every connection except an explicitly configured OMS one.
+      const outcome = await service.route(
+        event({ domain: 'fulfillment', externalId: 'vendor-work-7' }),
+        connection([]),
+        [],
+        'evt-11'
+      );
+
+      expect(outcome).toEqual({
+        status: 'ungated',
+        domain: 'fulfillment',
+        requiredCapability: 'FulfillmentExecutor',
+      });
+      expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('return domain (#2400)', () => {
+    it('should route a return event to the existing marketplace.return.sync job', async () => {
+      const outcome = await service.route(
+        event({ domain: 'return', externalId: 'ret-5' }),
+        connection(['OrderSource']),
+        ['OrderSource'],
+        'evt-12'
+      );
+
+      expect(outcome).toEqual({
+        status: 'enqueued',
+        jobId: 'job-1',
+        jobType: 'marketplace.return.sync',
+      });
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith({
+        jobType: 'marketplace.return.sync',
+        connectionId: 'conn-1',
+        payload: {
+          schemaVersion: 1,
+          externalReturnId: 'ret-5',
+          eventKey: 'evt-12',
+          occurredAt: '2026-01-01T00:00:00.000Z',
+        },
+        idempotencyKey: 'prestashop:conn-1:evt-12',
+      });
+    });
+
+    it('should gate on OrderSource and NEVER on ReturnSourceReader (the #2085 trap)', async () => {
+      // `ReturnSourceReader` is guard-only: it is absent from
+      // `CoreCapabilityValues`, which both connection DTOs `@IsIn`-validate
+      // against, so `enabledCapabilities` can never contain it. Gating on it
+      // would leave this arm permanently `ungated` for every connection.
+      const outcome = await service.route(
+        event({ domain: 'return', externalId: 'ret-5' }),
+        connection(['ReturnSourceReader']),
+        ['ReturnSourceReader'],
+        'evt-12'
+      );
+
+      expect(outcome).toEqual({
+        status: 'ungated',
+        domain: 'return',
+        requiredCapability: 'OrderSource',
+      });
+    });
+  });
+
 });

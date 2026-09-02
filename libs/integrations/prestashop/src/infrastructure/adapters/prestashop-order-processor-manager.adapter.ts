@@ -978,45 +978,62 @@ export class PrestashopOrderProcessorManagerAdapter
    */
   async write(event: OrderLifecycleEvent): Promise<OrderWritebackResult> {
     try {
-      if (event.type === 'dispatched') {
-        await this.updateFulfillment({
-          externalOrderId: event.externalOrderId,
-          status: 'shipped',
-          trackingNumber: event.trackingNumber,
-        });
-        return { outcome: 'applied' };
-      }
+      switch (event.type) {
+        case 'dispatched': {
+          await this.updateFulfillment({
+            externalOrderId: event.externalOrderId,
+            status: 'shipped',
+            trackingNumber: event.trackingNumber,
+          });
+          return { outcome: 'applied' };
+        }
 
-      // event.type === 'cancelled' — refuse if the shop already shipped/delivered.
-      // One read here; the cancel carries no tracking, so we reuse the fetched
-      // state for the transition instead of re-reading via updateFulfillment.
-      const order = await this.httpClient.getResource<PrestashopOrder>(
-        'orders',
-        event.externalOrderId
-      );
-      const currentStateId = Number(order.current_state);
-      // Compared by what the shop's current state MEANS, not against one id
-      // (#2607). A shop may well carry several states that ship - "Handed to
-      // courier" beside "Shipped" - and an id equality check would refuse the
-      // cancel on only one of them and happily cancel a parcel already gone.
-      const states = await this.orderStates.load();
-      const currentStatus = states.statusOf(order.current_state);
-      const cancelledStateId = await this.resolveStateId('cancelled');
-      if (currentStatus === 'shipped' || currentStatus === 'delivered') {
-        this.logger.warn(
-          `PrestaShop order ${event.externalOrderId} already in state ${currentStateId} ` +
-            `(shipped/delivered) — refusing cancel writeback (connection: ${this.connection.id})`
-        );
-        return { outcome: 'rejected', detail: 'order already shipped' };
-      }
+        case 'cancelled': {
+          // Refuse if the shop already shipped/delivered. One read here; the
+          // cancel carries no tracking, so we reuse the fetched state for the
+          // transition instead of re-reading via updateFulfillment.
+          const order = await this.httpClient.getResource<PrestashopOrder>(
+            'orders',
+            event.externalOrderId
+          );
+          const currentStateId = Number(order.current_state);
+          // Compared by what the shop's current state MEANS, not against one id
+          // (#2607). A shop may well carry several states that ship - "Handed to
+          // courier" beside "Shipped" - and an id equality check would refuse the
+          // cancel on only one of them and happily cancel a parcel already gone.
+          const states = await this.orderStates.load();
+          const currentStatus = states.statusOf(order.current_state);
+          const cancelledStateId = await this.resolveStateId('cancelled');
+          if (currentStatus === 'shipped' || currentStatus === 'delivered') {
+            this.logger.warn(
+              `PrestaShop order ${event.externalOrderId} already in state ${currentStateId} ` +
+                `(shipped/delivered) — refusing cancel writeback (connection: ${this.connection.id})`
+            );
+            return { outcome: 'rejected', detail: 'order already shipped' };
+          }
 
-      await this.applyOrderStateTransition(
-        event.externalOrderId,
-        currentStateId,
-        cancelledStateId,
-        'cancelled'
-      );
-      return { outcome: 'applied' };
+          await this.applyOrderStateTransition(
+            event.externalOrderId,
+            currentStateId,
+            cancelledStateId,
+            'cancelled'
+          );
+          return { outcome: 'applied' };
+        }
+
+        default: {
+          // Unreachable in-tree: the binding is the compile break when an
+          // `OrderLifecycleEvent` member is added without an arm here (#2286).
+          // It returns rather than throwing so a caller compiled against a
+          // widened union gets a surfaced no-op, not a `rejected` from the
+          // enclosing catch (ADR-055 forward-compat).
+          const unhandled: never = event;
+          return {
+            outcome: 'unsupported',
+            detail: `unsupported order lifecycle event: ${JSON.stringify(unhandled)}`,
+          };
+        }
+      }
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       this.logger.error(

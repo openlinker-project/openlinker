@@ -28,6 +28,27 @@ export type OrderLifecycleEventType = (typeof OrderLifecycleEventTypeValues)[num
  * A lifecycle event targeted at a single participant. `externalOrderId` is the
  * participant's own external order id, resolved upstream by the relay (the
  * adapter performs no identifier mapping).
+ *
+ * **Exhaustiveness discipline (#2286).** Adding a member here is a breaking
+ * change for every in-tree consumer, and that is deliberate: each one branches
+ * with `switch (event.type)` over a `default:` arm that binds the narrowed value
+ * to `never`, so an unhandled member is a **compile** error rather than a
+ * runtime fall-through into whichever arm happened to be last. Before #2286 the
+ * consumers used two-arm `if/else`, so a third member would have compiled
+ * cleanly and been relayed to every participant *as a cancellation*.
+ *
+ * A new member therefore requires updating, in the same change: the relay
+ * (`OrderLifecycleRelayService`) and the four `OrderStatusWriteback` adapters
+ * (Allegro, Erli, PrestaShop, WooCommerce). `OrderLifecycleRelayInput.event` is
+ * derived from this union rather than restated, so the widening reaches the
+ * relay too.
+ *
+ * **Port-boundary exception (ADR-055 forward-compat).** The adapters' `default:`
+ * arms keep the `never` binding for the compile break but still *return*
+ * `{ outcome: 'unsupported' }` instead of throwing — an out-of-tree adapter
+ * compiled against an older copy of this union must degrade to a surfaced no-op,
+ * never take down a relay fan-out. The relay's own default throws (`assertNever`),
+ * because a member it cannot map is an in-tree defect, not a third-party one.
  */
 export type OrderLifecycleEvent =
   | {

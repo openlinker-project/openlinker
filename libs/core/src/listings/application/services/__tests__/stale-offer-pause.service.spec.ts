@@ -131,6 +131,25 @@ describe('StaleOfferPauseService', () => {
       });
     });
 
+    it('stamps the variant staleAt as the payload observedAt (#2285)', async () => {
+      identifierMapping.getExternalIds.mockResolvedValueOnce([
+        mapping({ connectionId: 'conn-1', externalId: 'offer-1' }),
+      ]);
+
+      await service.pauseOffersForVariants({
+        variantIds: ['ol_variant_a'],
+        correlationId: 'corr-1',
+      });
+
+      expect(jobQueue.enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          payload: expect.objectContaining({
+            observedAt: '2026-07-01T00:00:00.000Z',
+          }),
+        })
+      );
+    });
+
     it('composes the dedupe key from connectionId, externalOfferId, and staleAt', async () => {
       identifierMapping.getExternalIds.mockResolvedValueOnce([
         mapping({ connectionId: 'conn-1', externalId: 'offer-1' }),

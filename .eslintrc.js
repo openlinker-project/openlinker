@@ -220,6 +220,16 @@ module.exports = {
                   '**/analytics/components/**',
                   '**/analytics/lib/**',
                   '**/analytics/types/**',
+                  // #2364 — `features/automation` (SINGULAR) serves the
+                  // `/automations` route (plural). The slug must match the
+                  // vocabulary-gate scan root in
+                  // `scripts/check-ui-vocabulary.mjs`; a silent singular/plural
+                  // drift makes that gate skip the folder it was written for.
+                  '**/automation/api/**',
+                  '**/automation/hooks/**',
+                  '**/automation/components/**',
+                  '**/automation/lib/**',
+                  '**/automation/types/**',
                   // Added in #1938 review, when `features/demo` reached into
                   // `../../auth/hooks/`. Enumerated in full like every other
                   // slug; note that `pages/auth/*` and `app/api/api-client.ts`
@@ -246,6 +256,16 @@ module.exports = {
                   '**/customers/components/**',
                   '**/customers/lib/**',
                   '**/customers/types/**',
+                  '**/fulfillment-authority/api/**',
+                  '**/fulfillment-authority/hooks/**',
+                  '**/fulfillment-authority/components/**',
+                  '**/fulfillment-authority/lib/**',
+                  '**/fulfillment-authority/types/**',
+                  '**/fulfillment/api/**',
+                  '**/fulfillment/hooks/**',
+                  '**/fulfillment/components/**',
+                  '**/fulfillment/lib/**',
+                  '**/fulfillment/types/**',
                   '**/inventory/api/**',
                   '**/inventory/hooks/**',
                   '**/inventory/components/**',
@@ -284,6 +304,11 @@ module.exports = {
                   '**/products/components/**',
                   '**/products/lib/**',
                   '**/products/types/**',
+                  '**/returns/api/**',
+                  '**/returns/hooks/**',
+                  '**/returns/components/**',
+                  '**/returns/lib/**',
+                  '**/returns/types/**',
                   '**/shipments/api/**',
                   '**/shipments/hooks/**',
                   '**/shipments/components/**',
@@ -445,6 +470,16 @@ module.exports = {
                   '**/analytics/components/**',
                   '**/analytics/lib/**',
                   '**/analytics/types/**',
+                  // #2364 — `features/automation` (SINGULAR) serves the
+                  // `/automations` route (plural). The slug must match the
+                  // vocabulary-gate scan root in
+                  // `scripts/check-ui-vocabulary.mjs`; a silent singular/plural
+                  // drift makes that gate skip the folder it was written for.
+                  '**/automation/api/**',
+                  '**/automation/hooks/**',
+                  '**/automation/components/**',
+                  '**/automation/lib/**',
+                  '**/automation/types/**',
                   // #1938 review — `features/auth` gained a barrel; a new slug
                   // goes into BOTH pattern groups per
                   // docs/frontend-architecture.md § Feature Public Surface,
@@ -469,6 +504,16 @@ module.exports = {
                   '**/customers/components/**',
                   '**/customers/lib/**',
                   '**/customers/types/**',
+                  '**/fulfillment-authority/api/**',
+                  '**/fulfillment-authority/hooks/**',
+                  '**/fulfillment-authority/components/**',
+                  '**/fulfillment-authority/lib/**',
+                  '**/fulfillment-authority/types/**',
+                  '**/fulfillment/api/**',
+                  '**/fulfillment/hooks/**',
+                  '**/fulfillment/components/**',
+                  '**/fulfillment/lib/**',
+                  '**/fulfillment/types/**',
                   '**/inventory/api/**',
                   '**/inventory/hooks/**',
                   '**/inventory/components/**',
@@ -507,6 +552,11 @@ module.exports = {
                   '**/products/components/**',
                   '**/products/lib/**',
                   '**/products/types/**',
+                  '**/returns/api/**',
+                  '**/returns/hooks/**',
+                  '**/returns/components/**',
+                  '**/returns/lib/**',
+                  '**/returns/types/**',
                   '**/shipments/api/**',
                   '**/shipments/hooks/**',
                   '**/shipments/components/**',
@@ -586,6 +636,10 @@ module.exports = {
         'libs/integrations/ksef/**/*.ts',
         'libs/integrations/subiekt/**/*.ts',
         'libs/integrations/woocommerce/**/*.ts',
+        // #2390 / ADR-055: `libs/oms` ships no HTTP client by design — the
+        // OL-OMS answers from OpenLinker's own tables. Banned here (and
+        // scanned by scripts/check-outbound-http.mjs) so that stays enforced.
+        'libs/oms/**/*.ts',
       ],
       excludedFiles: ['**/*.spec.ts', '**/*.int-spec.ts'],
       rules: {
@@ -747,7 +801,10 @@ module.exports = {
       // coupled to TypeORM (#594). The package.json wildcards were dropped
       // — deep aliases now fail at Node runtime; this rule catches them at
       // lint time.
-      files: ['libs/integrations/**/*.ts'],
+      // `libs/oms` is a first-party product package, not an integration
+      // (ADR-055) — but it is an integration-SHAPED consumer of core and
+      // takes the identical top-level-barrel-only contract (#2390).
+      files: ['libs/integrations/**/*.ts', 'libs/oms/**/*.ts'],
       rules: {
         'no-restricted-imports': [
           'error',

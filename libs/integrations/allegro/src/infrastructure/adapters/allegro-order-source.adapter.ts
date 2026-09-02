@@ -19,7 +19,21 @@ import type {
   OrderWritebackResult,
   DispatchCarrierHint,
   MappingOption,
+  ReturnSourceReader,
+  ReturnDecliner,
 } from '@openlinker/core/orders';
+import type {
+  IncomingReturn,
+  ReturnDeclineCommand,
+  ReturnDeclineResult,
+  ReturnFeedInput,
+  ReturnFeedItem,
+  ReturnFeedOutput,
+} from '@openlinker/core/returns';
+import {
+  ReturnDeclineInvalidRequestError,
+  ReturnDeclineRejectedBySourceError,
+} from '@openlinker/core/returns';
 import type {
   OrderFeedInput,
   OrderFeedOutput,
@@ -53,9 +67,35 @@ import {
 import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
 import { AllegroOrderDispatchRejectedException } from '../../domain/exceptions/allegro-order-dispatch-rejected.exception';
 import { deriveAllegroPaymentStatus } from './allegro-payment-status';
+import {
+  ALLEGRO_CUSTOMER_RETURN_MEDIA_TYPE,
+  ALLEGRO_CUSTOMER_RETURN_TERMINAL_STATUSES,
+  ALLEGRO_RETURN_REJECTION_CODES,
+  ALLEGRO_RETURN_REJECTION_REASON_MAX_LENGTH,
+  ALLEGRO_RETURN_REJECTION_REASON_REQUIRED_FOR,
+} from '../../domain/types/allegro-customer-return.types';
+import type {
+  AllegroCustomerReturnsResponse,
+  AllegroCustomerReturnWire,
+} from '../../domain/types/allegro-customer-return.types';
+import { toIncomingReturn, toReturnFeedItem } from './allegro-customer-return.mapper';
 import { toNeutralTaxRate } from './allegro-tax-rate.mapper';
 
 type OrderFeedItem = OrderFeedOutput['items'][number];
+
+/**
+ * The HTTP statuses on which Allegro is DETERMINISTICALLY refusing OL's decline
+ * request (#2333) — a bad code for this return, a return whose state does not
+ * permit rejection, a seller not entitled to the write.
+ *
+ * Deliberately narrow. `401` / `403` are auth conditions the existing
+ * auth-failure classifier owns and a re-auth resolves; `408` / `429` and every
+ * 5xx leave OL not knowing whether Allegro applied the change. All of those stay
+ * platform-native and propagate, so the ADR-044 proposal stays OPEN (in doubt)
+ * rather than being recorded as a refusal OL cannot support. `422` is handled
+ * separately — it means "already rejected".
+ */
+const DETERMINISTIC_DECLINE_REFUSAL_STATUSES: readonly number[] = [400, 404, 409];
 
 /**
  * Allegro Order Source Adapter
@@ -68,7 +108,12 @@ type OrderFeedItem = OrderFeedOutput['items'][number];
  * does not need the identifier-mapping port itself.
  */
 export class AllegroOrderSourceAdapter
-  implements OrderSourcePort, SourceOptionsReader, OrderStatusWriteback
+  implements
+    OrderSourcePort,
+    SourceOptionsReader,
+    OrderStatusWriteback,
+    ReturnSourceReader,
+    ReturnDecliner
 {
   private readonly logger = new Logger(AllegroOrderSourceAdapter.name);
 
@@ -104,14 +149,28 @@ export class AllegroOrderSourceAdapter
    */
   async write(event: OrderLifecycleEvent): Promise<OrderWritebackResult> {
     try {
-      if (event.type === 'dispatched') {
-        await this.markSent(event.externalOrderId, event.trackingNumber, event.carrier);
-        return { outcome: 'applied' };
+      switch (event.type) {
+        case 'dispatched': {
+          await this.markSent(event.externalOrderId, event.trackingNumber, event.carrier);
+          return { outcome: 'applied' };
+        }
+        case 'cancelled': {
+          await this.putFulfillment(event.externalOrderId, ALLEGRO_FULFILLMENT_STATUS_CANCELLED);
+          return { outcome: 'applied' };
+        }
+        default: {
+          // Unreachable in-tree: the binding is the compile break when an
+          // `OrderLifecycleEvent` member is added without an arm here (#2286).
+          // It still degrades rather than throwing, so a caller compiled against
+          // a widened union gets a surfaced no-op, not a `rejected` from the
+          // enclosing catch (ADR-055 forward-compat).
+          const unhandled: never = event;
+          return {
+            outcome: 'unsupported',
+            detail: `unsupported order lifecycle event: ${JSON.stringify(unhandled)}`,
+          };
+        }
       }
-
-      // event.type === 'cancelled'
-      await this.putFulfillment(event.externalOrderId, ALLEGRO_FULFILLMENT_STATUS_CANCELLED);
-      return { outcome: 'applied' };
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       this.logger.warn(
@@ -306,6 +365,345 @@ export class AllegroOrderSourceAdapter
       );
       throw error;
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // ReturnSourceReader (#2330) — customer returns
+  //
+  // Two methods and one declaration, all against Allegro's `[BETA]`
+  // customer-returns resource. The `[BETA]` media type is set PER REQUEST via
+  // the caller-header hook rather than on the shared client: every other Allegro
+  // call in the tree wants `public.v1`, and a client-wide default would silently
+  // retag them all. The client applies headers in the order
+  // defaults -> caller -> structural, so a caller `Accept` wins while
+  // `Authorization` and `X-Trace-Id` stay owned by the token/trace machinery.
+  // ---------------------------------------------------------------------------
+
+  /**
+   * The source statuses that mean "finished", published so core's pass-2 sweep
+   * can exclude them IN THE QUERY instead of re-reading and discarding.
+   *
+   * Core treats this as an opaque set. The same constant backs the
+   * per-observation `isTerminalAtSource` hint (see the mapper), which is what
+   * stops the two answers drifting apart.
+   */
+  readonly terminalRawStatuses: readonly string[] = ALLEGRO_CUSTOMER_RETURN_TERMINAL_STATUSES;
+
+  /**
+   * One cursor-paged page of the customer-returns feed.
+   *
+   * Four properties are load-bearing, and each is a risk from SPIKE-2289 rather
+   * than a style choice.
+   *
+   * **`from` only, NEVER `offset`.** Allegro's `from` is a documented cursor
+   * ("the ID of the last seen customer return"); `offset` is a live 504 risk at
+   * depth and has a field report of out-of-sequence pages (risk 4 / E6) — and
+   * bootstrapping a busy seller is exactly the deep-offset case. This method
+   * never sends `offset` at all.
+   *
+   * **Termination is an empty array, never `count`.** `count`'s semantics are
+   * unstated (risk 8): read as a total it would loop forever, read as a page
+   * size it would stop early and lose returns silently.
+   *
+   * **`from` is never composed with a filter.** Whether the cursor applies
+   * before or after `status` / `createdAt` filtering is documented nowhere
+   * (risk 1), so this method designs around the question rather than guessing:
+   * the bootstrap window below is used ONLY when there is no cursor, and a
+   * cursored request carries `from` and `limit` and nothing else.
+   *
+   * **A null cursor bootstraps a window; it does not mean "since the epoch".**
+   * A bare unbounded first call would page a seller's entire return history
+   * through deep offsets — precisely the 504 case. `createdAt.gte` bounds it,
+   * inside the adapter and behind the opaque cursor, so core never has to learn
+   * that this source bootstraps by date and pages by id.
+   */
+  async listReturnFeed(input: ReturnFeedInput): Promise<ReturnFeedOutput> {
+    const queryParams: Record<string, string | number> = { limit: input.limit };
+
+    if (input.fromCursor) {
+      queryParams.from = input.fromCursor;
+    } else {
+      queryParams['createdAt.gte'] = this.resolveReturnsBootstrapSince();
+      this.logger.log(
+        `No returns cursor for connection ${this.connectionId}: bootstrapping from ${queryParams['createdAt.gte']}`
+      );
+    }
+
+    const response = await this.httpClient.get<AllegroCustomerReturnsResponse>(
+      '/order/customer-returns',
+      {
+        queryParams,
+        headers: { Accept: ALLEGRO_CUSTOMER_RETURN_MEDIA_TYPE },
+      }
+    );
+
+    const wireItems = response.data.customerReturns ?? [];
+    const items: ReturnFeedItem[] = [];
+    let dropped = 0;
+    for (const wire of wireItems) {
+      const item = toReturnFeedItem(wire);
+      if (item === null) {
+        // Dropped here rather than emitted with a blank id: core REFUSES a blank
+        // key (it has no conflict target, so every re-sync would insert another
+        // copy), and the page must still be consumed or one malformed row wedges
+        // the cursor permanently.
+        dropped += 1;
+        continue;
+      }
+      items.push(item);
+    }
+    if (dropped > 0) {
+      this.logger.warn(
+        `Dropped ${dropped} customer-return feed item(s) without an id (connection: ${this.connectionId})`
+      );
+    }
+
+    // The cursor is the last id of THIS page. An empty page yields the cursor we
+    // came in with, so the caller holds rather than blanking it — and a page
+    // whose every row was dropped likewise cannot advance past rows nothing was
+    // able to name.
+    const lastItem = items[items.length - 1];
+    const nextCursor = lastItem ? lastItem.externalReturnId : input.fromCursor;
+
+    this.logger.debug(
+      `Fetched ${items.length} customer return(s) (connection: ${this.connectionId}, nextCursor: ${nextCursor ?? 'none'})`
+    );
+
+    return { items, nextCursor: nextCursor ?? null };
+  }
+
+  /**
+   * Hydrate one customer return by its Allegro-native id.
+   *
+   * This is both the hydration path for a newly discovered return AND — because
+   * `CustomerReturn` carries no `updatedAt` and `/order/events` has no return
+   * event type — the ONLY channel through which OL can ever observe one moving.
+   * Identifier mapping happens downstream in core, never here.
+   */
+  async getReturn(input: { externalReturnId: string }): Promise<IncomingReturn> {
+    const response = await this.httpClient.get<AllegroCustomerReturnWire>(
+      `/order/customer-returns/${input.externalReturnId}`,
+      { headers: { Accept: ALLEGRO_CUSTOMER_RETURN_MEDIA_TYPE } }
+    );
+
+    return toIncomingReturn(response.data);
+  }
+
+  // ---------------------------------------------------------------------------
+  // ReturnDecliner (#2333) — the ONE customer-returns write
+  //
+  // `POST /order/customer-returns/{id}/rejection`, verified against
+  // developer.allegro.pl/swagger.yaml (`CustomerReturnRefundRejectionRequest`).
+  // Same `[BETA]` media type as the two reads, set per request — and here on
+  // Content-Type as well as Accept, since this call has a body.
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Allegro's own rejection-code vocabulary, published to core as an opaque set.
+   *
+   * Core never interprets a member; an operator surface offers the choice. Same
+   * contract as `terminalRawStatuses`, and the same reason: the source's
+   * language stays adapter-side.
+   */
+  readonly declineReasonCodes: readonly string[] = ALLEGRO_RETURN_REJECTION_CODES;
+
+  /**
+   * Ask Allegro to reject a customer return's refund.
+   *
+   * Three behaviours are load-bearing rather than incidental.
+   *
+   * **The success body IS the confirmation.** A 200 returns the full
+   * `CustomerReturn`, so `rejection.createdAt` is Allegro's own decline instant
+   * and the proposed-then-confirmed cycle completes inside one call. That value
+   * is passed straight through; this adapter never substitutes its own clock,
+   * because core stamps `ReturnRecord.declinedAt` from it and an invented
+   * instant would be indistinguishable from a marketplace observation.
+   *
+   * **A 422 means "already rejected", not "failed"** (the spec says so in as
+   * many words). Treating it as an error would make a retry permanently red on
+   * a return that is in fact declined, so the adapter re-reads the return and,
+   * where the re-read shows a `rejection`, reports a normal success carrying the
+   * real instant. A 422 whose re-read shows NO rejection is still a failure and
+   * is rethrown — an unexplained 422 must not be laundered into a success.
+   *
+   * **Deterministic 4xx becomes the neutral refusal**, so core records "the
+   * marketplace said no" as an ADR-044 outcome instead of a swallowed error.
+   * 401/403/408/429 and every 5xx stay platform-native and propagate: OL does
+   * not know whether Allegro applied the change, and the proposal must stay open
+   * (in doubt) rather than be recorded as refused.
+   */
+  async declineReturn(command: ReturnDeclineCommand): Promise<ReturnDeclineResult> {
+    const code = this.requireRejectionCode(command);
+    const reason = this.resolveRejectionReason(command, code);
+
+    const rejection: Record<string, unknown> = { code };
+    if (reason !== null) {
+      rejection.reason = reason;
+    }
+
+    let wire: AllegroCustomerReturnWire;
+    try {
+      const response = await this.httpClient.post<AllegroCustomerReturnWire>(
+        `/order/customer-returns/${command.externalReturnId}/rejection`,
+        { rejection },
+        {
+          headers: {
+            Accept: ALLEGRO_CUSTOMER_RETURN_MEDIA_TYPE,
+            'Content-Type': ALLEGRO_CUSTOMER_RETURN_MEDIA_TYPE,
+          },
+        }
+      );
+      wire = response.data;
+    } catch (error) {
+      return this.handleDeclineFailure(command.externalReturnId, error);
+    }
+
+    return this.toDeclineResult(wire);
+  }
+
+  /**
+   * Validate the operator's code against Allegro's closed enum BEFORE the call.
+   *
+   * The platform states the vocabulary, so a miss is knowable here and answering
+   * it locally turns a 400 into an immediate, explainable refusal. The neutral
+   * error type is what keeps `AllegroApiException` — and the code list itself —
+   * out of core.
+   *
+   * It is `ReturnDeclineInvalidRequestError`, NOT the by-source refusal: no
+   * request has been made at this point, so recording OL's own message as
+   * Allegro's would attribute a local validation fault to the marketplace.
+   */
+  private requireRejectionCode(command: ReturnDeclineCommand): string {
+    const code = command.reasonCode?.trim() ?? '';
+    if (!(ALLEGRO_RETURN_REJECTION_CODES as readonly string[]).includes(code)) {
+      throw new ReturnDeclineInvalidRequestError(
+        command.externalReturnId,
+        'reasonCode',
+        `"${command.reasonCode}" is not an Allegro rejection code (expected one of: ${ALLEGRO_RETURN_REJECTION_CODES.join(', ')})`
+      );
+    }
+    return code;
+  }
+
+  /**
+   * Apply Allegro's own conditional requirement on `reason`.
+   *
+   * Required when the code is `REFUND_REJECTED`, capped at 250 characters, and
+   * blank-or-absent otherwise. Enforced here for the same reason as the code
+   * check — and the cap TRUNCATES rather than refusing, because a long operator
+   * comment is not a reason to abandon a decline the operator meant.
+   */
+  private resolveRejectionReason(
+    command: ReturnDeclineCommand,
+    code: string
+  ): string | null {
+    const comment = command.comment?.trim() ?? '';
+
+    if (comment.length === 0) {
+      if (code === ALLEGRO_RETURN_REJECTION_REASON_REQUIRED_FOR) {
+        // Local, pre-request — see `requireRejectionCode`.
+        throw new ReturnDeclineInvalidRequestError(
+          command.externalReturnId,
+          'comment',
+          `Allegro requires a reason when the rejection code is ${ALLEGRO_RETURN_REJECTION_REASON_REQUIRED_FOR}`
+        );
+      }
+      return null;
+    }
+
+    if (comment.length > ALLEGRO_RETURN_REJECTION_REASON_MAX_LENGTH) {
+      this.logger.warn(
+        `Truncating the decline reason for return ${command.externalReturnId} to Allegro's ${ALLEGRO_RETURN_REJECTION_REASON_MAX_LENGTH}-character limit`
+      );
+      return comment.slice(0, ALLEGRO_RETURN_REJECTION_REASON_MAX_LENGTH);
+    }
+
+    return comment;
+  }
+
+  /**
+   * Turn a failed rejection POST into either a success (already rejected), the
+   * neutral refusal, or a rethrow.
+   */
+  private async handleDeclineFailure(
+    externalReturnId: string,
+    error: unknown
+  ): Promise<ReturnDeclineResult> {
+    if (!(error instanceof AllegroApiException) || error.statusCode === undefined) {
+      throw error;
+    }
+
+    if (error.statusCode === 422) {
+      // "Might occur when customer return has already been rejected" — so ask.
+      const existing = await this.httpClient.get<AllegroCustomerReturnWire>(
+        `/order/customer-returns/${externalReturnId}`,
+        { headers: { Accept: ALLEGRO_CUSTOMER_RETURN_MEDIA_TYPE } }
+      );
+      if (existing.data.rejection !== undefined) {
+        this.logger.log(
+          `Customer return ${externalReturnId} was already rejected at Allegro; reporting the existing rejection`
+        );
+        return this.toDeclineResult(existing.data);
+      }
+      throw error;
+    }
+
+    if (DETERMINISTIC_DECLINE_REFUSAL_STATUSES.includes(error.statusCode)) {
+      throw new ReturnDeclineRejectedBySourceError(
+        externalReturnId,
+        this.describeAllegroErrors(error)
+      );
+    }
+
+    throw error;
+  }
+
+  /**
+   * Project the returned `CustomerReturn` onto the neutral result.
+   *
+   * An unparseable or absent `rejection.createdAt` degrades to `null` — the
+   * "decline sent, not yet reported as a fact" state — rather than to
+   * `new Date()`. Core is explicit that a 2xx alone must never read as
+   * "declined by Allegro".
+   */
+  private toDeclineResult(wire: AllegroCustomerReturnWire): ReturnDeclineResult {
+    const createdAt = wire.rejection?.createdAt;
+    let declinedAt: Date | null = null;
+    if (createdAt !== undefined) {
+      const parsed = new Date(createdAt);
+      if (Number.isNaN(parsed.getTime())) {
+        this.logger.warn(
+          `Allegro reported an unparseable rejection.createdAt "${createdAt}" for return ${wire.id ?? 'unknown'} — reporting the decline as sent but unconfirmed`
+        );
+      } else {
+        declinedAt = parsed;
+      }
+    }
+
+    return { declinedAt, rawStatus: wire.status ?? null, raw: wire };
+  }
+
+  /** Allegro's own words, never this adapter's interpretation of them. */
+  private describeAllegroErrors(error: AllegroApiException): string {
+    const details = (error.allegroErrors ?? [])
+      .map((entry) => entry.userMessage ?? entry.message ?? entry.code)
+      .filter((entry): entry is string => typeof entry === 'string' && entry.length > 0);
+
+    return details.length > 0 ? details.join('; ') : error.message;
+  }
+
+  /**
+   * The bootstrap floor for a connection with no cursor yet, as an ISO instant.
+   *
+   * Deliberately a WINDOW and not "everything" — see `listReturnFeed`. A first
+   * run therefore does NOT backfill a seller's full return history; the
+   * operator-facing backfill is a named follow-up rather than something this
+   * method quietly half-does.
+   */
+  private resolveReturnsBootstrapSince(): string {
+    const raw = Number(process.env.OL_ALLEGRO_RETURNS_BOOTSTRAP_DAYS);
+    const days = Number.isFinite(raw) && raw > 0 ? raw : 30;
+    return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
   }
 
   /**

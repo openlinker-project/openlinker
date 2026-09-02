@@ -32,6 +32,7 @@ describe('RefundsController', () => {
     const mockRefundService: jest.Mocked<IOrderRefundService> = {
       recordRefund: jest.fn(),
       getRefundsForOrder: jest.fn(),
+      getRefundsForReturn: jest.fn(),
       getRefundSummariesForOrders: jest.fn(),
     };
     const mockOrderRecordService: jest.Mocked<IOrderRecordService> = {
@@ -44,11 +45,18 @@ describe('RefundsController', () => {
       updateFulfillmentState: jest.fn(),
       markCancelled: jest.fn(),
       markSalesDocumentBlock: jest.fn(),
+      markFulfillmentBlock: jest.fn(),
       getEarliestOrderDateByConnection: jest.fn(),
       markItemResolutionFailure: jest.fn(),
       getFailedSyncValueSummary: jest.fn(),
+      markPacked: jest.fn(),
+      clearPacked: jest.fn(),
+      recordAmendment: jest.fn(),
       getSalesAndChannelAnalytics: jest.fn(),
       getTopProducts: jest.fn(),
+      findDispatchDeadlineCandidates: jest.fn(),
+      countOrdersWithOmsAttention: jest.fn(),
+      getTopProductVariantSales: jest.fn(),
       discoverSalesDocumentMarkets: jest.fn(),
     };
 

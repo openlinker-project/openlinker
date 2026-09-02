@@ -22,14 +22,26 @@ export interface UpdateOfferQuantityCommand {
   idempotencyKey?: string;
 
   /**
-   * ISO timestamp of the inventory observation this quantity was derived from
-   * (#2617). Core orchestration refuses a write whose observation is older than
-   * the newest one already written for the offer, so two concurrent writes
-   * resolve to the newer quantity whatever order they arrive in.
+   * ISO-8601 stamp of the OBSERVATION this write expresses — the inventory position
+   * row's `updatedAt`, or the equivalent state-transition time (e.g. a variant's
+   * `staleAt`). One value, two consumers in core orchestration; adapters never read
+   * it.
    *
-   * Optional: a caller with no observation to quote (the stale-offer pause,
-   * which zeroes a listing on its own authority) writes unguarded, exactly as
-   * before.
+   * It feeds the derived idempotency key, so two writes carrying the same quantity
+   * are distinguishable and a corrective write returning an offer to a previously
+   * written value is not silently swallowed by the destination's command-id dedup.
+   *
+   * It is also the staleness guard (#2617): a write whose observation is older than
+   * the newest one already written for the offer is refused, so two concurrent
+   * writes resolve to the newer quantity whatever order they arrive in.
+   *
+   * MUST NOT be wall-clock `now()`. A wall-clock value collapses dedup to zero,
+   * turns every tick into a marketplace write, and makes the staleness guard
+   * meaningless because every write looks newest; a value that is stable per
+   * observation preserves both behaviours exactly where they are wanted.
+   *
+   * Optional: a caller with no observation to quote (the stale-offer pause, which
+   * zeroes a listing on its own authority) writes unguarded, exactly as before.
    */
   observedAt?: string;
 }

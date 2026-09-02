@@ -12,6 +12,10 @@ import type {
   PaginatedInventory,
   InventoryAvailabilityResponse,
 } from './inventory.types';
+import type {
+  LocationBootstrapResult,
+  PaginatedInventoryLocations,
+} from './inventory-locations.types';
 
 export interface InventoryApi {
   list: (filters?: InventoryFilters, pagination?: InventoryPagination) => Promise<PaginatedInventory>;
@@ -21,6 +25,17 @@ export interface InventoryApi {
    * list exceeds the server-side cap (200 IDs per request).
    */
   availability: (productVariantIds: readonly string[]) => Promise<InventoryAvailabilityResponse>;
+  /**
+   * Active inventory locations (#2407). Only `total` is read — `limit: 1`
+   * bounds the payload while `total` answers the question, so a hundred
+   * locations cost the same round trip as one.
+   */
+  listActiveLocations: () => Promise<PaginatedInventoryLocations>;
+  /**
+   * Mint the first-run location, idempotently. Safe to call repeatedly: a code
+   * that already exists comes back in `existingCodes` untouched.
+   */
+  bootstrapLocations: () => Promise<LocationBootstrapResult>;
 }
 
 interface ApiRequest {
@@ -46,6 +61,12 @@ export function createInventoryApi(request: ApiRequest): InventoryApi {
     availability(productVariantIds): Promise<InventoryAvailabilityResponse> {
       const params = new URLSearchParams({ productVariantIds: productVariantIds.join(',') });
       return request<InventoryAvailabilityResponse>(`/inventory/availability?${params.toString()}`);
+    },
+    listActiveLocations(): Promise<PaginatedInventoryLocations> {
+      return request<PaginatedInventoryLocations>('/inventory/locations?status=active&limit=1');
+    },
+    bootstrapLocations(): Promise<LocationBootstrapResult> {
+      return request<LocationBootstrapResult>('/inventory/locations/bootstrap', { method: 'POST' });
     },
   };
 }

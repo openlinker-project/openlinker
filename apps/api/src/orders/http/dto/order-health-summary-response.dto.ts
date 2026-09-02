@@ -54,6 +54,17 @@ export class OrderHealthSummaryResponseDto {
   taxRateConflict!: number;
 
   @ApiProperty({
+    description:
+      'Orders carrying at least one COUNTED OMS inert state (#2352/#2353) - OpenLinker stopped ' +
+      'deciding something. A THIRD orthogonal axis, never inside salesDocumentBlocked or ' +
+      'taxRateConflict and never part of the health partition: an order can be blocked, in ' +
+      'conflict and short on stock at once. NOT the `needs_attention` health bucket, which ' +
+      'means a sync failure. The ORDER half only - return-scoped states are counted on the ' +
+      'returns side. A reason this build does not recognise is never counted.',
+  })
+  omsAttention!: number;
+
+  @ApiProperty({
     nullable: true,
     description:
       'When the OLDEST still-held order was held (ISO 8601), or null when nothing is held ' +

@@ -39,6 +39,8 @@ module.exports = {
     '^@openlinker/shared/(.*)$': path.resolve(__dirname, '../../../libs/shared/src/$1'),
     '^@openlinker/plugin-sdk$': path.resolve(__dirname, '../../../libs/plugin-sdk/src/index.ts'),
     '^@openlinker/plugin-sdk/(.*)$': path.resolve(__dirname, '../../../libs/plugin-sdk/src/$1'),
+    '^@openlinker/oms$': path.resolve(__dirname, '../../../libs/oms/src/index.ts'),
+    '^@openlinker/oms/(.*)$': path.resolve(__dirname, '../../../libs/oms/src/$1'),
     '^@openlinker/integrations-allegro$': path.resolve(
       __dirname,
       '../../../libs/integrations/allegro/src/index.ts',

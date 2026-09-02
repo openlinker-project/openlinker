@@ -64,10 +64,30 @@
       "require": "./dist/mappings/index.js",
       "default": "./dist/mappings/index.js"
     },
+    "./fulfillment": {
+      "types": "./dist/fulfillment/index.d.ts",
+      "require": "./dist/fulfillment/index.js",
+      "default": "./dist/fulfillment/index.js"
+    },
+    "./fulfillment/testing": {
+      "types": "./dist/fulfillment/testing/index.d.ts",
+      "require": "./dist/fulfillment/testing/index.js",
+      "default": "./dist/fulfillment/testing/index.js"
+    },
+    "./fulfillment-authority": {
+      "types": "./dist/fulfillment-authority/index.d.ts",
+      "require": "./dist/fulfillment-authority/index.js",
+      "default": "./dist/fulfillment-authority/index.js"
+    },
     "./sales-documents": {
       "types": "./dist/sales-documents/index.d.ts",
       "require": "./dist/sales-documents/index.js",
       "default": "./dist/sales-documents/index.js"
+    },
+    "./order-lifecycle": {
+      "types": "./dist/order-lifecycle/index.d.ts",
+      "require": "./dist/order-lifecycle/index.js",
+      "default": "./dist/order-lifecycle/index.js"
     },
     "./orders": {
       "types": "./dist/orders/index.d.ts",
@@ -83,6 +103,21 @@
       "types": "./dist/orders/types.d.ts",
       "require": "./dist/orders/types.js",
       "default": "./dist/orders/types.js"
+    },
+    "./returns": {
+      "types": "./dist/returns/index.d.ts",
+      "require": "./dist/returns/index.js",
+      "default": "./dist/returns/index.js"
+    },
+    "./returns/testing": {
+      "types": "./dist/returns/testing/index.d.ts",
+      "require": "./dist/returns/testing/index.js",
+      "default": "./dist/returns/testing/index.js"
+    },
+    "./returns/orm-entities": {
+      "types": "./dist/returns/orm-entities.d.ts",
+      "require": "./dist/returns/orm-entities.js",
+      "default": "./dist/returns/orm-entities.js"
     },
     "./products": {
       "types": "./dist/products/index.d.ts",
@@ -103,6 +138,11 @@
       "types": "./dist/inventory/orm-entities.d.ts",
       "require": "./dist/inventory/orm-entities.js",
       "default": "./dist/inventory/orm-entities.js"
+    },
+    "./inventory/testing": {
+      "types": "./dist/inventory/testing/index.d.ts",
+      "require": "./dist/inventory/testing/index.js",
+      "default": "./dist/inventory/testing/index.js"
     },
     "./events": {
       "types": "./dist/events/index.d.ts",
@@ -213,6 +253,11 @@
       "types": "./dist/catalog-trust/index.d.ts",
       "require": "./dist/catalog-trust/index.js",
       "default": "./dist/catalog-trust/index.js"
+    },
+    "./automation": {
+      "types": "./dist/automation/index.d.ts",
+      "require": "./dist/automation/index.js",
+      "default": "./dist/automation/index.js"
     }
   },
   "files": [

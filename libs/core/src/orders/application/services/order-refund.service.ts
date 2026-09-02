@@ -54,6 +54,10 @@ export class OrderRefundService implements IOrderRefundService {
     return this.refundRepository.findByOrderId(internalOrderId);
   }
 
+  async getRefundsForReturn(returnId: string): Promise<RefundRecord[]> {
+    return this.refundRepository.findByReturnId(returnId);
+  }
+
   async getRefundSummariesForOrders(
     internalOrderIds: string[],
   ): Promise<Map<string, RefundSummary>> {

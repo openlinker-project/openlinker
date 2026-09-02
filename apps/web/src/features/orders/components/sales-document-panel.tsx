@@ -38,18 +38,25 @@
  *      copy rules: the persisted reason is document-kind-agnostic, so this
  *      panel derives `kind` locally from its own candidate pool).
  *   3 / 4. Blocked-by-other-kind — the primary action for the OTHER document
- *      kind is simply ABSENT (never rendered, never disabled): a filled
- *      `.doc-slot--filled` for one kind is already the whole statement that
- *      the other kind cannot be started here — restating "invoice or
- *      receipt, never both" as a standing warning banner every time an order
- *      already has a document was pure noise (review finding, #2561
- *      superseded). `canRetryInvoice` / `canRetryFiscalReceipt` still gate
- *      each kind's action buttons directly at their render sites — a
- *      terminal `rejected` failure is the one case a record does NOT block
- *      the other kind, so the retry check is load-bearing, just no longer
- *      paired with an explanatory alert. Both mutations still handle a
- *      defensive 409 (below) in case a concurrent write from elsewhere
- *      raced this read.
+ *      kind is disabled with an explanatory `alert--warning`, distinct in tone
+ *      from state 2: this is a WRITE-PATH refusal (ADR-041 §3b — the document
+ *      already exists on another connection), never a routing decision. It is
+ *      derived PROACTIVELY from the two queries this panel already runs
+ *      (`invoice.blocksIssuanceElsewhere` / `fiscalRecord.blocksFurtherRegistration`,
+ *      mirrored client-side as `!canRetryInvoice` / `!canRetryFiscalReceipt` —
+ *      see the inline comment at their computation), NOT by parsing a 409 from
+ *      `OrderAlreadyHasFiscalReceiptException` / `OrderAlreadyHasInvoiceException`
+ *      (#2157). Proactive prevention beats reactive error-parsing here: it also
+ *      matches the existing `InvoiceConnectionLock` philosophy ("no Select, so
+ *      the panel can no longer be talked into issuing a SECOND document") and
+ *      sidesteps a real asymmetry — `invoicing.controller.ts` maps its 409 to a
+ *      structured `{ error: 'OrderAlreadyHasFiscalReceiptException', ... }`
+ *      body, but `fiscalization.controller.ts` maps its mirror-image 409 to a
+ *      PLAIN `ConflictException(message)` (Nest's generic `error: 'Conflict'`
+ *      shape), so message-text sniffing would be the only way to reach the
+ *      same discriminator from that side. Both mutations still handle a
+ *      defensive 409 (below) in case the proactive read races a concurrent
+ *      write from elsewhere.
  *
  * KNOWN GAP — corrections are not rendered as a linked follow-up row: a
  * correction is stored as its own separate `InvoiceRecord` row (verified:
@@ -66,7 +73,7 @@
  *
  * @module apps/web/src/features/orders/components
  */
-import { useEffect, useState, type ReactElement } from 'react';
+import { useCallback, useEffect, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { Dialog, DialogContent, DialogTitle } from '../../../shared/ui/dialog';
 
@@ -83,6 +90,7 @@ import { usePlatform } from '../../../shared/plugins';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { useSession } from '../../../shared/auth/use-session';
+import { isAdminSession } from '../../../shared/auth/is-admin-session';
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
 import { formatAmount } from '../../../shared/format/format-amount';
 import { formatTaxRate } from '../../../shared/format/format-tax-rate';
@@ -106,6 +114,7 @@ import {
   resolveIssuingConnection,
   selectInvoicingCandidates,
   selectReauthInvoicingConnections,
+  InvoiceConnectionLock,
   RegulatoryStatusBadge,
   DocumentTypeSelect,
   DOCUMENT_TYPE_LABEL_FALLBACK,
@@ -240,9 +249,22 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   // #2561 — both write paths are admin-only server-side (`@Roles('admin')`);
   // the manual "pick either kind" override is gated on the same fact so a
   // non-admin session never sees a control that would 403.
-  const isAdmin = session.status === 'authenticated' && session.user?.role === 'admin';
+  // The role literal lives in ONE place (`isAdminSession`): `role` is typed
+  // `string`, so an inline comparison typo compiles and silently returns false.
+  const isAdmin = isAdminSession(session);
   // #2562 — one live region carries every wait/outcome announcement below.
   const [liveAnnouncement, setLiveAnnouncement] = useState('');
+  // A live region that does not CHANGE is not re-announced, so an identical
+  // consecutive outcome (retry a register, get the same answer) would be
+  // silent for a screen-reader user. A zero-width suffix toggles the text
+  // node without changing a single word that is read out.
+  const announce = useCallback((message: string): void => {
+    setLiveAnnouncement((prev) => {
+      const bare = prev.replace(/\u200B$/, '');
+      if (bare !== message) return message;
+      return prev.endsWith('\u200B') ? message : `${message}\u200B`;
+    });
+  }, []);
 
   // ── Invoicing data + actions ──────────────────────────────────────────
   const [documentType, setDocumentType] = useState<string>('invoice');
@@ -262,7 +284,11 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   // attempt already holds the exactly-once claim (a 409). It is cleared the
   // moment progress next settles, so it never survives past the attempt it
   // describes.
-  const [contended, setContended] = useState(false);
+  // Held as the INSTANT of contention rather than a bare boolean: the clear
+  // below has to wait for an answer that post-dates the 409, and a boolean
+  // carries no way to tell one apart from the poll that was already on screen.
+  const [contendedAt, setContendedAt] = useState<number | null>(null);
+  const contended = contendedAt !== null;
   const fiscalQuery = useOrderFiscalRegistrationsQuery(order.internalOrderId);
   const registerMutation = useRegisterFiscalReceiptMutation();
   const reconcileMutation = useReconcileFiscalRegistrationMutation();
@@ -297,11 +323,18 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   // #2559 — a contended attempt is transient by nature: once progress moves
   // past the window that produced it, the flag is stale and must clear itself
   // rather than sticking to a record it no longer describes.
+  //
+  // The clear waits for a progress read taken AFTER the 409. Clearing on the
+  // reading already on screen would retire the flag in the same commit that
+  // set it - the peer attempt has not reached `sync_jobs` yet, so the last
+  // poll still says `not-requested` - and the operator would be told nothing.
+  const progressUpdatedAt = fiscalProgressQuery.dataUpdatedAt;
   useEffect(() => {
-    if (contended && !fiscalWorkOutstanding) {
-      setContended(false);
+    if (contendedAt === null || fiscalWorkOutstanding) return;
+    if (progressUpdatedAt > contendedAt) {
+      setContendedAt(null);
     }
-  }, [contended, fiscalWorkOutstanding]);
+  }, [contendedAt, fiscalWorkOutstanding, progressUpdatedAt]);
 
   // Loading skeleton while connections settle, sized to match the loaded
   // panel's header + one body row so the section never changes height when
@@ -338,6 +371,15 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
     return null;
   }
 
+  // ── Derived: does the existing record on the OTHER kind's behalf forbid
+  // starting a NEW originating document here? Mirrors the backend's pure
+  // getters (`InvoiceRecord.blocksIssuanceElsewhere` /
+  // `FiscalRegistrationRecord.blocksFurtherRegistration`, #2157): both reduce
+  // to "a record exists and is not a safely-retryable rejected failure" —
+  // exactly `record !== null && !canRetry*(record)`. ──
+  const invoiceBlocks = invoice !== null && !canRetryInvoice(invoice);
+  const fiscalBlocks = fiscalRecord !== null && !canRetryFiscalReceipt(fiscalRecord);
+
   const showInvoiceSlot = invoice !== null;
   // Outstanding work opens the slot even with no record. Without that, an order
   // reopened in the window right after the operator asked would fall through to
@@ -346,9 +388,15 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   // `register` ever wrote a row - and it is the one state whose whole purpose is
   // to say a previous request stopped. Without it here the panel falls through
   // to the empty state and says nothing at all.
+  // A contended attempt (#2559) opens the slot for the same reason: a peer holds
+  // the exactly-once claim RIGHT NOW, and the empty state would answer that by
+  // offering to register the sale a second time.
   const showFiscalSlot =
     !showInvoiceSlot &&
-    (fiscalRecord !== null || fiscalWorkOutstanding || fiscalProgress === 'stalled');
+    (fiscalRecord !== null ||
+      fiscalWorkOutstanding ||
+      contended ||
+      fiscalProgress === 'stalled');
   const showEmptyState = !showInvoiceSlot && !showFiscalSlot;
 
   // ── Invoicing connection resolution (verbatim from the pre-#2160 panel) ──
@@ -382,13 +430,13 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
 
   const issueOn = (connection: { id: string }): void => {
     setMissingNumbering(false);
-    setLiveAnnouncement(t('invoice.announce.issuing', 'Issuing the invoice.'));
+    announce(t('invoice.announce.issuing', 'Issuing the invoice.'));
     issueMutation.mutate(
       { connectionId: connection.id, orderId: order.internalOrderId, documentType },
       {
         onSuccess: () => {
           setSwitchTargetId(null);
-          setLiveAnnouncement(t('invoice.announce.issued', 'Invoice issued.'));
+          announce(t('invoice.announce.issued', 'Invoice issued.'));
           showToast({
             tone: 'success',
             title: t('invoice.action.issued', 'Invoice issued'),
@@ -397,13 +445,13 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
         },
         onError: (error) => {
           if (isMissingNumberingSeriesError(error)) {
-            setLiveAnnouncement(
+            announce(
               t('invoice.announce.numberingMissing', 'Numbering is not configured.'),
             );
             setMissingNumbering(true);
             return;
           }
-          setLiveAnnouncement(t('invoice.announce.issueFailed', 'The invoice could not be issued.'));
+          announce(t('invoice.announce.issueFailed', 'The invoice could not be issued.'));
           showToast({
             tone: 'error',
             title: t('invoice.action.issueFailed', 'Could not issue invoice'),
@@ -444,12 +492,12 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
 
   const handleRegister = (connectionId: string): void => {
     if (!connectionId) return;
-    setLiveAnnouncement(t('fiscalReceipt.announce.registering', 'Registering with the provider.'));
+    announce(t('fiscalReceipt.announce.registering', 'Registering with the provider.'));
     registerMutation.mutate(
       { connectionId, orderId: order.internalOrderId },
       {
         onSuccess: () => {
-          setLiveAnnouncement(t('fiscalReceipt.announce.registered', 'Registered.'));
+          announce(t('fiscalReceipt.announce.registered', 'Registered.'));
         },
         onError: (error) => {
           // #2559 — a 409 here is the exactly-once claim refusing a SECOND
@@ -457,15 +505,15 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
           // needs fixing, so this is the one error that gets its own tone
           // rather than the generic failure toast.
           if (error instanceof ApiError && error.status === 409) {
-            setContended(true);
-            setLiveAnnouncement(
+            setContendedAt(Date.now());
+            announce(
               t('fiscalReceipt.announce.contended', 'Another attempt is already running.'),
             );
             void invoiceQuery.refetch();
             void fiscalQuery.refetch();
             return;
           }
-          setLiveAnnouncement(
+          announce(
             t('fiscalReceipt.announce.registerFailed', 'The request could not be sent.'),
           );
           showToast({
@@ -541,6 +589,11 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
     );
   };
 
+  // ── Cross-kind block copy (states 3 / 4 — a WRITE-PATH refusal, distinct
+  // from the routing/gate-block reason below) ──
+  const registerBlockedByInvoice = showInvoiceSlot && invoiceBlocks && fiscalCandidates.length > 0;
+  const issueBlockedByReceipt = showFiscalSlot && fiscalBlocks && invoicingConnections.length > 0;
+
   // ── Empty-state routing/gate-block reason (state 2) ──
   //
   // The persisted block reason is document-kind-AGNOSTIC (#2156 resolves across
@@ -595,6 +648,9 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   // needs an admin session because both write paths behind it are
   // admin-only server-side (`@Roles('admin')`).
   const canOverride = (isAdmin || demoMode) && !hardBlockedNoAction;
+  // The demo relaxation above is visibility only - the register write is
+  // admin-only server-side, so a demo non-admin sees the control locked.
+  const fiscalDemoReadOnly = !isAdmin && demoMode;
   // #2254 (epic F2) - the FIRST reason where the manual path must close too.
   // Every other block reason means "auto-issue did not happen" and issuing by
   // hand is a legitimate action; this one means "this cannot be issued", and the
@@ -649,7 +705,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
       {/* #2562 — the one live region for every wait/outcome announcement below.
           Visually hidden: the headline and the alerts already carry the same
           words for a sighted operator. */}
-      <p className="sr-only" role="status" aria-live="polite">
+      <p className="sr-only" role="status">
         {liveAnnouncement}
       </p>
 
@@ -697,29 +753,31 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
             <div className="sales-document-panel__skeleton" aria-hidden="true" />
           ) : null}
 
-          {/* Review finding: the old copy restated the "one document" rule at
-              length but named no real action. OpenLinker genuinely cannot
-              resolve this itself — there's no void/cancel capability on
-              `InvoicingPort`, and it has no way to know which of the two
-              documents actually reached the buyer or the tax authority. The
-              honest next step is manual, at the provider level; the copy
-              says so directly instead of a vague "check both providers". */}
           {duplicateConnectionNames.length > 0 ? (
             <Alert tone="warning">
               <strong>
-                {t('invoice.panel.duplicateTitle', 'Two invoices exist for this order')}
+                {t('invoice.panel.duplicateTitle', 'This order has documents on more than one connection.')}
               </strong>{' '}
               {t(
                 'invoice.panel.duplicateBody',
-                'Below is the most recent one, from {{connection}}. Also exists on:',
-              ).replace('{{connection}}', lock?.connection?.name ?? lock?.connectionId ?? '')}{' '}
+                'One sale should have one invoice. Below is the most recent record; another exists on',
+              )}{' '}
               {duplicateConnectionNames.join(', ')}
               {'. '}
               {t(
                 'invoice.panel.duplicateAdvice',
-                "OpenLinker can't tell which one is correct, and can't void either from here — log into both providers, check which invoice the buyer actually received, and cancel or correct the wrong one there.",
+                'Check both providers and correct whichever document should not have been issued.',
               )}
             </Alert>
+          ) : null}
+
+          {invoiceSettled && invoice && lock ? (
+            <InvoiceConnectionLock
+              status={invoiceDisplayStatus}
+              connectionName={lock.connection?.name ?? lock.connectionId}
+              tag={lock.isStale ? t('invoice.lock.tagDisconnected', 'disconnected') : (lock.connection?.platformType ?? '')}
+              isStale={lock.isStale}
+            />
           ) : null}
 
           {invoiceSettled && invoiceDisplayStatus === 'issuing' ? (
@@ -762,18 +820,18 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                         className="button--sm"
                         disabled={resendMutation.isPending || invoiceWrite.demoReadOnly}
                         onClick={() => {
-                          setLiveAnnouncement(
+                          announce(
                             t('invoice.clearance.resending', 'Resending to the authority.'),
                           );
                           resendMutation.mutate(invoice.id, {
                             onSuccess: () => {
-                              setLiveAnnouncement(
+                              announce(
                                 t('invoice.clearance.resent', 'Resent to the authority.'),
                               );
                               void invoiceQuery.refetch();
                             },
                             onError: () => {
-                              setLiveAnnouncement(
+                              announce(
                                 t('invoice.clearance.resendFailed', 'The resend could not be sent.'),
                               );
                             },
@@ -957,6 +1015,20 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
             </>
           ) : null}
 
+          {/* #2561 — this order already has a document; the override does not
+              reach here, so this is a plain fact with no dead action beside
+              it, never a disabled control. */}
+          {registerBlockedByInvoice ? (
+            <Alert
+              tone="warning"
+              title={t('salesDocument.blocked.receiptTitle', 'This order already has a document')}
+            >
+              {t(
+                'salesDocument.blocked.receiptBody',
+                'This order already has an invoice from {{connection}}. Invoice or receipt — never both for one sale. Void the invoice first if a receipt is what this order actually needs.',
+              ).replace('{{connection}}', lock?.connection?.name ?? lock?.connectionId ?? '')}
+            </Alert>
+          ) : null}
         </div>
       ) : null}
 
@@ -1125,6 +1197,19 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
             </>
           ) : null}
 
+          {/* #2561 — same rule as the invoice slot above: a plain fact, no
+              dead action beside it. */}
+          {issueBlockedByReceipt ? (
+            <Alert
+              tone="warning"
+              title={t('salesDocument.blocked.invoiceTitle', 'This order already has a document')}
+            >
+              {t(
+                'salesDocument.blocked.invoiceBody',
+                'This order already has a fiscal receipt. Invoice or receipt — never both for one sale.',
+              )}
+            </Alert>
+          ) : null}
         </div>
       ) : null}
 
@@ -1241,197 +1326,166 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
           {/* #2807 — the manual override is a legitimate but SECONDARY path:
               closed by default behind a disclosure, mirroring the mockup
               (whose primary action is fixing routing, not overriding it per
-              order) and the existing `routing-disclosure` pattern below. */}
+              order) and the existing `routing-disclosure` pattern above. */}
           {(invoiceSettled && invoicingConnections.length > 0 && invoiceWrite.visible && canOverride) ||
           (fiscalSettled && fiscalCandidates.length > 0 && canOverride) ? (
             <details className="sales-document-panel__routing-disclosure">
               <summary>{t('salesDocument.panel.manualOverride', 'Issue or register manually instead')}</summary>
 
-          <div className="sales-document-panel__override-cards">
-            {/* Issue-invoice affordance — the override (#2561): admin-only, and
-                refused once a hard block already says the manual path is
-                closed too. */}
-            {invoiceSettled && invoicingConnections.length > 0 && invoiceWrite.visible && canOverride ? (
-              <div className="sales-document-panel__override-card">
-                <p className="sales-document-panel__override-card-title">
-                  {t('invoice.panel.cardTitle', 'Invoice')}
-                </p>
-                <div className="sales-document-panel__override-card-fields">
-                  {showConnectionPicker ? (
-                    <div className="sales-document-panel__connection">
-                      <label className="sales-document-panel__connection-label" htmlFor="invoice-connection">
-                        {t('invoice.panel.issueOnLabel', 'Issue on')}
-                      </label>
-                      <Select
-                        id="invoice-connection"
-                        value={issuableConnection?.id ?? ''}
-                        onChange={(event) => setPickedConnectionId(event.target.value || null)}
-                        aria-label={t('invoice.panel.issueOnLabel', 'Issue on')}
-                      >
-                        <option value="">{t('invoice.panel.connectionPlaceholder', 'Select a connection…')}</option>
-                        {invoicingConnections.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {isPrimaryInvoicingConnection(c) ? `${c.name} - ${t('invoice.panel.primarySuffix', 'primary')}` : c.name}
-                          </option>
-                        ))}
-                      </Select>
-                    </div>
-                  ) : null}
-                  <DocumentTypeSelect
-                    value={documentType}
-                    onChange={(next) => {
-                      captureDemoEvent('demo_invoice_doctype_changed', { documentType: next });
-                      setDocumentType(next);
-                    }}
-                    disabled={issueMutation.isPending || registerMutation.isPending || invoiceWrite.demoReadOnly}
-                    className="sales-document-panel__doc-type"
-                  />
-                </div>
-                <div className="sales-document-panel__override-card-action">
-                  <ReadOnlyLock
-                    active={invoiceWrite.demoReadOnly}
-                    message={DEMO_READ_ONLY_ACTION_MESSAGE}
-                    onLockedClick={() => captureDemoEvent('demo_invoice_issue_attempted', {})}
+          {/* Issue-invoice affordance — the override (#2561): admin-only, and
+              refused once a hard block already says the manual path is
+              closed too. */}
+          {invoiceSettled && invoicingConnections.length > 0 && invoiceWrite.visible && canOverride ? (
+            <div className="sales-document-panel__actions sales-document-panel__actions--issue">
+              {showConnectionPicker ? (
+                <div className="sales-document-panel__connection">
+                  <label className="sales-document-panel__connection-label" htmlFor="invoice-connection">
+                    {t('invoice.panel.issueOnLabel', 'Issue on')}
+                  </label>
+                  <Select
+                    id="invoice-connection"
+                    value={issuableConnection?.id ?? ''}
+                    onChange={(event) => setPickedConnectionId(event.target.value || null)}
+                    aria-label={t('invoice.panel.issueOnLabel', 'Issue on')}
                   >
-                    <Button
-                      tone="primary"
-                      onClick={handleIssue}
-                      disabled={
-                        issueMutation.isPending ||
-                        registerMutation.isPending ||
-                        invoiceWrite.demoReadOnly ||
-                        invoicingConnection === null ||
-                        issueRefusal !== null
-                      }
-                    >
-                      {issueMutation.isPending ? (
-                        <>
-                          <span className="button__spinner" aria-hidden="true" />
-                          {t('invoice.action.issuing', 'Issuing…')}
-                        </>
-                      ) : (
-                        t('invoice.action.issue', 'Issue invoice')
-                      )}
-                    </Button>
-                  </ReadOnlyLock>
-                  {/* The reason sits ON the control, not only in the alert above: a
-                      disabled button with no explanation beside it reads as a bug.
-                      A cross-mutation block (the sibling document is in flight)
-                      gets the same treatment - only one sales document can end up
-                      on this order, so both controls freeze together rather than
-                      one silently going dead with nothing said about why. */}
-                  {issueRefusal ? (
-                    <span className="text-muted sales-document-panel__override-card-hint">
-                      {issueRefusal}
-                    </span>
-                  ) : registerMutation.isPending ? (
-                    <span className="text-muted sales-document-panel__override-card-hint">
-                      {t('invoice.action.blockedByReceipt', 'Waiting for the receipt registration to finish.')}
-                    </span>
-                  ) : null}
+                    <option value="">{t('invoice.panel.connectionPlaceholder', 'Select a connection…')}</option>
+                    {invoicingConnections.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {isPrimaryInvoicingConnection(c) ? `${c.name} - ${t('invoice.panel.primarySuffix', 'primary')}` : c.name}
+                      </option>
+                    ))}
+                  </Select>
                 </div>
-                <p className="text-muted sales-document-panel__override-card-scope">
-                  {t('salesDocument.override.scopeNote', 'This applies to this order only.')}
-                </p>
-              </div>
-            ) : null}
+              ) : null}
+              <DocumentTypeSelect
+                value={documentType}
+                onChange={(next) => {
+                  captureDemoEvent('demo_invoice_doctype_changed', { documentType: next });
+                  setDocumentType(next);
+                }}
+                disabled={issueMutation.isPending || invoiceWrite.demoReadOnly}
+                className="sales-document-panel__doc-type"
+              />
+              <ReadOnlyLock
+                active={invoiceWrite.demoReadOnly}
+                message={DEMO_READ_ONLY_ACTION_MESSAGE}
+                onLockedClick={() => captureDemoEvent('demo_invoice_issue_attempted', {})}
+              >
+                <Button
+                  tone="primary"
+                  onClick={handleIssue}
+                  disabled={
+                    issueMutation.isPending ||
+                    invoiceWrite.demoReadOnly ||
+                    invoicingConnection === null ||
+                    issueRefusal !== null
+                  }
+                >
+                  {t('invoice.action.issue', 'Issue invoice')}
+                </Button>
+              </ReadOnlyLock>
+              {/* The reason sits ON the control, not only in the alert above: a
+                  disabled button with no explanation beside it reads as a bug. */}
+              {issueRefusal ? (
+                <span className="text-muted" style={{ fontSize: '0.82rem' }}>
+                  {issueRefusal}
+                </span>
+              ) : null}
+              <p className="text-muted sales-document-panel__scope-note">
+                {t('salesDocument.override.scopeNote', 'This applies to this order only.')}
+              </p>
+            </div>
+          ) : null}
 
-            {/* Register-receipt affordance — the override (#2561), same gate. */}
-            {fiscalSettled && fiscalCandidates.length > 0 && canOverride ? (
-              <div className="sales-document-panel__override-card">
-                <p className="sales-document-panel__override-card-title">
-                  {t('fiscalReceipt.panel.cardTitle', 'Fiscal receipt')}
-                </p>
-                <p className="panel-copy">
-                  {t(
-                    'fiscalReceipt.notRegistered.body',
-                    "No receipt has been registered for this order. Whether this sale needs one is your call, not OpenLinker's.",
-                  )}
-                </p>
-                {fiscalCandidates.length > 1 ? (
-                  <div className="sales-document-panel__override-card-fields">
-                    <div className="sales-document-panel__connection">
-                      <label className="sales-document-panel__connection-label" htmlFor="fiscal-connection">
-                        {t('fiscalReceipt.panel.registerOnLabel', 'Register on')}
-                      </label>
-                      <Select
-                        id="fiscal-connection"
-                        value={defaultFiscalConnectionId}
-                        onChange={(event) => setPickedFiscalConnectionId(event.target.value)}
-                        aria-label={t('fiscalReceipt.panel.registerOnLabel', 'Register on')}
-                      >
-                        {fiscalCandidates.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.name}
-                          </option>
-                        ))}
-                      </Select>
-                    </div>
-                  </div>
-                ) : null}
-                {/* #2255 / #2252 - the same rule as the invoice, on the receipt
-                    path. The per-connection tax letter is NOT used to fill the
-                    gap: a receipt carrying an unconfirmed rate reaches the buyer
-                    and the daily report and cannot be recalled, so the accepted
-                    cost is late registration. */}
-                {/* Gated on the REASON, not on a line count (#2260 review): the
-                    Register button below is disabled on the reason alone, and a
-                    dead control with nothing beside it reads as a bug. A
-                    shipping-scope block has no rate-less line to name, so it gets
-                    its own true sentence rather than a count it cannot support. */}
-                {missingRateScope !== null ? (
-                  <Alert tone="error">
-                    <strong>
-                      {missingRateScope === 'shipping'
-                        ? t(
-                            'fiscalReceipt.blockNoRateShippingTitle',
-                            'Not registered: the delivery charge has no tax rate.',
-                          )
-                        : rateLessLines.length === 1
-                          ? t(
-                              'fiscalReceipt.blockNoRateTitleOne',
-                              'Not registered: 1 line has no tax rate.',
-                            )
-                          : `${t('fiscalReceipt.blockNoRateTitlePrefix', 'Not registered:')} ${String(rateLessLines.length)} ${t('fiscalReceipt.blockNoRateTitleSuffix', 'lines have no tax rate.')}`}
-                    </strong>{' '}
+          {/* Register-receipt affordance — the override (#2561), same gate. */}
+          {fiscalSettled && fiscalCandidates.length > 0 && canOverride ? (
+            <div className="sales-document-panel__actions">
+              <p className="panel-copy">
+                {t(
+                  'fiscalReceipt.notRegistered.body',
+                  "No receipt has been registered for this order. Whether this sale needs one is your call, not OpenLinker's.",
+                )}
+              </p>
+              {fiscalCandidates.length > 1 ? (
+                <div className="sales-document-panel__connection">
+                  <label className="sales-document-panel__connection-label" htmlFor="fiscal-connection">
+                    {t('fiscalReceipt.panel.registerOnLabel', 'Register on')}
+                  </label>
+                  <Select
+                    id="fiscal-connection"
+                    value={defaultFiscalConnectionId}
+                    onChange={(event) => setPickedFiscalConnectionId(event.target.value)}
+                    aria-label={t('fiscalReceipt.panel.registerOnLabel', 'Register on')}
+                  >
+                    {fiscalCandidates.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              ) : null}
+              {/* #2255 / #2252 - the same rule as the invoice, on the receipt
+                  path. The per-connection tax letter is NOT used to fill the
+                  gap: a receipt carrying an unconfirmed rate reaches the buyer
+                  and the daily report and cannot be recalled, so the accepted
+                  cost is late registration. */}
+              {/* Gated on the REASON, not on a line count (#2260 review): the
+                  Register button below is disabled on the reason alone, and a
+                  dead control with nothing beside it reads as a bug. A
+                  shipping-scope block has no rate-less line to name, so it gets
+                  its own true sentence rather than a count it cannot support. */}
+              {missingRateScope !== null ? (
+                <Alert tone="error">
+                  <strong>
                     {missingRateScope === 'shipping'
                       ? t(
-                          'fiscalReceipt.blockNoRateShippingBody',
-                          "Every product line has a rate, but nothing in this order carries an amount the delivery charge could follow. Check the order's lines and delivery charge.",
+                          'fiscalReceipt.blockNoRateShippingTitle',
+                          'Not registered: the delivery charge has no tax rate.',
                         )
-                      : t(
-                          'fiscalReceipt.blockNoRateBody',
-                          "Add the rate in the shop's catalogue and re-sync the product. The connection's tax letter is not used to fill the gap.",
-                        )}
-                  </Alert>
-                ) : null}
-                <div className="sales-document-panel__override-card-action">
-                  <Button
-                    tone="primary"
-                    disabled={registerMutation.isPending || issueMutation.isPending || missingRateReason}
-                    onClick={() => handleRegister(defaultFiscalConnectionId)}
-                  >
-                    {registerMutation.isPending ? (
-                      <>
-                        <span className="button__spinner" aria-hidden="true" />
-                        {t('fiscalReceipt.action.registering', 'Registering…')}
-                      </>
-                    ) : (
-                      t('fiscalReceipt.action.register', 'Register receipt')
-                    )}
-                  </Button>
-                  {issueMutation.isPending ? (
-                    <span className="text-muted sales-document-panel__override-card-hint">
-                      {t('fiscalReceipt.action.blockedByInvoice', 'Waiting for the invoice issue to finish.')}
-                    </span>
-                  ) : null}
-                </div>
-                <p className="text-muted sales-document-panel__override-card-scope">
-                  {t('salesDocument.override.scopeNote', 'This applies to this order only.')}
-                </p>
-              </div>
-            ) : null}
-          </div>
+                      : rateLessLines.length === 1
+                        ? t(
+                            'fiscalReceipt.blockNoRateTitleOne',
+                            'Not registered: 1 line has no tax rate.',
+                          )
+                        : `${t('fiscalReceipt.blockNoRateTitlePrefix', 'Not registered:')} ${String(rateLessLines.length)} ${t('fiscalReceipt.blockNoRateTitleSuffix', 'lines have no tax rate.')}`}
+                  </strong>{' '}
+                  {missingRateScope === 'shipping'
+                    ? t(
+                        'fiscalReceipt.blockNoRateShippingBody',
+                        "Every product line has a rate, but nothing in this order carries an amount the delivery charge could follow. Check the order's lines and delivery charge.",
+                      )
+                    : t(
+                        'fiscalReceipt.blockNoRateBody',
+                        "Add the rate in the shop's catalogue and re-sync the product. The connection's tax letter is not used to fill the gap.",
+                      )}
+                </Alert>
+              ) : null}
+              <span className="spacer" />
+              {/* `canOverride` deliberately admits a demo viewer so the
+                  affordance is discoverable (#1615), but the write behind it is
+                  `@Roles('admin')` - so a demo non-admin gets the locked
+                  treatment rather than a control that would 403. */}
+              <ReadOnlyLock
+                active={fiscalDemoReadOnly}
+                message={DEMO_READ_ONLY_ACTION_MESSAGE}
+                onLockedClick={() => captureDemoEvent('demo_fiscal_register_attempted', {})}
+              >
+                <Button
+                  tone="primary"
+                  disabled={
+                    registerMutation.isPending || missingRateReason || fiscalDemoReadOnly
+                  }
+                  onClick={() => handleRegister(defaultFiscalConnectionId)}
+                >
+                  {t('fiscalReceipt.action.register', 'Register receipt')}
+                </Button>
+              </ReadOnlyLock>
+              <p className="text-muted sales-document-panel__scope-note">
+                {t('salesDocument.override.scopeNote', 'This applies to this order only.')}
+              </p>
+            </div>
+          ) : null}
             </details>
           ) : null}
         </div>

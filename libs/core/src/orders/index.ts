@@ -43,6 +43,22 @@ export {
   OrderLifecycleEventTypeValues,
   OrderWritebackOutcomeValues,
 } from './domain/types/order-lifecycle-event.types';
+
+// Return source reader (#2329 / ADR-060): the returns half of OrderSource.
+// Advertised-without-dispatch — narrow the dispatched OrderSource adapter with
+// the guard; never getCapabilityAdapter('ReturnSourceReader').
+export type { ReturnSourceReader } from './domain/ports/capabilities/return-source-reader.capability';
+export { isReturnSourceReader } from './domain/ports/capabilities/return-source-reader.capability';
+// The one return WRITE (#2333, ADR-060/ADR-044) — a capability of its own, NOT a
+// method on the read-only `ReturnSourceReader`. See the capability's docblock.
+export type { ReturnDecliner } from './domain/ports/capabilities/return-decliner.capability';
+export { isReturnDecliner } from './domain/ports/capabilities/return-decliner.capability';
+
+// The refund WRITE (#2371, ADR-056) — implemented by NOBODY today, deliberately.
+// UNDECLARED rather than advertised-without-dispatch: there is no adapter to
+// advertise. See the capability's docblock.
+export type { RefundExecutor } from './domain/ports/capabilities/refund-executor.capability';
+export { isRefundExecutor } from './domain/ports/capabilities/refund-executor.capability';
 export type {
   FulfillmentStatus,
   FulfillmentStatusSnapshot,
@@ -154,7 +170,9 @@ export {
 } from './domain/types/order-sales-analytics.types';
 
 // Top products analytics (#1988) — response shapes for
-// IOrderRecordService.getTopProducts.
+// IOrderRecordService.getTopProducts. VariantRankingRow/VariantChannelBreakdownRow/
+// VariantSalesView/VariantSalesResult (#2765) are the per-product variant-sales
+// drill-down's shapes, for IOrderRecordService.getTopProductVariantSales.
 export { TopProductSortByValues } from './domain/types/top-products.types';
 export type {
   TopProductSortBy,
@@ -162,15 +180,31 @@ export type {
   TopProductView,
   TopProductsResult,
   ProductChannelBreakdownRow,
+  VariantRankingRow,
+  VariantChannelBreakdownRow,
+  VariantSalesView,
+  VariantSalesResult,
 } from './domain/types/top-products.types';
 
-// Refund record capture (#2036).
+// Refund record capture (#2036); `RefundExecutedBy` + the `returnId` link (#2371).
 export {
   RefundReason,
   RefundReasonValues,
   RefundSummary,
   CreateRefundRecordInput,
+  RefundExecutedBy,
 } from './domain/types/refund-record.types';
+export { RefundExecutedByValues } from './domain/types/refund-record.types';
+
+// Refund EXECUTION (#2371, ADR-056) — the command/result a `RefundExecutor`
+// speaks. Declared here rather than in `returns` because the vocabulary is
+// orders' own and a refund is not inherently about a return.
+export type {
+  ExecuteRefundCommand,
+  RefundExecutionResult,
+  RefundExecutionOutcome,
+} from './domain/types/refund-execution.types';
+export { RefundExecutionOutcomeValues } from './domain/types/refund-execution.types';
 
 // Services
 export { IOrderSyncService, OrderSyncRequest, OrderSyncResult } from './application/interfaces/order-sync.service.interface';
@@ -179,6 +213,12 @@ export {
   OrderIngestionOptions,
   OrderIngestionResult,
 } from './application/interfaces/order-ingestion.service.interface';
+
+// #2396 — the SINGLE fulfilment-router resolution seam, shared by the ingestion
+// intercept and the `fulfillment.work.route` handler. Exported so the worker
+// handler consumes the same body; a second copy is a double shipment the day
+// #2408 wires a real router into only one of them.
+export { resolveFulfillmentRouter } from './application/services/fulfillment-router-resolution';
 export { IOrderRecordService } from './application/interfaces/order-record.service.interface';
 export { OrderRecordService } from './application/services/order-record.service';
 export { ISalesDocumentViewService } from './application/interfaces/sales-document-view.service.interface';
@@ -191,12 +231,28 @@ export {
   OrderDestinationRetryInput,
   OrderDestinationRetryResult,
 } from './application/interfaces/order-destination-retry.service.interface';
+// Release -> provisioning resume (#2341). Closes the gap #2339 stated: releasing
+// a hold un-blocks the next run but nothing enqueued it, and a cursor-based
+// source journal never re-delivers the original event.
+export type {
+  IOrderProvisioningResumeService,
+  OrderProvisioningResumeResult,
+  ProvisioningResumeSkipReason,
+} from './application/interfaces/order-provisioning-resume.service.interface';
+export { ProvisioningResumeSkipReasonValues } from './application/interfaces/order-provisioning-resume.service.interface';
 export type {
   IOrderLifecycleRelayService,
   OrderLifecycleRelayInput,
   OrderLifecycleRelayResult,
   OrderLifecycleRelayTargetResult,
 } from './application/interfaces/order-lifecycle-relay.service.interface';
+// #2401: the `dispatch` fulfilment-progress intent consumer.
+export type {
+  FulfillmentDispatchIntent,
+  FulfillmentDispatchRelayOutcome,
+  IFulfillmentDispatchRelayService,
+} from './application/interfaces/fulfillment-dispatch-relay.service.interface';
+export { FULFILLMENT_DISPATCH_RELAY_ORIGIN } from './application/services/fulfillment-dispatch-relay.service';
 export type { IOrderRefundService } from './application/interfaces/order-refund.service.interface';
 export { OrderRefundService } from './application/services/order-refund.service';
 export type {
@@ -225,23 +281,103 @@ export { OrderCreateContendedException } from './domain/exceptions/order-create-
 export { OrderSnapshotUnavailableError } from './domain/exceptions/order-snapshot-unavailable.error';
 export { DuplicateRefundRecordException } from './domain/exceptions/duplicate-refund-record.exception';
 export { RefundCurrencyMismatchException } from './domain/exceptions/refund-currency-mismatch.exception';
+export { OrderChangeVocabularyError } from './domain/exceptions/order-change-vocabulary.error';
 
 // Typed-Order accessor for cross-context command composition (#1119).
 export { orderFromReadySnapshot } from './domain/order-from-ready-snapshot';
 export type { OrderFromReadySnapshotOptions } from './domain/order-from-ready-snapshot';
 
 // Order-identity list projection for Shipments/Invoices (#1995).
+export { diffOrderAmendment, OrderAmendmentChangeKindValues } from './domain/order-amendment-diff';
+export type {
+  OrderAmendmentChange,
+  OrderAmendmentChangeKind,
+  OrderAmendmentDiffOptions,
+} from './domain/order-amendment-diff';
+export { redactAddress, REDACTED_PLACEHOLDER } from './domain/order-address-redaction';
+export type { RedactableAddress, RedactedAddress } from './domain/order-address-redaction';
+
 export { buildOrderSummary } from './domain/order-summary-projection';
 export type { OrderSummary } from './domain/order-summary-projection';
 
 // Ports
 export { OrderRecordRepositoryPort } from './domain/ports/order-record-repository.port';
 
+// ADR-044 change proposals (#2333) — the Wave-2 gate. `OrderChangeRepositoryPort`
+// is deliberately NOT exported: it is intra-context, and a sibling reaches the
+// record through `IOrderChangeService` alone.
+export {
+  OrderChangeKindValues,
+  OrderChangeStatusValues,
+  OPEN_ORDER_CHANGE_STATUSES,
+  isOrderChangeKind,
+  isOrderChangeStatus,
+  isOpenOrderChangeStatus,
+} from './domain/types/order-change.types';
+export type {
+  OrderChangeKind,
+  OrderChangeStatus,
+  CreateOrderChangeInput,
+} from './domain/types/order-change.types';
+export { OrderChange } from './domain/entities/order-change.entity';
+
+// Order holds (#2338) — the first OL-owned lifecycle write.
+// `OrderHoldRepositoryPort` is deliberately NOT exported: it is intra-context,
+// and a sibling reaches the record through `IOrderHoldService` (#2339) alone —
+// the `OrderChangeRepositoryPort` precedent directly above.
+export { OrderHold } from './domain/entities/order-hold.entity';
+export type {
+  OrderHoldPlacedBy,
+  PlaceOrderHoldInput,
+  ReleaseOrderHoldInput,
+} from './domain/types/order-hold.types';
+export { OrderAlreadyOnHoldError } from './domain/exceptions/order-already-on-hold.error';
+export { OrderHoldContendedError } from './domain/exceptions/order-hold-contended.error';
+export { HoldAlreadyReleasedError } from './domain/exceptions/hold-already-released.error';
+export { OrderHoldNotFoundError } from './domain/exceptions/order-hold-not-found.error';
+export { OrderHoldVocabularyError } from './domain/exceptions/order-hold-vocabulary.error';
+export { HoldReleaseNoteRequiredError } from './domain/exceptions/hold-release-note-required.error';
+export { HoldReleaseNotPermittedError } from './domain/exceptions/hold-release-not-permitted.error';
+// The hold seam a sibling context uses (#2339) — service interface + its request
+// shapes. The repository port stays unexported, one line above.
+export type {
+  IOrderHoldService,
+  OrderHoldTransition,
+  PlaceHoldRequest,
+  ReleaseHoldRequest,
+} from './application/interfaces/order-hold.service.interface';
+export type {
+  IOrderChangeService,
+  OpenOrderChangeResult,
+} from './application/services/order-change.service.interface';
+
+// The automation facts projection (#2363). Exported because it has two callers
+// that must agree — the T5 packed emission here and the §5.6(a) dry run in
+// `apps/api` — and a preview built from a different projection than the firing
+// is a preview of something else.
+export {
+  buildOrderAutomationFacts,
+  readSnapshotCountry,
+} from './domain/order-automation-facts-projection';
+
 // ORM entities are exposed on the host-only `@openlinker/core/orders/orm-entities`
 // sub-path (#594). Plugins must not import them from here.
 
 // Module
 export { OrdersModule } from './orders.module';
+// Leaf module carrying `order_changes` only — see its docblock for why a
+// sibling context must import THIS rather than `OrdersModule` (#2333).
+export { OrderChangesModule } from './order-changes.module';
+// Leaf module carrying `order_holds` only (#2338). `OrdersModule` imports it,
+// but #2339's `OrderHoldService` takes THIS rather than `OrdersModule` — see
+// its docblock for why the narrow seam matters.
+// #2340 — the `order_records.activeHoldReason` reconcile seam. The worker
+// handler reaches the pass through this interface; the projection REPOSITORY
+// port stays intra-context (a cache's write statement is nobody else's
+// business, and no hold gate may read the column at all).
+export type { IOrderHoldProjectionReconcileService } from './application/interfaces/order-hold-projection-reconcile.service.interface';
+export type { HoldProjectionReconcileResult } from './domain/types/order-hold-projection.types';
+export { OrderHoldsModule } from './order-holds.module';
 
 
 

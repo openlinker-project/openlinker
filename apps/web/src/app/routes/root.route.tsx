@@ -14,7 +14,7 @@ import type { RouteObject } from 'react-router-dom';
 import { plugins } from '../../plugins';
 import { AuthenticatedAppLayout } from '../layouts/authenticated-app-layout';
 import { adaptersRoute } from './adapters.route';
-import { analyticsRoute } from './analytics.route';
+import { analyticsIndexRoute, analyticsLegacyRedirectRoute } from './analytics.route';
 import { connectionDetailRoute } from './connection-detail.route';
 import { connectionCategoryMappingsRoute } from './connection-category-mappings.route';
 import { connectionMappingsRoute } from './connection-mappings.route';
@@ -22,8 +22,8 @@ import { editConnectionRoute } from './edit-connection.route';
 import { connectionsRoute } from './connections.route';
 import { cursorsRoute } from './cursors.route';
 import { customersRoute } from './customers.route';
-import { dashboardRoute } from './dashboard.route';
 import { devUiRoute } from './dev-ui.route';
+import { insightsRoute } from './insights.route';
 import { listingsRoute } from './listings.route';
 import { aiProviderSettingsRoute } from './ai-provider-settings.route';
 import { mcpTokensRoute } from './mcp-tokens.route';
@@ -39,8 +39,12 @@ import {
   promptTemplateLegacyDetailRedirectRoute,
   promptTemplatesLegacyListRedirectRoute,
 } from './prompt-templates-legacy-redirects.route';
+import { automationsRoute } from './automations.route';
+import { returnsRoute } from './returns.route';
+import { fulfillmentRoute } from './fulfillment.route';
 import { operationalSettingsRoute } from './operational-settings.route';
 import { salesDocumentsRoute } from './sales-documents.route';
+import { whoDecidesRoute } from './who-decides.route';
 import { settingsRoute } from './settings.route';
 import { shipmentsRoute } from './shipments.route';
 import { usersRoute } from './users.route';
@@ -53,14 +57,18 @@ import { webhookDeliveriesRoute } from './webhook-deliveries.route';
  * `rootRoute.children` array at the bottom of this file.
  */
 export const coreChildren: RouteObject[] = [
-  dashboardRoute,
-  analyticsRoute,
+  analyticsIndexRoute,
+  analyticsLegacyRedirectRoute,
+  insightsRoute,
   ordersRoute,
   productsRoute,
   cursorsRoute,
   customersRoute,
   listingsRoute,
   shipmentsRoute,
+  returnsRoute,
+  fulfillmentRoute,
+  automationsRoute,
   invoicesRoute,
   connectionsRoute,
   adaptersRoute,
@@ -75,6 +83,7 @@ export const coreChildren: RouteObject[] = [
   settingsRoute,
   operationalSettingsRoute,
   salesDocumentsRoute,
+  whoDecidesRoute,
   promptTemplatesListRoute,
   promptTemplateDetailRoute,
   promptTemplatesLegacyListRedirectRoute,
