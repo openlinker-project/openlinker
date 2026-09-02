@@ -243,11 +243,12 @@ export function AnalyticsKpiStrip({
   // `null` (unresolved, or nothing converted) means every one of them stays
   // native — the same "never guess" discipline as before, just no longer
   // refusing conversion outright.
-  const reportingRate = resolveReportingCurrencyRate(gmvConversion, headline.currency);
-  const reportingConverter = createReportingCurrencyConverter(reportingRate, headline.currency);
+  const headlineCurrency = headline.currency;
+  const reportingRate = resolveReportingCurrencyRate(gmvConversion, headlineCurrency);
+  const reportingConverter = createReportingCurrencyConverter(reportingRate, headlineCurrency);
   const currency = reportingRate && gmvConversion ? gmvConversion.displayCurrency : nativeCurrency;
   function convertToDisplay(amount: number): number {
-    return reportingConverter.convertToDisplay(amount, headline.currency);
+    return reportingConverter.convertToDisplay(amount, headlineCurrency);
   }
   const stampedGapVisible = headline.unconvertedCount > 0;
   const netExcludedVisible = headline.netExcludedCount > 0;
