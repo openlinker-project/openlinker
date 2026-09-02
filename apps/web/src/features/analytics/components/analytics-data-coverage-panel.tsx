@@ -205,12 +205,20 @@ export function AnalyticsDataCoveragePanel({
     });
   }
 
-  const currencyRunPhase: 'open' | 'in-progress' | 'resolved' | 'failed' = activeRunId
+  // 'unknown' (#2668 review, finding 15) covers a status poll that has
+  // definitively failed to answer — a 404 for a run id the server no longer
+  // recognizes, or a persistent network error — so the row does not read
+  // "Recalculating… Safe to navigate away" forever. A merely-loading poll
+  // (`isLoading`, no error yet) still reports 'in-progress': that is the
+  // honest first-paint state, not a failure.
+  const currencyRunPhase: 'open' | 'in-progress' | 'resolved' | 'failed' | 'unknown' = activeRunId
     ? dwellingResolved
       ? 'resolved'
       : runStatusQuery.data?.status === 'failed'
         ? 'failed'
-        : 'in-progress'
+        : runStatusQuery.isError
+          ? 'unknown'
+          : 'in-progress'
     : 'open';
 
   // ── Detail queries, one per category, only the open one enabled ───────
@@ -412,7 +420,7 @@ export function AnalyticsDataCoveragePanel({
             <TaxOrderRow item={item} connectionName={connectionName(item.sourceConnectionId)} />
           )}
           footerAction={
-            openCategory === 'tax-a' ? (
+            openCategory === 'tax-a' && write.visible ? (
               <Button
                 type="button"
                 tone="secondary"
@@ -477,7 +485,7 @@ function emptyRow(category: CoverageCategory): CoverageCategoryRow {
 
 interface DataCoverageRowProps {
   row: CoverageCategoryRow;
-  currencyPhase: 'open' | 'in-progress' | 'resolved' | 'failed' | null;
+  currencyPhase: 'open' | 'in-progress' | 'resolved' | 'failed' | 'unknown' | null;
   currencyFailedDetail: string | null;
   onOpenDetail: () => void;
 }
@@ -504,6 +512,11 @@ function DataCoverageRow({ row, currencyPhase, currencyFailedDetail, onOpenDetai
     badgeTone = 'error';
     badgeLabel = 'Failed';
     sub = currencyFailedDetail ?? 'The recalculation could not complete — see Jobs & Logs for detail.';
+    actionLabel = 'Try again';
+  } else if (currencyPhase === 'unknown') {
+    badgeTone = 'error';
+    badgeLabel = 'Status unknown';
+    sub = "Couldn't check the recalculation's status — see Jobs & Logs, or try again.";
     actionLabel = 'Try again';
   }
 

@@ -205,6 +205,10 @@ export function createMockApiClient(
       getTaxCoverageOrders: vi.fn().mockResolvedValue({ items: [], total: 0 }),
       rerunTaxBackfill: vi.fn().mockResolvedValue({ scanned: 0, updated: 0 }),
       getProductMatchingOrders: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+      getTopProductVariantSales: vi.fn().mockResolvedValue({
+        productId: '',
+        variants: [],
+      }),
       ...overrides.analytics,
     } as ApiClient['analytics'],
     analyticsSettings: {

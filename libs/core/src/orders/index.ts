@@ -177,7 +177,9 @@ export type {
 } from './domain/types/coverage-detection.types';
 
 // Top products analytics (#1988) — response shapes for
-// IOrderRecordService.getTopProducts.
+// IOrderRecordService.getTopProducts. VariantRankingRow/VariantChannelBreakdownRow/
+// VariantSalesView/VariantSalesResult (#2765) are the per-product variant-sales
+// drill-down's shapes, for IOrderRecordService.getTopProductVariantSales.
 export { TopProductSortByValues } from './domain/types/top-products.types';
 export type {
   TopProductSortBy,
@@ -185,6 +187,10 @@ export type {
   TopProductView,
   TopProductsResult,
   ProductChannelBreakdownRow,
+  VariantRankingRow,
+  VariantChannelBreakdownRow,
+  VariantSalesView,
+  VariantSalesResult,
 } from './domain/types/top-products.types';
 
 // Refund record capture (#2036).

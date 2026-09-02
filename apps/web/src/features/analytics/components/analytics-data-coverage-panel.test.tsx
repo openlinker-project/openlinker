@@ -169,12 +169,17 @@ describe('AnalyticsDataCoveragePanel (#2474)', () => {
 
     expect(await screen.findByText('Recalculated and saved — closing…')).toBeInTheDocument();
 
-    await waitFor(() => expect(screen.getByText('5 orders recalculated')).toBeInTheDocument(), {
-      timeout: 5000,
-    });
+    await waitFor(
+      () => expect(screen.getByText('Recalculation finished for the 5 orders you selected')).toBeInTheDocument(),
+      {
+        timeout: 5000,
+      }
+    );
 
     await user.click(screen.getByLabelText('Dismiss'));
-    expect(screen.queryByText('5 orders recalculated')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Recalculation finished for the 5 orders you selected')
+    ).not.toBeInTheDocument();
 
     vi.useRealTimers();
   });
