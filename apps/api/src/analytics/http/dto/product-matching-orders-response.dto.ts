@@ -32,6 +32,13 @@ export class ProductMatchingOrderDto {
   @ApiProperty()
   createdAt!: Date;
 
+  @ApiPropertyOptional({
+    description:
+      'Always `null` (#2799) — an order in this category never resolved its item reference to an internal product id in the first place, so there is no honest value to report. `product-sales-table.tsx` must not cross-reference this category. See `ProductMatchingErrorOrderRow.productId`\'s doc comment for the full rationale.',
+    nullable: true,
+  })
+  productId!: null;
+
   static fromRow(row: ProductMatchingErrorOrderRow): ProductMatchingOrderDto {
     const dto = new ProductMatchingOrderDto();
     dto.internalOrderId = row.internalOrderId;
@@ -39,6 +46,7 @@ export class ProductMatchingOrderDto {
     dto.recordStatus = row.recordStatus;
     dto.mappingFailureReason = row.mappingFailureReason;
     dto.createdAt = row.createdAt;
+    dto.productId = row.productId;
     return dto;
   }
 }

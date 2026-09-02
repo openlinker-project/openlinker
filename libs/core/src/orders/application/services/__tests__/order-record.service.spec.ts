@@ -74,6 +74,7 @@ describe('OrderRecordService', () => {
       getUnitsSoldByConnection: jest.fn(),
       getTopProductRanking: jest.fn(),
       getProductChannelBreakdown: jest.fn(),
+      findRepresentativeLinesByOrderIds: jest.fn().mockResolvedValue(new Map()),
     } as unknown as jest.Mocked<OrderLineItemRepositoryPort>;
 
     reportingCurrencySettings = {
@@ -1479,8 +1480,8 @@ describe('OrderRecordService', () => {
     });
   });
 
-  describe('getCurrencyMismatchOrders (#2466)', () => {
-    it('is a thin pass-through to the repository read, forwarding args verbatim', async () => {
+  describe('getCurrencyMismatchOrders (#2466 / #2799)', () => {
+    it('is a thin pass-through to the repository read, forwarding args verbatim, when the page is empty', async () => {
       const salesFilters = {
         from: new Date('2026-08-01T00:00:00.000Z'),
         to: new Date('2026-08-08T00:00:00.000Z'),
@@ -1495,7 +1496,57 @@ describe('OrderRecordService', () => {
         'EUR',
         pagination
       );
+      expect(lineItemRepository.findRepresentativeLinesByOrderIds).not.toHaveBeenCalled();
       expect(result).toEqual({ items: [], total: 0 });
+    });
+
+    it('enriches each row with a representative productId/variantId via one batched lookup (#2799)', async () => {
+      const salesFilters = {
+        from: new Date('2026-08-01T00:00:00.000Z'),
+        to: new Date('2026-08-08T00:00:00.000Z'),
+      };
+      const pagination = { limit: 10, offset: 0 };
+      repository.findCurrencyMismatchOrders.mockResolvedValue({
+        items: [
+          {
+            internalOrderId: 'order-1',
+            sourceConnectionId: 'conn-a',
+            nativeCurrency: 'PLN',
+            stampedCurrency: null,
+            stampedAt: null,
+            productId: null,
+            variantId: null,
+          },
+          {
+            internalOrderId: 'order-2',
+            sourceConnectionId: 'conn-a',
+            nativeCurrency: 'PLN',
+            stampedCurrency: null,
+            stampedAt: null,
+            productId: null,
+            variantId: null,
+          },
+        ],
+        total: 2,
+      });
+      lineItemRepository.findRepresentativeLinesByOrderIds.mockResolvedValue(
+        new Map([['order-1', { productId: 'ol_product_1', variantId: 'ol_variant_1' }]])
+      );
+
+      const result = await service.getCurrencyMismatchOrders(salesFilters, 'EUR', pagination);
+
+      expect(lineItemRepository.findRepresentativeLinesByOrderIds).toHaveBeenCalledWith([
+        'order-1',
+        'order-2',
+      ]);
+      expect(result.items[0]).toEqual(
+        expect.objectContaining({ internalOrderId: 'order-1', productId: 'ol_product_1', variantId: 'ol_variant_1' })
+      );
+      // order-2 has no representative line — the batched Map has no entry
+      // for it — so it stays null rather than throwing or fabricating one.
+      expect(result.items[1]).toEqual(
+        expect.objectContaining({ internalOrderId: 'order-2', productId: null, variantId: null })
+      );
     });
   });
 

@@ -22,6 +22,20 @@ export const CROSS_REFERENCEABLE_CATEGORIES: readonly CrossReferenceableCategory
 export interface CoverageOrderLite {
   internalOrderId: string;
   sourceConnectionId: string;
+  /**
+   * One representative line's product id (#2799) — present (possibly
+   * `null`) on a `'currency'` row, absent on a tax row (see `lineRates`
+   * instead). Optional here so this shared shape can widen without forcing
+   * every consumer (e.g. `buildChannelExclusionMap`, which only ever needs
+   * `sourceConnectionId`) to care about it.
+   */
+  productId?: string | null;
+  /**
+   * Per-line product ids (#2799) — present on a tax row, absent on a
+   * currency row. `buildProductExclusionMap` (`product-exclusion-map.lib.ts`)
+   * is the one consumer that reads this.
+   */
+  lineRates?: ReadonlyArray<{ productId: string }>;
 }
 
 /** `connectionId -> category -> this channel's own affected-order count for it`. */

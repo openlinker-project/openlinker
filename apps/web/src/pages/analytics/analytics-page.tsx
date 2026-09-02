@@ -222,7 +222,12 @@ export function AnalyticsPage(): ReactElement {
                 coverageFilters={coverageFilters}
                 onOpenCategory={setOpenCoverageCategory}
               />
-              <ProductSalesTable filters={salesFilters} coverage={coverageQuery.data} />
+              <ProductSalesTable
+                filters={salesFilters}
+                coverage={coverageQuery.data}
+                coverageFilters={coverageFilters}
+                onOpenCategory={setOpenCoverageCategory}
+              />
             </>
           )}
           {/* Coverage gaps and stock-at-risk are listing facts, not order

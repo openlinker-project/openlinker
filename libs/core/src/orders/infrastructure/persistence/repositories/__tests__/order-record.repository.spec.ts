@@ -547,6 +547,8 @@ describe('OrderRecordRepository', () => {
           nativeCurrency: 'PLN',
           stampedCurrency: null,
           stampedAt: null,
+          productId: null,
+          variantId: null,
         },
       ]);
     });
@@ -584,6 +586,8 @@ describe('OrderRecordRepository', () => {
           nativeCurrency: 'PLN',
           stampedCurrency: 'EUR',
           stampedAt,
+          productId: null,
+          variantId: null,
         },
       ]);
     });
@@ -983,6 +987,7 @@ describe('OrderRecordRepository', () => {
           recordStatus: 'awaiting_mapping',
           mappingFailureReason: 'no variant mapping for SKU-123',
           createdAt: entity.createdAt,
+          productId: null,
         },
       ]);
     });

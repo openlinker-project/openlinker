@@ -174,6 +174,8 @@ describe('AnalyticsRemediationController (#2468)', () => {
             nativeCurrency: 'PLN',
             stampedCurrency: 'USD',
             stampedAt: new Date('2026-08-20T00:00:00Z'),
+            productId: 'ol_product_1',
+            variantId: null,
           },
         ],
         total: 1,
@@ -190,6 +192,7 @@ describe('AnalyticsRemediationController (#2468)', () => {
       expect(response.items[0]).toMatchObject({
         internalOrderId: 'ol_order_a',
         stampedCurrency: 'USD',
+        productId: 'ol_product_1',
       });
     });
 

@@ -451,6 +451,53 @@ describe('OrderLineItemRepository', () => {
     });
   });
 
+  describe('findRepresentativeLinesByOrderIds (#2799)', () => {
+    const makeDistinctQb = (rows: Array<{ order_record_id: string; product_id: string; variant_id: string | null }>) => ({
+      distinctOn: jest.fn().mockReturnThis(),
+      select: jest.fn().mockReturnThis(),
+      addSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
+      getRawMany: jest.fn().mockResolvedValue(rows),
+    });
+
+    it('returns an empty Map without querying when given no order ids', async () => {
+      const result = await repository.findRepresentativeLinesByOrderIds([]);
+
+      expect(ormRepository.createQueryBuilder).not.toHaveBeenCalled();
+      expect(result.size).toBe(0);
+    });
+
+    it('maps DISTINCT ON rows keyed by orderRecordId to {productId, variantId}', async () => {
+      const qb = makeDistinctQb([
+        { order_record_id: 'order-1', product_id: 'ol_product_1', variant_id: 'ol_variant_1' },
+        { order_record_id: 'order-2', product_id: 'ol_product_2', variant_id: null },
+      ]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      const result = await repository.findRepresentativeLinesByOrderIds(['order-1', 'order-2']);
+
+      expect(qb.where).toHaveBeenCalledWith('li."orderRecordId" IN (:...orderRecordIds)', {
+        orderRecordIds: ['order-1', 'order-2'],
+      });
+      expect(qb.orderBy).toHaveBeenCalledWith('li."orderRecordId"', 'ASC');
+      expect(qb.addOrderBy).toHaveBeenCalledWith('li."lineNumber"', 'ASC');
+      expect(result.get('order-1')).toEqual({ productId: 'ol_product_1', variantId: 'ol_variant_1' });
+      expect(result.get('order-2')).toEqual({ productId: 'ol_product_2', variantId: null });
+      expect(result.size).toBe(2);
+    });
+
+    it('omits an order id with no line items from the returned Map, rather than throwing', async () => {
+      const qb = makeDistinctQb([]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      const result = await repository.findRepresentativeLinesByOrderIds(['order-no-lines']);
+
+      expect(result.has('order-no-lines')).toBe(false);
+    });
+  });
+
   describe('backfillTaxRate', () => {
     it('writes the rate/source/readAt triple guarded by taxRate IS NULL', async () => {
       const readAt = new Date('2026-08-24T00:00:00.000Z');

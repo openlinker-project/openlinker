@@ -443,6 +443,35 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
     return entities.map((e) => this.toDomain(e));
   }
 
+  /**
+   * One representative (lowest `lineNumber`) line per order, batched (#2799)
+   * — see the port's JSDoc. `DISTINCT ON` + matching `ORDER BY` is Postgres'
+   * standard "first row per group" idiom, avoiding a window function or a
+   * per-order round trip.
+   */
+  async findRepresentativeLinesByOrderIds(
+    orderRecordIds: string[]
+  ): Promise<Map<string, { productId: string; variantId: string | null }>> {
+    if (orderRecordIds.length === 0) {
+      return new Map();
+    }
+
+    const rows = await this.repository
+      .createQueryBuilder('li')
+      .distinctOn(['li."orderRecordId"'])
+      .select('li."orderRecordId"', 'order_record_id')
+      .addSelect('li."productId"', 'product_id')
+      .addSelect('li."variantId"', 'variant_id')
+      .where('li."orderRecordId" IN (:...orderRecordIds)', { orderRecordIds })
+      .orderBy('li."orderRecordId"', 'ASC')
+      .addOrderBy('li."lineNumber"', 'ASC')
+      .getRawMany<{ order_record_id: string; product_id: string; variant_id: string | null }>();
+
+    return new Map(
+      rows.map((row) => [row.order_record_id, { productId: row.product_id, variantId: row.variant_id }])
+    );
+  }
+
   async backfillTaxRate(
     id: string,
     patch: { taxRate: string; taxSource: 'backfill'; taxRateReadAt: Date }
