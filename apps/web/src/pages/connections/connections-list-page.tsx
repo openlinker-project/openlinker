@@ -1,4 +1,4 @@
-import type { ReactElement } from 'react';
+import { useMemo, type ReactElement } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useConnectionsQuery } from '../../features/connections/hooks/use-connections-query';
 import type { Connection, ConnectionFilters, ConnectionStatus } from '../../features/connections/api/connections.types';
@@ -13,6 +13,7 @@ import { Select } from '../../shared/ui/select';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
 import { captureDemoEvent } from '../../features/demo';
+import { OmsAttentionBadges, useOmsAttentionQuery } from '../../features/fulfillment-authority';
 
 const CONNECTION_STATUSES = ['active', 'disabled', 'error', 'needs_reauth'] as const;
 
@@ -33,7 +34,18 @@ function toStatusTone(status: ConnectionStatus): StatusBadgeTone {
   }
 }
 
-const COLUMNS: DataTableColumn<Connection>[] = [
+/**
+ * #2356 — the columns are built per render because the Status cell now also
+ * carries the connection's OMS inert states, which come from a query.
+ *
+ * `attentionFor` is passed in rather than the hook being called here: a module-
+ * level const cannot call a hook, and resolving it per row would re-run the
+ * projection for every connection on the page.
+ */
+function buildColumns(
+  attentionFor: (connectionId: string) => readonly { reason: string }[]
+): DataTableColumn<Connection>[] {
+  return [
   {
     id: 'name',
     header: 'Connection',
@@ -61,11 +73,21 @@ const COLUMNS: DataTableColumn<Connection>[] = [
   {
     id: 'status',
     header: 'Status',
-    cell: (connection) => <StatusBadge tone={toStatusTone(connection.status)}>{connection.status}</StatusBadge>,
+    cell: (connection) => (
+      <span className="data-table__badge-row">
+        <StatusBadge tone={toStatusTone(connection.status)}>{connection.status}</StatusBadge>
+        {/* An inert state derived from THIS connection's config (#2356). Beside
+            the connection's own status, never instead of it: a connection can be
+            perfectly `active` and still be one of two systems claiming the same
+            authority, which is precisely the case worth surfacing. */}
+        <OmsAttentionBadges entries={attentionFor(connection.id)} compact />
+      </span>
+    ),
     accessor: (connection) => connection.status,
     sortable: true,
   },
-];
+  ];
+}
 
 export function ConnectionsListPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -76,6 +98,15 @@ export function ConnectionsListPage(): ReactElement {
   // action, #1615 precedent) - stays visible AND enabled for a demo viewer;
   // only the form's own final submit gets locked (create-connection-form.tsx).
   const write = useWriteAccess('connections:write', demoMode);
+  // #2356 — one read for the whole page, projected per connection. A failed read
+  // costs the badges, never the list: the states are supplementary and an
+  // operator must not lose their connections because a settings read hiccuped.
+  const attention = useOmsAttentionQuery();
+  const attentionFor = useMemo(
+    () => (connectionId: string) => attention.byConnectionId.get(connectionId) ?? [],
+    [attention.byConnectionId]
+  );
+  const columns = useMemo(() => buildColumns(attentionFor), [attentionFor]);
 
   const platformType = searchParams.get('platformType') ?? '';
   const status = searchParams.get('status') ?? '';
@@ -186,7 +217,7 @@ export function ConnectionsListPage(): ReactElement {
       ) : (
         <DataTable
           caption="Configured connections"
-          columns={COLUMNS}
+          columns={columns}
           rowKey={(connection) => connection.id}
           rows={query.data ?? []}
           rowHref={(connection) => `/connections/${connection.id}`}
@@ -197,9 +228,12 @@ export function ConnectionsListPage(): ReactElement {
             subtitle: (connection) =>
               `${connection.platformType} · ${connection.adapterKey ?? 'default adapter'}`,
             meta: (connection) => (
-              <StatusBadge tone={toStatusTone(connection.status)} compact>
-                {connection.status}
-              </StatusBadge>
+              <span className="data-table__badge-row">
+                <StatusBadge tone={toStatusTone(connection.status)} compact>
+                  {connection.status}
+                </StatusBadge>
+                <OmsAttentionBadges entries={attentionFor(connection.id)} compact />
+              </span>
             ),
           }}
         />

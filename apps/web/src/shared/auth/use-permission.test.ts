@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { createElement } from 'react';
-import { usePermission, useWriteAccess } from './use-permission';
+import { useIsAdmin, usePermission, useWriteAccess } from './use-permission';
 import { SessionProvider } from './session-provider';
 import type { SessionAdapter } from './session-adapter';
 import type { Session } from './session.types';
@@ -139,5 +139,69 @@ describe('useWriteAccess', () => {
     await waitFor(() =>
       expect(result.current).toEqual({ canWrite: false, demoReadOnly: false, visible: false }),
     );
+  });
+});
+
+/**
+ * `useIsAdmin` (#2342) — the narrow case a `Permission` cannot express: a route
+ * guarded by `@Roles('admin')` whose permission is ALSO granted to a lesser
+ * role, so gating on the permission alone renders a control that answers 403.
+ *
+ * The operator case below is the whole reason the hook exists: it is the shape
+ * the order-hold routes have, and the one an inline `role === 'admin'` compare
+ * would silently get wrong if the literal were ever mistyped.
+ */
+describe('useIsAdmin', () => {
+  it('should return true for an admin session', async () => {
+    const { result } = renderHook(() => useIsAdmin(), { wrapper: makeWrapper(adminSession) });
+
+    await waitFor(() => {
+      expect(result.current).toBe(true);
+    });
+  });
+
+  it('should return false for a non-admin holding the write permission', async () => {
+    const operatorSession: Session = {
+      status: 'authenticated',
+      accessToken: 'tok',
+      user: {
+        id: 'u3',
+        username: 'operator',
+        email: null,
+        role: 'operator',
+        permissions: ['orders:read', 'orders:write'],
+      },
+    };
+
+    const { result } = renderHook(() => useIsAdmin(), { wrapper: makeWrapper(operatorSession) });
+
+    // Holds `orders:write` and is still refused by an admin-only route — which
+    // is exactly why the permission cannot stand in for the role here.
+    const permission = renderHook(() => usePermission('orders:write'), {
+      wrapper: makeWrapper(operatorSession),
+    });
+
+    await waitFor(() => {
+      expect(permission.result.current).toBe(true);
+      expect(result.current).toBe(false);
+    });
+  });
+
+  it('should return false for a viewer', async () => {
+    const { result } = renderHook(() => useIsAdmin(), { wrapper: makeWrapper(viewerSession) });
+
+    await waitFor(() => {
+      expect(result.current).toBe(false);
+    });
+  });
+
+  it('should return false for an anonymous session', async () => {
+    const { result } = renderHook(() => useIsAdmin(), {
+      wrapper: makeWrapper(ANONYMOUS_SESSION),
+    });
+
+    await waitFor(() => {
+      expect(result.current).toBe(false);
+    });
   });
 });

@@ -14,6 +14,7 @@ import { useCallback, useEffect, useRef, type ReactElement } from 'react';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Alert } from '../../shared/ui/alert';
+import { StockAtRiskCallout } from '../../features/orders/components/stock-at-risk-callout';
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
 import { KeyValueList, type KeyValueItem } from '../../shared/ui/key-value-list';
@@ -35,6 +36,9 @@ import {
 } from '../../features/shipments';
 import { OrderCustomerCard } from '../../features/orders/components/order-customer-card';
 import { OrderActivityTimeline } from '../../features/orders/components/order-activity-timeline';
+import { useSubjectAutomationRunsQuery } from '../../features/automation';
+import { OrderPackedControl } from '../../features/orders/components/order-packed-control';
+import { OrderHoldPanel } from '../../features/orders/components/order-hold-panel';
 import { OrderShipmentPanel } from '../../features/orders/components/order-shipment-panel';
 import { SalesDocumentPanel } from '../../features/orders/components/sales-document-panel';
 import { OrderDetailHeader } from '../../features/orders/components/order-detail-header';
@@ -45,6 +49,14 @@ import { deriveFulfillment } from '../../features/orders/lib/order-health';
 import { deriveDeliveryOutcome } from '../../features/orders/lib/delivery-outcome';
 import { resolveDeliveryOwner } from '../../features/orders/lib/delivery-owner';
 import { parseOrderSnapshot } from '../../features/orders/api/order-snapshot.schema';
+// #2383 — returns activity on the order timeline. The PAGE composes: the orders
+// timeline stays unaware of returns, and the returns feature maps its own acts.
+import {
+  mapReturnEventsToTimeline,
+  useOrderReturnEventsQuery,
+} from '../../features/returns';
+import { OrderFulfillmentTasksPanel } from '../../features/fulfillment';
+import { useSession } from '../../shared/auth/use-session';
 
 const RAW_SNAPSHOT_ANCHOR_ID = 'order-raw-snapshot';
 const SHIPPING_CAPABILITY = 'ShippingProviderManager';
@@ -54,6 +66,8 @@ const SYNC_STATUS_TONES: Record<OrderSyncStatusValue, StatusBadgeTone> = {
   syncing: 'warning',
   synced: 'success',
   failed: 'error',
+  // #2284 — provisioning withheld because the source cancelled; never an error.
+  skipped_cancelled: 'neutral',
 };
 
 /** Ship-by urgency level (#927) → StatusBadge tone. */
@@ -68,6 +82,14 @@ export function OrderDetailPage(): ReactElement {
   const query = useOrderQuery(internalOrderId);
   const connectionsQuery = useConnectionsQuery();
   const shipmentsQuery = useOrderShipmentsQuery(internalOrderId);
+  // Non-fatal by design: a returns read that could not answer must not take the
+  // order's own timeline down with it — the page renders one section shorter.
+  const returnEventsQuery = useOrderReturnEventsQuery(internalOrderId || null);
+  const { session } = useSession();
+  // The order timeline's automation half (#2385). Its own read rather than a
+  // field on `GET /orders/:id`: every order-detail load would otherwise pay for
+  // it, and `OrderRecord` is already a large projection.
+  const automationRunsQuery = useSubjectAutomationRunsQuery('order', internalOrderId);
   const retry = useRetryOrderDestinationMutation();
   const { showToast } = useToast();
   const location = useLocation();
@@ -174,6 +196,15 @@ export function OrderDetailPage(): ReactElement {
 
   const order = query.data;
   const snapshot = parseOrderSnapshot(order.orderSnapshot);
+
+  // `?? []` covers loading AND failure identically — both mean "no returns rows
+  // to contribute yet", and neither is a reason to withhold the order's own
+  // history. `sessionUserId` is passed so the mapper can say `you` rather than
+  // naming a user id no surface can resolve.
+  const returnTimelineEvents = mapReturnEventsToTimeline(
+    returnEventsQuery.data ?? [],
+    session.user?.id ?? null,
+  );
   const failedDestinations = order.syncStatus.filter((s) => s.status === 'failed');
 
   const connections = connectionsQuery.data ?? [];
@@ -357,6 +388,14 @@ export function OrderDetailPage(): ReactElement {
         </Alert>
       ) : null}
 
+      {/* #2350 — the shortfall callout, in the same full-width Alert slot as the
+          failed-destinations callout. `warning`, not `error`: the order is at
+          risk, not broken. Renders nothing when there is nothing to report and
+          NEVER a "no shortfalls" reassurance — the loader catches to `[]` on
+          failure, so absence and failure are indistinguishable and only the
+          presence of an episode is a claim. */}
+      <StockAtRiskCallout shortfalls={order.reservationShortfalls} />
+
       {snapshot.items.length > 0 || snapshot.totals ? (
         <section className="detail-section">
           <h3 className="detail-section__title">Pricing &amp; tax</h3>
@@ -371,6 +410,33 @@ export function OrderDetailPage(): ReactElement {
             <h3 className="detail-section__title">Summary</h3>
             <KeyValueList items={summaryItems} />
           </section>
+
+          {/* Packing is a fact about EVERY order, so this sits in the always
+              rendered left stack rather than inside the capability-gated
+              shipment panel — an order with no shipping-capable connection
+              still gets packed. */}
+          <OrderPackedControl
+            internalOrderId={order.internalOrderId}
+            packedAt={order.packedAt}
+            packedByUserId={order.packedByUserId}
+          />
+
+          {/* #2342 — the list DISPLAYS a hold, the detail page ACTS on it
+              (#2081 rule 3). Beside the packed control for the same reason it
+              sits in the always-rendered stack: a hold is a fact about every
+              order, whatever capabilities its connections declare. */}
+          <OrderHoldPanel
+            // Remount per order. `resumeFailure` is session-local state inside
+            // the panel and was cleared only by a release; navigating to a
+            // CACHED next order re-renders without remounting (the page
+            // early-returns a skeleton on `isLoading` only), so the "did not
+            // start moving again" alert leaked onto an order that was never
+            // held — a false claim about someone else's order.
+            key={order.internalOrderId}
+            internalOrderId={order.internalOrderId}
+            activeHold={order.activeHold}
+            holdHistory={order.holdHistory}
+          />
 
           <section className="detail-section">
             <h3 className="detail-section__title">
@@ -439,6 +505,19 @@ export function OrderDetailPage(): ReactElement {
         </div>
       </div>
 
+      {/* #2411 — work-grain holds. Full width and BELOW the grid: a routed
+          order can carry several fulfilment tasks, each with its own lines and
+          holds, which is more than a rail column can hold without wrapping into
+          nonsense on a tablet. Rendered unconditionally, and keyed per order so
+          the panel's dialog state cannot leak onto a cached next order (the
+          OrderHoldPanel precedent) — an order with no fulfilment tasks SAYS so
+          rather than silently disappearing, which is what a reader needs when
+          routing is switched on and an order was not routed. */}
+      <OrderFulfillmentTasksPanel
+        key={order.internalOrderId}
+        internalOrderId={order.internalOrderId}
+      />
+
       {snapshot.parseWarnings.length > 0 ? (
         <p className="order-detail__parse-warning-row">
           <a
@@ -464,8 +543,15 @@ export function OrderDetailPage(): ReactElement {
           salesDocumentUnresolvedReason={order.salesDocumentUnresolvedReason}
           salesDocumentBlockDetail={order.salesDocumentBlockDetail}
           invoice={snapshot.invoice}
+          lastAmendedAt={order.lastAmendedAt}
+          lastAmendmentChanges={order.lastAmendmentChanges}
+          packedAt={order.packedAt}
+          packedByUserId={order.packedByUserId}
           salesDocumentBlockedAt={order.salesDocumentBlockedAt}
           salesDocumentBlockReleasedAt={order.salesDocumentBlockReleasedAt}
+          extraEvents={returnTimelineEvents}
+          holds={order.holdHistory}
+          automationRuns={automationRunsQuery.data?.runs ?? []}
         />
       </section>
 

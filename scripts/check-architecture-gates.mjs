@@ -110,6 +110,19 @@ const KNOWN_CONFIG_KNOBS = new Map([
       key: 'config.invoicing.isPrimary + config.salesDocument.documentKind',
     },
   ],
+  [
+    'libs/core/src/order-lifecycle/domain/types/lifecycle-authority.types.ts',
+    { helper: 'readLifecycleAuthority', key: 'config.lifecycleAuthority' },
+  ],
+  [
+    'libs/core/src/fulfillment-authority/domain/types/authority-config.types.ts',
+    {
+      helper: 'parseAuthorityConfig',
+      key:
+        'config.availabilityAuthority + config.sourcingAuthority + config.fulfillmentExecutor + ' +
+        'config.orderLifecycleAuthority + config.returnsAuthority + config.refundTrigger',
+    },
+  ],
 ]);
 
 /**
@@ -132,6 +145,21 @@ const NON_KNOBS = new Map([
     // change that belongs in its own reviewed PR, tracked separately.
     'superseded by readSalesDocumentRouting (#2161); dead export pending removal',
   ],
+  [
+    'libs/core/src/fulfillment-authority/domain/types/authority-attention-reason.types.ts',
+    // NOT a per-connection config knob, despite matching both halves of the
+    // heuristic. `readAuthorityAttentionEntry` / `readAuthorityAttentionEntries`
+    // (#2352) coerce a PERSISTED COLUMN — `order_records.omsAttention` /
+    // `returns.omsAttention`, a jsonb array this repo itself writes — not an
+    // operator-authored `Connection.config` value; nothing in the file reads
+    // `Connection.config` at all. The breadcrumb the scanner matched is a
+    // docblock sentence EXPLAINING why three of the eight states are derived
+    // from `Connection.config` by `resolveAuthorities` and therefore
+    // deliberately NOT persisted here. Counting it would inflate the #1032
+    // threshold with a read that coerces OL's own storage, which is the one
+    // thing the shared-rules-model conversation is not about.
+    'coerces a persisted jsonb column, not Connection.config (#2352)',
+  ],
 ]);
 
 /**
@@ -139,8 +167,59 @@ const NON_KNOBS = new Map([
  * is due. Raising this constant is allowed — in the same reviewed change,
  * with a rationale, which is exactly the deliberate revisit the gate exists
  * to force.
+ *
+ * **Contributing raise — #2305 (ADR-059's `order-lifecycle` vocabulary leaf),
+ * one of the two summed into the merged 5 → 7 below.**
+ * `readLifecycleAuthority` (`config.lifecycleAuthority`) is registered above as
+ * a genuine fifth knob — it is deliberately NOT filed under `NON_KNOBS`, because
+ * it really is a per-connection JSONB coercion of exactly the shape this rule
+ * counts, and suppressing it would have made the count lie in the one direction
+ * that matters.
+ *
+ * So the gate fired correctly and the conversation IS due. It is deferred here,
+ * not dismissed, on these grounds:
+ *
+ * 1. **#2305 cannot host the consolidation.** It is a types-and-pure-guards
+ *    vocabulary leaf with zero sibling-context edges and no module (ADR-053);
+ *    a shared per-connection rules model needs persistence and a binding, which
+ *    is precisely what the leaf must not grow in this slice.
+ * 2. **The knob is required by the design, not accreted casually.** ADR-059 /
+ *    design §6.2 R1 puts `LifecycleAuthority` on `Connection.config` on the
+ *    SOURCE connection, following the `parseTriggerModel` precedent, because it
+ *    is a property of the channel relationship with a zero-config default.
+ * 3. **The consolidation already has an owner**: #2169 (epic #2162 § Out of
+ *    scope). Raising the bar by one buys exactly one more knob before the gate
+ *    fires again — it does not switch the gate off, and the sixth knob will
+ *    re-open this same conversation with no further headroom.
+ *
+ * A reviewer who disagrees should push back on this raise specifically; that
+ * argument is the deliberate revisit the gate was built to provoke.
+ *
+ * **Contributing raise — #2304 (ADR-052 / ADR-053), the other half of the
+ * merged 5 → 7 below, with this rationale.** The gate
+ * fired on `parseAuthorityConfig`, and the entry above is registered rather than
+ * exempted because it genuinely is per-connection JSONB coercion. What it is
+ * NOT is a fifth instance of the accretion the threshold watches for: it is one
+ * helper reading SIX authority keys through a single enumerated descriptor
+ * table (`AUTHORITY_KIND_DESCRIPTORS`), which is the shared model the gate asks
+ * for, applied inside one domain — the alternative shape, six sibling
+ * `read*`/`parse*` files, would have tripped this same gate five more times and
+ * been the accretion. Authority assignment is deliberately config and not a
+ * table in v1 (DESIGN-oms-authority-model §3 adjudication 3), so a table is not
+ * the available consolidation here.
+ *
+ * The rung is raised by exactly one, so the NEXT unrelated knob still stops and
+ * has this conversation. #2169 remains the tracked revisit.
+ *
+ * **Merge resolution (#2304 + #2305, orchestrator).** The two vocabulary leaves
+ * landed concurrently, each registering its own genuine knob and each raising
+ * the rung by one from the same base. The merged tree therefore carries SIX
+ * registered knobs, and the threshold is the sum of both raises: 5 -> 7. Both
+ * rationales above stand; the invariant preserved is the same in each — the
+ * NEXT unrelated knob (the seventh) fires this gate again with zero headroom,
+ * and #2169 remains the tracked consolidation.
  */
-const KNOB_THRESHOLD = 5;
+const KNOB_THRESHOLD = 7;
 
 /** Ladder rungs (ADR-048): sub-capabilities that declare master freshness. */
 const KNOWN_RUNGS = new Set(['modified-product-lister.capability.ts']);

@@ -91,3 +91,74 @@ describe('orders api — buildQuery', () => {
     expect(paths[0]).not.toContain('salesDocumentBlocked');
   });
 });
+
+
+describe('orders api — packed writes (#2288)', () => {
+  function recordingApiWithInit(): {
+    api: ReturnType<typeof createOrdersApi>;
+    calls: { path: string; init?: RequestInit }[];
+  } {
+    const calls: { path: string; init?: RequestInit }[] = [];
+    const request = vi.fn(async (path: string, init?: RequestInit) => {
+      calls.push({ path, init });
+      return {} as never;
+    });
+    return { api: createOrdersApi(request), calls };
+  }
+
+  it('POSTs to the packed sub-resource and encodes the order id', async () => {
+    const { api, calls } = recordingApiWithInit();
+
+    await api.markPacked('ol/order 1');
+
+    expect(calls[0].path).toBe('/orders/ol%2Forder%201/packed');
+    expect(calls[0].init?.method).toBe('POST');
+  });
+
+  it('DELETEs the same path to clear the mark', async () => {
+    const { api, calls } = recordingApiWithInit();
+
+    await api.unmarkPacked('ol_order_1');
+
+    expect(calls[0].path).toBe('/orders/ol_order_1/packed');
+    expect(calls[0].init?.method).toBe('DELETE');
+  });
+});
+
+describe('orders api — lifecycle phase (#2310)', () => {
+  it('serializes the phase filter', async () => {
+    const { api, paths } = recordingApi();
+
+    await api.list({ phase: 'blocked' }, { limit: 20, offset: 0 });
+
+    expect(paths[0]).toContain('phase=blocked');
+  });
+
+  it('composes the phase filter with health rather than replacing it', async () => {
+    const { api, paths } = recordingApi();
+
+    // The two are orthogonal partitions (ADR-059) — a blocked order is usually
+    // also `synced`, so both params must survive onto the wire together.
+    await api.list({ health: 'synced', phase: 'blocked' }, { limit: 20, offset: 0 });
+
+    expect(paths[0]).toContain('health=synced');
+    expect(paths[0]).toContain('phase=blocked');
+  });
+
+  it('omits the phase param when no phase filter is applied', async () => {
+    const { api, paths } = recordingApi();
+
+    await api.list({ health: 'synced' }, { limit: 20, offset: 0 });
+
+    expect(paths[0]).not.toContain('phase=');
+  });
+
+  it('reads the per-phase counts from /orders/lifecycle-summary', async () => {
+    const { api, paths } = recordingApi();
+
+    await api.lifecycleSummary({ sourceConnectionId: 'conn-1' });
+
+    expect(paths[0]).toContain('/orders/lifecycle-summary');
+    expect(paths[0]).toContain('sourceConnectionId=conn-1');
+  });
+});

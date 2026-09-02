@@ -7,7 +7,7 @@
  *
  * Rule. When a file imports from `@openlinker/core/<ctx>` and the file
  * is in a scope this script walks (`libs/core/src/<ctx>/**`,
- * `libs/integrations/**`, `apps/{api,worker}/**`), the imported symbols
+ * `libs/integrations/**`, `libs/oms/src/**`, `apps/{api,worker}/**`), the imported symbols
  * MUST be on the published-contract surface:
  *
  *   - `I*Service` service interfaces                  (e.g. IIntegrationsService)
@@ -40,10 +40,11 @@
  * Scope. The walker descends into:
  *   - `libs/core/src/<ctx>/**`                          (#713/#721)
  *   - `libs/integrations/<plugin>/**`                   (#719)
+ *   - `libs/oms/src/**`                                 (#2390)
  *   - `apps/{api,worker}/**` (covers src + integration tests)  (#719)
  *
  * Same-context skip applies ONLY when the importer is under
- * `libs/core/src/<ctx>/` — plugins and host apps have no "context" they
+ * `libs/core/src/<ctx>/` — plugins, `libs/oms` and host apps have no "context" they
  * could match against, so every `@openlinker/core/<ctx>` import from
  * those scopes is by definition cross-context and is always checked.
  *
@@ -76,6 +77,7 @@ const repoRoot = join(__dirname, '..');
 const WALKER_ROOTS = [
   ['libs', 'core', 'src'],
   ['libs', 'integrations'],
+  ['libs', 'oms', 'src'],
   ['apps', 'api'],
   ['apps', 'worker'],
 ];
@@ -102,44 +104,6 @@ const ALLOW_LIST = new Map([
   // (Slice 1 of #718 — products repository-port callers — rewired via
   // IProductsService and dropped from this list. See PR for #718.)
   // ─── Core-scope (#713/#721) — tracked in #718 ───────────────────────
-
-  // inventory → products.ProductRepositoryPort — rewire via IProductsService
-  [
-    'libs/core/src/inventory/application/services/inventory-query.service.ts',
-    new Set(['ProductRepositoryPort']),
-  ],
-  [
-    'libs/core/src/inventory/application/services/__tests__/inventory-query.service.spec.ts',
-    new Set(['ProductRepositoryPort']),
-  ],
-
-  // orders → products.ProductVariantRepositoryPort — rewire via IProductsService
-  [
-    'libs/core/src/orders/application/services/order-item-ref-resolver.service.ts',
-    new Set(['ProductVariantRepositoryPort']),
-  ],
-  [
-    'libs/core/src/orders/application/services/__tests__/order-item-ref-resolver.service.spec.ts',
-    new Set(['ProductVariantRepositoryPort']),
-  ],
-
-  // listings → products.ProductVariantRepositoryPort — rewire via IProductsService
-  [
-    'libs/core/src/listings/application/services/offer-mapping-sync.service.ts',
-    new Set(['ProductVariantRepositoryPort']),
-  ],
-  [
-    'libs/core/src/listings/application/services/__tests__/offer-mapping-sync.service.spec.ts',
-    new Set(['ProductVariantRepositoryPort']),
-  ],
-  [
-    'libs/core/src/listings/application/services/offer-builder.service.ts',
-    new Set(['ProductVariantRepositoryPort']),
-  ],
-  [
-    'libs/core/src/listings/application/services/__tests__/offer-builder.service.spec.ts',
-    new Set(['ProductVariantRepositoryPort']),
-  ],
 
   // (Slice 2 of #718 — sync repository-port callers — rewired via
   // ISyncJobsService + ISyncCursorsService and dropped from this list.
@@ -265,6 +229,39 @@ const ALLOW_LIST = new Map([
   ],
   [
     'apps/worker/src/sync/handlers/__tests__/marketplace-offer-status-sync.handler.spec.ts',
+    new Set(['ConnectionCursorRepositoryPort']),
+  ],
+  // #2330 returns pass 2 — the same scan-offset dance as its
+  // `marketplace.offer.statusSync` sibling directly above, and listed for the
+  // same reason: the handler owns a numeric page pointer, not a marketplace
+  // cursor, so `ISyncCursorsService` is the wrong seam for it. Both rewire
+  // together under #722, or neither.
+  [
+    'apps/worker/src/sync/handlers/marketplace-returns-status-sync.handler.ts',
+    new Set(['ConnectionCursorRepositoryPort']),
+  ],
+  // #2332 orphan re-attribution — the third handler on the same scan-offset dance,
+  // listed for the identical reason and rewired with the other two under #722.
+  [
+    'apps/worker/src/sync/handlers/returns-orphan-reconcile.handler.ts',
+    new Set(['ConnectionCursorRepositoryPort']),
+  ],
+  // #2332 — ONE int-spec case reaches `ReturnRepositoryPort` directly, because the
+  // property it asserts is unreachable through the service seam by construction: the
+  // claim's `WHERE "internalOrderId" IS NULL` arm guards a CONCURRENT writer, and the
+  // pass only ever claims rows its own candidate query already filtered to orphans.
+  // Deleting the arm left every service-level test green, so without this the
+  // monotonicity guarantee has no falsifiable coverage anywhere.
+  [
+    'apps/api/test/integration/returns-ingestion.int-spec.ts',
+    new Set(['ReturnRepositoryPort']),
+  ],
+  [
+    'apps/worker/test/integration/allegro-returns-cursor-safety.int-spec.ts',
+    new Set(['ConnectionCursorRepositoryPort']),
+  ],
+  [
+    'apps/worker/test/integration/allegro-returns-status-sync.int-spec.ts',
     new Set(['ConnectionCursorRepositoryPort']),
   ],
   [
@@ -445,6 +442,10 @@ const ALLOW_LIST = new Map([
   ],
   [
     'apps/api/test/integration/order-dispatch-sla.int-spec.ts',
+    new Set(['OrderRecordRepositoryPort']),
+  ],
+  [
+    'apps/api/test/integration/order-lifecycle-phase.int-spec.ts',
     new Set(['OrderRecordRepositoryPort']),
   ],
   [
@@ -652,6 +653,7 @@ async function walk(dir) {
  * Classify the importer's scope. Returns:
  *   - `{ kind: 'core', ctx }`         — `libs/core/src/<ctx>/...`
  *   - `{ kind: 'integration', plugin }` — `libs/integrations/<plugin>/...`
+ *   - `{ kind: 'product', pkg }`      — `libs/oms/...`
  *   - `{ kind: 'app', app }`          — `apps/api/...` or `apps/worker/...`
  *   - `null`                          — file is outside any walked scope
  *
@@ -664,6 +666,15 @@ function importerScope(repoRelPath) {
   }
   if (parts.length >= 3 && parts[0] === 'libs' && parts[1] === 'integrations') {
     return { kind: 'integration', plugin: parts[2] };
+  }
+  // `libs/oms` is a first-party product package, not an entry under
+  // `libs/integrations/` (ADR-055) — but it is an integration-SHAPED
+  // consumer of core and is held to the identical contract. It has no
+  // counterpart core context, so, exactly like a plugin, every
+  // `@openlinker/core/<ctx>` import from it is cross-context and is
+  // always checked (the same-context skip is gated on `kind === 'core'`).
+  if (parts.length >= 2 && parts[0] === 'libs' && parts[1] === 'oms') {
+    return { kind: 'product', pkg: 'oms' };
   }
   if (parts.length >= 2 && parts[0] === 'apps' && (parts[1] === 'api' || parts[1] === 'worker')) {
     return { kind: 'app', app: parts[1] };
@@ -744,6 +755,39 @@ async function main() {
     (sum, set) => sum + set.size,
     0,
   );
+
+  // A stale allow-list row permits nothing today and silently RE-permits the
+  // coupling the moment someone reintroduces it (#2791). Eight rows sat here
+  // after their services were rewired under #718, so four core services were
+  // free to re-acquire a `products` repository port with the gate still green.
+  // The row is the licence; an expired licence must be surrendered, not filed.
+  const staleAllowRows = [];
+  for (const [file, symbols] of ALLOW_LIST) {
+    let source;
+    try {
+      source = await readFile(join(repoRoot, file), 'utf8');
+    } catch {
+      staleAllowRows.push({ file, symbols: [...symbols], why: 'the file does not exist' });
+      continue;
+    }
+    const unused = [...symbols].filter((symbol) => !new RegExp(`\\b${symbol}\\b`).test(source));
+    if (unused.length > 0) {
+      staleAllowRows.push({ file, symbols: unused, why: 'the file no longer names the symbol' });
+    }
+  }
+
+  if (staleAllowRows.length > 0) {
+    console.error('✗ check-cross-context-imports: stale ALLOW_LIST row(s).\n');
+    for (const { file, symbols, why } of staleAllowRows) {
+      console.error(`  ${file}`);
+      console.error(`    ${symbols.join(', ')} — ${why}`);
+    }
+    console.error(
+      '\n  Drop the row. While it stands it approves nothing and would silently re-approve\n' +
+        '  the coupling if it came back, which is how the rewire under #718 went unnoticed.',
+    );
+    process.exit(1);
+  }
 
   if (violations.length === 0) {
     console.log(

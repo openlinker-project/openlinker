@@ -20,12 +20,30 @@ import {
   type SyncAttempt,
   type SalesDocumentGateBlockReasonValue,
   type SalesDocumentUnresolvedReasonValue,
+  type OrderAmendmentChange,
+  type OrderHold,
 } from '../api/orders.types';
+import { holdReasonLabel } from '../lib/order-hold.types';
 import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
+import {
+  AUTOMATION_FAILURE_COPY,
+  AUTOMATION_RUN_OUTCOME_COPY,
+  type AutomationRun,
+} from '../../automation';
+import { buildAutomationTimelineEvents } from '../lib/automation-timeline';
 import type { ParsedOrderInvoice } from '../api/order-snapshot.schema';
 import { invoicingBlockedBadge } from '../lib/order-row';
 
-interface TimelineEvent {
+/**
+ * One row on the order activity timeline.
+ *
+ * **Exported since #2383** so a sibling feature can map its own acts into this
+ * shape without the orders timeline learning that feature's vocabulary —
+ * `buildEvents` already takes fifteen positional parameters, and a sixteenth
+ * would put returns concepts inside the orders builder. The type is owned here
+ * because the timeline is owned here.
+ */
+export interface TimelineEvent {
   id: string;
   timestamp: string | null;
   title: ReactElement | string;
@@ -39,6 +57,18 @@ interface TimelineEvent {
    */
   footer?: ReactElement;
 }
+
+/**
+ * A {@link TimelineEvent} that is guaranteed to carry an instant.
+ *
+ * Injected events are narrowed to this rather than the code accommodating a
+ * null: **an event with no timestamp has no defensible position in a
+ * chronological merge**, so the type forbids it instead of the merge inventing
+ * a place for it. An UNDATED AUTHORED entry is a different thing entirely and
+ * stays legal — it holds an authored position that was never derived from a
+ * timestamp, which is exactly why it is not a comparison key.
+ */
+export type DatedTimelineEvent = TimelineEvent & { timestamp: string };
 
 interface OrderActivityTimelineProps {
   createdAt: string;
@@ -76,6 +106,22 @@ interface OrderActivityTimelineProps {
    */
   invoice?: ParsedOrderInvoice | null;
   /**
+   * Instant the source last amended this order after ingestion (#2283). Unlike
+   * the #2100 invoicing block, a real instant IS persisted here, so the entry is
+   * DATED and sorts into place with the rest of the history.
+   */
+  lastAmendedAt?: string | null;
+  /** What changed then (#2283) — PII-free by backend contract. */
+  lastAmendmentChanges?: OrderAmendmentChange[] | null;
+  /**
+   * Instant an operator marked this order packed (#2288). DATED, like the
+   * #2283 amendment entry and unlike the #2100 invoicing block: a real instant
+   * is persisted, so it belongs in the history rather than beside it.
+   */
+  packedAt?: string | null;
+  /** OL user id of whoever marked it packed (#2288) — rendered as the actor. */
+  packedByUserId?: string | null;
+  /**
    * When the current hold started (#2248). Dates the block entry, which was
    * previously undated because no instant was persisted for it.
    */
@@ -86,6 +132,31 @@ interface OrderActivityTimelineProps {
    * it was ever held.
    */
   salesDocumentBlockReleasedAt?: string | null;
+  /**
+   * Events contributed by another feature (#2383 — the returns half).
+   *
+   * The timeline learns nothing about where they came from: the caller maps its
+   * own acts into `TimelineEvent` and this component merges them by timestamp
+   * (see {@link mergeTimelineEvents}). Optional, and absent or empty leaves the
+   * rendered order identical to before the prop existed.
+   */
+  extraEvents?: DatedTimelineEvent[];
+  /**
+   * Every ORDER hold this order has carried, open and released (#2341/#2342).
+   * Unrelated to the sales-document hold above, which is an invoicing fact.
+   *
+   * DATED in both directions — `placedAt` is always persisted and `releasedAt`
+   * is persisted once the hold ends — so these sort into the history rather than
+   * sitting undated beside it. Detail-only and optional on the wire, so absent
+   * and `null` mean the same thing.
+   */
+  holds?: OrderHold[] | null;
+  /**
+   * Automation firings against this order (#2385) — the fourth of §5.6's "four
+   * readings" of one `automation_runs` row, never a second write. Optional so
+   * every existing caller compiles untouched and renders no automation events.
+   */
+  automationRuns?: readonly AutomationRun[];
 }
 
 const STATUS_PAST_TENSE: Record<OrderSyncStatusValue, string> = {
@@ -93,6 +164,7 @@ const STATUS_PAST_TENSE: Record<OrderSyncStatusValue, string> = {
   syncing: 'syncing to',
   synced: 'synced to',
   failed: 'failed to sync to',
+  skipped_cancelled: 'skipped (cancelled at source) for',
 };
 
 /**
@@ -117,7 +189,121 @@ const TONE_FOR_STATUS: Record<OrderSyncStatusValue, TimelineEvent['tone']> = {
   syncing: 'default',
   synced: 'success',
   failed: 'error',
+  // Terminal, and not a failure — a deliberate withholding reads neutral (#2284).
+  skipped_cancelled: 'default',
 };
+
+/**
+ * Operator-facing sentence for a change list (#2283).
+ *
+ * Renders only what the backend sent: an address change names the FIELDS that
+ * moved and never their values, because the values are deliberately not on the
+ * wire. An unrecognised `kind` from a newer backend degrades to the raw value
+ * rather than vanishing — a change the operator cannot see is worse than one
+ * labelled awkwardly.
+ */
+function describeAmendment(changes?: OrderAmendmentChange[] | null): string {
+  const parts = (changes ?? []).map((change) => {
+    const line = change.sku ?? change.lineId ?? 'a line';
+    switch (change.kind) {
+      case 'line-removed':
+        return `line ${line} removed`;
+      case 'line-added':
+        return `line ${line} added`;
+      case 'line-quantity-changed':
+        return `line ${line} quantity ${change.fromQuantity} \u2192 ${change.toQuantity}`;
+      case 'shipping-address-changed':
+        return `shipping address changed (${(change.fields ?? []).join(', ')})`;
+      default:
+        return change.kind;
+    }
+  });
+
+  return parts.length > 0
+    ? `The source changed this order after ingestion: ${parts.join('; ')}.`
+    : 'The source changed this order after ingestion.';
+}
+
+/**
+ * Timeline entries for the order's holds (#2342) — one `held` per hold and one
+ * `released` per hold that has ended.
+ *
+ * Extracted as a pure function so it is testable on its own, but its result is
+ * pushed INSIDE `buildEvents` at the right rung rather than appended by the
+ * caller: `buildEvents` sorts only `syncAttempts`, so the returned list is
+ * otherwise in push order and position carries meaning. Appending at the call
+ * site would render every hold entry after the entire history regardless of
+ * when it happened.
+ *
+ * `warning` for the hold (outstanding work) and `default` for the release — a
+ * release is not a failure, and it is not progress through the workflow either.
+ * An unrecognised reason renders its raw value rather than vanishing: a hold the
+ * operator cannot see is worse than one labelled awkwardly (the
+ * `describeAmendment` precedent).
+ */
+/**
+ * Who placed this hold, or `undefined` when the payload does not say.
+ *
+ * `undefined` omits the actor eyebrow entirely — `TimelineEvent.by` is optional
+ * precisely so a surface can decline to name one, and matching
+ * `OrderHoldPanel`'s `placedBy()` (which returns `null` in the same case) is
+ * what keeps two surfaces on one page from disagreeing.
+ */
+function describePlacer(hold: OrderHold): string | undefined {
+  if (hold.placedByService) return `system · ${hold.placedByService}`;
+  if (hold.placedByUserId) return 'operator';
+  return undefined;
+}
+
+/** Who released it. See {@link describePlacer} — same rule, same reason. */
+function describeReleaser(hold: OrderHold): string | undefined {
+  return hold.releasedByUserId ? 'operator' : undefined;
+}
+
+function buildHoldEvents(holds: OrderHold[]): TimelineEvent[] {
+  const events: TimelineEvent[] = [];
+
+  for (const hold of holds) {
+    const label = holdReasonLabel(hold.reason);
+    const actor = hold.placedByService ?? hold.placedByUserId;
+
+    events.push({
+      id: `hold-placed-${hold.id}`,
+      timestamp: hold.placedAt,
+      title: `Put on hold — ${label}`,
+      // THREE ways, not two. The XOR that makes "not a service ⇒ a human" total
+      // is a SQL `CHECK` this bundle cannot import (#591), so a payload carrying
+      // neither placer used to render "Held by operator" — asserting a person
+      // held the order, which `order-hold.types.ts`'s own docblock forbids by
+      // name, and disagreeing with the panel's `placedBy()` on the same page.
+      // An unreadable placer omits the eyebrow rather than naming one.
+      by: describePlacer(hold),
+      description: hold.note
+        ? `${hold.note}${actor && !hold.placedByService ? ` (${actor})` : ''}`
+        : 'OpenLinker stopped sending this order on and stopped dispatching it.',
+      tone: 'warning',
+    });
+
+    if (hold.releasedAt) {
+      events.push({
+        id: `hold-released-${hold.id}`,
+        timestamp: hold.releasedAt,
+        title: 'Hold released',
+        // Same rule on the release arm. `order_holds` carries no
+        // `releasedByService` column, so "no releasing user" does NOT mean a
+        // service did it — a service release is recorded by nobody. Claiming
+        // `system` there named an actor the schema cannot identify.
+        by: describeReleaser(hold),
+        description: hold.releaseNote
+          ? `${hold.releaseNote}${hold.releasedByUserId ? ` (${hold.releasedByUserId})` : ''}`
+          : 'OpenLinker started sending this order on again.',
+        tone: 'default',
+      });
+    }
+  }
+
+  return events;
+}
 
 function buildEvents(
   createdAt: string,
@@ -129,8 +315,14 @@ function buildEvents(
   salesDocumentUnresolvedReason?: SalesDocumentUnresolvedReasonValue | null,
   salesDocumentBlockDetail?: string | null,
   invoice?: ParsedOrderInvoice | null,
+  lastAmendedAt?: string | null,
+  lastAmendmentChanges?: OrderAmendmentChange[] | null,
+  packedAt?: string | null,
+  packedByUserId?: string | null,
   salesDocumentBlockedAt?: string | null,
   salesDocumentBlockReleasedAt?: string | null,
+  holds?: OrderHold[] | null,
+  automationRuns?: readonly AutomationRun[],
 ): TimelineEvent[] {
   const events: TimelineEvent[] = [];
 
@@ -240,6 +432,44 @@ function buildEvents(
     });
   });
 
+  // #2283 — the source amended this order after we ingested it. DATED, unlike
+  // the #2100 entry below: a real instant is persisted for it, so it belongs in
+  // the history rather than beside it. Pushed BEFORE that entry so the undated
+  // current-state row stays last, and `warning` because it is outstanding work —
+  // a shipment may already reference a line the source removed.
+  if (lastAmendedAt) {
+    events.push({
+      id: 'source-amended',
+      timestamp: lastAmendedAt,
+      title: 'Order changed at the source',
+      by: 'system · ingest',
+      description: describeAmendment(lastAmendmentChanges),
+      tone: 'warning',
+    });
+  }
+
+  // #2288 — an operator marked this order packed. DATED for the same reason the
+  // amendment entry above is: a real instant is persisted. `success` because it
+  // is progress through the workflow, not outstanding work. Pushed BEFORE the
+  // undated entry below so the current-state row stays last.
+  if (packedAt) {
+    events.push({
+      id: 'packed',
+      timestamp: packedAt,
+      title: 'Order packed',
+      by: 'operator',
+      description: packedByUserId
+        ? `Marked packed by ${packedByUserId}.`
+        : 'Marked packed by an operator.',
+      tone: 'success',
+    });
+  }
+
+  // #2342 — the order's own holds, dated and therefore part of the history.
+  // Pushed here, after the packed entry and BEFORE the undated invoicing-block
+  // row below, so the current-state row stays last.
+  events.push(...buildHoldEvents(holds ?? []));
+
   // #2100 — appended last. It used to be DELIBERATELY UNDATED, because the block
   // is a current-state fact re-decided on every transition and no instant was
   // persisted for it; dating it with `createdAt` or `updatedAt` would have
@@ -289,7 +519,91 @@ function buildEvents(
     });
   }
 
+  // #2385 — one event per automation STEP, plus the "Skipped:" event. A
+  // rendering of `automation_runs`, never a second write: see
+  // `lib/automation-timeline.ts`. Firings only, so an order no rule acted on
+  // contributes nothing.
+  for (const event of buildAutomationTimelineEvents(automationRuns ?? [])) {
+    events.push({
+      id: event.id,
+      timestamp: event.timestamp,
+      title: event.title,
+      by:
+        event.runOutcome === undefined
+          ? event.by
+          : `${event.by} · ${(AUTOMATION_RUN_OUTCOME_COPY as Record<string, string>)[event.runOutcome] ?? event.runOutcome}`,
+      description: event.description,
+      tone: event.tone,
+      // The rule name in `by` is text; the LINK is what makes turning the rule
+      // off reachable from the order without knowing which rule to suspect (S3-8).
+      //
+      // `isRetry` / `handledByOperator` ride here rather than in `title` or
+      // `description`: the title is the action's own verb and the description is
+      // the failure's own words (never paraphrased), so a note ABOUT the firing
+      // belongs beside the trigger sentence. Both were computed and read by
+      // nothing, which meant a retry chain rendered as two unrelated firings the
+      // operator had to correlate by timestamp, and a failure someone had
+      // already handled stayed indistinguishable from one nobody had touched.
+      footer: (
+        <>
+          <Link to={`/automations/${encodeURIComponent(event.trigger)}`}>{event.footer}</Link>
+          {event.isRetry ? (
+            <span className="muted-text"> · {AUTOMATION_FAILURE_COPY.isRetryOf}</span>
+          ) : null}
+          {event.handledByOperator ? (
+            <span className="muted-text"> · {AUTOMATION_FAILURE_COPY.dismissed}</span>
+          ) : null}
+        </>
+      ),
+    });
+  }
+
   return events;
+}
+
+/**
+ * Merge injected events into the authored sequence WITHOUT re-sorting it.
+ *
+ * `buildEvents` has never sorted: its order is an authored narrative, and it
+ * deliberately includes undated entries (`timestamp: … ?? null`). A global sort
+ * would silently rewrite someone else's surface, and appending would pin every
+ * injected event to the bottom regardless of when it happened — the dateless
+ * entry defect one level up.
+ *
+ * So: each authored event is emitted in its original position, and injected
+ * events are flushed in front of the first DATED authored event they precede.
+ * Two properties follow by construction and are pinned by tests:
+ *
+ * - authored events are never compared with each other, so with `extra` empty
+ *   the output is the input, identical;
+ * - an undated authored entry is not a comparison key, so it keeps its authored
+ *   position and never floats to an end.
+ *
+ * A tie keeps the authored entry first — it described the order first.
+ */
+export function mergeTimelineEvents(
+  authored: TimelineEvent[],
+  extra: DatedTimelineEvent[],
+): TimelineEvent[] {
+  if (extra.length === 0) return authored;
+
+  const pending = [...extra].sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
+
+  const merged: TimelineEvent[] = [];
+  let next = 0;
+
+  for (const event of authored) {
+    if (event.timestamp !== null) {
+      const at = Date.parse(event.timestamp);
+      while (next < pending.length && Date.parse(pending[next].timestamp) < at) {
+        merged.push(pending[next]);
+        next += 1;
+      }
+    }
+    merged.push(event);
+  }
+
+  return [...merged, ...pending.slice(next)];
 }
 
 const TONE_CLASS: Record<TimelineEvent['tone'], string> = {
@@ -310,10 +624,17 @@ export function OrderActivityTimeline({
   salesDocumentUnresolvedReason,
   salesDocumentBlockDetail,
   invoice,
+  lastAmendedAt,
+  lastAmendmentChanges,
+  packedAt,
+  packedByUserId,
   salesDocumentBlockedAt,
   salesDocumentBlockReleasedAt,
+  extraEvents,
+  holds,
+  automationRuns,
 }: OrderActivityTimelineProps): ReactElement {
-  const events = useMemo(
+  const authored = useMemo(
     () =>
       buildEvents(
         createdAt,
@@ -325,8 +646,14 @@ export function OrderActivityTimeline({
         salesDocumentUnresolvedReason,
         salesDocumentBlockDetail,
         invoice,
+        lastAmendedAt,
+        lastAmendmentChanges,
+        packedAt,
+        packedByUserId,
         salesDocumentBlockedAt,
         salesDocumentBlockReleasedAt,
+        holds,
+        automationRuns,
       ),
     [
       createdAt,
@@ -338,9 +665,20 @@ export function OrderActivityTimeline({
       salesDocumentUnresolvedReason,
       salesDocumentBlockDetail,
       invoice,
+      lastAmendedAt,
+      lastAmendmentChanges,
+      packedAt,
+      packedByUserId,
       salesDocumentBlockedAt,
       salesDocumentBlockReleasedAt,
+      holds,
+      automationRuns,
     ],
+  );
+
+  const events = useMemo(
+    () => mergeTimelineEvents(authored, extraEvents ?? []),
+    [authored, extraEvents],
   );
 
   if (events.length === 0) {

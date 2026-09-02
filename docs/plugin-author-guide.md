@@ -69,7 +69,7 @@ port interfaces in `libs/core/src/<context>/domain/ports/`. An adapter
 implements one or more of them.
 
 The well-known set is `CoreCapabilityValues`, declared verbatim at
-[`libs/core/src/integrations/domain/types/adapter.types.ts:23-42`](../libs/core/src/integrations/domain/types/adapter.types.ts#L23-L42):
+[`libs/core/src/integrations/domain/types/adapter.types.ts:38-77`](../libs/core/src/integrations/domain/types/adapter.types.ts#L38-L77):
 
 ```typescript
 export const CoreCapabilityValues = [
@@ -91,6 +91,26 @@ export const CoreCapabilityValues = [
   // Deliberately NOT a document type on `Invoicing`: different issuer, device
   // dependency, legal basis and retry semantics.
   'Fiscalization',
+  // Returns disposition authority (ADR-052 / #2351): who decides what happens
+  // to goods a customer sends back. Unlike `ReturnSourceReader` / `ReturnDecliner`
+  // — read off an adapter manifest and never written — this name is written by an
+  // operator into `enabledCapabilities`, which both connection DTOs `@IsIn`-validate
+  // against this array. Keeping it out would make it unwritable — necessary, but on
+  // its own NOT sufficient: `ConnectionService` also validates the name against the
+  // resolved adapter's `supportedCapabilities`, and no shipped manifest advertises
+  // `ReturnsAuthority` yet, so A5 cannot resolve to a non-OpenLinker holder until an
+  // adapter declares it.
+  'ReturnsAuthority',
+  // Availability read authority (ADR-052 A1 / #2403): who answers "how many can
+  // I sell?" for a connection. `AUTHORITY_KIND_DESCRIPTORS.availability.capability`
+  // names this string as A1's gate, so it is resolved by narrowing a dispatched
+  // adapter — a dispatch name, not an advertised-without-dispatch one. No shipped
+  // manifest advertises it yet, so it stays unassignable until one does.
+  'AvailabilityAuthority',
+  // Fulfilment execution authority (ADR-052 A3 / #2403): who holds a work object
+  // and is allowed to act on it. `AUTHORITY_KIND_DESCRIPTORS['fulfillment-execution']
+  // .capability` names this string as A3's gate. ADVERTISED since #2409 (openlinker.oms.v1).
+  'FulfillmentExecutor',
 ] as const;
 ```
 
@@ -105,6 +125,7 @@ export const CoreCapabilityValues = [
 | `CategoryProvisioner`  | Mirror/create a destination category tree (shop sub-capability).    | [`libs/core/src/listings/domain/ports/capabilities/category-provisioner.capability.ts`](../libs/core/src/listings/domain/ports/capabilities/category-provisioner.capability.ts) |
 | `Invoicing`            | Issue fiscal documents through a provider (ADR-026); country-agnostic. | [`libs/core/src/invoicing/domain/ports/invoicing.port.ts`](../libs/core/src/invoicing/domain/ports/invoicing.port.ts) |
 | `Fiscalization`        | Register a completed sale with a provider that performs or brokers the fiscal registration (ADR-042); country-agnostic. | [`libs/core/src/fiscalization/domain/ports/fiscalization.port.ts`](../libs/core/src/fiscalization/domain/ports/fiscalization.port.ts) |
+| `ReturnsAuthority`     | Decide the disposition of returned goods (A5, ADR-052). | — *(no port yet — Wave 3a; resolved from capability declarations, not by narrowing a dispatched adapter)* |
 
 **Open at the registry boundary (#576).** The set above is closed at
 the type-system level (`CoreCapability` union). At the registry

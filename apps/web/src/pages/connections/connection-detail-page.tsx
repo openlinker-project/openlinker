@@ -9,6 +9,7 @@ import { ConnectionConfigPanel } from '../../features/connections/components/Con
 import { ConnectionDiagnosticsPanel } from '../../features/connections/components/ConnectionDiagnosticsPanel';
 import { CatalogTrustPanel } from '../../features/connections/components/catalog-trust-panel';
 import { ConnectionSyncStatusPanel } from '../../features/connections/components/connection-sync-status-panel';
+import { RouterReadinessPanel } from '../../features/connections/components/router-readiness-panel';
 import type { Connection, ConnectionStatus } from '../../features/connections/api/connections.types';
 import { EmptyState, ErrorState, LoadingState } from '../../shared/ui/feedback-state';
 import { EntityLabel } from '../../shared/ui/entity-label';
@@ -351,6 +352,12 @@ export function ConnectionDetailPage(): ReactElement {
             {connection.enabledCapabilities.includes('ProductMaster') ? (
               <CatalogTrustPanel connectionId={connection.id} />
             ) : null}
+            {/* #2407 — install-wide precondition, rendered here because this is
+                where routing gets switched on. Deliberately not capability-gated:
+                the claim lives in config, and `enabledCapabilities` is stamped at
+                create and never retro-filled (#2085), so gating on it would hide
+                the panel from exactly the connections that need it. */}
+            <RouterReadinessPanel />
           </TabsContent>
 
           <TabsContent value="actions">

@@ -27,6 +27,23 @@ export const InboundEventDomainValues = [
   // `invoicing` (regulatory clearance) so the routing policy nudges the
   // payment-refresh job, not the regulatory-status reconcile.
   'invoice-payment',
+  // Fulfilment progress from an executor (#2400, ADR-054). Gated on
+  // `FulfillmentExecutor`. Until #2409 this arm resolved `ungated` on every
+  // shipped deployment, because the capability was in `CoreCapabilityValues`
+  // while NO manifest advertised it, so no connection could have it both
+  // supported and enabled. `openlinker.oms.v1` advertises it now, so the arm
+  // can gate for real — on a connection whose operator has ALSO enabled it.
+  // The member was added ahead of that so the delivery would ROUTE rather than
+  // dead-letter the day one existed — the inverse of ADR-042's eparagony
+  // decision, which declined to register a decoder precisely because there was
+  // no domain member and no job to route to.
+  'fulfillment',
+  // Customer-return notification (#2330/#2400). Gated on `OrderSource`, NEVER
+  // on `ReturnSourceReader`: that is a guard-only sub-capability narrowed off
+  // the dispatched `OrderSource` adapter, absent from `CoreCapabilityValues`,
+  // so `connection.enabledCapabilities` can never contain it and the arm would
+  // be permanently `ungated` (the #2085 stamped-at-create trap).
+  'return',
 ] as const;
 
 export type InboundEventDomain = (typeof InboundEventDomainValues)[number];

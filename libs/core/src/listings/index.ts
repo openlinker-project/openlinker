@@ -204,6 +204,7 @@ export type {
 export { OfferBuilderValidationException } from './domain/exceptions/offer-builder-validation.exception';
 export type { OfferBuilderValidationIssue } from './domain/exceptions/offer-builder-validation.exception';
 export { MasterCatalogConnectionNotConfiguredException } from './domain/exceptions/master-catalog-connection-not-configured.exception';
+export { AvailabilityUnknownError } from './domain/exceptions/availability-unknown.error';
 export type { ISellerPoliciesService } from './application/interfaces/seller-policies.service.interface';
 export type { IResponsibleProducerService } from './application/interfaces/responsible-producer.service.interface';
 export type { IDeliveryPriceListService } from './application/interfaces/delivery-price-list.service.interface';
@@ -386,6 +387,12 @@ export type {
 export type { IOfferStatusReadService } from './application/services/offer-status-read.service.interface';
 export type { IOfferQuantityAckReconcileService } from './application/services/offer-quantity-ack-reconcile.service.interface';
 export type { IOfferStockRestoreService } from './application/interfaces/offer-stock-restore.service.interface';
+export type {
+  OfferStockRestoreOutcome,
+  OfferStockRestoreResult,
+} from './application/types/offer-stock-restore.types';
+export { OfferStockRestoreOutcomeValues } from './application/types/offer-stock-restore.types';
+export { OfferStockRestoreReleaseIncompleteError } from './domain/exceptions/offer-stock-restore-release-incomplete.error';
 export type { IStaleOfferPauseService } from './application/interfaces/stale-offer-pause.service.interface';
 export type { StaleOfferPauseResult } from './domain/types/stale-offer-pause.types';
 export { OfferPollNotSupportedException } from './domain/exceptions/offer-poll-not-supported.exception';

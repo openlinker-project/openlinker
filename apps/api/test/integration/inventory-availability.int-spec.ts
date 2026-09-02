@@ -17,6 +17,10 @@ import {
 } from '@openlinker/core/products/orm-entities';
 import { InventoryItemOrmEntity } from '@openlinker/core/inventory/orm-entities';
 import {
+  AVAILABILITY_SERVICE_TOKEN,
+  type IAvailabilityService,
+} from '@openlinker/core/inventory';
+import {
   getTestHarness,
   IntegrationTestHarness,
   resetTestHarness,
@@ -221,5 +225,107 @@ describe('GET /inventory/availability (#792 PR 2)', () => {
     expect(
       (response.body.items as Array<{ productVariantId: string }>).map((i) => i.productVariantId),
     ).toEqual([v3, v1, v2]);
+  });
+});
+
+describe('IAvailabilityService observedAt coercion (#2321)', () => {
+  let harness: IntegrationTestHarness;
+
+  beforeAll(async () => {
+    harness = await getTestHarness();
+  });
+
+  afterEach(async () => {
+    await resetTestHarness();
+  });
+
+  afterAll(async () => {
+    await teardownTestHarness();
+  });
+
+  /**
+   * `MAX(inv.updatedAt)` travels TypeORM's raw-query path, where the shape the
+   * pg driver hands back is not guaranteed by the type annotation — the sibling
+   * `findStockAggregatesByProductIds` normalises for exactly that reason. A unit
+   * test with a mocked repository cannot observe this: it asserts against the
+   * shape the test itself wrote. Only real Postgres can, which is why this runs
+   * through the seam rather than against a fake.
+   */
+  it('reports a real Date observedAt for a variant with live rows', async () => {
+    const dataSource = harness.getDataSource();
+    const availability = harness.getApp().get<IAvailabilityService>(AVAILABILITY_SERVICE_TOKEN);
+
+    const suffix = `${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+    const variantId = `ol_variant_observed_${suffix}`;
+
+    await seedProductWithVariantInventory(dataSource, [
+      {
+        variantId,
+        rows: [
+          { availableQuantity: 2, locationId: 'warehouse-a' },
+          { availableQuantity: 3, locationId: 'warehouse-b' },
+        ],
+      },
+    ]);
+
+    const [result] = await availability.getPromisableQuantities({
+      variantIds: [variantId],
+      scope: { kind: 'global' },
+    });
+
+    expect(result.quantity).toBe(5);
+    expect(result.provenance).toBe('computed');
+    expect(result.observedAt).toBeInstanceOf(Date);
+    expect(Number.isNaN((result.observedAt as Date).getTime())).toBe(false);
+  });
+
+  it('reports a variant with no rows as a known zero, not as unknown', async () => {
+    const availability = harness.getApp().get<IAvailabilityService>(AVAILABILITY_SERVICE_TOKEN);
+
+    const [result] = await availability.getPromisableQuantities({
+      variantIds: [`ol_variant_absent_${Date.now().toString()}`],
+      scope: { kind: 'global' },
+    });
+
+    expect(result.quantity).toBe(0);
+    expect(result.provenance).toBe('computed');
+    expect(result.observedAt).toBeNull();
+  });
+
+  it('reports the LATEST write across the variant rows', async () => {
+    const dataSource = harness.getDataSource();
+    const availability = harness.getApp().get<IAvailabilityService>(AVAILABILITY_SERVICE_TOKEN);
+
+    const suffix = `${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+    const variantId = `ol_variant_max_${suffix}`;
+
+    await seedProductWithVariantInventory(dataSource, [
+      {
+        variantId,
+        rows: [
+          { availableQuantity: 1, locationId: 'warehouse-a' },
+          { availableQuantity: 1, locationId: 'warehouse-b' },
+        ],
+      },
+    ]);
+
+    // Force one row strictly newer than the other, so MAX is observable rather
+    // than coincidentally equal to both.
+    const older = new Date('2020-01-01T00:00:00.000Z');
+    const newer = new Date('2026-01-01T00:00:00.000Z');
+    await dataSource
+      .getRepository(InventoryItemOrmEntity)
+      .update({ id: `ol_inventory_${variantId}_0` }, { updatedAt: older });
+    await dataSource
+      .getRepository(InventoryItemOrmEntity)
+      .update({ id: `ol_inventory_${variantId}_1` }, { updatedAt: newer });
+
+    const [result] = await availability.getPromisableQuantities({
+      variantIds: [variantId],
+      scope: { kind: 'global' },
+    });
+
+    expect(result.observedAt).toBeInstanceOf(Date);
+    expect((result.observedAt as Date).toISOString()).toBe(newer.toISOString());
   });
 });

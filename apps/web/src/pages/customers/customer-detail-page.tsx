@@ -68,6 +68,8 @@ const SYNC_STATUS_TONES: Record<OrderSyncStatusValue, StatusBadgeTone> = {
   syncing: 'warning',
   synced: 'success',
   failed: 'error',
+  // #2284 — provisioning withheld because the source cancelled; never an error.
+  skipped_cancelled: 'neutral',
 };
 
 const CUSTOMER_ORDER_COLUMNS: DataTableColumn<OrderRecord>[] = [

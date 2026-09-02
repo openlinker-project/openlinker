@@ -89,9 +89,10 @@ export interface MarketplaceOfferQuantityUpdatePayloadV1 {
   quantity: number;
   idempotencyKey?: string;
   /**
-   * ISO timestamp of the inventory observation this quantity came from (#2617).
-   * Absent on a legacy job already queued across the deploy, which then writes
-   * unguarded as before.
+   * ISO-8601 observation token for the state this write expresses (#2285) — never
+   * wall-clock `now()`. It both versions the derived idempotency key and orders
+   * two concurrent writes for one offer (#2617). Optional, so a payload enqueued
+   * before it existed stays valid and writes unguarded, exactly as before.
    */
   observedAt?: string;
 }

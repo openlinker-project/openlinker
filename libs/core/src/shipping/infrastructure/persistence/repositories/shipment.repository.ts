@@ -30,12 +30,16 @@ import { formatInternalId } from '@openlinker/core/identifier-mapping';
 import { Shipment } from '../../../domain/entities/shipment.entity';
 import { ShipmentNotFoundException } from '../../../domain/exceptions/shipment-not-found.exception';
 import type { ShipmentRepositoryPort } from '../../../domain/ports/shipment-repository.port';
-import { TerminalShipmentStatusValues } from '../../../domain/types/shipment-status.types';
+import {
+  ReservationConsumeCandidateStatusValues,
+  TerminalShipmentStatusValues,
+} from '../../../domain/types/shipment-status.types';
 import type {
   PaginatedShipments,
   ShipmentFilters,
   ShipmentPagination,
 } from '../../../domain/types/shipment-query.types';
+import type { ShipmentDirection } from '../../../domain/types/shipment-direction.types';
 import type {
   CreateShipmentInput,
   UpdateShipmentInput,
@@ -74,18 +78,25 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
     return entity ? this.toDomain(entity) : null;
   }
 
-  async findByOrderId(orderId: string): Promise<readonly Shipment[]> {
+  async findByOrderId(
+    orderId: string,
+    direction: ShipmentDirection,
+  ): Promise<readonly Shipment[]> {
     const entities = await this.repository.find({
-      where: { orderId },
+      where: { orderId, direction },
       order: { createdAt: 'ASC' },
     });
     return entities.map((entity) => this.toDomain(entity));
   }
 
-  async findActiveByOrderId(orderId: string): Promise<Shipment | null> {
+  async findActiveByOrderId(
+    orderId: string,
+    direction: ShipmentDirection,
+  ): Promise<Shipment | null> {
     const entity = await this.repository.findOne({
       where: {
         orderId,
+        direction,
         status: Not(In([...TerminalShipmentStatusValues])),
       },
       order: { createdAt: 'DESC' },
@@ -101,14 +112,18 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
   async findBranchOneByOrderAndConnection(
     orderId: string,
     connectionId: string,
+    direction: ShipmentDirection,
   ): Promise<Shipment | null> {
-    // Matches the partial-unique-index predicate
-    // `UQ_shipments_branch_one_per_order_conn` so the lookup hits exactly
-    // the row the index protects against — at most one row by construction.
+    // Matches the partial-unique index `UQ_shipments_branch_one_per_order_conn`
+    // key-for-key — including `direction`, which #2373 added to its KEY columns
+    // — so the lookup hits exactly the row the index protects against: at most
+    // one row by construction. Dropping `direction` here would match a sibling
+    // row the index deliberately permits.
     const entity = await this.repository.findOne({
       where: {
         orderId,
         connectionId,
+        direction,
         providerShipmentId: IsNull(),
       },
     });
@@ -140,6 +155,51 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
     return (result.affected ?? 0) > 0;
   }
 
+  async claimFulfillmentWorkLink(id: string, fulfillmentWorkId: string): Promise<boolean> {
+    // Conditional write — `IsNull()` in the WHERE is what makes this atomic
+    // under two concurrent observers (a dispatch and the branch-1 status poll).
+    // Exactly one UPDATE can affect a row; an application-side null check would
+    // enforce nothing at READ COMMITTED.
+    const result = await this.repository.update(
+      { id, fulfillmentWorkId: IsNull() },
+      { fulfillmentWorkId },
+    );
+    return (result.affected ?? 0) > 0;
+  }
+
+  async listDispatchedAwaitingReservationConsume(limit: number): Promise<readonly Shipment[]> {
+    // Frontier-as-query: the predicate IS the cursor (see the port docblock).
+    // `createdAt ASC` so the longest-outstanding shipment is examined first.
+    const entities = await this.repository.find({
+      where: {
+        // Outbound only. #2347 was written when every row in this table was a
+        // seller-to-buyer dispatch; #2373 put return labels in the same table,
+        // and they reach the very statuses this predicate selects on. An
+        // inbound parcel arriving would otherwise become a consume candidate
+        // and close the order's holds — concluding "the goods left the
+        // building" from one coming back.
+        direction: 'outbound',
+        status: In([...ReservationConsumeCandidateStatusValues]),
+        reservationConsumedAt: IsNull(),
+      },
+      order: { createdAt: 'ASC' },
+      take: limit,
+    });
+    return entities.map((entity) => this.toDomain(entity));
+  }
+
+  async claimReservationConsume(id: string, at: Date): Promise<boolean> {
+    // Conditional write — `IsNull()` in the WHERE is what makes this atomic:
+    // exactly one UPDATE can affect the row. `?? 0` matters, not style: an
+    // `undefined` affected count coercing to a truthy claim is the silent
+    // double-consume shape.
+    const result = await this.repository.update(
+      { id, reservationConsumedAt: IsNull() },
+      { reservationConsumedAt: at },
+    );
+    return (result.affected ?? 0) > 0;
+  }
+
   async releaseWaybillRelay(id: string): Promise<void> {
     // Unconditional: only the claim holder calls this, and re-releasing an
     // already-NULL row is harmless.
@@ -151,6 +211,10 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
     entity.id = formatInternalId('Shipment');
     entity.orderId = input.orderId;
     entity.connectionId = input.connectionId;
+    // The ONE application-side default for `direction` (#2373). The DB column
+    // carries none, so an insert that bypasses this builder fails loudly
+    // rather than silently acquiring a cohort.
+    entity.direction = input.direction ?? 'outbound';
     entity.shippingMethod = input.shippingMethod;
     entity.deliveryIntent = input.deliveryIntent ?? null;
     // Atomic-terminal mode (#834): when `initialStatus` is supplied (the
@@ -173,12 +237,21 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
     // Unclaimed at birth (#1947) — even on the atomic-terminal branch-1 path,
     // which is born with a `trackingNumber` but has told no source yet.
     entity.waybillRelayedAt = null;
+    // Unclaimed at birth (#2347) — even a branch-1 row born terminal has not had
+    // its order's reservations consumed yet; the sweep is what does that.
+    entity.reservationConsumedAt = null;
+    // Work linkage (#2402). Written HERE and only here: `create` persists a
+    // fully-populated entity, so omitting this line would not fail to compile —
+    // `save` would simply write NULL on every row, silently. That is why the
+    // spec asserts the PERSISTED value rather than the call argument.
+    entity.fulfillmentWorkId = input.fulfillmentWorkId ?? null;
     return entity;
   }
 
   private buildWhere(filters: ShipmentFilters): FindOptionsWhere<ShipmentOrmEntity> {
     const where: FindOptionsWhere<ShipmentOrmEntity> = {};
     if (filters.orderId !== undefined) where.orderId = filters.orderId;
+    if (filters.direction !== undefined) where.direction = filters.direction;
     // `statuses` (multi-status IN) takes precedence over `status` when both
     // are set (#838 — see ShipmentFilters jsdoc).
     if (filters.statuses !== undefined && filters.statuses.length > 0) {
@@ -252,6 +325,9 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
       entity.deliveryIntent,
       entity.providerCode,
       entity.waybillRelayedAt,
+      entity.direction,
+      entity.reservationConsumedAt,
+      entity.fulfillmentWorkId,
     );
   }
 }

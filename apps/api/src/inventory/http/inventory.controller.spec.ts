@@ -59,6 +59,7 @@ describe('InventoryController', () => {
       getAvailabilityByVariantIds: jest.fn(),
       findAvailabilityByVariantIds: jest.fn(),
       getProductStockAggregates: jest.fn(),
+      getDuplicatePositionReport: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -137,8 +138,8 @@ describe('InventoryController', () => {
   describe('getAvailability (#792)', () => {
     it('passes the parsed variantIds through to the service and wraps the response in items[]', async () => {
       queryService.getAvailabilityByVariantIds.mockResolvedValue([
-        { productVariantId: 'var-a', totalAvailable: 5, locationCount: 1 },
-        { productVariantId: 'var-b', totalAvailable: 0, locationCount: 0 },
+        { productVariantId: 'var-a', totalAvailable: 5, locationCount: 1, availableToPromise: 5 },
+        { productVariantId: 'var-b', totalAvailable: 0, locationCount: 0, availableToPromise: 0 },
       ]);
 
       const result = await controller.getAvailability({
@@ -148,8 +149,8 @@ describe('InventoryController', () => {
       expect(queryService.getAvailabilityByVariantIds).toHaveBeenCalledWith(['var-a', 'var-b']);
       expect(result).toEqual({
         items: [
-          { productVariantId: 'var-a', totalAvailable: 5, locationCount: 1 },
-          { productVariantId: 'var-b', totalAvailable: 0, locationCount: 0 },
+          { productVariantId: 'var-a', totalAvailable: 5, locationCount: 1, availableToPromise: 5 },
+          { productVariantId: 'var-b', totalAvailable: 0, locationCount: 0, availableToPromise: 0 },
         ],
       });
     });
@@ -163,6 +164,74 @@ describe('InventoryController', () => {
       const result = await controller.getAvailability({ productVariantIds: ['var-x'] });
 
       expect(result).toEqual({ items: [] });
+    });
+  });
+
+  describe('getDuplicatePositions (#2319)', () => {
+    it('forwards maxGroups and serialises row dates to ISO strings', async () => {
+      const updatedAt = new Date('2026-05-02T10:00:00Z');
+      queryService.getDuplicatePositionReport.mockResolvedValue({
+        groupCount: 1,
+        rowCount: 2,
+        excessRowCount: 1,
+        truncated: false,
+        groups: [
+          {
+            productId: 'prod-1',
+            productVariantId: null,
+            locationId: null,
+            sourceConnectionId: null,
+            rowCount: 2,
+            liveRowCount: 1,
+            rows: [
+              {
+                id: 'inv-1',
+                availableQuantity: 7,
+                reservedQuantity: 0,
+                isStale: false,
+                updatedAt,
+              },
+              {
+                id: 'inv-2',
+                availableQuantity: 3,
+                reservedQuantity: 1,
+                isStale: true,
+                updatedAt,
+              },
+            ],
+          },
+        ],
+      });
+
+      const result = await controller.getDuplicatePositions({ maxGroups: 50 });
+
+      expect(queryService.getDuplicatePositionReport).toHaveBeenCalledWith(50);
+      expect(result.groupCount).toBe(1);
+      expect(result.excessRowCount).toBe(1);
+      expect(result.groups[0].liveRowCount).toBe(1);
+      expect(result.groups[0].rows[0].updatedAt).toBe(updatedAt.toISOString());
+      // Stale rows reach the transport layer — the report is deliberately
+      // stricter than the availability read.
+      expect(result.groups[0].rows[1].isStale).toBe(true);
+      expect(typeof result.generatedAt).toBe('string');
+    });
+
+    it('passes an absent maxGroups straight through so the service default applies', async () => {
+      queryService.getDuplicatePositionReport.mockResolvedValue({
+        groupCount: 0,
+        rowCount: 0,
+        excessRowCount: 0,
+        groups: [],
+        truncated: false,
+      });
+
+      const result = await controller.getDuplicatePositions({});
+
+      expect(queryService.getDuplicatePositionReport).toHaveBeenCalledWith(undefined);
+      // The clean-table answer an operator checks before running #2325.
+      expect(result.groupCount).toBe(0);
+      expect(result.groups).toEqual([]);
+      expect(result.truncated).toBe(false);
     });
   });
 });

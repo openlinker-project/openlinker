@@ -15,7 +15,11 @@
  *
  * @module libs/integrations/erli/src/infrastructure/adapters/__tests__
  */
-import { isOrderStatusWriteback, type OrderFeedInput } from '@openlinker/core/orders';
+import {
+  isOrderStatusWriteback,
+  type OrderFeedInput,
+  type OrderLifecycleEvent,
+} from '@openlinker/core/orders';
 import type { IInventoryQueryService } from '@openlinker/core/inventory';
 import type { OfferManagerPort, OfferStockRestorer } from '@openlinker/core/listings';
 import { ErliApiException } from '../../../domain/exceptions/erli-api.exception';
@@ -657,6 +661,21 @@ describe('ErliOrderSourceAdapter', () => {
 
     it('is narrowed by isOrderStatusWriteback', () => {
       expect(isOrderStatusWriteback(adapter)).toBe(true);
+    });
+
+    // #2286 — the runtime half of the exhaustiveness guard. Erli's branch order
+    // is inverted (`cancelled` first, `dispatched` as the remainder), so before
+    // the switch conversion an unrecognised member ran the dispatch writeback.
+    it('unknown member: returns unsupported without writing anything (never-default, #2286)', async () => {
+      const result = await adapter.write({
+        type: 'amended',
+        externalOrderId: ORDER_ID,
+      } as unknown as OrderLifecycleEvent);
+
+      expect(result.outcome).toBe('unsupported');
+      expect(result.detail).toContain('amended');
+      expect(client.patch).not.toHaveBeenCalled();
+      expect(client.post).not.toHaveBeenCalled();
     });
 
     // #1198: `cancelled` now triggers stock-restore instead of unconditional

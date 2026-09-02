@@ -163,8 +163,10 @@ jobs:
 
   test-integration:
     name: Integration Tests
-    # Budget covers two sequential suites (API + worker) plus install + libs build.
-    timeout-minutes: 45
+    # Budget covers two sequential suites (API + worker) plus install + libs
+    # build. Must comfortably CONTAIN its steps or raising a step cap just
+    # moves the failure here: 40 (api) + 15 (worker) + ~3 setup = 58.
+    timeout-minutes: 65
     # runs-on: ubuntu-latest
     runs-on: self-hosted
     # `needs: changes` only for the cheap path-gate output — NOT an artifact
@@ -334,14 +336,42 @@ jobs:
             || (echo "ERROR: libs/core/dist/identifier-mapping/index.js missing after build" && exit 1)
       - name: Run integration tests
         run: pnpm --filter @openlinker/api test:integration
-        timeout-minutes: 25 # PS container boot + module install + cache:warmup adds ~20-30s on Linux (#716)
+        # Was 25 (PS container boot + module install + cache:warmup adds ~20-30s
+        # on Linux, #716). Raised for the OMS programme (waves 0-3a, PR #2675),
+        # which took this tier from 108 to 166 API int-specs (+54%). Both
+        # integration configs set `maxWorkers: 1`, so wall-clock is LINEAR in
+        # suite count - a 54% bigger tier is a 54% longer step, and the old cap
+        # killed a run that was still healthy (the last suites before the
+        # cut-off passed in ~5.5s each, no stall, no leaked container).
+        #
+        # Measured: 18m29s wall / 1072s jest on a clean local box, 165/166
+        # passing. This runner is slower - the same tier passed at 820s on main
+        # (108 suites) and blew past 1512s here - so the realistic CI cost is
+        # ~26-28min. 40 gives ~1.5x headroom over that floor while the job cap
+        # below still bounds a genuine hang.
+        #
+        # NOTE for whoever looks next: it is NOT one expensive spec. The
+        # slowest three are the pre-existing container suites
+        # (allegro-prestashop-carrier-mapping 310s, prestashop-webhook-
+        # provisioning 125s, woocommerce-inventory-propagation 101s), and
+        # fulfillment-work-migration-parity - which stands up a SECOND database
+        # with `migrationsRun: true` to run the full migration chain, because
+        # the ordinary harness uses `synchronize` and so CI had never executed a
+        # migration at all - costs only 14s. The growth is spread across ~50 new
+        # specs, so the next wave will move this number again.
+        timeout-minutes: 40
         # Note: Docker is pre-installed on GitHub Actions runners, required for Testcontainers
       - name: Run worker integration tests
         # Runs even if the API suite failed (!cancelled) so a worker-specific
         # AppModule DI regression is reported independently — the point of #786.
         if: ${{ !cancelled() }}
         run: pnpm --filter @openlinker/worker test:integration
-        timeout-minutes: 10 # Worker suite runs ~80s locally; cap guards a hung container boot
+        # Was 10 ("worker suite runs ~80s locally"), which is stale: the worker
+        # tier grew 17 -> 26 int-specs on this branch and its LAST CI run took
+        # 577s against the 600s cap - it passed with 23s to spare and is the
+        # next step that would have gone red. 15 restores real headroom; the
+        # cap still guards a hung container boot.
+        timeout-minutes: 15
         # This job's own containers are cleaned up in-process: apps/worker has
         # its own globalSetup/globalTeardown pair (setup-global.ts / teardown.ts,
         # independent of apps/api's), plus each suite's own afterAll (e.g. the

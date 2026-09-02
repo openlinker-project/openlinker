@@ -36,6 +36,8 @@ export interface WooCommerceProduct {
   tax_status?: 'taxable' | 'shipping' | 'none';
   date_created?: string;
   date_modified?: string;
+  /** UTC modification instant. The only WC timestamp OL may read as an absolute instant — `date_modified` is site-local with no offset. */
+  date_modified_gmt?: string;
   meta_data?: WooCommerceMetaEntry[];
 }
 
@@ -59,6 +61,8 @@ export interface WooCommerceProductVariation {
   tax_status?: 'taxable' | 'shipping' | 'none';
   date_created?: string;
   date_modified?: string;
+  /** UTC modification instant. The only WC timestamp OL may read as an absolute instant — `date_modified` is site-local with no offset. */
+  date_modified_gmt?: string;
   meta_data?: WooCommerceMetaEntry[];
 }
 
