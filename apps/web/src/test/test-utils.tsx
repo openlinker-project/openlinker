@@ -193,6 +193,14 @@ export function createMockApiClient(
       }),
       getCurrencyMismatchOrders: vi.fn().mockResolvedValue({ items: [], total: 0 }),
       getTaxCoverageOrders: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+      getCoverageByConnection: vi.fn().mockResolvedValue({
+        categories: [
+          { category: 'currency', rows: [] },
+          { category: 'tax-a', rows: [] },
+          { category: 'tax-b', rows: [] },
+          { category: 'tax-c', rows: [] },
+        ],
+      }),
       rerunTaxBackfill: vi.fn().mockResolvedValue({ scanned: 0, updated: 0 }),
       getProductMatchingOrders: vi.fn().mockResolvedValue({ items: [], total: 0 }),
       ...overrides.analytics,
