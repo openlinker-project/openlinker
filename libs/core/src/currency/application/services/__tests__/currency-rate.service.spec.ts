@@ -190,13 +190,16 @@ describe('CurrencyRateService', () => {
       expect(result).toBe(storedWalkedBack);
     });
 
-    it('should re-fetch on EVERY call for a candidate that resolves by walk-back', async () => {
-      // The registry absorbs a repeat lookup only when the candidate day is
-      // ITSELF a publication day. A weekend candidate resolves onto an earlier
-      // published date, so nothing is ever written under the candidate, the
-      // pre-fetch read keeps missing, and each order carrying it costs a live
-      // provider call. Pinned because the file header used to claim otherwise;
-      // memoising the mapping is deferred to #2124.
+    it('should re-fetch on EVERY call when the provider declares no resolveLikelyPublicationDay', async () => {
+      // This is the FALLBACK path only, not current NBP/ECB behaviour: both
+      // shipped providers declare `resolveLikelyPublicationDay` (#2777), so
+      // for them the pre-fetch read keys on the resolved published day and a
+      // repeat candidate hits the cache after the first order. This test's
+      // `provider` (the `beforeEach` default) deliberately omits the method
+      // to pin what a provider that declares nothing still gets: the
+      // pre-#2777 behaviour where the candidate day is never itself written,
+      // so the pre-fetch read keeps missing and each order carrying that
+      // candidate costs a live provider call.
       const walkedBack: ExchangeRate = { ...FETCHED, rateDate: '2026-08-07' };
       const storedWalkedBack: StoredExchangeRate = { ...STORED, rateDate: '2026-08-07' };
       provider.fetchRate.mockResolvedValue(walkedBack);
