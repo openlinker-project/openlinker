@@ -300,20 +300,23 @@ jobs:
           # refuses to remove a network that ALREADY has a container
           # attached — it has no concept of "about to be attached". Unlike
           # the containers above, a `Network()` the PS/MySQL container
-          # helper creates (`apps/api/test/integration/helpers/prestashop-container.helper.ts`)
+          # helper creates (`apps/api/test/integration/helpers/prestashop-container.helper.ts`,
+          # and identically in `woocommerce-container.helper.ts`)
           # carries no `ol.ci.run-id` label (testcontainers-node's `Network`
           # builder has no `.withLabels()` in this version), so a network
           # that's been created but has no container attached YET — e.g.
-          # while a sibling job's MySQL/PrestaShop image is still cold-
-          # pulling, up to the ~5-10 min documented in that helper's docblock
-          # — is indistinguishable from a genuinely orphaned one and was
+          # while a sibling job's MySQL image is still cold-pulling —
+          # is indistinguishable from a genuinely orphaned one and was
           # being pruned out from under the still-running job that created
           # it, surfacing as `failed to set up container networking: network
           # <id> not found` the moment that job's first container tried to
-          # attach. The `until=` filter gives every in-flight network a
-          # 15-minute grace window (comfortably above that documented
-          # worst case) before it's eligible for pruning, while still
-          # reclaiming genuinely orphaned empty networks (left behind by a
+          # attach. The network only needs to survive until its FIRST
+          # container attaches: the MySQL companion container, bounded
+          # by its own 240s (4 min) `withStartupTimeout`, not the
+          # full PS-install time. The `until=` filter gives every in-flight
+          # network a 15-minute grace window (comfortably above that 4-min
+          # bound) before it's eligible for pruning, while still reclaiming
+          # genuinely orphaned empty networks (left behind by a
           # SIGKILLed/cancelled run, since Ryuk is disabled here) promptly.
           docker network prune -f --filter "label=org.testcontainers=true" --filter "until=15m" || true
       - name: Install dependencies
