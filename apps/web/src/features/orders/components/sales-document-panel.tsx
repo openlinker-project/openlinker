@@ -1283,7 +1283,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                       captureDemoEvent('demo_invoice_doctype_changed', { documentType: next });
                       setDocumentType(next);
                     }}
-                    disabled={issueMutation.isPending || invoiceWrite.demoReadOnly}
+                    disabled={issueMutation.isPending || registerMutation.isPending || invoiceWrite.demoReadOnly}
                     className="sales-document-panel__doc-type"
                   />
                 </div>
@@ -1298,19 +1298,35 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                       onClick={handleIssue}
                       disabled={
                         issueMutation.isPending ||
+                        registerMutation.isPending ||
                         invoiceWrite.demoReadOnly ||
                         invoicingConnection === null ||
                         issueRefusal !== null
                       }
                     >
-                      {t('invoice.action.issue', 'Issue invoice')}
+                      {issueMutation.isPending ? (
+                        <>
+                          <span className="button__spinner" aria-hidden="true" />
+                          {t('invoice.action.issuing', 'Issuing…')}
+                        </>
+                      ) : (
+                        t('invoice.action.issue', 'Issue invoice')
+                      )}
                     </Button>
                   </ReadOnlyLock>
                   {/* The reason sits ON the control, not only in the alert above: a
-                      disabled button with no explanation beside it reads as a bug. */}
+                      disabled button with no explanation beside it reads as a bug.
+                      A cross-mutation block (the sibling document is in flight)
+                      gets the same treatment - only one sales document can end up
+                      on this order, so both controls freeze together rather than
+                      one silently going dead with nothing said about why. */}
                   {issueRefusal ? (
                     <span className="text-muted sales-document-panel__override-card-hint">
                       {issueRefusal}
+                    </span>
+                  ) : registerMutation.isPending ? (
+                    <span className="text-muted sales-document-panel__override-card-hint">
+                      {t('invoice.action.blockedByReceipt', 'Waiting for the receipt registration to finish.')}
                     </span>
                   ) : null}
                 </div>
@@ -1392,11 +1408,23 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                 <div className="sales-document-panel__override-card-action">
                   <Button
                     tone="primary"
-                    disabled={registerMutation.isPending || missingRateReason}
+                    disabled={registerMutation.isPending || issueMutation.isPending || missingRateReason}
                     onClick={() => handleRegister(defaultFiscalConnectionId)}
                   >
-                    {t('fiscalReceipt.action.register', 'Register receipt')}
+                    {registerMutation.isPending ? (
+                      <>
+                        <span className="button__spinner" aria-hidden="true" />
+                        {t('fiscalReceipt.action.registering', 'Registering…')}
+                      </>
+                    ) : (
+                      t('fiscalReceipt.action.register', 'Register receipt')
+                    )}
                   </Button>
+                  {issueMutation.isPending ? (
+                    <span className="text-muted sales-document-panel__override-card-hint">
+                      {t('fiscalReceipt.action.blockedByInvoice', 'Waiting for the invoice issue to finish.')}
+                    </span>
+                  ) : null}
                 </div>
                 <p className="text-muted sales-document-panel__override-card-scope">
                   {t('salesDocument.override.scopeNote', 'This applies to this order only.')}

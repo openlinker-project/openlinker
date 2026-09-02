@@ -646,6 +646,39 @@ button:disabled,
   box-shadow: none;
 }
 
+/* ── Button in-flight spinner (#2807 review) ────────────────────────
+   A `disabled` button with no other signal reads as dead, not busy - the
+   sales-document panel's Issue-invoice/Register-receipt actions can each sit
+   pending for several seconds (a real provider round-trip), and the plain
+   opacity dim above is a static "nothing happening" look, indistinguishable
+   from a refused control. This is a leading icon, not a layout swap: the
+   button keeps its width and the label text still renders beside it. */
+.button__spinner {
+  display: inline-block;
+  width: 0.8em;
+  height: 0.8em;
+  margin-right: var(--space-2);
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: var(--radius-pill);
+  opacity: 0.85;
+  animation: button-spinner-rotate var(--duration-slow) linear infinite;
+  vertical-align: -0.125em;
+}
+@keyframes button-spinner-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .button__spinner {
+    animation: none;
+    /* Half-ring still reads as "not a solid dot" without motion. */
+    border-top-color: currentColor;
+    opacity: 0.4;
+  }
+}
+
 /* ── Button sizes (#775) ─────────────────────────────────────────── */
 .button--xs {
   height: 1.5rem;
