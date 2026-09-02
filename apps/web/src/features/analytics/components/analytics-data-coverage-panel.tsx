@@ -28,16 +28,18 @@
  */
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Button, ErrorState, LoadingState, StatusBadge, TimeDisplay } from '../../../shared/ui';
+import { Alert, Button, ErrorState, LoadingState, StatusBadge, TimeDisplay } from '../../../shared/ui';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { ApiError } from '../../../shared/api/api-error';
 import { useDemoMode } from '../../system';
 import { useConnectionsQuery } from '../../connections';
 import { OrderIdentityCell } from '../../orders';
 import { useAnalyticsCoverageQuery } from '../hooks/use-analytics-coverage-query';
 import { useRecalculateCurrencyMutation } from '../hooks/use-recalculate-currency-mutation';
+import { useCancelCurrencyRunMutation } from '../hooks/use-cancel-currency-run-mutation';
 import { useCurrencyRemediationStatusQuery } from '../hooks/use-currency-remediation-status-query';
 import { useCurrencyMismatchOrdersQuery } from '../hooks/use-currency-mismatch-orders-query';
 import { useTaxCoverageOrdersQuery } from '../hooks/use-tax-coverage-orders-query';
@@ -115,9 +117,18 @@ export function AnalyticsDataCoveragePanel({
 
   // ── Currency: the one live async remediation ──────────────────────────
   const recalculate = useRecalculateCurrencyMutation();
+  const cancelStuckRun = useCancelCurrencyRunMutation();
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [dwellingResolved, setDwellingResolved] = useState(false);
   const [alertRun, setAlertRun] = useState<{ affectedCount: number } | null>(null);
+  // Set when `recalculate` answers 409: the category already has a run
+  // marked in-progress, but nothing in this session is polling it - the
+  // #2816 symptom of a driver job that died before it could terminalise its
+  // own ledger row. Recovery is an explicit operator action (see
+  // `IAnalyticsRemediationRunService.cancelOpenRun`'s doc comment for why
+  // this is never inferred automatically), so the panel offers exactly one
+  // way out: cancel the stuck row, then let the operator retry.
+  const [stuckRunConflict, setStuckRunConflict] = useState(false);
   const dwellTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const runStatusQuery = useCurrencyRemediationStatusQuery(activeRunId);
@@ -160,8 +171,33 @@ export function AnalyticsDataCoveragePanel({
   function handleRecalculate(): void {
     recalculate.mutate(filters, {
       onSuccess: (run) => {
+        setStuckRunConflict(false);
         setActiveRunId(run.id);
         setOpenCategory(null);
+      },
+      onError: (error) => {
+        if (error instanceof ApiError && error.isConflict()) {
+          // A run is already marked in-progress for this category, but this
+          // session isn't tracking it (a stranded row from a driver job
+          // that died, or a page reload racing the seed effect above).
+          // Surface the recovery action instead of a dead-end error toast.
+          setStuckRunConflict(true);
+          setOpenCategory(null);
+          return;
+        }
+        showToast({ tone: 'error', description: error.message });
+      },
+    });
+  }
+
+  function handleCancelStuckRun(): void {
+    cancelStuckRun.mutate(undefined, {
+      onSuccess: () => {
+        setStuckRunConflict(false);
+        showToast({
+          tone: 'success',
+          description: 'Stuck recalculation cancelled - you can try again.',
+        });
       },
       onError: (error) => {
         showToast({ tone: 'error', description: error.message });
@@ -269,6 +305,30 @@ export function AnalyticsDataCoveragePanel({
 
       {alertRun && (
         <AnalyticsCoverageAlert affectedCount={alertRun.affectedCount} onDismiss={() => setAlertRun(null)} />
+      )}
+
+      {stuckRunConflict && (
+        <Alert
+          tone="error"
+          title="Recalculation didn't start"
+          action={
+            write.visible ? (
+              <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                <Button
+                  type="button"
+                  disabled={cancelStuckRun.isPending || write.demoReadOnly}
+                  onClick={handleCancelStuckRun}
+                >
+                  {cancelStuckRun.isPending ? 'Cancelling…' : 'Cancel stuck run'}
+                </Button>
+              </ReadOnlyLock>
+            ) : undefined
+          }
+        >
+          A currency recalculation is already marked as in progress for this range, but nothing is
+          moving it forward - most likely a previous attempt never finished. Cancel it below, then try
+          again.
+        </Alert>
       )}
 
       <ul className="attention-list">
