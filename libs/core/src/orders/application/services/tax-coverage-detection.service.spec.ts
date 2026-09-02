@@ -222,6 +222,45 @@ describe('TaxCoverageDetectionService (#2465)', () => {
       expect(result['tax-a']).toHaveLength(2);
     });
 
+    it('never runs more than the bounded concurrency ceiling of catalogue lookups in flight at once (#2826)', async () => {
+      const KEY_COUNT = 12; // comfortably above RATE_LOOKUP_CONCURRENCY (5)
+      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue(
+        Array.from({ length: KEY_COUNT }, (_, i) =>
+          candidate({ internalOrderId: `order-${i}`, taxRateEra: 'pre-rollout' })
+        )
+      );
+      lineItemRepository.findByOrderIds.mockResolvedValue(
+        linesMap(
+          ...Array.from({ length: KEY_COUNT }, (_, i) =>
+            makeLine({
+              id: `line-${i}`,
+              orderRecordId: `order-${i}`,
+              productId: `distinct-product-${i}`,
+              taxRate: null,
+            })
+          )
+        )
+      );
+
+      let inFlight = 0;
+      let maxInFlight = 0;
+      productsService.getEffectiveTaxRate.mockImplementation(async () => {
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        // Yield so every worker gets a chance to start before any resolves —
+        // otherwise a purely-synchronous mock would never let the bound show up.
+        await new Promise((resolve) => setImmediate(resolve));
+        inFlight -= 1;
+        return known('23');
+      });
+
+      await service.classify(baseFilters, 'EUR');
+
+      expect(productsService.getEffectiveTaxRate).toHaveBeenCalledTimes(KEY_COUNT);
+      expect(maxInFlight).toBeLessThanOrEqual(5);
+      expect(maxInFlight).toBeGreaterThan(1); // proves it actually ran concurrently, not sequentially
+    });
+
     it('partitions a mixed candidate set with categories summing to the full candidate count (regression guard)', async () => {
       const candidates = [
         candidate({ internalOrderId: 'order-1', taxRateEra: null }),
