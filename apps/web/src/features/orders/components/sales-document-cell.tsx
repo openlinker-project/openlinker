@@ -191,7 +191,7 @@ export function SalesDocumentCell({
         </Fact>
       ) : null}
       {regulatoryStatus ? (
-        <Fact label="Authority">
+        <Fact label="Clearance">
           <span className={`sales-doc-tone sales-doc-tone--${REGULATORY_TONE[regulatoryStatus] ?? 'neutral'}`}>
             {REGULATORY_LABEL[regulatoryStatus] ?? regulatoryStatus}
           </span>
