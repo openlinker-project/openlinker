@@ -677,6 +677,8 @@ button:disabled,
     border-top-color: currentColor;
     opacity: 0.4;
   }
+}
+
 /* ── Card-button reset (#2675) ────────────────────────────────────────
  * For a `<button>` that exists only as a click target around a card: the
  * card does the drawing, the button must get out of its way.
