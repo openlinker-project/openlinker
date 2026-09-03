@@ -3,8 +3,11 @@
  *
  * A `buyerHasTaxId` condition is evaluated against `Order.buyerTaxId` — real
  * since #2599, but only ever populated when the order's SOURCE actually
- * asserted the fact:
- * - **PrestaShop** always reports it (`ps_address.vat_number`).
+ * asserted the fact. None of the four sources report it unconditionally:
+ * - **PrestaShop** reports it only when the buyer filled in a VAT number on
+ *   the address (`ps_address.vat_number`) — that field is optional and
+ *   blank on essentially every consumer order, so a B2C order still reads
+ *   as unknown.
  * - **Allegro** and **Erli** report it only when the buyer requested a VAT
  *   invoice with company data at checkout (Allegro's
  *   `invoice.address.company`, Erli's `user.invoiceAddress.nip`) — a private

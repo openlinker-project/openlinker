@@ -40,7 +40,10 @@ export interface WooCommerceOrder {
 
 export interface WooCommerceOrderMetaData {
   key: string;
-  value: string;
+  // WC REST `meta_data[].value` is arbitrary JSON — plugins routinely store
+  // arrays/objects there, not just strings (#2824 review). Consumers must
+  // narrow with `typeof === 'string'` before use.
+  value: unknown;
 }
 
 export interface WooCommerceBillingAddress {

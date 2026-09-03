@@ -33,6 +33,7 @@ import type {
   WooCommerceLineItem,
   WooCommerceBillingAddress,
   WooCommerceShippingAddress,
+  WooCommerceOrderMetaData,
 } from './order-source/woocommerce-order.types';
 
 export class WooCommerceOrderSourceAdapter implements OrderSourcePort {
@@ -259,23 +260,28 @@ function mapShippingAddress(addr: WooCommerceShippingAddress): IncomingOrderAddr
  *
  * First non-blank match wins. This list is deliberately non-exhaustive — a
  * store running an unlisted plugin reads as unknown (`undefined`), never a
- * false asserted-none.
+ * false asserted-none. An operator has no way to extend this list today; a
+ * per-connection `config` key is the obvious follow-up if this proves too
+ * narrow.
  */
 const WOOCOMMERCE_VAT_META_KEY_ALLOWLIST = [
   'VAT Number',
   '_billing_eu_vat_number',
   '_vat_number',
-];
+] as const;
 
 function readBillingTaxIdFromMetaData(
-  metaData: { key: string; value: string }[] | undefined
+  metaData: WooCommerceOrderMetaData[] | undefined
 ): string | undefined {
   if (!metaData) {
     return undefined;
   }
   for (const key of WOOCOMMERCE_VAT_META_KEY_ALLOWLIST) {
     const entry = metaData.find((m) => m.key === key);
-    if (entry?.value) {
+    // `value` is arbitrary JSON on the wire (#2824 review) — a plugin
+    // writing an array/object under an allowlisted key must read as
+    // unknown, never throw and fail the whole order ingestion.
+    if (entry && typeof entry.value === 'string' && entry.value) {
       return entry.value;
     }
   }
@@ -284,7 +290,7 @@ function readBillingTaxIdFromMetaData(
 
 function mapBillingAddress(
   addr: WooCommerceBillingAddress,
-  metaData?: { key: string; value: string }[]
+  metaData?: WooCommerceOrderMetaData[]
 ): IncomingOrderAddress {
   return {
     ...mapBaseAddress(addr),

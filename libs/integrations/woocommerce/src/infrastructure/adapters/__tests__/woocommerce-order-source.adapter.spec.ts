@@ -321,6 +321,22 @@ describe('WooCommerceOrderSourceAdapter', () => {
       expect(result.billingAddress?.taxId).toBeUndefined();
     });
 
+    it('should read as unknown, not throw, when a plugin writes a non-string value under an allowlisted VAT key (#2824 review)', async () => {
+      // WC REST `meta_data[].value` is arbitrary JSON — a plugin storing an
+      // array/object under an allowlisted key must not fail the whole order
+      // ingestion; the field must read as unknown (undefined), the same as
+      // an unlisted plugin key.
+      const order = makeOrder({
+        meta_data: [{ key: 'VAT Number', value: { formatted: 'PL5252674798' } }],
+      });
+      const httpClient = makeHttpClient({ get: jest.fn().mockResolvedValue(order) });
+      const adapter = new WooCommerceOrderSourceAdapter(httpClient, makeConnection());
+
+      const result = await adapter.getOrder({ externalOrderId: '1' });
+
+      expect(result.billingAddress?.taxId).toBeUndefined();
+    });
+
     it('should map placedAt from date_created_gmt, identical to createdAt (#2097)', async () => {
       const order = makeOrder({
         date_created_gmt: '2024-01-15T10:00:00',

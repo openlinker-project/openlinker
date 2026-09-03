@@ -99,10 +99,10 @@ export function SalesDocumentTemplateScreen({
         {template.rules.some((rule) => rule.usesBuyerHasTaxId) ? (
           <Alert tone="warning">
             Every rule above keys off whether the buyer has a tax ID — a fact only some sources
-            report. PrestaShop always reports it; Allegro and Erli report it only when the buyer
-            requested a VAT invoice; WooCommerce reports it only if the store runs a supported
-            VAT-number plugin. An order whose source didn&apos;t assert a tax ID never matches
-            these rules.
+            report. PrestaShop reports it only when the buyer filled in a VAT number on the
+            address; Allegro and Erli report it only when the buyer requested a VAT invoice;
+            WooCommerce reports it only if the store runs a supported VAT-number plugin. An order
+            whose source didn&apos;t assert a tax ID never matches these rules.
           </Alert>
         ) : null}
 
