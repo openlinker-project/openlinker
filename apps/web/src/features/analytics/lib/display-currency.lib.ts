@@ -211,12 +211,21 @@ export function createReportingCurrencyConverter(
  * response: no currency name, source label or date format is invented here.
  * `rate` is `Number()`'d ONLY for display rounding, never for arithmetic —
  * the string itself remains the audited value (`rate.rate`).
+ *
+ * This line IS the provenance surface — its whole job is to be checkable
+ * (multiplying the displayed amount by the displayed rate must reproduce
+ * the displayed figure), so it renders up to 8 fraction digits, matching the
+ * `numeric(18,8)` column `rate.rate` is sourced from (#2788 review). A prior
+ * `maximumFractionDigits: 4` silently truncated a rate like an inverted
+ * PLN→EUR `0.23529412` to `0.2353`, which broke exactly that check.
+ *
+ * `formatter` is supplied by the caller (a component's own `useNumberFormat`
+ * result) rather than instantiated here — this is a pure lib function and
+ * cannot call the `useNumberFormat` hook itself (`docs/frontend-architecture.md
+ * § Internationalization`).
  */
-export function formatAppliedRateLine(rate: AppliedRate): string {
-  const formattedRate = new Intl.NumberFormat(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 4,
-  }).format(Number(rate.rate));
+export function formatAppliedRateLine(rate: AppliedRate, formatter: Intl.NumberFormat): string {
+  const formattedRate = formatter.format(Number(rate.rate));
   return `1 ${rate.from} = ${formattedRate} ${rate.to} (${rate.source.toUpperCase()}, ${rate.rateDate})`;
 }
 
@@ -231,16 +240,22 @@ export function formatAppliedRateLine(rate: AppliedRate): string {
  */
 export function buildRateProvenanceDefinitions(
   rateBasis: DisplayCurrencyRateBasis,
-  appliedRates: readonly AppliedRate[]
+  appliedRates: readonly AppliedRate[],
+  formatter: Intl.NumberFormat
 ): AnalyticsInfotipDefinition[] {
   if (appliedRates.length === 0) {
     return [];
   }
 
+  // The term names the mode honestly rather than repeating the backend's
+  // `'order-date'` misnomer verbatim — the body already explains that ONE
+  // current rate is applied to the whole period, not each order's own
+  // historical rate, and a term reading "Rate on order date" contradicted
+  // that body on the same card (#2788 review).
   const modeDefinition: AnalyticsInfotipDefinition =
     rateBasis === 'order-date'
       ? {
-          term: 'Rate on order date',
+          term: 'Period rate (order-date mode)',
           text: "One current rate applied to the whole period's total — not each order's own historical rate.",
         }
       : {
@@ -250,7 +265,7 @@ export function buildRateProvenanceDefinitions(
 
   const rateDefinitions: AnalyticsInfotipDefinition[] = appliedRates.map((rate) => ({
     term: `${rate.from} → ${rate.to}`,
-    text: formatAppliedRateLine(rate),
+    text: formatAppliedRateLine(rate, formatter),
     caveat:
       rate.derivation !== 'direct'
         ? `Derived (${rate.derivation})${rate.sourceRef ? ` — ${rate.sourceRef}` : ''}`
