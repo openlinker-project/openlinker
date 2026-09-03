@@ -19,6 +19,14 @@ open the project to interact with a surface or to flip its variants.
 Each template carries **tweaks** (the panel above the canvas) that switch between states. The
 screenshots capture one state each; the interesting states are often the other ones.
 
+### The sources are here too
+
+`templates/` holds a byte-faithful export of the four `.dc.html` sources, so the markup is diffable
+and reviewable in a pull request rather than only in a browser. They are the files the project
+serves, copied rather than re-authored, and they carry the tweak definitions and the `renderVals()`
+logic that decide which state each screenshot above is showing. Nothing about the caveat above
+changes — they are here to be read, not run.
+
 ## The four surfaces
 
 ### Pack bench — verify a parcel

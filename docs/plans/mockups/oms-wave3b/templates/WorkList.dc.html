@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<!-- @template name="Pack bench — work list" description="Chromeless bench surface: parcels routed to this bench, most urgent first, opened by search." -->
+<helmet><style>body{margin:0;background:var(--bg-canvas);overflow:hidden}a{color:var(--accent-primary);text-decoration:none}a:hover{color:var(--accent-primary-hover)}input.bench-search::placeholder{color:var(--text-muted);font-weight:400}input.bench-search:focus{outline:none;border-color:var(--accent-primary);box-shadow:0 0 0 4px var(--accent-primary-border)}</style><script src="./ds-base.js"></script></helmet>
+<div style="height:100vh;display:grid;grid-template-rows:auto auto auto minmax(0,1fr) auto;font-family:var(--font-sans);background:var(--bg-canvas);color:var(--text-primary)">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:var(--space-6);padding:14px var(--space-6);background:var(--bg-shell);border-bottom:1px solid var(--border-default)">
+<div style="display:grid;gap:2px">
+<span style="font-family:var(--font-mono);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted)">Packing work</span>
+<span style="font-size:24px;font-weight:700;letter-spacing:-0.02em;line-height:1.1">Warehouse Kraków · Bench 3</span>
+</div>
+<div style="display:flex;align-items:center;gap:var(--space-4);flex:none">
+<div style="display:grid;gap:2px;text-align:right">
+<span style="font-family:var(--font-mono);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted)">Signed in at bench 3</span>
+<span style="font-size:19px;font-weight:600;letter-spacing:-0.01em">{{ packerName }}</span>
+</div>
+<div style="height:48px;width:48px;display:grid;place-items:center;border-radius:var(--radius-pill);background:var(--bg-surface-hover);border:1px solid var(--border-default);font-family:var(--font-mono);font-size:16px;font-weight:600;color:var(--text-secondary)">MK</div>
+<div style="display:grid;gap:3px;justify-items:end">
+<x-import component-from-global-scope="OpenLinkerUI.Button" hint-size="150px,44px" tone="secondary" class-name="button--lg">Leave this bench</x-import>
+<span style="font-size:11px;color:var(--text-muted)">Asks you to confirm first</span>
+</div>
+</div>
+</div>
+<div style="padding:var(--space-4) var(--space-6);background:var(--bg-surface);border-bottom:1px solid var(--border-subtle);display:grid;gap:8px">
+<label for="bench-search" style="font-size:15px;font-weight:600;letter-spacing:-0.01em">Open a parcel — type the order reference or the buyer's name</label>
+<input id="bench-search" class="bench-search" type="text" inputmode="search" autocomplete="off" placeholder="e.g. 4471, OL-4471, allegro-4471, Nowak" style="height:64px;padding:0 20px;font-family:var(--font-mono);font-size:22px;font-weight:600;letter-spacing:-0.01em;font-variant-numeric:tabular-nums;color:var(--text-primary);background:var(--bg-canvas);border:2px solid var(--border-strong);border-radius:var(--radius-md)">
+<span style="font-size:13px;line-height:1.5;color:var(--text-secondary);text-wrap:pretty">Part of a reference is enough. Leading zeros, marketplace prefixes and the buyer's surname all find it. There is no barcode on the tote, so this field is how a parcel gets opened.</span>
+</div>
+<div style="display:flex;align-items:flex-start;gap:var(--space-4);padding:12px var(--space-6);background:var(--status-info-soft);border-bottom:1px solid var(--status-info-border)">
+<span style="font-size:13.5px;line-height:1.55;color:var(--status-info-strong);text-wrap:pretty;max-width:900px">This is the packing work routed to Warehouse Kraków and accepted here — not a list of every unpacked order. Orders that go out through a logistics provider never appear on this bench.</span>
+<span style="margin-left:auto;font-family:var(--font-mono);font-size:12px;letter-spacing:0.06em;text-transform:uppercase;color:var(--status-info-strong);white-space:nowrap">Most urgent first</span>
+</div>
+<div style="overflow:auto;padding:var(--space-5) var(--space-6) var(--space-4)">
+<sc-if value="{{ showList }}" hint-placeholder-val="{{ true }}">
+<div style="display:grid;gap:12px;max-width:1180px">
+<div style="display:flex;align-items:center;gap:var(--space-3)">
+<span style="font-family:var(--font-mono);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-secondary)">To pack · 5 parcels</span>
+<span style="flex:1;height:1px;background:var(--border-default)"></span>
+</div>
+<div style="display:grid;grid-template-columns:6px 250px minmax(0,1fr) 210px auto;align-items:center;gap:0 var(--space-4);min-height:96px;border:2px solid var(--status-conflict);border-radius:var(--radius-lg);background:var(--status-conflict-soft);overflow:hidden">
+<div style="align-self:stretch;background:var(--status-conflict)"></div>
+<div style="display:grid;gap:3px;padding:14px 0 14px 14px">
+<span style="font-size:19px;font-weight:700;letter-spacing:-0.01em;color:var(--status-conflict-strong)">Breaching in 2 hours</span>
+<span style="font-family:var(--font-mono);font-size:12.5px;color:var(--status-conflict-strong);opacity:0.9">Allegro dispatch deadline 14:00</span>
+</div>
+<div style="display:grid;gap:3px;padding:14px 0">
+<span style="font-family:var(--font-mono);font-size:21px;font-weight:700;letter-spacing:-0.02em;font-variant-numeric:tabular-nums">OL-4468</span>
+<span style="font-size:14px;color:var(--text-secondary)">Anna Nowak · Parcel 1 of 1 · 3 lines, 5 units to verify</span>
+</div>
+<div style="padding:14px 0"><x-import component-from-global-scope="OpenLinkerUI.StatusBadge" hint-size="150px,26px" tone="warning" with-dot="{{ true }}">Deadline close</x-import></div>
+<div style="padding-right:16px"><x-import component-from-global-scope="OpenLinkerUI.Button" hint-size="120px,48px" tone="primary" class-name="button--lg">Open parcel</x-import></div>
+</div>
+<div style="display:grid;grid-template-columns:6px 250px minmax(0,1fr) 210px auto;align-items:center;gap:0 var(--space-4);min-height:96px;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface);overflow:hidden">
+<div style="align-self:stretch;background:var(--border-strong)"></div>
+<div style="display:grid;gap:3px;padding:14px 0 14px 14px">
+<span style="font-size:19px;font-weight:600;letter-spacing:-0.01em">Due today</span>
+<span style="font-family:var(--font-mono);font-size:12.5px;color:var(--text-secondary)">Allegro dispatch deadline 16:00</span>
+</div>
+<div style="display:grid;gap:3px;padding:14px 0">
+<span style="font-family:var(--font-mono);font-size:21px;font-weight:700;letter-spacing:-0.02em;font-variant-numeric:tabular-nums">OL-4471</span>
+<span style="font-size:14px;color:var(--text-secondary)">Jan Wiśniewski · Parcel 1 of 2 · 4 lines, 6 units to verify</span>
+</div>
+<div style="padding:14px 0"><span style="font-size:13.5px;color:var(--text-muted)">Two boxes — this one first</span></div>
+<div style="padding-right:16px"><x-import component-from-global-scope="OpenLinkerUI.Button" hint-size="120px,48px" tone="secondary" class-name="button--lg">Open parcel</x-import></div>
+</div>
+<div style="display:grid;grid-template-columns:6px 250px minmax(0,1fr) 210px auto;align-items:center;gap:0 var(--space-4);min-height:96px;border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface);overflow:hidden">
+<div style="align-self:stretch;background:var(--border-strong)"></div>
+<div style="display:grid;gap:3px;padding:14px 0 14px 14px">
+<span style="font-size:19px;font-weight:600;letter-spacing:-0.01em">Due today</span>
+<span style="font-family:var(--font-mono);font-size:12.5px;color:var(--text-secondary)">Own shop dispatch deadline 16:00</span>
+</div>
+<div style="display:grid;gap:3px;padding:14px 0">
+<span style="font-family:var(--font-mono);font-size:21px;font-weight:700;letter-spacing:-0.02em;font-variant-numeric:tabular-nums">OL-4473</span>
+<span style="font-size:14px;color:var(--text-secondary)">Katarzyna Zielińska · Parcel 1 of 1 · 1 line, 1 unit to verify</span>
+</div>
+<div style="padding:14px 0"></div>
+<div style="padding-right:16px"><x-import component-from-global-scope="OpenLinkerUI.Button" hint-size="120px,48px" tone="secondary" class-name="button--lg">Open parcel</x-import></div>
+</div>
+<div style="display:grid;grid-template-columns:6px 250px minmax(0,1fr) 210px auto;align-items:center;gap:0 var(--space-4);min-height:96px;border:1px solid var(--border-subtle);border-radius:var(--radius-lg);background:var(--bg-surface);overflow:hidden">
+<div style="align-self:stretch;background:var(--border-subtle)"></div>
+<div style="display:grid;gap:3px;padding:14px 0 14px 14px">
+<span style="font-size:19px;font-weight:600;letter-spacing:-0.01em;color:var(--text-secondary)">Due tomorrow</span>
+<span style="font-family:var(--font-mono);font-size:12.5px;color:var(--text-muted)">Allegro dispatch deadline 16:00</span>
+</div>
+<div style="display:grid;gap:3px;padding:14px 0">
+<span style="font-family:var(--font-mono);font-size:21px;font-weight:700;letter-spacing:-0.02em;font-variant-numeric:tabular-nums;color:var(--text-secondary)">OL-4480</span>
+<span style="font-size:14px;color:var(--text-muted)">Piotr Lewandowski · Parcel 1 of 1 · 2 lines, 2 units to verify</span>
+</div>
+<div style="padding:14px 0"></div>
+<div style="padding-right:16px"><x-import component-from-global-scope="OpenLinkerUI.Button" hint-size="120px,48px" tone="secondary" class-name="button--lg">Open parcel</x-import></div>
+</div>
+<div style="display:grid;grid-template-columns:6px 250px minmax(0,1fr) 210px auto;align-items:center;gap:0 var(--space-4);min-height:96px;border:1px solid var(--border-subtle);border-radius:var(--radius-lg);background:var(--bg-surface);overflow:hidden">
+<div style="align-self:stretch;background:var(--border-subtle)"></div>
+<div style="display:grid;gap:3px;padding:14px 0 14px 14px">
+<span style="font-size:19px;font-weight:600;letter-spacing:-0.01em;color:var(--text-secondary)">Due tomorrow</span>
+<span style="font-family:var(--font-mono);font-size:12.5px;color:var(--text-muted)">Own shop dispatch deadline 16:00</span>
+</div>
+<div style="display:grid;gap:3px;padding:14px 0">
+<span style="font-family:var(--font-mono);font-size:21px;font-weight:700;letter-spacing:-0.02em;font-variant-numeric:tabular-nums;color:var(--text-secondary)">OL-4482</span>
+<span style="font-size:14px;color:var(--text-muted)">Magdalena Król · Parcel 1 of 1 · 3 lines, 3 units to verify</span>
+</div>
+<div style="padding:14px 0"></div>
+<div style="padding-right:16px"><x-import component-from-global-scope="OpenLinkerUI.Button" hint-size="120px,48px" tone="secondary" class-name="button--lg">Open parcel</x-import></div>
+</div>
+<div style="display:flex;align-items:center;gap:var(--space-3);padding-top:var(--space-4)">
+<span style="font-family:var(--font-mono);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--status-error-strong)">Do not pack these · 2 parcels</span>
+<span style="flex:1;height:1px;background:var(--status-error-border)"></span>
+</div>
+<div style="display:grid;grid-template-columns:6px 250px minmax(0,1fr) 210px auto;align-items:center;gap:0 var(--space-4);min-height:96px;border:2px solid var(--status-error);border-radius:var(--radius-lg);background:var(--status-error-soft);overflow:hidden">
+<div style="align-self:stretch;background:var(--status-error)"></div>
+<div style="display:grid;gap:3px;padding:14px 0 14px 14px">
+<span style="font-size:19px;font-weight:700;letter-spacing:-0.01em;color:var(--status-error-strong)">On hold — do not pack</span>
+<span style="font-family:var(--font-mono);font-size:12.5px;color:var(--status-error-strong);opacity:0.9">Held 09:12 · deadline paused</span>
+</div>
+<div style="display:grid;gap:3px;padding:14px 0">
+<span style="font-family:var(--font-mono);font-size:21px;font-weight:700;letter-spacing:-0.02em;font-variant-numeric:tabular-nums">OL-4462</span>
+<span style="font-size:14px;color:var(--text-secondary);text-wrap:pretty">Tomasz Nowicki · Parcel 1 of 1 · the buyer's address is being checked. Put the tote back on the trolley.</span>
+</div>
+<div style="padding:14px 0"><x-import component-from-global-scope="OpenLinkerUI.StatusBadge" hint-size="130px,26px" tone="error" with-dot="{{ true }}">On hold</x-import></div>
+<div style="padding-right:16px"><x-import component-from-global-scope="OpenLinkerUI.Button" hint-size="120px,48px" tone="ghost" class-name="button--lg">Why it is held</x-import></div>
+</div>
+<div style="display:grid;grid-template-columns:6px 250px minmax(0,1fr) 210px auto;align-items:center;gap:0 var(--space-4);min-height:96px;border:1px solid var(--border-strong);border-radius:var(--radius-lg);background:var(--bg-surface-muted);overflow:hidden">
+<div style="align-self:stretch;background:var(--text-muted)"></div>
+<div style="display:grid;gap:3px;padding:14px 0 14px 14px">
+<span style="font-size:19px;font-weight:700;letter-spacing:-0.01em;color:var(--text-primary)">Cancelled</span>
+<span style="font-family:var(--font-mono);font-size:12.5px;color:var(--text-secondary)">Buyer cancelled 11:04</span>
+</div>
+<div style="display:grid;gap:3px;padding:14px 0">
+<span style="font-family:var(--font-mono);font-size:21px;font-weight:700;letter-spacing:-0.02em;font-variant-numeric:tabular-nums;color:var(--text-secondary)">OL-4455</span>
+<span style="font-size:14px;color:var(--text-secondary);text-wrap:pretty">Ewa Dąbrowska · Parcel 1 of 1 · nothing to pack. Take the items back to the shelf.</span>
+</div>
+<div style="padding:14px 0"><x-import component-from-global-scope="OpenLinkerUI.StatusBadge" hint-size="130px,26px" tone="neutral" with-dot="{{ true }}">Cancelled</x-import></div>
+<div style="padding-right:16px"><x-import component-from-global-scope="OpenLinkerUI.Button" hint-size="120px,48px" tone="ghost" class-name="button--lg">Details</x-import></div>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{ showEmptyIdle }}" hint-placeholder-val="{{ false }}">
+<div style="height:100%;display:grid;place-items:center;padding:var(--space-6) 0">
+<div style="display:grid;justify-items:center;gap:var(--space-4);max-width:600px;text-align:center">
+<div style="height:80px;width:80px;display:grid;place-items:center;border-radius:var(--radius-pill);background:var(--status-success-soft);border:2px solid var(--status-success-border);font-size:38px;line-height:1;color:var(--status-success-strong)">✓</div>
+<span style="font-size:30px;font-weight:700;letter-spacing:-0.02em;line-height:1.15">Nothing to pack right now</span>
+<span style="font-size:16px;line-height:1.6;color:var(--text-secondary);text-wrap:pretty">Every parcel routed to this bench has been packed. New work turns up here on its own — you do not need to refresh, and you can stay signed in.</span>
+<span style="font-size:14px;line-height:1.6;color:var(--text-muted)">Routing to this bench is switched on and working.</span>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{ showEmptyNotRouted }}" hint-placeholder-val="{{ false }}">
+<div style="height:100%;display:grid;place-items:center;padding:var(--space-6) 0">
+<div style="display:grid;gap:var(--space-4);max-width:680px">
+<span style="font-size:30px;font-weight:700;letter-spacing:-0.02em;line-height:1.15;text-wrap:pretty">No work can reach this bench</span>
+<span style="font-size:16px;line-height:1.6;color:var(--text-secondary);text-wrap:pretty">OpenLinker is not routing packing work to Warehouse Kraków, so nothing will ever appear here — however long you keep this screen open. Nothing is broken at the bench, and this is not the same as having nothing to pack.</span>
+<x-import component-from-global-scope="OpenLinkerUI.Alert" hint-size="100%,120px" tone="warning" title="What to do about it">
+<span style="font-size:14.5px;line-height:1.6;text-wrap:pretty">Show this screen to your supervisor. Someone with admin access turns on fulfilment routing for Warehouse Kraków under Settings → Who decides what. Until then, orders keep going wherever they went before, and you can pack from your usual paper list.</span>
+</x-import>
+<div style="display:flex;gap:var(--space-3);align-items:center;padding-top:var(--space-1)">
+<x-import component-from-global-scope="OpenLinkerUI.Button" hint-size="220px,48px" tone="primary" class-name="button--lg">Copy what to tell a supervisor</x-import>
+<x-import component-from-global-scope="OpenLinkerUI.Button" hint-size="150px,48px" tone="secondary" class-name="button--lg">Leave this bench</x-import>
+</div>
+</div>
+</div>
+</sc-if>
+</div>
+<div style="display:flex;align-items:center;justify-content:space-between;gap:var(--space-5);padding:14px var(--space-6);background:var(--bg-shell);border-top:1px solid var(--border-default)">
+<span style="font-size:14px;line-height:1.5;color:var(--text-secondary);text-wrap:pretty">OpenLinker cannot see your shelves. This list says what has been routed here and when it must go out — never whether the goods are in front of you.</span>
+<span style="font-family:var(--font-mono);font-size:12px;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-muted);white-space:nowrap">Updates by itself</span>
+</div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:800},&quot;view&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Work list&quot;,&quot;Nothing to pack&quot;,&quot;Routing switched off&quot;],&quot;default&quot;:&quot;Work list&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Bench state&quot;},&quot;packerName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Marta Kowalczyk&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Bench state&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const view = this.props.view ?? 'Work list';
+    return {
+      showList: view === 'Work list',
+      showEmptyIdle: view === 'Nothing to pack',
+      showEmptyNotRouted: view === 'Routing switched off',
+      packerName: this.props.packerName ?? 'Marta Kowalczyk',
+    };
+  }
+}
+
+</script>
+</body>
+</html>
