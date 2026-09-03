@@ -79,9 +79,21 @@
  * since the two are independent facts (a product can fail to resolve to a
  * catalogue entry regardless of whether the coverage-gap enrichment ran).
  *
+ * `.excl-note` exclusion annotations (#2799, mirroring `ChannelSalesTable`'s
+ * #2481 Phase 8 wiring at the channel grain): a row whose product has
+ * orders in an open Data Coverage category's affected set (currency, or one
+ * of tax-a/b/c — never `product-matching`, which cannot resolve to any
+ * product by construction, see `product-exclusion-map.lib.ts`'s doc
+ * comment) gets one `AnalyticsExclusionNote` per affected category. The
+ * cross-reference is exact, not approximated: each open category's *full*
+ * affected-order list is grouped by `productId` (`buildProductExclusionMap`)
+ * — every distinct `productId` a currency row's `lineProducts` touches, or
+ * across a tax row's per-line `lineRates` — never a channel-wide flag
+ * standing in for product-level granularity.
+ *
  * @module features/analytics/components
  */
-import { type ReactElement, useState } from 'react';
+import { type ReactElement, useMemo, useState } from 'react';
 import { DataTable, type DataTableColumn } from '../../../shared/ui/data-table';
 import { Button } from '../../../shared/ui/button';
 import { EmptyValue } from '../../../shared/ui/empty-value';
@@ -99,11 +111,12 @@ import {
 } from '../../products';
 import { useDemoMode } from '../../system';
 import { useTopProductsQuery } from '../hooks/use-top-products-query';
+import { useSalesAnalyticsQuery } from '../hooks/use-sales-analytics-query';
+import { useCoverageCrossReferenceQuery } from '../hooks/use-coverage-cross-reference-query';
 import { ChannelPublishAction } from './channel-publish-action';
 import { VariantChannelMatrix } from './variant-channel-matrix';
-import { useSalesAnalyticsQuery } from '../hooks/use-sales-analytics-query';
 import type { SalesAnalyticsFilters } from '../api/sales-analytics.types';
-import type { AnalyticsCoverage } from '../api/analytics-coverage.types';
+import type { AnalyticsCoverage, AnalyticsCoverageFilters, CoverageCategory } from '../api/analytics-coverage.types';
 import type { TopProductRow, TopProductsSortBy } from '../api/top-products.types';
 import { channelCellFor, deriveChannelColumns, isMissingFrom } from '../lib/top-products-view-model';
 import {
@@ -112,6 +125,12 @@ import {
   resolveReportingCurrencyRate,
 } from '../lib/display-currency.lib';
 import type { ReportingCurrencyConverter } from '../lib/display-currency.lib';
+import {
+  buildProductExclusionMap,
+  CROSS_REFERENCEABLE_CATEGORIES,
+  type ProductExclusionMap,
+} from '../lib/product-exclusion-map.lib';
+import { AnalyticsExclusionNote } from './analytics-exclusion-note';
 import { RecalculatingValue } from './recalculating-value';
 
 const DEFAULT_LIMIT = 20;
@@ -169,13 +188,56 @@ interface ProductSalesTableProps {
   filters: SalesAnalyticsFilters;
   /** Same Data Coverage aggregate `AnalyticsKpiStrip`/`ChannelSalesTable` read — no extra request when the page fetches it once. `undefined` renders as if nothing is recalculating. */
   coverage?: AnalyticsCoverage;
+  /** ISO-instant range for the cross-reference reads — same shape `ChannelSalesTable` takes. Required together with `coverage`/`onOpenCategory` to render exclusion notes. */
+  coverageFilters?: AnalyticsCoverageFilters;
+  /** Opens the matching Data Coverage detail modal — omit to keep every row's notes absent. */
+  onOpenCategory?: (category: CoverageCategory) => void;
 }
 
-function ProductCell({ row, product }: { row: TopProductRow; product: Product | undefined }): ReactElement {
+function ProductExclusionNotes({
+  row,
+  exclusions,
+  onOpenCategory,
+}: {
+  row: TopProductRow;
+  exclusions: ProductExclusionMap;
+  onOpenCategory?: (category: CoverageCategory) => void;
+}): ReactElement | null {
+  if (!onOpenCategory) return null;
+  const byCategory = exclusions.get(row.productId);
+  if (!byCategory || byCategory.size === 0) return null;
+  return (
+    <>
+      {CROSS_REFERENCEABLE_CATEGORIES.filter((category) => byCategory.has(category)).map((category) => (
+        <AnalyticsExclusionNote
+          key={category}
+          category={category}
+          affectedCount={byCategory.get(category) ?? 0}
+          onOpenCategory={onOpenCategory}
+        />
+      ))}
+    </>
+  );
+}
+
+function ProductCell({
+  row,
+  product,
+  exclusions,
+  onOpenCategory,
+}: {
+  row: TopProductRow;
+  product: Product | undefined;
+  exclusions: ProductExclusionMap;
+  onOpenCategory?: (category: CoverageCategory) => void;
+}): ReactElement {
   return (
     <span className="product-row">
       <ProductThumbnail src={product?.images?.[0]} name={row.name ?? row.productId} />
-      <span>{row.name ?? row.productId}</span>
+      <span className="data-table__stack">
+        <span>{row.name ?? row.productId}</span>
+        <ProductExclusionNotes row={row} exclusions={exclusions} onOpenCategory={onOpenCategory} />
+      </span>
     </span>
   );
 }
@@ -287,7 +349,12 @@ function resolveNotListedConnectionIds(
   return coverageGapAvailable ? row.missingFromConnectionIds : [];
 }
 
-export function ProductSalesTable({ filters, coverage }: ProductSalesTableProps): ReactElement {
+export function ProductSalesTable({
+  filters,
+  coverage,
+  coverageFilters,
+  onOpenCategory,
+}: ProductSalesTableProps): ReactElement {
   const currencyRecalculating = isCurrencyRecalculating(coverage);
   const [sortBy, setSortBy] = useState<TopProductsSortBy>('revenue');
   const query = useTopProductsQuery({ ...filters, sortBy, limit: DEFAULT_LIMIT, offset: 0 });
@@ -308,6 +375,42 @@ export function ProductSalesTable({ filters, coverage }: ProductSalesTableProps)
     salesQuery.isLoading ? null : reportingRate,
     headline?.currency ?? null
   );
+
+  // Fixed set of hooks, one per cross-referenceable category — see
+  // `ChannelSalesTable`'s identical pattern and `useCoverageCrossReferenceQuery`'s
+  // own doc comment on why the hook count must never vary across renders.
+  const openCategoryCodes = useMemo(
+    () => new Set((coverage?.categories ?? []).filter((row) => row.affectedCount > 0).map((row) => row.category)),
+    [coverage]
+  );
+  const crossRefFilters: AnalyticsCoverageFilters = coverageFilters ?? { from: '', to: '' };
+  const crossRefEnabled = Boolean(coverageFilters) && Boolean(onOpenCategory);
+  const currencyOrders = useCoverageCrossReferenceQuery(
+    'currency',
+    crossRefFilters,
+    crossRefEnabled && openCategoryCodes.has('currency')
+  );
+  const taxAOrders = useCoverageCrossReferenceQuery(
+    'tax-a',
+    crossRefFilters,
+    crossRefEnabled && openCategoryCodes.has('tax-a')
+  );
+  const taxBOrders = useCoverageCrossReferenceQuery(
+    'tax-b',
+    crossRefFilters,
+    crossRefEnabled && openCategoryCodes.has('tax-b')
+  );
+  const taxCOrders = useCoverageCrossReferenceQuery(
+    'tax-c',
+    crossRefFilters,
+    crossRefEnabled && openCategoryCodes.has('tax-c')
+  );
+  const productExclusions = buildProductExclusionMap({
+    currency: currencyOrders.data,
+    'tax-a': taxAOrders.data,
+    'tax-b': taxBOrders.data,
+    'tax-c': taxCOrders.data,
+  });
 
   const items = query.data?.items ?? [];
   const productIds = items.map((item) => item.productId);
@@ -345,7 +448,14 @@ export function ProductSalesTable({ filters, coverage }: ProductSalesTableProps)
     {
       id: 'product',
       header: 'Product',
-      cell: (row) => <ProductCell row={row} product={productsById.get(row.productId)} />,
+      cell: (row) => (
+        <ProductCell
+          row={row}
+          product={productsById.get(row.productId)}
+          exclusions={productExclusions}
+          onOpenCategory={onOpenCategory}
+        />
+      ),
     },
     {
       id: 'sku',

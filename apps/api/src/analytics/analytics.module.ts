@@ -72,8 +72,8 @@
  */
 import { Module } from '@nestjs/common';
 import { AnalyticsModule as CoreAnalyticsModule } from '@openlinker/core/analytics';
-import { InventoryModule } from '@openlinker/core/inventory';
 import { CurrencyModule } from '@openlinker/core/currency';
+import { InventoryModule } from '@openlinker/core/inventory';
 import { ListingsModule } from '@openlinker/core/listings/services';
 import { OrdersModule } from '@openlinker/core/orders';
 import { SyncModule } from '@openlinker/core/sync';
@@ -100,8 +100,8 @@ import { TOP_PRODUCTS_SERVICE_TOKEN } from './application/services/top-products.
 @Module({
   imports: [
     CoreAnalyticsModule,
-    InventoryModule,
     CurrencyModule,
+    InventoryModule,
     ListingsModule,
     OrdersModule,
     ProductsModule,
