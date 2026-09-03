@@ -201,4 +201,32 @@ describe('toSalesDocumentOrderFacts (#2173)', () => {
 
     expect(toSalesDocumentOrderFacts(order)?.taxTreatment).toBe('exclusive');
   });
+
+  it('should honour totalTaxTreatment even when it disagrees downward from taxTreatment', () => {
+    // The fallback is `totalTaxTreatment ?? taxTreatment`, which must win in
+    // BOTH directions — the sibling test above only proves the
+    // exclusive→inclusive override; a regression to `||` or a truthiness
+    // check would still pass that one but silently ignore an explicit
+    // `'exclusive'` here (a falsy-looking-but-defined string is never the
+    // failure mode of `??`, so this guards the direction `||` would break).
+    const order = makeOrder({
+      shippingAddress: {
+        address1: 'ul. Testowa 1',
+        city: 'Poznań',
+        postalCode: '60-001',
+        country: 'PL',
+      },
+      totals: {
+        subtotal: 20,
+        tax: 0,
+        shipping: 0,
+        total: 20,
+        currency: 'PLN',
+        taxTreatment: 'inclusive',
+        totalTaxTreatment: 'exclusive',
+      },
+    });
+
+    expect(toSalesDocumentOrderFacts(order)?.taxTreatment).toBe('exclusive');
+  });
 });
