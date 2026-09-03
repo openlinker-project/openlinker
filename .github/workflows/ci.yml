@@ -305,23 +305,30 @@ jobs:
           # helper creates (`apps/api/test/integration/helpers/prestashop-container.helper.ts`,
           # and identically in `woocommerce-container.helper.ts`)
           # carries no `ol.ci.run-id` label (testcontainers-node's `Network`
-          # builder has no `.withLabels()` in this version), so a network
-          # that's been created but has no container attached YET — e.g.
-          # while a sibling job's MySQL image is still cold-pulling —
-          # is indistinguishable from a genuinely orphaned one and was
-          # being pruned out from under the still-running job that created
-          # it, surfacing as `failed to set up container networking: network
+          # builder has no `.withLabels()` in this version - revisit once it
+          # does, then this can use the same run-id-precise gate the
+          # container sweep above already uses), so a network that's been
+          # created but has no container attached YET - e.g. while a
+          # sibling job's MySQL image is still cold-pulling - is
+          # indistinguishable from a genuinely orphaned one and was being
+          # pruned out from under the still-running job that created it,
+          # surfacing as `failed to set up container networking: network
           # <id> not found` the moment that job's first container tried to
           # attach. The network only needs to survive until its FIRST
-          # container attaches: the MySQL companion container, bounded by
-          # its own startup timeout — 240s (4 min) explicitly for
-          # PrestaShop's, ~120s (the @testcontainers/mysql default) for
-          # WooCommerce's — not the full PS-install time. The `until=`
-          # filter gives every in-flight network a 15-minute grace window
-          # (comfortably above either bound) before it's eligible for
-          # pruning, while still reclaiming
-          # genuinely orphaned empty networks (left behind by a
-          # SIGKILLed/cancelled run, since Ryuk is disabled here) promptly.
+          # container attaches: the MySQL companion container. Its window
+          # is NOT bounded by `withStartupTimeout` alone - that timeout only
+          # guards the wait-strategy phase once the container is already
+          # running, and testcontainers-node pulls the image inside
+          # `start()` BEFORE that phase starts, so on a cold runner the real
+          # bound is image-pull-time plus the startup timeout (240s for
+          # PrestaShop's MySQL, ~120s the @testcontainers/mysql default for
+          # WooCommerce's) - not the full PS-install time either way. The
+          # `until=` filter gives every in-flight network a 15-minute grace
+          # window, chosen as generous headroom over the observed worst
+          # case rather than a proven bound, before it's eligible for
+          # pruning, while still reclaiming genuinely orphaned empty
+          # networks (left behind by a SIGKILLed/cancelled run, since Ryuk
+          # is disabled here) promptly.
           docker network prune -f --filter "label=org.testcontainers=true" --filter "until=15m" || true
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
