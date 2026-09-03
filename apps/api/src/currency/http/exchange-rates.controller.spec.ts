@@ -82,6 +82,29 @@ describe('ExchangeRatesController', () => {
     expect(lookup.findRate).not.toHaveBeenCalled();
   });
 
+  it('should word the 422 body around the rate publisher, never the reporting-currency setting', async () => {
+    // `ReportingCurrencyUnsupportedError.message` reads "Reporting currency
+    // 'XXX' is not supported" — correct on the `/currency-settings` write
+    // path, but wrong here: this endpoint asks about a RATE, not a
+    // deployment-wide setting. The controller must rewrap it rather than
+    // surface that message verbatim.
+    let caught: UnprocessableEntityException | undefined;
+    try {
+      await controller.getRate(query({ to: 'XXX' }));
+    } catch (error) {
+      caught = error as UnprocessableEntityException;
+    }
+
+    expect(caught).toBeInstanceOf(UnprocessableEntityException);
+    const body = caught?.getResponse();
+    const message = typeof body === 'string' ? body : (body as { message?: string })?.message;
+
+    expect(message).toContain("No registered publisher quotes 'XXX'");
+    expect(message).toContain('publishers serve');
+    expect(message).not.toContain('Reporting currency');
+    expect(message).not.toContain('is not supported');
+  });
+
   it('should have no way to reach ICurrencyRateService.getRateFor — the endpoint is a read, never a fetch (#2778 AC)', async () => {
     // The controller's only dependency is `IExchangeRateLookupService`, whose
     // sole method (`findRate`) is a pure `findByKey` passthrough — no
