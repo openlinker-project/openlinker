@@ -88,9 +88,7 @@ import { KeyValueList, type KeyValueItem } from '../../../shared/ui/key-value-li
 import { ApiError } from '../../../shared/api/api-error';
 import { usePlatform } from '../../../shared/plugins';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
-import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { useSession } from '../../../shared/auth/use-session';
-import { isAdminSession } from '../../../shared/auth/is-admin-session';
+import { useWriteAccess, useIsAdmin } from '../../../shared/auth/use-permission';
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
 import { formatAmount } from '../../../shared/format/format-amount';
 import { formatTaxRate } from '../../../shared/format/format-tax-rate';
@@ -243,15 +241,13 @@ function buildFiscalFieldItems(
 export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactElement | null {
   const { t } = useTranslation();
   const { showToast } = useToast();
-  const { session } = useSession();
   const connectionsQuery = useConnectionsQuery();
   const demoMode = useDemoMode();
   // #2561 — both write paths are admin-only server-side (`@Roles('admin')`);
   // the manual "pick either kind" override is gated on the same fact so a
-  // non-admin session never sees a control that would 403.
-  // The role literal lives in ONE place (`isAdminSession`): `role` is typed
-  // `string`, so an inline comparison typo compiles and silently returns false.
-  const isAdmin = isAdminSession(session);
+  // non-admin session never sees a control that would 403. `useIsAdmin()` is
+  // the one place `role` is compared against `'admin'` in `apps/web`.
+  const isAdmin = useIsAdmin();
   // #2562 — one live region carries every wait/outcome announcement below.
   const [liveAnnouncement, setLiveAnnouncement] = useState('');
   // A live region that does not CHANGE is not re-announced, so an identical
@@ -830,7 +826,25 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                               );
                               void invoiceQuery.refetch();
                             },
-                            onError: () => {
+                            onError: (error) => {
+                              // A 501 is structural, not transient: the connection's
+                              // provider never implements `RegulatoryResubmitter` (only
+                              // inFakt does), so this document can never be re-sent —
+                              // retrying tells the operator to keep waiting on
+                              // something that will never work (#2520's
+                              // unsupported-vs-still-unknown distinction). Say so
+                              // instead of reusing the generic "could not be sent"
+                              // wording, which reads as a transient failure worth
+                              // retrying.
+                              if (error instanceof ApiError && error.status === 501) {
+                                announce(
+                                  t(
+                                    'invoice.clearance.resendUnsupported',
+                                    'This provider cannot re-send a document; issue a correction instead.',
+                                  ),
+                                );
+                                return;
+                              }
                               announce(
                                 t('invoice.clearance.resendFailed', 'The resend could not be sent.'),
                               );
