@@ -7,6 +7,7 @@
  *
  * @module libs/integrations/inpost/src/infrastructure/http
  */
+import { Logger } from '@openlinker/shared/logging';
 import { ShippingProviderRejectionException } from '@openlinker/core/shipping';
 import { InpostUnauthorizedException } from '../../../domain/exceptions/inpost-unauthorized.exception';
 import { InpostNetworkException } from '../../../domain/exceptions/inpost-network.exception';
@@ -142,7 +143,7 @@ describe('InpostHttpClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('should fall back to the response body\'s `error` code as providerCode when `details` is empty (#2804)', async () => {
+  it('should fall back to the `shipx.`-namespaced response body `error` code as providerCode when `details` is empty (#2804, namespaced per #2805 review)', async () => {
     // Shape modelled on ShipX's documented error envelope for an unfetchable
     // label document: ShipX answers with an `error` code but no `details`
     // object at all, so the field-level classifier above has nothing to key
@@ -150,7 +151,9 @@ describe('InpostHttpClient', () => {
     // been live-confirmed against the sandbox (#2804 review) — `not_found`
     // is a plausible placeholder, not a verified value. Without the
     // fallback, `providerCode` was `null` and the operator saw only the
-    // generic `message` with no actionable reference.
+    // generic `message` with no actionable reference. The `shipx.` prefix
+    // (#2805 review) keeps this tier distinguishable from a bare ShipX
+    // field name at the value alone.
     fetchMock.mockResolvedValue(
       fakeResponse({
         ok: false,
@@ -168,7 +171,7 @@ describe('InpostHttpClient', () => {
     expect(error).toBeInstanceOf(ShippingProviderRejectionException);
     expect(error).toMatchObject({
       providerName: 'inpost',
-      providerCode: 'not_found',
+      providerCode: 'shipx.not_found',
       providerDetails: undefined,
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -208,6 +211,33 @@ describe('InpostHttpClient', () => {
 
     expect(error).toBeInstanceOf(ShippingProviderRejectionException);
     expect(error).toMatchObject({ providerName: 'inpost', providerCode: null });
+  });
+
+  it('should truncate a long `message` in the no-details warn log rather than echoing it verbatim (#2805 review)', async () => {
+    // `message` sits one field over from `details` in the same untrusted
+    // ShipX body and can carry the same kind of content (e.g. a rejected
+    // address fragment) for some validation shapes — so the warn line caps
+    // it rather than treating it as categorically safe to log unbounded.
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const longMessage = 'x'.repeat(500);
+    fetchMock.mockResolvedValue(
+      fakeResponse({
+        ok: false,
+        status: 400,
+        body: JSON.stringify({ message: longMessage }),
+      }),
+    );
+
+    await client
+      .request({ method: 'GET', path: '/v1/x' })
+      .then(() => null)
+      .catch((e: unknown) => e);
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    const loggedLine = warn.mock.calls[0]?.[0] as string;
+    expect(loggedLine).not.toContain(longMessage);
+    expect(loggedLine).toContain('x'.repeat(200));
+    warn.mockRestore();
   });
 
   it('should flatten a nested ShipX field-error map (custom_attributes.target_point) onto its leaf key, not the outer field (#1807)', async () => {

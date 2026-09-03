@@ -17,9 +17,10 @@ export { InpostNetworkException } from './domain/exceptions/inpost-network.excep
 // `ShippingProviderRejectionException` from `@openlinker/core/shipping`
 // (#885) — `providerName: 'inpost'`, `providerCode: 'target_point'` /
 // `'preflight.*'`, structured details on `providerDetails`. A third
-// `providerCode` family exists when ShipX's `details` map is empty: a raw
-// ShipX error code (e.g. `'not_found'`, `'validation_failed'`), surfaced as
-// a fallback rather than a field name (#2804).
+// `providerCode` family exists when ShipX's `details` map is empty: a
+// `shipx.`-namespaced raw ShipX error code (e.g. `'shipx.not_found'`,
+// `'shipx.validation_failed'`), surfaced as a fallback rather than a field
+// name (#2804, namespaced per #2805 review).
 
 // Config + credentials types
 export { InpostEnvironmentValues } from './domain/types/inpost-config.types';
