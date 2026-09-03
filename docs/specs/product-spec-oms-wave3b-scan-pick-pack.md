@@ -31,8 +31,9 @@ P-A, the solo/small-team operator, as "the *only* persona this spec designs for"
 The consequence is not confined to this wave, and must not be recorded as if it were: several
 shipped decisions were **sized against P-A's volume** and are now serving a persona 10–100× larger.
 
-- **ADR-039** rejects a materialised view for order analytics explicitly "at this persona's volume
-  (10–100 orders/day)". At 1000/day that premise no longer holds.
+- **ADR-039** rejects a materialised view for order analytics on the stated grounds that "This
+  persona's volume (10–100 orders/day) means the total corpus is small for years". At 1000/day that
+  premise no longer holds.
 - **`sync_jobs` carries no retention anywhere in the tree.** At P-A's volume that was tolerable; at
   P-D's, on a connection taking sweep children every twenty minutes, it is millions of rows a year.
 - Lane caps, sweep budgets and page sizes were tuned against P-A-shaped load.
@@ -93,11 +94,18 @@ With picking outside OL (§ 5) and therefore unverified, **pack-time scanning is
 between what was sold and what is in the box.** Not a convenience — the sole quality gate in the
 chain. That is why the refusals are stories in their own right rather than trimmings on a happy path.
 
+**How strong that check actually is, stated here rather than left to be inferred.** It reliably
+catches the **wrong item** (E2). It catches the **wrong count** only to the degree each physical unit
+is scanned once — no product in the field can tell two units from one unit scanned twice (§ 3), and
+D20 permits a line to be hand-confirmed indistinguishably from a scan. So the gate is real and worth
+building, and it is not a guarantee. "Scanner-verified" must not be read as "verified".
+
 ### 1.6 Prerequisite — #2079
 
 `RolesGuard.canActivate` returns `true` for any route with no `@Roles()` decorator
-(`roles.guard.ts:28`). Measured on `main`: **278 route decorators, 121 without `@Roles`**, ~110
-authenticated. The undecorated set includes `customers.controller.ts` (`@Get()`, `@Get(':id')` —
+(`roles.guard.ts:28`). Measured on `main` at `0470542e0`: **~280 route decorators, ~121 without
+`@Roles`**, ~110 authenticated — the figure drifts as routes land, so it is the proportion that
+matters, not the integer. The undecorated set includes `customers.controller.ts` (`@Get()`, `@Get(':id')` —
 buyer PII), all of `products`, and the `sales-documents` rules surface including writes. The existing
 `write-guard-coverage.spec.ts` cannot catch it: **non-GET handlers only**, on a hand-listed
 23-controller set, so every PII read is outside it by construction.
