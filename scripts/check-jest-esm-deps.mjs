@@ -22,8 +22,13 @@
  *   (b) reference both of its exports, `ESM_DEPS_TRANSFORM_IGNORE_PATTERN`
  *       and `esmDepsJsTransform`, at least once each beyond the import line
  *       itself (i.e. actually spread/use them, not just destructure and
- *       discard).
+ *       discard), AND
+ *   (c) declare `transform` and `transformIgnorePatterns` exactly once each
+ *       — a second, later duplicate key silently wins in a plain JS object
+ *       literal, so a config can pass check (b) and still be broken by a
+ *       trailing override the regex checks alone cannot see.
  *
+
  * Discovered jest configs = `jest.config.{js,mjs,cjs}` directly at a package
  * root, plus any `jest-integration.cjs` anywhere under the package (today:
  * `apps/{api,worker}/test/jest-integration.cjs`) — a second, hand-rolled
@@ -165,6 +170,32 @@ function classifyConfigContent(content) {
     };
   }
 
+  // A config can pass both usage checks above and still be broken: a second,
+  // later `transform:` or `transformIgnorePatterns:` key in the same object
+  // literal silently wins in plain JS (last duplicate key assignment takes
+  // effect), overriding the merge this guard just confirmed exists. The
+  // regex checks above cannot see which declaration is "the real one", so
+  // catch the ambiguity itself — a config must declare each key exactly once.
+  const countKeyDeclarations = (key) =>
+    (content.match(new RegExp(`^\\s*(?:'${key}'|"${key}"|${key})\\s*:`, 'gm')) ?? []).length;
+
+  if (countKeyDeclarations('transform') > 1) {
+    return {
+      ok: false,
+      reason:
+        'declares `transform` more than once — a later duplicate key wins in a JS object literal and can ' +
+        'silently override the esmDepsJsTransform merge; keep exactly one `transform` declaration',
+    };
+  }
+  if (countKeyDeclarations('transformIgnorePatterns') > 1) {
+    return {
+      ok: false,
+      reason:
+        'declares `transformIgnorePatterns` more than once — a later duplicate key wins in a JS object literal ' +
+        'and can silently override the ESM_DEPS_TRANSFORM_IGNORE_PATTERN merge; keep exactly one declaration',
+    };
+  }
+
   return { ok: true };
 }
 
@@ -237,12 +268,21 @@ function selfCheck() {
       transformIgnorePatterns: [ESM_DEPS_TRANSFORM_IGNORE_PATTERN],
     };
   `;
+  const shadowedByDuplicateKey = `
+    import { ESM_DEPS_TRANSFORM_IGNORE_PATTERN, esmDepsJsTransform } from '../../jest.esm-deps.cjs';
+    export default {
+      transform: { '^.+\\\\.js$': esmDepsJsTransform },
+      transformIgnorePatterns: [ESM_DEPS_TRANSFORM_IGNORE_PATTERN],
+      transformIgnorePatterns: ['/node_modules/'],
+    };
+  `;
 
   const cases = [
     ['fully merged (require form) → ok', classifyConfigContent(good).ok === true],
     ['no import at all → not ok', classifyConfigContent(missingImport).ok === false],
     ['imported but never spread → not ok', classifyConfigContent(importedButUnused).ok === false],
     ['fully merged (import form) → ok', classifyConfigContent(esmImportForm).ok === true],
+    ['merged but shadowed by a later duplicate key → not ok', classifyConfigContent(shadowedByDuplicateKey).ok === false],
   ];
 
   const failures = cases.filter(([, ok]) => !ok).map(([name]) => `  ✗ ${name}`);
