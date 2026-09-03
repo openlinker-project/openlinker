@@ -24,6 +24,9 @@ Before writing or modifying code, read the relevant doc(s):
 | Recurring gotchas / regression ledger | `docs/lessons.md` |
 | Analytics metric definitions and formulas | `docs/specs/metrics-analytics-dashboard.md` |
 | OMS programme wave map and backlog navigation | `docs/plans/oms-backlog-overview.md` |
+| Which sales document an order gets, in plain language | `docs/sales-documents-how-routing-decides.md` |
+| Sales document states and what to do about each | `docs/sales-documents-state-reference.md` |
+| Setting up a sales-document market | `docs/sales-documents-setting-up-a-market.md` |
 
 Architecture docs define **intent and direction**, not every implementation detail. You may infer missing layers or patterns if they clearly align — but always justify them explicitly.
 
