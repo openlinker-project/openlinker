@@ -87,9 +87,9 @@
  * comment) gets one `AnalyticsExclusionNote` per affected category. The
  * cross-reference is exact, not approximated: each open category's *full*
  * affected-order list is grouped by `productId` (`buildProductExclusionMap`)
- * — a currency row's single representative `productId`, or every distinct
- * `productId` across a tax row's per-line `lineRates` — never a
- * channel-wide flag standing in for product-level granularity.
+ * — every distinct `productId` a currency row's `lineProducts` touches, or
+ * across a tax row's per-line `lineRates` — never a channel-wide flag
+ * standing in for product-level granularity.
  *
  * @module features/analytics/components
  */

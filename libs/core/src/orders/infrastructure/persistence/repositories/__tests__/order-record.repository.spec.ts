@@ -547,8 +547,7 @@ describe('OrderRecordRepository', () => {
           nativeCurrency: 'PLN',
           stampedCurrency: null,
           stampedAt: null,
-          productId: null,
-          variantId: null,
+          lineProducts: [],
         },
       ]);
     });
@@ -586,8 +585,7 @@ describe('OrderRecordRepository', () => {
           nativeCurrency: 'PLN',
           stampedCurrency: 'EUR',
           stampedAt,
-          productId: null,
-          variantId: null,
+          lineProducts: [],
         },
       ]);
     });

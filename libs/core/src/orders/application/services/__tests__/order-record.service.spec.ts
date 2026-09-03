@@ -75,7 +75,7 @@ describe('OrderRecordService', () => {
       getUnitsSoldByConnection: jest.fn(),
       getTopProductRanking: jest.fn(),
       getProductChannelBreakdown: jest.fn(),
-      findRepresentativeLinesByOrderIds: jest.fn().mockResolvedValue(new Map()),
+      findProductRefsByOrderIds: jest.fn().mockResolvedValue(new Map()),
     } as unknown as jest.Mocked<OrderLineItemRepositoryPort>;
 
     reportingCurrencySettings = {
@@ -1497,11 +1497,11 @@ describe('OrderRecordService', () => {
         'EUR',
         pagination
       );
-      expect(lineItemRepository.findRepresentativeLinesByOrderIds).not.toHaveBeenCalled();
+      expect(lineItemRepository.findProductRefsByOrderIds).not.toHaveBeenCalled();
       expect(result).toEqual({ items: [], total: 0 });
     });
 
-    it('enriches each row with a representative productId/variantId via one batched lookup (#2799)', async () => {
+    it('enriches each row with EVERY distinct product it touches via one batched lookup (#2799, corrected per #2799 review BLOCKING 1)', async () => {
       const salesFilters = {
         from: new Date('2026-08-01T00:00:00.000Z'),
         to: new Date('2026-08-08T00:00:00.000Z'),
@@ -1515,8 +1515,7 @@ describe('OrderRecordService', () => {
             nativeCurrency: 'PLN',
             stampedCurrency: null,
             stampedAt: null,
-            productId: null,
-            variantId: null,
+            lineProducts: [],
           },
           {
             internalOrderId: 'order-2',
@@ -1524,29 +1523,44 @@ describe('OrderRecordService', () => {
             nativeCurrency: 'PLN',
             stampedCurrency: null,
             stampedAt: null,
-            productId: null,
-            variantId: null,
+            lineProducts: [],
           },
         ],
         total: 2,
       });
-      lineItemRepository.findRepresentativeLinesByOrderIds.mockResolvedValue(
-        new Map([['order-1', { productId: 'ol_product_1', variantId: 'ol_variant_1' }]])
+      lineItemRepository.findProductRefsByOrderIds.mockResolvedValue(
+        new Map([
+          [
+            'order-1',
+            [
+              { productId: 'ol_product_1', variantId: 'ol_variant_1' },
+              { productId: 'ol_product_2', variantId: null },
+            ],
+          ],
+        ])
       );
 
       const result = await service.getCurrencyMismatchOrders(salesFilters, 'EUR', pagination);
 
-      expect(lineItemRepository.findRepresentativeLinesByOrderIds).toHaveBeenCalledWith([
+      expect(lineItemRepository.findProductRefsByOrderIds).toHaveBeenCalledWith([
         'order-1',
         'order-2',
       ]);
+      // A multi-product order's row carries EVERY product it touches, not
+      // just the first — the exact regression #2799 review BLOCKING 1 caught.
       expect(result.items[0]).toEqual(
-        expect.objectContaining({ internalOrderId: 'order-1', productId: 'ol_product_1', variantId: 'ol_variant_1' })
+        expect.objectContaining({
+          internalOrderId: 'order-1',
+          lineProducts: [
+            { productId: 'ol_product_1', variantId: 'ol_variant_1' },
+            { productId: 'ol_product_2', variantId: null },
+          ],
+        })
       );
-      // order-2 has no representative line — the batched Map has no entry
-      // for it — so it stays null rather than throwing or fabricating one.
+      // order-2 has no line items — the batched Map has no entry for it —
+      // so it stays an empty array rather than throwing or fabricating one.
       expect(result.items[1]).toEqual(
-        expect.objectContaining({ internalOrderId: 'order-2', productId: null, variantId: null })
+        expect.objectContaining({ internalOrderId: 'order-2', lineProducts: [] })
       );
     });
   });
@@ -1569,7 +1583,7 @@ describe('OrderRecordService', () => {
         salesFilters,
         'EUR'
       );
-      expect(lineItemRepository.findRepresentativeLinesByOrderIds).not.toHaveBeenCalled();
+      expect(lineItemRepository.findProductRefsByOrderIds).not.toHaveBeenCalled();
       expect(result).toEqual(rows);
     });
   });

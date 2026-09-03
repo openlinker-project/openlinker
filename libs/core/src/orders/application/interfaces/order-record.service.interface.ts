@@ -322,7 +322,7 @@ export interface IOrderRecordService {
    * OrderRecordRepositoryPort.findCurrencyMismatchOrdersByConnection}, for
    * the same cross-context-boundary reason as {@link
    * getCurrencyMismatchOrders}. Unlike that method, no line-item enrichment
-   * runs here — a count carries no `productId`/`variantId` to attach.
+   * runs here — a count carries no `lineProducts` to attach.
    */
   getCurrencyMismatchOrdersByConnection(
     filters: SalesAnalyticsFilters,

@@ -661,32 +661,45 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
   }
 
   /**
-   * One representative (lowest `lineNumber`) line per order, batched (#2799)
-   * — see the port's JSDoc. `DISTINCT ON` + matching `ORDER BY` is Postgres'
-   * standard "first row per group" idiom, avoiding a window function or a
-   * per-order round trip.
+   * Every distinct (productId, variantId) pair per order, batched (#2799,
+   * corrected per #2799 review BLOCKING 1) — see the port's JSDoc. Grouping
+   * by all three columns (rather than the prior `DISTINCT ON
+   * orderRecordId`) is deliberate: `DISTINCT ON` collapses an order to its
+   * single lowest-`lineNumber` line, which silently dropped every other
+   * product a multi-product order touched. No aggregate function is
+   * selected, so `GROUP BY` here is a plain dedup, not an aggregation.
    */
-  async findRepresentativeLinesByOrderIds(
+  async findProductRefsByOrderIds(
     orderRecordIds: string[]
-  ): Promise<Map<string, { productId: string; variantId: string | null }>> {
+  ): Promise<Map<string, Array<{ productId: string; variantId: string | null }>>> {
     if (orderRecordIds.length === 0) {
       return new Map();
     }
 
     const rows = await this.repository
       .createQueryBuilder('li')
-      .distinctOn(['li."orderRecordId"'])
       .select('li."orderRecordId"', 'order_record_id')
       .addSelect('li."productId"', 'product_id')
       .addSelect('li."variantId"', 'variant_id')
       .where('li."orderRecordId" IN (:...orderRecordIds)', { orderRecordIds })
+      .groupBy('li."orderRecordId"')
+      .addGroupBy('li."productId"')
+      .addGroupBy('li."variantId"')
       .orderBy('li."orderRecordId"', 'ASC')
-      .addOrderBy('li."lineNumber"', 'ASC')
+      .addOrderBy('li."productId"', 'ASC')
       .getRawMany<{ order_record_id: string; product_id: string; variant_id: string | null }>();
 
-    return new Map(
-      rows.map((row) => [row.order_record_id, { productId: row.product_id, variantId: row.variant_id }])
-    );
+    const map = new Map<string, Array<{ productId: string; variantId: string | null }>>();
+    for (const row of rows) {
+      const existing = map.get(row.order_record_id);
+      const ref = { productId: row.product_id, variantId: row.variant_id };
+      if (existing) {
+        existing.push(ref);
+      } else {
+        map.set(row.order_record_id, [ref]);
+      }
+    }
+    return map;
   }
 
   async backfillTaxRate(

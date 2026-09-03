@@ -20,7 +20,7 @@
  * `sourceConnectionId`-grouped counts in ONE request instead of draining
  * four full order lists. `ProductSalesTable` still calls this hook: its
  * per-product cross-reference (`buildProductExclusionMap`) needs each
- * order's `productId`/`lineRates`, which the connection-level aggregate
+ * order's `lineProducts`/`lineRates`, which the connection-level aggregate
  * doesn't carry — there is no equivalent aggregate to swap it to.
  *
  * Only `data` is returned, deliberately — no `isLoading`/`isError`. A failed
@@ -37,7 +37,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { useApiClient } from '../../../app/api/api-client-provider';
 import type { AnalyticsCoverageFilters } from '../api/analytics-coverage.types';
-import type { CoverageOrderLite, CrossReferenceableCategory } from '../lib/channel-exclusion-map.lib';
+import type { CrossReferenceableCategory } from '../lib/channel-exclusion-map.lib';
+import type { CoverageOrderLite } from '../lib/product-exclusion-map.lib';
 
 const CROSS_REF_PAGE_LIMIT = 100;
 
