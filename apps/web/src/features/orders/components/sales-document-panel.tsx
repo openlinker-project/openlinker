@@ -245,8 +245,9 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   const demoMode = useDemoMode();
   // #2561 — both write paths are admin-only server-side (`@Roles('admin')`);
   // the manual "pick either kind" override is gated on the same fact so a
-  // non-admin session never sees a control that would 403. `useIsAdmin()` is
-  // the one place `role` is compared against `'admin'` in `apps/web`.
+  // non-admin session never sees a control that would 403. This panel's own
+  // role check goes through `useIsAdmin()` (#2342), never an inline
+  // `role === 'admin'` comparison.
   const isAdmin = useIsAdmin();
   // #2562 — one live region carries every wait/outcome announcement below.
   const [liveAnnouncement, setLiveAnnouncement] = useState('');
@@ -824,6 +825,10 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                               announce(
                                 t('invoice.clearance.resent', 'Resent to the authority.'),
                               );
+                              showToast({
+                                tone: 'success',
+                                title: t('invoice.clearance.resent', 'Resent to the authority.'),
+                              });
                               void invoiceQuery.refetch();
                             },
                             onError: (error) => {
@@ -836,18 +841,36 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                               // instead of reusing the generic "could not be sent"
                               // wording, which reads as a transient failure worth
                               // retrying.
+                              //
+                              // The distinction must reach a visible surface, not only
+                              // the sr-only live region — every other mutation in this
+                              // file pairs `announce` with `showToast`, and a sighted
+                              // operator who sees nothing change after clicking Resend
+                              // will keep retrying a refusal the announcement already
+                              // explained to nobody but a screen reader.
                               if (error instanceof ApiError && error.status === 501) {
-                                announce(
-                                  t(
-                                    'invoice.clearance.resendUnsupported',
-                                    'This provider cannot re-send a document; issue a correction instead.',
-                                  ),
+                                const message = t(
+                                  'invoice.clearance.resendUnsupported',
+                                  'This provider cannot re-send a document; issue a correction instead.',
                                 );
+                                announce(message);
+                                showToast({
+                                  tone: 'error',
+                                  title: t('invoice.clearance.resendUnsupportedTitle', 'Cannot resend'),
+                                  description: message,
+                                });
                                 return;
                               }
-                              announce(
-                                t('invoice.clearance.resendFailed', 'The resend could not be sent.'),
+                              const message = t(
+                                'invoice.clearance.resendFailed',
+                                'The resend could not be sent.',
                               );
+                              announce(message);
+                              showToast({
+                                tone: 'error',
+                                title: t('invoice.clearance.resendFailedTitle', 'Resend failed'),
+                                description: message,
+                              });
                             },
                           });
                         }}

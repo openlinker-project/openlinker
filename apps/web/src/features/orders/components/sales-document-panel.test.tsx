@@ -345,9 +345,11 @@ describe('SalesDocumentPanel — resend to KSeF (#2763 review)', () => {
     renderRejected(resendToKsef);
 
     await user.click(await screen.findByRole('button', { name: 'Resend' }));
-    expect(
-      await screen.findByText(/cannot re-send a document; issue a correction instead/i),
-    ).toBeInTheDocument();
+    // The structural-refusal distinction must reach a visible surface, not
+    // only the sr-only live region — a toast, matching this file's other
+    // seven mutations.
+    expect(await findToastTitle('Cannot resend')).toBeInTheDocument();
+    await findToastDescription(/cannot re-send a document; issue a correction instead/i);
     expect(screen.queryByText(/The resend could not be sent\./i)).toBeNull();
   });
 
@@ -359,7 +361,8 @@ describe('SalesDocumentPanel — resend to KSeF (#2763 review)', () => {
     renderRejected(resendToKsef);
 
     await user.click(await screen.findByRole('button', { name: 'Resend' }));
-    expect(await screen.findByText(/The resend could not be sent\./i)).toBeInTheDocument();
+    expect(await findToastTitle('Resend failed')).toBeInTheDocument();
+    await findToastDescription(/The resend could not be sent\./i);
     expect(screen.queryByText(/cannot re-send a document/i)).toBeNull();
   });
 });
