@@ -130,7 +130,7 @@ describe('TopProductsController', () => {
       const service = createService();
       const variantResponse = { productId: 'p1', variants: [] };
       service.getTopProductVariantSales.mockResolvedValue(variantResponse as never);
-      const controller = new TopProductsController(service);
+      const controller = build(service);
 
       const result = await controller.getTopProductVariantSales('p1', {
         from: '2026-08-01T00:00:00.000Z',
@@ -148,7 +148,7 @@ describe('TopProductsController', () => {
 
     it('throws BadRequestException when to <= from', async () => {
       const service = createService();
-      const controller = new TopProductsController(service);
+      const controller = build(service);
 
       await expect(
         controller.getTopProductVariantSales('p1', {
