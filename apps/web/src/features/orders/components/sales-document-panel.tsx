@@ -827,7 +827,11 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                               );
                               showToast({
                                 tone: 'success',
-                                title: t('invoice.clearance.resent', 'Resent to the authority.'),
+                                title: t('invoice.clearance.resentTitle', 'Resent'),
+                                description: t(
+                                  'invoice.clearance.resent',
+                                  'Resent to the authority.',
+                                ),
                               });
                               void invoiceQuery.refetch();
                             },
