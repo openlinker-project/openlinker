@@ -21,6 +21,15 @@ function rate(overrides: Partial<AppliedRate> = {}): AppliedRate {
   };
 }
 
+// `formatAppliedRateLine` / `buildRateProvenanceDefinitions` are pure lib
+// functions and cannot call the `useNumberFormat` hook themselves, so the
+// caller supplies the formatter — matching what `AnalyticsKpiStrip`
+// constructs via `useNumberFormat(RATE_FORMAT_OPTIONS)` (#2788 review).
+const rateFormat = new Intl.NumberFormat('en-US', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 8,
+});
+
 describe('pickInlineAppliedRate', () => {
   it('returns the single rate when exactly one is present', () => {
     const only = rate();
@@ -38,33 +47,45 @@ describe('pickInlineAppliedRate', () => {
 
 describe('formatAppliedRateLine', () => {
   it('renders every value verbatim from the rate, never a hardcoded label', () => {
-    expect(formatAppliedRateLine(rate())).toBe('1 EUR = 4.25 PLN (NBP, 2026-08-29)');
+    expect(formatAppliedRateLine(rate(), rateFormat)).toBe('1 EUR = 4.25 PLN (NBP, 2026-08-29)');
   });
 
-  it('formats with up to 4 fraction digits without trailing zero padding beyond the source precision', () => {
-    expect(formatAppliedRateLine(rate({ rate: '4.23680000' }))).toBe('1 EUR = 4.2368 PLN (NBP, 2026-08-29)');
+  it('formats with up to 8 fraction digits without trailing zero padding beyond the source precision', () => {
+    expect(formatAppliedRateLine(rate({ rate: '4.23680000' }), rateFormat)).toBe(
+      '1 EUR = 4.2368 PLN (NBP, 2026-08-29)'
+    );
+  });
+
+  it('renders a full 8-decimal inverted rate unrounded — this line is the checkable provenance figure (#2788 review)', () => {
+    // An inverted PLN→EUR rate of 0.23529412 previously rendered as 0.2353
+    // (maximumFractionDigits: 4), so multiplying the displayed amount by the
+    // displayed rate no longer reproduced the displayed figure.
+    expect(formatAppliedRateLine(rate({ from: 'PLN', to: 'EUR', rate: '0.23529412' }), rateFormat)).toBe(
+      '1 PLN = 0.23529412 EUR (NBP, 2026-08-29)'
+    );
   });
 });
 
 describe('buildRateProvenanceDefinitions', () => {
   it('returns nothing when no rate was applied — never an empty popover', () => {
-    expect(buildRateProvenanceDefinitions('current-rate', [])).toEqual([]);
+    expect(buildRateProvenanceDefinitions('current-rate', [], rateFormat)).toEqual([]);
   });
 
-  it("states the order-date mode's meaning distinctly from current-rate", () => {
-    const orderDateDefs = buildRateProvenanceDefinitions('order-date', [rate()]);
-    expect(orderDateDefs[0].term).toBe('Rate on order date');
+  it("states the order-date mode's meaning distinctly from current-rate, and the term no longer contradicts the body (#2788 review)", () => {
+    const orderDateDefs = buildRateProvenanceDefinitions('order-date', [rate()], rateFormat);
+    expect(orderDateDefs[0].term).toBe('Period rate (order-date mode)');
     expect(orderDateDefs[0].text).toMatch(/whole period's total/);
 
-    const currentRateDefs = buildRateProvenanceDefinitions('current-rate', [rate()]);
+    const currentRateDefs = buildRateProvenanceDefinitions('current-rate', [rate()], rateFormat);
     expect(currentRateDefs[0].term).toBe('Current rate');
   });
 
   it('includes one row per applied rate, each with its own formatted line (#2778 AC)', () => {
-    const defs = buildRateProvenanceDefinitions('current-rate', [
-      rate({ from: 'EUR', to: 'PLN' }),
-      rate({ from: 'USD', to: 'PLN', rate: '4.00', sourceRef: null }),
-    ]);
+    const defs = buildRateProvenanceDefinitions(
+      'current-rate',
+      [rate({ from: 'EUR', to: 'PLN' }), rate({ from: 'USD', to: 'PLN', rate: '4.00', sourceRef: null })],
+      rateFormat
+    );
 
     expect(defs).toContainEqual(
       expect.objectContaining({ term: 'EUR → PLN', text: '1 EUR = 4.25 PLN (NBP, 2026-08-29)' })
@@ -75,20 +96,26 @@ describe('buildRateProvenanceDefinitions', () => {
   });
 
   it('always states the figure is not an invoice/statutory rate', () => {
-    const defs = buildRateProvenanceDefinitions('current-rate', [rate()]);
+    const defs = buildRateProvenanceDefinitions('current-rate', [rate()], rateFormat);
     expect(defs.some((d) => d.term === 'Not an invoice rate')).toBe(true);
   });
 
   it('surfaces derivation and sourceRef, omitting a sourceRef-less caveat rather than rendering an empty label', () => {
-    const directWithRef = buildRateProvenanceDefinitions('current-rate', [rate()])[1];
+    const directWithRef = buildRateProvenanceDefinitions('current-rate', [rate()], rateFormat)[1];
     expect(directWithRef.caveat).toBe('167/A/NBP/2026');
 
-    const invertedNoRef = buildRateProvenanceDefinitions('current-rate', [
-      rate({ derivation: 'inverted', sourceRef: null }),
-    ])[1];
+    const invertedNoRef = buildRateProvenanceDefinitions(
+      'current-rate',
+      [rate({ derivation: 'inverted', sourceRef: null })],
+      rateFormat
+    )[1];
     expect(invertedNoRef.caveat).toBe('Derived (inverted)');
 
-    const directNoRef = buildRateProvenanceDefinitions('current-rate', [rate({ sourceRef: null })])[1];
+    const directNoRef = buildRateProvenanceDefinitions(
+      'current-rate',
+      [rate({ sourceRef: null })],
+      rateFormat
+    )[1];
     expect(directNoRef.caveat).toBeUndefined();
   });
 });
