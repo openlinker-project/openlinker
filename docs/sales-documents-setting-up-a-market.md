@@ -74,11 +74,11 @@ Where we have researched public guidance for a market, the market offers a sugge
 
 ### Before you adopt the Poland template
 
-The Poland template contains three rules. All three ask **whether the buyer gave a tax ID**, and OpenLinker does not record that on any order yet.
+The Poland template contains three rules. All three ask **whether the buyer gave a tax ID**.
 
-A rule that asks about something unknown can never match. So if you adopt the template as it stands, all three rules are inactive, and what actually happens is whatever the default step says: one default set, that document is issued; both set, every order is held; neither set, the order falls to Rest of world.
+Whether OpenLinker can answer that depends on where the order came from. Today only PrestaShop reports it (from the customer's own VAT number); an order from a source that asserts nothing about it, such as Allegro or WooCommerce, leaves the condition neither true nor false, so the rule does not fire for that order.
 
-The market page marks these rules as unable to match. The template is still worth reading, because it shows the shape a Polish setup takes and cites its source, but treat it as a starting point rather than a working configuration, and set a single default alongside it so orders are not held while the rules are dormant.
+So if you adopt the template as it stands, it is **live for your PrestaShop-sourced orders and dormant for the rest**, depending on your own mix of connections. The market page reports how many of your rules read the buyer's tax ID, so you can check whether the gap matters for you. The template is still worth reading, because it shows the shape a Polish setup takes and cites its source — but keep a default in place alongside it, so an order from a source that cannot answer the condition still gets a document instead of being held.
 
 None of this is legal advice. Review any suggested setup with your accountant before relying on it.
 

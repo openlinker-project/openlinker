@@ -34,7 +34,7 @@ So if you see *Two rules matched*, narrow the conditions until only one can appl
 
 **A rule that asks about something OpenLinker does not know can never match.** If a condition reads a fact that is not recorded on your orders, the answer is neither yes nor no, so the rule simply never fires. The market page marks such a rule, and says how many are affected.
 
-This is not a hypothetical. The starter rules for Poland all ask whether the buyer gave a tax ID, and OpenLinker does not record that on any order yet. Adopt them as they are and none of the three will ever match.
+This is not a hypothetical, but it is only partly true today. The starter rules for Poland all ask whether the buyer gave a tax ID. OpenLinker records that fact only when the order's source reports it — today, that means PrestaShop. An order from a source that asserts nothing about it, such as Allegro or WooCommerce, leaves the condition neither true nor false, so the rule does not fire for that order. Adopt the template as it stands and it is live for your PrestaShop-sourced orders and dormant for the rest, depending on your own mix of connections — the market page reports how many of your rules read the buyer's tax ID, so you can judge whether the gap matters for you.
 
 ## Step 2: the country's default
 
