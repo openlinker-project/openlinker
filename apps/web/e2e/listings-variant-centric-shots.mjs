@@ -4,19 +4,19 @@
  * Captures the standalone mockup at
  * docs/plans/mockups/listings-variant-centric-2823.html at the three
  * style-guide widths (360 × 812 / 768 × 1024 / 1440 × 900,
- * docs/frontend-ui-style-guide.md § Responsive) in both themes, plus the six
- * state frames at desktop width. The PNGs are attachments on the issue
+ * docs/frontend-ui-style-guide.md § Responsive) in both themes, plus the
+ * remaining frames at desktop width. The PNGs are attachments on the issue
  * discussion — they are not committed.
  *
  * WHY THIS IS A SIBLING OF listings-mockup-shots.mjs RATHER THAN A PARAMETER
- * OF IT: that script hard-codes the #1965 mockup path AND two selectors that
- * this design deletes. Its readiness gate polls
- * `.tabs__count[data-count="active"]`, and its tablet assertion requires the
- * lifecycle tab strip to fit without scrolling — but #2823 removes the tab
- * strip (the lifecycle tabs become an offer-state filter), so both would fail
- * on a page that is working correctly. Making one script serve both mockups
- * would mean branching on which mockup it was pointed at, which is worse than
- * two files.
+ * OF IT: that script hard-codes the #1965 mockup path, and its readiness gate
+ * polls `.tabs__count[data-count="active"]` — an attribute this mockup's tab
+ * strip does not carry, because its counts are per-lifecycle offer counts
+ * rather than the #1965 page's row counts. Round 2 of this file justified the
+ * sibling by saying #2823 removed the tab strip; round 3 put the strip back
+ * (PM decision, from the lo-fi), so that reason is void and this is the real
+ * one. Making one script serve both mockups would mean branching on which
+ * mockup it was pointed at, which is worse than two files.
  *
  * Shares the rest of the #1965 approach deliberately: the same capture-time
  * chrome strip (inline !important, because an appended stylesheet loses the
@@ -48,16 +48,21 @@ const FONT_DIR = resolve(REPO_ROOT, 'apps/web/public/fonts');
 const OUT_DIR = process.env.OUT_DIR ?? resolve(REPO_ROOT, 'e2e-out/listings-2823');
 const THEMES = process.env.THEME ? [process.env.THEME] : ['light', 'dark'];
 
+/* Frame ids follow round 3's sheet. `#frame-desktop` / `#frame-expanded` /
+   `#frame-filters` / `#frame-degraded` are gone: the clickable prototype
+   replaced the first two, the filter frame became the tab frame, and the
+   degraded-connection pair was folded into the edge states. */
 const SHOTS = [
   { name: 'mobile-360', selector: '#frame-mobile', width: 360, height: 812 },
   { name: 'tablet-768', selector: '#frame-tablet', width: 768, height: 1024 },
-  { name: 'desktop-1440', selector: '#frame-desktop', width: 1440, height: 900 },
-  { name: 'expanded-1440', selector: '#frame-expanded', width: 1440, height: 700 },
-  { name: 'filters-1440', selector: '#frame-filters', width: 1440, height: 760 },
-  { name: 'publish-1440', selector: '#frame-publish', width: 1440, height: 760 },
-  { name: 'states-1440', selector: '#frame-states', width: 1440, height: 1000 },
-  { name: 'degraded-1440', selector: '#frame-degraded', width: 1440, height: 800 },
-  { name: 'scale-1440', selector: '#frame-scale', width: 1440, height: 760 },
+  { name: 'proto-1440', selector: '#frame-proto', width: 1440, height: 1000 },
+  { name: 'compare-1440', selector: '#frame-compare', width: 1440, height: 2200 },
+  { name: 'vocabulary-1440', selector: '#frame-vocab', width: 1440, height: 700 },
+  { name: 'detail-1440', selector: '#frame-detail', width: 1440, height: 900 },
+  { name: 'tabs-1440', selector: '#frame-tabs', width: 1440, height: 1200 },
+  { name: 'scale-1440', selector: '#frame-scale', width: 1440, height: 1600 },
+  { name: 'publish-1440', selector: '#frame-publish', width: 1440, height: 900 },
+  { name: 'states-1440', selector: '#frame-states', width: 1440, height: 1100 },
   { name: 'handover-1440', selector: '#frame-handover', width: 1440, height: 1400 },
 ];
 
@@ -89,12 +94,28 @@ async function fontCss() {
   return blocks.join('\n').replace(/url\(['"]?\/fonts\/([^'")]+)['"]?\)/g, (_m, f) => `url('file://${FONT_DIR}/${f}')`);
 }
 
-/* Readiness signal, replacing #1965's `.tabs__count[data-count="active"]`:
-   the tab strip is gone in this design, so gate on the live table's own rows. */
+/* Readiness signal, replacing #1965's `.tabs__count[data-count="active"]`.
+   Gate on the rendered rows of all three shapes, keyed on the attribute the
+   row actually carries (`data-variant` — round 2 gated on `data-row`, which
+   this markup has never emitted, so the gate was passing on the selector
+   finding nothing rather than on the table being ready). Also wait for the
+   live measurement to have run, since a frame that quotes a figure must not
+   be captured before the figure is in it. */
 async function assertReady(page) {
-  await page.waitForFunction(() => document.querySelectorAll('#rows tr[data-row]').length > 0, { timeout: 5000 });
-  await page.waitForFunction(() => document.querySelectorAll('#tablet-rows tr[data-row]').length > 0, { timeout: 5000 });
-  await page.waitForFunction(() => document.querySelectorAll('#mobile-cards li').length > 0, { timeout: 5000 });
+  await page.waitForFunction(() => document.querySelectorAll('#rows tr[data-variant]').length > 0, { timeout: 5000 });
+  await page.waitForFunction(() => document.querySelectorAll('#tablet-rows tr[data-variant]').length > 0, { timeout: 5000 });
+  await page.waitForFunction(() => document.querySelectorAll('#mobile-cards .state-card').length > 0, { timeout: 5000 });
+  /* The readout is rendered from JS and its slots differ per variant, so gate
+     on it having any content rather than on a specific id — round 3's first
+     pass gated on `#ro-needs`, which the variant switch deleted. */
+  await page.waitForFunction(
+    () => (document.getElementById('scale-readout')?.textContent ?? '').includes('px'),
+    { timeout: 5000 });
+  await page.waitForFunction(
+    () => document.querySelectorAll('#compare-mount .scale-readout').length === 6
+      && [...document.querySelectorAll('#compare-mount .scale-readout')]
+           .every((el) => el.textContent.includes('px')),
+    { timeout: 5000 });
   const fontsOk = await page.evaluate(() =>
     document.fonts.check('13px "IBM Plex Sans"') && document.fonts.check('13px "IBM Plex Mono"'));
   if (!fontsOk) throw new Error('IBM Plex did not load');
@@ -105,9 +126,42 @@ const box = (page, sel) => page.locator(sel).evaluate((el) => ({ s: el.scrollWid
 async function measure(page, shot) {
   if (shot.selector === '#frame-tablet') {
     const t = await box(page, '#frame-tablet .data-table__container');
-    console.log(`  tablet table ${t.s}/${t.c} px · ${t.s > t.c ? 'overflows (expected)' : 'DOES NOT OVERFLOW'}`);
+    /* Overflow here is neither pass nor fail: at three connections the grid
+       fits 768 px and at nine it cannot. Report the number and let the frame
+       argue — asserting either way would bake one connection count into a
+       capture script. */
+    console.log(`  tablet table ${t.s}/${t.c} px · ${t.s > t.c ? 'scrolls sideways inside the container' : 'fits'}`);
     const bar = await box(page, '#frame-tablet .toolbar');
     console.log(`  tablet toolbar ${bar.s}/${bar.c} px · ${bar.s <= bar.c ? 'fits' : 'SCROLLS'}`);
+  }
+  /* Frame 02 is the one that has to be reported in full: it is the only place
+     the two variants are measured against each other, and the whole point of
+     the frame is that the numbers are not symmetrical. */
+  if (shot.selector === '#frame-compare') {
+    const readouts = await page.locator('#compare-mount .scale-readout').allInnerTexts();
+    for (const line of readouts) {
+      console.log(`  compare · ${line.replace(/\s+/g, ' ').trim()}`);
+    }
+    const proofs = await page.locator('[data-scroll-proof]').evaluateAll((boxes) =>
+      boxes.map((b) => ({
+        variant: b.getAttribute('data-scroll-proof'),
+        scrolled: Math.round(b.scrollTop),
+        headerVisible: b.querySelector('thead').getBoundingClientRect().bottom > b.getBoundingClientRect().top,
+      })));
+    for (const proof of proofs) {
+      console.log(`  scroll proof ${proof.variant} · scrolled ${proof.scrolled} px · header ${proof.headerVisible ? 'STILL VISIBLE — proof is not proving anything' : 'off-screen (expected)'}`);
+    }
+  }
+  if (shot.selector === '#frame-scale') {
+    const cases = await page.locator('#scale-mount > figure').evaluateAll((figs) =>
+      figs.map((f) => {
+        const c = f.querySelector('.data-table__container');
+        const ro = f.querySelector('.scale-readout');
+        return { s: c.scrollWidth, c: c.clientWidth, ro: ro.textContent.replace(/\s+/g, ' ').trim() };
+      }));
+    for (const item of cases) {
+      console.log(`  scale ${item.s}/${item.c} px · ${item.ro}`);
+    }
   }
   if (shot.selector === '#frame-mobile') {
     const bar = await box(page, '#frame-mobile .toolbar');
@@ -115,9 +169,9 @@ async function measure(page, shot) {
     const doc = await page.evaluate(() => ({ s: document.documentElement.scrollWidth, c: document.documentElement.clientWidth }));
     console.log(`  mobile page ${doc.s}/${doc.c} px · ${doc.s <= doc.c ? 'no sideways page scroll' : 'PAGE SCROLLS SIDEWAYS'}`);
   }
-  if (shot.selector === '#frame-desktop') {
+  if (shot.selector === '#frame-proto') {
     const doc = await page.evaluate(() => ({ s: document.documentElement.scrollWidth, c: document.documentElement.clientWidth }));
-    console.log(`  desktop page ${doc.s}/${doc.c} px · ${doc.s <= doc.c ? 'no sideways page scroll' : 'PAGE SCROLLS SIDEWAYS'}`);
+    console.log(`  prototype page ${doc.s}/${doc.c} px · ${doc.s <= doc.c ? 'no sideways page scroll' : 'PAGE SCROLLS SIDEWAYS'}`);
   }
 }
 
