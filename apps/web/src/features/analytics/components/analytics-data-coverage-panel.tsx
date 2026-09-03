@@ -56,7 +56,12 @@ import {
 } from '../lib/data-coverage-copy.lib';
 import type { AnalyticsCoverageFilters, CoverageCategory, CoverageCategoryRow } from '../api/analytics-coverage.types';
 import type { CurrencyMismatchOrder } from '../api/analytics-remediation.types';
-import type { TaxCoverageCategory, TaxCoverageOrder } from '../api/analytics-tax-coverage.types';
+import type {
+  TaxCoverageCategory,
+  TaxCoverageOrder,
+  TaxCoverageLineRate,
+  TaxCoverageLineRateUnknownReason,
+} from '../api/analytics-tax-coverage.types';
 import type { ProductMatchingOrder } from '../api/analytics-matching-coverage.types';
 
 const PAGE_SIZE = 10;
@@ -205,12 +210,20 @@ export function AnalyticsDataCoveragePanel({
     });
   }
 
-  const currencyRunPhase: 'open' | 'in-progress' | 'resolved' | 'failed' = activeRunId
+  // 'unknown' (#2668 review, finding 15) covers a status poll that has
+  // definitively failed to answer — a 404 for a run id the server no longer
+  // recognizes, or a persistent network error — so the row does not read
+  // "Recalculating… Safe to navigate away" forever. A merely-loading poll
+  // (`isLoading`, no error yet) still reports 'in-progress': that is the
+  // honest first-paint state, not a failure.
+  const currencyRunPhase: 'open' | 'in-progress' | 'resolved' | 'failed' | 'unknown' = activeRunId
     ? dwellingResolved
       ? 'resolved'
       : runStatusQuery.data?.status === 'failed'
         ? 'failed'
-        : 'in-progress'
+        : runStatusQuery.isError
+          ? 'unknown'
+          : 'in-progress'
     : 'open';
 
   // ── Detail queries, one per category, only the open one enabled ───────
@@ -412,7 +425,7 @@ export function AnalyticsDataCoveragePanel({
             <TaxOrderRow item={item} connectionName={connectionName(item.sourceConnectionId)} />
           )}
           footerAction={
-            openCategory === 'tax-a' ? (
+            openCategory === 'tax-a' && write.visible ? (
               <Button
                 type="button"
                 tone="secondary"
@@ -477,7 +490,7 @@ function emptyRow(category: CoverageCategory): CoverageCategoryRow {
 
 interface DataCoverageRowProps {
   row: CoverageCategoryRow;
-  currencyPhase: 'open' | 'in-progress' | 'resolved' | 'failed' | null;
+  currencyPhase: 'open' | 'in-progress' | 'resolved' | 'failed' | 'unknown' | null;
   currencyFailedDetail: string | null;
   onOpenDetail: () => void;
 }
@@ -504,6 +517,11 @@ function DataCoverageRow({ row, currencyPhase, currencyFailedDetail, onOpenDetai
     badgeTone = 'error';
     badgeLabel = 'Failed';
     sub = currencyFailedDetail ?? 'The recalculation could not complete — see Jobs & Logs for detail.';
+    actionLabel = 'Try again';
+  } else if (currencyPhase === 'unknown') {
+    badgeTone = 'error';
+    badgeLabel = 'Status unknown';
+    sub = "Couldn't check the recalculation's status — see Jobs & Logs, or try again.";
     actionLabel = 'Try again';
   }
 
@@ -551,7 +569,80 @@ function CurrencyOrderRow({
   );
 }
 
+/**
+ * Why the catalogue named no rate (#2264), as a tooltip on the "no rate"
+ * tag — never rendered as its own tag, so the tag list stays the same
+ * length whether or not the catalogue gave a reason. Mirrors the copy
+ * pattern `taxRateUnknownReasonCaption` uses on the product variant table,
+ * phrased for a one-line title attribute rather than a caption sentence.
+ */
+function describeLineRateUnknownReason(reason: TaxCoverageLineRateUnknownReason): string {
+  switch (reason) {
+    case 'ambiguous':
+      return 'Catalogue reports several candidate rates — resolve which one is right in the shop.';
+    case 'unreadable':
+      return 'The catalogue read did not state a tax status.';
+    case 'not-configured':
+      return 'Shop has no tax configuration for this product.';
+  }
+}
+
+/**
+ * Renders each line's own resolved/candidate rate (#2798) — a mixed-rate
+ * order shows its per-line rates, never one shared/hardcoded value across
+ * every row (the mockup's earlier "hardcoded 23%" regression this guards
+ * against).
+ *
+ * The `state` switch is EXHAUSTIVE, never a final `return 'not checked
+ * yet'` fallback (#2802 review): the frontend's `TaxCoverageLineRateState`
+ * mirror is now guarded by `check-tax-rate-state-mirror.mjs`, but a
+ * fallback that asserts a specific state is still the wrong failure
+ * direction on its own — an unrecognised value degrades to a neutral
+ * `'unknown'` tag rather than a false, actionable claim about the
+ * operator's own catalogue.
+ */
+function describeLineRate(observation: TaxCoverageLineRate): { label: string; title?: string } {
+  switch (observation.state) {
+    case 'known':
+      if (observation.rateCode === null) {
+        return { label: 'unknown' };
+      }
+      return {
+        label: /^\d+(\.\d+)?$/.test(observation.rateCode.trim())
+          ? `${observation.rateCode}%`
+          : observation.rateCode,
+      };
+    case 'no-rate':
+      return {
+        label: 'no rate',
+        title: observation.unknownReason
+          ? describeLineRateUnknownReason(observation.unknownReason)
+          : undefined,
+      };
+    case 'not-checked':
+      return { label: 'not checked yet' };
+    default:
+      return { label: 'unknown' };
+  }
+}
+
+/** Distinct label+title pairs are deduplicated so a large order with many identically-taxed lines doesn't repeat the same tag. */
+function summarizeLineRates(lineRates: TaxCoverageLineRate[]): { label: string; title?: string }[] {
+  const seen = new Set<string>();
+  const tags: { label: string; title?: string }[] = [];
+  for (const observation of lineRates) {
+    const tag = describeLineRate(observation);
+    const key = `${tag.label}|${tag.title ?? ''}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      tags.push(tag);
+    }
+  }
+  return tags;
+}
+
 function TaxOrderRow({ item, connectionName }: { item: TaxCoverageOrder; connectionName: string }): ReactElement {
+  const rateTags = summarizeLineRates(item.lineRates);
   return (
     <>
       <span className="coverage-detail-row__body">
@@ -566,6 +657,19 @@ function TaxOrderRow({ item, connectionName }: { item: TaxCoverageOrder; connect
           ) : null}
         </span>
       </span>
+      {rateTags.length > 0 ? (
+        <span className="coverage-detail-row__trail">
+          {rateTags.map((tag) => (
+            <span
+              key={`${tag.label}|${tag.title ?? ''}`}
+              className="coverage-detail-row__tag coverage-detail-row__tag--neutral"
+              title={tag.title}
+            >
+              {tag.label}
+            </span>
+          ))}
+        </span>
+      ) : null}
     </>
   );
 }

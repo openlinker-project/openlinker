@@ -39,6 +39,7 @@ import {
   DialogFooter,
   DialogTitle,
 } from '../../../shared/ui/dialog';
+import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
 import { Select } from '../../../shared/ui/select';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
@@ -95,8 +96,15 @@ export function AnalyticsSettingsDialog({
   const coverageQuery = useAnalyticsCoverageQuery(coverageFilters, { enabled: open });
   const recalculate = useRecalculateCurrencyMutation();
 
-  const currencyPendingCount =
-    coverageQuery.data?.categories.find((row) => row.category === 'currency')?.affectedCount ?? 0;
+  const [confirmingRecalculate, setConfirmingRecalculate] = useState(false);
+
+  const currencyRow = coverageQuery.data?.categories.find((row) => row.category === 'currency');
+  const currencyPendingCount = currencyRow?.affectedCount ?? 0;
+  // A live run (the panel's own `currencyRunPhase`, mirrored here off the
+  // same coverage row) must disable this button too — otherwise a second
+  // click during an in-progress run posts again and surfaces the server's
+  // 409 as a raw error toast (#2668 review, finding 14).
+  const currencyRunInProgress = currencyRow?.status === 'in-progress';
   const taxA = coverageQuery.data?.categories.find((row) => row.category === 'tax-a')?.affectedCount ?? 0;
   const taxB = coverageQuery.data?.categories.find((row) => row.category === 'tax-b')?.affectedCount ?? 0;
   const taxC = coverageQuery.data?.categories.find((row) => row.category === 'tax-c')?.affectedCount ?? 0;
@@ -107,6 +115,7 @@ export function AnalyticsSettingsDialog({
   }
 
   function handleRecalculate(): void {
+    setConfirmingRecalculate(false);
     recalculate.mutate(coverageFilters, {
       onSuccess: () => {
         showToast({
@@ -127,7 +136,17 @@ export function AnalyticsSettingsDialog({
     }
     updateSettings.mutate(
       {
-        displayCurrency: settingsQuery.data.displayCurrency,
+        // Only echo back a real, previously-stored override — `GET` resolves
+        // `displayCurrency` to the system reporting currency whenever no
+        // override exists (`displayCurrencySource: 'default'`), and echoing
+        // that resolved value into `PUT` would pin it as a literal override
+        // that never existed (#2668 review, finding 10): flip this toggle
+        // once and a later reporting-currency change stops moving the
+        // default for this deployment.
+        displayCurrency:
+          settingsQuery.data.displayCurrencySource === 'setting'
+            ? settingsQuery.data.displayCurrency
+            : null,
         rateBasis: settingsQuery.data.rateBasis,
         includeBackfilledTaxRatesInNetSales: nextInclude,
       },
@@ -229,10 +248,14 @@ export function AnalyticsSettingsDialog({
                   <Button
                     type="button"
                     className="button--sm"
-                    disabled={recalculate.isPending || write.demoReadOnly}
-                    onClick={handleRecalculate}
+                    disabled={recalculate.isPending || write.demoReadOnly || currencyRunInProgress}
+                    onClick={() => setConfirmingRecalculate(true)}
                   >
-                    {recalculate.isPending ? 'Starting…' : 'Recalculate now'}
+                    {currencyRunInProgress
+                      ? 'Recalculating…'
+                      : recalculate.isPending
+                        ? 'Starting…'
+                        : 'Recalculate now'}
                   </Button>
                 </ReadOnlyLock>
               )}
@@ -265,11 +288,20 @@ export function AnalyticsSettingsDialog({
               </label>
             </ReadOnlyLock>
           )}
-          <ul className="analytics-settings-dialog__tax-summary">
-            <li>{taxA} orders — rate found, {settingsQuery.data?.includeBackfilledTaxRatesInNetSales ? 'included automatically' : 'waiting for confirmation'}</li>
-            <li>{taxB} orders — no rate at the source (needs fixing at the source)</li>
-            <li>{taxC} orders — product added after launch, rate still unresolved</li>
-          </ul>
+          {coverageQuery.isLoading || settingsQuery.isLoading ? (
+            <p className="analytics-settings-dialog__status">Checking tax-rate coverage…</p>
+          ) : coverageQuery.isError || settingsQuery.isError ? (
+            <Alert tone="error">
+              Couldn&rsquo;t load tax-rate coverage — the counts and setting state below may be
+              wrong.
+            </Alert>
+          ) : (
+            <ul className="analytics-settings-dialog__tax-summary">
+              <li>{taxA} orders — rate found, {settingsQuery.data?.includeBackfilledTaxRatesInNetSales ? 'included automatically' : 'waiting for confirmation'}</li>
+              <li>{taxB} orders — no rate at the source (needs fixing at the source)</li>
+              <li>{taxC} orders — product added after launch, rate still unresolved</li>
+            </ul>
+          )}
         </section>
 
         <DialogFooter>
@@ -281,6 +313,17 @@ export function AnalyticsSettingsDialog({
           </Button>
         </DialogFooter>
       </DialogContent>
+      <ConfirmDialog
+        open={confirmingRecalculate}
+        onOpenChange={setConfirmingRecalculate}
+        title="Recalculate now?"
+        description="This saves the real exchange rate from each order's own date to the database, for good — this is not a preview and cannot be undone from here."
+        confirmLabel="Recalculate"
+        isConfirming={recalculate.isPending}
+        onConfirm={handleRecalculate}
+        overlayClassName="dialog__overlay--elevated"
+        className="dialog__content--elevated"
+      />
     </Dialog>
   );
 }

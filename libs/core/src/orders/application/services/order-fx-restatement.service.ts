@@ -57,7 +57,7 @@ import type {
   FxRestatementRemainingSummary,
 } from '../../domain/types/order-fx-restatement.types';
 import type { IOrderFxRestatementService } from '../interfaces/order-fx-restatement.service.interface';
-import type { IOrderFxStampService } from '../interfaces/order-fx-stamp.service.interface';
+import { IOrderFxStampService } from '../interfaces/order-fx-stamp.service.interface';
 import type { FxStampOutcome } from '../../domain/types/order-fx-stamp.types';
 
 @Injectable()

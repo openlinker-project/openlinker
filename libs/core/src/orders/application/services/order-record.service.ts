@@ -70,6 +70,7 @@ import type {
   CoverageDetectionPagination,
   PaginatedCurrencyMismatchOrders,
   PaginatedProductMatchingErrorOrders,
+  CoverageConnectionAggregateRow,
 } from '../../domain/types/coverage-detection.types';
 
 /** One day in milliseconds, for the market-discovery window arithmetic (#2518). */
@@ -776,19 +777,60 @@ export class OrderRecordService implements IOrderRecordService {
   }
 
   /**
-   * Data Coverage `'currency'` category drill-down (#2464/#2466) — thin
-   * pass-through to {@link OrderRecordRepositoryPort.findCurrencyMismatchOrders},
-   * the cross-context seam `AnalyticsCoverageController` uses.
+   * Data Coverage `'currency'` category drill-down (#2464/#2466) —
+   * delegates the page read to {@link
+   * OrderRecordRepositoryPort.findCurrencyMismatchOrders}, then enriches
+   * each row with EVERY distinct product it touches (#2799, corrected per
+   * #2799 review BLOCKING 1) via one batched {@link
+   * OrderLineItemRepositoryPort.findProductRefsByOrderIds} call scoped to
+   * just this page's order ids — never per-row, which would turn a bounded
+   * page read into an N+1. The enrichment lives here rather than inside the
+   * repository because `OrderRecordRepository` has no `order_line_items`
+   * access of its own; this service already composes both repositories for
+   * {@link buildTopProducts}, so the join belongs at the same layer.
    */
   async getCurrencyMismatchOrders(
     filters: SalesAnalyticsFilters,
     currentReportingCurrency: string,
     pagination: CoverageDetectionPagination
   ): Promise<PaginatedCurrencyMismatchOrders> {
-    return this.repository.findCurrencyMismatchOrders(
+    const page = await this.repository.findCurrencyMismatchOrders(
       filters,
       currentReportingCurrency,
       pagination
+    );
+
+    if (page.items.length === 0) {
+      return page;
+    }
+
+    const productRefs = await this.lineItemRepository.findProductRefsByOrderIds(
+      page.items.map((item) => item.internalOrderId)
+    );
+
+    return {
+      ...page,
+      items: page.items.map((item) => ({
+        ...item,
+        lineProducts: productRefs.get(item.internalOrderId) ?? [],
+      })),
+    };
+  }
+
+  /**
+   * Data Coverage `'currency'` category aggregate-by-connection (#2713) —
+   * thin pass-through to {@link
+   * OrderRecordRepositoryPort.findCurrencyMismatchOrdersByConnection}. No
+   * line-item enrichment here (unlike {@link getCurrencyMismatchOrders}) — a
+   * count carries no `productId`/`variantId` to attach.
+   */
+  async getCurrencyMismatchOrdersByConnection(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string
+  ): Promise<CoverageConnectionAggregateRow[]> {
+    return this.repository.findCurrencyMismatchOrdersByConnection(
+      filters,
+      currentReportingCurrency
     );
   }
 

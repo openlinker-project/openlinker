@@ -786,6 +786,7 @@ describe('OrderRecordRepository', () => {
           nativeCurrency: 'PLN',
           stampedCurrency: null,
           stampedAt: null,
+          lineProducts: [],
         },
       ]);
     });
@@ -823,6 +824,7 @@ describe('OrderRecordRepository', () => {
           nativeCurrency: 'PLN',
           stampedCurrency: 'EUR',
           stampedAt,
+          lineProducts: [],
         },
       ]);
     });
@@ -842,6 +844,92 @@ describe('OrderRecordRepository', () => {
       });
 
       expect(result).toEqual({ items: [], total: 0 });
+    });
+  });
+
+  describe('findCurrencyMismatchOrdersByConnection (#2713)', () => {
+    const baseFilters = {
+      from: new Date('2026-08-01T00:00:00.000Z'),
+      to: new Date('2026-08-08T00:00:00.000Z'),
+    };
+
+    it('applies the same predicate as findCurrencyMismatchOrders and groups by connection', async () => {
+      const select = jest.fn().mockReturnThis();
+      const addSelect = jest.fn().mockReturnThis();
+      const andWhere = jest.fn().mockReturnThis();
+      const groupBy = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select,
+        addSelect,
+        andWhere,
+        groupBy,
+        getRawMany: jest.fn().mockResolvedValue([]),
+      });
+
+      await repository.findCurrencyMismatchOrdersByConnection(baseFilters, 'EUR');
+
+      expect(select).toHaveBeenCalledWith('rec.sourceConnectionId', 'source_connection_id');
+      expect(addSelect).toHaveBeenCalledWith('COUNT(*)', 'affected_count');
+      expect(andWhere).toHaveBeenCalledWith('rec."cancelledAt" IS NULL');
+      expect(andWhere).toHaveBeenCalledWith(
+        '(rec."reportingCurrency" IS NULL OR rec."reportingCurrency" != :currentReportingCurrency)',
+        { currentReportingCurrency: 'EUR' }
+      );
+      expect(groupBy).toHaveBeenCalledWith('rec.sourceConnectionId');
+    });
+
+    it('scopes to the sourceConnectionId filter when provided (via the shared analytics scope)', async () => {
+      const andWhere = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        andWhere,
+        groupBy: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([]),
+      });
+
+      await repository.findCurrencyMismatchOrdersByConnection(
+        { ...baseFilters, sourceConnectionId: 'conn-a' },
+        'EUR'
+      );
+
+      expect(andWhere).toHaveBeenCalledWith('rec.sourceConnectionId = :salesConnectionId', {
+        salesConnectionId: 'conn-a',
+      });
+    });
+
+    it('maps raw rows across multiple connections to camelCase counts', async () => {
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        groupBy: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([
+          { source_connection_id: 'conn-a', affected_count: '3' },
+          { source_connection_id: 'conn-b', affected_count: '1' },
+        ]),
+      });
+
+      const result = await repository.findCurrencyMismatchOrdersByConnection(baseFilters, 'EUR');
+
+      expect(result).toEqual([
+        { sourceConnectionId: 'conn-a', affectedCount: 3 },
+        { sourceConnectionId: 'conn-b', affectedCount: 1 },
+      ]);
+    });
+
+    it('returns an empty array when nothing matches — a connection with zero mismatches is simply absent', async () => {
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        groupBy: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([]),
+      });
+
+      const result = await repository.findCurrencyMismatchOrdersByConnection(baseFilters, 'EUR');
+
+      expect(result).toEqual([]);
     });
   });
 
@@ -908,6 +996,7 @@ describe('OrderRecordRepository', () => {
     it('returns bare internalOrderIds — the page now stamps in-process (#2776)', async () => {
       (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
         select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
         orderBy: jest.fn().mockReturnThis(),
         limit: jest.fn().mockReturnThis(),
@@ -1240,6 +1329,8 @@ describe('OrderRecordRepository', () => {
           recordStatus: 'awaiting_mapping',
           mappingFailureReason: 'no variant mapping for SKU-123',
           createdAt: entity.createdAt,
+          productId: null,
+          variantId: null,
         },
       ]);
     });
