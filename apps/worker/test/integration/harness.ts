@@ -57,17 +57,26 @@ export async function startHarness(): Promise<void> {
   // real cron timers under tests — opt this process out of the lease (#2279).
   process.env.OL_SCHEDULER_ENABLED = 'false';
   // Same reasoning for the job runner, and it is load-bearing rather than
-  // tidy: `SyncJobRunner` defaults this gate to `'true'` when unset, and the
-  // only place the repo set it to `'false'` was
-  // `apps/worker/test/jest-global-setup.cjs`, wired to the worker's *unit*
-  // Jest config, never to `jest-integration.cjs`. So the real runner polled
-  // `sync_jobs` in Postgres about once a second for the whole integration run
-  // and could claim a `queued` row a suite had just inserted and was about to
-  // drive by hand, executing the same job twice from two directions. No worker
-  // int-spec relies on the background loop: every one drives handlers via
-  // `handler.execute(...)`, or the runner's own methods directly, so the gate
-  // is set here for the whole harness (#2825).
+  // tidy: `SyncJobRunner` defaults this gate to `'true'` when unset, and
+  // nothing in `jest-integration.cjs` ever set it to `'false'` — a stale,
+  // unreferenced `apps/worker/test/jest-global-setup.cjs` used to claim it
+  // did, but grepping the repo showed nothing wired it in (removed in
+  // #2825/#2828). So the real runner polled `sync_jobs` in Postgres about
+  // once a second for the whole integration run and could claim a `queued`
+  // row a suite had just inserted and was about to drive by hand, executing
+  // the same job twice from two directions. No worker int-spec relies on the
+  // background loop: every one drives handlers via `handler.execute(...)`,
+  // or the runner's own methods directly, so the gate is set here for the
+  // whole harness (#2825).
   process.env.WORKER_RUNNER_ENABLED = 'false';
+  // `JobIntakeConsumer` defaults `WORKER_INTAKE_ENABLED` to `'true'` too and
+  // was left running by the same gap above — it polls the `jobs.sync` Redis
+  // stream for the whole integration run, the identical structural race one
+  // loop over. No int-spec starts it or depends on it being started
+  // (`job-intake-execution.int-spec.ts` drives the consumer directly rather
+  // than relying on the background loop), so it is disabled here too rather
+  // than left as an unaudited exception (#2828 review).
+  process.env.WORKER_INTAKE_ENABLED = 'false';
 
   harness = { postgres, redis };
 }
