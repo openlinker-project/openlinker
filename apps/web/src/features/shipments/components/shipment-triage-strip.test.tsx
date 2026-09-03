@@ -149,6 +149,88 @@ describe('ShipmentTriageStrip', () => {
     expect(screen.getByText(/Transient - safe to just retry/)).toBeInTheDocument();
   });
 
+  it('should keep rendering the raw carrier message when the shared code is COARSE (#2873)', () => {
+    // #2805 hands every no-details ShipX rejection the same bucket code. A
+    // null-check branch would have swapped the operator's only actionable
+    // signal for a code that narrows nothing.
+    renderWithProviders(
+      <ShipmentTriageStrip
+        group={makeGroup({
+          cause: 'shipx.validation_failed::sender postcode invalid',
+          providerCode: 'shipx.validation_failed',
+          shipments: [
+            makeShipment({
+              id: 'ol_shipment_1',
+              errorMessage: 'sender postcode "22-213" invalid',
+              providerCode: 'shipx.validation_failed',
+            }),
+            makeShipment({
+              id: 'ol_shipment_2',
+              errorMessage: 'sender postcode "22999" invalid',
+              providerCode: 'shipx.validation_failed',
+            }),
+          ],
+        })}
+        connectionName="InPost Warehouse A"
+        canReviewConnection
+      />,
+    );
+    expect(screen.getByText('sender postcode "22-213" invalid')).toBeInTheDocument();
+    expect(screen.getByText('shipx.validation_failed')).toBeInTheDocument();
+  });
+
+  it('should not claim a shared rejection code for a coarse-code group, and should say the cause is unclassified (#2873)', () => {
+    renderWithProviders(
+      <ShipmentTriageStrip
+        group={makeGroup({
+          cause: 'shipx.validation_failed::sender postcode invalid',
+          providerCode: 'shipx.validation_failed',
+          shipments: [
+            makeShipment({ id: 'ol_shipment_1', providerCode: 'shipx.validation_failed' }),
+            makeShipment({ id: 'ol_shipment_2', providerCode: 'shipx.validation_failed' }),
+          ],
+        })}
+        connectionName="InPost Warehouse A"
+        canReviewConnection
+      />,
+    );
+    expect(
+      screen.getByText('2 failed shipments on InPost Warehouse A report the same carrier message'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/report the same rejection code/)).toBeNull();
+    expect(screen.getByText(/Cause not classified/)).toBeInTheDocument();
+  });
+
+  it('should render the code alone for an EXACT code, without the raw message (#2873 keeps #1918 intact)', () => {
+    renderWithProviders(
+      <ShipmentTriageStrip
+        group={makeGroup({
+          cause: 'preflight.missing-parcel-template',
+          providerCode: 'preflight.missing-parcel-template',
+          shipments: [
+            makeShipment({
+              id: 'ol_shipment_1',
+              errorMessage: 'Validation error',
+              providerCode: 'preflight.missing-parcel-template',
+            }),
+            makeShipment({
+              id: 'ol_shipment_2',
+              errorMessage: 'Validation error (different wording entirely)',
+              providerCode: 'preflight.missing-parcel-template',
+            }),
+          ],
+        })}
+        connectionName="DPD Warehouse A"
+        canReviewConnection
+      />,
+    );
+    expect(
+      screen.getByText('2 failed shipments on DPD Warehouse A report the same rejection code'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('preflight.missing-parcel-template')).toBeInTheDocument();
+    expect(screen.queryByText('Validation error')).toBeNull();
+  });
+
   it('should link the connection-settings CTA to the group connection when the operator holds connections:write', () => {
     renderWithProviders(
       <ShipmentTriageStrip group={makeGroup()} connectionName="DPD Warehouse A" canReviewConnection />,
