@@ -38,7 +38,6 @@ describe('resolveSalesDocumentCellState (#2552)', () => {
       kind: null,
       word: 'No document',
       tone: 'idle',
-      attention: false,
     });
   });
 
@@ -48,7 +47,6 @@ describe('resolveSalesDocumentCellState (#2552)', () => {
       kind: null,
       word: 'No document',
       tone: 'idle',
-      attention: false,
     });
   });
 
@@ -61,15 +59,13 @@ describe('resolveSalesDocumentCellState (#2552)', () => {
     );
     expect(state.kind).toBeNull();
     expect(state.tone).toBe('error');
-    expect(state.attention).toBe(true);
     expect(state.reasonDetail).not.toBeNull();
   });
 
-  it('renders "Issue on request" (idle, no attention) for trigger-model-manual with no document yet', () => {
+  it('renders "Issue on request" (idle) for trigger-model-manual with no document yet', () => {
     const state = resolveSalesDocumentCellState(
       baseView({ documentKind: 'invoice', blockReason: 'trigger-model-manual' }),
     );
-    expect(state.attention).toBe(false);
     expect(state.keepsAction).toBe(true);
     expect(state.tone).toBe('idle');
   });
@@ -78,13 +74,12 @@ describe('resolveSalesDocumentCellState (#2552)', () => {
     const state = resolveSalesDocumentCellState(
       baseView({ documentKind: 'invoice', blockReason: 'unresolved-routing', unresolvedReason: 'no-matching-rule' }),
     );
-    expect(state.attention).toBe(true);
     expect(state.word).toBe('No rule matched');
   });
 
   it('renders "Not issued" when routing decided but nothing blocks and nothing was attempted', () => {
     const state = resolveSalesDocumentCellState(baseView({ documentKind: 'invoice' }));
-    expect(state).toMatchObject({ word: 'Not issued', tone: 'idle', attention: true, keepsAction: true });
+    expect(state).toMatchObject({ word: 'Not issued', tone: 'idle', keepsAction: true });
   });
 
   it('prefers the authority answer over issuance when an invoice was rejected by the authority', () => {
@@ -104,7 +99,7 @@ describe('resolveSalesDocumentCellState (#2552)', () => {
         },
       }),
     );
-    expect(state).toMatchObject({ word: 'Authority rejected', tone: 'error', attention: true });
+    expect(state).toMatchObject({ word: 'Authority rejected', tone: 'error' });
   });
 
   it('reports "Issued" for a fully cleared invoice, plain ink (done)', () => {
@@ -124,7 +119,7 @@ describe('resolveSalesDocumentCellState (#2552)', () => {
         },
       }),
     );
-    expect(state).toMatchObject({ word: 'Issued', tone: 'done', attention: false });
+    expect(state).toMatchObject({ word: 'Issued', tone: 'done' });
   });
 
   it('reports "Registered" for a completed fiscal receipt', () => {
@@ -141,7 +136,7 @@ describe('resolveSalesDocumentCellState (#2552)', () => {
         },
       }),
     );
-    expect(state).toMatchObject({ word: 'Registered', tone: 'done', attention: false });
+    expect(state).toMatchObject({ word: 'Registered', tone: 'done' });
   });
 
   it('reports "Rejected" for a terminally rejected fiscal registration', () => {
@@ -158,7 +153,7 @@ describe('resolveSalesDocumentCellState (#2552)', () => {
         },
       }),
     );
-    expect(state).toMatchObject({ word: 'Rejected', tone: 'error', attention: true });
+    expect(state).toMatchObject({ word: 'Rejected', tone: 'error' });
   });
 
   it('reports "Unconfirmed" for an in-doubt fiscal registration failure', () => {
@@ -175,6 +170,6 @@ describe('resolveSalesDocumentCellState (#2552)', () => {
         },
       }),
     );
-    expect(state).toMatchObject({ word: 'Unconfirmed', tone: 'warning', attention: true });
+    expect(state).toMatchObject({ word: 'Unconfirmed', tone: 'warning' });
   });
 });

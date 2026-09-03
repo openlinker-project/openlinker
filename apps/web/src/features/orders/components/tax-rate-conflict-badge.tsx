@@ -28,9 +28,10 @@ export function TaxRateConflictBadge(): ReactNode {
       <StatusBadge tone="conflict" withDot compact>
         {label}
       </StatusBadge>
-      <span className="sr-only">
-        {label}: {hint}
-      </span>
+      {/* Only the hint — `StatusBadge` already announces `label` as visible
+          text, and a second sr-only copy of it would read as "Rate conflict.
+          Rate conflict: …" (#2761 review). */}
+      <span className="sr-only">{hint}</span>
     </span>
   );
 }

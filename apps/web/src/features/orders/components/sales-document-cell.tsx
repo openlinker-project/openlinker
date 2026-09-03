@@ -187,7 +187,12 @@ export function SalesDocumentCell({
       {identity?.documentNumber ? <Fact label="Number">{identity.documentNumber}</Fact> : null}
       {identity?.connectionId ? (
         <Fact label="Provider">
-          {identity.providerType ?? connectionNames.get(identity.connectionId) ?? identity.connectionId}
+          {/* Name-first, provider type as a qualifier (#2761 review) — on a
+              multi-connection install "which connection issued this" is the
+              useful fact, and the duplicate-record warning right below it
+              already names connections rather than provider types. */}
+          {connectionNames.get(identity.connectionId) ?? identity.connectionId}
+          {identity.providerType ? ` (${identity.providerType})` : ''}
         </Fact>
       ) : null}
       {regulatoryStatus ? (

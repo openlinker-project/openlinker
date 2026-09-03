@@ -30,8 +30,6 @@ export interface SalesDocumentCellState {
   /** The single word rendered on the row. */
   readonly word: string;
   readonly tone: SalesDocumentCellTone;
-  /** Whether this state needs the operator's attention (drives the tint). */
-  readonly attention: boolean;
   /** Long-form explanation for the popover, or `null` when there is nothing to add. */
   readonly reasonDetail: string | null;
   /**
@@ -89,7 +87,6 @@ export function resolveSalesDocumentCellState(
         kind: null,
         word: 'No document',
         tone: 'idle',
-        attention: false,
         reasonDetail: null,
         keepsAction: false,
       };
@@ -98,7 +95,6 @@ export function resolveSalesDocumentCellState(
       kind: null,
       word: copy.short,
       tone: toneFromReasonTone(copy.tone),
-      attention: copy.tone !== 'neutral',
       reasonDetail: copy.detail,
       keepsAction: false,
     };
@@ -113,7 +109,6 @@ export function resolveSalesDocumentCellState(
         kind: view.documentKind,
         word: 'Not issued',
         tone: 'idle',
-        attention: true,
         reasonDetail: null,
         keepsAction: true,
       };
@@ -122,58 +117,49 @@ export function resolveSalesDocumentCellState(
       kind: view.documentKind,
       word: copy.short,
       tone: toneFromReasonTone(copy.tone),
-      // `neutral` is the one tone that does not need attention — it is
-      // `trigger-model-manual`'s tone, and issue-on-request is reported
-      // separately from anything needing attention (#2554).
-      attention: copy.tone !== 'neutral',
       reasonDetail: copy.detail,
       keepsAction: copy.keepsAction,
     };
   }
 
   if (document.kind === 'fiscal-receipt') {
-    if (document.status === 'pending') return withDoc(view.documentKind, 'Queued', 'progress', false);
+    if (document.status === 'pending') return withDoc(view.documentKind, 'Queued', 'progress');
     if (document.status === 'registering')
-      return withDoc(view.documentKind, 'Registering', 'progress', false);
+      return withDoc(view.documentKind, 'Registering', 'progress');
     if (document.status === 'registered')
-      return withDoc(view.documentKind, 'Registered', 'done', false);
+      return withDoc(view.documentKind, 'Registered', 'done');
     if (document.status === 'failed') {
       return document.failureMode === 'rejected'
-        ? withDoc(view.documentKind, 'Rejected', 'error', true)
-        : withDoc(view.documentKind, 'Unconfirmed', 'warning', true);
+        ? withDoc(view.documentKind, 'Rejected', 'error')
+        : withDoc(view.documentKind, 'Unconfirmed', 'warning');
     }
     // A status this build does not recognise — a newer backend answering an
     // FE compiled against an older union. Reported as needing a look rather
     // than silently rendering nothing.
-    return withDoc(view.documentKind, 'Unrecognised status', 'warning', true);
+    return withDoc(view.documentKind, 'Unrecognised status', 'warning');
   }
 
   // document.kind === 'invoice'. Clearance takes precedence over issuance —
   // "issued, then rejected by the authority" is the state a flattened status
   // could not express (ADR-065), and it is more actionable than "Issued".
   if (document.regulatoryStatus === 'rejected') {
-    return withDoc(view.documentKind, 'Authority rejected', 'error', true);
+    return withDoc(view.documentKind, 'Authority rejected', 'error');
   }
   if (document.regulatoryStatus === 'submitted' || document.regulatoryStatus === 'pending-submission') {
-    return withDoc(view.documentKind, 'At authority', 'progress', false);
+    return withDoc(view.documentKind, 'At authority', 'progress');
   }
-  if (document.status === 'issued') return withDoc(view.documentKind, 'Issued', 'done', false);
+  if (document.status === 'issued') return withDoc(view.documentKind, 'Issued', 'done');
   if (document.status === 'issuing' || document.status === 'pending')
-    return withDoc(view.documentKind, 'Issuing', 'progress', false);
+    return withDoc(view.documentKind, 'Issuing', 'progress');
   if (document.status === 'failed') {
     return document.failureMode === 'rejected'
-      ? withDoc(view.documentKind, 'Failed', 'error', true)
-      : withDoc(view.documentKind, 'Needs review', 'warning', true);
+      ? withDoc(view.documentKind, 'Failed', 'error')
+      : withDoc(view.documentKind, 'Needs review', 'warning');
   }
   // A status this build does not recognise.
-  return withDoc(view.documentKind, 'Unrecognised status', 'warning', true);
+  return withDoc(view.documentKind, 'Unrecognised status', 'warning');
 }
 
-function withDoc(
-  kind: string,
-  word: string,
-  tone: SalesDocumentCellTone,
-  attention: boolean,
-): SalesDocumentCellState {
-  return { kind, word, tone, attention, reasonDetail: null, keepsAction: false };
+function withDoc(kind: string, word: string, tone: SalesDocumentCellTone): SalesDocumentCellState {
+  return { kind, word, tone, reasonDetail: null, keepsAction: false };
 }
