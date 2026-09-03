@@ -245,8 +245,9 @@ export function SalesDocumentCountryRoutingDialog({
       ) : (
         <div>
           <p className="muted-text">
-            {displayName} has no rules and no default, so an order billed here goes to{' '}
-            <span className="mono-text">★ Rest of world</span>&apos;s own rules and defaults.
+            {displayName} has no rules and no default, so an order delivered here goes to{' '}
+            <span className="mono-text">★ Rest of world</span>
+            &apos;s own rules and defaults.
           </p>
           <Button
             tone="secondary"
