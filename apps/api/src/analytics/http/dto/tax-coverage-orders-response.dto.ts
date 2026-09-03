@@ -13,23 +13,33 @@
  *
  * @module apps/api/src/analytics/http/dto
  */
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty } from '@nestjs/swagger';
 import type { TaxCoverageLineRateObservation, TaxCoverageOrderRow } from '@openlinker/core/orders';
-import { TaxRateStateValues, type TaxRateState } from '@openlinker/core/products';
+import {
+  TaxRateStateValues,
+  TaxRateUnknownReasonValues,
+  type TaxRateState,
+  type TaxRateUnknownReason,
+} from '@openlinker/core/products';
 
 /**
  * One line's resolved (or unresolved) rate observation, mirroring
  * `TaxCoverageLineRateObservation` (#2798) — carried per line so a
  * mixed-rate order's modal row never collapses to a single shared value.
+ *
+ * Every field is REQUIRED-but-nullable (`@ApiProperty({ nullable: true })`,
+ * not `@ApiPropertyOptional`) — the value is always present on the wire,
+ * just sometimes `null` (#2802 review); `ApiPropertyOptional` documents a
+ * field that may be ABSENT, which is a different, stricter-than-true claim.
  */
 export class TaxCoverageLineRateDto {
   @ApiProperty()
   productId!: string;
 
-  @ApiPropertyOptional({ nullable: true })
+  @ApiProperty({ nullable: true })
   variantId!: string | null;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     description: 'Resolved rate code (percent-as-string, or an exemption code) — `null` unless `state` is `known`.',
     nullable: true,
   })
@@ -38,12 +48,20 @@ export class TaxCoverageLineRateDto {
   @ApiProperty({ enum: TaxRateStateValues })
   state!: TaxRateState;
 
+  @ApiProperty({
+    enum: TaxRateUnknownReasonValues,
+    nullable: true,
+    description: 'Why the catalogue named no rate (#2264) — `null` unless `state` is `no-rate` and the catalogue gave a reason.',
+  })
+  unknownReason!: TaxRateUnknownReason | null;
+
   static fromObservation(observation: TaxCoverageLineRateObservation): TaxCoverageLineRateDto {
     const dto = new TaxCoverageLineRateDto();
     dto.productId = observation.productId;
     dto.variantId = observation.variantId;
     dto.rateCode = observation.rateCode;
     dto.state = observation.state;
+    dto.unknownReason = observation.unknownReason ?? null;
     return dto;
   }
 }
@@ -55,7 +73,7 @@ export class TaxCoverageOrderDto {
   @ApiProperty()
   sourceConnectionId!: string;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     description: '`order_records.placedAt` — `null` for a historical row with no resolvable placement date.',
     nullable: true,
   })

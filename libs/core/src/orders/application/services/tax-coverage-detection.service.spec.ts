@@ -231,8 +231,8 @@ describe('TaxCoverageDetectionService (#2465)', () => {
 
       expect(result['tax-a']).toHaveLength(1);
       expect(result['tax-a'][0].lineRates).toEqual([
-        { productId: 'p1', variantId: null, rateCode: '23', state: 'known' },
-        { productId: 'p2', variantId: 'v2', rateCode: '8', state: 'known' },
+        { productId: 'p1', variantId: null, rateCode: '23', state: 'known', unknownReason: null },
+        { productId: 'p2', variantId: 'v2', rateCode: '8', state: 'known', unknownReason: null },
       ]);
       expect(productsService.getEffectiveTaxRate).toHaveBeenCalledWith('p2', 'v2');
     });
@@ -253,8 +253,35 @@ describe('TaxCoverageDetectionService (#2465)', () => {
 
       expect(result['tax-b']).toHaveLength(1);
       expect(result['tax-b'][0].lineRates).toEqual([
-        { productId: 'p1', variantId: null, rateCode: null, state: 'no-rate' },
-        { productId: 'p2', variantId: null, rateCode: null, state: 'not-checked' },
+        { productId: 'p1', variantId: null, rateCode: null, state: 'no-rate', unknownReason: null },
+        { productId: 'p2', variantId: null, rateCode: null, state: 'not-checked', unknownReason: null },
+      ]);
+    });
+
+    it('carries the catalogue-reported reason (#2264) onto a no-rate observation, never onto a known or not-checked one', async () => {
+      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([
+        candidate({ internalOrderId: 'order-unknown-reason', taxRateEra: 'pre-rollout' }),
+      ]);
+      lineItemRepository.findByOrderId.mockResolvedValue([
+        makeLine({ id: 'line-1', lineNumber: 0, productId: 'p1', taxRate: null }),
+      ]);
+      productsService.getEffectiveTaxRate.mockResolvedValue({
+        code: null,
+        countryIso2: 'PL',
+        readAt: new Date('2026-08-24T00:00:00Z'),
+        unknownReason: 'ambiguous',
+      });
+
+      const result = await service.classify(baseFilters, 'EUR');
+
+      expect(result['tax-b'][0].lineRates).toEqual([
+        {
+          productId: 'p1',
+          variantId: null,
+          rateCode: null,
+          state: 'no-rate',
+          unknownReason: 'ambiguous',
+        },
       ]);
     });
 
@@ -282,7 +309,25 @@ describe('TaxCoverageDetectionService (#2465)', () => {
       const result = await service.classify(baseFilters, 'EUR');
 
       expect(result['tax-c'][0].lineRates).toEqual([
-        { productId: 'p1', variantId: null, rateCode: null, state: 'not-checked' },
+        { productId: 'p1', variantId: null, rateCode: null, state: 'not-checked', unknownReason: null },
+      ]);
+    });
+
+    it('normalizes rateCode the same way regardless of which of the two sources produced it (#2802 review)', async () => {
+      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([
+        candidate({ internalOrderId: 'order-normalize', taxRateEra: 'pre-rollout' }),
+      ]);
+      lineItemRepository.findByOrderId.mockResolvedValue([
+        makeLine({ id: 'line-1', lineNumber: 0, productId: 'p1', taxRate: '23.00' }),
+        makeLine({ id: 'line-2', lineNumber: 1, productId: 'p2', taxRate: null }),
+      ]);
+      productsService.getEffectiveTaxRate.mockResolvedValue(known('8.0'));
+
+      const result = await service.classify(baseFilters, 'EUR');
+
+      expect(result['tax-a'][0].lineRates).toEqual([
+        { productId: 'p1', variantId: null, rateCode: '23', state: 'known', unknownReason: null },
+        { productId: 'p2', variantId: null, rateCode: '8', state: 'known', unknownReason: null },
       ]);
     });
   });
@@ -341,7 +386,13 @@ describe('TaxCoverageDetectionService (#2465)', () => {
             sourceConnectionId: 'conn-1',
             placedAt: expect.any(Date),
             lineRates: [
-              { productId: 'ol_product_1', variantId: null, rateCode: '23', state: 'known' },
+              {
+                productId: 'ol_product_1',
+                variantId: null,
+                rateCode: '23',
+                state: 'known',
+                unknownReason: null,
+              },
             ],
           },
         ],
