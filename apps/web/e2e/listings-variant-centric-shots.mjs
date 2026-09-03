@@ -85,7 +85,7 @@ const SHOTS = [
   { name: 'vocabulary-1440', selector: '#frame-vocab', width: 1440, height: 700 },
   { name: 'detail-1440', selector: '#frame-detail', width: 1440, height: 1000 },
   { name: 'mapping-1440', selector: '#frame-mapping', width: 1440, height: 560 },
-  { name: 'tabs-1440', selector: '#frame-tabs', width: 1440, height: 1200 },
+  { name: 'tabs-1440', selector: '#frame-tabs', width: 1440, height: 1670 },
   { name: 'publish-1440', selector: '#frame-publish', width: 1440, height: 1620 },
   { name: 'states-1440', selector: '#frame-states', width: 1440, height: 1470 },
   { name: 'handover-1440', selector: '#frame-handover', width: 1440, height: 340 },
@@ -197,6 +197,35 @@ async function measure(page, shot) {
     }
     for (const proof of proofs) {
       console.log(`  scroll proof · scrolled ${proof.scrolled} px · header ${proof.headerVisible ? 'STILL VISIBLE — the panel is not scrolled far enough to prove anything' : 'off-screen (expected)'}`);
+    }
+  }
+  /* The outline says "these are the pills that put this row on this tab", so
+     the count has to match. Round 3 took `filter(...)[0]` and outlined the
+     FIRST match only, which on the `Active` tab meant one outline on a row
+     with three live channels — a mark that asserts something false about the
+     other two. Assert per row that the outlined pills equal the pills whose
+     lifecycle matches the tab. */
+  if (shot.selector === '#frame-tabs') {
+    const figures = await page.locator('#tabs-mount > figure').evaluateAll((figs) =>
+      figs.map((fig) => {
+        const tab = fig.querySelector('.tabs__trigger[data-state="active"]')?.textContent?.trim() ?? '?';
+        const rows = [...fig.querySelectorAll('tr[data-variant]')].map((tr) => {
+          const pills = [...tr.querySelectorAll('.coverage-pills > *')];
+          /* A matched pill is wrapped in `.coverage-cell--matched`; an
+             unmatched one is the bare pill. */
+          const outlined = pills.filter((el) => el.classList.contains('coverage-cell--matched')).length;
+          return { pills: pills.length, outlined };
+        });
+        return { tab: tab.replace(/\s+/g, ' '), filtered: !tab.trim().startsWith('All'), rows };
+      }));
+    for (const fig of figures) {
+      /* `All` is not a filter — no pill "let the row in", so zero outlines is
+         the correct answer there and must not read as a failure. */
+      const none = fig.filtered ? fig.rows.filter((r) => r.outlined === 0).length : 0;
+      console.log(`  tab "${fig.tab}" · ${fig.rows.length} row(s) · outlined per row `
+        + `${fig.rows.map((r) => `${r.outlined}/${r.pills}`).join(' ')}`
+        + `${fig.filtered ? '' : ' · unfiltered, no outline expected'}`
+        + `${none > 0 ? ` · ${none} ROW(S) WITH NO OUTLINE — a filtered row must say why it is here` : ''}`);
     }
   }
   /* The expansion's rows navigate, so the thing worth asserting is that they

@@ -273,8 +273,9 @@
   · The tab does NOT quieten the mark. Today a badge is suppressed when the
     tab already states it (`activeLifecycle`, listing-row-state.ts:104-112) —
     here the pill IS the mark, so suppressing it would blank what the row is
-    made of. Instead the pill that put the row on the tab takes an outline,
-    because a strip of five pills does not say by itself which one answered.
+    made of. Instead EVERY pill that put the row on the tab takes an outline,
+    because a strip of five pills does not say by itself which of them
+    answered — and on the `Active` tab several of them usually did.
   · No selection, no bulk bar. The square beside the chevron is a
     ProductThumbnail. The only bulk action worth having — one variant to N
     channels — is blocked in the data: `BulkListingBatch.connectionId` is a
@@ -1669,14 +1670,14 @@ input[type='checkbox'] {
 }
 /* `--accent-primary`, not `--accent-primary-border`, and the reason is a
    measurement rather than a preference. This outline is the ONLY thing saying
-   which PILL put the row on a lifecycle tab, so 1.4.11 applies to it as a
+   which PILLS put the row on a lifecycle tab, so 1.4.11 applies to it as a
    state indicator — and `--accent-primary-border` measures 1.63:1 light /
    1.92:1 dark against the row surface, while the soft fill behind it is
    1.15:1 and perceptually not there at all. Together they were a state
    nobody could see. `--accent-primary` measures 3.07:1 / 7.00:1, which
    passes, and it is the token the system already uses to say "this one" —
    `.tabs__trigger[data-state='active']` draws its underline with it, so the
-   tab and the pill that answers the tab end up the same colour. Light mode
+   tab and the pills that answer the tab end up the same colour. Light mode
    clears the bar by 0.07, which is thin: `--accent-primary-hover` (3.88:1 /
    8.12:1) is the escalation if a reviewer wants margin. The fill stays,
    doing the job it can actually do — a wash that reads as "here" once the
@@ -2135,8 +2136,17 @@ input[type='checkbox'] {
       (<code>listings.types.ts:216-227</code>), so they still count offers. Second, today a badge is
       suppressed when the tab already states it (<code>activeLifecycle</code>) — here the pill IS the
       mark, so suppressing it would blank the thing the row is made of, and the rule is not ported.
-      The matching pill takes an outline instead, because a strip of five pills does not say by itself
-      which one answered the filter.
+      The matching pills take an outline instead, because a strip of five pills does not say by itself
+      which of them answered the filter.
+    </p>
+    <p class="gap-legend">
+      <b>Every pill that matched, not the first one.</b> Round 3 wrote this as
+      <code>filter(...)[0]</code> and the bug outlived the grid it was written for: on the
+      <code>Active</code> tab a variant live on Allegro, Erli and WooCommerce took a single outline, on
+      Allegro. That is worse than drawing nothing — the mark means "this is why the row is here", so
+      putting it on one of three equals asserts the other two are something else, while the pills next
+      to it say they are not. The <code>Active</code> figure above is here to keep it fixed: it is the
+      tab where several matches is the normal case.
     </p>
   </section>
 
@@ -2567,9 +2577,18 @@ function lifecycleCounts(rows, conns) {
 }
 
 /* Any-match, no rollup: a variant survives the tab if any one of its offers
-   on a visible connection is in that state. `matchedFor` then says WHICH
-   connection let it through, so the cell can take the outline — at nine
-   columns you otherwise cannot see why the row is on this list. */
+   on a visible connection is in that state. `matchedIdsFor` then says WHICH
+   ones let it through, so those pills can take the outline — a strip of five
+   pills does not say by itself which of them answered the filter.
+
+   ALL of them, not the first. Round 3 wrote this as `matchedFor`, returning
+   `filter(...)[0]`, and the defect survived into round 5: on the `Active` tab
+   a variant listed and live on Allegro, Erli and WooCommerce got ONE outline,
+   on Allegro. That is worse than no outline at all — the mark's whole job is
+   "this is why the row is here", so putting it on one of three equals says
+   the other two are something else, while the pills beside it say they are
+   not. The grid had the same bug and hid it better: one outlined dot among
+   three identical dots reads as arbitrary rather than as a claim. */
 function matchesTab(entry, conns, tab) {
   if (tab === 'All') return true;
   return conns.some(function (conn) {
@@ -2578,13 +2597,14 @@ function matchesTab(entry, conns, tab) {
   });
 }
 
-function matchedFor(entry, conns, tab) {
-  if (tab === 'All') return null;
-  var hit = conns.filter(function (conn) {
-    var offer = entry.variant.cover[conn.id];
-    return Boolean(offer) && offer.lifecycle === tab;
-  })[0];
-  return hit ? hit.id : null;
+function matchedIdsFor(entry, conns, tab) {
+  if (tab === 'All') return [];
+  return conns
+    .filter(function (conn) {
+      var offer = entry.variant.cover[conn.id];
+      return Boolean(offer) && offer.lifecycle === tab;
+    })
+    .map(function (conn) { return conn.id; });
 }
 
 function matchesSearch(entry, term) {
@@ -2666,7 +2686,7 @@ function coveragePill(entry, conn, all, opts) {
   var label = connLabel(conn, all);
   var who = entry.product.name + ' ' + entry.variant.label;
   var state = cellStateFor(offer);
-  var matched = options.matchedConnId === conn.id;
+  var matched = (options.matchedConnIds || []).indexOf(conn.id) !== -1;
 
   function wrap(inner) {
     return matched
@@ -2855,7 +2875,7 @@ function coverageTableB(entries, conns, opts) {
     + '</tr>';
 
   var rows = entries.map(function (entry) {
-    var matchedConnId = matchedFor(entry, conns, tab);
+    var matchedConnIds = matchedIdsFor(entry, conns, tab);
     var expanded = options.expandedKey === entry.variant.id;
     var panelId = 'detailb-' + (options.scope || 'x') + '-' + entry.variant.id;
 
@@ -2873,7 +2893,7 @@ function coverageTableB(entries, conns, opts) {
       +   coverageCountCell(entry, conns)
       + '</td>'
       + '<td class="coverage-strip-col">'
-      +   coverageStrip(entry, conns, { matchedConnId: matchedConnId, readOnly: options.readOnly })
+      +   coverageStrip(entry, conns, { matchedConnIds: matchedConnIds, readOnly: options.readOnly })
       + '</td>'
       + '</tr>';
 
@@ -3612,7 +3632,7 @@ function measureVariantB(root) {
      'Named and not offered. This connection can hold listings and cannot accept new ones — no offer-creation capability, no product publishing enabled — and a button into a dead end is worse than none.',
      '.coverage-pill--none · shipped'],
     ['matched', 0, 'c-alg', 'The one that put the row on this list',
-     'A lifecycle tab filters variants, not offers, so a filtered row has to say which of its pills answered the filter. The outline is the only mark in this vocabulary this file invented, and it is a border rather than a fill because a fill against the pill\'s own background measured 1.09:1.',
+     'A lifecycle tab filters variants, not offers, so a filtered row has to say which of its pills answered the filter — EVERY one that did, not the first. The outline is the only mark in this vocabulary this file invented, and it is a border rather than a fill because a fill against the pill\'s own background measured 1.09:1.',
      '.coverage-cell--matched · invented']
   ];
 
@@ -3624,7 +3644,7 @@ function measureVariantB(root) {
     + '<dl class="ledger">'
     + rows.map(function (row) {
         var mark = coveragePill(lead, conns[row[1]], conns,
-          row[2] ? { matchedConnId: row[2] } : {});
+          row[2] ? { matchedConnIds: [row[2]] } : {});
         return '<div class="ledger__row">'
           + '<dt class="ledger__mark">' + mark + '</dt>'
           + '<dd class="ledger__body">'
@@ -3683,8 +3703,9 @@ function measureVariantB(root) {
 
   document.getElementById('tabs-mount').innerHTML =
     shot('All', 'All — new, and the default: a view about gaps cannot open on a tab that only shows offers that exist')
-    + shot('Invalid', 'Invalid — the pill that let the row in takes the outline')
-    + shot('Unsynced', 'Unsynced — the pill already names the state, so the outline only has to say WHICH pill answered');
+    + shot('Invalid', 'Invalid — every pill that let the row in takes the outline, and usually that is one')
+    + shot('Active', 'Active — where it is usually SEVERAL, and outlining only the first was a bug until round 6')
+    + shot('Unsynced', 'Unsynced — the pill already names the state, so the outline only has to say which ones answered');
 
   publishVisibleWidth(document.getElementById('tabs-mount'));
 })();
