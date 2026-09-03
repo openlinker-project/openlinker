@@ -6,7 +6,7 @@
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import type { Repository } from 'typeorm';
+import { In, type Repository } from 'typeorm';
 import { OrderLineItemRepository } from '../order-line-item.repository';
 import { OrderLineItemOrmEntity } from '../../entities/order-line-item.orm-entity';
 
@@ -131,6 +131,42 @@ describe('OrderLineItemRepository', () => {
       const result = await repository.findByOrderId('order-without-items');
 
       expect(result).toEqual([]);
+    });
+  });
+
+  describe('findByOrderIds (#2826)', () => {
+    it('returns an empty Map without a DB round-trip for an empty input', async () => {
+      const result = await repository.findByOrderIds([]);
+
+      expect(result.size).toBe(0);
+      expect(ormRepository.find).not.toHaveBeenCalled();
+    });
+
+    it('issues ONE query for the whole id set and groups the results by orderRecordId', async () => {
+      ormRepository.find.mockResolvedValue([
+        createOrmEntity({ id: 'line-1', orderRecordId: 'order-a', lineNumber: 0 }),
+        createOrmEntity({ id: 'line-2', orderRecordId: 'order-a', lineNumber: 1 }),
+        createOrmEntity({ id: 'line-3', orderRecordId: 'order-b', lineNumber: 0 }),
+      ]);
+
+      const result = await repository.findByOrderIds(['order-a', 'order-b']);
+
+      expect(ormRepository.find).toHaveBeenCalledTimes(1);
+      expect(ormRepository.find).toHaveBeenCalledWith({
+        where: { orderRecordId: In(['order-a', 'order-b']) },
+        order: { orderRecordId: 'ASC', lineNumber: 'ASC' },
+      });
+      expect(result.get('order-a')).toHaveLength(2);
+      expect(result.get('order-b')).toHaveLength(1);
+    });
+
+    it('omits an order id with no line items from the returned Map', async () => {
+      ormRepository.find.mockResolvedValue([]);
+
+      const result = await repository.findByOrderIds(['order-without-items']);
+
+      expect(result.has('order-without-items')).toBe(false);
+      expect(result.size).toBe(0);
     });
   });
 
