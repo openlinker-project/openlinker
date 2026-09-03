@@ -106,7 +106,9 @@
   section 3 is transcribed from the same file. Exactly FOUR new component
   rules are invented — `.coverage-cell` (with its state modifiers),
   `.coverage-col`, `.action-col` and `.run-marker` — and they live alone in
-  section 4, built only from existing tokens. No new colour, radius, shadow
+  section 4, built only from existing tokens. (`.frame-stack` in section 2 is
+  sheet scaffolding, not a product component: it lays out this file's own
+  frames and never appears in the design.) No new colour, radius, shadow
   or spacing VALUE appears anywhere in this file.
 
   There is no invented row-identity class: the row reuses the shipped
@@ -618,6 +620,18 @@ body {
 }
 .frame-pair { display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fit, minmax(31rem, 1fr)); align-items: start; }
 .frame-pair > figure { margin: 0; display: grid; gap: var(--space-2); min-width: 0; align-content: start; }
+/* Stacked comparison: both layouts get the page's real container width, so a
+   frame that quotes a measured overrun is not exaggerating it in a panel. */
+.frame-stack { display: grid; gap: var(--space-5); }
+.frame-stack > figure { margin: 0; display: grid; gap: var(--space-2); min-width: 0; }
+.frame-stack figcaption {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 500;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
 /* `.app-frame`'s 60rem floor is right for a full-width frame and wrong inside
    a side-by-side panel, where it blows the grid track out and the panels
    overlap. Panels clip and scroll instead. */
@@ -1053,6 +1067,7 @@ input[type='checkbox'] {
   font-weight: 600;
   line-height: 1;
   color: var(--text-secondary);
+  white-space: nowrap;
   box-shadow: none;
   transition: background var(--duration-fast) var(--ease-out),
     border-color var(--duration-fast) var(--ease-out),
@@ -1503,15 +1518,57 @@ input[type='checkbox'] {
       operator-authored connection name when it is not (<code>soleOfPlatform</code>,
       <code>listings-coverage-pills.tsx</code>). Grouping those two columns into one <code>Allegro 1/2</code>
       badge is the <b>only</b> case where the issue’s <code>x/y</code> counter carries information — everywhere
-      else it restates a yes/no. Above roughly five connections the matrix stops fitting and the row falls back
-      to the pill strip.
+      else it restates a yes/no.
+      <br /><br />
+      <b>The ceiling is ten columns, measured, not five.</b> An earlier draft of this frame said “roughly five”,
+      which described this narrow panel rather than the page. At 1440 px the table container is 1190 px and the
+      identity column holds a 352 px floor, so ten 76 px channel columns fit and the eleventh does not. Frame 10
+      is what happens past that.</p><p class="gap-legend">
     </p>
   </section>
 
-  <!-- ═══════════ FRAME 09 — handover ═══════════ -->
+
+  <!-- ═══════════ FRAME 09 — twelve channels ═══════════ -->
+  <section class="viewport-frame" id="frame-scale">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">09 · Twelve channels</span>
+      <b>Past ten columns the matrix stops answering the question</b>
+      <span class="caption">1440 px · the same eight variants, the same twelve connections, two layouts</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="frame-stack" id="frame-scale-pair"></div>
+    </div>
+    <p class="gap-legend">
+      Measured on this file at 1440 px, twelve connections: the table overruns its container by <b>277 px</b>,
+      the channel columns compress from 85 px to 76 px, the mono-caps headers wrap to two lines, and the page
+      carries <b>96 cells across eight rows — 72 of which say “listed”</b>. The argument for the matrix was that
+      gaps line up into a notch in the rhythm; at twelve channels there are 24 gaps and no rhythm left to notch.
+      <br /><br />
+      <b>The cost of the matrix grows with the number of CHANNELS. The operator’s work grows with the number of
+      GAPS.</b> The right-hand layout is priced on the second one: three entries per row instead of twelve cells,
+      whatever the seller has connected. It also reverses a call made earlier in this file — “expose only the
+      gaps” was rejected in round 1 because it loses the “listed everywhere” confirmation and cannot separate
+      “nothing missing” from “no channels configured”. A coverage count closes that (<code>12/12</code> versus
+      <code>0/0</code>); nothing closes the matrix’s column arithmetic.
+      <br /><br />
+      <b>The denominator is per PRODUCT, and that is why it changes down the column.</b> A channel a product
+      is not sold on is not one of that product's channels, so <code>10/12</code> can sit above <code>8/10</code>
+      while staying constant across a single product's variants — which is the invariant that matters, since
+      those are the rows an operator compares. It reads as an inconsistency until something says so, so the
+      count carries its own explanation on hover; a fixture that varied it WITHIN one product's run (an earlier
+      draft of this frame did) reads as a straightforward bug.
+      <br /><br />
+      Which layout is the DEFAULT is a product decision, not a measurement: it depends on whether twelve markets
+      is the target persona or the tail of the distribution. The issue’s own persona is “2–4 channels”, so the
+      threshold ships as the automatic fallback the responsive parity matrix already establishes for tables —
+      matrix up to ten connections, gap column past it, with a manual override because an operator watching one
+      channel out of twelve legitimately wants the matrix back.
+    </p>
+  </section>
+  <!-- ═══════════ FRAME 10 — handover ═══════════ -->
   <section class="viewport-frame" id="frame-handover">
     <div class="viewport-frame__label">
-      <span class="eyebrow-mono">09 · Handover</span>
+      <span class="eyebrow-mono">10 · Handover</span>
       <b>What this changes, and what has to exist first</b>
       <span class="caption">Cell vocabulary · corrections to the issue · the style-guide entry to paste · the work</span>
     </div>
@@ -1547,6 +1604,13 @@ input[type='checkbox'] {
               <span class="legend__body">
                 <span class="legend__term">Publishing <span class="gap-mark">†</span></span>
                 <span class="legend__desc">Between click and marketplace confirmation. Not readable from today’s data — see the note in frame 04.</span>
+              </span>
+            </div>
+            <div class="legend__item">
+              <button class="button button--secondary button--xs" type="button" style="pointer-events: none">Publish to 3 <span class="gap-mark">&dagger;</span></button>
+              <span class="legend__body">
+                <span class="legend__term">Row action <span class="gap-mark">&dagger;</span></span>
+                <span class="legend__desc">One click for every gap in the row. No batch can do this today — see the prerequisite below.</span>
               </span>
             </div>
             <div class="legend__item">
@@ -1606,7 +1670,21 @@ input[type='checkbox'] {
               or offset paging will skip and duplicate rows on ties.</li>
             <li><b>Pagination that counts products while the table lists variants.</b> Page size applies to
               products; the row count per page varies.</li>
-            <li><b>A channel-eligibility flag per product</b> to back the not-applicable state.</li>
+            <li><b>A channel-eligibility flag per product</b> to back the not-applicable state. It is keyed on
+              the PRODUCT, not the variant: a channel a product is not sold on is not sold on it for any of its
+              variants, so the coverage denominator has to be constant down a product's run and may differ
+              between products. A per-variant flag would put <code>9/11</code> next to <code>10/12</code> inside
+              one product, which reads as a bug rather than as a fact about the catalogue.</li>
+            <li><b>A batch that can hold more than one destination.</b> The row action publishes a variant to
+              every channel it is missing from, and nothing in the pipeline can express that: the request
+              carries one <code>connectionId</code> for the whole batch, the picker's destination rail is a
+              single-select <code>radiogroup</code>, the wizard route reads <code>searchParams.get('connectionId')</code>
+              (which takes the first value even if two are appended), and <code>BulkListingBatch.connectionId</code>
+              is a <em>scalar column</em>. So this is a migration plus a new request shape, and it reaches the
+              at-most-once advancement counters (#737) and the per-batch retry-wave semantics — not a parameter.
+              Worth knowing before scoping it: this is not a documented scope cut anywhere in the repo, which is
+              otherwise scrupulous about recording them. “One variant to N destinations” appears never to have
+              been asked. Until it exists, the honest fallback is one wizard pass per channel.</li>
             <li><b>Run flags recomputed after filtering.</b> The product name prints once per run, so the
               first <em>surviving</em> row of a run has to carry it. Compute the run boundaries on the rows
               that survived the filter, never on the unfiltered set — otherwise every filter that hides a
@@ -1813,20 +1891,26 @@ function coverageCell(entry, conn, all, opts) {
       + '<span class="sr-only">' + esc(who + ' is ' + lifecycleLabel(cover.lifecycle) + ' on ' + label) + '</span></span>';
   }
 
+  /* A non-actionable cell states its VALUE in one word and lets the column
+     header supply the channel — at twelve channels a full sentence per cell
+     put 100 announcements on one page, 72 of them confirming normality, and
+     table navigation stopped being passable. An ACTIONABLE cell keeps the
+     whole sentence: a button has to name itself outside the table too,
+     because a screen reader can list the page's buttons on their own. */
   if (state === 'listed') {
-    return '<span class="coverage-cell coverage-cell--listed" title="Listed on ' + esc(label) + '">'
-      + '<span class="coverage-cell__mark"></span>'
-      + '<span class="sr-only">' + esc(who + ' is listed on ' + label) + '</span></span>';
+    return '<span class="coverage-cell coverage-cell--listed" role="img" aria-label="Listed"'
+      + ' title="Listed on ' + esc(label) + '">'
+      + '<span class="coverage-cell__mark"></span></span>';
   }
   if (state === 'na') {
-    return '<span class="coverage-cell coverage-cell--na" title="' + esc(entry.product.name) + ' is not sold on ' + esc(label) + '">'
-      + '<span class="coverage-cell__mark"></span>'
-      + '<span class="sr-only">' + esc(label + ' does not apply to ' + who) + '</span></span>';
+    return '<span class="coverage-cell coverage-cell--na" role="img" aria-label="Not applicable"'
+      + ' title="' + esc(entry.product.name) + ' is not sold on ' + esc(label) + '">'
+      + '<span class="coverage-cell__mark"></span></span>';
   }
   if (state === 'publishing') {
-    return '<span class="coverage-cell coverage-cell--publishing" title="Publishing to ' + esc(label) + '…">'
-      + '<span class="coverage-cell__mark"></span>'
-      + '<span class="sr-only">' + esc(who + ' is being published to ' + label) + '</span></span>';
+    return '<span class="coverage-cell coverage-cell--publishing" role="img" aria-label="Publishing"'
+      + ' title="Publishing to ' + esc(label) + '…">'
+      + '<span class="coverage-cell__mark"></span></span>';
   }
   if (state === 'failed') {
     return '<button class="coverage-cell coverage-cell--failed" type="button" data-variant="' + esc(entry.variant.id)
@@ -1933,7 +2017,7 @@ function headHTML(conns, showAction) {
   return '<th class="data-table__expand-cell" aria-label="Expand"></th>'
     + '<th style="min-width: 22rem">Variant</th>'
     + conns.map(function (conn) {
-        return '<th class="coverage-col">' + esc(connLabel(conn, conns)) + '</th>';
+        return '<th class="coverage-col" scope="col">' + esc(connLabel(conn, conns)) + '</th>';
       }).join('')
     + (showAction ? '<th class="data-table__cell--right action-col">Action</th>' : '');
 }
@@ -1974,8 +2058,10 @@ function bodyHTML(entries, conns, opts) {
       row += '<td class="data-table__cell--right action-col">'
         + (gaps.length > 1
             ? '<button class="button button--secondary button--xs" type="button" data-publish-row="' + esc(entry.variant.id) + '"'
-              + (options.readOnly ? ' disabled title="Publishing is disabled in demo mode"' : '')
-              + '>Publish (' + gaps.length + ')</button>'
+              + (options.readOnly
+                  ? ' disabled title="Publishing is disabled in demo mode"'
+                  : ' title="Publish this variant to the ' + gaps.length + ' channels it is missing from"')
+              + '>Publish to ' + gaps.length + ' channels <span class="gap-mark" aria-hidden="true">\u2020</span></button>'
             : '')
         + '</td>';
     }
@@ -2354,6 +2440,142 @@ function pageShell(inner, title) {
   }));
   document.getElementById('tablet-head').innerHTML = headHTML(CONNECTIONS, true);
   document.getElementById('tablet-rows').innerHTML = bodyHTML(gapsEntries, CONNECTIONS, { showAction: true });
+})();
+
+/* ── The gap-column layout ──────────────────────────────────────────────
+   The alternative to the matrix past its ten-column ceiling. Same rows,
+   same data, priced on gaps rather than on channels: a coverage count plus
+   one entry per MISSING channel. The count is what makes this layout
+   admissible at all — round 1 rejected "gaps only" because it could not
+   separate "nothing missing" from "no channels configured", and 12/12
+   against 0/0 is that separation. */
+function coverageCount(entry, conns) {
+  var applicable = 0;
+  var listed = 0;
+  conns.forEach(function (conn) {
+    var state = (entry.variant.cover[conn.id] || { state: 'na' }).state;
+    if (state === 'na') return;
+    applicable += 1;
+    if (state === 'listed') listed += 1;
+  });
+  return { listed: listed, applicable: applicable };
+}
+
+function gapsColumnHTML(entries, conns, opts) {
+  var options = opts || {};
+  var head = '<th class="data-table__expand-cell" aria-label="Expand"></th>'
+    + '<th style="min-width: 22rem">Variant</th>'
+    + '<th class="coverage-col" scope="col">Coverage</th>'
+    + '<th scope="col" style="white-space: nowrap; width: 100%">Missing on</th>'
+    + (options.showAction ? '<th class="data-table__cell--right">Action</th>' : '');
+
+  var body = entries.map(function (entry) {
+    var count = coverageCount(entry, conns);
+    var gaps = conns.filter(function (conn) {
+      return (entry.variant.cover[conn.id] || {}).state === 'gap';
+    });
+
+    /* Full coverage is stated, not left blank: a blank cell cannot be told
+       apart from a variant with no channels configured for it. */
+    var tone = count.applicable === 0 ? 'neutral' : (gaps.length === 0 ? 'success' : 'warning');
+    var countTitle = count.applicable === 0
+      ? 'No channel is configured for ' + entry.product.name
+      : 'Listed on ' + count.listed + ' of the ' + count.applicable + ' channels '
+        + entry.product.name + ' is sold on'
+        + (count.applicable < conns.length
+            ? ' (' + (conns.length - count.applicable) + ' of the ' + conns.length + ' connected channels do not carry this product)'
+            : '');
+    var countCell = '<span class="status-badge status-badge--compact status-badge--' + tone + '"'
+      + ' title="' + esc(countTitle) + '">'
+      + '<span class="status-badge__dot"></span>'
+      + '<span class="tabular">' + count.listed + '/' + count.applicable + '</span></span>';
+
+    var missing = gaps.length === 0
+      ? '<span style="color: var(--text-muted); font-size: 0.75rem">'
+        + (count.applicable === 0 ? 'No channels configured' : 'Nothing missing') + '</span>'
+      : '<span class="coverage-pills">' + gaps.map(function (conn) {
+          var label = connLabel(conn, conns);
+          var who = entry.product.name + ' ' + entry.variant.label;
+          return '<button class="coverage-cell coverage-cell--gap" type="button"'
+            + ' style="width: auto; padding: 0 var(--space-2); gap: var(--space-1)"'
+            + ' data-variant="' + esc(entry.variant.id) + '" data-conn="' + esc(conn.id) + '"'
+            + (options.readOnly ? ' disabled title="Publishing is disabled in demo mode"' : '')
+            + '>+ ' + esc(label)
+            + '<span class="sr-only">' + esc(who + ' is not listed on ' + label + '. Publish it.') + '</span>'
+            + '</button>';
+        }).join('') + '</span>';
+
+    return '<tr class="data-table__row--expandable" data-row="' + esc(entry.variant.id) + '">'
+      + '<td class="data-table__expand-cell">'
+      + '<button class="data-table__expand-toggle" type="button" aria-expanded="false"'
+      + ' aria-label="' + esc('Expand ' + entry.product.name + ' ' + entry.variant.label) + '">'
+      + '<span class="data-table__expand-icon" aria-hidden="true">\u25b8</span></button></td>'
+      + '<td>' + identityCell(entry) + '</td>'
+      + '<td class="coverage-col">' + countCell + '</td>'
+      + '<td>' + missing + '</td>'
+      + (options.showAction
+          ? '<td class="data-table__cell--right">'
+            + (gaps.length > 1
+                ? '<button class="button button--secondary button--xs" type="button">Publish to ' + gaps.length
+                  + ' channels <span class="gap-mark" aria-hidden="true">\u2020</span></button>'
+                : '')
+            + '</td>'
+          : '')
+      + '</tr>';
+  }).join('');
+
+  return '<div class="data-table__container"><table class="data-table">'
+    + '<thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table></div>';
+}
+
+/* Frame 09 — twelve connections, both layouts, one fixture */
+(function frame09() {
+  /* Twelve the realistic way: several accounts on the same platform, which
+     flips soleOfPlatform onto operator-authored names. */
+  var many = [
+    { id: 'a1', channel: 'allegro', platform: 'Allegro', name: 'Konto Główne' },
+    { id: 'a2', channel: 'allegro', platform: 'Allegro', name: 'Outlet' },
+    { id: 'a3', channel: 'allegro', platform: 'Allegro', name: 'B2B Hurt' },
+    { id: 'e1', channel: 'erli', platform: 'Erli', name: 'Erli PL' },
+    { id: 'e2', channel: 'erli', platform: 'Erli', name: 'Erli Outlet' },
+    { id: 'w1', channel: 'woocommerce', platform: 'WooCommerce', name: 'Sklep firmowy' },
+    { id: 'w2', channel: 'woocommerce', platform: 'WooCommerce', name: 'Sklep DE' },
+    { id: 'p1', channel: 'prestashop', platform: 'PrestaShop', name: 'Sklep główny' },
+    { id: 'p2', channel: 'prestashop', platform: 'PrestaShop', name: 'Sklep B2B' },
+    { id: 'a4', channel: 'allegro', platform: 'Allegro', name: 'Allegro CZ' },
+    { id: 'e3', channel: 'erli', platform: 'Erli', name: 'Erli Test' },
+    { id: 'w3', channel: 'woocommerce', platform: 'WooCommerce', name: 'Sklep PL2' }
+  ];
+
+  /* Deterministic, plausible coverage: mostly listed, a few gaps per row,
+     one channel a product is genuinely not sold on. */
+  /* `na` is keyed on the PRODUCT: a channel a product is not sold on is not
+     sold on it for any of its variants, so the coverage denominator has to be
+     identical down a product's run. A per-row rule produced 9/11 next to
+     10/12 inside one product and read as a bug — worth stating as a rule for
+     the implementation, not just fixing in the fixture. */
+  var notSoldOn = { 'p-lof': ['w2', 'w3'], 'p-kor': ['a4'] };
+  var rows = rebaseRuns(ALL_ENTRIES.slice(0, 6).map(function (entry, rowIndex) {
+    var clone = JSON.parse(JSON.stringify(entry));
+    var excluded = notSoldOn[entry.product.id] || [];
+    clone.variant.cover = {};
+    many.forEach(function (conn, i) {
+      if (excluded.indexOf(conn.id) !== -1) {
+        clone.variant.cover[conn.id] = { state: 'na' };
+        return;
+      }
+      clone.variant.cover[conn.id] = ((i + rowIndex) % 5 === 3)
+        ? { state: 'gap' }
+        : listed('59,00 PLN', 4, '02.09.2026 08:14');
+    });
+    return clone;
+  }));
+
+  document.getElementById('frame-scale-pair').innerHTML =
+    '<figure><figcaption>Matrix at twelve — overruns the container by 277 px</figcaption>'
+    + tableHTML(rows, many, { showAction: true }) + '</figure>'
+    + '<figure><figcaption>Gap column — priced on gaps, not on channels</figcaption>'
+    + gapsColumnHTML(rows, many, { showAction: true }) + '</figure>';
 })();
 
 /* Frame 07 — mobile card view. The matrix has nothing to align against in a

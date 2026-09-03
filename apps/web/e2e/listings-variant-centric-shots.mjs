@@ -57,6 +57,7 @@ const SHOTS = [
   { name: 'publish-1440', selector: '#frame-publish', width: 1440, height: 760 },
   { name: 'states-1440', selector: '#frame-states', width: 1440, height: 1000 },
   { name: 'degraded-1440', selector: '#frame-degraded', width: 1440, height: 800 },
+  { name: 'scale-1440', selector: '#frame-scale', width: 1440, height: 760 },
   { name: 'handover-1440', selector: '#frame-handover', width: 1440, height: 1400 },
 ];
 
