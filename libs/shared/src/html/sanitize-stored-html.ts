@@ -49,13 +49,19 @@
  * against every `sanitize-html` version up to and including `2.17.6`,
  * patched in `2.17.7`. Per the rule this file states, the pin was lifted
  * immediately (#2233) rather than waiting for the ESM/Jest question to be
- * solved separately. `libs/shared/jest.config.js` now runs the ESM-only
- * closure `sanitize-html@2.17.7` pulls in (`htmlparser2`, `domutils`,
- * `dom-serializer`, `domhandler`, `domelementtype`, `entities`) through
- * `babel-jest` (config: `libs/shared/babel.config.cjs`) instead of ts-jest,
- * with a `transformIgnorePatterns` override scoped to exactly those packages
- * (matched against pnpm's `.pnpm/<pkg>@<version>/...` store layout). Every
- * other file under `node_modules` stays untransformed as before.
+ * solved separately. Every jest config whose module graph can reach
+ * `@openlinker/shared/html` now runs the ESM-only closure `sanitize-html@2.17.7`
+ * pulls in (`htmlparser2`, `domutils`, `dom-serializer`, `domhandler`,
+ * `domelementtype`, `entities`) through `babel-jest` (config: repo-root
+ * `babel.esm-deps.cjs`) instead of ts-jest, with a `transformIgnorePatterns`
+ * override scoped to exactly those packages (matched against pnpm's
+ * `.pnpm/<pkg>@<version>/...` store layout). Every other file under
+ * `node_modules` stays untransformed as before. The merge is shared via the
+ * repo-root `jest.esm-deps.cjs` — that file, not this comment, is the source
+ * of truth for the exact package list and the fan-out across jest configs;
+ * `scripts/check-jest-esm-deps.mjs` (run under `pnpm check:invariants`)
+ * enforces that every jest config reachable from `@openlinker/shared` merges
+ * it in.
  *
  * `sanitize-html` now carries no exact pin - a caret range is safe again.
  * The next `pnpm audit` re-check for this boundary is whenever Dependabot (or

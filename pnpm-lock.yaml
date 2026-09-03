@@ -206,6 +206,12 @@ importers:
         specifier: 0.3.17
         version: 0.3.17(mysql2@3.22.3(@types/node@20.11.30))(pg@8.11.3)(redis@4.6.12)(ts-node@10.9.2(@types/node@20.11.30)(typescript@5.4.3))
     devDependencies:
+      '@babel/core':
+        specifier: ^7.28.5
+        version: 7.28.5
+      '@babel/preset-env':
+        specifier: ^7.29.7
+        version: 7.29.7(@babel/core@7.28.5)
       '@nestjs/cli':
         specifier: 10.3.0
         version: 10.3.0
@@ -257,6 +263,9 @@ importers:
       '@typescript-eslint/parser':
         specifier: 7.3.1
         version: 7.3.1(eslint@8.57.0)(typescript@5.4.3)
+      babel-jest:
+        specifier: ^29.7.0
+        version: 29.7.0(@babel/core@7.28.5)
       dotenv:
         specifier: ^16.0.0
         version: 16.6.1
@@ -538,6 +547,12 @@ importers:
         specifier: 0.3.17
         version: 0.3.17(mysql2@3.22.3(@types/node@20.11.30))(pg@8.11.3)(redis@4.6.12)(ts-node@10.9.2(@types/node@20.11.30)(typescript@5.4.3))
     devDependencies:
+      '@babel/core':
+        specifier: ^7.28.5
+        version: 7.28.5
+      '@babel/preset-env':
+        specifier: ^7.29.7
+        version: 7.29.7(@babel/core@7.28.5)
       '@jest/test-sequencer':
         specifier: 29.7.0
         version: 29.7.0
@@ -565,6 +580,9 @@ importers:
       '@typescript-eslint/parser':
         specifier: 7.3.1
         version: 7.3.1(eslint@8.57.0)(typescript@5.4.3)
+      babel-jest:
+        specifier: ^29.7.0
+        version: 29.7.0(@babel/core@7.28.5)
       eslint:
         specifier: 8.57.0
         version: 8.57.0
@@ -614,6 +632,12 @@ importers:
         specifier: 0.3.17
         version: 0.3.17(mysql2@3.22.3(@types/node@20.11.30))(pg@8.11.3)(redis@4.6.12)(ts-node@10.9.2(@types/node@20.11.30)(typescript@5.4.3))
     devDependencies:
+      '@babel/core':
+        specifier: ^7.28.5
+        version: 7.28.5
+      '@babel/preset-env':
+        specifier: ^7.29.7
+        version: 7.29.7(@babel/core@7.28.5)
       '@types/jest':
         specifier: 29.5.12
         version: 29.5.12
@@ -626,6 +650,9 @@ importers:
       '@typescript-eslint/parser':
         specifier: 7.3.1
         version: 7.3.1(eslint@8.57.0)(typescript@5.4.3)
+      babel-jest:
+        specifier: ^29.7.0
+        version: 29.7.0(@babel/core@7.28.5)
       eslint:
         specifier: 8.57.0
         version: 8.57.0
@@ -663,6 +690,12 @@ importers:
         specifier: ^6.0.168
         version: 6.0.168(zod@4.3.6)
     devDependencies:
+      '@babel/core':
+        specifier: ^7.28.5
+        version: 7.28.5
+      '@babel/preset-env':
+        specifier: ^7.29.7
+        version: 7.29.7(@babel/core@7.28.5)
       '@types/jest':
         specifier: 29.5.12
         version: 29.5.12
@@ -675,6 +708,9 @@ importers:
       '@typescript-eslint/parser':
         specifier: 7.3.1
         version: 7.3.1(eslint@8.57.0)(typescript@5.4.3)
+      babel-jest:
+        specifier: ^29.7.0
+        version: 29.7.0(@babel/core@7.28.5)
       eslint:
         specifier: 8.57.0
         version: 8.57.0
@@ -724,6 +760,12 @@ importers:
         specifier: 0.3.17
         version: 0.3.17(mysql2@3.22.3(@types/node@20.11.30))(pg@8.11.3)(redis@4.6.12)(ts-node@10.9.2(@types/node@20.11.30)(typescript@5.4.3))
     devDependencies:
+      '@babel/core':
+        specifier: ^7.28.5
+        version: 7.28.5
+      '@babel/preset-env':
+        specifier: ^7.29.7
+        version: 7.29.7(@babel/core@7.28.5)
       '@types/jest':
         specifier: 29.5.12
         version: 29.5.12
@@ -736,6 +778,9 @@ importers:
       '@typescript-eslint/parser':
         specifier: 7.3.1
         version: 7.3.1(eslint@8.57.0)(typescript@5.4.3)
+      babel-jest:
+        specifier: ^29.7.0
+        version: 29.7.0(@babel/core@7.28.5)
       eslint:
         specifier: 8.57.0
         version: 8.57.0
@@ -773,6 +818,12 @@ importers:
         specifier: ^5.3.3
         version: 5.3.3
     devDependencies:
+      '@babel/core':
+        specifier: ^7.28.5
+        version: 7.28.5
+      '@babel/preset-env':
+        specifier: ^7.29.7
+        version: 7.29.7(@babel/core@7.28.5)
       '@types/jest':
         specifier: 29.5.12
         version: 29.5.12
@@ -785,6 +836,9 @@ importers:
       '@typescript-eslint/parser':
         specifier: 7.3.1
         version: 7.3.1(eslint@8.57.0)(typescript@5.4.3)
+      babel-jest:
+        specifier: ^29.7.0
+        version: 29.7.0(@babel/core@7.28.5)
       eslint:
         specifier: 8.57.0
         version: 8.57.0
@@ -813,6 +867,12 @@ importers:
         specifier: workspace:*
         version: link:../../shared
     devDependencies:
+      '@babel/core':
+        specifier: ^7.28.5
+        version: 7.28.5
+      '@babel/preset-env':
+        specifier: ^7.29.7
+        version: 7.29.7(@babel/core@7.28.5)
       '@types/jest':
         specifier: 29.5.12
         version: 29.5.12
@@ -825,6 +885,9 @@ importers:
       '@typescript-eslint/parser':
         specifier: 7.3.1
         version: 7.3.1(eslint@8.57.0)(typescript@5.4.3)
+      babel-jest:
+        specifier: ^29.7.0
+        version: 29.7.0(@babel/core@7.28.5)
       eslint:
         specifier: 8.57.0
         version: 8.57.0
@@ -853,6 +916,12 @@ importers:
         specifier: workspace:*
         version: link:../../shared
     devDependencies:
+      '@babel/core':
+        specifier: ^7.28.5
+        version: 7.28.5
+      '@babel/preset-env':
+        specifier: ^7.29.7
+        version: 7.29.7(@babel/core@7.28.5)
       '@types/jest':
         specifier: 29.5.12
         version: 29.5.12
@@ -865,6 +934,9 @@ importers:
       '@typescript-eslint/parser':
         specifier: 7.3.1
         version: 7.3.1(eslint@8.57.0)(typescript@5.4.3)
+      babel-jest:
+        specifier: ^29.7.0
+        version: 29.7.0(@babel/core@7.28.5)
       eslint:
         specifier: 8.57.0
         version: 8.57.0
@@ -890,6 +962,12 @@ importers:
         specifier: workspace:*
         version: link:../../shared
     devDependencies:
+      '@babel/core':
+        specifier: ^7.28.5
+        version: 7.28.5
+      '@babel/preset-env':
+        specifier: ^7.29.7
+        version: 7.29.7(@babel/core@7.28.5)
       '@types/jest':
         specifier: 29.5.12
         version: 29.5.12
@@ -902,6 +980,9 @@ importers:
       '@typescript-eslint/parser':
         specifier: 7.3.1
         version: 7.3.1(eslint@8.57.0)(typescript@5.4.3)
+      babel-jest:
+        specifier: ^29.7.0
+        version: 29.7.0(@babel/core@7.28.5)
       eslint:
         specifier: 8.57.0
         version: 8.57.0
@@ -930,6 +1011,12 @@ importers:
         specifier: workspace:*
         version: link:../../shared
     devDependencies:
+      '@babel/core':
+        specifier: ^7.28.5
+        version: 7.28.5
+      '@babel/preset-env':
+        specifier: ^7.29.7
+        version: 7.29.7(@babel/core@7.28.5)
       '@types/jest':
         specifier: 29.5.12
         version: 29.5.12
@@ -942,6 +1029,9 @@ importers:
       '@typescript-eslint/parser':
         specifier: 7.3.1
         version: 7.3.1(eslint@8.57.0)(typescript@5.4.3)
+      babel-jest:
+        specifier: ^29.7.0
+        version: 29.7.0(@babel/core@7.28.5)
       eslint:
         specifier: 8.57.0
         version: 8.57.0
@@ -982,6 +1072,12 @@ importers:
         specifier: 0.14.1
         version: 0.14.1
     devDependencies:
+      '@babel/core':
+        specifier: ^7.28.5
+        version: 7.28.5
+      '@babel/preset-env':
+        specifier: ^7.29.7
+        version: 7.29.7(@babel/core@7.28.5)
       '@types/jest':
         specifier: 29.5.12
         version: 29.5.12
@@ -994,6 +1090,9 @@ importers:
       '@typescript-eslint/parser':
         specifier: 7.3.1
         version: 7.3.1(eslint@8.57.0)(typescript@5.4.3)
+      babel-jest:
+        specifier: ^29.7.0
+        version: 29.7.0(@babel/core@7.28.5)
       eslint:
         specifier: 8.57.0
         version: 8.57.0
@@ -1025,6 +1124,12 @@ importers:
         specifier: ^5.3.3
         version: 5.3.3
     devDependencies:
+      '@babel/core':
+        specifier: ^7.28.5
+        version: 7.28.5
+      '@babel/preset-env':
+        specifier: ^7.29.7
+        version: 7.29.7(@babel/core@7.28.5)
       '@types/jest':
         specifier: 29.5.12
         version: 29.5.12
@@ -1037,6 +1142,9 @@ importers:
       '@typescript-eslint/parser':
         specifier: 7.3.1
         version: 7.3.1(eslint@8.57.0)(typescript@5.4.3)
+      babel-jest:
+        specifier: ^29.7.0
+        version: 29.7.0(@babel/core@7.28.5)
       eslint:
         specifier: 8.57.0
         version: 8.57.0
@@ -1074,6 +1182,12 @@ importers:
         specifier: ^4.3.5
         version: 4.5.3
     devDependencies:
+      '@babel/core':
+        specifier: ^7.28.5
+        version: 7.28.5
+      '@babel/preset-env':
+        specifier: ^7.29.7
+        version: 7.29.7(@babel/core@7.28.5)
       '@types/jest':
         specifier: 29.5.12
         version: 29.5.12
@@ -1086,6 +1200,9 @@ importers:
       '@typescript-eslint/parser':
         specifier: 7.3.1
         version: 7.3.1(eslint@8.57.0)(typescript@5.4.3)
+      babel-jest:
+        specifier: ^29.7.0
+        version: 29.7.0(@babel/core@7.28.5)
       eslint:
         specifier: 8.57.0
         version: 8.57.0
@@ -1120,6 +1237,12 @@ importers:
         specifier: 0.14.1
         version: 0.14.1
     devDependencies:
+      '@babel/core':
+        specifier: ^7.28.5
+        version: 7.28.5
+      '@babel/preset-env':
+        specifier: ^7.29.7
+        version: 7.29.7(@babel/core@7.28.5)
       '@types/jest':
         specifier: 29.5.12
         version: 29.5.12
@@ -1132,6 +1255,9 @@ importers:
       '@typescript-eslint/parser':
         specifier: 7.3.1
         version: 7.3.1(eslint@8.57.0)(typescript@5.4.3)
+      babel-jest:
+        specifier: ^29.7.0
+        version: 29.7.0(@babel/core@7.28.5)
       eslint:
         specifier: 8.57.0
         version: 8.57.0
@@ -1166,6 +1292,12 @@ importers:
         specifier: 0.14.1
         version: 0.14.1
     devDependencies:
+      '@babel/core':
+        specifier: ^7.28.5
+        version: 7.28.5
+      '@babel/preset-env':
+        specifier: ^7.29.7
+        version: 7.29.7(@babel/core@7.28.5)
       '@types/jest':
         specifier: 29.5.12
         version: 29.5.12
@@ -1178,6 +1310,9 @@ importers:
       '@typescript-eslint/parser':
         specifier: 7.3.1
         version: 7.3.1(eslint@8.57.0)(typescript@5.4.3)
+      babel-jest:
+        specifier: ^29.7.0
+        version: 29.7.0(@babel/core@7.28.5)
       eslint:
         specifier: 8.57.0
         version: 8.57.0
@@ -1212,6 +1347,12 @@ importers:
         specifier: 0.3.17
         version: 0.3.17(mysql2@3.22.3(@types/node@20.11.30))(pg@8.11.3)(redis@4.6.12)(ts-node@10.9.2(@types/node@20.11.30)(typescript@5.4.3))
     devDependencies:
+      '@babel/core':
+        specifier: ^7.28.5
+        version: 7.28.5
+      '@babel/preset-env':
+        specifier: ^7.29.7
+        version: 7.29.7(@babel/core@7.28.5)
       '@types/jest':
         specifier: 29.5.12
         version: 29.5.12
@@ -1224,6 +1365,9 @@ importers:
       '@typescript-eslint/parser':
         specifier: 7.3.1
         version: 7.3.1(eslint@8.57.0)(typescript@5.4.3)
+      babel-jest:
+        specifier: ^29.7.0
+        version: 29.7.0(@babel/core@7.28.5)
       eslint:
         specifier: 8.57.0
         version: 8.57.0
@@ -1246,6 +1390,12 @@ importers:
         specifier: workspace:*
         version: link:../shared
     devDependencies:
+      '@babel/core':
+        specifier: ^7.28.5
+        version: 7.28.5
+      '@babel/preset-env':
+        specifier: ^7.29.7
+        version: 7.29.7(@babel/core@7.28.5)
       '@nestjs/common':
         specifier: ^10.0.0
         version: 10.3.0(class-transformer@0.5.1)(class-validator@0.14.1)(reflect-metadata@0.2.1)(rxjs@7.8.1)
@@ -1264,6 +1414,9 @@ importers:
       '@typescript-eslint/parser':
         specifier: 7.3.1
         version: 7.3.1(eslint@8.57.0)(typescript@5.4.3)
+      babel-jest:
+        specifier: ^29.7.0
+        version: 29.7.0(@babel/core@7.28.5)
       eslint:
         specifier: 8.57.0
         version: 8.57.0
@@ -1298,6 +1451,12 @@ importers:
         specifier: 0.3.17
         version: 0.3.17(mysql2@3.22.3(@types/node@20.11.30))(pg@8.11.3)(redis@4.6.12)(ts-node@10.9.2(@types/node@20.11.30)(typescript@5.4.3))
     devDependencies:
+      '@babel/core':
+        specifier: ^7.28.5
+        version: 7.28.5
+      '@babel/preset-env':
+        specifier: ^7.29.7
+        version: 7.29.7(@babel/core@7.28.5)
       '@types/jest':
         specifier: 29.5.12
         version: 29.5.12
@@ -1313,6 +1472,9 @@ importers:
       '@typescript-eslint/parser':
         specifier: 7.3.1
         version: 7.3.1(eslint@8.57.0)(typescript@5.4.3)
+      babel-jest:
+        specifier: ^29.7.0
+        version: 29.7.0(@babel/core@7.28.5)
       eslint:
         specifier: 8.57.0
         version: 8.57.0
