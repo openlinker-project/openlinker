@@ -104,7 +104,12 @@ describe('TaxCoverageDetectionService (#2465)', () => {
       expect(result['tax-b'][0].internalOrderId).toBe('order-post-rollout');
       expect(result['tax-a']).toHaveLength(0);
       expect(result['tax-c']).toHaveLength(0);
-      expect(lineItemRepository.findByOrderIds).not.toHaveBeenCalled();
+      // The batched read is issued once per `classify()` call (#2826), so the
+      // guard is that it carries NO order ids for a non-pre-rollout candidate
+      // — `findByOrderIds([])` short-circuits before any query. Asserting the
+      // method was never invoked would pin the call shape rather than the
+      // "does no line-item work" contract the narrowing exists to keep.
+      expect(lineItemRepository.findByOrderIds).toHaveBeenCalledWith([]);
     });
 
     it('reports tax-a when a pre-rollout order already has every line resolved (backfill already ran)', async () => {
@@ -379,7 +384,9 @@ describe('TaxCoverageDetectionService (#2465)', () => {
       const result = await service.classify(baseFilters, 'EUR');
 
       expect(result['tax-b'][0].lineRates).toEqual([]);
-      expect(lineItemRepository.findByOrderIds).not.toHaveBeenCalled();
+      // Same contract as the `classify` guard above: no order ids requested,
+      // and therefore no catalogue read either.
+      expect(lineItemRepository.findByOrderIds).toHaveBeenCalledWith([]);
       expect(productsService.getEffectiveTaxRate).not.toHaveBeenCalled();
     });
 
