@@ -17,11 +17,20 @@ export type TaxCoverageCategory = Extract<CoverageCategory, 'tax-a' | 'tax-b' | 
 
 /**
  * Mirrors `TaxRateState` (`@openlinker/core/products`) — the frontend cannot import core (#591).
- * Uncontracted: unlike `check-shipping-tax-split-mirror.mjs` and its siblings, no invariant
- * script asserts this stays in sync with core's `TaxRateStateValues` — a new member added there
- * would not fail `pnpm check:invariants` here.
+ * Kept honest by `scripts/check-tax-rate-state-mirror.mjs` under `pnpm check:invariants` (#2802
+ * review): a member added to core's `TaxRateStateValues` and not here now fails the build instead
+ * of silently falling through `describeLineRate`'s render fallback.
  */
 export type TaxCoverageLineRateState = 'not-checked' | 'no-rate' | 'known';
+
+/**
+ * Mirrors `TaxRateUnknownReason` (`@openlinker/core/products`) — display-only provenance for the
+ * `'no-rate'` state (#2264), never control flow. Local to this feature rather than reached through
+ * `features/products`' own copy of the same union (`products.types.ts`), matching the sibling
+ * `TaxCoverageLineRateState` mirror above — both are small, closed, display-only vocabularies this
+ * feature does not otherwise depend on `products` for.
+ */
+export type TaxCoverageLineRateUnknownReason = 'not-configured' | 'ambiguous' | 'unreadable';
 
 /**
  * One line's resolved (or unresolved) rate observation (#2798), mirroring
@@ -34,6 +43,8 @@ export interface TaxCoverageLineRate {
   /** Resolved rate code, or `null` unless `state === 'known'`. */
   rateCode: string | null;
   state: TaxCoverageLineRateState;
+  /** Why the catalogue named no rate — set only when `state === 'no-rate'` and the catalogue gave a reason. */
+  unknownReason?: TaxCoverageLineRateUnknownReason | null;
 }
 
 export interface TaxCoverageOrder {

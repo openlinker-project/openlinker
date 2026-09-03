@@ -73,6 +73,28 @@ import type { OrderLineItem } from '../../domain/entities/order-line-item.entity
 
 const PRE_ROLLOUT_ERA = 'pre-rollout';
 
+/**
+ * Canonicalize a rate code before it lands on a
+ * {@link TaxCoverageLineRateObservation} (#2802 review) — `resolveLineRates`
+ * has two sources for the SAME kind of value (`line.taxRate`'s own stored
+ * column, and `StoredTaxRate.code` from a live catalogue read) and neither
+ * is guaranteed to format a numeric percent identically (`'23.00'` vs
+ * `'23'`). Without this, the two sources could disagree on formatting for
+ * the same real rate and the FE's per-order label dedup (which keys on the
+ * rendered string) would show both as separate tags on one order.
+ *
+ * Only the numeric shape is renormalized — an exemption code (`'zw'`,
+ * `'np'`, `'oo'`) is already canonical and passed through verbatim, since
+ * `Number()`-round-tripping it would just produce `NaN`.
+ */
+function normalizeRateCode(code: string | null): string | null {
+  if (code === null) {
+    return null;
+  }
+  const trimmed = code.trim();
+  return /^\d+(\.\d+)?$/.test(trimmed) ? String(Number(trimmed)) : trimmed;
+}
+
 @Injectable()
 export class TaxCoverageDetectionService implements ITaxCoverageDetectionService {
   private readonly logger = new Logger(TaxCoverageDetectionService.name);
@@ -192,6 +214,12 @@ export class TaxCoverageDetectionService implements ITaxCoverageDetectionService
    * `IProductsService.getEffectiveTaxRate` read `classifyOne` already made
    * for that same line — this mirrors that call exactly rather than adding
    * a second one.
+   *
+   * Every `rateCode` is passed through {@link normalizeRateCode} regardless
+   * of which of the two sources produced it, and a `'no-rate'` observation
+   * carries the catalogue's own `unknownReason` (#2264) when it has one —
+   * see {@link TaxCoverageLineRateObservation}'s doc comment for why both
+   * matter to the operator surface reading this.
    */
   private async resolveLineRates(
     lines: OrderLineItem[],
@@ -204,8 +232,9 @@ export class TaxCoverageDetectionService implements ITaxCoverageDetectionService
         observations.push({
           productId: line.productId,
           variantId: line.variantId,
-          rateCode: line.taxRate,
+          rateCode: normalizeRateCode(line.taxRate),
           state: 'known',
+          unknownReason: null,
         });
         continue;
       }
@@ -229,6 +258,7 @@ export class TaxCoverageDetectionService implements ITaxCoverageDetectionService
           variantId: line.variantId,
           rateCode: null,
           state: 'not-checked',
+          unknownReason: null,
         });
         continue;
       }
@@ -237,8 +267,9 @@ export class TaxCoverageDetectionService implements ITaxCoverageDetectionService
       observations.push({
         productId: line.productId,
         variantId: line.variantId,
-        rateCode: state === 'known' ? rate.code : null,
+        rateCode: state === 'known' ? normalizeRateCode(rate.code) : null,
         state,
+        unknownReason: state === 'no-rate' ? (rate.unknownReason ?? null) : null,
       });
     }
 

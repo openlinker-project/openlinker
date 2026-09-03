@@ -28,7 +28,7 @@
  *
  * @module libs/core/src/orders/domain/types
  */
-import type { TaxRateState } from '@openlinker/core/products';
+import type { TaxRateState, TaxRateUnknownReason } from '@openlinker/core/products';
 
 /**
  * Data Coverage category values. `'currency'` was populated by #2464,
@@ -158,6 +158,14 @@ export type TaxCoverageCategory = (typeof TaxCoverageCategoryValues)[number];
  * `taxRateState()` (`@openlinker/core/products`) — reused here rather than
  * re-derived, so the row can never disagree with the classification that
  * produced it.
+ *
+ * `unknownReason` (#2264, provenance for the operator only, never control
+ * flow) is populated when the catalogue named WHY it reports `'no-rate'` —
+ * mirroring `StoredTaxRate.unknownReason` exactly, including its
+ * optionality: a line resolved from its own `order_line_items.taxRate`
+ * column never carries one (the column has no such provenance to report),
+ * and a `'not-checked'` observation never carries one either (there was no
+ * "no rate" answer to explain).
  */
 export interface TaxCoverageLineRateObservation {
   productId: string;
@@ -165,6 +173,8 @@ export interface TaxCoverageLineRateObservation {
   /** Resolved rate code, or `null` when `state` is `'no-rate'` / `'not-checked'`. */
   rateCode: string | null;
   state: TaxRateState;
+  /** Why the catalogue named no rate, for `state === 'no-rate'` only — see doc comment above. */
+  unknownReason?: TaxRateUnknownReason | null;
 }
 
 /**
