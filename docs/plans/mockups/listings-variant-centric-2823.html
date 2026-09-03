@@ -6,7 +6,7 @@
 <title>#2823 — /listings variant-centric coverage · UI Mockups</title>
 <!--
   ═══════════════════════════════════════════════════════════════════════════
-  #2823 — /listings as a VARIANT-CENTRIC coverage table  ·  ROUND 3
+  #2823 — /listings as a VARIANT-CENTRIC coverage table  ·  ROUND 4
   ═══════════════════════════════════════════════════════════════════════════
 
   What this file is for
@@ -21,10 +21,86 @@
   product A is listed on Allegro and Erli, but NOT on WooCommerce. I expand it
   and then I see price, stock, when it was updated."
 
-  ── ROUND 3: THE PM DREW A LO-FI, AND IT MOVED FOUR THINGS ────────────────
-  Rounds 1-2 designed this from the issue text. Round 3 reproduces a hand-drawn
-  lo-fi instead, using only components that already ship. Four changes, and
-  three of them are the lo-fi correcting the earlier rounds:
+  ── ROUND 4: ONE DESIGN, AND THE EXPANSION GETS ITS EXIT BACK ─────────────
+  Rounds 1-3 carried TWO designs side by side and asked the PM to pick. The
+  pick happened (3 September 2026) and it is recorded here rather than in a
+  comment thread, because the losing design shaped seven of this file's eleven
+  frames and someone will otherwise redraw it.
+
+  THE COLUMN GRID IS REJECTED. One column per connection, a shape in each
+  cell, the connection's name in the header. It is gone from every frame, and
+  the two frames that measured it keep the measurement without redrawing it,
+  because the ceiling is worth knowing about. Two things killed it and they
+  are different failures:
+
+    · WIDTH. Every connection cost 92 px of a container that has about 1220,
+      so the tenth column left the page — 459 px past the edge at fourteen —
+      and from there the only answer was sideways scrolling. The 92 px was not
+      a preference either: it was sized on `INVALID`, the one word the grid
+      could afford to contain, and one connection renamed from `Erli` to
+      `Erli Marketplace PL` would have taken a column away by itself. A
+      ceiling that moves with the operator's LABELS is not one you can design
+      against.
+    · SILENCE. A dot in the fourth column means "Active on Shopify" only
+      while the word `Shopify` is on screen. The table is ten rows tall and
+      the header is one, so most of the time an operator spends on this page,
+      the header is scrolled off and the marks say nothing. Sticky headers
+      would have fixed that and are not coming (PM decision) — and the system
+      agrees: `DataTable` has no pinned-header support of any kind, its only
+      pinned element being the bottom `footer` rail (`position: fixed`,
+      data-table.tsx:118-130). Frame 02 reproduces the scrolled state rather
+      than describing it.
+
+  What survives is the strip: one wrapping row of pills per variant, each
+  carrying its own connection's name and, when it is not Active, its state.
+  Not a new pattern — variant-stock-table.tsx:253-270 renders this row on
+  /products today (a `.coverage-pills` strip of one pill per listed
+  connection, labelled by `soleOfPlatform`, plus a publish CTA). This file
+  extends it by the two things #2823 settled: a gap pill PER missing
+  connection rather than one CTA for all of them, and the lifecycle on the
+  pill.
+
+  THREE CHANGES TO THE EXPANDED ROW, also round 4:
+
+  1. THE GAP BUTTONS MOVED BELOW THE TABLE. Round 3 put them above and argued
+     that the thing to act on should lead. That was wrong about what the
+     expansion IS: it is a statement of where this variant currently lives, so
+     opening it with a list of places it does not put a form where a status
+     belonged. The order now reads "here is where this is, and here is where
+     it could also be" — the same order the strip in the parent row already
+     reads in. Stated cost: at fourteen connections the rail sits under a
+     seven-column table and needs a scroll to reach. Survivable because the
+     strip already announced the gaps by absence, and because a row is
+     expanded by someone who wanted the offers.
+
+  2. THE EXPANSION'S ROWS NAVIGATE. Each row links to `/listings/:id`. This
+     is a REGRESSION BEING REPAIRED, not a feature: today's /listings table
+     passes `rowHref={(m) => m.id}` (listings-list-page.tsx:918), so its rows
+     already open the mapping card, and round 3 lost that when it demoted the
+     table one level (change 3 of round 3, below). A dev should expect to keep
+     shipped behaviour here, not to write it.
+
+  3. THE DESTINATION IS DRAWN, ONCE, LIGHTLY — frame 05. `/listings/:id`
+     exists (listings.route.tsx:51-58) and `ListingDetailPage` already renders
+     `eyebrow="Listings"` over `title={`Mapping — ${mapping.externalId}`}` with
+     a back link to /listings (listing-detail-page.tsx:124-136), over a
+     `KeyValueList` of eight fields (:139-161). The frame transcribes that and
+     stops: no marketplace-offer section, no `Offer creation` block, no
+     `Context` payload panel, no `Edit offer` action (PM decision). It exists
+     because an expansion whose rows click through to nowhere is a design
+     nobody checked — not to redraw a finished screen.
+
+     Note what the split between the two clickable things is: not a choice.
+     "Expandable takes precedence over `rowHref` for the row-level click"
+     (data-table.tsx:90) and `linkifyFirstCell` is `Boolean(href) &&
+     !expandable` (:472). A row cannot both expand and navigate, so the outer
+     variant row expands, the inner listing row links, and neither could take
+     the other's job.
+
+  ── ROUND 3: THE PM DREW A LO-FI, AND IT MOVED THREE THINGS ───────────────
+  Rounds 1-2 designed this from the issue text. Round 3 reproduced a
+  hand-drawn lo-fi instead, using only components that already ship. All three
+  changes still stand:
 
   1. THE LIFECYCLE TABS COME BACK. Round 1 removed them (variant view replaces
      the mapping table, "Invalid" returns as a state filter) and paid for it:
@@ -52,71 +128,28 @@
      (`.listing-cell__offerid`) and the lifecycle badge, both of which lose
      their host when the identity cell moves up to the parent row. So the
      redesign does not replace the mapping table at all — it demotes it one
-     level. Nothing about it is invented.
-
-  4. MANY CONNECTIONS IS NOW A DRAWN FRAME, NOT A MEASUREMENT IN A COMMENT.
-     Round 2 measured a ceiling of ten columns and wrote the number down.
-     The PM asked for it drawn, on invented channel names, so dev and the
-     business can SEE the cliff instead of trusting a figure. Frame 01 carries
-     a live 3 / 9 / 14 switch and prints the overflow in px as measured by the
-     page itself (`measureInto()`), so the number can never drift from the
-     picture. Frame 06 is the diagnosis plus a priced menu of four ways out.
-
-  5. THERE ARE NOW TWO VARIANTS, BECAUSE THE MARK WAS SILENT. Variant A —
-     everything above — puts a shape in a column and lets the column header
-     say which connection it belongs to. The PM found what that costs by
-     scrolling: the table is ten rows tall and the header is one, so most of
-     the time the operator spends on this page, the header is off-screen and a
-     dot in the fourth column means nothing at all. Sticky headers are not
-     coming (PM decision), and the system agrees — `DataTable` has no
-     pinned-header support of any kind, its only pinned element being the
-     bottom `footer` rail (`position: fixed`, data-table.tsx:118-130).
-
-     So VARIANT B moves the name into the mark: one wrapping strip of pills in
-     the row, each carrying its connection's name and, when it is not Active,
-     its state. It is not a new pattern — variant-stock-table.tsx:253-270
-     renders this exact row on /products today (a `.coverage-pills` strip of
-     one pill per listed connection, labelled by `soleOfPlatform`, plus a
-     publish CTA). B extends it by the two things #2823 already settled: a gap
-     pill PER missing connection rather than one CTA for all of them, and the
-     lifecycle on the pill.
-
-     Order in the strip is FIXED, by connection, identical in every row (PM
-     decision). Stated cost: the gaps are scattered through the strip, so the
-     column of gaps that A can be read straight down is gone, and at fourteen
-     connections the accent can land on the third wrapped line. Stated
-     benefit: "is this on Erli?" is the same place in the reading order in
-     every row, with no header involved.
-
-     Frame 02 measures each in the dimension it was expected to fail in, and
-     B's never failed. A runs out of width and stops at nine connections, as
-     predicted. B was supposed to pay for that in row height, and it does not:
-     64 px at three connections, 64 px at nine, 64 px at fourteen. The reason
-     is structural rather than lucky — the strip carries only connections the
-     variant is LISTED on (PM decision, and the gaps moved to the expansion to
-     make it hold), so it is bounded by how many offers a variant has, which
-     is a handful, and not by how many connections the operator has. A's cells
-     are the mirror image: one per connection whether anything is there or
-     not, so its width tracks the operator's setup.
-
-     What B actually gives up is that it answers "where is this?" and answers
-     "where is it NOT?" only by absence. That is a scanning cost, not a pixel
-     cost, no measurement settles it, and which variant ships is the PM's
-     call rather than this file's.
+     level. Nothing about it is invented, which is also why round 4's change 2
+     is a repair rather than an addition.
 
   ⁃⁃ CORRECTIONS TO THE ISSUE ──────────────────────────────────────────────
   Verified against the codebase at origin/main a9c6a46. Each one changes scope.
 
   1. "Badge shows listed/available count per channel (`Allegro 1/1`,
-     `Erli 0/1`)" carries NO INFORMATION. One column is one CONNECTION here
-     (PM decision, round 3), and a variant is listed on a connection binarily,
-     so `1/1` is "yes" in costume. The counter is gone with no successor: the
-     case it was reaching for — two accounts on one platform — is now two
-     columns, labelled by the shipped `soleOfPlatform` rule
+     `Erli 0/1`)" carries NO INFORMATION. A variant is listed on a connection
+     binarily, so `1/1` is "yes" in costume. The counter is gone with no
+     successor: the case it was reaching for — two accounts on one platform —
+     is handled by the shipped `soleOfPlatform` rule
      (listings-coverage-pills.tsx:56-60): a platform with one connection is
      labelled by the PLATFORM, a platform with several by each connection's
-     operator-authored NAME. Frame 01 at 14 columns shows it: "Konto Główne"
-     and "Outlet" instead of two columns both saying "Allegro".
+     operator-authored NAME. Frame 01 at 14 connections shows it — "Konto
+     Główne" and "Outlet" instead of two pills both saying "Allegro".
+
+     A DIFFERENT counter is an open question rather than a rejected one, and
+     it is recorded in the handover frame: the strip answers "where is this?"
+     and answers "where is it NOT?" only by absence, so a per-row coverage
+     count ("on 11 of 14") would make absence countable without listing it.
+     Deliberately not drawn — counters were cut from this design once, so
+     putting one back should be a decision rather than a drift.
 
   2. "the relevant badge updates without a page reload" after a successful
      publication cannot read existing data, because DURING publication there
@@ -126,7 +159,7 @@
      `adapter.createOffer(command)` returns at :146. While the job is queued
      or in flight the mapping does not exist in any state, pending included.
      Progress lives in a disjoint entity (`BulkOfferCreationBatch` /
-     `OfferCreationRecord`). So the in-publication cell state in frame 07 is a
+     `OfferCreationRecord`). So the in-publication state in frame 07 is a
      DATA GAP, marked †, not a read.
 
   3. "Rows sorted by product; a product's variants appear consecutively" is
@@ -135,25 +168,26 @@
      (offer-mapping.repository.ts:221-224) and its query DTO carries no sort
      field. `/products` DOES have `sort`/`dir` (list-products-query.dto.ts:30-42)
      — a proven precedent — but none of its values groups by product either.
-     A `productId, variantId` order key is new work. Flat rows (change 2) make
-     it the ONLY thing standing between the AC and the drawing.
+     A `productId, variantId` order key is new work. Flat rows (round 3's
+     change 2) make it the ONLY thing standing between the AC and the drawing.
 
   4. "Only with missing listings" needed a rule for what "available" means.
-     Round 1 invented a third cell state — "not applicable" — backed by a
-     per-product channel switch that EXISTS NOWHERE in the domain. Round 3
-     retires that invention and replaces it with one that has real backing:
-     a gap is only actionable where `publishDestinationKind(connection)`
-     resolves (publish-destinations.ts:60-67) — `OfferCreator` for a
-     marketplace, or *enabled* `ProductPublisher` for a shop. WooCommerce
-     declares `OfferManager` but NOT `OfferCreator`
-     (woocommerce-plugin.ts:80-86), so a WooCommerce connection with
-     ProductPublisher switched off is a column that can hold listings and
-     cannot accept new ones. That cell gets a rule, not a `+`: a button into a
-     dead end is worse than no button.
+     Round 1 invented a third state — "not applicable" — backed by a
+     per-product channel switch that EXISTS NOWHERE in the domain. That
+     invention is retired and replaced with one that has real backing: a gap
+     is only actionable where `publishDestinationKind(connection)` resolves
+     (publish-destinations.ts:60-67) — `OfferCreator` for a marketplace, or
+     *enabled* `ProductPublisher` for a shop. WooCommerce declares
+     `OfferManager` but NOT `OfferCreator` (woocommerce-plugin.ts:80-86), so a
+     WooCommerce connection with ProductPublisher switched off can hold
+     listings and cannot accept new ones. Such a gap is NAMED and not offered
+     — a `.coverage-pill--none`, not a button — because a button into a dead
+     end is worse than no button.
 
-  ── THE CELL VOCABULARY, AND WHY IT HAS ONLY ONE WORD IN IT ───────────────
-  The lo-fi drew three coloured things in the grid: a red `Invalid` badge, a
-  yellow `Unsynced` badge and an orange `+`. Two of those had to change.
+  ── THE VOCABULARY ────────────────────────────────────────────────────────
+  The lo-fi drew three coloured things: a red `Invalid` badge, a yellow
+  `Unsynced` badge and an orange `+`. One of those had to change, and the
+  correction is independent of which design won.
 
   YELLOW IS NOT AVAILABLE. `Unsynced` renders `Not synced` in tone `neutral`,
   not `warning` — listing-row-state.ts:176-182, with the comment "soft, like
@@ -163,44 +197,33 @@
   synchronizacji" line has the same problem: `listingRowAlert` returns null
   for an Unsynced row. Both are corrected here.
 
-  THE WORD DOESN'T FIT, AND THAT IS A CEILING, NOT A TYPOGRAPHY DETAIL.
-  A table column is as wide as its widest cell, so a word in a cell IS a
-  column width, and a column width at nine columns is the difference between
-  fitting and not. `INVALID` sets the floor at 5.5rem (88 px). `NOT SYNCED`
-  is three characters longer and would raise every channel column with it —
-  and only on the pages where a variant happens to have an unread status,
-  which means the ceiling would move with the DATA rather than with the number
-  of connections. Nobody can design against that.
+  THE REJECTED GRID HAD TO RATION WORDS; THE STRIP DOES NOT. A table column is
+  as wide as its widest cell, so a word in a cell IS a column width — which is
+  why the grid allowed exactly one word (`Invalid`) and made Draft, Ended and
+  Not synced share a hollow dot, told apart only in the expansion. A strip
+  pays no such rent: its width comes from the table's remainder, not from its
+  longest label. So the lifecycle word rides on the pill and those three
+  states now say which one they are, in the row. Six marks, each labelled,
+  none depending on a column header — drawn and sourced in frame 03.
 
-  Measured in the browser rather than argued, and this is the figure that
-  changed once the file actually rendered: at 9 connections the table needs
-  about 1219 px against a 1220 px container. It fits, and it fits by a single
-  pixel — so the lo-fi as drawn is not near the ceiling, it IS the ceiling.
-  Read that as the finding rather than as a rounding error, because what
-  consumes the last pixel is not the data but the LABEL: `WooCommerce`
-  measures 99 px against `Erli`'s 92, and one connection renamed from `Erli`
-  to `Erli Marketplace PL` takes the ninth column away. Frames 01 and 06
-  print both numbers — the declared floor and the widest actual column —
-  because only the first is under our control.
-
-  So (PM decision, round 3): a STATE shows a SHAPE, an ERROR shows a WORD.
-    · listed and live        → filled dot
-    · listed, not live       → hollow dot        (Draft / Ended / Not synced)
-    · listed, rejected       → red `Invalid` badge, the only word in the grid
-    · not listed             → `+` button, the only accent in the grid
-    · not listed, no path    → rule (see correction 4)
-  Colour is never the only signal — filled vs hollow vs plus vs rule are four
-  different shapes — and every cell carries the full sentence for a screen
-  reader. The consequence is that the expanded row is now the ONLY place
-  Draft, Ended and Not synced are told apart in variant A, which is why frame 01 is a
-  clickable prototype rather than a picture.
+  Colour is never the only signal, because every mark carries text. Five of
+  the six are shipped CSS; only the selection outline (`.coverage-cell
+  --matched`) is this file's own, and its contrast is measured at the rule.
 
   ── DECISIONS TAKEN WITH THE PM ───────────────────────────────────────────
-  · One column = one CONNECTION, headed by the `soleOfPlatform` rule. Not one
-    per platform: aggregating two accounts into one cell needs a "which state
+  · A pill is one CONNECTION, labelled by the `soleOfPlatform` rule. Not one
+    per platform: aggregating two accounts into one mark needs a "which state
     wins" rule, and there is no `computeWorstStatus` anywhere in the offer
     domain (the only one in the repo is analytics-trust, an unrelated bounded
     context).
+  · ORDER IN THE STRIP IS FIXED, by connection, identical in every row. Cost:
+    the gaps are not readable as a column the way the grid's were. Benefit:
+    "is this on Erli?" is the same place in the reading order in every row,
+    with no header involved.
+  · The strip carries ONLY connections the variant is listed on. The gaps are
+    in the expansion. That is what bounds the row's height by how many offers
+    a variant HAS — a handful — rather than by how many connections the
+    operator has, which is the load-bearing property frame 02 measures.
   · The tab counts keep counting OFFERS, as they do today — `lifecycleCounts`
     is returned by the API for free (listings.types.ts:220-227) and is never
     narrowed by the lifecycle filter itself. Said plainly, because it stops
@@ -208,11 +231,11 @@
     of the five buckets, computed client-side.
   · The tab filters rows any-match: a variant survives if any one of its
     offers is in that state. Offer state does NOT roll up to the row.
-  · The tab does NOT quieten the cell. Today a badge is suppressed when the
+  · The tab does NOT quieten the mark. Today a badge is suppressed when the
     tab already states it (`activeLifecycle`, listing-row-state.ts:104-112) —
-    in a grid that rule would blank the only signal in the cell, so it is not
-    ported. Instead the cell that put the row on the tab takes an outline,
-    because at nine columns you otherwise cannot see WHICH one it was.
+    here the pill IS the mark, so suppressing it would blank what the row is
+    made of. Instead the pill that put the row on the tab takes an outline,
+    because a strip of five pills does not say by itself which one answered.
   · No selection, no bulk bar. The square beside the chevron is a
     ProductThumbnail. The only bulk action worth having — one variant to N
     channels — is blocked in the data: `BulkListingBatch.connectionId` is a
@@ -221,23 +244,28 @@
     a parameter.
   · No column sorting in v1. Matches the page as built: no column definition
     sets `sortable`.
-  · The scale mitigation (frame 06) goes to its own issue, not this one.
 
   ── HOUSE RULES OBSERVED ──────────────────────────────────────────────────
   Tokens in section 1 are transcribed from apps/web/src/index.css:185-505,
   copied not re-derived (`pnpm lint` drift-checks that source block against
   shared/theme/tokens.ts, so it is the canonical palette). Component CSS in
   sections 3a/3b is transcribed from the same file, with the source line noted
-  per block. SIX component rules are invented and they live alone in section
-  4, built only from existing tokens: `.coverage-cell` (with its state
-  modifiers and `--matched`), `.coverage-col`, `.identity-col`,
-  `.coverage-slack`, `.products-row-cta--icon`, and one page-scoped cap,
-  `.variant-detail .listing-cell__reason`. No new colour, radius, shadow or
-  spacing VALUE appears anywhere in this file.
+  per block. FOUR component rules are invented and they live alone in section
+  4, built only from existing tokens: `.coverage-cell` (now only a positioning
+  wrapper) with `--matched`, `.identity-col`, `.coverage-table-b` +
+  `.coverage-strip-col`, and one page-scoped cap, `.variant-detail
+  .listing-cell__reason`. No new colour, radius, shadow or spacing VALUE
+  appears anywhere in this file.
 
-  Two inventions from round 1 are RETIRED: `.run-marker` (flat rows have no
-  runs) and the `na` cell state (its backing flag did not exist; see
-  correction 4).
+  Round 3 listed six. `.coverage-col` (the 92 px channel-column budget) and
+  `.coverage-slack` (an empty trailing column absorbing surplus width) went
+  with the grid — a fixed-layout table hands the remainder to the strip on its
+  own, so there is nothing to absorb and no channel columns to budget. So did
+  `.products-row-cta--icon`, the shipped CTA with its label replaced by a
+  glyph: it only made sense in a cell that WAS a channel, and a pill that
+  names its channel keeps the label. Two inventions from round 1 are also
+  retired: `.run-marker` (flat rows have no runs) and the `na` cell state (its
+  backing flag did not exist; see correction 4).
 
   `.coverage-cell` centres its own content with flex instead of asking
   `DataTable` for a centred column: `align` is `'left' | 'right'` only, and
@@ -246,21 +274,28 @@
   in the same change". A cell component that centres itself needs neither.
 
   ── WHAT ALREADY SHIPS, AND IS WORTH KNOWING BEFORE SCOPING ───────────────
-  · The frozen identity column plus horizontal scroll is not a thing to
-    build. `DataTable` takes `stickyLeftColumns` (data-table.tsx:164-181) and
-    `/listings` already passes 1 (listings-list-page.tsx:914). The expander
-    cell freezes with it. Frame 06's cheapest mitigation costs zero points
-    because it is the page's current behaviour.
+  · The expansion's rows already navigate. `DataTable` takes `rowHref`, and
+    /listings already passes `(m) => m.id` (listings-list-page.tsx:918)
+    against the existing `/listings/:id` route. Round 4's change 2 is that
+    behaviour surviving the demotion, so it costs nothing to keep and would
+    cost something to drop. `rowLinkDisplay="block"` is deliberately NOT
+    carried over: its reason (#2023) is a tall composite first cell, and the
+    expansion's first cell is a one-line `mono-text` offer id.
   · Clicking a gap needs no new route. `bulk-create-wizard-page.tsx` already
     reads `?productIds=&variantIds=&connectionId=`. `OfferProductPickerModal`
     has only `initialProductIds` (no `initialVariantIds`), so preselecting
     through the modal WOULD be new scope — which is why the gap links past it.
-  · A new channel arrives without a colour. `--channel-*` tokens exist for
-    allegro / erli / woocommerce / prestashop / amazon / shopify and nothing
-    else, and `.channel-pill::before` falls back to `--text-muted`. That is
-    not hypothetical: #2028 fixed exactly this for Erli and WooCommerce, whose
-    hues "had been defined but never wired". Frames 01 and 06 draw the
-    invented channels honestly, with grey dots.
+  · A new channel arrives without a colour, and this matters MORE here than it
+    did to the grid, because the pill is where the channel is named. Tokens
+    exist for allegro / erli / woocommerce / prestashop / amazon / shopify and
+    nothing else, and `.channel-pill::before` falls back to `--text-muted`.
+    Not hypothetical: #2028 fixed exactly this for Erli and WooCommerce, whose
+    hues "had been defined but never wired". Frames 01 and 02 draw the
+    invented channels honestly, with grey dots, and frame 02 counts them.
+  · One reporting note carried forward: `.text-muted` has NO global rule in
+    index.css — the only match is `.ai-provider-table .text-muted` (:9211) —
+    so `EmptyValue`'s em-dash renders in the inherited colour on every other
+    surface. Worth its own issue; this file works around it.
 -->
 <style>
 /* ═══════════════════════════════════════════════════════════════════════
@@ -873,6 +908,97 @@ input[type='checkbox'] {
   color: var(--accent-primary-hover);
 }
 
+/* ── The mapping card's chrome (round 4) ────────────────────────────────
+      All transcribed, none invented. `.page-header__content` is the wrapper
+      `PageLayout` always renders (page-layout.tsx:24-31) — the mockup did not
+      need it while every frame used the split header with no back link.
+      `.back-link` is index.css:1982-2007, `.key-value-list` is :5027-5075,
+      `.detail-section` is :8147-8150. The card is `ListingDetailPage`'s own
+      composition (listing-detail-page.tsx:124-162), so the classes come from
+      there rather than from `.detail-grid`, which this file already carries
+      and which that page does not use. ─────────────────────────────────── */
+.page-header__content { display: grid; gap: 0.75rem; }
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  justify-self: start;
+  font-size: 0.8125rem;
+  line-height: 1.2;
+  color: var(--text-muted);
+  text-decoration: none;
+  padding: 0.25rem 0;
+  transition: color 120ms ease;
+}
+.back-link:hover { color: var(--text-primary); }
+.back-link:focus-visible { outline: 2px solid var(--accent-focus); outline-offset: 2px; }
+.back-link__glyph { font-size: 0.9em; line-height: 1; }
+
+.detail-section { display: grid; gap: 0.75rem; }
+
+.key-value-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+@media (min-width: 768px) {
+  .key-value-list { grid-template-columns: minmax(160px, max-content) 1fr; }
+}
+.key-value-list__label,
+.key-value-list__value {
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+  margin: 0;
+}
+.key-value-list__label {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  background: var(--bg-shell);
+}
+.key-value-list__value { color: var(--text-primary); font-size: 0.8125rem; word-break: break-word; }
+.key-value-list__value--mono { font-size: 0.75rem; color: var(--text-secondary); }
+.key-value-list__label:first-of-type,
+.key-value-list > :nth-child(-n + 2) { border-top: 0; }
+
+/* ── A row that navigates (index.css:2929-2966) ─────────────────────────
+      The expansion's inner table is the shipped /listings table one level
+      down, and that table's rows navigate (`rowHref`, listings-list-page.tsx
+      :918). Round 3 demoted the table and dropped the behaviour; round 4 puts
+      it back.
+
+      `.data-table__row-link--block` is deliberately NOT transcribed. Its
+      reason (#2023) is a tall composite first cell — thumbnail over a name
+      line over a meta line — whose inline line box left the focus ring
+      painted across the row's middle. Here the first cell is a one-line
+      `mono-text` offer id, so the default inline anchor's line box already
+      matches the row and the ring encloses it. Copying the modifier would
+      carry a decision without its cause. ─────────────────────────────────── */
+.data-table__row--linked { cursor: pointer; transition: background var(--duration-fast) var(--ease-out); }
+.data-table__row--linked:hover { background: color-mix(in oklab, var(--bg-shell) 60%, transparent); }
+.data-table__row--linked:hover .data-table__row-link { color: var(--accent-primary); }
+.data-table__row-link {
+  color: var(--text-primary);
+  text-decoration: none;
+  font-weight: 500;
+  transition: color var(--duration-fast) var(--ease-out);
+}
+.data-table__row-link:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--radius-xs);
+}
+
 .toolbar {
   display: flex;
   align-items: center;
@@ -1321,27 +1447,13 @@ input[type='checkbox'] {
   white-space: nowrap;
 }
 
-/* ── Frozen leading columns (index.css:2893) — `DataTable`'s
-      `stickyLeftColumns`, which /listings already passes as 1
-      (listings-list-page.tsx:914). The boundary edge appears only once the
-      row is actually scrolled and content is hidden beneath it. ─────────── */
-.data-table__sticky-col { position: sticky; z-index: 2; background: var(--bg-surface); }
-.data-table thead th.data-table__sticky-col { z-index: 3; background: var(--bg-shell); }
-.data-table__row--expandable:hover .data-table__sticky-col {
-  background: color-mix(in oklab, var(--bg-shell) 60%, var(--bg-surface));
-}
-.data-table__row--expanded .data-table__sticky-col {
-  background: color-mix(in oklab, var(--bg-shell) 45%, var(--bg-surface));
-}
-.data-table__sticky-col--last { box-shadow: none; }
-.data-table--sticky-scrolled .data-table__sticky-col--last {
-  box-shadow:
-    inset -1px 0 0 color-mix(in oklab, var(--accent-primary) 42%, transparent),
-    6px 0 12px -6px color-mix(in oklab, var(--accent-primary) 22%, transparent);
-}
-@media (prefers-reduced-motion: no-preference) {
-  .data-table__sticky-col--last { transition: box-shadow var(--duration-normal) var(--ease-out); }
-}
+/* Frozen leading columns (`stickyLeftColumns`, index.css:2893) were
+   transcribed in round 3 and are deleted with variant A. The only writer of
+   those classes was `applyStickyOffsets`, and freezing a column here would
+   pin something nothing can slide under: the coverage table is
+   `table-layout: fixed` and does not scroll sideways. `.data-table__row
+   --expandable` / `--expanded` are unaffected — they are declared on their
+   own, above, and the surviving table still expands.
 
 /* ── The attention line (index.css:18691). Red means "someone has to change
       something"; `--muted` is the same slot reporting a state (#2231). ──── */
@@ -1405,66 +1517,43 @@ input[type='checkbox'] {
 .alert__description p { margin: 0; }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   4. THE SIX INVENTED RULES
-      Everything above is transcribed. These five are new, and they are the
+   4. THE FOUR INVENTED RULES
+      Everything above is transcribed. These four are new, and they are the
       whole design. All are built only from existing tokens.
 
-      `.coverage-cell` — one connection × one variant. Five states that differ
-      in SHAPE first and colour second, because the style guide's own rule is
-      that colour is never the only signal:
+      Round 3 listed six, and two of them belonged to variant A's grid:
+      `.coverage-col` (a 92 px width budget sized on the word `INVALID`) and
+      `.coverage-slack` (an empty trailing column to absorb surplus width).
+      Both are gone with the grid — a `table-layout: fixed` table hands the
+      remainder to the strip on its own, so there is nothing left to absorb,
+      and there are no channel columns left to budget. `.products-row-cta
+      --icon` went with them: it was the shipped CTA with its label replaced
+      by a glyph, which only made sense in a cell that WAS a channel. The
+      surviving pill names its channel, so it keeps the label.
 
-        listed, live         filled dot    ●   quiet, `--text-secondary`
-        listed, not live     hollow dot    ○   quiet, `--text-muted`
-        listed, rejected     `Invalid`     ▭   the shipped error StatusBadge
-        not listed           `+` button    +   the only accent in the grid
-        not listed, no path  rule          —   `--text-muted`
+      `.coverage-cell` — reduced to a positioning wrapper. Only the `--matched`
+      state still uses it: it centres the pill it wraps and gives the outline
+      something to sit on. The five shape-states it used to carry (filled dot,
+      hollow dot, rule) were variant A's alphabet and are deleted; every mark
+      in the surviving design is a labelled pill, documented in frame 03.
 
-      Why `--text-muted` and not `--text-disabled` on the two quiet states:
-      round 1 measured `--text-disabled` at 2.67:1 light / 2.18:1 dark against
-      the row surface, which fails 1.4.11 for a graphic that carries meaning.
-      `--text-muted` measures 5.5:1 / 4.7:1. The hierarchy of quiet is
-      therefore carried by MASS — a 1 px rule against a 9 px dot — not by
-      dropping contrast until the mark is illegible.
-
-      Why the cell centres itself rather than asking for a centred column:
+      Why it centres itself rather than asking for a centred column:
       `DataTableColumn.align` is `'left' | 'right'` only, and the style guide
       records that `.data-table__cell--center` was deleted in #2023 once it
       proved consumerless — "re-adding it means re-adding the CSS in the same
       change". A cell component that owns its own axis needs neither.
 
-      `.coverage-col` — the channel column's width budget, and the number that
-      sets the ceiling. Sized on `INVALID`, the one word allowed into the grid.
-      Not estimated: the rendered badge measures 75.5 px, the cell keeps
-      `--space-2` side padding instead of the table's `--space-4`, so the
-      column needs 91.5 px and gets 5.75rem (92 px). The first draft declared
-      5.5rem and watched the browser widen the column to 92 anyway on every
-      page that happened to contain a rejected offer — which is the failure
-      mode the whole vocabulary decision exists to avoid, so the number is
-      declared rather than discovered. Every other state is a shape and fits
-      any width, so the ceiling now moves only with the number of connections
-      and with the header LABELS (`WooCommerce` measures 99 px against
-      `Erli`'s 92). Written as `.data-table .coverage-col` because
-      `.data-table th, .data-table td` already sets the padding and outranks a
-      bare class.
+      `.coverage-cell--matched` — the selection outline, and the one mark in
+      the vocabulary this file invented. Its contrast measurement is recorded
+      immediately above the rule.
 
       `.identity-col` — 22rem, the floor that keeps the two-line identity from
       wrapping into a third. Shorter than the 28rem the listings carve-out
       uses (style guide § Density & Row Heights) because this row drops the
       offer id from its meta line: a variant is not an offer.
 
-      `.coverage-slack` — an empty trailing column whose only job is to absorb
-      the leftover width. `.data-table` is `width: auto; min-width: 100%`, so
-      with every real column fixed the surplus has to land somewhere, and
-      round 1 measured what happens when it lands on the identity cell: 659 of
-      1440 px, pushing the channel columns 339 px away from the names they
-      belong to. It is NOT an actions column — this design has no row actions,
-      and calling it one would invite someone to fill it.
-
-      `.products-row-cta--icon` — the shipped CTA with its label replaced by a
-      glyph. /products renders it once per row as "+ Create offer" (#1720
-      review: "one button covers every gap, not one per gap"); a grid inverts
-      that by construction, because a cell IS a channel. The minimum width
-      keeps a glyph-only control from collapsing below a usable target.
+      `.coverage-table-b` + `.coverage-strip-col` — the fixed-layout table and
+      the column the strip wraps inside. Documented at the rule itself, below.
    ═══════════════════════════════════════════════════════════════════════ */
 .coverage-cell {
   display: flex;
@@ -1472,34 +1561,16 @@ input[type='checkbox'] {
   justify-content: center;
   min-height: 1.25rem;
 }
-.coverage-cell--live::before,
-.coverage-cell--dormant::before {
-  content: '';
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-}
-.coverage-cell--live::before { background: var(--text-secondary); }
-.coverage-cell--dormant::before {
-  border: 1.5px solid var(--text-muted);
-  background: transparent;
-}
-.coverage-cell--blocked::before {
-  content: '';
-  width: 10px;
-  height: 1px;
-  background: var(--text-muted);
-}
 /* `--accent-primary`, not `--accent-primary-border`, and the reason is a
    measurement rather than a preference. This outline is the ONLY thing saying
-   which cell put the row on a lifecycle tab, so 1.4.11 applies to it as a
+   which PILL put the row on a lifecycle tab, so 1.4.11 applies to it as a
    state indicator — and `--accent-primary-border` measures 1.63:1 light /
    1.92:1 dark against the row surface, while the soft fill behind it is
    1.15:1 and perceptually not there at all. Together they were a state
    nobody could see. `--accent-primary` measures 3.07:1 / 7.00:1, which
    passes, and it is the token the system already uses to say "this one" —
    `.tabs__trigger[data-state='active']` draws its underline with it, so the
-   tab and the cell that answers the tab end up the same colour. Light mode
+   tab and the pill that answers the tab end up the same colour. Light mode
    clears the bar by 0.07, which is thin: `--accent-primary-hover` (3.88:1 /
    8.12:1) is the escalation if a reviewer wants margin. The fill stays,
    doing the job it can actually do — a wash that reads as "here" once the
@@ -1510,14 +1581,7 @@ input[type='checkbox'] {
   background: var(--accent-primary-soft);
 }
 
-.data-table .coverage-col {
-  width: 5.75rem;
-  min-width: 5.75rem;
-  padding-left: var(--space-2);
-  padding-right: var(--space-2);
-}
 .data-table .identity-col { width: 22rem; min-width: 22rem; }
-.data-table .coverage-slack { width: 100%; padding-left: 0; padding-right: 0; }
 
 /* Variant B's table, and the seventh invented rule. `table-layout: fixed` is
    not a preference here, it is the only thing that makes the strip WRAP: a
@@ -1538,13 +1602,6 @@ input[type='checkbox'] {
   width: 100%;
 }
 .coverage-table-b .coverage-strip-col { width: auto; }
-
-.products-row-cta--icon {
-  min-width: 1.5rem;
-  justify-content: center;
-  gap: 0;
-  padding: 2px 0;
-}
 
 /* A page-scoped cap on the attention line — the sixth invented rule, and the
    one that only showed up in a screenshot. `.listing-cell__reason` caps
@@ -1587,14 +1644,19 @@ input[type='checkbox'] {
 .ledger { display: grid; gap: var(--space-3); margin: 0; }
 .ledger__row {
   display: grid;
-  grid-template-columns: 5.5rem minmax(0, 1fr);
+  /* 13rem, not the 5.5rem round 3 used: that width was sized for a 20 px dot
+     and the marks are labelled pills now. `WOOCOMMERCE · INVALID` measures
+     ~145 px, and a centred pill in an 88 px column spilled out of BOTH sides
+     of the frame — the left half was clipped by the sheet edge. Left-aligned
+     rather than centred, because these widths vary by a factor of seven. */
+  grid-template-columns: 13rem minmax(0, 1fr);
   gap: var(--space-4);
   align-items: start;
   padding-bottom: var(--space-3);
   border-bottom: 1px solid var(--border-subtle);
 }
 .ledger__row:last-child { border-bottom: 0; padding-bottom: 0; }
-.ledger__mark { display: flex; align-items: center; justify-content: center; }
+.ledger__mark { display: flex; align-items: center; justify-content: flex-start; min-width: 0; }
 .ledger__body { display: grid; gap: 2px; min-width: 0; }
 .ledger__name { font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); }
 .ledger__desc { font-size: 0.75rem; color: var(--text-secondary); line-height: 1.55; }
@@ -1603,21 +1665,10 @@ input[type='checkbox'] {
   font-size: 0.6875rem;
   color: var(--text-muted);
 }
-.price-tag {
-  display: inline-block;
-  font-family: var(--font-mono);
-  font-size: 0.625rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  padding: 1px var(--space-2);
-  border-radius: var(--radius-xs);
-  background: var(--bg-surface-muted);
-  color: var(--text-secondary);
-  border: 1px solid var(--border-subtle);
-}
-.price-tag[data-cost='free'] { border-color: var(--status-success-border); background: var(--status-success-soft); color: var(--status-success-fg); }
-.price-tag[data-cost='high'] { border-color: var(--status-error-border); background: var(--status-error-soft); color: var(--status-error-fg); }
+/* `.price-tag` lived here and is deleted with round 4: its only consumer was
+   the priced menu of ways past the rejected grid's width ceiling, and a
+   costed-option chip with no options to cost is an invitation to invent
+   some. */
 
 /* ── Column heading that names whose number the column carries (index.css:18752).
       Price and quantity are what the CHANNEL reports, already through the
@@ -1710,23 +1761,31 @@ input[type='checkbox'] {
 <body>
 
 <div class="controls">
-  <span class="controls__label">#2823 · round 3 · variant-centric /listings</span>
+  <span class="controls__label">#2823 · round 4 · variant-centric /listings</span>
   <button type="button" class="toggle-btn" id="theme-toggle">Toggle theme</button>
 </div>
 
 <main class="sheet">
-  <h1 class="sheet__title">One row per variant, one column per connection</h1>
+  <h1 class="sheet__title">One row per variant, one strip of the channels it is on</h1>
   <p class="sheet__sub">
     Reproduces the hand-drawn lo-fi with components that already ship. Four rules govern every frame
-    below: a state shows a shape, an error shows a word, a gap is the only accent, and one column is
-    one connection. Every figure in the file is derived from a single fixture, so a number quoted in
-    one frame is the same number in the next.
+    below: every mark carries its own name, an error is the only red, a gap is the only accent, and
+    the row's height never depends on how many connections the operator has. Every figure in the file
+    is derived from a single fixture, so a number quoted in one frame is the same number in the next.
+  </p>
+  <p class="sheet__note">
+    <b>Round 4 removed a variant.</b> Rounds 1–3 carried two designs side by side — a grid with one
+    column per connection, and this strip. The grid is gone (PM decision, 3 September 2026): it ran
+    out of container width at the tenth connection, and past the header its marks stopped saying which
+    channel they belonged to. Frames 02 and 03 keep the measurement and the reasoning, because the
+    ceiling is worth knowing about; nothing in this sheet draws the grid any more, and the choice is
+    settled rather than open.
   </p>
   <p class="sheet__note">
     <b>Reading the marks.</b> <span class="gap-mark" title="Data gap: no read model or entity backs this yet">†</span>
     marks a state the design needs and today's data cannot produce — drawn as a proposal, never as a
-    screenshot of something that works. Every measurement printed in frames 01, 02 and 06 is taken by
-    the page from itself at render time, so it cannot drift away from the picture above it.
+    screenshot of something that works. Every measurement printed in frames 01 and 02 is taken by the
+    page from itself at render time, so it cannot drift away from the picture above it.
   </p>
 
   <!-- ══════════════════════════════════════════════════════════════════
@@ -1739,22 +1798,13 @@ input[type='checkbox'] {
       <span class="caption">1440 px · tabs switch · rows expand · filters apply · connection count switches</span>
     </div>
     <div class="note-stack" style="margin-bottom: var(--space-3)">
-      <!-- Rendered from JS, because the two variants do not fail in the same
-           dimension: A reports width against the container, B reports row
-           height and how many lines the strip wrapped to. One shared row of
-           slots would have to leave half of them blank in either mode. -->
+      <!-- Rendered from JS, because what the readout reports depends on which
+           screen is showing: the list reports the row height the strip grew
+           to, and the mapping card has nothing to measure and says so rather
+           than leaving a stale number from the screen underneath it. -->
       <div class="scale-readout" role="status" aria-live="polite" id="scale-readout"></div>
       <div style="display:flex; gap: var(--space-2); align-items:center; flex-wrap:wrap">
-        <span class="ledger__src">variant:</span>
-        <!-- `data-view`, not `data-variant`: a table ROW already carries
-             `data-variant` (the product variant's id), so the toggle's own
-             `querySelectorAll('[data-variant]')` matched 128 rows and stamped
-             `aria-pressed="false"` on every one of them — invalid ARIA on a
-             `<tr>`, and a name collision waiting to be a real bug the first
-             time a listener is attached after render. -->
-        <button type="button" class="toggle-btn" data-view="A" aria-pressed="true">A — marks in columns</button>
-        <button type="button" class="toggle-btn" data-view="B" aria-pressed="false">B — pills in the row</button>
-        <span class="ledger__src" style="margin-left: var(--space-3)">connections:</span>
+        <span class="ledger__src">connections:</span>
         <button type="button" class="toggle-btn" data-cols="3" aria-pressed="true">3 — today</button>
         <button type="button" class="toggle-btn" data-cols="9" aria-pressed="false">9 — the lo-fi</button>
         <button type="button" class="toggle-btn" data-cols="14" aria-pressed="false">14</button>
@@ -1768,10 +1818,20 @@ input[type='checkbox'] {
     <div class="app-frame" id="proto-app"></div>
     <p class="gap-legend">
       The switch is this sheet's control, not the product's — an operator never picks how many
-      connections they have. It exists so the ceiling is something you can feel by clicking rather
-      than a figure you have to trust. At 14 the two Allegro columns stop saying "Allegro" and start
-      saying "Konto Główne" and "Outlet", which is the shipped <code>soleOfPlatform</code> rule
+      connections they have. It exists so the row's cost is something you can feel by clicking rather
+      than a figure you have to trust: the readout above does not move as you go 3 → 9 → 14, which is
+      the load-bearing claim of this design. At 14 the two Allegro pills stop saying "Allegro" and
+      start saying "Konto Główne" and "Outlet", which is the shipped <code>soleOfPlatform</code> rule
       (<code>listings-coverage-pills.tsx:56-60</code>) doing its job.
+    </p>
+    <p class="gap-legend">
+      <b>Expand a row, then click one of its listings.</b> The rows inside the expansion navigate to
+      <code>/listings/:id</code> — the mapping card, frame 05 — which is what today's
+      <code>/listings</code> rows already do (<code>rowHref</code>,
+      <code>listings-list-page.tsx:918</code>) and what round 3 dropped when it demoted that table
+      one level. <code>← Listings</code> comes back to the row you left, still expanded. The
+      <code>+ Channel</code> buttons under the table do not navigate: there is no bulk-create screen
+      in this sheet, so they print the URL they would open.
     </p>
   </section>
 
@@ -1781,43 +1841,44 @@ input[type='checkbox'] {
   <section class="viewport-frame" id="frame-compare">
     <div class="viewport-frame__label">
       <span class="eyebrow-mono">02</span>
-      <b>Two variants, and they break in different directions</b>
-      <span class="caption">the scrolled header · then A and B at 3 / 9 / 14 connections, measured</span>
+      <b>The row does not grow when the operator adds a channel</b>
+      <span class="caption">the scrolled header · then the same fixture at 3 / 9 / 14 connections, measured</span>
     </div>
 
     <div class="frame-stack" id="scroll-proof-mount"></div>
 
     <p class="gap-legend">
-      This is the defect that does not show up in a screenshot of the top of the page. Both panels
-      above are scrolled past their own header — which is where an operator spends most of their time,
-      because the table is ten rows long and the header is one. In A the marks are still there and
-      have stopped meaning anything: a filled dot in the fourth column is only "Active on Shopify"
-      while the word <em>Shopify</em> is on screen. In B nothing was lost, because the name never
-      lived in the header. Sticky headers would also fix it and are not on the table — a decision, and
-      one the system agrees with: <code>DataTable</code> has no pinned-header support at all, its only
-      pinned element being the bottom <code>footer</code> rail (<code>data-table.tsx:118-130</code>).
+      This is the property that does not show up in a screenshot of the top of the page. The panel
+      above is scrolled past its own header — which is where an operator spends most of their time,
+      because the table is ten rows long and the header is one — and nothing was lost, because no mark
+      here ever depended on a column heading to say which connection it belongs to. This is the defect
+      that killed the discarded variant: a grid of shapes reads "Active on Shopify" only while the
+      word <em>Shopify</em> is on screen. Sticky headers would have fixed that and are not on the
+      table — a decision, and one the system agrees with: <code>DataTable</code> has no pinned-header
+      support at all, its only pinned element being the bottom <code>footer</code> rail
+      (<code>data-table.tsx:118-130</code>).
     </p>
 
     <div class="frame-stack" id="compare-mount" style="margin-top: var(--space-6)"></div>
 
     <p class="gap-legend">
-      <b>This frame was built expecting a trade, and the measurement refused twice to supply one.</b>
-      The prediction was symmetry: A runs out of width, B runs out of height, pick your poison. A runs
-      out of width exactly as predicted — every connection costs 92 px of a container that has about
-      1220, so the tenth column leaves the page and from there the answer is sideways scrolling,
-      459 px of it at fourteen. B's side never turned up. The first draft of B put the gaps in the
-      strip too and its worst row grew four pixels. Then the gaps moved into the expansion (PM
-      decision), and the readouts above now say the same number three times: <b>64 px at three
-      connections, 64 px at nine, 64 px at fourteen.</b>
+      <b>This measurement was expected to report a cost and refused twice.</b> The prediction was a
+      trade: a grid runs out of width, a strip runs out of height, pick your poison. The width half
+      happened exactly as predicted, which is why the grid is gone — every connection cost 92 px of a
+      container that has about 1220, so the tenth column left the page and from there the answer was
+      sideways scrolling, 459 px of it at fourteen. The height half never turned up. The first draft
+      put the gaps in the strip too and its worst row grew four pixels. Then the gaps moved into the
+      expansion (PM decision), and the readouts above now say the same number three times: <b>64 px at
+      three connections, 64 px at nine, 64 px at fourteen.</b>
     </p>
     <p class="gap-legend">
       The reason is worth stating because it is the load-bearing part of the design rather than a
       lucky fixture: <b>the strip is bounded by how many offers a variant HAS, not by how many
       connections the operator has.</b> A variant lives on a handful of channels — the longest strip
       anywhere in this fixture is five pills — and adding a fifteenth connection adds nothing to a row
-      that is not listed on it. Variant A's cells are the mirror image: it draws a cell per
-      connection whether or not anything is there, so its width is a function of the operator's setup
-      and grows whether or not the catalogue does.
+      that is not listed on it. A grid is the mirror image: it draws a cell per connection whether or
+      not anything is there, so its width is a function of the operator's setup and grows whether or
+      not the catalogue does.
     </p>
     <p class="gap-legend">
       Which leaves one real cost, and it is not a pixel count. <b>B answers "where is this?" and
@@ -1827,41 +1888,53 @@ input[type='checkbox'] {
       noticing that Kaufland is absent from a strip of five is harder than seeing a hole in a column.
       A per-row coverage count would make absence countable without listing it, and is deliberately
       not drawn here: counters were cut from this design once already, so putting one back should be a
-      decision rather than a drift.
+      decision rather than a drift. This is the one advantage the discarded grid had, and it is
+      recorded rather than dropped, because it is the thing to watch if operators start asking "why
+      isn't this on Kaufland?" once they have a dozen connections.
     </p>
   </section>
 
   <!-- ══════════════════════════════════════════════════════════════════
-       03 — THE CELL VOCABULARY
+       03 — THE VOCABULARY
        ══════════════════════════════════════════════════════════════════ -->
   <section class="viewport-frame" id="frame-vocab">
     <div class="viewport-frame__label">
       <span class="eyebrow-mono">03</span>
-      <b>Five states, one word between them</b>
+      <b>Every mark carries its own name</b>
       <span class="caption">what each mark is, and which shipped class draws it</span>
     </div>
     <div class="app-frame" id="vocab-app"></div>
     <p class="gap-legend">
-      The one word is <code>Invalid</code>, and it is in the grid because it is the only state that
-      asks for something from inside the table. <code>Draft</code>, <code>Ended</code> and
-      <code>Not synced</code> are states, not work — <code>listing-row-state.ts:150-183</code> already
-      tones all three <code>neutral</code> with the comment "soft, like Ended and Not synced" — so they
-      share one hollow dot and are told apart in the expanded row. That is a real cost, paid on
-      purpose, and the readouts above say what it buys: the grid's widest word is
-      <code>INVALID</code>, measured at 75.5 px, which is why a channel column is 92 px. Let
-      <code>NOT SYNCED</code> into the grid and every column goes with it — but only on the pages
-      where that state happens to occur, which is the part nobody can design against.
+      <b>The vocabulary got shorter by getting more specific.</b> The discarded grid had to ration
+      words: a column sized on the widest one it might ever contain sets the table's ceiling, so
+      <code>Invalid</code> was let in and <code>Draft</code>, <code>Ended</code> and
+      <code>Not synced</code> shared one hollow dot and were told apart only in the expansion.
+      A strip pays no such rent — its width comes from the remainder, not from its longest label — so
+      the lifecycle word rides on the pill and the three states that used to share a shape now say
+      which one they are. The shipped tone rule is unchanged either way:
+      <code>listing-row-state.ts:150-183</code> tones all three <code>neutral</code> with the comment
+      "soft, like Ended and Not synced", and only <code>Invalid</code> is toned <code>error</code>,
+      because only <code>Invalid</code> asks for work.
+    </p>
+    <p class="gap-legend">
+      One figure a reviewer will look for, recorded rather than left to be discovered: the channel dot
+      inside <code>.channel-pill</code> measures 2.56:1 against the pill's own fill in light mode
+      (5.71:1 dark), under the 3:1 that 1.4.11 asks of a meaningful graphic. It stays. It is shipped
+      CSS rendered on /products today, this file transcribes rather than edits the system, and in this
+      composition the dot is decoration — the channel is named in text right beside it at 8.88:1, so
+      nothing is carried by the dot alone. If the dot ever becomes the only identifier of a channel,
+      that is the moment the figure matters.
     </p>
   </section>
 
   <!-- ══════════════════════════════════════════════════════════════════
-       03 — THE EXPANDED ROW
+       04 — THE EXPANDED ROW
        ══════════════════════════════════════════════════════════════════ -->
   <section class="viewport-frame" id="frame-detail">
     <div class="viewport-frame__label">
       <span class="eyebrow-mono">04</span>
-      <b>The expansion is today's table, one level down</b>
-      <span class="caption">the shipped six columns, plus the two that lose their host</span>
+      <b>The expansion is today's table, one level down — and it still navigates</b>
+      <span class="caption">the shipped six columns, plus the two that lose their host · gaps under the table</span>
     </div>
     <div class="frame-stack" id="detail-mount"></div>
     <p class="gap-legend">
@@ -1874,14 +1947,70 @@ input[type='checkbox'] {
       buffer (#1843 / #1844), and <b>Updated</b> is when OL last READ the channel, not when the
       listing changed.
     </p>
+    <p class="gap-legend">
+      <b>Two things moved in round 4, and both put back something the demotion took away.</b> The
+      rows navigate: today's <code>/listings</code> table passes
+      <code>rowHref={(m) =&gt; m.id}</code> (<code>listings-list-page.tsx:918</code>), so its rows
+      already open the mapping card, and round 3 dropped that when it moved the table down a level.
+      It is a regression being repaired, not a feature being added. And the gap buttons moved
+      <b>below</b> the table: the expansion is a statement of where this variant IS, so opening it
+      with a list of places it is not put a form where a status belonged.
+    </p>
+    <p class="gap-legend">
+      The split between the two clickable things is not a choice — <code>DataTable</code> makes it for
+      us. "Expandable takes precedence over <code>rowHref</code> for the row-level click"
+      (<code>data-table.tsx:90</code>), and <code>linkifyFirstCell</code> is
+      <code>Boolean(href) &amp;&amp; !expandable</code> (<code>:472</code>). A row cannot both expand
+      and navigate. So the outer variant row expands, the inner listing row navigates, and neither
+      could take the other's job even if we wanted it to. The anchor sits on the first cell only, for
+      the same reason: that is where the component puts it.
+    </p>
   </section>
 
   <!-- ══════════════════════════════════════════════════════════════════
-       04 — THE TABS
+       05 — THE MAPPING CARD
+       ══════════════════════════════════════════════════════════════════ -->
+  <section class="viewport-frame" id="frame-mapping">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">05</span>
+      <b>Where a listing row goes</b>
+      <span class="caption">/listings/:id — the page that already ships, drawn only far enough to prove the trip</span>
+    </div>
+    <div class="app-frame" id="mapping-app"></div>
+    <p class="gap-legend">
+      <b>Nothing here is designed.</b> <code>/listings/:id</code> exists
+      (<code>listings.route.tsx:51-58</code>) and <code>ListingDetailPage</code> already renders this
+      exact header — <code>eyebrow="Listings"</code> over
+      <code>title={`Mapping — ${mapping.externalId}`}</code>, with a back link to
+      <code>/listings</code> (<code>listing-detail-page.tsx:124-136</code>) — over a
+      <code>KeyValueList</code> of the same eight fields in the same order, five of them
+      <code>mono</code> (<code>:139-161</code>). This frame is a transcription, and it is here for one
+      reason: an expansion whose rows click through to nowhere is a design that has not been checked.
+    </p>
+    <p class="gap-legend">
+      Three sections of the real page are deliberately <b>not</b> drawn (PM decision): the marketplace
+      offer section, the <code>Offer creation</code> block with its status and validator errors, and
+      the <code>Context</code> raw-payload panel — plus the <code>Edit offer</code> action. #2823 does
+      not change that page, and redrawing a finished screen invites a reviewer to review it.
+    </p>
+    <p class="gap-legend">
+      Two fields are honest fabrications and are marked as such in the source.
+      <b>Created</b> and <b>Updated</b> have no fixture field behind them — the fixture models a
+      channel <em>status read</em> (legitimately <code>never</code> for an unsynced offer), which is a
+      different fact from the mapping row's own timestamps — so they are stable filler rather than a
+      borrowed column. <b>Entity Type</b> is not a constant: it follows the connection's kind, because
+      a marketplace connection carries <code>Offer</code> mappings and a shop connection carries
+      <code>ShopProduct</code> (architecture-overview § Listings). Expand a WooCommerce row in frame
+      01 and the card says so.
+    </p>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════════
+       06 — THE TABS
        ══════════════════════════════════════════════════════════════════ -->
   <section class="viewport-frame" id="frame-tabs">
     <div class="viewport-frame__label">
-      <span class="eyebrow-mono">05</span>
+      <span class="eyebrow-mono">06</span>
       <b>The tab counts offers, the row is a variant</b>
       <span class="caption">All is new and default · a filtered row shows which cell let it in</span>
     </div>
@@ -1891,114 +2020,23 @@ input[type='checkbox'] {
       counts come from <code>lifecycleCounts</code>, which the API returns under the same search and
       connection filters but never narrowed by the lifecycle itself
       (<code>listings.types.ts:216-227</code>), so they still count offers. Second, today a badge is
-      suppressed when the tab already states it (<code>activeLifecycle</code>) — in a grid that would
-      blank the only signal in the cell, so the rule is not ported. The matching cell takes an outline
-      instead, because at nine columns you otherwise cannot see which one put the row on this list.
+      suppressed when the tab already states it (<code>activeLifecycle</code>) — here the pill IS the
+      mark, so suppressing it would blank the thing the row is made of, and the rule is not ported.
+      The matching pill takes an outline instead, because a strip of five pills does not say by itself
+      which one answered the filter.
     </p>
   </section>
 
   <!-- ══════════════════════════════════════════════════════════════════
-       05 — SCALE
-       ══════════════════════════════════════════════════════════════════ -->
-  <section class="viewport-frame" id="frame-scale">
-    <div class="viewport-frame__label">
-      <span class="eyebrow-mono">06</span>
-      <b>Where this stops working, drawn</b>
-      <span class="caption">3 / 9 / 14 connections · one fixture · full container width · measured live</span>
-    </div>
-    <div class="frame-stack" id="scale-mount"></div>
-
-    <div class="app-frame" style="margin-top: var(--space-5)">
-      <header class="page-header">
-        <h2 class="page-title">What it costs to get past the ceiling</h2>
-        <p class="page-description">
-          A menu, not a recommendation. Prices are read off the repo, not estimated.
-        </p>
-      </header>
-      <dl class="ledger">
-        <div class="ledger__row">
-          <dt class="ledger__mark"><span class="price-tag" data-cost="free">ships today</span></dt>
-          <dd class="ledger__body">
-            <span class="ledger__name">Scroll sideways, identity frozen</span>
-            <span class="ledger__desc">
-              The table scrolls and the chevron + identity column stay pinned to the left edge, with a
-              soft orange boundary edge appearing only once something is actually hidden beneath it.
-              This is not a thing to build: <code>DataTable</code> takes <code>stickyLeftColumns</code>
-              and <code>/listings</code> already passes 1. It is the behaviour in frame 01 at 14
-              columns. What it does not fix: you cannot compare Allegro with Zalando without scrolling
-              between them, and the two columns you most want side by side are the two furthest apart.
-            </span>
-            <span class="ledger__src">data-table.tsx:164-181 · listings-list-page.tsx:914</span>
-          </dd>
-        </div>
-        <div class="ledger__row">
-          <dt class="ledger__mark"><span class="price-tag">1 issue, FE only</span></dt>
-          <dd class="ledger__body">
-            <span class="ledger__name">The operator picks the columns</span>
-            <span class="ledger__desc">
-              A control that chooses which connections are shown, persisted per operator. Cheap
-              because the column set is already derived from a connections list rather than declared,
-              and because the page has a URL-state convention to hang it on. The honest catch: it puts
-              the burden of noticing a new channel on the person least likely to look, and a hidden
-              column hides gaps as effectively as it hides noise.
-            </span>
-            <span class="ledger__src">the same <code>?connectionId=</code> URL-state pattern the channel filter uses</span>
-          </dd>
-        </div>
-        <div class="ledger__row">
-          <dt class="ledger__mark"><span class="price-tag">1 issue, FE only</span></dt>
-          <dd class="ledger__body">
-            <span class="ledger__name">Replace the grid with the pill strip — <b>this is variant B</b></span>
-            <span class="ledger__desc">
-              No longer a hypothesis on a menu: it is drawn, clickable and measured in frame 02, and
-              it costs a fixed width no matter how many connections arrive because the strip wraps
-              instead of overflowing. What round 2 rejected was the narrower version of this idea — a
-              column listing only what is MISSING — because it loses "listed everywhere" and needs a
-              <code>12/12</code>-against-<code>0/0</code> counter to get it back, which is the
-              arithmetic the PM had just cut. Naming every connection, present ones included, is what
-              answers that objection, and it is also what fixes the scrolled header. The bill arrives
-              as row height instead: see frame 02's measurement at fourteen.
-            </span>
-            <span class="ledger__src">variant-stock-table.tsx:253-270 renders this row on /products today</span>
-          </dd>
-        </div>
-        <div class="ledger__row">
-          <dt class="ledger__mark"><span class="price-tag" data-cost="high">migration</span></dt>
-          <dd class="ledger__body">
-            <span class="ledger__name">Group the columns by platform, expand on demand</span>
-            <span class="ledger__desc">
-              Two Allegro accounts collapse into one Allegro column that opens into its accounts. This
-              is the expensive one and not because of the UI: a collapsed column has to say something
-              about several offers at once, and there is no "which state wins" rule anywhere in the
-              offer domain to say it with. The only <code>computeWorstStatus</code> in the repo belongs
-              to analytics-trust, an unrelated bounded context. Inventing one means deciding that a
-              healthy offer may be hidden behind a broken sibling.
-            </span>
-            <span class="ledger__src">no precedent in the offer domain — this would be the first</span>
-          </dd>
-        </div>
-      </dl>
-    </div>
-
-    <p class="gap-legend">
-      The width is the visible half of the problem. The invisible half is the cell count: one row is
-      no longer one record but one variant × every connection, and a gap is a cell the read model has
-      to return for something that does not exist. At 20 variants and 14 connections that is 280
-      cells per page, of which the mapping table can supply only the ones that are filled. Paging by
-      variant does not cut it, because the multiplier is on the other axis.
-    </p>
-  </section>
-
-  <!-- ══════════════════════════════════════════════════════════════════
-       06 — PUBLISHING
+       07 — PUBLISHING
        ══════════════════════════════════════════════════════════════════ -->
   <section class="viewport-frame" id="frame-publish">
     <div class="viewport-frame__label">
       <span class="eyebrow-mono">07</span>
       <b>What the gap does when you click it</b>
-      <span class="caption">in flight † · landed · refused</span>
+      <span class="caption">in flight † · landed · refused · the rows are drawn expanded, because that is where the buttons are</span>
     </div>
-    <!-- `.frame-stack`, not `.frame-pair`: the WooCommerce column is the whole
+    <!-- `.frame-stack`, not `.frame-pair`: the WooCommerce listing is the whole
          subject of this frame, and a 490 px panel scrolls it out of view. Round
          2 hit the same trap when it quoted a measurement taken inside a panel. -->
     <div class="frame-stack" id="publish-mount"></div>
@@ -2006,8 +2044,9 @@ input[type='checkbox'] {
       The middle state is the honest one and it surprises people: a freshly published offer lands as
       <b>Not synced</b>, not <b>Active</b>. The mapping row is written the moment
       <code>createOffer</code> returns, but the lifecycle is derived from a channel status read that
-      has not happened yet — so the hollow dot is correct, and a design promising a green mark on
-      success would be promising something the pipeline does not deliver. The in-flight state
+      has not happened yet — so the pill saying <code>Not synced</code> is correct, and a design
+      promising a live-looking mark on success would be promising something the pipeline does not
+      deliver. The in-flight state
       <span class="gap-mark" title="Data gap">†</span> has nothing behind it at all: the mapping does
       not exist while the job runs, so there is no row to mark pending.
       <code>use-bulk-batch-query</code> (poll 5 s, auto-stop) is the reusable piece if we decide to
@@ -2016,7 +2055,7 @@ input[type='checkbox'] {
   </section>
 
   <!-- ══════════════════════════════════════════════════════════════════
-       07 — EDGE STATES
+       08 — EDGE STATES
        ══════════════════════════════════════════════════════════════════ -->
   <section class="viewport-frame" id="frame-states">
     <div class="viewport-frame__label">
@@ -2038,20 +2077,23 @@ input[type='checkbox'] {
   </section>
 
   <!-- ══════════════════════════════════════════════════════════════════
-       08 / 09 — NARROW
+       09 / 10 — NARROW
        ══════════════════════════════════════════════════════════════════ -->
   <section class="viewport-frame" id="frame-tablet">
     <div class="viewport-frame__label">
       <span class="eyebrow-mono">09</span>
-      <b>768 px — the grid survives three, not nine</b>
+      <b>768 px — the strip wraps, the row grows</b>
       <span class="caption">iPad on the shop floor</span>
     </div>
     <div class="tablet-frame"><div class="app-frame" id="tablet-app"></div></div>
     <p class="gap-legend">
-      Same table, same frozen identity, narrower container — so the ceiling arrives sooner and the
-      scroll starts doing the work at three connections instead of ten. Nothing is hidden with
-      <code>hideBelow</code>: a channel column that disappears takes a gap with it, and a view whose
-      subject is the gap cannot afford that.
+      Same table, narrower container — and because the strip is the column that takes the remainder,
+      what gives is row height rather than the right-hand edge. That is the whole trade this design
+      made, seen at the width where it first shows: the identity column keeps its 22rem floor, the
+      strip gets what is left, and a variant on four channels wraps to a second line sooner than it
+      would at 1440. Nothing is hidden with <code>hideBelow</code>, and there is nothing left to
+      freeze: a fixed-layout table does not scroll sideways, so there is no column that could slide
+      out from under the identity.
     </p>
   </section>
 
@@ -2063,8 +2105,12 @@ input[type='checkbox'] {
     </div>
     <div class="phone-frame"><div class="app-frame" id="mobile-app"></div></div>
     <p class="gap-legend">
-      A 14-column matrix cannot exist at 360 px, so the card reshapes around the same priority the
-      grid has: gaps first, named and tappable, then the marks for everything that is listed. This is
+      A table cannot exist at 360 px, so the card reshapes around the same priority the row has —
+      except inverted: gaps first, named and tappable, then the marks for everything that is listed.
+      That inversion is deliberate and is the one place this sheet contradicts itself on purpose. On
+      the desktop row the listed pills lead and the gaps live under the expansion, because the
+      expansion is a statement of state; on a phone there is no expansion to put them in, and
+      off-hours triage is looking for the hole. This is
       <code>DataTable</code>'s own card branch, and the reshape is deliberate rather than the row
       squeezed — the identity leads, the channel names come back as words because there is no column
       header left to carry them.
@@ -2072,13 +2118,13 @@ input[type='checkbox'] {
   </section>
 
   <!-- ══════════════════════════════════════════════════════════════════
-       10 — HANDOVER
+       11 — HANDOVER
        ══════════════════════════════════════════════════════════════════ -->
   <section class="viewport-frame" id="frame-handover">
     <div class="viewport-frame__label">
       <span class="eyebrow-mono">11</span>
       <b>Handover</b>
-      <span class="caption">the guide entry · what must exist first · the issue this frame files</span>
+      <span class="caption">the guide entry · what must exist first · what round 4 settled</span>
     </div>
     <div class="app-frame">
       <div class="note-stack">
@@ -2093,12 +2139,12 @@ input[type='checkbox'] {
             refuses to cover a second table. This table is a second table. Measured at 64 px:
           </p>
           <p class="gap-legend" style="margin-top:0">
-            Two entries, because the two variants are two row shapes. The second one is not optional
-            book-keeping: variant B's height is set by how deep its strip wraps, so it is exactly the
-            kind of content-driven height the guide asks to be declared before it ships.
+            One entry. Round 3 drafted two, because it carried two row shapes; the grid is gone, and
+            with it the entry that described it. This one is not optional book-keeping — the row's
+            height is set by how deep its strip wraps, so it is exactly the kind of content-driven
+            height the guide asks to be declared before it ships.
           </p>
-          <div class="scale-readout" style="display:block; white-space:pre-wrap; line-height:1.6">| Variant coverage row, variant A (#2823) | auto, ~64 px | Documented `DataTable` exception — 32 px thumbnail + name/variant line + `SKU · EAN` meta line, beside channel columns whose own cells are 20 px marks. Shorter than the listings identity row (#2023) because a variant is not an offer: no offer-id in the meta line and no validator message, both of which move into the expanded detail. |
-<span id="guide-entry-b">| Variant coverage row, variant B (#2823) | auto, ~64 px | Documented `DataTable` exception — same identity stack as variant A, beside ONE column holding a `.coverage-pills` strip of one pill per connection the variant is LISTED on. Measured at MEASURED_B_3 / MEASURED_B_9 / MEASURED_B_14 px at three, nine and fourteen connections: the height does not move, because the strip is bounded by how many offers a variant has (longest in the fixture: MEASURED_PILLS pills) and not by how many connections the operator has. Gaps are not in the strip — they are buttons in the expanded row — which is what makes that bound hold. The table is `table-layout: fixed` so the strip has a definite width to wrap inside; under auto layout a flex-wrap container's max-content is its whole content on one line and the column would overflow instead. |</span></div>
+          <div class="scale-readout" style="display:block; white-space:pre-wrap; line-height:1.6"><span id="guide-entry-b">| Variant coverage row (#2823) | auto, ~64 px | Documented `DataTable` exception — 32 px thumbnail + name/variant line + `SKU · EAN` meta line, beside ONE column holding a `.coverage-pills` strip of one pill per connection the variant is LISTED on. Measured at MEASURED_B_3 / MEASURED_B_9 / MEASURED_B_14 px at three, nine and fourteen connections: the height does not move, because the strip is bounded by how many offers a variant has (longest in the fixture: MEASURED_PILLS pills) and not by how many connections the operator has. Gaps are not in the strip — they are buttons in the expanded row — which is what makes that bound hold. The table is `table-layout: fixed` so the strip has a definite width to wrap inside; under auto layout a flex-wrap container's max-content is its whole content on one line and the column would overflow instead. |</span></div>
         </div>
 
         <div>
@@ -2118,7 +2164,8 @@ input[type='checkbox'] {
             <li><b>Per-connection publish eligibility on the row.</b> The gap's affordance is decided
               by <code>publishDestinationKind()</code> — <code>OfferCreator</code>, or enabled
               <code>ProductPublisher</code> — which the FE can resolve from the connections read it
-              already makes. Nothing new server-side, but it has to reach the cell.</li>
+              already makes. Nothing new server-side, but it has to reach the row: it decides whether a
+              gap renders as a button or as a named, unactionable pill.</li>
             <li><b>An in-flight publication read</b>
               <span class="gap-mark" title="Data gap">†</span> — either persist the mapping earlier, or
               read <code>OfferCreationRecord</code>s and splice them in. This is also what makes a cell
@@ -2137,14 +2184,31 @@ input[type='checkbox'] {
 
         <div>
           <h3 style="margin:0 0 var(--space-2); font-size:0.9375rem; color:var(--text-primary)">
-            The follow-up issue frame 06 files
+            What round 4 settled, and the one thing it did not
           </h3>
           <p class="gap-legend" style="margin-top:0">
-            Scope overflow does not go into #2823. Frame 06 is the justification for its own issue —
-            no milestone, no assignee — reading roughly: <em>"/listings variant grid: choose how the
-            column set survives past ten connections"</em>, with the four priced options as the
-            decision to be taken and the live 3 / 9 / 14 switch in frame 01 as the evidence. #2823
-            stays the variant view.
+            <b>Settled, 3 September 2026.</b> The column grid is rejected and no longer drawn
+            anywhere in this sheet — do not reopen the choice in a later round. Rounds 1–3 also filed
+            a follow-up issue against it (<em>"choose how the column set survives past ten
+            connections"</em>, with a priced menu of four mitigations); that question has no subject
+            any more and is withdrawn rather than left dangling. The ceiling measurement survives in
+            frame 02 as the reason.
+          </p>
+          <p class="gap-legend" style="margin-top:0">
+            <b>Also settled:</b> the gap buttons sit <em>below</em> the expansion's table, not above
+            it, and the expansion's rows navigate to <code>/listings/:id</code>. The second of those
+            is a regression being repaired — today's <code>/listings</code> rows already navigate
+            (<code>rowHref</code>, <code>listings-list-page.tsx:918</code>) and round 3 lost it when
+            it demoted that table a level — so a dev reading this should expect to keep the shipped
+            behaviour, not to write it.
+          </p>
+          <p class="gap-legend" style="margin-top:0">
+            <b>Not decided, and deliberately not drawn: a per-row coverage count.</b> The strip
+            answers "where is this?" and answers "where is it not?" only by absence, which is the one
+            advantage the rejected grid had. A count ("on 11 of 14") would make absence countable
+            without listing it. Counters were already cut from this design once, so putting one back
+            belongs in a decision rather than in a drift — this is the thing to watch if operators
+            start asking why something is missing from a channel once they have a dozen connections.
           </p>
         </div>
 
@@ -2216,9 +2280,9 @@ function connSet(count) { return CONNECTIONS.slice(0, count); }
    apps/web is English, the catalogue is the operator's own.
 
    `L(...)` is one offer. Lifecycle values mirror OFFER_LIFECYCLE_VALUES
-   (Active / Invalid / Draft / Ended / Unsynced). A cell with no entry is a
-   gap, and whether that gap is actionable is decided by the CONNECTION, not
-   by the variant — see coverageCell(). */
+   (Active / Invalid / Draft / Ended / Unsynced). A missing key in `cover` is
+   a gap, and whether that gap is actionable is decided by the CONNECTION, not
+   by the variant — see coveragePill(). */
 function L(id, price, qty, updated, lifecycle, reason, reasonOverflow) {
   return {
     listingId: id, price: price, qty: qty, updated: updated,
@@ -2422,83 +2486,6 @@ function identityCell(entry) {
     + '</span></span>';
 }
 
-/* ── The cell ───────────────────────────────────────────────────────────
-   One connection × one variant. A gap is a <button> and everything else is a
-   <span>, because only a gap is actionable — and a gap on a connection with
-   no publish path is not even that.
-
-   Accessible names split by actionability, deliberately. A non-actionable
-   cell states its VALUE in one word and lets the column header supply the
-   connection: at fourteen columns a full sentence per cell puts 280
-   announcements on one page, most of them confirming normality, and table
-   navigation stops being passable. An ACTIONABLE cell keeps the whole
-   sentence, because a screen reader can list a page's buttons on their own,
-   away from the header that would have explained it. */
-function coverageCell(entry, conn, all, opts) {
-  var options = opts || {};
-  var offer = entry.variant.cover[conn.id] || null;
-  var label = connLabel(conn, all);
-  var who = entry.product.name + ' ' + entry.variant.label;
-  var state = cellStateFor(offer);
-  var matched = options.matchedConnId === conn.id ? ' coverage-cell--matched' : '';
-
-  if (state === 'live') {
-    return '<span class="coverage-cell coverage-cell--live' + matched + '"'
-      + ' title="Active on ' + esc(label) + '" aria-label="Active">'
-      + '<span class="sr-only">' + esc(who + ' is Active on ' + label) + '</span></span>';
-  }
-
-  if (state === 'dormant') {
-    var word = lifecycleLabel(offer.lifecycle);
-    return '<span class="coverage-cell coverage-cell--dormant' + matched + '"'
-      + ' title="' + esc(word) + ' on ' + esc(label) + ' — expand the row to see which"'
-      + ' aria-label="' + esc(word) + '">'
-      + '<span class="sr-only">' + esc(who + ' is ' + word + ' on ' + label) + '</span></span>';
-  }
-
-  if (state === 'invalid') {
-    return '<span class="coverage-cell' + matched + '">'
-      + '<span class="status-badge status-badge--error status-badge--compact"'
-      + ' title="Not live on ' + esc(label) + ', with validator errors outstanding.">'
-      + '<span class="status-badge__dot" aria-hidden="true"></span>Invalid'
-      + '<span class="sr-only">. ' + esc(who + ' was rejected by ' + label) + '</span>'
-      + '</span></span>';
-  }
-
-  /* A gap with nowhere to publish. Correction 4: the affordance is decided by
-     publishDestinationKind(), not by the variant — a WooCommerce connection
-     with ProductPublisher switched off is a column that can hold listings and
-     cannot accept new ones. A button into a dead end is worse than none. */
-  if (!conn.publish) {
-    return '<span class="coverage-cell coverage-cell--blocked"'
-      + ' title="Not listed on ' + esc(label) + '. This connection cannot accept new listings —'
-      + ' it advertises no offer-creation capability and has no product publishing enabled."'
-      + ' aria-label="Not listed, cannot publish">'
-      + '<span class="sr-only">' + esc(who + ' is not listed on ' + label + ', and this connection cannot accept new listings') + '</span></span>';
-  }
-
-  if (options.readOnly) {
-    return '<span class="coverage-cell">'
-      + '<button type="button" class="products-row-cta products-row-cta--icon" disabled'
-      + ' title="Not listed on ' + esc(label) + '. Publishing needs write access.">'
-      + '+<span class="sr-only">' + esc('Publish ' + who + ' to ' + label + ' — needs write access') + '</span>'
-      + '</button></span>';
-  }
-
-  /* The gap. No new route: bulk-create-wizard-page.tsx already reads
-     `?productIds=&variantIds=&connectionId=`, which is why this links past
-     OfferProductPickerModal (it has `initialProductIds` and no
-     `initialVariantIds`, so preselecting through it would be new scope). */
-  var href = '/listings/bulk-create?productIds=' + entry.product.id
-    + '&variantIds=' + entry.variant.id + '&connectionId=' + conn.id;
-  return '<span class="coverage-cell">'
-    + '<button type="button" class="products-row-cta products-row-cta--icon"'
-    + ' data-route="' + esc(href) + '"'
-    + ' title="Not listed on ' + esc(label) + ' — publish it">'
-    + '+<span class="sr-only">' + esc('Publish ' + who + ' to ' + label) + '</span>'
-    + '</button></span>';
-}
-
 /* ── VARIANT B: the pill strip ──────────────────────────────────────────
    Why it exists: variant A's mark is silent about which connection it belongs
    to, so the header carries that meaning — and the moment the operator
@@ -2633,20 +2620,34 @@ function coverageStrip(entry, conns, opts) {
     + '</span>';
 }
 
-/* The publish rail, which is where the gaps went. Above the detail table,
-   because it is the thing to ACT on and the table below it is the thing to
-   read — and because a rail under a seven-column table would be found by
-   nobody. One button per gap, in the same fixed connection order as the
-   strip; a connection with no publish path is named and not offered, for the
-   same reason as in variant A (a button into a dead end is worse than none). */
+/* The publish rail, which is where the gaps went. BELOW the detail table
+   (PM decision, round 4). Round 3 put it above and argued that the thing to
+   act on should lead; the reason that was wrong is worth keeping, because it
+   is about what the expansion IS. The expansion is a statement of the
+   variant's current state, and the rail is a list of things that do not
+   exist yet — so leading with it opened a panel about what you have with a
+   form about what you do not. The order now reads "here is where this is,
+   and here is where it could also be", which is also the order the strip
+   above it already reads in: listed first, gaps second.
+
+   The cost is real and stated rather than hidden: at fourteen connections
+   the rail sits under a seven-column table and an operator has to scroll to
+   reach it. What makes that survivable is that the strip in the parent row
+   already announced the gaps by absence, and the row expands because the
+   operator wanted the offers — the rail is the secondary errand in that
+   panel, not the primary one.
+
+   One button per gap, in the same fixed connection order as the strip; a
+   connection with no publish path is named and not offered, because a button
+   into a dead end is worse than none. */
 function publishRail(entry, conns, opts) {
   var options = opts || {};
   var gaps = conns.filter(function (conn) { return !entry.variant.cover[conn.id]; });
   if (gaps.length === 0) {
-    return '<p class="ledger__src" style="margin: 0 0 var(--space-3)">'
+    return '<p class="ledger__src" style="margin: var(--space-3) 0 0">'
       + 'Listed on every connection — nothing left to publish.</p>';
   }
-  return '<div style="margin-bottom: var(--space-4)">'
+  return '<div style="margin-top: var(--space-4)">'
     + '<div class="detail-grid__label">Not listed on</div>'
     + '<span class="coverage-pills" style="margin-top: var(--space-2)">'
     + gaps.map(function (conn) { return coveragePill(entry, conn, conns, options); }).join('')
@@ -2687,8 +2688,8 @@ function coverageTableB(entries, conns, opts) {
 
     return main + '<tr class="data-table__detail-row"><td class="data-table__detail-cell" colspan="3">'
       + '<div class="data-table__detail" id="' + panelId + '">'
-      + publishRail(entry, conns, { readOnly: options.readOnly })
-      + detailTable(entry, conns) + '</div></td></tr>';
+      + detailTable(entry, conns)
+      + publishRail(entry, conns, { readOnly: options.readOnly }) + '</div></td></tr>';
   }).join('');
 
   return '<div class="data-table__container">'
@@ -2698,13 +2699,134 @@ function coverageTableB(entries, conns, opts) {
     + '</table></div>';
 }
 
-/* One entry point, so every frame can be drawn in either variant from the
-   same call site and neither can drift from the other. */
-function coverageView(entries, conns, opts) {
-  var options = opts || {};
-  return options.variant === 'B'
-    ? coverageTableB(entries, conns, options)
-    : coverageTable(entries, conns, options);
+/* ── What a row in the expansion points at ────────────────────────────
+   `/listings/:id` already exists (listings.route.tsx:51-58) and already
+   renders this exact header: `eyebrow="Listings"` over
+   `title={`Mapping — ${mapping.externalId}`}` (listing-detail-page.tsx
+   :124-136). So the destination is not designed here, it is transcribed.
+
+   Two fields are read straight off the fixture and the rest are shaped from
+   it, which needs saying because the card looks like a data dump and a data
+   dump invites trust:
+
+   - `externalId` IS the offer id the Listing column shows. Same fact, and
+     that is the point of the link.
+   - `entityType` follows the connection's own kind rather than being a
+     constant: a marketplace connection carries `Offer` mappings, a shop
+     connection carries `ShopProduct` (architecture-overview § Listings — a
+     connection carries one mapping kind, which is why the WooCommerce stock
+     write-back reaches through `ShopProduct` and not `Offer`).
+   - `id` is shaped as a UUID because `identifier_mappings.id` is
+     `@PrimaryGeneratedColumn('uuid')`, NOT an `ol_*` id — only `internalId`
+     carries the `ol_variant_*` shape, and getting those two the wrong way
+     round is the mistake this card exists to make impossible to make.
+   - `Created` / `Updated` have NO fixture field behind them. The fixture
+     models a channel status read (`offer.updated`, which is legitimately
+     `never` for an unsynced offer); the mapping row's own timestamps are a
+     different fact and are drawn as stable filler rather than borrowed from
+     a column that means something else. Same class of fabrication as the
+     connection id in the Connection cell below.
+
+   Deterministic, so a re-render never moves an id or a date under the
+   reader. */
+function fakeHex(seed, len) {
+  /* The whole seed is consumed BEFORE any output is emitted. The first
+     version interleaved the two — one seed character per eight output
+     characters — so a 32-character id only ever read four characters of its
+     seed, and `v-tab-32:c-alg` and `v-tab-32:c-erl` both hashed as `v-ta`.
+     Every row in an expansion linked to the same mapping, which is the
+     precise failure a fixture is supposed to make impossible: four listings
+     drawn, one destination. */
+  var h = 2166136261;
+  for (var i = 0; i < seed.length; i += 1) {
+    h = ((h ^ seed.charCodeAt(i)) >>> 0) * 16777619 >>> 0;
+  }
+  var out = '';
+  while (out.length < len) {
+    out += ('0000000' + h.toString(16)).slice(-8);
+    h = ((h * 16777619 >>> 0) ^ (h >>> 13)) >>> 0;
+  }
+  return out.slice(0, len);
+}
+
+var FILLER_DATES = [
+  ['12 sie 2026, 14:02', '02 wrz 2026, 09:41'],
+  ['03 lip 2026, 08:17', '28 sie 2026, 16:05'],
+  ['21 maj 2026, 11:48', '01 wrz 2026, 07:12'],
+  ['09 cze 2026, 19:30', '30 sie 2026, 13:26']
+];
+
+function mappingFor(entry, conn) {
+  var offer = entry.variant.cover[conn.id];
+  if (!offer) return null;
+  var seed = entry.variant.id + ':' + conn.id;
+  var hex = fakeHex(seed, 32);
+  var dates = FILLER_DATES[parseInt(hex.slice(0, 2), 16) % FILLER_DATES.length];
+  return {
+    id: hex.slice(0, 8) + '-' + hex.slice(8, 12) + '-' + hex.slice(12, 16)
+      + '-' + hex.slice(16, 20) + '-' + hex.slice(20, 32),
+    entityType: conn.publish === 'shop' ? 'ShopProduct' : 'Offer',
+    externalId: offer.listingId,
+    internalId: 'ol_variant_' + fakeHex(entry.variant.id, 32),
+    platformType: conn.channel,
+    conn: conn,
+    created: dates[0],
+    updated: dates[1]
+  };
+}
+
+function findMapping(id) {
+  var rows = variantRows(PRODUCTS);
+  for (var i = 0; i < rows.length; i += 1) {
+    for (var j = 0; j < CONNECTIONS.length; j += 1) {
+      var m = mappingFor(rows[i], CONNECTIONS[j]);
+      if (m && m.id === id) return m;
+    }
+  }
+  return null;
+}
+
+/* ── The mapping card ───────────────────────────────────────────────────
+   `ListingDetailPage` minus three sections, on purpose (PM decision, round
+   4): no marketplace-offer section, no `Offer creation` block, no `Context`
+   payload panel, no `Edit offer` action. This frame exists to prove the
+   expansion has somewhere to GO — the page itself already ships and is not
+   what #2823 changes, so reproducing all of it would be redrawing somebody
+   else's finished screen.
+
+   Eight fields, in the shipped order (listing-detail-page.tsx:139-161), five
+   of them `mono` exactly as that page marks them. */
+function mappingShell(m) {
+  var items = [
+    ['Mapping ID', esc(m.id), true],
+    ['Entity Type', esc(m.entityType), true],
+    ['External ID', esc(m.externalId), true],
+    ['Internal ID', esc(m.internalId), true],
+    ['Platform Type', esc(m.platformType), true],
+    ['Connection', '<span class="connection-cell"><span class="connection-cell__body">'
+      + '<span class="connection-cell__line">' + esc(m.conn.name) + '</span>'
+      + '<span class="connection-cell__meta"><span class="copyable-id">'
+      + '<span class="copyable-id__value">' + esc(m.conn.id.replace('c-', '') + 'a5aad') + '</span>'
+      + '</span></span></span></span>', false],
+    ['Created', esc(m.created), false],
+    ['Updated', esc(m.updated), false]
+  ];
+
+  return '<header class="page-header"><div class="page-header__content">'
+    + '<a class="back-link" href="/listings" data-role="back">'
+    +   '<span class="back-link__glyph" aria-hidden="true">←</span>'
+    +   '<span class="back-link__label">Listings</span></a>'
+    + '<p class="eyebrow">Listings</p>'
+    + '<h2 class="page-title">' + esc('Mapping — ' + m.externalId) + '</h2>'
+    + '</div></header>'
+    + '<section class="detail-section"><dl class="key-value-list">'
+    + items.map(function (item) {
+        return '<dt class="key-value-list__label">' + esc(item[0]) + '</dt>'
+          + '<dd class="key-value-list__value'
+          + (item[2] ? ' key-value-list__value--mono mono-text' : '') + '">'
+          + item[1] + '</dd>';
+      }).join('')
+    + '</dl></section>';
 }
 
 /* ── The expansion ──────────────────────────────────────────────────────
@@ -2740,6 +2862,7 @@ function detailTable(entry, conns) {
 
   var body = offers.map(function (conn) {
     var offer = entry.variant.cover[conn.id];
+    var mapping = mappingFor(entry, conn);
     var word = lifecycleLabel(offer.lifecycle);
     var tone = offer.lifecycle === 'Invalid' ? 'error' : offer.lifecycle === 'Active' ? 'success' : 'neutral';
     var label = connLabel(conn, conns);
@@ -2760,8 +2883,16 @@ function detailTable(entry, conns) {
     }
     channelStack += '</span>';
 
-    return '<tr>'
-      + '<td><span class="mono-text">' + esc(offer.listingId) + '</span></td>'
+    /* The row navigates, and only the FIRST cell carries the anchor —
+       `linkifyFirstCell` in data-table.tsx:472, which is also why the row
+       cannot be expandable at the same time: "Expandable takes precedence
+       over `rowHref` for the row-level click" (:90). That constraint is what
+       makes this split structural rather than chosen — the outer variant row
+       expands, this inner row links, and neither could do the other's job. */
+    return '<tr class="data-table__row--linked" data-mapping="' + esc(mapping.id) + '">'
+      + '<td><a class="data-table__row-link" href="/listings/' + esc(mapping.id) + '"'
+      +   ' data-mapping="' + esc(mapping.id) + '">'
+      +   '<span class="mono-text">' + esc(offer.listingId) + '</span></a></td>'
       + '<td><span class="status-badge status-badge--' + tone + ' status-badge--compact">'
       +   '<span class="status-badge__dot" aria-hidden="true"></span>' + esc(word) + '</span></td>'
       + '<td>' + channelStack + '</td>'
@@ -2780,64 +2911,6 @@ function detailTable(entry, conns) {
   return '<div class="data-table__container variant-detail"><table class="data-table">'
     + '<caption class="sr-only">' + esc('Listings for ' + entry.product.name + ' ' + entry.variant.label) + '</caption>'
     + head + '<tbody>' + body + '</tbody></table></div>';
-}
-
-/* ── The table ──────────────────────────────────────────────────────────
-   Frozen leading columns are `DataTable`'s own `stickyLeftColumns`, which
-   /listings already passes as 1: the expander cell freezes with the identity
-   column as one cluster. Offsets are measured after layout, exactly as
-   data-table.tsx:260-322 does it, because a `left` in ems cannot know how
-   wide a rendered cell actually is. */
-function coverageTable(entries, conns, opts) {
-  var options = opts || {};
-  var tab = options.tab || 'All';
-  var bodyId = options.bodyId || null;
-
-  var head = '<tr>'
-    + '<th class="data-table__expand-cell" scope="col"><span class="sr-only">Expand</span></th>'
-    + '<th class="identity-col" scope="col">Variant</th>'
-    + conns.map(function (conn) {
-        return '<th class="coverage-col" scope="col" title="' + esc(conn.platform + ' · ' + conn.name) + '">'
-          + esc(connLabel(conn, conns)) + '</th>';
-      }).join('')
-    + '<th class="coverage-slack"></th>'
-    + '</tr>';
-
-  var rows = entries.map(function (entry, index) {
-    var matchedConnId = matchedFor(entry, conns, tab);
-    var expanded = options.expandedKey === entry.variant.id;
-    var panelId = 'detail-' + (options.scope || 'x') + '-' + entry.variant.id;
-
-    var main = '<tr class="data-table__row--expandable' + (expanded ? ' data-table__row--expanded' : '') + '"'
-      + ' data-variant="' + esc(entry.variant.id) + '">'
-      + '<td class="data-table__expand-cell">'
-      +   '<button type="button" class="data-table__expand-toggle" data-toggle="' + esc(entry.variant.id) + '"'
-      +   ' aria-expanded="' + (expanded ? 'true' : 'false') + '" aria-controls="' + panelId + '">'
-      +   '<span class="data-table__expand-icon" aria-hidden="true">' + (expanded ? '⌄' : '›') + '</span>'
-      +   '<span class="sr-only">' + esc((expanded ? 'Collapse ' : 'Expand ') + entry.product.name + ' ' + entry.variant.label) + '</span>'
-      +   '</button>'
-      + '</td>'
-      + '<td class="identity-col">' + identityCell(entry) + '</td>'
-      + conns.map(function (conn) {
-          return '<td class="coverage-col">'
-            + coverageCell(entry, conn, conns, { matchedConnId: matchedConnId, readOnly: options.readOnly })
-            + '</td>';
-        }).join('')
-      + '<td class="coverage-slack"></td>'
-      + '</tr>';
-
-    if (!expanded) return main;
-
-    return main + '<tr class="data-table__detail-row"><td class="data-table__detail-cell" colspan="'
-      + (conns.length + 3) + '"><div class="data-table__detail" id="' + panelId + '">'
-      + detailTable(entry, conns) + '</div></td></tr>';
-  }).join('');
-
-  return '<div class="data-table__container">'
-    + '<table class="data-table">'
-    + '<thead>' + head + '</thead>'
-    + '<tbody' + (bodyId ? ' id="' + bodyId + '"' : '') + '>' + rows + '</tbody>'
-    + '</table></div>';
 }
 
 /* ── The page ───────────────────────────────────────────────────────────
@@ -2920,13 +2993,23 @@ function pagination(shown, total) {
 /* ── Frame 01: the clickable prototype ──────────────────────────────────
    One state object, one render function, and every control writes to the
    state and re-renders — the same loop the real page runs through URL state. */
-var proto = { cols: 3, variant: 'A', tab: 'All', search: '', connectionId: '',
-              expandedKey: 'v-tab-32', route: null };
+var proto = { cols: 3, tab: 'All', search: '', connectionId: '',
+              expandedKey: 'v-tab-32', route: null,
+              /* Round 4: the first screen transition this file has ever had.
+                 `proto.route` was never one — it prints a URL in an alert and
+                 stays where it is. `expandedKey` is deliberately NOT cleared
+                 on the way out, so `← Listings` comes back to the expanded
+                 row the operator left rather than to a collapsed list. */
+              screen: 'list', mappingId: null };
 
-/* The readout, written from whichever measurement the current variant
-   supports. Variant A is measured in pixels of width it does not have;
-   variant B is measured in pixels of height it grew. Neither number means
-   anything in the other mode, so neither is shown there. */
+/* The readout. There is one measurement left to write, because there is one
+   design left: the coverage table never overflows sideways — the strip wraps
+   instead — so what has to be reported is the price it pays for that, in row
+   height. (Round 3 also carried variant A's width readout here; A is gone,
+   and with it the pixels-of-width-it-does-not-have half.)
+
+   The mapping card has nothing to measure, and says so rather than printing
+   a stale row height from the screen underneath it. */
 function renderReadout(root, conns) {
   var box = document.getElementById('scale-readout');
   function cell(label, value, verdict) {
@@ -2934,42 +3017,48 @@ function renderReadout(root, conns) {
       + esc(label) + (value !== null ? ' <b>' + esc(value) + '</b>' : '') + '</span>';
   }
 
-  if (proto.variant === 'B') {
-    var b = measureVariantB(root);
-    if (!b) { box.innerHTML = cell('connections', String(conns.length)); return; }
-    var over64 = b.tallest - 64;
-    box.innerHTML = cell('connections', String(conns.length))
-      + cell('container gives', b.gives + ' px')
-      + cell('identity column', b.identity + ' px')
-      + cell('tallest row', b.tallest + ' px')
-      + cell('shortest row', b.shortest + ' px')
-      + cell('strip wrapped to', b.lines + ' line' + (b.lines === 1 ? '' : 's'))
-      + cell('longest strip', b.maxPills + ' pills')
-      + cell(b.scrolls
-          ? 'STILL OVERFLOWS SIDEWAYS — the strip is not wrapping'
-          : 'never overflows sideways · ' + (over64 > 0 ? 'grows ' + over64 + ' px past the 64 px identity row' : 'same 64 px row as at three connections'),
-          null, b.scrolls ? 'no' : 'yes');
+  if (proto.screen === 'mapping') {
+    box.innerHTML = cell('screen', 'the mapping card')
+      + cell('reached from', 'a row in the expansion')
+      + cell('nothing to measure here — the row height belongs to the list', null, 'yes');
     return;
   }
 
-  var a = measureInto(root, null, conns.length);
-  if (!a) { box.innerHTML = cell('connections', String(conns.length)); return; }
+  var b = measureVariantB(root);
+  if (!b) { box.innerHTML = cell('connections', String(conns.length)); return; }
+  var over64 = b.tallest - 64;
   box.innerHTML = cell('connections', String(conns.length))
-    + cell('table needs', a.needs + ' px')
-    + cell('container gives', a.gives + ' px')
-    + cell('identity column', a.identity + ' px')
-    + cell('narrowest column', a.per + ' px')
-    + cell('widest', a.widest.label ? a.widest.label + ' ' + a.widest.width + ' px' : '–')
-    + cell(a.fits
-        ? 'fits — ' + (a.gives - a.needs) + ' px of room left, '
-          + Math.floor((a.gives - a.needs) / (a.per || 1)) + ' more connection(s)'
-        : 'OVERFLOWS by ' + a.over + ' px — ' + Math.ceil(a.over / (a.per || 1)) + ' column(s) past the edge',
-        null, a.fits ? 'yes' : 'no');
+    + cell('container gives', b.gives + ' px')
+    + cell('identity column', b.identity + ' px')
+    + cell('tallest row', b.tallest + ' px')
+    + cell('shortest row', b.shortest + ' px')
+    + cell('strip wrapped to', b.lines + ' line' + (b.lines === 1 ? '' : 's'))
+    + cell('longest strip', b.maxPills + ' pills')
+    + cell(b.scrolls
+        ? 'STILL OVERFLOWS SIDEWAYS — the strip is not wrapping'
+        : 'never overflows sideways · ' + (over64 > 0 ? 'grows ' + over64 + ' px past the 64 px identity row' : 'same 64 px row as at three connections'),
+        null, b.scrolls ? 'no' : 'yes');
 }
 
 function renderProto() {
   var app = document.getElementById('proto-app');
   var conns = connSet(proto.cols);
+
+  /* The mapping card is a screen, not a panel, so it replaces the whole app
+     frame — toolbar, tabs and pagination included. An unresolvable id falls
+     back to the list rather than rendering an empty card: the only way to
+     hold one is to have clicked a row that produced it. */
+  if (proto.screen === 'mapping') {
+    var mapping = findMapping(proto.mappingId);
+    if (mapping) {
+      app.innerHTML = mappingShell(mapping);
+      renderReadout(app, conns);
+      return;
+    }
+    proto.screen = 'list';
+    proto.mappingId = null;
+  }
+
   var visible = proto.connectionId
     ? conns.filter(function (c) { return c.id === proto.connectionId; })
     : conns;
@@ -2984,8 +3073,8 @@ function renderProto() {
     ? '<div class="state-card"><h3 class="state-card__title">' + esc(TAB_EMPTY[proto.tab][0]) + '</h3>'
       + '<p class="page-description">' + esc(TAB_EMPTY[proto.tab][1]) + '</p>'
       + '<div class="state-card__actions"><button type="button" class="button button--secondary button--sm" data-role="clear">Clear filters</button></div></div>'
-    : coverageView(entries, visible, {
-        variant: proto.variant, tab: proto.tab, expandedKey: proto.expandedKey,
+    : coverageTableB(entries, visible, {
+        tab: proto.tab, expandedKey: proto.expandedKey,
         scope: 'proto', bodyId: 'rows'
       });
 
@@ -3006,61 +3095,33 @@ function renderProto() {
     + pagination(entries.length, all.length)
   );
 
-  /* Variant B is a fixed-layout table with no frozen cluster to compute: its
-     coverage column cannot scroll out from under anything, because it does
-     not scroll. Running the offsets anyway would pin a column that has no
-     reason to be pinned. */
-  if (proto.variant === 'A') applyStickyOffsets(app);
+  publishVisibleWidth(app);
   renderReadout(app, visible);
 }
 
-/* ── Sticky offsets ────────────────────────────────────────────────────
-   Mirrors data-table.tsx: measure the frozen cells after layout and write
-   their `left` offsets, then flag the table once it is actually scrolled so
-   the boundary edge appears only when content is hidden beneath it. */
-function applyStickyOffsets(root) {
+/* ── The drawer's width contract ──────────────────────────────────────
+   `--dt-visible-width`, published exactly as data-table.tsx:414-428 does it.
+   Without it the expanded drawer takes its width from the TABLE, and a drawer
+   wider than the viewport widens the table that contains it — measured at
+   1617 px against a 1220 px container in round 1, before this landed.
+
+   Salvaged from `applyStickyOffsets` when variant A was removed (round 4).
+   The rest of that function measured a frozen leading cluster, which the
+   surviving design has no use for: the coverage table is `table-layout:
+   fixed` and cannot scroll sideways, so freezing a column would pin
+   something nothing can slide under. This half has to stay. Today the
+   `100%` fallback would coincide with the published value, because three
+   fixed columns never exceed the container — but that is a fact about the
+   current column count, not a guarantee, and the fallback stops being
+   equivalent the moment a fourth column or a min-width arrives. */
+function publishVisibleWidth(root) {
   root.querySelectorAll('.data-table__container > .data-table').forEach(function (table) {
     var container = table.parentElement;
-    var firstRow = table.tHead && table.tHead.rows[0];
-    if (!firstRow) return;
-    /* Frozen cluster = the expander cell + the identity column (2 cells),
-       matching `leadCellCount + stickyLeftColumns` with stickyLeftColumns = 1. */
-    var frozen = 2;
-    if (firstRow.cells.length <= frozen) return;
-    var offset = 0;
-    var widths = [];
-    for (var i = 0; i < frozen; i += 1) {
-      widths.push(firstRow.cells[i].getBoundingClientRect().width);
-    }
-    table.querySelectorAll('tr').forEach(function (row) {
-      /* A detail row spans the whole table and has no frozen cluster. */
-      if (row.classList.contains('data-table__detail-row')) return;
-      var running = 0;
-      for (var i = 0; i < frozen && i < row.cells.length; i += 1) {
-        var cell = row.cells[i];
-        cell.classList.add('data-table__sticky-col');
-        if (i === frozen - 1) cell.classList.add('data-table__sticky-col--last');
-        cell.style.left = Math.round(running) + 'px';
-        running += widths[i];
-      }
-    });
-    offset = widths.reduce(function (a, b) { return a + b; }, 0);
-    function flag() {
-      table.classList.toggle('data-table--sticky-scrolled', container.scrollLeft > 0);
-    }
-    container.addEventListener('scroll', flag);
-    flag();
-
-    /* `--dt-visible-width`, published exactly as data-table.tsx:414-428 does
-       it. Without it the expanded drawer takes its width from the TABLE, and
-       a drawer wider than the viewport widens the table that contains it —
-       measured at 1617 px against a 1220 px container before this landed. */
     function publish() {
       container.style.setProperty('--dt-visible-width', container.clientWidth + 'px');
     }
     publish();
     if (window.ResizeObserver) new ResizeObserver(publish).observe(container);
-    return offset;
   });
 }
 
@@ -3068,59 +3129,6 @@ function applyStickyOffsets(root) {
    The page measures itself so a quoted figure can never drift from the
    picture above it. Everything here is read off the rendered DOM: no figure
    in this file is typed in by hand. */
-function measureInto(root, ids, connCount) {
-  var table = root.querySelector('.data-table__container > .data-table');
-  if (!table) return null;
-  var container = table.parentElement;
-  var head = table.tHead.rows[0];
-  var gives = Math.round(container.clientWidth);
-  /* `scrollWidth` is the wrong number here and it took a screenshot to see
-     why: `.coverage-slack` is `width: 100%`, so it stretches the table to the
-     container until the real columns genuinely stop fitting, and every case
-     reported "needs === gives, 0 px of room left" — including the ones with
-     six spare columns. Sum the columns that carry something instead. */
-  var cells = [].slice.call(head.cells).filter(function (cell) {
-    return !cell.classList.contains('coverage-slack');
-  });
-  var needs = 0;
-  var widest = { width: 0, label: '' };
-  cells.forEach(function (cell, index) {
-    var width = cell.getBoundingClientRect().width;
-    needs += width;
-    if (index >= 2 && width > widest.width) {
-      widest = { width: Math.round(width), label: cell.textContent.trim() };
-    }
-  });
-  needs = Math.round(needs);
-  var identity = Math.round(cells[1].getBoundingClientRect().width);
-  /* The FLOOR is 5.5rem, set by the `Invalid` badge. A channel whose header
-     label is wider pushes its own column past it — WooCommerce measures 99 px
-     against Erli's 88 — so the ceiling moves with how the operator NAMED
-     their connections. `per` reports the floor, `widest` reports the pressure. */
-  var per = cells.length > 2 ? Math.round(cells[2].getBoundingClientRect().width) : 0;
-  var fits = needs <= gives;
-  var over = needs - gives;
-
-  function put(id, text) { var el = document.getElementById(id); if (el) el.textContent = text; }
-  if (ids) {
-    put(ids.cols, String(connCount));
-    put(ids.needs, needs + ' px');
-    put(ids.gives, gives + ' px');
-    put(ids.identity, identity + ' px');
-    put(ids.per, per + ' px');
-    put(ids.widest, widest.label ? widest.label + ' ' + widest.width + ' px' : '–');
-    var verdict = document.getElementById(ids.verdict);
-    if (verdict) {
-      verdict.textContent = fits
-        ? 'fits — ' + (gives - needs) + ' px of room left, ' + Math.floor((gives - needs) / (per || 1)) + ' more connection(s)'
-        : 'OVERFLOWS by ' + over + ' px — ' + Math.ceil(over / (per || 1)) + ' column(s) past the edge';
-      verdict.setAttribute('data-fits', fits ? 'yes' : 'no');
-    }
-  }
-  return { needs: needs, gives: gives, identity: identity, per: per,
-           widest: widest, fits: fits, over: over };
-}
-
 /* Variant B's measurement, which is a different number entirely. B never
    overflows sideways — the strip wraps instead — so what has to be reported
    is the price it pays for that: the row's own height, and how many lines the
@@ -3189,6 +3197,26 @@ function measureVariantB(root) {
       renderProto();
       return;
     }
+    /* Checked BEFORE `[data-route]`. The two are deliberately different
+       attributes: `data-route` only prints a URL in an alert and stays put,
+       and a row that has to NAVIGATE must not be swallowed by it. */
+    var link = event.target.closest('[data-mapping]');
+    if (link) {
+      event.preventDefault();
+      proto.mappingId = link.getAttribute('data-mapping');
+      proto.screen = 'mapping';
+      proto.route = null;
+      renderProto();
+      return;
+    }
+    var back = event.target.closest('[data-role="back"]');
+    if (back) {
+      event.preventDefault();
+      proto.screen = 'list';
+      proto.mappingId = null;
+      renderProto();
+      return;
+    }
     var clear = event.target.closest('[data-role="clear"]');
     if (clear) {
       proto.search = ''; proto.connectionId = ''; proto.tab = 'All'; proto.route = null;
@@ -3219,17 +3247,6 @@ function measureVariantB(root) {
     }
   });
 
-  document.querySelectorAll('[data-view]').forEach(function (button) {
-    button.addEventListener('click', function () {
-      proto.variant = button.getAttribute('data-view');
-      proto.route = null;
-      document.querySelectorAll('[data-view]').forEach(function (other) {
-        other.setAttribute('aria-pressed', other === button ? 'true' : 'false');
-      });
-      renderProto();
-    });
-  });
-
   document.querySelectorAll('[data-cols]').forEach(function (button) {
     button.addEventListener('click', function () {
       proto.cols = Number(button.getAttribute('data-cols'));
@@ -3244,33 +3261,41 @@ function measureVariantB(root) {
 
   renderProto();
   window.addEventListener('resize', renderProto);
+
+  /* Frames 02 onwards are one-shot `innerHTML` renders with no listeners of
+     their own, and the expansion's row anchors carry a real `href` (the route
+     is the point — a reviewer should be able to read it off the markup). On a
+     `file://` sheet that href would navigate the whole page to a 404, so the
+     document swallows any mapping click that did not reach the prototype's
+     own delegate. */
+  document.addEventListener('click', function (event) {
+    var link = event.target.closest('[data-mapping]');
+    if (link && !app.contains(link)) event.preventDefault();
+  });
 })();
 
-/* ── Frame 02: A vs B ──────────────────────────────────────────────────
-   Two halves. The first is the defect, reproduced rather than described: the
-   same table in both variants, inside a 13rem viewport, scrolled past its own
-   header. The second is the price list — both variants at 3, 9 and 14
-   connections from one fixture, each measured in the dimension it actually
-   fails in. */
+/* ── Frame 02: what the strip costs ──────────────────────────────────────
+   Two halves. The first is the property the design turns on, reproduced
+   rather than described: the table scrolled past its own header, with every
+   mark still naming its own connection. The second is the price list — the
+   same fixture at 3, 9 and 14 connections, measured in the dimension this
+   design can actually fail in, which is row height and not width.
+
+   Round 3 ran both halves twice, once per variant, and the comparison was
+   the point of the frame. Variant A is gone (PM decision, round 4), so what
+   is left is a measurement rather than a verdict — but it is the measurement
+   the style-guide entry in the handover frame quotes, so it stays. */
 (function () {
   var all = variantRows(PRODUCTS);
   var conns = connSet(9);
 
   document.getElementById('scroll-proof-mount').innerHTML =
-    '<figure><figcaption>A — scrolled past the header. Which column is the fourth dot in?</figcaption>'
-    + '<div class="app-frame"><div class="scroll-proof" data-scroll-proof="A">'
-    + coverageView(all, conns, { variant: 'A', tab: 'All', scope: 'sp-a' })
-    + '</div></div></figure>'
-    + '<figure><figcaption>B — same scroll position, and every mark still says what it is</figcaption>'
+    '<figure><figcaption>Scrolled past its own header — and nothing was lost, because the name never lived up there</figcaption>'
     + '<div class="app-frame"><div class="scroll-proof" data-scroll-proof="B">'
-    + coverageView(all, conns, { variant: 'B', tab: 'All', scope: 'sp-b' })
+    + coverageTableB(all, conns, { tab: 'All', scope: 'sp-b' })
     + '</div></div></figure>';
 
-  /* Variant A only: B is a fixed-layout table that cannot scroll sideways, so
-     freezing a column there would pin something nothing can slide under. */
-  document.querySelectorAll('[data-scroll-proof="A"]').forEach(applyStickyOffsets);
-
-  /* Scroll both proofs past their headers. Deliberately not a CSS trick that
+  /* Scroll the proof past its header. Deliberately not a CSS trick that
      hides the header: the header is present, in the DOM, doing its job — it
      is simply above the viewport, which is the situation being drawn. */
   document.querySelectorAll('[data-scroll-proof]').forEach(function (box) {
@@ -3285,63 +3310,42 @@ function measureVariantB(root) {
   ];
 
   /* Every row, not a sample. The tallest strip belongs to the variant that is
-     listed NOWHERE — fourteen `+ Channel` pills, which are the widest pills in
-     the vocabulary — and a six-row sample left it out, so the first
-     measurement of variant B understated its own cost by a wrapped line. */
+     listed NOWHERE — and a six-row sample left it out, so the first
+     measurement of this row understated its own cost by a wrapped line. */
   document.getElementById('compare-mount').innerHTML = CASES.map(function (item, index) {
     var set = connSet(item[0]);
     var greys = set.filter(function (c) {
       return ['allegro','erli','woocommerce','prestashop','amazon','shopify'].indexOf(c.channel) === -1;
     }).length;
-    return ['A', 'B'].map(function (variant) {
-      return '<figure><figcaption>' + variant + ' · ' + esc(item[1])
-        + (variant === 'A' ? ' · ' + greys + ' of ' + item[0] + ' channels have no colour token' : '')
-        + '</figcaption>'
-        + '<div class="scale-readout" id="cmp-' + index + variant + '">–</div>'
-        + '<div class="app-frame" data-cmp="' + index + variant + '">'
-        + coverageView(all, set, { variant: variant, tab: 'All', scope: 'cmp' + index + variant })
-        + '</div></figure>';
-    }).join('');
+    return '<figure><figcaption>' + esc(item[1])
+      + ' · ' + greys + ' of ' + item[0] + ' channels have no colour token</figcaption>'
+      + '<div class="scale-readout" id="cmp-' + index + '">–</div>'
+      + '<div class="app-frame" data-cmp="' + index + '">'
+      + coverageTableB(all, set, { tab: 'All', scope: 'cmp' + index })
+      + '</div></figure>';
   }).join('');
 
-  document.querySelectorAll('#compare-mount [data-cmp$="A"]').forEach(applyStickyOffsets);
-
-  /* The style-guide entry in the handover frame quotes variant B's row
-     heights. Fill them from the measurement taken above rather than typing
-     them in: a guide entry with a stale number is worse than no entry, and
-     this file's rule is that every figure in it is read off the DOM. */
+  /* The style-guide entry in the handover frame quotes these row heights.
+     Fill them from the measurement taken above rather than typing them in: a
+     guide entry with a stale number is worse than no entry, and this file's
+     rule is that every figure in it is read off the DOM. */
   var measuredB = {};
   var measuredPills = 0;
 
   CASES.forEach(function (item, index) {
-    ['A', 'B'].forEach(function (variant) {
-      var host = document.querySelector('[data-cmp="' + index + variant + '"]');
-      var box = document.getElementById('cmp-' + index + variant);
-      if (variant === 'A') {
-        var a = measureInto(host, null, item[0]);
-        box.innerHTML = '<span>connections <b>' + item[0] + '</b></span>'
-          + '<span>table needs <b>' + a.needs + ' px</b></span>'
-          + '<span>container gives <b>' + a.gives + ' px</b></span>'
-          + '<span>per connection <b>' + a.per + ' px</b></span>'
-          + '<span class="scale-readout__verdict" data-fits="' + (a.fits ? 'yes' : 'no') + '">'
-          + (a.fits
-              ? 'fits, ' + (a.gives - a.needs) + ' px spare'
-              : 'OVERFLOWS by ' + a.over + ' px')
-          + '</span>';
-      } else {
-        var b = measureVariantB(host);
-        measuredB[item[0]] = b.tallest;
-        measuredPills = Math.max(measuredPills, b.maxPills);
-        box.innerHTML = '<span>connections <b>' + item[0] + '</b></span>'
-          + '<span>tallest row <b>' + b.tallest + ' px</b></span>'
-          + '<span>shortest <b>' + b.shortest + ' px</b></span>'
-          + '<span>strip wrapped to <b>' + b.lines + ' line' + (b.lines === 1 ? '' : 's') + '</b></span>'
-          + '<span>longest strip <b>' + b.maxPills + ' pills</b></span>'
-          + '<span class="scale-readout__verdict" data-fits="' + (b.scrolls ? 'no' : 'yes') + '">'
-          + (b.scrolls ? 'OVERFLOWS SIDEWAYS' : 'same 64 px row at every connection count')
-          + '</span>';
-      }
-    });
+    var host = document.querySelector('[data-cmp="' + index + '"]');
+    var box = document.getElementById('cmp-' + index);
+    var b = measureVariantB(host);
+    measuredB[item[0]] = b.tallest;
+    measuredPills = Math.max(measuredPills, b.maxPills);
+    box.innerHTML = '<span>connections <b>' + item[0] + '</b></span>'
+      + '<span>tallest row <b>' + b.tallest + ' px</b></span>'
+      + '<span>shortest <b>' + b.shortest + ' px</b></span>'
+      + '<span>strip wrapped to <b>' + b.lines + ' line' + (b.lines === 1 ? '' : 's') + '</b></span>'
+      + '<span>longest strip <b>' + b.maxPills + ' pills</b></span>'
+      + '<span class="scale-readout__verdict" data-fits="' + (b.scrolls ? 'no' : 'yes') + '">'
+      + (b.scrolls ? 'OVERFLOWS SIDEWAYS' : 'same 64 px row at every connection count')
+      + '</span>';
   });
 
   var guideEntry = document.getElementById('guide-entry-b');
@@ -3354,44 +3358,59 @@ function measureVariantB(root) {
   }
 })();
 
-/* ── Frame 03: the vocabulary ──────────────────────────────────────────── */
+/* ── Frame 03: the vocabulary ──────────────────────────────────────────
+   Round 3 drew variant A's alphabet here — four shapes and one word, a
+   filled dot against a hollow one. That alphabet went with A. What replaced
+   it is not a translation of it: every mark in the surviving design carries
+   its own NAME, which is the whole reason the pill strip won, so the column
+   this ledger used to need for "which connection is this?" does not exist.
+   Five of the six marks below are shipped CSS; only the selection outline is
+   this file's own. */
 (function () {
   var lead = variantRows(PRODUCTS)[0];
   var conns = connSet(9);
   var rows = [
-    ['live', 'Listed and live', 'A filled dot. The most common cell on the page, and the operator did not come to read it — so it is the quietest thing in the grid. Active earns no badge in the shipped rules either (<code>case \'Active\': break</code>).', '.coverage-cell--live · invented'],
-    ['dormant', 'Listed, not live', 'A hollow dot. One mark for Draft, Ended and Not synced together, because all three are toned <code>neutral</code> today and none of them asks for work. Which of the three it is lives in the expanded row and in the hover.', '.coverage-cell--dormant · invented'],
-    ['invalid', 'Listed, rejected', 'The only word in the grid. A channel validator refused the offer, and it is the one cell state that asks for something from inside the table.', 'StatusBadge tone="error" compact · shipped'],
-    ['gap', 'Not listed', 'The only accent in the grid, and a real button: it opens the bulk-create wizard with this variant and this connection already in the URL.', '.products-row-cta + --icon · shipped + invented modifier'],
-    ['blocked', 'Not listed, no path', 'A rule, not a button. This connection can hold listings and cannot accept new ones — no offer-creation capability, no product publishing enabled.', '.coverage-cell--blocked · invented']
+    ['live', 0, null, 'Listed and live',
+     'A channel pill, named. The most common mark on the page, and the operator did not come to read it — so it is the quietest thing in the strip. Active earns no badge in the shipped rules either (<code>case \'Active\': break</code>).',
+     '.channel-pill · shipped (variant-stock-table.tsx:253-270)'],
+    ['dormant', 5, null, 'Listed, not live',
+     'The same pill, with the lifecycle after a middle dot. Draft, Ended and Not synced all read this way — all three are toned <code>neutral</code> today and none of them asks for work — but the pill says WHICH of the three it is, right here, with no expansion needed. A design that had to ration column width could not afford that word.',
+     '.channel-pill + lifecycle word · shipped'],
+    ['invalid', 2, null, 'Listed, rejected',
+     'The one mark that asks for something. A channel validator refused the offer; the sentence why travels with it into the expanded row, where the Channel cell stacks it under the pill.',
+     'StatusBadge tone="error" compact · shipped'],
+    ['gap', 3, null, 'Not listed',
+     'The only accent in the strip, and a real button — it opens the bulk-create wizard with this variant and this connection already in the URL. It does not live in the strip: gaps are in the expanded row, under the table.',
+     '.products-row-cta · shipped'],
+    ['blocked', 4, null, 'Not listed, no path',
+     'Named and not offered. This connection can hold listings and cannot accept new ones — no offer-creation capability, no product publishing enabled — and a button into a dead end is worse than none.',
+     '.coverage-pill--none · shipped'],
+    ['matched', 0, 'c-alg', 'The one that put the row on this list',
+     'A lifecycle tab filters variants, not offers, so a filtered row has to say which of its pills answered the filter. The outline is the only mark in this vocabulary this file invented, and it is a border rather than a fill because a fill against the pill\'s own background measured 1.09:1.',
+     '.coverage-cell--matched · invented']
   ];
 
-  function markFor(state) {
-    if (state === 'live') return coverageCell(lead, conns[0], conns, {});
-    if (state === 'dormant') return coverageCell(lead, conns[5], conns, {});
-    if (state === 'invalid') return coverageCell(lead, conns[2], conns, {});
-    if (state === 'blocked') return coverageCell(lead, conns[4], conns, {});
-    return coverageCell(lead, conns[3], conns, {});
-  }
-
   document.getElementById('vocab-app').innerHTML =
-    '<header class="page-header"><h2 class="page-title">The cell vocabulary</h2>'
-    + '<p class="page-description">Five states. Four shapes and one word — so colour is never the only'
-    + ' signal, and the column width is set by the word rather than by the data.</p></header>'
+    '<header class="page-header"><h2 class="page-title">Every mark carries its own name</h2>'
+    + '<p class="page-description">Six marks. None of them depends on a column header, which is what'
+    + ' lets the strip survive being scrolled past — and colour is never the only signal, because each'
+    + ' one is labelled.</p></header>'
     + '<dl class="ledger">'
     + rows.map(function (row) {
+        var mark = coveragePill(lead, conns[row[1]], conns,
+          row[2] ? { matchedConnId: row[2] } : {});
         return '<div class="ledger__row">'
-          + '<dt class="ledger__mark">' + markFor(row[0]) + '</dt>'
+          + '<dt class="ledger__mark">' + mark + '</dt>'
           + '<dd class="ledger__body">'
-          +   '<span class="ledger__name">' + row[1] + '</span>'
-          +   '<span class="ledger__desc">' + row[2] + '</span>'
-          +   '<span class="ledger__src">' + esc(row[3]) + '</span>'
+          +   '<span class="ledger__name">' + row[3] + '</span>'
+          +   '<span class="ledger__desc">' + row[4] + '</span>'
+          +   '<span class="ledger__src">' + esc(row[5]) + '</span>'
           + '</dd></div>';
       }).join('')
     + '</dl>';
 })();
 
-/* ── Frame 03: the expansion ───────────────────────────────────────────── */
+/* ── Frame 04: the expansion ───────────────────────────────────────────── */
 (function () {
   var all = variantRows(PRODUCTS);
   var conns = connSet(9);
@@ -3399,15 +3418,28 @@ function measureVariantB(root) {
   var bare = all.filter(function (e) { return e.variant.id === 'v-szk-mat'; })[0];
 
   document.getElementById('detail-mount').innerHTML =
-    '<figure><figcaption>The lo-fi\'s own row — four listings, one of them refused</figcaption>'
-    + '<div class="app-frame">' + coverageTable([lead], conns, { tab: 'All', expandedKey: lead.variant.id, scope: 'd1' }) + '</div></figure>'
-    + '<figure><figcaption>A variant listed nowhere — the expansion has to say so, not render an empty table</figcaption>'
-    + '<div class="app-frame">' + coverageTable([bare], conns, { tab: 'All', expandedKey: bare.variant.id, scope: 'd2' }) + '</div></figure>';
+    '<figure><figcaption>The lo-fi\'s own row — four listings, one of them refused. Each row links to its mapping; the gaps sit under the table.</figcaption>'
+    + '<div class="app-frame">' + coverageTableB([lead], conns, { tab: 'All', expandedKey: lead.variant.id, scope: 'd1' }) + '</div></figure>'
+    + '<figure><figcaption>A variant listed nowhere — the expansion has to say so, not render an empty table. There are no rows to link, and every connection is a button.</figcaption>'
+    + '<div class="app-frame">' + coverageTableB([bare], conns, { tab: 'All', expandedKey: bare.variant.id, scope: 'd2' }) + '</div></figure>';
 
-  applyStickyOffsets(document.getElementById('detail-mount'));
+  publishVisibleWidth(document.getElementById('detail-mount'));
 })();
 
-/* ── Frame 04: the tabs ────────────────────────────────────────────────── */
+/* ── Frame 05: the mapping card ───────────────────────────────────────────
+   One card, drawn from the same fixture the expansion links from — so the
+   external id on this card is the same string the Listing column shows one
+   frame up. The Allegro offer on the lo-fi's own row: the ordinary case. The
+   `ShopProduct` variant of the card is reachable by expanding the
+   WooCommerce row in frame 01 and clicking it, rather than drawn twice
+   here. */
+(function () {
+  var lead = variantRows(PRODUCTS)[0];
+  var mapping = mappingFor(lead, CONNECTIONS[0]);
+  document.getElementById('mapping-app').innerHTML = mappingShell(mapping);
+})();
+
+/* ── Frame 06: the tabs ────────────────────────────────────────────────── */
 (function () {
   var all = variantRows(PRODUCTS);
   var conns = connSet(9);
@@ -3417,7 +3449,7 @@ function measureVariantB(root) {
     var entries = all.filter(function (entry) { return matchesTab(entry, conns, tab); });
     return '<figure><figcaption>' + caption + '</figcaption><div class="app-frame">'
       + tabStrip(counts, tab)
-      + coverageTable(entries.slice(0, 4), conns, { tab: tab, scope: 'tab-' + tab })
+      + coverageTableB(entries.slice(0, 4), conns, { tab: tab, scope: 'tab-' + tab })
       + '<span class="ledger__src">' + counts[tab] + ' offers in this state · '
       + entries.length + ' variants carry one</span>'
       + '</div></figure>';
@@ -3425,53 +3457,13 @@ function measureVariantB(root) {
 
   document.getElementById('tabs-mount').innerHTML =
     shot('All', 'All — new, and the default: a view about gaps cannot open on a tab that only shows offers that exist')
-    + shot('Invalid', 'Invalid — the cell that let the row in takes the outline')
-    + shot('Unsynced', 'Unsynced — the hollow dot is the same shape as Draft and Ended, so the outline is doing the work');
+    + shot('Invalid', 'Invalid — the pill that let the row in takes the outline')
+    + shot('Unsynced', 'Unsynced — the pill already names the state, so the outline only has to say WHICH pill answered');
 
-  applyStickyOffsets(document.getElementById('tabs-mount'));
+  publishVisibleWidth(document.getElementById('tabs-mount'));
 })();
 
-/* ── Frame 05: scale ───────────────────────────────────────────────────── */
-(function () {
-  var all = variantRows(PRODUCTS).slice(0, 6);
-  var mount = document.getElementById('scale-mount');
-  var CASES = [
-    [3,  'Three connections — everything OpenLinker integrates today'],
-    [9,  'Nine — the lo-fi as drawn, and the last count that fits'],
-    [14, 'Fourteen — two Allegro accounts among them, and the table is past the edge']
-  ];
-
-  mount.innerHTML = CASES.map(function (item, index) {
-    var conns = connSet(item[0]);
-    var greys = conns.filter(function (c) { return ['allegro','erli','woocommerce','prestashop','amazon','shopify'].indexOf(c.channel) === -1; }).length;
-    return '<figure><figcaption>' + esc(item[1]) + '</figcaption>'
-      + '<div class="scale-readout" id="scale-ro-' + index + '">'
-      +   '<span>connections <b>' + item[0] + '</b></span>'
-      +   '<span>table needs <b id="s' + index + '-needs">–</b></span>'
-      +   '<span>container gives <b id="s' + index + '-gives">–</b></span>'
-      +   '<span>identity <b id="s' + index + '-identity">–</b></span>'
-      +   '<span>narrowest column <b id="s' + index + '-per">–</b></span>'
-      +   '<span>widest <b id="s' + index + '-widest">–</b></span>'
-      +   '<span>channels with no colour token <b>' + greys + ' of ' + item[0] + '</b></span>'
-      +   '<span class="scale-readout__verdict" id="s' + index + '-verdict" data-fits="yes">–</span>'
-      + '</div>'
-      + '<div class="app-frame">'
-      + coverageTable(all, conns, { tab: 'All', scope: 'sc' + index })
-      + '</div></figure>';
-  }).join('');
-
-  applyStickyOffsets(mount);
-  CASES.forEach(function (item, index) {
-    var figure = mount.children[index];
-    measureInto(figure, {
-      needs: 's' + index + '-needs', gives: 's' + index + '-gives',
-      identity: 's' + index + '-identity', per: 's' + index + '-per',
-      widest: 's' + index + '-widest', verdict: 's' + index + '-verdict'
-    }, item[0]);
-  });
-})();
-
-/* ── Frame 06: publishing ──────────────────────────────────────────────── */
+/* ── Frame 07: publishing ──────────────────────────────────────────────── */
 (function () {
   var conns = connSet(3);
   var base = variantRows(PRODUCTS).filter(function (e) { return e.variant.id === 'v-etu-cz'; })[0];
@@ -3496,9 +3488,15 @@ function measureVariantB(root) {
   var refused = clone({ 'c-woo': L('123459002', '129,00 PLN', 34, '21 sie 2026, 11:02', 'Invalid',
     'Rejected by the channel validator: the destination category requires a size attribute', 0) });
 
+  /* Rows are drawn EXPANDED here, which round 3 did not have to do: variant
+     A put the gap button in the grid cell, so a collapsed row showed it. In
+     the surviving design a gap is a button in the expansion, under the
+     table — so a frame about what the gap does has to open the row to show
+     one at all. */
   function shot(entry, caption, note) {
     return '<figure><figcaption>' + caption + '</figcaption>'
-      + '<div class="app-frame">' + coverageTable([entry], conns, { tab: 'All', scope: 'pub-' + entry.variant.id + caption.length })
+      + '<div class="app-frame">' + coverageTableB([entry], conns,
+          { tab: 'All', expandedKey: entry.variant.id, scope: 'pub-' + entry.variant.id + caption.length })
       + '<span class="ledger__src">' + note + '</span></div></figure>';
   }
 
@@ -3510,18 +3508,25 @@ function measureVariantB(root) {
     + shot(refused, 'Refused — and the reason travels with the offer',
       'The word appears in the grid, the sentence appears in the expansion. This is the only cell state that pulls the operator inward.');
 
-  applyStickyOffsets(document.getElementById('publish-mount'));
+  publishVisibleWidth(document.getElementById('publish-mount'));
 })();
 
-/* ── Frame 07: edge states ─────────────────────────────────────────────── */
+/* ── Frame 08: edge states ─────────────────────────────────────────────── */
 (function () {
   var conns = connSet(3);
   var all = variantRows(PRODUCTS);
 
-  var skeleton = '<div class="data-table__container"><table class="data-table"><thead><tr>'
-    + '<th class="data-table__expand-cell"></th><th class="identity-col" scope="col">Variant</th>'
-    + conns.map(function (c) { return '<th class="coverage-col" scope="col">' + esc(connLabel(c, conns)) + '</th>'; }).join('')
-    + '<th class="coverage-slack"></th></tr></thead><tbody>'
+  /* Three columns, because the table has three — the skeleton reserves the
+     shape it will actually get. Round 3's skeleton drew one column per
+     connection, which was variant A's shape; here the strip is ONE column
+     whose width does not depend on how many connections exist, so the
+     placeholder is a strip of pill-sized blocks rather than a row of cells. */
+  var skeleton = '<div class="data-table__container">'
+    + '<table class="data-table coverage-table-b"><thead><tr>'
+    + '<th class="data-table__expand-cell"></th>'
+    + '<th class="identity-col" scope="col">Variant</th>'
+    + '<th class="coverage-strip-col" scope="col">Listed on</th>'
+    + '</tr></thead><tbody>'
     + [0,1,2,3].map(function () {
         return '<tr><td class="data-table__expand-cell"></td>'
           + '<td class="identity-col"><span class="listing-cell">'
@@ -3530,8 +3535,9 @@ function measureVariantB(root) {
           + '<span class="copyable-id__value" style="width:11rem">&nbsp;</span></span>'
           + '<span class="listing-cell__meta"><span class="copyable-id__value" style="width:7rem">&nbsp;</span></span>'
           + '</span></span></td>'
-          + conns.map(function () { return '<td class="coverage-col"><span class="coverage-cell"><span class="copyable-id__value" style="width:1.25rem">&nbsp;</span></span></td>'; }).join('')
-          + '<td class="coverage-slack"></td></tr>';
+          + '<td class="coverage-strip-col"><span class="coverage-pills">'
+          + [0,1,2].map(function () { return '<span class="copyable-id__value" style="width:4.5rem">&nbsp;</span>'; }).join('')
+          + '</span></td></tr>';
       }).join('')
     + '</tbody></table></div>';
 
@@ -3542,7 +3548,15 @@ function measureVariantB(root) {
       + '</div>';
   }
 
-  var readOnlyRow = coverageTable(all.slice(1, 3), conns, { tab: 'All', scope: 'ro', readOnly: true });
+  /* Expanded, for the same reason frame 07 is: read-only is a statement about
+     the gap BUTTON, and the button is in the expansion. The row expanded is
+     `all[2]` (`v-etu-cz`) and not `all[1]`, because at three connections
+     `v-tab-64` is listed on all of them — expanding it renders "listed on
+     every connection, nothing left to publish" and the frame's whole subject,
+     a gap that keeps its shape and loses its action, is absent from the
+     picture. */
+  var readOnlyRow = coverageTableB(all.slice(1, 3), conns,
+    { tab: 'All', expandedKey: all[2].variant.id, scope: 'ro', readOnly: true });
 
   document.getElementById('states-tables').innerHTML =
     '<figure><figcaption>Loading — the skeleton reserves the two-line identity it will get</figcaption>'
@@ -3566,10 +3580,10 @@ function measureVariantB(root) {
         'The request for variant coverage failed. Nothing has changed on your channels.',
         '<button type="button" class="button button--secondary button--sm">Try again</button>') + '</div></figure>';
 
-  applyStickyOffsets(document.getElementById('states-tables'));
+  publishVisibleWidth(document.getElementById('states-tables'));
 })();
 
-/* ── Frames 08 / 09: narrow ────────────────────────────────────────────── */
+/* ── Frames 09 / 10: narrow ────────────────────────────────────────────── */
 (function () {
   var all = variantRows(PRODUCTS);
   var conns = connSet(3);
@@ -3578,8 +3592,8 @@ function measureVariantB(root) {
   document.getElementById('tablet-app').innerHTML =
     pageShell(toolbar({ search: '', connectionId: '' }, conns)
       + tabStrip(counts, 'All')
-      + coverageTable(all.slice(0, 5), conns, { tab: 'All', scope: 'tab768', bodyId: 'tablet-rows' }));
-  applyStickyOffsets(document.getElementById('tablet-app'));
+      + coverageTableB(all.slice(0, 5), conns, { tab: 'All', scope: 'tab768', bodyId: 'tablet-rows' }));
+  publishVisibleWidth(document.getElementById('tablet-app'));
 
   /* 360 px: the grid stops being a grid. Gaps lead, named, because there is
      no column header left to name them; the marks for what IS listed follow.
