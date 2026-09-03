@@ -309,6 +309,15 @@ module.exports = {
                   '**/returns/components/**',
                   '**/returns/lib/**',
                   '**/returns/types/**',
+                  // Added on the #2761 tech-review pass — `features/orders`
+                  // imports `resolveSalesDocumentReasonCopy` /
+                  // `SalesDocumentReasonTone` from `features/sales-documents`'
+                  // public barrel; new slug goes into BOTH pattern groups.
+                  '**/sales-documents/api/**',
+                  '**/sales-documents/hooks/**',
+                  '**/sales-documents/components/**',
+                  '**/sales-documents/lib/**',
+                  '**/sales-documents/types/**',
                   '**/shipments/api/**',
                   '**/shipments/hooks/**',
                   '**/shipments/components/**',
@@ -557,6 +566,16 @@ module.exports = {
                   '**/returns/components/**',
                   '**/returns/lib/**',
                   '**/returns/types/**',
+                  // Added on the #2761 tech-review pass — `features/orders`
+                  // reaches `features/sales-documents`' public barrel
+                  // (`resolveSalesDocumentReasonCopy`, `SalesDocumentReasonTone`),
+                  // mirroring the features/ group below — new slug goes into
+                  // BOTH groups.
+                  '**/sales-documents/api/**',
+                  '**/sales-documents/hooks/**',
+                  '**/sales-documents/components/**',
+                  '**/sales-documents/lib/**',
+                  '**/sales-documents/types/**',
                   '**/shipments/api/**',
                   '**/shipments/hooks/**',
                   '**/shipments/components/**',
