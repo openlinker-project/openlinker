@@ -118,6 +118,102 @@ describe('AnalyticsDataCoveragePanel (#2474)', () => {
     expect(screen.queryByText(/view more/i)).not.toBeInTheDocument();
   });
 
+  it('should render each row\'s own per-line rate in the tax detail modal, never one hardcoded value shared across rows (#2798)', async () => {
+    const user = userEvent.setup();
+    const apiClient = createMockApiClient({
+      analytics: {
+        getCoverage: vi.fn().mockResolvedValue(
+          coverage({
+            categories: [
+              { category: 'currency', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+              { category: 'tax-a', status: 'open', affectedCount: 2, sampleOrderIds: [] },
+              { category: 'tax-b', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+              { category: 'tax-c', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+              { category: 'product-matching', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+            ],
+          })
+        ),
+        getTaxCoverageOrders: vi.fn().mockResolvedValue({
+          items: [
+            {
+              internalOrderId: 'ol_order_mixed_1',
+              sourceConnectionId: 'conn-1',
+              placedAt: '2026-08-18T00:00:00.000Z',
+              lineRates: [
+                { productId: 'p1', variantId: null, rateCode: '23', state: 'known' },
+                { productId: 'p2', variantId: 'v2', rateCode: '8', state: 'known' },
+              ],
+            },
+            {
+              internalOrderId: 'ol_order_mixed_2',
+              sourceConnectionId: 'conn-1',
+              placedAt: '2026-08-19T00:00:00.000Z',
+              lineRates: [{ productId: 'p3', variantId: null, rateCode: '5', state: 'known' }],
+            },
+          ],
+          total: 2,
+        }),
+      },
+    });
+
+    renderWithProviders(<AnalyticsDataCoveragePanel filters={FILTERS} onOpenSettings={() => {}} />, { apiClient });
+
+    await user.click(await screen.findByText('2 orders have an unconfirmed tax rate'));
+
+    expect(await screen.findByText('23%')).toBeInTheDocument();
+    expect(screen.getByText('8%')).toBeInTheDocument();
+    expect(screen.getByText('5%')).toBeInTheDocument();
+    // Never a single shared value duplicated across every row.
+    expect(screen.queryAllByText('23%')).toHaveLength(1);
+  });
+
+  it('should surface the catalogue-reported reason (#2264) as a tooltip on the "no rate" tag', async () => {
+    const user = userEvent.setup();
+    const apiClient = createMockApiClient({
+      analytics: {
+        getCoverage: vi.fn().mockResolvedValue(
+          coverage({
+            categories: [
+              { category: 'currency', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+              { category: 'tax-a', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+              { category: 'tax-b', status: 'open', affectedCount: 1, sampleOrderIds: [] },
+              { category: 'tax-c', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+              { category: 'product-matching', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+            ],
+          })
+        ),
+        getTaxCoverageOrders: vi.fn().mockResolvedValue({
+          items: [
+            {
+              internalOrderId: 'ol_order_no_rate',
+              sourceConnectionId: 'conn-1',
+              placedAt: '2026-08-18T00:00:00.000Z',
+              lineRates: [
+                {
+                  productId: 'p1',
+                  variantId: null,
+                  rateCode: null,
+                  state: 'no-rate',
+                  unknownReason: 'ambiguous',
+                },
+              ],
+            },
+          ],
+          total: 1,
+        }),
+      },
+    });
+
+    renderWithProviders(<AnalyticsDataCoveragePanel filters={FILTERS} onOpenSettings={() => {}} />, { apiClient });
+
+    await user.click(await screen.findByText('1 order have no tax rate at all'));
+
+    expect(await screen.findByText('no rate')).toHaveAttribute(
+      'title',
+      'Catalogue reports several candidate rates — resolve which one is right in the shop.'
+    );
+  });
+
   it('should transition the currency row through a "Fixed — closing…" sub-state driven by the real run status, then show the dismissible coverage-alert', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
@@ -169,12 +265,17 @@ describe('AnalyticsDataCoveragePanel (#2474)', () => {
 
     expect(await screen.findByText('Recalculated and saved — closing…')).toBeInTheDocument();
 
-    await waitFor(() => expect(screen.getByText('5 orders recalculated')).toBeInTheDocument(), {
-      timeout: 5000,
-    });
+    await waitFor(
+      () => expect(screen.getByText('Recalculation finished for the 5 orders you selected')).toBeInTheDocument(),
+      {
+        timeout: 5000,
+      }
+    );
 
     await user.click(screen.getByLabelText('Dismiss'));
-    expect(screen.queryByText('5 orders recalculated')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Recalculation finished for the 5 orders you selected')
+    ).not.toBeInTheDocument();
 
     vi.useRealTimers();
   });
@@ -266,7 +367,9 @@ describe('AnalyticsDataCoveragePanel (#2474)', () => {
           ),
           getCurrencyMismatchOrders: vi.fn().mockResolvedValue({ items: [], total: 5 }),
           getTaxCoverageOrders: vi.fn().mockResolvedValue({
-            items: [{ internalOrderId: 'ol_order_a', sourceConnectionId: 'conn-1', placedAt: null }],
+            items: [
+              { internalOrderId: 'ol_order_a', sourceConnectionId: 'conn-1', placedAt: null, lineRates: [] },
+            ],
             total: 2,
           }),
         },

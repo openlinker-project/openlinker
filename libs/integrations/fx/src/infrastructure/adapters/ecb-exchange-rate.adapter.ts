@@ -269,6 +269,37 @@ export class EcbExchangeRateAdapter implements ExchangeRateProviderPort {
     );
   }
 
+  /**
+   * Implements `ExchangeRateProviderPort.resolveExpectedPublicationDay`
+   * (#2777). WEEKEND-ONLY, and that is deliberate: ECB publishes on
+   * Polish-only holidays (verified divergence - Corpus Christi
+   * 2026-06-04: a Polish-calendar walk-back skips it and resolves a
+   * stale 4.2383 where ECB's actual last publication before Friday
+   * 2026-06-05 is 4.2368, per this adapter's own header note and
+   * ADR-040 § Currency). Reusing `isPlWorkingDay` here would therefore
+   * silently reintroduce that exact bug. Only Sat/Sun are safe to skip
+   * without source-specific holiday knowledge this adapter must not
+   * have - a Polish-only holiday that also happens to be a genuine ECB
+   * non-publication day still falls through to the existing
+   * `lastNObservations=1` walk-back inside `fetchRate` (see class header
+   * "NO WALK-BACK LOOP, AND THAT IS THE POINT"), so a wrong guess here
+   * degrades to a normal live fetch, never a wrong stamp.
+   */
+  resolveExpectedPublicationDay(candidate: string): string {
+    // Midday UTC, matching this file's existing anchoring discipline -
+    // anchoring at midnight would put a UTC+1/UTC+2 shift on the wrong
+    // side of the day boundary.
+    const instant = new Date(`${candidate}T12:00:00Z`);
+    const day = instant.getUTCDay(); // 0 = Sunday, 6 = Saturday
+    if (day === 0) {
+      return addUtcDays(candidate, -2); // Sunday -> Friday
+    }
+    if (day === 6) {
+      return addUtcDays(candidate, -1); // Saturday -> Friday
+    }
+    return candidate;
+  }
+
   private async fetchObservation(
     currency: string,
     candidate: string,
@@ -455,6 +486,16 @@ export class EcbExchangeRateAdapter implements ExchangeRateProviderPort {
       derivation: { kind, legs },
     };
   }
+}
+
+/**
+ * Shifts an ISO calendar day by `delta` days, anchored at midday UTC to match
+ * `resolveExpectedPublicationDay`'s own anchoring discipline (#2777).
+ */
+function addUtcDays(isoDay: string, delta: number): string {
+  const instant = new Date(`${isoDay}T12:00:00Z`);
+  instant.setUTCDate(instant.getUTCDate() + delta);
+  return instant.toISOString().slice(0, 10);
 }
 
 /**
