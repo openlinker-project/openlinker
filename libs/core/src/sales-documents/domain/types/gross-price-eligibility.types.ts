@@ -52,6 +52,16 @@ export interface GrossPriceEligibilityOrder {
 }
 
 /**
+ * The two document kinds this guard serves. Closed rather than a bare
+ * `string` — both current call sites (`invoicing`, `fiscalization`) are the
+ * whole of what this leaf's two document contexts are, so a third value
+ * would be a compile-time signal that a new caller showed up, not silent
+ * wording drift.
+ */
+export const NetPricedOrderRefusalActionValues = ['invoiced', 'fiscally registered'] as const;
+export type NetPricedOrderRefusalAction = (typeof NetPricedOrderRefusalActionValues)[number];
+
+/**
  * `null` when the order's line prices are gross-eligible for document
  * issuance; otherwise an actionable, operator-facing sentence naming the
  * actual constraint — never the unqualified "only gross-priced orders are
@@ -59,12 +69,11 @@ export interface GrossPriceEligibilityOrder {
  * or their own connection was the problem.
  *
  * `action` names what the caller was trying to do, in a form that reads
- * naturally both as "cannot be {action}" and as "can be {action} today" —
- * e.g. `'invoiced'`, `'fiscally registered'`.
+ * naturally both as "cannot be {action}" and as "can be {action} today".
  */
 export function describeNetPricedOrderRefusal(
   order: GrossPriceEligibilityOrder,
-  action: string
+  action: NetPricedOrderRefusalAction
 ): string | null {
   if (order.totals.taxTreatment !== 'exclusive') {
     return null;
