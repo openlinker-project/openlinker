@@ -778,6 +778,8 @@ export class AllegroOrderSourceAdapter
             }
           : undefined;
 
+      const resolvedShippingAddress = this.resolveShippingAddress(checkoutForm);
+
       return {
         externalOrderId: checkoutFormId,
         orderNumber: checkoutFormId,
@@ -819,8 +821,8 @@ export class AllegroOrderSourceAdapter
           // (#895 / ADR-014).
           taxTreatment: 'inclusive',
         },
-        shippingAddress: this.resolveShippingAddress(checkoutForm),
-        billingAddress: this.resolveBillingAddress(checkoutForm),
+        shippingAddress: resolvedShippingAddress,
+        billingAddress: this.resolveBillingAddress(checkoutForm, resolvedShippingAddress),
         shipping: this.resolveShipping(checkoutForm),
         pickupPoint: this.resolvePickupPoint(checkoutForm),
         deliverySmart: checkoutForm.delivery?.smart,
@@ -933,9 +935,17 @@ export class AllegroOrderSourceAdapter
    * private (non-invoice) checkout carries no `invoice.address.company` at
    * all, and `taxId` then stays `undefined` (unknown), never a false
    * asserted-none.
+   *
+   * Allegro's invoice block carries no street address of its own (only the
+   * company name + tax id), so the result is the resolved SHIPPING address
+   * with the company/tax-id fields overlaid — never a standalone object with
+   * blank required fields, which would be truthy and defeat a caller's
+   * `billingAddress ?? shippingAddress` fallback (e.g. the invoice-issuance
+   * buyer-profile resolver) with an address that has no real street data.
    */
   private resolveBillingAddress(
-    checkoutForm: AllegroCheckoutForm
+    checkoutForm: AllegroCheckoutForm,
+    shippingAddress: IncomingOrderAddress | undefined
   ): IncomingOrderAddress | undefined {
     const company = checkoutForm.invoice?.address?.company;
     if (!company) {
@@ -945,11 +955,8 @@ export class AllegroOrderSourceAdapter
     const rawTaxId = company.ids?.[0]?.value ?? company.taxId;
 
     return {
+      ...(shippingAddress ?? { address1: '', city: '', postalCode: '', country: '' }),
       company: company.name,
-      address1: '',
-      city: '',
-      postalCode: '',
-      country: '',
       taxId: readSourceBuyerTaxId(rawTaxId),
     };
   }

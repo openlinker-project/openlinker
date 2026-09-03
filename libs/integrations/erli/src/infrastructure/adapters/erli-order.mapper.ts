@@ -82,7 +82,7 @@ export function mapErliOrderToIncomingOrder(order: ErliOrder): IncomingOrder {
     items,
     totals: mapTotals(order),
     shippingAddress: mapAddress(order.user.deliveryAddress),
-    billingAddress: mapAddress(order.user.invoiceAddress),
+    billingAddress: mapAddress(order.user.invoiceAddress, { isInvoiceAddress: true }),
     shipping: mapShipping(order.delivery),
     pickupPoint: mapPickupPoint(order.delivery.pickupPlace),
     paymentStatus: derivePaymentStatus(order.status, order.delivery.cod),
@@ -236,8 +236,17 @@ function mapShipping(delivery: ErliOrderDelivery): OrderShipping | undefined {
  * `street buildingNumber`; `flatNumber` (when not already folded into the full
  * line) rides `address2`. Field remap: `zip → postalCode`, `country → country`,
  * `companyName → company`. Returns `undefined` when the source address is absent.
+ *
+ * `nip` (#2822) is read only when `isInvoiceAddress` is set — Erli's own
+ * schema declares the field on `invoiceAddress` only, and this function is
+ * also called for `deliveryAddress`, so the flag is what keeps a wire field
+ * that could later gain a value on the delivery side from silently becoming
+ * a buyer tax id.
  */
-function mapAddress(address?: ErliOrderAddress): IncomingOrderAddress | undefined {
+function mapAddress(
+  address: ErliOrderAddress | undefined,
+  options: { isInvoiceAddress?: boolean } = {}
+): IncomingOrderAddress | undefined {
   if (!address) {
     return undefined;
   }
@@ -261,10 +270,8 @@ function mapAddress(address?: ErliOrderAddress): IncomingOrderAddress | undefine
     postalCode: address.zip ?? '',
     country: address.country ?? '',
     phone: address.phone,
-    // `nip` only ever carries a value on `invoiceAddress` (#2822) — the
-    // delivery address's `nip` is always absent on the wire, so this is safe
-    // to route unconditionally through the shared mapper.
-    taxId: readSourceBuyerTaxId(address.nip),
+    // Read only for the invoice address (#2822) — see the function docblock.
+    ...(options.isInvoiceAddress ? { taxId: readSourceBuyerTaxId(address.nip) } : {}),
   };
 }
 

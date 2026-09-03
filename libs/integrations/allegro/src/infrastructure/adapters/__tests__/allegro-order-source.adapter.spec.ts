@@ -840,6 +840,46 @@ describe('AllegroOrderSourceAdapter', () => {
         });
       });
 
+      it('should carry the resolved shipping street data onto billingAddress when a VAT invoice was requested (#2822)', async () => {
+        // Regression: billingAddress must never be a standalone object with
+        // blank address1/city/postalCode/country — such an object is truthy
+        // and defeats a caller's `billingAddress ?? shippingAddress` fallback
+        // (e.g. invoice-issuance buyer-profile resolution) with an address
+        // that has no real street data, even though a real one exists.
+        const form = baseForm();
+        form.delivery = {
+          address: {
+            firstName: 'Recipient',
+            lastName: 'Different',
+            street: 'Delivery Street 99',
+            city: 'DeliveryCity',
+            zipCode: '99-999',
+            countryCode: 'PL',
+            phoneNumber: '+48999999999',
+          },
+        };
+        form.invoice = {
+          address: {
+            company: {
+              name: 'Acme Sp. z o.o.',
+              ids: [{ type: 'PL_NIP', value: '5252674798' }],
+            },
+          },
+        };
+        httpClient.get.mockResolvedValueOnce({ data: form, status: 200, headers: {} });
+
+        const incoming = await adapter.getOrder({ externalOrderId: 'cf' });
+
+        expect(incoming.billingAddress).toMatchObject({
+          address1: 'Delivery Street 99',
+          city: 'DeliveryCity',
+          postalCode: '99-999',
+          country: 'PL',
+          company: 'Acme Sp. z o.o.',
+          taxId: '5252674798',
+        });
+      });
+
       it('should fall back to buyer.address when delivery.address is undefined', async () => {
         const form = baseForm();
         // No `delivery` block at all.

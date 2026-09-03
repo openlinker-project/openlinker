@@ -310,6 +310,26 @@ describe('mapErliOrderToIncomingOrder', () => {
     expect(result.shippingAddress?.taxId).toBeUndefined();
   });
 
+  it('should ignore a nip on deliveryAddress even if the wire carries one (#2822)', () => {
+    // Erli's schema declares `nip` on invoiceAddress only, but mapAddress is
+    // shared — the delivery-side call must never surface it, even in the
+    // hypothetical case of a malformed/future payload that populates it.
+    const result = mapErliOrderToIncomingOrder(
+      buildErliOrder({
+        user: {
+          email: 'b@example.test',
+          deliveryAddress: {
+            firstName: 'Anna',
+            lastName: 'Przykład',
+            nip: '5252674798',
+          },
+        },
+      }),
+    );
+
+    expect(result.shippingAddress?.taxId).toBeUndefined();
+  });
+
   it('should return undefined for an absent address', () => {
     const result = mapErliOrderToIncomingOrder(
       buildErliOrder({ user: { email: 'b@example.test' } }),
