@@ -71,7 +71,8 @@ import { parseOrderSnapshot } from '../../features/orders/api/order-snapshot.sch
 import { deriveOrderHealth, slaBadge, fulfillmentBadge } from '../../features/orders/lib/order-health';
 import { paymentBadge } from '../../features/orders/lib/order-row';
 import { OrderIdentityCell } from '../../features/orders';
-import { OrderInvoicingCell } from '../../features/orders/components/order-invoicing-cell';
+import { SalesDocumentCell } from '../../features/orders/components/sales-document-cell';
+import { TaxRateConflictBadge } from '../../features/orders/components/tax-rate-conflict-badge';
 import { StockAtRiskBadge } from '../../features/orders/components/stock-at-risk-badge';
 import { OrderPackedTick } from '../../features/orders/components/order-packed-tick';
 import { deriveDeliveryOutcome, hasLiveOlCarrierRoute } from '../../features/orders/lib/delivery-outcome';
@@ -517,6 +518,16 @@ export function OrdersListPage(): ReactElement {
     return map;
   }, [connectionsQuery.data]);
 
+  // id → name only, for SalesDocumentCell — a raw UUID must never reach the
+  // operator on the duplicate-record warning or the Provider fact (#2761 review).
+  const connectionNames = useMemo(() => {
+    const map = new Map<string, string>();
+    (connectionsQuery.data ?? []).forEach((c) => {
+      map.set(c.id, c.name);
+    });
+    return map;
+  }, [connectionsQuery.data]);
+
   // Registry-resolved, never a local map: the four-entry `CHANNEL_LABELS` this
   // replaced (#2088) had no row for `erli` or `woocommerce`, so both rendered
   // raw and lowercase here while rendering correctly two pages over.
@@ -608,12 +619,18 @@ export function OrdersListPage(): ReactElement {
     [parsedFor],
   );
 
-  // Whether ANY connection exposes the Invoicing capability (#1713). When none
-  // does, the "Issue invoice" CTA degrades to an em dash — the platform can't
-  // issue invoices, so offering the action would dead-end. An existing invoice
-  // pill still renders regardless (the record exists independent of this gate).
-  const hasInvoicingCapability = useMemo(
-    () => (connectionsQuery.data ?? []).some((c) => c.enabledCapabilities.includes('Invoicing')),
+  // Whether ANY connection exposes a sales-document-issuing capability
+  // (#1713, extended #2552 to cover both kinds). When none does, the
+  // "Issue…" / "Register…" action degrades to nothing rather than dead-ending.
+  // An existing document still renders regardless (the record exists
+  // independent of this gate).
+  const hasIssuingCapability = useMemo(
+    () =>
+      (connectionsQuery.data ?? []).some(
+        (c) =>
+          c.enabledCapabilities.includes('Invoicing') ||
+          c.enabledCapabilities.includes('Fiscalization'),
+      ),
     [connectionsQuery.data],
   );
 
@@ -1078,8 +1095,11 @@ export function OrdersListPage(): ReactElement {
       },
       {
         id: 'money',
-        // #2538 - Total, payment badge, document and created date - the column that sets this row's height.
-        lines: 4,
+        // #2538/#2555 - Total, payment badge, the sales-document line, an
+        // optional tax-rate-conflict badge, and the created date - five
+        // stacked facts at the tallest (a conflicting-rate order), so the
+        // skeleton reserves that height rather than the pre-#2552 count of 4.
+        lines: 5,
         align: 'right',
         // Merged money column (#1713): total + payment pill + created, each an
         // independent per-label sort control in the header. Not `sortable` — the
@@ -1108,19 +1128,22 @@ export function OrdersListPage(): ReactElement {
                   {pay.label}
                 </StatusBadge>
               ) : null}
-              {/* Invoice pill, block badge and "Issue invoice" CTA — independent
-                  parts, not a three-way choice; see `OrderInvoicingCell`. Shared
-                  verbatim with the mobile card so the two cannot drift again. */}
-              <OrderInvoicingCell
+              {/* The routed sales document (#2552, ADR-065) — kind-aware
+                  (invoice or fiscal receipt), reading the batched
+                  `SalesDocumentView` rather than the invoice-only projection
+                  `OrderInvoicingCell` rendered. Shared verbatim with the
+                  mobile card so the two cannot drift. */}
+              <SalesDocumentCell
                 internalOrderId={order.internalOrderId}
-                invoice={parsed.invoice}
-                blockReason={order.salesDocumentBlockReason}
-                unresolvedReason={order.salesDocumentUnresolvedReason}
-                hasInvoicingCapability={hasInvoicingCapability}
-                hasTaxRateConflict={hasTaxRateConflict(parsed)}
+                view={order.salesDocument}
                 layout="stack"
-                emptyFallback={<span className="text-muted">—</span>}
+                hasIssuingCapability={hasIssuingCapability}
+                connectionNames={connectionNames}
               />
+              {/* #2254 — its own independent line, never folded into the
+                  document cell above: a conflict does not stop the invoice,
+                  so it can be true alongside any document state. */}
+              {hasTaxRateConflict(parsed) ? <TaxRateConflictBadge /> : null}
               <span className="text-muted orders-cell-sub mono tabular">
                 <TimeDisplay iso={order.createdAt} format="datetime" />
               </span>
@@ -1153,12 +1176,12 @@ export function OrdersListPage(): ReactElement {
       // active-state arrows track the current sort/dir. `sortLabel` is a
       // useCallback keyed on sort/dir, so this rebuilds exactly on a sort change.
       sortLabel,
-      // Per-page snapshot cache + invoicing-capability gate (#1713).
+      // Per-page snapshot cache + issuing-capability gate (#1713/#2552).
       parsedFor,
+      hasIssuingCapability,
       // The shared Order cell renderer (#2091) — a `useCallback` over
       // `parsedFor`, so this rebuilds exactly when the parse cache does.
       renderOrderIdentity,
-      hasInvoicingCapability,
     ],
   );
 
@@ -1517,14 +1540,35 @@ export function OrdersListPage(): ReactElement {
           <Chip tone="error" active={invoicingBlocked} onClick={toggleInvoicingBlocked}>
             {/* The count is omitted until the summary resolves rather than
                 defaulted to 0 — asserting a number the client does not have yet
-                would be worse than showing none. */}
-            Invoicing blocked
+                would be worse than showing none.
+
+                #2554 — cross-kind wording: the underlying reasons cover both
+                invoices and fiscal receipts, so "Invoicing blocked" asserted a
+                narrower fact than the count behind it. "Sales documents
+                blocked" names what `salesDocumentBlocked` actually counts
+                (`SalesDocumentAttentionReasonValues`, which already excludes
+                `trigger-model-manual` — see the neutral figure below). */}
+            Sales documents blocked
             {summary?.salesDocumentBlocked === undefined
               ? ''
               : ` ${summary.salesDocumentBlocked}${blockedAgeSuffix(
                   summary.salesDocumentBlockedOldestAt,
                 )}`}
           </Chip>
+        ) : null}
+        {/* #2554 — issue-on-request is NOT counted above (the backend already
+            excludes `trigger-model-manual` from `salesDocumentBlocked`, per
+            ADR-041 §54: manual is the default trigger model, so counting it
+            would put a large red number on a healthy install). Reported here
+            as its own neutral figure, not a chip: it names orders waiting for
+            the operator by CONFIGURATION, not orders anything is wrong with,
+            and there is no separate filter for it to link to — the manual
+            reason is visible per-row wherever the document line itself
+            renders "Issued on request". */}
+        {summary?.salesDocumentIssuedOnRequest ? (
+          <span className="text-muted mono tabular orders-summary-note">
+            {summary.salesDocumentIssuedOnRequest} issued on request
+          </span>
         ) : null}
         {/* #2254 — its own count, and it mounts on `filterActive || count` for
             the same nine-line reason the chip above does: gating on the count
@@ -1700,8 +1744,8 @@ export function OrdersListPage(): ReactElement {
           */
           <EmptyState
             liveRegion="off"
-            title="Nothing is blocked from invoicing"
-            message="No order is waiting on an invoicing decision right now."
+            title="Nothing is blocked"
+            message="No order's sales document is waiting on a routing decision right now."
             action={
               <Button onClick={() => { clearAllFilters(setSearchParams); }}>
                 View all orders
@@ -1929,21 +1973,19 @@ export function OrdersListPage(): ReactElement {
                         </dd>
                       </div>
                       <div>
-                        <dt>Invoice</dt>
+                        <dt>Document</dt>
                         <dd>
-                          {/* SAME component as the desktop cell — this used to be a
-                              hand-duplicated parallel render path, and the two
-                              diverged. */}
-                          <OrderInvoicingCell
+                          {/* SAME component as the desktop cell (#2552) — this
+                              used to be a hand-duplicated parallel render
+                              path, and the two diverged. */}
+                          <SalesDocumentCell
                             internalOrderId={order.internalOrderId}
-                            invoice={parsed.invoice}
-                            blockReason={order.salesDocumentBlockReason}
-                            unresolvedReason={order.salesDocumentUnresolvedReason}
-                            hasInvoicingCapability={hasInvoicingCapability}
-                            hasTaxRateConflict={hasTaxRateConflict(parsed)}
+                            view={order.salesDocument}
                             layout="row"
-                            emptyFallback="—"
+                            hasIssuingCapability={hasIssuingCapability}
+                            connectionNames={connectionNames}
                           />
+                          {hasTaxRateConflict(parsed) ? <TaxRateConflictBadge /> : null}
                         </dd>
                       </div>
                       <div>
