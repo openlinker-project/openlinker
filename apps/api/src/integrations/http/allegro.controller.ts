@@ -36,6 +36,7 @@ import {
   ApiBody,
 } from '@nestjs/swagger';
 import { Public } from '../../auth/decorators/public.decorator';
+import { AnyRole } from '../../auth/decorators/any-role.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import {
   IOAuthConnectionService,
@@ -227,6 +228,7 @@ export class AllegroController {
     }
   }
 
+  @AnyRole()
   @ApiBearerAuth()
   @Get('connections/:id/cursors')
   @ApiOperation({ summary: 'Get all cursors for an Allegro connection' })
@@ -289,6 +291,7 @@ export class AllegroController {
     return { cursors: [] };
   }
 
+  @AnyRole()
   @ApiBearerAuth()
   @Get('connections/:id/commands')
   @ApiOperation({ summary: 'Get quantity commands for an Allegro connection' })
@@ -316,6 +319,7 @@ export class AllegroController {
     );
   }
 
+  @AnyRole()
   @ApiBearerAuth()
   @Get('connections/:id/commands/failed')
   @ApiOperation({ summary: 'Get failed quantity commands for an Allegro connection' })
@@ -348,6 +352,7 @@ export class AllegroController {
     );
   }
 
+  @AnyRole()
   @ApiBearerAuth()
   @Get('connections/:id/commands/:commandId')
   @ApiOperation({

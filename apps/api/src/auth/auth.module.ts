@@ -7,6 +7,11 @@
  * so all routes are protected by default. Use @Public() to opt out of auth
  * and @Roles() to restrict by role.
  *
+ * RolesGuard denies by default since #2079 — every route must carry @Public(),
+ * @Roles() or @AnyRole(). Note CsrfGuard is NOT an APP_GUARD; it is hand-applied
+ * to /auth/refresh and /auth/logout only, so there is no global CSRF coverage
+ * here to preserve or disturb.
+ *
  * @module apps/api/src/auth
  */
 import { Module } from '@nestjs/common';

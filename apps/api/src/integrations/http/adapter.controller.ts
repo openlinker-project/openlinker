@@ -11,6 +11,7 @@ import { Controller, Get, Inject } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import type { AdapterMetadata } from '@openlinker/core/integrations';
 import { AdapterRegistryPort, ADAPTER_REGISTRY_TOKEN } from '@openlinker/core/integrations';
+import { AnyRole } from '../../auth/decorators/any-role.decorator';
 
 @ApiBearerAuth()
 @ApiTags('adapters')
@@ -21,6 +22,7 @@ export class AdapterController {
     private readonly adapterRegistry: AdapterRegistryPort
   ) {}
 
+  @AnyRole()
   @Get()
   @ApiOperation({ summary: 'List all available adapters' })
   @ApiResponse({

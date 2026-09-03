@@ -16,7 +16,8 @@
  * through `IFiscalRegistrationService` - never a repository port.
  *
  * Guards are GLOBAL (`JwtAuthGuard` then `RolesGuard`), so no redundant
- * `@UseGuards` is declared. The read carries no `@Roles` (any authenticated
+ * `@UseGuards` is declared. The read carries `@AnyRole()` rather than no
+ * decorator — since #2079 an undecorated route is denied (any authenticated
  * role); the two writes carry `@Roles('admin')`.
  *
  * @module apps/api/src/fiscalization/http
@@ -68,6 +69,7 @@ import {
 import type { Order, OrderRecord } from '@openlinker/core/orders';
 
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { AnyRole } from '../../auth/decorators/any-role.decorator';
 import { AcceptedFiscalRegistrationResponseDto } from './dto/accepted-fiscal-registration-response.dto';
 import { FiscalRegistrationProgressResponseDto } from './dto/fiscal-registration-progress-response.dto';
 import { FiscalRegistrationResponseDto } from './dto/fiscal-registration-response.dto';
@@ -170,6 +172,7 @@ export class FiscalizationController {
     return accepted;
   }
 
+  @AnyRole()
   @Get('fiscal-registrations')
   @ApiOperation({
     summary: 'List the fiscal registration records held by an order',
@@ -189,6 +192,7 @@ export class FiscalizationController {
     return records.map((record) => this.toDto(record, now));
   }
 
+  @AnyRole()
   @Get('orders/:orderId/fiscal-registration')
   @ApiOperation({
     summary: 'Where this order`s registration is on one connection',

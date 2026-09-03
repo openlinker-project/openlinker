@@ -20,6 +20,7 @@ import {
   AnalyticsTrustResponseDto,
   ConnectionIngestionTrustResponseDto,
 } from '../dto/analytics-trust-response.dto';
+import { AnyRole } from '../../auth/decorators/any-role.decorator';
 
 @ApiBearerAuth()
 @ApiTags('analytics-trust')
@@ -30,6 +31,7 @@ export class AnalyticsTrustController {
     private readonly analyticsTrustService: IAnalyticsTrustService
   ) {}
 
+  @AnyRole()
   @Get('trust')
   @ApiOperation({
     summary: 'Get the analytics data-trust snapshot',

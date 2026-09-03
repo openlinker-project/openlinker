@@ -26,6 +26,7 @@ import type { ConnectionCursor } from '@openlinker/core/sync';
 import { ListCursorsQueryDto } from './dto/list-cursors-query.dto';
 import { CursorResponseDto } from './dto/cursor-response.dto';
 import { PaginatedCursorsResponseDto } from './dto/paginated-cursors-response.dto';
+import { AnyRole } from '../../auth/decorators/any-role.decorator';
 
 @ApiBearerAuth()
 @ApiTags('cursors')
@@ -36,6 +37,7 @@ export class CursorsController {
     private readonly cursorRepository: ConnectionCursorRepositoryPort,
   ) {}
 
+  @AnyRole()
   @Get()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -61,6 +63,7 @@ export class CursorsController {
     };
   }
 
+  @AnyRole()
   @Get(':connectionId/:cursorKey')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get a single cursor by connection ID and cursor key' })

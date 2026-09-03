@@ -19,6 +19,7 @@ import {
   NeedsAttentionResponseDto,
   StockAtRiskItemDto,
 } from './dto/needs-attention-response.dto';
+import { AnyRole } from '../../auth/decorators/any-role.decorator';
 
 @ApiBearerAuth()
 @ApiTags('analytics')
@@ -29,6 +30,7 @@ export class NeedsAttentionController {
     private readonly needsAttentionService: INeedsAttentionService
   ) {}
 
+  @AnyRole()
   @Get('needs-attention')
   @ApiOperation({
     summary:

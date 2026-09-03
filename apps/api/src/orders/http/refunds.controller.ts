@@ -10,7 +10,9 @@
  *
  * Guards are GLOBAL (auth.module APP_GUARD = JwtAuthGuard then RolesGuard), so
  * we never declare a redundant `@UseGuards(JwtAuthGuard)`. The read carries no
- * `@Roles` (open to any authenticated role); the write carries its own
+ * `@Roles` but carries `@AnyRole()` (open to any authenticated role — since
+ * #2079 that is declared, not inferred from an absent decorator); the write
+ * carries its own
  * `@Roles('admin', 'operator')`, mirroring `ShipmentController`'s manual
  * operator-facing dispatch actions.
  *
@@ -43,6 +45,7 @@ import {
   ORDER_RECORD_SERVICE_TOKEN,
 } from '@openlinker/core/orders';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { AnyRole } from '../../auth/decorators/any-role.decorator';
 import { RecordRefundRequestDto } from './dto/record-refund-request.dto';
 import { RefundRecordResponseDto } from './dto/refund-record-response.dto';
 
@@ -105,6 +108,7 @@ export class RefundsController {
     }
   }
 
+  @AnyRole()
   @Get(':internalOrderId/refunds')
   @ApiOperation({
     summary: 'List refunds recorded against an order',

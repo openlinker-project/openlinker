@@ -26,6 +26,7 @@ import {
   TOP_PRODUCTS_SERVICE_TOKEN,
   type ITopProductsService,
 } from '../application/services/top-products.service.interface';
+import { AnyRole } from '../../auth/decorators/any-role.decorator';
 
 @ApiBearerAuth()
 @ApiTags('analytics')
@@ -36,6 +37,7 @@ export class TopProductsController {
     private readonly topProductsService: ITopProductsService
   ) {}
 
+  @AnyRole()
   @Get('top-products')
   @ApiOperation({
     summary:
@@ -61,6 +63,7 @@ export class TopProductsController {
     });
   }
 
+  @AnyRole()
   @Get('top-products/:productId/variants')
   @ApiParam({ name: 'productId', description: 'Internal product id' })
   @ApiOperation({

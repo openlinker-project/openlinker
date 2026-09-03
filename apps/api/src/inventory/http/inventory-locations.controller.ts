@@ -53,6 +53,7 @@ import {
   type InventoryLocation,
 } from '@openlinker/core/inventory';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { AnyRole } from '../../auth/decorators/any-role.decorator';
 import { CreateLocationDto } from './dto/create-location.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
 import { ListLocationsQueryDto } from './dto/list-locations-query.dto';
@@ -69,6 +70,7 @@ export class InventoryLocationsController {
     private readonly locations: ILocationService
   ) {}
 
+  @AnyRole()
   @Get()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -102,6 +104,7 @@ export class InventoryLocationsController {
     };
   }
 
+  @AnyRole()
   @Get(':id')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get one inventory location' })

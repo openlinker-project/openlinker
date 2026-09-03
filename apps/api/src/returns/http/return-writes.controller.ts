@@ -73,6 +73,7 @@ import { Logger } from '@openlinker/shared/logging';
 import { AuthenticatedUser } from '../../auth/auth.types';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { AnyRole } from '../../auth/decorators/any-role.decorator';
 import type {
   RestockBlockedResponseDto,
   ReturnLineCountersDto} from '../dto/return-custody.dto';
@@ -480,6 +481,7 @@ export class ReturnWritesController {
     }
   }
 
+  @AnyRole()
   @Get(':returnId/correction-proposal')
   @ApiOperation({
     summary: 'Preview the credit-note correction proposal',

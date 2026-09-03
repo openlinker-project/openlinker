@@ -23,6 +23,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { AnyRole } from '../../auth/decorators/any-role.decorator';
 import {
   JobEnqueuePort,
   JOB_ENQUEUE_TOKEN,
@@ -122,6 +123,7 @@ export class SyncController {
     }
   }
 
+  @AnyRole()
   @Get('jobs')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -150,6 +152,7 @@ export class SyncController {
     };
   }
 
+  @AnyRole()
   @Get('jobs/grouped')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -187,6 +190,7 @@ export class SyncController {
     };
   }
 
+  @AnyRole()
   @Get('jobs/lookup')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -245,6 +249,7 @@ export class SyncController {
     };
   }
 
+  @AnyRole()
   @Get('jobs/:id')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get sync job by ID' })

@@ -27,6 +27,7 @@ import { ListCustomersQueryDto } from './dto/list-customers-query.dto';
 import { CustomerProjectionResponseDto } from './dto/customer-projection-response.dto';
 import type { CustomerAddressResponseDto } from './dto/customer-address-response.dto';
 import { PaginatedCustomersResponseDto } from './dto/paginated-customers-response.dto';
+import { AnyRole } from '../../auth/decorators/any-role.decorator';
 
 @ApiBearerAuth()
 @ApiTags('customers')
@@ -37,6 +38,7 @@ export class CustomersController {
     private readonly customerRepository: CustomerProjectionRepositoryPort
   ) {}
 
+  @AnyRole()
   @Get()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -68,6 +70,7 @@ export class CustomersController {
     };
   }
 
+  @AnyRole()
   @Get(':id')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id', description: 'Internal customer ID (e.g. ol_customer_...)' })

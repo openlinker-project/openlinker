@@ -15,6 +15,7 @@ import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagg
 import { ORDER_RECORD_SERVICE_TOKEN, type IOrderRecordService } from '@openlinker/core/orders';
 import { SalesAnalyticsQueryDto } from './dto/sales-analytics-query.dto';
 import { SalesAnalyticsResponseDto } from './dto/sales-analytics-response.dto';
+import { AnyRole } from '../../auth/decorators/any-role.decorator';
 
 /**
  * Upper bound on a requested range (#1987 review, suggestion 3). Unbounded,
@@ -35,6 +36,7 @@ export class SalesAnalyticsController {
     private readonly orderRecordService: IOrderRecordService
   ) {}
 
+  @AnyRole()
   @Get('sales')
   @ApiOperation({
     summary:

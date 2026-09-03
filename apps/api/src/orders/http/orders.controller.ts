@@ -26,6 +26,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { AnyRole } from '../../auth/decorators/any-role.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../auth/auth.types';
 import {
@@ -153,6 +154,7 @@ export class OrdersController {
     private readonly salesDocumentView: ISalesDocumentViewService
   ) {}
 
+  @AnyRole()
   @Get()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -314,6 +316,7 @@ export class OrdersController {
     };
   }
 
+  @AnyRole()
   @Get('status-summary')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -344,6 +347,7 @@ export class OrdersController {
     };
   }
 
+  @AnyRole()
   @Get('sla-summary')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -370,6 +374,7 @@ export class OrdersController {
     });
   }
 
+  @AnyRole()
   @Get('lifecycle-summary')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -397,6 +402,7 @@ export class OrdersController {
     });
   }
 
+  @AnyRole()
   @Get(':internalOrderId')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get order record by internal order ID' })
@@ -462,6 +468,7 @@ export class OrdersController {
     return dto;
   }
 
+  @AnyRole()
   @Get(':internalOrderId/sales-document')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

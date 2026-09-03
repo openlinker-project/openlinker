@@ -13,7 +13,8 @@
  *
  * Guards are GLOBAL (auth.module APP_GUARD = JwtAuthGuard then RolesGuard), so we
  * never declare a redundant `@UseGuards(JwtAuthGuard)`. Reads carry no `@Roles`
- * (open to any authenticated role); writes carry `@Roles('admin')` — mirroring
+ * (they carry `@AnyRole()`, open to any authenticated role — since #2079 an
+ * undecorated route is denied); writes carry `@Roles('admin')` — mirroring
  * the invoicing controller's read-open/write-gated pattern (#1357).
  *
  * Route ordering: the fixed `numbering-series/unassigned` route is declared before
@@ -63,6 +64,7 @@ import type {
 } from '@openlinker/core/invoicing';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { AnyRole } from '../../auth/decorators/any-role.decorator';
 // Value import (not `import type`): the @CurrentUser() param type feeds decorator metadata.
 import { AuthenticatedUser } from '../../auth/auth.types';
 import { CreateNumberingSeriesRequestDto } from './dto/create-numbering-series-request.dto';
@@ -129,6 +131,7 @@ export class NumberingSeriesController {
     }
   }
 
+  @AnyRole()
   @Get('numbering-series')
   @ApiOperation({ summary: 'List numbering series (newest first), optionally filtered (#9/#10)' })
   @ApiQuery({ name: 'documentType', required: false, description: 'Filter by neutral document type' })
@@ -147,6 +150,7 @@ export class NumberingSeriesController {
     return series.map((s) => this.toSeriesResponse(s));
   }
 
+  @AnyRole()
   @Get('numbering-series/unassigned')
   @ApiOperation({
     summary: 'List orphaned (unrouted) numbering series with their last-issued number (#9/#10)',
@@ -157,6 +161,7 @@ export class NumberingSeriesController {
     return series.map((s) => this.toUnassignedSeriesResponse(s));
   }
 
+  @AnyRole()
   @Get('numbering-series/:seriesId')
   @ApiOperation({ summary: 'Read a numbering series by id (#9/#10)' })
   @ApiResponse({ status: 200, type: NumberingSeriesResponseDto })
@@ -200,6 +205,7 @@ export class NumberingSeriesController {
 
   // --- Gap-audit (#8) --------------------------------------------------------
 
+  @AnyRole()
   @Get('numbering-series/:seriesId/audit')
   @ApiOperation({ summary: 'Numbering gap-audit read model for a series (#8)' })
   @ApiQuery({ name: 'onlyGaps', required: false, description: 'Return only gap entries when true' })
@@ -246,6 +252,7 @@ export class NumberingSeriesController {
 
   // --- Routing (#9 / #10) ----------------------------------------------------
 
+  @AnyRole()
   @Get('connections/:connectionId/numbering-routes')
   @ApiOperation({ summary: "List a connection's document-type numbering routes (#9/#10)" })
   @ApiResponse({ status: 200, type: [NumberingRouteResponseDto] })

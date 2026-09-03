@@ -24,7 +24,8 @@
  *
  * Guards are GLOBAL (auth.module APP_GUARD = JwtAuthGuard then RolesGuard), so
  * we never declare a redundant `@UseGuards(JwtAuthGuard)`. Reads carry no
- * `@Roles` (open to any authenticated role, including viewer); writes carry
+ * `@Roles` but carry `@AnyRole()` (open to any authenticated role, including
+ * viewer — since #2079 that is declared, not inferred); writes carry
  * their own `@Roles('admin')` (#1357, mirroring the #1124 read-open/write-gated
  * pattern).
  *
@@ -54,6 +55,7 @@ import { ApiBearerAuth, ApiTags, ApiOperation, ApiProduces, ApiQuery, ApiRespons
 import { Response } from 'express';
 import { Logger } from '@openlinker/shared/logging';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { AnyRole } from '../../auth/decorators/any-role.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../auth/auth.types';
 import {
@@ -192,6 +194,7 @@ export class InvoicingController {
     private readonly connectionPort: ConnectionPort,
   ) {}
 
+  @AnyRole()
   @Get('connections/:connectionId/bank-accounts')
   @ApiOperation({
     summary: "List the connection's provider bank accounts (#1303 follow-up)",
@@ -1135,6 +1138,7 @@ export class InvoicingController {
     return this.toDto(refreshed ?? record);
   }
 
+  @AnyRole()
   @Get('orders/:orderId/invoice')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -1193,6 +1197,7 @@ export class InvoicingController {
     return dto;
   }
 
+  @AnyRole()
   @Get('invoices')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -1530,6 +1535,7 @@ export class InvoicingController {
     };
   }
 
+  @AnyRole()
   @Get('invoices/:invoiceId/content')
   @ApiOperation({
     summary: 'Get the issued-document content snapshot for an invoice',
@@ -1564,6 +1570,7 @@ export class InvoicingController {
     );
   }
 
+  @AnyRole()
   @Get('invoices/:invoiceId/document')
   @ApiOperation({
     summary: 'Download a regulatory document for an invoice by neutral kind',
@@ -1634,6 +1641,7 @@ export class InvoicingController {
     }
   }
 
+  @AnyRole()
   @Get('invoices/:invoiceId/upo')
   @ApiOperation({
     summary: 'Download the authority confirmation document (UPO) for a cleared invoice',
@@ -1686,6 +1694,7 @@ export class InvoicingController {
 
   // Declared last: must not shadow the more specific
   // `invoices/:invoiceId/upo` + `invoices/:invoiceId/content` sub-resources above.
+  @AnyRole()
   @Get('invoices/:invoiceId')
   @ApiOperation({
     summary: 'Get an invoice record by id',

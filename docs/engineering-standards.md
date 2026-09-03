@@ -1224,6 +1224,45 @@ async createProduct(@Body() dto: CreateProductDto): Promise<ProductResponse> {
 }
 ```
 
+### Route authorization
+
+**Every HTTP route in `apps/api` declares its audience with exactly one of three decorators, and
+`RolesGuard` denies when none is present** (#2079).
+
+| Decorator | Means | Guard behaviour |
+|---|---|---|
+| `@Public()` | no authentication at all — this route has no OL user principal | `JwtAuthGuard` bypassed; `RolesGuard` short-circuits |
+| `@Roles(...)` | restricted to the listed roles | membership test against `req.user.role` |
+| `@AnyRole()` | **deliberately** open to every authenticated user | allowed once a principal is present |
+| *(none)* | nobody decided | **403** |
+
+Before #2079 the guard returned `true` for any route with no `@Roles()`, so an undecorated route
+authorized any authenticated principal — ~27% of the surface, buyer PII among it. `@AnyRole()`
+exists so that *"nobody decided"* and *"everybody may"* stop sharing one representation, which is
+the absence of a decorator. Four rules follow:
+
+1. **`@AnyRole()` is method-level only.** A class-level one silently covers every route added to
+   that class later, re-creating "undecorated inherits open" at class granularity and destroying
+   the property deny-by-default buys — that a *new* route fails closed. `@Roles()` at class level
+   is fine and in use: a **narrowing** default is safe to inherit, a **widening** one is not.
+2. **`@AnyRole()` means "every role that exists today, deliberately."** Adding a role to
+   `UserRoleValues` widens every site at once, so `apps/api/src/auth/user-role-values.spec.ts`
+   fails the build on a change to that union — review the `@AnyRole()` sites, narrow what the new
+   role must not reach, and update the list in the *same* commit.
+3. **A non-user principal never appears on `req.user`; it gets `@Public()` and its own verifier.**
+   `RolesGuard` only understands OL users, so placing a device, station or agent token on
+   `req.user` would put a non-user principal inside the role model — and before #2079 that
+   principal reached every undecorated route. MCP is the worked example (see below): `@Public()`
+   plus a dedicated `OAuthTokenVerifier` populating `req.auth`, which no guard reads. ADR-071
+   applies the same reasoning to the pack bench and concludes it needs no principal of its own.
+4. **`apps/api/src/auth/route-authorization-coverage.spec.ts` enforces all of this.** It
+   *discovers* controllers rather than listing them, covers every verb, and enforces the
+   `*.controller.ts` filename convention it relies on — a hand-listed set is how its predecessor
+   came to exclude every PII read.
+
+`CsrfGuard` is **not** an `APP_GUARD`; it is hand-applied to `/auth/refresh` and `/auth/logout`
+only. There is no global CSRF coverage to assume.
+
 ### MCP-protocol routes
 
 The MCP Streamable-HTTP ingress (`apps/api/src/mcp/transport/`, #1486) does **not** use the global

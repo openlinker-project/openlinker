@@ -25,6 +25,7 @@ import { Response } from 'express';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { Logger } from '@openlinker/shared/logging';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { AnyRole } from '../../auth/decorators/any-role.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../auth/auth.types';
 import { RotateWebhookSecretResponseDto } from './dto/rotate-webhook-secret-response.dto';
@@ -149,6 +150,7 @@ export class ConnectionController {
     return this.toResponse(connection, user);
   }
 
+  @AnyRole()
   @Get()
   @ApiOperation({ summary: 'List connections with optional filters' })
   @ApiResponse({
@@ -168,6 +170,7 @@ export class ConnectionController {
     return Promise.all(connections.map((connection) => this.toResponse(connection, user)));
   }
 
+  @AnyRole()
   @Get(':id')
   @ApiOperation({ summary: 'Get connection by ID' })
   @ApiResponse({

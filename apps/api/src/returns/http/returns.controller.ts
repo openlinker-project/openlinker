@@ -15,7 +15,9 @@
  * `returns` resource and one Swagger tag regardless.
  *
  * Guards are GLOBAL (`auth.module` `APP_GUARD` = `JwtAuthGuard` then
- * `RolesGuard`), so every route here is authenticated; no `returns:*`
+ * `RolesGuard`), so every route here is authenticated. Since #2079 the reads
+ * carry `@AnyRole()` rather than nothing — the guard denies an undecorated
+ * route. No `returns:*`
  * permission value is introduced (adjudicated on #2336).
  *
  * `ReturnNotFoundError` is thrown as the DOMAIN error and mapped to 404 by the
@@ -61,6 +63,7 @@ import {
   ReturnResponseDto,
   ReturnTimelineResponseDto,
 } from '../dto/return-response.dto';
+import { AnyRole } from '../../auth/decorators/any-role.decorator';
 
 /** Kept in step with the `default:` values `ListReturnsQueryDto` documents. */
 const DEFAULT_PAGE_SIZE = 20;
@@ -81,6 +84,7 @@ export class ReturnsController {
     private readonly orderRecords: IOrderRecordService
   ) {}
 
+  @AnyRole()
   @Get()
   @ApiOperation({
     summary: 'List returns',
@@ -173,6 +177,7 @@ export class ReturnsController {
     };
   }
 
+  @AnyRole()
   @Get('ingestion-availability')
   @ApiOperation({
     summary: 'Whether any connection can ingest returns',
@@ -210,6 +215,7 @@ export class ReturnsController {
    * business carrying). This module already holds that edge (#2382), so
    * composing here costs no new coupling anywhere.
    */
+  @AnyRole()
   @Get('events')
   @ApiOperation({
     summary: "One order's return activity, oldest first",
@@ -265,6 +271,7 @@ export class ReturnsController {
     return { entries };
   }
 
+  @AnyRole()
   @Get(':returnId')
   @ApiOperation({
     summary: 'Get one return with its lines',
