@@ -47,3 +47,25 @@ export interface AnalyticsCoverageFilters {
   to: string;
   sourceConnectionId?: string;
 }
+
+/**
+ * Mirrors `AnalyticsCoverageByConnectionResponseDto` / `CoverageCategoryConnectionRowsDto`
+ * (`GET /analytics/coverage/by-connection`, #2713) — one entry per category
+ * (`'currency' | 'tax-a' | 'tax-b' | 'tax-c'`, never `'product-matching'`),
+ * each carrying the affected-order count per `sourceConnectionId`. Replaces
+ * `useCoverageCrossReferenceQuery`'s client-side page-draining grouping for
+ * `ChannelSalesTable` (#2714).
+ */
+export interface CoverageConnectionRow {
+  sourceConnectionId: string;
+  affectedCount: number;
+}
+
+export interface CoverageCategoryConnectionRows {
+  category: CoverageCategory;
+  rows: CoverageConnectionRow[];
+}
+
+export interface AnalyticsCoverageByConnection {
+  categories: CoverageCategoryConnectionRows[];
+}
