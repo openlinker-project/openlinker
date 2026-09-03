@@ -269,6 +269,17 @@ describe('toIssueInvoiceCommand', () => {
     );
   });
 
+  it('price treatment: "exclusive" -> the refusal names the actual constraint (#2835)', () => {
+    const order = makeOrder({
+      id: 'ol_order_abc',
+      totals: { subtotal: 0, tax: 0, shipping: 0, total: 0, currency: 'PLN', taxTreatment: 'exclusive' },
+    });
+
+    expect(() => toIssueInvoiceCommand({ order, connectionId: 'conn-1' })).toThrow(
+      /ol_order_abc cannot be invoiced: its source reports net \(tax-exclusive\) line prices/,
+    );
+  });
+
   it('shipping: totals.shipping > 0 -> appends one gross shipping line after the item lines (#1517)', () => {
     const order = makeOrder({
       items: [makeItem({ price: 499.99, quantity: 1 })],
