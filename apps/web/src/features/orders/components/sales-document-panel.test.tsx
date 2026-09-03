@@ -324,6 +324,46 @@ describe('SalesDocumentPanel — manual actions when nothing is blocked', () => 
   });
 });
 
+describe('SalesDocumentPanel — resend to KSeF (#2763 review)', () => {
+  const rejected = makeInvoice({ regulatoryStatus: 'rejected' });
+
+  function renderRejected(resendToKsef: (invoiceId: string) => Promise<InvoiceRecord>): void {
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) },
+        invoicing: { getForOrder: vi.fn().mockResolvedValue(rejected), resendToKsef },
+      }),
+      ...adminSession,
+    });
+  }
+
+  it('reports a 501 as a structural refusal, not a transient failure worth retrying', async () => {
+    const user = userEvent.setup();
+    const resendToKsef = vi
+      .fn()
+      .mockRejectedValue(new ApiError('Not Implemented', 501, { message: 'Not Implemented' }));
+    renderRejected(resendToKsef);
+
+    await user.click(await screen.findByRole('button', { name: 'Resend' }));
+    expect(
+      await screen.findByText(/cannot re-send a document; issue a correction instead/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/The resend could not be sent\./i)).toBeNull();
+  });
+
+  it('keeps the generic message for any other failure', async () => {
+    const user = userEvent.setup();
+    const resendToKsef = vi
+      .fn()
+      .mockRejectedValue(new ApiError('Service Unavailable', 503, { message: 'Service Unavailable' }));
+    renderRejected(resendToKsef);
+
+    await user.click(await screen.findByRole('button', { name: 'Resend' }));
+    expect(await screen.findByText(/The resend could not be sent\./i)).toBeInTheDocument();
+    expect(screen.queryByText(/cannot re-send a document/i)).toBeNull();
+  });
+});
+
 describe('SalesDocumentPanel - reconcile outcomes (#2522/#2583)', () => {
   const inDoubt = makeFiscalRecord({
     status: 'failed',
