@@ -316,5 +316,20 @@ export default defineConfig({
       retries: 1,
       use: { ...devices['Desktop Chrome'] },
     },
+    {
+      // Analytics mockup-parity: screenshots + content assertions comparing the
+      // real, running /analytics page against the repo-committed mockup
+      // (docs/plans/mockups/analytics-display-currency-picker.html), state by
+      // state (#2482). MUTATING: synthesizes PrestaShop orders and, for the
+      // currency-mismatch states, temporarily flips the system-wide reporting
+      // currency (restored in `afterAll`) — never run this against a shared
+      // stack another session is reading `/analytics` on. `retries: 0`: a
+      // silent retry could re-flip the reporting currency mid-run.
+      name: 'analytics',
+      testMatch: /analytics\/.*\.spec\.ts/,
+      retries: 0,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
   ],
 });
