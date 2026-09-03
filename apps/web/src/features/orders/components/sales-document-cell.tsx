@@ -171,7 +171,7 @@ export function SalesDocumentCell({
       {identity?.documentNumber ? <Fact label="Number">{identity.documentNumber}</Fact> : null}
       {identity?.connectionId ? <Fact label="Provider">{identity.providerType ?? identity.connectionId}</Fact> : null}
       {regulatoryStatus ? (
-        <Fact label="Authority">
+        <Fact label="Clearance">
           <span className={`sales-doc-tone sales-doc-tone--${REGULATORY_TONE[regulatoryStatus] ?? 'neutral'}`}>
             {REGULATORY_LABEL[regulatoryStatus] ?? regulatoryStatus}
           </span>
