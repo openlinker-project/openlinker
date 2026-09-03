@@ -122,6 +122,14 @@ const DELTA_FORMAT_OPTIONS: Intl.NumberFormatOptions = {
   minimumFractionDigits: 1,
   maximumFractionDigits: 1,
 };
+// The GMV qualifier's applied-rate line is a provenance figure — it must be
+// checkable (amount × rate reproduces the displayed figure), so it renders
+// up to 8 fraction digits, matching the `numeric(18,8)` `rate.rate` column
+// (#2788 review). Trailing zeros beyond the source precision still trim.
+const RATE_FORMAT_OPTIONS: Intl.NumberFormatOptions = {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 8,
+};
 
 interface AnalyticsKpiStripProps {
   filters: SalesAnalyticsFilters;
@@ -177,6 +185,7 @@ export function AnalyticsKpiStrip({
   const ratioFormat = useNumberFormat(RATIO_FORMAT_OPTIONS);
   const pctFormat = useNumberFormat(PERCENT_FORMAT_OPTIONS);
   const deltaFormat = useNumberFormat(DELTA_FORMAT_OPTIONS);
+  const rateFormat = useNumberFormat(RATE_FORMAT_OPTIONS);
 
   if (query.isLoading) {
     return (
@@ -230,7 +239,8 @@ export function AnalyticsKpiStrip({
   const gmvInlineRate = pickInlineAppliedRate(gmvAppliedRates);
   const gmvProvenanceDefinitions = buildRateProvenanceDefinitions(
     gmvConversion?.rateBasis ?? 'current-rate',
-    gmvAppliedRates
+    gmvAppliedRates,
+    rateFormat
   );
   // #2778/#2779: the REAL published rate for `headline.currency ->
   // displayCurrency`, picked out of the exact backend response GMV itself
@@ -403,7 +413,7 @@ export function AnalyticsKpiStrip({
                 {formatAmount(gmvValue, gmvCurrency)}
                 {gmvProvenanceDefinitions.length > 0 ? (
                   <span className="kpi-card__qualifier-rate">
-                    {gmvInlineRate ? formatAppliedRateLine(gmvInlineRate) : "today's rate(s)"}
+                    {gmvInlineRate ? formatAppliedRateLine(gmvInlineRate, rateFormat) : "today's rate(s)"}
                     <AnalyticsInfotip
                       ariaLabel="About this conversion"
                       definitions={gmvProvenanceDefinitions}
