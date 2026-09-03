@@ -15,7 +15,7 @@
  *  - Candidate is NOT a publication day - a weekend or a holiday, roughly 2
  *    days in 7. The adapter walks back and the row lands under the earlier
  *    published date. As of #2777, a provider that declares the optional
- *    `resolveLikelyPublicationDay` (NBP and ECB both do) lets the pre-fetch
+ *    `resolveExpectedPublicationDay` (NBP and ECB both do) lets the pre-fetch
  *    read key on that earlier day directly, so the very first order under a
  *    given non-publication candidate still pays one provider call, but every
  *    later one - for that candidate, or any other candidate resolving to the
@@ -83,12 +83,12 @@ export class CurrencyRateService implements ICurrencyRateService {
     // an out-of-tree provider compiled against an older `libs/core` would
     // satisfy a widened type guard without implementing the method, so this
     // checks for the method itself rather than trusting the type.
-    const likelyPublicationDay =
-      typeof provider.resolveLikelyPublicationDay === 'function'
-        ? provider.resolveLikelyPublicationDay(input.rateDate)
+    const expectedPublicationDay =
+      typeof provider.resolveExpectedPublicationDay === 'function'
+        ? provider.resolveExpectedPublicationDay(input.rateDate)
         : input.rateDate;
 
-    const existing = await this.repository.findByKey({ ...input, rateDate: likelyPublicationDay });
+    const existing = await this.repository.findByKey({ ...input, rateDate: expectedPublicationDay });
     if (existing) {
       return existing;
     }
@@ -106,7 +106,7 @@ export class CurrencyRateService implements ICurrencyRateService {
         // Two shapes land here and both resolve the same way.
         //
         //  1. A genuine race - a concurrent caller inserted the same key first.
-        //  2. `resolveLikelyPublicationDay` (or its absence) resolved a
+        //  2. `resolveExpectedPublicationDay` (or its absence) resolved a
         //     different day than the one the provider's own `fetchRate` walk-
         //     back landed on, so the row it wants already exists under
         //     `fetched.rateDate` while the pre-fetch read looked under a

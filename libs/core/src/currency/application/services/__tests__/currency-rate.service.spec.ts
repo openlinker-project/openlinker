@@ -119,24 +119,24 @@ describe('CurrencyRateService', () => {
     });
   });
 
-  describe('resolveLikelyPublicationDay probe (#2777)', () => {
+  describe('resolveExpectedPublicationDay probe (#2777)', () => {
     it('should key the pre-fetch read on the resolved publication day when the provider declares the method', async () => {
-      provider.resolveLikelyPublicationDay = jest.fn().mockReturnValue('2026-08-14');
+      provider.resolveExpectedPublicationDay = jest.fn().mockReturnValue('2026-08-14');
       repository.findByKey.mockResolvedValue(STORED);
       const saturdayCandidate = { ...INPUT, rateDate: '2026-08-15' };
 
       const result = await service.getRateFor(saturdayCandidate);
 
-      expect(provider.resolveLikelyPublicationDay).toHaveBeenCalledWith('2026-08-15');
+      expect(provider.resolveExpectedPublicationDay).toHaveBeenCalledWith('2026-08-15');
       expect(repository.findByKey).toHaveBeenCalledWith({ ...saturdayCandidate, rateDate: '2026-08-14' });
       expect(provider.fetchRate).not.toHaveBeenCalled();
       expect(result).toBe(STORED);
     });
 
     it('should key the pre-fetch read on the raw candidate when the provider declares nothing', async () => {
-      // `provider` (the beforeEach default) carries no `resolveLikelyPublicationDay`
+      // `provider` (the beforeEach default) carries no `resolveExpectedPublicationDay`
       // property at all — proving the probe, not the type, governs behaviour.
-      expect('resolveLikelyPublicationDay' in provider).toBe(false);
+      expect('resolveExpectedPublicationDay' in provider).toBe(false);
 
       await service.getRateFor(INPUT);
 
@@ -144,7 +144,7 @@ describe('CurrencyRateService', () => {
     });
 
     it('should fall through to fetchRate when the resolved day still misses the cache', async () => {
-      provider.resolveLikelyPublicationDay = jest.fn().mockReturnValue('2026-08-14');
+      provider.resolveExpectedPublicationDay = jest.fn().mockReturnValue('2026-08-14');
       repository.findByKey.mockResolvedValue(null);
       const saturdayCandidate = { ...INPUT, rateDate: '2026-08-15' };
 
@@ -190,9 +190,9 @@ describe('CurrencyRateService', () => {
       expect(result).toBe(storedWalkedBack);
     });
 
-    it('should re-fetch on EVERY call when the provider declares no resolveLikelyPublicationDay', async () => {
+    it('should re-fetch on EVERY call when the provider declares no resolveExpectedPublicationDay', async () => {
       // This is the FALLBACK path only, not current NBP/ECB behaviour: both
-      // shipped providers declare `resolveLikelyPublicationDay` (#2777), so
+      // shipped providers declare `resolveExpectedPublicationDay` (#2777), so
       // for them the pre-fetch read keys on the resolved published day and a
       // repeat candidate hits the cache after the first order. This test's
       // `provider` (the `beforeEach` default) deliberately omits the method

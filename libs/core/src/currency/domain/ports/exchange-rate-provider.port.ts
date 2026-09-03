@@ -67,12 +67,32 @@ export interface ExchangeRateProviderPort {
    * declares nothing keeps the pre-#2777 behaviour, where the cache read is
    * keyed on the candidate itself.
    *
-   * A WRONG answer can only ever cause a cache *miss*, which falls through
-   * to the existing `fetchRate` path unchanged - it can never produce a
-   * wrong stamp. A HIT is provably the right row: a row exists under day
-   * `X` only because the source supplied `effectiveDate = X`, and this
-   * contract guarantees no publication day lies between `X` and the
-   * candidate, so the hit equals what `fetchRate` would have returned.
+   * THE TWO WAYS TO BE WRONG ARE NOT SYMMETRIC, and an implementer must know
+   * which direction is safe to guess in.
+   *
+   * Returning a day that is TOO LATE - later than the true nearest
+   * publication day - can only ever cause a cache *miss*: no row exists
+   * under that later day (nothing writes one there), so the read falls
+   * through to the existing `fetchRate` path unchanged. Free, and never a
+   * wrong stamp.
+   *
+   * Returning a day that is TOO EARLY - walking back PAST a genuine
+   * publication day `X` to an earlier day `Y` - corrupts a stamp. A row
+   * under `Y` very likely already exists (written by some other candidate
+   * that legitimately resolved there), so the read *hits*, and `getRateFor`
+   * returns day-`Y`'s rate where `fetchRate` would have returned day-`X`'s -
+   * silently, with no error anywhere, on a financial figure. The contract's
+   * guarantee ("no publication day lies between the returned day and the
+   * candidate") is exactly what a too-early answer violates, and only a
+   * too-early answer can violate it.
+   *
+   * So: when in doubt about whether a day is a publication day, RETURN THE
+   * CANDIDATE UNCHANGED. Erring late costs one avoidable cache miss; erring
+   * early is unrecoverable. Neither shipped adapter can produce a too-early
+   * answer today - ECB only ever skips a weekend, and NBP's calendar is the
+   * same one that already decides which day NBP is asked for, so it errs
+   * optimistic (the safe direction) rather than walking back past a day it
+   * is not certain about.
    */
-  resolveLikelyPublicationDay?(candidate: string): string;
+  resolveExpectedPublicationDay?(candidate: string): string;
 }

@@ -99,7 +99,7 @@ export class FakeExchangeRateAdapter implements ExchangeRateProviderPort {
   }
 
   /** Identity - test determinism for existing specs is unaffected (#2777). */
-  resolveLikelyPublicationDay(candidate: string): string {
+  resolveExpectedPublicationDay(candidate: string): string {
     return candidate;
   }
 
