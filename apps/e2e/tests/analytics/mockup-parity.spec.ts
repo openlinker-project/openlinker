@@ -23,27 +23,24 @@
  *
  * 15 states total, per the issue's own state table.
  *
- * Fully compared (screenshot + content, both mockup and real app) — 10:
+ * Fully compared (screenshot + content, both mockup and real app) — 11:
  * `native`, `converting`, `converted`, `unavailable`, `settings-open`,
  * `all-clear`, `detail-currency`, `currency-in-progress`, `currency-fixed`,
- * `detail-mapping`.
+ * `detail-mapping`, `detail-novat`.
  *
  * Documented divergence (mockup screenshotted; real app asserted to NOT have
  * the mockup's confirm step — a real product gap, not a spec defect) — 1:
  * `tax-confirm`. See #2857.
  *
- * Skipped with a named, verified reason (mockup screenshotted only) — 4:
+ * Skipped with a named, verified reason (mockup screenshotted only) — 3:
  * `detail-tax` / `detail-postrollout` (tax-a / tax-c: `taxRateEra =
  * 'pre-rollout'` is written only by a one-time historical migration, never by
  * ingestion — structurally unreachable by a fresh order; see #2855, the
- * proposed test-only seam this suite will consume once it lands),
- * `detail-novat` (tax-b: forcing a genuinely rate-less product needs new
- * PrestaShop tax-rules-group plumbing this suite doesn't have yet, and
- * whether a freshly-created rule-less group even resolves to "no rate" on a
- * given install is unverified), and `currency-failed` (no legitimate
- * flow-driven way was found to force the currency-recalculation DRIVER JOB
- * itself to fail — every reachable error path this suite could produce
- * routes to the "stuck run" conflict UI instead, not a `failed` badge).
+ * proposed test-only seam this suite will consume once it lands), and
+ * `currency-failed` (no legitimate flow-driven way was found to force the
+ * currency-recalculation DRIVER JOB itself to fail — every reachable error
+ * path this suite could produce routes to the "stuck run" conflict UI
+ * instead, not a `failed` badge; see #2875).
  *
  * @module tests/analytics
  */
@@ -52,6 +49,7 @@ import { buildPrestashopWebserviceClient } from '../../src/support/order-synthes
 import {
   seedCurrencyMismatchOrder,
   seedUnmappedProductOrder,
+  seedNoRateProductOrder,
   widePastToFutureRange,
   type CurrencyMismatchFixture,
 } from '../../src/support/analytics-seed';
@@ -97,6 +95,9 @@ test.describe('analytics mockup parity (#2482)', () => {
 
       const unmappedOrder = await test.step('seed: unmapped-product order (product-matching)', async () =>
         seedUnmappedProductOrder({ api, world, jobs, poll }));
+
+      const noRateOrder = await test.step('seed: no-rate-product order (tax-b)', async () =>
+        seedNoRateProductOrder({ api, world, jobs, poll }));
 
       // ── Mockup-only states: native / all-clear baseline, settings-open ──
       await test.step('native', async () => {
@@ -308,6 +309,24 @@ test.describe('analytics mockup parity (#2482)', () => {
         ).toContain(unmappedOrder.internalOrderId);
       });
 
+      // ── detail-novat: tax-b category (genuinely unresolved tax rate) ───
+      await test.step('detail-novat', async () => {
+        await pages.analyticsMockup.gotoState('detail-novat');
+        await pages.analytics.goto({ from: range.from, to: range.to });
+        const dialog = await pages.analytics.openCoverageDetail('tax-b');
+        await expect(dialog).toContainText('have no tax rate at all');
+        await captureBoth(testInfo, pages.analyticsMockup.regionFor('detail-novat'), page, 'detail-novat');
+        const taxB = await api.analytics.getTaxCoverageOrders({
+          ...range,
+          category: 'tax-b',
+          limit: 100,
+        });
+        expect(
+          taxB.items.map((item) => item.internalOrderId),
+          `tax-b: seeded order ${noRateOrder.internalOrderId} should appear in the coverage list`,
+        ).toContain(noRateOrder.internalOrderId);
+      });
+
       // ── Skipped states: mockup captured for reference, real app not reachable ──
       for (const state of ['detail-tax', 'detail-postrollout'] as MockupState[]) {
         await test.step(`${state} (mockup only — see #2855)`, async () => {
@@ -320,16 +339,6 @@ test.describe('analytics mockup parity (#2482)', () => {
           });
         });
       }
-
-      await test.step('detail-novat (mockup only — tax-b needs new PrestaShop tax-rules-group seeding)', async () => {
-        await pages.analyticsMockup.gotoState('detail-novat');
-        const mockupFile = testInfo.outputPath('detail-novat--mockup.png');
-        await pages.analyticsMockup.regionFor('detail-novat').screenshot({ path: mockupFile });
-        await testInfo.attach('detail-novat — mockup (no real-app comparison)', {
-          path: mockupFile,
-          contentType: 'image/png',
-        });
-      });
 
       await test.step('currency-failed (mockup only — no flow-driven way to force the driver job to fail)', async () => {
         await pages.analyticsMockup.gotoState('currency-failed');

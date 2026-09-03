@@ -198,3 +198,110 @@ export async function seedUnmappedProductOrder(
 
   return { internalOrderId: order.internalOrderId, sourceConnectionId: prestashop.id };
 }
+
+/**
+ * Seeds a NORMALLY-SYNCED order whose product's tax rate is genuinely
+ * unresolved — the `detail-novat` (`tax-b`) coverage category. Unlike
+ * `seedUnmappedProductOrder`, the product IS synced into OL first (via
+ * `master.product.syncAll`), so ingestion resolves the line and the record
+ * reaches `recordStatus: 'ready'` — the only thing missing is the tax rate,
+ * because the product's `id_tax_rules_group` names a group with zero
+ * `tax_rules` (`PrestashopTaxRateResolver.selectRule` reports `{kind:
+ * 'none'}`, which `IProductsService.getEffectiveTaxRate` surfaces as
+ * `taxRateState() === 'no-rate'` — see
+ * `libs/core/src/products/domain/types/tax-rate.types.ts`).
+ */
+export async function seedNoRateProductOrder(
+  ctx: AnalyticsSeedContext,
+): Promise<{ internalOrderId: string; sourceConnectionId: string }> {
+  const { api, world, jobs } = ctx;
+  const prestashop = world.requireConnection(PlatformType.prestashop);
+  const { buildPrestashopWebserviceClient } = await import('./order-synthesis');
+  const ps = buildPrestashopWebserviceClient(world);
+  if (!ps) {
+    throw new Error(
+      'seedNoRateProductOrder requires OL_PS_WEBSERVICE_KEY (+ a resolvable PS base URL)',
+    );
+  }
+
+  const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  const taxRulesGroup = await ps.createTaxRulesGroup(`e2e-no-rate-${suffix}`);
+  const product = await ps.createProduct({
+    name: `E2E no-rate ${suffix}`,
+    reference: `e2e-no-rate-${suffix}`,
+    ean13: '',
+    price: '14.99',
+    quantity: 5,
+    idTaxRulesGroup: taxRulesGroup.id,
+  });
+
+  // Sync the catalogue so OL learns about this product (and, via the same
+  // resolver, that its tax rate is unresolved) before the order arrives —
+  // ingestion reads the CATALOGUE's cached rate, never PrestaShop live.
+  await jobs.triggerAndWait(
+    { connectionId: prestashop.id, jobType: 'master.product.syncAll' },
+    { expectSuccess: false, timeoutMs: 180_000 },
+  );
+  await ctx.poll.until(
+    async () => {
+      const page = await api.products.list({ search: product.reference, limit: 10 });
+      return page.items.some((item) => item.sku === product.reference);
+    },
+    (found) => found === true,
+    { timeoutMs: 120_000, message: `product ${product.reference} to appear in OL's catalogue` },
+  );
+
+  const countryId = (await ps.getCountryIdByIso('PL')) ?? '1';
+  const customerName = { firstName: 'Bezstawki', lastName: 'Testowy' };
+  const customer = await ps.createCustomer({
+    ...customerName,
+    email: `e2e-no-rate-${suffix}@e2e.openlinker.test`,
+    password: 'e2e-Password-123',
+  });
+  const address = await ps.createAddress({
+    idCustomer: customer.id,
+    alias: `e2e-no-rate-${suffix}`,
+    ...customerName,
+    address1: 'ul. Bezstawkowa 1',
+    city: 'Warszawa',
+    postcode: '00-001',
+    idCountry: countryId,
+  });
+  const cart = await ps.createCart({
+    idCustomer: customer.id,
+    idAddressDelivery: address.id,
+    idAddressInvoice: address.id,
+    rows: [{ productId: product.id, productAttributeId: '0', quantity: 1 }],
+  });
+  const created = await ps.createOrder({
+    idCustomer: customer.id,
+    idAddressDelivery: address.id,
+    idAddressInvoice: address.id,
+    idCart: cart.id,
+    totalProducts: '14.99',
+    totalProductsWt: '14.99',
+    totalPaidTaxExcl: '14.99',
+    totalPaidTaxIncl: '14.99',
+    totalShippingTaxIncl: '0.00',
+    rows: [
+      {
+        productId: product.id,
+        productAttributeId: '0',
+        quantity: 1,
+        unitPriceTaxIncl: '14.99',
+      },
+    ],
+  });
+
+  const { waitForOrderByExternalId } = await import('./orders');
+  const order = await waitForOrderByExternalId(api, {
+    sourceConnectionId: prestashop.id,
+    externalOrderId: created.id,
+    timeoutMs: 180_000,
+    intervalMs: 3_000,
+    retriggerPoll: () =>
+      jobs.trigger({ connectionId: prestashop.id, jobType: 'marketplace.orders.poll' }),
+  });
+
+  return { internalOrderId: order.internalOrderId, sourceConnectionId: prestashop.id };
+}
