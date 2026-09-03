@@ -10,6 +10,10 @@ import {
   RateUnavailableTransientError,
   RateUnsupportedPairError,
 } from '@openlinker/core/currency';
+import {
+  PUBLICATION_DAY_CONTRACT_REAL_CALENDAR_FIXTURES,
+  runPublicationDayContract,
+} from '@openlinker/core/currency/testing';
 import type { FetchLike } from '@openlinker/shared/http';
 import { Logger } from '@openlinker/shared/logging';
 import { EcbExchangeRateAdapter } from '../ecb-exchange-rate.adapter';
@@ -51,6 +55,15 @@ function csv(currency: string, timePeriod: string, value: string): string {
 function ok(body: string): StubResponse {
   return { status: 200, body };
 }
+
+/**
+ * A `FetchLike` that throws if ever invoked - used below to prove
+ * `resolveExpectedPublicationDay` makes no HTTP call, the port's own "Pure,
+ * synchronous, no I/O" guarantee.
+ */
+const neverFetch: FetchLike = (() => {
+  throw new Error('resolveExpectedPublicationDay must not perform I/O');
+}) as unknown as FetchLike;
 
 describe('EcbExchangeRateAdapter', () => {
   describe('supports', () => {
@@ -152,17 +165,14 @@ describe('EcbExchangeRateAdapter', () => {
     });
   });
 
-  describe('resolveLikelyPublicationDay (#2777)', () => {
-    it('should return the Friday before a Saturday candidate, with no HTTP call', () => {
-      const { fetchImpl, urls } = fakeFetch(() => ok(csv('PLN', '2026-08-14', '4.2680')));
-      const adapter = new EcbExchangeRateAdapter({ fetchImpl });
-
-      const resolved = adapter.resolveLikelyPublicationDay('2026-08-15');
-
-      expect(resolved).toBe('2026-08-14');
-      expect(urls).toHaveLength(0);
-    });
-
+  describe('resolveExpectedPublicationDay (#2777)', () => {
+    // Kept verbatim rather than folded into the shared suite below: this is
+    // the ONE case that names, in its own test title and comment, the exact
+    // regression it exists to prevent (#2800 review, finding 2 - "do NOT
+    // delete the Corpus Christi case's explanatory naming"). A future
+    // "simplification" that shares NBP's Polish-calendar helper here breaks
+    // THIS test for the reason stated below, not merely a generic case in a
+    // shared table.
     it('should return the Corpus Christi date ITSELF, proving no Polish-calendar dependency', () => {
       // Thursday 2026-06-04, a genuine Polish public holiday. A Polish-calendar
       // walk-back would resolve this to 2026-06-03 - exactly the bug the class
@@ -171,22 +181,25 @@ describe('EcbExchangeRateAdapter', () => {
       const { fetchImpl, urls } = fakeFetch(() => ok(csv('PLN', '2026-06-04', '4.2368')));
       const adapter = new EcbExchangeRateAdapter({ fetchImpl });
 
-      const resolved = adapter.resolveLikelyPublicationDay('2026-06-04');
+      const resolved = adapter.resolveExpectedPublicationDay('2026-06-04');
 
       expect(resolved).toBe('2026-06-04');
       expect(urls).toHaveLength(0);
     });
-
-    it('should return the candidate itself for an ordinary weekday', () => {
-      const { fetchImpl, urls } = fakeFetch(() => ok(csv('PLN', '2026-08-13', '4.2680')));
-      const adapter = new EcbExchangeRateAdapter({ fetchImpl });
-
-      const resolved = adapter.resolveLikelyPublicationDay('2026-08-13');
-
-      expect(resolved).toBe('2026-08-13');
-      expect(urls).toHaveLength(0);
-    });
   });
+
+  // The shared port-contract suite (#2800 review, finding 2) - folds the
+  // Saturday and ordinary-weekday cases the block above used to carry
+  // (redundant once the shared suite covers them identically), adds a
+  // Sunday case neither hand-written test covered, and RE-ASSERTS the
+  // Corpus Christi divergence above through the same shared mechanism every
+  // other implementer is bound to, so the property is proven true of the
+  // CONTRACT and not merely of this one hand-written test.
+  runPublicationDayContract(
+    () => new EcbExchangeRateAdapter({ fetchImpl: neverFetch }),
+    { ...PUBLICATION_DAY_CONTRACT_REAL_CALENDAR_FIXTURES, corpusChristi2026Expected: '2026-06-04' },
+    { subject: 'EcbExchangeRateAdapter', expectDeclared: true }
+  );
 
   describe('direct resolution (EUR -> X)', () => {
     it('should return the observation verbatim at 8 decimal places', async () => {
