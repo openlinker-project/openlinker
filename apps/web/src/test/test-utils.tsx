@@ -203,6 +203,14 @@ export function createMockApiClient(
         updatedAt: '2026-01-01T00:00:00.000Z',
       }),
       getTaxCoverageOrders: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+      getCoverageByConnection: vi.fn().mockResolvedValue({
+        categories: [
+          { category: 'currency', rows: [] },
+          { category: 'tax-a', rows: [] },
+          { category: 'tax-b', rows: [] },
+          { category: 'tax-c', rows: [] },
+        ],
+      }),
       rerunTaxBackfill: vi.fn().mockResolvedValue({ scanned: 0, updated: 0 }),
       getProductMatchingOrders: vi.fn().mockResolvedValue({ items: [], total: 0 }),
       getTopProductVariantSales: vi.fn().mockResolvedValue({

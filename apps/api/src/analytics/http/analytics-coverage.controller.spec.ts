@@ -19,16 +19,23 @@ import type { AnalyticsCoverageQueryDto } from './dto/analytics-coverage-query.d
 
 describe('AnalyticsCoverageController (#2466)', () => {
   const createOrderRecordService = (): jest.Mocked<
-    Pick<IOrderRecordService, 'getCurrencyMismatchOrders' | 'getProductMatchingErrorOrders'>
+    Pick<
+      IOrderRecordService,
+      | 'getCurrencyMismatchOrders'
+      | 'getCurrencyMismatchOrdersByConnection'
+      | 'getProductMatchingErrorOrders'
+    >
   > => ({
     getCurrencyMismatchOrders: jest.fn(),
+    getCurrencyMismatchOrdersByConnection: jest.fn(),
     getProductMatchingErrorOrders: jest.fn(),
   });
 
   const createTaxCoverageDetectionService = (): jest.Mocked<
-    Pick<ITaxCoverageDetectionService, 'getAllCategoryPages'>
+    Pick<ITaxCoverageDetectionService, 'getAllCategoryPages' | 'getAllCategoryCountsByConnection'>
   > => ({
     getAllCategoryPages: jest.fn(),
+    getAllCategoryCountsByConnection: jest.fn(),
   });
 
   const createReportingCurrencySettings = (): jest.Mocked<
@@ -190,6 +197,7 @@ describe('AnalyticsCoverageController (#2466)', () => {
           nativeCurrency: 'PLN',
           stampedCurrency: null,
           stampedAt: null,
+          lineProducts: [],
         },
       ],
       total: 4,
@@ -202,6 +210,8 @@ describe('AnalyticsCoverageController (#2466)', () => {
           recordStatus: 'awaiting_mapping',
           mappingFailureReason: 'no variant mapping',
           createdAt: new Date('2026-08-02T00:00:00Z'),
+          productId: null,
+          variantId: null,
         },
       ],
       total: 7,
@@ -289,5 +299,128 @@ describe('AnalyticsCoverageController (#2466)', () => {
     await expect(
       controller.getCoverage({ from: '2020-01-01T00:00:00.000Z', to: '2026-08-08T00:00:00.000Z' })
     ).rejects.toThrow(BadRequestException);
+  });
+
+  describe('getCoverageByConnection (#2713)', () => {
+    it('composes the currency + tax A/B/C aggregates into one { category, rows } list, excluding product-matching', async () => {
+      const { controller, orderRecordService, taxCoverageDetectionService, reportingCurrencySettings } =
+        buildController();
+      reportingCurrencySettings.resolve.mockResolvedValue('EUR');
+      orderRecordService.getCurrencyMismatchOrdersByConnection.mockResolvedValue([
+        { sourceConnectionId: 'conn-a', affectedCount: 3 },
+        { sourceConnectionId: 'conn-b', affectedCount: 1 },
+      ]);
+      taxCoverageDetectionService.getAllCategoryCountsByConnection.mockResolvedValue({
+        'tax-a': [{ sourceConnectionId: 'conn-a', affectedCount: 2 }],
+        'tax-b': [],
+        'tax-c': [{ sourceConnectionId: 'conn-b', affectedCount: 5 }],
+      });
+
+      const result = await controller.getCoverageByConnection(query);
+
+      expect(result.categories.map((row) => row.category).sort()).toEqual(
+        ['currency', 'tax-a', 'tax-b', 'tax-c'].sort()
+      );
+      const byCategory = new Map(result.categories.map((row) => [row.category, row.rows]));
+      expect(byCategory.get('currency')).toEqual([
+        { sourceConnectionId: 'conn-a', affectedCount: 3 },
+        { sourceConnectionId: 'conn-b', affectedCount: 1 },
+      ]);
+      expect(byCategory.get('tax-a')).toEqual([{ sourceConnectionId: 'conn-a', affectedCount: 2 }]);
+      expect(byCategory.get('tax-b')).toEqual([]);
+      expect(byCategory.get('tax-c')).toEqual([{ sourceConnectionId: 'conn-b', affectedCount: 5 }]);
+    });
+
+    it('resolves the current reporting currency ONCE and threads it into both reads', async () => {
+      const { controller, orderRecordService, taxCoverageDetectionService, reportingCurrencySettings } =
+        buildController();
+      reportingCurrencySettings.resolve.mockResolvedValue('PLN');
+      orderRecordService.getCurrencyMismatchOrdersByConnection.mockResolvedValue([]);
+      taxCoverageDetectionService.getAllCategoryCountsByConnection.mockResolvedValue({
+        'tax-a': [],
+        'tax-b': [],
+        'tax-c': [],
+      });
+
+      await controller.getCoverageByConnection(query);
+
+      expect(reportingCurrencySettings.resolve).toHaveBeenCalledTimes(1);
+      expect(orderRecordService.getCurrencyMismatchOrdersByConnection).toHaveBeenCalledWith(
+        expect.anything(),
+        'PLN'
+      );
+      expect(taxCoverageDetectionService.getAllCategoryCountsByConnection).toHaveBeenCalledWith(
+        expect.anything(),
+        'PLN',
+        expect.anything()
+      );
+    });
+
+    it("threads the operator's backfilled-tax-rate opt-in through (#2469)", async () => {
+      const displaySettings = createDisplaySettings(true);
+      const { controller, orderRecordService, taxCoverageDetectionService, reportingCurrencySettings } =
+        buildController(undefined, undefined, undefined, displaySettings);
+      reportingCurrencySettings.resolve.mockResolvedValue('EUR');
+      orderRecordService.getCurrencyMismatchOrdersByConnection.mockResolvedValue([]);
+      taxCoverageDetectionService.getAllCategoryCountsByConnection.mockResolvedValue({
+        'tax-a': [],
+        'tax-b': [],
+        'tax-c': [],
+      });
+
+      await controller.getCoverageByConnection(query);
+
+      expect(taxCoverageDetectionService.getAllCategoryCountsByConnection).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        true
+      );
+    });
+
+    it('narrows both underlying reads when sourceConnectionId is provided', async () => {
+      const { controller, orderRecordService, taxCoverageDetectionService, reportingCurrencySettings } =
+        buildController();
+      reportingCurrencySettings.resolve.mockResolvedValue('EUR');
+      orderRecordService.getCurrencyMismatchOrdersByConnection.mockResolvedValue([]);
+      taxCoverageDetectionService.getAllCategoryCountsByConnection.mockResolvedValue({
+        'tax-a': [],
+        'tax-b': [],
+        'tax-c': [],
+      });
+
+      await controller.getCoverageByConnection({ ...query, sourceConnectionId: 'conn-a' });
+
+      expect(orderRecordService.getCurrencyMismatchOrdersByConnection).toHaveBeenCalledWith(
+        expect.objectContaining({ sourceConnectionId: 'conn-a' }),
+        'EUR'
+      );
+      expect(taxCoverageDetectionService.getAllCategoryCountsByConnection).toHaveBeenCalledWith(
+        expect.objectContaining({ sourceConnectionId: 'conn-a' }),
+        'EUR',
+        expect.anything()
+      );
+    });
+
+    it('throws BadRequestException when to is not after from', async () => {
+      const { controller } = buildController();
+
+      await expect(
+        controller.getCoverageByConnection({
+          from: '2026-08-08T00:00:00.000Z',
+          to: '2026-08-01T00:00:00.000Z',
+        })
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('throws BadRequestException when the range exceeds the max window', async () => {
+      const { controller } = buildController();
+
+      await expect(
+        controller.getCoverageByConnection({
+          from: '2020-01-01T00:00:00.000Z',
+          to: '2026-08-08T00:00:00.000Z',
+        })
+      ).rejects.toThrow(BadRequestException);
+    });
   });
 });

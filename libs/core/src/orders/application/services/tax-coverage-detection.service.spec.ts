@@ -428,4 +428,59 @@ describe('TaxCoverageDetectionService (#2465)', () => {
       expect(pages['tax-b'].items[0].internalOrderId).toBe('order-2');
     });
   });
+
+  describe('getAllCategoryCountsByConnection (#2713)', () => {
+    it('groups all three categories by connection from ONE classification pass', async () => {
+      const candidates = [
+        candidate({ internalOrderId: 'order-1', sourceConnectionId: 'conn-a', taxRateEra: null }),
+        candidate({ internalOrderId: 'order-2', sourceConnectionId: 'conn-a', taxRateEra: null }),
+        candidate({ internalOrderId: 'order-3', sourceConnectionId: 'conn-b', taxRateEra: null }),
+      ];
+      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue(candidates);
+
+      const counts = await service.getAllCategoryCountsByConnection(baseFilters, 'EUR');
+
+      expect(recordRepository.findNetExcludedOrderCandidates).toHaveBeenCalledTimes(1);
+      expect(counts['tax-b']).toEqual([
+        { sourceConnectionId: 'conn-a', affectedCount: 2 },
+        { sourceConnectionId: 'conn-b', affectedCount: 1 },
+      ]);
+      expect(counts['tax-a']).toEqual([]);
+      expect(counts['tax-c']).toEqual([]);
+    });
+
+    it('sums to the same totals getCategoryCounts reports for the same filters', async () => {
+      const candidates = [
+        candidate({ internalOrderId: 'order-1', sourceConnectionId: 'conn-a', taxRateEra: null }),
+        candidate({ internalOrderId: 'order-2', sourceConnectionId: 'conn-b', taxRateEra: null }),
+        candidate({ internalOrderId: 'order-3', sourceConnectionId: 'conn-b', taxRateEra: null }),
+      ];
+      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue(candidates);
+
+      const counts = await service.getCategoryCounts(baseFilters, 'EUR');
+      const byConnection = await service.getAllCategoryCountsByConnection(baseFilters, 'EUR');
+
+      const totalFromByConnection = byConnection['tax-b'].reduce(
+        (sum, row) => sum + row.affectedCount,
+        0
+      );
+      expect(totalFromByConnection).toBe(counts['tax-b']);
+    });
+
+    it('never calls findNetExcludedOrderCandidates more than once, regardless of category count', async () => {
+      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([]);
+
+      await service.getAllCategoryCountsByConnection(baseFilters, 'EUR');
+
+      expect(recordRepository.findNetExcludedOrderCandidates).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns an empty array per category when nothing matches', async () => {
+      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([]);
+
+      const counts = await service.getAllCategoryCountsByConnection(baseFilters, 'EUR');
+
+      expect(counts).toEqual({ 'tax-a': [], 'tax-b': [], 'tax-c': [] });
+    });
+  });
 });
