@@ -212,7 +212,7 @@ export function createReportingCurrencyConverter(
  * `rate` is `Number()`'d ONLY for display rounding, never for arithmetic —
  * the string itself remains the audited value (`rate.rate`).
  *
- * This line IS the provenance surface — its whole job is to be checkable
+ * This line IS the provenance surface - its whole job is to be checkable
  * (multiplying the displayed amount by the displayed rate must reproduce
  * the displayed figure), so it renders up to 8 fraction digits, matching the
  * `numeric(18,8)` column `rate.rate` is sourced from (#2788 review). A prior
@@ -220,7 +220,7 @@ export function createReportingCurrencyConverter(
  * PLN→EUR `0.23529412` to `0.2353`, which broke exactly that check.
  *
  * `formatter` is supplied by the caller (a component's own `useNumberFormat`
- * result) rather than instantiated here — this is a pure lib function and
+ * result) rather than instantiated here - this is a pure lib function and
  * cannot call the `useNumberFormat` hook itself (`docs/frontend-architecture.md
  * § Internationalization`).
  */
@@ -248,7 +248,7 @@ export function buildRateProvenanceDefinitions(
   }
 
   // The term names the mode honestly rather than repeating the backend's
-  // `'order-date'` misnomer verbatim — the body already explains that ONE
+  // `'order-date'` misnomer verbatim - the body already explains that ONE
   // current rate is applied to the whole period, not each order's own
   // historical rate, and a term reading "Rate on order date" contradicted
   // that body on the same card (#2788 review).

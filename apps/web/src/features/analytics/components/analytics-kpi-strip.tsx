@@ -122,7 +122,7 @@ const DELTA_FORMAT_OPTIONS: Intl.NumberFormatOptions = {
   minimumFractionDigits: 1,
   maximumFractionDigits: 1,
 };
-// The GMV qualifier's applied-rate line is a provenance figure — it must be
+// The GMV qualifier's applied-rate line is a provenance figure - it must be
 // checkable (amount × rate reproduces the displayed figure), so it renders
 // up to 8 fraction digits, matching the `numeric(18,8)` `rate.rate` column
 // (#2788 review). Trailing zeros beyond the source precision still trim.
