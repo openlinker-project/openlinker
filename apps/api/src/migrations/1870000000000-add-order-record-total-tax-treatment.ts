@@ -62,6 +62,9 @@ export class AddOrderRecordTotalTaxTreatment1870000000000 implements MigrationIn
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    // Unlike 1841000000006's down() (a deliberate no-op — that migration only
+    // SET a pre-existing column), this one ADDS the column, so dropping it is
+    // the only sound reversal.
     await queryRunner.query(
       `ALTER TABLE "order_records" DROP COLUMN IF EXISTS "totalTaxTreatment"`
     );
