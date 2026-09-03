@@ -234,6 +234,24 @@ async function measure(page, shot) {
   if (shot.selector === '#frame-proto') {
     const doc = await page.evaluate(() => ({ s: document.documentElement.scrollWidth, c: document.documentElement.clientWidth }));
     console.log(`  prototype page ${doc.s}/${doc.c} px · ${doc.s <= doc.c ? 'no sideways page scroll' : 'PAGE SCROLLS SIDEWAYS'}`);
+    /* The coverage count and the strip state the same fact twice — one as a
+       number, one as a list — so they can drift, and a drifted count is worse
+       than none: it is a figure an operator would act on. Assert per row that
+       the numerator equals the number of pills the strip drew. */
+    const counts = await page.locator('#rows tr[data-variant]').evaluateAll((rows) =>
+      rows.map((tr) => {
+        const text = tr.querySelector('.coverage-count-col span')?.textContent ?? '';
+        const strip = tr.querySelector('.coverage-pills');
+        const drawn = strip
+          ? (strip.querySelector('.coverage-pill--none') ? 0 : strip.children.length)
+          : 0;
+        return { text, listed: Number(text.split('/')[0]), drawn };
+      }));
+    const drifted = counts.filter((c) => c.listed !== c.drawn);
+    console.log(`  coverage counts · ${counts.length} row(s) checked · `
+      + (drifted.length === 0
+          ? 'every numerator matches its strip'
+          : `DRIFT: ${drifted.map((c) => `${c.text} vs ${c.drawn} pills`).join(', ')}`));
   }
 }
 

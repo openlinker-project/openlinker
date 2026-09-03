@@ -6,7 +6,7 @@
 <title>#2823 — /listings variant-centric coverage · UI Mockups</title>
 <!--
   ═══════════════════════════════════════════════════════════════════════════
-  #2823 — /listings as a VARIANT-CENTRIC coverage table  ·  ROUND 4
+  #2823 — /listings as a VARIANT-CENTRIC coverage table  ·  ROUND 5
   ═══════════════════════════════════════════════════════════════════════════
 
   What this file is for
@@ -20,6 +20,41 @@
   wherever the two disagree): "without expanding a row I see that variant X of
   product A is listed on Allegro and Erli, but NOT on WooCommerce. I expand it
   and then I see price, stock, when it was updated."
+
+  ── ROUND 5: A NUMBER BEFORE THE PILLS, AND THREE FIDELITY MISSES ─────────
+  Four changes, all from the PM reading the rendered round-4 frames.
+
+  1. THE COVERAGE COUNT IS DRAWN. `2/3`, `5/9`, `5/14`, in its own column
+     between the variant and the strip. This closes the design's one open
+     question and reverses an earlier cut — the reasoning, including what its
+     denominator gets wrong, is at `coverageCount()` and in correction 1
+     below.
+
+  2. THE OPENING FRAME NOW SHOWS A GAP. At `3 — today` the lead row was listed
+     on all three connections, so the first thing a reviewer saw demonstrated
+     neither the absence this view exists for nor the button that fixes it.
+     The lead row's Erli offer moved to Shopify: at three connections it reads
+     Allegro live, Erli missing, WooCommerce refused, with `+ ERLI` under the
+     expansion's table — and at nine it still has four listings, so nothing
+     downstream had to be re-captioned.
+
+  3. SKU AND EAN STOPPED BEING ITALIC. Round 3 transcribed the `<em>` that
+     `ListingCell` emits and not `index.css:18683`, which sets
+     `font-style: normal` on it plus mono and `--text-secondary`. The mockup
+     had been rendering italic sans where the product renders upright mono —
+     a transcription miss, not a design choice, and exactly the class of drift
+     this file's house rules exist to prevent.
+
+  4. THE CONNECTION ID IS THE SHIPPED COMPOSITE, COPY BUTTON INCLUDED. Round 3
+     drew the value chip and dropped the button beside it, and fabricated an
+     eight-character id that was neither a UUID nor a shortened one. Both
+     tables now render `CopyableId`'s real shape — a `<code>` carrying
+     `mono-text` over a full UUID, labelled by `shortenId`'s own rule
+     (`slice(0,8) + '…' + slice(-4)`, entity-label.tsx:167-176), with the
+     hover-revealed `Copy` button and its `@media (hover: none)` arm, which is
+     not optional on a view drawn for a tablet. One divergence is reported
+     rather than reproduced: the reviewer's screenshot shows that button
+     accent-FILLED under the cursor, and no rule in `index.css` produces that.
 
   ── ROUND 4: ONE DESIGN, AND THE EXPANSION GETS ITS EXIT BACK ─────────────
   Rounds 1-3 carried TWO designs side by side and asked the PM to pick. The
@@ -144,12 +179,16 @@
      operator-authored NAME. Frame 01 at 14 connections shows it — "Konto
      Główne" and "Outlet" instead of two pills both saying "Allegro".
 
-     A DIFFERENT counter is an open question rather than a rejected one, and
-     it is recorded in the handover frame: the strip answers "where is this?"
-     and answers "where is it NOT?" only by absence, so a per-row coverage
-     count ("on 11 of 14") would make absence countable without listing it.
-     Deliberately not drawn — counters were cut from this design once, so
-     putting one back should be a decision rather than a drift.
+     A DIFFERENT counter was the design's one open question through rounds
+     2-4 and is ANSWERED in round 5: the strip answers "where is this?" and
+     answers "where is it NOT?" only by absence, so a per-ROW count over
+     connections makes absence countable without listing it. It is now a
+     column — `2/3`, `5/9`, `5/14` — between the name and the strip (PM
+     decision, round 5). Note it is not the rejected badge coming back: that
+     one counted one connection, where the answer is binary; this one counts
+     connections, where it is not. Its denominator's one flaw, that a
+     connection which cannot accept listings still counts, is documented at
+     `coverageCount()` and named in the cell's own hover.
 
   2. "the relevant badge updates without a page reload" after a successful
      publication cannot read existing data, because DURING publication there
@@ -253,9 +292,9 @@
   per block. FOUR component rules are invented and they live alone in section
   4, built only from existing tokens: `.coverage-cell` (now only a positioning
   wrapper) with `--matched`, `.identity-col`, `.coverage-table-b` +
-  `.coverage-strip-col`, and one page-scoped cap, `.variant-detail
-  .listing-cell__reason`. No new colour, radius, shadow or spacing VALUE
-  appears anywhere in this file.
+  `.coverage-strip-col`, `.coverage-count-col`, and one page-scoped cap,
+  `.variant-detail .listing-cell__reason`. No new colour, radius, shadow or
+  spacing VALUE appears anywhere in this file.
 
   Round 3 listed six. `.coverage-col` (the 92 px channel-column budget) and
   `.coverage-slack` (an empty trailing column absorbing surplus width) went
@@ -1278,7 +1317,17 @@ input[type='checkbox'] {
   overflow: hidden;
 }
 .listing-cell__meta span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.listing-cell__meta span + span::before { content: '·'; margin-right: var(--space-2); }
+.listing-cell__meta span + span::before { content: '·'; margin-right: var(--space-2); color: var(--border-strong); }
+/* index.css:18683. Round 3 transcribed the `<em>` that `ListingCell` emits
+   (listings-list-page.tsx:252) and NOT the rule that undoes it, so the mockup
+   rendered SKU and EAN in italic sans while the product renders them upright
+   and monospaced. The `<em>` is markup for "this is the value, the label is
+   the prose around it"; it was never a request for italics. */
+.listing-cell__meta em {
+  font-style: normal;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+}
 
 .sr-only {
   position: absolute;
@@ -1432,7 +1481,59 @@ input[type='checkbox'] {
 .connection-cell__line { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
 .connection-cell__meta { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
 .connection-cell__meta > .copyable-id { flex: none; }
+/* index.css:9803-9875. Round 3 transcribed the VALUE chip and not the button
+   beside it, so the mockup drew an id an operator cannot take. The button is
+   hidden until the row is hovered or something inside it takes focus — that
+   reveal is the pattern, and a chip with no reveal is a different component.
+   The `@media (hover: none)` arm is not optional decoration: without it the
+   affordance is unreachable on a tablet, which is a device this view is drawn
+   for (frame 09).
+
+   One thing the reviewer's screenshot shows that `index.css` does not explain:
+   the Copy button appears accent-FILLED under the cursor. No rule in the
+   stylesheet produces that — `:hover` only lifts the text to
+   `--text-primary` and the border to `--border-default` — so it is either a
+   pressed state rendered by the browser or a divergence in the running build,
+   and it is reported rather than reproduced. This file transcribes the
+   stylesheet; inventing an accent fill to match a screenshot would put a rule
+   in the system that is not in the system. */
 .copyable-id { display: inline-flex; align-items: center; gap: var(--space-2); }
+.copyable-id__copy {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: var(--tracking-wide);
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  opacity: 0;
+  transform: translateX(-4px);
+  transition:
+    opacity var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+.copyable-id__copy:hover { color: var(--text-primary); border-color: var(--border-default); }
+.copyable-id__copy:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  opacity: 1;
+  transform: translateX(0);
+}
+.data-table tbody tr:hover .copyable-id__copy,
+.copyable-id:hover .copyable-id__copy,
+.copyable-id:focus-within .copyable-id__copy {
+  opacity: 1;
+  transform: translateX(0);
+}
+@media (hover: none) {
+  .copyable-id__copy { opacity: 1; transform: translateX(0); }
+}
 .copyable-id__value {
   font-family: var(--font-mono);
   font-size: 0.75rem;
@@ -1517,8 +1618,8 @@ input[type='checkbox'] {
 .alert__description p { margin: 0; }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   4. THE FOUR INVENTED RULES
-      Everything above is transcribed. These four are new, and they are the
+   4. THE FIVE INVENTED RULES
+      Everything above is transcribed. These five are new, and they are the
       whole design. All are built only from existing tokens.
 
       Round 3 listed six, and two of them belonged to variant A's grid:
@@ -1554,6 +1655,11 @@ input[type='checkbox'] {
 
       `.coverage-table-b` + `.coverage-strip-col` — the fixed-layout table and
       the column the strip wraps inside. Documented at the rule itself, below.
+
+      `.coverage-count-col` — 6rem, the width of the coverage count (round 5).
+      Declared rather than left to `auto` for the same reason the strip column
+      is: under `table-layout: fixed` an undeclared column takes an equal
+      share of the leftover width, which would have halved the strip.
    ═══════════════════════════════════════════════════════════════════════ */
 .coverage-cell {
   display: flex;
@@ -1602,6 +1708,11 @@ input[type='checkbox'] {
   width: 100%;
 }
 .coverage-table-b .coverage-strip-col { width: auto; }
+/* 6rem holds `14/14` with the table's own `--space-4` side padding and leaves
+   the remainder to the strip. Declared rather than left to `auto` because the
+   table is `table-layout: fixed`: an undeclared column there takes an equal
+   share of the leftover, which would have halved the strip. */
+.coverage-table-b .coverage-count-col { width: 6rem; }
 
 /* A page-scoped cap on the attention line — the sixth invented rule, and the
    one that only showed up in a screenshot. `.listing-cell__reason` caps
@@ -1761,7 +1872,7 @@ input[type='checkbox'] {
 <body>
 
 <div class="controls">
-  <span class="controls__label">#2823 · round 4 · variant-centric /listings</span>
+  <span class="controls__label">#2823 · round 5 · variant-centric /listings</span>
   <button type="button" class="toggle-btn" id="theme-toggle">Toggle theme</button>
 </div>
 
@@ -1886,11 +1997,13 @@ input[type='checkbox'] {
       the variant is not on — true, and how /products already reads, but it asks the operator to hold
       their own connection list in their head. At three connections that is nothing; at fourteen,
       noticing that Kaufland is absent from a strip of five is harder than seeing a hole in a column.
-      A per-row coverage count would make absence countable without listing it, and is deliberately
-      not drawn here: counters were cut from this design once already, so putting one back should be a
-      decision rather than a drift. This is the one advantage the discarded grid had, and it is
-      recorded rather than dropped, because it is the thing to watch if operators start asking "why
-      isn't this on Kaufland?" once they have a dozen connections.
+      This was the discarded grid's one advantage, and round 5 answers it rather than living with it:
+      the <b>Coverage</b> column states the same fact as a number — <code>2/3</code>,
+      <code>5/9</code>, <code>5/14</code> — so "how much of my estate does this reach?" is readable
+      without counting pills, and only then does the strip say which ones. It does not make absence
+      <em>locatable</em>; it makes it <em>countable</em>, which is the half that a strip cannot do for
+      itself. Reading a low number is now the prompt to expand the row, where every missing connection
+      is named as a button.
     </p>
   </section>
 
@@ -2144,7 +2257,7 @@ input[type='checkbox'] {
             height is set by how deep its strip wraps, so it is exactly the kind of content-driven
             height the guide asks to be declared before it ships.
           </p>
-          <div class="scale-readout" style="display:block; white-space:pre-wrap; line-height:1.6"><span id="guide-entry-b">| Variant coverage row (#2823) | auto, ~64 px | Documented `DataTable` exception — 32 px thumbnail + name/variant line + `SKU · EAN` meta line, beside ONE column holding a `.coverage-pills` strip of one pill per connection the variant is LISTED on. Measured at MEASURED_B_3 / MEASURED_B_9 / MEASURED_B_14 px at three, nine and fourteen connections: the height does not move, because the strip is bounded by how many offers a variant has (longest in the fixture: MEASURED_PILLS pills) and not by how many connections the operator has. Gaps are not in the strip — they are buttons in the expanded row — which is what makes that bound hold. The table is `table-layout: fixed` so the strip has a definite width to wrap inside; under auto layout a flex-wrap container's max-content is its whole content on one line and the column would overflow instead. |</span></div>
+          <div class="scale-readout" style="display:block; white-space:pre-wrap; line-height:1.6"><span id="guide-entry-b">| Variant coverage row (#2823) | auto, ~64 px | Documented `DataTable` exception — 32 px thumbnail + name/variant line + `SKU · EAN` meta line, beside a 6rem coverage count and ONE column holding a `.coverage-pills` strip of one pill per connection the variant is LISTED on (the count is a single line and never sets the height). Measured at MEASURED_B_3 / MEASURED_B_9 / MEASURED_B_14 px at three, nine and fourteen connections: the height does not move, because the strip is bounded by how many offers a variant has (longest in the fixture: MEASURED_PILLS pills) and not by how many connections the operator has. Gaps are not in the strip — they are buttons in the expanded row — which is what makes that bound hold. The table is `table-layout: fixed` so the strip has a definite width to wrap inside; under auto layout a flex-wrap container's max-content is its whole content on one line and the column would overflow instead. |</span></div>
         </div>
 
         <div>
@@ -2203,12 +2316,24 @@ input[type='checkbox'] {
             behaviour, not to write it.
           </p>
           <p class="gap-legend" style="margin-top:0">
-            <b>Not decided, and deliberately not drawn: a per-row coverage count.</b> The strip
+            <b>Also settled, and it reverses an earlier cut: the Coverage column.</b> A per-row count
+            over connections (<code>2/3</code>, <code>5/9</code>, <code>5/14</code>) sits between the
+            variant and the strip. It was the design's one open question for three rounds — the strip
             answers "where is this?" and answers "where is it not?" only by absence, which is the one
-            advantage the rejected grid had. A count ("on 11 of 14") would make absence countable
-            without listing it. Counters were already cut from this design once, so putting one back
-            belongs in a decision rather than in a drift — this is the thing to watch if operators
-            start asking why something is missing from a channel once they have a dozen connections.
+            advantage the rejected grid had — and it is not the issue's own
+            <code>Allegro 1/1</code> badge coming back: that counted a single connection, where the
+            answer is binary and the number was "yes in costume". This counts connections.
+          </p>
+          <p class="gap-legend" style="margin-top:0">
+            <b>One decision it leaves open, and a dev should not resolve it quietly.</b> The
+            denominator counts every connection in view, including one that structurally cannot accept
+            a listing — <code>publishDestinationKind()</code> resolving to nothing, i.e. no
+            <code>OfferCreator</code> and no enabled <code>ProductPublisher</code>. Such a variant can
+            never read <code>14/14</code>, and <code>13/14</code> looks like a gap no action can
+            close. The cell's hover names the shortfall rather than the denominator hiding it, because
+            a denominator that quietly excluded connections would make two rows showing the same
+            number mean different things. Excluding them is a product decision, not an implementation
+            detail.
           </p>
         </div>
 
@@ -2294,11 +2419,18 @@ function L(id, price, qty, updated, lifecycle, reason, reasonOverflow) {
 
 var PRODUCTS = [
   { id: 'p-tab', name: 'Tablet android', variants: [
+    /* The lead row, and the one the prototype opens expanded. It deliberately
+       carries a GAP inside the first three connections (PM, round 5): at
+       `3 — today` the row has to show a channel it is not on and a channel
+       that refused it, or the opening frame demonstrates neither the absence
+       the whole view is about nor the button that fixes it. Erli is the gap;
+       Shopify holds the offer that used to be Erli's, so the row still has
+       four listings at nine connections and frame 04's caption stays true. */
     { id: 'v-tab-32', label: '32 GB', sku: '011090000', ean: '123456789', cover: {
       'c-alg':  L('7782000901', '899,00 PLN', 50, '21 sie 2026, 10:05'),
-      'c-erl':  L('222456783',  '900,00 PLN', 30, '21 sie 2026, 10:05'),
       'c-woo':  L('123456788',  '900,00 PLN', 30, '21 sie 2026, 10:05', 'Invalid',
                   'Offer cannot be listed or edited: the destination category is missing a required parameter', 1),
+      'c-shp':  L('881100234',  '905,00 PLN', 30, '21 sie 2026, 10:05'),
       'c-olx':  L('555456788',  '900,00 PLN', 30, '19 sie 2026, 10:05', 'Unsynced')
     } },
     { id: 'v-tab-64', label: '64 GB', sku: '011090001', ean: '987654321', cover: {
@@ -2581,6 +2713,63 @@ function coveragePill(entry, conn, all, opts) {
     + '<span class="sr-only">' + esc(' — publish ' + who) + '</span></button>';
 }
 
+/* ── The coverage count ────────────────────────────────────────────────
+   `2/3`, `5/9`, `5/14` — how much of the operator's channel estate this
+   variant reaches, as a number, before the strip says where exactly.
+
+   This is a reversal, and it is recorded as one. Round 1 carried counters and
+   the PM cut them; round 3 rejected the issue's own `Allegro 1/1` badge as
+   "yes in costume", correctly, because a variant is on a connection binarily
+   and a per-CONNECTION count carries no information. Rounds 2-4 then left a
+   per-ROW count as the design's one open question, on the grounds that the
+   strip answers "where is this?" and answers "where is it NOT?" only by
+   absence — which is fine at three connections and genuinely hard at
+   fourteen, where noticing that Kaufland is missing from a strip of five
+   means holding your own connection list in your head. Round 5 closes it:
+   the count is drawn. A count over CONNECTIONS is a different measurement
+   from the rejected count over one connection, and it is the one that makes
+   absence countable without listing it.
+
+   Reading order, which is why the column sits between the name and the strip:
+   which variant → how much of it is covered → where exactly, and only then
+   the detail. Right-aligned with `tabular-nums` so the column scans down as a
+   column of numbers rather than as text.
+
+   TAB-INDEPENDENT, deliberately. The lifecycle tabs filter ROWS any-match, so
+   on the `Invalid` tab a row is present because one of its offers was
+   refused — but `2/3` still means "listed on two of three connections", not
+   "invalid on two". A count that changed meaning with the tab would be the
+   `1/1` mistake again, one level up.
+
+   ONE THING THE DENOMINATOR GETS WRONG, stated because it will be noticed
+   before it is explained: it counts every connection in view, including one
+   that structurally CANNOT accept a listing (Temu, `publish: null` — no
+   offer-creation capability, no product publishing). So such a variant can
+   never read `14/14`, and `13/14` looks like a gap that no action can close.
+   The format is the PM's and is kept; the shortfall is named in the cell's
+   own `title` instead of being silently corrected, because a denominator that
+   quietly excludes connections would make two rows with the same number mean
+   different things. Whether to exclude them belongs in a decision. */
+function coverageCount(entry, conns) {
+  var listed = conns.filter(function (conn) { return Boolean(entry.variant.cover[conn.id]); }).length;
+  var blocked = conns.filter(function (conn) {
+    return !entry.variant.cover[conn.id] && !conn.publish;
+  }).length;
+  return { listed: listed, total: conns.length, blocked: blocked };
+}
+
+function coverageCountCell(entry, conns) {
+  var n = coverageCount(entry, conns);
+  var title = 'Listed on ' + n.listed + ' of ' + n.total
+    + ' connection' + (n.total === 1 ? '' : 's');
+  if (n.blocked > 0) {
+    title += ' · ' + n.blocked + ' of the remaining '
+      + (n.total - n.listed) + ' cannot accept new listings';
+  }
+  return '<span class="tabular" title="' + esc(title) + '">'
+    + n.listed + '/' + n.total + '</span>';
+}
+
 /* The strip carries ONLY connections the variant is actually listed on — any
    lifecycle: Active, Invalid, Draft, Ended, Not synced. Gaps are not in it
    (PM decision, round 3b), and neither are connections with no publish path.
@@ -2661,6 +2850,7 @@ function coverageTableB(entries, conns, opts) {
   var head = '<tr>'
     + '<th class="data-table__expand-cell" scope="col"><span class="sr-only">Expand</span></th>'
     + '<th class="identity-col" scope="col">Variant</th>'
+    + '<th class="coverage-count-col data-table__cell--right" scope="col">Coverage</th>'
     + '<th class="coverage-strip-col" scope="col">Listed on</th>'
     + '</tr>';
 
@@ -2679,6 +2869,9 @@ function coverageTableB(entries, conns, opts) {
       +   '</button>'
       + '</td>'
       + '<td class="identity-col">' + identityCell(entry) + '</td>'
+      + '<td class="coverage-count-col data-table__cell--right">'
+      +   coverageCountCell(entry, conns)
+      + '</td>'
       + '<td class="coverage-strip-col">'
       +   coverageStrip(entry, conns, { matchedConnId: matchedConnId, readOnly: options.readOnly })
       + '</td>'
@@ -2686,7 +2879,7 @@ function coverageTableB(entries, conns, opts) {
 
     if (!expanded) return main;
 
-    return main + '<tr class="data-table__detail-row"><td class="data-table__detail-cell" colspan="3">'
+    return main + '<tr class="data-table__detail-row"><td class="data-table__detail-cell" colspan="4">'
       + '<div class="data-table__detail" id="' + panelId + '">'
       + detailTable(entry, conns)
       + publishRail(entry, conns, { readOnly: options.readOnly }) + '</div></td></tr>';
@@ -2749,6 +2942,39 @@ function fakeHex(seed, len) {
   return out.slice(0, len);
 }
 
+/* The connection id, in the shape the product actually shows. Round 3 wrote
+   `conn.id.replace('c-','') + 'a5aad'` — eight characters, no ellipsis, not a
+   UUID and not a shortened one either. `identifier_mappings` and `connections`
+   both key on `@PrimaryGeneratedColumn('uuid')`, and `ConnectionCell` renders
+   `shortenId(connectionId)` (ConnectionCell.tsx:119), whose rule for a value
+   with no `ol_` prefix is `slice(0,8) + '…' + slice(-4)`
+   (entity-label.tsx:167-176). So the chip reads `7a6a5bbd…2364`, and the
+   FULL value has to exist behind it — it is what the Copy button copies and
+   what the chip's `title` shows. */
+function fakeUuid(seed) {
+  var h = fakeHex('conn:' + seed, 32);
+  return h.slice(0, 8) + '-' + h.slice(8, 12) + '-' + h.slice(12, 16)
+    + '-' + h.slice(16, 20) + '-' + h.slice(20, 32);
+}
+
+function shortenUuid(id) {
+  return id.length <= 14 ? id : id.slice(0, 8) + '…' + id.slice(-4);
+}
+
+/* The shipped composite, transcribed: the value chip is a `<code>` carrying
+   `mono-text`, and the button beside it is revealed by the row's hover. The
+   accessible name names the SUBJECT rather than spelling out a UUID, which is
+   what `copyLabel` exists for (copyable-id.tsx:26-31). */
+function connectionIdChip(conn) {
+  var full = fakeUuid(conn.id);
+  return '<span class="copyable-id">'
+    + '<code class="copyable-id__value mono-text" title="' + esc(full) + '">'
+    +   esc(shortenUuid(full)) + '</code>'
+    + '<button type="button" class="copyable-id__copy"'
+    +   ' aria-label="' + esc('Copy connection ID for ' + conn.name) + '">Copy</button>'
+    + '</span>';
+}
+
 var FILLER_DATES = [
   ['12 sie 2026, 14:02', '02 wrz 2026, 09:41'],
   ['03 lip 2026, 08:17', '28 sie 2026, 16:05'],
@@ -2805,9 +3031,8 @@ function mappingShell(m) {
     ['Platform Type', esc(m.platformType), true],
     ['Connection', '<span class="connection-cell"><span class="connection-cell__body">'
       + '<span class="connection-cell__line">' + esc(m.conn.name) + '</span>'
-      + '<span class="connection-cell__meta"><span class="copyable-id">'
-      + '<span class="copyable-id__value">' + esc(m.conn.id.replace('c-', '') + 'a5aad') + '</span>'
-      + '</span></span></span></span>', false],
+      + '<span class="connection-cell__meta">' + connectionIdChip(m.conn) + '</span>'
+      + '</span></span>', false],
     ['Created', esc(m.created), false],
     ['Updated', esc(m.updated), false]
   ];
@@ -2898,9 +3123,7 @@ function detailTable(entry, conns) {
       + '<td>' + channelStack + '</td>'
       + '<td><span class="connection-cell"><span class="connection-cell__body">'
       +   '<span class="connection-cell__line">' + esc(conn.name) + '</span>'
-      +   '<span class="connection-cell__meta"><span class="copyable-id">'
-      +     '<span class="copyable-id__value">' + esc(conn.id.replace('c-', '') + 'a5aad') + '</span>'
-      +   '</span></span>'
+      +   '<span class="connection-cell__meta">' + connectionIdChip(conn) + '</span>'
       + '</span></span></td>'
       + '<td class="data-table__cell--right"><span class="tabular">' + esc(offer.price) + '</span></td>'
       + '<td class="data-table__cell--right"><span class="tabular">' + esc(offer.qty) + '</span></td>'
@@ -3379,7 +3602,10 @@ function measureVariantB(root) {
     ['invalid', 2, null, 'Listed, rejected',
      'The one mark that asks for something. A channel validator refused the offer; the sentence why travels with it into the expanded row, where the Channel cell stacks it under the pill.',
      'StatusBadge tone="error" compact · shipped'],
-    ['gap', 3, null, 'Not listed',
+    /* Index 1 (Erli), not 3 (Shopify): round 5 moved the lead row's gap into
+       the first three connections, so Shopify now holds an offer and would
+       have drawn a channel pill in the row whose subject is a gap. */
+    ['gap', 1, null, 'Not listed',
      'The only accent in the strip, and a real button — it opens the bulk-create wizard with this variant and this connection already in the URL. It does not live in the strip: gaps are in the expanded row, under the table.',
      '.products-row-cta · shipped'],
     ['blocked', 4, null, 'Not listed, no path',
@@ -3525,6 +3751,7 @@ function measureVariantB(root) {
     + '<table class="data-table coverage-table-b"><thead><tr>'
     + '<th class="data-table__expand-cell"></th>'
     + '<th class="identity-col" scope="col">Variant</th>'
+    + '<th class="coverage-count-col data-table__cell--right" scope="col">Coverage</th>'
     + '<th class="coverage-strip-col" scope="col">Listed on</th>'
     + '</tr></thead><tbody>'
     + [0,1,2,3].map(function () {
@@ -3535,6 +3762,8 @@ function measureVariantB(root) {
           + '<span class="copyable-id__value" style="width:11rem">&nbsp;</span></span>'
           + '<span class="listing-cell__meta"><span class="copyable-id__value" style="width:7rem">&nbsp;</span></span>'
           + '</span></span></td>'
+          + '<td class="coverage-count-col data-table__cell--right">'
+          + '<span class="copyable-id__value" style="width:2.5rem">&nbsp;</span></td>'
           + '<td class="coverage-strip-col"><span class="coverage-pills">'
           + [0,1,2].map(function () { return '<span class="copyable-id__value" style="width:4.5rem">&nbsp;</span>'; }).join('')
           + '</span></td></tr>';
