@@ -4986,11 +4986,16 @@ a.kpi-card:focus-visible {
 }
 
 /* ── Rate provenance line under a converted qualifier (#2778/#2779) ── */
+/* `--text-secondary`, not `--text-muted`: this line's whole job is to be READ
+   and checked against the figure above it (#2788 review). Both tokens clear
+   WCAG AA on `--bg-surface` (muted measures 5.51:1 light / 4.91:1 dark), but
+   4.91:1 at 11px is close to the floor for evidence an operator is asked to
+   verify; `--text-secondary` measures 10.02:1 / 9.69:1 on the same surfaces. */
 .kpi-card__qualifier-rate {
   font-family: var(--font-mono);
   font-size: 0.6875rem;
   font-weight: 400;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   white-space: nowrap;
   display: flex;
   align-items: center;
