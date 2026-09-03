@@ -34,6 +34,18 @@ export interface OrderLineItemRepositoryPort {
   findByOrderId(orderRecordId: string): Promise<OrderLineItem[]>;
 
   /**
+   * Batch read: every line item for the given order ids, in ONE query,
+   * grouped into a `Map` keyed by `orderRecordId` (each value ordered by
+   * `lineNumber`, mirroring {@link findByOrderId}) — the real batch a
+   * cross-cutting read needs, as opposed to a `Promise.all` fan-out over
+   * {@link findByOrderId} (#2826, mirrors `RefundRecordRepositoryPort
+   * .summarizeByOrderIds`'s doc comment). An order id with no line items is
+   * simply absent from the returned Map. Returns an empty `Map` immediately
+   * for an empty `orderRecordIds` input, without issuing a query.
+   */
+  findByOrderIds(orderRecordIds: string[]): Promise<Map<string, OrderLineItem[]>>;
+
+  /**
    * Units sold per source connection for the sales & channel analytics read
    * (#1987) — `SUM(quantity)` grouped by `sourceConnectionId`, joined back to
    * the parent `order_records` row to apply the same `recordStatus = 'ready'

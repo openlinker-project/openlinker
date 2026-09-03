@@ -12,7 +12,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { SelectQueryBuilder } from 'typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { OrderLineItemOrmEntity } from '../entities/order-line-item.orm-entity';
 import { OrderRecordOrmEntity } from '../entities/order-record.orm-entity';
 import type { OrderLineItemRepositoryPort } from '../../../domain/ports/order-line-item-repository.port';
@@ -46,6 +46,27 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       order: { lineNumber: 'ASC' },
     });
     return entities.map((e) => this.toDomain(e));
+  }
+
+  async findByOrderIds(orderRecordIds: string[]): Promise<Map<string, OrderLineItem[]>> {
+    if (orderRecordIds.length === 0) {
+      return new Map();
+    }
+
+    // One query for the whole id set — the real batch a cross-cutting read
+    // needs, as opposed to an N-call fan-out over `findByOrderId` (#2826).
+    const entities = await this.repository.find({
+      where: { orderRecordId: In(orderRecordIds) },
+      order: { orderRecordId: 'ASC', lineNumber: 'ASC' },
+    });
+
+    const grouped = new Map<string, OrderLineItem[]>();
+    for (const entity of entities) {
+      const lines = grouped.get(entity.orderRecordId) ?? [];
+      lines.push(this.toDomain(entity));
+      grouped.set(entity.orderRecordId, lines);
+    }
+    return grouped;
   }
 
   /**
