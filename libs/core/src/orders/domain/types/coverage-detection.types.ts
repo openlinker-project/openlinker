@@ -305,3 +305,21 @@ export interface PaginatedProductMatchingErrorOrders {
   items: ProductMatchingErrorOrderRow[];
   total: number;
 }
+
+/**
+ * One `(category, sourceConnectionId)` count for the aggregate-by-connection
+ * read (#2713) — the server-side equivalent of what
+ * `useCoverageCrossReferenceQuery` used to derive client-side by paging
+ * through a full affected-order list and grouping by `sourceConnectionId`.
+ * Deliberately NOT keyed per-category at the type level (no
+ * `CurrencyConnectionAggregate` / `TaxConnectionAggregate` split) — every
+ * consumer wants the same two fields regardless of which detector produced
+ * the row. A connection with zero affected orders is simply absent from the
+ * result, mirroring the "absent key = no data" convention
+ * {@link getDailyOrderAggregates}/`findEarliestOrderDateByConnection` already
+ * establish.
+ */
+export interface CoverageConnectionAggregateRow {
+  sourceConnectionId: string;
+  affectedCount: number;
+}

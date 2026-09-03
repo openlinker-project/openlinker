@@ -25,6 +25,7 @@ describe('AnalyticsTaxRemediationController (#2469)', () => {
       getCategoryPage: jest.fn(),
       getCategoryCounts: jest.fn(),
       getAllCategoryPages: jest.fn(),
+      getAllCategoryCountsByConnection: jest.fn(),
     };
     reportingCurrencySettings = {
       resolve: jest.fn().mockResolvedValue('EUR'),

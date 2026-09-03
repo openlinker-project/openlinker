@@ -36,6 +36,7 @@ import type {
   CoverageDetectionPagination,
   PaginatedCurrencyMismatchOrders,
   PaginatedProductMatchingErrorOrders,
+  CoverageConnectionAggregateRow,
 } from '../../domain/types/coverage-detection.types';
 
 export interface IOrderRecordService {
@@ -314,6 +315,19 @@ export interface IOrderRecordService {
     currentReportingCurrency: string,
     pagination: CoverageDetectionPagination
   ): Promise<PaginatedCurrencyMismatchOrders>;
+
+  /**
+   * Data Coverage `'currency'` category aggregate-by-connection (#2713) —
+   * thin pass-through to {@link
+   * OrderRecordRepositoryPort.findCurrencyMismatchOrdersByConnection}, for
+   * the same cross-context-boundary reason as {@link
+   * getCurrencyMismatchOrders}. Unlike that method, no line-item enrichment
+   * runs here — a count carries no `productId`/`variantId` to attach.
+   */
+  getCurrencyMismatchOrdersByConnection(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string
+  ): Promise<CoverageConnectionAggregateRow[]>;
 
   /**
    * Data Coverage `'product-matching'` category drill-down (#2466) — thin

@@ -51,6 +51,7 @@ describe('OrderRecordService', () => {
       getMedianOrderValue: jest.fn(),
       getNetMedianOrderValue: jest.fn(),
       findCurrencyMismatchOrders: jest.fn(),
+      findCurrencyMismatchOrdersByConnection: jest.fn(),
       findProductMatchingErrorOrders: jest.fn(),
       findCurrencyMismatchOrderRefsAfter: jest.fn(),
       clearFxStampForRestatement: jest.fn(),
@@ -1547,6 +1548,29 @@ describe('OrderRecordService', () => {
       expect(result.items[1]).toEqual(
         expect.objectContaining({ internalOrderId: 'order-2', productId: null, variantId: null })
       );
+    });
+  });
+
+  describe('getCurrencyMismatchOrdersByConnection (#2713)', () => {
+    it('is a thin pass-through to the repository read, forwarding args verbatim, with no enrichment', async () => {
+      const salesFilters = {
+        from: new Date('2026-08-01T00:00:00.000Z'),
+        to: new Date('2026-08-08T00:00:00.000Z'),
+      };
+      const rows = [
+        { sourceConnectionId: 'conn-a', affectedCount: 3 },
+        { sourceConnectionId: 'conn-b', affectedCount: 1 },
+      ];
+      repository.findCurrencyMismatchOrdersByConnection.mockResolvedValue(rows);
+
+      const result = await service.getCurrencyMismatchOrdersByConnection(salesFilters, 'EUR');
+
+      expect(repository.findCurrencyMismatchOrdersByConnection).toHaveBeenCalledWith(
+        salesFilters,
+        'EUR'
+      );
+      expect(lineItemRepository.findRepresentativeLinesByOrderIds).not.toHaveBeenCalled();
+      expect(result).toEqual(rows);
     });
   });
 

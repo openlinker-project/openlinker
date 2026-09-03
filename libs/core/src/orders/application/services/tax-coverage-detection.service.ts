@@ -68,6 +68,7 @@ import {
   type TaxCoverageClassification,
   type TaxCoverageLineRateObservation,
   type TaxCoverageOrderRow,
+  type CoverageConnectionAggregateRow,
 } from '../../domain/types/coverage-detection.types';
 import type { OrderLineItem } from '../../domain/entities/order-line-item.entity';
 
@@ -167,6 +168,34 @@ export class TaxCoverageDetectionService implements ITaxCoverageDetectionService
       };
     }
     return pages as Record<TaxCoverageCategory, PaginatedTaxCoverageOrders>;
+  }
+
+  async getAllCategoryCountsByConnection(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string,
+    includeBackfilledPreRollout = false
+  ): Promise<Record<TaxCoverageCategory, CoverageConnectionAggregateRow[]>> {
+    const classification = await this.classify(
+      filters,
+      currentReportingCurrency,
+      includeBackfilledPreRollout
+    );
+    const counts: Partial<Record<TaxCoverageCategory, CoverageConnectionAggregateRow[]>> = {};
+    for (const category of TaxCoverageCategoryValues) {
+      counts[category] = this.groupByConnection(classification[category]);
+    }
+    return counts as Record<TaxCoverageCategory, CoverageConnectionAggregateRow[]>;
+  }
+
+  private groupByConnection(rows: TaxCoverageOrderRow[]): CoverageConnectionAggregateRow[] {
+    const byConnection = new Map<string, number>();
+    for (const row of rows) {
+      byConnection.set(row.sourceConnectionId, (byConnection.get(row.sourceConnectionId) ?? 0) + 1);
+    }
+    return Array.from(byConnection, ([sourceConnectionId, affectedCount]) => ({
+      sourceConnectionId,
+      affectedCount,
+    }));
   }
 
   private toRow(
