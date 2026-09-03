@@ -28,6 +28,7 @@
  *
  * @module libs/core/src/orders/domain/types
  */
+import type { TaxRateState, TaxRateUnknownReason } from '@openlinker/core/products';
 
 /**
  * Data Coverage category values. `'currency'` was populated by #2464,
@@ -98,6 +99,19 @@ export interface CurrencyMismatchOrderRow {
   stampedCurrency: string | null;
   /** `order_records.fxStampedAt` — `null` while a stamp attempt is still deferred (or never attempted). */
   stampedAt: Date | null;
+  /**
+   * Every distinct product this order's lines touch (#2799, corrected per
+   * #2799 review BLOCKING 1) — a cross-reference join key against
+   * `TopProductRow.productId`, so `product-sales-table.tsx` can annotate
+   * EVERY product row under-counted by this category, not just the first
+   * line's. A single "representative" `productId` (the pre-fix shape)
+   * silently under-counted an order spanning several products for every
+   * product past the first. This category's scope is always `recordStatus
+   * = 'ready'` (#1985), so its orders always have persisted
+   * `order_line_items` rows in practice; empty only if an order genuinely
+   * carries no line items.
+   */
+  lineProducts: Array<{ productId: string; variantId: string | null }>;
 }
 
 /**
@@ -142,6 +156,41 @@ export const TaxCoverageCategoryValues = ['tax-a', 'tax-b', 'tax-c'] as const;
 export type TaxCoverageCategory = (typeof TaxCoverageCategoryValues)[number];
 
 /**
+ * One line's resolved (or unresolved) tax-rate observation within a
+ * {@link TaxCoverageOrderRow} (#2798) — carried per line rather than
+ * collapsed to one order-level value, since a mixed-rate order can
+ * legitimately carry a different real rate per line, and the mockup's
+ * earlier "hardcoded 23%" bug is exactly the regression this guards
+ * against.
+ *
+ * `rateCode` is the resolved code (a percent-as-string like `'23'`, or an
+ * exemption code) when `state === 'known'` and `line.taxRate` already
+ * carries a resolvable value; otherwise `null` — a `'no-rate'` or
+ * `'not-checked'` state never fabricates a code. `TaxRateState` is the same
+ * derived vocabulary `TaxCoverageDetectionService` already computes via
+ * `taxRateState()` (`@openlinker/core/products`) — reused here rather than
+ * re-derived, so the row can never disagree with the classification that
+ * produced it.
+ *
+ * `unknownReason` (#2264, provenance for the operator only, never control
+ * flow) is populated when the catalogue named WHY it reports `'no-rate'` —
+ * mirroring `StoredTaxRate.unknownReason` exactly, including its
+ * optionality: a line resolved from its own `order_line_items.taxRate`
+ * column never carries one (the column has no such provenance to report),
+ * and a `'not-checked'` observation never carries one either (there was no
+ * "no rate" answer to explain).
+ */
+export interface TaxCoverageLineRateObservation {
+  productId: string;
+  variantId: string | null;
+  /** Resolved rate code, or `null` when `state` is `'no-rate'` / `'not-checked'`. */
+  rateCode: string | null;
+  state: TaxRateState;
+  /** Why the catalogue named no rate, for `state === 'no-rate'` only — see doc comment above. */
+  unknownReason?: TaxRateUnknownReason | null;
+}
+
+/**
  * One order in a tax coverage sub-category's drill-down list. Deliberately
  * as minimal as {@link CurrencyMismatchOrderRow} — no thumbnail/order-number
  * field, since `OrderRecord` denormalizes no such column.
@@ -151,6 +200,12 @@ export interface TaxCoverageOrderRow {
   sourceConnectionId: string;
   /** `order_records.placedAt` — `null` for a historical row with no resolvable placement date. */
   placedAt: Date | null;
+  /**
+   * Per-line rate observations for every one of the order's lines (#2798)
+   * — never a single order-level rate. Empty when the order carries no
+   * line items at all.
+   */
+  lineRates: TaxCoverageLineRateObservation[];
 }
 
 /**
@@ -224,6 +279,36 @@ export interface ProductMatchingErrorOrderRow {
   mappingFailureReason: string | null;
   /** `order_records.createdAt` — always populated, unlike `placedAt` for this category (see class doc comment). */
   createdAt: Date;
+  /**
+   * Always `null` (#2799) — not because a value ever exists. A
+   * `product-matching` row is BY CONSTRUCTION an order whose item reference
+   * never resolved to an internal product id (that failed resolution is the
+   * entire reason the row exists), and #1985 only populates
+   * `order_line_items` for `recordStatus = 'ready'` records — this
+   * category's two statuses (`awaiting_mapping` / `source_deleted`) are
+   * never `'ready'`. The raw `orderSnapshot.items` this category's snapshot
+   * carries holds the SOURCE's own external item reference, never an
+   * internal `productId`, so there is no honest value to put here —
+   * approximating one (e.g. the first line's external id) would
+   * misrepresent an unresolved reference as a resolved one.
+   * `product-sales-table.tsx` must not attempt to cross-reference this
+   * category for that reason; it is excluded from
+   * `CROSS_REFERENCEABLE_CATEGORIES` for the identical reason the by-channel
+   * table already excludes it (an order that never resolved to any
+   * channel-scoped total was never counted anywhere to be silently missing
+   * from — here, never counted against any product either). Kept as a
+   * single nullable field rather than {@link CurrencyMismatchOrderRow}'s
+   * `lineProducts` array shape, since there is never a non-null value to
+   * put in either shape and a permanently-empty array would assert nothing
+   * more than this literal `null` already does.
+   */
+  productId: null;
+  /**
+   * Always `null` — same reasoning as {@link ProductMatchingErrorOrderRow.productId}
+   * above: this category never resolves a variant reference either, so there
+   * is no honest value to put here.
+   */
+  variantId: null;
 }
 
 /**
@@ -233,4 +318,22 @@ export interface ProductMatchingErrorOrderRow {
 export interface PaginatedProductMatchingErrorOrders {
   items: ProductMatchingErrorOrderRow[];
   total: number;
+}
+
+/**
+ * One `(category, sourceConnectionId)` count for the aggregate-by-connection
+ * read (#2713) — the server-side equivalent of what
+ * `useCoverageCrossReferenceQuery` used to derive client-side by paging
+ * through a full affected-order list and grouping by `sourceConnectionId`.
+ * Deliberately NOT keyed per-category at the type level (no
+ * `CurrencyConnectionAggregate` / `TaxConnectionAggregate` split) — every
+ * consumer wants the same two fields regardless of which detector produced
+ * the row. A connection with zero affected orders is simply absent from the
+ * result, mirroring the "absent key = no data" convention
+ * {@link getDailyOrderAggregates}/`findEarliestOrderDateByConnection` already
+ * establish.
+ */
+export interface CoverageConnectionAggregateRow {
+  sourceConnectionId: string;
+  affectedCount: number;
 }

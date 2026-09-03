@@ -25,6 +25,7 @@ describe('AnalyticsTaxRemediationController (#2469)', () => {
       getCategoryPage: jest.fn(),
       getCategoryCounts: jest.fn(),
       getAllCategoryPages: jest.fn(),
+      getAllCategoryCountsByConnection: jest.fn(),
     };
     reportingCurrencySettings = {
       resolve: jest.fn().mockResolvedValue('EUR'),
@@ -81,7 +82,9 @@ describe('AnalyticsTaxRemediationController (#2469)', () => {
 
     it('should resolve the reporting currency and the display setting, then page the classified category', async () => {
       taxCoverageDetectionService.getCategoryPage.mockResolvedValue({
-        items: [{ internalOrderId: 'ol_order_a', sourceConnectionId: 'conn-1', placedAt: null }],
+        items: [
+          { internalOrderId: 'ol_order_a', sourceConnectionId: 'conn-1', placedAt: null, lineRates: [] },
+        ],
         total: 1,
       });
 

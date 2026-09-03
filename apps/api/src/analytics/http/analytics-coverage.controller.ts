@@ -22,6 +22,18 @@
  * `CoverageCategoryRowDto`'s own header for why this is load-bearing rather
  * than cosmetic.
  *
+ * `GET /analytics/coverage/by-connection` (#2713) is the aggregate-by-
+ * connection sibling: `channel-sales-table.tsx`'s
+ * `useCoverageCrossReferenceQuery` used to derive per-connection counts
+ * client-side by paging through the full affected-order list; this endpoint
+ * does the `GROUP BY sourceConnectionId` server-side instead. It reuses the
+ * SAME query DTO and range validation as `getCoverage` (extracted into
+ * {@link parseAndValidateRange}) and composes only the currency + tax A/B/C
+ * aggregates — `product-matching` has no FE consumer to cross-reference
+ * (confirmed: `channel-sales-table.tsx`'s own header states the
+ * cross-reference is never done for that category), so it is deliberately
+ * NOT included here.
+ *
  * @module apps/api/src/analytics/http
  */
 import { BadRequestException, Controller, Get, Inject, Query } from '@nestjs/common';
@@ -49,6 +61,10 @@ import {
   AnalyticsCoverageResponseDto,
   CoverageCategoryRowDto,
 } from './dto/analytics-coverage-response.dto';
+import {
+  AnalyticsCoverageByConnectionResponseDto,
+  CoverageCategoryConnectionRowsDto,
+} from './dto/analytics-coverage-by-connection-response.dto';
 
 /**
  * Sample size for `sampleOrderIds` — deliberately small. This endpoint's job
@@ -87,17 +103,7 @@ export class AnalyticsCoverageController {
   async getCoverage(
     @Query() query: AnalyticsCoverageQueryDto
   ): Promise<AnalyticsCoverageResponseDto> {
-    const from = new Date(query.from);
-    const to = new Date(query.to);
-    if (to.getTime() <= from.getTime()) {
-      throw new BadRequestException('to must be after from');
-    }
-    const rangeDays = (to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000);
-    if (rangeDays > MAX_COVERAGE_RANGE_DAYS) {
-      throw new BadRequestException(
-        `Range too wide: ${Math.ceil(rangeDays)} days exceeds the ${MAX_COVERAGE_RANGE_DAYS}-day limit`
-      );
-    }
+    const { from, to } = this.parseAndValidateRange(query);
 
     const salesFilters = { from, to, sourceConnectionId: query.sourceConnectionId };
     const healthFilters = {
@@ -154,5 +160,64 @@ export class AnalyticsCoverageController {
     const response = new AnalyticsCoverageResponseDto();
     response.categories = categories;
     return response;
+  }
+
+  @Get('coverage/by-connection')
+  @ApiOperation({
+    summary:
+      'Data Coverage panel, per-connection breakdown — affected-order counts grouped by sourceConnectionId (currency, tax A/B/C)',
+  })
+  @ApiResponse({ status: 200, type: AnalyticsCoverageByConnectionResponseDto })
+  async getCoverageByConnection(
+    @Query() query: AnalyticsCoverageQueryDto
+  ): Promise<AnalyticsCoverageByConnectionResponseDto> {
+    const { from, to } = this.parseAndValidateRange(query);
+
+    const salesFilters = { from, to, sourceConnectionId: query.sourceConnectionId };
+
+    const currentReportingCurrency = await this.reportingCurrencySettings.resolve();
+    const { includeBackfilledTaxRatesInNetSales } = await this.displaySettings.getSettings();
+
+    const [currencyRows, taxRowsByCategory] = await Promise.all([
+      this.orderRecordService.getCurrencyMismatchOrdersByConnection(
+        salesFilters,
+        currentReportingCurrency
+      ),
+      this.taxCoverageDetectionService.getAllCategoryCountsByConnection(
+        salesFilters,
+        currentReportingCurrency,
+        includeBackfilledTaxRatesInNetSales
+      ),
+    ]);
+
+    const response = new AnalyticsCoverageByConnectionResponseDto();
+    response.categories = [
+      CoverageCategoryConnectionRowsDto.of('currency', currencyRows),
+      ...TaxCoverageCategoryValues.map((category) =>
+        CoverageCategoryConnectionRowsDto.of(category, taxRowsByCategory[category])
+      ),
+    ];
+    return response;
+  }
+
+  /**
+   * Shared `from`/`to` parsing + `MAX_COVERAGE_RANGE_DAYS` validation for
+   * every `/analytics/coverage*` route — extracted so `getCoverageByConnection`
+   * (#2713) doesn't duplicate `getCoverage`'s validation block verbatim.
+   * Behavior-preserving: same error messages, same 400 status.
+   */
+  private parseAndValidateRange(query: AnalyticsCoverageQueryDto): { from: Date; to: Date } {
+    const from = new Date(query.from);
+    const to = new Date(query.to);
+    if (to.getTime() <= from.getTime()) {
+      throw new BadRequestException('to must be after from');
+    }
+    const rangeDays = (to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000);
+    if (rangeDays > MAX_COVERAGE_RANGE_DAYS) {
+      throw new BadRequestException(
+        `Range too wide: ${Math.ceil(rangeDays)} days exceeds the ${MAX_COVERAGE_RANGE_DAYS}-day limit`
+      );
+    }
+    return { from, to };
   }
 }
