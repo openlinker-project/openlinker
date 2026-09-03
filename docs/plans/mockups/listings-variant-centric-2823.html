@@ -176,8 +176,8 @@
      is handled by the shipped `soleOfPlatform` rule
      (listings-coverage-pills.tsx:56-60): a platform with one connection is
      labelled by the PLATFORM, a platform with several by each connection's
-     operator-authored NAME. Frame 01 at 14 connections shows it — "Konto
-     Główne" and "Outlet" instead of two pills both saying "Allegro".
+     operator-authored NAME. Frame 01 at 14 connections shows it — "Allegro
+     Demo" and "Outlet" instead of two pills both saying "Allegro".
 
      A DIFFERENT counter was the design's one open question through rounds
      2-4 and is ANSWERED in round 5: the strip answers "where is this?" and
@@ -1932,7 +1932,7 @@ input[type='checkbox'] {
       connections they have. It exists so the row's cost is something you can feel by clicking rather
       than a figure you have to trust: the readout above does not move as you go 3 → 9 → 14, which is
       the load-bearing claim of this design. At 14 the two Allegro pills stop saying "Allegro" and
-      start saying "Konto Główne" and "Outlet", which is the shipped <code>soleOfPlatform</code> rule
+      start saying "Allegro Demo" and "Outlet", which is the shipped <code>soleOfPlatform</code> rule
       (<code>listings-coverage-pills.tsx:56-60</code>) doing its job.
     </p>
     <p class="gap-legend">
@@ -2376,7 +2376,7 @@ input[type='checkbox'] {
    `channel` is the platformType, and it is what decides whether the pill gets
    a colour: `--channel-*` tokens exist for six platforms and nothing else. */
 var CONNECTIONS = [
-  { id: 'c-alg',  channel: 'allegro',     platform: 'Allegro',     name: 'Konto Główne',   publish: 'marketplace', real: true },
+  { id: 'c-alg',  channel: 'allegro',     platform: 'Allegro',     name: 'Allegro Demo',   publish: 'marketplace', real: true },
   { id: 'c-erl',  channel: 'erli',        platform: 'Erli',        name: 'Erli PL',        publish: 'marketplace', real: true },
   { id: 'c-woo',  channel: 'woocommerce', platform: 'WooCommerce', name: 'Sklep firmowy',  publish: 'shop',        real: true },
   { id: 'c-shp',  channel: 'shopify',     platform: 'Shopify',     name: 'Shopify PL',     publish: 'marketplace' },
