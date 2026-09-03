@@ -746,7 +746,9 @@ describe('SalesDocumentCountryRoutingDialog — Reset country (#2189)', () => {
 
     expect(await screen.findByText(/Falls through to ★ Rest of world/i)).toBeInTheDocument();
     expect(
-      screen.getByText(/DE has no rules and no default, so an order billed here goes to/i),
+      screen.getByText(
+        /DE has no rules and no default, so an order delivered here goes to/i,
+      ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/An unmatched order is held/i)).toBeNull();
   });

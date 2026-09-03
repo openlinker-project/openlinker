@@ -97,7 +97,7 @@ export class SalesDocumentMarketRowDto {
   @ApiProperty({
     nullable: true,
     description:
-      'Orders billed to this country in the discovery window, or null when the country was not ' +
+      'Orders delivered to this country in the discovery window, or null when the country was not ' +
       'detected at all (a configured-only market). Never 0 - a detected market always has at least ' +
       'one order.',
   })
