@@ -1,0 +1,2453 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>#2823 — /listings variant-centric coverage · UI Mockups</title>
+<!--
+  ═══════════════════════════════════════════════════════════════════════════
+  #2823 — /listings as a VARIANT-CENTRIC coverage table
+  ═══════════════════════════════════════════════════════════════════════════
+
+  What this file is for
+  ─────────────────────────────────────────────────────────────────────────
+  Issue #2823 deliberately files no backend issue: the mockup has to settle
+  what the coverage indicator actually counts, so the read-model issue can be
+  written against a decided shape instead of freezing an endpoint ahead of the
+  design. This file is that decision, drawn.
+
+  The operator's sentence, from the PM (this overrides the issue's literal AC
+  wherever the two disagree): "without expanding a row I see that variant X of
+  product A is listed on Allegro and Erli, but NOT on WooCommerce. I expand it
+  and then I see price, stock, when it was updated."
+
+  ⁃⁃ FOUR CORRECTIONS TO THE ISSUE ────────────────────────────────────────
+  All four verified against the codebase at origin/main a9c6a46 (2026-09-02).
+  Each one changes scope.
+
+  1. "Badge shows listed/available count per channel (`Allegro 1/1`,
+     `Erli 0/1`)" carries NO INFORMATION in the normal case. A variant is
+     listed on a connection binarily — there is one offer or there is none —
+     so `1/1` is "yes" in costume and `0/1` is "no" in costume. The count
+     only means something when one platform holds two accounts
+     (`Allegro 1/2`). The codebase already solved that disambiguation and it
+     did NOT reach for a counter: listings-coverage-pills.tsx computes
+     `soleOfPlatform` and labels the pill with the PLATFORM name when a
+     platform has one connection, falling back to the operator-authored
+     CONNECTION name when it has several. This mockup reuses that rule and
+     drops the counter, except on a grouped-channel badge (frame 08).
+
+  2. "the relevant badge updates without a page reload" after a successful
+     publication cannot read existing data, because DURING publication there
+     is no row to update. `/listings` is `identifier_mappings` filtered to
+     `entityType = 'Offer'`, and that row is written by
+     offer-creation-execution.service.ts:163-169 — strictly AFTER
+     `adapter.createOffer(command)` returns at :146. While the job is queued
+     or in flight the mapping does not exist in any state, pending included.
+     Progress lives in a disjoint entity (`BulkOfferCreationBatch` /
+     `OfferCreationRecord`, statuses `pending | running | completed |
+     partially-failed | failed`). So the in-publication row state in frame 04
+     is a DATA GAP, marked †, not a read.
+
+  3. "Rows sorted by product; a product's variants appear consecutively"
+     is not expressible against today's API. `GET /listings` orders hard-coded
+     `mapping."createdAt" DESC, mapping."id" DESC`
+     (offer-mapping.repository.ts:221-224) and its query DTO carries no sort
+     field at all. `/products` DOES have `sort`/`dir`
+     (list-products-query.dto.ts:30-42, values name | sku | price | createdAt
+     | updatedAt | stock) — a proven precedent for adding one — but none of
+     those values groups by product either. A `productId, variantId` order key
+     is new work, and it is why this mockup paginates by PRODUCT (frame 01).
+
+  4. "Only with missing listings" needs a rule for what "available" means, or
+     the filter fills with noise. There is no per-variant channel eligibility
+     anywhere in the domain; `/products` uses "every connection capable of
+     OfferManager". This mockup therefore renders a THIRD cell state —
+     not applicable — for a channel the operator has switched off for a
+     product, and states plainly that the flag backing it does not exist yet.
+     Without it, a product that will never go to WooCommerce reads as a gap
+     forever.
+
+  ── THE ONE DESIGN INVERSION, AND WHY ─────────────────────────────────────
+  Status colour in this product means "how healthy is this thing" — success
+  green, error red. Here it would be noise: four channels × 20 rows = 80
+  green marks that all say the same thing, and the operator did not come to
+  read them. They came to find the hole.
+
+  So the emphasis is inverted. A listing that EXISTS is a quiet neutral mark.
+  A GAP gets the loudest thing in the palette — a dashed accent outline that
+  becomes the Publish button on hover. The gaps are the only coloured pixels
+  in the table, they line up in vertical channel columns, and a run of them
+  reads as a notch in the rhythm. Colour is never the only signal: presence
+  is a filled square, a gap is an outlined `+`, not-applicable is a rule.
+
+  ── DECISIONS TAKEN WITH THE PM ───────────────────────────────────────────
+  · The variant view REPLACES the mapping table. The five lifecycle tabs
+    (LIFECYCLE_TAB_VALUES, listings-list-page.tsx) leave the tab strip and
+    come back as an offer-state filter. Note the API filter is SINGLE-VALUED
+    (`ListingsFilters.lifecycle?: OfferLifecycle`, listings.types.ts:187-209),
+    not an array, so the control here is a select, not multi-select chips.
+    Cost accepted: today each tab carries its own count and its own empty-state
+    copy — five of them, a generic one having been rejected in #2029. A filter
+    inherits neither.
+  · Offer state does NOT roll up to the row. There is no "worst state wins"
+    rule anywhere in the offer domain (the only `computeWorstStatus` in the
+    repo is analytics-trust, an unrelated bounded context), and inventing one
+    would hide that a variant's other offer is healthy. The filter is
+    any-match and the cell that matched takes the state outline.
+  · No column sorting in v1. Sorting tears apart the runs of same-product
+    variants, which is the only thing that makes this table scannable.
+    Matches the page as built: no column definition sets `sortable`.
+
+  ── HOUSE RULES OBSERVED ──────────────────────────────────────────────────
+  Tokens in section 1 are transcribed from apps/web/src/index.css:185-505,
+  copied not re-derived (`pnpm lint` drift-checks that source block against
+  shared/theme/tokens.ts, so it is the canonical palette). Component CSS in
+  section 3 is transcribed from the same file. Exactly FOUR new component
+  rules are invented — `.coverage-cell` (with its state modifiers),
+  `.coverage-col`, `.action-col` and `.run-marker` — and they live alone in
+  section 4, built only from existing tokens. No new colour, radius, shadow
+  or spacing VALUE appears anywhere in this file.
+
+  There is no invented row-identity class: the row reuses the shipped
+  `.listing-cell` and simply omits `.listing-cell__offerid`, because a variant
+  row is not an offer.
+
+  ── WHAT BUILDING IT SURFACED (round 1, against the running file) ──────────
+  Three things only showed up once the thing rendered and got measured:
+
+  a. `--text-disabled` on the not-applicable rule measured 2.67:1 in light and
+     2.18:1 in dark against the table surface, failing 1.4.11's 3:1 for a
+     meaningful graphic — and it IS meaningful, since it separates "not sold
+     here" from an empty cell. Moved to `--text-muted` (5.5:1 / 4.7:1). The
+     state stays quietest by MASS, a 10×1 rule against a 10×10 square, which
+     is the honest place for that hierarchy.
+  b. The identity cell was taking 659 px of a 1440 px table, leaving the
+     channel columns 339 px from the names they describe. Vertical scanning
+     was the matrix's whole argument and it does not survive the eye crossing
+     a third of the table, so the trailing action column absorbs the slack
+     instead (`.action-col { width: 100% }`).
+  c. `rebaseRuns` — the run flags MUST be recomputed after filtering. The
+     product name prints once per run, so when "only with missing listings"
+     hides a run's first variant, the surviving row rendered with the
+     continuation hairline and no product name at all: an orphan. This is a
+     requirement on the implementation, not a mockup detail.
+
+  ⚠ The row anatomy here is NOT the #2023 listings carve-out and must not be
+  filed as a silent reuse of it. #2023 covers a row whose meta line is
+  `SKU · EAN · offer-ID`; this row is not an offer, so the offer-ID is gone
+  and the trailing validator line with it. frontend-ui-style-guide.md:645 is
+  explicit: "a new table wanting a tall row needs its own entry here, not a
+  silent reuse." Frame 09 carries the entry text to paste into the guide.
+
+  Sample data continues the ceramic-planter catalogue from
+  listings-redesign-1965.html so the two mockups read as one product.
+-->
+<style>
+/* ═══════════════════════════════════════════════════════════════════════
+   1. TOKENS — verbatim from apps/web/src/index.css:185-505.
+      Copied, not re-derived. Only colour tokens differ between themes;
+      spacing, radii and typography are identical, per the source's own note.
+   ═══════════════════════════════════════════════════════════════════════ */
+:root {
+  /* ── Typography ───────────────────────────────────────────────────── */
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    'Liberation Mono', monospace;
+
+  /* ── Surfaces ──────────────────────────────────────────────────────
+   * Warm-neutral OKLCH ramp (#775). Canvas is the page background;
+   * surface is the elevated card; shell sits between for sidebars and
+   * sticky bars. `bg-strong` is a deeper neutral for inset hovers and
+   * pressed states. `bg-surface-muted` / `bg-surface-hover` are kept
+   * as aliases for the FE-002 vocabulary that the rest of the CSS
+   * already uses.
+   */
+  --bg-canvas: oklch(99% 0.003 80);
+  --bg-shell: oklch(97.5% 0.004 80);
+  --bg-surface: #ffffff;
+  --bg-surface-elevated: oklch(99% 0.003 80);
+  --bg-muted: oklch(96% 0.005 80);
+  --bg-surface-muted: oklch(96% 0.005 80);
+  --bg-surface-hover: oklch(93% 0.006 80);
+  --bg-strong: oklch(93% 0.006 80);
+
+  /* ── Borders ──────────────────────────────────────────────────────── */
+  --border-subtle: oklch(93.5% 0.006 80);
+  --border-default: oklch(88% 0.008 80);
+  --border-strong: oklch(78% 0.010 80);
+  --border-focus: oklch(68% 0.18 50);
+
+  /* ── Text ─────────────────────────────────────────────────────────── */
+  --text-primary: oklch(20% 0.012 80);
+  --text-secondary: oklch(38% 0.010 80);
+  --text-muted: oklch(52% 0.008 80);
+  --text-disabled: oklch(70% 0.005 80);
+  --text-on-primary: oklch(18% 0.012 50); /* text on accent button */
+  --text-inverse: oklch(96% 0.005 80);
+  --text-link: oklch(50% 0.14 250);
+
+  /* ── Accent ───────────────────────────────────────────────────────
+   * Signal-orange brand accent (#775). Reverses the monochrome stance
+   * of #371 — the prior monochrome accent flattened the cockpit. The
+   * accent is used sparingly: primary buttons, active-tab underline,
+   * KPI top-rule, pulsing live dot, focus rings. Status hues remain
+   * reserved for status meaning.
+   *
+   * `--accent-primary` is the brand colour; `--text-on-primary` above
+   * is the legible text colour to pair with it on primary buttons.
+   */
+  --accent-primary: oklch(68% 0.18 50);
+  --accent-primary-hover: oklch(62% 0.19 50);
+  --accent-primary-active: oklch(56% 0.20 50);
+  --accent-primary-soft: oklch(96% 0.04 60);
+  --accent-primary-soft-strong: oklch(40% 0.16 50);
+  --accent-primary-border: oklch(85% 0.10 55);
+  --accent-focus: oklch(68% 0.18 50);
+  --accent-ring: oklch(68% 0.18 50 / 0.30);
+
+  /* ── Status: success ──────────────────────────────────────────────── */
+  --status-success: oklch(54% 0.14 150);
+  --status-success-soft: oklch(96% 0.04 150);
+  --status-success-border: oklch(85% 0.08 150);
+  --status-success-fg: oklch(36% 0.12 150);
+  --status-success-strong: oklch(36% 0.12 150);
+
+  /* ── Status: warning ──────────────────────────────────────────────── */
+  --status-warning: oklch(72% 0.16 85);
+  --status-warning-soft: oklch(96% 0.05 85);
+  --status-warning-border: oklch(85% 0.10 85);
+  --status-warning-fg: oklch(42% 0.12 80);
+  --status-warning-strong: oklch(42% 0.12 80);
+
+  /* ── Status: error ────────────────────────────────────────────────── */
+  --status-error: oklch(58% 0.20 25);
+  --status-error-soft: oklch(96% 0.04 25);
+  --status-error-border: oklch(85% 0.10 25);
+  --status-error-fg: oklch(42% 0.16 25);
+  --status-error-strong: oklch(42% 0.16 25);
+
+  /* ── Status: info ─────────────────────────────────────────────────── */
+  --status-info: oklch(56% 0.14 245);
+  --status-info-soft: oklch(96% 0.03 245);
+  --status-info-border: oklch(85% 0.08 245);
+  --status-info-fg: oklch(40% 0.12 245);
+  --status-info-strong: oklch(40% 0.12 245);
+
+  /* ── Viz: categorical series (#1739) ──────────────────────────────────
+   * Small categorical palette for proportion visuals (routing-split bar).
+   * NOT status hues — a series colour distinguishes entities (carriers,
+   * connections), never encodes health. `--viz-cat-muted` is the neutral
+   * "default / unassigned" bucket. */
+  --viz-cat-1: oklch(75% 0.13 85);
+  --viz-cat-2: oklch(60% 0.15 20);
+  --viz-cat-3: oklch(58% 0.12 245);
+  --viz-cat-4: oklch(60% 0.13 150);
+  --viz-cat-muted: oklch(82% 0.008 80);
+
+  /* ── Channel brand hues (#1752) ──────────────────────────────────────
+   * Per-marketplace dot/pill identity colours, previously copy-pasted as raw
+   * oklch literals across the orders, coverage, channel-pill, product-detail,
+   * and variant-drawer rulesets. Brand identity, NOT status — a channel hue
+   * distinguishes the platform, never encodes health. Single definition
+   * (identical in light/dark), mirroring the viz categorical set. */
+  --channel-allegro: oklch(70% 0.18 35);
+  --channel-prestashop: oklch(60% 0.18 250);
+  --channel-erli: oklch(66% 0.17 320);
+  --channel-woocommerce: oklch(64% 0.16 150);
+  --channel-amazon: oklch(72% 0.16 75);
+  --channel-shopify: oklch(64% 0.16 150);
+
+  /* ── Status: review / manual ──────────────────────────────────────── */
+  --status-review: oklch(58% 0.16 290);
+  --status-review-soft: oklch(96% 0.04 290);
+  --status-review-border: oklch(85% 0.08 290);
+  --status-review-fg: oklch(42% 0.14 290);
+  --status-review-strong: oklch(42% 0.14 290);
+
+  /* ── Status: conflict ─────────────────────────────────────────────── */
+  --status-conflict: oklch(64% 0.16 45);
+  --status-conflict-soft: oklch(96% 0.05 45);
+  --status-conflict-border: oklch(85% 0.10 45);
+  --status-conflict-strong: oklch(40% 0.14 45);
+
+  /* ── Status: disabled ─────────────────────────────────────────────── */
+  --status-disabled: oklch(55% 0.008 80);
+  --status-disabled-soft: oklch(95% 0.005 80);
+  --status-disabled-border: oklch(85% 0.008 80);
+  --status-disabled-fg: oklch(38% 0.010 80);
+  --status-disabled-strong: oklch(38% 0.010 80);
+
+  /* ── Elevation ────────────────────────────────────────────────────── */
+  --shadow-soft: 0 1px 2px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.06);
+  --shadow-soft-hover: 0 2px 4px rgb(15 18 26 / 0.04), 0 12px 28px rgb(15 18 26 / 0.10);
+  --shadow-overlay: 0 24px 48px rgb(15 18 26 / 0.16), 0 8px 16px rgb(15 18 26 / 0.08);
+  --overlay-scrim: rgb(15 18 26 / 0.55);
+
+  --shadow-xs: 0 1px 2px rgb(15 18 26 / 0.04);
+  --shadow-sm: 0 1px 2px rgb(15 18 26 / 0.04), 0 1px 3px rgb(15 18 26 / 0.06);
+  --shadow-md: 0 2px 4px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.08);
+  --shadow-lg: 0 6px 12px rgb(15 18 26 / 0.06), 0 16px 32px rgb(15 18 26 / 0.10);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.6);
+
+  /* Primary button hover — accent-driven (#775). Kept as a named token
+     because existing CSS references it. The cascade through
+     `--accent-primary-hover` would also work, but the explicit token
+     makes the contract auditable in `tokens.ts`. */
+  --button-primary-bg-hover: oklch(62% 0.19 50);
+
+  /* ── Spacing scale (strict 4px grid) ─────────────────────────────── */
+  /* ── Layout heights (#2227) ────────────────────────────────────────
+   * The two pinned strips at the top of the shell, named once instead of
+   * repeated as a literal `52px` in `.shell-topbar` and `.demo-banner`. Height,
+   * not padding, so the value stays true: the banner carries a matching
+   * `min-height`.
+   */
+  --shell-topbar-height: 52px;
+  --demo-banner-height: 48px;
+
+  --space-1: 0.25rem; /* 4px */
+  --space-2: 0.5rem; /* 8px */
+  --space-3: 0.75rem; /* 12px */
+  --space-4: 1rem; /* 16px */
+  --space-5: 1.5rem; /* 24px */
+  --space-6: 2rem; /* 32px */
+  --space-7: 3rem; /* 48px */
+  --space-8: 4rem; /* 64px */
+
+  /* ── Radius scale ─────────────────────────────────────────────────── */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --radius-pill: 9999px;
+
+  /* ── Motion ───────────────────────────────────────────────────────── */
+  --duration-fast: 120ms;
+  --duration-normal: 180ms;
+  --duration-slow: 280ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* ── Tracking (letter-spacing) ────────────────────────────────────── */
+  --tracking-tight: -0.012em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.02em;
+  --tracking-caps: 0.08em;
+
+  color-scheme: light;
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  font-weight: 400;
+  color: var(--text-primary);
+  background: var(--bg-canvas);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'cv11', 'ss01';
+}
+
+/* ── Dark mode ──────────────────────────────────────────────────────
+ * Activated via `data-theme="dark"` on <html> (see ThemeProvider and
+ * the FOUC guard in index.html). Only colour tokens are remapped —
+ * spacing, radii, shadows, and typography stay identical across themes.
+ * Status tones keep the same semantic names but shift to dark-friendly
+ * tints so soft backgrounds don't wash out on dark surfaces.
+ */
+html[data-theme='dark'] {
+  color-scheme: dark;
+
+  /* Primary button hover — accent-driven (#775). */
+  --button-primary-bg-hover: oklch(78% 0.18 50);
+
+  /* Surfaces — cool graphite ramp (#775). Hue 270 carries a faint
+     cool cast that keeps the dark palette from looking dead-neutral.
+     Elevation step sizes match the previous graphite ramp so existing
+     components carry over. */
+  --bg-canvas: oklch(14% 0.005 270);
+  --bg-shell: oklch(16% 0.006 270);
+  --bg-surface: oklch(19% 0.007 270);
+  --bg-surface-elevated: oklch(22% 0.008 270);
+  --bg-muted: oklch(24% 0.009 270);
+  --bg-surface-muted: oklch(24% 0.009 270);
+  --bg-surface-hover: oklch(28% 0.010 270);
+  --bg-strong: oklch(28% 0.010 270);
+
+  /* Borders */
+  --border-subtle: oklch(24% 0.010 270);
+  --border-default: oklch(30% 0.012 270);
+  --border-strong: oklch(42% 0.014 270);
+  --border-focus: oklch(72% 0.18 50);
+
+  /* Text */
+  --text-primary: oklch(96% 0.006 270);
+  --text-secondary: oklch(78% 0.010 270);
+  --text-muted: oklch(60% 0.012 270);
+  --text-disabled: oklch(42% 0.012 270);
+  --text-on-primary: oklch(16% 0.012 50); /* text on accent button — same black bias as light */
+  --text-inverse: oklch(20% 0.012 80);
+  --text-link: oklch(76% 0.14 245);
+
+  /* Accent — see :root for the rationale (#775). */
+  --accent-primary: oklch(72% 0.18 50);
+  --accent-primary-hover: oklch(78% 0.18 50);
+  --accent-primary-active: oklch(84% 0.16 50);
+  --accent-primary-soft: oklch(28% 0.08 50);
+  --accent-primary-soft-strong: oklch(86% 0.14 60);
+  --accent-primary-border: oklch(40% 0.14 55);
+  --accent-focus: oklch(72% 0.18 50);
+  --accent-ring: oklch(72% 0.18 50 / 0.40);
+
+  /* Status — success */
+  --status-success: oklch(68% 0.16 150);
+  --status-success-soft: oklch(26% 0.06 150);
+  --status-success-border: oklch(36% 0.10 150);
+  --status-success-fg: oklch(86% 0.14 150);
+  --status-success-strong: oklch(86% 0.14 150);
+
+  /* Status — warning */
+  --status-warning: oklch(78% 0.16 85);
+  --status-warning-soft: oklch(28% 0.07 85);
+  --status-warning-border: oklch(38% 0.10 85);
+  --status-warning-fg: oklch(88% 0.14 85);
+  --status-warning-strong: oklch(88% 0.14 85);
+
+  /* Status — error */
+  --status-error: oklch(70% 0.18 25);
+  --status-error-soft: oklch(28% 0.10 25);
+  --status-error-border: oklch(40% 0.14 25);
+  --status-error-fg: oklch(86% 0.14 25);
+  --status-error-strong: oklch(86% 0.14 25);
+
+  /* Status — info */
+  --status-info: oklch(72% 0.14 245);
+  --status-info-soft: oklch(26% 0.06 245);
+  --status-info-border: oklch(36% 0.10 245);
+  --status-info-fg: oklch(86% 0.12 245);
+  --status-info-strong: oklch(86% 0.12 245);
+
+  /* Viz — categorical series (#1739) */
+  --viz-cat-1: oklch(70% 0.12 85);
+  --viz-cat-2: oklch(62% 0.14 20);
+  --viz-cat-3: oklch(62% 0.11 245);
+  --viz-cat-4: oklch(62% 0.12 150);
+  --viz-cat-muted: oklch(42% 0.008 80);
+
+  /* Status — review */
+  --status-review: oklch(74% 0.14 290);
+  --status-review-soft: oklch(28% 0.06 290);
+  --status-review-border: oklch(38% 0.10 290);
+  --status-review-fg: oklch(88% 0.12 290);
+  --status-review-strong: oklch(88% 0.12 290);
+
+  /* Status — conflict */
+  --status-conflict: oklch(72% 0.16 45);
+  --status-conflict-soft: oklch(28% 0.08 45);
+  --status-conflict-border: oklch(40% 0.12 45);
+  --status-conflict-strong: oklch(88% 0.14 45);
+
+  /* Status — disabled */
+  --status-disabled: oklch(65% 0.010 270);
+  --status-disabled-soft: oklch(24% 0.010 270);
+  --status-disabled-border: oklch(34% 0.012 270);
+  --status-disabled-fg: oklch(82% 0.010 270);
+  --status-disabled-strong: oklch(82% 0.010 270);
+
+  /* Elevation */
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.40), 0 8px 24px rgb(0 0 0 / 0.40);
+  --shadow-soft-hover: 0 2px 4px rgb(0 0 0 / 0.42), 0 12px 32px rgb(0 0 0 / 0.42);
+  --shadow-overlay: 0 24px 48px rgb(0 0 0 / 0.60), 0 8px 16px rgb(0 0 0 / 0.40);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.40);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.40), 0 1px 3px rgb(0 0 0 / 0.32);
+  --shadow-md: 0 2px 4px rgb(0 0 0 / 0.40), 0 6px 16px rgb(0 0 0 / 0.36);
+  --shadow-lg: 0 6px 12px rgb(0 0 0 / 0.42), 0 16px 32px rgb(0 0 0 / 0.40);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  --overlay-scrim: rgb(0 0 0 / 0.72);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   2. MOCKUP SCAFFOLD — the sheet, the frames, the theme bar.
+      Same skeleton as listings-redesign-1965.html and
+      bulk-actions-pattern-2636.html: `.controls` / `.sheet` /
+      `.viewport-frame` are load-bearing for the screenshot script.
+   ═══════════════════════════════════════════════════════════════════════ */
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--text-primary);
+  background: var(--bg-canvas);
+  -webkit-font-smoothing: antialiased;
+}
+
+.controls {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  background: var(--bg-shell);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.controls__label {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.toggle-btn {
+  height: 1.75rem;
+  padding: 0 var(--space-3);
+  font-size: 0.75rem;
+  border-color: var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+.toggle-btn:hover {
+  background: var(--bg-surface-muted);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.sheet { max-width: 1320px; margin: 0 auto; padding: var(--space-6) var(--space-5) var(--space-8); }
+.sheet__title {
+  font-size: 26px;
+  line-height: 32px;
+  font-weight: 700;
+  letter-spacing: var(--tracking-tight);
+  margin: 0 0 var(--space-1);
+  text-wrap: balance;
+}
+.sheet__sub { color: var(--text-secondary); margin: 0 0 var(--space-4); max-width: 76ch; }
+.sheet__note {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  font-size: 0.78125rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  margin: 0 0 var(--space-6);
+}
+.sheet__note b { color: var(--text-primary); }
+
+.viewport-frame { margin: 0 0 var(--space-7); }
+.viewport-frame__label {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin: 0 0 var(--space-3);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px dashed var(--border-default);
+}
+.viewport-frame__label .eyebrow-mono {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--accent-primary-hover);
+}
+.viewport-frame__label b { font-size: 0.875rem; font-weight: 600; color: var(--text-primary); }
+.viewport-frame__label span.caption { font-size: 0.75rem; color: var(--text-muted); }
+.viewport-frame__scroll {
+  overflow-x: auto;
+  padding: var(--space-4);
+  background: var(--bg-shell);
+  border-radius: var(--radius-xl);
+}
+
+.app-frame {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  min-width: 60rem;
+}
+.phone-frame {
+  max-width: 360px;
+  margin: 0 auto;
+  padding: var(--space-3);
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+}
+.tablet-frame {
+  max-width: 768px;
+  margin: 0 auto;
+  padding: var(--space-4);
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+}
+.phone-frame .app-frame,
+.tablet-frame .app-frame { min-width: 0; padding: var(--space-3); }
+
+.note-stack { display: grid; gap: var(--space-3); }
+.gap-mark {
+  font-family: var(--font-mono);
+  color: var(--accent-primary-hover);
+  cursor: help;
+  font-weight: 600;
+}
+.gap-legend {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin: var(--space-2) 0 0;
+}
+.frame-pair { display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fit, minmax(31rem, 1fr)); align-items: start; }
+.frame-pair > figure { margin: 0; display: grid; gap: var(--space-2); min-width: 0; align-content: start; }
+/* `.app-frame`'s 60rem floor is right for a full-width frame and wrong inside
+   a side-by-side panel, where it blows the grid track out and the panels
+   overlap. Panels clip and scroll instead. */
+.frame-pair .app-frame { min-width: 0; }
+.frame-pair figcaption {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 500;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   3. APP PRIMITIVES — transcribed from apps/web/src/index.css.
+      Buttons :542, controls :715, toolbar :2114, chips :1675,
+      pagination :2145, status badges :2331, coverage pills :17658,
+      thumbnails :3429, data table :2748 / :2850 / :3141, detail grid :3216,
+      listing identity cell :18586.
+   ═══════════════════════════════════════════════════════════════════════ */
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border: 1px solid var(--accent-primary-border);
+  border-radius: var(--radius-md);
+  padding: 0 var(--space-4);
+  height: 2rem;
+  background: var(--accent-primary);
+  color: var(--text-on-primary);
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+  user-select: none;
+  white-space: nowrap;
+  box-shadow: var(--shadow-xs), var(--shadow-inset-top);
+  transition: background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+.button:hover { background: var(--button-primary-bg-hover); border-color: var(--button-primary-bg-hover); }
+.button:active { background: var(--accent-primary-active); border-color: var(--accent-primary-active); }
+.button:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.button--secondary {
+  border-color: var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+.button--secondary:hover { background: var(--bg-surface-muted); border-color: var(--border-strong); }
+.button--ghost { border-color: transparent; background: transparent; color: var(--text-secondary); box-shadow: none; }
+.button--ghost:hover { background: var(--bg-surface-muted); color: var(--text-primary); }
+.button:disabled { cursor: not-allowed; opacity: 0.55; box-shadow: none; }
+.button--xs {
+  height: 1.5rem;
+  padding: 0 var(--space-2);
+  font-size: 0.6875rem;
+  border-radius: var(--radius-sm);
+  gap: var(--space-1);
+}
+.button--sm { height: 1.75rem; padding: 0 var(--space-3); font-size: 0.75rem; }
+
+.control {
+  appearance: none;
+  width: 100%;
+  height: 2rem;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 0 var(--space-3);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  box-shadow: var(--shadow-xs);
+  transition: border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+.control:hover:not(:disabled) { border-color: var(--border-strong); }
+.control:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.control:disabled { background: var(--bg-surface-muted); color: var(--text-disabled); cursor: not-allowed; }
+.control::placeholder { color: var(--text-disabled); }
+.control--select {
+  padding-right: var(--space-7);
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-secondary) 50%),
+    linear-gradient(135deg, var(--text-secondary) 50%, transparent 50%);
+  background-position: calc(100% - 14px) calc(50% - 2px), calc(100% - 8px) calc(50% - 2px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+input[type='checkbox'] {
+  width: 0.875rem;
+  height: 0.875rem;
+  margin: 0;
+  accent-color: var(--accent-primary);
+  cursor: pointer;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+.page-header { display: grid; gap: 0.45rem; }
+.page-header--split { grid-template-columns: minmax(0, 1fr) auto; align-items: start; }
+.page-title { margin: 0; color: var(--text-primary); font-size: 1.125rem; font-weight: 650; letter-spacing: var(--tracking-tight); }
+.page-description { margin: 0; color: var(--text-secondary); font-size: 0.8125rem; }
+.eyebrow {
+  margin: 0;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-primary-hover);
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-shell);
+  flex-wrap: wrap;
+}
+.toolbar__group { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.toolbar .control { max-width: 17.5rem; width: 17.5rem; min-width: 0; }
+.toolbar .control--narrow { width: 10.5rem; max-width: 10.5rem; }
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  height: 1.375rem;
+  padding: 0 0.5rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface-muted);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+.chip:hover { background: var(--bg-surface-hover); border-color: var(--border-default); color: var(--text-primary); }
+.chip:focus-visible { outline: 2px solid var(--accent-focus); outline-offset: 2px; }
+.chip.chip--active {
+  background: var(--accent-primary-soft);
+  border-color: color-mix(in oklab, var(--accent-primary) 35%, transparent);
+  color: var(--accent-primary-soft-strong);
+  font-weight: 600;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 2px var(--space-2);
+  border: 1px solid var(--status-disabled-border);
+  border-radius: var(--radius-sm);
+  background: var(--status-disabled-soft);
+  color: var(--status-disabled-fg);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.status-badge--compact { padding: 1px var(--space-2); font-size: 0.625rem; }
+.status-badge__dot {
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 999px;
+  background: currentColor;
+  flex-shrink: 0;
+  opacity: 0.75;
+}
+.status-badge--success { border-color: var(--status-success-border); background: var(--status-success-soft); color: var(--status-success-fg); }
+.status-badge--warning { border-color: var(--status-warning-border); background: var(--status-warning-soft); color: var(--status-warning-fg); }
+.status-badge--error { border-color: var(--status-error-border); background: var(--status-error-soft); color: var(--status-error-fg); }
+.status-badge--info { border-color: var(--status-info-border); background: var(--status-info-soft); color: var(--status-info-fg); }
+.status-badge--neutral { border-color: var(--status-disabled-border); background: var(--status-disabled-soft); color: var(--status-disabled-fg); }
+.status-badge--pulse .status-badge__dot { animation: status-badge-pulse 1.6s var(--ease-out) infinite; }
+@keyframes status-badge-pulse {
+  0% { box-shadow: 0 0 0 0 currentColor; opacity: 0.95; }
+  70% { box-shadow: 0 0 0 6px transparent; opacity: 0.55; }
+  100% { box-shadow: 0 0 0 0 transparent; opacity: 0.95; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .status-badge--pulse .status-badge__dot { animation: none; }
+}
+
+.coverage-pills { display: inline-flex; flex-wrap: wrap; gap: var(--space-1); }
+.coverage-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface-muted);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  white-space: nowrap;
+}
+.coverage-pill::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+.coverage-pill[data-channel='allegro']::before { background: var(--channel-allegro); }
+.coverage-pill[data-channel='erli']::before { background: var(--channel-erli); }
+.coverage-pill[data-channel='woocommerce']::before { background: var(--channel-woocommerce); }
+.coverage-pill[data-channel='prestashop']::before { background: var(--channel-prestashop); }
+.coverage-pill--full { border-color: var(--status-success-border); background: var(--status-success-soft); color: var(--status-success-fg); }
+.coverage-pill--partial { border-color: var(--status-warning-border); background: var(--status-warning-soft); color: var(--status-warning-fg); }
+.coverage-pill--none { color: var(--text-muted); }
+.coverage-pill__count { font-weight: 600; }
+
+.product-thumbnail {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.375rem;
+  background: var(--bg-surface-muted);
+  overflow: hidden;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  line-height: 1;
+  user-select: none;
+  width: 2rem;
+  height: 2rem;
+  font-size: 0.8125rem;
+}
+
+.mono-text, .mono { font-family: var(--font-mono); letter-spacing: -0.01em; }
+.tabular { font-variant-numeric: tabular-nums; }
+
+.data-table { width: auto; min-width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+.data-table__container {
+  overflow-x: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-xs);
+}
+.data-table th, .data-table td {
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+  text-align: left;
+  vertical-align: middle;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+.data-table thead th {
+  border-top: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  background: var(--bg-shell);
+  user-select: none;
+}
+.data-table tbody td { color: var(--text-primary); }
+.data-table tbody tr:last-child td { border-bottom: 0; }
+.data-table .data-table__cell--right { text-align: right; }
+.data-table__expand-cell {
+  width: 2.25rem;
+  padding-left: var(--space-2) !important;
+  padding-right: 0 !important;
+  text-align: center;
+}
+.data-table__expand-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-xs);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
+}
+.data-table__expand-toggle:hover { color: var(--text-primary); background: color-mix(in oklab, var(--bg-shell) 70%, transparent); }
+.data-table__expand-toggle:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.data-table__expand-icon { font-size: 0.75rem; line-height: 1; }
+.data-table__row--expandable { cursor: pointer; transition: background var(--duration-fast) var(--ease-out); }
+.data-table__row--expandable:hover { background: color-mix(in oklab, var(--bg-shell) 60%, transparent); }
+.data-table__row--expanded { background: color-mix(in oklab, var(--bg-shell) 45%, transparent); }
+.data-table__detail-row > .data-table__detail-cell { padding: 0; background: var(--bg-shell); border-top: 0; }
+.data-table__detail { padding: var(--space-4) var(--space-4) var(--space-4) 2.75rem; }
+.data-table__empty-cell { padding: 0 !important; border-top: 1px solid var(--border-subtle); }
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--space-4) var(--space-5);
+  margin: 0;
+  padding: var(--space-4) var(--space-5);
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+.detail-grid__field { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.detail-grid__label {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 500;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.detail-grid__value { margin: 0; font-size: 0.8125rem; color: var(--text-primary); }
+
+.state-card {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--border-default);
+  border-radius: 0.5rem;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-soft);
+}
+.state-card__title { margin: 0; color: var(--text-primary); font-size: 0.9375rem; font-weight: 600; }
+.state-card__actions { justify-items: start; display: grid; gap: 0.75rem; }
+
+.pagination { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.pagination__label { font-size: 0.75rem; color: var(--text-muted); }
+.pagination__actions { display: flex; gap: 0.5rem; }
+
+.listing-cell { display: inline-flex; width: 100%; align-items: flex-start; gap: var(--space-3); min-width: 0; }
+.listing-cell__body { display: grid; gap: 1px; min-width: 0; }
+.listing-cell__head { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.listing-cell__name {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: inherit;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.listing-cell__variant {
+  flex: 0 0 auto;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  padding: 1px 6px;
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  white-space: nowrap;
+}
+.listing-cell__meta {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-muted);
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.listing-cell__meta span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.listing-cell__meta span + span::before { content: '·'; margin-right: var(--space-2); }
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   4. THE TWO INVENTED RULES
+      Everything above is transcribed. These two are new, and they are the
+      whole design. Both are built only from existing tokens.
+
+      `.coverage-cell` — one channel × one variant. Three states that differ
+      in SHAPE first and colour second, because the style guide's own rule is
+      that colour is never the only signal:
+
+        listed          filled square, --text-secondary, quiet
+        gap             dashed accent outline + `+`, the loudest thing here
+        not applicable  a rule, --text-disabled, quieter than quiet
+
+      The inversion is deliberate: a listing that exists is not news. The
+      gap is what the operator came for, so the gap gets the accent and the
+      gap is the button. Two more modifiers cover the asynchronous states
+      the publish flow needs (see the † data gap in the header comment).
+
+      `.run-marker` — how a run of same-product variants reads as one block
+      WITHOUT a parent row (the issue rules parent rows out). The product
+      name is printed once, on the run's first variant; the rest carry a
+      hairline that ties them to it. Repeating the name on all six variants
+      would be six times the ink for one fact.
+   ═══════════════════════════════════════════════════════════════════════ */
+.coverage-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--text-secondary);
+  box-shadow: none;
+  transition: background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+.coverage-cell__mark {
+  display: inline-block;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: var(--radius-xs);
+  background: currentColor;
+}
+.coverage-cell--listed { color: var(--text-secondary); cursor: default; }
+/* --text-muted, not --text-disabled: the rule DISTINGUISHES "not sold here"
+   from an empty cell, so it is a meaningful graphic and owes 1.4.11's 3:1.
+   Measured on this file: --text-disabled gave 2.67:1 light / 2.18:1 dark and
+   failed; --text-muted gives 5.9:1 / 4.8:1. The state stays the quietest of
+   the three by MASS — a 10×1 rule against a 10×10 filled square — which is
+   where the hierarchy belongs, rather than in a contrast the eye cannot pass. */
+.coverage-cell--na { color: var(--text-muted); cursor: default; }
+.coverage-cell--na .coverage-cell__mark {
+  width: 0.625rem;
+  height: 1px;
+  border-radius: 0;
+}
+.coverage-cell--gap {
+  border-style: dashed;
+  border-color: var(--accent-primary-border);
+  color: var(--accent-primary-hover);
+  cursor: pointer;
+}
+.coverage-cell--gap:hover {
+  border-style: solid;
+  border-color: var(--accent-primary);
+  background: var(--accent-primary-soft);
+  color: var(--accent-primary-soft-strong);
+}
+.coverage-cell--gap:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.coverage-cell--publishing {
+  border-style: solid;
+  border-color: var(--status-info-border);
+  background: var(--status-info-soft);
+  color: var(--status-info-fg);
+  cursor: progress;
+}
+.coverage-cell--publishing .coverage-cell__mark {
+  border-radius: 999px;
+  animation: status-badge-pulse 1.6s var(--ease-out) infinite;
+}
+.coverage-cell--failed {
+  border-style: solid;
+  border-color: var(--status-error-border);
+  background: var(--status-error-soft);
+  color: var(--status-error-fg);
+  cursor: pointer;
+}
+.coverage-cell--matched {
+  border-style: solid;
+  border-color: var(--status-error-border);
+  background: var(--status-error-soft);
+  color: var(--status-error-fg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .coverage-cell--publishing .coverage-cell__mark { animation: none; }
+}
+.coverage-col { width: 5.5rem; text-align: center !important; }
+/* The identity cell was eating 659px of a 1440px table and pushing the channel
+   columns 339px away from the names they describe — measured, then fixed by
+   moving the slack to the trailing action column. Vertical scanning was the
+   whole argument for the matrix; it does not survive the eye crossing a third
+   of the table to get from a variant to its coverage. */
+.action-col { width: 100%; }
+.data-table td.coverage-col { text-align: center; }
+
+.run-marker {
+  display: inline-flex;
+  align-self: stretch;
+  flex: 0 0 auto;
+  width: 1px;
+  margin-left: 0.4375rem;
+  margin-right: 0.4375rem;
+  background: var(--border-default);
+}
+.run-marker--last { background: linear-gradient(var(--border-default) 50%, transparent 50%); }
+
+/* ── Card view — transcribed from index.css:3049-3140. The style guide's
+      responsive parity matrix (:720) puts a table into card view at ≤767px,
+      so the matrix cannot survive on mobile and the pill strip returns. ── */
+.data-table__cards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.data-table__card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  background: var(--bg-surface);
+}
+.data-table__card-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.data-table__card-title { font-size: 13.5px; font-weight: 600; color: var(--text-primary); word-break: break-word; }
+.data-table__card-subtitle { font-size: 12px; color: var(--text-muted); }
+.data-table__card-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.data-table__badge-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.data-table__cards-empty {
+  padding: 24px 14px;
+  text-align: center;
+  color: var(--text-muted);
+  border: 1px dashed var(--border-default);
+  border-radius: 10px;
+}
+
+/* ── Skeleton — transcribed shimmer, reused for the loading frame ── */
+.skeleton-bar {
+  display: block;
+  height: 0.625rem;
+  border-radius: var(--radius-xs);
+  background-color: var(--bg-surface-muted);
+  background-image: linear-gradient(90deg, var(--bg-surface-muted) 0%, var(--bg-surface-hover) 50%, var(--bg-surface-muted) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-bar { animation: none; background-image: none; }
+}
+
+/* ── Handover frame: prose + a legend table, no new visual language ── */
+.handover { display: grid; gap: var(--space-5); }
+.handover h3 {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 650;
+  color: var(--text-primary);
+  letter-spacing: var(--tracking-tight);
+}
+.handover p { margin: var(--space-2) 0 0; color: var(--text-secondary); line-height: 1.65; max-width: 84ch; }
+.handover code {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  padding: 1px 4px;
+  border-radius: var(--radius-xs);
+  background: var(--bg-surface-muted);
+  color: var(--text-primary);
+}
+.handover ol, .handover ul { margin: var(--space-2) 0 0; padding-left: var(--space-5); color: var(--text-secondary); line-height: 1.7; max-width: 84ch; }
+.handover li + li { margin-top: var(--space-2); }
+.legend { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); }
+.legend__item {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+.legend__body { display: grid; gap: 2px; }
+.legend__term {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.legend__desc { font-size: 0.75rem; color: var(--text-secondary); line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<div class="controls">
+  <span class="controls__label">#2823 · /listings variant-centric coverage</span>
+  <button class="button toggle-btn" type="button" id="theme-toggle">Toggle theme</button>
+</div>
+
+<main class="sheet">
+  <p class="eyebrow">Product design mockup</p>
+  <h1 class="sheet__title">One row per variant, one column per channel</h1>
+  <p class="sheet__sub">
+    <code>/listings</code> today lists offer-to-variant mappings, so a variant that was never published has
+    no row at all — the page structurally cannot answer “where is this variant <em>not</em> listed yet”.
+    This mockup replaces the mapping table with a variant coverage table: the gap is the loudest thing on
+    the page, and the gap is the button.
+  </p>
+  <div class="sheet__note">
+    <span class="gap-mark" aria-hidden="true">†</span>
+    <span>
+      <b>Two acceptance criteria in the issue are not backed by data yet</b>, and this file marks them
+      rather than drawing them as done. A mapping row is written only <em>after</em>
+      <code>createOffer</code> succeeds (<code>offer-creation-execution.service.ts:163</code>), so while a
+      publication is in flight there is no row to show as pending; and the ordering “a product’s variants
+      appear consecutively” has no server-side expression — <code>GET /listings</code> orders
+      <code>createdAt DESC, id DESC</code> with no sort parameter at all. Every <span class="gap-mark">†</span>
+      below marks work, not a read.
+    </span>
+  </div>
+
+  <!-- ═══════════ FRAME 01 — desktop, live ═══════════ -->
+  <section class="viewport-frame" id="frame-desktop">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">01 · Desktop</span>
+      <b>The page — try it</b>
+      <span class="caption">1440 × 900 · expand a row, click a gap, filter to gaps only, page through, lock it read-only</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="app-frame">
+        <header class="page-header page-header--split">
+          <div>
+            <h2 class="page-title">Listings</h2>
+            <p class="page-description">Every variant in the catalogue, and which sales channels carry it.</p>
+          </div>
+          <div id="header-actions"></div>
+        </header>
+
+        <div class="toolbar toolbar--compact">
+          <div class="toolbar__group">
+            <input class="control" id="q" type="search" placeholder="Product name, SKU or EAN" aria-label="Search variants" />
+            <select class="control control--select control--narrow" id="channel" aria-label="Filter by channel">
+              <option value="">All channels</option>
+              <option value="allegro">Allegro · Konto Główne</option>
+              <option value="erli">Erli</option>
+              <option value="woocommerce">WooCommerce · Sklep firmowy</option>
+            </select>
+            <select class="control control--select control--narrow" id="state" aria-label="Filter by offer state">
+              <option value="">Any offer state</option>
+              <option value="active">Active</option>
+              <option value="invalid">Invalid</option>
+              <option value="draft">Draft</option>
+              <option value="ended">Ended</option>
+              <option value="unsynced">Unsynced</option>
+            </select>
+            <button class="chip" type="button" id="gaps-only" aria-pressed="false">Only with missing listings</button>
+          </div>
+          <div class="toolbar__group">
+            <button class="button button--ghost button--sm" type="button" id="clear">Clear</button>
+            <button class="button button--secondary button--sm" type="button" id="ro-toggle" aria-pressed="false">Read-only mode</button>
+          </div>
+        </div>
+
+        <div class="data-table__container">
+          <table class="data-table">
+            <thead><tr id="head-row"></tr></thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+
+        <div class="pagination">
+          <span class="pagination__label" id="pager-label"></span>
+          <div class="pagination__actions">
+            <button class="button button--secondary button--sm" type="button" id="prev">Previous</button>
+            <button class="button button--secondary button--sm" type="button" id="next">Next</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="gap-legend">
+      Pagination counts <b>products</b>, not variants, and the label says so. Paging by variant would split a
+      product’s variants across two pages exactly where the operator is comparing them — so the run stays whole
+      and the page height varies instead. <span class="gap-mark" title="No server-side ordering exists for this">†</span>
+      needs a <code>productId, variantId</code> order key that no listings endpoint has today.
+    </p>
+  </section>
+
+  <!-- ═══════════ FRAME 02 — expanded row ═══════════ -->
+  <section class="viewport-frame" id="frame-expanded">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">02 · Expanded</span>
+      <b>What a row owes when it opens</b>
+      <span class="caption">Connection, price, stock, last updated — and the channel with no offer, which is the whole point</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="app-frame" id="frame-expanded-app"></div>
+    </div>
+    <p class="gap-legend">
+      A channel with <em>no</em> listing is not omitted from the drawer — it is the state the operator is hunting,
+      so it gets a field of its own with the action attached. Reuses <code>DataTable</code>’s existing
+      <code>expandable</code> mode (already driving <code>/products</code>), which disables
+      <code>virtualize</code> on the same table and stops linkifying the first cell — so no row-level link here.
+    </p>
+  </section>
+
+  <!-- ═══════════ FRAME 03 — filters ═══════════ -->
+  <section class="viewport-frame" id="frame-filters">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">03 · Filters</span>
+      <b>Two filters that answer two different questions</b>
+      <span class="caption">“Only with missing listings” narrows to gaps · offer state is single-valued and any-match</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="frame-pair">
+        <figure>
+          <figcaption>Only with missing listings — on</figcaption>
+          <div class="app-frame" id="frame-filter-gaps"></div>
+        </figure>
+        <figure>
+          <figcaption>Offer state = Invalid — the matched cell takes the outline</figcaption>
+          <div class="app-frame" id="frame-filter-state"></div>
+        </figure>
+      </div>
+    </div>
+    <p class="gap-legend">
+      Offer state stays a <b>select</b>, not multi-select chips, because <code>ListingsFilters.lifecycle</code> is
+      <code>OfferLifecycle</code> — one value, not an array. A variant can hold an <code>Invalid</code> offer on
+      one channel and an <code>Active</code> one on another, so the filter is <b>any-match</b> and the cell that
+      matched carries the state outline. There is no row-level roll-up: no “worst state wins” rule exists in the
+      offer domain, and inventing one would hide the healthy offer next to the broken one.
+    </p>
+  </section>
+
+  <!-- ═══════════ FRAME 04 — publishing ═══════════ -->
+  <section class="viewport-frame" id="frame-publish">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">04 · Publishing</span>
+      <b>Click the gap → the wizard already knows the variant and the channel</b>
+      <span class="caption">In flight <span class="gap-mark">†</span> · published · failed</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="frame-pair" id="frame-publish-states"></div>
+    </div>
+    <p class="gap-legend">
+      Clicking a gap navigates to
+      <code>/listings/bulk-create/wizard?productIds=…&amp;variantIds=…&amp;connectionId=…</code> — the wizard route
+      <em>already</em> parses all three, so the gap needs no new backend and no new prop. The row-level
+      <b>Publish</b> button is the multi-gap fallback and omits <code>connectionId</code>, letting the wizard ask.
+      Note the picker modal is bypassed on purpose: <code>OfferProductPickerModal</code> takes
+      <code>initialProductIds</code> only — there is no <code>initialVariantIds</code>, so preselecting a variant
+      through the modal would be new scope, while the route is free.
+      <br /><br />
+      <span class="gap-mark">†</span> <b>The in-flight state is the one thing here that cannot be read today.</b>
+      Publication dispatches jobs, and the mapping row is persisted only after the marketplace accepts the offer —
+      so between click and confirmation there is no row to mark. Either the mapping is written earlier (backend
+      change), or the table separately reads in-flight <code>OfferCreationRecord</code>s and splices them in.
+      The same gap makes “the badge refreshes without a page reload” new work: today’s mutation invalidates the
+      listings cache at the moment the batch is <em>accepted</em>, when none of the offers exist yet. The reusable
+      part is <code>use-bulk-batch-query</code>, which polls every 5 s and stops itself on a terminal status.
+    </p>
+  </section>
+
+  <!-- ═══════════ FRAME 05 — states ═══════════ -->
+  <section class="viewport-frame" id="frame-states">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">05 · States</span>
+      <b>Loading, empty, error, and the two empties that are not the same</b>
+      <span class="caption">Every state the issue lists, plus the read-only lock</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="frame-pair" id="frame-state-cards"></div>
+    </div>
+    <p class="gap-legend">
+      “No variants match the current filters” and “No channels connected yet” are different failures and get
+      different copy and different actions — the page already refuses a single generic empty state (#2029), and
+      losing the tab strip must not quietly lose that discipline. Read-only follows the shipped pattern:
+      <code>useWriteAccess('listings:write', demoMode)</code> — a demo viewer still <em>sees</em> the action,
+      disabled with the reason; an unauthorised session gets nothing rendered.
+    </p>
+  </section>
+
+  <!-- ═══════════ FRAME 06 — tablet ═══════════ -->
+  <section class="viewport-frame" id="frame-tablet">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">06 · Tablet</span>
+      <b>768 — the matrix survives, scrolled inside its own container</b>
+      <span class="caption">768 × 1024 · the page never scrolls sideways; the table does</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="tablet-frame">
+        <div class="app-frame">
+          <header class="page-header">
+            <h2 class="page-title">Listings</h2>
+          </header>
+          <div class="toolbar toolbar--compact">
+            <div class="toolbar__group">
+              <input class="control" type="search" placeholder="Product name, SKU or EAN" aria-label="Search variants" />
+              <button class="chip chip--active" type="button" aria-pressed="true">Only with missing listings</button>
+            </div>
+          </div>
+          <div class="data-table__container">
+            <table class="data-table">
+              <thead><tr id="tablet-head"></tr></thead>
+              <tbody id="tablet-rows"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="gap-legend">
+      Rendered from the same data array as frame 01, not hand-written markup, so the two frames cannot drift.
+      The identity column keeps a floor wide enough that the name/meta stack never wraps to a third line, which
+      is what forces the horizontal scroll here rather than a squeezed matrix.
+    </p>
+  </section>
+
+  <!-- ═══════════ FRAME 07 — mobile ═══════════ -->
+  <section class="viewport-frame" id="frame-mobile">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">07 · Mobile</span>
+      <b>360 — card view, and the matrix gives way to a pill strip</b>
+      <span class="caption">360 × 812 · one card per variant · a fully-covered card stays quiet, a gap still carries the accent</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="phone-frame">
+        <div class="app-frame">
+          <header class="page-header">
+            <h2 class="page-title">Listings</h2>
+          </header>
+          <div class="toolbar toolbar--compact">
+            <div class="toolbar__group">
+              <button class="chip" type="button" aria-pressed="false">Only with missing listings</button>
+            </div>
+          </div>
+          <ul class="data-table__cards" id="mobile-cards"></ul>
+        </div>
+      </div>
+    </div>
+    <p class="gap-legend">
+      The style guide’s responsive parity matrix puts a table into card view at ≤767 px, so four aligned channel
+      columns cannot survive here — vertical scanning was the matrix’s whole argument and a single card has
+      nothing to align against. The pill strip returns, and the gap keeps its dashed accent so the card still
+      reads gap-first. This is the one place the rejected pill layout is the right answer.
+    </p>
+  </section>
+
+  <!-- ═══════════ FRAME 08 — degradation ═══════════ -->
+  <section class="viewport-frame" id="frame-degraded">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">08 · Many connections</span>
+      <b>Where the matrix breaks, and where the counter finally earns its place</b>
+      <span class="caption">Five connections, two of them on the same platform</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="frame-pair" id="frame-degraded-pair"></div>
+    </div>
+    <p class="gap-legend">
+      With two Allegro accounts the platform name stops identifying a column, and the codebase already has the
+      rule for that: label by platform when it is the only connection of its kind, fall back to the
+      operator-authored connection name when it is not (<code>soleOfPlatform</code>,
+      <code>listings-coverage-pills.tsx</code>). Grouping those two columns into one <code>Allegro 1/2</code>
+      badge is the <b>only</b> case where the issue’s <code>x/y</code> counter carries information — everywhere
+      else it restates a yes/no. Above roughly five connections the matrix stops fitting and the row falls back
+      to the pill strip.
+    </p>
+  </section>
+
+  <!-- ═══════════ FRAME 09 — handover ═══════════ -->
+  <section class="viewport-frame" id="frame-handover">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">09 · Handover</span>
+      <b>What this changes, and what has to exist first</b>
+      <span class="caption">Cell vocabulary · corrections to the issue · the style-guide entry to paste · the work</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="handover">
+
+        <div>
+          <h3>The cell vocabulary</h3>
+          <div class="legend" style="margin-top: var(--space-3)">
+            <div class="legend__item">
+              <span class="coverage-cell coverage-cell--listed"><span class="coverage-cell__mark"></span></span>
+              <span class="legend__body">
+                <span class="legend__term">Listed</span>
+                <span class="legend__desc">An offer exists on this connection. Neutral on purpose — it is not what the operator came to find.</span>
+              </span>
+            </div>
+            <div class="legend__item">
+              <span class="coverage-cell coverage-cell--gap">+</span>
+              <span class="legend__body">
+                <span class="legend__term">Gap — and a button</span>
+                <span class="legend__desc">No offer. The only accent in the table. Click it and the wizard opens with this variant on this channel.</span>
+              </span>
+            </div>
+            <div class="legend__item">
+              <span class="coverage-cell coverage-cell--na"><span class="coverage-cell__mark"></span></span>
+              <span class="legend__body">
+                <span class="legend__term">Not applicable <span class="gap-mark">†</span></span>
+                <span class="legend__desc">This product is not sold on this channel, so it is not a gap. No such flag exists yet.</span>
+              </span>
+            </div>
+            <div class="legend__item">
+              <span class="coverage-cell coverage-cell--publishing"><span class="coverage-cell__mark"></span></span>
+              <span class="legend__body">
+                <span class="legend__term">Publishing <span class="gap-mark">†</span></span>
+                <span class="legend__desc">Between click and marketplace confirmation. Not readable from today’s data — see the note in frame 04.</span>
+              </span>
+            </div>
+            <div class="legend__item">
+              <span class="coverage-cell coverage-cell--failed">!</span>
+              <span class="legend__body">
+                <span class="legend__term">Failed</span>
+                <span class="legend__desc">The marketplace rejected the offer. Clicking reopens the wizard with the reason carried over.</span>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <h3>Four corrections to the issue</h3>
+          <ol>
+            <li><b>The <code>x/y</code> counter leaves the badge.</b> A variant is listed on a connection
+              binarily, so <code>Allegro 1/1</code> restates “yes”. The counter survives only on a grouped
+              channel holding several accounts (frame 08). Everything else reads shape, not arithmetic.</li>
+            <li><b>A gap has to be rendered, not omitted.</b> <code>/products</code> renders a pill only for
+              connections that <em>have</em> an offer, so a gap there is an absence. Inverted here: the gap is
+              the loudest cell in the row.</li>
+            <li><b>“Variants appear consecutively” is not expressible yet.</b> <code>GET /listings</code> orders
+              <code>createdAt DESC, id DESC</code> and takes no sort parameter. This design pages by
+              <b>product</b> so the guarantee is structural rather than cosmetic — which needs a
+              <code>productId, variantId</code> order key on the new read model.</li>
+            <li><b>“Available channel” needs a rule, or the gap filter fills with noise.</b> Hence the third
+              cell state. Without an eligibility flag, a product that will never go to WooCommerce reads as a
+              permanent gap and the filter becomes unusable.</li>
+          </ol>
+        </div>
+
+        <div>
+          <h3>The style-guide entry this row requires</h3>
+          <p>
+            <code>frontend-ui-style-guide.md:645</code> is explicit that the #2023 listings carve-out covers the
+            listings identity cell specifically, and that “a new table wanting a tall row needs its own entry
+            here, not a silent reuse”. This row is <em>not</em> that row — it is not an offer, so the offer-ID
+            and the validator line are both gone. Text to paste into the row-height table:
+          </p>
+          <p>
+            <code>Variant coverage row | auto, ~64 px | Variant-centric /listings (#2823) — 32 px thumbnail +
+            name/variant line + SKU · EAN meta line. No offer-ID and no validator line: the row is a variant,
+            not an offer. First column carries a min-width floor so the stack never wraps to a third line.</code>
+          </p>
+        </div>
+
+        <div>
+          <h3>What has to exist before this can be built</h3>
+          <ol>
+            <li><b>A variant-centric read model.</b> Variants left-joined to offer mappings, per connection,
+              with the coverage state per cell. Neither existing read can produce it: <code>GET /listings</code>
+              enumerates mappings, so a never-published variant has no row; <code>GET /products</code> aggregates
+              coverage at product level and the per-variant pills inside the drawer are assembled one listings
+              query per variant, which does not survive a paginated list.</li>
+            <li><b>Product-grouped ordering with a stable tiebreaker.</b> Follow the listings repository’s
+              <code>id DESC</code> discipline rather than the products repository’s plain <code>createdAt</code>,
+              or offset paging will skip and duplicate rows on ties.</li>
+            <li><b>Pagination that counts products while the table lists variants.</b> Page size applies to
+              products; the row count per page varies.</li>
+            <li><b>A channel-eligibility flag per product</b> to back the not-applicable state.</li>
+            <li><b>Run flags recomputed after filtering.</b> The product name prints once per run, so the
+              first <em>surviving</em> row of a run has to carry it. Compute the run boundaries on the rows
+              that survived the filter, never on the unfiltered set — otherwise every filter that hides a
+              product's first variant leaves the next one nameless (see <code>rebaseRuns</code> in this file).</li>
+            <li><b>An in-flight publication read</b> — either persist the mapping earlier, or read
+              <code>OfferCreationRecord</code>s and splice them into the table. This is also what makes the
+              badge refresh without a reload; <code>use-bulk-batch-query</code> is the reusable poll.</li>
+          </ol>
+          <p>
+            Out of scope and staying out: product-level parent rows, the listing-creation form, inline price or
+            stock editing, delisting, bulk publish from selected rows, rejection handling and resync.
+          </p>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<script>
+/* ── Theme ──────────────────────────────────────────────────────────────
+   Defer to a theme the HOST already stamped. When this page is published
+   as an Artifact the viewer owns `data-theme` on the root element; only a
+   bare document resolves its own. */
+(function () {
+  var root = document.documentElement;
+  if (!root.getAttribute('data-theme')) {
+    root.setAttribute('data-theme',
+      window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  }
+  document.getElementById('theme-toggle').addEventListener('click', function () {
+    root.setAttribute('data-theme', root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+  });
+})();
+
+/* ── Sample data ────────────────────────────────────────────────────────
+   Continues the ceramic-planter catalogue from listings-redesign-1965.html.
+   Polish product names, English interface: that is the real shape of the
+   product — every UI string in apps/web is English, the catalogue is the
+   operator's own. Coverage states: listed | gap | na | failed.
+   Lifecycle values mirror OFFER_LIFECYCLE_VALUES (Active / Invalid / Draft /
+   Ended / Unsynced); the badge label for `unsynced` is "Not synced", which
+   is how listing-row-state.ts already renders it. */
+var CONNECTIONS = [
+  { id: 'c-alg', channel: 'allegro', platform: 'Allegro', name: 'Konto Główne' },
+  { id: 'c-erl', channel: 'erli', platform: 'Erli', name: 'Erli PL' },
+  { id: 'c-woo', channel: 'woocommerce', platform: 'WooCommerce', name: 'Sklep firmowy' }
+];
+
+var CONNECTIONS_MANY = [
+  { id: 'c-alg', channel: 'allegro', platform: 'Allegro', name: 'Konto Główne' },
+  { id: 'c-alg2', channel: 'allegro', platform: 'Allegro', name: 'Outlet' },
+  { id: 'c-erl', channel: 'erli', platform: 'Erli', name: 'Erli PL' },
+  { id: 'c-woo', channel: 'woocommerce', platform: 'WooCommerce', name: 'Sklep firmowy' },
+  { id: 'c-ps', channel: 'prestashop', platform: 'PrestaShop', name: 'Sklep główny' }
+];
+
+function listed(price, stock, updated, lifecycle) {
+  return { state: 'listed', price: price, stock: stock, updated: updated, lifecycle: lifecycle || 'Active' };
+}
+
+var PRODUCTS = [
+  { id: 'p-nor', name: 'Osłonka ceramiczna Nordic', variants: [
+    { id: 'v-nor-10', label: '10 cm', sku: 'NOR-CER-10', ean: '5901234567890', cover: {
+      'c-alg': listed('59,00 PLN', 12, '02.09.2026 08:14'),
+      'c-erl': listed('62,00 PLN', 12, '01.09.2026 22:40'),
+      'c-woo': listed('55,00 PLN', 12, '02.09.2026 06:02') } },
+    { id: 'v-nor-15', label: '15 cm', sku: 'NOR-CER-15', ean: '5901234567906', cover: {
+      'c-alg': listed('79,00 PLN', 4, '02.09.2026 08:14'),
+      'c-erl': listed('84,00 PLN', 4, '01.09.2026 22:40'),
+      'c-woo': { state: 'gap' } } },
+    { id: 'v-nor-20', label: '20 cm', sku: 'NOR-CER-20', ean: '5901234567913', cover: {
+      'c-alg': listed('99,00 PLN', 7, '02.09.2026 08:14'),
+      'c-erl': listed('105,00 PLN', 7, '01.09.2026 22:40'),
+      'c-woo': listed('95,00 PLN', 7, '02.09.2026 06:02') } }
+  ] },
+  { id: 'p-lof', name: 'Doniczka betonowa Loft', variants: [
+    { id: 'v-lof-s', label: 'S · grafit', sku: 'LOF-BET-S', ean: '5901234567920', cover: {
+      'c-alg': listed('119,00 PLN', 3, '30.08.2026 11:05'),
+      'c-erl': { state: 'gap' },
+      'c-woo': { state: 'na' } } },
+    { id: 'v-lof-m', label: 'M · grafit', sku: 'LOF-BET-M', ean: '5901234567937', cover: {
+      'c-alg': listed('149,00 PLN', 1, '30.08.2026 11:05'),
+      'c-erl': { state: 'gap' },
+      'c-woo': { state: 'na' } } }
+  ] },
+  { id: 'p-kor', name: 'Podstawka korkowa', variants: [
+    { id: 'v-kor-12', label: '12 cm', sku: 'KOR-PDS-12', ean: '5901234567944', cover: {
+      'c-alg': listed('19,00 PLN', 48, '02.09.2026 08:14'),
+      'c-erl': listed('21,00 PLN', 48, '01.09.2026 22:40'),
+      'c-woo': listed('18,00 PLN', 48, '02.09.2026 06:02') } }
+  ] },
+  { id: 'p-ter', name: 'Osłonka Terra ryflowana', variants: [
+    { id: 'v-ter-14', label: '14 cm', sku: 'TER-RYF-14', ean: '5901234567951', cover: {
+      'c-alg': listed('69,00 PLN', 0, '28.08.2026 09:31', 'Invalid'),
+      'c-erl': listed('72,00 PLN', 6, '01.09.2026 22:40'),
+      'c-woo': { state: 'gap' } } },
+    { id: 'v-ter-18', label: '18 cm', sku: 'TER-RYF-18', ean: '5901234567968', cover: {
+      'c-alg': { state: 'gap' },
+      'c-erl': { state: 'gap' },
+      'c-woo': { state: 'gap' } } }
+  ] },
+  { id: 'p-kul', name: 'Kula ceramiczna dekoracyjna', variants: [
+    { id: 'v-kul-b', label: 'biała', sku: 'KUL-DEK-B', ean: '5901234567975', cover: {
+      'c-alg': listed('39,00 PLN', 22, '02.09.2026 08:14'),
+      'c-erl': { state: 'gap' },
+      'c-woo': listed('37,00 PLN', 22, '02.09.2026 06:02') } },
+    { id: 'v-kul-s', label: 'szara', sku: 'KUL-DEK-S', ean: '5901234567982', cover: {
+      'c-alg': listed('39,00 PLN', 5, '02.09.2026 08:14'),
+      'c-erl': { state: 'gap' },
+      'c-woo': listed('37,00 PLN', 5, '02.09.2026 06:02') } },
+    { id: 'v-kul-g', label: 'grafit', sku: 'KUL-DEK-G', ean: '5901234567999', cover: {
+      'c-alg': listed('42,00 PLN', 0, '25.08.2026 16:20', 'Ended'),
+      'c-erl': { state: 'gap' },
+      'c-woo': listed('40,00 PLN', 0, '02.09.2026 06:02', 'Unsynced') } }
+  ] }
+];
+
+var PRODUCT_PAGE_SIZE = 4;
+var TOTAL_PRODUCTS = 12; /* the catalogue is larger than the fixture */
+
+/* ── Helpers ────────────────────────────────────────────────────────────
+   `connLabel` is a faithful port of the `soleOfPlatform` rule in
+   pages/products/listings-coverage-pills.tsx: a platform with exactly one
+   connection is labelled by the platform, otherwise by the operator-authored
+   connection name — the only disambiguator between two same-platform shops. */
+function esc(value) {
+  return String(value).replace(/[&<>"']/g, function (ch) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+  });
+}
+
+function connLabel(conn, all) {
+  var soleOfPlatform = all.filter(function (c) { return c.channel === conn.channel; }).length === 1;
+  return soleOfPlatform ? conn.platform : conn.name;
+}
+
+function lifecycleTone(lifecycle) {
+  if (lifecycle === 'Active') return 'success';
+  if (lifecycle === 'Invalid') return 'error';
+  if (lifecycle === 'Unsynced' || lifecycle === 'Draft' || lifecycle === 'Ended') return 'neutral';
+  return 'neutral';
+}
+
+function lifecycleLabel(lifecycle) {
+  return lifecycle === 'Unsynced' ? 'Not synced' : lifecycle;
+}
+
+/* Run flags have to be recomputed AFTER filtering, not before.
+   The product name prints once per run, on the run's first row — so when a
+   filter hides the run's first variant (e.g. "only with missing listings"
+   hides Nordic 10 cm, which is fully covered), the surviving 15 cm row would
+   render with the continuation hairline and NO product name, reading as an
+   orphan. Rebasing makes the first SURVIVING row of each run carry the name.
+   This is a rule for the implementation, not a mockup detail. */
+function rebaseRuns(entries) {
+  return entries.map(function (entry, index) {
+    var prev = entries[index - 1];
+    var next = entries[index + 1];
+    var samePrev = Boolean(prev) && prev.product.id === entry.product.id;
+    var sameNext = Boolean(next) && next.product.id === entry.product.id;
+    return {
+      product: entry.product,
+      variant: entry.variant,
+      first: !samePrev,
+      last: !sameNext,
+      only: !samePrev && !sameNext
+    };
+  });
+}
+
+function variantRows(products) {
+  var out = [];
+  products.forEach(function (product) {
+    product.variants.forEach(function (variant, index) {
+      out.push({
+        product: product,
+        variant: variant,
+        first: index === 0,
+        last: index === product.variants.length - 1,
+        only: product.variants.length === 1
+      });
+    });
+  });
+  return out;
+}
+
+/* ── The cell ───────────────────────────────────────────────────────────
+   One channel × one variant. A gap is a <button>; every other state is a
+   <span>, because only a gap is actionable. The accessible name always
+   spells out variant + channel + state — the mark alone is a shape, and a
+   screen reader gets no shapes. */
+function coverageCell(entry, conn, all, opts) {
+  var options = opts || {};
+  var cover = entry.variant.cover[conn.id] || { state: 'na' };
+  var label = connLabel(conn, all);
+  var who = entry.product.name + ' ' + entry.variant.label;
+  var state = cover.state;
+
+  if (options.matchedConnId === conn.id) {
+    return '<span class="coverage-cell coverage-cell--matched" title="' + esc(lifecycleLabel(cover.lifecycle)) + ' on ' + esc(label) + '">'
+      + esc(lifecycleLabel(cover.lifecycle).slice(0, 3).toUpperCase())
+      + '<span class="sr-only">' + esc(who + ' is ' + lifecycleLabel(cover.lifecycle) + ' on ' + label) + '</span></span>';
+  }
+
+  if (state === 'listed') {
+    return '<span class="coverage-cell coverage-cell--listed" title="Listed on ' + esc(label) + '">'
+      + '<span class="coverage-cell__mark"></span>'
+      + '<span class="sr-only">' + esc(who + ' is listed on ' + label) + '</span></span>';
+  }
+  if (state === 'na') {
+    return '<span class="coverage-cell coverage-cell--na" title="' + esc(entry.product.name) + ' is not sold on ' + esc(label) + '">'
+      + '<span class="coverage-cell__mark"></span>'
+      + '<span class="sr-only">' + esc(label + ' does not apply to ' + who) + '</span></span>';
+  }
+  if (state === 'publishing') {
+    return '<span class="coverage-cell coverage-cell--publishing" title="Publishing to ' + esc(label) + '…">'
+      + '<span class="coverage-cell__mark"></span>'
+      + '<span class="sr-only">' + esc(who + ' is being published to ' + label) + '</span></span>';
+  }
+  if (state === 'failed') {
+    return '<button class="coverage-cell coverage-cell--failed" type="button" data-variant="' + esc(entry.variant.id)
+      + '" data-conn="' + esc(conn.id) + '" title="' + esc(cover.reason || 'The channel rejected this offer') + '">!'
+      + '<span class="sr-only">' + esc(who + ' failed to publish on ' + label + '. Open the wizard to retry.') + '</span></button>';
+  }
+  /* gap */
+  var disabled = options.readOnly ? ' disabled' : '';
+  var title = options.readOnly
+    ? 'Publishing is disabled in demo mode'
+    : 'Not listed on ' + label + ' — publish this variant';
+  return '<button class="coverage-cell coverage-cell--gap" type="button" data-variant="' + esc(entry.variant.id)
+    + '" data-conn="' + esc(conn.id) + '" title="' + esc(title) + '"' + disabled + '>+'
+    + '<span class="sr-only">' + esc(who + ' is not listed on ' + label + '. Publish it.') + '</span></button>';
+}
+
+/* ── The identity cell ──────────────────────────────────────────────────
+   Reuses `.listing-cell` from the shipped page, minus the offer-ID: this
+   row is a variant, not an offer. The product name prints once per run and
+   the rest of the run carries a hairline, which is how a block of
+   same-product variants reads without a parent row. */
+function identityCell(entry) {
+  var runClass = entry.last && !entry.first ? 'run-marker run-marker--last' : 'run-marker';
+  if (entry.first) {
+    return '<span class="listing-cell">'
+      + '<span class="product-thumbnail" aria-hidden="true">' + esc(entry.product.name.slice(0, 2)) + '</span>'
+      + '<span class="listing-cell__body">'
+      + '<span class="listing-cell__head">'
+      + '<span class="listing-cell__name" title="' + esc(entry.product.name) + '">' + esc(entry.product.name) + '</span>'
+      + '<span class="listing-cell__variant">' + esc(entry.variant.label) + '</span>'
+      + '</span>'
+      + '<span class="listing-cell__meta">'
+      + '<span title="SKU: ' + esc(entry.variant.sku) + '">SKU: <em>' + esc(entry.variant.sku) + '</em></span>'
+      + '<span title="EAN: ' + esc(entry.variant.ean) + '">EAN: <em>' + esc(entry.variant.ean) + '</em></span>'
+      + '</span></span></span>';
+  }
+  return '<span class="listing-cell">'
+    + '<span class="' + runClass + '" aria-hidden="true"></span>'
+    + '<span class="listing-cell__body">'
+    + '<span class="listing-cell__head">'
+    + '<span class="listing-cell__variant">' + esc(entry.variant.label) + '</span>'
+    + '<span class="sr-only">' + esc(entry.product.name) + '</span>'
+    + '</span>'
+    + '<span class="listing-cell__meta">'
+    + '<span title="SKU: ' + esc(entry.variant.sku) + '">SKU: <em>' + esc(entry.variant.sku) + '</em></span>'
+    + '<span title="EAN: ' + esc(entry.variant.ean) + '">EAN: <em>' + esc(entry.variant.ean) + '</em></span>'
+    + '</span></span></span>';
+}
+
+/* ── The drawer ─────────────────────────────────────────────────────────
+   Per channel: connection, price, stock, last updated. A channel with no
+   offer keeps its field and carries the action, because that is the state
+   the operator opened the row to see. */
+function detailBody(entry, all, opts) {
+  var options = opts || {};
+  return '<div class="detail-grid">' + all.map(function (conn) {
+    var cover = entry.variant.cover[conn.id] || { state: 'na' };
+    var label = connLabel(conn, all);
+    if (cover.state === 'listed') {
+      return '<div class="detail-grid__field">'
+        + '<span class="detail-grid__label">' + esc(label) + '</span>'
+        + '<p class="detail-grid__value">' + esc(conn.name) + '</p>'
+        + '<p class="detail-grid__value mono tabular">' + esc(cover.price) + ' · ' + esc(cover.stock) + ' in stock</p>'
+        + '<p class="detail-grid__value" style="color: var(--text-muted); font-size: 0.75rem">Updated ' + esc(cover.updated) + '</p>'
+        + '<span class="status-badge status-badge--compact status-badge--' + lifecycleTone(cover.lifecycle) + '" style="align-self: flex-start; margin-top: 2px">'
+        + '<span class="status-badge__dot"></span>' + esc(lifecycleLabel(cover.lifecycle)) + '</span>'
+        + '</div>';
+    }
+    if (cover.state === 'na') {
+      return '<div class="detail-grid__field">'
+        + '<span class="detail-grid__label">' + esc(label) + '</span>'
+        + '<p class="detail-grid__value" style="color: var(--text-muted)">Not sold on this channel <span class="gap-mark">†</span></p>'
+        + '</div>';
+    }
+    if (cover.state === 'publishing') {
+      return '<div class="detail-grid__field">'
+        + '<span class="detail-grid__label">' + esc(label) + '</span>'
+        + '<p class="detail-grid__value" style="color: var(--text-muted)">Publishing <span class="gap-mark">†</span></p>'
+        + '<span class="status-badge status-badge--compact status-badge--info status-badge--pulse" style="align-self: flex-start">'
+        + '<span class="status-badge__dot"></span>Running</span>'
+        + '</div>';
+    }
+    if (cover.state === 'failed') {
+      return '<div class="detail-grid__field">'
+        + '<span class="detail-grid__label">' + esc(label) + '</span>'
+        + '<p class="detail-grid__value">' + esc(cover.reason || 'The channel rejected this offer') + '</p>'
+        + '<button class="button button--secondary button--xs" type="button" style="align-self: flex-start; margin-top: 4px">Fix and resubmit</button>'
+        + '</div>';
+    }
+    return '<div class="detail-grid__field">'
+      + '<span class="detail-grid__label">' + esc(label) + '</span>'
+      + '<p class="detail-grid__value" style="color: var(--text-muted)">Not listed</p>'
+      + '<button class="button button--xs" type="button" data-variant="' + esc(entry.variant.id) + '" data-conn="' + esc(conn.id) + '"'
+      + (options.readOnly ? ' disabled title="Publishing is disabled in demo mode"' : '')
+      + ' style="align-self: flex-start; margin-top: 4px">Publish here</button>'
+      + '</div>';
+  }).join('') + '</div>';
+}
+
+/* ── Table rendering ────────────────────────────────────────────────────
+   `headHTML` + `bodyHTML` are shared by every frame in this file, so the
+   desktop, tablet and static frames cannot drift from one another. */
+function headHTML(conns, showAction) {
+  return '<th class="data-table__expand-cell" aria-label="Expand"></th>'
+    + '<th style="min-width: 22rem">Variant</th>'
+    + conns.map(function (conn) {
+        return '<th class="coverage-col">' + esc(connLabel(conn, conns)) + '</th>';
+      }).join('')
+    + (showAction ? '<th class="data-table__cell--right action-col">Action</th>' : '');
+}
+
+function bodyHTML(entries, conns, opts) {
+  var options = opts || {};
+  var expanded = options.expanded || {};
+  var colCount = conns.length + 2 + (options.showAction ? 1 : 0);
+
+  if (!entries.length) {
+    return '<tr><td class="data-table__empty-cell" colspan="' + colCount + '">'
+      + (options.emptyState || '') + '</td></tr>';
+  }
+
+  return entries.map(function (entry) {
+    var isOpen = Boolean(expanded[entry.variant.id]);
+    var gaps = conns.filter(function (conn) {
+      return (entry.variant.cover[conn.id] || {}).state === 'gap';
+    });
+    var rowClass = 'data-table__row--expandable' + (isOpen ? ' data-table__row--expanded' : '');
+
+    var row = '<tr class="' + rowClass + '" data-row="' + esc(entry.variant.id) + '">'
+      + '<td class="data-table__expand-cell">'
+      + '<button class="data-table__expand-toggle" type="button" data-toggle="' + esc(entry.variant.id) + '"'
+      + ' aria-expanded="' + (isOpen ? 'true' : 'false') + '"'
+      + ' aria-label="' + esc((isOpen ? 'Collapse ' : 'Expand ') + entry.product.name + ' ' + entry.variant.label) + '">'
+      + '<span class="data-table__expand-icon" aria-hidden="true">' + (isOpen ? '▾' : '▸') + '</span>'
+      + '</button></td>'
+      + '<td>' + identityCell(entry) + '</td>'
+      + conns.map(function (conn) {
+          return '<td class="coverage-col">' + coverageCell(entry, conn, conns, {
+            readOnly: options.readOnly,
+            matchedConnId: options.matched && options.matched[entry.variant.id] === conn.id ? conn.id : null
+          }) + '</td>';
+        }).join('');
+
+    if (options.showAction) {
+      row += '<td class="data-table__cell--right action-col">'
+        + (gaps.length > 1
+            ? '<button class="button button--secondary button--xs" type="button" data-publish-row="' + esc(entry.variant.id) + '"'
+              + (options.readOnly ? ' disabled title="Publishing is disabled in demo mode"' : '')
+              + '>Publish (' + gaps.length + ')</button>'
+            : '')
+        + '</td>';
+    }
+    row += '</tr>';
+
+    if (isOpen) {
+      row += '<tr class="data-table__detail-row"><td class="data-table__detail-cell" colspan="' + colCount + '">'
+        + '<div class="data-table__detail">' + detailBody(entry, conns, { readOnly: options.readOnly }) + '</div>'
+        + '</td></tr>';
+    }
+    return row;
+  }).join('');
+}
+
+function tableHTML(entries, conns, opts) {
+  return '<div class="data-table__container"><table class="data-table">'
+    + '<thead><tr>' + headHTML(conns, (opts || {}).showAction) + '</tr></thead>'
+    + '<tbody>' + bodyHTML(entries, conns, opts) + '</tbody>'
+    + '</table></div>';
+}
+
+/* ── Frame 01: the live page ────────────────────────────────────────────
+   Deterministic state, plain DOM string templating, no framework — the
+   same approach as both precedent mockups. */
+var state = { q: '', channel: '', offerState: '', gapsOnly: false, readOnly: false, page: 0, expanded: {} };
+
+function visibleConnections() {
+  if (!state.channel) return CONNECTIONS;
+  return CONNECTIONS.filter(function (conn) { return conn.channel === state.channel; });
+}
+
+function matchesQuery(entry) {
+  if (!state.q) return true;
+  var needle = state.q.toLowerCase();
+  return (entry.product.name + ' ' + entry.variant.label + ' ' + entry.variant.sku + ' ' + entry.variant.ean)
+    .toLowerCase().indexOf(needle) !== -1;
+}
+
+/* Any-match, not a roll-up: a variant enters the result when ANY of its
+   offers sits in the selected state, and the cell that matched is the one
+   that carries the outline. Returns the matched connection id, or null. */
+function matchedConnection(entry, conns) {
+  if (!state.offerState) return null;
+  var hit = null;
+  conns.forEach(function (conn) {
+    var cover = entry.variant.cover[conn.id] || {};
+    if (!hit && cover.state === 'listed' && String(cover.lifecycle).toLowerCase() === state.offerState) {
+      hit = conn.id;
+    }
+  });
+  return hit;
+}
+
+function currentEntries() {
+  var conns = visibleConnections();
+  /* Pagination applies to PRODUCTS, so the run of a product's variants is
+     never split by a page boundary. */
+  var products = PRODUCTS.filter(function (product) {
+    return product.variants.some(function (variant) {
+      return matchesQuery({ product: product, variant: variant });
+    });
+  });
+  var pageProducts = products.slice(state.page * PRODUCT_PAGE_SIZE, (state.page + 1) * PRODUCT_PAGE_SIZE);
+  var entries = variantRows(pageProducts).filter(matchesQuery);
+
+  var matched = {};
+  entries = entries.filter(function (entry) {
+    if (state.gapsOnly) {
+      var hasGap = conns.some(function (conn) {
+        return (entry.variant.cover[conn.id] || {}).state === 'gap';
+      });
+      if (!hasGap) return false;
+    }
+    if (state.offerState) {
+      var hit = matchedConnection(entry, conns);
+      if (!hit) return false;
+      matched[entry.variant.id] = hit;
+    }
+    return true;
+  });
+
+  return { entries: rebaseRuns(entries), conns: conns, matched: matched, products: products, pageProducts: pageProducts };
+}
+
+function emptyStateFor(view) {
+  /* Losing the tab strip must not lose the five distinct empty states the
+     page shipped with (#2029 rejected a single generic one). */
+  if (state.gapsOnly) {
+    return '<div class="state-card" style="border: 0; box-shadow: none; background: transparent">'
+      + '<h3 class="state-card__title">Every variant is listed everywhere</h3>'
+      + '<p class="page-description">No variant on this page is missing a listing on a connected channel.</p>'
+      + '<div class="state-card__actions"><button class="button button--secondary button--sm" type="button" data-clear="1">Show all variants</button></div>'
+      + '</div>';
+  }
+  return '<div class="state-card" style="border: 0; box-shadow: none; background: transparent">'
+    + '<h3 class="state-card__title">No variants found</h3>'
+    + '<p class="page-description">No variants match the current filters.</p>'
+    + '<div class="state-card__actions"><button class="button button--secondary button--sm" type="button" data-clear="1">Clear filters</button></div>'
+    + '</div>';
+}
+
+function render() {
+  var view = currentEntries();
+
+  document.getElementById('head-row').innerHTML = headHTML(view.conns, true);
+  document.getElementById('rows').innerHTML = bodyHTML(view.entries, view.conns, {
+    expanded: state.expanded,
+    readOnly: state.readOnly,
+    showAction: true,
+    matched: view.matched,
+    emptyState: emptyStateFor(view)
+  });
+
+  var from = state.page * PRODUCT_PAGE_SIZE + 1;
+  var to = Math.min(from + view.pageProducts.length - 1, TOTAL_PRODUCTS);
+  var variantWord = view.entries.length === 1 ? 'variant' : 'variants';
+  document.getElementById('pager-label').textContent =
+    'Showing products ' + from + '–' + to + ' of ' + TOTAL_PRODUCTS
+    + ' · ' + view.entries.length + ' ' + variantWord + ' on this page';
+
+  document.getElementById('prev').disabled = state.page === 0;
+  document.getElementById('next').disabled = (state.page + 1) * PRODUCT_PAGE_SIZE >= view.products.length;
+
+  var gapsBtn = document.getElementById('gaps-only');
+  gapsBtn.classList.toggle('chip--active', state.gapsOnly);
+  gapsBtn.setAttribute('aria-pressed', state.gapsOnly ? 'true' : 'false');
+
+  var roBtn = document.getElementById('ro-toggle');
+  roBtn.setAttribute('aria-pressed', state.readOnly ? 'true' : 'false');
+  roBtn.textContent = state.readOnly ? 'Read-only mode · on' : 'Read-only mode';
+
+  /* The shipped access pattern: a demo viewer still SEES the action, locked
+     with the reason; an unauthorised session gets nothing rendered at all. */
+  document.getElementById('header-actions').innerHTML = state.readOnly
+    ? '<button class="button" type="button" disabled title="Publishing is disabled in demo mode">Publish products</button>'
+    : '<button class="button" type="button">Publish products</button>';
+}
+
+/* Simulated publication. The optimistic path a real implementation cannot
+   take yet — see the † note in frame 04 — drawn here so the shape of the
+   requirement is reviewable: gap → publishing → listed, no reload. */
+function simulatePublish(variantId, connId) {
+  var entry = variantRows(PRODUCTS).filter(function (row) { return row.variant.id === variantId; })[0];
+  if (!entry) return;
+  var cover = entry.variant.cover[connId];
+  if (!cover || cover.state !== 'gap') return;
+
+  entry.variant.cover[connId] = { state: 'publishing' };
+  render();
+
+  window.setTimeout(function () {
+    entry.variant.cover[connId] = listed('—', 0, '02.09.2026 09:02', 'Unsynced');
+    render();
+  }, 1400);
+}
+
+(function wireFrame01() {
+  document.getElementById('q').addEventListener('input', function (event) {
+    state.q = event.target.value; state.page = 0; render();
+  });
+  document.getElementById('channel').addEventListener('change', function (event) {
+    state.channel = event.target.value; render();
+  });
+  document.getElementById('state').addEventListener('change', function (event) {
+    state.offerState = event.target.value; render();
+  });
+  document.getElementById('gaps-only').addEventListener('click', function () {
+    state.gapsOnly = !state.gapsOnly; state.page = 0; render();
+  });
+  document.getElementById('clear').addEventListener('click', function () {
+    state.q = ''; state.channel = ''; state.offerState = ''; state.gapsOnly = false; state.page = 0;
+    document.getElementById('q').value = '';
+    document.getElementById('channel').value = '';
+    document.getElementById('state').value = '';
+    render();
+  });
+  document.getElementById('ro-toggle').addEventListener('click', function () {
+    state.readOnly = !state.readOnly; render();
+  });
+  document.getElementById('prev').addEventListener('click', function () {
+    if (state.page > 0) { state.page -= 1; render(); }
+  });
+  document.getElementById('next').addEventListener('click', function () {
+    state.page += 1; render();
+  });
+
+  document.getElementById('rows').addEventListener('click', function (event) {
+    var clear = event.target.closest('[data-clear]');
+    if (clear) { document.getElementById('clear').click(); return; }
+
+    var toggle = event.target.closest('[data-toggle]');
+    if (toggle) {
+      var id = toggle.getAttribute('data-toggle');
+      state.expanded[id] = !state.expanded[id];
+      render();
+      return;
+    }
+
+    var gap = event.target.closest('.coverage-cell--gap, [data-conn]');
+    if (gap && !gap.disabled && gap.getAttribute('data-conn')) {
+      simulatePublish(gap.getAttribute('data-variant'), gap.getAttribute('data-conn'));
+      return;
+    }
+
+    var rowPublish = event.target.closest('[data-publish-row]');
+    if (rowPublish) { return; }
+
+    var row = event.target.closest('[data-row]');
+    if (row) {
+      var rowId = row.getAttribute('data-row');
+      state.expanded[rowId] = !state.expanded[rowId];
+      render();
+    }
+  });
+
+  render();
+})();
+
+/* ── Static frames ──────────────────────────────────────────────────────
+   Every static frame renders from the same arrays as frame 01 (deep-copied
+   first, so frame 01's publish simulation cannot rewrite them), which is why
+   they cannot drift from the live one. */
+var FIXTURE = JSON.parse(JSON.stringify(PRODUCTS));
+var ALL_ENTRIES = variantRows(FIXTURE);
+
+function entryById(id) {
+  return ALL_ENTRIES.filter(function (row) { return row.variant.id === id; })[0];
+}
+
+/* A row lifted out of its run for a static frame is, by definition, not the
+   first of that run — so it would render with the hairline and no product
+   name, reading as an orphan rather than as an excerpt. Promote the excerpt
+   to the head of its own run so it carries the name. */
+function asFirst(id) {
+  var clone = JSON.parse(JSON.stringify(entryById(id)));
+  clone.first = true;
+  clone.last = false;
+  clone.only = true;
+  return clone;
+}
+
+function pageShell(inner, title) {
+  return '<header class="page-header"><h2 class="page-title">' + esc(title || 'Listings') + '</h2></header>' + inner;
+}
+
+/* Frame 02 — the expanded row, in the context of its run */
+(function frame02() {
+  var nordic = FIXTURE.filter(function (p) { return p.id === 'p-nor'; });
+  var entries = variantRows(nordic);
+  var expanded = {};
+  expanded['v-nor-15'] = true;
+  document.getElementById('frame-expanded-app').innerHTML = pageShell(
+    tableHTML(entries, CONNECTIONS, { expanded: expanded, showAction: true }),
+    'Listings'
+  );
+})();
+
+/* Frame 03 — the two filters */
+(function frame03() {
+  var gapsEntries = rebaseRuns(ALL_ENTRIES.filter(function (entry) {
+    return CONNECTIONS.some(function (conn) {
+      return (entry.variant.cover[conn.id] || {}).state === 'gap';
+    });
+  }));
+  document.getElementById('frame-filter-gaps').innerHTML =
+    '<div class="toolbar toolbar--compact"><div class="toolbar__group">'
+    + '<button class="chip chip--active" type="button" aria-pressed="true">Only with missing listings</button>'
+    + '</div></div>'
+    + tableHTML(gapsEntries, CONNECTIONS, { showAction: false });
+
+  /* Any-match on Invalid: Terra 14 cm holds an Invalid offer on Allegro and a
+     healthy one on Erli. The row is in the result and the Allegro cell says why. */
+  var invalidEntry = asFirst('v-ter-14');
+  var matched = {};
+  matched['v-ter-14'] = 'c-alg';
+  document.getElementById('frame-filter-state').innerHTML =
+    '<div class="toolbar toolbar--compact"><div class="toolbar__group">'
+    + '<select class="control control--select control--narrow" aria-label="Filter by offer state"><option selected>Invalid</option></select>'
+    + '</div></div>'
+    + tableHTML([invalidEntry], CONNECTIONS, { showAction: false, matched: matched });
+})();
+
+/* Frame 04 — publishing: in flight, done, failed */
+(function frame04() {
+  var base = asFirst('v-nor-15');
+
+  var flying = JSON.parse(JSON.stringify(base));
+  flying.variant.cover['c-woo'] = { state: 'publishing' };
+
+  var done = JSON.parse(JSON.stringify(base));
+  done.variant.cover['c-woo'] = listed('—', 0, '02.09.2026 09:02', 'Unsynced');
+
+  var failed = JSON.parse(JSON.stringify(base));
+  failed.variant.cover['c-woo'] = { state: 'failed', reason: 'Category attributes are missing: material, diameter' };
+
+  var expandedFailed = {};
+  expandedFailed['v-nor-15'] = true;
+
+  document.getElementById('frame-publish-states').innerHTML =
+    '<figure><figcaption>In flight — no row exists in the real data yet †</figcaption>'
+    + tableHTML([flying], CONNECTIONS, { showAction: false }) + '</figure>'
+    + '<figure><figcaption>Published — lands as Not synced, not Active</figcaption>'
+    + tableHTML([done], CONNECTIONS, { showAction: false }) + '</figure>'
+    + '<figure><figcaption>Failed — the reason travels with the row</figcaption>'
+    + tableHTML([failed], CONNECTIONS, { showAction: false, expanded: expandedFailed }) + '</figure>';
+})();
+
+/* Frame 05 — loading, the two empties, error, per-row error, read-only */
+(function frame05() {
+  function skeletonRows(count) {
+    var out = '';
+    for (var i = 0; i < count; i += 1) {
+      out += '<tr><td class="data-table__expand-cell"></td>'
+        + '<td><span class="listing-cell"><span class="product-thumbnail" aria-hidden="true"></span>'
+        + '<span class="listing-cell__body" style="gap: 4px; width: 14rem">'
+        + '<span class="skeleton-bar" style="width: 70%"></span>'
+        + '<span class="skeleton-bar" style="width: 45%"></span></span></span></td>'
+        + CONNECTIONS.map(function () {
+            return '<td class="coverage-col"><span class="skeleton-bar" style="width: 1.75rem; margin: 0 auto"></span></td>';
+          }).join('')
+        + '</tr>';
+    }
+    return out;
+  }
+
+  var loading = '<div class="data-table__container"><table class="data-table">'
+    + '<thead><tr>' + headHTML(CONNECTIONS, false) + '</tr></thead>'
+    + '<tbody>' + skeletonRows(4) + '</tbody></table></div>';
+
+  var noChannels = '<div class="state-card">'
+    + '<h3 class="state-card__title">No channels connected yet</h3>'
+    + '<p class="page-description">Listings are published to connected sales channels.</p>'
+    + '<div class="state-card__actions"><a class="button button--secondary button--sm" href="#">Connect a channel</a></div>'
+    + '</div>';
+
+  var noVariants = '<div class="state-card">'
+    + '<h3 class="state-card__title">No products yet</h3>'
+    + '<p class="page-description">Import or create a product, then publish its variants to a channel.</p>'
+    + '<div class="state-card__actions"><a class="button button--secondary button--sm" href="#">Go to products</a></div>'
+    + '</div>';
+
+  var errorState = '<div class="state-card">'
+    + '<h3 class="state-card__title">Unable to load listings</h3>'
+    + '<p class="page-description">The request failed. Retry, or check the connection status if it keeps failing.</p>'
+    + '<div class="state-card__actions"><button class="button button--secondary button--sm" type="button">Retry</button></div>'
+    + '</div>';
+
+  /* A per-row failure is not a page failure: the row keeps its identity and
+     says what is wrong with it, the rest of the table stays usable. */
+  var brokenRow = asFirst('v-kul-g');
+  brokenRow.variant.cover['c-alg'] = { state: 'failed', reason: 'Allegro rejected the last update: offer ended' };
+  var rowError = tableHTML([brokenRow, asFirst('v-kor-12')], CONNECTIONS, { showAction: false });
+
+  var readOnly = '<div class="toolbar toolbar--compact"><div class="toolbar__group">'
+    + '<span class="status-badge status-badge--compact status-badge--info"><span class="status-badge__dot"></span>Demo mode</span>'
+    + '</div><div class="toolbar__group">'
+    + '<button class="button button--sm" type="button" disabled title="Publishing is disabled in demo mode">Publish products</button>'
+    + '</div></div>'
+    + tableHTML([asFirst('v-nor-15'), asFirst('v-ter-18')], CONNECTIONS, { showAction: false, readOnly: true });
+
+  document.getElementById('frame-state-cards').innerHTML =
+    '<figure><figcaption>Loading</figcaption>' + loading + '</figure>'
+    + '<figure><figcaption>Empty — no channels connected</figcaption>' + noChannels + '</figure>'
+    + '<figure><figcaption>Empty — nothing in the catalogue</figcaption>' + noVariants + '</figure>'
+    + '<figure><figcaption>Error — the whole table</figcaption>' + errorState + '</figure>'
+    + '<figure><figcaption>Error — one row only</figcaption>' + rowError + '</figure>'
+    + '<figure><figcaption>Read-only — the action is visible and locked</figcaption>' + readOnly + '</figure>';
+})();
+
+/* Frame 06 — tablet, same data, gaps-only */
+(function frame06() {
+  var gapsEntries = rebaseRuns(ALL_ENTRIES.filter(function (entry) {
+    return CONNECTIONS.some(function (conn) {
+      return (entry.variant.cover[conn.id] || {}).state === 'gap';
+    });
+  }));
+  document.getElementById('tablet-head').innerHTML = headHTML(CONNECTIONS, true);
+  document.getElementById('tablet-rows').innerHTML = bodyHTML(gapsEntries, CONNECTIONS, { showAction: true });
+})();
+
+/* Frame 07 — mobile card view. The matrix has nothing to align against in a
+   single card, so the pill strip is the right answer here — with the gap
+   keeping the dashed accent so a card still reads gap-first. */
+(function frame07() {
+  var entries = ALL_ENTRIES.slice(0, 5);
+  document.getElementById('mobile-cards').innerHTML = entries.map(function (entry) {
+    var pills = CONNECTIONS.map(function (conn) {
+      var cover = entry.variant.cover[conn.id] || { state: 'na' };
+      var label = connLabel(conn, CONNECTIONS);
+      if (cover.state === 'listed') {
+        return '<span class="coverage-pill coverage-pill--full" data-channel="' + esc(conn.channel) + '">' + esc(label) + '</span>';
+      }
+      if (cover.state === 'na') {
+        return '<span class="coverage-pill coverage-pill--none" data-channel="' + esc(conn.channel) + '">'
+          + esc(label) + ' · n/a</span>';
+      }
+      return '<button class="coverage-cell coverage-cell--gap" type="button" style="width: auto; padding: 0 var(--space-2); gap: var(--space-1)">'
+        + '+ ' + esc(label) + '</button>';
+    }).join('');
+
+    return '<li class="data-table__card">'
+      + '<div class="data-table__card-main">'
+      + '<span class="data-table__card-title">' + esc(entry.product.name) + ' · ' + esc(entry.variant.label) + '</span>'
+      + '<span class="data-table__card-subtitle mono">' + esc(entry.variant.sku) + ' · ' + esc(entry.variant.ean) + '</span>'
+      + '</div>'
+      + '<div class="data-table__badge-row">' + pills + '</div>'
+      + '</li>';
+  }).join('');
+})();
+
+/* Frame 08 — five connections, two on the same platform */
+(function frame08() {
+  /* Extend the fixture's coverage to the two extra connections. Terra 18 cm
+     stays the all-gaps row, Nordic 15 cm keeps its single WooCommerce gap. */
+  var many = [asFirst('v-nor-15'), asFirst('v-lof-s'), asFirst('v-ter-18')];
+  many[0].variant.cover['c-alg2'] = { state: 'gap' };
+  many[0].variant.cover['c-ps'] = listed('79,00 PLN', 4, '02.09.2026 07:55');
+  many[1].variant.cover['c-alg2'] = listed('119,00 PLN', 3, '30.08.2026 11:05');
+  many[1].variant.cover['c-ps'] = listed('119,00 PLN', 3, '30.08.2026 11:05');
+  many[2].variant.cover['c-alg2'] = { state: 'gap' };
+  many[2].variant.cover['c-ps'] = { state: 'gap' };
+
+  var matrix = tableHTML(many, CONNECTIONS_MANY, { showAction: false });
+
+  /* The grouped-channel fallback: the counter finally means something,
+     because Allegro holds two accounts and one of them has no offer. */
+  var grouped = '<div class="data-table__container"><table class="data-table"><thead><tr>'
+    + '<th class="data-table__expand-cell"></th><th style="min-width: 22rem">Variant</th>'
+    + '<th>Coverage</th>'
+    + '</tr></thead><tbody>'
+    + many.map(function (entry) {
+        var pills = ['allegro', 'erli', 'woocommerce', 'prestashop'].map(function (channel) {
+          var conns = CONNECTIONS_MANY.filter(function (conn) { return conn.channel === channel; });
+          var listedCount = conns.filter(function (conn) {
+            return (entry.variant.cover[conn.id] || {}).state === 'listed';
+          }).length;
+          var applicable = conns.filter(function (conn) {
+            return (entry.variant.cover[conn.id] || {}).state !== 'na';
+          }).length;
+          var platform = conns[0].platform;
+          if (applicable === 0) {
+            return '<span class="coverage-pill coverage-pill--none" data-channel="' + esc(channel) + '">' + esc(platform) + ' · n/a</span>';
+          }
+          if (conns.length === 1) {
+            return listedCount === 1
+              ? '<span class="coverage-pill coverage-pill--full" data-channel="' + esc(channel) + '">' + esc(platform) + '</span>'
+              : '<button class="coverage-cell coverage-cell--gap" type="button" style="width: auto; padding: 0 var(--space-2); gap: var(--space-1)">+ ' + esc(platform) + '</button>';
+          }
+          /* A grouped channel at 0/n is still a gap, and the whole design says a
+             gap carries the accent and the action. Greying it out because it
+             happens to be grouped would break that rule exactly where the
+             operator has the most work to do. */
+          if (listedCount === 0) {
+            return '<button class="coverage-cell coverage-cell--gap" type="button" style="width: auto; padding: 0 var(--space-2); gap: var(--space-1)">'
+              + esc(platform) + ' <span class="tabular">' + listedCount + '/' + conns.length + '</span></button>';
+          }
+          var tone = listedCount === conns.length ? 'full' : 'partial';
+          return '<span class="coverage-pill coverage-pill--' + tone + '" data-channel="' + esc(channel) + '">'
+            + esc(platform) + ' <span class="coverage-pill__count tabular">' + listedCount + '/' + conns.length + '</span></span>';
+        }).join('');
+
+        return '<tr class="data-table__row--expandable">'
+          + '<td class="data-table__expand-cell"><button class="data-table__expand-toggle" type="button" aria-expanded="false" aria-label="Expand row"><span class="data-table__expand-icon" aria-hidden="true">▸</span></button></td>'
+          + '<td>' + identityCell(entry) + '</td>'
+          + '<td><span class="coverage-pills">' + pills + '</span></td></tr>';
+      }).join('')
+    + '</tbody></table></div>';
+
+  document.getElementById('frame-degraded-pair').innerHTML =
+    '<figure><figcaption>Five columns — the fifth scrolls out of this panel, which is the ceiling arriving</figcaption>' + matrix + '</figure>'
+    + '<figure><figcaption>Grouped channels — where 1/2 finally carries information</figcaption>' + grouped + '</figure>';
+})();
+</script>
+</body>
+</html>
