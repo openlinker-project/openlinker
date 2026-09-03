@@ -56,6 +56,18 @@ export async function startHarness(): Promise<void> {
   // handler/DI specs see the complete graph, but the scheduler must not start
   // real cron timers under tests — opt this process out of the lease (#2279).
   process.env.OL_SCHEDULER_ENABLED = 'false';
+  // Same reasoning for the job runner, and it is load-bearing rather than
+  // tidy: `SyncJobRunner` defaults this gate to `'true'` when unset, and the
+  // only place the repo set it to `'false'` was
+  // `apps/worker/test/jest-global-setup.cjs`, wired to the worker's *unit*
+  // Jest config, never to `jest-integration.cjs`. So the real runner polled
+  // `sync_jobs` in Postgres about once a second for the whole integration run
+  // and could claim a `queued` row a suite had just inserted and was about to
+  // drive by hand, executing the same job twice from two directions. No worker
+  // int-spec relies on the background loop: every one drives handlers via
+  // `handler.execute(...)`, or the runner's own methods directly, so the gate
+  // is set here for the whole harness (#2825).
+  process.env.WORKER_RUNNER_ENABLED = 'false';
 
   harness = { postgres, redis };
 }
