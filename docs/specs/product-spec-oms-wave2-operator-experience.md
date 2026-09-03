@@ -119,7 +119,15 @@ words appearing in a `.tsx` string literal or a user-facing `*.copy.ts` under th
 folders. This is the same shape as the existing `check-sales-document-reason-mirror.mjs` gate.
 
 **The banned list is closed and is exactly this table — nine terms, no "and other internal terms".**
-A lint script cannot implement an open list, and an open list is how a gate becomes advisory:
+A lint script cannot implement an open list, and an open list is how a gate becomes advisory.
+
+The fence below is read textually by `scripts/check-ui-vocabulary.mjs`, which owns the table between
+the two markers — §2.1 carries two tables, so the fence tells the parser which one is the banned list
+rather than leaving it to guess. The `Matched as` column is mirrored too, not only the term: the script
+reads the mode word (`case-insensitive` / `exact`) and every `"…"`-quoted alternate out of each cell, so
+an editorial reword passes while a changed mode or a dropped alternate fails.
+
+<!-- ui-vocabulary:start -->
 
 | # | Banned term | Matched as |
 |---|---|---|
@@ -132,6 +140,8 @@ A lint script cannot implement an open list, and an open list is how a gate beco
 | 7 | `Orchestrator` | case-insensitive word match |
 | 8 | `Gateway` | case-insensitive word match |
 | 9 | `holder` | case-insensitive word match |
+
+<!-- ui-vocabulary:end -->
 
 Adding a tenth term is an edit to this table and to the script in the same commit; the seed issue
 and this table are one list, mirror-checked against each other like every other pinned pair in the

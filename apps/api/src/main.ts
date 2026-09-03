@@ -14,13 +14,11 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import * as express from 'express';
 import { installNestLogger } from '@openlinker/shared/logging/nest';
+import { buildGlobalExceptionFilters } from './common/filters/global-filters';
 import { AppModule } from './app.module';
 import { APP_INFO_SERVICE_TOKEN } from './app-info/app-info.module';
 import type { IAppInfoService } from './app-info/app-info.service.interface';
 import { API_VERSION } from './app-info/app-info.types';
-import { CapabilityNotSupportedFilter } from './common/filters/capability-not-supported.filter';
-import { TaxonomySourceUnavailableFilter } from './common/filters/taxonomy-source-unavailable.filter';
-import { ConnectionExceptionFilter } from './common/filters/connection-exception.filter';
 
 async function bootstrap(): Promise<void> {
   // Route shared `Logger` calls through @nestjs/common before any other work,
@@ -80,13 +78,10 @@ async function bootstrap(): Promise<void> {
   );
 
   // Map capability + connection-lifecycle domain errors to accurate HTTP
-  // statuses instead of the default 500 (#1087). Filters catch disjoint
-  // exception types, so registration order is irrelevant.
-  app.useGlobalFilters(
-    new CapabilityNotSupportedFilter(),
-    new ConnectionExceptionFilter(),
-    new TaxonomySourceUnavailableFilter(),
-  );
+  // statuses instead of the default 500 (#1087). The roster is shared with the
+  // integration harness so the suite cannot end up exercising a different error
+  // pipeline from the one that ships — see `buildGlobalExceptionFilters`.
+  app.useGlobalFilters(...buildGlobalExceptionFilters());
 
   // HTTP API URI versioning (#1133 / ADR-029 Axis 3) — every route is served
   // under `/v1` by default. The inbound `/webhooks` ingress opts out via

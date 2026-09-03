@@ -16,6 +16,7 @@ describe('TopProductsController', () => {
 
   const createService = (): jest.Mocked<ITopProductsService> => ({
     getTopProducts: jest.fn(),
+    getTopProductVariantSales: jest.fn(),
   });
 
   it('maps query params to filters (with defaults) and returns the service result', async () => {
@@ -81,5 +82,40 @@ describe('TopProductsController', () => {
         to: '2026-08-01T00:00:00.000Z',
       })
     ).rejects.toThrow(BadRequestException);
+  });
+
+  describe('getTopProductVariantSales (#2765)', () => {
+    it('maps the path param + query into filters and returns the service result', async () => {
+      const service = createService();
+      const variantResponse = { productId: 'p1', variants: [] };
+      service.getTopProductVariantSales.mockResolvedValue(variantResponse as never);
+      const controller = new TopProductsController(service);
+
+      const result = await controller.getTopProductVariantSales('p1', {
+        from: '2026-08-01T00:00:00.000Z',
+        to: '2026-08-08T00:00:00.000Z',
+        sourceConnectionId: 'conn-a',
+      });
+
+      expect(service.getTopProductVariantSales).toHaveBeenCalledWith('p1', {
+        from: new Date('2026-08-01T00:00:00.000Z'),
+        to: new Date('2026-08-08T00:00:00.000Z'),
+        sourceConnectionId: 'conn-a',
+      });
+      expect(result).toBe(variantResponse);
+    });
+
+    it('throws BadRequestException when to <= from', async () => {
+      const service = createService();
+      const controller = new TopProductsController(service);
+
+      await expect(
+        controller.getTopProductVariantSales('p1', {
+          from: '2026-08-08T00:00:00.000Z',
+          to: '2026-08-01T00:00:00.000Z',
+        })
+      ).rejects.toThrow(BadRequestException);
+      expect(service.getTopProductVariantSales).not.toHaveBeenCalled();
+    });
   });
 });

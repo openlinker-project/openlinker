@@ -34,16 +34,19 @@ export function SalesDocumentsPage(): ReactElement {
       description="Choose what each connected provider issues, and which one issues first. OpenLinker never decides which document an order legally needs."
       backTo={{ to: '/settings', label: 'Settings' }}
     >
-      <SalesDocumentsPanel />
       {/*
-       * #2170 — the country-agnostic rule engine, rendered alongside the
-       * #2156 operator-configured table above rather than replacing it:
-       * `AutoIssueTriggerService` still resolves via that table today, so
-       * removing it would leave operators unable to configure what
-       * actually auto-issues. See `SalesDocumentRuleEnginePanel`'s own doc
-       * comment.
+       * #2170 — the country-agnostic rule engine is the page's primary
+       * authoring surface (M7 / #2550): it runs FIRST and consults
+       * `evaluateSalesDocumentRules` before the #2156 operator-configured
+       * table below ever applies. The table is demoted below it, not
+       * stripped — it is the only place document kind, "goes first" and
+       * the trigger are set at all, and a connection with nothing set
+       * there is not a routing candidate for the rule engine either. See
+       * `SalesDocumentRuleEnginePanel`'s own doc comment for the full
+       * precedence.
        */}
       <SalesDocumentRuleEnginePanel />
+      <SalesDocumentsPanel />
     </PageLayout>
   );
 }

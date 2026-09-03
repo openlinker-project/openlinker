@@ -25,9 +25,30 @@ import type { IOrderItemRefResolverService } from '../../interfaces/order-item-r
 import type { IOrderLifecycleRelayService } from '../../interfaces/order-lifecycle-relay.service.interface';
 import type { IAutoIssueTriggerService } from '@openlinker/core/invoicing';
 import type { IProductsService, ITaxRateJournalService } from '@openlinker/core/products';
+import type { IReservationService } from '@openlinker/core/inventory';
+import { AmbiguousReservationPositionError } from '@openlinker/core/inventory';
+import type { IFulfillmentRoutingService } from '@openlinker/core/mappings';
+import type {
+  FulfillmentBlockReason,
+  IRoutingCommitService,
+  RoutingCommitOutcome,
+} from '@openlinker/core/fulfillment';
+import type { ConnectionPort } from '@openlinker/core/identifier-mapping';
 import type { IncomingOrder } from '../../../domain/types/incoming-order.types';
 import { MissingOrderItemMappingError } from '../../../domain/exceptions/missing-order-item-mapping.error';
 import type { OrderRecord } from '../../../domain/entities/order-record.entity';
+
+// #2396 — the ONE router-resolution seam. Mocked so the `selected` arm is
+// reachable in a unit test; on every real installation it answers `null`, which
+// is why the production default below is `null` too and every pre-existing spec
+// keeps asserting the pass-through.
+jest.mock('../fulfillment-router-resolution', () => ({
+  resolveFulfillmentRouter: jest.fn().mockResolvedValue(null),
+}));
+import { resolveFulfillmentRouter } from '../fulfillment-router-resolution';
+const resolveRouterMock = resolveFulfillmentRouter as jest.MockedFunction<
+  typeof resolveFulfillmentRouter
+>;
 
 describe('OrderIngestionService', () => {
   let service: OrderIngestionService;
@@ -49,6 +70,14 @@ describe('OrderIngestionService', () => {
   let autoIssueTrigger: jest.Mocked<IAutoIssueTriggerService>;
   let productsService: jest.Mocked<IProductsService>;
   let taxRateJournal: jest.Mocked<ITaxRateJournalService>;
+  let reservationService: jest.Mocked<IReservationService>;
+  let fulfillmentRouting: jest.Mocked<IFulfillmentRoutingService>;
+  // #2396 — the fulfilment intercept's two dependencies. Defaults describe the
+  // router-less install every deployment is today: no connection claims A2, so
+  // `selectPrimaryFulfillmentRouter` returns `no-claimant` and `route` is never
+  // reached. Every pre-existing spec therefore asserts the pass-through.
+  let routingCommit: jest.Mocked<IRoutingCommitService>;
+  let connections: jest.Mocked<Pick<ConnectionPort, 'list'>>;
 
   const connectionId = 'connection-123';
   const cursorKey = 'allegro.orders.lastEventId';
@@ -110,6 +139,8 @@ describe('OrderIngestionService', () => {
       markItemResolutionFailure: jest.fn().mockResolvedValue(undefined),
       markCancelled: jest.fn().mockResolvedValue(undefined),
       markSalesDocumentBlock: jest.fn().mockResolvedValue(undefined),
+      markFulfillmentBlock: jest.fn().mockResolvedValue(undefined),
+      recordAmendment: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<IOrderRecordService>;
 
     customerIdentityResolver = {
@@ -146,6 +177,27 @@ describe('OrderIngestionService', () => {
       getLatestPerConnection: jest.fn().mockResolvedValue([]),
     };
 
+    // #2344: the advisory reservation ledger. Defaults grant nothing and skip
+    // nothing, so every pre-existing spec asserts the pre-reservation behaviour.
+    reservationService = {
+      reserveForOrder: jest.fn().mockResolvedValue({ granted: [], skipped: [] }),
+    } as unknown as jest.Mocked<IReservationService>;
+    // #2344: the default topology is `omp_fulfilled` — the marketplace ships —
+    // so a hold is recorded diagnostically and subtracted from nothing.
+    fulfillmentRouting = {
+      resolve: jest.fn().mockResolvedValue({
+        processorKind: 'omp_fulfilled',
+        processorConnectionId: null,
+        source: 'default',
+        processorAvailable: true,
+      }),
+    } as unknown as jest.Mocked<IFulfillmentRoutingService>;
+
+    routingCommit = {
+      route: jest.fn(),
+    } as unknown as jest.Mocked<IRoutingCommitService>;
+    connections = { list: jest.fn().mockResolvedValue([]) };
+
     service = new OrderIngestionService(
       integrationsService,
       syncCursors as unknown as ISyncCursorsService,
@@ -160,8 +212,212 @@ describe('OrderIngestionService', () => {
       orderLifecycleRelay,
       autoIssueTrigger,
       productsService,
-      taxRateJournal
+      taxRateJournal,
+      reservationService,
+      fulfillmentRouting,
+      routingCommit,
+      connections as unknown as ConnectionPort
     );
+  });
+
+  describe('advisory reservations (#2344)', () => {
+    const externalOrderId = 'checkout-res';
+    const reservableIncoming = {
+      externalOrderId,
+      orderNumber: externalOrderId,
+      status: 'BOUGHT',
+      items: [
+        {
+          id: 'line-1',
+          productRef: { type: 'variant' as const, externalId: 'ext-v1' },
+          quantity: 2,
+          price: 10,
+        },
+      ],
+      totals: { subtotal: 20, tax: 0, shipping: 0, total: 20, currency: 'PLN' },
+      createdAt: '2024-01-01T00:00:00Z',
+      updatedAt: '2024-01-01T00:00:00Z',
+    };
+
+    const ambiguityFor = (orderLineIds: string[]) =>
+      new AmbiguousReservationPositionError(
+        orderLineIds.map((orderLineId) => ({
+          orderLineId,
+          productId: 'ol_product_1',
+          productVariantId: 'ol_variant_1',
+          candidateInventoryItemIds: ['inv-1', 'inv-2'],
+        }))
+      );
+
+    beforeEach(() => {
+      identifierMapping.getOrCreateInternalId.mockResolvedValue('ol_order_res');
+      orderSource.getOrder.mockResolvedValue(reservableIncoming);
+      integrationsService.getCapabilityAdapter.mockResolvedValue(orderSource);
+      orderSyncService.syncOrder.mockResolvedValue([]);
+      orderItemRefResolver.tryResolve.mockResolvedValue({
+        resolved: true,
+        internalProductId: 'ol_product_1',
+        internalVariantId: 'ol_variant_1',
+      });
+    });
+
+    it('should reserve the order lines after persistOrder and before destination dispatch', async () => {
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(reservationService.reserveForOrder).toHaveBeenCalledTimes(1);
+      const input = reservationService.reserveForOrder.mock.calls[0][0];
+      expect(input.orderRecordId).toBe('ol_order_res');
+      expect(input.lines).toEqual([
+        expect.objectContaining({
+          orderLineId: 'line-1',
+          productId: 'ol_product_1',
+          productVariantId: 'ol_variant_1',
+          quantity: 2,
+        }),
+      ]);
+      expect(orderRecordService.persistOrder.mock.invocationCallOrder[0]).toBeLessThan(
+        reservationService.reserveForOrder.mock.invocationCallOrder[0]
+      );
+      expect(reservationService.reserveForOrder.mock.invocationCallOrder[0]).toBeLessThan(
+        orderSyncService.syncOrder.mock.invocationCallOrder[0]
+      );
+    });
+
+    it('should stamp diagnostic on the omp_fulfilled topology', async () => {
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(reservationService.reserveForOrder.mock.calls[0][0].atpEffect).toBe('diagnostic');
+    });
+
+    it('should stamp published when OL executes fulfillment', async () => {
+      fulfillmentRouting.resolve.mockResolvedValue({
+        processorKind: 'ol_managed_carrier',
+        processorConnectionId: 'carrier-1',
+        source: 'rule',
+        processorAvailable: true,
+      });
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(reservationService.reserveForOrder.mock.calls[0][0].atpEffect).toBe('published');
+    });
+
+    it('should stamp diagnostic when the resolved processor is unavailable', async () => {
+      // `published` asserts OL executes this order; claiming that over a route
+      // OL cannot drive would be false, and the stamp is insert-only.
+      fulfillmentRouting.resolve.mockResolvedValue({
+        processorKind: 'ol_managed_carrier',
+        processorConnectionId: 'carrier-1',
+        source: 'rule',
+        processorAvailable: false,
+      });
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(reservationService.reserveForOrder.mock.calls[0][0].atpEffect).toBe('diagnostic');
+    });
+
+    it('should stamp diagnostic — never published — when routing cannot be resolved', async () => {
+      fulfillmentRouting.resolve.mockRejectedValue(new Error('routing store unreachable'));
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(reservationService.reserveForOrder.mock.calls[0][0].atpEffect).toBe('diagnostic');
+    });
+
+    it('should not fail ingestion when the reservation throws', async () => {
+      // An advisory hold must never cost a paid order.
+      reservationService.reserveForOrder.mockRejectedValue(
+        new Error('insufficient available-to-promise')
+      );
+
+      const results = await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(results).toEqual([]);
+      expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
+    });
+
+    it('should skip the retry entirely when every line was ambiguous', async () => {
+      // One line, and it is the ambiguous one — so there is nothing left to
+      // claim and no empty second call is issued.
+      reservationService.reserveForOrder.mockRejectedValueOnce(
+        ambiguityFor(['line-1'])
+      );
+
+      const results = await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(results).toEqual([]);
+      expect(reservationService.reserveForOrder).toHaveBeenCalledTimes(1);
+    });
+
+    it('should retry once with only the unambiguous lines rather than losing the order\'s holds', async () => {
+      orderSource.getOrder.mockResolvedValue({
+        ...reservableIncoming,
+        items: [
+          reservableIncoming.items[0],
+          { ...reservableIncoming.items[0], id: 'line-2' },
+        ],
+      });
+      reservationService.reserveForOrder
+        .mockRejectedValueOnce(ambiguityFor(['line-1']))
+        .mockResolvedValue({ granted: [], skipped: [] });
+
+      const results = await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(results).toEqual([]);
+      expect(reservationService.reserveForOrder).toHaveBeenCalledTimes(2);
+      expect(reservationService.reserveForOrder.mock.calls[1][0].lines).toEqual([
+        expect.objectContaining({ orderLineId: 'line-2' }),
+      ]);
+    });
+
+    it('should not fail ingestion when the retry itself throws', async () => {
+      // The retry is single-pass by construction: a second refusal falls into
+      // the outer catch rather than looping.
+      orderSource.getOrder.mockResolvedValue({
+        ...reservableIncoming,
+        items: [
+          reservableIncoming.items[0],
+          { ...reservableIncoming.items[0], id: 'line-2' },
+        ],
+      });
+      reservationService.reserveForOrder
+        .mockRejectedValueOnce(ambiguityFor(['line-1']))
+        .mockRejectedValueOnce(new Error('insufficient available-to-promise'));
+
+      const results = await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(results).toEqual([]);
+      expect(reservationService.reserveForOrder).toHaveBeenCalledTimes(2);
+      expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
+    });
+
+    it('should record no hold when the kill switch is off', async () => {
+      const previous = process.env.OL_RESERVATIONS_ENABLED;
+      process.env.OL_RESERVATIONS_ENABLED = 'false';
+      try {
+        const results = await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(results).toEqual([]);
+        expect(reservationService.reserveForOrder).not.toHaveBeenCalled();
+        // Ingestion is otherwise byte-identical to its pre-#2344 behaviour.
+        expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
+      } finally {
+        if (previous === undefined) delete process.env.OL_RESERVATIONS_ENABLED;
+        else process.env.OL_RESERVATIONS_ENABLED = previous;
+      }
+    });
+
+    it('should not reserve for an order that arrived already cancelled', async () => {
+      orderSource.getOrder.mockResolvedValue({
+        ...reservableIncoming,
+        status: 'cancelled',
+      });
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(reservationService.reserveForOrder).not.toHaveBeenCalled();
+    });
   });
 
   describe('auto-issue trigger (OL #1120)', () => {
@@ -602,6 +858,29 @@ describe('OrderIngestionService', () => {
       );
     });
 
+    // #2397 — the consumer half of "a deliberate empty routing decision returns
+    // []". `OrderSyncService` refuses to throw for that case precisely so this
+    // is a no-op; asserted HERE, at the caller, because the claim is about what
+    // ingestion does with an empty array, not about what the service returns.
+    it('should write no sync-status row when the routing decision named no destination', async () => {
+      orderSyncService.syncOrder.mockResolvedValue([]);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.updateSyncStatus).not.toHaveBeenCalled();
+    });
+
+    it('should still run the downstream sales-document gate on an empty routing decision', async () => {
+      // The empty array must be a no-op for sync status WITHOUT short-circuiting
+      // the rest of ingestion — an order that was routed nowhere is still an
+      // order, and its document gate must still decide.
+      orderSyncService.syncOrder.mockResolvedValue([]);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(autoIssueTrigger.onOrderTransition).toHaveBeenCalledTimes(1);
+    });
+
     it('should call updateSyncStatus with failed when syncOrder returns a failure result', async () => {
       orderSyncService.syncOrder.mockResolvedValue([
         {
@@ -618,6 +897,94 @@ describe('OrderIngestionService', () => {
         'dest-conn-1',
         expect.objectContaining({ status: 'failed', error: 'destination unavailable' })
       );
+    });
+
+    it('should call updateSyncStatus with skipped_cancelled when the order was cancelled at source', async () => {
+      orderSyncService.syncOrder.mockResolvedValue([
+        {
+          status: 'skipped_cancelled',
+          destinationConnectionId: 'dest-conn-1',
+          cancelledAt: new Date('2026-08-01T10:00:00.000Z'),
+        },
+      ]);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.updateSyncStatus).toHaveBeenCalledWith(
+        'ol_order_test',
+        'dest-conn-1',
+        expect.objectContaining({
+          status: 'skipped_cancelled',
+          error: 'Order cancelled at source before destination create',
+        })
+      );
+    });
+
+    // #2588 review I-1. The withheld row is written by DROP-then-append
+    // (`OrderRecordRepository.updateSyncStatus`), so writing it over an
+    // already-provisioned destination destroys that destination's
+    // `externalOrderId` / `externalOrderNumber` — the shop's own order number,
+    // which is exactly what the operator needs while the hold is on.
+    describe('a withheld destination that is already synced (#2588 I-1)', () => {
+      const heldResult = {
+        status: 'skipped_held' as const,
+        destinationConnectionId: 'dest-conn-1',
+        holdId: 'hold-1',
+        holdReason: 'fraud-review' as const,
+      };
+
+      it('does NOT overwrite the row of a destination already synced', async () => {
+        orderRecordService.getOrderRecord.mockResolvedValue({
+          sourceConnectionId: connectionId,
+          syncStatus: [
+            {
+              destinationConnectionId: 'dest-conn-1',
+              status: 'synced',
+              externalOrderId: '12345',
+              externalOrderNumber: 'PS-9981',
+            },
+          ],
+        } as unknown as OrderRecord);
+        orderSyncService.syncOrder.mockResolvedValue([heldResult]);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(orderRecordService.updateSyncStatus).not.toHaveBeenCalled();
+      });
+
+      it('still writes the withheld row on a FIRST ingestion, where nothing is provisioned yet', async () => {
+        orderRecordService.getOrderRecord.mockResolvedValue(null);
+        orderSyncService.syncOrder.mockResolvedValue([heldResult]);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(orderRecordService.updateSyncStatus).toHaveBeenCalledWith(
+          'ol_order_test',
+          'dest-conn-1',
+          expect.objectContaining({
+            status: 'pending',
+            error: 'Withheld: order is on hold (fraud-review)',
+          })
+        );
+      });
+
+      it('still writes the withheld row for a destination whose existing row is not synced', async () => {
+        orderRecordService.getOrderRecord.mockResolvedValue({
+          sourceConnectionId: connectionId,
+          syncStatus: [
+            { destinationConnectionId: 'dest-conn-1', status: 'failed', error: 'boom' },
+          ],
+        } as unknown as OrderRecord);
+        orderSyncService.syncOrder.mockResolvedValue([heldResult]);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(orderRecordService.updateSyncStatus).toHaveBeenCalledWith(
+          'ol_order_test',
+          'dest-conn-1',
+          expect.objectContaining({ status: 'pending' })
+        );
+      });
     });
 
     it('should persist snapshot and order even when syncOrder throws', async () => {
@@ -1397,6 +1764,139 @@ describe('OrderIngestionService', () => {
     });
   });
 
+  describe('source-amendment fact (#2283)', () => {
+    const externalOrderId = 'amend-1';
+    const internalOrderId = 'ol_order_amend';
+
+    const incoming = {
+      externalOrderId,
+      orderNumber: externalOrderId,
+      status: 'BOUGHT',
+      items: [
+        {
+          id: 'l1',
+          productRef: { type: 'offer' as const, externalId: 'offer-l1' },
+          quantity: 1,
+          price: 10,
+          sku: 'SKU-l1',
+        },
+      ],
+      totals: { subtotal: 10, tax: 0, shipping: 0, total: 10, currency: 'PLN' },
+      createdAt: '2026-08-01T00:00:00Z',
+      updatedAt: '2026-08-01T00:00:00Z',
+    };
+
+    beforeEach(() => {
+      identifierMapping.getOrCreateInternalId.mockResolvedValue(internalOrderId);
+      orderSource.getOrder.mockResolvedValue(incoming);
+      integrationsService.getCapabilityAdapter.mockResolvedValue(orderSource);
+      orderSyncService.syncOrder.mockResolvedValue([]);
+      orderItemRefResolver.tryResolve.mockResolvedValue({
+        resolved: true,
+        internalProductId: 'ol_product_1',
+        internalVariantId: 'ol_variant_1',
+      });
+    });
+
+    const priorWithQuantity = (quantity: number): OrderRecord =>
+      ({
+        sourceConnectionId: connectionId,
+        orderSnapshot: { status: 'BOUGHT', items: [{ id: 'l1', quantity, sku: 'SKU-l1' }] },
+      }) as unknown as OrderRecord;
+
+    it('should record the fact once with the observed changes when the source amended the order', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue(priorWithQuantity(3));
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.recordAmendment).toHaveBeenCalledTimes(1);
+      expect(orderRecordService.recordAmendment).toHaveBeenCalledWith(
+        internalOrderId,
+        expect.any(Date),
+        [
+          {
+            kind: 'line-quantity-changed',
+            lineId: 'l1',
+            sku: 'SKU-l1',
+            fromQuantity: 3,
+            toQuantity: 1,
+          },
+        ]
+      );
+    });
+
+    it('should record the fact BEFORE the snapshot write that would destroy the evidence', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue(priorWithQuantity(3));
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.recordAmendment.mock.invocationCallOrder[0]).toBeLessThan(
+        orderRecordService.persistIncomingSnapshot.mock.invocationCallOrder[0]
+      );
+    });
+
+    it('should not record anything on an identical re-poll', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue(priorWithQuantity(1));
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.recordAmendment).not.toHaveBeenCalled();
+    });
+
+    it('should not record anything on a first ingestion', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue(null);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.recordAmendment).not.toHaveBeenCalled();
+    });
+
+    it('should not record anything on the destination-echo skip', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: 'some-other-connection',
+        orderSnapshot: { items: [{ id: 'l1', quantity: 99 }] },
+      } as unknown as OrderRecord);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.recordAmendment).not.toHaveBeenCalled();
+    });
+
+    it('should still record the fact when item resolution later throws', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue(priorWithQuantity(3));
+      orderItemRefResolver.tryResolve.mockResolvedValue({
+        resolved: false,
+        productRef: { type: 'offer', externalId: 'unmapped' },
+        reason: 'no mapping',
+        kind: 'missing_mapping' as const,
+      });
+
+      await expect(
+        service.syncOrderFromSource(connectionId, externalOrderId)
+      ).rejects.toBeInstanceOf(MissingOrderItemMappingError);
+
+      expect(orderRecordService.recordAmendment).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not fail the ingestion when recording the fact throws', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue(priorWithQuantity(3));
+      orderRecordService.recordAmendment.mockRejectedValueOnce(new Error('db down'));
+      const errorSpy = jest
+        .spyOn((service as unknown as { logger: { error: jest.Mock } }).logger, 'error')
+        .mockImplementation(() => undefined);
+
+      await expect(service.syncOrderFromSource(connectionId, externalOrderId)).resolves.toEqual(
+        []
+      );
+
+      expect(orderRecordService.persistOrder).toHaveBeenCalled();
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to record source amendment'),
+        expect.anything()
+      );
+    });
+  });
+
   describe('tax-rate journal - channel observations (#2250, ADR-063 § 4)', () => {
     const externalOrderId = 'checkout-journal';
 
@@ -1497,6 +1997,370 @@ describe('OrderIngestionService', () => {
         service.syncOrderFromSource(connectionId, externalOrderId)
       ).resolves.toEqual([]);
       expect(orderRecordService.persistOrder).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  /**
+   * #2396 — the fulfilment ingestion intercept, characterisation half.
+   *
+   * DESIGN §5.1's survival property: **a router-less install runs
+   * byte-identically to today**. This block is written to pass on UNMODIFIED
+   * code and to keep passing after the intercept lands — if it ever fails, the
+   * intercept has changed the pass-through, which is the one thing it may not
+   * do.
+   *
+   * The `syncOrder` argument is asserted as a WHOLE OBJECT rather than
+   * field-by-field, because the defect being guarded against is an EXTRA key
+   * (`destinationConnectionIds`) appearing on the pass-through arm. A
+   * `objectContaining` / per-field assertion cannot see an added key, so it
+   * would pass through exactly the regression this exists to catch.
+   */
+  describe('fulfilment ingestion intercept — characterisation (#2396)', () => {
+    const externalOrderId = 'checkout-char';
+    const charIncoming = {
+      externalOrderId,
+      orderNumber: externalOrderId,
+      status: 'BOUGHT',
+      items: [
+        {
+          id: 'line-1',
+          productRef: { type: 'variant' as const, externalId: 'ext-v1' },
+          quantity: 1,
+          price: 10,
+        },
+      ],
+      totals: { subtotal: 10, tax: 0, shipping: 0, total: 10, currency: 'PLN' },
+      createdAt: '2024-01-01T00:00:00Z',
+      updatedAt: '2024-01-01T00:00:00Z',
+    };
+
+    beforeEach(() => {
+      identifierMapping.getOrCreateInternalId.mockResolvedValue('ol_order_char');
+      orderSource.getOrder.mockResolvedValue(charIncoming);
+      integrationsService.getCapabilityAdapter.mockResolvedValue(orderSource);
+      orderSyncService.syncOrder.mockResolvedValue([]);
+      orderItemRefResolver.tryResolve.mockResolvedValue({
+        resolved: true,
+        internalProductId: 'ol_product_1',
+        internalVariantId: 'ol_variant_1',
+      });
+    });
+
+    it('passes syncOrder a byte-identical request on a router-less install', async () => {
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1');
+
+      expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
+
+      const request = orderSyncService.syncOrder.mock.calls[0][0];
+
+      // Whole-object equality: the key set is the assertion. An intercept that
+      // starts passing `destinationConnectionIds: undefined` EXPLICITLY would
+      // still satisfy this (the key is absent from neither side under
+      // `toEqual`'s undefined-insensitivity), but one that passes `[]` — the
+      // "router selected nobody" value — fails loudly. That is the intended
+      // sensitivity: `[]` on a router-less install stops all provisioning.
+      expect(request).toEqual({
+        order: expect.objectContaining({ id: 'ol_order_char' }),
+        sourceConnectionId: connectionId,
+        sourceEventId: 'evt-1',
+      });
+      expect(request.destinationConnectionIds).toBeUndefined();
+    });
+
+    it('never writes a fulfilment block reason on a router-less install', async () => {
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1');
+
+      // `markFulfillmentBlock` does not exist on the service before #2396; the
+      // mock carries it from the outset so this assertion is meaningful both
+      // before and after. A non-null write here would mean the pass-through arm
+      // is reporting a block that no operator can act on.
+      // Read through a structural cast rather than the interface: this test is
+      // written to run BEFORE `markFulfillmentBlock` exists on
+      // `IOrderRecordService`, which is what makes it a characterisation of
+      // today's behaviour rather than a test of the change.
+      const writer = orderRecordService as unknown as {
+        markFulfillmentBlock?: jest.Mock;
+      };
+      const calls = writer.markFulfillmentBlock?.mock.calls ?? [];
+      for (const [, block] of calls) {
+        expect(block).toBeNull();
+      }
+    });
+  });
+
+  /**
+   * #2396 — the fulfilment ingestion intercept, behaviour half.
+   *
+   * The characterisation block above pins that a router-less install is
+   * unchanged. This one pins what the intercept does once a router IS in play,
+   * and — just as importantly — what it must NOT persist.
+   */
+  describe('fulfilment ingestion intercept — behaviour (#2396)', () => {
+    const externalOrderId = 'checkout-int';
+    const interceptIncoming = {
+      externalOrderId,
+      orderNumber: externalOrderId,
+      status: 'BOUGHT',
+      items: [
+        {
+          id: 'line-1',
+          productRef: { type: 'variant' as const, externalId: 'ext-v1' },
+          quantity: 1,
+          price: 10,
+        },
+      ],
+      totals: { subtotal: 10, tax: 0, shipping: 0, total: 10, currency: 'PLN' },
+      shippingAddress: {
+        firstName: 'A',
+        lastName: 'B',
+        address1: 'x',
+        city: 'Warsaw',
+        postalCode: '00-001',
+        country: 'PL',
+      },
+      createdAt: '2024-01-01T00:00:00Z',
+      updatedAt: '2024-01-01T00:00:00Z',
+    };
+
+    /** A connection claiming A2 (`config-only`, so capability lists are irrelevant). */
+    const routerConnection = (id: string) => ({
+      id,
+      status: 'active',
+      enabledCapabilities: [],
+      config: { sourcingAuthority: { enabled: true } },
+    });
+
+    const markBlock = () =>
+      orderRecordService.markFulfillmentBlock as jest.MockedFunction<
+        IOrderRecordService['markFulfillmentBlock']
+      >;
+
+    beforeEach(() => {
+      identifierMapping.getOrCreateInternalId.mockResolvedValue('ol_order_int');
+      orderSource.getOrder.mockResolvedValue(interceptIncoming);
+      integrationsService.getCapabilityAdapter.mockResolvedValue(orderSource);
+      orderSyncService.syncOrder.mockResolvedValue([]);
+      orderItemRefResolver.tryResolve.mockResolvedValue({
+        resolved: true,
+        internalProductId: 'ol_product_1',
+        internalVariantId: 'ol_variant_1',
+      });
+      resolveRouterMock.mockResolvedValue(null);
+    });
+
+    describe('the ambiguous arm', () => {
+      beforeEach(() => {
+        // Two connections both claiming A2 — `multiple-scoped-holders`, which
+        // `isFulfillmentRouterUnroutable` reports as uncommittable.
+        connections.list.mockResolvedValue([
+          routerConnection('conn-a'),
+          routerConnection('conn-b'),
+        ] as never);
+      });
+
+      it('follows today\'s path — the order still reaches its destinations', async () => {
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
+        expect(orderSyncService.syncOrder.mock.calls[0][0].destinationConnectionIds).toBeUndefined();
+      });
+
+      it('persists NOTHING — #2352 already reports A2-A at order grain', async () => {
+        // THE assertion this arm exists for. `'sourcing-ambiguous'` (spec row
+        // A2-A) is derived on every read by `resolveAuthorities` with
+        // `counted: true` and `surfaces: ['order','connection']`. Persisting a
+        // reason here too would double-count `Needs attention (N)` — the one
+        // number an operator acts on — and a double-counted badge teaches them
+        // the count is noise.
+        //
+        // Written as "never called with a non-null reason" rather than "never
+        // called": the level-triggered clear legitimately writes `null` here.
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        for (const [, block] of markBlock().mock.calls) {
+          expect(block).toBeNull();
+        }
+      });
+    });
+
+    describe('the selected arm', () => {
+      const router = { route: jest.fn() };
+
+      beforeEach(() => {
+        connections.list.mockResolvedValue([routerConnection('conn-a')] as never);
+        resolveRouterMock.mockResolvedValue(router as never);
+      });
+
+      it('HOLDS a routed order — no destination mirror, no syncStatus row', async () => {
+        routingCommit.route.mockResolvedValue({
+          status: 'routed',
+          decisionId: 'dec-1',
+          workIds: ['w-1'],
+        });
+
+        const results = await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        // A hold that still mirrors the order into the shop is not a hold.
+        expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
+        expect(orderRecordService.updateSyncStatus).not.toHaveBeenCalled();
+        expect(results).toEqual([]);
+      });
+
+      it('persists nothing for a routed order — the work object is the explanation', async () => {
+        routingCommit.route.mockResolvedValue({
+          status: 'routed',
+          decisionId: 'dec-1',
+          workIds: ['w-1'],
+        });
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        for (const [, block] of markBlock().mock.calls) {
+          expect(block).toBeNull();
+        }
+      });
+
+      // Typed as the real union, NOT `as never`: an `as never` table would
+      // defeat the exact typing the exhaustive switch exists to give, so a
+      // required field added to an outcome arm would compile here and fail only
+      // in production.
+      const heldOutcomes: [RoutingCommitOutcome, FulfillmentBlockReason][] = [
+        [
+          { status: 'in-doubt', decisionId: 'dec-1', cause: 'timeout' },
+          'routing-in-doubt',
+        ],
+        [{ status: 'contended' }, 'routing-contended'],
+        [
+          { status: 'skipped', reason: 'already-routed' },
+          'routing-already-live-elsewhere',
+        ],
+        [
+          { status: 'skipped', reason: 'already-live-elsewhere' },
+          'routing-already-live-elsewhere',
+        ],
+      ];
+
+      it.each(heldOutcomes)('holds and reports %j as %s', async (outcome, reason) => {
+        routingCommit.route.mockResolvedValue(outcome);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
+        expect(markBlock()).toHaveBeenCalledWith(
+          'ol_order_int',
+          expect.objectContaining({ reason })
+        );
+      });
+
+      const passThroughOutcomes: [RoutingCommitOutcome][] = [
+        [{ status: 'refused', decisionId: 'dec-1', reason: 'plan-not-conserving' }],
+        [{ status: 'skipped', reason: 'order-cancelled' }],
+      ];
+
+      it.each(passThroughOutcomes)('does NOT hold on %j', async (outcome) => {
+        routingCommit.route.mockResolvedValue(outcome);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        // `refused` is terminal and creates no work, so the order must keep its
+        // ordinary destination path rather than being stranded behind a hold
+        // nothing would ever clear.
+        expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
+        for (const [, block] of markBlock().mock.calls) {
+          expect(block).toBeNull();
+        }
+      });
+
+      it('clears a stale reason on the next transition (level-triggered)', async () => {
+        // The #2100 lesson: a sticky reason outlives the condition. The
+        // intercept re-decides on every transition and writes the answer
+        // INCLUDING null, which is the only thing that clears it.
+        routingCommit.route.mockResolvedValue({ status: 'contended' });
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+        expect(markBlock()).toHaveBeenLastCalledWith(
+          'ol_order_int',
+          expect.objectContaining({ reason: 'routing-contended' })
+        );
+
+        // The operator fixes it / the peer finishes: the next transition routes.
+        routingCommit.route.mockResolvedValue({
+          status: 'routed',
+          decisionId: 'dec-9',
+          workIds: ['w-9'],
+        });
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(markBlock()).toHaveBeenLastCalledWith('ol_order_int', null);
+      });
+
+      it('follows today\'s path when no router is wired (every install today)', async () => {
+        resolveRouterMock.mockResolvedValue(null);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(routingCommit.route).not.toHaveBeenCalled();
+        expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
+      });
+
+      it('degrades to today\'s path when routing throws', async () => {
+        // Fail OPEN. Holding on an unknown would withhold the mirror
+        // indefinitely for a paid order.
+        routingCommit.route.mockRejectedValue(new Error('routing store unreachable'));
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
+      });
+
+      it('does not fail ingestion when persisting the block reason throws', async () => {
+        // A SEPARATE catch from the intercept's own, and separately
+        // load-bearing: `persistFulfillmentOutcome` is awaited BEFORE the
+        // held/pass-through branch, on every ingestion on every install — where
+        // it is writing `null` over `null`. If its catch ever went missing, a
+        // transient DB blip while recording a routing reason would fail the
+        // whole order sync. The outcome is re-decided next transition, so a
+        // lost write self-heals; a lost ORDER does not.
+        routingCommit.route.mockResolvedValue({ status: 'refused', decisionId: 'dec-1', reason: 'plan-not-conserving' });
+        markBlock().mockRejectedValue(new Error('order_records unreachable'));
+
+        await expect(
+          service.syncOrderFromSource(connectionId, externalOrderId)
+        ).resolves.toBeDefined();
+
+        expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
+      });
+
+      it('still holds a routed order when persisting the block reason throws', async () => {
+        // The hold must not depend on the write succeeding — a swallowed
+        // persistence failure that also dropped the hold would mirror an order
+        // the router already committed, which is the double-shipment this
+        // whole intercept exists to prevent.
+        routingCommit.route.mockResolvedValue({
+          status: 'in-doubt',
+          decisionId: 'dec-1',
+          cause: 'timeout',
+        });
+        markBlock().mockRejectedValue(new Error('order_records unreachable'));
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
+      });
+
+      it('still runs the invoicing gate for a HELD order', async () => {
+        // Issuance (A7) is a separate authority from sourcing (A2): the buyer
+        // has paid and the document is owed whether the parcel leaves from a
+        // destination shop or from a routed holder.
+        routingCommit.route.mockResolvedValue({
+          status: 'routed',
+          decisionId: 'dec-1',
+          workIds: ['w-1'],
+        });
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(autoIssueTrigger.onOrderTransition).toHaveBeenCalledTimes(1);
+      });
     });
   });
 });

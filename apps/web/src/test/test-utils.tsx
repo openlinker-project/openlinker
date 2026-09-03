@@ -117,6 +117,37 @@ export function createMockApiClient(
       list: vi.fn().mockResolvedValue([]),
       ...overrides.adapters,
     } as ApiClient['adapters'],
+    // #2364. `getSummary` / `listByTrigger` default to the SHAPE the parse
+    // layer returns (`{items, droppedCount}`), not a bare array — a mock that
+    // returned `[]` would let a component read `.items` as undefined and pass,
+    // while the real client never can.
+    automations: {
+      getVocabulary: vi.fn().mockResolvedValue({
+        triggers: [],
+        actions: [],
+        conditionFields: [],
+        amountOps: [],
+        holdReasons: [],
+        stepBounds: { min: 1, max: 3 },
+        runOutcomes: [],
+        stepStatuses: [],
+        nonFiringReasons: [],
+        conditionOutcomes: [],
+      }),
+      getSummary: vi.fn().mockResolvedValue({ items: [], droppedCount: 0 }),
+      listByTrigger: vi.fn().mockResolvedValue({ items: [], droppedCount: 0 }),
+      get: vi.fn(),
+      create: vi.fn(),
+      evaluate: vi.fn(),
+      listRuns: vi.fn().mockResolvedValue(null),
+      listRunsBySubject: vi.fn().mockResolvedValue(null),
+      listRunFeed: vi
+        .fn()
+        .mockResolvedValue({ runs: [], limit: 50, hasMore: false, recordingAvailable: true, note: null }),
+      replace: vi.fn(),
+      remove: vi.fn().mockResolvedValue(undefined),
+      ...overrides.automations,
+    } as ApiClient['automations'],
     aiProviderSettings: {
       getAll: vi.fn().mockResolvedValue({
         activeProvider: 'fake',
@@ -161,6 +192,10 @@ export function createMockApiClient(
         total: 0,
         unresolvedProductCount: 0,
         coverageGapAvailable: true,
+      }),
+      getTopProductVariantSales: vi.fn().mockResolvedValue({
+        productId: '',
+        variants: [],
       }),
       ...overrides.analytics,
     } as ApiClient['analytics'],
@@ -471,6 +506,20 @@ export function createMockApiClient(
         synced: 0,
         awaitingDispatch: 0,
       }),
+      // #2310 — every phase count defaults to 0 so the chip row renders empty
+      // (a zero-count chip is hidden); a test that cares overrides this.
+      lifecycleSummary: vi.fn().mockResolvedValue({
+        total: 0,
+        cancelled: 0,
+        vendorAuthoritative: 0,
+        delivered: 0,
+        inTransit: 0,
+        fulfillmentFailed: 0,
+        held: 0,
+        amending: 0,
+        blocked: 0,
+        ready: 0,
+      }),
       getById: vi.fn().mockResolvedValue(null),
       retryDestination: vi.fn().mockResolvedValue({
         internalOrderId: '',
@@ -667,6 +716,26 @@ export function createMockApiClient(
       deleteAttributeRule: vi.fn().mockResolvedValue(undefined),
       ...overrides.mappings,
     } as ApiClient['mappings'],
+    fulfillmentAuthority: {
+      getStatus: vi.fn().mockResolvedValue(null),
+      applyPreset: vi.fn().mockResolvedValue(null),
+      ...overrides.fulfillmentAuthority,
+    } as ApiClient['fulfillmentAuthority'],
+    // #2411. The default answers the SHAPE the parse layer returns (a page
+    // object), never a bare array — a mock returning `[]` would let the panel
+    // read `.works` as undefined and pass, while the real client never can.
+    fulfillment: {
+      listByOrder: vi.fn().mockResolvedValue({ works: [], total: 0, limit: 50, offset: 0 }),
+      // #2410. `list` and `get` are defaulted HERE rather than in the specs
+      // that need them: every worklist page test calls `list`, and an absent
+      // member fails as `apiClient.fulfillment.list is not a function` from
+      // inside a render — an inscrutable crash that reads as a defect in the
+      // page rather than as a missing mock.
+      list: vi.fn().mockResolvedValue({ works: [], total: 0, limit: 25, offset: 0 }),
+      get: vi.fn().mockResolvedValue(null),
+      applyAction: vi.fn().mockResolvedValue(null),
+      ...overrides.fulfillment,
+    } as ApiClient['fulfillment'],
     salesDocumentRules: {
       listRules: vi.fn().mockResolvedValue([]),
       createRule: vi.fn().mockResolvedValue(null),
@@ -683,8 +752,34 @@ export function createMockApiClient(
         acknowledgedAt: '2026-01-01T00:00:00.000Z',
       }),
       clearAcknowledgment: vi.fn().mockResolvedValue(undefined),
+      listMarkets: vi.fn().mockResolvedValue({
+        windowDays: 30,
+        since: '2026-01-01T00:00:00.000Z',
+        markets: [],
+      }),
       ...overrides.salesDocumentRules,
     } as ApiClient['salesDocumentRules'],
+    // The default is the healthy-but-empty deployment: no returns, and returns
+    // ingestion IS configured — so a test that renders the list without opting
+    // in gets the neutral "no returns yet" branch rather than the
+    // configuration claim, which no test should assert by accident.
+    returns: {
+      list: vi.fn().mockResolvedValue({
+        items: [],
+        total: 0,
+        limit: 20,
+        offset: 0,
+        counts: { total: 0, orphan: 0, attributed: 0 },
+        droppedCount: 0,
+      }),
+      getIngestionAvailability: vi
+        .fn()
+        .mockResolvedValue({ configured: true, connectionIds: [] }),
+      // #2383 — the order detail page reads this on every render. Defaulted to
+      // the no-returns case so every existing order test keeps its behaviour.
+      listReturnEventsForOrder: vi.fn().mockResolvedValue([]),
+      ...overrides.returns,
+    } as ApiClient['returns'],
     shipments: {
       list: vi.fn().mockResolvedValue({
         items: [],

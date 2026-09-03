@@ -128,7 +128,11 @@ export class ShipmentStatusSyncService implements IShipmentStatusSyncService {
     const { limit } = options;
 
     const page = await this.shipments.findMany(
-      { connectionId, statuses: SCAN_STATUSES },
+      // `direction` is passed EXPLICITLY rather than inherited (#2373):
+      // `ShipmentFilters.direction` is optional so the operator-facing
+      // `/shipments` list can show every cohort, which means this scan has to
+      // state the one it polls.
+      { connectionId, statuses: SCAN_STATUSES, direction: 'outbound' },
       { offset, limit },
     );
 

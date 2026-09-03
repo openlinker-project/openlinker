@@ -19,6 +19,7 @@
 import { mergePluginNavContributions } from '../plugins/merge-nav-contributions';
 import { plugins } from '../plugins';
 import { NAV_DEMO_RESTRICTED_MESSAGE } from '../shared/config/demo-mode';
+import type { Permission } from '../shared/auth/session.types';
 import type { NavGroup, NavRegistryGroup } from './nav-registry.types';
 
 /**
@@ -31,13 +32,28 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
     kind: 'live',
     label: 'Operations',
     items: [
-      { to: '/analytics', label: 'Analytics' },
-      { to: '/', label: 'Dashboard', end: true },
+      { to: '/', label: 'Analytics', end: true },
+      { to: '/insights', label: 'Insights' },
       { to: '/orders', label: 'Orders', countKey: 'orders' },
       { to: '/products', label: 'Products' },
       { to: '/customers', label: 'Customers', countKey: 'customers' },
       { to: '/listings', label: 'Listings', countKey: 'listings' },
       { to: '/shipments', label: 'Shipments' },
+      // No `countKey`: the #2406 worklist read exposes no counts endpoint the
+      // nav could read, and a badge is worse absent than wrong (the `/returns`
+      // precedent one line down).
+      { to: '/fulfillment', label: 'Fulfilment' },
+      // No `countKey`: the #2334 returns contract exposes no counts endpoint
+      // the nav could read, and a badge is worse absent than wrong.
+      { to: '/returns', label: 'Returns' },
+      // No `countKey`: `GET /automations/summary` reports rule counts per
+      // trigger, not an attention count — a badge showing how many rules exist
+      // would read as how many need looking at.
+      // Permission-gated (#2358 review I5): `AutomationsController` is
+      // `@Roles('admin', 'operator')` on every route, so a `viewer` shown this
+      // entry gets a 403 on the first request the page makes. `automations:read`
+      // is held by exactly admin + operator in `ROLE_PERMISSIONS`.
+      { to: '/automations', label: 'Automations', requiresPermission: 'automations:read' },
       { to: '/invoices', label: 'Invoices' },
     ],
   },
@@ -74,18 +90,23 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
     requiresRole: 'admin',
     items: [{ to: '/users', label: 'Users' }],
   },
-  {
-    kind: 'planned',
-    label: 'Planned',
-    items: [
-      { label: 'Automations', reason: 'Coming in a future release' },
-    ],
-  },
+  // The `Planned` group is gone: `Automations` was its only item and #2364
+  // made it real. `PlannedNavGroup` and the shell's `kind: 'planned'` branch
+  // stay — a plugin may still contribute one, and
+  // `merge-nav-contributions.test.ts` exercises that path against its own
+  // fixture — so neither is dead code.
 ];
 
 export interface BuildNavGroupsInput {
   isAdmin: boolean;
   demoMode: boolean;
+  /**
+   * The session's permissions, from `GET /me`. Items declaring
+   * `requiresPermission` are dropped when it is absent. Defaults to empty so an
+   * anonymous / not-yet-resolved session sees no permission-gated item rather
+   * than every one of them.
+   */
+  permissions?: readonly Permission[];
 }
 
 /**
@@ -103,7 +124,11 @@ export interface BuildNavGroupsInput {
  * Plugin contributions are then folded in via `mergePluginNavContributions`,
  * which applies the same `requiresRole` gate against the session role.
  */
-export function buildNavGroups({ isAdmin, demoMode }: BuildNavGroupsInput): NavGroup[] {
+export function buildNavGroups({
+  isAdmin,
+  demoMode,
+  permissions = [],
+}: BuildNavGroupsInput): NavGroup[] {
   // `mergePluginNavContributions` deep-clones each live group before mutating,
   // so pushing the readonly BASE group objects by reference is safe.
   const baseGroups: NavGroup[] = [];
@@ -120,6 +145,18 @@ export function buildNavGroups({ isAdmin, demoMode }: BuildNavGroupsInput): NavG
       }
       continue;
     }
+    if (group.kind === 'live') {
+      // Per-ITEM permission gate. A live group whose every item is gated away
+      // is dropped entirely — an empty group heading advertises a section the
+      // session cannot reach.
+      const items = group.items.filter(
+        (item) => item.requiresPermission === undefined || permissions.includes(item.requiresPermission),
+      );
+      if (items.length === 0) continue;
+      baseGroups.push(items.length === group.items.length ? group : { ...group, items });
+      continue;
+    }
+
     baseGroups.push(group);
   }
 

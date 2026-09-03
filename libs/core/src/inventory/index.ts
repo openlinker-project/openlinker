@@ -14,8 +14,25 @@ export { InventoryModule } from './inventory.module';
 export * from './inventory.tokens';
 
 // Ports
-export { InventoryMasterPort, Inventory } from './domain/ports/inventory-master.port';
+export {
+  InventoryMasterPort,
+  Inventory,
+  InventoryAdjustmentResult,
+} from './domain/ports/inventory-master.port';
 export { InventoryRepositoryPort } from './domain/ports/inventory-repository.port';
+export { LocationRepositoryPort } from './domain/ports/location-repository.port';
+// `ReservationRepositoryPort` (#2343) is deliberately NOT exported here. A
+// `*RepositoryPort` is an intra-context contract — `check-cross-context-imports`
+// denies the shape, and rightly: its consumers (#2344's ReservationService,
+// #2345's ATP subtraction, #2349's reconciler) all live inside `inventory` and
+// import it relatively. Anything outside this context reaches the ledger through
+// an `I*Service`, never through the repository.
+export {
+  ReservationLedgerReaderPort,
+  SumReservedInput,
+  ReservationAtpEffect,
+  ReservationAtpEffectValues,
+} from './domain/ports/reservation-ledger-reader.port';
 
 // InventoryMasterPort sub-capabilities (#2648, ADR-048 decision 1): optional
 // rungs of the master ladder, narrowed off the dispatched adapter with the
@@ -25,10 +42,27 @@ export { isBulkInventoryReader } from './domain/ports/capabilities/bulk-inventor
 
 // Domain Entities
 export { InventoryItem as InventoryItemEntity } from './domain/entities/inventory-item.entity';
+export { InventoryLocation } from './domain/entities/inventory-location.entity';
+export { Reservation } from './domain/entities/reservation.entity';
+export { ReservationShortfallEpisode } from './domain/entities/reservation-shortfall-episode.entity';
 
 // Domain exceptions
 export { InventoryReturningUnsupportedError } from './domain/exceptions/inventory-returning-unsupported.error';
 export { InventoryRowVanishedError } from './domain/exceptions/inventory-row-vanished.error';
+export { InventoryCrossSourcePositionConflictError } from './domain/exceptions/inventory-cross-source-position-conflict.error';
+export { DuplicateLocationCodeError } from './domain/exceptions/duplicate-location-code.error';
+export { LocationNotFoundException } from './domain/exceptions/location-not-found.exception';
+export { LocationInUseError } from './domain/exceptions/location-in-use.error';
+export { LocationOwnerConnectionNotFoundError } from './domain/exceptions/location-owner-connection-not-found.error';
+export { UnsupportedAvailabilityScopeError } from './domain/exceptions/unsupported-availability-scope.error';
+export { InsufficientAvailabilityError } from './domain/exceptions/insufficient-availability.error';
+export { ReservationPositionUnavailableError } from './domain/exceptions/reservation-position-unavailable.error';
+export { ReservationNotHeldError } from './domain/exceptions/reservation-not-held.error';
+export { ReservationLedgerConstraintError } from './domain/exceptions/reservation-ledger-constraint.error';
+export {
+  AmbiguousReservationPositionError,
+  AmbiguousReservationPosition,
+} from './domain/exceptions/ambiguous-reservation-position.error';
 
 // Application Services
 export { IInventoryService } from './application/services/inventory.service.interface';
@@ -43,9 +77,60 @@ export {
 } from './application/services/master-inventory-sync.service.interface';
 export { MasterInventorySyncService } from './application/services/master-inventory-sync.service';
 export { IInventoryQueryService } from './application/services/inventory-query.service.interface';
-export { InventoryQueryService } from './application/services/inventory-query.service';
+export {
+  InventoryQueryService,
+  MAX_DUPLICATE_POSITION_GROUPS,
+  DEFAULT_DUPLICATE_POSITION_GROUPS,
+} from './application/services/inventory-query.service';
+export {
+  IInventoryProvenanceBackfillService,
+  InventoryProvenanceBackfillResult,
+} from './application/services/inventory-provenance-backfill.service.interface';
+export { InventoryProvenanceBackfillService } from './application/services/inventory-provenance-backfill.service';
+export { ILocationService } from './application/services/location.service.interface';
+export { LocationService } from './application/services/location.service';
+export {
+  IAvailabilityService,
+  GetPromisableQuantitiesInput,
+  ApplyPublishControlsInput,
+  PublishControlResult,
+} from './application/services/availability.service.interface';
+export { AvailabilityService } from './application/services/availability.service';
+export { IReservationService } from './application/services/reservation.service.interface';
+export {
+  IReservationExpiryService,
+  ExpireReservationsInput,
+  ExpireReservationsResult,
+} from './application/services/reservation-expiry.service.interface';
+export { ReservationExpiryService } from './application/services/reservation-expiry.service';
+export {
+  ReservationObligationKindValues,
+  ReservationObligationKind,
+  ObligationVerdictValues,
+  ObligationVerdict,
+  ObligationReader,
+  ObligationReaders,
+  foldObligationVerdicts,
+  resolveObligation,
+} from './domain/types/reservation-obligation.types';
+export { ReservationService } from './application/services/reservation.service';
+export {
+  IReservationShortfallService,
+  DetectShortfallsInput,
+} from './application/services/reservation-shortfall.service.interface';
+export { ReservationShortfallService } from './application/services/reservation-shortfall.service';
 
 // Application Types
+export {
+  ReserveOrderLineInput,
+  ReserveForOrderInput,
+  ReserveForOrderResult,
+  CloseForOrderInput,
+  CloseForOrderResult,
+  SkippedReservationLine,
+  SkippedReservationReason,
+  SkippedReservationReasonValues,
+} from './application/types/reservation-service.types';
 export {
   InventoryItemView,
   InventoryViewProduct,
@@ -55,13 +140,87 @@ export {
 // Types
 export {
   InventoryAdjustment,
+  InventoryAdjustmentReasonValues,
+  InventoryAdjustmentReason,
+  InventoryAdjustmentDispositionValues,
+  InventoryAdjustmentDisposition,
+  InventoryIdempotencySupportValues,
+  InventoryIdempotencySupport,
+  InventoryAdjustmentOutcome,
   InventoryFilters,
   InventoryPagination,
   PaginatedInventoryItems,
+  VariantStockRow,
   VariantAvailability,
   ProductStockAggregate,
   PruneStaleVariantsResult,
+  ProvenanceScope,
+  DuplicatePositionRow,
+  DuplicatePositionGroup,
+  DuplicatePositionReport,
+  InventoryPositionCandidate,
 } from './domain/types/inventory.types';
+export { LEGACY_SOURCE_CONNECTION_ID } from './domain/types/inventory.types';
+export {
+  AvailabilityScope,
+  AvailabilityProvenance,
+  AvailabilityProvenanceValues,
+  PromisableQuantity,
+  AtpAnswer,
+  AtpAnsweredBy,
+  ScopedAtpResult,
+  computeAtp,
+  applyScopedLedgerSubtraction,
+  toPromisableQuantity,
+  unknownPromisableQuantity,
+} from './domain/types/availability.types';
+export {
+  ReservationStatusValues,
+  ReservationStatus,
+  ReservationTerminalStatusValues,
+  ReservationTerminalStatus,
+  ReservationKey,
+  ReservationClaimInput,
+  ReservationClaimOutcome,
+  ReleaseReservationInput,
+  ExtendReservationExpiryInput,
+  ReservationPositionUnavailableReasonValues,
+  ReservationPositionUnavailableReason,
+} from './domain/types/reservation.types';
+export {
+  ReservationShortfallCloseReasonValues,
+  ReservationShortfallCloseReason,
+  ShortfallPositionRow,
+  ShortfallAttribution,
+  OpenShortfallEpisodeInput,
+  DetectShortfallsResult,
+} from './domain/types/reservation-shortfall.types';
+export {
+  RESERVATION_TTL_MS_DEFAULT,
+  RESERVATION_TTL_MS_MIN,
+  RESERVATION_TTL_MS_MAX,
+  RESERVATION_TTL_ENV_KEY,
+  readReservationTtlMs,
+  resolveReservationExpiry,
+  RESERVATION_OBLIGATION_MAX_AGE_MS_DEFAULT,
+  RESERVATION_OBLIGATION_MAX_AGE_MS_MIN,
+  RESERVATION_OBLIGATION_MAX_AGE_MS_MAX,
+  RESERVATION_OBLIGATION_MAX_AGE_ENV_KEY,
+  readReservationObligationMaxAgeMs,
+} from './domain/types/reservation-expiry.types';
+export {
+  InventoryLocationKindValues,
+  InventoryLocationKind,
+  InventoryLocationStatusValues,
+  InventoryLocationStatus,
+  CreateInventoryLocationInput,
+  UpdateInventoryLocationInput,
+  InventoryLocationFilters,
+  InventoryLocationPagination,
+  PaginatedInventoryLocations,
+} from './domain/types/location.types';
+export { BOOTSTRAP_LOCATION_SPECS } from './domain/types/location-bootstrap.types';
+export type { LocationBootstrapResult } from './domain/types/location-bootstrap.types';
 
 // Offer quantity write-order guard (#2617)
 export {

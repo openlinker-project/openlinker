@@ -56,6 +56,21 @@ describe('parseOrderSnapshot', () => {
     expect(withoutTreatment.parseWarnings).toHaveLength(0);
   });
 
+  it('keeps every total when taxTreatment arrives as null (#939)', () => {
+    // `null` is the value core documents for "the source did not assert a
+    // treatment" — never a default. Under `.optional()` it failed
+    // `orderTotalsSchema`, and because totals are parsed as one section the
+    // whole panel lost subtotal, tax, shipping, total AND currency over one
+    // field nobody renders unless it is set.
+    const nullTreatment = parseOrderSnapshot({
+      totals: { subtotal: 10, tax: 2.3, shipping: 0, total: 12.3, currency: 'PLN', taxTreatment: null },
+    });
+    expect(nullTreatment.totals?.total).toBe(12.3);
+    expect(nullTreatment.totals?.currency).toBe('PLN');
+    expect(nullTreatment.totals?.taxTreatment).toBeNull();
+    expect(nullTreatment.parseWarnings).toHaveLength(0);
+  });
+
   it('surfaces a buyer-placed timestamp when present and leaves it undefined otherwise (#926)', () => {
     const withPlaced = parseOrderSnapshot({ placedAt: '2026-05-31T16:00:00.000Z' });
     expect(withPlaced.placedAt).toBe('2026-05-31T16:00:00.000Z');

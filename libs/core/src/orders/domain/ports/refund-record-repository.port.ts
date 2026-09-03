@@ -28,6 +28,23 @@ export interface RefundRecordRepositoryPort {
   findByOrderId(internalOrderId: string): Promise<RefundRecord[]>;
 
   /**
+   * All refund records linked to one RETURN, most recent first (#2382).
+   *
+   * **Not substitutable by {@link findByOrderId}**, for two reasons that both
+   * put wrong money in front of an operator. An ORPHAN return carries no
+   * `internalOrderId` at all, so a by-order read renders its refund panel
+   * permanently empty — on exactly the returns most likely to need manual
+   * handling. And an order carrying two returns would show each return's panel
+   * the other's refunds, which is the same false-attribution shape #2381
+   * removed from the restock notice.
+   *
+   * Rides `IDX_refund_records_return_id`, the partial index
+   * (`WHERE "returnId" IS NOT NULL`) that has existed since the column was added
+   * and had no consumer until now.
+   */
+  findByReturnId(returnId: string): Promise<RefundRecord[]>;
+
+  /**
    * Batch aggregate read: count + total amount per order, for the given id
    * set. A single query scoped to the given ids — the real batch a
    * cross-cutting analytics read needs, as opposed to a de-duplicated

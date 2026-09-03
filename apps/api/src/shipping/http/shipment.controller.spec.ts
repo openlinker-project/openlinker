@@ -82,6 +82,9 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     overrides.deliveryIntent ?? null,
     overrides.providerCode ?? null,
     overrides.waybillRelayedAt ?? null,
+    overrides.direction ?? 'outbound',
+    overrides.reservationConsumedAt ?? null,
+    overrides.fulfillmentWorkId ?? null,
   );
 }
 
@@ -111,6 +114,7 @@ describe('ShipmentController', () => {
       list: jest.fn(),
       getById: jest.fn(),
       getActiveByOrderId: jest.fn(),
+      hasConsumedReservations: jest.fn(),
     };
     dispatch = { dispatch: jest.fn() };
     bulkDispatch = { dispatchBulk: jest.fn(), generateProtocol: jest.fn() };
@@ -131,9 +135,16 @@ describe('ShipmentController', () => {
       getFailedSyncValueSummary: jest.fn(),
       markCancelled: jest.fn(),
       markSalesDocumentBlock: jest.fn(),
+      markFulfillmentBlock: jest.fn(),
+      markPacked: jest.fn(),
+      clearPacked: jest.fn(),
+      recordAmendment: jest.fn(),
       getEarliestOrderDateByConnection: jest.fn(),
       getSalesAndChannelAnalytics: jest.fn(),
       getTopProducts: jest.fn(),
+      findDispatchDeadlineCandidates: jest.fn(),
+      countOrdersWithOmsAttention: jest.fn(),
+      getTopProductVariantSales: jest.fn(),
       discoverSalesDocumentMarkets: jest.fn(),
     };
     controller = new ShipmentController(

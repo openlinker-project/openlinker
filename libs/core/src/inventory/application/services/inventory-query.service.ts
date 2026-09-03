@@ -19,14 +19,17 @@ import {
   PRODUCTS_SERVICE_TOKEN,
 } from '@openlinker/core/products';
 import type { Product } from '@openlinker/core/products';
-import { INVENTORY_REPOSITORY_TOKEN } from '../../inventory.tokens';
+import { AVAILABILITY_SERVICE_TOKEN, INVENTORY_REPOSITORY_TOKEN } from '../../inventory.tokens';
+import { IAvailabilityService } from './availability.service.interface';
 import { InventoryRepositoryPort } from '../../domain/ports/inventory-repository.port';
 import type { InventoryItem } from '../../domain/entities/inventory-item.entity';
 import type {
   InventoryFilters,
   InventoryPagination,
   VariantAvailability,
+  VariantStockRow,
   ProductStockAggregate,
+  DuplicatePositionReport,
 } from '../../domain/types/inventory.types';
 import type {
   InventoryItemView,
@@ -40,13 +43,27 @@ import type { IInventoryQueryService } from './inventory-query.service.interface
 // (INVENTORY_AVAILABILITY_MAX_VARIANT_IDS).
 const MAX_STOCK_AGGREGATE_PRODUCT_IDS = 200;
 
+/**
+ * Hard cap on duplicate-position group DETAIL per call (#2319).
+ *
+ * Bounds only the `groups` array — `groupCount` / `rowCount` are always computed
+ * over the whole table, because they are the #2325 readiness gate. Exported so
+ * the HTTP DTO's `@Max` and this guard cannot drift.
+ */
+export const MAX_DUPLICATE_POSITION_GROUPS = 500;
+
+/** Default duplicate-position group detail cap when the caller names none. */
+export const DEFAULT_DUPLICATE_POSITION_GROUPS = 100;
+
 @Injectable()
 export class InventoryQueryService implements IInventoryQueryService {
   constructor(
     @Inject(INVENTORY_REPOSITORY_TOKEN)
     private readonly inventoryRepository: InventoryRepositoryPort,
     @Inject(PRODUCTS_SERVICE_TOKEN)
-    private readonly productsService: IProductsService
+    private readonly productsService: IProductsService,
+    @Inject(AVAILABILITY_SERVICE_TOKEN)
+    private readonly availabilityService: IAvailabilityService
   ) {}
 
   async listInventoryItems(
@@ -70,18 +87,44 @@ export class InventoryQueryService implements IInventoryQueryService {
     // than crashing on `undefined.map(...)`.
     if (variantIds.length === 0) return [];
 
-    const rows = await this.inventoryRepository.findAvailabilityByVariantIds(variantIds);
+    const [rows, promisable] = await Promise.all([
+      this.inventoryRepository.findAvailabilityByVariantIds(variantIds),
+      // GLOBAL scope, deliberately (#2323): this read has no destination, and
+      // the per-connection buffer is applied downstream by whichever publish
+      // site consumes the row — asking for a channel scope here would either
+      // require picking one connection arbitrarily or double-buffer.
+      this.availabilityService.getPromisableQuantities({ variantIds, scope: { kind: 'global' } }),
+    ]);
     const byId = new Map(rows.map((r) => [r.productVariantId, r]));
+    // `getPromisableQuantities` is zero-filled and order-preserving, so this
+    // map is total over `variantIds`; the `?? null` is unreachable defence.
+    const atpById = new Map(promisable.map((p) => [p.productVariantId, p.quantity]));
     // Zero-fill unknowns so the caller can build a Map<variantId, …> directly
     // without re-walking the input list. Output order preserves input order.
-    return variantIds.map(
-      (id) =>
-        byId.get(id) ?? {
-          productVariantId: id,
-          totalAvailable: 0,
-          locationCount: 0,
-        }
-    );
+    return variantIds.map((id) => {
+      const row = byId.get(id);
+      return {
+        productVariantId: id,
+        totalAvailable: row?.totalAvailable ?? 0,
+        locationCount: row?.locationCount ?? 0,
+        ...(row?.stockUpdatedAt !== undefined ? { stockUpdatedAt: row.stockUpdatedAt } : {}),
+        // A variant with no positions carries a KNOWN zero, not `null` — the
+        // #1844 master-is-authoritative-including-zero rule and #1689's
+        // stale-variant pause both depend on a zero publish actually happening.
+        availableToPromise: atpById.get(id) ?? null,
+      };
+    });
+  }
+
+  async findAvailabilityByVariantIds(
+    variantIds: readonly string[]
+  ): Promise<readonly VariantStockRow[]> {
+    // No zero-fill, deliberately — see the interface docblock. The
+    // repository read already returns one row per variant that HAS
+    // non-stale inventory rows and nothing for the rest, so this is a
+    // pass-through whose value is entirely in what it does NOT invent.
+    if (variantIds.length === 0) return [];
+    return this.inventoryRepository.findAvailabilityByVariantIds(variantIds);
   }
 
   async getProductStockAggregates(
@@ -98,6 +141,27 @@ export class InventoryQueryService implements IInventoryQueryService {
       );
     }
     return this.inventoryRepository.findStockAggregatesByProductIds(productIds);
+  }
+
+  async getDuplicatePositionReport(
+    maxGroups: number = DEFAULT_DUPLICATE_POSITION_GROUPS
+  ): Promise<DuplicatePositionReport> {
+    // Throws rather than clamps, matching MAX_STOCK_AGGREGATE_PRODUCT_IDS above:
+    // a caller that asked for more detail than it can have should learn so
+    // rather than receive a silently different answer. On the HTTP path the
+    // DTO's @Max(MAX_DUPLICATE_POSITION_GROUPS) yields a friendly 400 first;
+    // this guard covers every other caller.
+    if (!Number.isInteger(maxGroups) || maxGroups < 1) {
+      throw new Error(
+        `getDuplicatePositionReport requires a positive integer maxGroups (got ${String(maxGroups)})`
+      );
+    }
+    if (maxGroups > MAX_DUPLICATE_POSITION_GROUPS) {
+      throw new Error(
+        `getDuplicatePositionReport accepts at most ${String(MAX_DUPLICATE_POSITION_GROUPS)} groups per call (got ${String(maxGroups)})`
+      );
+    }
+    return this.inventoryRepository.findDuplicatePositions(maxGroups);
   }
 
   private async buildProductMap(productIds: string[]): Promise<Map<string, Product>> {

@@ -20,12 +20,13 @@
  */
 import { ApiProperty } from '@nestjs/swagger';
 import {
+  ShipmentDirectionValues,
   ShipmentStatusValues,
   ShippingMethodValues,
   DeliveryIntentValues,
   ShipmentStatus,
   ShippingMethod,
-} from '@openlinker/core/shipping';
+ ShipmentDirection } from '@openlinker/core/shipping';
 import type { Shipment, DeliveryIntent } from '@openlinker/core/shipping';
 import type { OrderSummary } from '@openlinker/core/orders';
 import { OrderSummaryProjectionDto } from '../../../orders/http/dto/order-summary-projection.dto';
@@ -51,6 +52,12 @@ export class ShipmentResponseDto {
 
   @ApiProperty({ description: 'Shipping-provider connection id (UUID)' })
   connectionId!: string;
+
+  @ApiProperty({
+    enum: ShipmentDirectionValues,
+    description: "Which way the goods travel. 'outbound' is a seller-to-buyer shipment.",
+  })
+  direction!: ShipmentDirection;
 
   @ApiProperty({ enum: ShippingMethodValues })
   shippingMethod!: ShippingMethod;
@@ -148,6 +155,7 @@ export class ShipmentResponseDto {
     dto.orderId = shipment.orderId;
     dto.customerId = customerId;
     dto.connectionId = shipment.connectionId;
+    dto.direction = shipment.direction;
     dto.shippingMethod = shipment.shippingMethod;
     dto.status = shipment.status;
     dto.providerShipmentId = shipment.providerShipmentId;

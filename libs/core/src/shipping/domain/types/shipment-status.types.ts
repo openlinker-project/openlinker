@@ -66,3 +66,27 @@ export const SHIPMENT_STATUS = {
  */
 export const TerminalShipmentStatusValues = ['delivered', 'failed', 'cancelled'] as const;
 export type TerminalShipmentStatus = (typeof TerminalShipmentStatusValues)[number];
+
+/**
+ * Statuses that mean "the goods left the building", and therefore that the
+ * order's held reservations should be consumed (#2347).
+ *
+ * An explicit set rather than "non-terminal" or a negation, for the same reason
+ * `statuses` on `ShipmentFilters` keeps its explicit list: a future status
+ * addition must be a deliberate edit here, not something a `!==` silently
+ * absorbs. Consuming on a status that has not actually shipped would release
+ * stock OL is still promising.
+ *
+ * `in-transit` and `delivered` both imply a dispatch happened and are reachable
+ * without the sweep having caught the row at `dispatched` — a branch-1
+ * projection row (#834) is born at its terminal status. `draft` / `generated`
+ * have not shipped; `cancelled` / `failed` must never consume.
+ */
+export const ReservationConsumeCandidateStatusValues = [
+  'dispatched',
+  'in-transit',
+  'delivered',
+] as const;
+
+export type ReservationConsumeCandidateStatus =
+  (typeof ReservationConsumeCandidateStatusValues)[number];

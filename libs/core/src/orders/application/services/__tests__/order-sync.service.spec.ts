@@ -17,6 +17,10 @@ import { NoOrderDestinationsAvailableException } from '../../../domain/exception
 import { OrderCreateContendedException } from '../../../domain/exceptions/order-create-contended.exception';
 import type { SyncLockPort, SyncJobQueuePort } from '@openlinker/core/sync';
 import type { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
+import type { IOrderRecordService } from '../../interfaces/order-record.service.interface';
+import type { IOrderHoldService } from '../../interfaces/order-hold.service.interface';
+import type { OrderRecord } from '../../../domain/entities/order-record.entity';
+import type { OrderHold } from '../../../domain/entities/order-hold.entity';
 import {
   DuplicateIdentifierMappingError,
   MappingAlreadyExistsError,
@@ -28,6 +32,8 @@ describe('OrderSyncService', () => {
   let mappingConfigService: jest.Mocked<IMappingConfigService>;
   let syncLock: jest.Mocked<SyncLockPort>;
   let identifierMapping: jest.Mocked<IIdentifierMappingService>;
+  let orderRecordService: jest.Mocked<IOrderRecordService>;
+  let orderHoldService: jest.Mocked<IOrderHoldService>;
   let jobQueue: jest.Mocked<SyncJobQueuePort>;
 
   const makeAdapter = (orderRef: OrderRef = { orderId: 'dest_order' }) =>
@@ -120,6 +126,16 @@ describe('OrderSyncService', () => {
       batchGetOrCreateInternalIds: jest.fn(),
     } as unknown as jest.Mocked<IIdentifierMappingService>;
 
+    orderRecordService = {
+      getOrderRecord: jest.fn().mockResolvedValue(null),
+    } as unknown as jest.Mocked<IOrderRecordService>;
+
+    orderHoldService = {
+      getOpenHold: jest.fn().mockResolvedValue(null),
+      place: jest.fn(),
+      release: jest.fn(),
+      listHolds: jest.fn(),
+    } as unknown as jest.Mocked<IOrderHoldService>;
     jobQueue = {
       enqueue: jest.fn().mockResolvedValue('job-id'),
       enqueueBulk: jest.fn().mockResolvedValue([]),
@@ -130,6 +146,8 @@ describe('OrderSyncService', () => {
       mappingConfigService,
       syncLock,
       identifierMapping,
+      orderRecordService,
+      orderHoldService,
       jobQueue
     );
   });
@@ -621,6 +639,489 @@ describe('OrderSyncService', () => {
         });
       }
     );
+  });
+
+  // #2339 — the hold gate (story L4: "a held order never reaches the
+  // destination shop").
+  describe('held orders', () => {
+    const openHold = {
+      id: 'hold-1',
+      internalOrderId: 'order-123',
+      reason: 'stock-shortfall',
+    } as unknown as OrderHold;
+
+    it('should withhold provisioning from every destination when the order is on hold', async () => {
+      const adapterA = makeAdapter();
+      const adapterB = makeAdapter();
+      registerDestinations([
+        { connectionId: 'dest-a', adapter: adapterA },
+        { connectionId: 'dest-b', adapter: adapterB },
+      ]);
+      orderHoldService.getOpenHold.mockResolvedValue(openHold);
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results).toEqual([
+        {
+          destinationConnectionId: 'dest-a',
+          status: 'skipped_held',
+          holdId: 'hold-1',
+          holdReason: 'stock-shortfall',
+        },
+        {
+          destinationConnectionId: 'dest-b',
+          status: 'skipped_held',
+          holdId: 'hold-1',
+          holdReason: 'stock-shortfall',
+        },
+      ]);
+      expect(adapterA.createOrder).not.toHaveBeenCalled();
+      expect(adapterB.createOrder).not.toHaveBeenCalled();
+      expect(syncLock.acquire).not.toHaveBeenCalled();
+      expect(identifierMapping.createMapping).not.toHaveBeenCalled();
+    });
+
+    it('should provision on the next run once the hold is released, with no manual step', async () => {
+      const adapter = makeAdapter({ orderId: 'dest_order_1' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      orderHoldService.getOpenHold.mockResolvedValueOnce(openHold);
+
+      const held = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
+      expect(held[0]).toMatchObject({ status: 'skipped_held' });
+
+      // Released: the very next run sees no open hold and proceeds. Nothing was
+      // persisted as terminal, so there is nothing to un-do first.
+      orderHoldService.getOpenHold.mockResolvedValue(null);
+      const afterRelease = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(afterRelease[0]).toMatchObject({ status: 'success' });
+      expect(adapter.createOrder).toHaveBeenCalledTimes(1);
+    });
+
+    it('should propagate a hold-read failure rather than provisioning a possibly-held order', async () => {
+      const adapter = makeAdapter();
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      orderHoldService.getOpenHold.mockRejectedValue(new Error('db down'));
+
+      await expect(
+        service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' })
+      ).rejects.toThrow('db down');
+      expect(adapter.createOrder).not.toHaveBeenCalled();
+    });
+  });
+
+  // #2284 — the `WHERE cancelledAt IS NULL` provisioning predicate.
+  describe('source-cancelled orders', () => {
+    const cancelledAt = new Date('2026-08-01T10:00:00.000Z');
+    const cancelledRecord = { isCancelled: true, cancelledAt } as unknown as OrderRecord;
+
+    it('should skip destination provisioning when the order was cancelled at source', async () => {
+      const adapterA = makeAdapter();
+      const adapterB = makeAdapter();
+      registerDestinations([
+        { connectionId: 'dest-a', adapter: adapterA },
+        { connectionId: 'dest-b', adapter: adapterB },
+      ]);
+      orderRecordService.getOrderRecord.mockResolvedValue(cancelledRecord);
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results).toEqual([
+        { destinationConnectionId: 'dest-a', status: 'skipped_cancelled', cancelledAt },
+        { destinationConnectionId: 'dest-b', status: 'skipped_cancelled', cancelledAt },
+      ]);
+      expect(adapterA.createOrder).not.toHaveBeenCalled();
+      expect(adapterB.createOrder).not.toHaveBeenCalled();
+      expect(syncLock.acquire).not.toHaveBeenCalled();
+      expect(identifierMapping.createMapping).not.toHaveBeenCalled();
+    });
+
+    it('should provision normally when the order record reports no cancellation', async () => {
+      const adapter = makeAdapter({ orderId: 'dest_order_1' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        isCancelled: false,
+        cancelledAt: null,
+      } as unknown as OrderRecord);
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results[0]).toMatchObject({ status: 'success' });
+      expect(adapter.createOrder).toHaveBeenCalledTimes(1);
+    });
+
+    it('should provision when no order record exists (absence is not cancellation)', async () => {
+      const adapter = makeAdapter({ orderId: 'dest_order_1' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      orderRecordService.getOrderRecord.mockResolvedValue(null);
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results[0]).toMatchObject({ status: 'success' });
+      expect(adapter.createOrder).toHaveBeenCalledTimes(1);
+    });
+
+    // A read failure must never fall through into a create: provisioning a
+    // possibly-cancelled order is the worse outcome, so the throw propagates
+    // and the sync job retries.
+    it('should propagate a record-read failure instead of provisioning', async () => {
+      const adapter = makeAdapter();
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      orderRecordService.getOrderRecord.mockRejectedValue(new Error('db down'));
+
+      await expect(
+        service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' })
+      ).rejects.toThrow('db down');
+      expect(adapter.createOrder).not.toHaveBeenCalled();
+    });
+
+    // The guard sits AFTER the no-destinations throw, so a cancelled order with
+    // no destinations still reports the configuration problem.
+    it('should still throw NoOrderDestinationsAvailableException with zero destinations', async () => {
+      registerDestinations([]);
+      orderRecordService.getOrderRecord.mockResolvedValue(cancelledRecord);
+
+      await expect(
+        service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' })
+      ).rejects.toThrow(NoOrderDestinationsAvailableException);
+    });
+  });
+  // ── Characterisation of the UNFILTERED fan-out (#2397) ────────────────────
+  //
+  // Written against, and passing on, the code as it stood BEFORE the router
+  // filter existed. That ordering is the point: a characterisation test written
+  // afterwards encodes the change rather than the behaviour it was supposed to
+  // preserve. Nothing in this block may be edited when the filter lands — if it
+  // needs an edit, the filter changed the default path and the claim
+  // "absent field => byte-identical fan-out" is false.
+  describe('unfiltered fan-out characterisation', () => {
+    const FROZEN_NOW = new Date('2026-08-31T12:00:00.000Z');
+
+    it('should resolve destinations with exactly one capability key and nothing else', async () => {
+      const adapter = makeAdapter();
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+      await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+
+      // Exactly one DESTINATION listing call, carrying exactly one key. The
+      // filter must be applied to the RESULT, never pushed into the listing
+      // argument, or the three conditions behind an empty result stop being
+      // distinguishable.
+      //
+      // Selected by capability rather than by call index: `syncOrder` also
+      // lists `InventoryMaster` for #2623's post-sale refresh, which is a
+      // different question asked of the same mocked method. Counting every
+      // call would make this assertion fail whenever an unrelated capability
+      // lookup is added — a fact about the destination listing is what the
+      // characterisation claims, and that claim is unchanged.
+      const listingArgs = integrationsService.listCapabilityAdapters.mock.calls.map(
+        ([arg]) => arg as Record<string, unknown>
+      );
+      const destinationListings = listingArgs.filter(
+        (arg) => arg.capability === 'OrderProcessorManager'
+      );
+      expect(destinationListings).toHaveLength(1);
+      const [listingArg] = destinationListings;
+      expect(Object.keys(listingArg)).toEqual(['capability']);
+      expect(listingArg).toStrictEqual({ capability: 'OrderProcessorManager' });
+    });
+
+    it('should hand the destination a byte-identical createOrder payload', async () => {
+      jest.useFakeTimers().setSystemTime(FROZEN_NOW);
+      try {
+        const adapter = makeAdapter();
+        registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+        await service.syncOrder({
+          order: createOrder(),
+          sourceConnectionId: 'source-1',
+          sourceEventId: 'event-456',
+        });
+
+        // toStrictEqual, not toEqual: it distinguishes an absent key from one
+        // explicitly set to undefined, which is what makes this an assertion
+        // about the payload's exact shape rather than about its populated half.
+        expect(adapter.createOrder).toHaveBeenCalledTimes(1);
+        expect(adapter.createOrder.mock.calls[0][0]).toStrictEqual({
+          orderNumber: 'ORDER-001',
+          status: 'processing',
+          customerId: 'ol_customer_456',
+          items: [
+            {
+              id: 'item-1',
+              productId: 'ol_product_789',
+              variantId: undefined,
+              quantity: 2,
+              price: 29.99,
+              sku: 'SKU-001',
+            },
+          ],
+          totals: {
+            subtotal: 59.98,
+            tax: 0,
+            shipping: 5.0,
+            total: 64.98,
+            currency: 'PLN',
+            taxTreatment: undefined,
+          },
+          shippingAddress: undefined,
+          billingAddress: undefined,
+          shipping: undefined,
+          pickupPoint: undefined,
+          source: { connectionId: 'source-1', eventId: 'event-456' },
+          paymentStatus: undefined,
+          metadata: {
+            internalOrderId: 'ol_order_123',
+            syncedAt: FROZEN_NOW.toISOString(),
+          },
+        });
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('should fan out to every eligible destination except the source', async () => {
+      const a = makeAdapter({ orderId: 'ext-a' });
+      const b = makeAdapter({ orderId: 'ext-b' });
+      const self = makeAdapter({ orderId: 'ext-self' });
+      registerDestinations([
+        { connectionId: 'dest-a', adapter: a },
+        { connectionId: 'source-1', adapter: self },
+        { connectionId: 'dest-b', adapter: b },
+      ]);
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results.map((r) => r.destinationConnectionId)).toEqual(['dest-a', 'dest-b']);
+      expect(self.createOrder).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── Router-filtered fan-out (#2397) ───────────────────────────────────────
+  describe('router-filtered fan-out', () => {
+    it('should narrow the fan-out to the destinations the router named', async () => {
+      const a = makeAdapter({ orderId: 'ext-a' });
+      const b = makeAdapter({ orderId: 'ext-b' });
+      const c = makeAdapter({ orderId: 'ext-c' });
+      registerDestinations([
+        { connectionId: 'dest-a', adapter: a },
+        { connectionId: 'dest-b', adapter: b },
+        { connectionId: 'dest-c', adapter: c },
+      ]);
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+        destinationConnectionIds: ['dest-a', 'dest-c'],
+      });
+
+      expect(results.map((r) => r.destinationConnectionId)).toEqual(['dest-a', 'dest-c']);
+      expect(b.createOrder).not.toHaveBeenCalled();
+    });
+
+    // Ruling 1. A deliberate empty routing decision is a NON-EVENT, not a
+    // misconfiguration: it must not throw, because a core `orders` exception is
+    // registered with no per-plugin retry classifier and is therefore retryable
+    // — ~10 full re-runs of syncOrderFromSource ending in a dead job whose
+    // lastError blames connection config for what the router chose.
+    it('should return no results and never throw when the routing decision named nobody', async () => {
+      const a = makeAdapter();
+      registerDestinations([{ connectionId: 'dest-a', adapter: a }]);
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+        destinationConnectionIds: [],
+      });
+
+      expect(results).toEqual([]);
+      expect(a.createOrder).not.toHaveBeenCalled();
+    });
+
+    it('should warn, rather than stay silent, when the routing decision named nobody', async () => {
+      const warn = jest.spyOn(service['logger'], 'warn').mockImplementation(() => undefined);
+      registerDestinations([{ connectionId: 'dest-a', adapter: makeAdapter() }]);
+
+      await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+        destinationConnectionIds: [],
+      });
+
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0][0]).toContain('routing decision named no destination');
+    });
+
+    // Ruling 2/3. Condition (c): the router named a destination that is not
+    // currently eligible. Distinct from (a) "nothing configured" and from (b)
+    // "router chose nobody" — and a genuine new total-failure regression.
+    it('should throw naming the unresolved ids when no named destination is eligible', async () => {
+      registerDestinations([{ connectionId: 'dest-a', adapter: makeAdapter() }]);
+
+      let caught: unknown;
+      try {
+        await service.syncOrder({
+          order: createOrder(),
+          sourceConnectionId: 'source-1',
+          destinationConnectionIds: ['dest-offline'],
+        });
+      } catch (error) {
+        caught = error;
+      }
+
+      expect(caught).toBeInstanceOf(NoOrderDestinationsAvailableException);
+      const exception = caught as NoOrderDestinationsAvailableException;
+      expect(exception.unresolvedDestinationConnectionIds).toEqual(['dest-offline']);
+      expect(exception.message).toContain('dest-offline');
+    });
+
+    it('should keep the unfiltered throw unchanged when nothing is configured at all', async () => {
+      registerDestinations([]);
+
+      let caught: unknown;
+      try {
+        await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+      } catch (error) {
+        caught = error;
+      }
+
+      expect(caught).toBeInstanceOf(NoOrderDestinationsAvailableException);
+      // (a) names no ids — it is not a routing failure.
+      expect(
+        (caught as NoOrderDestinationsAvailableException).unresolvedDestinationConnectionIds
+      ).toBeUndefined();
+    });
+
+    // Ruling 6. A narrowed fan-out is never silent, or an operator cannot tell
+    // a working router from a broken connection.
+    it('should warn naming the unresolved id when only some named destinations resolve', async () => {
+      const warn = jest.spyOn(service['logger'], 'warn').mockImplementation(() => undefined);
+      registerDestinations([{ connectionId: 'dest-a', adapter: makeAdapter() }]);
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+        destinationConnectionIds: ['dest-a', 'dest-offline'],
+      });
+
+      expect(results.map((r) => r.destinationConnectionId)).toEqual(['dest-a']);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0][0]).toContain('dest-offline');
+    });
+
+    // A5. Source exclusion runs BEFORE the filter, so an id echoing the source
+    // must not be reported as an unreachable connection.
+    it('should not report a source-echo id as unresolved', async () => {
+      const warn = jest.spyOn(service['logger'], 'warn').mockImplementation(() => undefined);
+      registerDestinations([
+        { connectionId: 'dest-a', adapter: makeAdapter() },
+        { connectionId: 'source-1', adapter: makeAdapter() },
+      ]);
+
+      await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+        destinationConnectionIds: ['dest-a', 'source-1'],
+      });
+
+      // Assert on the ID, not on the word: the warn emits a capital-U
+      // "Unresolved (unknown, inactive, ...", and `toContain` is
+      // case-sensitive — so a lowercase match could never fail and would be a
+      // check that cannot fail, which is worse than no check at all.
+      const messages = warn.mock.calls.map((c) => String(c[0])).join(' | ');
+      expect(messages).not.toContain('source-1');
+      // And no warn should fire at all: everything the router named resolved,
+      // once the deliberate source exclusion is accounted for.
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    // Surfaced by the diff review: the exception must never name the SOURCE
+    // connection as an unreachable destination. Routing an order back to where
+    // it came from is a distinct router misconfiguration, and the message says
+    // so instead of blaming a connection that is working perfectly well.
+    it('should not blame the source connection when the routing decision named only it', async () => {
+      registerDestinations([
+        { connectionId: 'dest-a', adapter: makeAdapter() },
+        { connectionId: 'source-1', adapter: makeAdapter() },
+      ]);
+
+      let caught: unknown;
+      try {
+        await service.syncOrder({
+          order: createOrder(),
+          sourceConnectionId: 'source-1',
+          destinationConnectionIds: ['source-1'],
+        });
+      } catch (error) {
+        caught = error;
+      }
+
+      const exception = caught as NoOrderDestinationsAvailableException;
+      expect(exception).toBeInstanceOf(NoOrderDestinationsAvailableException);
+      expect(exception.unresolvedDestinationConnectionIds).toEqual([]);
+      expect(exception.message).toContain('named only the source connection');
+      expect(exception.message).not.toContain('none of which is an active');
+    });
+
+    it('should name only the genuinely unreachable id when the decision mixes it with a source echo', async () => {
+      registerDestinations([{ connectionId: 'dest-a', adapter: makeAdapter() }]);
+
+      let caught: unknown;
+      try {
+        await service.syncOrder({
+          order: createOrder(),
+          sourceConnectionId: 'source-1',
+          destinationConnectionIds: ['source-1', 'dest-offline', 'dest-offline'],
+        });
+      } catch (error) {
+        caught = error;
+      }
+
+      const exception = caught as NoOrderDestinationsAvailableException;
+      // Source echo excluded, duplicate deduped. The array IS the claim; the
+      // message assertions below are deliberately anchored on both possible
+      // render positions, because a bare `'source-1,'` would only catch an
+      // echo that is not last in the list.
+      expect(exception.unresolvedDestinationConnectionIds).toEqual(['dest-offline']);
+      expect(exception.message).toContain('[dest-offline]');
+      expect(exception.message).not.toContain('source-1,');
+      expect(exception.message).not.toContain('source-1]');
+    });
+
+    it('should treat duplicate ids idempotently and never fan out twice', async () => {
+      const a = makeAdapter();
+      registerDestinations([{ connectionId: 'dest-a', adapter: a }]);
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+        destinationConnectionIds: ['dest-a', 'dest-a'],
+      });
+
+      expect(results).toHaveLength(1);
+      expect(a.createOrder).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('post-sale master inventory refresh (#2623)', () => {

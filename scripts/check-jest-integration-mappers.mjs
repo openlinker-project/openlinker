@@ -66,7 +66,7 @@ const APPS = [
  * plugins.ts: AppModule + every integration plugin pull these in transitively,
  * and none ships a committed `dist` for a fresh worktree.
  */
-const REQUIRED_BASE = ['@openlinker/core', '@openlinker/shared', '@openlinker/plugin-sdk'];
+const REQUIRED_BASE = ['@openlinker/core', '@openlinker/shared', '@openlinker/plugin-sdk', '@openlinker/oms'];
 
 const DOCS_REF = 'docs/testing-guide.md § jest-integration moduleNameMapper guard (#917)';
 

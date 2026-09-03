@@ -28,6 +28,7 @@ describe('OrderRefundService', () => {
     const mockRefundRepository: jest.Mocked<RefundRecordRepositoryPort> = {
       create: jest.fn(),
       findByOrderId: jest.fn(),
+      findByReturnId: jest.fn(),
       summarizeByOrderIds: jest.fn(),
     };
 

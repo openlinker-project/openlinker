@@ -95,6 +95,32 @@ A feature must keep its public-facing modules inside the canonical subdirectory 
 
 **Cross-feature consumption example (#1787):** `posthog-settings` imports `DemoEventCatalog` and `DemoEventGroup` from the `demo` feature's public barrel (`import { DemoEventCatalog, type DemoEventGroup } from '../../demo';`) to auto-derive its Product-events settings panel's group toggles from the event catalog, rather than hand-maintaining a duplicate group list. This is the intended shape of cross-feature consumption described above, not an exception to it.
 
+**Slug registered ahead of a cross-feature consumer (#2364):** `features/automation` (singular —
+serving the `/automations` route, plural) ships its public barrel and is registered in both
+`no-restricted-imports` pattern groups for every canonical subdirectory, even though its only
+consumers today are its own pages (which may deep-import). The slug is registered up front because
+it must match the `features/automation` scan root in `scripts/check-ui-vocabulary.mjs` — a silent
+singular/plural drift between the two makes that gate skip the folder it was written to cover. The
+composer (#2365) and the dry run + fired log (#2366) consume the barrel.
+
+**Cross-feature consumption example (#2411):** `fulfillment` — the work-grain
+fulfilment-task panel on the order-detail page — imports `HoldReasonValues`,
+`HOLD_REASON_COPY` and `holdReasonLabel` from the `orders` barrel rather than
+mirroring them. Order holds and work holds are two grains of ONE vocabulary
+(`HoldReason`, `@openlinker/core/order-lifecycle`), already pinned against core
+by `scripts/check-hold-reason-mirror.mjs`; a second frontend copy would need a
+second guard script for one union. The `fulfillment` slug is in both
+`no-restricted-imports` pattern groups for all five canonical subdirectories,
+and the folder is a scan root of `scripts/check-ui-vocabulary.mjs` — the
+epic-#2412 UI naming rule (the internal aggregate name never reaches operator
+copy; it is a **fulfilment task**) is binding on it. Note the gate reads string
+literals only from a file whose name ends `*.copy.ts`, and otherwise only JSX
+text and a whitelist of JSX attributes in a `.tsx`. So this slice keeps every
+operator sentence — action labels, hints, status words AND the dialog's
+titles/descriptions — in `lib/fulfillment-task.copy.ts`. A copy table named
+`…-copy.ts`, or left as a `Record` inside a component, is scanned by nothing:
+adding the scan root does not by itself make the copy covered.
+
 **Cross-feature consumption example (#2150):** `invoicing` type-imports `OrderRecord` from the `orders` feature's public barrel (`import type { OrderRecord } from '../../orders';`) in `order-invoice-panel.tsx` and `sales-document-block-copy.ts`, and `shipments` imports `ordersQueryKeys` the same way in `use-notify-dispatched-mutation.ts`. `orders` is now the most cross-imported feature barrel in the app — five call sites (Orders, Shipments, Invoices, Products, Customers) render its `OrderIdentityCell` — so the slug was added to both `no-restricted-imports` pattern groups (`features/**` and `plugins/**`) in `.eslintrc.js`, for every canonical subdirectory (`orders/api`, `orders/hooks`, `orders/components`, `orders/lib`, `orders/types`).
 
 ## Routing Conventions
@@ -119,11 +145,11 @@ Each route should have:
 Page-bearing route modules use React Router's `lazy` field so each page becomes its own bundle chunk (#606):
 
 ```ts
-export const dashboardRoute: RouteObject = {
+export const analyticsIndexRoute: RouteObject = {
   index: true,
   lazy: async () => {
-    const { DashboardPage } = await import('../../pages/dashboard/dashboard-page');
-    return { Component: DashboardPage };
+    const { AnalyticsPage } = await import('../../pages/analytics/analytics-page');
+    return { Component: AnalyticsPage };
   },
 };
 ```
@@ -162,7 +188,7 @@ The shell resolves the active crumb by calling `useMatches()` and walking the ma
 
 **Rules**:
 
-- Leaf routes (including index children like `dashboardRoute`) own their crumb metadata. Parent shells with no semantic title carry no handle — `useMatches()`'s deepest-first walk picks the right one.
+- Leaf routes (including index children like `analyticsIndexRoute`) own their crumb metadata. Parent shells with no semantic title carry no handle — `useMatches()`'s deepest-first walk picks the right one.
 - Guest routes (`loginRoute`, `forgotPasswordRoute`, `resetPasswordRoute`) render outside `AppShell` and have no `handle.crumb`. They are excluded from the route-handle contract test.
 - Marketplace-specific breadcrumbs (e.g. `Connect Allegro`, `Connect PrestaShop`) ship with the plugin route module — never with the host shell.
 - A parameterized contract test at `apps/web/src/app/routes/route-handle.test.ts` asserts every authenticated leaf route declares a crumb. Same enforcement shape as `route-lazy.test.ts`.
@@ -379,6 +405,8 @@ export type TokenName = keyof typeof tokens;
 **Drift guarantee**: `scripts/check-design-tokens.mjs` runs under `pnpm lint` (chained into `check:invariants`). It asserts every token in `tokens.ts` is declared in `index.css` — adding a catalog entry without a corresponding CSS declaration fails the build. The check is one-directional in v1 (catalog → CSS); orphaned `--*` declarations in CSS that aren't in the catalog are tolerated as potentially internal-only.
 
 **Adding a token**: declare it in `index.css` first, then add an entry to `tokens.ts` matching the name verbatim, then re-run `pnpm lint` to confirm the drift check passes. **Removing a token**: drop both sides in the same PR.
+
+**Structural guarantee (#2674)**: the token check reads `index.css` by regex and says nothing about whether the file is *well-formed*, so a second guard covers that — `scripts/check-css-structure.mjs`, also chained into `check:invariants`, parses every stylesheet in the repo and fails on an unclosed block, a stray `}`, an unclosed comment or an unterminated string, reporting `file:line:column`. It exists because a merge resolution once dropped a closing brace in `index.css` and the result passed lint, type-check, 4142 web tests and 130 integration suites: under CSS nesting a missing `}` does not error, it silently re-scopes every following rule as a descendant, so the styles are still present in the file and simply never apply. Class-presence assertions cannot catch that — the class still appears.
 
 ## Shared UI catalog (`shared/ui/index.ts`)
 

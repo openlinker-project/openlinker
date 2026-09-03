@@ -22,6 +22,17 @@ export class InventoryAvailabilityItemDto {
     description: 'Distinct location count contributing to the sum (0 when no inventory rows)',
   })
   locationCount!: number;
+
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description:
+      'Units OpenLinker will promise (#2323): totalAvailable net of OpenLinker’s own ' +
+      'published reservations, with NO per-destination stock safety buffer applied. ' +
+      'null means availability could not be determined — never "zero", and never a ' +
+      'reason to fall back to totalAvailable.',
+  })
+  availableToPromise!: number | null;
 }
 
 export class InventoryAvailabilityResponseDto {

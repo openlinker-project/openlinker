@@ -159,7 +159,34 @@ function selfCheck() {
     'declared',
   ]);
   if (!clean.ok) throw new Error(`differ regression: ${clean.issues.join('; ')}`);
+  const via = parseResolvedViaUnion("  resolvedVia: 'A' | 'B' | null;\n");
+  if (via === null || via.join('|') !== 'A|B') {
+    throw new Error(`resolvedVia parser regression: ${JSON.stringify(via)}`);
+  }
+  if (parseResolvedViaUnion('  somethingElse: string;\n') !== null) {
+    throw new Error('resolvedVia parser regression: matched a file with no union');
+  }
   console.log('check-description-format-mirror: self-check passed');
+}
+
+/**
+ * The frontend's copy of `DescriptionFormatSourceValues`, read off the inline
+ * union it actually declares:
+ *
+ *   resolvedVia: 'OfferManager' | 'ProductPublisher' | null;
+ *
+ * `null` is dropped: it is a frontend-only state meaning no adapter could be
+ * resolved for the connection, which core has no member for. Order is preserved,
+ * because the caller compares by join and core declares an ordered `as const`.
+ *
+ * Returns null when the union cannot be found, which the caller reports as a
+ * FAILURE rather than skipping — that conflation is the defect this replaced.
+ */
+export function parseResolvedViaUnion(source) {
+  const match = source.match(/^\s*resolvedVia\s*:\s*([^;]+);/m);
+  if (!match) return null;
+  const members = [...match[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  return members.length > 0 ? members : null;
 }
 
 async function main() {
@@ -178,13 +205,24 @@ async function main() {
   );
 
   const backendValues = parseConstArray(backendSource, 'DescriptionFormatSourceValues');
-  const frontendValues = parseConstArray(frontendSource, 'DescriptionFormatSourceValues');
-  if (backendValues !== null && frontendValues !== null) {
-    if (backendValues.join('|') !== frontendValues.join('|')) {
-      issues.push(
-        `DescriptionFormatSourceValues differ: core [${backendValues.join(', ')}] vs frontend [${frontendValues.join(', ')}]`,
-      );
-    }
+  const frontendValues = parseResolvedViaUnion(frontendSource);
+  // "not found" must never read as "agrees" (#2790). Until this fix the
+  // frontend was searched for a `DescriptionFormatSourceValues` const array it
+  // has never declared — it encodes the same vocabulary as the inline union on
+  // `resolvedVia` — so `frontendValues` was always null, the `&&` short-circuited,
+  // and this half of the mirror compared nothing for its whole life.
+  if (backendValues === null) {
+    issues.push(`DescriptionFormatSourceValues not found in ${BACKEND_FILE}`);
+  } else if (frontendValues === null) {
+    issues.push(
+      `the 'resolvedVia' union was not found in ${FRONTEND_FILE} — it carries the frontend's ` +
+        'copy of DescriptionFormatSourceValues, so without it this mirror checks nothing',
+    );
+  } else if (backendValues.join('|') !== frontendValues.join('|')) {
+    issues.push(
+      `DescriptionFormatSourceValues differ: core [${backendValues.join(', ')}] vs frontend ` +
+        `resolvedVia [${frontendValues.join(', ')}]`,
+    );
   }
 
   if (!ok || issues.length > 0) {

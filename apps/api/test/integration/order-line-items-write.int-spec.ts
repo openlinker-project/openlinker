@@ -56,12 +56,14 @@ describe('OrderRecord line-item transactional write (integration, #1985)', () =>
     currency?: string | null;
     taxTreatment?: 'inclusive' | 'exclusive' | null;
     totalAmount?: number | null;
+    sourceConnectionId?: string;
+    sourceEventId?: string | null;
   } = {}): OrderRecord {
     return new OrderRecord(
       internalOrderId,
       null,
-      SOURCE_CONNECTION,
-      null,
+      overrides.sourceConnectionId ?? SOURCE_CONNECTION,
+      overrides.sourceEventId ?? null,
       { id: internalOrderId, items: [] },
       [],
       'ready',
@@ -271,5 +273,106 @@ describe('OrderRecord line-item transactional write (integration, #1985)', () =>
     // touches order_line_items.
     const lineItems = await findLineItems(internalOrderId);
     expect(lineItems).toHaveLength(1);
+  });
+
+  /**
+   * Source attribution (#2282 / ADR-057) must hold on EVERY write path, not
+   * only on `upsert()`. `upsertWithLineItems` is the second writer of
+   * `order_records`; a full-object `save()` there UPDATEs `sourceConnectionId`
+   * and would silently re-attribute an order on re-ingestion from a different
+   * connection. Only a real Postgres round-trip can prove the freeze — a
+   * mocked `EntityManager.save` asserts nothing about the emitted SQL.
+   */
+  describe('source attribution freeze on upsertWithLineItems (#2282)', () => {
+    const OTHER_CONNECTION = '22222222-2222-4222-8222-222222222222';
+
+    async function readAttribution(
+      internalOrderId: string
+    ): Promise<{ sourceConnectionId: string; sourceEventId: string | null }> {
+      const rows: Array<{ sourceConnectionId: string; sourceEventId: string | null }> =
+        await harness
+          .getDataSource()
+          .query(
+            `SELECT "sourceConnectionId", "sourceEventId" FROM "order_records" WHERE "internalOrderId" = $1`,
+            [internalOrderId]
+          );
+      return rows[0];
+    }
+
+    const draft = (orderRecord: OrderRecord) => ({
+      lineNumber: 0,
+      productId: 'ol_product_1',
+      variantId: null,
+      quantity: 1,
+      unitPrice: 10,
+      sourceConnectionId: orderRecord.sourceConnectionId,
+      placedAt: orderRecord.placedAt,
+      taxRate: null,
+      taxSource: null,
+      taxRateReadAt: null,
+    });
+
+    it('leaves sourceConnectionId and sourceEventId untouched when a second write arrives from a different source', async () => {
+      const internalOrderId = `ol_order_attr_${Date.now()}_1`;
+
+      await repository.upsertWithLineItems(
+        makeOrderRecord(internalOrderId, {
+          sourceConnectionId: SOURCE_CONNECTION,
+          sourceEventId: 'evt-first',
+        }),
+        [draft(makeOrderRecord(internalOrderId))]
+      );
+
+      const impostor = makeOrderRecord(internalOrderId, {
+        sourceConnectionId: OTHER_CONNECTION,
+        sourceEventId: 'evt-impostor',
+        currency: 'EUR',
+        totalAmount: 77,
+      });
+      await repository.upsertWithLineItems(impostor, [draft(impostor)]);
+
+      const attribution = await readAttribution(internalOrderId);
+      expect(attribution.sourceConnectionId).toBe(SOURCE_CONNECTION);
+      expect(attribution.sourceEventId).toBe('evt-first');
+
+      // The rest of the write set still lands — the freeze is narrow.
+      const found = await repository.findById(internalOrderId);
+      expect(found?.currency).toBe('EUR');
+      expect(found?.totalAmount).toBe(77);
+    });
+
+    it("advances sourceEventId when the second write arrives from the row's own source", async () => {
+      const internalOrderId = `ol_order_attr_${Date.now()}_2`;
+
+      const first = makeOrderRecord(internalOrderId, { sourceEventId: 'evt-1' });
+      await repository.upsertWithLineItems(first, [draft(first)]);
+
+      const second = makeOrderRecord(internalOrderId, { sourceEventId: 'evt-2' });
+      await repository.upsertWithLineItems(second, [draft(second)]);
+
+      const attribution = await readAttribution(internalOrderId);
+      expect(attribution.sourceConnectionId).toBe(SOURCE_CONNECTION);
+      expect(attribution.sourceEventId).toBe('evt-2');
+    });
+
+    it('keeps the line-item replacement atomic with the frozen-attribution upsert', async () => {
+      const internalOrderId = `ol_order_attr_${Date.now()}_3`;
+
+      const first = makeOrderRecord(internalOrderId, { sourceEventId: 'evt-1' });
+      await repository.upsertWithLineItems(first, [draft(first)]);
+
+      // Duplicate lineNumber violates UQ_order_line_items_order_line: the
+      // whole transaction — including the order_records write — rolls back,
+      // so the committed attribution and item set are both unchanged.
+      const second = makeOrderRecord(internalOrderId, { sourceEventId: 'evt-2' });
+      await expect(
+        repository.upsertWithLineItems(second, [draft(second), draft(second)])
+      ).rejects.toThrow();
+
+      const attribution = await readAttribution(internalOrderId);
+      expect(attribution.sourceEventId).toBe('evt-1');
+      const lineItems = await findLineItems(internalOrderId);
+      expect(lineItems).toHaveLength(1);
+    });
   });
 });

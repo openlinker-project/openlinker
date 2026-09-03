@@ -22,6 +22,8 @@ import { formatAmount } from '../../../shared/format/format-amount';
 import type { OrderRecord } from '../api/orders.types';
 import type { ParsedOrderSnapshot, PaymentStatus } from '../api/order-snapshot.schema';
 import { deriveHealthLevel, healthLabel, rollupSyncStatus, totalUnits, type OrderHealthLevel } from '../lib/order-health';
+import { ORDER_LIFECYCLE_PHASE_WAITING_ON, isOrderLifecyclePhase } from '../lib/order-lifecycle-phase';
+import { OrderPhaseBadge } from './order-phase-badge';
 
 interface OrderDetailHeaderProps {
   order: OrderRecord;
@@ -68,6 +70,9 @@ export function OrderDetailHeader({ order, snapshot }: OrderDetailHeaderProps): 
         <StatusBadge tone={HEALTH_TONE[healthLevel]} withDot pulse={healthLevel === 'pending'}>
           {healthLabel(healthLevel)}
         </StatusBadge>
+        {/* #2310 — beside the health badge, never instead of it (ADR-059).
+            Header badges are full-size, so no `compact` here. */}
+        <OrderPhaseBadge phase={order.lifecyclePhase} />
         {snapshot.status ? (
           <StatusBadge tone="neutral" withDot>
             {snapshot.status}
@@ -79,6 +84,15 @@ export function OrderDetailHeader({ order, snapshot }: OrderDetailHeaderProps): 
           </StatusBadge>
         ) : null}
       </div>
+
+      {/* One line answering the operator's actual question — what is this order
+          waiting on. Detail only: the list row has no room for a sentence and
+          five badge vocabularies already compete there (#2081). */}
+      {isOrderLifecyclePhase(order.lifecyclePhase) ? (
+        <p className="order-header__phase-note text-muted">
+          {ORDER_LIFECYCLE_PHASE_WAITING_ON[order.lifecyclePhase]}
+        </p>
+      ) : null}
 
       <div className="order-header__sub">
         <CopyableId id={order.internalOrderId} />

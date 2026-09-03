@@ -149,6 +149,12 @@ describe('Bulk shop publish per-item overrides (end-to-end, #1831)', () => {
       connectionPort as never,
       integrations as never,
       attributeProjection as never,
+      {
+        // #2323 - the seam owns the buffer; these fixtures configure none, so
+        // the quantity passes through exactly as it did pre-rewire.
+        applyPublishControls: ({ quantity }: { quantity: number }) =>
+          Promise.resolve({ quantity: Math.max(0, quantity), provenance: 'computed' }),
+      } as never,
     );
     const execution = new ProductPublishExecutionService(
       builder as never,

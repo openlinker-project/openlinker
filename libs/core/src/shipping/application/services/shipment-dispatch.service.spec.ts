@@ -23,6 +23,8 @@ import { Shipment } from '../../domain/entities/shipment.entity';
 import type { ShipmentRepositoryPort } from '../../domain/ports/shipment-repository.port';
 import type { ShippingProviderManagerPort } from '../../domain/ports/shipping-provider-manager.port';
 import { UndispatchableResolutionException } from '../../domain/exceptions/undispatchable-resolution.exception';
+import type { IOrderHoldService, OrderHold } from '@openlinker/core/orders';
+import { OrderNotDispatchableHeldException } from '../../domain/exceptions/order-not-dispatchable-held.exception';
 import { OrderNotDispatchablePaymentStatusException } from '../../domain/exceptions/order-not-dispatchable-payment-status.exception';
 import { ShippingProviderRejectionException } from '../../domain/exceptions/shipping-provider-rejection.exception';
 import { ShipmentDispatchContendedException } from '../../domain/exceptions/shipment-dispatch-contended.exception';
@@ -101,6 +103,9 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     overrides.deliveryIntent ?? null,
     overrides.providerCode ?? null,
     overrides.waybillRelayedAt ?? null,
+    overrides.direction ?? 'outbound',
+    overrides.reservationConsumedAt ?? null,
+    overrides.fulfillmentWorkId ?? null,
   );
 }
 
@@ -123,6 +128,8 @@ describe('ShipmentDispatchService', () => {
   let adapter: jest.Mocked<ShippingProviderManagerPort>;
   let orders: jest.Mocked<IOrderRecordService>;
   let dispatchLock: jest.Mocked<SyncLockPort>;
+  let orderHolds: jest.Mocked<IOrderHoldService>;
+  let fulfillmentWorks: { resolveLinkForOrder: jest.Mock; listBlockingRejectionConnectionIds: jest.Mock };
   let service: ShipmentDispatchService;
 
   beforeEach(() => {
@@ -137,6 +144,9 @@ describe('ShipmentDispatchService', () => {
       update: jest.fn(),
       claimWaybillRelay: jest.fn(),
       releaseWaybillRelay: jest.fn(),
+      listDispatchedAwaitingReservationConsume: jest.fn(),
+      claimReservationConsume: jest.fn(),
+      claimFulfillmentWorkLink: jest.fn(),
     };
     routing = {
       getRules: jest.fn(),
@@ -169,18 +179,40 @@ describe('ShipmentDispatchService', () => {
       getFailedSyncValueSummary: jest.fn(),
       markCancelled: jest.fn(),
       markSalesDocumentBlock: jest.fn(),
+      markFulfillmentBlock: jest.fn(),
+      markPacked: jest.fn(),
+      clearPacked: jest.fn(),
+      recordAmendment: jest.fn(),
       getEarliestOrderDateByConnection: jest.fn(),
       getSalesAndChannelAnalytics: jest.fn(),
       getTopProducts: jest.fn(),
+      findDispatchDeadlineCandidates: jest.fn(),
+      countOrdersWithOmsAttention: jest.fn(),
+      getTopProductVariantSales: jest.fn(),
       discoverSalesDocumentMarkets: jest.fn(),
     };
     const fulfillmentProjection = { recompute: jest.fn() };
+    // Unheld by default (#2339): as with the lock below, every pre-existing test
+    // asserts the dispatch path itself, so the hold gate must not change their
+    // behaviour.
+    orderHolds = {
+      getOpenHold: jest.fn().mockResolvedValue(null),
+      place: jest.fn(),
+      release: jest.fn(),
+      listHolds: jest.fn(),
+    } as unknown as jest.Mocked<IOrderHoldService>;
     // Uncontended by default (#1917): every pre-existing test asserts the
     // dispatch path itself, so the lock must not change their behaviour.
     dispatchLock = {
       acquire: jest.fn().mockResolvedValue('lock-token'),
       release: jest.fn().mockResolvedValue(true),
       extend: jest.fn().mockResolvedValue(true),
+    };
+    // #2402: by default the order is unrouted, so no work links — every
+    // pre-existing assertion in this file then holds byte for byte.
+    fulfillmentWorks = {
+      resolveLinkForOrder: jest.fn().mockResolvedValue({ kind: 'none' }),
+      listBlockingRejectionConnectionIds: jest.fn().mockResolvedValue([]),
     };
     service = new ShipmentDispatchService(
       repository,
@@ -189,24 +221,78 @@ describe('ShipmentDispatchService', () => {
       orders,
       fulfillmentProjection,
       dispatchLock,
+      orderHolds,
+      fulfillmentWorks,
     );
   });
 
-  describe('payment-status dispatch gate (#938)', () => {
-    /** Arrange the ol_managed_carrier happy path so a permitted status dispatches. */
-    function arrangeHappyPath(): void {
-      routing.resolve.mockResolvedValue(
-        resolution({ processorKind: FULFILLMENT_PROCESSOR_KIND.OlManagedCarrier, processorConnectionId: INPOST }),
+  /**
+   * Arrange the `ol_managed_carrier` happy path so a permitted order dispatches.
+   * Shared by both gate suites — the two gates differ in what they refuse, not
+   * in what a permitted dispatch looks like.
+   */
+  function arrangeOlManagedCarrierHappyPath(): void {
+    routing.resolve.mockResolvedValue(
+      resolution({ processorKind: FULFILLMENT_PROCESSOR_KIND.OlManagedCarrier, processorConnectionId: INPOST }),
+    );
+    repository.findActiveByOrderId.mockResolvedValue(null);
+    repository.create.mockResolvedValue(makeShipment({ status: 'draft' }));
+    adapter.generateLabel.mockResolvedValue({
+      providerShipmentId: 'shipx-1',
+      trackingNumber: null,
+      labelPdfRef: 'shipx:label:shipx-1',
+    });
+    repository.update.mockResolvedValue(makeShipment({ status: 'generated', providerShipmentId: 'shipx-1' }));
+  }
+
+  describe('hold dispatch gate (#2339)', () => {
+    const openHold = { id: 'hold-1', reason: 'fraud-review' } as unknown as OrderHold;
+
+    it('should refuse dispatch terminally when the order carries an open hold', async () => {
+      routing.resolve.mockResolvedValue(resolution());
+      orderHolds.getOpenHold.mockResolvedValue(openHold);
+
+      await expect(service.dispatch(makeInput())).rejects.toBeInstanceOf(
+        OrderNotDispatchableHeldException,
       );
-      repository.findActiveByOrderId.mockResolvedValue(null);
-      repository.create.mockResolvedValue(makeShipment({ status: 'draft' }));
-      adapter.generateLabel.mockResolvedValue({
-        providerShipmentId: 'shipx-1',
-        trackingNumber: null,
-        labelPdfRef: 'shipx:label:shipx-1',
+
+      // No carrier work happens once the gate blocks — nothing was charged.
+      expect(repository.findActiveByOrderId).not.toHaveBeenCalled();
+      expect(repository.create).not.toHaveBeenCalled();
+      expect(adapter.generateLabel).not.toHaveBeenCalled();
+    });
+
+    it('should name the hold and its reason so the refusal is actionable', async () => {
+      routing.resolve.mockResolvedValue(resolution());
+      orderHolds.getOpenHold.mockResolvedValue(openHold);
+
+      await expect(service.dispatch(makeInput())).rejects.toMatchObject({
+        holdId: 'hold-1',
+        holdReason: 'fraud-review',
       });
-      repository.update.mockResolvedValue(makeShipment({ status: 'generated', providerShipmentId: 'shipx-1' }));
-    }
+    });
+
+    it('should dispatch once the hold is released, with no manual step', async () => {
+      arrangeOlManagedCarrierHappyPath();
+      orderHolds.getOpenHold.mockResolvedValue(null);
+
+      const result = await service.dispatch(makeInput());
+
+      expect(result.kind).toBe('dispatched');
+      expect(adapter.generateLabel).toHaveBeenCalled();
+    });
+
+    it('should fail closed when the hold read throws', async () => {
+      routing.resolve.mockResolvedValue(resolution());
+      orderHolds.getOpenHold.mockRejectedValue(new Error('db down'));
+
+      await expect(service.dispatch(makeInput())).rejects.toThrow('db down');
+      expect(adapter.generateLabel).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('payment-status dispatch gate (#938)', () => {
+    const arrangeHappyPath = arrangeOlManagedCarrierHappyPath;
 
     it.each(['awaiting', 'refunded'] as const)(
       'should reject dispatch with OrderNotDispatchablePaymentStatusException when payment status is %s',
@@ -289,6 +375,32 @@ describe('ShipmentDispatchService', () => {
 
       const result = await service.dispatch(makeInput());
 
+      expect(result).toEqual({ kind: 'omp_fulfilled' });
+      expect(repository.create).not.toHaveBeenCalled();
+    });
+
+    it('REGRESSION PIN — resolve() is the only routing mechanism; a work id does not steer it (AC-3)', async () => {
+      // A PIN, not evidence: this path returns at `omp_fulfilled` before it ever
+      // reads `fulfillmentWorkId`, so it passes identically with the field
+      // deleted. It exists to fail if someone later makes routing consult a
+      // work-carried value.
+      //
+      // #2402 AC-3 is worded as "`resolve()` still wins over a work's processor
+      // hint". There IS no such hint: no field on `FulfillmentWork` proposes a
+      // processor, so the AC is already held on `main` — `ShipmentDispatchService`
+      // owns the `resolve()` call precisely so "there is no parallel routing
+      // mechanism by construction". This pins that, rather than testing an
+      // invented composer that would make the test unable to fail for the
+      // reason it claims.
+      routing.resolve.mockResolvedValue(
+        resolution({ processorKind: FULFILLMENT_PROCESSOR_KIND.OmpFulfilled, processorConnectionId: null, source: 'default' }),
+      );
+
+      const result = await service.dispatch(makeInput());
+
+      // The work id changes nothing about routing: the resolved kind still
+      // decides, and a 3PL still mints no shipment and no providerShipmentId.
+      expect(routing.resolve).toHaveBeenCalled();
       expect(result).toEqual({ kind: 'omp_fulfilled' });
       expect(repository.create).not.toHaveBeenCalled();
     });
@@ -855,6 +967,120 @@ describe('ShipmentDispatchService', () => {
       );
       return priorRow;
     }
+
+    describe('work linkage on the retry branch (#2402)', () => {
+      it('should CLAIM the link on the reused row — the create path never runs here', async () => {
+        // The retry branch reuses a prior row via `update()`, so it never passes
+        // through `CreateShipmentInput`. Without this claim, a branch-1 row
+        // minted by the status poll before its order was routed could never
+        // acquire a link at all.
+        arrangeRetry();
+        fulfillmentWorks.resolveLinkForOrder.mockResolvedValue({
+          kind: 'unique',
+          workId: 'ol_fulfillmentwork_1',
+        });
+        adapter.generateLabel.mockResolvedValue({
+          providerShipmentId: 'shipx-2402',
+          trackingNumber: null,
+          labelPdfRef: 'ref-2402',
+        });
+        integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+
+        await service.dispatch(makeInput());
+
+        expect(repository.claimFulfillmentWorkLink).toHaveBeenCalledWith(
+          'ol_shipment_c7b2',
+          'ol_fulfillmentwork_1',
+        );
+        // The row already exists; creating one would be a duplicate label.
+        expect(repository.create).not.toHaveBeenCalled();
+      });
+
+      it('should not claim when the order resolves to no work', async () => {
+        arrangeRetry();
+        adapter.generateLabel.mockResolvedValue({
+          providerShipmentId: 'shipx-2402',
+          trackingNumber: null,
+          labelPdfRef: 'ref-2402',
+        });
+        integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+
+        await service.dispatch(makeInput());
+
+        expect(repository.claimFulfillmentWorkLink).not.toHaveBeenCalled();
+      });
+
+      it('should leave the link unset when the order resolves to several works', async () => {
+        // Attributing one parcel across N works needs line grain (#2727); an
+        // unset link is recoverable, a wrong one is not.
+        arrangeRetry();
+        fulfillmentWorks.resolveLinkForOrder.mockResolvedValue({
+          kind: 'ambiguous',
+          workIds: ['ol_fulfillmentwork_1', 'ol_fulfillmentwork_2'],
+        });
+        adapter.generateLabel.mockResolvedValue({
+          providerShipmentId: 'shipx-2402',
+          trackingNumber: null,
+          labelPdfRef: 'ref-2402',
+        });
+        integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+
+        await service.dispatch(makeInput());
+
+        expect(repository.claimFulfillmentWorkLink).not.toHaveBeenCalled();
+      });
+
+      it('should still dispatch when the work lookup throws', async () => {
+        // The link is provenance; the label is the operator-facing act. A
+        // hiccup in the fulfilment context must never fail a dispatch that
+        // would otherwise succeed — and a thrown lookup would, unguarded.
+        arrangeRetry();
+        fulfillmentWorks.resolveLinkForOrder.mockRejectedValue(new Error('db down'));
+        adapter.generateLabel.mockResolvedValue({
+          providerShipmentId: 'shipx-2402',
+          trackingNumber: null,
+          labelPdfRef: 'ref-2402',
+        });
+        integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+
+        const result = await service.dispatch(makeInput());
+
+        expect(result.kind).toBe('dispatched');
+        expect(repository.claimFulfillmentWorkLink).not.toHaveBeenCalled();
+      });
+
+      it('should NOT claim on the create branch — the create input already carried it', async () => {
+        // Claiming here too would be a redundant second write against a row
+        // whose link was just set in the INSERT.
+        routing.resolve.mockResolvedValue(
+          resolution({
+            processorKind: FULFILLMENT_PROCESSOR_KIND.OlManagedCarrier,
+            processorConnectionId: INPOST,
+          }),
+        );
+        repository.findActiveByOrderId.mockResolvedValue(null);
+        repository.findBranchOneByOrderAndConnection.mockResolvedValue(null);
+        repository.create.mockResolvedValue(makeShipment());
+        repository.update.mockResolvedValue(makeShipment({ status: 'generated' }));
+        fulfillmentWorks.resolveLinkForOrder.mockResolvedValue({
+          kind: 'unique',
+          workId: 'ol_fulfillmentwork_1',
+        });
+        adapter.generateLabel.mockResolvedValue({
+          providerShipmentId: 'shipx-2402',
+          trackingNumber: null,
+          labelPdfRef: 'ref-2402',
+        });
+        integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+
+        await service.dispatch(makeInput());
+
+        expect(repository.create).toHaveBeenCalledWith(
+          expect.objectContaining({ fulfillmentWorkId: 'ol_fulfillmentwork_1' }),
+        );
+        expect(repository.claimFulfillmentWorkLink).not.toHaveBeenCalled();
+      });
+    });
 
     it('should adopt the carrier shipment instead of creating a second one', async () => {
       arrangeRetry();

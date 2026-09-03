@@ -333,7 +333,7 @@ describe('ProductSalesTable', () => {
     expect(getTopProducts).toHaveBeenCalledWith(expect.objectContaining({ sortBy: 'units' }));
   });
 
-  it('renders an empty value for a product with no SKU, and its row link points at product detail', async () => {
+  it('renders an empty value for a product with no SKU', async () => {
     const apiClient = createMockApiClient({
       analytics: {
         getTopProducts: vi.fn().mockResolvedValue(result([row({ productId: 'p1', sku: null })])),
@@ -344,7 +344,95 @@ describe('ProductSalesTable', () => {
     renderWithProviders(<ProductSalesTable filters={FILTERS} />, { apiClient });
 
     expect(await screen.findByLabelText('No SKU')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Widget A/ })).toHaveAttribute('href', '/products/p1');
+  });
+
+  it('expands an inline detail panel on row click instead of navigating away (#2765)', async () => {
+    const apiClient = createMockApiClient({
+      analytics: {
+        getTopProducts: vi.fn().mockResolvedValue(result([row({ productId: 'p1' })])),
+      },
+      connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
+    });
+
+    renderWithProviders(<ProductSalesTable filters={FILTERS} />, { apiClient });
+    await screen.findByText('Widget A');
+
+    // No row-level navigation link exists any more — the whole row is a
+    // toggle instead of a rowHref-backed <Link>.
+    expect(screen.queryByRole('link', { name: /Widget A/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Open the full product page/)).not.toBeInTheDocument();
+
+    const toggle = screen.getByRole('button', { name: 'Expand details for Widget A' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+    await userEvent.click(toggle);
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: 'Collapse details for Widget A' })).toBe(toggle);
+    // The deliberate, explicit navigation links live inside the panel —
+    // distinct from the accidental whole-row navigation being removed.
+    const openProductLink = screen.getByRole('link', { name: /Product details/ });
+    expect(openProductLink).toHaveAttribute('href', '/products/p1');
+    expect(screen.getByRole('link', { name: /Edit content/ })).toHaveAttribute(
+      'href',
+      '/products/p1?view=content',
+    );
+
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('link', { name: /Product details/ })).not.toBeInTheDocument();
+  });
+
+  it('fetches and renders the variant × channel sales matrix when a row expands (#2765)', async () => {
+    const getTopProductVariantSales = vi.fn().mockResolvedValue({
+      productId: 'p1',
+      variants: [
+        {
+          variantId: 'v1',
+          sku: 'WID-A-VARIANT',
+          attributes: null,
+          totalAvailable: 10,
+          units: 4,
+          revenue: 110,
+          unconvertedRevenue: 0,
+          unconvertedOrderCount: 0,
+          currency: 'PLN',
+          unconvertedCurrency: null,
+          netRevenue: 100,
+          netExcludedRevenue: 0,
+          netExcludedLineCount: 0,
+          channels: [
+            {
+              sourceConnectionId: 'conn-a',
+              units: 4,
+              revenue: 110,
+              unconvertedRevenue: 0,
+              currency: 'PLN',
+              unconvertedCurrency: null,
+              netRevenue: 100,
+              netExcludedRevenue: 0,
+              netExcludedLineCount: 0,
+            },
+          ],
+        },
+      ],
+    });
+    const apiClient = createMockApiClient({
+      analytics: {
+        getTopProducts: vi.fn().mockResolvedValue(result([row({ productId: 'p1' })])),
+        getTopProductVariantSales,
+      },
+      connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
+    });
+
+    renderWithProviders(<ProductSalesTable filters={FILTERS} />, { apiClient });
+    await screen.findByText('Widget A');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Expand details for Widget A' }));
+
+    expect(getTopProductVariantSales).toHaveBeenCalledWith('p1', FILTERS);
+    expect(await screen.findByText('WID-A-VARIANT')).toBeInTheDocument();
+    expect(screen.getByText('In stock')).toBeInTheDocument();
   });
 
   it('renders an empty Net sales value for a product with no current-era FX stamp, with no unconverted fallback (net requires the same stamp as gross)', async () => {

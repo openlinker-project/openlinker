@@ -7,6 +7,7 @@
  *
  * @module domain/entities
  */
+import type { HoldReason } from '@openlinker/core/order-lifecycle';
 import type { OrderRecordStatus } from '../types/order-record.types';
 import type { OrderSyncStatus, SyncAttempt } from '../types/order-sync.types';
 import { PaymentStatusValues } from '../types/payment-status.types';
@@ -16,6 +17,8 @@ import { decodeBuyerTaxIdColumn } from '../types/buyer-tax-id.types';
 import type { BuyerTaxId } from '../types/buyer-tax-id.types';
 import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
 import type { OrderDispatchWindow, PriceTaxTreatment } from '../types/order.types';
+import type { OrderAmendmentChange } from '../order-amendment-diff';
+import type { AuthorityAttentionEntry } from '@openlinker/core/fulfillment-authority';
 import type {
   SalesDocumentGateBlockReason,
   SalesDocumentUnresolvedReason,
@@ -190,6 +193,52 @@ export class OrderRecord {
      */
     public readonly fxIntendedCurrency: string | null = null,
     /**
+     * Instant an operator marked this order packed (#2287). A plain operator
+     * FACT, not a state: it is deliberately independent of `recordStatus`,
+     * `fulfillmentState`, `slaState` and `OrderHealth`, and carries no pack
+     * policy (no scan verification, no dispatch gating) per ADR-045. It is
+     * therefore meaningful for 100% of orders, including `omp_fulfilled` ones
+     * OpenLinker never dispatches. `null` = not packed.
+     *
+     * Single-writer, like `cancelledAt` and the FX columns: only the guarded
+     * `markPacked` / `clearPacked` statements write it, and the ingestion
+     * upsert excludes it entirely, so a re-poll can never reset it.
+     */
+    public readonly packedAt: Date | null = null,
+    /**
+     * The OL user id of whoever marked this order packed (#2287). Moves as one
+     * group with `packedAt` — a repeat mark is a no-op replay, so the FIRST
+     * actor is preserved. No FK to `users`: a deleted user leaving a dangling
+     * id the UI renders raw is the honest outcome for an audit fact.
+     */
+    public readonly packedByUserId: string | null = null,
+    /**
+     * Instant OpenLinker last observed the SOURCE amend this order after it was
+     * already ingested (#2283) — a line removed, added or re-quantified, or the
+     * shipping address edited. `null` = never observed amended.
+     *
+     * An internal FACT, not a lifecycle state: it appears in no status union, no
+     * relay event and no health bucket, and nothing is gated on it. It exists
+     * because ingestion overwrites `orderSnapshot` wholesale, so before this the
+     * amendment left no trace whatsoever.
+     *
+     * Single-writer, like `cancelledAt` / `packedAt` / the FX columns: only the
+     * narrow `recordAmendment` statement writes it, and the ingestion upsert
+     * excludes it, so the re-poll that DETECTS the amendment cannot also erase it.
+     */
+    public readonly lastAmendedAt: Date | null = null,
+    /**
+     * What changed at that instant (#2283) — the most recent observation only,
+     * not a history. Moves as one group with `lastAmendedAt`.
+     *
+     * PII-free by construction: line ids, SKUs and quantities verbatim, and for
+     * an address change only the NAMES of the fields that moved. It is persisted
+     * and rendered to operators, so carrying address values would put buyer PII
+     * into a second store with none of the `OL_STORE_PII` discipline the snapshot
+     * itself has.
+     */
+    public readonly lastAmendmentChanges: OrderAmendmentChange[] | null = null,
+    /**
      * When the current sales-document hold started (#2248 / #2245 F4), or
      * `null` when the order has never been held.
      *
@@ -228,6 +277,49 @@ export class OrderRecord {
      */
     public readonly taxRateEra: TaxRateEra | null = null,
     /**
+     * Reason of the order's currently-open hold (#2340), or `null` when nothing
+     * holds it — the denormalised projection of `order_holds`, read by the
+     * derived lifecycle phase (#2307) and its SQL twin (#2309).
+     *
+     * **`order_holds` is the authority; this is a cache.** No hold GATE reads
+     * it (the epic's L4 exit criterion); a gate calls `IOrderHoldService`.
+     *
+     * Coerced with `isHoldReason` on read, never defaulted — an unrecognised
+     * persisted value must surface as "not a hold reason" rather than silently
+     * becoming `operator`, which would attribute a machine's hold to a human.
+     *
+     * **Appended at the tail, and its position must not move.** This
+     * constructor is positional with defaulted parameters; inserting a field
+     * anywhere before it silently retypes a positional argument at every
+     * construction site, `toDomain`'s own call included. It was last when
+     * #2340 landed; `omsAttention` (#2352) was appended after it when the two
+     * Wave-2 bodies merged, so the pair must now be passed in this order.
+     */
+    public readonly activeHoldReason: HoldReason | null = null,
+    /**
+     * The OMS inert states currently reported against this order (#2352), one
+     * entry per reporting producer. Empty when nothing is reported.
+     *
+     * Read-only projection of the `omsAttention` jsonb, already coerced through
+     * `readAuthorityAttentionEntries` — so an entry written by a newer release
+     * and then rolled back is absent here rather than present-and-unrenderable,
+     * which is spec §4.4 S2-5 ("an unrecognised state degrades safely") held at
+     * the mapping boundary instead of at every consumer.
+     *
+     * Unlike `ReturnRecord`, this entity exposes NO `attentionReasons()`
+     * accessor joining a derived half, because an order has no derived half —
+     * every order-scoped state (A3-X, UF-L, RS-S) is a work-object fact that
+     * must be stored. Adding one for symmetry would create an accessor whose
+     * body can only ever be `this.omsAttention.map(...)`, and a consumer would
+     * reasonably read its existence as evidence that some order state IS
+     * derived.
+     *
+     * Appended LAST for the same reason every field above it was: this is a
+     * positional constructor, so a field inserted in the middle would silently
+     * shift every caller's argument by one.
+     */
+    public readonly omsAttention: readonly AuthorityAttentionEntry[] = [],
+    /**
      * Buyer tax identifier as the source reported it (#2599), in the column's
      * three-state encoding: `null` = the source asserted nothing, `''` = the
      * source asserted the buyer has none, otherwise the id.
@@ -240,7 +332,33 @@ export class OrderRecord {
      * before it - inserting mid-list would shift every argument after it at
      * each call site.
      */
-    public readonly buyerTaxId: string | null = null
+    public readonly buyerTaxId: string | null = null,
+    /**
+     * Stable hash of this order's SHIPPING address (#2395), stamped at
+     * ingestion from the live, un-redacted `Order`. `null` when the order
+     * carries no shipping address.
+     *
+     * It exists because `RoutingShipTo`'s degraded arm (`OL_STORE_PII=false`)
+     * needs a `locationHash`, and neither of the two things a consumer would
+     * reach for can supply one:
+     *
+     * - Hashing the persisted `orderSnapshot` address is WRONG under hash-only
+     *   mode: that address has already been through `redactAddress`, so the
+     *   hash collapses to ONE value per country, shared by every order in the
+     *   install. It looks correct - a plausible 64-hex string - while silently
+     *   grouping the whole catalogue of orders together.
+     * - `customer_address_projections` are keyed by CUSTOMER, not by order, so
+     *   they cannot answer "the address on THIS order".
+     *
+     * Deliberately NOT PII-gated (see the writer in `OrderRecordService`): it
+     * is a one-way hash, and gating it would null it exactly on the
+     * deployments the degraded arm exists to serve.
+     *
+     * Appended LAST for the same reason every field above it was: this is a
+     * positional constructor, so a field inserted mid-list would silently
+     * shift every argument after it at each construction site.
+     */
+    public readonly shippingAddressHash: string | null = null
   ) {}
 
   /**
@@ -271,6 +389,24 @@ export class OrderRecord {
     return typeof value === 'string' && (PaymentStatusValues as readonly string[]).includes(value)
       ? (value as PaymentStatus)
       : undefined;
+  }
+
+  /**
+   * Typed, fail-safe read of the buyer's email (#2361) from the snapshot. Pure
+   * derivation of an already-loaded field (ADR-011), mirroring {@link paymentStatus}
+   * — it centralises the `orderSnapshot.customerEmail` key + narrowing in the
+   * owning context so a cross-context consumer (the automation send-email
+   * executor) binds to a typed contract rather than the snapshot's JSON layout.
+   *
+   * Returns `undefined` under `OL_STORE_PII=false` (the field is never written),
+   * and for a source that supplies no buyer email. Callers must treat that as
+   * "OpenLinker does not have an address to send to" and say so, never as an
+   * empty string — a silently-skipped email is indistinguishable from one that
+   * was never configured.
+   */
+  get buyerEmail(): string | undefined {
+    const value = this.orderSnapshot.customerEmail;
+    return typeof value === 'string' && value.length > 0 ? value : undefined;
   }
 
   /**

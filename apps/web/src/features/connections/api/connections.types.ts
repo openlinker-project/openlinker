@@ -15,12 +15,29 @@ export const CORE_PLATFORM_TYPES = ['prestashop', 'allegro', 'woocommerce'] as c
  */
 export type PlatformType = string;
 
+/**
+ * The all-zero placeholder `connectionId` backend services stamp on a sync
+ * job that has no real connection to attribute (e.g. a deletion-triggered
+ * offer pause, a currency reporting sweep) - mirrors the backend
+ * `SYSTEM_CONNECTION_ID` constant (`libs/core/src/inventory/application/
+ * services/inventory.service.ts`, `apps/worker/src/events/
+ * master-deletion-to-job.handler.ts`). It is not a real connection, so
+ * resolving it against `GET /connections/:id` always 404s - callers that
+ * render a connection column should special-case it rather than fetch it.
+ */
+export const SYSTEM_CONNECTION_ID = '00000000-0000-0000-0000-000000000000';
+
 export type ConnectionStatus = 'active' | 'disabled' | 'error' | 'needs_reauth';
 
 /**
  * Well-known core capabilities — mirrors `CoreCapabilityValues` on the backend.
  * Plugin adapters can register additional capability names; FE accepts those
  * as plain strings without runtime narrowing failures (#576).
+ *
+ * `'FulfillmentRouter'` (ADR-052 A2) is deliberately absent on both sides: A2 is
+ * `config-only`, so nothing resolves it by connection id. The backend
+ * declaration carries the full reasoning — do not add it here first, or
+ * `check-core-capability-mirror.mjs` fails with this file named as the drift.
  */
 export const CORE_CAPABILITY_VALUES = [
   'ProductMaster',
@@ -37,6 +54,13 @@ export const CORE_CAPABILITY_VALUES = [
   // Fiscalization (ADR-042) - registering a completed sale with a provider that
   // performs or brokers its fiscal registration. Distinct from 'Invoicing'.
   'Fiscalization',
+  // Returns disposition authority (ADR-052) - who decides what happens to goods
+  // a customer sends back. Operator-enabled, so it must be writable here.
+  'ReturnsAuthority',
+  // Availability read authority (ADR-052 A1) - who answers "how many can I sell?".
+  'AvailabilityAuthority',
+  // Fulfilment execution authority (ADR-052 A3) - who holds a work object and may act on it.
+  'FulfillmentExecutor',
 ] as const;
 
 /**
