@@ -23,8 +23,8 @@
  * The 422 body is REWRAPPED, never `ReportingCurrencyUnsupportedError.message`
  * verbatim: that message is worded for `/currency-settings` ("Reporting
  * currency '…' is not supported"), a question about a deployment-wide
- * setting. This endpoint asks about a RATE — the caller supplied `to` to look
- * up a published quote, not to choose how the deployment reports — so the
+ * setting. This endpoint asks about a RATE - the caller supplied `to` to look
+ * up a published quote, not to choose how the deployment reports - so the
  * body here names the rate question instead ("No registered publisher quotes
  * '…'"), built from the exception's own `submitted` / `supportedCurrencies`
  * fields.
@@ -69,7 +69,7 @@ export class ExchangeRatesController {
   @ApiResponse({ status: 404, description: 'No rate is stored under this key.' })
   @ApiResponse({
     status: 422,
-    description: 'No registered publisher quotes `to` — this asks about a rate, not a setting.',
+    description: 'No registered publisher quotes `to` - this asks about a rate, not a setting.',
   })
   async getRate(@Query() query: GetExchangeRateDto): Promise<ExchangeRateResponseDto> {
     // `to` decides the publisher, exactly as every other caller in the repo
@@ -99,7 +99,7 @@ export class ExchangeRatesController {
       if (error instanceof ReportingCurrencyUnsupportedError) {
         // `ReportingCurrencyUnsupportedError.message` is worded for the
         // `/currency-settings` write path ("Reporting currency '…' is not
-        // supported") — correct there, but this caller asked about a RATE,
+        // supported") - correct there, but this caller asked about a RATE,
         // not a deployment-wide setting, so it is rewrapped here rather than
         // reusing the shared message verbatim.
         throw new UnprocessableEntityException(
