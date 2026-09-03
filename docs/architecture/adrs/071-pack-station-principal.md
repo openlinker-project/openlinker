@@ -6,47 +6,55 @@
 
 ## Context
 
-Line-grain packing — "3 of 5 packed", barcode-verified — needs someone recording each line. #2080 asked what principal drives that bench and how it is authorized, and proposed a long-lived *device session* plus a *per-order actor* resolved by PIN or badge.
+Line-grain packing — "3 of 5 packed", barcode-verified — needs someone recording each line. #2080 asked what principal drives that bench, and proposed a long-lived *device session* plus a *per-order actor* resolved by PIN or badge.
 
-Three facts bound the answer.
+**Placing a station principal on `req.user` would be unsafe.** `RolesGuard` returns `true` for any route carrying no `@Roles()` (`roles.guard.ts:28`) — ~121 of ~280 route decorators at `0470542e0`, buyer PII among them (#2079).
 
-**The obvious implementation is unsafe.** `RolesGuard.canActivate` returns `true` for any route carrying no `@Roles()` decorator (`roles.guard.ts:28`). Measured on `main` at `0470542e0`: ~280 route decorators, **~121 without `@Roles`**, ~110 authenticated (the figure drifts as routes land; it is the proportion that matters, not the integer) — including `customers.controller.ts`'s two GETs (buyer PII), all of `products`, and the `sales-documents` rules surface. A station principal placed on `req.user` would reach every one of them. #2079 tracks the guard; `write-guard-coverage.spec.ts` cannot catch it, inspecting non-GET handlers only on a hand-listed 23-controller set.
+**A safe pattern exists.** MCP is `@Public()` plus a dedicated verifier populating `req.auth`, which no guard reads, so such a token cannot reach an undecorated route.
 
-**The safe pattern exists.** MCP is `@Public()` plus a dedicated `OAuthTokenVerifier` populating `req.auth`, which no guard or controller reads — so an MCP token structurally cannot reach an undecorated route.
-
-**No credential exists to build on.** There is no PIN, badge or secondary-factor concept anywhere in `libs/core/src/users`. A PIN would be a fifth credential entity beside `RefreshToken`, `PasswordResetToken`, `EmailConfirmationToken` and `McpToken` (`User` is the principal, not a credential), bringing enrolment, rotation, lockout and a brute-force surface at a bench endpoint.
-
-Field research across eight shipped products (recorded on #2080) found **no documented PIN or badge fast-switch, and no documented idle timeout, in any of them** — an absence of evidence rather than evidence of absence, and two of those products' help centres refused direct retrieval. Only Apilo documents attributing the packer at all.
+**No credential exists to build on.** A PIN would be a fifth credential entity beside `RefreshToken`, `PasswordResetToken`, `EmailConfirmationToken` and `McpToken` (`User` is the principal, not a credential), bringing enrolment, rotation, lockout and a brute-force surface at a bench endpoint. Eight products researched (#2080) show **no documented** PIN fast-switch or idle timeout — an absence of evidence, two of those vendors having refused direct retrieval.
 
 ## Decision
 
 **The pack station has no principal. Every packer has an ordinary account; the bench is a device label.**
 
-1. **No station token, no PIN, no badge.** No new credential entity, no shared-device bearer token.
-2. **Attribution is a real user id**, consistent with the `packedByUserId` order-grain packing already stamps. It rides on `fulfillment_works` as an **exclusive-or** — `packedByUserId` ⊕ `packedByService` — mirroring `CHK_fulfillment_holds_actor`, so "a 3PL packed this" and "a human packed it, unrecorded" are not the same value.
+1. **No station token, no PIN, no badge.**
+2. **Attribution is a real user id** on `fulfillment_works`, as `packedByUserId` ⊕ `packedByService`, mirroring `CHK_fulfillment_holds_actor` — so "a 3PL packed this" and "a human packed it, unrecorded" are not the same value.
 3. **Packers get a narrower `packer` role**, not `operator`.
-4. **#2079 becomes a prerequisite, executed as audit _and decorate_.** A narrower role means nothing while an undecorated route admits any authenticated principal.
-
-Bounded by the operation this serves: terminals are shared and roaming, but a person changes terminal only a few times a shift, so password sign-in is acceptable friction. At dozens of switches a day it would not be, and this decision would reopen.
+4. **#2079 is a prerequisite**, executed as audit *and decorate*: a narrower role means nothing while an undecorated route admits any authenticated principal.
 
 ## Alternatives considered
 
-**A device principal on the MCP pattern** — `@Public()` plus a dedicated verifier, a `station_tokens` table copying `mcp_tokens`' discipline (opaque prefix, SHA-256 at rest, non-nullable `expiresAt`, revocation). **Genuinely safer**: `req.auth` is unreachable from `RolesGuard`, so it fails closed without #2079. Rejected because attribution still requires per-packer accounts — so we would pay for a credential lifecycle *and* still need the role work. Note MCP scopes must not be extended for this: `McpTokenService` hardcodes its prefix, its scope union throws on unknown values, and the `mcp:write ⊃ mcp:read` implication is denormalised into existing rows.
+**A device principal on the MCP pattern** — `@Public()`, a dedicated verifier, a `station_tokens` table copying `mcp_tokens`' discipline. **This is cheaper and safer than the chosen option, and the earlier revision of this ADR misrepresented it.** Because the station token would be the *authorization* principal and a person only an *attribution* identity, it needs no `packer` role and **does not need #2079 at all** — `req.auth` is unreachable from `RolesGuard`, so it fails closed by construction. One table and one middleware, against reviewing authorization on 57 controllers.
 
-**Device session plus PIN actor** (#2080's original). Rejected for the fifth-credential cost above, and because no product researched documents doing it.
+**Station token plus tap-your-name attribution** — no per-packer credential whatsoever. The token authorizes; the packer self-asserts who they are. Cheapest of all, and the fastest possible handover.
 
-**Device-grain attribution only** — "station 3 packed it". Rejected: attribution serves dispute resolution, and a station cannot answer a question about a box.
+**Device session plus PIN actor** (#2080's original) — authenticated attribution without password friction, at the cost of the fifth credential entity above.
+
+**Device-grain attribution only** — "station 3 packed it". Rejected outright: a station cannot answer a question about a box.
+
+### Why this one anyway
+
+Three reasons, in order of weight:
+
+1. **#2079 is a live defect, and a device principal routes around it rather than fixing it.** ~110 authenticated routes are role-unrestricted today, buyer PII among them. That is worth fixing whether or not a bench exists. Choosing the option that *requires* the fix is choosing to do work that is independently correct.
+2. **Authenticated attribution is defensible; self-asserted is not.** D1 sets the standard at dispute resolution. "The record says Anna, and Anna authenticated" survives a disagreement; "someone tapped Anna's name" does not.
+3. **No new credential machinery**, with no precedent in the tree to copy.
 
 ## Consequences
 
-- **The failure mode becomes mis-attribution**, not credential theft: a packer who does not sign out leaves the next person's work under their name. Mitigated by an idle lock, a permanently visible signed-in name, and switching reachable from the packing surface — rails the field does not have, adopted deliberately.
-- **CSRF is not a constraint.** `CsrfGuard` is not an `APP_GUARD`; it is applied by hand to `/auth/refresh` and `/auth/logout` only. #2080's concern about a bearer station sitting outside the CSRF path does not arise, and no exclusion is needed.
-- **We forfeit a protection the rejected option had.** An ordinary session inherits the whole app, which is exactly why #2079 moves from adjacent cleanup to prerequisite. That is the price of this decision, not a coincidence beside it.
-- **A shared bench holds a `packer` session**, so the audit must confirm what a packer may reach — not merely that routes carry *some* role.
+- **The wave is coupled to a security fix.** #2079 must land first — a scheduling cost the alternatives would not have incurred, accepted deliberately.
+- **The failure mode is mis-attribution**, not credential theft: a packer who does not sign out leaves the next person's work under their name. Mitigated by an idle lock and a permanently visible signed-in name — rails the field does not document having.
+- **The XOR records who *closed* the parcel, not everyone who touched it.** With auto-close and roaming benches a parcel is genuinely multi-contributor; the single actor is the responsible party and the verification ledger holds the rest. A reader must not take the field as a complete account of who handled a box.
+- **CSRF is not a constraint.** `CsrfGuard` is not an `APP_GUARD`; it is hand-applied to `/auth/refresh` and `/auth/logout` only. #2080's concern does not arise.
+
+## Revisit when
+
+- **Terminal switching exceeds a few times per shift.** Password friction then defeats attribution, and the PIN option returns.
+- **#2079 is judged too large to precede this wave.** The device principal becomes the cheaper path, and this decision should be re-taken rather than worked around.
 
 ## References
 
 - #2080 (this decision), #2079 (the guard), #1032 § 6C/6D (the superseded design)
-- `docs/specs/product-spec-oms-wave3b-scan-pick-pack.md` — decisions D1, D2, D3, D12, D13, D15, D16
+- `docs/specs/product-spec-oms-wave3b-scan-pick-pack.md` — D1, D2, D3, D12, D13, D15, D16
 - [ADR-034](./034-mcp-authorization-user-issued-pats.md) — the `@Public()` + dedicated-verifier precedent
-- `apps/api/src/mcp/auth/ol-mcp-token.verifier.ts`, `libs/core/src/fulfillment/infrastructure/persistence/entities/fulfillment-hold.orm-entity.ts`
