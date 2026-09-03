@@ -55,14 +55,17 @@
  * `awaiting_mapping` order fails to resolve to *any* channel-scoped total
  * in the first place, so it was never counted anywhere to be silently
  * missing from) gets one `AnalyticsExclusionNote` per affected category.
- * The cross-reference is exact: each open category's *full* affected-order
- * list (not the Data Coverage aggregate's 10-id sample —
- * `useCoverageCrossReferenceQuery`, `hooks/use-coverage-cross-reference-query.ts`,
- * drains every page via the same paginated endpoints Phase 7's detail
- * modals use) is grouped by `sourceConnectionId` (`buildChannelExclusionMap`,
- * `lib/channel-exclusion-map.lib.ts`), since that field is on every
- * affected-order row and matches this table's own row key exactly — unlike
- * a product, a channel has no ambiguity to approximate.
+ * The cross-reference is exact: `GET /analytics/coverage/by-connection`
+ * (#2713) already returns each open category's affected-order count
+ * `GROUP BY sourceConnectionId` server-side — one request
+ * (`useCoverageByConnectionQuery`, `hooks/use-coverage-by-connection-query.ts`)
+ * instead of draining every page of four separate order lists client-side
+ * (the pre-#2714 approach, still used by `ProductSalesTable` for its
+ * per-product cross-reference, which has no connection-level aggregate to
+ * consume) — reshaped into the same `sourceConnectionId`-keyed map
+ * (`buildChannelExclusionMap`, `lib/channel-exclusion-map.lib.ts`), since
+ * that field matches this table's own row key exactly — unlike a product, a
+ * channel has no ambiguity to approximate.
  *
  * @module features/analytics/components
  */
@@ -78,8 +81,12 @@ import { useNumberFormat } from '../../../shared/i18n/use-number-format';
 import { ConnectionCell, useConnectionsQuery, type Connection } from '../../connections';
 import { ConnectionDot } from '../../orders';
 import { useSalesAnalyticsQuery } from '../hooks/use-sales-analytics-query';
-import { useCoverageCrossReferenceQuery } from '../hooks/use-coverage-cross-reference-query';
-import { isCurrencyRecalculating } from '../lib/display-currency.lib';
+import { useCoverageByConnectionQuery } from '../hooks/use-coverage-by-connection-query';
+import {
+  createReportingCurrencyConverter,
+  isCurrencyRecalculating,
+  resolveReportingCurrencyRate,
+} from '../lib/display-currency.lib';
 import type { ChannelSalesAnalytics, SalesAnalyticsFilters } from '../api/sales-analytics.types';
 import type { AnalyticsCoverage, AnalyticsCoverageFilters, CoverageCategory } from '../api/analytics-coverage.types';
 import {
@@ -230,42 +237,30 @@ export function ChannelSalesTable({
   const pctFormat = useNumberFormat(PERCENT_FORMAT_OPTIONS);
   const intFormat = useNumberFormat();
 
-  // Fixed set of hooks, one per cross-referenceable category (never a
-  // variable count derived from which categories happen to be open — see
-  // `useCoverageCrossReferenceQuery`'s own doc comment on why). Each is
-  // `enabled` only when its own category is genuinely open.
+  // One request for every cross-referenceable category together (#2713/
+  // #2714) — `enabled` only when the `coverage` prop (the unfiltered
+  // GET /analytics/coverage aggregate) says at least one of them has a
+  // nonzero affectedCount, matching the pre-#2714 gate's own source of
+  // truth exactly (`openCategoryCodes`, unchanged) — just "any" instead of
+  // "each", since there is now only one request to gate. This is the same
+  // approximation the old per-category gates already made: `coverage` and
+  // `crossRefFilters`/`coverageFilters` are independent props (see this
+  // component's own prop doc comments), so the guarantee is "no request
+  // when the panel overall reads all-clear," not a filter-range match.
   const openCategoryCodes = useMemo(
     () => new Set((coverage?.categories ?? []).filter((row) => row.affectedCount > 0).map((row) => row.category)),
     [coverage]
   );
   const crossRefFilters: AnalyticsCoverageFilters = coverageFilters ?? { from: '', to: '' };
   const crossRefEnabled = Boolean(coverageFilters) && Boolean(onOpenCategory);
-  const currencyOrders = useCoverageCrossReferenceQuery(
-    'currency',
-    crossRefFilters,
-    crossRefEnabled && openCategoryCodes.has('currency')
+  const anyOpenCrossReferenceable = CROSS_REFERENCEABLE_CATEGORIES.some((category) =>
+    openCategoryCodes.has(category)
   );
-  const taxAOrders = useCoverageCrossReferenceQuery(
-    'tax-a',
+  const byConnection = useCoverageByConnectionQuery(
     crossRefFilters,
-    crossRefEnabled && openCategoryCodes.has('tax-a')
+    crossRefEnabled && anyOpenCrossReferenceable
   );
-  const taxBOrders = useCoverageCrossReferenceQuery(
-    'tax-b',
-    crossRefFilters,
-    crossRefEnabled && openCategoryCodes.has('tax-b')
-  );
-  const taxCOrders = useCoverageCrossReferenceQuery(
-    'tax-c',
-    crossRefFilters,
-    crossRefEnabled && openCategoryCodes.has('tax-c')
-  );
-  const exclusions = buildChannelExclusionMap({
-    currency: currencyOrders.data,
-    'tax-a': taxAOrders.data,
-    'tax-b': taxBOrders.data,
-    'tax-c': taxCOrders.data,
-  });
+  const exclusions = buildChannelExclusionMap(byConnection.data);
 
   if (query.isLoading) {
     return (
@@ -288,13 +283,26 @@ export function ChannelSalesTable({
   }
 
   const channels = query.data?.channels ?? [];
-  // ADR-064 display-currency override: NOT applied here. `revenue`/`netRevenue`
-  // have no converted counterpart from the backend, and deriving a "rate"
-  // client-side from `convertedRevenue / revenue` is UNSOUND — see
-  // `display-currency.lib.ts`'s "REJECTED APPROACH" note for the live bad
-  // number (29 000 PLN read as ~20 000 "EUR") that caught this. Net sales/AOV
-  // stay in the native reporting currency until the backend computes a real
-  // converted value for them.
+  const headline = query.data?.headline;
+  // ADR-064 display-currency override (#2778/#2779): every channel's
+  // `currency` — and `row.total.currency` — always equals `headline.currency`
+  // (the one system-wide reporting currency, see this file's own doc
+  // comment), so the single rate resolved for the headline bucket is the
+  // exact rate for every row here too. This reuses the REAL per-bucket rate
+  // the backend applied (`NativeCurrencyBreakdown.appliedRate`) — never a
+  // rate derived by dividing `convertedRevenue` by `revenue`, which is
+  // UNSOUND (see `display-currency.lib.ts`'s "REJECTED APPROACH" note for
+  // the live bad number, 29 000 PLN read as ~20 000 "EUR", that caught it).
+  // A row whose `currency` doesn't resolve to a rate stays native.
+  const gmvConversion = headline?.displayCurrencyConversion;
+  const reportingRate = resolveReportingCurrencyRate(gmvConversion, headline?.currency ?? null);
+  const reportingConverter = createReportingCurrencyConverter(reportingRate, headline?.currency ?? null);
+  function convertToDisplay(amount: number, nativeCurrency: string): number {
+    return reportingConverter.convertToDisplay(amount, nativeCurrency);
+  }
+  function displayCurrencyFor(nativeCurrency: string): string {
+    return reportingConverter.displayCurrencyFor(nativeCurrency);
+  }
   const connectionsById = new Map((connectionsQuery.data ?? []).map((c) => [c.id, c]));
   const channelRows: ChannelRow[] = channels.map((channel) => ({
     kind: 'channel',
@@ -318,10 +326,24 @@ export function ChannelSalesTable({
       return <RecalculatingValue />;
     }
     if (row.kind === 'total') {
-      return <>{formatAmount(row.total.netAverageOrderValue, row.total.currency)}</>;
+      return (
+        <>
+          {formatAmount(
+            convertToDisplay(row.total.netAverageOrderValue, row.total.currency),
+            displayCurrencyFor(row.total.currency)
+          )}
+        </>
+      );
     }
     if (row.channel.currency !== null) {
-      return <>{formatAmount(row.channel.netAverageOrderValue, row.channel.currency)}</>;
+      return (
+        <>
+          {formatAmount(
+            convertToDisplay(row.channel.netAverageOrderValue, row.channel.currency),
+            displayCurrencyFor(row.channel.currency)
+          )}
+        </>
+      );
     }
     // No unconverted-evidence fallback, same reasoning as Net sales: an
     // unconverted amount is a GROSS figure and would misrepresent itself as
@@ -340,10 +362,24 @@ export function ChannelSalesTable({
       );
     }
     if (row.kind === 'total') {
-      return <strong>{formatAmount(row.total.netRevenue, row.total.currency)}</strong>;
+      return (
+        <strong>
+          {formatAmount(
+            convertToDisplay(row.total.netRevenue, row.total.currency),
+            displayCurrencyFor(row.total.currency)
+          )}
+        </strong>
+      );
     }
     if (row.channel.currency !== null) {
-      return <>{formatAmount(row.channel.netRevenue, row.channel.currency)}</>;
+      return (
+        <>
+          {formatAmount(
+            convertToDisplay(row.channel.netRevenue, row.channel.currency),
+            displayCurrencyFor(row.channel.currency)
+          )}
+        </>
+      );
     }
     return <EmptyValue label="No Net sales figure can be given for this channel in range" />;
   }
@@ -354,7 +390,7 @@ export function ChannelSalesTable({
       header: 'Channel',
       cell: (row) =>
         row.kind === 'total' ? (
-          <strong>Total · {row.total.currency}</strong>
+          <strong>Total · {displayCurrencyFor(row.total.currency)}</strong>
         ) : (
           <ChannelName
             connectionsLoading={connectionsQuery.isLoading}

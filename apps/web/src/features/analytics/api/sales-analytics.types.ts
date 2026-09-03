@@ -40,16 +40,42 @@ export const DISPLAY_CURRENCY_RATE_BASIS_VALUES = ['current-rate', 'order-date']
 export type DisplayCurrencyRateBasis = (typeof DISPLAY_CURRENCY_RATE_BASIS_VALUES)[number];
 
 /**
+ * Mirrors `AppliedRateDto` (#2778) — what produced one converted figure.
+ * Never a statutory/invoice rate; see ADR-040's own warning about the FA(3)
+ * `KursWaluty` distinction. `rate` stays a string, exactly as the backend
+ * sends it (a `numeric(18,8)` column) — the audited value. This app DOES
+ * `Number()` it, in `convertToDisplay`, to compute the on-screen figure; that
+ * float is acceptable only because the result is display-only and never
+ * written back or re-audited. `formatAppliedRateLine` separately `Number()`s
+ * it again purely for rounding the inline provenance line.
+ */
+export interface AppliedRate {
+  from: string;
+  to: string;
+  rate: string;
+  /** ISO yyyy-mm-dd — the day the source published for. */
+  rateDate: string;
+  source: string;
+  derivation: 'direct' | 'inverted' | 'pivot';
+  sourceRef: string | null;
+}
+
+/**
  * Mirrors `DisplayCurrencyConversionDto` (ADR-064). Present on the headline
  * and per-channel figures only when the request carried a `displayCurrency`.
  * `convertedRevenue: null` is the explicit "couldn't get a rate" state — see
  * `resolveConvertNoteState` in `../lib/display-currency.lib.ts`.
+ *
+ * `appliedRates` (#2778) is 0..N: empty when nothing converted (mirrors
+ * `unresolvedNativeCurrencies` covering the whole set), one entry per
+ * resolved native-currency row for `current-rate`, 0-or-1 for `order-date`.
  */
 export interface DisplayCurrencyConversion {
   displayCurrency: string;
   rateBasis: DisplayCurrencyRateBasis;
   convertedRevenue: number | null;
   unresolvedNativeCurrencies: string[];
+  appliedRates: AppliedRate[];
 }
 
 export interface SalesAnalyticsHeadline {

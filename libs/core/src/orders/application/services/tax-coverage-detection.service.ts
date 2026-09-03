@@ -67,7 +67,9 @@ import {
   type PaginatedTaxCoverageOrders,
   type TaxCoverageCategory,
   type TaxCoverageClassification,
+  type TaxCoverageLineRateObservation,
   type TaxCoverageOrderRow,
+  type CoverageConnectionAggregateRow,
 } from '../../domain/types/coverage-detection.types';
 
 const PRE_ROLLOUT_ERA = 'pre-rollout';
@@ -80,6 +82,28 @@ const PRE_ROLLOUT_ERA = 'pre-rollout';
  * `Promise.all` over the whole deduplicated key set.
  */
 const RATE_LOOKUP_CONCURRENCY = 5;
+
+/**
+ * Canonicalize a rate code before it lands on a
+ * {@link TaxCoverageLineRateObservation} (#2802 review) — `resolveLineRates`
+ * has two sources for the SAME kind of value (`line.taxRate`'s own stored
+ * column, and `StoredTaxRate.code` from a live catalogue read) and neither
+ * is guaranteed to format a numeric percent identically (`'23.00'` vs
+ * `'23'`). Without this, the two sources could disagree on formatting for
+ * the same real rate and the FE's per-order label dedup (which keys on the
+ * rendered string) would show both as separate tags on one order.
+ *
+ * Only the numeric shape is renormalized — an exemption code (`'zw'`,
+ * `'np'`, `'oo'`) is already canonical and passed through verbatim, since
+ * `Number()`-round-tripping it would just produce `NaN`.
+ */
+function normalizeRateCode(code: string | null): string | null {
+  if (code === null) {
+    return null;
+  }
+  const trimmed = code.trim();
+  return /^\d+(\.\d+)?$/.test(trimmed) ? String(Number(trimmed)) : trimmed;
+}
 
 @Injectable()
 export class TaxCoverageDetectionService implements ITaxCoverageDetectionService {
@@ -116,7 +140,10 @@ export class TaxCoverageDetectionService implements ITaxCoverageDetectionService
 
     // ONE query for every pre-rollout candidate's lines, instead of one
     // `findByOrderId` call per candidate (#2826) — the N+1 this method used
-    // to make.
+    // to make. Every line is kept (not just the unresolved ones), because
+    // #2798's per-line `lineRates` observations must cover EVERY line of a
+    // pre-rollout order, including the ones whose own
+    // `order_line_items.taxRate` column already resolves.
     const linesByOrderId = await this.orderLineItemRepository.findByOrderIds(
       preRolloutCandidates.map((candidate) => candidate.internalOrderId)
     );
@@ -125,16 +152,15 @@ export class TaxCoverageDetectionService implements ITaxCoverageDetectionService
     // by (productId, variantId) — many lines across many orders reference
     // the same catalogue entry, so this collapses what used to be one
     // `getEffectiveTaxRate` call per UNRESOLVED LINE into one call per
-    // distinct product/variant pair (#2826).
-    const unresolvedLinesByOrderId = new Map<string, OrderLineItem[]>();
+    // distinct product/variant pair (#2826). Only an unresolved line needs a
+    // catalogue read, so a resolved one contributes no key.
     const uniqueRateKeys = new Map<string, { productId: string; variantId?: string }>();
     for (const candidate of preRolloutCandidates) {
       const lines = linesByOrderId.get(candidate.internalOrderId) ?? [];
-      const unresolved = lines.filter(
-        (line) => resolveNetSalesTaxRate(line.taxRate).kind === 'unknown'
-      );
-      unresolvedLinesByOrderId.set(candidate.internalOrderId, unresolved);
-      for (const line of unresolved) {
+      for (const line of lines) {
+        if (resolveNetSalesTaxRate(line.taxRate).kind !== 'unknown') {
+          continue;
+        }
         uniqueRateKeys.set(this.rateKey(line.productId, line.variantId), {
           productId: line.productId,
           variantId: line.variantId ?? undefined,
@@ -154,12 +180,12 @@ export class TaxCoverageDetectionService implements ITaxCoverageDetectionService
     };
 
     for (const candidate of candidates) {
-      const category = this.classifyOne(
+      const { category, lineRates } = this.classifyOne(
         candidate,
-        unresolvedLinesByOrderId.get(candidate.internalOrderId) ?? [],
+        linesByOrderId.get(candidate.internalOrderId) ?? [],
         rateByKey
       );
-      result[category].push(this.toRow(candidate));
+      result[category].push(this.toRow(candidate, lineRates));
     }
 
     return result;
@@ -273,74 +299,170 @@ export class TaxCoverageDetectionService implements ITaxCoverageDetectionService
     return pages as Record<TaxCoverageCategory, PaginatedTaxCoverageOrders>;
   }
 
-  private toRow(candidate: NetExcludedOrderCandidate): TaxCoverageOrderRow {
+  async getAllCategoryCountsByConnection(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string,
+    includeBackfilledPreRollout = false
+  ): Promise<Record<TaxCoverageCategory, CoverageConnectionAggregateRow[]>> {
+    const classification = await this.classify(
+      filters,
+      currentReportingCurrency,
+      includeBackfilledPreRollout
+    );
+    const counts: Partial<Record<TaxCoverageCategory, CoverageConnectionAggregateRow[]>> = {};
+    for (const category of TaxCoverageCategoryValues) {
+      counts[category] = this.groupByConnection(classification[category]);
+    }
+    return counts as Record<TaxCoverageCategory, CoverageConnectionAggregateRow[]>;
+  }
+
+  private groupByConnection(rows: TaxCoverageOrderRow[]): CoverageConnectionAggregateRow[] {
+    const byConnection = new Map<string, number>();
+    for (const row of rows) {
+      byConnection.set(row.sourceConnectionId, (byConnection.get(row.sourceConnectionId) ?? 0) + 1);
+    }
+    return Array.from(byConnection, ([sourceConnectionId, affectedCount]) => ({
+      sourceConnectionId,
+      affectedCount,
+    }));
+  }
+
+  private toRow(
+    candidate: NetExcludedOrderCandidate,
+    lineRates: TaxCoverageLineRateObservation[]
+  ): TaxCoverageOrderRow {
     return {
       internalOrderId: candidate.internalOrderId,
       sourceConnectionId: candidate.sourceConnectionId,
       placedAt: candidate.placedAt,
+      lineRates,
     };
   }
 
   /**
-   * Classify one candidate, given its already-fetched unresolved lines and
-   * the already-resolved catalogue rate per (productId, variantId) key
-   * (#2826 — both are batched/deduplicated once per `classify()` call rather
-   * than fetched here, so this method does no I/O of its own). A
-   * non-pre-rollout candidate is always `'tax-b'` — the A/C split only
-   * applies to the pre-rollout blanket-exclusion case (see the class doc
-   * comment). A `null` map entry means the catalogue read for that key
-   * failed — treated exactly like 'not-checked', matching the pre-#2826
-   * per-line catch block.
+   * Resolve one observation per line (#2798) — never discarded after
+   * computing the bucket, since a mixed-rate order needs its own per-line
+   * rates rather than one order-level value. A line whose own
+   * `order_line_items.taxRate` already resolves (the backfill sweep already
+   * wrote it, or it was never excluded in the first place) reports that
+   * value directly; an unresolved line reads the catalogue answer
+   * `classify()` already fetched for its (productId, variantId) key.
+   *
+   * This method does NO I/O of its own (#2826): the catalogue reads are
+   * batched and deduplicated once per `classify()` call, so a product
+   * referenced by many lines across many orders costs one read rather than
+   * one per line.
+   *
+   * A missing or `null` map entry means the catalogue read for that key
+   * failed — reported as `'not-checked'`, matching the pre-#2826 per-line
+   * catch block: a read failure tells us nothing about the rate's
+   * existence, so it must never harden into a `'no-rate'` claim the order
+   * does not support. (The warning itself is logged once per failed KEY in
+   * `resolveRates`, not once per line, which is the point of deduplicating.)
+   *
+   * Every `rateCode` is passed through {@link normalizeRateCode} regardless
+   * of which of the two sources produced it, and a `'no-rate'` observation
+   * carries the catalogue's own `unknownReason` (#2264) when it has one —
+   * see {@link TaxCoverageLineRateObservation}'s doc comment for why both
+   * matter to the operator surface reading this.
    */
-  private classifyOne(
-    candidate: NetExcludedOrderCandidate,
-    unresolvedLines: OrderLineItem[],
+  private resolveLineRates(
+    lines: OrderLineItem[],
     rateByKey: Map<string, StoredTaxRate | null>
-  ): TaxCoverageCategory {
-    if (candidate.taxRateEra !== PRE_ROLLOUT_ERA) {
-      return 'tax-b';
-    }
+  ): TaxCoverageLineRateObservation[] {
+    const observations: TaxCoverageLineRateObservation[] = [];
 
-    // Every line already resolves (e.g. the backfill sweep already wrote a
-    // rate to each one) — the order is fully resolvable, just blocked by
-    // the blanket pre-rollout exclusion.
-    if (unresolvedLines.length === 0) {
-      return 'tax-a';
-    }
+    for (const line of lines) {
+      if (resolveNetSalesTaxRate(line.taxRate).kind === 'known') {
+        observations.push({
+          productId: line.productId,
+          variantId: line.variantId,
+          rateCode: normalizeRateCode(line.taxRate),
+          state: 'known',
+          unknownReason: null,
+        });
+        continue;
+      }
 
-    let anyConfirmedNoRate = false;
-    let anyNotChecked = false;
-
-    for (const line of unresolvedLines) {
       const rate = rateByKey.get(this.rateKey(line.productId, line.variantId));
       if (!rate) {
         // Absent (shouldn't happen — every unresolved line's key was
         // collected before the lookup) or `null` (the catalogue read for
         // this key failed) — treat like 'not-checked'.
-        anyNotChecked = true;
+        observations.push({
+          productId: line.productId,
+          variantId: line.variantId,
+          rateCode: null,
+          state: 'not-checked',
+          unknownReason: null,
+        });
         continue;
       }
 
       const state = taxRateState(rate);
-      if (state === 'known') {
-        continue;
-      }
-      if (state === 'no-rate') {
+      observations.push({
+        productId: line.productId,
+        variantId: line.variantId,
+        rateCode: state === 'known' ? normalizeRateCode(rate.code) : null,
+        state,
+        unknownReason: state === 'no-rate' ? (rate.unknownReason ?? null) : null,
+      });
+    }
+
+    return observations;
+  }
+
+  /**
+   * Classify one candidate, given its already-fetched lines and the
+   * already-resolved catalogue rate per (productId, variantId) key (#2826 —
+   * both are batched/deduplicated once per `classify()` call rather than
+   * fetched here, so this method does no I/O of its own).
+   *
+   * A non-pre-rollout candidate is always `'tax-b'` — the A/C split only
+   * applies to the pre-rollout blanket-exclusion case (see the class doc
+   * comment) — and, exactly as before #2798, without consulting line items
+   * or the catalogue at all: nothing about the candidate's own lines decided
+   * this bucket, so `lineRates` is `[]` rather than reporting observations
+   * that classification never consulted. The pre-rollout branches below
+   * return the per-line rate observations, so a row IN THOSE buckets is
+   * never missing the data behind its own classification.
+   *
+   * An order whose every line already resolves sets neither flag below and
+   * so lands in `'tax-a'` — the same answer the pre-#2798 early return gave
+   * for an empty unresolved-line set, reached through the observations
+   * instead of a separate branch.
+   */
+  private classifyOne(
+    candidate: NetExcludedOrderCandidate,
+    lines: OrderLineItem[],
+    rateByKey: Map<string, StoredTaxRate | null>
+  ): { category: TaxCoverageCategory; lineRates: TaxCoverageLineRateObservation[] } {
+    if (candidate.taxRateEra !== PRE_ROLLOUT_ERA) {
+      return { category: 'tax-b', lineRates: [] };
+    }
+
+    const lineRates = this.resolveLineRates(lines, rateByKey);
+
+    let anyConfirmedNoRate = false;
+    let anyNotChecked = false;
+
+    for (const observation of lineRates) {
+      if (observation.state === 'no-rate') {
         anyConfirmedNoRate = true;
-      } else {
+      } else if (observation.state === 'not-checked') {
         anyNotChecked = true;
       }
     }
 
     if (!anyConfirmedNoRate && !anyNotChecked) {
-      return 'tax-a';
+      return { category: 'tax-a', lineRates };
     }
     // A confirmed no-rate line makes the order permanently unresolvable —
     // takes precedence over a merely not-yet-checked sibling line, since
     // "no remediation exists" is the stronger, more actionable fact.
     if (anyConfirmedNoRate) {
-      return 'tax-b';
+      return { category: 'tax-b', lineRates };
     }
-    return 'tax-c';
+    return { category: 'tax-c', lineRates };
   }
 }

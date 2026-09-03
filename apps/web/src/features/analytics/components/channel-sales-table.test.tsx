@@ -286,9 +286,10 @@ describe('ChannelSalesTable', () => {
   // #2481 regression guards — the mockup's own two found bugs: a row
   // wrongly labeled with a *different* category's issue, and a row with
   // orders in an open category's affected set missing its annotation
-  // entirely. Both fixtures cross-reference against the FULL affected-order
-  // list (never the 10-id sample), grouped by `sourceConnectionId`.
-  describe('.excl-note cross-reference (#2481)', () => {
+  // entirely. Both fixtures cross-reference against the aggregate-by-
+  // connection endpoint (#2713/#2714), grouped by `sourceConnectionId`
+  // server-side.
+  describe('.excl-note cross-reference (#2481, ported to the aggregate endpoint by #2714)', () => {
     it("should attribute each channel's exclusion note to its own category, never the other channel's", async () => {
       const apiClient = createMockApiClient({
         analytics: {
@@ -298,13 +299,13 @@ describe('ChannelSalesTable', () => {
               channel({ sourceConnectionId: 'conn-2' }),
             ])
           ),
-          getCurrencyMismatchOrders: vi.fn().mockResolvedValue({
-            items: [{ internalOrderId: 'ol_order_1', sourceConnectionId: 'conn-1', nativeCurrency: 'EUR', stampedCurrency: null, stampedAt: null }],
-            total: 1,
-          }),
-          getTaxCoverageOrders: vi.fn().mockResolvedValue({
-            items: [{ internalOrderId: 'ol_order_2', sourceConnectionId: 'conn-2', placedAt: null }],
-            total: 1,
+          getCoverageByConnection: vi.fn().mockResolvedValue({
+            categories: [
+              { category: 'currency', rows: [{ sourceConnectionId: 'conn-1', affectedCount: 1 }] },
+              { category: 'tax-a', rows: [] },
+              { category: 'tax-b', rows: [{ sourceConnectionId: 'conn-2', affectedCount: 1 }] },
+              { category: 'tax-c', rows: [] },
+            ],
           }),
         },
         connections: {
@@ -346,19 +347,14 @@ describe('ChannelSalesTable', () => {
       const apiClient = createMockApiClient({
         analytics: {
           getSales: vi.fn().mockResolvedValue(analytics([channel({ sourceConnectionId: 'conn-1' })])),
-          getCurrencyMismatchOrders: vi.fn().mockResolvedValue({
-            items: [{ internalOrderId: 'ol_order_1', sourceConnectionId: 'conn-1', nativeCurrency: 'EUR', stampedCurrency: null, stampedAt: null }],
-            total: 1,
+          getCoverageByConnection: vi.fn().mockResolvedValue({
+            categories: [
+              { category: 'currency', rows: [{ sourceConnectionId: 'conn-1', affectedCount: 1 }] },
+              { category: 'tax-a', rows: [{ sourceConnectionId: 'conn-1', affectedCount: 1 }] },
+              { category: 'tax-b', rows: [{ sourceConnectionId: 'conn-1', affectedCount: 1 }] },
+              { category: 'tax-c', rows: [{ sourceConnectionId: 'conn-1', affectedCount: 1 }] },
+            ],
           }),
-          getTaxCoverageOrders: vi.fn((input: { category: string }) =>
-            Promise.resolve(
-              input.category === 'tax-a'
-                ? { items: [{ internalOrderId: 'ol_order_2', sourceConnectionId: 'conn-1', placedAt: null }], total: 1 }
-                : input.category === 'tax-b'
-                  ? { items: [{ internalOrderId: 'ol_order_3', sourceConnectionId: 'conn-1', placedAt: null }], total: 1 }
-                  : { items: [{ internalOrderId: 'ol_order_4', sourceConnectionId: 'conn-1', placedAt: null }], total: 1 }
-            )
-          ),
         },
         connections: {
           list: vi.fn().mockResolvedValue([{ id: 'conn-1', name: 'Allegro — main', platformType: 'allegro' }]),
@@ -424,5 +420,48 @@ describe('ChannelSalesTable', () => {
     // rule), so exactly 2 occurrences, never a bare "PLN 0.00".
     expect(screen.getAllByText('Recalculating…')).toHaveLength(2);
     expect(screen.queryByText(/0\.00/)).not.toBeInTheDocument();
+  });
+
+  it('converts per-channel Net sales/AOV and the Total row using the real headline rate (#2779 course correction)', async () => {
+    const apiClient = createMockApiClient({
+      analytics: {
+        getSales: vi.fn().mockResolvedValue({
+          ...analytics([channel({ netRevenue: 2700, netAverageOrderValue: 108, currency: 'PLN' })]),
+          headline: {
+            ...analytics([]).headline,
+            currency: 'PLN',
+            displayCurrencyConversion: {
+              displayCurrency: 'EUR',
+              rateBasis: 'current-rate',
+              convertedRevenue: 1132.8,
+              unresolvedNativeCurrencies: [],
+              appliedRates: [
+                {
+                  from: 'PLN',
+                  to: 'EUR',
+                  rate: '0.236',
+                  rateDate: '2026-08-29',
+                  source: 'nbp',
+                  derivation: 'direct',
+                  sourceRef: '167/A/NBP/2026',
+                },
+              ],
+            },
+          },
+        }),
+      },
+      connections: {
+        list: vi.fn().mockResolvedValue([{ id: 'conn-1', name: 'Allegro — main', platformType: 'allegro' }]),
+      },
+    });
+
+    renderWithProviders(<ChannelSalesTable filters={{ ...FILTERS, displayCurrency: 'EUR' }} />, { apiClient });
+
+    await screen.findByRole('link', { name: 'Allegro — main' });
+    // Channel row + Total row both read €637.20 (one channel), so 2 occurrences.
+    expect(screen.getAllByText('€637.20')).toHaveLength(2); // Net sales: 2700 * 0.236
+    expect(screen.getAllByText('€25.49')).toHaveLength(2); // AOV: 108 * 0.236
+    expect(screen.getByText('Total · EUR')).toBeInTheDocument();
+    expect(screen.queryByText(/^PLN /)).not.toBeInTheDocument();
   });
 });

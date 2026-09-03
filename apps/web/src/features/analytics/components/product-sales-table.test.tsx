@@ -8,9 +8,23 @@ import {
 } from '../../../test/test-utils';
 import type { SessionUser } from '../../../shared/auth/session.types';
 import type { TopProductRow, TopProductsResult } from '../api/top-products.types';
+import type { AnalyticsCoverage } from '../api/analytics-coverage.types';
 import { ProductSalesTable } from './product-sales-table';
 
 const FILTERS = { from: '2026-08-01', to: '2026-08-14' };
+const COVERAGE_FILTERS = { from: '2026-08-01T00:00:00.000Z', to: '2026-08-15T00:00:00.000Z' };
+
+function coverage(overrides: Partial<Record<string, number>> = {}): AnalyticsCoverage {
+  return {
+    categories: [
+      { category: 'currency', status: 'open', affectedCount: overrides.currency ?? 0, sampleOrderIds: [] },
+      { category: 'tax-a', status: 'open', affectedCount: overrides['tax-a'] ?? 0, sampleOrderIds: [] },
+      { category: 'tax-b', status: 'open', affectedCount: overrides['tax-b'] ?? 0, sampleOrderIds: [] },
+      { category: 'tax-c', status: 'open', affectedCount: overrides['tax-c'] ?? 0, sampleOrderIds: [] },
+      { category: 'product-matching', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+    ],
+  };
+}
 
 // The Publish action is gated on `listings:write` (#2191 tech review) — a
 // genuinely unauthorized, non-demo viewer sees it neither as a link nor as a
@@ -558,5 +572,259 @@ describe('ProductSalesTable', () => {
 
     expect(await screen.findByText('Recalculating…')).toBeInTheDocument();
     expect(screen.queryByText(/PLN 0\.00/)).not.toBeInTheDocument();
+  });
+
+  it('converts Net sales using the real headline rate shared with AnalyticsKpiStrip/ChannelSalesTable (#2779 course correction)', async () => {
+    const apiClient = createMockApiClient({
+      analytics: {
+        getTopProducts: vi.fn().mockResolvedValue(result([row({ netRevenue: 100, currency: 'PLN' })])),
+        getSales: vi.fn().mockResolvedValue({
+          headline: {
+            revenue: 1000,
+            currency: 'PLN',
+            orderCount: 10,
+            averageOrderValue: 100,
+            medianOrderValue: 100,
+            unitsSold: 10,
+            cancelledCount: 0,
+            cancelledValue: 0,
+            cancelledUnconvertedCount: 0,
+            cancelledUnconvertedValue: 0,
+            unconvertedCount: 0,
+            unconvertedValue: 0,
+            unconvertedCurrency: null,
+            netRevenue: 900,
+            netAverageOrderValue: 90,
+            netMedianOrderValue: 90,
+            netExcludedCount: 0,
+            netExcludedValue: 0,
+            trend: [],
+            displayCurrencyConversion: {
+              displayCurrency: 'EUR',
+              rateBasis: 'current-rate',
+              convertedRevenue: 236,
+              unresolvedNativeCurrencies: [],
+              appliedRates: [
+                {
+                  from: 'PLN',
+                  to: 'EUR',
+                  rate: '0.236',
+                  rateDate: '2026-08-29',
+                  source: 'nbp',
+                  derivation: 'direct',
+                  sourceRef: '167/A/NBP/2026',
+                },
+              ],
+            },
+          },
+          channels: [],
+        }),
+      },
+      connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
+    });
+
+    renderWithProviders(
+      <ProductSalesTable filters={{ ...FILTERS, displayCurrency: 'EUR' }} />,
+      { apiClient }
+    );
+
+    // 100 * 0.236 — reusing the exact same rate the headline bucket applied,
+    // never a rate derived by dividing two unrelated totals.
+    expect(await screen.findByText('€23.60')).toBeInTheDocument();
+    expect(screen.queryByText(/^PLN /)).not.toBeInTheDocument();
+  });
+
+  // #2799 regression guards — the same two bug classes #2481's channel-table
+  // ACs guard against, at the product grain: a row wrongly labeled with a
+  // *different* product's category, and a row with orders in an open
+  // category's affected set missing its annotation entirely. Both fixtures
+  // cross-reference against the FULL affected-order list (never the 10-id
+  // sample), grouped by `productId` — every distinct `productId` a currency
+  // row's `lineProducts` touches, or across a tax row's per-line
+  // `lineRates`.
+  describe('.excl-note cross-reference (#2799)', () => {
+    it("should attribute each product's exclusion note to its own category, never the other product's", async () => {
+      const apiClient = createMockApiClient({
+        analytics: {
+          getTopProducts: vi.fn().mockResolvedValue(
+            result([row({ productId: 'p1', name: 'Widget A' }), row({ productId: 'p2', name: 'Widget B' })])
+          ),
+          getCurrencyMismatchOrders: vi.fn().mockResolvedValue({
+            items: [
+              {
+                internalOrderId: 'ol_order_1',
+                sourceConnectionId: 'conn-a',
+                nativeCurrency: 'EUR',
+                stampedCurrency: null,
+                stampedAt: null,
+                lineProducts: [{ productId: 'p1', variantId: null }],
+              },
+            ],
+            total: 1,
+          }),
+          getTaxCoverageOrders: vi.fn().mockResolvedValue({
+            items: [
+              {
+                internalOrderId: 'ol_order_2',
+                sourceConnectionId: 'conn-a',
+                placedAt: null,
+                lineRates: [{ productId: 'p2', variantId: null, rateCode: null, state: 'no-rate' }],
+              },
+            ],
+            total: 1,
+          }),
+        },
+        connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
+      });
+
+      renderWithProviders(
+        <ProductSalesTable
+          filters={FILTERS}
+          coverage={coverage({ currency: 1, 'tax-b': 1 })}
+          coverageFilters={COVERAGE_FILTERS}
+          onOpenCategory={() => {}}
+        />,
+        { apiClient }
+      );
+
+      const p1Row = (await screen.findByText('Widget A')).closest('tr');
+      const p2Row = (await screen.findByText('Widget B')).closest('tr');
+      expect(p1Row).not.toBeNull();
+      expect(p2Row).not.toBeNull();
+
+      // p1's own order is a currency exclusion — its note must say so, and
+      // must NOT carry p2's tax-B note (the exact mislabeling bug the
+      // channel-table's own design review caught, mirrored here).
+      const p1Notes = p1Row!.querySelectorAll('.excl-note');
+      expect(p1Notes).toHaveLength(1);
+      expect(p1Notes[0]).toHaveTextContent('1 order counted in an outdated currency');
+
+      const p2Notes = p2Row!.querySelectorAll('.excl-note');
+      expect(p2Notes).toHaveLength(1);
+      expect(p2Notes[0]).toHaveTextContent('1 order have no tax rate at all');
+    });
+
+    it('should annotate a product for every cross-referenceable category it has an excluded order in', async () => {
+      const apiClient = createMockApiClient({
+        analytics: {
+          getTopProducts: vi.fn().mockResolvedValue(result([row({ productId: 'p1', name: 'Widget A' })])),
+          getCurrencyMismatchOrders: vi.fn().mockResolvedValue({
+            items: [
+              {
+                internalOrderId: 'ol_order_1',
+                sourceConnectionId: 'conn-a',
+                nativeCurrency: 'EUR',
+                stampedCurrency: null,
+                stampedAt: null,
+                lineProducts: [{ productId: 'p1', variantId: null }],
+              },
+            ],
+            total: 1,
+          }),
+          getTaxCoverageOrders: vi.fn((input: { category: string }) =>
+            Promise.resolve({
+              items: [
+                {
+                  internalOrderId: `ol_order_${input.category}`,
+                  sourceConnectionId: 'conn-a',
+                  placedAt: null,
+                  lineRates: [
+                    { productId: 'p1', variantId: null, rateCode: null, state: 'no-rate' as const },
+                  ],
+                },
+              ],
+              total: 1,
+            })
+          ),
+        },
+        connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
+      });
+
+      renderWithProviders(
+        <ProductSalesTable
+          filters={FILTERS}
+          coverage={coverage({ currency: 1, 'tax-a': 1, 'tax-b': 1, 'tax-c': 1 })}
+          coverageFilters={COVERAGE_FILTERS}
+          onOpenCategory={() => {}}
+        />,
+        { apiClient }
+      );
+
+      const productRow = (await screen.findByText('Widget A')).closest('tr');
+      expect(productRow).not.toBeNull();
+      // One note per open category this product has an order in — every
+      // category is represented, none silently dropped (mirrors the
+      // channel-table AC: no affected product is missing its annotation).
+      expect(productRow!.querySelectorAll('.excl-note')).toHaveLength(4);
+    });
+
+    it('annotates EVERY product a single multi-product currency-mismatched order touches, not just the first line (#2799 review BLOCKING 1)', async () => {
+      // A currency-mismatch order used to carry only one "representative"
+      // productId (the lowest lineNumber), so a multi-product order's other
+      // products were silently missing their exclusion note. This order's
+      // lines span p1 AND p2 — both rows must get the note.
+      const apiClient = createMockApiClient({
+        analytics: {
+          getTopProducts: vi.fn().mockResolvedValue(
+            result([row({ productId: 'p1', name: 'Widget A' }), row({ productId: 'p2', name: 'Widget B' })])
+          ),
+          getCurrencyMismatchOrders: vi.fn().mockResolvedValue({
+            items: [
+              {
+                internalOrderId: 'ol_order_1',
+                sourceConnectionId: 'conn-a',
+                nativeCurrency: 'EUR',
+                stampedCurrency: null,
+                stampedAt: null,
+                lineProducts: [
+                  { productId: 'p1', variantId: null },
+                  { productId: 'p2', variantId: null },
+                ],
+              },
+            ],
+            total: 1,
+          }),
+        },
+        connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
+      });
+
+      renderWithProviders(
+        <ProductSalesTable
+          filters={FILTERS}
+          coverage={coverage({ currency: 1 })}
+          coverageFilters={COVERAGE_FILTERS}
+          onOpenCategory={() => {}}
+        />,
+        { apiClient }
+      );
+
+      const p1Row = (await screen.findByText('Widget A')).closest('tr');
+      const p2Row = (await screen.findByText('Widget B')).closest('tr');
+
+      expect(p1Row!.querySelectorAll('.excl-note')).toHaveLength(1);
+      expect(p2Row!.querySelectorAll('.excl-note')).toHaveLength(1);
+    });
+
+    it('never annotates product-matching, which cannot resolve to any product', async () => {
+      const apiClient = createMockApiClient({
+        analytics: {
+          getTopProducts: vi.fn().mockResolvedValue(result([row({ productId: 'p1', name: 'Widget A' })])),
+        },
+        connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
+      });
+
+      renderWithProviders(
+        <ProductSalesTable
+          filters={FILTERS}
+          coverage={coverage()}
+          coverageFilters={COVERAGE_FILTERS}
+          onOpenCategory={() => {}}
+        />,
+        { apiClient }
+      );
+
+      const productRow = (await screen.findByText('Widget A')).closest('tr');
+      expect(productRow!.querySelectorAll('.excl-note')).toHaveLength(0);
+    });
   });
 });

@@ -681,6 +681,48 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
     return entities.map((e) => this.toDomain(e));
   }
 
+  /**
+   * Every distinct (productId, variantId) pair per order, batched (#2799,
+   * corrected per #2799 review BLOCKING 1) — see the port's JSDoc. Grouping
+   * by all three columns (rather than the prior `DISTINCT ON
+   * orderRecordId`) is deliberate: `DISTINCT ON` collapses an order to its
+   * single lowest-`lineNumber` line, which silently dropped every other
+   * product a multi-product order touched. No aggregate function is
+   * selected, so `GROUP BY` here is a plain dedup, not an aggregation.
+   */
+  async findProductRefsByOrderIds(
+    orderRecordIds: string[]
+  ): Promise<Map<string, Array<{ productId: string; variantId: string | null }>>> {
+    if (orderRecordIds.length === 0) {
+      return new Map();
+    }
+
+    const rows = await this.repository
+      .createQueryBuilder('li')
+      .select('li."orderRecordId"', 'order_record_id')
+      .addSelect('li."productId"', 'product_id')
+      .addSelect('li."variantId"', 'variant_id')
+      .where('li."orderRecordId" IN (:...orderRecordIds)', { orderRecordIds })
+      .groupBy('li."orderRecordId"')
+      .addGroupBy('li."productId"')
+      .addGroupBy('li."variantId"')
+      .orderBy('li."orderRecordId"', 'ASC')
+      .addOrderBy('li."productId"', 'ASC')
+      .getRawMany<{ order_record_id: string; product_id: string; variant_id: string | null }>();
+
+    const map = new Map<string, Array<{ productId: string; variantId: string | null }>>();
+    for (const row of rows) {
+      const existing = map.get(row.order_record_id);
+      const ref = { productId: row.product_id, variantId: row.variant_id };
+      if (existing) {
+        existing.push(ref);
+      } else {
+        map.set(row.order_record_id, [ref]);
+      }
+    }
+    return map;
+  }
+
   async backfillTaxRate(
     id: string,
     patch: { taxRate: string; taxSource: 'backfill'; taxRateReadAt: Date }

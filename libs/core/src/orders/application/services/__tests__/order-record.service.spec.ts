@@ -64,6 +64,7 @@ describe('OrderRecordService', () => {
       getMedianOrderValue: jest.fn(),
       getNetMedianOrderValue: jest.fn(),
       findCurrencyMismatchOrders: jest.fn(),
+      findCurrencyMismatchOrdersByConnection: jest.fn(),
       findProductMatchingErrorOrders: jest.fn(),
       findCurrencyMismatchOrderRefsAfter: jest.fn(),
       clearFxStampForRestatement: jest.fn(),
@@ -87,6 +88,7 @@ describe('OrderRecordService', () => {
       getUnitsSoldByConnection: jest.fn(),
       getTopProductRanking: jest.fn(),
       getProductChannelBreakdown: jest.fn(),
+      findProductRefsByOrderIds: jest.fn().mockResolvedValue(new Map()),
     } as unknown as jest.Mocked<OrderLineItemRepositoryPort>;
 
     reportingCurrencySettings = {
@@ -1553,8 +1555,8 @@ describe('OrderRecordService', () => {
     });
   });
 
-  describe('getCurrencyMismatchOrders (#2466)', () => {
-    it('is a thin pass-through to the repository read, forwarding args verbatim', async () => {
+  describe('getCurrencyMismatchOrders (#2466 / #2799)', () => {
+    it('is a thin pass-through to the repository read, forwarding args verbatim, when the page is empty', async () => {
       const salesFilters = {
         from: new Date('2026-08-01T00:00:00.000Z'),
         to: new Date('2026-08-08T00:00:00.000Z'),
@@ -1569,7 +1571,94 @@ describe('OrderRecordService', () => {
         'EUR',
         pagination
       );
+      expect(lineItemRepository.findProductRefsByOrderIds).not.toHaveBeenCalled();
       expect(result).toEqual({ items: [], total: 0 });
+    });
+
+    it('enriches each row with EVERY distinct product it touches via one batched lookup (#2799, corrected per #2799 review BLOCKING 1)', async () => {
+      const salesFilters = {
+        from: new Date('2026-08-01T00:00:00.000Z'),
+        to: new Date('2026-08-08T00:00:00.000Z'),
+      };
+      const pagination = { limit: 10, offset: 0 };
+      repository.findCurrencyMismatchOrders.mockResolvedValue({
+        items: [
+          {
+            internalOrderId: 'order-1',
+            sourceConnectionId: 'conn-a',
+            nativeCurrency: 'PLN',
+            stampedCurrency: null,
+            stampedAt: null,
+            lineProducts: [],
+          },
+          {
+            internalOrderId: 'order-2',
+            sourceConnectionId: 'conn-a',
+            nativeCurrency: 'PLN',
+            stampedCurrency: null,
+            stampedAt: null,
+            lineProducts: [],
+          },
+        ],
+        total: 2,
+      });
+      lineItemRepository.findProductRefsByOrderIds.mockResolvedValue(
+        new Map([
+          [
+            'order-1',
+            [
+              { productId: 'ol_product_1', variantId: 'ol_variant_1' },
+              { productId: 'ol_product_2', variantId: null },
+            ],
+          ],
+        ])
+      );
+
+      const result = await service.getCurrencyMismatchOrders(salesFilters, 'EUR', pagination);
+
+      expect(lineItemRepository.findProductRefsByOrderIds).toHaveBeenCalledWith([
+        'order-1',
+        'order-2',
+      ]);
+      // A multi-product order's row carries EVERY product it touches, not
+      // just the first — the exact regression #2799 review BLOCKING 1 caught.
+      expect(result.items[0]).toEqual(
+        expect.objectContaining({
+          internalOrderId: 'order-1',
+          lineProducts: [
+            { productId: 'ol_product_1', variantId: 'ol_variant_1' },
+            { productId: 'ol_product_2', variantId: null },
+          ],
+        })
+      );
+      // order-2 has no line items — the batched Map has no entry for it —
+      // so it stays an empty array rather than throwing or fabricating one.
+      expect(result.items[1]).toEqual(
+        expect.objectContaining({ internalOrderId: 'order-2', lineProducts: [] })
+      );
+    });
+  });
+
+  describe('getCurrencyMismatchOrdersByConnection (#2713)', () => {
+    it('is a thin pass-through to the repository read, forwarding args verbatim, with no enrichment', async () => {
+      const salesFilters = {
+        from: new Date('2026-08-01T00:00:00.000Z'),
+        to: new Date('2026-08-08T00:00:00.000Z'),
+      };
+      const rows = [
+        { sourceConnectionId: 'conn-a', affectedCount: 3 },
+        { sourceConnectionId: 'conn-b', affectedCount: 1 },
+      ];
+      repository.findCurrencyMismatchOrdersByConnection.mockResolvedValue(rows);
+
+      const result = await service.getCurrencyMismatchOrdersByConnection(salesFilters, 'EUR');
+
+      expect(repository.findCurrencyMismatchOrdersByConnection).toHaveBeenCalledWith(
+        salesFilters,
+        'EUR'
+      );
+      expect(lineItemRepository.findProductRefsByOrderIds).not.toHaveBeenCalled();
+      expect(result).toEqual(rows);
     });
   });
 

@@ -53,7 +53,23 @@ describe('TaxCoverageDetectionService (#2465)', () => {
   const noRate: StoredTaxRate = { code: null, countryIso2: 'PL', readAt: new Date('2026-08-24T00:00:00Z') };
   const notChecked: StoredTaxRate = { code: null, countryIso2: null, readAt: null };
 
-  /** Groups lines by `orderRecordId` into the `Map` shape `findByOrderIds` returns. */
+  /**
+   * Configure the batched `findByOrderIds` mock to answer with `lines` for
+   * WHICHEVER order ids the service asks about — the direct counterpart of a
+   * plain `findByOrderId.mockResolvedValue([...])`, for a single-candidate
+   * test where the lines' own `orderRecordId` is not the thing under test.
+   */
+  const setLines = (...lines: OrderLineItem[]): void => {
+    lineItemRepository.findByOrderIds.mockImplementation((ids: string[]) =>
+      Promise.resolve(new Map(ids.map((id) => [id, lines])))
+    );
+  };
+
+  /**
+   * Group lines by their own `orderRecordId` into the `Map` shape
+   * `findByOrderIds` returns — for a MULTI-order test, where which order owns
+   * which line is exactly what is being asserted (#2826's batching/dedup).
+   */
   const linesMap = (...lines: OrderLineItem[]): Map<string, OrderLineItem[]> => {
     const map = new Map<string, OrderLineItem[]>();
     for (const line of lines) {
@@ -88,15 +104,15 @@ describe('TaxCoverageDetectionService (#2465)', () => {
       expect(result['tax-b'][0].internalOrderId).toBe('order-post-rollout');
       expect(result['tax-a']).toHaveLength(0);
       expect(result['tax-c']).toHaveLength(0);
-      expect(lineItemRepository.findByOrderIds).toHaveBeenCalledWith([]);
+      expect(lineItemRepository.findByOrderIds).not.toHaveBeenCalled();
     });
 
     it('reports tax-a when a pre-rollout order already has every line resolved (backfill already ran)', async () => {
       recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([
         candidate({ internalOrderId: 'order-a', taxRateEra: 'pre-rollout' }),
       ]);
-      lineItemRepository.findByOrderIds.mockResolvedValue(
-        linesMap(makeLine({ orderRecordId: 'order-a', taxRate: '23' }))
+      setLines(
+        makeLine({ orderRecordId: 'order-a', taxRate: '23' }),
       );
 
       const result = await service.classify(baseFilters, 'EUR');
@@ -110,8 +126,8 @@ describe('TaxCoverageDetectionService (#2465)', () => {
       recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([
         candidate({ internalOrderId: 'order-a', taxRateEra: 'pre-rollout' }),
       ]);
-      lineItemRepository.findByOrderIds.mockResolvedValue(
-        linesMap(makeLine({ orderRecordId: 'order-a', productId: 'ol_product_x', taxRate: null }))
+      setLines(
+        makeLine({ orderRecordId: 'order-a', productId: 'ol_product_x', taxRate: null }),
       );
       productsService.getEffectiveTaxRate.mockResolvedValue(known('23'));
 
@@ -127,8 +143,8 @@ describe('TaxCoverageDetectionService (#2465)', () => {
       recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([
         candidate({ internalOrderId: 'order-b', taxRateEra: 'pre-rollout' }),
       ]);
-      lineItemRepository.findByOrderIds.mockResolvedValue(
-        linesMap(makeLine({ orderRecordId: 'order-b', taxRate: null }))
+      setLines(
+        makeLine({ orderRecordId: 'order-b', taxRate: null }),
       );
       productsService.getEffectiveTaxRate.mockResolvedValue(noRate);
 
@@ -143,8 +159,8 @@ describe('TaxCoverageDetectionService (#2465)', () => {
       recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([
         candidate({ internalOrderId: 'order-c', taxRateEra: 'pre-rollout' }),
       ]);
-      lineItemRepository.findByOrderIds.mockResolvedValue(
-        linesMap(makeLine({ orderRecordId: 'order-c', taxRate: null }))
+      setLines(
+        makeLine({ orderRecordId: 'order-c', taxRate: null }),
       );
       productsService.getEffectiveTaxRate.mockResolvedValue(notChecked);
 
@@ -159,27 +175,13 @@ describe('TaxCoverageDetectionService (#2465)', () => {
       recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([
         candidate({ internalOrderId: 'order-mixed', taxRateEra: 'pre-rollout' }),
       ]);
-      lineItemRepository.findByOrderIds.mockResolvedValue(
-        linesMap(
-          makeLine({
-            id: 'line-1',
-            orderRecordId: 'order-mixed',
-            lineNumber: 0,
-            productId: 'p1',
-            taxRate: null,
-          }),
-          makeLine({
-            id: 'line-2',
-            orderRecordId: 'order-mixed',
-            lineNumber: 1,
-            productId: 'p2',
-            taxRate: null,
-          })
-        )
+      setLines(
+        makeLine({ id: 'line-1', lineNumber: 0, productId: 'p1', taxRate: null }),
+        makeLine({ id: 'line-2', lineNumber: 1, productId: 'p2', taxRate: null }),
       );
-      productsService.getEffectiveTaxRate.mockImplementation((productId: string) =>
-        Promise.resolve(productId === 'p1' ? noRate : notChecked)
-      );
+      productsService.getEffectiveTaxRate
+        .mockResolvedValueOnce(noRate)
+        .mockResolvedValueOnce(notChecked);
 
       const result = await service.classify(baseFilters, 'EUR');
 
@@ -191,8 +193,8 @@ describe('TaxCoverageDetectionService (#2465)', () => {
       recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([
         candidate({ internalOrderId: 'order-fail', taxRateEra: 'pre-rollout' }),
       ]);
-      lineItemRepository.findByOrderIds.mockResolvedValue(
-        linesMap(makeLine({ orderRecordId: 'order-fail', taxRate: null }))
+      setLines(
+        makeLine({ orderRecordId: 'order-fail', taxRate: null }),
       );
       productsService.getEffectiveTaxRate.mockRejectedValue(new Error('catalogue unavailable'));
 
@@ -200,6 +202,31 @@ describe('TaxCoverageDetectionService (#2465)', () => {
 
       expect(result['tax-c']).toHaveLength(1);
       expect(result['tax-b']).toHaveLength(0);
+    });
+
+    it('partitions a mixed candidate set with categories summing to the full candidate count (regression guard)', async () => {
+      const candidates = [
+        candidate({ internalOrderId: 'order-1', taxRateEra: null }),
+        candidate({ internalOrderId: 'order-2', taxRateEra: 'pre-rollout' }),
+        candidate({ internalOrderId: 'order-3', taxRateEra: 'pre-rollout' }),
+      ];
+      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue(candidates);
+      lineItemRepository.findByOrderIds.mockResolvedValue(
+        linesMap(
+          makeLine({ orderRecordId: 'order-2', productId: 'p-order-2', taxRate: '23' }),
+          makeLine({ orderRecordId: 'order-3', productId: 'p-order-3', taxRate: null })
+        )
+      );
+      productsService.getEffectiveTaxRate.mockResolvedValue(notChecked);
+
+      const result = await service.classify(baseFilters, 'EUR');
+
+      const total =
+        result['tax-a'].length + result['tax-b'].length + result['tax-c'].length;
+      expect(total).toBe(candidates.length);
+      expect(result['tax-b']).toHaveLength(1);
+      expect(result['tax-a']).toHaveLength(1);
+      expect(result['tax-c']).toHaveLength(1);
     });
 
     it('resolves the catalogue rate ONCE per distinct (productId, variantId) pair, even when several orders/lines share it (#2826)', async () => {
@@ -260,30 +287,134 @@ describe('TaxCoverageDetectionService (#2465)', () => {
       expect(maxInFlight).toBeLessThanOrEqual(5);
       expect(maxInFlight).toBeGreaterThan(1); // proves it actually ran concurrently, not sequentially
     });
+  });
 
-    it('partitions a mixed candidate set with categories summing to the full candidate count (regression guard)', async () => {
-      const candidates = [
-        candidate({ internalOrderId: 'order-1', taxRateEra: null }),
-        candidate({ internalOrderId: 'order-2', taxRateEra: 'pre-rollout' }),
-        candidate({ internalOrderId: 'order-3', taxRateEra: 'pre-rollout' }),
-      ];
-      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue(candidates);
-      lineItemRepository.findByOrderIds.mockResolvedValue(
-        linesMap(
-          makeLine({ orderRecordId: 'order-2', productId: 'p-order-2', taxRate: '23' }),
-          makeLine({ orderRecordId: 'order-3', productId: 'p-order-3', taxRate: null })
-        )
+  describe('classify — per-line rate observations (#2798)', () => {
+    it('threads the resolved rate for a multi-line, mixed-known/unknown pre-rollout order (regression guard for a single order-level rate)', async () => {
+      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([
+        candidate({ internalOrderId: 'order-mixed-rates', taxRateEra: 'pre-rollout' }),
+      ]);
+      setLines(
+        makeLine({
+          id: 'line-1',
+          lineNumber: 0,
+          orderRecordId: 'order-mixed-rates',
+          productId: 'p1',
+          taxRate: '23',
+        }),
+        makeLine({
+          id: 'line-2',
+          lineNumber: 1,
+          orderRecordId: 'order-mixed-rates',
+          productId: 'p2',
+          variantId: 'v2',
+          taxRate: null,
+        }),
       );
-      productsService.getEffectiveTaxRate.mockResolvedValue(notChecked);
+      productsService.getEffectiveTaxRate.mockResolvedValue(known('8'));
 
       const result = await service.classify(baseFilters, 'EUR');
 
-      const total =
-        result['tax-a'].length + result['tax-b'].length + result['tax-c'].length;
-      expect(total).toBe(candidates.length);
-      expect(result['tax-b']).toHaveLength(1);
       expect(result['tax-a']).toHaveLength(1);
-      expect(result['tax-c']).toHaveLength(1);
+      expect(result['tax-a'][0].lineRates).toEqual([
+        { productId: 'p1', variantId: null, rateCode: '23', state: 'known', unknownReason: null },
+        { productId: 'p2', variantId: 'v2', rateCode: '8', state: 'known', unknownReason: null },
+      ]);
+      expect(productsService.getEffectiveTaxRate).toHaveBeenCalledWith('p2', 'v2');
+    });
+
+    it('reports a confirmed-no-rate line and a not-checked line each with their own state, never collapsed to one value', async () => {
+      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([
+        candidate({ internalOrderId: 'order-mixed-unresolved', taxRateEra: 'pre-rollout' }),
+      ]);
+      setLines(
+        makeLine({ id: 'line-1', lineNumber: 0, productId: 'p1', taxRate: null }),
+        makeLine({ id: 'line-2', lineNumber: 1, productId: 'p2', taxRate: null }),
+      );
+      productsService.getEffectiveTaxRate
+        .mockResolvedValueOnce(noRate)
+        .mockResolvedValueOnce(notChecked);
+
+      const result = await service.classify(baseFilters, 'EUR');
+
+      expect(result['tax-b']).toHaveLength(1);
+      expect(result['tax-b'][0].lineRates).toEqual([
+        { productId: 'p1', variantId: null, rateCode: null, state: 'no-rate', unknownReason: null },
+        { productId: 'p2', variantId: null, rateCode: null, state: 'not-checked', unknownReason: null },
+      ]);
+    });
+
+    it('carries the catalogue-reported reason (#2264) onto a no-rate observation, never onto a known or not-checked one', async () => {
+      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([
+        candidate({ internalOrderId: 'order-unknown-reason', taxRateEra: 'pre-rollout' }),
+      ]);
+      setLines(
+        makeLine({ id: 'line-1', lineNumber: 0, productId: 'p1', taxRate: null }),
+      );
+      productsService.getEffectiveTaxRate.mockResolvedValue({
+        code: null,
+        countryIso2: 'PL',
+        readAt: new Date('2026-08-24T00:00:00Z'),
+        unknownReason: 'ambiguous',
+      });
+
+      const result = await service.classify(baseFilters, 'EUR');
+
+      expect(result['tax-b'][0].lineRates).toEqual([
+        {
+          productId: 'p1',
+          variantId: null,
+          rateCode: null,
+          state: 'no-rate',
+          unknownReason: 'ambiguous',
+        },
+      ]);
+    });
+
+    it('does not touch line items or the catalogue for a non-pre-rollout candidate, reporting an empty lineRates array', async () => {
+      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([
+        candidate({ internalOrderId: 'order-post-rollout', taxRateEra: null }),
+      ]);
+
+      const result = await service.classify(baseFilters, 'EUR');
+
+      expect(result['tax-b'][0].lineRates).toEqual([]);
+      expect(lineItemRepository.findByOrderIds).not.toHaveBeenCalled();
+      expect(productsService.getEffectiveTaxRate).not.toHaveBeenCalled();
+    });
+
+    it('reports a catalogue read failure as a not-checked observation with no fabricated rate code', async () => {
+      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([
+        candidate({ internalOrderId: 'order-fail', taxRateEra: 'pre-rollout' }),
+      ]);
+      setLines(
+        makeLine({ orderRecordId: 'order-fail', productId: 'p1', taxRate: null }),
+      );
+      productsService.getEffectiveTaxRate.mockRejectedValue(new Error('catalogue unavailable'));
+
+      const result = await service.classify(baseFilters, 'EUR');
+
+      expect(result['tax-c'][0].lineRates).toEqual([
+        { productId: 'p1', variantId: null, rateCode: null, state: 'not-checked', unknownReason: null },
+      ]);
+    });
+
+    it('normalizes rateCode the same way regardless of which of the two sources produced it (#2802 review)', async () => {
+      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([
+        candidate({ internalOrderId: 'order-normalize', taxRateEra: 'pre-rollout' }),
+      ]);
+      setLines(
+        makeLine({ id: 'line-1', lineNumber: 0, productId: 'p1', taxRate: '23.00' }),
+        makeLine({ id: 'line-2', lineNumber: 1, productId: 'p2', taxRate: null }),
+      );
+      productsService.getEffectiveTaxRate.mockResolvedValue(known('8.0'));
+
+      const result = await service.classify(baseFilters, 'EUR');
+
+      expect(result['tax-a'][0].lineRates).toEqual([
+        { productId: 'p1', variantId: null, rateCode: '23', state: 'known', unknownReason: null },
+        { productId: 'p2', variantId: null, rateCode: '8', state: 'known', unknownReason: null },
+      ]);
     });
   });
 
@@ -324,8 +455,8 @@ describe('TaxCoverageDetectionService (#2465)', () => {
         candidate({ internalOrderId: 'order-2', taxRateEra: 'pre-rollout' }),
       ];
       recordRepository.findNetExcludedOrderCandidates.mockResolvedValue(candidates);
-      lineItemRepository.findByOrderIds.mockResolvedValue(
-        linesMap(makeLine({ orderRecordId: 'order-2', taxRate: '23' }))
+      setLines(
+        makeLine({ orderRecordId: 'order-2', taxRate: '23' }),
       );
 
       const pages = await service.getAllCategoryPages(baseFilters, 'EUR', {
@@ -336,13 +467,31 @@ describe('TaxCoverageDetectionService (#2465)', () => {
       expect(recordRepository.findNetExcludedOrderCandidates).toHaveBeenCalledTimes(1);
       expect(pages['tax-a']).toEqual({
         items: [
-          { internalOrderId: 'order-2', sourceConnectionId: 'conn-1', placedAt: expect.any(Date) },
+          {
+            internalOrderId: 'order-2',
+            sourceConnectionId: 'conn-1',
+            placedAt: expect.any(Date),
+            lineRates: [
+              {
+                productId: 'ol_product_1',
+                variantId: null,
+                rateCode: '23',
+                state: 'known',
+                unknownReason: null,
+              },
+            ],
+          },
         ],
         total: 1,
       });
       expect(pages['tax-b']).toEqual({
         items: [
-          { internalOrderId: 'order-1', sourceConnectionId: 'conn-1', placedAt: expect.any(Date) },
+          {
+            internalOrderId: 'order-1',
+            sourceConnectionId: 'conn-1',
+            placedAt: expect.any(Date),
+            lineRates: [],
+          },
         ],
         total: 1,
       });
@@ -363,6 +512,61 @@ describe('TaxCoverageDetectionService (#2465)', () => {
       expect(pages['tax-b'].total).toBe(5);
       expect(pages['tax-b'].items).toHaveLength(2);
       expect(pages['tax-b'].items[0].internalOrderId).toBe('order-2');
+    });
+  });
+
+  describe('getAllCategoryCountsByConnection (#2713)', () => {
+    it('groups all three categories by connection from ONE classification pass', async () => {
+      const candidates = [
+        candidate({ internalOrderId: 'order-1', sourceConnectionId: 'conn-a', taxRateEra: null }),
+        candidate({ internalOrderId: 'order-2', sourceConnectionId: 'conn-a', taxRateEra: null }),
+        candidate({ internalOrderId: 'order-3', sourceConnectionId: 'conn-b', taxRateEra: null }),
+      ];
+      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue(candidates);
+
+      const counts = await service.getAllCategoryCountsByConnection(baseFilters, 'EUR');
+
+      expect(recordRepository.findNetExcludedOrderCandidates).toHaveBeenCalledTimes(1);
+      expect(counts['tax-b']).toEqual([
+        { sourceConnectionId: 'conn-a', affectedCount: 2 },
+        { sourceConnectionId: 'conn-b', affectedCount: 1 },
+      ]);
+      expect(counts['tax-a']).toEqual([]);
+      expect(counts['tax-c']).toEqual([]);
+    });
+
+    it('sums to the same totals getCategoryCounts reports for the same filters', async () => {
+      const candidates = [
+        candidate({ internalOrderId: 'order-1', sourceConnectionId: 'conn-a', taxRateEra: null }),
+        candidate({ internalOrderId: 'order-2', sourceConnectionId: 'conn-b', taxRateEra: null }),
+        candidate({ internalOrderId: 'order-3', sourceConnectionId: 'conn-b', taxRateEra: null }),
+      ];
+      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue(candidates);
+
+      const counts = await service.getCategoryCounts(baseFilters, 'EUR');
+      const byConnection = await service.getAllCategoryCountsByConnection(baseFilters, 'EUR');
+
+      const totalFromByConnection = byConnection['tax-b'].reduce(
+        (sum, row) => sum + row.affectedCount,
+        0
+      );
+      expect(totalFromByConnection).toBe(counts['tax-b']);
+    });
+
+    it('never calls findNetExcludedOrderCandidates more than once, regardless of category count', async () => {
+      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([]);
+
+      await service.getAllCategoryCountsByConnection(baseFilters, 'EUR');
+
+      expect(recordRepository.findNetExcludedOrderCandidates).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns an empty array per category when nothing matches', async () => {
+      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([]);
+
+      const counts = await service.getAllCategoryCountsByConnection(baseFilters, 'EUR');
+
+      expect(counts).toEqual({ 'tax-a': [], 'tax-b': [], 'tax-c': [] });
     });
   });
 });

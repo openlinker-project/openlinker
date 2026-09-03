@@ -261,6 +261,48 @@ model and a restatement policy across the whole corpus. This is the bounded oper
 coverage gap, on a population the panel already reports and a window the operator already chose. #2096
 stays open.
 
+## Amendment (#2777, 2026-09-03): resolving the publication day before the pre-fetch cache read
+
+**The original debt, restated.** Before this amendment, a non-publication candidate (a weekend or a
+holiday, roughly 2 days in 7) was a permanent cache miss: the pre-fetch read was keyed on the raw
+candidate day, `fetchRate` walked the candidate back to the day the source actually published for, and the
+row landed under that earlier day - never under the candidate. This was accepted deliberately, not
+overlooked: the registry stores **published** rates, so writing a second row under the candidate (a
+non-publication day) would record a rate the source never published for that day - a figure an operator
+could not verify against any table, in the one place whose whole purpose is to be verifiable. Memoising
+the candidate-to-published-date mapping needed its own persisted table and belonged to a later persistence
+phase (#2124); it was not folded into the original stamp (#2049) work, where nothing else changed
+behaviour. The cost was real and recurring - every order carrying such a candidate paid a live provider
+call, one hundred percent of the time, forever - but it was the honest price of keeping the registry a
+verifiable ledger of published rates rather than an invented one.
+
+**What #2777 changes, and what it deliberately does not.** `ExchangeRateProviderPort` gains an optional
+`resolveExpectedPublicationDay(candidate): string` (ADR-046 probe-not-trust pattern), which each adapter
+answers from the same walk-back calendar it already owns - NBP from the Polish working-day calendar,
+ECB from a weekend-only rule (see that adapter's own header for why it must not share NBP's calendar).
+`CurrencyRateService.getRateFor` probes for the method and, when present, keys the pre-fetch `findByKey`
+read on the RESOLVED day rather than the raw candidate - so the first order under a given non-publication
+candidate still pays one provider call (as before), but every later one, for that candidate or any other
+candidate resolving to the same published day, now hits the cache. **The write path is untouched**: the
+registry still never writes a second row under a non-publication date, and `fetchRate` still receives the
+raw candidate and answers with whatever day the source actually published for. Only which key is READ
+changes; this ADR's verifiability guarantee - a stored row is always a source's own published answer -
+holds exactly as before.
+
+**The guarantee this creates is asymmetric, and an implementer must respect the asymmetry.** A day
+resolved TOO LATE (later than the true nearest publication day) can only ever cause a cache miss - no row
+exists there, so the read falls through to `fetchRate` unchanged, at the original cost and no worse. A day
+resolved TOO EARLY - walking back past a genuine publication day to an earlier one - corrupts a stamp
+silently: a row under that earlier day very likely already exists (written by some other candidate that
+legitimately resolved there), so the read *hits* and returns the wrong day's rate on a financial figure,
+with no exception anywhere. The port's own docblock states this explicitly and requires that an
+implementer in doubt return the candidate unchanged - erring late is free, erring early is not. Neither
+shipped adapter can produce a too-early answer today: ECB only ever skips a weekend, and NBP's calendar is
+the same one that already decides which day NBP requests, so it errs optimistic rather than walking back
+past a day it is not certain about. A shared `resolveExpectedPublicationDay` port-contract suite
+(`@openlinker/core/currency/testing`) binds every implementer - NBP, ECB, and the fake - to this contract,
+so a future implementer cannot silently drift from it.
+
 ## References
 
 - Related issues: #2049 (this work), #1976 (analytics epic), #1985 (order analytics read model),

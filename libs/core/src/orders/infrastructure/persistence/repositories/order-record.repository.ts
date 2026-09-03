@@ -83,6 +83,7 @@ import type {
   PaginatedCurrencyMismatchOrders,
   NetExcludedOrderCandidate,
   PaginatedProductMatchingErrorOrders,
+  CoverageConnectionAggregateRow,
 } from '../../../domain/types/coverage-detection.types';
 
 /**
@@ -118,6 +119,19 @@ function orderRecordColumnProperties(): readonly string[] {
 
 @Injectable()
 export class OrderRecordRepository implements OrderRecordRepositoryPort {
+  /**
+   * The "currency mismatch" predicate (#2464/#2713/#2468 review) — a row
+   * that either never got an FX stamp (`reportingCurrency IS NULL`) or was
+   * stamped under a PREVIOUS reporting-currency era (ADR-040). Every reader
+   * of this population — {@link findCurrencyMismatchOrders},
+   * {@link findCurrencyMismatchOrdersByConnection},
+   * {@link findCurrencyMismatchOrderRefsAfter}, and
+   * {@link countRemainingCurrencyMismatch} — shares this ONE fragment so the
+   * definition of "unconverted" can never silently diverge between them.
+   */
+  private static readonly CURRENCY_MISMATCH_FRAGMENT =
+    '(rec."reportingCurrency" IS NULL OR rec."reportingCurrency" != :currentReportingCurrency)';
+
   constructor(
     @InjectRepository(OrderRecordOrmEntity)
     private readonly repository: Repository<OrderRecordOrmEntity>
@@ -512,7 +526,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * unstamped slice reported separately as `unconverted_count`/
    * `unconverted_value` (native `totalAmount`, informational only) rather
    * than silently mixed in or silently dropped. `cancelled_value` now follows
-   * the SAME split (#currency-fix): `SUM(reportingTotalAmount)` restricted to
+   * the SAME split (epic #2452): `SUM(reportingTotalAmount)` restricted to
    * the current-era-stamped, cancelled population, with the unstamped
    * remainder reported separately as `cancelled_unconverted_count`/
    * `cancelled_unconverted_value` — it previously summed raw, unrestricted
@@ -540,7 +554,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // figures into `revenue` after an operator changes the reporting setting.
     // A prior-era stamp therefore reads as unconverted, same as never-stamped.
     const isStamped = 'rec."reportingCurrency" = :currentReportingCurrency';
-    const isUnconverted = `(rec."reportingCurrency" IS NULL OR rec."reportingCurrency" != :currentReportingCurrency)`;
+    const isUnconverted = OrderRecordRepository.CURRENCY_MISMATCH_FRAGMENT;
     const stampedAndNotCancelled = `${notCancelled} AND ${isStamped}`;
     const unconvertedAndNotCancelled = `${notCancelled} AND ${isUnconverted}`;
     const stampedAndCancelled = `${isCancelled} AND ${isStamped}`;
@@ -693,7 +707,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       .createQueryBuilder('rec')
       .andWhere('rec."cancelledAt" IS NULL')
       .andWhere(
-        '(rec."reportingCurrency" IS NULL OR rec."reportingCurrency" != :currentReportingCurrency)',
+        OrderRecordRepository.CURRENCY_MISMATCH_FRAGMENT,
         { currentReportingCurrency }
       )
       .orderBy('rec."placedAt"', 'DESC')
@@ -711,9 +725,47 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         nativeCurrency: entity.currency,
         stampedCurrency: entity.reportingCurrency,
         stampedAt: entity.fxStampedAt,
+        // Filled in by `OrderRecordService.getCurrencyMismatchOrders`
+        // (#2799), which owns the batched `order_line_items` join — this
+        // repository has no line-item access of its own (see the service's
+        // doc comment for why the enrichment lives one layer up).
+        lineProducts: [],
       })),
       total,
     };
+  }
+
+  /**
+   * Data Coverage `'currency'` category aggregate-by-connection (#2713) —
+   * see the port's JSDoc. Same predicate as {@link findCurrencyMismatchOrders}
+   * (`cancelledAt IS NULL`, the currency-mismatch condition, and
+   * {@link applySalesAnalyticsScope}), swapping the paginated row hydration
+   * for a `GROUP BY rec.sourceConnectionId` count — mirrors
+   * {@link getDailyOrderAggregates}'s own `sourceConnectionId` grouping.
+   */
+  async findCurrencyMismatchOrdersByConnection(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string
+  ): Promise<CoverageConnectionAggregateRow[]> {
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .select('rec.sourceConnectionId', 'source_connection_id')
+      .addSelect('COUNT(*)', 'affected_count')
+      .andWhere('rec."cancelledAt" IS NULL')
+      .andWhere(
+        OrderRecordRepository.CURRENCY_MISMATCH_FRAGMENT,
+        { currentReportingCurrency }
+      )
+      .groupBy('rec.sourceConnectionId');
+
+    this.applySalesAnalyticsScope(qb, filters);
+
+    const rows = await qb.getRawMany<{ source_connection_id: string; affected_count: string }>();
+
+    return rows.map((row) => ({
+      sourceConnectionId: row.source_connection_id,
+      affectedCount: Number(row.affected_count),
+    }));
   }
 
   /**
@@ -739,7 +791,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       .select('rec."internalOrderId"', 'internal_order_id')
       .andWhere('rec."cancelledAt" IS NULL')
       .andWhere(
-        '(rec."reportingCurrency" IS NULL OR rec."reportingCurrency" != :currentReportingCurrency)',
+        OrderRecordRepository.CURRENCY_MISMATCH_FRAGMENT,
         { currentReportingCurrency }
       )
       .orderBy('rec."internalOrderId"', 'ASC')
@@ -825,7 +877,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       )
       .andWhere('rec."cancelledAt" IS NULL')
       .andWhere(
-        '(rec."reportingCurrency" IS NULL OR rec."reportingCurrency" != :currentReportingCurrency)',
+        OrderRecordRepository.CURRENCY_MISMATCH_FRAGMENT,
         { currentReportingCurrency }
       );
 
@@ -931,6 +983,10 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         recordStatus: entity.recordStatus as 'awaiting_mapping' | 'source_deleted',
         mappingFailureReason: entity.mappingFailureReason,
         createdAt: entity.createdAt,
+        // Always null — see `ProductMatchingErrorOrderRow.productId`'s doc
+        // comment (#2799) for why this category can never resolve one.
+        productId: null,
+        variantId: null,
       })),
       total,
     };
