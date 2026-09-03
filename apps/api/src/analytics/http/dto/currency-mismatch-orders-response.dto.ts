@@ -15,6 +15,27 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import type { CurrencyMismatchOrderRow } from '@openlinker/core/orders';
 
+/**
+ * One distinct product referenced by a {@link CurrencyMismatchOrderDto}'s
+ * order (#2799, corrected per #2799 review BLOCKING 1) — an order spanning
+ * several products carries one entry per product, never just the first
+ * line's.
+ */
+export class CurrencyMismatchLineProductDto {
+  @ApiProperty()
+  productId!: string;
+
+  @ApiPropertyOptional({ nullable: true })
+  variantId!: string | null;
+
+  static fromRef(ref: { productId: string; variantId: string | null }): CurrencyMismatchLineProductDto {
+    const dto = new CurrencyMismatchLineProductDto();
+    dto.productId = ref.productId;
+    dto.variantId = ref.variantId;
+    return dto;
+  }
+}
+
 export class CurrencyMismatchOrderDto {
   @ApiProperty()
   internalOrderId!: string;
@@ -42,18 +63,12 @@ export class CurrencyMismatchOrderDto {
   })
   stampedAt!: Date | null;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
+    type: [CurrencyMismatchLineProductDto],
     description:
-      "One representative line's product id (#2799) — the cross-reference join key against `TopProductRow.productId`. `null` only if this order genuinely carries no line items.",
-    nullable: true,
+      "Every distinct product this order's lines touch (#2799) — the cross-reference join key against `TopProductRow.productId`. Empty only if this order genuinely carries no line items.",
   })
-  productId!: string | null;
-
-  @ApiPropertyOptional({
-    description: "The representative line's variant id, alongside `productId`.",
-    nullable: true,
-  })
-  variantId!: string | null;
+  lineProducts!: CurrencyMismatchLineProductDto[];
 
   static fromRow(row: CurrencyMismatchOrderRow): CurrencyMismatchOrderDto {
     const dto = new CurrencyMismatchOrderDto();
@@ -62,8 +77,7 @@ export class CurrencyMismatchOrderDto {
     dto.nativeCurrency = row.nativeCurrency;
     dto.stampedCurrency = row.stampedCurrency;
     dto.stampedAt = row.stampedAt;
-    dto.productId = row.productId;
-    dto.variantId = row.variantId;
+    dto.lineProducts = row.lineProducts.map((ref) => CurrencyMismatchLineProductDto.fromRef(ref));
     return dto;
   }
 }

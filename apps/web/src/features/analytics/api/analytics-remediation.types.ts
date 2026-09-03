@@ -37,10 +37,12 @@ export interface CurrencyMismatchOrder {
   /** The reporting currency the order is stamped in; `null` when never stamped. */
   stampedCurrency: string | null;
   stampedAt: string | null;
-  /** One representative line's product id (#2799) — the join key against `TopProductRow.productId`. `null` only if this order genuinely carries no line items. */
-  productId: string | null;
-  /** The representative line's variant id, alongside `productId`. */
-  variantId: string | null;
+  /**
+   * Every distinct product this order's lines touch (#2799, corrected per
+   * #2799 review BLOCKING 1) — the join key against `TopProductRow.productId`.
+   * Empty only if this order genuinely carries no line items.
+   */
+  lineProducts: Array<{ productId: string; variantId: string | null }>;
 }
 
 export interface CurrencyMismatchOrdersPage {

@@ -23,30 +23,6 @@ export const CROSS_REFERENCEABLE_CATEGORIES: readonly CrossReferenceableCategory
   'tax-c',
 ];
 
-/**
- * `product-sales-table.tsx`'s per-order shape, still used by
- * `buildProductExclusionMap` (`product-exclusion-map.lib.ts`, via
- * `useCoverageCrossReferenceQuery`) — the connection-level aggregate
- * `buildChannelExclusionMap` now consumes has no product identity to give,
- * so this type no longer has a role in THIS file's own function.
- */
-export interface CoverageOrderLite {
-  internalOrderId: string;
-  sourceConnectionId: string;
-  /**
-   * One representative line's product id (#2799) — present (possibly
-   * `null`) on a `'currency'` row, absent on a tax row (see `lineRates`
-   * instead).
-   */
-  productId?: string | null;
-  /**
-   * Per-line product ids (#2799) — present on a tax row, absent on a
-   * currency row. `buildProductExclusionMap` (`product-exclusion-map.lib.ts`)
-   * is the one consumer that reads this.
-   */
-  lineRates?: ReadonlyArray<{ productId: string }>;
-}
-
 /** `connectionId -> category -> this channel's own affected-order count for it`. */
 export type ChannelExclusionMap = Map<string, Map<CrossReferenceableCategory, number>>;
 

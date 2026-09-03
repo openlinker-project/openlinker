@@ -656,8 +656,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         // (#2799), which owns the batched `order_line_items` join — this
         // repository has no line-item access of its own (see the service's
         // doc comment for why the enrichment lives one layer up).
-        productId: null,
-        variantId: null,
+        lineProducts: [],
       })),
       total,
     };

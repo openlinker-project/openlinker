@@ -639,9 +639,9 @@ describe('ProductSalesTable', () => {
   // *different* product's category, and a row with orders in an open
   // category's affected set missing its annotation entirely. Both fixtures
   // cross-reference against the FULL affected-order list (never the 10-id
-  // sample), grouped by `productId` — a currency row's representative
-  // `productId`, or every distinct `productId` across a tax row's
-  // per-line `lineRates`.
+  // sample), grouped by `productId` — every distinct `productId` a currency
+  // row's `lineProducts` touches, or across a tax row's per-line
+  // `lineRates`.
   describe('.excl-note cross-reference (#2799)', () => {
     it("should attribute each product's exclusion note to its own category, never the other product's", async () => {
       const apiClient = createMockApiClient({
@@ -657,8 +657,7 @@ describe('ProductSalesTable', () => {
                 nativeCurrency: 'EUR',
                 stampedCurrency: null,
                 stampedAt: null,
-                productId: 'p1',
-                variantId: null,
+                lineProducts: [{ productId: 'p1', variantId: null }],
               },
             ],
             total: 1,
@@ -717,8 +716,7 @@ describe('ProductSalesTable', () => {
                 nativeCurrency: 'EUR',
                 stampedCurrency: null,
                 stampedAt: null,
-                productId: 'p1',
-                variantId: null,
+                lineProducts: [{ productId: 'p1', variantId: null }],
               },
             ],
             total: 1,
@@ -758,6 +756,53 @@ describe('ProductSalesTable', () => {
       // category is represented, none silently dropped (mirrors the
       // channel-table AC: no affected product is missing its annotation).
       expect(productRow!.querySelectorAll('.excl-note')).toHaveLength(4);
+    });
+
+    it('annotates EVERY product a single multi-product currency-mismatched order touches, not just the first line (#2799 review BLOCKING 1)', async () => {
+      // A currency-mismatch order used to carry only one "representative"
+      // productId (the lowest lineNumber), so a multi-product order's other
+      // products were silently missing their exclusion note. This order's
+      // lines span p1 AND p2 — both rows must get the note.
+      const apiClient = createMockApiClient({
+        analytics: {
+          getTopProducts: vi.fn().mockResolvedValue(
+            result([row({ productId: 'p1', name: 'Widget A' }), row({ productId: 'p2', name: 'Widget B' })])
+          ),
+          getCurrencyMismatchOrders: vi.fn().mockResolvedValue({
+            items: [
+              {
+                internalOrderId: 'ol_order_1',
+                sourceConnectionId: 'conn-a',
+                nativeCurrency: 'EUR',
+                stampedCurrency: null,
+                stampedAt: null,
+                lineProducts: [
+                  { productId: 'p1', variantId: null },
+                  { productId: 'p2', variantId: null },
+                ],
+              },
+            ],
+            total: 1,
+          }),
+        },
+        connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
+      });
+
+      renderWithProviders(
+        <ProductSalesTable
+          filters={FILTERS}
+          coverage={coverage({ currency: 1 })}
+          coverageFilters={COVERAGE_FILTERS}
+          onOpenCategory={() => {}}
+        />,
+        { apiClient }
+      );
+
+      const p1Row = (await screen.findByText('Widget A')).closest('tr');
+      const p2Row = (await screen.findByText('Widget B')).closest('tr');
+
+      expect(p1Row!.querySelectorAll('.excl-note')).toHaveLength(1);
+      expect(p2Row!.querySelectorAll('.excl-note')).toHaveLength(1);
     });
 
     it('never annotates product-matching, which cannot resolve to any product', async () => {

@@ -12,19 +12,21 @@
  */
 import type { IntegrationTestHarness } from './setup';
 import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
-import type { OrderRecordRepositoryPort } from '@openlinker/core/orders';
-import { ORDER_RECORD_REPOSITORY_TOKEN } from '@openlinker/core/orders';
-import { OrderRecordOrmEntity } from '@openlinker/core/orders/orm-entities';
+import type { IOrderRecordService, OrderRecordRepositoryPort } from '@openlinker/core/orders';
+import { ORDER_RECORD_REPOSITORY_TOKEN, ORDER_RECORD_SERVICE_TOKEN } from '@openlinker/core/orders';
+import { OrderLineItemOrmEntity, OrderRecordOrmEntity } from '@openlinker/core/orders/orm-entities';
 
 const CONNECTION = '11111111-1111-4111-8111-111111111111';
 
 describe('Sales analytics daily aggregates (integration, #1987)', () => {
   let harness: IntegrationTestHarness;
   let repository: OrderRecordRepositoryPort;
+  let orderRecordService: IOrderRecordService;
 
   beforeAll(async () => {
     harness = await getTestHarness();
     repository = harness.getApp().get<OrderRecordRepositoryPort>(ORDER_RECORD_REPOSITORY_TOKEN);
+    orderRecordService = harness.getApp().get<IOrderRecordService>(ORDER_RECORD_SERVICE_TOKEN);
   });
 
   afterEach(async () => {
@@ -35,7 +37,7 @@ describe('Sales analytics daily aggregates (integration, #1987)', () => {
     await teardownTestHarness();
   });
 
-  async function seedStampedOrder(overrides: Partial<OrderRecordOrmEntity>): Promise<void> {
+  async function seedStampedOrder(overrides: Partial<OrderRecordOrmEntity>): Promise<string> {
     const suffix = `${Date.now()}_${Math.floor(Math.random() * 1_000_000)}`;
     const repo = harness.getDataSource().getRepository(OrderRecordOrmEntity);
     const entity = repo.create({
@@ -51,7 +53,25 @@ describe('Sales analytics daily aggregates (integration, #1987)', () => {
       taxTreatment: 'inclusive',
       ...overrides,
     });
-    await repo.save(entity);
+    const saved = await repo.save(entity);
+    return saved.internalOrderId;
+  }
+
+  async function seedLineItem(overrides: Partial<OrderLineItemOrmEntity>): Promise<void> {
+    const repo = harness.getDataSource().getRepository(OrderLineItemOrmEntity);
+    await repo.save(
+      repo.create({
+        orderRecordId: 'ol_order_placeholder',
+        lineNumber: 0,
+        productId: 'ol_product_placeholder',
+        variantId: null,
+        quantity: 1,
+        unitPrice: 0,
+        sourceConnectionId: CONNECTION,
+        placedAt: new Date('2026-08-02T00:00:00.000Z'),
+        ...overrides,
+      })
+    );
   }
 
   it('buckets an order placed just before UTC midnight on the same UTC day, not the local-timezone day (#1987 review, IMPORTANT 2)', async () => {
@@ -411,6 +431,92 @@ describe('Sales analytics daily aggregates (integration, #1987)', () => {
     });
   });
 
+  describe('OrderRecordService.getCurrencyMismatchOrders line-item enrichment against real Postgres (#2799 review, BLOCKING 1)', () => {
+    // The unit specs mock the query builder, so they can never fail on the
+    // actual GROUP BY/dedup semantics — a mock happily reports whatever rows
+    // it's told to. This proves the real SQL: an order whose lines span
+    // several products gets every one of them back, not just the first.
+    it('returns every distinct product an order touches, not just its first line', async () => {
+      const internalOrderId = await seedStampedOrder({
+        placedAt: new Date('2026-08-06T10:00:00.000Z'),
+        currency: 'PLN',
+        totalAmount: 100,
+        reportingCurrency: null,
+        reportingTotalAmount: null,
+        fxStampedAt: null,
+      });
+      await seedLineItem({
+        orderRecordId: internalOrderId,
+        lineNumber: 0,
+        productId: 'ol_product_a',
+        variantId: 'ol_variant_a1',
+      });
+      await seedLineItem({
+        orderRecordId: internalOrderId,
+        lineNumber: 1,
+        productId: 'ol_product_b',
+        variantId: null,
+      });
+      // A second line on the SAME product (different variant) must not
+      // produce a duplicate entry once collapsed to distinct product ids by
+      // the exclusion-map layer — but the repository read itself is keyed
+      // by (product, variant), so this legitimately adds one more row.
+      await seedLineItem({
+        orderRecordId: internalOrderId,
+        lineNumber: 2,
+        productId: 'ol_product_a',
+        variantId: 'ol_variant_a2',
+      });
+
+      const filters = {
+        from: new Date('2026-08-01T00:00:00.000Z'),
+        to: new Date('2026-08-08T00:00:00.000Z'),
+      };
+      const page = await orderRecordService.getCurrencyMismatchOrders(filters, 'EUR', {
+        limit: 20,
+        offset: 0,
+      });
+
+      const row = page.items.find((item) => item.internalOrderId === internalOrderId);
+      expect(row).toBeDefined();
+      expect(row!.lineProducts).toHaveLength(3);
+      expect(new Set(row!.lineProducts.map((p) => p.productId))).toEqual(
+        new Set(['ol_product_a', 'ol_product_b'])
+      );
+      expect(row!.lineProducts).toEqual(
+        expect.arrayContaining([
+          { productId: 'ol_product_a', variantId: 'ol_variant_a1' },
+          { productId: 'ol_product_a', variantId: 'ol_variant_a2' },
+          { productId: 'ol_product_b', variantId: null },
+        ])
+      );
+    });
+
+    it('reports an empty lineProducts array, never a fabricated entry, when an order genuinely carries no line items', async () => {
+      const internalOrderId = await seedStampedOrder({
+        placedAt: new Date('2026-08-06T11:00:00.000Z'),
+        currency: 'PLN',
+        totalAmount: 50,
+        reportingCurrency: null,
+        reportingTotalAmount: null,
+        fxStampedAt: null,
+      });
+
+      const filters = {
+        from: new Date('2026-08-01T00:00:00.000Z'),
+        to: new Date('2026-08-08T00:00:00.000Z'),
+      };
+      const page = await orderRecordService.getCurrencyMismatchOrders(filters, 'EUR', {
+        limit: 20,
+        offset: 0,
+      });
+
+      const row = page.items.find((item) => item.internalOrderId === internalOrderId);
+      expect(row).toBeDefined();
+      expect(row!.lineProducts).toEqual([]);
+    });
+  });
+
   describe('findCurrencyMismatchOrdersByConnection (#2713)', () => {
     const OTHER_CONNECTION = '22222222-2222-4222-8222-222222222222';
 
@@ -425,12 +531,19 @@ describe('Sales analytics daily aggregates (integration, #1987)', () => {
         reportingTotalAmount: null,
         fxStampedAt: null,
       });
+      // A stale-era stamp: stamped in PLN while the CURRENT setting (the
+      // `'EUR'` passed to the read below) has since moved on. Stamping this
+      // one `'EUR'` — as this fixture originally did — made it current-era
+      // by definition, so it was correctly NOT counted and the expected
+      // count of 2 could never hold (#2799 review, IMPORTANT 3: this test
+      // asserted a total the predicate it documents cannot produce, and no
+      // mocked spec could catch it).
       await seedStampedOrder({
         placedAt: day,
         currency: 'USD',
         totalAmount: 20,
-        reportingCurrency: 'EUR',
-        reportingTotalAmount: 18,
+        reportingCurrency: 'PLN',
+        reportingTotalAmount: 85,
         fxStampedAt: new Date('2026-05-01T00:00:00.000Z'),
       });
       // One mismatch on a SECOND, distinct connection.
