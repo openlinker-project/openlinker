@@ -368,7 +368,7 @@ export function runPublicationDayContract(
   fixtures: PublicationDayContractFixtures,
   options: { readonly subject?: string; readonly expectDeclared: boolean }
 ): void {
-  describe(`${CONTRACT_NAME}${options.subject ? ` — ${options.subject}` : ''}`, () => {
+  describe(`${CONTRACT_NAME}${options.subject ? ` - ${options.subject}` : ''}`, () => {
     let provider: ExchangeRateProviderPort;
     let result: ContractRunResult;
 

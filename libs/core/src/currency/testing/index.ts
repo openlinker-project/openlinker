@@ -1,5 +1,5 @@
 /**
- * Currency — test-only exports (#2800 review, finding 2)
+ * Currency - test-only exports (#2800 review, finding 2)
  *
  * Consumed from `*.spec.ts` / `*.int-spec.ts` only, never from runtime code -
  * the convention the `identifier-mapping`, `integrations`, `events`,

@@ -123,7 +123,7 @@ const NON_CONFORMING_PROVIDERS: Record<PublicationDayContractCaseId, ExchangeRat
   }),
 };
 
-describe('publication-day contract — coverage', () => {
+describe('publication-day contract - coverage', () => {
   it('should declare at least one contract case', () => {
     // A suite pointed at nothing must never read as a short green run.
     expect(PUBLICATION_DAY_CONTRACT_CASE_IDS.length).toBeGreaterThan(0);
@@ -170,7 +170,7 @@ describe('publication-day contract — coverage', () => {
   });
 });
 
-describe('publication-day contract — optional-method absence, asserted in both directions', () => {
+describe('publication-day contract - optional-method absence, asserted in both directions', () => {
   it('should recognise a provider that omits the method as NOT declaring it', () => {
     const provider: ExchangeRateProviderPort = { ...baseMembers() };
 
@@ -200,7 +200,7 @@ describe('publication-day contract — optional-method absence, asserted in both
   });
 });
 
-describe('publication-day contract — vacuity guards', () => {
+describe('publication-day contract - vacuity guards', () => {
   it('should throw, not skip, when no subject is given', () => {
     expect(() =>
       checkPublicationDayContract(undefined as unknown as ExchangeRateProviderPort, FIXTURES)
