@@ -636,6 +636,75 @@ describe('OrderLineItemRepository', () => {
     });
   });
 
+  describe('findProductRefsByOrderIds (#2799, corrected per #2799 review BLOCKING 1)', () => {
+    const makeGroupedQb = (rows: Array<{ order_record_id: string; product_id: string; variant_id: string | null }>) => ({
+      select: jest.fn().mockReturnThis(),
+      addSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      groupBy: jest.fn().mockReturnThis(),
+      addGroupBy: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
+      getRawMany: jest.fn().mockResolvedValue(rows),
+    });
+
+    it('returns an empty Map without querying when given no order ids', async () => {
+      const result = await repository.findProductRefsByOrderIds([]);
+
+      expect(ormRepository.createQueryBuilder).not.toHaveBeenCalled();
+      expect(result.size).toBe(0);
+    });
+
+    it('maps grouped rows keyed by orderRecordId to an array of {productId, variantId}', async () => {
+      const qb = makeGroupedQb([
+        { order_record_id: 'order-1', product_id: 'ol_product_1', variant_id: 'ol_variant_1' },
+        { order_record_id: 'order-2', product_id: 'ol_product_2', variant_id: null },
+      ]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      const result = await repository.findProductRefsByOrderIds(['order-1', 'order-2']);
+
+      expect(qb.where).toHaveBeenCalledWith('li."orderRecordId" IN (:...orderRecordIds)', {
+        orderRecordIds: ['order-1', 'order-2'],
+      });
+      expect(qb.groupBy).toHaveBeenCalledWith('li."orderRecordId"');
+      expect(qb.addGroupBy).toHaveBeenCalledWith('li."productId"');
+      expect(qb.addGroupBy).toHaveBeenCalledWith('li."variantId"');
+      expect(result.get('order-1')).toEqual([{ productId: 'ol_product_1', variantId: 'ol_variant_1' }]);
+      expect(result.get('order-2')).toEqual([{ productId: 'ol_product_2', variantId: null }]);
+      expect(result.size).toBe(2);
+    });
+
+    it('returns EVERY distinct product an order touches, not just the first line (#2799 review BLOCKING 1)', async () => {
+      // The bug this guards against: a DISTINCT ON collapsed a multi-product
+      // order to its single lowest-lineNumber line, silently dropping every
+      // other product the order affected from the exclusion-map cross-reference.
+      const qb = makeGroupedQb([
+        { order_record_id: 'order-1', product_id: 'ol_product_1', variant_id: 'ol_variant_1' },
+        { order_record_id: 'order-1', product_id: 'ol_product_2', variant_id: null },
+        { order_record_id: 'order-1', product_id: 'ol_product_3', variant_id: 'ol_variant_3' },
+      ]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      const result = await repository.findProductRefsByOrderIds(['order-1']);
+
+      expect(result.get('order-1')).toEqual([
+        { productId: 'ol_product_1', variantId: 'ol_variant_1' },
+        { productId: 'ol_product_2', variantId: null },
+        { productId: 'ol_product_3', variantId: 'ol_variant_3' },
+      ]);
+    });
+
+    it('omits an order id with no line items from the returned Map, rather than throwing', async () => {
+      const qb = makeGroupedQb([]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      const result = await repository.findProductRefsByOrderIds(['order-no-lines']);
+
+      expect(result.has('order-no-lines')).toBe(false);
+    });
+  });
+
   describe('backfillTaxRate', () => {
     it('writes the rate/source/readAt triple guarded by taxRate IS NULL', async () => {
       const readAt = new Date('2026-08-24T00:00:00.000Z');

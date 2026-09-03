@@ -55,14 +55,17 @@
  * `awaiting_mapping` order fails to resolve to *any* channel-scoped total
  * in the first place, so it was never counted anywhere to be silently
  * missing from) gets one `AnalyticsExclusionNote` per affected category.
- * The cross-reference is exact: each open category's *full* affected-order
- * list (not the Data Coverage aggregate's 10-id sample —
- * `useCoverageCrossReferenceQuery`, `hooks/use-coverage-cross-reference-query.ts`,
- * drains every page via the same paginated endpoints Phase 7's detail
- * modals use) is grouped by `sourceConnectionId` (`buildChannelExclusionMap`,
- * `lib/channel-exclusion-map.lib.ts`), since that field is on every
- * affected-order row and matches this table's own row key exactly — unlike
- * a product, a channel has no ambiguity to approximate.
+ * The cross-reference is exact: `GET /analytics/coverage/by-connection`
+ * (#2713) already returns each open category's affected-order count
+ * `GROUP BY sourceConnectionId` server-side — one request
+ * (`useCoverageByConnectionQuery`, `hooks/use-coverage-by-connection-query.ts`)
+ * instead of draining every page of four separate order lists client-side
+ * (the pre-#2714 approach, still used by `ProductSalesTable` for its
+ * per-product cross-reference, which has no connection-level aggregate to
+ * consume) — reshaped into the same `sourceConnectionId`-keyed map
+ * (`buildChannelExclusionMap`, `lib/channel-exclusion-map.lib.ts`), since
+ * that field matches this table's own row key exactly — unlike a product, a
+ * channel has no ambiguity to approximate.
  *
  * @module features/analytics/components
  */
@@ -78,7 +81,7 @@ import { useNumberFormat } from '../../../shared/i18n/use-number-format';
 import { ConnectionCell, useConnectionsQuery, type Connection } from '../../connections';
 import { ConnectionDot } from '../../orders';
 import { useSalesAnalyticsQuery } from '../hooks/use-sales-analytics-query';
-import { useCoverageCrossReferenceQuery } from '../hooks/use-coverage-cross-reference-query';
+import { useCoverageByConnectionQuery } from '../hooks/use-coverage-by-connection-query';
 import {
   createReportingCurrencyConverter,
   isCurrencyRecalculating,
@@ -234,42 +237,30 @@ export function ChannelSalesTable({
   const pctFormat = useNumberFormat(PERCENT_FORMAT_OPTIONS);
   const intFormat = useNumberFormat();
 
-  // Fixed set of hooks, one per cross-referenceable category (never a
-  // variable count derived from which categories happen to be open — see
-  // `useCoverageCrossReferenceQuery`'s own doc comment on why). Each is
-  // `enabled` only when its own category is genuinely open.
+  // One request for every cross-referenceable category together (#2713/
+  // #2714) — `enabled` only when the `coverage` prop (the unfiltered
+  // GET /analytics/coverage aggregate) says at least one of them has a
+  // nonzero affectedCount, matching the pre-#2714 gate's own source of
+  // truth exactly (`openCategoryCodes`, unchanged) — just "any" instead of
+  // "each", since there is now only one request to gate. This is the same
+  // approximation the old per-category gates already made: `coverage` and
+  // `crossRefFilters`/`coverageFilters` are independent props (see this
+  // component's own prop doc comments), so the guarantee is "no request
+  // when the panel overall reads all-clear," not a filter-range match.
   const openCategoryCodes = useMemo(
     () => new Set((coverage?.categories ?? []).filter((row) => row.affectedCount > 0).map((row) => row.category)),
     [coverage]
   );
   const crossRefFilters: AnalyticsCoverageFilters = coverageFilters ?? { from: '', to: '' };
   const crossRefEnabled = Boolean(coverageFilters) && Boolean(onOpenCategory);
-  const currencyOrders = useCoverageCrossReferenceQuery(
-    'currency',
-    crossRefFilters,
-    crossRefEnabled && openCategoryCodes.has('currency')
+  const anyOpenCrossReferenceable = CROSS_REFERENCEABLE_CATEGORIES.some((category) =>
+    openCategoryCodes.has(category)
   );
-  const taxAOrders = useCoverageCrossReferenceQuery(
-    'tax-a',
+  const byConnection = useCoverageByConnectionQuery(
     crossRefFilters,
-    crossRefEnabled && openCategoryCodes.has('tax-a')
+    crossRefEnabled && anyOpenCrossReferenceable
   );
-  const taxBOrders = useCoverageCrossReferenceQuery(
-    'tax-b',
-    crossRefFilters,
-    crossRefEnabled && openCategoryCodes.has('tax-b')
-  );
-  const taxCOrders = useCoverageCrossReferenceQuery(
-    'tax-c',
-    crossRefFilters,
-    crossRefEnabled && openCategoryCodes.has('tax-c')
-  );
-  const exclusions = buildChannelExclusionMap({
-    currency: currencyOrders.data,
-    'tax-a': taxAOrders.data,
-    'tax-b': taxBOrders.data,
-    'tax-c': taxCOrders.data,
-  });
+  const exclusions = buildChannelExclusionMap(byConnection.data);
 
   if (query.isLoading) {
     return (
