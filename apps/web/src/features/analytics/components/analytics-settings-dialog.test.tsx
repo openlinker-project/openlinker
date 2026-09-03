@@ -112,6 +112,9 @@ describe('AnalyticsSettingsDialog', () => {
     expect(await screen.findByText('23 orders waiting to be recalculated')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Recalculate now' }));
+    // Opens a confirmation before writing anything (#2668 review, finding 14)
+    // — a real, permanent financial write on one click had no confirm.
+    await userEvent.click(await screen.findByRole('button', { name: 'Recalculate' }));
 
     await waitFor(() => {
       expect(recalculateCurrency).toHaveBeenCalledWith(baseProps.coverageFilters);
@@ -156,6 +159,41 @@ describe('AnalyticsSettingsDialog', () => {
     await waitFor(() => {
       expect(updateSettings).toHaveBeenCalledWith({
         displayCurrency: 'EUR',
+        rateBasis: 'current',
+        includeBackfilledTaxRatesInNetSales: true,
+      });
+    });
+  });
+
+  it('should send null displayCurrency when the resolved value is only the default, not a stored override (#2668 review, finding 10)', async () => {
+    const updateSettings = vi.fn().mockResolvedValue(undefined);
+    const apiClient = createMockApiClient({
+      analyticsSettings: {
+        getSettings: vi.fn().mockResolvedValue({
+          displayCurrency: 'PLN',
+          displayCurrencySource: 'default',
+          rateBasis: 'current',
+          includeBackfilledTaxRatesInNetSales: false,
+          updatedAt: null,
+          updatedByUserId: null,
+        }),
+        updateSettings,
+      },
+    });
+
+    renderWithProviders(<AnalyticsSettingsDialog {...baseProps} />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    const taxToggle = await screen.findByRole('checkbox', {
+      name: /Use the rate found in the product catalog/,
+    });
+    await userEvent.click(taxToggle);
+
+    await waitFor(() => {
+      expect(updateSettings).toHaveBeenCalledWith({
+        displayCurrency: null,
         rateBasis: 'current',
         includeBackfilledTaxRatesInNetSales: true,
       });

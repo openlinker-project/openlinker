@@ -177,4 +177,22 @@ export interface OrderLineItemRepositoryPort {
     id: string,
     patch: { taxRate: string; taxSource: 'backfill'; taxRateReadAt: Date }
   ): Promise<void>;
+
+  /**
+   * Every distinct (productId, variantId) pair an order's lines touch,
+   * batched across every id in `orderRecordIds` in a single query (#2799,
+   * corrected per #2799 review BLOCKING 1) — the Data Coverage `'currency'`
+   * category drill-down's cross-reference into `TopProductRow.productId`
+   * must annotate EVERY product a multi-product order affects, not just one
+   * — a single "representative" line (the pre-fix shape) silently
+   * under-counted every product past the first. Batched rather than
+   * `findByOrderId` in a loop, which would turn a bounded page read into an
+   * N+1. An order absent from the returned Map carries no line items at all
+   * (should not happen for a `recordStatus = 'ready'` order per #1985, but
+   * the caller must not assume presence); an order present always maps to a
+   * non-empty array.
+   */
+  findProductRefsByOrderIds(
+    orderRecordIds: string[]
+  ): Promise<Map<string, Array<{ productId: string; variantId: string | null }>>>;
 }

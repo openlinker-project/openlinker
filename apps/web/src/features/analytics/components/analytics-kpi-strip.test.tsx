@@ -346,7 +346,7 @@ describe('AnalyticsKpiStrip', () => {
     });
   });
 
-  it('converts only the GMV qualifier when a display currency is picked — every other money figure stays native (ADR-064)', async () => {
+  it('leaves every money figure in the native reporting currency when no rate resolves for it (ADR-064)', async () => {
     const apiClient = createMockApiClient({
       analytics: {
         getSales: vi.fn().mockResolvedValue(
@@ -367,6 +367,9 @@ describe('AnalyticsKpiStrip', () => {
               // test guards against reintroducing.
               convertedRevenue: 232.1,
               unresolvedNativeCurrencies: [],
+              // No entry for PLN (headline.currency) — resolveReportingCurrencyRate
+              // must return null here, so every other figure stays native.
+              appliedRates: [],
             },
           })
         ),
@@ -382,13 +385,179 @@ describe('AnalyticsKpiStrip', () => {
     // EUR has a well-known symbol in Intl's default (en-US-shaped) locale,
     // unlike PLN elsewhere in this file, which renders as a bare "PLN 0.00".
     expect(await screen.findByText('€232.10')).toBeInTheDocument();
-    // Every other money figure has no backend-converted counterpart and
-    // MUST stay in the native reporting currency — never a client-derived
+    // Every other money figure has no resolvable rate for its own native
+    // currency (PLN) and MUST stay native — never a client-derived
     // approximation (see display-currency.lib.ts's "REJECTED APPROACH" note).
     expect(screen.getByText('PLN 900.00')).toBeInTheDocument(); // Net sales
     expect(screen.getByText('PLN 90.00')).toBeInTheDocument(); // AOV
     expect(screen.getByText('PLN 85.00')).toBeInTheDocument(); // Median
     expect(screen.getByText('PLN 50.00')).toBeInTheDocument(); // Cancelled value
+  });
+
+  it('converts every money figure using the real per-bucket rate for headline.currency (#2779 course correction)', async () => {
+    const apiClient = createMockApiClient({
+      analytics: {
+        getSales: vi.fn().mockResolvedValue(
+          analytics({
+            revenue: 1000,
+            netRevenue: 900,
+            netAverageOrderValue: 90,
+            netMedianOrderValue: 85,
+            cancelledValue: 50,
+            displayCurrencyConversion: {
+              displayCurrency: 'EUR',
+              rateBasis: 'current-rate',
+              convertedRevenue: 236.0,
+              unresolvedNativeCurrencies: [],
+              // The one real rate the backend applied to the PLN bucket —
+              // reused here for every other PLN-denominated figure, never
+              // derived by dividing convertedRevenue by revenue.
+              appliedRates: [
+                {
+                  from: 'PLN',
+                  to: 'EUR',
+                  rate: '0.236',
+                  rateDate: '2026-08-29',
+                  source: 'nbp',
+                  derivation: 'direct',
+                  sourceRef: '167/A/NBP/2026',
+                },
+              ],
+            },
+          })
+        ),
+      },
+    });
+
+    renderWithProviders(
+      <AnalyticsKpiStrip filters={{ ...FILTERS, displayCurrency: 'EUR' }} connections={[]} />,
+      { apiClient }
+    );
+
+    expect(await screen.findByText('€236.00')).toBeInTheDocument(); // GMV, backend-converted verbatim
+    expect(screen.getByText('€212.40')).toBeInTheDocument(); // Net sales: 900 * 0.236
+    expect(screen.getByText('€21.24')).toBeInTheDocument(); // AOV: 90 * 0.236
+    expect(screen.getByText('€20.06')).toBeInTheDocument(); // Median: 85 * 0.236
+    expect(screen.getByText('€11.80')).toBeInTheDocument(); // Cancelled value: 50 * 0.236
+    expect(screen.queryByText(/^PLN /)).not.toBeInTheDocument();
+  });
+
+  it('renders the inline rate provenance line under GMV when exactly one rate was applied (#2778/#2779 AC)', async () => {
+    const apiClient = createMockApiClient({
+      analytics: {
+        getSales: vi.fn().mockResolvedValue(
+          analytics({
+            revenue: 1000,
+            displayCurrencyConversion: {
+              displayCurrency: 'EUR',
+              rateBasis: 'current-rate',
+              convertedRevenue: 232.1,
+              unresolvedNativeCurrencies: [],
+              appliedRates: [
+                {
+                  from: 'PLN',
+                  to: 'EUR',
+                  rate: '4.2368',
+                  rateDate: '2026-08-29',
+                  source: 'nbp',
+                  derivation: 'direct',
+                  sourceRef: '167/A/NBP/2026',
+                },
+              ],
+            },
+          })
+        ),
+      },
+    });
+
+    renderWithProviders(
+      <AnalyticsKpiStrip filters={{ ...FILTERS, displayCurrency: 'EUR' }} connections={[]} />,
+      { apiClient }
+    );
+
+    expect(await screen.findByText('€232.10')).toBeInTheDocument();
+    expect(screen.getByText('1 PLN = 4.2368 EUR (NBP, 2026-08-29)')).toBeInTheDocument();
+  });
+
+  it('opens a disclosure stating derivation, sourceRef, and that this is not an invoice rate', async () => {
+    const user = userEvent.setup();
+    const apiClient = createMockApiClient({
+      analytics: {
+        getSales: vi.fn().mockResolvedValue(
+          analytics({
+            revenue: 1000,
+            displayCurrencyConversion: {
+              displayCurrency: 'EUR',
+              rateBasis: 'order-date',
+              convertedRevenue: 232.1,
+              unresolvedNativeCurrencies: [],
+              appliedRates: [
+                {
+                  from: 'PLN',
+                  to: 'EUR',
+                  rate: '4.2368',
+                  rateDate: '2026-08-29',
+                  source: 'nbp',
+                  derivation: 'inverted',
+                  sourceRef: null,
+                },
+              ],
+            },
+          })
+        ),
+      },
+    });
+
+    renderWithProviders(
+      <AnalyticsKpiStrip filters={{ ...FILTERS, displayCurrency: 'EUR', rateBasis: 'order-date' }} connections={[]} />,
+      { apiClient }
+    );
+
+    await screen.findByText('€232.10');
+    await user.click(screen.getByRole('button', { name: 'About this conversion' }));
+
+    expect(screen.getByText(/whole period's total/)).toBeInTheDocument();
+    expect(screen.getByText('Derived (inverted)')).toBeInTheDocument();
+    expect(screen.getByText(/never the statutory rate used on an invoice/)).toBeInTheDocument();
+  });
+
+  it('renders no rate line for an unresolved conversion — the existing unavailable copy still owns that state', async () => {
+    const apiClient = createMockApiClient({
+      analytics: {
+        getSales: vi.fn().mockResolvedValue(
+          analytics({
+            revenue: 1000,
+            displayCurrencyConversion: {
+              displayCurrency: 'EUR',
+              rateBasis: 'current-rate',
+              convertedRevenue: null,
+              unresolvedNativeCurrencies: ['PLN'],
+              appliedRates: [],
+            },
+          })
+        ),
+      },
+    });
+
+    renderWithProviders(
+      <AnalyticsKpiStrip filters={{ ...FILTERS, displayCurrency: 'EUR' }} connections={[]} />,
+      { apiClient }
+    );
+
+    await screen.findByText('PLN 1,000.00');
+    expect(screen.queryByRole('button', { name: 'About this conversion' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/^1 .* = /)).not.toBeInTheDocument();
+  });
+
+  it('renders no provenance line and no layout change when displayCurrency is omitted (regression)', async () => {
+    const apiClient = createMockApiClient({
+      analytics: { getSales: vi.fn().mockResolvedValue(analytics({ revenue: 1000 })) },
+    });
+
+    renderWithProviders(<AnalyticsKpiStrip filters={FILTERS} connections={[]} />, { apiClient });
+
+    await screen.findByText('PLN 1,000.00');
+    expect(screen.queryByRole('button', { name: 'About this conversion' })).not.toBeInTheDocument();
   });
 
   it('shows "Recalculating…" instead of a bare 0 while a currency remediation run is in progress', async () => {
