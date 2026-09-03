@@ -270,7 +270,7 @@ export class EcbExchangeRateAdapter implements ExchangeRateProviderPort {
   }
 
   /**
-   * Implements `ExchangeRateProviderPort.resolveLikelyPublicationDay`
+   * Implements `ExchangeRateProviderPort.resolveExpectedPublicationDay`
    * (#2777). WEEKEND-ONLY, and that is deliberate: ECB publishes on
    * Polish-only holidays (verified divergence - Corpus Christi
    * 2026-06-04: a Polish-calendar walk-back skips it and resolves a
@@ -285,7 +285,7 @@ export class EcbExchangeRateAdapter implements ExchangeRateProviderPort {
    * "NO WALK-BACK LOOP, AND THAT IS THE POINT"), so a wrong guess here
    * degrades to a normal live fetch, never a wrong stamp.
    */
-  resolveLikelyPublicationDay(candidate: string): string {
+  resolveExpectedPublicationDay(candidate: string): string {
     // Midday UTC, matching this file's existing anchoring discipline -
     // anchoring at midnight would put a UTC+1/UTC+2 shift on the wrong
     // side of the day boundary.
@@ -490,7 +490,7 @@ export class EcbExchangeRateAdapter implements ExchangeRateProviderPort {
 
 /**
  * Shifts an ISO calendar day by `delta` days, anchored at midday UTC to match
- * `resolveLikelyPublicationDay`'s own anchoring discipline (#2777).
+ * `resolveExpectedPublicationDay`'s own anchoring discipline (#2777).
  */
 function addUtcDays(isoDay: string, delta: number): string {
   const instant = new Date(`${isoDay}T12:00:00Z`);

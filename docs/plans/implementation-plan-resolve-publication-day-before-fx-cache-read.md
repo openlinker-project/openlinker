@@ -19,13 +19,13 @@
 ## 2. Scope & Non-Goals
 
 ### In Scope
-- One new **optional** method on `ExchangeRateProviderPort`: `resolveLikelyPublicationDay?(candidate: string): string`.
+- One new **optional** method on `ExchangeRateProviderPort`: `resolveExpectedPublicationDay?(candidate: string): string`.
 - `CurrencyRateService.getRateFor` probes for the method (ADR-046 pattern — never trusts the type) and, when present, keys the pre-fetch `findByKey` read on the resolved day instead of the raw candidate.
 - NBP adapter implementation: delegate to its existing private `resolveWorkingDayAtOrBefore`.
 - ECB adapter implementation: a new, deliberately narrow **weekend-only** variant (no Polish-calendar dependency).
 - Fake adapter: identity implementation (`(candidate) => candidate`), so test determinism for existing specs is unchanged unless a spec explicitly opts in.
 - Updating the "accepted debt" language in `currency-rate.service.ts`'s file header and in ADR-040 § Consequences (the `walk-back-on-miss` bullet) to describe the closed gap rather than restate it as a live cost.
-- Unit tests for the new probing logic in `CurrencyRateService`, and for each adapter's `resolveLikelyPublicationDay`.
+- Unit tests for the new probing logic in `CurrencyRateService`, and for each adapter's `resolveExpectedPublicationDay`.
 
 ### Out of Scope
 - A persisted `exchange_rate_date_resolutions` table (the #2124 shape) — explicitly rejected by the issue as unnecessary machinery once the adapter can answer the question purely.
@@ -75,7 +75,7 @@ function declares(adapter: OfferFieldUpdater): adapter is OfferFieldUpdater & De
   return typeof (adapter as Partial<DescriptionFormatDeclaring>).getDescriptionFormat === 'function';
 }
 ```
-and the `#2229` streaming-concurrency-ceiling precedent (`ResolveConcurrencyCeiling` § in architecture-overview.md, "Callers probe for the method rather than trusting `isEanCategoryMatcherStreaming`"). Both exist because widening a type guard would silently stop recognising an older out-of-tree plugin. This issue's new method follows the same shape: optional on the interface, probed with `typeof provider.resolveLikelyPublicationDay === 'function'` at the one call site, never added to any closed guard union (there is none for this port today, and none is being created).
+and the `#2229` streaming-concurrency-ceiling precedent (`ResolveConcurrencyCeiling` § in architecture-overview.md, "Callers probe for the method rather than trusting `isEanCategoryMatcherStreaming`"). Both exist because widening a type guard would silently stop recognising an older out-of-tree plugin. This issue's new method follows the same shape: optional on the interface, probed with `typeof provider.resolveExpectedPublicationDay === 'function'` at the one call site, never added to any closed guard union (there is none for this port today, and none is being created).
 
 **NBP's existing calendar primitive** (`nbp-exchange-rate.adapter.ts:452-459`):
 ```typescript
@@ -138,7 +138,7 @@ This is **exactly** the contract the new port method needs ("a day `<= candidate
       * contract guarantees no publication day lies between `X` and the
       * candidate, so the hit equals what `fetchRate` would have returned.
       */
-     resolveLikelyPublicationDay?(candidate: string): string;
+     resolveExpectedPublicationDay?(candidate: string): string;
      ```
    - **Acceptance**: `pnpm --filter @openlinker/core type-check` passes; no existing implementer of `ExchangeRateProviderPort` is forced to add the method (it is optional).
    - **Dependencies**: None.
@@ -148,17 +148,17 @@ This is **exactly** the contract the new port method needs ("a day `<= candidate
    - **Action**: Add a public method that delegates to the existing private one — no new calendar logic, per the issue's explicit instruction:
      ```typescript
      /**
-      * Implements `ExchangeRateProviderPort.resolveLikelyPublicationDay`
+      * Implements `ExchangeRateProviderPort.resolveExpectedPublicationDay`
       * (#2777). Delegates to the same working-day-calendar primitive
       * `fetchQuotesForNearestPublishedDay` already uses for the HTTP
       * walk-back — no second copy of the Polish working-day calendar.
       */
-     resolveLikelyPublicationDay(candidate: string): string {
+     resolveExpectedPublicationDay(candidate: string): string {
        return this.resolveWorkingDayAtOrBefore(candidate);
      }
      ```
      Place it near `fetchRate`, above the private `resolveWorkingDayAtOrBefore` it calls (no reordering of the existing private method needed — TS class methods can reference each other in any declaration order).
-   - **Acceptance**: A spec proves `resolveLikelyPublicationDay('2026-08-15')` (a Saturday) returns `'2026-08-14'` (Friday), and `resolveLikelyPublicationDay('2026-08-13')` (an ordinary Thursday) returns itself.
+   - **Acceptance**: A spec proves `resolveExpectedPublicationDay('2026-08-15')` (a Saturday) returns `'2026-08-14'` (Friday), and `resolveExpectedPublicationDay('2026-08-13')` (an ordinary Thursday) returns itself.
    - **Dependencies**: Step 1.
 
 3. **ECB: a weekend-only variant, explicitly NOT the Polish calendar**
@@ -166,7 +166,7 @@ This is **exactly** the contract the new port method needs ("a day `<= candidate
    - **Action**: Add a small, dependency-free weekend check and the port method:
      ```typescript
      /**
-      * Implements `ExchangeRateProviderPort.resolveLikelyPublicationDay`
+      * Implements `ExchangeRateProviderPort.resolveExpectedPublicationDay`
       * (#2777). WEEKEND-ONLY, and that is deliberate: ECB publishes on
       * Polish-only holidays (verified divergence — Corpus Christi
       * 2026-06-04: a Polish-calendar walk-back skips it and resolves a
@@ -181,7 +181,7 @@ This is **exactly** the contract the new port method needs ("a day `<= candidate
       * WALK-BACK LOOP, AND THAT IS THE POINT"), so a wrong guess here
       * degrades to a normal live fetch, never a wrong stamp.
       */
-     resolveLikelyPublicationDay(candidate: string): string {
+     resolveExpectedPublicationDay(candidate: string): string {
        // Midday UTC, matching the file's existing anchoring discipline —
        // anchoring at midnight would put a UTC+1/UTC+2 shift on the wrong
        // side of the day boundary.
@@ -204,7 +204,7 @@ This is **exactly** the contract the new port method needs ("a day `<= candidate
        return instant.toISOString().slice(0, 10);
      }
      ```
-   - **Acceptance**: A spec proves `resolveLikelyPublicationDay('2026-08-15')` (Saturday) returns `'2026-08-14'` (Friday); `resolveLikelyPublicationDay('2026-06-04')` (Corpus Christi, a Thursday — a genuine Polish holiday) returns **itself**, `'2026-06-04'`, proving the method does NOT consult the Polish calendar; an ordinary weekday returns itself.
+   - **Acceptance**: A spec proves `resolveExpectedPublicationDay('2026-08-15')` (Saturday) returns `'2026-08-14'` (Friday); `resolveExpectedPublicationDay('2026-06-04')` (Corpus Christi, a Thursday — a genuine Polish holiday) returns **itself**, `'2026-06-04'`, proving the method does NOT consult the Polish calendar; an ordinary weekday returns itself.
    - **Dependencies**: Step 1.
 
 4. **Fake: identity**
@@ -212,7 +212,7 @@ This is **exactly** the contract the new port method needs ("a day `<= candidate
    - **Action**: Add:
      ```typescript
      /** Identity — test determinism for existing specs is unaffected (#2777). */
-     resolveLikelyPublicationDay(candidate: string): string {
+     resolveExpectedPublicationDay(candidate: string): string {
        return candidate;
      }
      ```
@@ -233,8 +233,8 @@ This is **exactly** the contract the new port method needs ("a day `<= candidate
      // satisfy a widened type guard without implementing the method, so this
      // checks for the method itself rather than trusting the type.
      const likelyPublicationDay =
-       typeof provider.resolveLikelyPublicationDay === 'function'
-         ? provider.resolveLikelyPublicationDay(input.rateDate)
+       typeof provider.resolveExpectedPublicationDay === 'function'
+         ? provider.resolveExpectedPublicationDay(input.rateDate)
          : input.rateDate;
 
      const existing = await this.repository.findByKey({ ...input, rateDate: likelyPublicationDay });
@@ -246,7 +246,7 @@ This is **exactly** the contract the new port method needs ("a day `<= candidate
    - **Acceptance**:
      - A spec proves: for a Saturday candidate, `findByKey` is called with the Friday date, and when that row exists, **zero** `fetchRate` calls happen.
      - A spec proves: a provider declaring nothing (e.g. a bare mock without the method) behaves exactly as today — `findByKey` is called with the raw candidate.
-     - A spec proves: a provider whose `resolveLikelyPublicationDay` returns a day with no cached row falls through to a normal `fetchRate` call, never producing a wrong or stale stamp.
+     - A spec proves: a provider whose `resolveExpectedPublicationDay` returns a day with no cached row falls through to a normal `fetchRate` call, never producing a wrong or stale stamp.
    - **Dependencies**: Phase 1 (any provider mock used in the new specs may implement the method or not).
 
 ### Phase 3: Documentation
@@ -256,13 +256,13 @@ This is **exactly** the contract the new port method needs ("a day `<= candidate
 
 6. **Update the file header**
    - **File**: `libs/core/src/currency/application/services/currency-rate.service.ts`
-   - **Action**: Rewrite the header's "WHAT THE REGISTRY DOES AND DOES NOT ABSORB" section. Keep the explanation of *why* the two keys can differ (candidate vs. published day) — that fact doesn't change — but replace "the pre-fetch read goes on missing... EVERY order carrying that candidate makes a live provider call" with a note that `resolveLikelyPublicationDay` (#2777) now lets an adapter that knows its own calendar close this gap for its own pairs, and that a provider declaring nothing keeps the old candidate-keyed behaviour. Remove the "Memoising the candidate-to-published-date mapping needs its own persisted table... (#2124)" sentence, since the adapter-declared method is now the shipped mechanism.
+   - **Action**: Rewrite the header's "WHAT THE REGISTRY DOES AND DOES NOT ABSORB" section. Keep the explanation of *why* the two keys can differ (candidate vs. published day) — that fact doesn't change — but replace "the pre-fetch read goes on missing... EVERY order carrying that candidate makes a live provider call" with a note that `resolveExpectedPublicationDay` (#2777) now lets an adapter that knows its own calendar close this gap for its own pairs, and that a provider declaring nothing keeps the old candidate-keyed behaviour. Remove the "Memoising the candidate-to-published-date mapping needs its own persisted table... (#2124)" sentence, since the adapter-declared method is now the shipped mechanism.
    - **Acceptance**: The header no longer states or implies the miss is unconditionally permanent.
    - **Dependencies**: Phase 1 + 2 (the fix must exist before the header can describe it as fixed).
 
 7. **Update ADR-040 § Consequences**
    - **File**: `docs/architecture/adrs/040-order-time-fx-stamping-against-a-system-reporting-currency.md`
-   - **Action**: Append one sentence to the existing "The two providers publish on different calendars..." bullet (§ Consequences, ~line 218), noting that as of #2777 each adapter also declares an optional `resolveLikelyPublicationDay` so the pre-fetch cache read can key on the day it will actually publish for, closing a previously-permanent cache-miss cost for weekend/holiday candidates.
+   - **Action**: Append one sentence to the existing "The two providers publish on different calendars..." bullet (§ Consequences, ~line 218), noting that as of #2777 each adapter also declares an optional `resolveExpectedPublicationDay` so the pre-fetch cache read can key on the day it will actually publish for, closing a previously-permanent cache-miss cost for weekend/holiday candidates.
    - **Acceptance**: The bullet reads as historically accurate and forward-looking, without inventing a new numbered amendment section (this is closing a documented cost, not making a new architectural decision — see `docs/architecture/adrs/README.md § When to write an ADR`).
    - **Dependencies**: Phase 1 + 2.
 
@@ -294,7 +294,7 @@ This is **exactly** the contract the new port method needs ("a day `<= candidate
 - ✅ Follows the existing ADR-046 probe-not-trust pattern verbatim rather than inventing a new one.
 
 ### Naming Conventions
-- ✅ Method name `resolveLikelyPublicationDay` matches the issue's exact proposed signature and the existing `resolveWorkingDayAtOrBefore` / `resolveRateDate` naming family (`resolve*` for a pure day-derivation function).
+- ✅ Method name `resolveExpectedPublicationDay` matches the issue's exact proposed signature and the existing `resolveWorkingDayAtOrBefore` / `resolveRateDate` naming family (`resolve*` for a pure day-derivation function).
 - ✅ No new file needed — additions are to existing port/adapter/service files, consistent with how `getDescriptionFormat` was added to an existing capability interface rather than a new one.
 
 ### Existing Patterns
@@ -302,7 +302,7 @@ This is **exactly** the contract the new port method needs ("a day `<= candidate
 - ✅ ECB's variant deliberately does NOT reuse `@openlinker/shared/date`'s Polish-calendar helpers — consistent with the adjacent `resolveRateDate` design principle ("deliberately calendar-neutral... a shared Polish calendar in core would be wrong").
 
 ### Risks
-- **A subtly wrong `resolveLikelyPublicationDay` implementation could theoretically cause a false cache HIT.** Mitigated structurally: the contract requires "no publication day in `(returned, candidate]`", and the two shipped implementations (NBP's exact existing calendar function; ECB's conservative weekend-only rule) are both already correctness-verified by existing/new specs. A wrong answer that OVER-walks-back (returns a day further back than necessary) still cannot cause a wrong stamp — it would only ever find an existing row that is itself correctly keyed (the row was written under the day the source actually published for), so worst case is a slightly-stale-but-still-genuinely-published rate being reused one extra day past when a fresher one exists — which is exactly what the ordinary `existing` cache-hit path already does for a ordinary same-day-publication candidate seen twice.
+- **A subtly wrong `resolveExpectedPublicationDay` implementation could theoretically cause a false cache HIT.** Mitigated structurally: the contract requires "no publication day in `(returned, candidate]`", and the two shipped implementations (NBP's exact existing calendar function; ECB's conservative weekend-only rule) are both already correctness-verified by existing/new specs. A wrong answer that OVER-walks-back (returns a day further back than necessary) still cannot cause a wrong stamp — it would only ever find an existing row that is itself correctly keyed (the row was written under the day the source actually published for), so worst case is a slightly-stale-but-still-genuinely-published rate being reused one extra day past when a fresher one exists — which is exactly what the ordinary `existing` cache-hit path already does for a ordinary same-day-publication candidate seen twice.
 - **ECB's weekend-only rule under-covers relative to NBP's full calendar.** This is intentional per the issue (a Polish-only holiday must NOT be treated as an ECB non-publication day) — the residual cost (Polish-holiday-but-not-weekend candidates against ECB still cost a live `fetchRate` call, which itself has no walk-back and resolves in one HTTP round-trip) is smaller than today's status quo and is explicitly accepted rather than an oversight.
 
 ### Edge Cases
@@ -321,32 +321,32 @@ This is **exactly** the contract the new port method needs ("a day `<= candidate
 ### Unit Tests
 
 **File**: `libs/core/src/currency/application/services/__tests__/currency-rate.service.spec.ts`
-- `should key the pre-fetch read on the resolved publication day when the provider declares resolveLikelyPublicationDay` — mock provider's `resolveLikelyPublicationDay` returns a Friday for a Saturday candidate; assert `repository.findByKey` was called with the Friday date and `provider.fetchRate` was never called (row exists under Friday).
-- `should key the pre-fetch read on the raw candidate when the provider declares nothing` — mock provider has no `resolveLikelyPublicationDay` property at all; assert `repository.findByKey` was called with the original candidate — proves the pre-#2777 behaviour is preserved byte-for-byte.
+- `should key the pre-fetch read on the resolved publication day when the provider declares resolveExpectedPublicationDay` — mock provider's `resolveExpectedPublicationDay` returns a Friday for a Saturday candidate; assert `repository.findByKey` was called with the Friday date and `provider.fetchRate` was never called (row exists under Friday).
+- `should key the pre-fetch read on the raw candidate when the provider declares nothing` — mock provider has no `resolveExpectedPublicationDay` property at all; assert `repository.findByKey` was called with the original candidate — proves the pre-#2777 behaviour is preserved byte-for-byte.
 - `should fall through to fetchRate when the resolved day still misses the cache` — resolved day has no row; assert normal `fetchRate` → `insertIfAbsent` flow still runs and returns the freshly-stored rate (reuses the existing `FETCHED`/`STORED` fixtures already in the file).
 
 **File**: `libs/integrations/fx/src/infrastructure/adapters/__tests__/nbp-exchange-rate.adapter.spec.ts` (existing file — add cases, do not create a new one)
-- `resolveLikelyPublicationDay` returns the Friday before a Saturday candidate.
-- `resolveLikelyPublicationDay` returns the candidate itself for an ordinary working day.
+- `resolveExpectedPublicationDay` returns the Friday before a Saturday candidate.
+- `resolveExpectedPublicationDay` returns the candidate itself for an ordinary working day.
 
 **File**: `libs/integrations/fx/src/infrastructure/adapters/__tests__/ecb-exchange-rate.adapter.spec.ts` (existing file — add cases)
-- `resolveLikelyPublicationDay` returns the Friday before a Saturday candidate.
-- `resolveLikelyPublicationDay` returns **the Corpus Christi date itself** (`'2026-06-04'`) — proving no Polish-calendar dependency, per the issue's explicit acceptance criterion.
-- `resolveLikelyPublicationDay` returns the candidate itself for an ordinary weekday.
+- `resolveExpectedPublicationDay` returns the Friday before a Saturday candidate.
+- `resolveExpectedPublicationDay` returns **the Corpus Christi date itself** (`'2026-06-04'`) — proving no Polish-calendar dependency, per the issue's explicit acceptance criterion.
+- `resolveExpectedPublicationDay` returns the candidate itself for an ordinary weekday.
 
 **File**: `libs/integrations/fx/src/infrastructure/adapters/__tests__/fake-exchange-rate.adapter.spec.ts` (if it exists — otherwise skip; the Fake is trivial enough that its identity behaviour is implicitly covered by every existing `CurrencyRateService` spec that uses it)
-- `resolveLikelyPublicationDay` returns the input unchanged.
+- `resolveExpectedPublicationDay` returns the input unchanged.
 
 ### Integration Tests
 None required — this is a pure, no-I/O calendar computation wired into an existing, already-integration-tested cache-read path. No new HTTP surface, no new DB shape.
 
 ### Mocking Strategy
-- `CurrencyRateService` specs mock `ExchangeRateProviderPort` and `ExchangeRateRepositoryPort` exactly as the existing spec file already does (`jest.Mocked<...>`), adding `resolveLikelyPublicationDay` to the mock only in the tests that need to exercise it — the "declares nothing" test uses a mock object that simply omits the property, which is what proves the probe (not a type check) governs behaviour.
+- `CurrencyRateService` specs mock `ExchangeRateProviderPort` and `ExchangeRateRepositoryPort` exactly as the existing spec file already does (`jest.Mocked<...>`), adding `resolveExpectedPublicationDay` to the mock only in the tests that need to exercise it — the "declares nothing" test uses a mock object that simply omits the property, which is what proves the probe (not a type check) governs behaviour.
 - Adapter specs test the two new methods directly against the real adapter instance — no HTTP mocking needed since the method makes no HTTP calls.
 
 ### Acceptance Criteria (mirrors the issue's own AC list)
 - [ ] `ExchangeRateProviderPort` declares the optional method, documented with the `<= candidate` / "no publication day in between" contract.
-- [ ] `CurrencyRateService` probes for the method (`typeof provider.resolveLikelyPublicationDay === 'function'`) rather than relying on the type, with a comment citing the ADR-046 precedent.
+- [ ] `CurrencyRateService` probes for the method (`typeof provider.resolveExpectedPublicationDay === 'function'`) rather than relying on the type, with a comment citing the ADR-046 precedent.
 - [ ] A spec proves a Saturday candidate resolves to the preceding Friday and the pre-fetch `findByKey` is called with the Friday, with zero `fetchRate` calls when that row exists.
 - [ ] A spec proves a provider declaring nothing behaves exactly as today (read keyed on the candidate).
 - [ ] A spec proves a wrong/missing resolution degrades to a `fetchRate` call and never to a wrong or stale stamp.

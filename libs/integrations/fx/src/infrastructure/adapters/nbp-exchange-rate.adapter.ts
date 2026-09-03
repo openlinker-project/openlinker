@@ -204,12 +204,12 @@ export class NbpExchangeRateAdapter implements ExchangeRateProviderPort {
   }
 
   /**
-   * Implements `ExchangeRateProviderPort.resolveLikelyPublicationDay`
+   * Implements `ExchangeRateProviderPort.resolveExpectedPublicationDay`
    * (#2777). Delegates to the same working-day-calendar primitive
    * `fetchQuotesForNearestPublishedDay` already uses for the HTTP
    * walk-back - no second copy of the Polish working-day calendar.
    */
-  resolveLikelyPublicationDay(candidate: string): string {
+  resolveExpectedPublicationDay(candidate: string): string {
     return this.resolveWorkingDayAtOrBefore(candidate);
   }
 
