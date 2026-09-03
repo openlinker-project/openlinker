@@ -175,6 +175,7 @@ describe('ShipmentDispatchService', () => {
       getTopProductVariantSales: jest.fn(),
       discoverSalesDocumentMarkets: jest.fn(),
       getCurrencyMismatchOrders: jest.fn(),
+      getCurrencyMismatchOrdersByConnection: jest.fn(),
       getProductMatchingErrorOrders: jest.fn(),
     };
     const fulfillmentProjection = { recompute: jest.fn() };

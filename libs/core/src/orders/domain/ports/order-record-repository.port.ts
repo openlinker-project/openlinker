@@ -30,6 +30,7 @@ import type {
   PaginatedCurrencyMismatchOrders,
   NetExcludedOrderCandidate,
   PaginatedProductMatchingErrorOrders,
+  CoverageConnectionAggregateRow,
 } from '../types/coverage-detection.types';
 import type { FxRestatementRemainingSummary } from '../types/order-fx-restatement.types';
 
@@ -257,6 +258,24 @@ export interface OrderRecordRepositoryPort {
     currentReportingCurrency: string,
     pagination: CoverageDetectionPagination
   ): Promise<PaginatedCurrencyMismatchOrders>;
+
+  /**
+   * Data Coverage `'currency'` category aggregate-by-connection (#2713) —
+   * the `GROUP BY sourceConnectionId` counterpart of
+   * {@link findCurrencyMismatchOrders}, reusing the IDENTICAL predicate (same
+   * `cancelledAt IS NULL`, same currency-mismatch condition, same
+   * {@link applySalesAnalyticsScope}-equivalent scope) so the two reads can
+   * never silently diverge on what counts as a mismatch. Returns one row per
+   * connection that has at least one mismatch; a connection with none is
+   * simply absent — see {@link CoverageConnectionAggregateRow}. No
+   * pagination: the result is already bounded by the number of
+   * `OrderSource`-capable connections, unlike the order-list read this
+   * replaces for the per-connection-count use case.
+   */
+  findCurrencyMismatchOrdersByConnection(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string
+  ): Promise<CoverageConnectionAggregateRow[]>;
 
   /**
    * Data Coverage tax A/B/C detector's base population (#2465) — every
