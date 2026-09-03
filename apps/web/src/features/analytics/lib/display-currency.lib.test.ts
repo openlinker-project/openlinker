@@ -23,7 +23,7 @@ function rate(overrides: Partial<AppliedRate> = {}): AppliedRate {
 
 // `formatAppliedRateLine` / `buildRateProvenanceDefinitions` are pure lib
 // functions and cannot call the `useNumberFormat` hook themselves, so the
-// caller supplies the formatter — matching what `AnalyticsKpiStrip`
+// caller supplies the formatter - matching what `AnalyticsKpiStrip`
 // constructs via `useNumberFormat(RATE_FORMAT_OPTIONS)` (#2788 review).
 const rateFormat = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
@@ -56,7 +56,7 @@ describe('formatAppliedRateLine', () => {
     );
   });
 
-  it('renders a full 8-decimal inverted rate unrounded — this line is the checkable provenance figure (#2788 review)', () => {
+  it('renders a full 8-decimal inverted rate unrounded - this line is the checkable provenance figure (#2788 review)', () => {
     // An inverted PLN→EUR rate of 0.23529412 previously rendered as 0.2353
     // (maximumFractionDigits: 4), so multiplying the displayed amount by the
     // displayed rate no longer reproduced the displayed figure.
