@@ -84,7 +84,7 @@ describe('ExchangeRatesController', () => {
 
   it('should word the 422 body around the rate publisher, never the reporting-currency setting', async () => {
     // `ReportingCurrencyUnsupportedError.message` reads "Reporting currency
-    // 'XXX' is not supported" — correct on the `/currency-settings` write
+    // 'XXX' is not supported" - correct on the `/currency-settings` write
     // path, but wrong here: this endpoint asks about a RATE, not a
     // deployment-wide setting. The controller must rewrap it rather than
     // surface that message verbatim.
