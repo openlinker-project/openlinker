@@ -15,7 +15,21 @@
  * @module apps/api/src/analytics/http/dto
  */
 import { ApiProperty } from '@nestjs/swagger';
-import { CoverageCategoryValues, type CoverageCategory } from '@openlinker/core/orders';
+import { TaxCoverageCategoryValues } from '@openlinker/core/orders';
+
+/**
+ * The categories this endpoint's controller actually emits (`'currency'` plus
+ * the tax A/B/C sub-categories) — deliberately narrower than the full
+ * `CoverageCategoryValues` union, which also carries `'product-matching'`.
+ * `AnalyticsCoverageController.getCoverageByConnection` never dispatches that
+ * category, so declaring it here would overstate the Swagger contract.
+ */
+export const CoverageCategoryConnectionRowValues = [
+  'currency',
+  ...TaxCoverageCategoryValues,
+] as const;
+export type CoverageCategoryConnectionRowCategory =
+  (typeof CoverageCategoryConnectionRowValues)[number];
 
 export class CoverageConnectionRowDto {
   @ApiProperty({ description: 'The connection this count belongs to.' })
@@ -28,14 +42,14 @@ export class CoverageConnectionRowDto {
 }
 
 export class CoverageCategoryConnectionRowsDto {
-  @ApiProperty({ enum: CoverageCategoryValues })
-  category!: CoverageCategory;
+  @ApiProperty({ enum: CoverageCategoryConnectionRowValues })
+  category!: CoverageCategoryConnectionRowCategory;
 
   @ApiProperty({ type: [CoverageConnectionRowDto] })
   rows!: CoverageConnectionRowDto[];
 
   static of(
-    category: CoverageCategory,
+    category: CoverageCategoryConnectionRowCategory,
     rows: CoverageConnectionRowDto[]
   ): CoverageCategoryConnectionRowsDto {
     const dto = new CoverageCategoryConnectionRowsDto();
