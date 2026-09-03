@@ -12,7 +12,7 @@
 No surface, copy or layout is specified yet; where a story would imply a control, it stops at the
 behaviour.
 
-The decision log (§ 6) is the substantive part. Twenty-one decisions, each with its reasoning, and
+The decision log (§ 6) is the substantive part. Twenty-two decisions, each with its reasoning, and
 several of them reverse an earlier draft of this document.
 
 ---
@@ -178,6 +178,17 @@ Terminals are **shared and roaming** (D15), but a person changes terminal only a
 **B4 — state is legible at a glance** *(P9)*
 - Given work in mixed states,
 - Then state is carried by colour and position as well as text, never by colour alone.
+
+**B5 — I can push one parcel to the front** *(D22)*
+- Given a parcel that must go out ahead of its deadline order — an angry customer, a courier
+  cut-off, a supervisor's call,
+- When someone with write access expedites it,
+- Then it sorts ahead of everything not expedited, and the bench shows *that* it was expedited
+  rather than silently reordering the list under the packer,
+- And it can be un-expedited, because a permanent override is a second deadline system.
+- *(Without this, the only lever on ordering is to HOLD everything else — destructive, and it
+  stops other work rather than advancing this one. Deadline order is a good default and a poor
+  only-answer: `dispatchByAt` cannot know that this particular buyer phoned twice.)*
 
 ### 2.3 Surface C — scanner-first operation *(W3b-3, #2416)*
 
@@ -401,4 +412,5 @@ does not exist yet.
 | D18 | **The parcel closes on the last verification**, with no confirmation step. | The field is near-unanimous (Peoplevox, Sellasist, Linnworks, ShipStation auto-advance; Sellasist markets the absent click). Overrides an earlier recommendation for a deliberate commit. |
 | D19 | **A closed parcel can be reopened**, attributed and audited; refused once shipped. | Load-bearing because of D18 — auto-close removes the pause in which a mis-scan would be caught, so reopening is the only correction path. Apilo attributes the un-pack too. |
 | D20 | **Manual confirmation is recorded identically to a scan.** | Marking it creates a stigma, and stigma drives the undetectable workaround (scan a second unit of the same SKU twice). Cost: weaker dispute evidence. |
+| D22 | **An operator can expedite a parcel ahead of deadline order**, visibly and reversibly. | Ordering is otherwise purely `dispatchByAt`, and the only lever on it is holding everything else — which stops work rather than advancing it. The expedite is shown, not silent, because a list that reorders itself under a packer is a list they stop trusting. **Routing a parcel to a bench BY HAND is a different and larger thing** — it adds a producer of work and must take #2395's single decision slot — and is #2869, not this wave. |
 | D21 | **A work changing underneath the packer interrupts**, naming the change. | The free behaviour — a 409 on the next scan — is an error at a moment the packer cannot interpret, which is how a correct guard becomes a support ticket. |
