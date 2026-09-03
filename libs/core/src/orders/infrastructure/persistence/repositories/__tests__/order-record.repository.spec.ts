@@ -198,6 +198,88 @@ describe('OrderRecordRepository', () => {
     });
   });
 
+  describe('countByHealth - sales-document aggregates', () => {
+    /**
+     * Builds the query-builder mock `countByHealth` drives and returns the
+     * `(sql, alias)` pairs it registered, so a test can assert on the SQL the
+     * repository really emitted rather than on a mock's call count.
+     */
+    const runCountByHealth = async (
+      raw: Record<string, unknown> = {}
+    ): Promise<Map<string, string>> => {
+      const addSelect = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect,
+        andWhere: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn().mockResolvedValue(raw),
+      });
+
+      await repository.countByHealth({});
+
+      return new Map(
+        (addSelect.mock.calls as Array<[string, string]>).map(([sql, alias]) => [alias, sql])
+      );
+    };
+
+    it('should keep the issued-on-request predicate mutually exclusive with the blocked one (#2554)', async () => {
+      const selects = await runCountByHealth();
+
+      const blocked = selects.get('sales_document_blocked');
+      const onRequest = selects.get('sales_document_issued_on_request');
+      expect(blocked).toBeDefined();
+      expect(onRequest).toBeDefined();
+
+      // The exclusivity is structural: IS_SALES_DOCUMENT_BLOCKED is an IN-list
+      // built from SalesDocumentAttentionReasonValues, which excludes
+      // 'trigger-model-manual' (ADR-041 §54) - the exact value the on-request
+      // predicate matches on. If a future edit ever added manual to the
+      // attention subset, a row would be counted in BOTH aggregates and the
+      // orders page would put a large red number on a healthy install, which is
+      // the regression #2554 exists to prevent.
+      expect(onRequest).toContain("= 'trigger-model-manual'");
+      expect(blocked).not.toContain("'trigger-model-manual'");
+      // Same guard the findMany predicate carries: an empty values array would
+      // compile to `IN ()`, a Postgres syntax error surfaced as a 500.
+      expect(blocked).not.toContain('IN ()');
+    });
+
+    it('should also keep the oldest-held MIN off the issued-on-request population (#2554)', async () => {
+      const selects = await runCountByHealth();
+
+      // The chip's age clause describes the HELD orders only. It reuses the
+      // blocked predicate, so it inherits the exclusivity asserted above rather
+      // than restating it - pinned here so a copy-paste of the manual predicate
+      // into this aggregate cannot pass silently.
+      expect(selects.get('sales_document_blocked_oldest_at')).not.toContain(
+        "'trigger-model-manual'"
+      );
+    });
+
+    it('should map both counts independently and default a missing column to 0', async () => {
+      const addSelect = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect,
+        andWhere: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn().mockResolvedValue({
+          total: '7',
+          sales_document_blocked: '2',
+          sales_document_issued_on_request: '5',
+        }),
+      });
+
+      const result = await repository.countByHealth({});
+
+      expect(result.salesDocumentBlocked).toBe(2);
+      expect(result.salesDocumentIssuedOnRequest).toBe(5);
+      // Absent aggregates read 0, never NaN - a summary row is rendered as a
+      // count, so NaN would reach the operator's screen.
+      expect(result.taxRateConflict).toBe(0);
+      expect(result.salesDocumentBlockedOldestAt).toBeNull();
+    });
+  });
+
   /**
    * Since #2282 `upsert()` is a raw `INSERT ... ON CONFLICT DO UPDATE` with
    * `RETURNING *`, not a `save()`. The write set is still defined by `toOrm`,

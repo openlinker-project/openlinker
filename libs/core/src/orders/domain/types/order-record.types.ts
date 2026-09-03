@@ -154,6 +154,17 @@ export interface OrderHealthSummary {
    * adding a third dotted badge to a row that already has two SLA badges.
    */
   salesDocumentBlockedOldestAt: Date | null;
+  /**
+   * Orders whose sales document is issued ONLY on request — the
+   * `'trigger-model-manual'` gate reason (#2554). Its OWN count, deliberately
+   * NOT part of `salesDocumentBlocked`: manual is `parseTriggerModel`'s
+   * default, so on a manual install every uninvoiced order carries it, and
+   * folding it into the blocked count would put a large red number on a
+   * healthy install (ADR-041 §54 — the exact regression the attention-reason
+   * subset exists to prevent). Reported neutrally so the operator can see the
+   * queue without reading it as a problem.
+   */
+  salesDocumentIssuedOnRequest: number;
 }
 
 /**

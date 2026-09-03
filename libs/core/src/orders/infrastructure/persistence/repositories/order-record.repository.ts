@@ -444,6 +444,14 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       .addSelect(
         `MIN(rec."salesDocumentBlockedAt") FILTER (WHERE ${OrderRecordRepository.IS_SALES_DOCUMENT_BLOCKED})`,
         'sales_document_blocked_oldest_at'
+      )
+      // #2554 — its own count, never inside `sales_document_blocked`:
+      // `IS_SALES_DOCUMENT_BLOCKED` is built from `SalesDocumentAttentionReasonValues`,
+      // which already excludes `'trigger-model-manual'` (ADR-041 §54), so this
+      // predicate and that one are mutually exclusive by construction.
+      .addSelect(
+        `COUNT(*) FILTER (WHERE rec."salesDocumentBlockReason" = 'trigger-model-manual')`,
+        'sales_document_issued_on_request'
       );
 
     OrderRecordRepository.applySummaryScope(qb, filters);
@@ -459,6 +467,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       tax_rate_conflict: string;
       oms_attention: string;
       sales_document_blocked_oldest_at: Date | null;
+      sales_document_issued_on_request: string;
     }>();
 
     return {
@@ -472,6 +481,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       taxRateConflict: Number(raw?.tax_rate_conflict ?? 0),
       omsAttention: Number(raw?.oms_attention ?? 0),
       salesDocumentBlockedOldestAt: raw?.sales_document_blocked_oldest_at ?? null,
+      salesDocumentIssuedOnRequest: Number(raw?.sales_document_issued_on_request ?? 0),
     };
   }
 
