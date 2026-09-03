@@ -131,17 +131,23 @@ export class SalesAnalyticsController {
     // guard for every pre-#2459 caller.
     if (query.displayCurrency !== undefined) {
       const rateBasis: DisplayCurrencyRateBasis = query.rateBasis ?? 'current-rate';
-      dto.headline.displayCurrencyConversion = await this.buildDisplayCurrencyConversion(
-        analytics.headline,
-        query.displayCurrency,
-        rateBasis
-      );
+      // Run concurrently rather than one sequential await per row (#2668
+      // review, finding 12) — every row resolves the SAME (source, from, to,
+      // rateDate) pair since `resolveCurrentRateDate` is `now`-derived, so a
+      // channel-heavy response no longer pays N sequential round-trips
+      // (including a real external NBP/ECB call the first time of day) in
+      // series on the landing page. This does not dedupe the underlying rate
+      // lookup itself — see the port's own caching for that — it only stops
+      // paying its latency N times over.
+      const [headlineConversion, ...channelConversions] = await Promise.all([
+        this.buildDisplayCurrencyConversion(analytics.headline, query.displayCurrency, rateBasis),
+        ...analytics.channels.map((channel) =>
+          this.buildDisplayCurrencyConversion(channel, query.displayCurrency as string, rateBasis)
+        ),
+      ]);
+      dto.headline.displayCurrencyConversion = headlineConversion;
       for (let i = 0; i < dto.channels.length; i += 1) {
-        dto.channels[i].displayCurrencyConversion = await this.buildDisplayCurrencyConversion(
-          analytics.channels[i],
-          query.displayCurrency,
-          rateBasis
-        );
+        dto.channels[i].displayCurrencyConversion = channelConversions[i];
       }
     }
 

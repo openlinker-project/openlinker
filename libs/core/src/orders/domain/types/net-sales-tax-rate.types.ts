@@ -141,8 +141,10 @@ export function deriveNetLineAmount(
  * numeric/exempt-code rule, parameterized on a qualified column reference
  * (e.g. `li."taxRate"`) so every SQL call site shares one expression instead
  * of hand-retyping it. Evaluates to `NULL` for the `unknown` outcome — a
- * caller sums `<gross> * (1 - <this>)` and must gate on `IS NOT NULL`
- * separately (there is no SQL equivalent of the tagged-union `kind` field).
+ * caller divides `<gross> / (1 + <this>)` (never multiplies by
+ * `(1 - <this>)`, which understates net — see {@link netSalesLineNetAmountSql})
+ * and must gate on `IS NOT NULL` separately (there is no SQL equivalent of
+ * the tagged-union `kind` field).
  *
  * Both halves of this file change together: adding a member to
  * {@link NetSalesExemptTaxRateCodeValues} or changing the numeric bounds
