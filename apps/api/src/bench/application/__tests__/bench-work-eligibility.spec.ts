@@ -13,8 +13,6 @@
  *
  * @module apps/api/src/bench/application/__tests__
  */
-import type { FulfillmentRequestStatus, FulfillmentWorkStatus } from '@openlinker/core/fulfillment';
-
 import {
   BENCH_WORK_REQUEST_STATUSES,
   BENCH_WORK_STATUSES,
@@ -22,54 +20,18 @@ import {
   isBenchWorkSelectable,
   isPackableBenchState,
 } from '../bench-work-eligibility';
-import type { BenchWorkState } from '../types/bench-work.types';
-
-interface Fixture {
-  readonly name: string;
-  readonly status: FulfillmentWorkStatus;
-  readonly requestStatus: FulfillmentRequestStatus;
-  readonly activeHoldCount: number;
-  readonly expected: BenchWorkState;
-}
+import { BENCH_ELIGIBILITY_FIXTURES } from './bench-eligibility.fixture';
 
 /**
- * The ONE table. The list reads it to colour a row and the parcel read reads it
- * to refuse one; both are asserted against these same cases below.
+ * The ONE table, now shared with the two SERVICES (#2420, story G4).
+ *
+ * It moved to `bench-eligibility.fixture.ts` so that `bench-work.service.spec.ts`
+ * and `bench-parcel.service.spec.ts` can be driven over the same rows using the
+ * harnesses they already have. Proving the pure rule answers correctly is
+ * necessary and not sufficient: a service that stopped calling it, or thought
+ * better of its answer, is invisible from here.
  */
-const FIXTURES: readonly Fixture[] = [
-  {
-    name: 'an accepted open parcel with no hold may be packed',
-    status: 'open',
-    requestStatus: 'accepted',
-    activeHoldCount: 0,
-    expected: 'packable',
-  },
-  {
-    name: 'a hold makes it unpackable even while the status stays open',
-    // Nothing in the tree writes `status = 'on_hold'` — `placeHold` inserts a
-    // hold row and leaves the status alone — so heldness MUST come from the
-    // rows. Keying on the status would have hidden every held parcel from the
-    // one section whose absence is dangerous.
-    status: 'open',
-    requestStatus: 'accepted',
-    activeHoldCount: 1,
-    expected: 'held',
-  },
-  {
-    name: 'cancellation outranks a hold',
-    status: 'cancelled',
-    requestStatus: 'accepted',
-    activeHoldCount: 2,
-    expected: 'cancelled',
-  },
-  {
-    name: 'in progress with no hold may be packed',
-    status: 'in_progress',
-    requestStatus: 'accepted',
-    activeHoldCount: 0,
-    expected: 'packable',
-  },
-];
+const FIXTURES = BENCH_ELIGIBILITY_FIXTURES;
 
 describe('bench work eligibility (#2418, story D2)', () => {
   describe('the shared derivation', () => {

@@ -18,6 +18,7 @@ import { OMS_ADAPTER_KEY } from '@openlinker/oms';
 import type { IConnectionService } from '../../../integrations/application/interfaces/connection.service.interface';
 import { BenchExecutorResolver } from '../services/bench-executor.resolver';
 import { BenchWorkService } from '../services/bench-work.service';
+import { BENCH_ELIGIBILITY_FIXTURES } from './bench-eligibility.fixture';
 
 const OMS_CONNECTION = {
   id: 'conn-oms',
@@ -431,6 +432,119 @@ describe('BenchWorkService (#2416)', () => {
       const { service } = harness({ page: { works: [workView()], total: 900 } });
 
       expect((await service.listBenchWork()).total).toBe(900);
+    });
+  });
+
+  /**
+   * Story G4 — *"the bench and the worklist never disagree"* (#2420, `W3b-7`).
+   *
+   * The list's half of the shared table. `bench-parcel.service.spec.ts` reads the
+   * same rows and asserts the refusal, so the two surfaces are pinned against ONE
+   * set of cases rather than against each other's current behaviour.
+   *
+   * `bench-work-eligibility.spec.ts` already proves the pure rule answers these
+   * correctly. That is not what is at stake here: this asserts the SERVICE still
+   * asks it, and still returns the answer it got. A service that called the
+   * shared rule and then adjusted the result is invisible to a spec that only
+   * exercises the function.
+   */
+  describe('story G4 — the list colours a row with the shared rule', () => {
+    it.each(BENCH_ELIGIBILITY_FIXTURES)(
+      '$name',
+      async ({ status, requestStatus, activeHoldCount, expected }) => {
+        const { service } = harness({
+          page: {
+            works: [
+              workView({
+                status,
+                requestStatus,
+                activeHolds: Array.from({ length: activeHoldCount }, (_unused, index) => ({
+                  id: `hold-${String(index)}`,
+                  reason: 'address-invalid' as const,
+                  note: null,
+                  placedAt: new Date('2026-09-04T09:00:00Z'),
+                })),
+              }),
+            ],
+            total: 1,
+          },
+        });
+
+        const view = await service.listBenchWork();
+
+        expect(view.works).toHaveLength(1);
+        expect(view.works[0].state).toBe(expected);
+      }
+    );
+  });
+
+  /**
+   * Story G4's other half: the desktop worklist (#2406) and the bench must mean
+   * the same thing by an action and by a token.
+   *
+   * Both surfaces read the same `FulfillmentWorkView`. So the bench must pass
+   * `supportedActions` and `version` through UNTOUCHED — recomputing either
+   * would give one work object two answers, and the optimistic token is the one
+   * value where two answers means an operator resolving a conflict by hand.
+   */
+  describe('story G4 — the token and the actions are the worklist’s, not recomputed', () => {
+    it('passes `version` through verbatim, so both surfaces hold one token', async () => {
+      const { service } = harness({
+        page: { works: [workView({ version: 41 })], total: 1 },
+      });
+
+      expect((await service.listBenchWork()).works[0].version).toBe(41);
+    });
+
+    it('passes `supportedActions` through verbatim rather than deriving its own', async () => {
+      // `deriveSupportedActions` runs ONCE, in core, for both surfaces. A bench
+      // that filtered this list would offer or withhold an action the planning
+      // surface disagrees about — and the disagreement would only show up when
+      // an operator's action was refused.
+      // Real members of `OperatorInvocableAction` — the union this test's whole
+      // subject is that the bench must not touch. `'cancel'` is not one of them
+      // (`'force_cancel'` is), and a made-up value here would pass the
+      // pass-through assertion while quietly not being the thing under test.
+      const actions = ['expedite', 'hold', 'force_cancel'];
+      const { service } = harness({
+        page: {
+          works: [workView({ supportedActions: actions } as Partial<FulfillmentWorkView>)],
+          total: 1,
+        },
+      });
+
+      expect((await service.listBenchWork()).works[0].supportedActions).toEqual(actions);
+    });
+
+    it('does not withhold actions from a HELD parcel — that is the worklist’s call', async () => {
+      // The legitimate divergence, asserted so it is a decision rather than an
+      // accident: `state: 'held'` says "do not pack this", and `release_hold`
+      // remains perfectly legal on it. A bench that emptied `supportedActions`
+      // because it had decided the parcel was unpackable would strand the parcel
+      // — the packing verdict is not the planning verdict.
+      const { service } = harness({
+        page: {
+          works: [
+            workView({
+              activeHolds: [
+                {
+                  id: 'h-1',
+                  reason: 'address-invalid' as const,
+                  note: null,
+                  placedAt: new Date('2026-09-04T09:00:00Z'),
+                },
+              ],
+              supportedActions: ['release_hold'],
+            } as unknown as Partial<FulfillmentWorkView>),
+          ],
+          total: 1,
+        },
+      });
+
+      const row = (await service.listBenchWork()).works[0];
+
+      expect(row.state).toBe('held');
+      expect(row.supportedActions).toEqual(['release_hold']);
     });
   });
 });

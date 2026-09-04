@@ -290,6 +290,74 @@ describe('FulfillmentVerificationService (#2418)', () => {
       expect(result.outcome).toBe('deduplicated');
       expect(repo.claimParcelClose).not.toHaveBeenCalled();
     });
+
+    /**
+     * The other half of G3, and the one that cannot be inferred from the first
+     * (#2420, `W3b-7`).
+     *
+     * *"Two units of the same SKU on one line, scanned twice, are two units,
+     * while a retry of one scan is one unit."* At the wire level those are the
+     * SAME gesture — one `POST` naming one line, twice — and the only thing
+     * separating them is the per-gesture id. So asserting the dedupe half alone
+     * proves nothing about the half a packer meets far more often: a two-unit
+     * line is ordinary, and a service that deduped on the LINE would silently
+     * shut the box one unit light while reading as perfectly verified.
+     *
+     * Until now the property was asserted only over HTTP
+     * (`bench-parcel.int-spec.ts`), so a core regression needed Docker to
+     * surface.
+     */
+    it('records a genuinely SECOND unit of the same line as a second unit', async () => {
+      const { service, repo } = harness({
+        work: work({ lines: [line({ totalQuantity: 2 })] }),
+        // One unit already in the box; the count after the insert is two.
+        counts: [
+          [{ workLineId: 'line-1', verifiedQuantity: 1 }],
+          [{ workLineId: 'line-1', verifiedQuantity: 2 }],
+        ],
+      });
+
+      const result = await service.verifyUnit({
+        workId: 'work-1',
+        workLineId: 'line-1',
+        // A DIFFERENT id for the same line — a second physical scan, not a retry.
+        gestureId: 'g-second',
+        verifiedByUserId: 'user-1',
+      });
+
+      expect(result.outcome).toBe('verified');
+      expect(result.state.lines[0]).toEqual({
+        workLineId: 'line-1',
+        requiredQuantity: 2,
+        verifiedQuantity: 2,
+      });
+      // The over-pack guard must read `verified >= required`, never "this line
+      // already has one" — the latter is what makes a two-unit line unpackable.
+      expect(repo.recordParcelVerification).toHaveBeenCalledTimes(1);
+    });
+
+    it('passes the CALLER’s gesture id through verbatim as the dedup key', async () => {
+      // Dedup is the database's `(fulfillmentWorkId, gestureId)` index, and the
+      // key is the browser's. A key the service derived from the work and line
+      // instead would collapse the two cases above into one: the second unit of
+      // a line would conflict with the first and be reported `deduplicated`.
+      const { service, repo } = harness({
+        work: work({ lines: [line({ totalQuantity: 2 })] }),
+        counts: [[], [{ workLineId: 'line-1', verifiedQuantity: 1 }]],
+      });
+
+      await service.verifyUnit({
+        workId: 'work-1',
+        workLineId: 'line-1',
+        gestureId: 'gesture-minted-by-the-browser',
+        verifiedByUserId: 'user-1',
+      });
+
+      expect(repo.recordParcelVerification).toHaveBeenCalledWith(
+        expect.objectContaining({ gestureId: 'gesture-minted-by-the-browser' }),
+        expect.anything()
+      );
+    });
   });
 
   describe('story E6 / decision D19 — reopening', () => {

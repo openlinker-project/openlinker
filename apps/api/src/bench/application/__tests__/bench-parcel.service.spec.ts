@@ -28,6 +28,7 @@ import {
   BenchParcelNotAtThisBenchError,
   BenchParcelService,
 } from '../services/bench-parcel.service';
+import { BENCH_ELIGIBILITY_FIXTURES, expectedRefusalFor } from './bench-eligibility.fixture';
 
 const EXECUTOR_ID = '11111111-1111-1111-1111-111111111111';
 
@@ -176,6 +177,43 @@ describe('BenchParcelService (#2418)', () => {
       const { service } = harness({ work: workView({ status: 'cancelled' }) });
       expect((await service.getParcel('work-1')).refusal).toBe('cancelled');
     });
+
+    /**
+     * Story G4 — *"the bench and the worklist never disagree"* (#2420, `W3b-7`).
+     *
+     * The refusal's half of the shared table. `bench-work.service.spec.ts` reads
+     * the SAME rows and asserts the colour, so the two surfaces are pinned
+     * against one set of cases rather than against each other's current
+     * behaviour — a row added to `bench-eligibility.fixture.ts` is asserted on
+     * both sides at once.
+     *
+     * `expectedRefusalFor` is where the correspondence between the two answers
+     * is written down, exactly once. Restating it in either spec would let the
+     * two drift while both stayed green, which is the failure D2 and G4 both
+     * exist to prevent.
+     */
+    it.each(BENCH_ELIGIBILITY_FIXTURES)(
+      'story G4 — $name, read as a refusal',
+      async ({ status, requestStatus, activeHoldCount, expected }) => {
+        const { service } = harness({
+          work: workView({
+            status,
+            requestStatus,
+            // A REAL `HoldReason` (the union is kebab-case), so this array needs
+            // no `as never` — the compiler checks the fixture rather than being
+            // told to stop looking.
+            activeHolds: Array.from({ length: activeHoldCount }, (_unused, index) => ({
+              id: `h-${String(index)}`,
+              reason: 'address-invalid' as const,
+              note: null,
+              placedAt: new Date('2026-09-04T09:00:00Z'),
+            })),
+          }),
+        });
+
+        expect((await service.getParcel('work-1')).refusal).toBe(expectedRefusalFor(expected));
+      }
+    );
 
     it('records NOTHING when a verification is attempted at a refused parcel', async () => {
       const { service, verification } = harness({ work: workView({ status: 'cancelled' }) });
