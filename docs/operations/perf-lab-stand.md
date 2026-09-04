@@ -95,6 +95,14 @@ clones a template product row wholesale, so the seeded catalogue's tax rules
 group is whatever `TEMPLATE_ID` happened to carry. A campaign that cannot name
 that value cannot explain a `PrestashopTaxRateUnknownException` later.
 
+**The tax-group step repairs, it does not only diagnose.** If any seeded
+products carry no `id_tax_rules_group`, the step sets it to the dominant group
+already present on the rest of the catalogue (the same value it resolves into
+`PS_TAX_RULES_GROUP`). If *no* product in the catalogue carries a tax rules
+group at all, there is nothing to repair to, and the step reports a gap
+instead — assign one manually in the shop's back office. `--verify-only` never
+writes; it reports the same gap without repairing.
+
 ## Things worth knowing before the first run
 
 **The WooCommerce consumer key cannot be read back.** WooCommerce stores it

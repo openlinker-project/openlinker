@@ -1,34 +1,8 @@
 #!/usr/bin/env bash
 #
 # Stand bootstrap for the performance measurement programme (#2860, epic #2840).
-#
-# Takes a freshly reset measurement stand to a state where every perf scenario
-# can run, with no browser step and no manual paste, and emits the ids the
-# harness needs into `stand-ids.env`.
-#
-# Two claims in the programme cannot both be true while any of this is manual:
-# "a wipeable stand whose database is zeroed before each run" (#2854) and
-# "`run-all` executes the full campaign unattended and resumably" (#2845). An
-# unattended campaign cannot contain a back-office walkthrough.
-#
-# IDEMPOTENT. Every step probes before it writes and reports FOUND or CREATED.
-# A second run against an already-bootstrapped stand changes nothing and
-# re-emits identical ids.
-#
-# Sources of truth this script ports from, rather than reinventing:
-#   - PrestaShop WebService account + permissions + shop binding, including the
-#     PS 8.x/9.x schema detection and the `ps_webservice_account_shop` trap:
-#     apps/api/test/integration/helpers/prestashop-fixture.helper.ts:152-308
-#   - WooCommerce REST key (wc_api_hash = hash_hmac('sha256', $ck, 'wc-api')):
-#     docker/woocommerce/01-seed-wc-data.sh:33-53
-#   - MySQL-over-docker-exec pattern: perf/prestashop-baseline/seed-products.sh:27-31
-#   - The OL Dynamic carrier is created inside the module's install() hook:
-#     apps/prestashop-module/openlinker/openlinker.php installDynamicCarrier()
-#
-# Usage:
-#   ./bootstrap.sh                 # bootstrap, writing stand-ids.env
-#   ./bootstrap.sh --dry-run       # print what it would do, touch nothing
-#   ./bootstrap.sh --verify-only   # probe and report, exit 1 on any gap
+# See `usage()` below (or `./bootstrap.sh --help`) for the full description,
+# the sources of truth this script ports from, and usage.
 #
 set -euo pipefail
 
@@ -61,13 +35,47 @@ ALLEGRO_OFFER_POOL_SIZE="${ALLEGRO_OFFER_POOL_SIZE:-200}"
 OUT_FILE="${OUT_FILE:-$(dirname "$0")/stand-ids.env}"
 UNDO_FILE="${UNDO_FILE:-$(dirname "$0")/stand-bootstrap-undo.txt}"
 
+usage() {
+  cat <<'EOF'
+Stand bootstrap for the performance measurement programme (#2860, epic #2840).
+
+Takes a freshly reset measurement stand to a state where every perf scenario
+can run, with no browser step and no manual paste, and emits the ids the
+harness needs into `stand-ids.env`.
+
+Two claims in the programme cannot both be true while any of this is manual:
+"a wipeable stand whose database is zeroed before each run" (#2854) and
+"`run-all` executes the full campaign unattended and resumably" (#2845). An
+unattended campaign cannot contain a back-office walkthrough.
+
+IDEMPOTENT. Every step probes before it writes and reports FOUND or CREATED.
+A second run against an already-bootstrapped stand changes nothing and
+re-emits identical ids.
+
+Sources of truth this script ports from, rather than reinventing:
+  - PrestaShop WebService account + permissions + shop binding, including the
+    PS 8.x/9.x schema detection and the `ps_webservice_account_shop` trap:
+    apps/api/test/integration/helpers/prestashop-fixture.helper.ts:152-308
+  - WooCommerce REST key (wc_api_hash = hash_hmac('sha256', $ck, 'wc-api')):
+    docker/woocommerce/01-seed-wc-data.sh:33-53
+  - MySQL-over-docker-exec pattern: perf/prestashop-baseline/seed-products.sh:27-31
+  - The OL Dynamic carrier is created inside the module's install() hook:
+    apps/prestashop-module/openlinker/openlinker.php installDynamicCarrier()
+
+Usage:
+  ./bootstrap.sh                 # bootstrap, writing stand-ids.env
+  ./bootstrap.sh --dry-run       # print what it would do, touch nothing
+  ./bootstrap.sh --verify-only   # probe and report, exit 1 on any gap
+EOF
+}
+
 DRY_RUN=0
 VERIFY_ONLY=0
 for arg in "$@"; do
   case "$arg" in
     --dry-run) DRY_RUN=1 ;;
     --verify-only) VERIFY_ONLY=1 ;;
-    -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
+    -h|--help) usage; exit 0 ;;
     *) echo "unknown argument: $arg" >&2; exit 2 ;;
   esac
 done
@@ -94,10 +102,24 @@ would() {
 
 # MySQL over docker exec. The password lives in the container's own environment,
 # so it is read once rather than passed on the host command line.
+#
+# Two forms, deliberately kept apart. `ps_sql` is lenient - it folds stderr into
+# stdout and always exits 0 - which is correct for a PROBE (a SELECT whose
+# absence is the answer, not a failure), but was wrong for a WRITE: with the
+# same leniency, a failed INSERT/DELETE/UPDATE reported success and the script
+# reached "stand is bootstrapped" without ever having granted permissions,
+# bound the shop, or turned on PS_WEBSERVICE. `ps_sql_write` is strict - no
+# stderr fold, no swallowed exit code - and `die`s on the first failure.
 PS_MYSQL_PWD=""
 ps_sql() {
   docker exec -i -e MYSQL_PWD="$PS_MYSQL_PWD" "$PS_MYSQL_CONTAINER" \
     mysql -uroot -N -B "$PS_DB" -e "$1" 2>&1 | grep -v '^mysql: \[Warning\]' || true
+}
+
+ps_sql_write() {
+  docker exec -i -e MYSQL_PWD="$PS_MYSQL_PWD" "$PS_MYSQL_CONTAINER" \
+    mysql -uroot -N -B "$PS_DB" -e "$1" \
+    || die "MySQL write failed: $1"
 }
 
 wc_wp() {
@@ -109,14 +131,23 @@ pg_sql() {
 }
 
 OL_TOKEN=""
+# `-f` alone hides the response body on a 4xx/5xx, which is exactly where a
+# stand bootstrap tends to fail (a rejected field name, a validation error) -
+# so this captures body+status separately and prints the body before dying.
 ol_api() {
-  local method="$1" path="$2" body="${3:-}"
+  local method="$1" path="$2" body="${3:-}" resp status resp_body
   if [ -n "$body" ]; then
-    curl -fsS -X "$method" "$OL_API_URL$path" \
-      -H "Authorization: Bearer $OL_TOKEN" -H 'Content-Type: application/json' -d "$body"
+    resp="$(curl -sS -w '\n%{http_code}' -X "$method" "$OL_API_URL$path" \
+      -H "Authorization: Bearer $OL_TOKEN" -H 'Content-Type: application/json' -d "$body")"
   else
-    curl -fsS -X "$method" "$OL_API_URL$path" -H "Authorization: Bearer $OL_TOKEN"
+    resp="$(curl -sS -w '\n%{http_code}' -X "$method" "$OL_API_URL$path" -H "Authorization: Bearer $OL_TOKEN")"
   fi
+  status="${resp##*$'\n'}"
+  resp_body="${resp%$'\n'*}"
+  if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+    die "$method $path -> HTTP $status: $resp_body"
+  fi
+  printf '%s' "$resp_body"
 }
 
 json_field() { python3 -c "import json,sys; print(json.load(sys.stdin).get('$1',''))"; }
@@ -187,8 +218,14 @@ WS_RESOURCES="products combinations stock_availables orders order_details custom
 
 step_webservice() {
   log "--- PrestaShop WebService key ---"
+  # Detection order matches prestashop-fixture.helper.ts:152-308 (ps_api_access
+  # / 8.x legacy first, ps_webservice_account / 9.x second) so a stack that
+  # somehow carries both table families picks the same branch as the harness.
   local acct_table pk key_col perm_table has_method
-  if [ -n "$(ps_sql "SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='ps_webservice_account' LIMIT 1")" ]; then
+  if [ -n "$(ps_sql "SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='ps_api_access' LIMIT 1")" ]; then
+    acct_table=ps_api_access; pk=id_api_access; key_col=api_key
+    perm_table=ps_api_access_resource; has_method=0
+  elif [ -n "$(ps_sql "SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='ps_webservice_account' LIMIT 1")" ]; then
     acct_table=ps_webservice_account; pk=id_webservice_account; key_col='`key`'
     if [ -n "$(ps_sql "SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='ps_webservice_account_permission' LIMIT 1")" ]; then
       perm_table=ps_webservice_account_permission
@@ -198,9 +235,6 @@ step_webservice() {
       die "ps_webservice_account exists but no permission table found (looked for ps_webservice_account_permission, ps_webservice_permission)"
     fi
     has_method="$(ps_sql "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='$perm_table' AND COLUMN_NAME='method'")"
-  elif [ -n "$(ps_sql "SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='ps_api_access' LIMIT 1")" ]; then
-    acct_table=ps_api_access; pk=id_api_access; key_col=api_key
-    perm_table=ps_api_access_resource; has_method=0
   else
     die "no PrestaShop WebService account table found (ps_webservice_account or ps_api_access)"
   fi
@@ -213,7 +247,7 @@ step_webservice() {
     if [ "$VERIFY_ONLY" = 1 ]; then gap "PrestaShop WebService key"; return 0; fi
     would "create a PrestaShop WebService key with $(echo $WS_RESOURCES | wc -w) resource grants" && return 0
     PS_WS_KEY="$(python3 -c 'import secrets;print(secrets.token_hex(16).upper())')"
-    ps_sql "INSERT INTO $acct_table ($key_col, description, active) VALUES ('$PS_WS_KEY','OpenLinker perf stand',1)"
+    ps_sql_write "INSERT INTO $acct_table ($key_col, description, active) VALUES ('$PS_WS_KEY','OpenLinker perf stand',1)"
     created "PrestaShop WebService key (${PS_WS_KEY:0:8}...)"
   fi
 
@@ -223,21 +257,21 @@ step_webservice() {
 
   if [ "$VERIFY_ONLY" != 1 ] && [ "$DRY_RUN" != 1 ]; then
     # Re-grant is cheap and idempotent.
-    ps_sql "DELETE FROM $perm_table WHERE $pk=$acct_id"
+    ps_sql_write "DELETE FROM $perm_table WHERE $pk=$acct_id"
     for r in $WS_RESOURCES; do
       if [ "${has_method:-0}" -gt 0 ]; then
         for m in GET POST PUT DELETE HEAD; do
-          ps_sql "INSERT INTO $perm_table ($pk, resource, method) VALUES ($acct_id,'$r','$m')"
+          ps_sql_write "INSERT INTO $perm_table ($pk, resource, method) VALUES ($acct_id,'$r','$m')"
         done
       else
-        ps_sql "INSERT INTO $perm_table ($pk, resource, \`get\`,\`post\`,\`put\`,\`delete\`,\`head\`,\`all\`) VALUES ($acct_id,'$r',1,1,1,1,1,1)"
+        ps_sql_write "INSERT INTO $perm_table ($pk, resource, \`get\`,\`post\`,\`put\`,\`delete\`,\`head\`,\`all\`) VALUES ($acct_id,'$r',1,1,1,1,1,1)"
       fi
     done
     # PS 9.x: bind the account to every active shop, or every call 503s.
     if [ -n "$(ps_sql "SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='ps_webservice_account_shop' LIMIT 1")" ]; then
-      ps_sql "INSERT IGNORE INTO ps_webservice_account_shop (id_webservice_account, id_shop) SELECT $acct_id, id_shop FROM ps_shop WHERE active=1"
+      ps_sql_write "INSERT IGNORE INTO ps_webservice_account_shop (id_webservice_account, id_shop) SELECT $acct_id, id_shop FROM ps_shop WHERE active=1"
     fi
-    ps_sql "INSERT INTO ps_configuration (name, value, date_add, date_upd) VALUES ('PS_WEBSERVICE','1',NOW(),NOW()) ON DUPLICATE KEY UPDATE value='1', date_upd=NOW()"
+    ps_sql_write "INSERT INTO ps_configuration (name, value, date_add, date_upd) VALUES ('PS_WEBSERVICE','1',NOW(),NOW()) ON DUPLICATE KEY UPDATE value='1', date_upd=NOW()"
   fi
 }
 
@@ -259,7 +293,17 @@ step_tax_group() {
   PS_TAX_RULES_GROUP="$(ps_sql "SELECT id_tax_rules_group FROM ps_product WHERE id_tax_rules_group>0 GROUP BY id_tax_rules_group ORDER BY COUNT(*) DESC LIMIT 1")"
   log "products=$total without-tax-group=$zero dominant-group=${PS_TAX_RULES_GROUP:-none}"
   if [ "${zero:-0}" -gt 0 ]; then
-    gap "$zero of $total products carry no tax rules group - every order touching one fails PrestashopTaxRateUnknownException"
+    if [ -z "${PS_TAX_RULES_GROUP:-}" ]; then
+      gap "$zero of $total products carry no tax rules group, and none of the rest do either - nothing to repair to; assign a tax rules group manually in the shop"
+      return 0
+    fi
+    if [ "$VERIFY_ONLY" = 1 ]; then
+      gap "$zero of $total products carry no tax rules group - every order touching one fails PrestashopTaxRateUnknownException"
+      return 0
+    fi
+    would "set id_tax_rules_group=$PS_TAX_RULES_GROUP on the $zero products missing one" && return 0
+    ps_sql_write "UPDATE ps_product SET id_tax_rules_group=$PS_TAX_RULES_GROUP WHERE id_tax_rules_group=0 OR id_tax_rules_group IS NULL"
+    created "tax rules group on $zero products (set to the dominant group, id_tax_rules_group=$PS_TAX_RULES_GROUP)"
   else
     found "tax rules group on every product (id_tax_rules_group=$PS_TAX_RULES_GROUP)"
   fi
@@ -285,8 +329,8 @@ step_woocommerce() {
       found "WooCommerce REST key (reused from $OUT_FILE)"
       return 0
     fi
+    if [ "$VERIFY_ONLY" = 1 ]; then gap "WooCommerce REST key not recoverable"; return 0; fi
     warn "a WooCommerce perf key exists but its consumer_key is stored hashed and $OUT_FILE does not carry it - rotating"
-    [ "$VERIFY_ONLY" = 1 ] && { gap "WooCommerce REST key not recoverable"; return 0; }
     wc_wp eval 'global $wpdb; $wpdb->delete($wpdb->prefix . "woocommerce_api_keys", ["description" => "OpenLinker perf stand"]);' || true
   fi
   if [ "$VERIFY_ONLY" = 1 ]; then gap "WooCommerce REST key"; return 0; fi
@@ -491,6 +535,11 @@ step_verify_connections() {
 step_emit() {
   [ "$DRY_RUN" = 1 ] && { log "DRY-RUN would write $OUT_FILE"; return 0; }
   [ "$VERIFY_ONLY" = 1 ] && return 0
+  # Called only once every step above reported zero gaps (see main()). A run
+  # that found real gaps must never leave a stand-ids.env on disk: #2841's
+  # harness sources this file unconditionally and #2845's runner is
+  # unattended and resumable, so a file written by a failed bootstrap would
+  # be picked up and measured against a stand nobody confirmed.
   cat > "$OUT_FILE" <<ENV
 # Generated by perf/openlinker-throughput/bootstrap.sh - do not edit by hand.
 # Regenerate by re-running bootstrap.sh; it is idempotent.
@@ -520,7 +569,6 @@ main() {
   step_connections
   step_offer_mappings
   step_verify_connections
-  step_emit
 
   log "--- summary ---"
   log "found:   ${#FOUND[@]}"
@@ -530,6 +578,8 @@ main() {
     for g in "${GAPS[@]}"; do printf '  - %s\n' "$g"; done
     exit 1
   fi
+
+  step_emit
   log "stand is bootstrapped"
 }
 
