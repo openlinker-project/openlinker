@@ -315,7 +315,9 @@ function mapTotals(order: WooCommerceOrder): IncomingOrderTotals {
     currency: order.currency,
     // `line_items[].price` (mapped onto `OrderItem.price`) is net — WooCommerce
     // reports `total_tax` as a separate amount rather than folding it into the
-    // line price (#2440).
+    // line price (#2440). This governs the ADR-063 net-sales tax-rate path —
+    // do NOT flip it to describe `total`, which is a different, genuinely
+    // gross figure (#2836, mirroring PrestaShop's identical split, #2829).
     //
     // #2835 audit: this identically makes every WooCommerce order refused by
     // `invoicing`/`fiscalization`'s net-priced-order guard
@@ -323,6 +325,12 @@ function mapTotals(order: WooCommerceOrder): IncomingOrderTotals {
     // the same permanent limitation PrestaShop's net line prices hit, for the
     // same reason (core may never compute tax to convert net to gross).
     taxTreatment: 'exclusive',
+    // `total` (above, from `order.total`) IS genuinely gross — unlike the
+    // line prices, it is never net for a WooCommerce order. Asserted
+    // independently of `taxTreatment` so an `orderTotalGross` sales-document
+    // rule condition can trust it without also relabeling the (still net)
+    // line prices as gross (#2836).
+    totalTaxTreatment: 'inclusive',
   };
 }
 
