@@ -5522,6 +5522,30 @@ a.kpi-card:focus-visible {
   z-index: 50;
 }
 
+/* ── Analytics coverage alert badge (title-adjacent) ─────────────────── */
+.analytics-coverage-alert-badge__trigger {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  margin-left: var(--space-2);
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+.analytics-coverage-alert-badge__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 280px;
+}
+
+.analytics-coverage-alert-badge__content p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
 /* ── Command Palette (#333) ──────────────────────────────────────────
  * Overlay mounted via Radix Dialog; cmdk handles keyboard navigation.
  * The .dialog__content card is overridden to top-centre positioning so
