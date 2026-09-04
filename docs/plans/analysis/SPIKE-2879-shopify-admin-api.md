@@ -111,7 +111,7 @@ found in the desk-research pass).
 | E-O10 | O1/O3 | Order feed cursor confirmed opaque and base64-encoded (`eyJsYXN0X2lkIjo3NDM5...` decodes to `{"last_id":...,"last_value":"2026-09-04 10:44:06.170695"}`) — same `updated_at` filter + `sortKey: UPDATED_AT` + cursor-pagination shape already confirmed for products (M5), `pageInfo.hasNextPage` present and reliable | Live: 2-row page returned with real cursors and `hasNextPage: true` |
 | E-M12 | M6/M10 | 🎯 **Bulk operations confirmed fully working end to end.** `bulkOperationRunQuery` with a nested `products { variants { ... } }` query completed in ~3s (`objectCount: 43`), returning a time-limited signed GCS download URL. The output is **flat JSONL, one line per node at any depth**, with a `__parentId` field on every non-root row linking it back to its parent's `id` — this is the concrete shape behind the issue's "2 nesting levels" cap: nesting depth is expressed by how many `__parentId` hops are needed to reach a root, not by structural JSON nesting | Live transcript below |
 | E-C8 | C7 | 429/Retry-After **still not triggered even at 50 parallel requests** with a moderately expensive query (`products(first:50){variants(first:10){...}}`, ~cost 10-15/call) — all 50 returned HTTP 200 with zero errors. Confirms the generous per-app-per-store budget genuinely resists accidental throttling on a dev store; a deliberate 429 test would need either a sustained multi-minute burst well above 200 pts/s or a paid-plan-tier's tighter budget. Retry-classification behaviour (`Retry-After` header handling) remains structurally UNVERIFIED — not a gap in this platform's design, just a gap this session's tooling could not economically close | Live: 5 sequential + 50 parallel calls, all HTTP 200 |
-| E-R8 | R7 | `RefundInput` has **no `returnId`/`return` field at all** — the refund-to-return link is NOT a native foreign key; a refund is linked to a return only indirectly, via `refundLineItems` referencing the same underlying order line items the return referenced. An adapter must stitch this association itself (e.g. by line-item id), matching the design tension the issue's own `SPIKE-2289`-adjacent doc already names for OL's `ReturnRefundService` (#2371's "report an intent" seam) | Live: `__type(name: "RefundInput") { inputFields { name type { name } } }` → no return-shaped field present |
+| E-R8 | R7/D6 | 🎯 **The GENUINELY correct mutation for a return-driven refund is `returnProcess` (`ReturnProcessInput.returnId`), NOT the raw `refundCreate`.** This matches the issue's own flagged note that `returnProcess` became required from API 2025-07+ — it is not an alternative path, it is THE return-refund path. `RefundInput` having no `returnId` is a red herring for this use case: an adapter processing a return-driven refund should call `returnProcess`, never `refundCreate` directly. **Confirmed the two paths share the same underlying refundable-quantity ledger on the order line item** — after refunding 1 unit via raw `refundCreate` in this session, a subsequent `returnProcess` on the SAME line item's return correctly refused with `"Return line item quantity cannot be greater than the current quantity on the corresponding order line item"`, i.e. Shopify does not double-count; the two APIs draw from one shared pool, they are not independent accounting systems. `Return.refunds` is confirmed to exist as a real field but did NOT populate from the raw `refundCreate` path in this session (stayed empty even after a real, successful refund against the same line item) — whether it populates specifically via `returnProcess` was not confirmed live (this session's test return had already exhausted its refundable quantity via the raw path first, so `returnProcess` correctly refused rather than completing) | Live transcript below — full sequence: raw `refundCreate` succeeds (amount 0.0, no real transaction backing) → `return.refunds` still empty → `returnProcess` discovered and attempted → correctly refused because the quantity was already spent |
 | E-R7 | R6 | `Return.reverseFulfillmentOrders[]` confirmed as a distinct nested object with its own `status` (`OPEN`) and its own `reverseDeliveries[]` (empty until physical receipt is recorded) — confirms the issue's "return / reverse-delivery(custody) / refund(money), three axes" claim as a real, live schema shape, not just a doc-reading inference | Live: `return(id: ...) { reverseFulfillmentOrders(first:5) { edges { node { status reverseDeliveries(first:5) { edges { node { id } } } } } } }` |
 | E-R1 | R3 | `ReturnStatus` closed vocabulary: `REQUESTED, OPEN, CLOSED, CANCELED, DECLINED`. Terminal set for `terminalRawStatuses` (#2330 shape) is almost certainly `{CLOSED, CANCELED, DECLINED}`, non-terminal `{REQUESTED, OPEN}` — not yet confirmed by a live state transition, only by the enum's own descriptions (`CLOSED` = "completed", `OPEN` = "in progress") | Live introspection |
 | E-R2 | R9 | `ReturnReason` closed vocabulary, 10 values: `SIZE_TOO_SMALL, SIZE_TOO_LARGE, UNWANTED, NOT_AS_DESCRIBED, WRONG_ITEM, DEFECTIVE, STYLE, COLOR, OTHER, UNKNOWN` — closed enum, unlike Allegro's open-world prose `reason.type` (per the sibling Allegro returns spike, `SPIKE-2289`). Maps to OL's `RefundReason` with reasonable 1:1 candidates for most values | Live introspection |
@@ -329,6 +329,42 @@ $ curl ... productSet(input: {id: "gid://shopify/Product/16155557658927", title:
    },"userErrors":[]}}, ...}
 ```
 
+| E-X2 | X1/O15 | 🎯 **The 5-orders/minute `orderCreate` cap on dev/trial stores is REAL and confirmed live**, not just a documented claim. Orders #1004-#1008 (5 sequential) all succeeded; order #6 immediately failed with `"Too many attempts. Please try again later."` (in `userErrors`, order #7 failed identically). **Load-bearing nuance: this is NOT the GraphQL cost/`throttleStatus` mechanism** — every one of the 7 calls cost 10 points and `throttleStatus.currentlyAvailable` stayed at 3990 throughout, completely unaffected. This is a SEPARATE, dev-store-specific rate limit reported as an ordinary `userErrors` entry, not an HTTP 429 and not visible in `extensions.cost` at all. An adapter's retry-classification logic must recognize this specific error STRING (or a stable error code, if one exists — not yet confirmed) as a distinct throttle signal, since the generic `throttleStatus`-based backoff logic (C7/C8) would never detect it | Live: orders #1004-#1008 succeeded, #1006(6th)/#1007(7th) both failed with `"Too many attempts. Please try again later."`, `throttleStatus` unchanged across all 7 calls |
+| E-T4 | T12 | 🎯 **Full taxonomy sync fits comfortably in quota.** `taxonomy { categories(first:250) }` at root returned all 26 top-level categories for only 4 points; `descendantsOf` on one branch returned a full 250-node page for 14 points. Shopify's public Standard Product Taxonomy has ~10-13k total nodes across all levels — extrapolating from the measured per-page cost, a full one-time sync is roughly `~52 pages × 14 pts ≈ 728 points`, well under the 4000-point per-tick budget. Not an exhaustive walk (would need real pagination through the whole tree to be exact), but the per-page cost is real and the order-of-magnitude conclusion is solid | Live: root query (26 nodes, cost 4) + one `descendantsOf` page (250 nodes, cost 14) |
+| E-P6 | P8 | `productSet` with `productOptions` + per-variant `optionValues` confirmed working — 3 variants (S/M/L) created in one call, each with its own price, native option-based grouping (not a separate `variantGroup` mechanism) | Live: product + 3 priced variants created in one `productSet` call |
+| E-S5 | S5 | `productUpdate(product: {seo: {title, description}})` confirmed working — additional field-update surface beyond `descriptionHtml` | Live: SEO title/description written and echoed back |
+| E-F7 | F6 (HOLD supportedAction) | `fulfillmentOrderHold`/`fulfillmentOrderReleaseHold` confirmed live: `status` transitions `OPEN → ON_HOLD → OPEN`. Confirms the `HOLD` entry in `supportedActions` (E-F1) is a real, working action, not just an advertised capability | Live: hold → `ON_HOLD`, release → `OPEN` |
+| E-T5 | T (category vs productType vs Collections) | 🎯 **All three concepts confirmed genuinely distinct and independently settable.** Set `productType: "Snowboards"` (free text) and `category` (a real `TaxonomyCategory` id) on the same product simultaneously — both persisted independently. **`category` accepts ANY valid taxonomy node id with zero content-appropriateness validation**: a deliberately mismatched category (`"Bicycle Parts"` on a snowboard product) was accepted without error — the server checks the id is a real taxonomy node, nothing more. `collectionCreate` (merchandising) is a third, separate mechanism, and **collection membership is asynchronously indexed**: the mutation's own response reported `productsCount: 0` immediately after creation despite passing the product in the same call, while re-reading `product.collections` ~3s later correctly showed the new collection | Live transcript below |
+| E-C9 | C4/X4 | 🎯 **`currentAppInstallation { accessScopes { handle } }` is a live, authoritative readable list of the app's CURRENTLY-GRANTED scopes** — cheap (cost 2), directly useful as a connection-health diagnostic (the OL "health panel" pattern already used for rate-limit/webhook status elsewhere). Re-checked here: `read_all_orders` is confirmed still ABSENT from the list, meaning the manual Shopify review request (E-C6) remains pending as of this session — a re-runnable live check for whether/when it clears | Live: 16 scopes listed, `read_all_orders` not among them |
+| E-S4b | S7 | 🎯 **Confirmed — one query, one call.** `variants(first:1) { price inventoryQuantity availableForSale }` returns price + quantity + sellability together, no second read needed for the commercial snapshot. Bonus nuance: `"The Inventory Not Tracked Snowboard"` reports `inventoryQuantity: 0` but `availableForSale: true` — confirms "inventory not tracked" means sellable regardless of the (meaningless, in that mode) quantity figure, a distinction an adapter must not misread as "out of stock" | Live: 3 real products read together, one showing the not-tracked/available-anyway combination |
+
+### E-R8 (full sequence) — returnProcess vs raw refundCreate (R7/D6)
+
+```
+$ curl ... mutation { orderMarkAsPaid(input: {id: "..."}) { order { displayFinancialStatus } userErrors { field message } } }
+→ displayFinancialStatus: "PAID", but userErrors: [{"message":"Order cannot be marked as paid."}]
+  (response reports PAID regardless of the error — a real quirk to note)
+
+$ curl ... { order(id: "...") { displayFinancialStatus transactions(first:5) { ... } } }
+→ displayFinancialStatus: "PAID", transactions: []  (PAID with zero real transactions recorded)
+
+$ curl ... mutation { refundCreate(input: {orderId: "...", refundLineItems: [{lineItemId: "...", quantity: 1}], notify: false}) @idempotent(key: "ol-spike-refund-002") { refund { id totalRefundedSet { shopMoney { amount } } } userErrors { field message } } }
+→ SUCCESS: refund id created, totalRefundedSet.shopMoney.amount = "0.0" (no real money moved, no transaction backing)
+
+$ curl ... { return(id: "...") { refunds(first:5) { edges { node { id } } } } }
+→ refunds: []  (still empty even after the successful refund above)
+
+# Discovered returnProcess exists and requires it from API 2025-07+ (matches issue's own flag)
+$ curl ... { __schema { mutationType { fields { name } } } } | grep return
+→ removeFromReturn, returnApproveRequest, returnCancel, returnClose, returnCreate,
+  returnDeclineRequest, returnProcess, returnReopen, returnRequest
+
+$ curl ... mutation { returnProcess(input: {returnId: "...", returnLineItems: [{id: "gid://shopify/ReturnLineItem/23085154607", quantity: 1, dispositions: [{quantity: 1, dispositionType: RESTOCKED, reverseFulfillmentOrderLineItemId: "gid://shopify/ReverseFulfillmentOrderLineItem/21591032111"}]}]}) { return { status refunds(first:3) { ... } } userErrors { field message } } }
+→ errors: "Return line item quantity cannot be greater than the current quantity on the
+  corresponding order line item." — because the raw refundCreate above already consumed the
+  refundable quantity on the shared line item.
+```
+
 ## Open risks — flagged, not guessed
 
 1. **`read_all_orders` requires manual Shopify review** ("rolling basis", no stated SLA) via a
@@ -384,6 +420,19 @@ explicitly, not just note them in passing:
    same posture as Allegro's `reason.type`.
 4. **`descriptionHtml` carries zero server-side XSS sanitization.** Treat this platform exactly like
    every other adapter for the purposes of `sanitizeStoredHtml` — Shopify supplies no help here.
+5. **The dev-store 5-orders/minute `orderCreate` cap is real and reports through a channel a
+   standard rate-limit handler will not see.** It is a plain `userErrors` entry
+   (`"Too many attempts. Please try again later."`), not an HTTP 429 and invisible in
+   `extensions.cost.throttleStatus`. Retry-classification logic (C7) must special-case this string
+   (or a stable error code, if one is later found) separately from the generic cost-based throttle
+   handling, or a bulk order-ingestion path will treat it as a hard failure instead of a deferrable
+   one. Whether this cap exists on a paid production plan (not just dev/trial) is still unconfirmed.
+6. **Use `returnProcess`, never raw `refundCreate`, for a return-driven refund (D6).** They draw
+   from the same underlying refundable-quantity ledger on the order line item but are not
+   interchangeable entry points — `returnProcess` is the one that carries `returnId` and is the
+   platform's own required path since API 2025-07+. Design the OL adapter's return-correction flow
+   around `returnProcess` from the start rather than discovering the distinction the way this
+   session did (by accidentally spending the refundable quantity via the wrong mutation first).
 
 Remaining unverified ground (bulk operations at scale, retry/429 behaviour, real order-creation
 rate-limit ceiling, `read_all_orders` review outcome) is bounded and named explicitly in the coverage
@@ -392,15 +441,26 @@ verify" list should cite it directly rather than being written from memory.
 
 ## Coverage tally (as of end of live-testing session, 2026-09-04)
 
-Live-verified (transcript exists above), by group: **C** 9/12 (C3 partial/behavioural; C7 = a
-confirmed NEGATIVE result — 50-parallel-call burst did not trigger 429, see E-C8) · **M** 13/13
-(M6/M10 bulk operations confirmed end to end via `bulkOperationRunQuery`) · **T** 5/12 (T1, T2,
-T8-implicit via `fullName`/global tree, T9, T11-NOT-SUPPORTED) · **P** 6/13 (P1, P3-implicit, P6, P7,
-P13-behaviourally-confirmed-as-PATCH) · **S** 5/13 (S1, S4, S6, S10, S13) · **O** 13/16 (O1, O2, O3,
-O5-partial, O6, O7, O9, O10, O11, O12, O13-vocab-only, O14, O15-schema-only) · **F** 7/8 (F1, F2,
-F3-implicit, F4, F6-flagship, F7-implicit, F8-vocab) · **D** 5/9 (D2, D4, D5, D8, D9) · **R** 8/9 (R1,
-R2, R3, R4, R5, R6, R7-partial, R9-corrected) · **X** 3/6 (X2, X3, X5, plus X4's exemption
-confirmed).
+Live-verified (transcript exists above), by group: **C** 10/12 (C3 partial/behavioural; C4 gained a
+reusable `currentAppInstallation.accessScopes` health-check pattern; C7 = a confirmed NEGATIVE result
+— 50-parallel-call burst did not trigger 429, see E-C8) · **M** 13/13 (M6/M10 bulk operations
+confirmed end to end via `bulkOperationRunQuery`) · **T** 6/12 (T1, T2, T8-implicit via
+`fullName`/global tree, T9, T11-NOT-SUPPORTED, T12-quota-fits) · **P** 6/13 (P1, P3-implicit, P6, P7,
+P13-behaviourally-confirmed-as-PATCH) · **S** 6/13 (S1, S4, S6, S7, S10, S13) · **O** 14/16 (O1, O2,
+O3, O5-partial, O6, O7, O9, O10, O11, O12, O13-vocab-only, O14, O15-CONFIRMED-with-real-5/min-cap,
+O16-negative-result) · **F** 7/8 (F1, F2, F3-implicit, F4, F6-flagship, F7-implicit, F8-vocab) · **D**
+5/9 (D2, D4, D5, D8, D9) · **R** 8/9 (R1, R2, R3, R4, R5, R6, R7-partial, R9-corrected) · **X** 4/6
+(X1-orderCreate-cap-confirmed, X2, X3, X5, plus X4's PII exemption confirmed and its diagnostic
+pattern via C4/E-C9).
+
+**X6 (multi-tenant quota) deliberately skipped, confirmed as a genuine manual-step blocker rather
+than an oversight.** Verifying per-app-per-store quota isolation requires a SECOND custom-distribution
+app, which can only be created through the Dev Dashboard UI — no `appInstallations`/app-creation
+mutation is reachable from within an existing app's own credentials (attempted: `appInstallations`
+query → `"access denied"`, requiring a broader scope this app was never granted, by design — an app
+cannot enumerate its siblings). Structurally confirmed as correct behaviour (an app should not be able
+to see other apps' installations) rather than a gap to chase further. Skipped per explicit decision
+rather than left silently untested.
 
 **Genuinely not testable via the Admin API and not attempted** — these are OL-side adapter/design
 decisions, not Shopify facts to verify: C5 (config/credential shape validators — OL code), C9 (does
@@ -408,9 +468,8 @@ not exist in the issue's own checklist), C12 (`CanonicalInboundEvent` translatio
 (invoice issuance/correction logic — OL/invoicing-provider concern, Shopify's role is only to supply
 order + tax-line data, already confirmed via O9/O10), X1 (sandbox fidelity — a qualitative judgement,
 partially informed by findings above: generous 4000-pt budget confirmed resistant to accidental
-throttling even at 50 parallel calls, seeded test data confirmed present, but dev-store-only
-`orderCreate` rate cap not separately confirmed), X6 (multi-tenant quota — confirmed structurally
-per-app-per-store via `throttleStatus`, not tested with a second app).
+throttling even at 50 parallel calls, seeded test data confirmed present, dev-store-only `orderCreate`
+rate cap now CONFIRMED real, see E-X2).
 
 **Confirmed as a negative result rather than left untested**: O16/C7 (429/retry behaviour) — a
 50-parallel-call burst against a moderately expensive query produced zero throttling, confirming the
