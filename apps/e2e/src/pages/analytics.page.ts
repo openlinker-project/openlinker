@@ -55,12 +55,39 @@ export class AnalyticsPage {
 
   async goto(options: AnalyticsGotoOptions = {}): Promise<void> {
     const params = new URLSearchParams();
-    if (options.from) params.set('from', options.from);
-    if (options.to) params.set('to', options.to);
+    // BOTH `from` and `to` MUST be a bare `yyyy-mm-dd` — the real toolbar
+    // (`date-range.lib.ts`) never sends anything else, and the page reads
+    // them back the same way it wrote them: `to` is parsed by
+    // `sales-analytics.api.ts`'s `toExclusiveEndInstant`
+    // (`to.split('-').map(Number)`), and `from` is turned into an instant by
+    // `analytics-page.tsx`'s own `coverageFilters` memo via string
+    // concatenation (`` `${from}T00:00:00.000Z` ``). A full ISO instant
+    // (what a caller reaching for "now ± 1 day" via `.toISOString()`
+    // naturally produces, e.g. this package's own `widePastToFutureRange()`)
+    // breaks EITHER path — `to.split('-')` yields a bogus third segment like
+    // `"05T08:41:11.409Z"` whose `Number(...)` is `NaN`, and `from` becomes
+    // a doubly-suffixed string like `"...409ZT00:00:00.000Z"` — both feed a
+    // `Date.UTC(...).toISOString()` / `new Date(...).toISOString()` call
+    // that throws `RangeError: Invalid time value`, an uncaught exception
+    // that crashes the whole page into react-router's default error
+    // boundary and never renders the "Analytics" heading every step in this
+    // suite waits on. Normalizing both here means a caller passing either
+    // shape works, and the mistake can't be repeated at a new call site.
+    if (options.from) params.set('from', new Date(options.from).toISOString().slice(0, 10));
+    if (options.to) params.set('to', new Date(options.to).toISOString().slice(0, 10));
     if (options.displayCurrency) params.set('displayCurrency', options.displayCurrency);
     if (options.rateBasis) params.set('rateBasis', options.rateBasis);
     const query = params.toString();
-    await this.page.goto(`/analytics${query ? `?${query}` : ''}`);
+    // `/analytics` is a LEGACY bookmark-compat shim (`<Navigate to="/"
+    // replace />`, `analytics.route.tsx`) — react-router's `<Navigate to>`
+    // takes a bare literal path and drops the current URL's search params
+    // entirely. Every from/to/displayCurrency/rateBasis this method builds
+    // was silently discarded on the redirect hop, so every step in this
+    // page's own consumer was actually exercising the DEFAULT 30d range
+    // with no display-currency override, whatever was requested here.
+    // Analytics owns `/` since #2740 — that is the real route with the
+    // search-param-reading logic, so navigate there directly.
+    await this.page.goto(`/${query ? `?${query}` : ''}`);
     await expect(this.page.getByRole('heading', { name: 'Analytics', exact: true })).toBeVisible();
   }
 
@@ -93,11 +120,14 @@ export class AnalyticsPage {
   }
 
   /**
-   * The Data Coverage panel's zero-open-categories row (`AnalyticsDataCoveragePanel`,
-   * `openRows.length === 0` branch): a "Clear" badge + "Nothing to do" headline.
+   * The Needs Attention panel's zero-open-items row (`AnalyticsNeedsAttention`,
+   * the resolved-list-item branch): a "Clear" badge + "Nothing needs
+   * attention" headline. NOT the Data Coverage panel — checked against the
+   * shipped markup (`analytics-needs-attention.tsx`) live, after the literal
+   * "Nothing to do" this locator originally carried never matched.
    */
   get allClearRow(): Locator {
-    return this.page.locator('.attention-list__item--resolved', { hasText: 'Nothing to do' });
+    return this.page.locator('.attention-list__item--resolved', { hasText: 'Nothing needs attention' });
   }
 
   async openCoverageDetail(category: CoverageCategory): Promise<Locator> {

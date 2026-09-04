@@ -190,14 +190,26 @@ export async function seedUnmappedProductOrder(
     ],
   });
 
+  // DELETE the product now, before waiting on the order below — while it
+  // merely EXISTS-but-unsynced, this stack's webhook-driven catalog sync
+  // resolves it within seconds (verified live: the very first `#2482`
+  // full-suite run raced this and the product-matching coverage row was
+  // gone — "Nothing to do" — by the time the `detail-mapping` step ran,
+  // several minutes into the same test). A product that no longer exists
+  // at all can never be synced by anything, so the order it references
+  // stays PERMANENTLY unresolvable, matching the fixture's own documented
+  // intent below rather than merely hoping no sync wins the race.
+  await ps.deleteProduct(product.id);
+
   const { waitForOrderByExternalId } = await import('./orders');
   const order = await waitForOrderByExternalId(api, {
     sourceConnectionId: prestashop.id,
     externalOrderId: created.id,
     // This order can never reach `ready` — the product it references was
-    // never synced, so item resolution fails and it lands `awaiting_mapping`
-    // (`OrderIngestionService`, the `product-matching` coverage category's
-    // own trigger). Waiting on the default `['ready']` would time out.
+    // deleted before OL ever synced it, so item resolution fails and it
+    // lands `awaiting_mapping` (`OrderIngestionService`, the
+    // `product-matching` coverage category's own trigger). Waiting on the
+    // default `['ready']` would time out.
     recordStatuses: ['awaiting_mapping', 'source_deleted'],
     timeoutMs: 180_000,
     intervalMs: 3_000,
@@ -211,6 +223,99 @@ export async function seedUnmappedProductOrder(
   });
 
   return { internalOrderId: order.internalOrderId, sourceConnectionId: prestashop.id };
+}
+
+/**
+ * Finds an already-existing tax-b order, for a stack where
+ * `seedNoRateProductOrder`'s flow-driven PrestaShop path cannot land one.
+ *
+ * **Why this exists.** `seedNoRateProductOrder` produces a real, ready,
+ * catalogue-synced order whose tax rate is genuinely unresolved at the
+ * PRODUCT level — but PrestaShop's own order adapter stamps EVERY order
+ * `taxTreatment: 'exclusive'` (`prestashop-order.mapper.ts`, #2440's
+ * deliberate net-pricing assumption), and `netSalesOrderNetEligibleSql`
+ * treats an `'exclusive'`-priced order as net-eligible UNCONDITIONALLY,
+ * bypassing the rate-resolution requirement entirely
+ * (`net-sales-tax-rate.types.ts`). The same is true of the WooCommerce
+ * adapter. So a PrestaShop/WooCommerce order can **never** reach tax-a/b/c —
+ * confirmed live against this stack's full order history (35+ orders spanning
+ * 2025-08-01..2026-09-05): those three categories were permanently empty.
+ * Filed as a real production bug; not something this test suite should paper
+ * over by faking a state PrestaShop/WooCommerce structurally cannot produce.
+ *
+ * Allegro's order adapter DOES report `taxTreatment: 'inclusive'`
+ * (`allegro-order-source.adapter.ts`), which is the one live path into
+ * tax-a/b/c — but exercising it needs a real Allegro sandbox offer (OAuth
+ * connection, seller defaults incl. a GPSR responsible-producer entry created
+ * by hand in Allegro's own seller panel — no API for that — plus a category
+ * carrying no required product parameters) and then a REAL buyer-side
+ * checkout on the sandbox, which no script can perform. That one-time setup
+ * was done manually for this project (see the epic thread) and produced a
+ * real order (`ol_order_ccb3046a96f84642a2c4919ad0e61a40` at the time of
+ * writing) permanently sitting in this deployment's tax-b bucket.
+ *
+ * This helper is therefore a deliberate compromise: it reads whatever is
+ * ALREADY in the tax-b coverage list rather than seeding a fresh one on every
+ * run. It is honest about that — the returned order is real, its coverage
+ * membership is asserted against the live API exactly like a freshly-seeded
+ * one would be, and if the bucket is ever empty (a fresh install, or this
+ * order's history is purged) the helper fails loudly naming the manual step
+ * required rather than silently skipping the assertion.
+ *
+ * **Caller obligation**: the tax coverage query is a strict
+ * `reportingCurrency = :currentReportingCurrency` equality
+ * (`order-record.repository.ts`'s `netExcludedAndNotCancelled`), so this must
+ * only be called while the deployment's reporting currency matches the
+ * fixture order's own stamped (native) currency — i.e. AFTER any
+ * `seedCurrencyMismatchOrder` fixture in the same run has been `restore()`d,
+ * never while it is still flipped. Caught live: calling this inside that
+ * window made a real, permanently-existing tax-b order read as "does not
+ * exist" for the window's whole duration.
+ */
+export async function findExistingNoRateOrder(
+  ctx: AnalyticsSeedContext,
+): Promise<{ internalOrderId: string; sourceConnectionId: string }> {
+  const { api, poll } = ctx;
+  const range = widePastToFutureRange();
+  // Retried with a budget well past ONE request's own 30s client timeout —
+  // a 30s poll budget gives a single slow request under real suite load
+  // (this step runs after several heavier fixtures) exactly one shot before
+  // the poll gives up having attempted nothing else, misreporting a
+  // deployment-configuration absence as a transient timing artifact.
+  let items: Array<{ internalOrderId: string; sourceConnectionId: string }> = [];
+  try {
+    await poll.until(
+      async () => {
+        const page = await api.analytics.getTaxCoverageOrders({
+          ...range,
+          category: 'tax-b',
+          limit: 100,
+        });
+        items = page.items;
+        return items.length > 0;
+      },
+      (found) => found === true,
+      {
+        timeoutMs: 90_000,
+        intervalMs: 3_000,
+        message: 'an existing tax-b order to appear in the coverage list',
+      },
+    );
+  } catch {
+    // fall through to the throw below with the same message
+  }
+  const item = items[0];
+  if (!item) {
+    throw new Error(
+      'No tax-b order exists in this deployment. seedNoRateProductOrder cannot produce one ' +
+        "(PrestaShop/WooCommerce order adapters hardcode taxTreatment: 'exclusive', which makes " +
+        'tax-a/b/c structurally unreachable from those sources — see this function\'s docblock). ' +
+        'A real Allegro sandbox order is required: publish an offer for a no-rate product on a ' +
+        'category with no required product parameters, wait for it to validate, then buy it as a ' +
+        'test buyer on the sandbox.',
+    );
+  }
+  return { internalOrderId: item.internalOrderId, sourceConnectionId: item.sourceConnectionId };
 }
 
 /**
@@ -228,7 +333,7 @@ export async function seedUnmappedProductOrder(
 export async function seedNoRateProductOrder(
   ctx: AnalyticsSeedContext,
 ): Promise<{ internalOrderId: string; sourceConnectionId: string }> {
-  const { api, world, jobs } = ctx;
+  const { api, world, jobs, poll } = ctx;
   const prestashop = world.requireConnection(PlatformType.prestashop);
   const { buildPrestashopWebserviceClient } = await import('./order-synthesis');
   const ps = buildPrestashopWebserviceClient(world);
@@ -318,6 +423,36 @@ export async function seedNoRateProductOrder(
     // rate-limited rather than fired on every poll tick.
     retriggerPoll: jobs.retriggerDirectOrderSync(prestashop.id, created.id),
   });
+
+  // `recordStatus: 'ready'` is NOT sufficient — the tax-b coverage candidate
+  // query additionally requires `order_records.reportingCurrency` to equal
+  // the CURRENT reporting-currency setting (`findNetExcludedOrderCandidates`,
+  // `order-record.repository.ts`), and that FX stamp can land asynchronously
+  // after ingestion (a retry job, not always inline — see
+  // `docs/architecture-overview.md` § Currency). Without this poll the order
+  // could reach `ready` with its FX stamp still pending, and the caller's own
+  // `openCoverageDetail('tax-b')` click would time out waiting for a row
+  // that data-wise exists but hasn't reached the coverage read yet — caught
+  // live: the very first full-suite run after the currency-mismatch fixture
+  // in this same test flipped the reporting currency raced exactly this.
+  // Mirrors `seedCurrencyMismatchOrder`'s own poll-the-coverage-list pattern
+  // rather than trusting a status field to imply coverage-list membership.
+  const range = widePastToFutureRange();
+  await poll.until(
+    async () => {
+      const page = await api.analytics.getTaxCoverageOrders({
+        ...range,
+        category: 'tax-b',
+        limit: 100,
+      });
+      return page.items.some((item) => item.internalOrderId === order.internalOrderId);
+    },
+    (found) => found === true,
+    {
+      timeoutMs: 60_000,
+      message: `order ${order.internalOrderId} to appear in the tax-b coverage list`,
+    },
+  );
 
   return { internalOrderId: order.internalOrderId, sourceConnectionId: prestashop.id };
 }

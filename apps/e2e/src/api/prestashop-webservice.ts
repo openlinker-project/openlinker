@@ -346,6 +346,40 @@ export class PrestashopWebserviceClient {
   }
 
   /**
+   * Delete a product this SAME call created moments earlier (the analytics
+   * product-matching fixture's own cleanup step — no destructive-opt-in gate,
+   * unlike `deleteCombination`, since the caller owns the product's whole
+   * lifecycle within one test run rather than pruning shared catalogue data).
+   * Deleting it AFTER an order already references it is what makes the order
+   * PERMANENTLY unresolvable: a product OL never synced is merely awaiting a
+   * sync that would eventually resolve it (this stack's webhook-driven
+   * catalog sync does exactly that within seconds — verified live, which is
+   * why the fixture used to flake), whereas a product that no longer exists
+   * at all can never be synced by anything.
+   */
+  async deleteProduct(productId: string): Promise<void> {
+    const url = `${this.baseUrl}/api/products/${productId}?output_format=JSON`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: 'DELETE',
+        headers: { Authorization: this.authHeader, Accept: 'application/json' },
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (!response.ok) {
+      const raw = await response.text();
+      throw new Error(
+        `PrestaShop webservice DELETE /api/products/${productId} → HTTP ${response.status}: ${raw.slice(0, 300)}`,
+      );
+    }
+  }
+
+  /**
    * Sum available quantity across a product's `stock_availables` rows.
    *
    * For a product with combinations PrestaShop keeps one row per combination

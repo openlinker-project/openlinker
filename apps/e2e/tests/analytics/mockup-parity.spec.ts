@@ -50,6 +50,7 @@ import {
   seedCurrencyMismatchOrder,
   seedUnmappedProductOrder,
   seedNoRateProductOrder,
+  findExistingNoRateOrder,
   widePastToFutureRange,
   type CurrencyMismatchFixture,
 } from '../../src/support/analytics-seed';
@@ -107,8 +108,14 @@ test.describe('analytics mockup parity (#2482)', () => {
       const unmappedOrder = await test.step('seed: unmapped-product order (product-matching)', async () =>
         seedUnmappedProductOrder({ api, world, jobs, poll }));
 
-      const noRateOrder = await test.step('seed: no-rate-product order (tax-b)', async () =>
-        seedNoRateProductOrder({ api, world, jobs, poll }));
+      // The `noRateOrder` SEED is deliberately deferred (see below, right
+      // after the reporting-currency restore) rather than run here alongside
+      // the other seeds — its fallback path (`findExistingNoRateOrder`) reads
+      // the tax-b coverage list under a strict `reportingCurrency =
+      // :currentReportingCurrency` equality, and `seedCurrencyMismatchOrder`
+      // above has already flipped that setting away from the fixture order's
+      // own (PLN) stamp. Seeding here would read a real, permanently-existing
+      // order as "does not exist" for the whole currency-mismatch window.
 
       // ── Mockup-only states: native / all-clear baseline, settings-open ──
       await test.step('native', async () => {
@@ -158,7 +165,20 @@ test.describe('analytics mockup parity (#2482)', () => {
         // not a data fixture: the response body itself is untouched.
         await page.route('**/v1/analytics/sales**', async (route) => {
           await new Promise((resolve) => setTimeout(resolve, 1500));
-          await route.continue();
+          try {
+            await route.continue();
+          } catch {
+            // The KPI strip and this convert-note share ONE cache entry but
+            // are two independent React Query subscribers — both can fire a
+            // request against the SAME matched URL, and the navigation this
+            // step triggers can supersede/abort one of the two in-flight
+            // requests before its own `continue()` runs. Playwright then
+            // throws "Route is already handled!" on the loser — a benign
+            // race, not a real failure (the step's own assertion below is
+            // what proves the delay actually worked), so it's swallowed
+            // rather than left to surface as an unhandled rejection on the
+            // test.
+          }
         });
         const gotoPromise = pages.analytics.goto({
           from: range.from,
@@ -224,10 +244,15 @@ test.describe('analytics mockup parity (#2482)', () => {
         // A window BEFORE anything in this suite was seeded, on a
         // freshly-scoped connection with nothing to report — the honest way
         // to observe the zero-categories row without faking an empty
-        // coverage response.
+        // coverage response. `AnalyticsPage.goto()` normalizes `to` down to
+        // a bare, INCLUSIVE `yyyy-mm-dd` day (matching the real toolbar's
+        // own contract — see that method's docblock), so "yesterday" is the
+        // coarsest boundary that still excludes every order this run seeds
+        // today; a sub-day "1 hour ago" instant would round UP to include
+        // the whole of today once normalized and defeat the exclusion.
         const priorRange = {
           from: new Date(0).toISOString(),
-          to: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+          to: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
         };
         await pages.analytics.goto(priorRange);
         await captureBoth(
@@ -282,6 +307,50 @@ test.describe('analytics mockup parity (#2482)', () => {
         // Row disappears once resolved — confirm the category clears rather
         // than lingering, which would itself be a real product defect.
         await expect(pages.analytics.coverageRow('currency')).toHaveCount(0, { timeout: 10_000 });
+      });
+
+      // The currency scenario is fully exercised at this point — restore the
+      // deployment's reporting currency HERE rather than only in the
+      // `finally` at the bottom. `currency-fixed`'s own "Recalculate now" only
+      // re-stamps the ONE seeded currency-mismatch order; the deployment's
+      // `currentReportingCurrency` setting itself stays flipped until this
+      // call. Every downstream coverage query below this point is a strict
+      // `reportingCurrency = :currentReportingCurrency` equality
+      // (`order-record.repository.ts`'s `netExcludedAndNotCancelled`), so
+      // leaving the setting flipped through `detail-novat` silently excludes
+      // ANY order stamped in the deployment's real native currency — caught
+      // live: the tax-b order this suite falls back to (a real Allegro
+      // sandbox purchase, PLN-stamped) read as "does not exist" for the
+      // entire window this flip was still in effect. The bottom `finally`
+      // stays as a defence-in-depth safety net for a mid-test throw; calling
+      // `restore()` twice is safe (`setReportingCurrency` is a plain PUT).
+      await test.step('restore reporting currency (currency scenario complete)', async () => {
+        if (currencyFixture) {
+          await currencyFixture.restore();
+        }
+      });
+
+      // `seedNoRateProductOrder` is structurally blocked today: PrestaShop's
+      // and WooCommerce's order adapters both hardcode
+      // `taxTreatment: 'exclusive'`, which the net-sales SQL treats as
+      // net-eligible unconditionally, bypassing tax-rate resolution — so a
+      // PrestaShop-sourced order can never land in tax-a/b/c (a real
+      // production bug, see `findExistingNoRateOrder`'s docblock). Until
+      // that adapter behaviour is fixed, fall back to a real Allegro-sourced
+      // order already sitting in this deployment's tax-b bucket — Allegro
+      // reports `taxTreatment: 'inclusive'` and is the one live path in. Run
+      // only AFTER the reporting-currency restore above — see this seed
+      // variable's own declaration comment for why.
+      const noRateOrder = await test.step('seed: no-rate-product order (tax-b)', async () => {
+        try {
+          return await seedNoRateProductOrder({ api, world, jobs, poll });
+        } catch (error) {
+          console.warn(
+            `seedNoRateProductOrder failed (${(error as Error).message}); ` +
+              'falling back to an existing tax-b order (see findExistingNoRateOrder docblock).',
+          );
+          return findExistingNoRateOrder({ api, world, jobs, poll });
+        }
       });
 
       // ── tax-confirm: documented mockup/real-app divergence (#2857) ──────
