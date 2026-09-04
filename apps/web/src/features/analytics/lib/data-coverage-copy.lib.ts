@@ -102,6 +102,24 @@ export function deriveCoverageRowCopy(row: CoverageCategoryRow): DataCoverageRow
 
 export const DATA_COVERAGE_CHECK_COUNT = 5;
 
+/**
+ * Whether the Data Coverage panel currently has something an operator needs
+ * to act on — either a row this panel labels `'Action'` (currently
+ * `currency`, `tax-a`) with at least one affected order, or a row whose
+ * remediation run itself ended `'failed'`. An `'Info'`-labelled row
+ * (`tax-b`, `tax-c`, `product-matching`) is deliberately excluded — those
+ * are informational per `deriveCoverageRowCopy`, not something the panel
+ * asks the operator to do, so surfacing them as a page-level warning would
+ * overstate what is actually wrong.
+ */
+export function hasCoverageAttention(categories: CoverageCategoryRow[]): boolean {
+  return categories.some((row) => {
+    if (row.status === 'failed') return true;
+    const copy = deriveCoverageRowCopy(row);
+    return copy.badgeLabel === 'Action' && row.affectedCount > 0;
+  });
+}
+
 /** Human-language label for a `product-matching` row's record status. Never rendered raw. */
 export function describeMatchingRecordStatus(status: ProductMatchingRecordStatus): string {
   switch (status) {

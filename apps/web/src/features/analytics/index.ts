@@ -44,6 +44,10 @@ export { useAnalyticsCoverageQuery } from './hooks/use-analytics-coverage-query'
 export { useRecalculateCurrencyMutation } from './hooks/use-recalculate-currency-mutation';
 export { AnalyticsSettingsDialog } from './components/analytics-settings-dialog';
 export { AnalyticsDataCoveragePanel } from './components/analytics-data-coverage-panel';
+export {
+  AnalyticsCoverageAlertBadge,
+  ANALYTICS_DATA_COVERAGE_ANCHOR_ID,
+} from './components/analytics-coverage-alert-badge';
 export type {
   AnalyticsCoverage,
   AnalyticsCoverageFilters,

@@ -15,7 +15,9 @@
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
+  ANALYTICS_DATA_COVERAGE_ANCHOR_ID,
   AnalyticsConvertNote,
+  AnalyticsCoverageAlertBadge,
   AnalyticsCurrencyPicker,
   AnalyticsDataCoveragePanel,
   AnalyticsDateRangeToolbar,
@@ -147,7 +149,11 @@ export function AnalyticsPage(): ReactElement {
   return (
     <PageLayout
       eyebrow="Operations"
-      title="Analytics"
+      title={
+        <>
+          Analytics <AnalyticsCoverageAlertBadge categories={coverageQuery.data?.categories} />
+        </>
+      }
       description="Sales across connected channels, with clear data coverage."
       actions={
         <Button type="button" tone="secondary" onClick={() => setSettingsDialogOpen(true)}>
@@ -233,17 +239,24 @@ export function AnalyticsPage(): ReactElement {
           {/* Coverage gaps and stock-at-risk are listing facts, not order
               facts, so they render regardless of ingestion status — a fresh
               install with a full catalogue and no orders yet is exactly
-              when they matter most (#2120 review, SUGGESTION). Both this
-              section and the data-coverage header below it render
-              unconditionally, after the order-derived figures above. */}
+              when they matter most (#2120 review, SUGGESTION). This section
+              and the Data Coverage panel below render unconditionally,
+              after the order-derived figures above. */}
           <AnalyticsNeedsAttention />
-          <AnalyticsDataCoveragePanel
-            filters={coverageFilters}
-            onOpenSettings={() => setSettingsDialogOpen(true)}
-            openCategory={openCoverageCategory}
-            onOpenCategoryChange={setOpenCoverageCategory}
-          />
           <AnalyticsTrustHeader connections={trustQuery.data.connections} />
+          {/* Deliberately the LAST section on the page: an operator reads
+              revenue/channel/product figures first, and only then the
+              detail behind any coverage gap. The title-adjacent
+              `AnalyticsCoverageAlertBadge` is the way back here without
+              scrolling past everything above when something needs action. */}
+          <div id={ANALYTICS_DATA_COVERAGE_ANCHOR_ID}>
+            <AnalyticsDataCoveragePanel
+              filters={coverageFilters}
+              onOpenSettings={() => setSettingsDialogOpen(true)}
+              openCategory={openCoverageCategory}
+              onOpenCategoryChange={setOpenCoverageCategory}
+            />
+          </div>
         </>
       ) : null}
 
