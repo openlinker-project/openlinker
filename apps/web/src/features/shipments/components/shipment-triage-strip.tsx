@@ -127,11 +127,14 @@ export function ShipmentTriageStrip({
               - <span className="mono-text">{sampleReason}</span>
             </>
           ) : null}
-          {group.providerCode !== null && retryabilityClass ? (
+          {/* On this branch `retryabilityClass` is always `'unknown'` by
+              construction (`isExactProviderCode` tested exactly that), so the
+              only real question is whether there is a code to show at all. */}
+          {group.providerCode !== null ? (
             <>
               {' '}
               (carrier code <span className="mono-text">{group.providerCode}</span> -{' '}
-              {RETRYABILITY_LABEL[retryabilityClass]})
+              {RETRYABILITY_LABEL.unknown})
             </>
           ) : null}
         </>
