@@ -288,6 +288,83 @@ describe('PrestashopAdapterFactory', () => {
       // also contains `id_ASC`, and this must count only the id-only fallback.
       expect(ordersUrls.filter((u) => u.includes('[id_ASC]'))).toHaveLength(2);
     }, 20000);
+
+    // The refusal is a fact about the SHOP, not the connection row (see the
+    // #2592 repoint test above for the identical reasoning applied to the
+    // currency/configuration caches). Without wiring the order-feed
+    // capability cache into `dropCachesOnShopIdentityChange`, a connection
+    // repointed away from the refusing shop would stay stuck reading
+    // id-only forever, even though the new shop happily accepts `date_upd`.
+    it('should re-attempt date_upd sort when the connection is repointed at another shop (#2877)', async () => {
+      const ordersUrls: string[] = [];
+      const respondingFetch = jest.fn((input: unknown) => {
+        const url = String(input);
+        if (url.includes('/api/order_states')) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            headers: new Headers({ 'content-type': 'application/json' }),
+            text: () => Promise.resolve(JSON.stringify(DEFAULT_INSTALL_ORDER_STATES)),
+          });
+        }
+        if (url.includes('/api/orders')) {
+          ordersUrls.push(url);
+          if (url.includes('date_upd') && url.startsWith('https://refusing-shop.example.com')) {
+            return Promise.resolve({
+              ok: false,
+              status: 500,
+              headers: new Headers({ 'content-type': 'application/json' }),
+              text: () =>
+                Promise.resolve(
+                  JSON.stringify({
+                    errors: [{ code: 38, message: 'Unable to filter by this field.' }],
+                  })
+                ),
+            });
+          }
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            headers: new Headers({ 'content-type': 'application/json' }),
+            text: () => Promise.resolve('[]'),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          text: () => Promise.resolve('[]'),
+        });
+      }) as unknown as typeof fetch;
+
+      mockCredentialsResolver.get.mockResolvedValue({ webserviceApiKey: 'test-key' });
+
+      // First shop refuses date_upd - the connection falls back and the
+      // refusal is cached under this connection id.
+      const first = await factory.createAdapters(
+        createTestConnection({ baseUrl: 'https://refusing-shop.example.com' }),
+        mockIdentifierMapping,
+        mockCredentialsResolver,
+        respondingFetch
+      );
+      await first.orderSource.listOrderFeed({ fromCursor: null, limit: 10 });
+      expect(ordersUrls.filter((u) => u.includes('date_upd'))).toHaveLength(4);
+
+      ordersUrls.length = 0;
+
+      // Same connection id, repointed at a different shop that accepts
+      // date_upd fine - the stale refusal must not leak across the repoint.
+      const second = await factory.createAdapters(
+        createTestConnection({ baseUrl: 'https://accepting-shop.example.com' }),
+        mockIdentifierMapping,
+        mockCredentialsResolver,
+        respondingFetch
+      );
+      await second.orderSource.listOrderFeed({ fromCursor: null, limit: 10 });
+
+      expect(ordersUrls.filter((u) => u.includes('date_upd'))).toHaveLength(1);
+      expect(ordersUrls.filter((u) => u.includes('[id_ASC]'))).toHaveLength(0);
+    }, 20000);
   });
 
   describe('validateAndParseConfig', () => {

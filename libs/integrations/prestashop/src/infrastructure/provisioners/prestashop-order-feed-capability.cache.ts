@@ -26,6 +26,11 @@
  * process-singleton cache in this factory already accepts for its own
  * per-connection answer (shop identity, default currency, tax rate, ...).
  *
+ * The fact is about the SHOP, not the connection ROW, so it is dropped -
+ * `clearCache` - whenever `PrestashopAdapterFactory.dropCachesOnShopIdentityChange`
+ * detects the same connection id now points at a different shop, exactly like
+ * every sibling cache next to it there.
+ *
  * @module libs/integrations/prestashop/src/infrastructure/provisioners
  */
 export class PrestashopOrderFeedCapabilityCache {
@@ -41,11 +46,27 @@ export class PrestashopOrderFeedCapabilityCache {
 
   /**
    * Record that this connection's shop refuses `date_upd` as a sort/filter
-   * field on `orders`. One-way for the life of this process - see the class
-   * header for why a shop that later starts allowing it again is only
-   * rediscovered on the next process restart.
+   * field on `orders`. One-way for the life of a given shop identity - see
+   * `clearCache` for the one case that resets it sooner than a process
+   * restart.
    */
   markDateUpdSortUnsupported(connectionId: string): void {
     this.dateUpdSortUnsupported.add(connectionId);
+  }
+
+  /**
+   * Drop the remembered answer for this connection id.
+   *
+   * The refusal is a fact about the SHOP, not the connection row - so when a
+   * connection is repointed at a different shop (`dropCachesOnShopIdentityChange`
+   * on `PrestashopAdapterFactory`), the old shop's answer must not keep
+   * governing the new one. Without this, a connection repointed from an
+   * affected shop to one that accepts `date_upd` would stay silently stuck in
+   * the narrowed id-only mode for the rest of the process's life, since
+   * nothing else ever re-attempts the `date_upd` sort once it has failed
+   * once.
+   */
+  clearCache(connectionId: string): void {
+    this.dateUpdSortUnsupported.delete(connectionId);
   }
 }

@@ -652,6 +652,68 @@ describe('PrestashopOrderSourceAdapter', () => {
 
       expect(result.items.map((i) => i.externalOrderId)).toEqual(['2']);
     });
+
+    it('should advance the cursor past a row with an unusable date_upd, in id-only mode (#2877 review)', async () => {
+      // Order 6 carries no usable date_upd (dropped by `toFeedItem`); order 7
+      // is fine. Without advancing `lastOrderId` off the raw row id even for
+      // the dropped row, the fallback would still make progress here only
+      // because order 7 succeeds - so this test isolates the poison row by
+      // also covering the case where it is the ONLY thing this page holds.
+      const sharedCache = new PrestashopOrderFeedCapabilityCache();
+      sharedCache.markDateUpdSortUnsupported(connection.id);
+      const fallbackAdapter = new PrestashopOrderSourceAdapter(
+        mockHttpClient,
+        orderMapper,
+        connection,
+        currencyResolver as unknown as PrestashopOrderCurrencyResolver,
+        sharedCache
+      );
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([
+        { id: '6', date_add: '2024-06-02 09:00:00' }, // no date_upd - unusable
+      ]);
+
+      const result = await fallbackAdapter.listOrderFeed({
+        fromCursor: '2024-06-01 08:00:00|5',
+        limit: 10,
+      });
+
+      // Nothing usable was emitted, but the read position still moved past
+      // id 6 - a re-poll must ask for `id > 6`, not `id > 5` again.
+      expect(result.items).toHaveLength(0);
+      expect(result.nextCursor).toBe('2024-06-01 08:00:00|6');
+    });
+
+    it('should not re-read the identical page forever when every row on it is malformed', async () => {
+      const sharedCache = new PrestashopOrderFeedCapabilityCache();
+      sharedCache.markDateUpdSortUnsupported(connection.id);
+      const fallbackAdapter = new PrestashopOrderSourceAdapter(
+        mockHttpClient,
+        orderMapper,
+        connection,
+        currencyResolver as unknown as PrestashopOrderCurrencyResolver,
+        sharedCache
+      );
+      mockHttpClient.listResources = jest
+        .fn()
+        .mockResolvedValueOnce([{ id: '6' }, { id: '7' }])
+        .mockResolvedValueOnce([]);
+
+      const first = await fallbackAdapter.listOrderFeed({
+        fromCursor: '2024-06-01 08:00:00|5',
+        limit: 10,
+      });
+      expect(first.nextCursor).toBe('2024-06-01 08:00:00|7');
+
+      const second = await fallbackAdapter.listOrderFeed({
+        fromCursor: first.nextCursor,
+        limit: 10,
+      });
+
+      const calls = listCallsExcludingStates(mockHttpClient);
+      // The second poll asks for `id > 7`, never `id > 5` again.
+      expect(calls[1]).toEqual(['orders', { idAfter: 7, sort: ['id_ASC'] }, 10, 0]);
+      expect(second.items).toHaveLength(0);
+    });
   });
 
   describe('getOrder', () => {

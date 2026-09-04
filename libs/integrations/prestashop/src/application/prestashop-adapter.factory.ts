@@ -334,6 +334,11 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
     // Pack ids are shop-scoped product ids, so the previous shop's set would
     // classify unrelated products of the new shop as packs.
     this.packResolver.clearCache(connectionId);
+    // date_upd sort/filter refusal (#2877) is a fact about the shop, not the
+    // connection row - a repointed connection must not stay stuck in the
+    // narrowed id-only mode just because the shop it used to point at
+    // refused it.
+    this.orderFeedCapabilityCache.clearCache(connectionId);
   }
 
   /**

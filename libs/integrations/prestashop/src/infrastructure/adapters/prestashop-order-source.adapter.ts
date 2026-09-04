@@ -318,6 +318,16 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
    * order whose id was already read is not: nothing here ever revisits an id
    * once it is behind the cursor, because there is no `date_upd` filter left
    * to notice the row changed. See the adapter's own header comment.
+   *
+   * **A malformed row still advances the read position.** `toFeedItem`
+   * returns `null` for a row it cannot project (an unreadable `date_upd`),
+   * and on the keyset path that row is genuinely lost - there is no other
+   * axis left to notice it changed. Here `id` is unaffected by whatever made
+   * `date_upd` unusable, so this loop advances the cursor's `lastOrderId` off
+   * the raw row id even when the row is otherwise dropped. Without that, a
+   * page holding only malformed rows would leave the cursor exactly where it
+   * started, and the identical `id > N` page would be re-read on every later
+   * poll for ever (#2877 review) - a stall, not merely a lost row.
    */
   private async fetchByIdOnly(
     pageSize: number,
@@ -343,10 +353,37 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
     for (const row of rows) {
       const item = this.toFeedItem(row, orderStates);
       if (item === null) {
+        // `toFeedItem` already logged this row at `error` and warned that it
+        // will not be re-read - true for the keyset path, where the row drops
+        // out of a `date_upd`-ordered result and nothing else advances past
+        // it. It is NOT true here: `id` is available even when `date_upd` is
+        // not (a code-38 refusal is about the sort/filter field, not the row
+        // data), so the read position can still move past a malformed row by
+        // id alone - a page of such rows must not wedge this fallback into
+        // re-reading the identical `id > N` page on every later poll (#2877
+        // review). Only done once a real `updatedAt` already exists to carry
+        // forward (from `fromCursor` or an earlier good row in this page) -
+        // there is nothing honest to put in that slot for a connection whose
+        // very first-ever page opens on a malformed row, and that double
+        // defect (id-only fallback AND unparseable `date_upd`, both on row 1)
+        // is left to resolve itself once any later row succeeds.
+        const rawOrderId = Number.parseInt(String(row.id), 10);
+        if (cursor !== null && Number.isFinite(rawOrderId) && rawOrderId > cursor.lastOrderId) {
+          cursor = { updatedAt: cursor.updatedAt, lastOrderId: rawOrderId };
+        }
         continue;
       }
       items.push(item.feedItem);
       cursor = { updatedAt: item.updatedAt, lastOrderId: item.orderId };
+    }
+
+    if (items.length === 0 && rows.length >= pageSize && (cursor === null || cursor === fromCursor)) {
+      this.logger.warn(
+        `PrestaShop id-ordered order feed made no progress after ${rows.length} row(s) on ` +
+          `connection ${this.connection.id}: a full page returned nothing usable. Nothing was ` +
+          `lost - the read position is unchanged - but the next poll will read the identical page ` +
+          `again until this is investigated in the shop's own order data.`
+      );
     }
 
     return { items, cursor, rowsRead: rows.length };
