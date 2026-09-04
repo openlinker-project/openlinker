@@ -14,6 +14,18 @@
  * carrier-surfaced code (e.g. `PARCEL_TOO_LARGE`) is `'unknown'` rather than
  * guessed at.
  *
+ * COUPLING (#2873 review): `group-failed-shipments-by-cause.ts`'s
+ * `isExactProviderCode` tests `deriveRetryabilityClass(code) !== 'unknown'`
+ * to decide whether a `providerCode` is exact enough to key a group on. If
+ * you add or widen an arm here (e.g. classifying a `shipx.*` family as
+ * `'permanent'`), you are ALSO widening what that grouping treats as an
+ * honest shared-cause claim — a code that used to force the coarse,
+ * text-keyed branch would start forming a shared-code group instead. No
+ * `check-*-mirror.mjs` script guards this; changing this file's behaviour
+ * without re-reading `group-failed-shipments-by-cause.ts`'s
+ * `isExactProviderCode` tests is how that regression gets silently
+ * reintroduced.
+ *
  * @module apps/web/src/features/shipments/lib
  */
 
