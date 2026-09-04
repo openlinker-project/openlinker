@@ -169,6 +169,11 @@ Both-null reads as *not packed* **or** *packed with no attribution recorded*. `s
 them, and adding a `packedAt` here would create a second, competing completion instant beside the
 phase model #2418 owns. Recorded as a limitation rather than papered over.
 
+> **Superseded by #2890.** #2418 landed that phase model as `parcelClosedAt`, which removed the
+> disambiguator this paragraph relies on: closed-with-neither-actor became representable and
+> reachable. `CHK_fulfillment_works_closed_parcel_actor` now refuses it, so both-NULL is legal only
+> while the parcel is open. The limitation above no longer holds.
+
 ### 4.3 `text`, not `uuid`
 
 `order_records.packedByUserId` (#2287) is `uuid`. `fulfillment_holds.placedByUserId` /
@@ -183,6 +188,10 @@ Different facts at different grains, deliberately coexisting. #2287 is an **oper
 order packed** by hand. This is the **bench recording who closed a work object** — D4's per-work,
 per-phase grain, from which the order-grain fact is *derived*. Neither is computed from the other in
 this issue.
+
+> **Superseded by #2890.** The derivation is now wired: closing a parcel calls
+> `IOrderRecordService.markPacked`, whose `WHERE packedAt IS NULL` guard is D10's first-writer-wins.
+> The order-grain fact IS computed from this one — the reverse is still never true.
 
 ### 4.5 D6 holds
 

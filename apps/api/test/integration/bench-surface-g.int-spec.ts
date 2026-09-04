@@ -6,41 +6,39 @@
  * a real Postgres and the real services together can show, and it is deliberate
  * about which claims it can make and which it cannot.
  *
- * ## Two acceptance criteria of #2420 cannot be met against the shipped model
+ * ## Two gaps this file reported in #2420, and #2890 then closed
  *
- * Written here rather than only in the report, because a reader of these tests
- * must not infer from their passing that the criteria were met.
+ * The history is kept because the SHAPE of both defects is instructive, and
+ * because a reader who remembers the old header must not think the criteria are
+ * still unmet.
  *
- * **AC-2 asks that "neither and both" be unrepresentable for the packed actor.**
- * Only *both* is. `CHK_fulfillment_works_packed_actor` is
- * `NOT (a IS NOT NULL AND b IS NOT NULL)` — at-most-one, and #2413's migration
- * docblock explains why a true XOR is impossible: a work is created unpacked, so
- * `<>` would be unsatisfiable at INSERT and would fail on every existing row.
- * That much is a recorded, correct decision.
+ * **AC-2 — "neither and both" must be unrepresentable for the packed actor.**
+ * `CHK_fulfillment_works_packed_actor` is at-most-one, so only *both* was. That
+ * was a correct decision when #2413 took it: a work is created unpacked, so a
+ * true XOR would be unsatisfiable at INSERT, and both-NULL was judged safe
+ * because *"`status` distinguishes"* not-yet-packed from packed-unattributed.
+ * #2418 then added `parcelClosedAt` and quietly retired that argument — closed
+ * with neither actor became representable, and it says the one thing G1 exists
+ * to prevent: *this parcel was packed and we do not know by whom*. It was
+ * reachable rather than theoretical, the bench route sourcing its actor from an
+ * OPTIONAL `@CurrentUser()` with nothing but `RolesGuard` in the way.
+ * **#2890 closed it at both ends**: `CHK_fulfillment_works_closed_parcel_actor`
+ * makes the state unrepresentable, and `BenchVerifyUnitInput.verifiedByUserId`
+ * is a non-nullable `string` so the route cannot attempt it — a constraint that
+ * merely turned a live route into a 500 would not have been a fix. The two
+ * constraints together are G1's *"exactly one"*, scoped to closure.
  *
- * What has changed since is the disambiguator. #2413 argued both-NULL is safe
- * because *"`status` distinguishes them"*. #2418 then added `parcelClosedAt`, and
- * with it the state `parcelClosedAt IS NOT NULL AND both actors NULL` — which
- * `status` does not disambiguate, and which says exactly the dangerous thing G1
- * exists to prevent: *this parcel was packed and we do not know by whom*. It is
- * reachable: `VerifyUnitInput.verifiedByUserId` is `string | null`,
- * `claimParcelClose` writes it through, and the controller passes
- * `user?.id ?? null` from an OPTIONAL `@CurrentUser()`. Only `RolesGuard` on that
- * route guarantees a principal. So the route guard, not the model, is what
- * upholds G1 — which is what the first test below actually asserts, and it says
- * so.
+ * **AC-3 — exactly one order-grain packed fact on a split order.** #2420 found
+ * that packing produced NO order-grain fact at all (`markPacked`'s only caller
+ * was #2287's manual toggle) and DROPPED its test rather than write one that
+ * passes: calling `markPacked` twice beside a split fixture would have passed
+ * with both work rows deleted — a check that cannot fail. **#2890 wired the
+ * derivation**, so the assertion is restored below, driven through the HTTP
+ * route by two different packers, which is the only version of it that can fail
+ * for the right reason.
  *
- * **AC-3 asks for exactly one order-grain packed fact on a split order.** No
- * order-grain fact is produced by packing at all: `markPacked` has one production
- * caller, the #2287 manual toggle on `/orders`, and closing a parcel writes
- * `fulfillment_works` alone. So the order-grain half is NOT asserted here.
- * Calling `markPacked` twice beside a split fixture would pass with both work
- * rows deleted — it is true of any order, says nothing about splitting, and
- * duplicates `order-record-packed.service.spec.ts`. What IS asserted is the
- * per-work grain, which is real, reachable, and asserted nowhere else.
- *
- * Neither gap is pinned as correct by any test here. A test asserting the
- * absence would entrench it.
+ * The rule that produced the deletion still stands: an absence is never pinned
+ * as correct here, because a test asserting one entrenches it.
  *
  * ## A note on `D4`
  *
@@ -65,6 +63,7 @@ import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
 import type { IntegrationTestHarness } from './setup';
 import { loginAsPacker } from './helpers/test-auth.helper';
 import { createTestConnection } from './helpers/test-connection.helper';
+import { createTestOrderRecord } from './fixtures/order.fixtures';
 
 /** The repository port is off the barrel; see `bench-work.int-spec.ts`. */
 interface WorkFactoryView {
@@ -158,14 +157,14 @@ describe('Surface G across the seam (#2420)', () => {
       .get<IFulfillmentVerificationService>(FULFILLMENT_VERIFICATION_SERVICE_TOKEN);
   }
 
-  // Deliberately NOT "G1 — who packed it is always answerable": it is not,
-  // and a green line saying so is how AC-2 gets ticked against a model that
-  // does not hold it. See this file's header.
-  describe('G1 — who packed it, as far as the shipped route guarantees', () => {
+  // #2420 named this `who packed it, as far as the shipped route guarantees`,
+  // because at the time only the route guard upheld G1 and a green line
+  // claiming more would have ticked AC-2 against a model that did not hold it.
+  // #2890 made the model hold it, so the understatement is retired.
+  describe('G1 — who packed it is always answerable', () => {
     it('records the packer’s own id and no service, through the real route', async () => {
       // The shipped path, end to end: the attribution is the VERIFIED TOKEN's
-      // user, never anything the client sent. `RolesGuard` is what guarantees
-      // there is one — see this file's header on AC-2.
+      // user, never anything the client sent.
       const http = harness.getHttp();
       const [work] = await seedSplitOrder(1, 1);
       const token = await loginAsPacker(http, harness.getDataSource());
@@ -187,6 +186,35 @@ describe('Surface G across the seam (#2420)', () => {
       expect(row.packedByUserId).not.toBeNull();
       // A human packed it, so the service column stays empty. The two can never
       // both be set — that half of G1 the DB really does enforce.
+      expect(row.packedByService).toBeNull();
+    });
+
+    it('refuses a CLOSED parcel that names NEITHER a human nor a service', async () => {
+      // The other half of G1's "exactly one" (#2890 F1). Seeded by raw SQL
+      // rather than produced, because the route can no longer attempt it —
+      // which is the point: this asserts the MODEL forbids it, independently of
+      // the type that stops the shipped caller reaching for it.
+      const [work] = await seedSplitOrder(1, 1);
+
+      await expect(
+        harness
+          .getDataSource()
+          .query(`UPDATE "fulfillment_works" SET "parcelClosedAt" = now() WHERE "id" = $1`, [
+            work.id,
+          ])
+      ).rejects.toThrow(/CHK_fulfillment_works_closed_parcel_actor/);
+    });
+
+    it('admits an OPEN work with no actor, which is the normal state', async () => {
+      // The constraint above must be conditional on CLOSURE, never a bare XOR:
+      // a work is created unpacked and spends most of its life that way, so an
+      // unconditional rule would refuse every INSERT the router makes. Without
+      // this line, tightening the predicate to `<>` would leave the test above
+      // green while breaking routing.
+      const [work] = await seedSplitOrder(1, 1);
+      const row = await readActor(work.id);
+      expect(row.parcelClosedAt).toBeNull();
+      expect(row.packedByUserId).toBeNull();
       expect(row.packedByService).toBeNull();
     });
 
@@ -332,6 +360,136 @@ describe('Surface G across the seam (#2420)', () => {
       const firstRow = await readActor(first.id);
       expect(firstRow.packedByUserId).toBe(alice);
       expect(firstRow.parcelClosedAt).toEqual(closedAt);
+    });
+  });
+
+  /**
+   * G2's ORDER half — the assertion #2420 dropped, restored once #2890 wired it.
+   *
+   * Driven through the HTTP route by two DIFFERENT packers on a SPLIT order,
+   * which is the only shape that can fail for the right reason. The version
+   * #2420 declined — calling `markPacked` twice beside a split fixture — would
+   * have passed with both work rows deleted, said nothing about splitting, and
+   * duplicated `order-record-packed.service.spec.ts`.
+   */
+  describe('G2 — the order still has one answer', () => {
+    /** The user id behind a seeded login, which the token does not carry back. */
+    async function packerId(username: string): Promise<string> {
+      const rows = (await harness
+        .getDataSource()
+        .query(`SELECT id FROM users WHERE username = $1`, [username])) as { id: string }[];
+      expect(rows).toHaveLength(1);
+      return rows[0].id;
+    }
+
+    /** Close one parcel through the real route, as `token`'s user. */
+    async function packThroughRoute(workId: string, token: string, gestureId: string) {
+      const http = harness.getHttp();
+      const parcel = await http
+        .get(`/v1/bench/work/${workId}/parcel`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      const lineId = (parcel.body as { lines: { workLineId: string }[] }).lines[0].workLineId;
+
+      await http
+        .post(`/v1/bench/work/${workId}/verifications`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ workLineId: lineId, gestureId })
+        .expect(201);
+    }
+
+    async function readOrderPacked(): Promise<{
+      packedAt: Date | null;
+      packedByUserId: string | null;
+    }> {
+      const rows = (await harness
+        .getDataSource()
+        .query(
+          `SELECT "packedAt", "packedByUserId" FROM "order_records" WHERE "internalOrderId" = $1`,
+          [ORDER_ID]
+        )) as { packedAt: Date | null; packedByUserId: string | null }[];
+      expect(rows).toHaveLength(1);
+      return rows[0];
+    }
+
+    it('derives ONE order-grain fact from a split order, and it is the FIRST packer’s', async () => {
+      // Decision D10: first writer wins. `markPacked`'s repository write is
+      // `WHERE packedAt IS NULL`, so the second parcel's close affects no row —
+      // the order names one packer and drops the other, which is precisely why
+      // the detailed grain is per work.
+      await createTestOrderRecord(harness.getDataSource(), { internalOrderId: ORDER_ID });
+      const [first, second] = await seedSplitOrder(2, 1);
+      const http = harness.getHttp();
+
+      const aliceToken = await loginAsPacker(http, harness.getDataSource(), 'packer-alice');
+      const bobToken = await loginAsPacker(http, harness.getDataSource(), 'packer-bob');
+      const alice = await packerId('packer-alice');
+      const bob = await packerId('packer-bob');
+      expect(alice).not.toBe(bob);
+
+      await packThroughRoute(first.id, aliceToken, 'g-first');
+      const afterFirst = await readOrderPacked();
+      expect(afterFirst.packedAt).not.toBeNull();
+      expect(afterFirst.packedByUserId).toBe(alice);
+
+      await packThroughRoute(second.id, bobToken, 'g-second');
+      const afterSecond = await readOrderPacked();
+
+      // ONE fact, unmoved. Both halves matter: `toBe(alice)` catches a write
+      // that overwrote, and `toEqual(afterFirst.packedAt)` catches one that
+      // rewrote the instant while keeping the id.
+      expect(afterSecond.packedByUserId).toBe(alice);
+      expect(afterSecond.packedAt).toEqual(afterFirst.packedAt);
+
+      // And the per-work detail still names BOTH — the order-grain fact is a
+      // derivation, never a replacement for it.
+      expect((await readActor(first.id)).packedByUserId).toBe(alice);
+      expect((await readActor(second.id)).packedByUserId).toBe(bob);
+    });
+
+    it('does not move the order fact when a parcel is reopened and repacked', async () => {
+      // The same first-writer-wins guard, reached the other way. A reopen clears
+      // the WORK's attribution but never `order_records.packedAt`, so the repack
+      // finds the guard closed. This is also what stops the T5 `order.packed`
+      // automation trigger firing a second time: `markPacked` emits only on the
+      // transition its `WHERE packedAt IS NULL` performs.
+      await createTestOrderRecord(harness.getDataSource(), { internalOrderId: ORDER_ID });
+      const [work] = await seedSplitOrder(1, 1);
+      const http = harness.getHttp();
+
+      const aliceToken = await loginAsPacker(http, harness.getDataSource(), 'packer-alice');
+      const bobToken = await loginAsPacker(http, harness.getDataSource(), 'packer-bob');
+      const alice = await packerId('packer-alice');
+
+      await packThroughRoute(work.id, aliceToken, 'g-first');
+      const afterFirst = await readOrderPacked();
+
+      await verification().reopenParcel({
+        workId: work.id,
+        reopenedByUserId: alice,
+        hasShipped: false,
+      });
+      expect((await readActor(work.id)).packedByUserId).toBeNull();
+
+      await packThroughRoute(work.id, bobToken, 'g-second');
+
+      const afterRepack = await readOrderPacked();
+      expect(afterRepack.packedByUserId).toBe(alice);
+      expect(afterRepack.packedAt).toEqual(afterFirst.packedAt);
+    });
+
+    it('records the parcel even when the order it names was never ingested', async () => {
+      // No `order_records` row at all — legitimate, since a work object carries
+      // its order id by value. The order-grain write is best-effort precisely so
+      // this cannot cost the packer a box they physically finished.
+      const [work] = await seedSplitOrder(1, 1);
+      const token = await loginAsPacker(harness.getHttp(), harness.getDataSource());
+
+      await packThroughRoute(work.id, token, 'g-1');
+
+      const row = await readActor(work.id);
+      expect(row.parcelClosedAt).not.toBeNull();
+      expect(row.packedByUserId).not.toBeNull();
     });
   });
 

@@ -400,6 +400,12 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
       // one, not exactly-one — a work is created unpacked). A silent drop would
       // otherwise leave both sides matching and both wrong.
       'CHK_fulfillment_works_packed_actor',
+      // #2890. Named for the same reason and one stronger: it is the SECOND
+      // `@Check` on this table, departing from the one-per-table habit the rest
+      // of `libs/core` keeps, so a later tidy-up folding it into its sibling is
+      // a plausible edit — and one that would leave both schemas matching and
+      // the constraint's own name gone.
+      'CHK_fulfillment_works_closed_parcel_actor',
     ]));
 
     // The capacity predicate spelled out clause by clause, so a weakening
@@ -428,6 +434,30 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
       expect(packedActor).toContain(clause);
     }
     expect(packedActor).not.toContain(' OR ');
+
+    // And the sibling that makes it conditional-on-closure (#2890). All three
+    // columns must appear, or the predicate has stopped being about closure or
+    // has stopped covering one of the two actors — both of which weaken it in
+    // a way the definition diff above cannot see, since that diff only proves
+    // the two SCHEMAS agree, not that either is right.
+    //
+    // Deliberately NO `not.toContain(' OR ')` here. That ban is meaningful for
+    // the constraint above, where an `OR` would forbid the both-NULL state the
+    // router needs. For THIS predicate the natural spelling
+    // (`"parcelClosedAt" IS NULL OR <actor set>`) is a correct equivalent, so
+    // banning `OR` would encode a rule that means nothing.
+    const closedParcelActor = checksOf(fromMigration).find((entry) =>
+      entry.startsWith('CHK_fulfillment_works_closed_parcel_actor')
+    );
+    expect(closedParcelActor).toBeDefined();
+    for (const clause of [
+      '"parcelClosedAt" IS NOT NULL',
+      '"packedByUserId" IS NULL',
+      '"packedByService" IS NULL',
+      'NOT',
+    ]) {
+      expect(closedParcelActor).toContain(clause);
+    }
 
     const foreignKeys = fromMigration.filter((r) => r.contype === 'f');
     // Containment, not an exhaustive roster — the same trap the `TABLES`-derived

@@ -28,7 +28,20 @@ export interface BenchVerifyUnitInput {
   readonly workLineId: string;
   /** #2416's durable per-gesture id, minted client-side by BOTH paths. */
   readonly gestureId: string;
-  readonly verifiedByUserId: string | null;
+  /**
+   * NON-NULLABLE, and that is the route half of #2890 F1.
+   *
+   * A verification can CLOSE the parcel (D18), and the close writes this value
+   * into `fulfillment_works.packedByUserId`. Core's own `VerifyUnitInput` still
+   * accepts `string | null`, because the per-unit verification ledger admits a
+   * non-bench verifier — but the bench is not that caller, and while this field
+   * was nullable the controller could source it from an optional
+   * `@CurrentUser()` and produce a closed parcel naming nobody. Narrowing it
+   * here makes that unrepresentable in the TYPE, one layer above the CHECK, so
+   * the constraint stays a backstop rather than the thing turning a reachable
+   * route into a 500.
+   */
+  readonly verifiedByUserId: string;
 }
 
 export interface BenchReopenInput {

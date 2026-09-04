@@ -40,16 +40,35 @@ import {
 // most of its life that way, so both-NULL is the normal state here rather than
 // an anomaly, and `<>` would refuse every INSERT the router makes. What the XOR
 // buys is preserved exactly: "a 3PL packed this" and "a human packed it" can
-// never be the same value. Both-NULL stays ambiguous between "not packed" and
-// "packed, unattributed" — `parcelClosedAt` below distinguishes them. #2413
-// wrote here that no `packedAt` was added "because that would be a second
-// completion instant competing with the model #2418 owns"; #2418 has since
-// landed that model, and `parcelClosedAt` IS its instant — one completion
-// instant on this table, not two. Declared under the SAME NAME as the
-// migration, per this file's own naming discipline.
+// never be the same value. Both-NULL is admitted here because an OPEN work
+// genuinely has no packer yet; what it must not survive is CLOSURE, which is
+// the sibling constraint below. #2413 wrote here that no `packedAt` was added
+// "because that would be a second completion instant competing with the model
+// #2418 owns"; #2418 has since landed that model, and `parcelClosedAt` IS its
+// instant — one completion instant on this table, not two. Declared under the
+// SAME NAME as the migration, per this file's own naming discipline.
 @Check(
   'CHK_fulfillment_works_packed_actor',
   'NOT ("packedByUserId" IS NOT NULL AND "packedByService" IS NOT NULL)'
+)
+// A CLOSED parcel must NAME someone (#2890 F1, spec § 2.7 G1). The constraint
+// above admits both-NULL, which #2413 justified by saying `status` tells "not
+// yet packed" apart from "packed, unattributed". #2418's `parcelClosedAt` is
+// what actually answers that question, and it also made the bad state
+// representable: closed, with neither actor — *packed, and we do not know by
+// whom*. Together the two constraints are G1's "exactly one", scoped to
+// closure, which is the only form of the XOR a table whose rows are created
+// unpacked can satisfy.
+//
+// A SECOND named constraint rather than a widened one, departing deliberately
+// from this tree's one-`@Check`-per-table habit: mutual exclusion and
+// presence-on-closure quantify over different columns under different
+// conditions and are fixed differently, so one predicate would report both
+// faults under one name. See the migration for the full argument — and note
+// the spelling is `NOT (… AND …)` only so the pair reads as one idiom.
+@Check(
+  'CHK_fulfillment_works_closed_parcel_actor',
+  'NOT ("parcelClosedAt" IS NOT NULL AND "packedByUserId" IS NULL AND "packedByService" IS NULL)'
 )
 // The grouping key. Its LEADING COLUMN serves every `WHERE "orderId" = ?`
 // lookup, so there is deliberately no separate (orderId) index — the same
@@ -274,14 +293,21 @@ export class FulfillmentWorkOrmEntity {
    * of five, so a reader must NOT take this field as a complete account of who
    * handled the box — the verification ledger holds the rest.
    *
-   * **Grain is per work, per phase** (spec D4). The order-grain fact is
-   * derived; an order-grain person field would name one packer of a split order
-   * and drop the other. `order_records.packedAt` / `packedByUserId` (#2287) is
-   * a different fact — an operator ticking an order packed by hand — and
-   * neither is computed from the other.
+   * **Grain is per work, per phase** (spec D4). This column is the detailed
+   * answer; `order_records.packedAt` / `packedByUserId` (#2287) is the order's
+   * single one, and since #2890 the bench DERIVES it — closing a parcel calls
+   * `IOrderRecordService.markPacked`, whose `WHERE packedAt IS NULL` guard is
+   * D10's first-writer-wins. So a split order names one packer at the order
+   * grain and drops the other, which is exactly why the grain here is per work
+   * and why that derivation can never be reversed: the order fact is not a
+   * rival to this one, and nothing recomputes this column from it.
+   *
+   * The join lives in `apps/api/src/bench`, not here: this context is a
+   * registered zero-sibling-edge leaf and may not read `orders` (ADR-053).
    *
    * Written by #2418's `claimParcelClose`, in the same guarded UPDATE as
-   * `parcelClosedAt` below — never on its own, so the pair cannot disagree.
+   * `parcelClosedAt` below — never on its own, so the pair cannot disagree, and
+   * `CHK_fulfillment_works_closed_parcel_actor` refuses the row if it ever were.
    */
   @Column({ type: 'uuid', nullable: true })
   packedByUserId!: string | null;
@@ -290,6 +316,11 @@ export class FulfillmentWorkOrmEntity {
    * Name of the service that packed this work object (#2413). `null` when a
    * human packed it, or when nothing has. Never set alongside
    * `packedByUserId` — see `CHK_fulfillment_works_packed_actor` on the class.
+   *
+   * Nothing writes it yet; the column exists for a non-bench packer that does
+   * not exist. Whoever adds one must set it AT THE CLOSE, because
+   * `CHK_fulfillment_works_closed_parcel_actor` (#2890) refuses a closed parcel
+   * naming neither actor — a service close can no longer leave this null.
    */
   @Column({ type: 'text', nullable: true })
   packedByService!: string | null;

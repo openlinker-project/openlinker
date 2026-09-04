@@ -16,6 +16,15 @@ Two things are already true on `c4ac4b436` and shape everything below.
 > AC-3 is reported unsatisfiable. Phase 1a's formulation, F1's framing, the
 > `__tests__` walk and Phase 1d's reasoning were corrected as recorded below.
 
+> **Superseded by #2890.** Both defects named below were repaired rather than
+> re-litigated: `CHK_fulfillment_works_closed_parcel_actor` plus a non-nullable
+> `BenchVerifyUnitInput.verifiedByUserId` close AC-2, and `claimParcelClose`'s
+> caller now derives the order-grain fact through `markPacked`, closing AC-3.
+> The dropped order-grain assertion is restored in `bench-surface-g.int-spec.ts`
+> as a split order driven through the HTTP route by two different packers. The
+> reasoning below is kept because the SHAPE of the failure — a test that would
+> have passed with both work rows deleted — is the part worth remembering.
+
 ### Two acceptance criteria cannot be met against the shipped model
 
 Stated as a **deliverable**, not as context. #2420's AC-2 (*"including that

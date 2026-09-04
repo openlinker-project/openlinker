@@ -24,10 +24,17 @@
  * into one value. Only the third state — nobody has packed it yet — is
  * admitted, because here it genuinely exists.
  *
- * **Both-NULL is therefore ambiguous** between "not packed" and "packed with no
- * attribution recorded". `status` distinguishes them. No `packedAt` is added to
- * disambiguate it: that would create a second completion instant competing with
- * the phase model #2418 owns. Recorded as a limitation rather than papered over.
+ * **Both-NULL was therefore ambiguous** between "not packed" and "packed with
+ * no attribution recorded", and this migration recorded that as an accepted
+ * limitation on the grounds that `status` distinguishes them. No `packedAt` was
+ * added to disambiguate it: that would create a second completion instant
+ * competing with the phase model #2418 owns.
+ *
+ * **Superseded (#2890).** #2418 landed that model as `parcelClosedAt`, and
+ * migration `1869000004000` uses it to close the gap with a sibling constraint,
+ * `CHK_fulfillment_works_closed_parcel_actor`: both-NULL stays legal while the
+ * parcel is open and is refused once it is closed. The limitation above no
+ * longer holds — read the two constraints together.
  *
  * ## `uuid` + `text`, and no foreign key
  *

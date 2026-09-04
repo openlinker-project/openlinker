@@ -81,6 +81,7 @@ function harness(options: {
   work?: FulfillmentWorkView;
   siblings?: Map<string, string[]>;
   executorActive?: boolean;
+  markPacked?: jest.Mock;
 }) {
   const work = options.work ?? workView();
 
@@ -116,6 +117,12 @@ function harness(options: {
   } as unknown as IFulfillmentVerificationService;
 
   const orders = {
+    // `markPacked` is NOT optional to stub, and the cast below is why: it makes
+    // a missing method a runtime `is not a function` rather than a type error,
+    // and `recordOrderPacked` swallows every throw — so an unstubbed method
+    // would leave a test green while asserting nothing (#2890 review). Every
+    // test that reaches a close therefore asserts this mock was CALLED.
+    markPacked: options.markPacked ?? jest.fn().mockResolvedValue({} as OrderRecord),
     findByIds: jest.fn().mockResolvedValue([
       {
         internalOrderId: 'ol_order_1',
@@ -151,6 +158,7 @@ function harness(options: {
   return {
     service: new BenchParcelService(executors, worklist, verification, orders, products, shipments),
     verification,
+    orders,
   };
 }
 
@@ -325,6 +333,132 @@ describe('BenchParcelService (#2418)', () => {
         requiredQuantity: 2,
         verifiedQuantity: 1,
       });
+    });
+  });
+
+  /**
+   * Story G2 — the order still has one answer (#2890 F2).
+   *
+   * The per-order behaviour (first-writer-wins across a split, the real
+   * `order_records` row) is proved end to end in `bench-surface-g.int-spec.ts`,
+   * against real Postgres and through the HTTP route. What is proved HERE is the
+   * decision this service makes: WHICH verification outcomes trigger the write,
+   * and that its failure cannot cost the packer a pack that happened.
+   */
+  describe('story G2 — the order-grain packed fact follows from the close', () => {
+    /** A verification that closes the parcel — the state carries `closedAt`. */
+    const closingVerification = (over: Partial<ParcelVerificationState> = {}) =>
+      jest.fn().mockResolvedValue({
+        outcome: 'verified',
+        state: state({
+          closedAt: new Date('2026-09-04T10:00:00Z'),
+          packedByUserId: 'user-1',
+          ...over,
+        }),
+      });
+
+    it('writes the order-grain fact when this verification closed the parcel', async () => {
+      const { service, verification, orders } = harness({});
+      (verification.verifyUnit as jest.Mock).mockImplementation(closingVerification());
+
+      await service.verifyUnit({
+        workId: 'work-1',
+        workLineId: 'line-1',
+        gestureId: 'g1',
+        verifiedByUserId: 'user-1',
+      });
+
+      // The ORDER id, never the work id — the fact is the order's.
+      expect(orders.markPacked).toHaveBeenCalledWith('ol_order_1', 'user-1');
+    });
+
+    it('writes NOTHING when the verification did not close the parcel', async () => {
+      // The common case: a unit into a two-unit line. An order marked packed on
+      // the first scan of a five-item box is worse than one never marked.
+      //
+      // This ALSO covers the loser of a close race, which is the same shape
+      // rather than a second one: `claimParcelClose` is guarded
+      // `WHERE parcelClosedAt IS NULL`, so the loser's `closedWork` stays the
+      // pre-close row and its `closedAt` is null exactly as here. It is not
+      // given its own `it` — the production condition reads only `closedAt`, so
+      // no implementation could pass one and fail the other, and a second name
+      // over one assertion reads as coverage that does not exist.
+      const { service, verification, orders } = harness({});
+      (verification.verifyUnit as jest.Mock).mockResolvedValue({
+        outcome: 'verified',
+        state: state({ closedAt: null }),
+      });
+
+      await service.verifyUnit({
+        workId: 'work-1',
+        workLineId: 'line-1',
+        gestureId: 'g1',
+        verifiedByUserId: 'user-1',
+      });
+
+      expect(orders.markPacked).not.toHaveBeenCalled();
+    });
+
+    it('writes NOTHING for a closed parcel that records no packer', async () => {
+      // The state `CHK_fulfillment_works_closed_parcel_actor` forbids. The
+      // actor is sourced from the recorded close, so if a row ever reads closed
+      // with no packer this writes nothing rather than inventing an attribution
+      // from the request — the order-grain fact must never name someone the
+      // per-work fact does not.
+      const { service, verification, orders } = harness({});
+      (verification.verifyUnit as jest.Mock).mockResolvedValue({
+        outcome: 'verified',
+        state: state({ closedAt: new Date('2026-09-04T10:00:00Z'), packedByUserId: null }),
+      });
+
+      await service.verifyUnit({
+        workId: 'work-1',
+        workLineId: 'line-1',
+        gestureId: 'g1',
+        verifiedByUserId: 'user-1',
+      });
+
+      expect(orders.markPacked).not.toHaveBeenCalled();
+    });
+
+    it('writes NOTHING for a deduplicated gesture', async () => {
+      const { service, verification, orders } = harness({});
+      (verification.verifyUnit as jest.Mock).mockResolvedValue({
+        outcome: 'deduplicated',
+        state: state({ closedAt: new Date('2026-09-04T10:00:00Z') }),
+      });
+
+      await service.verifyUnit({
+        workId: 'work-1',
+        workLineId: 'line-1',
+        gestureId: 'g1',
+        verifiedByUserId: 'user-1',
+      });
+
+      expect(orders.markPacked).not.toHaveBeenCalled();
+    });
+
+    it('still reports the pack when the order-grain write fails', async () => {
+      // Best-effort, and never able to fail the pack. The close already
+      // COMMITTED in the fulfilment context's own transaction, there is no
+      // retry ladder on a synchronous request, and the packer's retry carries
+      // the same gesture id and would refuse `parcel-closed` — so propagating
+      // would report a failed pack for a box that is physically finished and
+      // re-drive nothing.
+      const markPacked = jest.fn().mockRejectedValue(new Error('order record vanished'));
+      const { service, verification } = harness({ markPacked });
+      (verification.verifyUnit as jest.Mock).mockImplementation(closingVerification());
+
+      const result = await service.verifyUnit({
+        workId: 'work-1',
+        workLineId: 'line-1',
+        gestureId: 'g1',
+        verifiedByUserId: 'user-1',
+      });
+
+      expect(markPacked).toHaveBeenCalled();
+      expect(result.outcome).toBe('verified');
+      expect(result.parcel.closedAt).not.toBeNull();
     });
   });
 });

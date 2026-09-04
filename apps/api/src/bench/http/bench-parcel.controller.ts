@@ -37,6 +37,7 @@ import {
   NotFoundException,
   Param,
   Post,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { FulfillmentWorkNotFoundError } from '@openlinker/core/fulfillment';
@@ -99,12 +100,33 @@ export class BenchParcelController {
       'NOTHING and do not consume the gesture id.',
   })
   @ApiResponse({ status: 201, type: BenchVerificationResultResponseDto })
+  @ApiResponse({ status: 401, description: 'A verification must name the packer' })
   @ApiResponse({ status: 404, description: 'No such parcel at this bench' })
   async verifyUnit(
     @Param('workId') workId: string,
     @Body() dto: VerifyUnitDto,
-    @CurrentUser() user?: AuthenticatedUser
+    @CurrentUser() user: AuthenticatedUser
   ): Promise<BenchVerificationResultResponseDto> {
+    // #2890 F1. This verification may CLOSE the parcel, and the close records
+    // who packed it — so this is the one route on the bench that must not be
+    // able to proceed without a principal. It previously read
+    // `user?.id ?? null`, which made a closed, unattributed parcel reachable
+    // through the shipped route with nothing but `RolesGuard` in the way; an
+    // authorization guard is not a data-integrity constraint.
+    //
+    // The guard does in fact make this unreachable, so the refusal is
+    // defence-in-depth and deliberately NOT covered by a test — a spec would
+    // have to hand-build a principal-less request the guard forbids and call
+    // that coverage. What IS covered is the type: `verifiedByUserId` is a
+    // non-nullable `string`, so nothing can reach the service without one.
+    //
+    // The `?.` reads redundant against the parameter's type and is not: the
+    // decorator returns `request.user` unchecked, so the TYPE is an assertion
+    // about the guard rather than about the request. Do not delete it.
+    if (!user?.id) {
+      throw new UnauthorizedException('A verification must name the packer');
+    }
+
     const result = await this.run(() =>
       this.parcels.verifyUnit({
         workId,
@@ -112,7 +134,7 @@ export class BenchParcelController {
         gestureId: dto.gestureId,
         // The verified token's user, never the body's — attribution a client
         // could supply is attribution a dispute cannot rest on.
-        verifiedByUserId: user?.id ?? null,
+        verifiedByUserId: user.id,
       })
     );
     return this.toVerificationDto(result);
@@ -131,6 +153,11 @@ export class BenchParcelController {
   })
   @ApiResponse({ status: 201, type: BenchReopenResultResponseDto })
   @ApiResponse({ status: 404, description: 'No such parcel at this bench' })
+  // `@CurrentUser()` stays OPTIONAL here, unlike `verifyUnit`, and the
+  // asymmetry is deliberate: a reopen CLEARS both actor columns rather than
+  // writing one, so an absent principal cannot produce the unattributed-close
+  // state #2890 closed. Its own audit is `voidedByUserId` on the verification
+  // rows, which is a different fact with a different guarantee.
   async reopenParcel(
     @Param('workId') workId: string,
     @Body() dto: ReopenParcelDto,

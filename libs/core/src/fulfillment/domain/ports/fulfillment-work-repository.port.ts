@@ -563,6 +563,13 @@ export interface FulfillmentWorkRepositoryPort {
    *
    * `packedByService` is deliberately NOT written: `CHK_fulfillment_works_packed_actor`
    * makes the two mutually exclusive, and a bench close always has a user.
+   *
+   * *Always* is now enforced rather than assumed (#2890): a
+   * `ClaimParcelCloseInput.packedByUserId` of `null` writes a closed row naming
+   * nobody, which `CHK_fulfillment_works_closed_parcel_actor` refuses. The
+   * shipped route cannot supply one — `BenchVerifyUnitInput.verifiedByUserId` is
+   * a non-nullable `string` — so the constraint is the backstop for a caller
+   * that does not exist yet rather than a condition anything hits.
    */
   claimParcelClose(
     input: ClaimParcelCloseInput,

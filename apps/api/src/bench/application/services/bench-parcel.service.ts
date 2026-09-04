@@ -39,6 +39,7 @@
  * @implements {IBenchParcelService}
  */
 import { Inject, Injectable } from '@nestjs/common';
+import { Logger } from '@openlinker/shared/logging';
 import {
   FULFILLMENT_VERIFICATION_SERVICE_TOKEN,
   FULFILLMENT_WORKLIST_SERVICE_TOKEN,
@@ -47,7 +48,11 @@ import {
   type IFulfillmentWorklistService,
   type ParcelVerificationState,
 } from '@openlinker/core/fulfillment';
-import { ORDER_RECORD_SERVICE_TOKEN, IOrderRecordService } from '@openlinker/core/orders';
+import {
+  ORDER_RECORD_SERVICE_TOKEN,
+  OrderRecordNotFoundException,
+  IOrderRecordService,
+} from '@openlinker/core/orders';
 import { PRODUCTS_SERVICE_TOKEN, type IProductsService } from '@openlinker/core/products';
 import {
   SHIPMENT_QUERY_SERVICE_TOKEN,
@@ -81,6 +86,8 @@ export class BenchParcelNotAtThisBenchError extends Error {
 
 @Injectable()
 export class BenchParcelService implements IBenchParcelService {
+  private readonly logger = new Logger(BenchParcelService.name);
+
   constructor(
     private readonly executors: BenchExecutorResolver,
     @Inject(FULFILLMENT_WORKLIST_SERVICE_TOKEN)
@@ -134,6 +141,23 @@ export class BenchParcelService implements IBenchParcelService {
       verifiedByUserId: input.verifiedByUserId,
     });
 
+    // G2 — the order still has one answer (#2890 F2).
+    //
+    // This is the derivation D4 describes: the per-work attribution is the
+    // detail, and the order-grain fact FOLLOWS from it rather than being a
+    // rival to it. Until #2890 it followed from nothing — `markPacked`'s only
+    // caller was #2287's manual toggle on `/orders`, so packing at the bench
+    // left `order_records.packedAt` untouched and the order-grain fact existed
+    // only if a human separately ticked a box.
+    // The actor is taken from the STATE that records the close, not from the
+    // request that caused it. The two are equal here by construction — this
+    // call performed the close — and sourcing it from the recorded fact makes
+    // that structural rather than a thing to re-derive when reading.
+    if (result.outcome === 'verified' && result.state.closedAt !== null) {
+      const packedBy = result.state.packedByUserId;
+      if (packedBy !== null) await this.recordOrderPacked(work.orderId, packedBy);
+    }
+
     return {
       outcome: result.outcome,
       reason: result.outcome === 'refused' ? result.reason : null,
@@ -161,6 +185,105 @@ export class BenchParcelService implements IBenchParcelService {
       reason: result.outcome === 'refused' ? result.reason : null,
       parcel: await this.project(work, result.state),
     };
+  }
+
+  /**
+   * The order-grain packed fact, derived from the close (#2890 F2, spec G2/D4).
+   *
+   * ## Why the condition is exactly `verified` + a non-null `closedAt`
+   *
+   * It is true of precisely the call that performed the close. The load-bearing
+   * reason is not the refusal ordering but the DEFAULTING in
+   * `FulfillmentVerificationService.verifyUnit`: `closedWork` starts as the
+   * work read under the row lock, whose `parcelClosedAt` the `parcel-closed`
+   * early return has already proven null, and is replaced only when
+   * `claimParcelClose` actually claimed. So an incomplete parcel, a deduplicated
+   * gesture, any refusal, and the lost side of a close race all carry a null
+   * `closedAt` here. The race's loser skipping this write is correct rather than
+   * a miss: the winner performed the close and owns the order-grain write.
+   *
+   * ## `isFirstPack` is NOT reimplemented here
+   *
+   * `markPacked`'s repository write is `WHERE packedAt IS NULL`, which IS D10's
+   * first-writer-wins. A split order's second parcel therefore affects no row
+   * and leaves the first packer's instant and id intact — the whole reason the
+   * detailed grain is per work. Re-deriving that guard at this layer would be a
+   * second answer to a question the write already answers atomically.
+   *
+   * ## It fires the T5 `order.packed` automation trigger, and that is intended
+   * as of #2890
+   *
+   * `markPacked` emits T5 on the first pack (`emitPackedTrigger`). Until now the
+   * only thing that could fire it was an operator ticking the manual toggle, so
+   * a rule armed against T5 — including the two irreversible actions,
+   * `issue-sales-document` and `dispatch-shipment` — now fires from a packer's
+   * last scan. That is what T5 means: *the order got packed*, and the bench is
+   * the surface on which that physically happens. The alternative, a bench pack
+   * that does not fire the trigger a manual tick does, would make the automation
+   * an operator armed depend on which surface the pack was recorded from. The
+   * firing is once per order, not once per parcel, because `isFirstPack` gates
+   * it — and a reopen followed by a repack fires nothing further, since the
+   * reopen does not clear `order_records.packedAt`.
+   *
+   * **It fires INLINE, on the packer's request.** `emitPackedTrigger` is awaited
+   * inside `markPacked`, so the last scan of a box can wait on whatever a rule
+   * dispatches — including issuing a document or buying a label. It cannot FAIL
+   * the scan (that emit swallows its own errors), but it can slow it. Awaited
+   * rather than fired-and-forgotten deliberately: the order-grain fact must be
+   * durable by the time the response says the parcel closed, or any surface
+   * reading the order straight afterwards races the write that caused it. If
+   * bench latency ever becomes the complaint, the fix is to make the automation
+   * emission asynchronous at ITS layer, where every caller benefits, rather than
+   * to detach this one call site.
+   *
+   * ## Best-effort, and never able to fail the pack
+   *
+   * The close COMMITTED inside the fulfilment context's own transaction before
+   * this runs, and two contexts cannot share one — so there is nothing to roll
+   * back and the choice is only whether to fail the response. It must not.
+   * This is a synchronous request rather than a job, so unlike #2348's release
+   * there is no retry ladder to re-drive it; propagating would report a failed
+   * pack for a box the packer physically finished, and their retry carries the
+   * same gesture id, refuses `parcel-closed`, and never re-attempts this write.
+   *
+   * The exact precedent is one layer down, in the method being called:
+   * `emitPackedTrigger` swallows for the same reason and in the same words —
+   * *"never able to fail the pack"*.
+   *
+   * **Accepted cost, stated rather than implied**: a crash between the committed
+   * close and this write loses the order-grain fact permanently. Nothing
+   * reconciles it — there is no sweep over
+   * `parcelClosedAt IS NOT NULL AND packedAt IS NULL` — and the remedy is
+   * #2287's manual toggle. That is the safe direction; the alternative is a 500
+   * on a real pack.
+   *
+   * ## A missing order row is a STATE, not a failure
+   *
+   * A work object carries its order id by value, so it can legitimately name an
+   * order OL never ingested — and `markPacked` raises
+   * `OrderRecordNotFoundException` for it. That is logged at `debug`, not
+   * `error`: there is no row to have written, and the remedy the error arm
+   * names (the manual toggle on `/orders`) does not exist for such an order, so
+   * an alertable line would point at an action nobody can take. An error that
+   * fires on a healthy install is how people learn to ignore the log.
+   */
+  private async recordOrderPacked(orderId: string, packedByUserId: string): Promise<void> {
+    try {
+      await this.orders.markPacked(orderId, packedByUserId);
+    } catch (error) {
+      if (error instanceof OrderRecordNotFoundException) {
+        this.logger.debug(
+          `bench_order_packed_no_order_record order=${orderId}: parcel closed and attributed; ` +
+            'the order it names was never ingested, so there is no order-grain fact to write.'
+        );
+        return;
+      }
+      this.logger.error(
+        `bench_order_packed_write_failed order=${orderId}: the parcel is closed and attributed, ` +
+          'but the order-grain packed fact was not written. Remedy: the manual packed toggle on /orders.',
+        (error as Error).stack
+      );
+    }
   }
 
   /**
