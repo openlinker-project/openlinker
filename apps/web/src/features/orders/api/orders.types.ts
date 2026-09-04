@@ -151,6 +151,101 @@ export const SalesDocumentUnresolvedReasonValues = [
 export type SalesDocumentUnresolvedReasonValue =
   (typeof SalesDocumentUnresolvedReasonValues)[number];
 
+// ── Sales-document view (#2516/#2552, ADR-065) ──────────────────────────────
+// Hand-mirrored from `SalesDocumentView` (`@openlinker/core/sales-documents`)
+// and `SalesDocumentViewResponseDto`
+// (`apps/api/src/orders/http/dto/sales-document-view-response.dto.ts`), which
+// `GET /orders` batches onto every row (`OrderRecord.salesDocument` below) so
+// the money-cluster document line and its popover never issue a second
+// request. This is the SAME projection the order-detail panel and the
+// settings page's per-market evidence read (ADR-065) — one shape, three
+// renderers.
+//
+// Two rules travel from the DTO's own doc comment; a surface that forgets
+// them repeats a defect this epic has already shipped fixes for:
+//
+// 1. A fiscal receipt has no authority axis — `SalesDocumentReceiptView`
+//    carries no regulatory field at all, a discriminated union on `kind`
+//    rather than an optional field, so the missing axis is unrepresentable.
+// 2. `blockReason` / `unresolvedReason` / `blockDetail` are the PERSISTED
+//    reasons, verbatim — a surface renders the stored value through
+//    `resolveSalesDocumentReasonCopy` or renders nothing.
+
+/** Identity fields a surface renders for a document, whichever kind it is. */
+export interface SalesDocumentIdentity {
+  readonly recordId: string;
+  readonly connectionId: string;
+  /** `null` when the record exists but no provider has resolved onto it yet. */
+  readonly providerType: string | null;
+  /** `null` means no number has been assigned yet — never "this regime has none". */
+  readonly documentNumber: string | null;
+  readonly createdAt: string;
+  /** `null` while the document is still pending, in flight, or failed. */
+  readonly completedAt: string | null;
+  /** `null` means no in-flight claim is held. */
+  readonly inFlightUntil: string | null;
+}
+
+/** An invoice, on both its axes: issuance (`status`) and clearance (`regulatoryStatus`). */
+export interface SalesDocumentInvoiceView {
+  readonly kind: 'invoice';
+  readonly documentType: string;
+  readonly status: 'pending' | 'issued' | 'issuing' | 'failed';
+  readonly failureMode: 'rejected' | 'in-doubt' | null;
+  readonly failureCode: string | null;
+  readonly failureReason: string | null;
+  readonly regulatoryStatus:
+    | 'not-applicable'
+    | 'pending-submission'
+    | 'submitted'
+    | 'cleared'
+    | 'accepted'
+    | 'rejected';
+  readonly clearanceReference: string | null;
+  readonly identity: SalesDocumentIdentity;
+}
+
+/** A fiscal receipt, on its ONE axis — no clearance/authority field exists (ADR-042). */
+export interface SalesDocumentReceiptView {
+  readonly kind: 'fiscal-receipt';
+  readonly status: 'pending' | 'registering' | 'registered' | 'failed';
+  readonly failureMode: 'rejected' | 'in-doubt' | null;
+  readonly failureReason: string | null;
+  /** `0` on a `registered` row is a SUCCESS — a pure reporting regime returns no artefact. */
+  readonly artefactCount: number;
+  readonly identity: SalesDocumentIdentity;
+}
+
+export type SalesDocumentRecordView = SalesDocumentInvoiceView | SalesDocumentReceiptView;
+
+/** A record held for the same order on ANOTHER connection — reported, never hidden. */
+export interface SalesDocumentOtherRecord {
+  readonly recordId: string;
+  readonly connectionId: string;
+  readonly kind: string;
+  readonly blocksFurtherIssuance: boolean;
+}
+
+/** Everything a surface needs about one order's sales document (ADR-065). */
+export interface SalesDocumentView {
+  readonly orderId: string;
+  /**
+   * Open-world (unlike `document.kind`, which is closed on the two kinds this
+   * projection knows how to render). `null` means routing has NOT decided —
+   * never a fallback guess from the order's own country.
+   */
+  readonly documentKind: string | null;
+  /** `null` when none exists yet — an ordinary state alongside a non-null `documentKind`. */
+  readonly document: SalesDocumentRecordView | null;
+  /** The PERSISTED gate reason, verbatim. `null` means no block on the gate's last run. */
+  readonly blockReason: SalesDocumentGateBlockReasonValue | null;
+  /** Non-null only alongside `blockReason === 'unresolved-routing'` (ADR-041 §107). */
+  readonly unresolvedReason: SalesDocumentUnresolvedReasonValue | null;
+  /** Free-text elaboration the gate stored; never parsed, only displayed. */
+  readonly blockDetail: string | null;
+  readonly otherRecords: readonly SalesDocumentOtherRecord[];
+}
+
 // ── Mapping-aware delivery (epic #1776) ─────────────────────────────────────
 // Hand-mirrored from the BE order response DTOs (`OrderDeliveryResolutionDto`
 // #1791, `OrderDeliveryRiderDto` #1792) and the `@openlinker/core/mappings`
@@ -388,6 +483,13 @@ export interface OrderRecord {
   /** When the current hold ended (ISO 8601), cleared when a new one starts. */
   salesDocumentBlockReleasedAt?: string | null;
   /**
+   * The batched per-order sales-document projection (#2516/#2552, ADR-065).
+   * Absent when the row predates this field or the batch read found nothing
+   * to attach — a surface must render the same "no document" state it already
+   * does for `documentKind: null`, never treat absence as an error.
+   */
+  salesDocument?: SalesDocumentView;
+  /**
    * Inert states this order carries (#2352/#2356) — what OpenLinker STOPPED
    * deciding about it.
    *
@@ -573,6 +675,15 @@ export interface OrderHealthSummary {
    * carries two SLA badges.
    */
   salesDocumentBlockedOldestAt?: string | null;
+  /**
+   * Orders whose sales document is issued ONLY on request (#2554, the
+   * `trigger-model-manual` gate reason) — reported separately, and neutrally,
+   * from `salesDocumentBlocked`. Manual is the default trigger model, so on a
+   * manual install every uninvoiced order carries it; counting it as blocked
+   * would put a large red number on a healthy install (ADR-041 §54). Optional
+   * for graceful degradation against an older API.
+   */
+  salesDocumentIssuedOnRequest?: number;
   /**
    * Orders carrying at least one COUNTED OMS inert state (#2353). A third
    * orthogonal axis: never inside `salesDocumentBlocked` or `taxRateConflict`,

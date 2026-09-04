@@ -301,6 +301,7 @@ Light theme tokens (canonical source: `apps/web/src/index.css :root`):
 - semantic colors appear mainly in badges, icons, row markers, and compact highlights
 - large panels should not use semantic fills unless the whole panel is an alert or incident state
 - neutral borders should dominate the interface
+- **color marks the exception, not the normal case (#2507)** — a finished or expected state is plain ink; only a state someone has to act on is tinted. This is a *different* rule from the one below, and both apply: colour-alone is about whether a colour-blind operator can read the state, this one is about whether colour still means anything. A sales-document column that tinted every row green on a healthy list was the case that produced it — colour appearing everywhere carries no information, so `Registered` and `Issued` render in `--text-secondary` with a small `--status-success` tick, in-flight states get a muted glyph plus one pulsing `--status-info` dot, and only `Unconfirmed`, `Rejected` and `No routing` take a status hue. The tick-versus-dot-versus-nothing distinction is what keeps done, working and idle separable without colour at all.
 - **color is never the only signal** — pair tone with text, icon, or dot. `StatusBadge` enforces this by combining tone + leading dot + mono-caps label.
 
 ## Dark Mode
@@ -748,6 +749,18 @@ A table carrying one of these cells declares its row shape so the loading state 
 Height is content-derived like the identity-cell carve-outs above — question line, answer line, why-line, an optional extras line, and a badge — and the density posture is unchanged: every line is a fact an operator scans for. **This entry is for the who-decides row specifically**; another page wanting a non-`DataTable` list needs its own entry rather than a silent reuse.
 
 **Selection-list rows are governed separately.** Multi-select picker rows inside a modal (e.g. the offer-creation product picker, `.offer-product-picker__prow-main` / `.offer-product-picker__vrow`, #1754/#1779) are *not* `DataTable` rows and are intentionally taller than 36 px: the whole-product checkbox carries a ≥ 44 px tap target (touch parity with the full-width variant-row hit area) and each row pairs a thumbnail with two text lines. They inherit the density posture but pick their own height from content + the tap-target floor rather than the table default; don't force them onto the `36 px` row.
+
+**Documented carve-out — the sales-document cell (#2507).** The `/orders` money cluster (total, payment, document, created) gains one line for the sales document, replacing the `+ Issue invoice` button that sat in the payment line. That line is **one line at every state**: a 16 px kind glyph, one word for the state, an optional tick or live dot, and an optional duplicate count. Everything else — document number, provider, the authority answer, the persisted held reason, a duplicate warning, and any action — lives in a popover opened from the cell. This carve-out exists because the first design stacked all of it in the cell and produced a five-line panel inside a table column.
+
+Three mechanics are load-bearing rather than incidental:
+
+- **The word is the most ACTIONABLE fact, not the document status.** An invoice the authority rejected reads `KSeF rejected`, not `Issued` beside a red dot. A dot alone would make colour the only carrier of the thing that needs work, which the rule above forbids.
+- **The popover must escape the table's scroll container.** `.data-table__container` sets `overflow-x: auto`, which also computes `overflow-y`, so an absolutely positioned panel opened from a cell is clipped by it — reproduced while building the mockup, where the panel was cut off at the table edge. Render it through a portal, or with fixed coordinates from the trigger rect clamped to the viewport, and close it on scroll and resize.
+- **No pill for the document.** The row already carries `Synced`, a shipment badge and `Paid`. A fourth and fifth pill is a rash, so the document is a glyph plus a coloured word — which is also why the colour rule above had to be written down.
+
+Three primitives support it and belong in `shared/ui`: `DocumentKindGlyph` (a distinct silhouette per kind — a folded page for an invoice, a till slip for a receipt — carrying its own accessible name, since kind is an entity axis and must never take a status hue), `DocumentHeadline` (the same glyph-and-word treatment at reading size, used by the order-detail panel so the panel and the list describe one document identically), and `DocumentLifecycle` (a short horizontal trail for an invoice's two persisted axes). The trail renders **one step per stored state and no more** — an earlier attempt narrated three fiscal-printer phases OpenLinker cannot observe, and a fiscal receipt has no second axis so it gets no trail rather than a padded one.
+
+Gap this carve-out depended on, now closed: `DataTableSkeleton` used to render fixed 36 px rows, so a table using this cell grew on load - measured at ~61 px skeleton against 65-100 px loaded. Tracked as #2152 and closed by #2538, which made the 36 px a floor and had the skeleton read `DataTableColumn.lines`; a table adopting this cell must declare `lines` on the column that sets the height, or the growth comes back.
 
 Registered selection-row surfaces:
 

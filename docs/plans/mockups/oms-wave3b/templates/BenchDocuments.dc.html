@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<!-- @template name="Pack bench — documents and label" description="Chromeless bench surface after the box closes: print what goes in and on it, name what is missing, hold the packed-but-unlabelled state." -->
+<helmet><style>body{margin:0;background:var(--bg-canvas);overflow:hidden}a{color:var(--accent-primary);text-decoration:none}a:hover{color:var(--accent-primary-hover)}</style><script src="./ds-base.js"></script></helmet>
+<div style="height:100vh;display:grid;grid-template-rows:auto auto minmax(0,1fr) auto;font-family:var(--font-sans);background:var(--bg-canvas);color:var(--text-primary)">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:var(--space-6);padding:14px var(--space-6);background:var(--bg-shell);border-bottom:1px solid var(--border-default)">
+<div style="display:flex;align-items:center;gap:var(--space-5);min-width:0">
+<div style="display:grid;gap:2px">
+<span style="font-family:var(--font-mono);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted)">Order</span>
+<span style="font-family:var(--font-mono);font-size:26px;font-weight:600;letter-spacing:-0.02em;line-height:1.1;font-variant-numeric:tabular-nums">OL-4471</span>
+</div>
+<div style="width:1px;height:44px;background:var(--border-default)"></div>
+<div style="display:grid;gap:2px;min-width:0">
+<span style="font-family:var(--font-mono);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted)">Buyer</span>
+<span style="font-size:19px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Anna Nowak</span>
+</div>
+<div style="display:flex;align-items:center;gap:10px;padding:10px 16px;border:2px solid var(--status-info-border);background:var(--status-info-soft);border-radius:var(--radius-md)">
+<span style="font-size:20px;font-weight:700;letter-spacing:-0.01em;color:var(--status-info-strong);white-space:nowrap">Parcel 1 of 2</span>
+</div>
+</div>
+<div style="display:flex;align-items:center;gap:var(--space-4);flex:none">
+<div style="display:grid;gap:2px;text-align:right">
+<span style="font-family:var(--font-mono);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted)">Signed in at bench 3</span>
+<span style="font-size:19px;font-weight:600;letter-spacing:-0.01em">{{ packerName }}</span>
+</div>
+<div style="height:48px;width:48px;display:grid;place-items:center;border-radius:var(--radius-pill);background:var(--bg-surface-hover);border:1px solid var(--border-default);font-family:var(--font-mono);font-size:16px;font-weight:600;color:var(--text-secondary)">MK</div>
+<div style="display:grid;gap:3px;justify-items:end">
+<x-import component-from-global-scope="OpenLinkerUI.Button" hint-size="150px,44px" tone="secondary" class-name="button--lg">Switch packer</x-import>
+<span style="font-size:11px;color:var(--text-muted)">One tap, without leaving the box</span>
+</div>
+</div>
+</div>
+<div style="display:flex;align-items:center;gap:var(--space-4);padding:10px var(--space-6);background:var(--bg-surface);border-bottom:1px solid var(--border-subtle)">
+<span style="font-family:var(--font-mono);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--status-success-strong)">Box closed 14:32 · 6 of 6 units matched</span>
+<span style="font-size:14px;color:var(--text-secondary);text-wrap:pretty">Nothing below changes what is in the box. Papers only.</span>
+<span style="margin-left:auto;font-family:var(--font-mono);font-size:12px;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-muted);white-space:nowrap">Printer: bench 3 · A4 + label roll</span>
+</div>
+<div style="overflow:auto;padding:var(--space-5) var(--space-6) var(--space-5)">
+<sc-if value="{{ isReady }}" hint-placeholder-val="{{ true }}">
+<div style="display:grid;gap:var(--space-5);max-width:1180px">
+<div style="display:grid;gap:6px">
+<span style="font-size:26px;font-weight:700;letter-spacing:-0.02em;line-height:1.15">Both papers are waiting to print</span>
+<span style="font-size:15px;line-height:1.6;color:var(--text-secondary);text-wrap:pretty">They were both made earlier, away from this bench. Printing them here does not create anything.</span>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-4)">
+<div style="display:grid;gap:var(--space-3);padding:var(--space-5);border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface);box-shadow:var(--shadow-soft)">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:var(--space-3)">
+<span style="display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:var(--radius-md);background:var(--status-info-soft);border:2px solid var(--status-info-border);font-size:17px;font-weight:700;letter-spacing:-0.01em;color:var(--status-info-strong);white-space:nowrap">Goes INSIDE the box</span>
+<x-import component-from-global-scope="OpenLinkerUI.StatusBadge" hint-size="140px,26px" tone="success" with-dot="{{ true }}">Ready to print</x-import>
+</div>
+<span style="font-size:21px;font-weight:600;letter-spacing:-0.01em;line-height:1.25">Invoice FV/2026/09/0412</span>
+<span style="font-family:var(--font-mono);font-size:13px;color:var(--text-secondary);font-variant-numeric:tabular-nums">Issued 1 Sept, 09:14 · PL · 1 page</span>
+<span style="font-size:14px;line-height:1.6;color:var(--text-secondary);text-wrap:pretty">Fold it once and drop it in on top of the goods, before you tape the box.</span>
+<div style="padding-top:var(--space-2)">
+<x-import component-from-global-scope="OpenLinkerUI.Button" hint-size="100%,56px" tone="secondary" class-name="button--lg button--block">Print invoice</x-import>
+</div>
+</div>
+<div style="display:grid;gap:var(--space-3);padding:var(--space-5);border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface);box-shadow:var(--shadow-soft)">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:var(--space-3)">
+<span style="display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:var(--radius-md);background:var(--bg-surface-hover);border:2px solid var(--border-strong);font-size:17px;font-weight:700;letter-spacing:-0.01em;white-space:nowrap">Goes ON the box</span>
+<x-import component-from-global-scope="OpenLinkerUI.StatusBadge" hint-size="140px,26px" tone="success" with-dot="{{ true }}">Ready to print</x-import>
+</div>
+<span style="font-size:21px;font-weight:600;letter-spacing:-0.01em;line-height:1.25">InPost label · parcel locker</span>
+<span style="font-family:var(--font-mono);font-size:13px;color:var(--text-secondary);font-variant-numeric:tabular-nums">6200 1234 5678 · fetched 14:29 · 10 × 15 cm</span>
+<span style="font-size:14px;line-height:1.6;color:var(--text-secondary);text-wrap:pretty">Stick it flat on the largest side. Cover nothing else with it.</span>
+<div style="padding-top:var(--space-2)">
+<x-import component-from-global-scope="OpenLinkerUI.Button" hint-size="100%,56px" tone="secondary" class-name="button--lg button--block">Print label</x-import>
+</div>
+</div>
+</div>
+<div style="display:grid;gap:var(--space-3);padding:var(--space-5);border:2px solid var(--accent-primary);border-radius:var(--radius-lg);background:var(--bg-surface)">
+<x-import component-from-global-scope="OpenLinkerUI.Button" hint-size="100%,72px" tone="primary" class-name="button--lg button--block">Print both — invoice inside, label on top</x-import>
+<span style="font-size:14px;line-height:1.6;color:var(--text-secondary);text-wrap:pretty">Two sheets: the A4 comes out of the paper tray, the label off the roll. Then the next parcel opens here by itself.</span>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{ isMissing }}" hint-placeholder-val="{{ false }}">
+<div style="display:grid;gap:var(--space-5);max-width:1180px">
+<div style="display:grid;gap:6px">
+<span style="font-size:26px;font-weight:700;letter-spacing:-0.02em;line-height:1.15">Carry on packing — one paper is not coming</span>
+<span style="font-size:15px;line-height:1.6;color:var(--text-secondary);text-wrap:pretty">This is not something you can fix at the bench, and it does not stop the box going out.</span>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-4)">
+<div style="display:grid;gap:var(--space-3);padding:var(--space-5);border:2px solid var(--status-warning-border);border-radius:var(--radius-lg);background:var(--status-warning-soft)">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:var(--space-3)">
+<span style="display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:var(--radius-md);background:var(--bg-surface);border:2px solid var(--status-warning-border);font-size:17px;font-weight:700;letter-spacing:-0.01em;color:var(--status-warning-strong);white-space:nowrap">Would go INSIDE the box</span>
+<x-import component-from-global-scope="OpenLinkerUI.StatusBadge" hint-size="150px,26px" tone="warning" with-dot="{{ true }}">Nothing to print</x-import>
+</div>
+<span style="font-size:22px;font-weight:700;letter-spacing:-0.01em;line-height:1.25;color:var(--status-warning-strong);text-wrap:pretty">No invoice issued — payment is on hold</span>
+<span style="font-size:15px;line-height:1.6;color:var(--text-secondary);text-wrap:pretty">The invoice for this order was never made, so there is nothing to put in the box. Send it without one. The office will post it to the buyer afterwards.</span>
+<span style="font-family:var(--font-mono);font-size:12px;letter-spacing:0.04em;color:var(--text-muted)">Checked 14:32 · nothing on this order · Allegro</span>
+</div>
+<div style="display:grid;gap:var(--space-3);padding:var(--space-5);border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface);box-shadow:var(--shadow-soft)">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:var(--space-3)">
+<span style="display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:var(--radius-md);background:var(--bg-surface-hover);border:2px solid var(--border-strong);font-size:17px;font-weight:700;letter-spacing:-0.01em;white-space:nowrap">Goes ON the box</span>
+<x-import component-from-global-scope="OpenLinkerUI.StatusBadge" hint-size="140px,26px" tone="success" with-dot="{{ true }}">Ready to print</x-import>
+</div>
+<span style="font-size:21px;font-weight:600;letter-spacing:-0.01em;line-height:1.25">InPost label · parcel locker</span>
+<span style="font-family:var(--font-mono);font-size:13px;color:var(--text-secondary);font-variant-numeric:tabular-nums">6200 1234 5678 · fetched 14:29 · 10 × 15 cm</span>
+<span style="font-size:14px;line-height:1.6;color:var(--text-secondary);text-wrap:pretty">Stick it flat on the largest side. Cover nothing else with it.</span>
+<div style="padding-top:var(--space-2)">
+<x-import component-from-global-scope="OpenLinkerUI.Button" hint-size="100%,64px" tone="primary" class-name="button--lg button--block">Print label and send the box</x-import>
+</div>
+</div>
+</div>
+<div style="display:flex;align-items:center;gap:var(--space-4);padding:var(--space-4) var(--space-5);border:1px solid var(--border-default);border-left:4px solid var(--status-warning);border-radius:var(--radius-md);background:var(--bg-surface)">
+<span style="font-size:15px;line-height:1.6;color:var(--text-secondary);text-wrap:pretty"><strong style="color:var(--text-primary)">This one is flagged for the office.</strong> It is already on their list of orders that went out without a document — you do not need to tell anyone or write it down.</span>
+<div style="margin-left:auto;flex:none">
+<x-import component-from-global-scope="OpenLinkerUI.StatusBadge" hint-size="180px,26px" tone="neutral">Flagged · Sales documents</x-import>
+</div>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{ isUnlabelled }}" hint-placeholder-val="{{ false }}">
+<div style="display:grid;gap:var(--space-5);max-width:1180px">
+<div style="display:grid;gap:var(--space-4);padding:var(--space-6);border:3px solid var(--status-error);border-radius:var(--radius-lg);background:var(--status-error-soft)">
+<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-5)">
+<div style="display:grid;gap:10px;min-width:0">
+<span style="font-family:var(--font-mono);font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:var(--status-error-strong)">This box cannot go out</span>
+<span style="font-size:32px;font-weight:700;letter-spacing:-0.02em;line-height:1.12;color:var(--status-error-strong);text-wrap:pretty">Packed, but there is no label</span>
+<span style="font-size:16px;line-height:1.6;color:var(--text-secondary);max-width:720px;text-wrap:pretty">The box is finished and correct — all 6 units matched and it is closed. The carrier would not give us a label for it, so there is nothing to stick on. Do not open it and do not check it again.</span>
+</div>
+<div style="flex:none">
+<x-import component-from-global-scope="OpenLinkerUI.StatusBadge" hint-size="210px,30px" tone="error" with-dot="{{ true }}">Packed · no label</x-import>
+</div>
+</div>
+<div style="display:grid;gap:6px;padding:var(--space-4);border-radius:var(--radius-md);background:var(--bg-surface);border:1px solid var(--status-error-border)">
+<span style="font-size:15px;font-weight:600;color:var(--text-primary)">What the carrier said</span>
+<span style="font-family:var(--font-mono);font-size:13px;line-height:1.55;color:var(--text-secondary);text-wrap:pretty">InPost · 14:31 · tried 3 times · “Parcel locker 4471 is full — pick another point.”</span>
+<span style="font-size:14px;line-height:1.6;color:var(--text-secondary);text-wrap:pretty">Nothing about the box is wrong. Somebody needs to choose a different locker or a courier, and then the label will print.</span>
+</div>
+<div style="display:grid;grid-template-columns:auto auto 1fr;align-items:center;gap:var(--space-4)">
+<x-import component-from-global-scope="OpenLinkerUI.Button" hint-size="240px,64px" tone="primary" class-name="button--lg">Try the label again</x-import>
+<x-import component-from-global-scope="OpenLinkerUI.Button" hint-size="240px,64px" tone="secondary" class-name="button--lg">Put the box on the problem shelf</x-import>
+<span style="font-size:14px;line-height:1.55;color:var(--text-secondary);text-wrap:pretty">Trying again does not reopen the box and does not ask you to scan anything twice.</span>
+</div>
+</div>
+<div style="display:grid;grid-template-columns:1fr auto;align-items:center;gap:var(--space-5);padding:var(--space-4) var(--space-5);border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface)">
+<div style="display:grid;gap:6px">
+<span style="font-size:16px;font-weight:600;letter-spacing:-0.01em">Dispatch can see this box too</span>
+<span style="font-size:14px;line-height:1.6;color:var(--text-secondary);text-wrap:pretty">It sits in <strong style="color:var(--text-primary)">Dispatch → Waiting for a label</strong> until a label prints, so it does not depend on anyone remembering this bench. If you leave now, the box stays on that list.</span>
+</div>
+<x-import component-from-global-scope="OpenLinkerUI.StatusBadge" hint-size="230px,26px" tone="neutral">1 box waiting here · 2 in dispatch</x-import>
+</div>
+<div style="display:flex;align-items:center;gap:var(--space-4);padding:var(--space-4) var(--space-5);border:1px dashed var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface-muted)">
+<span style="font-size:15px;line-height:1.6;color:var(--text-secondary);text-wrap:pretty">The invoice is fine and can go in the box now, so it is not missing later.</span>
+<div style="margin-left:auto;flex:none">
+<x-import component-from-global-scope="OpenLinkerUI.Button" hint-size="200px,52px" tone="secondary" class-name="button--lg">Print invoice for inside</x-import>
+</div>
+</div>
+</div>
+</sc-if>
+</div>
+<div style="display:flex;align-items:center;justify-content:space-between;gap:var(--space-5);padding:14px var(--space-6);background:var(--bg-shell);border-top:1px solid var(--border-default)">
+<span style="font-size:14px;line-height:1.5;color:var(--text-secondary);text-wrap:pretty">{{ footerLine }}</span>
+<div style="flex:none">
+<x-import component-from-global-scope="OpenLinkerUI.Button" hint-size="180px,44px" tone="ghost" class-name="button--lg">Next parcel</x-import>
+</div>
+</div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:800},&quot;variant&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;ready&quot;,&quot;missing&quot;,&quot;unlabelled&quot;],&quot;default&quot;:&quot;ready&quot;,&quot;tsType&quot;:&quot;'ready' | 'missing' | 'unlabelled'&quot;,&quot;section&quot;:&quot;Bench state&quot;},&quot;packerName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Marta Kowalczyk&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Bench state&quot;}}">
+const FOOTERS = {
+  ready: 'Both papers were made before the tote got here. The bench only prints them.',
+  missing: 'The bench never makes invoices, so a missing one is never something to retry here.',
+  unlabelled: 'The box stays counted as packed. Only the label is outstanding.',
+};
+
+class Component extends DCLogic {
+  renderVals() {
+    const variant = this.props.variant ?? 'ready';
+    return {
+      isReady: variant === 'ready',
+      isMissing: variant === 'missing',
+      isUnlabelled: variant === 'unlabelled',
+      footerLine: FOOTERS[variant] ?? FOOTERS.ready,
+      packerName: this.props.packerName ?? 'Marta Kowalczyk',
+    };
+  }
+}
+
+</script>
+</body>
+</html>
