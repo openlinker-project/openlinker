@@ -57,6 +57,16 @@ const REPO_ROOT = resolve(__dirname, '..');
 // parser).
 const WORKSPACE_PARENTS = ['apps', 'libs', 'libs/integrations'];
 
+// Not a workspace package (pnpm-workspace.yaml never lists it, and it has no
+// sibling under any WORKSPACE_PARENTS glob) — but its jest.config.mjs is the
+// template every `scripts/create-adapter.mjs` run copies into
+// `libs/integrations/<name>/`, where the guard above WOULD check it. Checked
+// here explicitly so a rename of jest.esm-deps.cjs's exports fails this
+// invariant instead of only failing silently on the next scaffold run (see
+// PR #2812 review, 2026-09-04: "the same drift class this PR's guard exists
+// to close, one level out").
+const EXTRA_PACKAGE_DIRS = ['scripts/create-adapter-templates'];
+
 const JEST_CONFIG_NAMES = new Set(['jest.config.js', 'jest.config.mjs', 'jest.config.cjs']);
 const SKIP_DIRS = new Set(['node_modules', 'dist', '.git']);
 
@@ -85,6 +95,9 @@ function discoverAllPackageDirs() {
   const dirs = new Set();
   for (const parent of WORKSPACE_PARENTS) {
     for (const dir of discoverPackageDirs(parent)) dirs.add(dir);
+  }
+  for (const dir of EXTRA_PACKAGE_DIRS) {
+    if (statSync(join(REPO_ROOT, dir, 'package.json'), { throwIfNoEntry: false })) dirs.add(dir);
   }
   return [...dirs].sort();
 }
