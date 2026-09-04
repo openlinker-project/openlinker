@@ -43,6 +43,16 @@ export interface PrestashopQueryFilters {
   updatedAfter?: string;
 
   /**
+   * `id` lower bound, exclusive: only rows with `id > idAfter`.
+   *
+   * The fallback pagination key for a resource whose `date_upd` is not on the
+   * shop's own filterable-field list (#2877, `orders`'s code-38 refusal) - `id`
+   * is always accepted, so a shop that refuses `date_upd` can still be paged
+   * incrementally by resuming after the highest `id` already read.
+   */
+  idAfter?: number;
+
+  /**
    * Status filters
    */
   status?: string | string[];
@@ -181,6 +191,11 @@ export class PrestashopQueryBuilder {
     // Updated since filter
     if (filters?.updatedAfter) {
       params.push(`filter[date_upd]=>[${filters.updatedAfter}]`);
+    }
+
+    // Id lower-bound filter (fallback pagination key, #2877)
+    if (filters?.idAfter !== undefined) {
+      params.push(`filter[id]=>[${filters.idAfter}]`);
     }
 
     // Result ordering

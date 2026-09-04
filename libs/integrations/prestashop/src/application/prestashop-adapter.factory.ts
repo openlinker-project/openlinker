@@ -41,6 +41,7 @@ import { PrestashopCurrencyResolver } from '../infrastructure/provisioners/prest
 import { PrestashopPackResolver } from '../infrastructure/provisioners/prestashop-pack.resolver';
 import { PrestashopShopCurrencyResolver } from '../infrastructure/provisioners/prestashop-shop-currency.resolver';
 import { PrestashopOrderCurrencyResolver } from '../infrastructure/provisioners/prestashop-order-currency.resolver';
+import { PrestashopOrderFeedCapabilityCache } from '../infrastructure/provisioners/prestashop-order-feed-capability.cache';
 import { PrestashopTaxRateResolver } from '../infrastructure/provisioners/prestashop-tax-rate.resolver';
 import { PrestashopAttributeResolver } from '../infrastructure/provisioners/prestashop-attribute.resolver';
 import { PrestashopFeatureResolver } from '../infrastructure/provisioners/prestashop-feature.resolver';
@@ -97,6 +98,12 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
   private readonly orderCurrencyResolver = new PrestashopOrderCurrencyResolver(
     this.shopCurrencyResolver
   );
+
+  // Process-singleton for the same reason as the caches above: it remembers,
+  // per connection, whether the shop refuses `date_upd` as an `orders`
+  // sort/filter field (#2877), and a per-adapter cache would never hit since
+  // the order-source adapter is rebuilt on every capability resolution.
+  private readonly orderFeedCapabilityCache = new PrestashopOrderFeedCapabilityCache();
 
   // Last shop identity seen per connection id, so a repointed connection can be
   // detected. See `dropCachesOnShopIdentityChange` for why this is the
@@ -199,7 +206,8 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       httpClient,
       orderMapper,
       connection,
-      this.orderCurrencyResolver
+      this.orderCurrencyResolver,
+      this.orderFeedCapabilityCache
     );
 
     // Create orderProcessorManager only if customer provisioning dependencies
@@ -326,6 +334,11 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
     // Pack ids are shop-scoped product ids, so the previous shop's set would
     // classify unrelated products of the new shop as packs.
     this.packResolver.clearCache(connectionId);
+    // date_upd sort/filter refusal (#2877) is a fact about the shop, not the
+    // connection row - a repointed connection must not stay stuck in the
+    // narrowed id-only mode just because the shop it used to point at
+    // refused it.
+    this.orderFeedCapabilityCache.clearCache(connectionId);
   }
 
   /**
