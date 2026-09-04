@@ -44,6 +44,9 @@ const buildWork = (overrides: Partial<FulfillmentWork> = {}): FulfillmentWork =>
   expeditedAt: null,
   acceptedAt: null,
   externalWorkId: null,
+  parcelClosedAt: null,
+  packedByUserId: null,
+  packedByService: null,
   lines: [
     {
       id: 'line-1',

@@ -130,6 +130,33 @@ const PACKER_GRANTED_ROUTES: readonly string[] = [
   // label the same session is allowed to print (`ShipmentController.downloadLabel`
   // above), and nothing else from the order.
   'BenchWorkController.listBenchWork',
+
+  // #2418, Surface D. ONE parcel, reached through the work rather than through
+  // `/orders` — which #2413 closed because `orderSnapshot` carries the buyer's
+  // name, email and BOTH un-redacted addresses under the default
+  // `OL_STORE_PII=true`, a superset of the customer register. This projection is
+  // an explicit allowlist: a reference, a buyer name, the lines' catalogue
+  // identity and counts. No address, no email, no phone, no total, no price. A
+  // parcel routed to any other executor answers 404.
+  'BenchParcelController.getParcel',
+
+  // #2418, Surface E. The two writes a bench makes. Both are scoped to a parcel
+  // this bench may pack — the same eligibility rule the list applies — and
+  // neither can reach an order, a customer or a document. There is deliberately
+  // NO close route: the parcel closes on the last verification (D18).
+  'BenchParcelController.verifyUnit',
+  'BenchParcelController.reopenParcel',
+
+  // #2418, Surface F. The paper for THIS parcel, and the boxes that cannot go
+  // out. `getDocuments` and `downloadInvoice` take a WORK id and no invoice id,
+  // so neither can be walked into the invoicing register #2413 closed; the
+  // carrier's own prose stays gated on `shipments:write` inside them, exactly as
+  // `ShipmentResponseDto` gates it. `listUnlabelled` is read by the bench AND by
+  // whoever runs dispatch, from one route so the two cannot disagree about a box
+  // on a floor.
+  'BenchDocumentsController.getDocuments',
+  'BenchDocumentsController.downloadInvoice',
+  'BenchDocumentsController.listUnlabelled',
 ];
 
 function walk(dir: string, out: string[] = []): string[] {

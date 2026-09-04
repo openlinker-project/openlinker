@@ -176,6 +176,13 @@ export { FulfillmentWorkVersionConflictError } from './domain/exceptions/fulfill
 export { FulfillmentWorkVersionMismatchError } from './domain/exceptions/fulfillment-work-version-mismatch.error';
 export { UnsupportedFulfillmentWorkActionError } from './domain/exceptions/unsupported-fulfillment-work-action.error';
 
+// Parcel verification at the pack bench (#2418). The SERVICE INTERFACE and its
+// vocabulary cross the barrel; `FulfillmentWorkRepositoryPort` still does not,
+// per the deny pattern. Note there is no `closeParcel` anywhere in what is
+// published, and that absence is decision D18 rather than an omission.
+export * from './domain/types/fulfillment-verification.types';
+export type { IFulfillmentVerificationService } from './application/interfaces/fulfillment-verification.service.interface';
+
 export { FulfillmentModule } from './fulfillment.module';
 
 export * from './fulfillment.tokens';

@@ -14,4 +14,11 @@
 export const benchQueryKeys = {
   all: ['bench'] as const,
   work: () => ['bench', 'work'] as const,
+  // #2418. Keyed by work id, unlike `work()`: a bench holds one open box at a
+  // time but a packer switching between two must not read the first one's lines
+  // under the second one's key — that is a verified count shown against the
+  // wrong box, which is the one thing this surface may never do.
+  parcel: (workId: string) => ['bench', 'parcel', workId] as const,
+  documents: (workId: string) => ['bench', 'documents', workId] as const,
+  unlabelled: () => ['bench', 'unlabelled'] as const,
 };

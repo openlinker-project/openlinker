@@ -19,6 +19,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { IShipmentQueryService } from '../interfaces/shipment-query.service.interface';
 import type { Shipment } from '../../domain/entities/shipment.entity';
 import { ShipmentRepositoryPort } from '../../domain/ports/shipment-repository.port';
+import type { ShipmentDirection } from '../../domain/types/shipment-direction.types';
 import type {
   PaginatedShipments,
   ShipmentFilters,
@@ -44,6 +45,29 @@ export class ShipmentQueryService implements IShipmentQueryService {
   async getActiveByOrderId(orderId: string): Promise<Shipment | null> {
     // Outbound only (#2373) — this backs the order-detail "Shipment" panel.
     return this.shipments.findActiveByOrderId(orderId, 'outbound');
+  }
+
+  /**
+   * The contract — batching, the absent-vs-empty convention and why `direction`
+   * is required — is documented once on
+   * {@link IShipmentQueryService.findByFulfillmentWorkIds}.
+   */
+  async findByFulfillmentWorkIds(
+    workIds: readonly string[],
+    direction: ShipmentDirection,
+  ): Promise<Map<string, Shipment[]>> {
+    const byWork = new Map<string, Shipment[]>();
+    const shipments = await this.shipments.findByFulfillmentWorkIds(workIds, direction);
+    for (const shipment of shipments) {
+      // Non-null by construction: the repository filtered on `IN (workIds)`, so
+      // an unlinked row cannot be in this result.
+      const workId = shipment.fulfillmentWorkId;
+      if (workId === null) continue;
+      const bucket = byWork.get(workId);
+      if (bucket === undefined) byWork.set(workId, [shipment]);
+      else bucket.push(shipment);
+    }
+    return byWork;
   }
 
   /**

@@ -36,7 +36,17 @@ export type {
 export { listPendingGestures, settleGesture } from './lib/scanner-gesture-log';
 export type { PendingGesture } from './lib/scanner-gesture-log';
 
+// #2418 — Surfaces D, E and F. ONE component: the box, its verification and
+// the paper that travels with it are only correct together. `BenchDocumentsPanel`
+// is deliberately not exported on its own — a caller rendering it beside the
+// parcel rather than inside it could show a "ready to print" label next to a box
+// that is still open, and `BenchParcelLineRow` alone would be a list of lines
+// with no surface owning the scan.
+export { BenchParcelView } from './components/bench-parcel';
+export type { BenchParcelProps } from './components/bench-parcel';
+
 export type { BenchWork, BenchWorkList as BenchWorkListData } from './api/bench-work.types';
+export type { BenchParcel, BenchParcelLine } from './api/bench-parcel.types';
 
 // Deliberately NOT exported, per the start-narrow rule: the copy module and the
 // presentation rules (read only inside this folder), the row and the two empty

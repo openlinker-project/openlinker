@@ -147,6 +147,10 @@ describe('Fulfillment Work Schema Integration', () => {
         'createdAt timestamp with time zone NOT NULL DEFAULT now()',
         'deliveryMethod text NULL',
         'dispatchRelayedAt timestamp with time zone NULL',
+        // #2416's D22 marker. MISSING from this roster until #2418 — this spec
+        // asserts an EXACT column set, so it has been failing since #2416
+        // shipped. Added with `parcelClosedAt` below rather than left red.
+        'expeditedAt timestamp with time zone NULL',
         'externalWorkId text NULL',
         'id text NOT NULL',
         'locationId text NULL',
@@ -157,6 +161,11 @@ describe('Fulfillment Work Schema Integration', () => {
         // by CHK_fulfillment_works_packed_actor, asserted below.
         'packedByService text NULL',
         'packedByUserId uuid NULL',
+        // #2418, spec D18. The completion instant #2413 deliberately withheld
+        // from this table so there would not be two — written in the SAME
+        // guarded UPDATE as `packedByUserId`, and distinct from `status`, which
+        // is the executor finishing the whole job rather than the box shutting.
+        'parcelClosedAt timestamp with time zone NULL',
         "requestStatus character varying(32) NOT NULL DEFAULT 'unsubmitted'::character varying",
         "status character varying(32) NOT NULL DEFAULT 'open'::character varying",
         'updatedAt timestamp with time zone NOT NULL DEFAULT now()',

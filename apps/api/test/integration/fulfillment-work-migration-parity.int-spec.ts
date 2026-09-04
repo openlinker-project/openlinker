@@ -61,6 +61,11 @@ const TABLES = [
   // #2399's append-only rejection ledger.
   'fulfillment_work_rejections',
   'fulfillment_progress_claims',
+  // #2418's verification ledger. It carries a PARTIAL index and a FK, which is
+  // exactly what this file's `indexdef` and CASCADE comparisons exist to catch —
+  // a predicate differing between the migration and the entity would let the
+  // count read return voided units in production and not in tests.
+  'fulfillment_work_verifications',
   'routing_decisions',
   // Waves 1b/1c/2, added under review of PR #2675: their migrations were as
   // unexercised as the fulfilment ones were before #2392 - the harness builds
@@ -434,6 +439,9 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
       'FK_fulfillment_progress_claims_work',
       'FK_fulfillment_work_lines_work',
       'FK_fulfillment_work_rejections_work',
+      // #2418's verification ledger. A verification is a PART of its work, so
+      // deleting the work must take it — the same reading as the three above.
+      'FK_fulfillment_work_verifications_work',
     ]));
     // Each FK's DELETE RULE asserted individually, because they are not one
     // rule: the fulfilment children CASCADE with their parent work, a return's
@@ -446,6 +454,7 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
       FK_fulfillment_progress_claims_work: 'ON DELETE CASCADE',
       FK_fulfillment_work_lines_work: 'ON DELETE CASCADE',
       FK_fulfillment_work_rejections_work: 'ON DELETE CASCADE',
+      FK_fulfillment_work_verifications_work: 'ON DELETE CASCADE',
       FK_return_lines_return: 'ON DELETE CASCADE',
       FK_inventory_locations_owner_connection: 'ON DELETE SET NULL',
       FK_reservations_inventory_item: 'ON DELETE RESTRICT',

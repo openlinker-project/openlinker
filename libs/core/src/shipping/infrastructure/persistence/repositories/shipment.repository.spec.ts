@@ -167,6 +167,41 @@ describe('ShipmentRepository', () => {
     });
   });
 
+  describe('findByFulfillmentWorkIds', () => {
+    it('should short-circuit an empty ask without issuing a query', async () => {
+      // `IN ()` is a Postgres syntax error rather than an empty set, so the
+      // absence of the round trip is the assertion, not a nicety.
+      const result = await repository.findByFulfillmentWorkIds([], 'outbound');
+
+      expect(result).toEqual([]);
+      expect(ormRepository.find).not.toHaveBeenCalled();
+    });
+
+    it('should filter by the requested direction as well as the work ids', async () => {
+      // Since #2373 a return label shares this table and may name the same
+      // work; an unscoped read would let it answer "this parcel shipped".
+      ormRepository.find.mockResolvedValue([]);
+
+      await repository.findByFulfillmentWorkIds(['w1', 'w2'], 'outbound');
+
+      expect(ormRepository.find).toHaveBeenCalledWith({
+        where: { fulfillmentWorkId: In(['w1', 'w2']), direction: 'outbound' },
+        order: { createdAt: 'ASC' },
+      });
+    });
+
+    it('should map every matching row to a domain shipment', async () => {
+      ormRepository.find.mockResolvedValue([
+        buildOrm({ id: 'ol_shipment_1', fulfillmentWorkId: 'w1' }),
+        buildOrm({ id: 'ol_shipment_2', fulfillmentWorkId: 'w2' }),
+      ]);
+
+      const result = await repository.findByFulfillmentWorkIds(['w1', 'w2'], 'outbound');
+
+      expect(result.map((shipment) => shipment.fulfillmentWorkId)).toEqual(['w1', 'w2']);
+    });
+  });
+
   describe('findByOrderId', () => {
     it('should return an empty array when the order has no shipments', async () => {
       ormRepository.find.mockResolvedValue([]);

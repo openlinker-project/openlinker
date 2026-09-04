@@ -429,7 +429,7 @@ export function createApiClient({
     automations: createAutomationsApi(request),
     fulfillmentAuthority: createFulfillmentAuthorityApi(request),
     fulfillment: createFulfillmentApi(request),
-    bench: createBenchApi(request),
+    bench: createBenchApi(request, requestBlob),
     returns: createReturnsApi(request),
     shipments: createShipmentsApi(request, requestBlob),
     syncJobs: createSyncJobsApi(request),

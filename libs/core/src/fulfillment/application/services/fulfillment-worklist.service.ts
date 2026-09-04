@@ -318,6 +318,8 @@ export class FulfillmentWorklistService implements IFulfillmentWorklistService {
       acceptedAt: work.acceptedAt,
       cancelledAt: work.cancelledAt,
       expeditedAt: work.expeditedAt,
+      parcelClosedAt: work.parcelClosedAt,
+      packedByUserId: work.packedByUserId,
       createdAt: work.createdAt,
       updatedAt: work.updatedAt,
       lines: work.lines.map((line) => ({

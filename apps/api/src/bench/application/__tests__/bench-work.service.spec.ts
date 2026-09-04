@@ -16,6 +16,7 @@ import type { IOrderRecordService, OrderRecord } from '@openlinker/core/orders';
 import { OMS_ADAPTER_KEY } from '@openlinker/oms';
 
 import type { IConnectionService } from '../../../integrations/application/interfaces/connection.service.interface';
+import { BenchExecutorResolver } from '../services/bench-executor.resolver';
 import { BenchWorkService } from '../services/bench-work.service';
 
 const OMS_CONNECTION = {
@@ -122,9 +123,13 @@ function harness(options: {
       .mockResolvedValue({ adapterKey: options.adapterKey ?? OMS_ADAPTER_KEY }),
   } as unknown as IIntegrationsService;
 
+  // The executor resolution moved out of this service in #2418, so that story
+  // D2's refusal can apply the SAME rule. It is constructed here rather than
+  // stubbed: the rules it carries (active, capability enabled, registry-resolved
+  // adapter key) are what these cases exercise, and a stub would assert nothing
+  // about them.
   const service = new BenchWorkService(
-    connections,
-    integrations,
+    new BenchExecutorResolver(connections, integrations),
     { list, get: jest.fn(), applyAction: jest.fn(), listSiblingWorkIds: siblings } as never,
     { findByIds } as unknown as IOrderRecordService
   );
@@ -399,10 +404,12 @@ describe('BenchWorkService (#2416)', () => {
         .mockResolvedValue({ works: overlapping, total: 101, limit: 100, offset: 100 });
 
       const service = new BenchWorkService(
-        { list: jest.fn().mockResolvedValue([connection()]) } as unknown as IConnectionService,
-        {
-          resolveAdapterMetadata: jest.fn().mockResolvedValue({ adapterKey: OMS_ADAPTER_KEY }),
-        } as unknown as IIntegrationsService,
+        new BenchExecutorResolver(
+          { list: jest.fn().mockResolvedValue([connection()]) } as unknown as IConnectionService,
+          {
+            resolveAdapterMetadata: jest.fn().mockResolvedValue({ adapterKey: OMS_ADAPTER_KEY }),
+          } as unknown as IIntegrationsService
+        ),
         {
           list,
           get: jest.fn(),

@@ -41,10 +41,12 @@ import {
 // an anomaly, and `<>` would refuse every INSERT the router makes. What the XOR
 // buys is preserved exactly: "a 3PL packed this" and "a human packed it" can
 // never be the same value. Both-NULL stays ambiguous between "not packed" and
-// "packed, unattributed" — `status` distinguishes them, and no `packedAt` is
-// added here because that would be a second completion instant competing with
-// the phase model #2418 owns. Declared under the SAME NAME as the migration,
-// per this file's own naming discipline.
+// "packed, unattributed" — `parcelClosedAt` below distinguishes them. #2413
+// wrote here that no `packedAt` was added "because that would be a second
+// completion instant competing with the model #2418 owns"; #2418 has since
+// landed that model, and `parcelClosedAt` IS its instant — one completion
+// instant on this table, not two. Declared under the SAME NAME as the
+// migration, per this file's own naming discipline.
 @Check(
   'CHK_fulfillment_works_packed_actor',
   'NOT ("packedByUserId" IS NOT NULL AND "packedByService" IS NOT NULL)'
@@ -278,7 +280,8 @@ export class FulfillmentWorkOrmEntity {
    * a different fact — an operator ticking an order packed by hand — and
    * neither is computed from the other.
    *
-   * Written by #2418, not here.
+   * Written by #2418's `claimParcelClose`, in the same guarded UPDATE as
+   * `parcelClosedAt` below — never on its own, so the pair cannot disagree.
    */
   @Column({ type: 'uuid', nullable: true })
   packedByUserId!: string | null;
@@ -290,6 +293,29 @@ export class FulfillmentWorkOrmEntity {
    */
   @Column({ type: 'text', nullable: true })
   packedByService!: string | null;
+
+  /**
+   * When the last verification shut the box at the pack bench (#2418, spec D18),
+   * or `null` while it is open.
+   *
+   * **The parcel closes on the last verification, with no confirmation step**,
+   * so this is written as a CONSEQUENCE of a verification and never by a commit
+   * control — there is none anywhere on that surface. `claimParcelClose` writes
+   * it under `WHERE "parcelClosedAt" IS NULL`, which is the at-most-once claim
+   * that keeps `packedByUserId` unambiguous when two completing verifications
+   * race; `reopenParcel` clears it under the mirror guard (E6/D19).
+   *
+   * **Distinct from `status = 'closed'`**, which is the executor finishing the
+   * whole job. A packed parcel still has to be labelled and leave, so packing is
+   * a part of that job rather than the end of it, and conflating the two would
+   * make a box that cannot ship read as complete.
+   *
+   * No index: the one predicate that reads it is the bench's unlabelled-parcel
+   * list, which is already narrowed to one executor's accepted work — an index
+   * nothing else reads is cost on every write to this table.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  parcelClosedAt!: Date | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;

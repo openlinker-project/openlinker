@@ -77,9 +77,14 @@ export interface UseScannerInputResult {
   /**
    * Forget a gesture once it has been accounted for.
    *
-   * Exposed for #2420, which owns sending a gesture and therefore owns knowing
-   * when it is settled. Nothing in this slice calls it; the log is bounded so
-   * that is safe rather than merely tolerable.
+   * Exposed for the surface that SENDS a gesture, which is therefore the one
+   * that knows when it is settled. #2418 is the first such sender — its verify
+   * mutation settles on any server answer, and never on a network failure,
+   * which is the one case where the same id may legitimately go out again.
+   *
+   * It calls `settleGesture` directly rather than through this handle, because
+   * a mutation is not a component and holds no hook. Both routes are the same
+   * function; this one exists for a consumer that already has the hook.
    */
   readonly settle: (gestureId: string) => void;
 }

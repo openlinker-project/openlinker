@@ -46,10 +46,12 @@ const STORAGE_KEY = 'ol.bench.pendingGestures';
 /**
  * The most ids kept at once, oldest dropped first.
  *
- * A bound is required rather than tidy. Nothing in THIS slice ever settles a
- * gesture — `settleGesture` exists for #2420 and has no caller yet — so on a
- * bench tab open for a shift the log would otherwise grow for every scan of the
- * day. Well above any plausible number of gestures in flight at once.
+ * A bound is required rather than tidy. #2418 is the first settler, so before
+ * it a bench tab open for a shift grew this log by one entry per scan of the
+ * day. Well above any plausible number of gestures in flight at once — which
+ * matters now that there IS a settler, because an eviction that dropped an id a
+ * retry still needed would let that retry mint a fresh one and the server record
+ * a second unit for one physical scan (story G3, inverted).
  */
 export const SCANNER_PENDING_LOG_LIMIT = 50;
 
@@ -148,9 +150,11 @@ export function beginGesture(value: string, at: number): PendingGesture {
 /**
  * Forget a gesture once it has been accounted for.
  *
- * No caller in this slice — #2420 owns the send and therefore owns knowing when
- * a gesture is settled. Shipped with the primitive because the alternative is a
- * log with a bound and no way out of it.
+ * Called by whoever SENDS the gesture, since only they know when it has been
+ * accounted for. #2418's verify mutation is the first: it settles once the
+ * server has answered — verified, deduplicated or refused alike, all three
+ * meaning the id has done its job — and settles nothing on a network failure,
+ * which is the one case where the same id may legitimately be sent again.
  */
 export function settleGesture(gestureId: string): void {
   write(read().filter((entry) => entry.gestureId !== gestureId));

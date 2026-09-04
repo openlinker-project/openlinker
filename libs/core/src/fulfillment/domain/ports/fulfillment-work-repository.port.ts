@@ -259,6 +259,52 @@ export interface RecordFulfillmentRejectionInput {
   readonly rejectedAt: Date;
 }
 
+/**
+ * One verified unit (#2418, story E1).
+ *
+ * NAMES A LINE AND NOTHING ELSE. There is no barcode here and no `source`,
+ * because D20 requires a hand-confirmed unit to be recorded identically to a
+ * scanned one — and a shape that cannot express the difference is a guarantee,
+ * where a convention is a hope. The scanned value is resolved to a line before
+ * this call and then discarded.
+ */
+export interface RecordParcelVerificationInput {
+  readonly workId: string;
+  readonly workLineId: string;
+  /** #2416's durable per-gesture id. The uniqueness key; see the unique index. */
+  readonly gestureId: string;
+  readonly verifiedByUserId: string | null;
+  readonly verifiedAt: Date;
+}
+
+/** How many ACTIVE units are recorded against each line of a work. */
+export interface ParcelVerifiedCount {
+  readonly workLineId: string;
+  readonly verifiedQuantity: number;
+}
+
+/** Shutting the box on the last verification (#2418, D18). */
+export interface ClaimParcelCloseInput {
+  readonly workId: string;
+  readonly closedAt: Date;
+  /** The LAST verifier owns the parcel (D13). `null` where none is attributable. */
+  readonly packedByUserId: string | null;
+}
+
+/** Opening it again (#2418, E6/D19). */
+export interface ReopenParcelWriteInput {
+  readonly workId: string;
+  readonly reopenedByUserId: string | null;
+  readonly reopenedAt: Date;
+  /**
+   * The optimistic token, as `cancel` / `setExpedited` / `transitionStatus` and
+   * both hold methods all take one. A reopen issued against a stale view is
+   * exactly D21's scenario — the work moved underneath the packer — so the token
+   * is honoured here rather than trusted.
+   */
+  readonly expectedVersion?: number;
+}
+
 export interface FulfillmentWorkRepositoryPort {
   /**
    * Header + lines in ONE transaction; `transaction` lets a caller compose it
@@ -439,4 +485,108 @@ export interface FulfillmentWorkRepositoryPort {
    * than present with an empty array, so a caller must default.
    */
   listActiveHoldsForWorks(workIds: readonly string[]): Promise<Map<string, FulfillmentHold[]>>;
+
+  /**
+   * Take a row lock on the work and read it with its lines, inside `transaction`
+   * (#2418, stories E3/E5).
+   *
+   * **This is what makes over-packing enforceable.** The cap is per line and
+   * greater than one, so no unique index can express it: at READ COMMITTED two
+   * concurrent verifications each count `n`, each insert, and the line lands at
+   * `n + 2` against a cap of `n + 1` with nothing raised anywhere. The
+   * conflicting row is a PHANTOM, so it cannot be locked before it exists and a
+   * `SELECT` guard enforces nothing — only the parent row serialises
+   * count-then-insert. That is the identical adjudication `fulfillment_holds`
+   * already carries for its ≤10 active-hold cap, one table over, and the reason
+   * a trigger was rejected there applies here too: the integration harness
+   * builds schema by `synchronize`, which emits none.
+   *
+   * It is also the serialisation point between a completing verification and a
+   * concurrent reopen, which would otherwise re-shut a box the reopener had
+   * just opened.
+   *
+   * Returns `null` when there is no such work.
+   */
+  lockWorkForVerification(
+    workId: string,
+    transaction: FulfillmentWorkTransaction
+  ): Promise<FulfillmentWork | null>;
+
+  /**
+   * Record one verified unit at the pack bench (#2418, story E1).
+   *
+   * Answers `true` when a row was written and `false` when this exact gesture
+   * was already recorded — a retry, a sleeping tablet, a reflex double-trigger
+   * on ONE physical action. The discrimination is
+   * `UQ_fulfillment_work_verifications_gesture` and an `ON CONFLICT DO NOTHING`,
+   * never a read-then-insert: at READ COMMITTED the conflicting row is a phantom
+   * that cannot be locked before it exists, so a `SELECT` guard enforces nothing
+   * (the `fulfillment_progress_claims` reasoning, one table over).
+   *
+   * `false` is therefore an ordinary, successful outcome and never an error.
+   */
+  recordParcelVerification(
+    input: RecordParcelVerificationInput,
+    transaction?: FulfillmentWorkTransaction
+  ): Promise<boolean>;
+
+  /**
+   * Active verified units per line, for ONE work.
+   *
+   * Reads only rows with `voidedAt IS NULL`, which is what the partial index
+   * serves. A line with no verified unit is ABSENT from the array rather than
+   * present with a zero, so a caller must default — the `listActiveHoldsForWorks`
+   * convention.
+   *
+   * Takes the transaction handle so the recount that decides whether to shut the
+   * box sees the row the same transaction just inserted, and so two concurrent
+   * verifications cannot both read a pre-insert count and both decide they were
+   * not the last (see `FulfillmentVerificationService`).
+   */
+  countParcelVerifications(
+    workId: string,
+    transaction?: FulfillmentWorkTransaction
+  ): Promise<ParcelVerifiedCount[]>;
+
+  /**
+   * Shut the box (#2418, D18) — `parcelClosedAt` and `packedByUserId` in ONE
+   * guarded UPDATE (`WHERE "parcelClosedAt" IS NULL`).
+   *
+   * The guard is the at-most-once claim, the `claimWaybillRelay` /
+   * `recordAcceptance` idiom: two concurrent completing verifications race here
+   * and exactly one wins, so a parcel is never closed twice and
+   * `packedByUserId` is never rewritten by the loser.
+   *
+   * It bumps `version` like every other header write on this port, because that
+   * token counts STATE CHANGES and a client polling the parcel must see the
+   * close as one.
+   *
+   * `packedByService` is deliberately NOT written: `CHK_fulfillment_works_packed_actor`
+   * makes the two mutually exclusive, and a bench close always has a user.
+   */
+  claimParcelClose(
+    input: ClaimParcelCloseInput,
+    transaction?: FulfillmentWorkTransaction
+  ): Promise<boolean>;
+
+  /**
+   * Open it again (#2418, E6) — clear `parcelClosedAt` and the attribution, and
+   * VOID every active verification, in one transaction.
+   *
+   * Voiding rather than deleting is what makes the reopen auditable: the rows'
+   * `voidedAt` / `voidedByUserId` ARE the record of who reopened it and when, so
+   * no second table and no `lastReopenedAt` column exists.
+   *
+   * Voiding rather than KEEPING the counts is forced: a closed parcel's counts
+   * are by definition full, so keeping them would re-shut the box on the next
+   * recount and "verification resumes" would be unexpressible.
+   *
+   * Guarded on `"parcelClosedAt" IS NOT NULL`; answers `false` when there was
+   * nothing to reopen. Refusing a SHIPPED parcel is the service's, because the
+   * fact lives in a sibling context this leaf may not read.
+   */
+  reopenParcel(
+    input: ReopenParcelWriteInput,
+    transaction?: FulfillmentWorkTransaction
+  ): Promise<boolean>;
 }

@@ -34,19 +34,14 @@
  * connection rather than a warehouse. The alternative, a warehouse name over an
  * unfiltered list, is the surface stating something false.
  *
- * ## The executor is resolved through the REGISTRY, not by a string compare
+ * ## The executor is resolved through `BenchExecutorResolver`, shared with the
+ * ## parcel that opens from this list
  *
- * `Connection.adapterKey` is nullable and the connection create form omits it —
- * which is exactly why the OMS plugin's manifest carries `isDefault: true`. So a
- * real OMS row stores NULL, and comparing `connection.adapterKey` to
- * `OMS_ADAPTER_KEY` would match nothing on any install: the bench would report
- * "nothing is set up" forever. `resolveAdapterMetadata` is asked instead, which
- * is metadata-only — it constructs no adapter and resolves no credential, so a
- * read that must answer while the floor is busy never touches a secret. Asking
- * the registry is also what keeps this from being a `platformType` switch: the
- * registry owns the platform-to-default mapping, and this service merely asks
- * it a question and compares the answer to the OMS package's own exported
- * constant.
+ * #2416 had that resolution as two private methods here. #2418 lifted it out
+ * unchanged, because story D2 requires opening a parcel to apply the SAME
+ * eligibility rule the list applies — and "assigned to OpenLinker's own packing
+ * executor" is a third of that rule. See that file for why the registry is
+ * asked rather than `connection.adapterKey` compared.
  *
  * @module apps/api/src/bench/application/services
  * @implements {IBenchWorkService}
@@ -58,18 +53,18 @@ import {
   type FulfillmentWorkView,
   type IFulfillmentWorklistService,
 } from '@openlinker/core/fulfillment';
-import type { Connection } from '@openlinker/core/identifier-mapping';
-import { INTEGRATIONS_SERVICE_TOKEN, IIntegrationsService } from '@openlinker/core/integrations';
 import { ORDER_RECORD_SERVICE_TOKEN, IOrderRecordService } from '@openlinker/core/orders';
 import type { OrderRecord } from '@openlinker/core/orders';
-import { OMS_ADAPTER_KEY } from '@openlinker/oms';
 import { Logger } from '@openlinker/shared/logging';
 
 import {
-  CONNECTION_SERVICE_TOKEN,
-  type IConnectionService,
-} from '../../../integrations/application/interfaces/connection.service.interface';
+  BENCH_WORK_REQUEST_STATUSES,
+  BENCH_WORK_STATUSES,
+  deriveBenchWorkState,
+} from '../bench-work-eligibility';
+import { readBuyerName, readOrderReference } from '../bench-order-facts';
 import { compareBenchWork } from '../bench-work-ordering';
+import { BenchExecutorResolver } from './bench-executor.resolver';
 import type { IBenchWorkService } from '../interfaces/bench-work.service.interface';
 import type {
   BenchRoutingReadiness,
@@ -78,38 +73,7 @@ import type {
   BenchWorkView,
 } from '../types/bench-work.types';
 
-/**
- * The capability a connection must have ENABLED to be a packing executor.
- *
- * Enabled, not merely advertised: `enabledCapabilities` is the operator's own
- * decision, and a connection whose adapter can execute fulfilment but which
- * nobody switched on is not carrying out anything.
- */
-const PACKING_CAPABILITY = 'FulfillmentExecutor';
 
-/**
- * Which execution states can appear on the bench.
- *
- * `closed` and `incomplete` are excluded: both are terminal and neither is
- * packable.
- *
- * **`cancelled` is INCLUDED, and that is not a slip against B1's "not yet
- * closed".** The mockup ships a "Do not pack these" section carrying exactly
- * the held and the cancelled — *"nothing to pack. Take the items back to the
- * shelf."* A cancelled parcel whose tote is physically on the bench is the one
- * case where silence is worse than speech: say nothing and the packer packs it.
- * Being terminal, such a row carries no actions at all — `deriveSupportedActions`
- * returns `[]` — including no expedite, which is correct and is stated here
- * because an empty `supportedActions` otherwise reads like a bug.
- *
- * **`on_hold` is defensive only.** Nothing in the tree writes
- * `status = 'on_hold'`: `placeHold` inserts a hold row and leaves the status
- * alone, so a held parcel arrives as `open` with a non-empty `activeHolds`.
- * Heldness is therefore derived from that array, never from this list — keying
- * on the status would have made every held parcel vanish from the one section
- * whose absence is dangerous.
- */
-const BENCH_STATUSES = ['open', 'scheduled', 'on_hold', 'in_progress', 'cancelled'] as const;
 
 /**
  * The most parcels this read will collect before it truncates.
@@ -130,10 +94,7 @@ export class BenchWorkService implements IBenchWorkService {
   private readonly logger = new Logger(BenchWorkService.name);
 
   constructor(
-    @Inject(CONNECTION_SERVICE_TOKEN)
-    private readonly connections: IConnectionService,
-    @Inject(INTEGRATIONS_SERVICE_TOKEN)
-    private readonly integrations: IIntegrationsService,
+    private readonly executors: BenchExecutorResolver,
     @Inject(FULFILLMENT_WORKLIST_SERVICE_TOKEN)
     private readonly worklist: IFulfillmentWorklistService,
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
@@ -141,7 +102,7 @@ export class BenchWorkService implements IBenchWorkService {
   ) {}
 
   async listBenchWork(): Promise<BenchWorkListView> {
-    const executors = await this.resolvePackingExecutors();
+    const executors = await this.executors.listPackingExecutors();
 
     // Nothing is set up to send work here. Reported as its own fact rather than
     // as an empty list, because "nothing to pack right now" and "nothing will
@@ -168,51 +129,6 @@ export class BenchWorkService implements IBenchWorkService {
   }
 
   /**
-   * Every active connection an operator has switched packing on for.
-   *
-   * A connection that is not `active` is excluded: routing cannot dispatch to
-   * it, so listing its work at a bench would show parcels nothing will ever
-   * hand over.
-   */
-  private async resolvePackingExecutors(): Promise<Connection[]> {
-    const connections = await this.connections.list();
-    const executors: Connection[] = [];
-
-    for (const connection of connections) {
-      if (connection.status !== 'active') continue;
-      if (!connection.enabledCapabilities.includes(PACKING_CAPABILITY)) continue;
-      if (await this.isOpenLinkerExecutor(connection)) executors.push(connection);
-    }
-    return executors;
-  }
-
-  /**
-   * Is this connection OpenLinker's own packing executor?
-   *
-   * Through the registry, comparing the RESOLVED adapter key — see the module
-   * docblock for why a bare `connection.adapterKey` compare matches nothing.
-   *
-   * A connection whose adapter cannot be resolved is reported as "not the
-   * executor" rather than failing the whole read: an unrelated plugin that is
-   * unregistered in this process must not be able to blank a packer's screen.
-   */
-  private async isOpenLinkerExecutor(connection: Connection): Promise<boolean> {
-    try {
-      const metadata = await this.integrations.resolveAdapterMetadata({
-        platformType: connection.platformType,
-        adapterKey: connection.adapterKey,
-      });
-      return metadata.adapterKey === OMS_ADAPTER_KEY;
-    } catch (error) {
-      this.logger.warn(
-        `Could not resolve adapter metadata for connection ${connection.id}; not treating it ` +
-          `as a packing connection: ${error instanceof Error ? error.message : String(error)}`
-      );
-      return false;
-    }
-  }
-
-  /**
    * Collect up to `BENCH_WORK_HARD_CAP` parcels, oldest first.
    *
    * `createdAt_ASC` is a SELECTION decision, not a display one: the rows are
@@ -236,10 +152,8 @@ export class BenchWorkService implements IBenchWorkService {
 
     for (let offset = 0; offset < BENCH_WORK_HARD_CAP; offset += FULFILLMENT_WORKLIST_MAX_LIMIT) {
       const page = await this.worklist.list({
-        status: BENCH_STATUSES,
-        // Story B1's "accepted": a parcel the executor has not taken on is not
-        // this bench's work yet, and one it rejected never will be.
-        requestStatus: ['accepted'],
+        status: BENCH_WORK_STATUSES,
+        requestStatus: BENCH_WORK_REQUEST_STATUSES,
         assignedConnectionId: executorIds,
         orderBy: 'createdAt_ASC',
         limit: FULFILLMENT_WORKLIST_MAX_LIMIT,
@@ -303,9 +217,14 @@ export class BenchWorkService implements IBenchWorkService {
     siblings: readonly string[] | undefined
   ): BenchWorkView {
     const hold = work.activeHolds[0];
-    // Heldness comes from the hold rows, never from `status` — see BENCH_STATUSES.
-    const state: BenchWorkState =
-      work.status === 'cancelled' ? 'cancelled' : work.activeHolds.length > 0 ? 'held' : 'packable';
+    // Story D2's shared rule — the SAME function `BenchParcelService` refuses
+    // with, which is what stops the list and the bench disagreeing about
+    // whether a parcel may be packed. Never inlined here again.
+    const state: BenchWorkState = deriveBenchWorkState({
+      status: work.status,
+      requestStatus: work.requestStatus,
+      activeHoldCount: work.activeHolds.length,
+    });
 
     // A parcel whose siblings could not be read is "1 of 1" rather than "1 of 0":
     // the work in the packer's hands exists, so the count must include it.
@@ -338,54 +257,4 @@ export class BenchWorkService implements IBenchWorkService {
       supportedActions: work.supportedActions,
     };
   }
-}
-
-/** A non-empty trimmed string, or `undefined`. */
-function readString(value: unknown): string | undefined {
-  if (typeof value !== 'string') return undefined;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
-
-/**
- * The source's own order reference, when the snapshot carries one.
- *
- * `orderNumber` is what a marketplace calls the order and what a packer reads
- * back to a colleague. Absent, the caller falls back to the internal id, which
- * is always there — so the row never renders a blank where its identity goes.
- */
-function readOrderReference(order: OrderRecord | undefined): string | undefined {
-  if (order === undefined) return undefined;
-  const snapshot = order.orderSnapshot;
-  return readString(snapshot.orderNumber);
-}
-
-/**
- * The buyer's name from the snapshot's shipping address, then its billing one.
- *
- * `null` is an ordinary answer, not a failure: under `OL_STORE_PII=false` the
- * persisted address is redacted, so there is no name to report and the surface
- * renders none. Shipping is preferred over billing because it is the name that
- * goes on the parcel.
- *
- * Nothing else is taken from either address — no street, no city, no postcode,
- * no phone — which is the whole reason this reads two named fields instead of
- * projecting an address.
- */
-function readBuyerName(order: OrderRecord | undefined): string | null {
-  if (order === undefined) return null;
-  const snapshot = order.orderSnapshot;
-
-  for (const key of ['shippingAddress', 'billingAddress']) {
-    const address = snapshot[key];
-    if (typeof address !== 'object' || address === null) continue;
-    const record = address as Record<string, unknown>;
-    const name = [readString(record.firstName), readString(record.lastName)]
-      .filter((part): part is string => part !== undefined)
-      .join(' ');
-    if (name.length > 0) return name;
-    const company = readString(record.company);
-    if (company !== undefined) return company;
-  }
-  return null;
 }

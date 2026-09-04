@@ -85,6 +85,21 @@ export interface FulfillmentWorkListFilter {
    * Optional, so every pre-#2416 caller is byte-identical.
    */
   readonly assignedConnectionId?: readonly string[];
+
+  /**
+   * Whether the pack bench has shut the box (#2418).
+   *
+   * `true` selects parcels that are packed, `false` those that are not, and
+   * ABSENT selects both — the ordinary three-state optional-filter reading, so
+   * every existing caller is byte-identical.
+   *
+   * Added for the bench's packed-but-unlabelled list (story F4), which needs
+   * "closed here, no label on it" and cannot express the first half any other
+   * way. It is deliberately NOT a status: `status = 'closed'` is the executor
+   * finishing the whole job, and a packed parcel still has to be labelled and
+   * leave.
+   */
+  readonly parcelClosed?: boolean;
   /**
    * Which end of the creation order the page is taken from (#2416).
    *

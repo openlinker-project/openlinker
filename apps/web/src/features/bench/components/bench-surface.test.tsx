@@ -110,6 +110,34 @@ function ProgressStub(): ReactElement {
   );
 }
 
+/**
+ * Let the idle period elapse, with both flushes the assertion depends on.
+ *
+ * Two ordering hazards, and a bare `act(() => vi.advanceTimersByTime(…))` loses
+ * to either under load:
+ *
+ *  1. `useIdleTimeout` SCHEDULES its `setTimeout` from an effect. Advance the
+ *     clock before that effect has run and there is no timer to advance — and
+ *     because the clock is fake, nothing moves it again, so the bench never
+ *     locks and the failure reads as "the lock is broken" rather than "the test
+ *     advanced too early".
+ *  2. Firing the timer schedules a React state update whose effects flush on a
+ *     microtask. Asserting before that flush races `waitFor`'s own polling.
+ *
+ * So: flush mount effects, advance, flush again. #2418 is what turned this from
+ * intermittent into deterministic — enough sibling test files to slow the worker
+ * past the margin the original relied on.
+ */
+async function advanceIdlePeriod(): Promise<void> {
+  await act(async () => {
+    await Promise.resolve();
+  });
+  await act(async () => {
+    vi.advanceTimersByTime(1200);
+    await Promise.resolve();
+  });
+}
+
 describe('BenchSurface (#2413)', () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
@@ -138,9 +166,7 @@ describe('BenchSurface (#2413)', () => {
     render();
     await screen.findByTestId('bench-identity-bar');
 
-    act(() => {
-      vi.advanceTimersByTime(1200);
-    });
+    await advanceIdlePeriod();
 
     await waitFor(() => expect(screen.getByTestId('bench-locked')).toBeInTheDocument());
   });
@@ -149,9 +175,7 @@ describe('BenchSurface (#2413)', () => {
     render();
     await screen.findByTestId('bench-identity-bar');
 
-    act(() => {
-      vi.advanceTimersByTime(1200);
-    });
+    await advanceIdlePeriod();
     await waitFor(() => expect(screen.getByTestId('bench-locked')).toBeInTheDocument());
 
     // The body is still MOUNTED — that is how progress survives — so the
@@ -172,9 +196,7 @@ describe('BenchSurface (#2413)', () => {
     await user.click(screen.getByRole('button', { name: /verify one/i }));
     expect(screen.getByTestId('verified-count')).toHaveTextContent('2');
 
-    act(() => {
-      vi.advanceTimersByTime(1200);
-    });
+    await advanceIdlePeriod();
     await waitFor(() => expect(screen.getByTestId('bench-locked')).toBeInTheDocument());
 
     // Still 2. The bench body was never unmounted.
@@ -223,9 +245,7 @@ describe('BenchSurface (#2413)', () => {
     await user.click(screen.getByRole('button', { name: /switch packer/i }));
     await screen.findByTestId('bench-handover');
 
-    act(() => {
-      vi.advanceTimersByTime(1200);
-    });
+    await advanceIdlePeriod();
 
     await waitFor(() => expect(screen.getByTestId('bench-locked')).toBeInTheDocument());
   });
