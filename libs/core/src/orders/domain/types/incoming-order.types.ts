@@ -208,6 +208,12 @@ export interface IncomingOrderTotals {
    * not assert it.
    */
   taxTreatment?: PriceTaxTreatment;
+
+  /**
+   * How `total` ALONE expresses tax, when it diverges from `taxTreatment`. See
+   * {@link OrderTotals.totalTaxTreatment} (#2829).
+   */
+  totalTaxTreatment?: PriceTaxTreatment;
 }
 
 export interface IncomingOrderAddress {

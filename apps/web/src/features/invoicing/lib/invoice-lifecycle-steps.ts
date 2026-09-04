@@ -12,10 +12,20 @@
 import type { DocumentLifecycleStep } from '../../../shared/ui/document-lifecycle';
 import type { InvoiceRecord } from '../api/invoicing.types';
 
-export function resolveInvoiceLifecycleSteps(invoice: InvoiceRecord): DocumentLifecycleStep[] {
+/**
+ * Taken as a PARAMETER, mirroring `HeadlineTranslate` in the sibling
+ * `sales-document-headline.ts` — so this module isn't the one place in the
+ * pair that hardcodes English.
+ */
+export type LifecycleStepTranslate = (key: string, fallback: string) => string;
+
+export function resolveInvoiceLifecycleSteps(
+  invoice: InvoiceRecord,
+  t: LifecycleStepTranslate,
+): DocumentLifecycleStep[] {
   const issuedStep: DocumentLifecycleStep = {
     id: 'issued',
-    label: 'Issued',
+    label: t('salesDocument.lifecycle.issued', 'Issued'),
     state: invoice.issuedAt ? 'done' : invoice.status === 'failed' ? 'error' : 'active',
     at: invoice.issuedAt,
   };
@@ -26,25 +36,39 @@ export function resolveInvoiceLifecycleSteps(invoice: InvoiceRecord): DocumentLi
     return [issuedStep];
   }
 
-  const clearanceStep: DocumentLifecycleStep = resolveClearanceStep(invoice);
+  const clearanceStep: DocumentLifecycleStep = resolveClearanceStep(invoice, t);
   return [issuedStep, clearanceStep];
 }
 
-function resolveClearanceStep(invoice: InvoiceRecord): DocumentLifecycleStep {
+function resolveClearanceStep(
+  invoice: InvoiceRecord,
+  t: LifecycleStepTranslate,
+): DocumentLifecycleStep {
+  const awaiting = t('salesDocument.lifecycle.awaitingAuthority', 'Awaiting the authority');
   switch (invoice.regulatoryStatus) {
     case 'pending-submission':
-      return { id: 'clearance', label: 'Awaiting the authority', state: 'todo', at: null };
+      return { id: 'clearance', label: awaiting, state: 'todo', at: null };
     case 'submitted':
-      return { id: 'clearance', label: 'Awaiting the authority', state: 'active', at: null };
+      return { id: 'clearance', label: awaiting, state: 'active', at: null };
     case 'cleared':
     case 'accepted':
       // No dedicated clearance timestamp is persisted — `updatedAt` is the
       // record's own last write, which for a terminal clearance state IS the
       // write that recorded it.
-      return { id: 'clearance', label: 'Cleared', state: 'done', at: invoice.updatedAt };
+      return {
+        id: 'clearance',
+        label: t('salesDocument.lifecycle.cleared', 'Cleared'),
+        state: 'done',
+        at: invoice.updatedAt,
+      };
     case 'rejected':
-      return { id: 'clearance', label: 'Rejected by the authority', state: 'error', at: invoice.updatedAt };
+      return {
+        id: 'clearance',
+        label: t('salesDocument.lifecycle.rejectedByAuthority', 'Rejected by the authority'),
+        state: 'error',
+        at: invoice.updatedAt,
+      };
     default:
-      return { id: 'clearance', label: 'Awaiting the authority', state: 'todo', at: null };
+      return { id: 'clearance', label: awaiting, state: 'todo', at: null };
   }
 }

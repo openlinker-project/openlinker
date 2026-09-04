@@ -682,9 +682,9 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
     invoicingConnection?.name ??
     '';
   const headlineModel = showInvoiceSlot
-    ? resolveInvoiceHeadline(invoice, headlineConnectionName)
+    ? resolveInvoiceHeadline(invoice, headlineConnectionName, t)
     : showFiscalSlot
-      ? resolveFiscalHeadline(fiscalRecord, fiscalProgress, headlineConnectionName, contended)
+      ? resolveFiscalHeadline(fiscalRecord, fiscalProgress, headlineConnectionName, contended, t)
       : { state: t('salesDocument.kind.none', 'Not issued'), tone: 'idle' as const, identity: null };
 
   return (
@@ -796,7 +796,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
 
           {invoiceSettled && invoiceDisplayStatus === 'issued' && invoice ? (
             <div className="sales-document-panel__body">
-              <DocumentLifecycle kind="invoice" steps={resolveInvoiceLifecycleSteps(invoice)} />
+              <DocumentLifecycle kind="invoice" steps={resolveInvoiceLifecycleSteps(invoice, t)} />
               <KeyValueList items={buildInvoiceFieldItems(invoice, showRegulatoryBadge, t)} />
               {InvoiceDetailSection && invoicingConnection ? (
                 <InvoiceDetailSection invoice={invoice} connection={invoicingConnection} />
@@ -824,6 +824,14 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                               announce(
                                 t('invoice.clearance.resent', 'Resent to the authority.'),
                               );
+                              showToast({
+                                tone: 'success',
+                                title: t('invoice.clearance.resentTitle', 'Resent'),
+                                description: t(
+                                  'invoice.clearance.resent',
+                                  'Resent to the authority.',
+                                ),
+                              });
                               void invoiceQuery.refetch();
                             },
                             onError: (error) => {
@@ -836,18 +844,36 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                               // instead of reusing the generic "could not be sent"
                               // wording, which reads as a transient failure worth
                               // retrying.
+                              //
+                              // The distinction must reach a visible surface, not only
+                              // the sr-only live region — every other mutation in this
+                              // file pairs `announce` with `showToast`, and a sighted
+                              // operator who sees nothing change after clicking Resend
+                              // will keep retrying a refusal the announcement already
+                              // explained to nobody but a screen reader.
                               if (error instanceof ApiError && error.status === 501) {
-                                announce(
-                                  t(
-                                    'invoice.clearance.resendUnsupported',
-                                    'This provider cannot re-send a document; issue a correction instead.',
-                                  ),
+                                const message = t(
+                                  'invoice.clearance.resendUnsupported',
+                                  'This provider cannot re-send a document; issue a correction instead.',
                                 );
+                                announce(message);
+                                showToast({
+                                  tone: 'error',
+                                  title: t('invoice.clearance.resendUnsupportedTitle', 'Cannot resend'),
+                                  description: message,
+                                });
                                 return;
                               }
-                              announce(
-                                t('invoice.clearance.resendFailed', 'The resend could not be sent.'),
+                              const message = t(
+                                'invoice.clearance.resendFailed',
+                                'The resend could not be sent.',
                               );
+                              announce(message);
+                              showToast({
+                                tone: 'error',
+                                title: t('invoice.clearance.resendFailedTitle', 'Resend failed'),
+                                description: message,
+                              });
                             },
                           });
                         }}

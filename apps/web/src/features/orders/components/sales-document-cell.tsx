@@ -41,8 +41,8 @@ export interface SalesDocumentCellProps {
   view: SalesDocumentView | undefined;
   /**
    * `stack` lets the parent's `orders-cell-stack` lay the money-cluster lines
-   * out vertically (desktop); `row` wraps the line so a mobile `<dd>` still
-   * receives a single child. Layout only.
+   * out vertically (desktop); `row` widens the popover for the mobile card's
+   * narrower trigger column. Layout only.
    */
   layout: 'stack' | 'row';
   /**
@@ -51,6 +51,13 @@ export interface SalesDocumentCellProps {
    * same way the retired `OrderInvoicingCell`'s CTA did (#1713).
    */
   hasIssuingCapability: boolean;
+  /**
+   * connectionId → display name, so a duplicate-record warning or the
+   * Provider fact never renders a raw UUID to the operator
+   * (`frontend-ui-style-guide.md` § `EntityLabel`, #2761 review). Falls back
+   * to the id only when the connection is unknown to this lookup.
+   */
+  connectionNames: Map<string, string>;
 }
 
 function isKnownDocumentKind(kind: string | null): kind is DocumentKind {
@@ -127,6 +134,7 @@ export function SalesDocumentCell({
   view,
   layout,
   hasIssuingCapability,
+  connectionNames,
 }: SalesDocumentCellProps): ReactNode {
   const state = resolveSalesDocumentCellState(view);
   const otherRecords = view?.otherRecords ?? [];
@@ -137,16 +145,31 @@ export function SalesDocumentCell({
   const showAction = state.keepsAction && state.kind !== null && hasIssuingCapability;
   const actionLabel = state.kind ? (ACTION_LABEL[state.kind] ?? 'Open') : null;
 
+  // A `title` an operator can hover, and the SAME sentence in the trigger's
+  // `aria-label` below - `aria-label` on the button overrides everything inside
+  // it, so an `sr-only` span in here would be unreachable and a duplicate
+  // record would be invisible to a screen reader (#2761 review).
+  const dupeSentence =
+    dupeCount === 0
+      ? null
+      : dupeCount === 1
+        ? 'A second document exists for this order'
+        : `${dupeCount + 1} documents exist for this order`;
+
+  // With nothing routed, `kindLabel` and the word are the same sentence - say it
+  // once rather than "No document: No document".
+  const redundantKindLabel = kindLabel === state.word;
+  const headline = redundantKindLabel ? state.word : `${kindLabel} · ${state.word}`;
+  const spokenState = redundantKindLabel ? state.word : `${kindLabel}: ${state.word}`;
+
   const line = (
     <span className={`sales-doc sales-doc--${state.tone}`}>
-      <span className="sr-only">{kindLabel}: </span>
       <DocumentGlyph kind={state.kind} />
       <span className="sales-doc__word">{state.word}</span>
       {state.tone === 'done' ? <TickIcon /> : null}
       {state.tone === 'progress' ? <span className="sales-doc__live" aria-hidden="true" /> : null}
-      {dupeCount > 0 ? (
-        <span className="sales-doc__dupe" title="A second document exists for this order">
-          <span className="sr-only">A second document exists for this order</span>
+      {dupeSentence ? (
+        <span className="sales-doc__dupe" title={dupeSentence}>
           {dupeCount + 1}
         </span>
       ) : null}
@@ -157,19 +180,21 @@ export function SalesDocumentCell({
   const regulatoryStatus =
     view?.document?.kind === 'invoice' ? view.document.regulatoryStatus : null;
 
-  // A "Not issued"/"No routing" row with no reason, no identity yet, and no
-  // duplicate has literally nothing to say here — rendering the `__body`
-  // wrapper anyway left its padding standing between the head's bottom
-  // border and the foot's top border, reading as two separators around an
-  // empty gap instead of one line between two real sections.
-  const hasPopoverBody = Boolean(
-    state.reasonDetail || identity?.documentNumber || identity?.connectionId || regulatoryStatus || dupeCount > 0,
-  );
-  const popoverBody = hasPopoverBody ? (
+  const popoverBody = (
     <>
       {state.reasonDetail ? <p className="sales-doc-popover__why">{state.reasonDetail}</p> : null}
+      {view?.blockDetail ? <p className="sales-doc-popover__why">{view.blockDetail}</p> : null}
       {identity?.documentNumber ? <Fact label="Number">{identity.documentNumber}</Fact> : null}
-      {identity?.connectionId ? <Fact label="Provider">{identity.providerType ?? identity.connectionId}</Fact> : null}
+      {identity?.connectionId ? (
+        <Fact label="Provider">
+          {/* Name-first, provider type as a qualifier (#2761 review) — on a
+              multi-connection install "which connection issued this" is the
+              useful fact, and the duplicate-record warning right below it
+              already names connections rather than provider types. */}
+          {connectionNames.get(identity.connectionId) ?? identity.connectionId}
+          {identity.providerType ? ` (${identity.providerType})` : ''}
+        </Fact>
+      ) : null}
       {regulatoryStatus ? (
         <Fact label="Clearance">
           <span className={`sales-doc-tone sales-doc-tone--${REGULATORY_TONE[regulatoryStatus] ?? 'neutral'}`}>
@@ -179,12 +204,13 @@ export function SalesDocumentCell({
       ) : null}
       {dupeCount > 0 ? (
         <p className="sales-doc-popover__warn">
-          {otherRecords.map((r) => r.connectionId).join(', ')} also holds a document for this
-          sale. One sale should have one document.
+          {otherRecords.map((r) => connectionNames.get(r.connectionId) ?? r.connectionId).join(', ')}{' '}
+          {dupeCount === 1 ? 'also holds' : 'also hold'} a document for this sale. One sale
+          should have one document.
         </p>
       ) : null}
     </>
-  ) : null;
+  );
 
   return (
     <Popover dismissOnViewportChange>
@@ -192,21 +218,22 @@ export function SalesDocumentCell({
         <button
           type="button"
           className="sales-doc-trigger"
-          aria-label={`${kindLabel}: ${state.word}`}
+          aria-label={dupeSentence ? `${spokenState}. ${dupeSentence}` : spokenState}
         >
           {line}
         </button>
       </PopoverTrigger>
-      <PopoverContent align="start" style={layout === 'row' ? { maxWidth: '20rem' } : { width: '20rem' }}>
+      <PopoverContent
+        align="start"
+        className={`sales-doc-popover${layout === 'row' ? ' sales-doc-popover--row' : ''}`}
+      >
         <div className="sales-doc-popover__head">
           <span className={`sales-doc sales-doc--${state.tone}`}>
             <DocumentGlyph kind={state.kind} />
-            <span className="sales-doc__word">
-              {kindLabel} · {state.word}
-            </span>
+            <span className="sales-doc__word">{headline}</span>
           </span>
         </div>
-        {hasPopoverBody ? <div className="sales-doc-popover__body">{popoverBody}</div> : null}
+        <div className="sales-doc-popover__body">{popoverBody}</div>
         <div className="sales-doc-popover__foot">
           <Link className="orders-row-cta" to={`/orders/${internalOrderId}#invoicing`}>
             Open order

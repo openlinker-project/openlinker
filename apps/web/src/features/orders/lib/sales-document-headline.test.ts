@@ -49,48 +49,57 @@ function fiscalRecord(overrides: Partial<FiscalRegistrationRecord> = {}): Fiscal
   };
 }
 
+/** The panel's `t` in test form: every key falls back to its shipped English. */
+const t = (_key: string, fallback: string): string => fallback;
+
 describe('resolveInvoiceHeadline', () => {
   it('should read Cleared with a done tone for an accepted clearance', () => {
-    const model = resolveInvoiceHeadline(invoice({ regulatoryStatus: 'accepted' }), 'KSeF');
+    const model = resolveInvoiceHeadline(invoice({ regulatoryStatus: 'accepted' }), 'KSeF', t);
     expect(model).toEqual({ state: 'Cleared', tone: 'done', identity: 'FV/1/2026 · KSeF' });
   });
 
   it('should read Issued with a done tone when clearance does not apply', () => {
-    const model = resolveInvoiceHeadline(invoice({ regulatoryStatus: 'not-applicable' }), 'Subiekt');
+    const model = resolveInvoiceHeadline(invoice({ regulatoryStatus: 'not-applicable' }), 'Subiekt', t);
     expect(model.state).toBe('Issued');
     expect(model.tone).toBe('done');
   });
 
   it('should read Rejected by authority with an error tone', () => {
-    const model = resolveInvoiceHeadline(invoice({ regulatoryStatus: 'rejected' }), 'KSeF');
+    const model = resolveInvoiceHeadline(invoice({ regulatoryStatus: 'rejected' }), 'KSeF', t);
     expect(model.state).toBe('Rejected by authority');
     expect(model.tone).toBe('error');
   });
 
+  it('should describe an unnumbered document by its connection alone, with no em-dash placeholder', () => {
+    const model = resolveInvoiceHeadline(invoice({ providerInvoiceNumber: null }), 'KSeF', t);
+    expect(model.identity).toBe('KSeF');
+    expect(model.identity).not.toContain('\u2014');
+  });
+
   it('should split a failed issuance into Rejected (safe) vs Unconfirmed (in-doubt)', () => {
     expect(
-      resolveInvoiceHeadline(invoice({ status: 'failed', failureMode: 'rejected' }), 'KSeF').state,
+      resolveInvoiceHeadline(invoice({ status: 'failed', failureMode: 'rejected' }), 'KSeF', t).state,
     ).toBe('Rejected');
     expect(
-      resolveInvoiceHeadline(invoice({ status: 'failed', failureMode: 'in-doubt' }), 'KSeF').state,
+      resolveInvoiceHeadline(invoice({ status: 'failed', failureMode: 'in-doubt' }), 'KSeF', t).state,
     ).toBe('Unconfirmed');
   });
 });
 
 describe('resolveFiscalHeadline', () => {
   it('should read In progress elsewhere for a contended attempt with no elapsed data', () => {
-    const model = resolveFiscalHeadline(null, undefined, 'eparagony', true);
+    const model = resolveFiscalHeadline(null, undefined, 'eparagony', true, t);
     expect(model).toEqual({ state: 'In progress elsewhere', tone: 'progress', identity: null });
   });
 
   it('should read Registered with a done tone for a registered record', () => {
-    const model = resolveFiscalHeadline(fiscalRecord(), undefined, 'eparagony', false);
+    const model = resolveFiscalHeadline(fiscalRecord(), undefined, 'eparagony', false, t);
     expect(model.state).toBe('Registered');
     expect(model.tone).toBe('done');
   });
 
   it('should read Stalled for a stalled progress with no record', () => {
-    const model = resolveFiscalHeadline(null, 'stalled', 'eparagony', false);
+    const model = resolveFiscalHeadline(null, 'stalled', 'eparagony', false, t);
     expect(model.state).toBe('Stalled');
     expect(model.tone).toBe('warning');
   });

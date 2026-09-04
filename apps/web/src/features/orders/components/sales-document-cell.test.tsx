@@ -26,6 +26,7 @@ function renderCell(props: Partial<Parameters<typeof SalesDocumentCell>[0]> = {}
         view={undefined}
         layout="stack"
         hasIssuingCapability
+        connectionNames={new Map()}
         {...props}
       />
     </MemoryRouter>,
@@ -35,7 +36,7 @@ function renderCell(props: Partial<Parameters<typeof SalesDocumentCell>[0]> = {}
 describe('SalesDocumentCell (#2552/#2553)', () => {
   it('renders exactly one line for a row with no routed document', () => {
     renderCell();
-    expect(screen.getByText('No routing')).toBeInTheDocument();
+    expect(screen.getByText('No document')).toBeInTheDocument();
   });
 
   it('renders the tick for a finished (done) document, plain ink', () => {
@@ -77,6 +78,36 @@ describe('SalesDocumentCell (#2552/#2553)', () => {
       }),
     });
     expect(screen.getByTitle('A second document exists for this order')).toBeInTheDocument();
+  });
+
+  // #2761 review: `aria-label` on the trigger overrides its inner content, so
+  // the duplicate has to ride in the label itself or it is invisible to a
+  // screen reader - exactly the row where a second fiscal document exists.
+  it('carries the duplicate sentence in the trigger aria-label', () => {
+    renderCell({
+      view: baseView({
+        documentKind: 'invoice',
+        otherRecords: [{ recordId: 'r2', connectionId: 'c2', kind: 'invoice', blocksFurtherIssuance: true }],
+      }),
+    });
+    expect(
+      screen.getByRole('button', {
+        name: /Invoice: .*A second document exists for this order/,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('pluralises the duplicate sentence past a second record', () => {
+    renderCell({
+      view: baseView({
+        documentKind: 'invoice',
+        otherRecords: [
+          { recordId: 'r2', connectionId: 'c2', kind: 'invoice', blocksFurtherIssuance: true },
+          { recordId: 'r3', connectionId: 'c3', kind: 'invoice', blocksFurtherIssuance: true },
+        ],
+      }),
+    });
+    expect(screen.getByTitle('3 documents exist for this order')).toBeInTheDocument();
   });
 
   it('renders an attention tone for an authority-rejected invoice', () => {
@@ -159,7 +190,7 @@ describe('SalesDocumentCell (#2552/#2553)', () => {
       const user = userEvent.setup();
       renderCell({ view: baseView() });
 
-      await user.click(screen.getByRole('button', { name: /no document: no routing/i }));
+      await user.click(screen.getByRole('button', { name: /^no document$/i }));
 
       expect(screen.getByRole('link', { name: /set routing/i })).toHaveAttribute(
         'href',
@@ -177,6 +208,7 @@ describe('SalesDocumentCell (#2552/#2553)', () => {
               view={baseView({ documentKind: 'invoice' })}
               layout="stack"
               hasIssuingCapability
+              connectionNames={new Map()}
             />
           </div>
         </MemoryRouter>,
@@ -232,11 +264,18 @@ describe('SalesDocumentCell (#2552/#2553)', () => {
           },
           otherRecords: [{ recordId: 'r2', connectionId: 'conn_other', kind: 'invoice', blocksFurtherIssuance: true }],
         }),
+        connectionNames: new Map([
+          ['c1', 'Primary Shop'],
+          ['conn_other', 'Backup Shop'],
+        ]),
       });
 
       await user.click(screen.getByRole('button', { name: /invoice: issued/i }));
 
       expect(screen.getByText(/also holds a document for this sale/i)).toBeInTheDocument();
+      expect(screen.getByText(/Backup Shop also holds/i)).toBeInTheDocument();
+      expect(screen.queryByText(/conn_other/)).not.toBeInTheDocument();
+      expect(screen.getByText('Primary Shop')).toBeInTheDocument();
     });
   });
 });

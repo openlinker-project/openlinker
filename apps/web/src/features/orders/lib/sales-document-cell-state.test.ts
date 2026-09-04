@@ -28,21 +28,44 @@ function baseView(over: Partial<SalesDocumentView> = {}): SalesDocumentView {
 }
 
 describe('resolveSalesDocumentCellState (#2552)', () => {
-  it('reports "No routing" when the row carries no view at all', () => {
+  // #2761 review: absence is a configuration state, not an error. A fresh
+  // install (nothing routed yet) and an FE running against an API predating the
+  // field would otherwise paint a red line on EVERY row - the same "large red
+  // number on a healthy install" regression #2554 exists to prevent.
+  it('reports an idle "No document" when the row carries no view at all', () => {
     const state = resolveSalesDocumentCellState(undefined);
-    expect(state).toMatchObject({ kind: null, word: 'No routing', tone: 'error', attention: true });
+    expect(state).toMatchObject({
+      kind: null,
+      word: 'No document',
+      tone: 'idle',
+    });
   });
 
-  it('reports "No routing" when documentKind is null', () => {
+  it('reports an idle "No document" when documentKind is null with no persisted reason', () => {
     const state = resolveSalesDocumentCellState(baseView());
-    expect(state).toMatchObject({ kind: null, word: 'No routing', tone: 'error', attention: true });
+    expect(state).toMatchObject({
+      kind: null,
+      word: 'No document',
+      tone: 'idle',
+    });
   });
 
-  it('renders "Issue on request" (idle, no attention) for trigger-model-manual with no document yet', () => {
+  it('keeps the error tone when the BACKEND persisted an unresolved-routing reason', () => {
+    // The distinction that matters: a routing failure the gate actually
+    // recorded IS an error and stays one. What must not be an error is a field
+    // that simply is not there.
+    const state = resolveSalesDocumentCellState(
+      baseView({ blockReason: 'unresolved-routing', unresolvedReason: 'no-configuration-for-country' }),
+    );
+    expect(state.kind).toBeNull();
+    expect(state.tone).toBe('error');
+    expect(state.reasonDetail).not.toBeNull();
+  });
+
+  it('renders "Issue on request" (idle) for trigger-model-manual with no document yet', () => {
     const state = resolveSalesDocumentCellState(
       baseView({ documentKind: 'invoice', blockReason: 'trigger-model-manual' }),
     );
-    expect(state.attention).toBe(false);
     expect(state.keepsAction).toBe(true);
     expect(state.tone).toBe('idle');
   });
@@ -51,13 +74,12 @@ describe('resolveSalesDocumentCellState (#2552)', () => {
     const state = resolveSalesDocumentCellState(
       baseView({ documentKind: 'invoice', blockReason: 'unresolved-routing', unresolvedReason: 'no-matching-rule' }),
     );
-    expect(state.attention).toBe(true);
     expect(state.word).toBe('No rule matched');
   });
 
   it('renders "Not issued" when routing decided but nothing blocks and nothing was attempted', () => {
     const state = resolveSalesDocumentCellState(baseView({ documentKind: 'invoice' }));
-    expect(state).toMatchObject({ word: 'Not issued', tone: 'idle', attention: true, keepsAction: true });
+    expect(state).toMatchObject({ word: 'Not issued', tone: 'idle', keepsAction: true });
   });
 
   it('prefers the authority answer over issuance when an invoice was rejected by the authority', () => {
@@ -77,7 +99,7 @@ describe('resolveSalesDocumentCellState (#2552)', () => {
         },
       }),
     );
-    expect(state).toMatchObject({ word: 'Authority rejected', tone: 'error', attention: true });
+    expect(state).toMatchObject({ word: 'Authority rejected', tone: 'error' });
   });
 
   it('reports "Issued" for a fully cleared invoice, plain ink (done)', () => {
@@ -97,7 +119,7 @@ describe('resolveSalesDocumentCellState (#2552)', () => {
         },
       }),
     );
-    expect(state).toMatchObject({ word: 'Issued', tone: 'done', attention: false });
+    expect(state).toMatchObject({ word: 'Issued', tone: 'done' });
   });
 
   it('reports "Registered" for a completed fiscal receipt', () => {
@@ -114,7 +136,7 @@ describe('resolveSalesDocumentCellState (#2552)', () => {
         },
       }),
     );
-    expect(state).toMatchObject({ word: 'Registered', tone: 'done', attention: false });
+    expect(state).toMatchObject({ word: 'Registered', tone: 'done' });
   });
 
   it('reports "Rejected" for a terminally rejected fiscal registration', () => {
@@ -131,7 +153,7 @@ describe('resolveSalesDocumentCellState (#2552)', () => {
         },
       }),
     );
-    expect(state).toMatchObject({ word: 'Rejected', tone: 'error', attention: true });
+    expect(state).toMatchObject({ word: 'Rejected', tone: 'error' });
   });
 
   it('reports "Unconfirmed" for an in-doubt fiscal registration failure', () => {
@@ -148,6 +170,6 @@ describe('resolveSalesDocumentCellState (#2552)', () => {
         },
       }),
     );
-    expect(state).toMatchObject({ word: 'Unconfirmed', tone: 'warning', attention: true });
+    expect(state).toMatchObject({ word: 'Unconfirmed', tone: 'warning' });
   });
 });

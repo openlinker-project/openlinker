@@ -518,6 +518,16 @@ export function OrdersListPage(): ReactElement {
     return map;
   }, [connectionsQuery.data]);
 
+  // id → name only, for SalesDocumentCell — a raw UUID must never reach the
+  // operator on the duplicate-record warning or the Provider fact (#2761 review).
+  const connectionNames = useMemo(() => {
+    const map = new Map<string, string>();
+    (connectionsQuery.data ?? []).forEach((c) => {
+      map.set(c.id, c.name);
+    });
+    return map;
+  }, [connectionsQuery.data]);
+
   // Registry-resolved, never a local map: the four-entry `CHANNEL_LABELS` this
   // replaced (#2088) had no row for `erli` or `woocommerce`, so both rendered
   // raw and lowercase here while rendering correctly two pages over.
@@ -1128,6 +1138,7 @@ export function OrdersListPage(): ReactElement {
                 view={order.salesDocument}
                 layout="stack"
                 hasIssuingCapability={hasIssuingCapability}
+                connectionNames={connectionNames}
               />
               {/* #2254 — its own independent line, never folded into the
                   document cell above: a conflict does not stop the invoice,
@@ -1968,6 +1979,7 @@ export function OrdersListPage(): ReactElement {
                             view={order.salesDocument}
                             layout="row"
                             hasIssuingCapability={hasIssuingCapability}
+                            connectionNames={connectionNames}
                           />
                           {hasTaxRateConflict(parsed) ? <TaxRateConflictBadge /> : null}
                         </dd>
