@@ -271,12 +271,35 @@ export async function seedUnmappedProductOrder(
  * never while it is still flipped. Caught live: calling this inside that
  * window made a real, permanently-existing tax-b order read as "does not
  * exist" for the window's whole duration.
+ *
+ * **Self-healing before the read.** Being restored is necessary but not
+ * SUFFICIENT: `seedCurrencyMismatchOrder`'s own `currency-fixed` step clicks
+ * the real "Recalculate now" admin action while the setting is still
+ * flipped, which — by design (`ADR-040 § restatement`) — re-stamps EVERY
+ * currently-mismatched order in its range against that flipped currency, not
+ * only its own seeded one. That includes this fixture's real Allegro order.
+ * `restore()` only resets the SETTING afterward; it does not re-stamp
+ * history. So this order's `reportingCurrency` stamp can legitimately be
+ * wrong (stale from the last run's flip) by the time this function runs,
+ * and the read above would then report a real, permanently-existing order
+ * as absent — caught live, twice, running this suite repeatedly. A
+ * same-range `recalculateCurrency` call, awaited to completion, is the
+ * correct remedy per the same ADR: it is an idempotent, bounded restatement
+ * against the CURRENT (already-restored) setting, not a fabrication.
  */
 export async function findExistingNoRateOrder(
   ctx: AnalyticsSeedContext,
 ): Promise<{ internalOrderId: string; sourceConnectionId: string }> {
   const { api, poll } = ctx;
   const range = widePastToFutureRange();
+
+  const run = await api.analytics.recalculateCurrency(range);
+  await poll.until(
+    async () => api.analytics.getCurrencyRunStatus(run.id),
+    (r) => r.status !== 'in-progress',
+    { timeoutMs: 60_000, intervalMs: 2_000, message: `currency recalculate run ${run.id} to finish` },
+  );
+
   // Retried with a budget well past ONE request's own 30s client timeout —
   // a 30s poll budget gives a single slow request under real suite load
   // (this step runs after several heavier fixtures) exactly one shot before
