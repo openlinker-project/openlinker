@@ -7,6 +7,7 @@
  *
  * @module libs/integrations/inpost/src/infrastructure/http
  */
+import { Logger } from '@openlinker/shared/logging';
 import { ShippingProviderRejectionException } from '@openlinker/core/shipping';
 import { InpostUnauthorizedException } from '../../../domain/exceptions/inpost-unauthorized.exception';
 import { InpostNetworkException } from '../../../domain/exceptions/inpost-network.exception';
@@ -140,6 +141,103 @@ describe('InpostHttpClient', () => {
       providerDetails: { fieldErrors: { name: ['required'] } },
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('should fall back to the `shipx.`-namespaced response body `error` code as providerCode when `details` is empty (#2804, namespaced per #2805 review)', async () => {
+    // Shape modelled on ShipX's documented error envelope for an unfetchable
+    // label document: ShipX answers with an `error` code but no `details`
+    // object at all, so the field-level classifier above has nothing to key
+    // on. The exact `error` code ShipX returns in this situation has not
+    // been live-confirmed against the sandbox (#2804 review) — `not_found`
+    // is a plausible placeholder, not a verified value. Without the
+    // fallback, `providerCode` was `null` and the operator saw only the
+    // generic `message` with no actionable reference. The `shipx.` prefix
+    // (#2805 review) keeps this tier distinguishable from a bare ShipX
+    // field name at the value alone.
+    fetchMock.mockResolvedValue(
+      fakeResponse({
+        ok: false,
+        status: 400,
+        contentType: 'application/pdf',
+        body: '{"error":"not_found","message":"There was a problem with label generation. Check details object for more info."}',
+      }),
+    );
+
+    const error = await client
+      .requestBinary({ method: 'GET', path: '/v1/shipments/1/label' })
+      .then(() => null)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ShippingProviderRejectionException);
+    expect(error).toMatchObject({
+      providerName: 'inpost',
+      providerCode: 'shipx.not_found',
+      providerDetails: undefined,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('should ignore a non-string or blank `error` field rather than surfacing it as providerCode (#2804 review)', async () => {
+    fetchMock.mockResolvedValue(
+      fakeResponse({
+        ok: false,
+        status: 400,
+        body: '{"error":"   ","message":"blank error code"}',
+      }),
+    );
+
+    const error = await client
+      .request({ method: 'GET', path: '/v1/x' })
+      .then(() => null)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ShippingProviderRejectionException);
+    expect(error).toMatchObject({ providerName: 'inpost', providerCode: null });
+  });
+
+  it('should still report providerCode: null when neither `details` nor `error` are present (#2804)', async () => {
+    fetchMock.mockResolvedValue(
+      fakeResponse({
+        ok: false,
+        status: 400,
+        body: '{"message":"unmodeled failure shape"}',
+      }),
+    );
+
+    const error = await client
+      .request({ method: 'GET', path: '/v1/x' })
+      .then(() => null)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ShippingProviderRejectionException);
+    expect(error).toMatchObject({ providerName: 'inpost', providerCode: null });
+  });
+
+  it('should truncate a long `message` in the no-details warn log rather than echoing it verbatim (#2805 review)', async () => {
+    // `message` sits one field over from `details` in the same untrusted
+    // ShipX body and can carry the same kind of content (e.g. a rejected
+    // address fragment) for some validation shapes — so the warn line caps
+    // it rather than treating it as categorically safe to log unbounded.
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const longMessage = 'x'.repeat(500);
+    fetchMock.mockResolvedValue(
+      fakeResponse({
+        ok: false,
+        status: 400,
+        body: JSON.stringify({ message: longMessage }),
+      }),
+    );
+
+    await client
+      .request({ method: 'GET', path: '/v1/x' })
+      .then(() => null)
+      .catch((e: unknown) => e);
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    const loggedLine = warn.mock.calls[0]?.[0] as string;
+    expect(loggedLine).not.toContain(longMessage);
+    expect(loggedLine).toContain('x'.repeat(200));
+    warn.mockRestore();
   });
 
   it('should flatten a nested ShipX field-error map (custom_attributes.target_point) onto its leaf key, not the outer field (#1807)', async () => {

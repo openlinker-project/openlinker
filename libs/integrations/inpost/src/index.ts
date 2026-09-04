@@ -16,7 +16,11 @@ export { InpostNetworkException } from './domain/exceptions/inpost-network.excep
 // Validation / paczkomat-unavailable rejections now throw the shared
 // `ShippingProviderRejectionException` from `@openlinker/core/shipping`
 // (#885) — `providerName: 'inpost'`, `providerCode: 'target_point'` /
-// `'preflight.*'`, structured details on `providerDetails`.
+// `'preflight.*'`, structured details on `providerDetails`. A third
+// `providerCode` family exists when ShipX's `details` map is empty: a
+// `shipx.`-namespaced raw ShipX error code (e.g. `'shipx.not_found'`,
+// `'shipx.validation_failed'`), surfaced as a fallback rather than a field
+// name (#2804, namespaced per #2805 review).
 
 // Config + credentials types
 export { InpostEnvironmentValues } from './domain/types/inpost-config.types';
