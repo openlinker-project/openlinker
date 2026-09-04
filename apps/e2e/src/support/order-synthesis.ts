@@ -104,14 +104,31 @@ export function buildPrestashopWebserviceClient(world: World): PrestashopWebserv
  * variant — the invoicing suite reuses whatever the stack already has rather
  * than provisioning a fresh product (unlike the golden path's `E2E_FRESH_PRODUCT`
  * escape hatch).
+ *
+ * MUST be scoped to `connectionId`: a stack that has been re-pointed at a
+ * fresh PrestaShop connection (a new `Connection` row minted on this boot)
+ * can still carry `Product` rows whose ONLY external-id mapping is against a
+ * now-disabled connection from an earlier run — OL's product catalogue is
+ * global, not per-connection, and old rows are never pruned. Picking by
+ * "has an EAN and a price" alone can therefore return a product this
+ * connection has no mapping for at all, which `synthesizeOrder` then fails
+ * on immediately after ("… has no PrestaShop external id mapped") — caught
+ * live on 2026-09-04 against a stack carrying two prior PrestaShop
+ * connections' worth of residue.
  */
 async function pickDriverProduct(
   api: ApiClient,
+  connectionId: string,
 ): Promise<{ product: Product; variant: ProductVariant } | undefined> {
   const page = await api.products.list({ limit: 50 });
   for (const summary of page.items) {
     const detail = await api.products.getById(summary.id);
+    if (!externalIdFor(detail, connectionId)) continue;
     const variants = detail.variants && detail.variants.length > 0 ? detail.variants : (await api.products.listVariants(summary.id)).items;
+    // Variant-level external id is OPTIONAL downstream (`synthesizeOrder`
+    // falls back to `productAttributeId: '0'` for a simple product's
+    // synthetic variant, which legitimately carries no mapping of its own) —
+    // only the PRODUCT-level mapping is required here.
     const variant = variants.find((v) => (v.ean ?? v.gtin) && v.price !== null && v.price > 0);
     if (variant) {
       return { product: detail, variant };
@@ -140,7 +157,7 @@ export async function synthesizeOrder(
     );
   }
 
-  const driver = await pickDriverProduct(api);
+  const driver = await pickDriverProduct(api, prestashop.id);
   if (!driver) {
     throw new Error('synthesizeOrder found no catalogue product with a priced, EAN-complete variant');
   }
