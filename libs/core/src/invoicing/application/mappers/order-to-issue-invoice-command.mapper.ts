@@ -22,7 +22,11 @@ import type {
 import { InvalidBuyerProfileError } from './errors/invalid-buyer-profile.error';
 import { InvalidInvoiceLineError } from './errors/invalid-invoice-line.error';
 import { UnsupportedPriceTreatmentError } from './errors/unsupported-price-treatment.error';
-import { minorUnitExponentFor, splitShippingAcrossRates } from '@openlinker/core/sales-documents';
+import {
+  describeNetPricedOrderRefusal,
+  minorUnitExponentFor,
+  splitShippingAcrossRates,
+} from '@openlinker/core/sales-documents';
 
 /**
  * Default carrier-neutral label for the shipping invoice line (#1517). Core is
@@ -93,13 +97,16 @@ export function toIssueInvoiceCommand(
     taxRateEra,
   } = input;
 
-  // GROSS-only MVP: an `exclusive` (net) order would mislabel net as gross.
-  // Fail loud rather than corrupt totals. Absent treatment = documented gross
+  // GROSS-only: an `exclusive` (net) order would mislabel net as gross. Fail
+  // loud rather than corrupt totals. Absent treatment = documented gross
   // assumption (marketplaces report buyer-paid gross), so it is accepted.
-  if (order.totals.taxTreatment === 'exclusive') {
-    throw new UnsupportedPriceTreatmentError(
-      `Order ${order.id} is net-priced (taxTreatment "exclusive"); only gross-priced orders are supported`,
-    );
+  //
+  // This checks LINE-level `taxTreatment`, never `totals.totalTaxTreatment`
+  // (#2829/#2832) — see `describeNetPricedOrderRefusal`'s doc comment
+  // (#2835) for why the latter cannot relax this guard.
+  const refusal = describeNetPricedOrderRefusal(order, 'invoiced');
+  if (refusal !== null) {
+    throw new UnsupportedPriceTreatmentError(refusal);
   }
 
   const buyer = buildBuyerProfile(order, buyerTaxId ?? null);

@@ -316,6 +316,12 @@ function mapTotals(order: WooCommerceOrder): IncomingOrderTotals {
     // `line_items[].price` (mapped onto `OrderItem.price`) is net — WooCommerce
     // reports `total_tax` as a separate amount rather than folding it into the
     // line price (#2440).
+    //
+    // #2835 audit: this identically makes every WooCommerce order refused by
+    // `invoicing`/`fiscalization`'s net-priced-order guard
+    // (`describeNetPricedOrderRefusal`, `@openlinker/core/sales-documents`) —
+    // the same permanent limitation PrestaShop's net line prices hit, for the
+    // same reason (core may never compute tax to convert net to gross).
     taxTreatment: 'exclusive',
   };
 }

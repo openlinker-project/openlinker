@@ -87,3 +87,9 @@ export * from './domain/types/tax-rate-enforcement.types';
 // receipt is not an invoice, so neither context could own the shape for the
 // other. Visibility only - it changes no lease and no guarantee.
 export * from './domain/types/sales-document-in-flight.types';
+// Whether an order's LINE prices are gross-eligible for document issuance
+// (#2835). Here for the same reason the vocabularies above are: both document
+// contexts refuse a net-priced order identically, and this leaf imports
+// nothing so both can value-import it without either owning the other's
+// wording.
+export * from './domain/types/gross-price-eligibility.types';
