@@ -389,6 +389,12 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
     expect(checkNames).toEqual(expect.arrayContaining([
       'CHK_fulfillment_holds_actor',
       'CHK_fulfillment_work_lines_capacity',
+      // #2413. Named here rather than left to the definition diff because this
+      // file's prose reasons about it: it is the one CHECK in the slice that
+      // deliberately DIVERGES from the holds XOR it otherwise mirrors (at-most-
+      // one, not exactly-one — a work is created unpacked). A silent drop would
+      // otherwise leave both sides matching and both wrong.
+      'CHK_fulfillment_works_packed_actor',
     ]));
 
     // The capacity predicate spelled out clause by clause, so a weakening
@@ -404,6 +410,19 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
     ]) {
       expect(capacity).toContain(clause);
     }
+
+    // Same treatment for the packing actor (#2413), for the same reason: a
+    // predicate weakened on BOTH sides at once passes the parity diff. Both
+    // column names must appear, and the operator must be `AND` under a `NOT` —
+    // an `OR` there would forbid exactly the both-NULL state the router needs.
+    const packedActor = checksOf(fromMigration).find((entry) =>
+      entry.startsWith('CHK_fulfillment_works_packed_actor')
+    );
+    expect(packedActor).toBeDefined();
+    for (const clause of ['"packedByUserId" IS NOT NULL', '"packedByService" IS NOT NULL', 'NOT']) {
+      expect(packedActor).toContain(clause);
+    }
+    expect(packedActor).not.toContain(' OR ');
 
     const foreignKeys = fromMigration.filter((r) => r.contype === 'f');
     // Containment, not an exhaustive roster — the same trap the `TABLES`-derived

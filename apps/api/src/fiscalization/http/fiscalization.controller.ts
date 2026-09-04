@@ -16,9 +16,15 @@
  * through `IFiscalRegistrationService` - never a repository port.
  *
  * Guards are GLOBAL (`JwtAuthGuard` then `RolesGuard`), so no redundant
- * `@UseGuards` is declared. The read carries `@AnyRole()` rather than no
- * decorator — since #2079 an undecorated route is denied (any authenticated
- * role); the two writes carry `@Roles('admin')`.
+ * `@UseGuards` is declared. The two writes carry `@Roles('admin')`.
+ *
+ * **The reads are `@Roles('admin', 'operator', 'viewer')`, not `@AnyRole()`
+ * (#2413).** A fiscal registration is the same class of object as the invoicing
+ * reads #2413 narrowed, under a different controller — excluding one and not
+ * the other would key the decision on file layout rather than on what the data
+ * is. Behaviourally identical for every role that exists today; it excludes the
+ * new `packer` role by construction. See
+ * `docs/plans/implementation-plan-bench-packer-role-idle-lock-handover.md` § 2.3.
  *
  * @module apps/api/src/fiscalization/http
  */
@@ -68,13 +74,12 @@ import {
 } from '@openlinker/core/orders';
 import type { Order, OrderRecord } from '@openlinker/core/orders';
 
-import { Roles } from '../../auth/decorators/roles.decorator';
-import { AnyRole } from '../../auth/decorators/any-role.decorator';
 import { AcceptedFiscalRegistrationResponseDto } from './dto/accepted-fiscal-registration-response.dto';
 import { FiscalRegistrationProgressResponseDto } from './dto/fiscal-registration-progress-response.dto';
 import { FiscalRegistrationResponseDto } from './dto/fiscal-registration-response.dto';
 import { ReconcileFiscalRegistrationResponseDto } from './dto/reconcile-fiscal-registration-response.dto';
 import { RegisterFiscalTransactionRequestDto } from './dto/register-fiscal-transaction-request.dto';
+import { Roles } from '../../auth/decorators/roles.decorator';
 
 /**
  * The exactly-once key for this surface.
@@ -172,7 +177,7 @@ export class FiscalizationController {
     return accepted;
   }
 
-  @AnyRole()
+  @Roles('admin', 'operator', 'viewer')
   @Get('fiscal-registrations')
   @ApiOperation({
     summary: 'List the fiscal registration records held by an order',
@@ -192,7 +197,7 @@ export class FiscalizationController {
     return records.map((record) => this.toDto(record, now));
   }
 
-  @AnyRole()
+  @Roles('admin', 'operator', 'viewer')
   @Get('orders/:orderId/fiscal-registration')
   @ApiOperation({
     summary: 'Where this order`s registration is on one connection',

@@ -23,11 +23,23 @@
  * blob without any KSeF/regime vocabulary.
  *
  * Guards are GLOBAL (auth.module APP_GUARD = JwtAuthGuard then RolesGuard), so
- * we never declare a redundant `@UseGuards(JwtAuthGuard)`. Reads carry no
- * `@Roles` but carry `@AnyRole()` (open to any authenticated role, including
- * viewer — since #2079 that is declared, not inferred); writes carry
- * their own `@Roles('admin')` (#1357, mirroring the #1124 read-open/write-gated
+ * we never declare a redundant `@UseGuards(JwtAuthGuard)`. Writes carry their
+ * own `@Roles('admin')` (#1357, mirroring the #1124 read-open/write-gated
  * pattern).
+ *
+ * **Reads are `@Roles('admin', 'operator', 'viewer')`, not `@AnyRole()` (#2413).**
+ * They were `@AnyRole()` after #2079 — the honest declaration of their
+ * then-audience. #2413 adds a fourth role, `packer`, and invoice content, PDFs
+ * and UPO documents are not packer-facing: naming the three roles explicitly is
+ * behaviourally identical for every user who exists today and excludes the new
+ * one by construction. See
+ * `docs/plans/implementation-plan-bench-packer-role-idle-lock-handover.md` § 2.3.
+ *
+ * The consequence is deliberate and is #2418's to absorb: the pack bench cannot
+ * print an invoice through this register, and must reach the parcel's documents
+ * through a WORK-scoped route instead. A narrow role reaching documents through
+ * the work it is packing is the right shape; widening this register back would
+ * undo #2413.
  *
  * @module apps/api/src/invoicing/http
  */
@@ -54,8 +66,6 @@ import {
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiProduces, ApiQuery, ApiResponse } from '@nestjs/swagger';
 import { Response } from 'express';
 import { Logger } from '@openlinker/shared/logging';
-import { Roles } from '../../auth/decorators/roles.decorator';
-import { AnyRole } from '../../auth/decorators/any-role.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../auth/auth.types';
 import {
@@ -134,6 +144,7 @@ import { BankAccountResponseDto } from './dto/bank-account-response.dto';
 import { SendInvoiceEmailRequestDto } from './dto/send-invoice-email-request.dto';
 import { SendInvoiceEmailResponseDto } from './dto/send-invoice-email-response.dto';
 import { MarkInvoicePaidRequestDto } from './dto/mark-invoice-paid-request.dto';
+import { Roles } from '../../auth/decorators/roles.decorator';
 
 /** MIME → download-filename extension; the UPO is labelled by its real content type. */
 const EXTENSION_BY_CONTENT_TYPE: Readonly<Record<string, string>> = {
@@ -194,7 +205,7 @@ export class InvoicingController {
     private readonly connectionPort: ConnectionPort,
   ) {}
 
-  @AnyRole()
+  @Roles('admin', 'operator', 'viewer')
   @Get('connections/:connectionId/bank-accounts')
   @ApiOperation({
     summary: "List the connection's provider bank accounts (#1303 follow-up)",
@@ -1138,7 +1149,7 @@ export class InvoicingController {
     return this.toDto(refreshed ?? record);
   }
 
-  @AnyRole()
+  @Roles('admin', 'operator', 'viewer')
   @Get('orders/:orderId/invoice')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -1197,7 +1208,7 @@ export class InvoicingController {
     return dto;
   }
 
-  @AnyRole()
+  @Roles('admin', 'operator', 'viewer')
   @Get('invoices')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -1535,7 +1546,7 @@ export class InvoicingController {
     };
   }
 
-  @AnyRole()
+  @Roles('admin', 'operator', 'viewer')
   @Get('invoices/:invoiceId/content')
   @ApiOperation({
     summary: 'Get the issued-document content snapshot for an invoice',
@@ -1570,7 +1581,7 @@ export class InvoicingController {
     );
   }
 
-  @AnyRole()
+  @Roles('admin', 'operator', 'viewer')
   @Get('invoices/:invoiceId/document')
   @ApiOperation({
     summary: 'Download a regulatory document for an invoice by neutral kind',
@@ -1641,7 +1652,7 @@ export class InvoicingController {
     }
   }
 
-  @AnyRole()
+  @Roles('admin', 'operator', 'viewer')
   @Get('invoices/:invoiceId/upo')
   @ApiOperation({
     summary: 'Download the authority confirmation document (UPO) for a cleared invoice',
@@ -1694,7 +1705,7 @@ export class InvoicingController {
 
   // Declared last: must not shadow the more specific
   // `invoices/:invoiceId/upo` + `invoices/:invoiceId/content` sub-resources above.
-  @AnyRole()
+  @Roles('admin', 'operator', 'viewer')
   @Get('invoices/:invoiceId')
   @ApiOperation({
     summary: 'Get an invoice record by id',

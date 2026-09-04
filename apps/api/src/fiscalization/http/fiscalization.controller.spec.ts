@@ -147,16 +147,28 @@ describe('FiscalizationController', () => {
   });
 
   describe('authorization', () => {
-    it('should gate both writes to admin and leave the read open', () => {
+    it('should gate both writes to admin and both reads to admin/operator/viewer', () => {
       expect(Reflect.getMetadata(ROLES_KEY, FiscalizationController.prototype.register)).toEqual([
         'admin',
       ]);
       expect(
         Reflect.getMetadata(ROLES_KEY, FiscalizationController.prototype.reconcile),
       ).toEqual(['admin']);
+      // #2413: the reads were `@AnyRole()`. They now name the three roles
+      // explicitly — behaviourally identical for every user who exists today,
+      // and excluding the `packer` role by construction. A fiscal registration
+      // is the same class of object as the invoicing reads that issue narrowed.
       expect(
         Reflect.getMetadata(ROLES_KEY, FiscalizationController.prototype.listForOrder),
-      ).toBeUndefined();
+      ).toEqual(['admin', 'operator', 'viewer']);
+      expect(
+        Reflect.getMetadata(ROLES_KEY, FiscalizationController.prototype.getRegistrationProgress),
+      ).toEqual(['admin', 'operator', 'viewer']);
+      // The invariant, spelled out: it is the ABSENCE of `packer` that matters,
+      // not the presence of the other three.
+      expect(
+        Reflect.getMetadata(ROLES_KEY, FiscalizationController.prototype.listForOrder),
+      ).not.toContain('packer');
     });
   });
 

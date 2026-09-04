@@ -12,10 +12,15 @@
  * responses at the boundary.
  *
  * Guards are GLOBAL (auth.module APP_GUARD = JwtAuthGuard then RolesGuard), so we
- * never declare a redundant `@UseGuards(JwtAuthGuard)`. Reads carry no `@Roles`
- * (they carry `@AnyRole()`, open to any authenticated role — since #2079 an
- * undecorated route is denied); writes carry `@Roles('admin')` — mirroring
- * the invoicing controller's read-open/write-gated pattern (#1357).
+ * never declare a redundant `@UseGuards(JwtAuthGuard)`. Writes carry
+ * `@Roles('admin')` — mirroring the invoicing controller's read-open/
+ * write-gated pattern (#1357).
+ *
+ * **Reads are `@Roles('admin', 'operator', 'viewer')`, not `@AnyRole()` (#2413)** —
+ * a numbering series is a fiscal-document register, and the `packer` role added
+ * by #2413 has no business in one. Behaviourally identical for every role that
+ * exists today; it excludes the fourth by construction. Same reasoning, and the
+ * same reference, as `invoicing.controller.ts`.
  *
  * Route ordering: the fixed `numbering-series/unassigned` route is declared before
  * the parameterised `numbering-series/:seriesId` so it always matches first.
@@ -63,8 +68,6 @@ import type {
   SeriesRouteData,
 } from '@openlinker/core/invoicing';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
-import { Roles } from '../../auth/decorators/roles.decorator';
-import { AnyRole } from '../../auth/decorators/any-role.decorator';
 // Value import (not `import type`): the @CurrentUser() param type feeds decorator metadata.
 import { AuthenticatedUser } from '../../auth/auth.types';
 import { CreateNumberingSeriesRequestDto } from './dto/create-numbering-series-request.dto';
@@ -83,6 +86,7 @@ import {
 } from './dto/numbering-audit-response.dto';
 // Type-only: referenced only as a mapper return annotation, never as a decorator value.
 import type { SeriesAuditEntryResponseDto } from './dto/numbering-audit-response.dto';
+import { Roles } from '../../auth/decorators/roles.decorator';
 
 function seriesIdPipe(): ParseUUIDPipe {
   return new ParseUUIDPipe({ version: '4', errorHttpStatusCode: 404 });
@@ -131,7 +135,7 @@ export class NumberingSeriesController {
     }
   }
 
-  @AnyRole()
+  @Roles('admin', 'operator', 'viewer')
   @Get('numbering-series')
   @ApiOperation({ summary: 'List numbering series (newest first), optionally filtered (#9/#10)' })
   @ApiQuery({ name: 'documentType', required: false, description: 'Filter by neutral document type' })
@@ -150,7 +154,7 @@ export class NumberingSeriesController {
     return series.map((s) => this.toSeriesResponse(s));
   }
 
-  @AnyRole()
+  @Roles('admin', 'operator', 'viewer')
   @Get('numbering-series/unassigned')
   @ApiOperation({
     summary: 'List orphaned (unrouted) numbering series with their last-issued number (#9/#10)',
@@ -161,7 +165,7 @@ export class NumberingSeriesController {
     return series.map((s) => this.toUnassignedSeriesResponse(s));
   }
 
-  @AnyRole()
+  @Roles('admin', 'operator', 'viewer')
   @Get('numbering-series/:seriesId')
   @ApiOperation({ summary: 'Read a numbering series by id (#9/#10)' })
   @ApiResponse({ status: 200, type: NumberingSeriesResponseDto })
@@ -205,7 +209,7 @@ export class NumberingSeriesController {
 
   // --- Gap-audit (#8) --------------------------------------------------------
 
-  @AnyRole()
+  @Roles('admin', 'operator', 'viewer')
   @Get('numbering-series/:seriesId/audit')
   @ApiOperation({ summary: 'Numbering gap-audit read model for a series (#8)' })
   @ApiQuery({ name: 'onlyGaps', required: false, description: 'Return only gap entries when true' })
@@ -252,7 +256,7 @@ export class NumberingSeriesController {
 
   // --- Routing (#9 / #10) ----------------------------------------------------
 
-  @AnyRole()
+  @Roles('admin', 'operator', 'viewer')
   @Get('connections/:connectionId/numbering-routes')
   @ApiOperation({ summary: "List a connection's document-type numbering routes (#9/#10)" })
   @ApiResponse({ status: 200, type: [NumberingRouteResponseDto] })

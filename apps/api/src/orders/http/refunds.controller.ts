@@ -9,9 +9,11 @@
  * architecture-overview.md § Cross-context dependencies in core).
  *
  * Guards are GLOBAL (auth.module APP_GUARD = JwtAuthGuard then RolesGuard), so
- * we never declare a redundant `@UseGuards(JwtAuthGuard)`. The read carries no
- * `@Roles` but carries `@AnyRole()` (open to any authenticated role — since
- * #2079 that is declared, not inferred from an absent decorator); the write
+ * we never declare a redundant `@UseGuards(JwtAuthGuard)`. The read carries
+ * `@Roles('admin', 'operator', 'viewer')` rather than `@AnyRole()` (#2413) — a
+ * refund is money, and the `packer` role is excluded from the order register
+ * along with `OrdersController`; see that file's header for the reasoning and
+ * for what the bench reads instead. The write
  * carries its own
  * `@Roles('admin', 'operator')`, mirroring `ShipmentController`'s manual
  * operator-facing dispatch actions.
@@ -45,7 +47,6 @@ import {
   ORDER_RECORD_SERVICE_TOKEN,
 } from '@openlinker/core/orders';
 import { Roles } from '../../auth/decorators/roles.decorator';
-import { AnyRole } from '../../auth/decorators/any-role.decorator';
 import { RecordRefundRequestDto } from './dto/record-refund-request.dto';
 import { RefundRecordResponseDto } from './dto/refund-record-response.dto';
 
@@ -108,7 +109,7 @@ export class RefundsController {
     }
   }
 
-  @AnyRole()
+  @Roles('admin', 'operator', 'viewer')
   @Get(':internalOrderId/refunds')
   @ApiOperation({
     summary: 'List refunds recorded against an order',

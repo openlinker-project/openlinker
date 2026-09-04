@@ -6,6 +6,10 @@
  * failed syncs.
  *
  * @module apps/api/src/analytics/http
+ *
+ * **`@Roles('admin', 'operator', 'viewer')`, not `@AnyRole()` (#2413).** See
+ * `sales-analytics.controller.ts` for the reasoning shared by every analytics
+ * read.
  */
 import { Controller, Get, Inject } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
@@ -19,7 +23,7 @@ import {
   NeedsAttentionResponseDto,
   StockAtRiskItemDto,
 } from './dto/needs-attention-response.dto';
-import { AnyRole } from '../../auth/decorators/any-role.decorator';
+import { Roles } from '../../auth/decorators/roles.decorator';
 
 @ApiBearerAuth()
 @ApiTags('analytics')
@@ -30,7 +34,7 @@ export class NeedsAttentionController {
     private readonly needsAttentionService: INeedsAttentionService
   ) {}
 
-  @AnyRole()
+  @Roles('admin', 'operator', 'viewer')
   @Get('needs-attention')
   @ApiOperation({
     summary:

@@ -23,9 +23,32 @@
  *
  * @module libs/core/src/fulfillment/infrastructure/persistence/entities
  */
-import { Column, CreateDateColumn, Entity, Index, PrimaryColumn, UpdateDateColumn } from 'typeorm';
+import {
+  Check,
+  Column,
+  CreateDateColumn,
+  Entity,
+  Index,
+  PrimaryColumn,
+  UpdateDateColumn,
+} from 'typeorm';
 
 @Entity('fulfillment_works')
+// AT-MOST-ONE packing actor (#2413, ADR-071 decision 2) — deliberately NOT the
+// `CHK_fulfillment_holds_actor` XOR (`<>`, exactly one) this pair otherwise
+// mirrors. A hold always has an actor; a WORK is created unpacked and spends
+// most of its life that way, so both-NULL is the normal state here rather than
+// an anomaly, and `<>` would refuse every INSERT the router makes. What the XOR
+// buys is preserved exactly: "a 3PL packed this" and "a human packed it" can
+// never be the same value. Both-NULL stays ambiguous between "not packed" and
+// "packed, unattributed" — `status` distinguishes them, and no `packedAt` is
+// added here because that would be a second completion instant competing with
+// the phase model #2418 owns. Declared under the SAME NAME as the migration,
+// per this file's own naming discipline.
+@Check(
+  'CHK_fulfillment_works_packed_actor',
+  'NOT ("packedByUserId" IS NOT NULL AND "packedByService" IS NOT NULL)'
+)
 // The grouping key. Its LEADING COLUMN serves every `WHERE "orderId" = ?`
 // lookup, so there is deliberately no separate (orderId) index — the same
 // argument this tree makes against a redundant index on `return_lines`.
@@ -201,6 +224,49 @@ export class FulfillmentWorkOrmEntity {
    */
   @Column({ type: 'integer', default: 0 })
   version!: number;
+
+  /**
+   * OL user id of whoever closed this work object's packing phase (#2413).
+   * `null` when a service packed it, or when nothing has.
+   *
+   * **`uuid`, deliberately diverging from `fulfillment_holds.placedByUserId`,
+   * which is `text`.** The shape and the name discipline are copied from that
+   * pair; the TYPE is not, and the reason is D4: the order-grain fact is
+   * DERIVED from this column, and its target `order_records.packedByUserId`
+   * (#2287) is `uuid`. A `text` source can hold a value the derivation target
+   * cannot store — a failure that would surface in #2418's writer, far from the
+   * column that admitted it. Nothing derives from `placedByUserId`, so the
+   * holds precedent is not load-bearing in the same way. `packedByService`
+   * stays `text`, because a service NAME is free-form: the two columns are two
+   * different kinds of value and the split types say so.
+   *
+   * No FK to `users`, matching both precedents: a dangling id from a deleted
+   * user is the honest outcome for an audit fact, and this table carries
+   * cross-aggregate references by value throughout.
+   *
+   * **The last verifier owns the parcel** (spec D13, a consequence of D18's
+   * auto-close). Under roaming benches this can be someone who checked one item
+   * of five, so a reader must NOT take this field as a complete account of who
+   * handled the box — the verification ledger holds the rest.
+   *
+   * **Grain is per work, per phase** (spec D4). The order-grain fact is
+   * derived; an order-grain person field would name one packer of a split order
+   * and drop the other. `order_records.packedAt` / `packedByUserId` (#2287) is
+   * a different fact — an operator ticking an order packed by hand — and
+   * neither is computed from the other.
+   *
+   * Written by #2418, not here.
+   */
+  @Column({ type: 'uuid', nullable: true })
+  packedByUserId!: string | null;
+
+  /**
+   * Name of the service that packed this work object (#2413). `null` when a
+   * human packed it, or when nothing has. Never set alongside
+   * `packedByUserId` — see `CHK_fulfillment_works_packed_actor` on the class.
+   */
+  @Column({ type: 'text', nullable: true })
+  packedByService!: string | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;

@@ -5,6 +5,38 @@
  * for listing order records with filters and retrieving individual orders.
  *
  * @module apps/api/src/orders/http
+ *
+ * ## The reads are `@Roles('admin', 'operator', 'viewer')`, not `@AnyRole()` (#2413)
+ *
+ * **This is the route that decides whether story A5 is real.** `OrderRecordResponseDto.
+ * orderSnapshot` is emitted by the shared `toDto` on both `GET /orders` and
+ * `GET /orders/:internalOrderId`, and under the default `OL_STORE_PII=true`
+ * that snapshot carries the buyer's name, email and both un-redacted addresses
+ * (`OrderRecordService` redacts only when PII storage is off). So a `packer`
+ * left on `@AnyRole()` here would reach a **superset** of `GET /customers/:id`,
+ * and narrowing `CustomersController` alone would have made A5 nominal rather
+ * than true — the customer register closed and the same data reachable one
+ * route over. Found by review, not by the acceptance criterion, which names the
+ * customer register only.
+ *
+ * The three summary routes carry no PII, and are narrowed with the rest for one
+ * reason: the exclusion is **the order REGISTER**, not a per-field judgement
+ * about each of its projections, and a register split down the middle is a rule
+ * nobody can apply to the next route added here.
+ *
+ * ## What the bench reads instead
+ *
+ * The packer needs the parcel in front of them. They reach it **through the
+ * work**, not through this register: #2416/#2418 own a work-scoped read that
+ * projects only what a bench must see. That is the same shape as the invoice
+ * consequence recorded on `InvoicingController`, and it is the right one — a
+ * narrow role reaching an order through the work it is packing cannot enumerate
+ * the order book. Until that read exists, the bench sees no order data at all,
+ * which is the fail-closed direction and costs nothing today because the bench
+ * body is still a placeholder.
+ *
+ * See `docs/plans/implementation-plan-bench-packer-role-idle-lock-handover.md`
+ * § 2.3 and § 2.4.
  */
 import {
   Controller,
@@ -26,7 +58,6 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
-import { AnyRole } from '../../auth/decorators/any-role.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../auth/auth.types';
 import {
@@ -154,7 +185,7 @@ export class OrdersController {
     private readonly salesDocumentView: ISalesDocumentViewService
   ) {}
 
-  @AnyRole()
+  @Roles('admin', 'operator', 'viewer')
   @Get()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -316,7 +347,7 @@ export class OrdersController {
     };
   }
 
-  @AnyRole()
+  @Roles('admin', 'operator', 'viewer')
   @Get('status-summary')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -347,7 +378,7 @@ export class OrdersController {
     };
   }
 
-  @AnyRole()
+  @Roles('admin', 'operator', 'viewer')
   @Get('sla-summary')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -374,7 +405,7 @@ export class OrdersController {
     });
   }
 
-  @AnyRole()
+  @Roles('admin', 'operator', 'viewer')
   @Get('lifecycle-summary')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -402,7 +433,7 @@ export class OrdersController {
     });
   }
 
-  @AnyRole()
+  @Roles('admin', 'operator', 'viewer')
   @Get(':internalOrderId')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get order record by internal order ID' })
@@ -468,7 +499,7 @@ export class OrdersController {
     return dto;
   }
 
-  @AnyRole()
+  @Roles('admin', 'operator', 'viewer')
   @Get(':internalOrderId/sales-document')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

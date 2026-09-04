@@ -31,6 +31,12 @@
  * — see `ListLocationsQueryDto` for why.
  *
  * @module apps/api/src/inventory/http
+ *
+ * **The reads are `@Roles('admin', 'operator', 'viewer')`, not `@AnyRole()`
+ * (#2413).** The location REGISTER is configuration — its writes are already
+ * admin-only (#2316) — as distinct from `GET /inventory/availability`, which is
+ * operational stock and stays open to `packer`. Behaviourally identical for
+ * every role that exists today.
  */
 import {
   Body,
@@ -52,14 +58,13 @@ import {
   type ILocationService,
   type InventoryLocation,
 } from '@openlinker/core/inventory';
-import { Roles } from '../../auth/decorators/roles.decorator';
-import { AnyRole } from '../../auth/decorators/any-role.decorator';
 import { CreateLocationDto } from './dto/create-location.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
 import { ListLocationsQueryDto } from './dto/list-locations-query.dto';
 import { LocationResponseDto } from './dto/location-response.dto';
 import { PaginatedLocationsResponseDto } from './dto/paginated-locations-response.dto';
 import { LocationBootstrapResponseDto } from './dto/location-bootstrap-response.dto';
+import { Roles } from '../../auth/decorators/roles.decorator';
 
 @ApiBearerAuth()
 @ApiTags('inventory')
@@ -70,7 +75,7 @@ export class InventoryLocationsController {
     private readonly locations: ILocationService
   ) {}
 
-  @AnyRole()
+  @Roles('admin', 'operator', 'viewer')
   @Get()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -104,7 +109,7 @@ export class InventoryLocationsController {
     };
   }
 
-  @AnyRole()
+  @Roles('admin', 'operator', 'viewer')
   @Get(':id')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get one inventory location' })

@@ -6,6 +6,10 @@
  * including the raw payload.
  *
  * @module apps/api/src/webhooks/http
+ *
+ * **`@Roles('admin', 'operator', 'viewer')`, not `@AnyRole()` (#2413).** A
+ * delivery record carries inbound payload and rejection detail; the `packer`
+ * role has no business in one. Behaviourally identical for every role today.
  */
 import {
   Controller,
@@ -28,7 +32,7 @@ import { PaginatedWebhookDeliveriesResponseDto } from './dto/paginated-webhook-d
 import { WebhookDeliveryDetailResponseDto } from './dto/webhook-delivery-detail-response.dto';
 import type { WebhookDeliverySummaryResponseDto } from './dto/webhook-delivery-summary-response.dto';
 import type { WebhookDelivery } from '@openlinker/core/webhooks';
-import { AnyRole } from '../../auth/decorators/any-role.decorator';
+import { Roles } from '../../auth/decorators/roles.decorator';
 
 @ApiBearerAuth()
 @ApiTags('webhooks')
@@ -39,7 +43,7 @@ export class WebhookDeliveryController {
     private readonly queryService: IWebhookDeliveryQueryService
   ) {}
 
-  @AnyRole()
+  @Roles('admin', 'operator', 'viewer')
   @Get()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -82,7 +86,7 @@ export class WebhookDeliveryController {
     };
   }
 
-  @AnyRole()
+  @Roles('admin', 'operator', 'viewer')
   @Get(':id')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get webhook delivery by id' })

@@ -230,6 +230,16 @@ module.exports = {
                   '**/automation/components/**',
                   '**/automation/lib/**',
                   '**/automation/types/**',
+                  // #2413 — `features/bench` is the pack-bench identity
+                  // surface. Registered here at the same time as the folder and
+                  // as the vocabulary-gate scan root in
+                  // `scripts/check-ui-vocabulary.mjs`, so the slug cannot drift
+                  // between the two.
+                  '**/bench/api/**',
+                  '**/bench/hooks/**',
+                  '**/bench/components/**',
+                  '**/bench/lib/**',
+                  '**/bench/types/**',
                   // Added in #1938 review, when `features/demo` reached into
                   // `../../auth/hooks/`. Enumerated in full like every other
                   // slug; note that `pages/auth/*` and `app/api/api-client.ts`
@@ -489,6 +499,16 @@ module.exports = {
                   '**/automation/components/**',
                   '**/automation/lib/**',
                   '**/automation/types/**',
+                  // #2413 — `features/bench` is the pack-bench identity
+                  // surface. Registered here at the same time as the folder and
+                  // as the vocabulary-gate scan root in
+                  // `scripts/check-ui-vocabulary.mjs`, so the slug cannot drift
+                  // between the two.
+                  '**/bench/api/**',
+                  '**/bench/hooks/**',
+                  '**/bench/components/**',
+                  '**/bench/lib/**',
+                  '**/bench/types/**',
                   // #1938 review — `features/auth` gained a barrel; a new slug
                   // goes into BOTH pattern groups per
                   // docs/frontend-architecture.md § Feature Public Surface,
