@@ -90,6 +90,12 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
       // PrestaShop's line prices (`order_details.product_price`, mapped onto
       // `OrderItem.price` above) are net — `specific_price` and every catalogue
       // read this adapter does elsewhere already treat them that way (#2440).
+      //
+      // #2835: this net-priced-lines fact is why `invoicing`/`fiscalization`
+      // permanently refuse a PrestaShop order (`describeNetPricedOrderRefusal`,
+      // `@openlinker/core/sales-documents`) — `total` being genuinely gross
+      // (below) does not change that the LINES this guard cares about are net,
+      // and core may never compute tax to convert them.
       taxTreatment: 'exclusive',
     };
 

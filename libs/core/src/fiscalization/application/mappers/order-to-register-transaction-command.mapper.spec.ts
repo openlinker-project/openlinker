@@ -151,6 +151,27 @@ describe('toRegisterTransactionCommand', () => {
     ).toThrow(UnsupportedFiscalPriceTreatmentError);
   });
 
+  it('net-priced order: the refusal names the actual constraint (#2835)', () => {
+    expect(() =>
+      toRegisterTransactionCommand({
+        order: order({
+          totals: {
+            subtotal: 40,
+            tax: 9.2,
+            shipping: 0,
+            total: 40,
+            currency: 'PLN',
+            taxTreatment: 'exclusive',
+          },
+        }),
+        connectionId: 'conn-1',
+        idempotencyKey: 'k',
+      }),
+    ).toThrow(
+      /ol_order_1 cannot be fiscally registered: its source reports net \(tax-exclusive\) line prices/,
+    );
+  });
+
   it('should accept an order whose treatment is absent (the documented gross assumption)', () => {
     expect(() =>
       toRegisterTransactionCommand({
