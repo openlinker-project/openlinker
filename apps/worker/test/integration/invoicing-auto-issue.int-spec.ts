@@ -161,7 +161,12 @@ describe('Invoicing Auto-Issue Integration (OL #1120)', () => {
   describe('auto-on-paid', () => {
     it('a paid order transition enqueues exactly one invoicing.issue job with the deterministic key', async () => {
       const connId = await seedInvoicingConnection(harness, 'auto-on-paid');
-      const order = makeOrder({ id: 'order-paid-1', paymentStatus: 'paid' });
+      await salesDocumentRules.upsertCountryDefault({
+        country: 'DE',
+        documentKind: 'invoice',
+        connectionId: connId,
+      });
+      const order = makeOrderWithDelivery('DE', { id: 'order-paid-1', paymentStatus: 'paid' });
 
       await trigger.onOrderTransition(order, 'src-conn-1', 'evt-1');
 
@@ -178,7 +183,15 @@ describe('Invoicing Auto-Issue Integration (OL #1120)', () => {
 
     it('a re-delivered paid event produces NO second job (D7 — deterministic-key short-circuit)', async () => {
       const connId = await seedInvoicingConnection(harness, 'auto-on-paid');
-      const order = makeOrder({ id: 'order-paid-dupe', paymentStatus: 'paid' });
+      await salesDocumentRules.upsertCountryDefault({
+        country: 'DE',
+        documentKind: 'invoice',
+        connectionId: connId,
+      });
+      const order = makeOrderWithDelivery('DE', {
+        id: 'order-paid-dupe',
+        paymentStatus: 'paid',
+      });
 
       // First delivery enqueues.
       await trigger.onOrderTransition(order, 'src-conn-1', 'evt-1');
@@ -192,9 +205,14 @@ describe('Invoicing Auto-Issue Integration (OL #1120)', () => {
     });
 
     it('a non-paid order on an auto-on-paid connection enqueues nothing', async () => {
-      await seedInvoicingConnection(harness, 'auto-on-paid');
+      const connId = await seedInvoicingConnection(harness, 'auto-on-paid');
+      await salesDocumentRules.upsertCountryDefault({
+        country: 'DE',
+        documentKind: 'invoice',
+        connectionId: connId,
+      });
       await trigger.onOrderTransition(
-        makeOrder({ id: 'order-awaiting', paymentStatus: 'awaiting' }),
+        makeOrderWithDelivery('DE', { id: 'order-awaiting', paymentStatus: 'awaiting' }),
         'src-conn-1',
       );
       expect(await invoicingJobs(harness)).toHaveLength(0);
@@ -204,8 +222,13 @@ describe('Invoicing Auto-Issue Integration (OL #1120)', () => {
   describe('auto-on-shipped', () => {
     it('a shipped order transition enqueues exactly one invoicing.issue job', async () => {
       const connId = await seedInvoicingConnection(harness, 'auto-on-shipped');
+      await salesDocumentRules.upsertCountryDefault({
+        country: 'DE',
+        documentKind: 'invoice',
+        connectionId: connId,
+      });
       await trigger.onOrderTransition(
-        makeOrder({ id: 'order-shipped', status: 'shipped' }),
+        makeOrderWithDelivery('DE', { id: 'order-shipped', status: 'shipped' }),
         'src-conn-1',
       );
       const jobs = await invoicingJobs(harness);
@@ -215,9 +238,18 @@ describe('Invoicing Auto-Issue Integration (OL #1120)', () => {
     });
 
     it('a non-shipped order on an auto-on-shipped connection enqueues nothing', async () => {
-      await seedInvoicingConnection(harness, 'auto-on-shipped');
+      const connId = await seedInvoicingConnection(harness, 'auto-on-shipped');
+      await salesDocumentRules.upsertCountryDefault({
+        country: 'DE',
+        documentKind: 'invoice',
+        connectionId: connId,
+      });
       await trigger.onOrderTransition(
-        makeOrder({ id: 'order-proc', status: 'processing', paymentStatus: 'paid' }),
+        makeOrderWithDelivery('DE', {
+          id: 'order-proc',
+          status: 'processing',
+          paymentStatus: 'paid',
+        }),
         'src-conn-1',
       );
       expect(await invoicingJobs(harness)).toHaveLength(0);
@@ -225,57 +257,98 @@ describe('Invoicing Auto-Issue Integration (OL #1120)', () => {
   });
 
   describe('manual', () => {
-    it('a manual connection produces ZERO invoicing.issue jobs even for a paid+shipped order', async () => {
-      await seedInvoicingConnection(harness, 'manual');
+    it('a manual connection produces ZERO invoicing.issue jobs even for a paid+shipped order that routes to it', async () => {
+      const connId = await seedInvoicingConnection(harness, 'manual');
+      // Routing resolves the connection unambiguously (a country default
+      // names exactly one connectionId in the #2170 model — there is no
+      // sibling-candidate ambiguity to introduce here); the trigger-model
+      // gate, checked AFTER routing resolves a winner, is what this test
+      // exercises.
+      await salesDocumentRules.upsertCountryDefault({
+        country: 'DE',
+        documentKind: 'invoice',
+        connectionId: connId,
+      });
       await trigger.onOrderTransition(
-        makeOrder({ id: 'order-manual', status: 'shipped', paymentStatus: 'paid' }),
+        makeOrderWithDelivery('DE', {
+          id: 'order-manual',
+          status: 'shipped',
+          paymentStatus: 'paid',
+        }),
         'src-conn-1',
       );
       expect(await invoicingJobs(harness)).toHaveLength(0);
     });
   });
 
-  // #2047: one sale is one invoice, so several eligible Invoicing connections no
-  // longer fan out — exactly one primary auto-issues, and an unresolved primary
-  // issues NOTHING (an uninvoiced order is fixable by hand; two documents for
-  // one sale need a correction of a document that should never have existed).
-  describe('primary-connection lock (#2047)', () => {
-    it('the primary connection is the only one that enqueues, even when siblings would also qualify', async () => {
-      const autoPaid = await seedInvoicingConnection(harness, 'auto-on-paid', { isPrimary: true });
-      // A second connection whose trigger model ALSO matches a paid order —
-      // pre-#2047 this fanned out into two real fiscal documents.
+  // #2047: one sale is one invoice. Since the retirement of the
+  // operator-configured `isPrimary` fallback ("opcja b" — see
+  // `chooseSalesDocumentDecision`'s own doc comment), this is now enforced
+  // STRUCTURALLY rather than by a runtime tie-break: a country default /
+  // rule names exactly ONE connectionId, so there is no ambiguous-candidate
+  // set for a "primary" to disambiguate anymore. These tests assert that a
+  // sibling connection which is otherwise eligible (right capability, right
+  // trigger model) but NOT the one the rule engine named never receives a
+  // job — the same "exactly one document" invariant, produced the new way.
+  describe('exactly one originating document per order (#2047, post-fallback-retirement)', () => {
+    it('only the connection the rule engine names enqueues, even when an equally-eligible sibling exists', async () => {
+      const named = await seedInvoicingConnection(harness, 'auto-on-paid');
+      // A second connection whose trigger model ALSO matches a paid order,
+      // but which the rule engine never names for this country.
       await seedInvoicingConnection(harness, 'auto-on-paid');
       await seedInvoicingConnection(harness, 'manual');
+      await salesDocumentRules.upsertCountryDefault({
+        country: 'DE',
+        documentKind: 'invoice',
+        connectionId: named,
+      });
 
       await trigger.onOrderTransition(
-        makeOrder({ id: 'order-mixed', status: 'processing', paymentStatus: 'paid' }),
+        makeOrderWithDelivery('DE', {
+          id: 'order-mixed',
+          status: 'processing',
+          paymentStatus: 'paid',
+        }),
         'src-conn-1',
       );
 
       const jobs = await invoicingJobs(harness);
       expect(jobs).toHaveLength(1);
-      expect(jobs[0].connectionId).toBe(autoPaid);
-      expect(jobs[0].idempotencyKey).toBe(`invoice:${autoPaid}:order-mixed`);
+      expect(jobs[0].connectionId).toBe(named);
+      expect(jobs[0].idempotencyKey).toBe(`invoice:${named}:order-mixed`);
     });
 
-    it('several eligible connections with no primary enqueue NOTHING', async () => {
+    it('several eligible connections enqueue NOTHING when the rule engine has no configuration at all for the order country', async () => {
       await seedInvoicingConnection(harness, 'auto-on-paid');
       await seedInvoicingConnection(harness, 'auto-on-shipped');
 
       await trigger.onOrderTransition(
-        makeOrder({ id: 'order-ambiguous', status: 'processing', paymentStatus: 'paid' }),
+        makeOrderWithDelivery('PL', {
+          id: 'order-ambiguous',
+          status: 'processing',
+          paymentStatus: 'paid',
+        }),
         'src-conn-1',
       );
 
       expect(await invoicingJobs(harness)).toHaveLength(0);
     });
 
-    it('a primary set on a manual connection turns auto-issue off for the whole install', async () => {
-      await seedInvoicingConnection(harness, 'manual', { isPrimary: true });
+    it('a country default naming a manual connection issues nothing, even with an eligible auto-on-paid sibling present', async () => {
+      const manualConn = await seedInvoicingConnection(harness, 'manual');
       await seedInvoicingConnection(harness, 'auto-on-paid');
+      await salesDocumentRules.upsertCountryDefault({
+        country: 'DE',
+        documentKind: 'invoice',
+        connectionId: manualConn,
+      });
 
       await trigger.onOrderTransition(
-        makeOrder({ id: 'order-manual-primary', status: 'processing', paymentStatus: 'paid' }),
+        makeOrderWithDelivery('DE', {
+          id: 'order-manual-primary',
+          status: 'processing',
+          paymentStatus: 'paid',
+        }),
         'src-conn-1',
       );
 
@@ -312,12 +385,16 @@ describe('Invoicing Auto-Issue Integration (OL #1120)', () => {
       expect(jobs[0].idempotencyKey).toBe(`invoice:${connId}:order-de-country-default`);
     });
 
-    it('an order whose country has NO rule-engine configuration at all falls back to the exact pre-#2170 single-primary behavior', async () => {
+    it('an order whose country has NO rule-engine configuration at all enqueues NOTHING — the single-primary isPrimary fallback is retired', async () => {
       // No `sales_document_rules` / `sales_document_country_defaults` row
       // exists for 'PL' at all (only the unrelated seeded
       // `pl-simplified-invoice-2026` threshold row, which no rule references
-      // here) — this IS what "an untouched install" means.
-      const connId = await seedInvoicingConnection(harness, 'auto-on-paid');
+      // here) — this IS what "an untouched install" means. Pre-#2170 this
+      // fell back to `isPrimary` selection; that fallback is retired
+      // ("opcja b"), so `chooseSalesDocumentDecision` returns `null` here
+      // and `onOrderTransition` enqueues nothing — even with a single,
+      // unambiguous `auto-on-paid` connection present.
+      await seedInvoicingConnection(harness, 'auto-on-paid');
       const order = makeOrderWithDelivery('PL', {
         id: 'order-pl-legacy-fallback',
         paymentStatus: 'paid',
@@ -325,10 +402,7 @@ describe('Invoicing Auto-Issue Integration (OL #1120)', () => {
 
       await trigger.onOrderTransition(order, 'src-conn-1', 'evt-1');
 
-      const jobs = await invoicingJobs(harness);
-      expect(jobs).toHaveLength(1);
-      expect(jobs[0].connectionId).toBe(connId);
-      expect(jobs[0].idempotencyKey).toBe(`invoice:${connId}:order-pl-legacy-fallback`);
+      expect(await invoicingJobs(harness)).toHaveLength(0);
     });
 
     it('several eligible operator-configured connections with no primary still enqueue NOTHING when the rule engine has no configuration for the order country (#2047 regression)', async () => {
