@@ -1,4 +1,8 @@
 const path = require('path');
+const {
+  ESM_DEPS_TRANSFORM_IGNORE_PATTERN,
+  esmDepsJsTransform,
+} = require('../../../jest.esm-deps.cjs');
 
 module.exports = {
   rootDir: '..',
@@ -6,8 +10,12 @@ module.exports = {
   testEnvironment: 'node',
   testRegex: 'test/integration/.*\\.int-spec\\.ts$',
   transform: {
-    '^.+\\.(t|j)s$': 'ts-jest',
+    '^.+\\.ts$': 'ts-jest',
+    // ESM-only htmlparser2 chain pulled in transitively by sanitize-html
+    // >=2.17.6 via @openlinker/shared/html — see jest.esm-deps.cjs.
+    '^.+\\.js$': esmDepsJsTransform,
   },
+  transformIgnorePatterns: [ESM_DEPS_TRANSFORM_IGNORE_PATTERN],
   // Explicit, in-workspace transform cache so CI can persist it between
   // runs. A cold cache costs the run's FIRST suite ~32 s on CI (measured:
   // 6.4 s warm vs 76.3 s cold locally for the same file) because every
