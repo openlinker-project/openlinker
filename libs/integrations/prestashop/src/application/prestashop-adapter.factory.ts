@@ -41,6 +41,7 @@ import { PrestashopCurrencyResolver } from '../infrastructure/provisioners/prest
 import { PrestashopPackResolver } from '../infrastructure/provisioners/prestashop-pack.resolver';
 import { PrestashopShopCurrencyResolver } from '../infrastructure/provisioners/prestashop-shop-currency.resolver';
 import { PrestashopOrderCurrencyResolver } from '../infrastructure/provisioners/prestashop-order-currency.resolver';
+import { PrestashopOrderFeedCapabilityCache } from '../infrastructure/provisioners/prestashop-order-feed-capability.cache';
 import { PrestashopTaxRateResolver } from '../infrastructure/provisioners/prestashop-tax-rate.resolver';
 import { PrestashopAttributeResolver } from '../infrastructure/provisioners/prestashop-attribute.resolver';
 import { PrestashopFeatureResolver } from '../infrastructure/provisioners/prestashop-feature.resolver';
@@ -97,6 +98,12 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
   private readonly orderCurrencyResolver = new PrestashopOrderCurrencyResolver(
     this.shopCurrencyResolver
   );
+
+  // Process-singleton for the same reason as the caches above: it remembers,
+  // per connection, whether the shop refuses `date_upd` as an `orders`
+  // sort/filter field (#2877), and a per-adapter cache would never hit since
+  // the order-source adapter is rebuilt on every capability resolution.
+  private readonly orderFeedCapabilityCache = new PrestashopOrderFeedCapabilityCache();
 
   // Last shop identity seen per connection id, so a repointed connection can be
   // detected. See `dropCachesOnShopIdentityChange` for why this is the
@@ -199,7 +206,8 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       httpClient,
       orderMapper,
       connection,
-      this.orderCurrencyResolver
+      this.orderCurrencyResolver,
+      this.orderFeedCapabilityCache
     );
 
     // Create orderProcessorManager only if customer provisioning dependencies
