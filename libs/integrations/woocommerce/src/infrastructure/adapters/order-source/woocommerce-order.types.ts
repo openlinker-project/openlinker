@@ -29,6 +29,21 @@ export interface WooCommerceOrder {
   // NOTE: WC REST API v3 has NO top-level subtotal field.
   // subtotal is computed from `line_items[].total`; `total` includes `fee_lines`, so
   // the subtraction formula would overstate the product subtotal for orders with fees.
+  /**
+   * WC core has no buyer tax-id field at all — this is only ever populated
+   * by a store's own VAT plugin (#2822). See
+   * `WOOCOMMERCE_VAT_META_KEY_ALLOWLIST` (`woocommerce-order-source.adapter.ts`)
+   * for the best-effort key allowlist read from here.
+   */
+  meta_data?: WooCommerceOrderMetaData[];
+}
+
+export interface WooCommerceOrderMetaData {
+  key: string;
+  // WC REST `meta_data[].value` is arbitrary JSON — plugins routinely store
+  // arrays/objects there, not just strings (#2824 review). Consumers must
+  // narrow with `typeof === 'string'` before use.
+  value: unknown;
 }
 
 export interface WooCommerceBillingAddress {

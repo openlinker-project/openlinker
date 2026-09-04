@@ -20,6 +20,7 @@ import type {
   IncomingOrderTotals,
   OrderFeedEventType,
 } from '@openlinker/core/orders';
+import { readSourceBuyerTaxId } from '@openlinker/core/orders';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 import type { IWooCommerceHttpClient } from '../http/woocommerce-http-client.interface';
@@ -32,6 +33,7 @@ import type {
   WooCommerceLineItem,
   WooCommerceBillingAddress,
   WooCommerceShippingAddress,
+  WooCommerceOrderMetaData,
 } from './order-source/woocommerce-order.types';
 
 export class WooCommerceOrderSourceAdapter implements OrderSourcePort {
@@ -160,7 +162,7 @@ export class WooCommerceOrderSourceAdapter implements OrderSourcePort {
       items: order.line_items.map(mapLineItem),
       totals: mapTotals(order),
       shippingAddress: mapShippingAddress(order.shipping),
-      billingAddress: mapBillingAddress(order.billing),
+      billingAddress: mapBillingAddress(order.billing, order.meta_data),
       // Delivery-method label (#1776): mapped from the first shipping line's
       // `method_title` whenever the order carries one, so the orders list/detail
       // delivery-method label populates.
@@ -247,8 +249,54 @@ function mapShippingAddress(addr: WooCommerceShippingAddress): IncomingOrderAddr
   return mapBaseAddress(addr);
 }
 
-function mapBillingAddress(addr: WooCommerceBillingAddress): IncomingOrderAddress {
-  return { ...mapBaseAddress(addr), phone: addr.phone || undefined };
+/**
+ * Best-effort VAT-number meta_data keys (#2822). WooCommerce core carries no
+ * native tax-id field on an order; these are the keys the most common VAT
+ * plugins write onto `meta_data`:
+ * - `"VAT Number"` — Aelia "EU VAT Number"
+ *   (https://github.com/aelia-co/woocommerce-eu-vat-number).
+ * - `_billing_eu_vat_number`, `_vat_number` — other common WC VAT-field
+ *   plugins/checkout-field builders.
+ *
+ * First non-blank match wins. This list is deliberately non-exhaustive — a
+ * store running an unlisted plugin reads as unknown (`undefined`), never a
+ * false asserted-none. An operator has no way to extend this list today; a
+ * per-connection `config` key is the obvious follow-up if this proves too
+ * narrow.
+ */
+const WOOCOMMERCE_VAT_META_KEY_ALLOWLIST = [
+  'VAT Number',
+  '_billing_eu_vat_number',
+  '_vat_number',
+] as const;
+
+function readBillingTaxIdFromMetaData(
+  metaData: WooCommerceOrderMetaData[] | undefined
+): string | undefined {
+  if (!metaData) {
+    return undefined;
+  }
+  for (const key of WOOCOMMERCE_VAT_META_KEY_ALLOWLIST) {
+    const entry = metaData.find((m) => m.key === key);
+    // `value` is arbitrary JSON on the wire (#2824 review) — a plugin
+    // writing an array/object under an allowlisted key must read as
+    // unknown, never throw and fail the whole order ingestion.
+    if (entry && typeof entry.value === 'string' && entry.value) {
+      return entry.value;
+    }
+  }
+  return undefined;
+}
+
+function mapBillingAddress(
+  addr: WooCommerceBillingAddress,
+  metaData?: WooCommerceOrderMetaData[]
+): IncomingOrderAddress {
+  return {
+    ...mapBaseAddress(addr),
+    phone: addr.phone || undefined,
+    taxId: readSourceBuyerTaxId(readBillingTaxIdFromMetaData(metaData)),
+  };
 }
 
 function mapTotals(order: WooCommerceOrder): IncomingOrderTotals {
