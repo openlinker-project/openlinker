@@ -169,6 +169,15 @@ export interface FulfillmentWork {
   readonly dispatchRelayedAt: Date | null;
 
   /**
+   * When an operator pushed this ahead of deadline order (#2416, spec D22), or
+   * `null` for ordinary deadline order.
+   *
+   * The instant, not a boolean: it is the tiebreak between two expedited
+   * parcels. See the ORM column for why there is no index and no actor.
+   */
+  readonly expeditedAt: Date | null;
+
+  /**
    * The HOLDER's acceptance instant, and the at-most-once claim marker for
    * acceptance (#2399, ADR-054).
    *

@@ -5,7 +5,7 @@ import {
 import { FulfillmentRequestStatusValues } from './fulfillment-request-status.types';
 
 describe('FulfillmentWorkActionValues', () => {
-  it('should hold exactly the twelve members', () => {
+  it('should hold exactly the fourteen members', () => {
     expect(FulfillmentWorkActionValues).toEqual([
       'schedule',
       'submit',
@@ -19,6 +19,8 @@ describe('FulfillmentWorkActionValues', () => {
       'mark_in_progress',
       'close',
       'force_cancel',
+      'expedite',
+      'release_expedite',
     ]);
   });
 

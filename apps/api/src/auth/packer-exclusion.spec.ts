@@ -122,7 +122,15 @@ const PACKER_REACHABLE_ANY_ROLE_ROUTES: readonly string[] = [
  * reads `GET /auth/me`, which is on the allow-list above). #2416/#2418 fill
  * this in with their work-scoped reads.
  */
-const PACKER_GRANTED_ROUTES: readonly string[] = [];
+const PACKER_GRANTED_ROUTES: readonly string[] = [
+  // #2416, the first entry. The pack bench's own work list: parcels routed to
+  // OpenLinker's packing executor and accepted there. Scoped to that work, no
+  // query parameters a session could widen, no configuration, no write. It
+  // discloses ONE buyer name per row, which is the name already going on the
+  // label the same session is allowed to print (`ShipmentController.downloadLabel`
+  // above), and nothing else from the order.
+  'BenchWorkController.listBenchWork',
+];
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {

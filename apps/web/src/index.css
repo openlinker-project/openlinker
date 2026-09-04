@@ -22007,3 +22007,235 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   padding: 0.5rem 1rem;
   border-bottom: 1px solid var(--border-subtle);
 }
+
+/* ── Pack bench — work list (#2416, W3b-3) ──────────────────────────────────
+ *
+ * Sized for a bench rather than a desk: the deadline headline and the order
+ * reference are the two things read from arm's length across a room, so they
+ * carry the largest type on the surface, and every control clears the 44 px
+ * touch floor unconditionally — not behind a `pointer: coarse` media query,
+ * because a bench terminal is routinely a mouse-driven all-in-one and the
+ * guarantee is about gloved hands, not about the input device.
+ *
+ * State is carried by TEXT and by SECTION (story B4). Everything below is an
+ * addition to that, never the carrier — `bench-work-row.test.tsx` asserts state
+ * from `textContent` alone, so removing all of this would leave the surface
+ * correct and merely plain.
+ */
+.bench-work-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-6);
+  min-height: 100vh;
+  background: var(--bg-canvas);
+}
+
+.bench-work-list__header {
+  display: grid;
+  gap: 2px;
+}
+
+.bench-work-list__title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.bench-work-list__ordering {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.bench-work-list__scope,
+.bench-work-list__search-hint,
+.bench-work-list__truncated,
+.bench-work-list__no-matches {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+.bench-work-list__search {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.bench-work-list__search label {
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.bench-work-list__search input {
+  /* Deliberately oversized: this is the one field on the surface, and D11 makes
+     it the only way a parcel is found. */
+  height: 3.5rem;
+  padding: 0 var(--space-3);
+  font-family: var(--font-mono);
+  font-size: 1.25rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  border: 2px solid var(--border-strong);
+  border-radius: var(--radius-md);
+}
+
+.bench-work-list__search input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: var(--shadow-focus);
+}
+
+.bench-work-list__section {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.bench-work-list__section-heading {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.bench-work-list__rows {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bench-work-row {
+  display: grid;
+  grid-template-columns: minmax(11rem, 14rem) minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-4);
+  min-height: 6rem;
+  padding: var(--space-3);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-left: 6px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+}
+
+/* Tint and left rule follow the state the row already states in words. */
+.bench-work-row--held {
+  background: var(--status-error-soft);
+  border-color: var(--status-error-border);
+  border-left-color: var(--status-error);
+}
+
+.bench-work-row--cancelled {
+  background: var(--bg-surface-muted);
+  border-left-color: var(--text-muted);
+}
+
+.bench-work-row__deadline,
+.bench-work-row__identity {
+  display: grid;
+  gap: 3px;
+}
+
+.bench-work-row__deadline-headline {
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.bench-work-row__deadline-detail {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.bench-work-row__reference {
+  font-family: var(--font-mono);
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.bench-work-row__meta,
+.bench-work-row__note {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+.bench-work-row__state,
+.bench-work-row__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* The 44 px floor, unconditional. See the section header. */
+.bench-work-row__actions .button {
+  min-height: 2.75rem;
+  min-width: 2.75rem;
+}
+
+.bench-work-empty {
+  display: grid;
+  gap: var(--space-3);
+  justify-items: start;
+  max-width: 42rem;
+  padding: var(--space-6) 0;
+}
+
+.bench-work-empty__title {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  text-wrap: pretty;
+}
+
+.bench-work-empty__body,
+.bench-work-empty__note {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+.bench-work-empty__note {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.bench-work-list__footer {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-top: auto;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-default);
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+/* One column below the tablet breakpoint: the row's four columns cannot hold
+   their meaning at a narrow width, and reflowing keeps every part visible
+   rather than hiding the state column — which is the one part story B4 says
+   must never depend on anything but text and position. */
+@media (max-width: 768px) {
+  .bench-work-row {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+}

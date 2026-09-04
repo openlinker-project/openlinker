@@ -129,6 +129,20 @@ export interface TransitionFulfillmentRequestStatusInput {
 }
 
 /** Force-close or negotiated cancel. ADR-054 requires a reason on every one. */
+/**
+ * Input for `setExpedited` (#2416, spec D22).
+ *
+ * `expeditedAt` doubles as the DIRECTION: an instant expedites, `null`
+ * releases. One field rather than a boolean plus a timestamp, so the two can
+ * never disagree about what is being written.
+ */
+export interface SetFulfillmentWorkExpeditedInput {
+  readonly workId: string;
+  readonly expeditedAt: Date | null;
+  /** See `CancelFulfillmentWorkInput.expectedVersion`. */
+  readonly expectedVersion?: number;
+}
+
 export interface CancelFulfillmentWorkInput {
   readonly workId: string;
   readonly reason: FulfillmentCancellationReason;
@@ -292,6 +306,23 @@ export interface FulfillmentWorkRepositoryPort {
    */
   listWorks(filter: FulfillmentWorkListFilter): Promise<FulfillmentWorkPage>;
 
+  /**
+   * The ids of every work object covering each of these orders, ordered
+   * `createdAt, id`, keyed by order id (#2416).
+   *
+   * Exists so a caller can say *"parcel 1 of 2"* truthfully. The denominator is
+   * EVERY work for the order — whatever its status, whoever holds it — because
+   * a filtered read cannot answer it: a sibling parcel that is closed, routed to
+   * another executor or not yet accepted is absent from such a page, so the
+   * count would be wrong precisely on the split orders the number exists for,
+   * while reading authoritative.
+   *
+   * Ids only, and BATCHED across the whole page: hydrating sibling aggregates
+   * would be a second worklist read, and asking per row would be an N+1 on the
+   * bench's hottest read. An order with no works is simply absent from the map.
+   */
+  listWorkIdsByOrderIds(orderIds: readonly string[]): Promise<Map<string, string[]>>;
+
   transitionStatus(input: TransitionFulfillmentWorkStatusInput): Promise<boolean>;
   transitionRequestStatus(input: TransitionFulfillmentRequestStatusInput): Promise<boolean>;
 
@@ -370,6 +401,19 @@ export interface FulfillmentWorkRepositoryPort {
   releaseDispatchRelay(workId: string): Promise<void>;
 
   cancel(input: CancelFulfillmentWorkInput): Promise<boolean>;
+
+  /**
+   * Push a work ahead of ordinary deadline order, or take it back (#2416, D22).
+   *
+   * `expeditedAt` is the instant for an expedite and `null` for a release; the
+   * conditional UPDATE carries the matching state guard (`IS NULL` / `IS NOT
+   * NULL`) so a replay is refused rather than silently re-stamping a new instant
+   * and re-ordering two already-expedited parcels against each other.
+   *
+   * Answers `false` when nothing was applied — the port's convention — which the
+   * worklist service then explains as a stale token or an illegal action.
+   */
+  setExpedited(input: SetFulfillmentWorkExpeditedInput): Promise<boolean>;
 
   recordLineProgress(input: RecordFulfillmentLineProgressInput): Promise<boolean>;
 

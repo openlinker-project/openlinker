@@ -23,6 +23,7 @@
  * | `acceptedAt` / `externalWorkId` | `recordAcceptance` (#2399) | ADR-054's at-most-once acceptance CLAIM (`WHERE "acceptedAt" IS NULL`); round-tripping a `null` would re-open the claim |
  * | `dispatchRelayedAt` | `claimDispatchRelay`, `releaseDispatchRelay` (#2401) | at-most-once marker; round-tripping a `null` re-opens the relay. The release is a NAMED second writer — this table's convention (`status` and `requestStatus` each list several); it is the unnamed writer that is the defect |
  * | `cancelledAt` / `cancellationReason` | `cancel` | the `order_records.cancelledAt` precedent |
+ * | `expeditedAt` | `setExpedited` (#2416) | one writer, both directions — the instant expedites and `null` releases, guarded `IS NULL` / `IS NOT NULL` so a replay cannot re-stamp a fresh instant and silently reorder two already-expedited parcels against each other |
  * | `version` | every applied HEADER transition | computed in SQL (`version + 1`), never from a caller's read |
  * | `fulfilledQuantity` / `cancelledQuantity` | `recordLineProgress` (#2400) | a create carries zeros and would erase real progress |
  * | `updatedAt` | every applied transition | written IMPLICITLY by TypeORM's `@UpdateDateColumn` injection, and explicitly by `recordLineProgress`. Named here because it has a real downstream consumer — `IDX_fulfillment_works_request_status` and ADR-054's timeout sweep both read it — and a column whose writer is a framework default is exactly the one a writer table must not omit |
@@ -80,6 +81,7 @@ import type {
   RecordFulfillmentLineProgressInput,
   RecordFulfillmentRejectionInput,
   ReleaseFulfillmentHoldInput,
+  SetFulfillmentWorkExpeditedInput,
   TransitionFulfillmentRequestStatusInput,
   TransitionFulfillmentWorkStatusInput,
 } from '../../../domain/ports/fulfillment-work-repository.port';
@@ -218,6 +220,9 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
     header.cancellationReason = null;
     header.cancelledAt = null;
     header.dispatchRelayedAt = null;
+    // Never expedited at creation: an expedite is an operator act, and the
+    // router that creates work has no opinion about it.
+    header.expeditedAt = null;
     header.acceptedAt = null;
     header.externalWorkId = null;
     header.version = 0;
@@ -538,6 +543,66 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
     });
   }
 
+  async setExpedited(input: SetFulfillmentWorkExpeditedInput): Promise<boolean> {
+    // The state guard is the OPPOSITE of what is being written, so the two
+    // directions are one statement with one predicate shape. Expediting an
+    // already-expedited work reports not-applied rather than re-stamping: the
+    // instant is the tiebreak between two expedited parcels, and re-stamping it
+    // would move this one behind every parcel pushed since — silently, under a
+    // packer, which is exactly what D22 says a list must never do.
+    //
+    // Terminal statuses are excluded for the same reason `deriveSupportedActions`
+    // withholds both verbs there: reordering work that will never be packed is
+    // noise on a row whose only honest state is "do not pack this". Reading the
+    // exported vocabulary rather than a literal makes a fourth terminal status
+    // enrol itself here (the `cancel` precedent above).
+    const expediting = input.expeditedAt !== null;
+    return this.applyGuardedUpdate('setExpedited', (qb) => {
+      const guarded = qb
+        .set({ expeditedAt: input.expeditedAt, version: () => '"version" + 1' })
+        .where('"id" = :id', { id: input.workId })
+        .andWhere(expediting ? '"expeditedAt" IS NULL' : '"expeditedAt" IS NOT NULL')
+        .andWhere('"status" NOT IN (:...terminal)', {
+          terminal: [...TERMINAL_FULFILLMENT_WORK_STATUSES],
+        });
+      return this.withVersionGuard(guarded, input.expectedVersion);
+    });
+  }
+
+  async listWorkIdsByOrderIds(orderIds: readonly string[]): Promise<Map<string, string[]>> {
+    const byOrder = new Map<string, string[]>();
+    // `IN ()` is a syntax error, not an empty set — and an empty ask has an
+    // empty answer, so it never reaches the database.
+    if (orderIds.length === 0) return byOrder;
+
+    try {
+      // Ids and the order id ONLY: this answers "how many parcels does this
+      // order have, and which one is this" and nothing else, so hydrating the
+      // aggregates would be a second worklist read for a number.
+      const rows = await this.works
+        .createQueryBuilder('work')
+        .select(['work.id', 'work.orderId'])
+        .where('work.orderId IN (:...orderIds)', { orderIds: [...orderIds] })
+        // The same `createdAt, id` pair `listWorks` uses, and for the same
+        // reason: `createdAt` alone is not unique, so without the tiebreak two
+        // parcels created in the same millisecond could swap places between two
+        // reads and a packer would see "parcel 1 of 2" become "parcel 2 of 2"
+        // for the box in their hands.
+        .orderBy('work.createdAt', 'ASC')
+        .addOrderBy('work.id', 'ASC')
+        .getMany();
+
+      for (const row of rows) {
+        const bucket = byOrder.get(row.orderId);
+        if (bucket === undefined) byOrder.set(row.orderId, [row.id]);
+        else bucket.push(row.id);
+      }
+      return byOrder;
+    } catch (error) {
+      throw new FulfillmentPersistenceError('listWorkIdsByOrderIds', error);
+    }
+  }
+
   async recordLineProgress(input: RecordFulfillmentLineProgressInput): Promise<boolean> {
     // ## Deltas are validated here, then PARAMETERISED — not interpolated.
     //
@@ -775,13 +840,32 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
       if (filter.orderId !== undefined) {
         qb.andWhere('work.orderId = :orderId', { orderId: filter.orderId });
       }
+      if (filter.assignedConnectionId !== undefined) {
+        // An EMPTY list means "these zero connections", never "any" — see the
+        // filter's own docblock. `IN ()` is a Postgres syntax error rather than
+        // an empty set, so it is spelled as an always-false predicate instead of
+        // being dropped: dropping it would widen the page to every executor's
+        // work, which for the bench caller is the one wrong answer.
+        if (filter.assignedConnectionId.length === 0) {
+          qb.andWhere('1 = 0');
+        } else {
+          qb.andWhere('work.assignedConnectionId IN (:...assignedConnectionId)', {
+            assignedConnectionId: [...filter.assignedConnectionId],
+          });
+        }
+      }
 
       // `createdAt` alone is not unique, so a page boundary landing inside a
       // same-timestamp run would drop or repeat rows between pages. The id is
       // the tiebreak that makes the page stable.
+      //
+      // The direction is the caller's (#2416) and defaults to DESC, which is
+      // what this read has always done. It decides WHICH rows a truncated page
+      // contains, not merely their order — see `FulfillmentWorkListFilter.orderBy`.
+      const direction = filter.orderBy === 'createdAt_ASC' ? 'ASC' : 'DESC';
       const [headers, total] = await qb
-        .orderBy('work.createdAt', 'DESC')
-        .addOrderBy('work.id', 'DESC')
+        .orderBy('work.createdAt', direction)
+        .addOrderBy('work.id', direction)
         .take(limit)
         .skip(offset)
         .getManyAndCount();
@@ -982,6 +1066,7 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
       version: Number(header.version),
       cancelledAt: header.cancelledAt,
       dispatchRelayedAt: header.dispatchRelayedAt,
+      expeditedAt: header.expeditedAt,
       acceptedAt: header.acceptedAt,
       externalWorkId: header.externalWorkId,
       lines: lines.map((line) => this.toLineDomain(line)),

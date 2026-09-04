@@ -158,6 +158,29 @@ export class FulfillmentWorkOrmEntity {
   dispatchRelayedAt!: Date | null;
 
   /**
+   * When an operator pushed this work object ahead of deadline order (#2416,
+   * spec D22). `null` means it is in ordinary deadline order.
+   *
+   * ONE column, because D22 asks for one flag and one sort key and explicitly
+   * *"adds no concept to the model"*. It is both: the presence answers "is this
+   * expedited", and the instant is the tiebreak between two expedited parcels —
+   * first pushed, first out — which a boolean could not supply.
+   *
+   * **No index.** Nothing orders by this column in SQL: the bench's sort key is
+   * the ORDER's `dispatchByAt`, which lives in another context, so the ordering
+   * happens above the query (see `BenchWorkService`). An index nothing reads is
+   * cost, and the day a SQL `ORDER BY` arrives is the day to add one.
+   *
+   * Reversible by construction — `release_expedite` writes `null` back — because
+   * D22 is explicit that a permanent override would be a second deadline system.
+   * It carries no actor column: B5 requires the expedite to be VISIBLE and
+   * REVERSIBLE, not attributed, and a column nothing reads is the same cost as
+   * an index nothing reads.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  expeditedAt!: Date | null;
+
+  /**
    * The HOLDER's acceptance instant — and the at-most-once CLAIM column for
    * acceptance (#2399, ADR-054).
    *

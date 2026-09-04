@@ -724,6 +724,22 @@ export function createMockApiClient(
     // #2411. The default answers the SHAPE the parse layer returns (a page
     // object), never a bare array — a mock returning `[]` would let the panel
     // read `.works` as undefined and pass, while the real client never can.
+    // #2416. Defaulted to the SHAPE the parse layer returns, never a bare
+    // array or `undefined` — a bench test whose mock omitted `routing` would
+    // read `routing.ready` as a crash from inside a render, which looks like a
+    // defect in the surface rather than a missing mock. `ready: true` is the
+    // ordinary install, so a test that cares about the not-routed empty state
+    // has to say so explicitly.
+    bench: {
+      listWork: vi.fn().mockResolvedValue({
+        works: [],
+        executorName: null,
+        routing: { ready: true, reason: null },
+        total: 0,
+      }),
+      setExpedited: vi.fn().mockResolvedValue(undefined),
+      ...overrides.bench,
+    } as ApiClient['bench'],
     fulfillment: {
       listByOrder: vi.fn().mockResolvedValue({ works: [], total: 0, limit: 50, offset: 0 }),
       // #2410. `list` and `get` are defaulted HERE rather than in the specs
