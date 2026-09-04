@@ -35,6 +35,7 @@ describe('orderAnalyticsProjection', () => {
         placedAt: new Date('2026-08-01T09:00:00.000Z'),
         currency: 'PLN',
         taxTreatment: 'inclusive',
+        totalTaxTreatment: null,
         totalAmount: 32,
         totalTaxTreatment: null,
       });
