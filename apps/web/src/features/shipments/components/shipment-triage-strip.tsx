@@ -1,5 +1,5 @@
 /**
- * Shipment Triage Strip (#1826, re-keyed #1918)
+ * Shipment Triage Strip (#1826, re-keyed #1918, narrowed #2873)
  *
  * Descriptive banner shown above the `/shipments` table when ≥2 failed
  * shipments on the loaded page, on the SAME connection, report the same
@@ -8,16 +8,26 @@
  * `(connectionId, cause)`, not cause alone, so this component can trust
  * `group.connectionId` as the one connection every member shipment shares).
  *
- * When `group.providerCode` is present the grouping is an HONEST shared-cause
- * claim, and `deriveRetryabilityClass` lets the copy give concrete guidance
- * (e.g. "safe to just retry" for a `'transient'` code). Absent a code, the
- * copy stays an OBSERVATION, never a causal claim — the grouping is a
- * free-text match on a message the backend admits is often a generic
- * validation error, so the members may well be a bad postcode, a missing
- * parcel template and an over-limit COD sitting under one string; naming a
- * specific remedy there would be actively wrong advice most of the time, so
- * the raw cause text is rendered inline instead so the operator can judge for
- * themselves.
+ * When `group.providerCode` is EXACT (`isExactProviderCode` — its family is
+ * one this app can classify) the grouping is an HONEST shared-cause claim,
+ * and `deriveRetryabilityClass` lets the copy give concrete guidance (e.g.
+ * "safe to just retry" for a `'transient'` code). Otherwise the copy stays an
+ * OBSERVATION, never a causal claim — the grouping is a free-text match on a
+ * message the backend admits is often a generic validation error, so the
+ * members may well be a bad postcode, a missing parcel template and an
+ * over-limit COD sitting under one string; naming a specific remedy there
+ * would be actively wrong advice most of the time, so the raw cause text is
+ * rendered inline instead so the operator can judge for themselves.
+ *
+ * #2873: the branch is keyed on EXACTNESS, not on `providerCode !== null`.
+ * #2805 made `InpostHttpClient` fall back to ShipX's own bucket code
+ * (`shipx.validation_failed`) when the carrier sends no field-level details,
+ * so a null-check would have flipped exactly these groups onto the
+ * shared-rejection-code branch and stopped rendering the carrier message —
+ * trading the operator's only actionable signal for a code that narrows
+ * nothing. A coarse code is instead rendered ALONGSIDE the message, labelled
+ * with its own `'unknown'` retryability class so the strip says plainly that
+ * it does not classify the cause.
  *
  * Scope is honest about being page-local: the caller passes only the rows
  * currently loaded (one page), so the count is a page count, not a global one.
@@ -41,7 +51,10 @@ import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 
 import { Alert } from '../../../shared/ui/alert';
-import type { FailedShipmentCauseGroup } from '../lib/group-failed-shipments-by-cause';
+import {
+  isExactProviderCode,
+  type FailedShipmentCauseGroup,
+} from '../lib/group-failed-shipments-by-cause';
 import { deriveRetryabilityClass, RETRYABILITY_LABEL } from '../lib/shipment-retryability';
 
 export interface ShipmentTriageStripProps {
@@ -63,9 +76,14 @@ export function ShipmentTriageStrip({
   // message to an operator.
   const sampleReason = group.shipments[0].errorMessage;
   const connectionLabel = connectionName ?? 'this connection';
-  // Only meaningful when the group is providerCode-keyed (an honest
-  // shared-cause claim) — absent a code the group is a lossy text match and
-  // no retryability guidance should be implied.
+  // Whether the group was keyed on the code ALONE. A coarse code was composed
+  // with the normalised message instead, so it is the message that held the
+  // group together and the copy must say so.
+  const codeIsExact = isExactProviderCode(group.providerCode);
+  // Computed for either branch: on the exact branch it is the concrete
+  // guidance, on the coarse branch it is always `'unknown'` and is what makes
+  // the strip admit the code narrows nothing. Absent a code entirely there is
+  // nothing to classify, so no retryability wording is implied at all.
   const retryabilityClass =
     group.providerCode !== null ? deriveRetryabilityClass(group.providerCode) : null;
 
@@ -93,20 +111,34 @@ export function ShipmentTriageStrip({
     >
       <strong>
         {count} failed shipment{count === 1 ? '' : 's'} on {connectionLabel} report the same{' '}
-        {group.providerCode !== null ? 'rejection code' : 'carrier message'}
+        {codeIsExact ? 'rejection code' : 'carrier message'}
       </strong>
-      {group.providerCode !== null ? (
+      {codeIsExact ? (
         <>
           {' '}
           - <span className="mono-text">{group.providerCode}</span>
           {retryabilityClass ? <> ({RETRYABILITY_LABEL[retryabilityClass]})</> : null}
         </>
-      ) : sampleReason ? (
+      ) : (
         <>
-          {' '}
-          - <span className="mono-text">{sampleReason}</span>
+          {sampleReason ? (
+            <>
+              {' '}
+              - <span className="mono-text">{sampleReason}</span>
+            </>
+          ) : null}
+          {/* On this branch `retryabilityClass` is always `'unknown'` by
+              construction (`isExactProviderCode` tested exactly that), so the
+              only real question is whether there is a code to show at all. */}
+          {group.providerCode !== null ? (
+            <>
+              {' '}
+              (carrier code <span className="mono-text">{group.providerCode}</span> -{' '}
+              {RETRYABILITY_LABEL.unknown})
+            </>
+          ) : null}
         </>
-      ) : null}
+      )}
       . Counted across the shipments loaded on this page only. If the cause is a connection-level
       setting, fixing it once saves regenerating each one.
     </Alert>
