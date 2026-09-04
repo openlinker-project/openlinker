@@ -343,6 +343,33 @@ export interface OrderTotals {
    * source-uniform, and it stays here.
    */
   taxTreatment?: PriceTaxTreatment;
+
+  /**
+   * How `total` ALONE expresses tax, when that diverges from `taxTreatment`
+   * (#2829). `taxTreatment` is source-uniform by design (it also governs
+   * per-line/`subtotal` net-conversion, e.g. PrestaShop's `specific_price`
+   * pinning and the ADR-063 net-sales tax-rate resolution) and MUST NOT be
+   * repurposed to describe `total` alone — a source whose line prices are
+   * genuinely net but whose `total` is genuinely gross (PrestaShop:
+   * `order_details.product_price` is net per #2440, `total_paid_tax_incl` is
+   * gross) cannot express that with one flag.
+   *
+   * Absent means "same as `taxTreatment`" — every consumer of `total`'s own
+   * inclusivity (today: the sales-document `orderTotalGross` rule condition
+   * via `toSalesDocumentOrderFacts`, and its operator-facing projection
+   * counterpart `SalesDocumentViewService.toOrderFacts`, both of which read
+   * `totalTaxTreatment ?? taxTreatment` — the two must agree, or an order
+   * could be ROUTED as gross while the surface that reports which document it
+   * gets still evaluates it as net-priced) falls back to `taxTreatment` when
+   * this is unset, so a source that doesn't set it behaves exactly as before.
+   * Never read by `convertGrossToNet` or the net-sales tax-rate path — those
+   * describe the per-line/subtotal treatment and must keep reading
+   * `taxTreatment`.
+   *
+   * WooCommerce has the identical structural split (net line prices, genuinely
+   * gross `total`) and does not yet set this field — tracked as #2836.
+   */
+  totalTaxTreatment?: PriceTaxTreatment;
 }
 
 export interface Address {

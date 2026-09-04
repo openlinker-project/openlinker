@@ -1347,6 +1347,7 @@ describe('OrderRecordRepository', () => {
       expect(sql).toContain('"currency"');
       expect(sql).toContain('"taxTreatment"');
       expect(sql).toContain('"totalAmount"');
+      expect(sql).toContain('"totalTaxTreatment"');
       expect(params).toEqual(
         expect.arrayContaining([new Date('2025-01-01T09:00:00Z'), 'PLN', 'inclusive', 199.99])
       );
@@ -2012,7 +2013,7 @@ describe('OrderRecordRepository', () => {
         expectColumnAbsentFromUpsert('fxIntendedCurrency');
       });
 
-      it('should NOT name the four analytics scalars (#1985 review, finding 1) in the upsert() statement', async () => {
+      it('should NOT name the five analytics scalars (#1985 review, finding 1; #2832) in the upsert() statement', async () => {
         // upsert() is reached by persistIncomingSnapshot, whose OrderRecord
         // never carries a resolved analytics figure. Mapping these columns
         // here would NULL out an already-`ready` order's figures on every
@@ -2029,6 +2030,7 @@ describe('OrderRecordRepository', () => {
         expectColumnAbsentFromUpsert('currency');
         expectColumnAbsentFromUpsert('taxTreatment');
         expectColumnAbsentFromUpsert('totalAmount');
+        expectColumnAbsentFromUpsert('totalTaxTreatment');
       });
 
       it('should NOT write the analytics scalars via upsert() even when the domain record carries them', async () => {
@@ -2062,6 +2064,7 @@ describe('OrderRecordRepository', () => {
         expectColumnAbsentFromUpsert('currency');
         expectColumnAbsentFromUpsert('taxTreatment');
         expectColumnAbsentFromUpsert('totalAmount');
+        expectColumnAbsentFromUpsert('totalTaxTreatment');
       });
     });
 

@@ -244,6 +244,14 @@ export class OrderRecordOrmEntity {
   totalAmount!: number | null;
 
   /**
+   * How `totalAmount` ALONE expresses tax, when that diverges from
+   * `taxTreatment` (#2829/#2832) — see `OrderRecord.totalTaxTreatment`.
+   * `null` means "same as `taxTreatment`"; never defaulted by a consumer.
+   */
+  @Column({ type: 'varchar', nullable: true })
+  totalTaxTreatment!: string | null;
+
+  /**
    * Buyer tax identifier as the source reported it (#2599), denormalized off
    * the snapshot's billing address so a routing or gating query never has to
    * expand JSONB - and so the value survives `OL_STORE_PII=false`, under which

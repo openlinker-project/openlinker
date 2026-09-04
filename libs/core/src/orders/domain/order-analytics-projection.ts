@@ -3,8 +3,8 @@
  *
  * Pure derivation (no I/O): called by `OrderRecordService.persistOrder` at the
  * moment a `ready` order is persisted, to populate the denormalized
- * `OrderRecord` scalars (`placedAt`/`currency`/`taxTreatment`/`totalAmount`)
- * and the `order_line_items` rows — see ADR-039 for the persistence-strategy
+ * `OrderRecord` scalars (`placedAt`/`currency`/`taxTreatment`/`totalAmount`/
+ * `totalTaxTreatment`) and the `order_line_items` rows — see ADR-039 for the persistence-strategy
  * decision. Deliberately never throws: a malformed/partial `Order` degrades to
  * `null` scalars or an empty item list rather than failing the whole ingest.
  *
@@ -20,10 +20,16 @@ export interface OrderAnalyticsScalars {
   currency: string | null;
   taxTreatment: PriceTaxTreatment | null;
   totalAmount: number | null;
+  /**
+   * How `totalAmount` ALONE expresses tax, when that diverges from
+   * `taxTreatment` (#2829/#2832) — see `OrderTotals.totalTaxTreatment` and
+   * `OrderRecord.totalTaxTreatment`. `null` means "same as `taxTreatment`".
+   */
+  totalTaxTreatment: PriceTaxTreatment | null;
 }
 
 /**
- * Derive the 4 order-level scalars from an already-resolved {@link Order}.
+ * Derive the 5 order-level scalars from an already-resolved {@link Order}.
  * Pure function of its own argument — no I/O, never throws.
  */
 export function deriveOrderAnalyticsScalars(order: Order): OrderAnalyticsScalars {
@@ -32,6 +38,7 @@ export function deriveOrderAnalyticsScalars(order: Order): OrderAnalyticsScalars
     currency: order.totals?.currency ?? null,
     taxTreatment: order.totals?.taxTreatment ?? null,
     totalAmount: typeof order.totals?.total === 'number' ? order.totals.total : null,
+    totalTaxTreatment: order.totals?.totalTaxTreatment ?? null,
   };
 }
 
