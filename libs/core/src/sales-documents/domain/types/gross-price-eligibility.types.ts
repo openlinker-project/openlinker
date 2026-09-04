@@ -43,7 +43,19 @@
  * @see docs/architecture/adrs/063-per-line-tax-rate-resolution-and-provenance.md
  */
 
-/** The narrow order shape this check needs — never the full `Order` entity. */
+/**
+ * The narrow order shape this check needs — never the full `Order` entity.
+ *
+ * `taxTreatment` is deliberately `string`, not the domain `PriceTaxTreatment`
+ * union (`@openlinker/core/orders/types`): importing it would add a fourth
+ * type-only exception to this leaf's zero-outbound-core-edge barrel-purity
+ * allowlist for a one-field narrowing that buys nothing today — every real
+ * caller passes an `Order` whose field is already `PriceTaxTreatment`, and
+ * structural typing keeps them honest. The guard below fails open on any
+ * unrecognised value (returns `null`, i.e. "eligible"), which is latent, not
+ * live, for exactly that reason. Do not "tighten" this to close the latent
+ * gap without first re-reading the leaf-purity tradeoff above.
+ */
 export interface GrossPriceEligibilityOrder {
   id: string;
   totals: {
@@ -69,7 +81,11 @@ export type NetPricedOrderRefusalAction = (typeof NetPricedOrderRefusalActionVal
  * or their own connection was the problem.
  *
  * `action` names what the caller was trying to do, in a form that reads
- * naturally both as "cannot be {action}" and as "can be {action} today".
+ * naturally both as "cannot be {action}" and as "can be {action}". The
+ * message deliberately does not say "today" — the constraint is permanent
+ * under the current architecture (see the module docblock above) and names
+ * the source platform as the thing that would have to change, not a future
+ * OpenLinker release.
  */
 export function describeNetPricedOrderRefusal(
   order: GrossPriceEligibilityOrder,
@@ -81,6 +97,6 @@ export function describeNetPricedOrderRefusal(
   return (
     `Order ${order.id} cannot be ${action}: its source reports net (tax-exclusive) line prices, ` +
     `and OpenLinker never computes or infers tax to convert them to gross for a fiscal document — ` +
-    `only a source that reports gross (tax-inclusive) line prices can be ${action} today.`
+    `only a source that reports gross (tax-inclusive) line prices can be ${action}.`
   );
 }
