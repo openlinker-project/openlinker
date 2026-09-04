@@ -61,14 +61,35 @@ export type MockupState = (typeof MOCKUP_STATES)[number];
 export class AnalyticsMockupPage {
   constructor(private readonly page: Page) {}
 
-  /** Opens the mockup file fresh (always starts at `native`). */
+  /**
+   * Opens the mockup file fresh and lands on `native`.
+   *
+   * The mockup's `<body>` carries NO `data-state` attribute at load — it is
+   * set only by the nav-strip click handler and by each dialog's own "Close"
+   * button (`document.body.dataset.state='native'`), never initialized by the
+   * trailing `<script>`. "Native" is really "no data-state matches anything",
+   * so it is set explicitly here rather than asserted as already present.
+   */
   async goto(): Promise<void> {
     await this.page.goto(`file://${MOCKUP_FILE_PATH}`);
+    await this.page.evaluate(() => document.body.setAttribute('data-state', 'native'));
     await expect(this.page.locator('body')).toHaveAttribute('data-state', 'native');
   }
 
-  /** Clicks the nav button for `state` and waits for the body attribute to flip. */
+  /**
+   * Clicks the nav button for `state` and waits for the body attribute to
+   * flip.
+   *
+   * The mockup and the real app share ONE `page` (this spec alternates
+   * `pages.analyticsMockup` and `pages.analytics` calls on the same tab), so
+   * the previous step may have navigated away to the real app entirely —
+   * reload the mockup file first whenever that's the case, or the click
+   * below silently targets the wrong page's DOM and times out.
+   */
   async gotoState(state: MockupState): Promise<void> {
+    if (!this.page.url().startsWith('file://')) {
+      await this.goto();
+    }
     await this.page.locator(`[data-goto="${state}"]`).first().click();
     await expect(this.page.locator('body')).toHaveAttribute('data-state', state);
   }

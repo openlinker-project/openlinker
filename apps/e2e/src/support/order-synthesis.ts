@@ -241,10 +241,9 @@ export async function synthesizeOrder(
     externalOrderId: created.id,
     timeoutMs: options.timeoutMs ?? 180_000,
     intervalMs: 3_000,
-    // The webhook is the fast path; re-triggering the poll each round is the
-    // backstop for a dropped delivery or a job queued behind the backlog.
-    retriggerPoll: () =>
-      jobs.trigger({ connectionId: prestashop.id, jobType: 'marketplace.orders.poll' }),
+    // The webhook is the fast path; re-triggering a direct per-order sync is
+    // the backstop for a dropped delivery. See `retriggerDirectOrderSync`.
+    retriggerPoll: jobs.retriggerDirectOrderSync(prestashop.id, created.id),
   });
 
   return { order, externalOrderId: created.id, product, variant };

@@ -53,7 +53,7 @@ import {
   widePastToFutureRange,
   type CurrencyMismatchFixture,
 } from '../../src/support/analytics-seed';
-import type { MockupState } from '../../src/pages/analytics-mockup.page';
+import { AnalyticsMockupPage, type MockupState } from '../../src/pages/analytics-mockup.page';
 import type { TestInfo, Page, Locator } from '@playwright/test';
 
 /** Screenshots both regions for `state` and attaches them side by side to the HTML report. */
@@ -82,6 +82,17 @@ test.describe('analytics mockup parity (#2482)', () => {
   }, testInfo) => {
     const ps = buildPrestashopWebserviceClient(world);
     test.skip(!ps, 'needs OL_PS_WEBSERVICE_KEY (+ a resolvable PS base URL) to seed real orders');
+
+    // The mockup (a static `file://` document) and the real /analytics app
+    // (a live page navigation) must NOT share one tab: `pages.analyticsMockup`
+    // and `pages.analytics` both default to the single `page` fixture, so
+    // interleaving `gotoState(...)` calls on the mockup with real-app
+    // navigation/clicks on the same tab makes each step race the other's DOM
+    // — observed live as both a mockup nav-strip click landing on the real
+    // app and a real-app click landing on the mockup. A dedicated second tab
+    // for the mockup removes the race structurally.
+    const mockupPage = await page.context().newPage();
+    pages.analyticsMockup = new AnalyticsMockupPage(mockupPage);
 
     const range = widePastToFutureRange();
     let currencyFixture: CurrencyMismatchFixture | null = null;
@@ -125,6 +136,21 @@ test.describe('analytics mockup parity (#2482)', () => {
       });
 
       // ── Display-currency conversion: converting / converted / unavailable ──
+      // `seedCurrencyMismatchOrder` has already flipped the deployment's
+      // reporting currency (restored only in the outer `finally`, since the
+      // LATER coverage states below need it to stay flipped to keep reading
+      // as a mismatch). So `currentReportingCurrency` — not a hardcoded
+      // 'EUR' — is whatever the deployment reports in RIGHT NOW, and asking
+      // the picker to convert TO that currency is a no-op that never fetches
+      // or shows a transient state at all. `stampedCurrency` (the ORIGINAL,
+      // pre-flip setting) is the one currency guaranteed to differ from it —
+      // with only two supported currencies (PLN/EUR) that is also the only
+      // other option, so this is the one real conversion this run can drive.
+      const targetCurrency = currencyFixture!.stampedCurrency;
+      const convertingRe = new RegExp(`Converting to ${targetCurrency}`);
+      const convertedRe = new RegExp(`converted to ${targetCurrency}`, 'i');
+      const unavailableRe = new RegExp(`Couldn.t get today.s ${targetCurrency} rate`);
+
       await test.step('converting', async () => {
         await pages.analyticsMockup.gotoState('converting');
         // Delay the sales-analytics response so the transient loading alert
@@ -134,8 +160,12 @@ test.describe('analytics mockup parity (#2482)', () => {
           await new Promise((resolve) => setTimeout(resolve, 1500));
           await route.continue();
         });
-        const gotoPromise = pages.analytics.goto({ from: range.from, to: range.to, displayCurrency: 'EUR' });
-        await expect(pages.analytics.convertNote).toContainText(/Converting to EUR/);
+        const gotoPromise = pages.analytics.goto({
+          from: range.from,
+          to: range.to,
+          displayCurrency: targetCurrency,
+        });
+        await expect(pages.analytics.convertNote).toContainText(convertingRe);
         await captureBoth(
           testInfo,
           pages.analyticsMockup.regionFor('converting'),
@@ -148,8 +178,8 @@ test.describe('analytics mockup parity (#2482)', () => {
 
       await test.step('converted', async () => {
         await pages.analyticsMockup.gotoState('converted');
-        await pages.analytics.goto({ from: range.from, to: range.to, displayCurrency: 'EUR' });
-        await expect(pages.analytics.convertNote).toContainText(/converted to EUR/i);
+        await pages.analytics.goto({ from: range.from, to: range.to, displayCurrency: targetCurrency });
+        await expect(pages.analytics.convertNote).toContainText(convertedRe);
         await captureBoth(
           testInfo,
           pages.analyticsMockup.regionFor('converted'),
@@ -177,8 +207,8 @@ test.describe('analytics mockup parity (#2482)', () => {
           }
           await route.fulfill({ response, json: body });
         });
-        await pages.analytics.goto({ from: range.from, to: range.to, displayCurrency: 'EUR' });
-        await expect(pages.analytics.convertNote).toContainText(/Couldn.t get today.s EUR rate/);
+        await pages.analytics.goto({ from: range.from, to: range.to, displayCurrency: targetCurrency });
+        await expect(pages.analytics.convertNote).toContainText(unavailableRe);
         await captureBoth(
           testInfo,
           pages.analyticsMockup.regionFor('unavailable'),

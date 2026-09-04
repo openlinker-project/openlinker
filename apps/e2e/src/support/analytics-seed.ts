@@ -31,6 +31,14 @@ export interface CurrencyMismatchFixture {
   /** The reporting currency this order was actually stamped in ("old"). */
   stampedCurrency: string;
   /**
+   * The reporting currency the deployment is flipped to RIGHT NOW (until
+   * `restore()` runs) — the ONLY currency a display-currency-picker scenario
+   * can meaningfully "convert to" in the same test run, since converting to
+   * whatever reporting ALREADY is is a no-op that never triggers a fetch or
+   * shows a "Converting…" transient state.
+   */
+  currentReportingCurrency: string;
+  /**
    * The reporting-currency setting to restore on teardown — call this in the
    * spec's `finally`/`afterAll`. Changing the reporting currency is
    * deployment-wide, so leaving it flipped would silently move every OTHER
@@ -105,6 +113,7 @@ export async function seedCurrencyMismatchOrder(
   return {
     order,
     stampedCurrency: originalReportingCurrency,
+    currentReportingCurrency: otherCurrency,
     restore: () => api.currencySettings.setReportingCurrency(originalReportingCurrency).then(() => undefined),
   };
 }
@@ -192,8 +201,13 @@ export async function seedUnmappedProductOrder(
     recordStatuses: ['awaiting_mapping', 'source_deleted'],
     timeoutMs: 180_000,
     intervalMs: 3_000,
-    retriggerPoll: () =>
-      jobs.trigger({ connectionId: prestashop.id, jobType: 'marketplace.orders.poll' }),
+    // See order-synthesis.ts: direct per-order sync bypasses the broken
+    // `date_upd` feed sort (#2877) that `marketplace.orders.poll` always hits
+    // on this PrestaShop version.
+    // See `SyncJobs.retriggerDirectOrderSync` for why this is a
+    // direct-per-order sync (not `marketplace.orders.poll`, #2877) and
+    // rate-limited rather than fired on every poll tick.
+    retriggerPoll: jobs.retriggerDirectOrderSync(prestashop.id, created.id),
   });
 
   return { internalOrderId: order.internalOrderId, sourceConnectionId: prestashop.id };
@@ -299,8 +313,10 @@ export async function seedNoRateProductOrder(
     externalOrderId: created.id,
     timeoutMs: 180_000,
     intervalMs: 3_000,
-    retriggerPoll: () =>
-      jobs.trigger({ connectionId: prestashop.id, jobType: 'marketplace.orders.poll' }),
+    // See `SyncJobs.retriggerDirectOrderSync` for why this is a
+    // direct-per-order sync (not `marketplace.orders.poll`, #2877) and
+    // rate-limited rather than fired on every poll tick.
+    retriggerPoll: jobs.retriggerDirectOrderSync(prestashop.id, created.id),
   });
 
   return { internalOrderId: order.internalOrderId, sourceConnectionId: prestashop.id };
