@@ -32,7 +32,7 @@ test.describe('sales documents: rule-composer modal redesign', () => {
     const live = await api.salesDocuments.markets();
     test.skip(live.markets.length === 0, 'stack has no markets configured yet');
 
-    const country = live.markets[0]!.country;
+    const country = live.markets[0].country;
 
     await page.goto('/settings/sales-documents');
     await expect(page.getByRole('heading', { name: 'Sales documents' })).toBeVisible({
@@ -75,7 +75,7 @@ test.describe('sales documents: rule-composer modal redesign', () => {
   }) => {
     const live = await api.salesDocuments.markets();
     test.skip(live.markets.length === 0, 'stack has no markets configured yet');
-    const country = live.markets[0]!.country;
+    const country = live.markets[0].country;
 
     await page.goto('/settings/sales-documents');
     await expect(page.getByRole('heading', { name: 'Sales documents' })).toBeVisible({
