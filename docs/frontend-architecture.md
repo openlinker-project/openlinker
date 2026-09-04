@@ -123,6 +123,8 @@ adding the scan root does not by itself make the copy covered.
 
 **Cross-feature consumption example (#2150):** `invoicing` type-imports `OrderRecord` from the `orders` feature's public barrel (`import type { OrderRecord } from '../../orders';`) in `order-invoice-panel.tsx` and `sales-document-block-copy.ts`, and `shipments` imports `ordersQueryKeys` the same way in `use-notify-dispatched-mutation.ts`. `orders` is now the most cross-imported feature barrel in the app — five call sites (Orders, Shipments, Invoices, Products, Customers) render its `OrderIdentityCell` — so the slug was added to both `no-restricted-imports` pattern groups (`features/**` and `plugins/**`) in `.eslintrc.js`, for every canonical subdirectory (`orders/api`, `orders/hooks`, `orders/components`, `orders/lib`, `orders/types`).
 
+**Cross-feature consumption example (#2761):** `orders` imports `resolveSalesDocumentReasonCopy` and the `SalesDocumentReasonTone` type from the `sales-documents` feature's public barrel (`import { resolveSalesDocumentReasonCopy } from '../../sales-documents';` in `sales-document-cell-state.ts`) to resolve the orders-list sales-document cell's persisted block/unresolved reason into operator copy, reusing the same reason vocabulary the settings-page routing rules render. The `sales-documents` slug is now registered in both `no-restricted-imports` pattern groups for every canonical subdirectory — it was a pre-existing omission (every other cross-imported feature was already enumerated), newly load-bearing once this consumer appeared.
+
 ## Routing Conventions
 
 Routing uses explicit React Router definitions under `src/app/routes`. Avoid file-system routing for FE-001 so the first app stays predictable and easy to refactor inside the monorepo.

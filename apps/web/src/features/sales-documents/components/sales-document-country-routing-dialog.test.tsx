@@ -227,11 +227,14 @@ describe('SalesDocumentCountryRoutingDialog', () => {
     );
 
     expect(
-      await screen.findByText(/both an Invoice default and a Receipt default/i),
+      await screen.findByText(/Both an Invoice and a Receipt default are set/i),
     ).toBeInTheDocument();
+    // The consequence is stated, never reassurance that something resolves it.
+    expect(screen.getByText(/that step is disabled entirely/i)).toBeInTheDocument();
+    expect(screen.getByText(/an order that matches no rule is\s*held/i)).toBeInTheDocument();
   });
 
-  it('should not show the dual-default warning when only one default is set', async () => {
+  it('should not show the dual-default warning when only one default is set, and should show the single-default hint instead', async () => {
     const defaults: SalesDocumentCountryDefault[] = [
       { id: 'd1', country: 'PL', documentKind: 'invoice', connectionId: 'conn_1' },
     ];
@@ -253,7 +256,10 @@ describe('SalesDocumentCountryRoutingDialog', () => {
     );
 
     await screen.findByText(/Rules for PL/i);
-    expect(screen.queryByText(/both an Invoice default and a Receipt default/i)).toBeNull();
+    expect(screen.queryByText(/Both an Invoice and a Receipt default are set/i)).toBeNull();
+    expect(
+      await screen.findByText(/applies only when no rule above matches/i),
+    ).toBeInTheDocument();
   });
 
   it('should not show the dual-default warning when neither default is set', async () => {
@@ -275,7 +281,8 @@ describe('SalesDocumentCountryRoutingDialog', () => {
     );
 
     await screen.findByText(/Rules for PL/i);
-    expect(screen.queryByText(/both an Invoice default and a Receipt default/i)).toBeNull();
+    expect(screen.queryByText(/Both an Invoice and a Receipt default are set/i)).toBeNull();
+    expect(screen.queryByText(/applies only when no rule above matches/i)).toBeNull();
   });
 
   it('should render the "+ Add rule" composer with the elevated dialog tier when opened from within this dialog', async () => {
@@ -473,6 +480,35 @@ describe('SalesDocumentCountryRoutingDialog — acknowledgment banner (#2189)', 
 });
 
 describe('SalesDocumentCountryRoutingDialog — Reset country (#2189)', () => {
+  it('should not render the reset affordance at all for a session with no write permission (non-demo)', async () => {
+    const rules = [makeRule('r1', { country: 'DE' })];
+    const apiClient = createMockApiClient({
+      salesDocumentRules: {
+        listRules: vi.fn().mockResolvedValue(rules),
+        listCountryDefaults: vi.fn().mockResolvedValue([]),
+      },
+    });
+    // Default session adapter (no sessionAdapter passed) is anonymous/no
+    // permissions, and demo mode is off by default — `useWriteAccess`'s
+    // `visible` is false, so the reset danger-zone must not render at all
+    // rather than render disabled (docs/frontend-architecture.md's
+    // "otherwise hidden" rule for a write affordance).
+    renderWithProviders(
+      <SalesDocumentCountryRoutingDialog
+        open
+        country="DE"
+        cameFrom={null}
+        onOpenChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+      { apiClient },
+    );
+
+    await screen.findByText(/An unmatched order is held/i);
+    expect(screen.queryByRole('button', { name: 'Reset country' })).toBeNull();
+    expect(screen.queryByText(/Resetting deletes every rule and default/i)).toBeNull();
+  });
+
   it('should disable "Reset country" when the country has zero rules, zero defaults, and no acknowledgment', async () => {
     const apiClient = createMockApiClient({
       salesDocumentRules: {
@@ -632,5 +668,169 @@ describe('SalesDocumentCountryRoutingDialog — Reset country (#2189)', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Reset country' })).toBeDisabled();
     });
+  });
+
+  it('should offer an explicit "Done" close action so the operator does not rely on Escape or a backdrop click', async () => {
+    const onOpenChange = vi.fn();
+    const apiClient = createMockApiClient({
+      salesDocumentRules: {
+        listRules: vi.fn().mockResolvedValue([]),
+        listCountryDefaults: vi.fn().mockResolvedValue([]),
+      },
+    });
+    renderWithProviders(
+      <SalesDocumentCountryRoutingDialog
+        open
+        country="DE"
+        cameFrom={null}
+        onOpenChange={onOpenChange}
+        onNavigate={vi.fn()}
+      />,
+      { apiClient },
+    );
+
+    await screen.findByText(/Rules for DE/i);
+    const doneButton = screen.getByRole('button', { name: 'Done' });
+    await userEvent.click(doneButton);
+
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('should surface a per-rule delete failure without hiding the rest of the dialog', async () => {
+    const rules = [makeRule('r1')];
+    const deleteRule = vi.fn().mockRejectedValue(new Error('Rule is referenced elsewhere'));
+    const apiClient = createMockApiClient({
+      salesDocumentRules: {
+        listRules: vi.fn().mockResolvedValue(rules),
+        listCountryDefaults: vi.fn().mockResolvedValue([]),
+        deleteRule,
+      },
+    });
+    renderWithProviders(
+      <SalesDocumentCountryRoutingDialog
+        open
+        country="DE"
+        cameFrom={null}
+        onOpenChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+      { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() },
+    );
+
+    const deleteButton = await screen.findByRole('button', { name: 'Delete' });
+    await userEvent.click(deleteButton);
+
+    await screen.findByText('Rule is referenced elsewhere');
+    // The failure is scoped to the rule row — the rest of the dialog (e.g.
+    // its title) is still there, not replaced by a full-dialog error state.
+    expect(screen.getByText(/Sales-document routing · DE/i)).toBeInTheDocument();
+  });
+
+  it('should state that an unmatched order falls through when the country has no rule and no default', async () => {
+    const apiClient = createMockApiClient({
+      salesDocumentRules: {
+        listRules: vi.fn().mockResolvedValue([]),
+        listCountryDefaults: vi.fn().mockResolvedValue([]),
+      },
+    });
+    renderWithProviders(
+      <SalesDocumentCountryRoutingDialog
+        open
+        country="DE"
+        cameFrom={null}
+        onOpenChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+      { apiClient },
+    );
+
+    expect(await screen.findByText(/Falls through to ★ Rest of world/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /DE has no rules and no default, so an order delivered here goes to/i,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/An unmatched order is held/i)).toBeNull();
+  });
+
+  it('should state that an unmatched order is held, and never falls through, once the country carries a rule', async () => {
+    const rules = [makeRule('r1', { country: 'DE' })];
+    const apiClient = createMockApiClient({
+      salesDocumentRules: {
+        listRules: vi.fn().mockResolvedValue(rules),
+        listCountryDefaults: vi.fn().mockResolvedValue([]),
+      },
+    });
+    renderWithProviders(
+      <SalesDocumentCountryRoutingDialog
+        open
+        country="DE"
+        cameFrom={null}
+        onOpenChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+      { apiClient },
+    );
+
+    expect(await screen.findByText(/An unmatched order is held/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/DE has its own routing, so an order that matches nothing here is/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Falls through to ★ Rest of world/i)).toBeNull();
+    expect(screen.queryByRole('button', { name: /Open ★ Rest of world/i })).toBeNull();
+  });
+
+  it('should state that an unmatched order is held once the country carries a default, even with no rules', async () => {
+    const defaults: SalesDocumentCountryDefault[] = [
+      { id: 'd1', country: 'DE', documentKind: 'invoice', connectionId: 'conn_1' },
+    ];
+    const apiClient = createMockApiClient({
+      salesDocumentRules: {
+        listRules: vi.fn().mockResolvedValue([]),
+        listCountryDefaults: vi.fn().mockResolvedValue(defaults),
+      },
+    });
+    renderWithProviders(
+      <SalesDocumentCountryRoutingDialog
+        open
+        country="DE"
+        cameFrom={null}
+        onOpenChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+      { apiClient },
+    );
+
+    expect(await screen.findByText(/An unmatched order is held/i)).toBeInTheDocument();
+  });
+
+  it('should not claim a country has no rules and no default while the counts are still loading', async () => {
+    // `rules`/`defaults` read `?? []` while the queries are in flight, so an
+    // ungated tier would assert "DE has no rules and no default" about a
+    // configured country and then flip once the real counts land.
+    const apiClient = createMockApiClient({
+      salesDocumentRules: {
+        listRules: vi.fn().mockReturnValue(new Promise(() => {})),
+        listCountryDefaults: vi.fn().mockReturnValue(new Promise(() => {})),
+      },
+    });
+    renderWithProviders(
+      <SalesDocumentCountryRoutingDialog
+        open
+        country="DE"
+        cameFrom={null}
+        onOpenChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+      { apiClient },
+    );
+
+    expect(
+      await screen.findByText(/What happens to an unmatched order/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/DE has no rules and no default/i)).toBeNull();
+    expect(screen.queryByText(/Falls through to ★ Rest of world/i)).toBeNull();
+    expect(screen.queryByText(/An unmatched order is held/i)).toBeNull();
+    expect(screen.queryByRole('button', { name: /Open ★ Rest of world/i })).toBeNull();
   });
 });

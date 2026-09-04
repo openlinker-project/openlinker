@@ -6,6 +6,21 @@
  * and full-order hydration into the neutral `IncomingOrder` shape. Enables
  * PrestaShop as an order source alongside marketplace sources (Allegro).
  *
+ * **`date_upd` sort/filter fallback (#2877).** Some shops refuse `date_upd` as
+ * a sort/filter field on the `orders` webservice resource - PrestaShop error
+ * code 38, "Unable to filter by this field.", naming a shop-specific allowed
+ * field list that omits it (verified live on 9.0.2). `listOrderFeed` detects
+ * that refusal, remembers it per connection (`PrestashopOrderFeedCapabilityCache`)
+ * and falls back to an id-ordered read (`id > lastOrderId`, sort `id_ASC`) for
+ * every later poll on the same connection. That fallback trades away part of
+ * the #2605 guarantee below: it reliably surfaces every NEW order, but an
+ * UPDATE to an order whose id has already been read is not re-observed by
+ * this poll, because nothing asks the shop to re-sort by `date_upd` any more.
+ * The webhook path (#904) is unaffected by this and remains the primary,
+ * low-latency route an update reaches OpenLinker through; poll is only ever
+ * the reconciliation backstop, and on an affected shop that backstop is now
+ * narrower (new orders only) rather than absent (every poll dead-lettering).
+ *
  * @module libs/integrations/prestashop/src/infrastructure/adapters
  * @implements {OrderSourcePort}
  */
@@ -37,6 +52,7 @@ import type {
 import { PrestashopOrderStateCatalog } from '../provisioners/prestashop-order-state.catalog';
 import type { PrestashopOrderStateSnapshot } from '../provisioners/prestashop-order-state.catalog';
 import type { PrestashopOrderCurrencyResolver } from '../provisioners/prestashop-order-currency.resolver';
+import { PrestashopOrderFeedCapabilityCache } from '../provisioners/prestashop-order-feed-capability.cache';
 import {
   PrestashopApiException,
   PrestashopResourceNotFoundException,
@@ -82,7 +98,16 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
      * an order's denomination is a WebService read and `mapOrder` is
      * synchronous by contract.
      */
-    private readonly orderCurrencyResolver: PrestashopOrderCurrencyResolver
+    private readonly orderCurrencyResolver: PrestashopOrderCurrencyResolver,
+    /**
+     * Remembers, per connection, whether this shop refuses `date_upd` as an
+     * `orders` sort/filter field (#2877). Defaulted rather than made a
+     * required positional parameter so every existing construction site -
+     * this adapter is built directly in tests, not only through the factory -
+     * keeps working; the factory supplies its own process-singleton instance
+     * so the answer actually survives across the adapters it builds.
+     */
+    private readonly orderFeedCapabilityCache: PrestashopOrderFeedCapabilityCache = new PrestashopOrderFeedCapabilityCache()
   ) {
     this.orderStates = new PrestashopOrderStateCatalog(httpClient, connection.id);
   }
@@ -119,6 +144,77 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
     const orderStates = await this.orderStates.load();
 
     const pageSize = input.limit > 0 ? input.limit : 1;
+
+    let items: OrderFeedItem[];
+    let cursor: PrestashopOrderFeedCursor | null;
+    let rowsRead: number;
+
+    if (this.orderFeedCapabilityCache.isDateUpdSortKnownUnsupported(this.connection.id)) {
+      ({ items, cursor, rowsRead } = await this.fetchByIdOnly(pageSize, fromCursor, orderStates));
+    } else {
+      try {
+        ({ items, cursor, rowsRead } = await this.fetchByDateUpdKeyset(
+          pageSize,
+          fromCursor,
+          orderStates
+        ));
+      } catch (error) {
+        if (!this.isDateUpdSortUnsupportedError(error)) {
+          throw error;
+        }
+        this.orderFeedCapabilityCache.markDateUpdSortUnsupported(this.connection.id);
+        this.logger.warn(
+          `PrestaShop connection ${this.connection.id} refuses \`date_upd\` as a sort/filter ` +
+            `field on the orders webservice resource (code 38, #2877). Falling back to an ` +
+            `id-ordered read for every later poll on this connection: NEW orders are still ` +
+            `reliably surfaced, but an UPDATE to an order whose id has already been read will ` +
+            `NOT be re-observed by this poll any more. The webhook path (#904) is unaffected and ` +
+            `remains the primary, low-latency way an update reaches OpenLinker on this shop.`
+        );
+        ({ items, cursor, rowsRead } = await this.fetchByIdOnly(pageSize, fromCursor, orderStates));
+      }
+    }
+
+    // The cursor is emitted even when every row was filtered out by
+    // `eventTypes`, so a page of non-matching events cannot be re-read for ever.
+    // It is never emitted BEHIND the input, so an empty page leaves the read
+    // position exactly where it was rather than rewinding it.
+    const nextCursor = cursor === null ? null : formatOrderFeedCursor(cursor);
+
+    const filtered = input.eventTypes
+      ? items.filter((i) => input.eventTypes!.includes(i.eventType))
+      : items;
+
+    this.logger.debug(
+      `PrestaShop order feed read ${rowsRead} row(s), emitted ${filtered.length} item(s), ` +
+        `nextCursor=${nextCursor ?? 'none'} (connection: ${this.connection.id})`
+    );
+
+    // The caller's cursor is re-serialized rather than echoed (#2605 review).
+    // The echo was reachable only for a cursor that could not be parsed - a
+    // parsed one already round-trips through `cursor` - and echoing that back
+    // poll after poll both emits a shape core cannot compare against the keyset
+    // form, which switches its monotonicity guard off, and leaves the unreadable
+    // value in place for ever. `null` is the honest answer: this poll read from
+    // the beginning, and it says so.
+    const echoedCursor = fromCursor === null ? null : formatOrderFeedCursor(fromCursor);
+
+    return { items: filtered, nextCursor: nextCursor ?? echoedCursor };
+  }
+
+  /**
+   * One page of the order feed, read (or resumed) via a `(date_upd, id)`
+   * keyset (#2605) - the shop's default, primary read path.
+   *
+   * @throws whatever `httpClient.listResources` throws, including the
+   * webservice's own refusal to sort/filter by `date_upd` (#2877) - the
+   * caller decides whether to fall back on that specific refusal.
+   */
+  private async fetchByDateUpdKeyset(
+    pageSize: number,
+    fromCursor: PrestashopOrderFeedCursor | null,
+    orderStates: PrestashopOrderStateSnapshot
+  ): Promise<{ items: OrderFeedItem[]; cursor: PrestashopOrderFeedCursor | null; rowsRead: number }> {
     const items: OrderFeedItem[] = [];
     let cursor: PrestashopOrderFeedCursor | null = fromCursor;
     let rowsRead = 0;
@@ -202,31 +298,127 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
       );
     }
 
-    // The cursor is emitted even when every row was filtered out by
-    // `eventTypes`, so a page of non-matching events cannot be re-read for ever.
-    // It is never emitted BEHIND the input, so an empty page leaves the read
-    // position exactly where it was rather than rewinding it.
-    const nextCursor = cursor === null ? null : formatOrderFeedCursor(cursor);
+    return { items, cursor, rowsRead };
+  }
 
-    const filtered = input.eventTypes
-      ? items.filter((i) => input.eventTypes!.includes(i.eventType))
-      : items;
-
-    this.logger.debug(
-      `PrestaShop order feed read ${rowsRead} row(s), emitted ${filtered.length} item(s), ` +
-        `nextCursor=${nextCursor ?? 'none'} (connection: ${this.connection.id})`
+  /**
+   * One page of the order feed, read purely by `id` (#2877) - the fallback
+   * path for a shop that refuses `date_upd` as an `orders` sort/filter field.
+   *
+   * Unlike the keyset path, no growing-window trick is needed: `id` is a
+   * unique, strictly increasing primary key, so an exclusive `id >` filter
+   * combined with `sort: ['id_ASC']` can never produce the same-second ties
+   * `fetchByDateUpdKeyset` widens its window to resolve, and a row can never
+   * shift across the `id`-ordered boundary the way a `date_upd` bump can. One
+   * page per poll is therefore enough to make monotonic progress.
+   *
+   * **This is where the #2605 reconciliation guarantee narrows.** Every row
+   * this filter returns is, by construction, one whose id this connection has
+   * not read before - so a brand-new order is always surfaced. An UPDATE to an
+   * order whose id was already read is not: nothing here ever revisits an id
+   * once it is behind the cursor, because there is no `date_upd` filter left
+   * to notice the row changed. See the adapter's own header comment.
+   *
+   * **A malformed row still advances the read position.** `toFeedItem`
+   * returns `null` for a row it cannot project (an unreadable `date_upd`),
+   * and on the keyset path that row is genuinely lost - there is no other
+   * axis left to notice it changed. Here `id` is unaffected by whatever made
+   * `date_upd` unusable, so this loop advances the cursor's `lastOrderId` off
+   * the raw row id even when the row is otherwise dropped. Without that, a
+   * page holding only malformed rows would leave the cursor exactly where it
+   * started, and the identical `id > N` page would be re-read on every later
+   * poll for ever (#2877 review) - a stall, not merely a lost row.
+   */
+  private async fetchByIdOnly(
+    pageSize: number,
+    fromCursor: PrestashopOrderFeedCursor | null,
+    orderStates: PrestashopOrderStateSnapshot
+  ): Promise<{ items: OrderFeedItem[]; cursor: PrestashopOrderFeedCursor | null; rowsRead: number }> {
+    const rows = await this.httpClient.listResources<PrestashopOrder>(
+      'orders',
+      {
+        ...(fromCursor ? { idAfter: fromCursor.lastOrderId } : {}),
+        sort: ['id_ASC'],
+      },
+      pageSize,
+      0
     );
 
-    // The caller's cursor is re-serialized rather than echoed (#2605 review).
-    // The echo was reachable only for a cursor that could not be parsed - a
-    // parsed one already round-trips through `cursor` - and echoing that back
-    // poll after poll both emits a shape core cannot compare against the keyset
-    // form, which switches its monotonicity guard off, and leaves the unreadable
-    // value in place for ever. `null` is the honest answer: this poll read from
-    // the beginning, and it says so.
-    const echoedCursor = fromCursor === null ? null : formatOrderFeedCursor(fromCursor);
+    const items: OrderFeedItem[] = [];
+    // The `date_upd` half of the cursor is still carried forward - the wire
+    // format never changes across a fallback (#2605) - it is just no longer
+    // what advances the read position; `id` alone does that here.
+    let cursor: PrestashopOrderFeedCursor | null = fromCursor;
 
-    return { items: filtered, nextCursor: nextCursor ?? echoedCursor };
+    for (const row of rows) {
+      const item = this.toFeedItem(row, orderStates);
+      if (item === null) {
+        // `toFeedItem` already logged this row at `error` and warned that it
+        // will not be re-read - true for the keyset path, where the row drops
+        // out of a `date_upd`-ordered result and nothing else advances past
+        // it. It is NOT true here: `id` is available even when `date_upd` is
+        // not (a code-38 refusal is about the sort/filter field, not the row
+        // data), so the read position can still move past a malformed row by
+        // id alone - a page of such rows must not wedge this fallback into
+        // re-reading the identical `id > N` page on every later poll (#2877
+        // review). Only done once a real `updatedAt` already exists to carry
+        // forward (from `fromCursor` or an earlier good row in this page) -
+        // there is nothing honest to put in that slot for a connection whose
+        // very first-ever page opens on a malformed row, and that double
+        // defect (id-only fallback AND unparseable `date_upd`, both on row 1)
+        // is left to resolve itself once any later row succeeds.
+        const rawOrderId = Number.parseInt(String(row.id), 10);
+        if (cursor !== null && Number.isFinite(rawOrderId) && rawOrderId > cursor.lastOrderId) {
+          cursor = { updatedAt: cursor.updatedAt, lastOrderId: rawOrderId };
+        }
+        continue;
+      }
+      items.push(item.feedItem);
+      cursor = { updatedAt: item.updatedAt, lastOrderId: item.orderId };
+    }
+
+    if (items.length === 0 && rows.length >= pageSize && (cursor === null || cursor === fromCursor)) {
+      this.logger.warn(
+        `PrestaShop id-ordered order feed made no progress after ${rows.length} row(s) on ` +
+          `connection ${this.connection.id}: a full page returned nothing usable. Nothing was ` +
+          `lost - the read position is unchanged - but the next poll will read the identical page ` +
+          `again until this is investigated in the shop's own order data.`
+      );
+    }
+
+    return { items, cursor, rowsRead: rows.length };
+  }
+
+  /**
+   * PrestaShop's own error code for "this field is not on the shop's
+   * filterable/sortable field list for this resource" (#2877, verified live
+   * on 9.0.2 - the response body names the rejected field plus the shop's own
+   * allowed list). The only field this adapter ever sorts or filters `orders`
+   * by that a shop could plausibly refuse is `date_upd` (`sort` and
+   * `updatedAfter`) - `id` is always accepted, per PrestaShop's own webservice
+   * implementation - so a code-38 refusal on the request `fetchByDateUpdKeyset`
+   * issues can only be about `date_upd`.
+   */
+  private static readonly UNSUPPORTED_SORT_FILTER_FIELD_ERROR_CODE = 38;
+
+  private isDateUpdSortUnsupportedError(error: unknown): boolean {
+    if (!(error instanceof PrestashopApiException) || !error.responseBody) {
+      return false;
+    }
+    let parsed: { errors?: Array<{ code?: number }> };
+    try {
+      parsed = JSON.parse(error.responseBody) as { errors?: Array<{ code?: number }> };
+    } catch {
+      // Not a JSON body - not the webservice's own structured error response,
+      // so it cannot be the refusal we are looking for.
+      return false;
+    }
+    return (
+      Array.isArray(parsed.errors) &&
+      parsed.errors.some(
+        (e) => e?.code === PrestashopOrderSourceAdapter.UNSUPPORTED_SORT_FILTER_FIELD_ERROR_CODE
+      )
+    );
   }
 
   /**

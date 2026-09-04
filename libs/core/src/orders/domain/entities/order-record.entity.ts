@@ -358,7 +358,21 @@ export class OrderRecord {
      * positional constructor, so a field inserted mid-list would silently
      * shift every argument after it at each construction site.
      */
-    public readonly shippingAddressHash: string | null = null
+    public readonly shippingAddressHash: string | null = null,
+    /**
+     * How `totalAmount` ALONE expresses tax, when that diverges from
+     * `taxTreatment` (#2829/#2832). Mirrors `OrderTotals.totalTaxTreatment` -
+     * see that field's doc comment for the full rationale (a PrestaShop order
+     * prices its LINES net but its TOTAL gross, so one flag cannot describe
+     * both). `null` means "same as `taxTreatment`"; every reader of the total's
+     * own inclusivity (today: `SalesDocumentViewService.toOrderFacts`, feeding
+     * the `orderTotalGross` sales-document rule condition) MUST read
+     * `totalTaxTreatment ?? taxTreatment`, exactly as `toSalesDocumentOrderFacts`
+     * does from the live `Order` - the gate and this projection must agree, or
+     * a PrestaShop order would be routed as gross while the operator-facing
+     * surface still reports it `net-priced`.
+     */
+    public readonly totalTaxTreatment: PriceTaxTreatment | null = null
   ) {}
 
   /**

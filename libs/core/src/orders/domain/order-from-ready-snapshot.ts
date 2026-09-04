@@ -226,6 +226,13 @@ function readTotals(value: unknown): OrderTotals {
   if (raw.taxTreatment === 'inclusive' || raw.taxTreatment === 'exclusive') {
     totals.taxTreatment = raw.taxTreatment;
   }
+  // #2829/#2832 — same allowlist, same failure mode as the per-line tax
+  // fields above: an omitted field here is silently dropped from every
+  // rehydrated `Order`, and a PrestaShop order's total-only gross assertion
+  // would vanish on any manual-issuance path that reaches this function.
+  if (raw.totalTaxTreatment === 'inclusive' || raw.totalTaxTreatment === 'exclusive') {
+    totals.totalTaxTreatment = raw.totalTaxTreatment;
+  }
   return totals;
 }
 

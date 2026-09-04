@@ -47,6 +47,8 @@
     "typeorm": "0.3.17"
   },
   "devDependencies": {
+    "@babel/core": "^7.28.5",
+    "@babel/preset-env": "^7.29.7",
     "@jest/test-sequencer": "29.7.0",
     "@nestjs/testing": "10.3.0",
     "@openlinker/test-kit": "workspace:*",
@@ -56,6 +58,7 @@
     "@types/node": "20.11.30",
     "@typescript-eslint/eslint-plugin": "7.3.1",
     "@typescript-eslint/parser": "7.3.1",
+    "babel-jest": "^29.7.0",
     "eslint": "8.57.0",
     "jest": "29.7.0",
     "ts-jest": "29.1.2",
