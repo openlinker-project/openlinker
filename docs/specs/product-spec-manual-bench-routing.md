@@ -2,19 +2,26 @@
 
 **Status:** draft — context, stories, decision log. No surface, copy or layout is specified.
 **Issue:** #2869. **Depends on:** #2395 (the routing commit), #2399 (the executor handshake),
-#2409 (the OL-OMS executor). **Surfaces on:** #2410 (desktop worklist) and/or #2411 (order detail).
+#2409 (the OL-OMS executor). **Surfaces on:** #2411 (order detail) in slice 1, and #2410 (worklist)
+once an override exists — M21.
 **Explicitly not:** the pack bench itself (#2422 / `product-spec-oms-wave3b-scan-pick-pack.md`).
+
+> **Sequencing gate — see § 5.1.** R7 must ship **before** `resolveFulfillmentRouter` is wired.
 
 ---
 
 ## 0. Scope of this document
 
-§ 1 context · § 2 stories · § 3 non-goals · § 4 open questions · § 5 what a first slice cuts ·
+§ 1 context · § 2 stories · § 3 non-goals · § 4 open questions · § 5 sequencing and slicing ·
 § 6 decision log.
 
-**The decision log (§ 6) is the substantive part.** Twenty decisions, each with its reasoning.
+**The decision log (§ 6) is the substantive part.** Twenty-two decisions, each with its reasoning.
 Five of them answer the questions #2869 asks by name (M1–M5); the rest are consequences the issue
 does not raise and that a reader would otherwise meet as surprises.
+
+Two decisions — **M21** (where it surfaces) and **M22** (a closed reason plus a note) — **reverse
+what this document first concluded**, because a shipped answer already existed in the tree and was
+missed on the first pass. Both are recorded with the reversal visible rather than silently rewritten.
 
 Where a story would imply a control, it stops at the behaviour.
 
@@ -70,9 +77,12 @@ Three facts about `main` shape the slice, and two of them are load-bearing:
   holder, is never accepted, and so **can never satisfy the bench's eligibility rule**. A manual
   route that only created work would be invisible. See M8 — this slice is the job type's first
   producer, for the router's own works as much as for hand-routed ones.
-- **`resolveFulfillmentRouter` answers `null` on every installation.** No router exists until
-  #2408. So today *every* order takes case 3 above, and manual routing is not a fallback for an
-  occasional failure — on `main` it is the only way an order reaches a bench at all.
+- **A real router EXISTS and is one function body from live.** `libs/oms/src/routing/ol-fulfillment-router.ts`
+  ships with its spec and `libs/oms/src/index.ts` barrel-exports `createOlFulfillmentRouter`. What
+  is missing is only `resolveFulfillmentRouter`, which still `return`s `null` and whose own header
+  says *"#2408/#2409 replace THIS function; nothing else needs touching."* So today every order
+  takes case 3 and manual routing is the only way an order reaches a bench — **but the second
+  producer is one edit away, not a wave away.** § 5.1 is the whole consequence.
 - **`packer` does not exist on `main`.** The role, the bench surfaces and `apps/api/src/bench/`
   arrive with Wave 3b. This spec must therefore *name* the role it excludes without depending on
   it having landed (M14).
@@ -125,8 +135,9 @@ than the two override cases combined.
 - When I send it to the in-house bench with a reason,
 - Then the other parcel is cancelled, a new decision is recorded as mine, and the parcel appears on
   the bench.
-- *(M1. The reason is required, not optional: this is the one write in the routing model that
-  overturns a decision the system made, and an unexplained one is unauditable.)*
+- *(M1. R14's reason is required here as everywhere — but this is the one write in the routing model
+  that overturns a decision the system made, so an unexplained one would be unauditable rather than
+  merely uncounted.)*
 
 **R6 — an order a holder has already accepted is refused, and I am told what to do instead** *(P9)*
 - Given a parcel a 3PL has accepted, or one it has been offered and has not yet answered,
@@ -169,6 +180,21 @@ than the two override cases combined.
 - *(Each refusal in § 2 has a different remedy — wait, request cancellation, create a location,
   configure the OMS. A shared "cannot route" message makes all four unactionable.)*
 
+**R13 — I find the action where the order's absence of a parcel is already explained** *(P9)*
+- Given an order with no fulfilment task,
+- Then the surface that already tells me so also offers to send it to the bench,
+- And once a task exists, the action lives with the task's other actions rather than beside them.
+- *(M21. The order-detail panel already renders "No fulfilment tasks — this order was not routed to
+  one" as its settled-and-empty state. That sentence is where an unrouted order is visible at all;
+  putting the remedy anywhere else means writing a second explanation of the same absence.)*
+
+**R14 — I say why, from a short list, and may add a sentence** *(P9)*
+- Given I am sending an order to the bench,
+- Then I choose a reason from a closed list and may add a free-text note,
+- And when no listed reason fits, I choose the catch-all and the note becomes required.
+- *(M22. The closed value is what makes "how often is the router overridden, and why" answerable;
+  the note is what stops a missing member losing the fact.)*
+
 ### 2.4 Who may do it
 
 **R12 — a packer cannot plan** *(P9)*
@@ -201,23 +227,50 @@ than the two override cases combined.
 
 ## 4. Open questions
 
-1. **Whether R5 (override) belongs in the first slice at all.** § 5 argues it does not. The
-   counter-argument is that case 2 in #2869 is then unanswered, and it was one of three stated
-   motivations. A product call, not a technical one.
-2. **What the required reason is.** Free text, or a closed vocabulary the explanation surface can
-   aggregate? Free text is honest and unaggregatable; a vocabulary invented before anyone has used
-   the feature will be wrong. Leaning free text, revisited against real use.
-3. **Whether R3's location choice defaults.** With exactly one active location, offering a choice of
+Three earlier questions are now **settled** and have moved into the decision log: whether R5 belongs
+in slice 1 (no — § 5.2), what the reason is (**M22**), and where the action appears (**M21**). What
+remains:
+
+1. **Whether R3's location choice defaults.** With exactly one active location, offering a choice of
    one is friction; defaulting it silently is the guess M12 refuses. Probably: pre-select and show,
    never hide.
-4. **Whether the action appears on the worklist, order detail, or both** (#2410 / #2411). A surface
-   question, deferred to the surface work.
+2. **Whether M22's four reason members need a fifth.** They cover #2869's three motivating cases plus
+   the catch-all, under the rule that a member names the *state* that made a manual route necessary
+   and never the operator's motive. A fifth should be admitted only if it names a state the four
+   cannot — and the `other` + note path means guessing wrong costs nothing.
 
 ---
 
-## 5. What a first slice should cut, and what it costs
+## 5. Sequencing and slicing
 
-**Cut R5 and R6 — the whole override path — and ship R1–R4 and R7–R12.**
+### 5.1 THE GATE — R7 must exist **before** `resolveFulfillmentRouter` is wired
+
+> **R7 (the live-decision refusal, M3) must be shipped BEFORE the first router is wired.
+> Not with it. Before it.**
+
+Three facts make this a gate rather than a preference:
+
+1. **What it prevents is physical and unrecoverable.** Two producers deciding one order is two
+   parcels with two carriers. There is no compensating write; the guard is the only mitigation and
+   it only works if it is already there.
+2. **What arms the hazard is a one-line edit.** `resolveFulfillmentRouter` returns `null` today and
+   its header explicitly invites replacement — *"nothing else needs touching"*. That is an
+   invitation somebody could accept in an unrelated PR, on a day nobody is thinking about manual
+   routing.
+3. **The window is invisible while it is open.** With no router, a manual route can never race one,
+   so the missing guard is untestable, unreportable and entirely benign — right up to the commit
+   that makes it catastrophic. Nothing fails in between to warn anyone.
+
+So the ordering must not be left to inference from a dependency list. **The same gate is recorded on
+#2408.** If manual routing ships without R7, the correct response is to block the router wiring, not
+to file a follow-up.
+
+Note that R7 is cheap precisely because the machinery exists: it is one predicate over
+`findLiveByOrderId`, a read the claim path already performs.
+
+### 5.2 What a first slice should cut, and what it costs
+
+**Cut R5 and R6 — the whole override path — and ship R1–R4 and R7–R14.**
 
 **R7 stays in, deliberately, even though it is unreachable on `main`.** It is the live-decision
 refusal (M3), i.e. the double-ship guard itself; it is one predicate over a read the claim already
@@ -225,16 +278,15 @@ performs, and a guard that is *cheap*, *permanent* and *protects against a physi
 event* is not one to defer on reachability grounds. R5/R6 are cut because they are **machinery**
 with no producer; R7 is a **refusal**, and refusals are what a slice must never ship without.
 
-Reasoning: on `main` no router exists (§ 1.4), so **case 1 is the only reachable case**. Cases 2 and
-3 both presuppose a router that routed, or declined to. Building the override before anything can be
-overridden means building the refusal logic (M2, M3), the cancellation-of-another-holder's-work
-path, and the supersession terminalisation against no producer — the ADR-048 decision 1 error of an
-interface with no implementer, applied to a guard with nothing to guard.
+Reasoning: **case 1 is the only reachable case today** (§ 1.4). Cases 2 and 3 presuppose a router
+that routed, or declined to. R5/R6 are the machinery for managing a conflict **between two
+producers**, and there is still only one — so they are the ADR-048 decision 1 error of an interface
+with no implementer, applied to a guard with nothing to guard.
 
-**Cost, recorded so it is not rediscovered:** the guards must land *with* the first router
-(#2408/#2409), not after it. Between those two events an order routed to a 3PL and hand-routed to
-the bench is a genuine double shipment. So this is a **sequencing constraint, not a backlog item**,
-and the issue that wires the first router inherits it.
+**This is a cut of MACHINERY, never of a REFUSAL** — which is the whole reason R7 survives it while
+R5/R6 do not, and why § 5.1 states its gate separately rather than folding it in here. Deferring
+work that manages a conflict is prudent; deferring the refusal that prevents one is not the same
+kind of decision and must not be filed under the same heading.
 
 What survives the cut still needs M2's and M3's refusals **stated in the spec** — which is why they
 are decisions rather than stories cut alongside R5/R6. A slice that ships the happy path without
@@ -269,8 +321,10 @@ though the negotiation axis were deferred entirely would be wrong.
 | **M16** | **Provenance is on the routing record, never on the work.** | R9. The bench reads works; planning surfaces read decisions. A `manuallyRouted` flag on `fulfillment_works` would be visible to the bench, and a field visible to a surface is a field that surface eventually branches on — which is how "indistinguishable to the bench" quietly stops being true. |
 | **M17** | **The join lives in the app layer, not in core.** | `fulfillment` is a registered zero-sibling-edge leaf with an enforced no-injection invariant (ADR-053): it may not read `orders` for the lines, `integrations` for the holder, or `users` for the actor. Every one of those crosses as an argument, resolved by an app-layer controller — the shape `FulfillmentWorkRouteHandler` and `FulfillmentWorkDispatchHandler` already take, and the shape `apps/api/src/bench/` takes on the Wave 3b branch. A design that needed `fulfillment` to read `orders` would be wrong as designed, not merely inconvenient. |
 | **M18** | **The action is synchronous and answers the operator directly; it does not enqueue and report "queued".** | Every refusal in § 2 is knowable at the moment of the request, and R11 requires the operator to be told which one fired. An enqueued action would answer "accepted" and surface the refusal in a job log, which for a person at a screen deciding what to pack next is no answer at all. The handshake that follows the commit is **not** an exception to this — see M8: it crosses no boundary, so it runs inline and R1 is true when the response lands. Nothing in this action is enqueued. |
-| **M19** | **The override's required reason gets its OWN nullable column. It is not `abandonReason`, and its null is meaningful.** | The reason M1 and R5 require has no home today, and `abandonReason` is the wrong one twice over: it is written only by `terminalise`, and it means *"why OpenLinker refused a router's plan"*. Putting *"why a person overruled a routing outcome"* in the same column merges two unrelated facts and leaves the explanation surface unable to say which it is reading — the failure M4 refuses one column over. It is nullable because a reason is required only on an **override** (R5), never on a first route (R1): so `null` means *"this decision overruled nothing"*, and must not be read as *"a person gave no reason"*. Whether the value is free text or a closed vocabulary is § 4 question 2, still open; the storage decision does not depend on it. |
+| **M19** | **The reason gets its OWN columns — a NOT-NULL closed `reason` and a nullable `note` — never `abandonReason`.** | `abandonReason` is the wrong home twice over: it is written only by `terminalise`, and it means *"why OpenLinker refused a router's plan"*. Putting *"why a person chose this"* in the same column merges two unrelated facts and leaves the explanation surface unable to say which it is reading — the failure M4 refuses one column over. **This row originally made the reason nullable, on the argument that one is required only for an override; M22 overturns that.** R14 collects a reason on *every* manual route, and the vocabulary's own first member (`routing-not-enabled`) is a **first-route** reason, not an override one — so `reason` is NOT NULL on every manual row and the earlier "null means this overruled nothing" reading would have been false for the commonest case in the product. Both columns are of course null on a **router** row, where the XOR of M4 already says a person did not decide. The `note` stays nullable because it is genuinely optional except under `other` (M22), which is an application rule rather than a column one — a CHECK tying it to one enum member would have to be rewritten by every future member that also wants a mandatory note. |
 | **M20** | **The refusals are named, closed values on the outcome — never a message string the surface parses.** | R11 requires the operator to be told which condition refused them, and there are five with five different remedies (holder has it, still deciding, no holder, several holders, no location). A single "cannot route" plus prose is what makes all five unactionable; prose the frontend *matches on* is worse, because it breaks on the first reword. This is the #2231 rule — the destination declares the reason, the surface renders copy for it — and the closed union is what lets the copy live in one place and a new refusal be a compile error at every render site rather than a silent fallthrough. |
+| **M21** | **The action surfaces on BOTH the worklist and order detail wherever a task exists — but it does NOT join `OPERATOR_INVOCABLE_ACTIONS`, and in slice 1 its only home is the order-detail panel's EMPTY STATE.** | `FulfillmentTaskActions` is shared by `fulfillment-worklist-row.tsx` and `order-fulfillment-tasks-panel.tsx`, so an action rendered there costs nothing to surface twice and choosing one surface would mean deliberately suppressing the other. **But that component renders one control per entry of a *task's* `supportedActions`, and manual routing is an ORDER-grain act that exists precisely when there is no task.** So it cannot ride that array in slice 1: there is no work to hang it off, the worklist has no row for an unrouted order, and `OPERATOR_INVOCABLE_ACTIONS` is `satisfies readonly FulfillmentWorkAction[]` — joining it would mean adding a member to a closed union of *work transitions* for something that **creates** work rather than transitioning it. It therefore sits **beside** that set, permanently. Its slice-1 home is the panel's settled-empty branch, which already renders the exact sentence the remedy answers; adding it there is a genuinely free, non-duplicating placement, and the server never has to claim an action is legal on a task that does not exist. Once R5/R6 land, the *override* is a different act on an order that DOES have a task, and that one belongs in the shared component — which is when the both-surfaces-for-free property is actually collected. |
+| **M22** | **A closed `reason` AND a free-text `note`, with `other` requiring the note. Four members: `routing-not-enabled`, `routed-elsewhere`, `routing-failed`, `other`.** | This reverses § 4's earlier lean toward free text, because the shipped answer was already in the tree: `fulfillment-task-action-dialog.schema.ts` carries a closed `reason` select plus a `note` capped at `FULFILLMENT_NOTE_MAX_LENGTH`, matched to the DTO's `@MaxLength(1000)`. Closed reasons are also the norm on this very table (`RoutingDecisionAbandonReason`). The objection that a vocabulary invented before use will be wrong is real, and **the note is what defuses it**: a missing member degrades to `other` plus a sentence, never to a lost fact — which is why the note is *required* there rather than merely offered. The four members are the issue's own three motivating cases plus that catch-all, and they follow one rule that should govern any fifth: **each names the STATE of the order that made a manual route necessary, never the operator's motive.** A motive axis (`customer-escalation`, `supervisor-asked`) would overlap every state member and make the aggregate uncountable — and urgency is already D22's expedite, not a routing decision. **`HoldReasonValues` is NOT reused**: a hold reason and a routing reason are two vocabularies at two grains, and merging them is the same defect this spec refuses in M16 and the bench card refuses one line above its own hold label. The dialog gains a mode-specific enum beside the existing one. |
 
 ---
 
