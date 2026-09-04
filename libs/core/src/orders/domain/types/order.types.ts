@@ -367,7 +367,7 @@ export interface OrderTotals {
    * `taxTreatment`.
    *
    * WooCommerce has the identical structural split (net line prices, genuinely
-   * gross `total`) and does not yet set this field — tracked as #2836.
+   * gross `total`) and sets this field too (#2836), mirroring PrestaShop.
    */
   totalTaxTreatment?: PriceTaxTreatment;
 }

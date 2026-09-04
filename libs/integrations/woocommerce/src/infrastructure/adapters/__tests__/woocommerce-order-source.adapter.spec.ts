@@ -540,6 +540,11 @@ describe('WooCommerceOrderSourceAdapter', () => {
       expect(result.totals.total).toBe(130);
       // `line_items[].price` is net (#2440).
       expect(result.totals.taxTreatment).toBe('exclusive');
+      // `order.total` is genuinely gross, unlike the line prices (#2836).
+      expect(result.totals.totalTaxTreatment).toBe('inclusive');
+      // The whole point is that they disagree — pin the split itself, not
+      // just the two literals, so collapsing both in one future edit fails.
+      expect(result.totals.totalTaxTreatment).not.toBe(result.totals.taxTreatment);
     });
   });
 });
