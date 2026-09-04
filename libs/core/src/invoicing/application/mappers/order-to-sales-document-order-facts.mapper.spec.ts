@@ -153,4 +153,80 @@ describe('toSalesDocumentOrderFacts (#2173)', () => {
     expect(facts?.currency).toBe('EUR');
     expect(facts?.totalGross).toBe(100);
   });
+
+  it('should prefer totalTaxTreatment over taxTreatment when a source asserts total is gross despite net line prices (#2829)', () => {
+    const order = makeOrder({
+      shippingAddress: {
+        address1: 'ul. Testowa 1',
+        city: 'Poznań',
+        postalCode: '60-001',
+        country: 'PL',
+      },
+      totals: {
+        subtotal: 83.32,
+        tax: 16.67,
+        shipping: 5,
+        total: 99.99,
+        currency: 'PLN',
+        // PrestaShop-shaped: line prices/subtotal are net, but the order
+        // total is genuinely gross.
+        taxTreatment: 'exclusive',
+        totalTaxTreatment: 'inclusive',
+      },
+    });
+
+    const facts = toSalesDocumentOrderFacts(order);
+
+    expect(facts?.taxTreatment).toBe('inclusive');
+    expect(facts?.totalGross).toBe(99.99);
+  });
+
+  it('should fall back to taxTreatment when totalTaxTreatment is absent', () => {
+    const order = makeOrder({
+      shippingAddress: {
+        address1: 'ul. Testowa 1',
+        city: 'Poznań',
+        postalCode: '60-001',
+        country: 'PL',
+      },
+      totals: {
+        subtotal: 20,
+        tax: 0,
+        shipping: 0,
+        total: 20,
+        currency: 'PLN',
+        taxTreatment: 'exclusive',
+      },
+    });
+
+    expect(toSalesDocumentOrderFacts(order)?.taxTreatment).toBe('exclusive');
+  });
+
+  it('should honour totalTaxTreatment even when it disagrees downward from taxTreatment', () => {
+    // The fallback is `totalTaxTreatment ?? taxTreatment`, which must win in
+    // BOTH directions — the sibling test above only proves the
+    // exclusive→inclusive override; a regression to `||` or a truthiness
+    // check would still pass that one but silently ignore an explicit
+    // `'exclusive'` here (a falsy-looking-but-defined string is never the
+    // failure mode of `??`, so this guards the direction `||` would break).
+    const order = makeOrder({
+      shippingAddress: {
+        address1: 'ul. Testowa 1',
+        city: 'Poznań',
+        postalCode: '60-001',
+        country: 'PL',
+      },
+      totals: {
+        subtotal: 20,
+        tax: 0,
+        shipping: 0,
+        total: 20,
+        currency: 'PLN',
+        taxTreatment: 'inclusive',
+        totalTaxTreatment: 'exclusive',
+      },
+    });
+
+    expect(toSalesDocumentOrderFacts(order)?.taxTreatment).toBe('exclusive');
+  });
 });
