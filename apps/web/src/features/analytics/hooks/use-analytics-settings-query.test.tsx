@@ -27,6 +27,7 @@ const mockSettings: AnalyticsSettingsView = {
   displayCurrencySource: 'setting',
   rateBasis: 'order-date',
   includeBackfilledTaxRatesInNetSales: true,
+  netGrossBasis: 'gross',
   updatedAt: '2026-08-01T00:00:00.000Z',
   updatedByUserId: 'user_1',
 };

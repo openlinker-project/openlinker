@@ -243,6 +243,7 @@ describe('AnalyticsPage', () => {
           displayCurrencySource: 'setting',
           rateBasis: 'current',
           includeBackfilledTaxRatesInNetSales: false,
+          netGrossBasis: 'gross',
           updatedAt: null,
           updatedByUserId: null,
         }),

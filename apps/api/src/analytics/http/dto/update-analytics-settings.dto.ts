@@ -18,7 +18,12 @@
  */
 import { ApiProperty } from '@nestjs/swagger';
 import { IsBoolean, IsIn, ValidateIf } from 'class-validator';
-import { RateBasisValues, type RateBasis } from '@openlinker/core/analytics';
+import {
+  NetGrossBasisValues,
+  RateBasisValues,
+  type NetGrossBasis,
+  type RateBasis,
+} from '@openlinker/core/analytics';
 import { SUPPORTED_REPORTING_CURRENCIES } from '@openlinker/core/currency';
 
 export class UpdateAnalyticsSettingsDto {
@@ -46,4 +51,12 @@ export class UpdateAnalyticsSettingsDto {
   })
   @IsBoolean()
   includeBackfilledTaxRatesInNetSales!: boolean;
+
+  @ApiProperty({
+    enum: NetGrossBasisValues,
+    description:
+      "Default VAT basis a view opens in when no `?netGrossBasis=` URL override is present: `gross` (VAT-inclusive) or `net` (VAT-exclusive, NOV).",
+  })
+  @IsIn(NetGrossBasisValues as unknown as string[])
+  netGrossBasis!: NetGrossBasis;
 }

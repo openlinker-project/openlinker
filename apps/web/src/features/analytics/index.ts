@@ -32,13 +32,15 @@ export type {
 
 export { useAnalyticsSettingsQuery } from './hooks/use-analytics-settings-query';
 export { useUpdateAnalyticsSettingsMutation } from './hooks/use-update-analytics-settings-mutation';
-export { RATE_BASIS_VALUES } from './api/analytics-settings.types';
+export { RATE_BASIS_VALUES, NET_GROSS_BASIS_VALUES } from './api/analytics-settings.types';
 export type {
   AnalyticsDisplayCurrencySource,
   AnalyticsSettingsView,
+  NetGrossBasis,
   RateBasis,
   UpdateAnalyticsSettingsInput,
 } from './api/analytics-settings.types';
+export { AnalyticsNetGrossToggle } from './components/analytics-net-gross-toggle';
 
 export { useAnalyticsCoverageQuery } from './hooks/use-analytics-coverage-query';
 export { useRecalculateCurrencyMutation } from './hooks/use-recalculate-currency-mutation';

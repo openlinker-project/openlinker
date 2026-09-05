@@ -26,9 +26,10 @@ export {
   ANALYTICS_DISPLAY_SETTINGS_SINGLETON_ID,
 } from './domain/entities/analytics-display-settings.entity';
 export type { AnalyticsDisplaySettingsRepositoryPort } from './domain/ports/analytics-display-settings-repository.port';
-export { RateBasisValues } from './domain/types/analytics-display-settings.types';
+export { RateBasisValues, NetGrossBasisValues } from './domain/types/analytics-display-settings.types';
 export type {
   RateBasis,
+  NetGrossBasis,
   AnalyticsDisplaySettingsInput,
   AnalyticsDisplaySettingsView,
 } from './domain/types/analytics-display-settings.types';

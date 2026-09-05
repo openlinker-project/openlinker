@@ -139,6 +139,7 @@ describe('AnalyticsSettingsDialog', () => {
           displayCurrencySource: 'setting',
           rateBasis: 'current',
           includeBackfilledTaxRatesInNetSales: false,
+          netGrossBasis: 'gross',
           updatedAt: null,
           updatedByUserId: null,
         }),
@@ -161,6 +162,7 @@ describe('AnalyticsSettingsDialog', () => {
         displayCurrency: 'EUR',
         rateBasis: 'current',
         includeBackfilledTaxRatesInNetSales: true,
+        netGrossBasis: 'gross',
       });
     });
   });
@@ -174,6 +176,7 @@ describe('AnalyticsSettingsDialog', () => {
           displayCurrencySource: 'default',
           rateBasis: 'current',
           includeBackfilledTaxRatesInNetSales: false,
+          netGrossBasis: 'gross',
           updatedAt: null,
           updatedByUserId: null,
         }),
@@ -196,6 +199,7 @@ describe('AnalyticsSettingsDialog', () => {
         displayCurrency: null,
         rateBasis: 'current',
         includeBackfilledTaxRatesInNetSales: true,
+        netGrossBasis: 'gross',
       });
     });
   });

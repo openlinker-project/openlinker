@@ -95,6 +95,7 @@ export class AnalyticsSettingsController {
         displayCurrency: dto.displayCurrency,
         rateBasis: dto.rateBasis,
         includeBackfilledTaxRatesInNetSales: dto.includeBackfilledTaxRatesInNetSales,
+        netGrossBasis: dto.netGrossBasis,
       },
       user?.id
     );

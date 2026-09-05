@@ -27,6 +27,7 @@ describe('TopProductsController', () => {
       displayCurrency: null,
       rateBasis: 'current',
       includeBackfilledTaxRatesInNetSales,
+      netGrossBasis: 'gross',
       updatedAt: null,
       updatedByUserId: null,
     }),

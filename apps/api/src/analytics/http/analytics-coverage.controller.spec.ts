@@ -51,6 +51,7 @@ describe('AnalyticsCoverageController (#2466)', () => {
       displayCurrency: null,
       rateBasis: 'current',
       includeBackfilledTaxRatesInNetSales,
+      netGrossBasis: 'gross',
       updatedAt: null,
       updatedByUserId: null,
     }),

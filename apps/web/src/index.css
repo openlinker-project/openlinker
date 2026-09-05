@@ -19274,6 +19274,20 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   font-weight: 600;
 }
 
+/* ── Trailing toolbar stack (#2895) ──
+   The currency picker and the VAT-basis toggle are both "how to read this
+   view" preferences, stacked in one column — the toggle sits directly
+   below the picker rather than beside it, since the currency choice is the
+   taller and more consequential of the two. This div is the ONE child of
+   the trailing `.toolbar__group` (a flex row), so it becomes a single flex
+   item that switches its own children to a column. */
+.analytics-toolbar__trailing-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
 /* The † gap marker on the "Order date" chip — a real <button> opening a
    Popover on click, not a Tooltip, so it's reachable on touch devices
    (Radix Tooltip ignores pointerType === 'touch'). */
