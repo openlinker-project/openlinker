@@ -48,6 +48,14 @@ Every other figure uses its metric name verbatim.
   GMV, Units Sold and every figure derived from them. Its **cancelled** line items are excluded from
   GMV and Units Sold. Wherever a metric below says "excluding cancelled orders", it means orders
   cancelled in full; line-item-level cancellations are handled by this rule.
+- **Net / Gross view toggle** (added, shipped with #2895/#2903 — an operator-facing addition, not
+  part of the originally agreed text) – the dashboard offers a page-level Net/Gross basis toggle.
+  **Every metric below is defined NET by default**, exactly as written; the toggle's Gross setting
+  is a secondary VIEW of the same underlying order/line population, substituting GMV for Net Sales
+  and the gross (VAT-inclusive) value field for AOV/Median's net value field, with every other rule
+  on this page (cohort, exclusions, currency conversion) unchanged. It does not introduce a second
+  metric definition — GMV and Net Sales each already have their own definition below, and Gross-mode
+  AOV/Median simply reuse GMV's value field the same way Net-mode AOV/Median reuse Net Sales'.
 
 ## List of metrics:
 
