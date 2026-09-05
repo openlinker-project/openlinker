@@ -117,26 +117,60 @@ function ProgressStub(): ReactElement {
  * Let the idle period elapse, with both flushes the assertion depends on.
  *
  * Two ordering hazards, and a bare `act(() => vi.advanceTimersByTime(…))` loses
- * to either under load:
+ * to either:
  *
- *  1. `useIdleTimeout` SCHEDULES its `setTimeout` from an effect. Advance the
- *     clock before that effect has run and there is no timer to advance — and
+ *  1. `useIdleTimeout` SCHEDULES its `setTimeout` from an effect, and that
+ *     effect arms only once the session has RESOLVED (`enabled: signedIn`).
+ *     Advance the clock before that and there is no timer to advance — and
  *     because the clock is fake, nothing moves it again, so the bench never
  *     locks and the failure reads as "the lock is broken" rather than "the test
- *     advanced too early".
+ *     advanced too early". `awaitSignedIn()` is the precondition that closes
+ *     that hole; the microtask flush below covers the effect itself.
  *  2. Firing the timer schedules a React state update whose effects flush on a
  *     microtask. Asserting before that flush races `waitFor`'s own polling.
  *
- * So: flush mount effects, advance, flush again. #2418 is what turned this from
- * intermittent into deterministic — enough sibling test files to slow the worker
- * past the margin the original relied on.
+ * So: flush mount effects, advance, flush again.
  */
-async function advanceIdlePeriod(): Promise<void> {
+async function advanceIdlePeriod(timeoutMs: number = IDLE_TIMEOUT_MS): Promise<void> {
   await act(async () => {
     await Promise.resolve();
   });
   await act(async () => {
-    vi.advanceTimersByTime(1200);
+    vi.advanceTimersByTime(timeoutMs + 200);
+    await Promise.resolve();
+  });
+}
+
+/**
+ * Wait until a packer is really signed in — the precondition every idle-lock
+ * assertion in this file rests on.
+ *
+ * `BenchIdentityBar` is rendered UNCONDITIONALLY by `BenchSurface`, so
+ * `findByTestId('bench-identity-bar')` resolves on the very FIRST render, while
+ * the session adapter's promise is still pending. At that moment `signedIn` is
+ * false, `useIdleTimeout` is `enabled: false` and no timer exists — so an
+ * advance placed after it can be a silent no-op, and the bench then never
+ * locks however long the test waits.
+ *
+ * "Switch packer" is `disabled` exactly while `signedInName === null`, so its
+ * becoming enabled IS the session having resolved. (The bar's own text cannot
+ * serve as the signal: the signed-OUT copy, "Nobody is signed in", contains
+ * "signed in".)
+ *
+ * The trailing flush is the other half, and it is not decoration. The button
+ * turns enabled in the COMMIT that renders the new session, while the hook's
+ * `wasSignedIn` transition effect — the one that calls `setState('open')` and
+ * re-arms the clock — is a passive effect of that same commit. Return on the
+ * rendered attribute alone and a test can click "Switch packer" in the window
+ * between the two, and have its `handover` snapped straight back to `open` by
+ * an effect that was already queued. So: wait for the render, then let the
+ * effects it scheduled run, and only then hand back a settled bench.
+ */
+async function awaitSignedIn(): Promise<void> {
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: /switch packer/i })).toBeEnabled()
+  );
+  await act(async () => {
     await Promise.resolve();
   });
 }
@@ -171,8 +205,31 @@ function scan(value: string): void {
   });
 }
 
+/**
+ * One idle budget for every bench mounted in this file, and it is THIRTY
+ * SECONDS rather than the second a bench test naively wants.
+ *
+ * `shouldAdvanceTime: true` (below) is not optional here, and its cost is that
+ * fake time keeps running with real time — so every millisecond a `user.click`
+ * or a `findBy*` spends on the wall is spent out of the bench's idle budget.
+ * Against a 1s budget on a slow or loaded runner (CI is ~3x this laptop) two
+ * clicks are enough to lock the bench *before* the assertion the test is
+ * making, and the file fails in a way that reads as "the lock is broken" and
+ * varies by machine.
+ *
+ * Every lock here is therefore driven by an EXPLICIT `advanceIdlePeriod()`, and
+ * the budget is set far above any credible incidental elapsed time so that
+ * nothing but that explicit advance can reach it. Nothing about what the tests
+ * ASSERT changes with this number — only which clock reaches the deadline.
+ */
+const IDLE_TIMEOUT_MS = 30_000;
+
 describe('BenchSurface (#2413)', () => {
   beforeEach(() => {
+    // `shouldAdvanceTime: true` is load-bearing, not incidental: RTL does not
+    // recognise vitest's fake timers, so `waitFor` / `findBy*` poll on a real
+    // interval. With the clock fully frozen every await in this file hangs to
+    // the 10s test timeout (verified). Its cost is paid for by the budget above.
     vi.useFakeTimers({ shouldAdvanceTime: true });
   });
 
@@ -182,7 +239,7 @@ describe('BenchSurface (#2413)', () => {
 
   function render(): ReturnType<typeof renderWithProviders> {
     return renderWithProviders(
-      <BenchSurface idleTimeoutMs={1000}>
+      <BenchSurface idleTimeoutMs={IDLE_TIMEOUT_MS}>
         <ProgressStub />
       </BenchSurface>,
       { sessionAdapter: createAuthenticatedSessionAdapter() }
@@ -197,7 +254,7 @@ describe('BenchSurface (#2413)', () => {
 
   it('A3 — locks after the idle period', async () => {
     render();
-    await screen.findByTestId('bench-identity-bar');
+    await awaitSignedIn();
 
     await advanceIdlePeriod();
 
@@ -206,7 +263,7 @@ describe('BenchSurface (#2413)', () => {
 
   it('A3 — the locked screen reveals nothing about the order', async () => {
     render();
-    await screen.findByTestId('bench-identity-bar');
+    await awaitSignedIn();
 
     await advanceIdlePeriod();
     await waitFor(() => expect(screen.getByTestId('bench-locked')).toBeInTheDocument());
@@ -223,7 +280,7 @@ describe('BenchSurface (#2413)', () => {
   it('A3 — locking discards no progress', async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     render();
-    await screen.findByTestId('bench-identity-bar');
+    await awaitSignedIn();
 
     await user.click(screen.getByRole('button', { name: /verify one/i }));
     await user.click(screen.getByRole('button', { name: /verify one/i }));
@@ -245,12 +302,12 @@ describe('BenchSurface (#2413)', () => {
     resetGestureLogForTests();
     const seen: string[] = [];
     renderWithProviders(
-      <BenchSurface idleTimeoutMs={1000}>
+      <BenchSurface idleTimeoutMs={IDLE_TIMEOUT_MS}>
         <ScannerStub seen={seen} />
       </BenchSurface>,
       { sessionAdapter: createAuthenticatedSessionAdapter() }
     );
-    await screen.findByTestId('bench-identity-bar');
+    await awaitSignedIn();
 
     // Non-vacuity: the listener really is attached while the bench is open, so
     // the assertion after the lock is about the LOCK and not about a stub that
@@ -268,7 +325,7 @@ describe('BenchSurface (#2413)', () => {
   it('A2 — a handover asks first, and shows what is already verified', async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     render();
-    await screen.findByTestId('bench-identity-bar');
+    await awaitSignedIn();
 
     await user.click(screen.getByRole('button', { name: /verify one/i }));
     await user.click(screen.getByRole('button', { name: /switch packer/i }));
@@ -285,7 +342,7 @@ describe('BenchSurface (#2413)', () => {
   it('A2 — cancelling a handover leaves the packer signed in', async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     render();
-    await screen.findByTestId('bench-identity-bar');
+    await awaitSignedIn();
 
     await user.click(screen.getByRole('button', { name: /switch packer/i }));
     await screen.findByTestId('bench-handover');
@@ -302,7 +359,7 @@ describe('BenchSurface (#2413)', () => {
     // in indefinitely — the leak A3 exists to close, reachable in one tap.
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     render();
-    await screen.findByTestId('bench-identity-bar');
+    await awaitSignedIn();
 
     await user.click(screen.getByRole('button', { name: /switch packer/i }));
     await screen.findByTestId('bench-handover');
@@ -321,46 +378,38 @@ describe('BenchSurface (#2413)', () => {
     // never calls `reset()` at all — the timer would simply be arming for the
     // first time — which is a test that reads correct and asserts nothing.
     //
-    // **A 30-SECOND budget, not the 1s the other tests use.** `useFakeTimers({
-    // shouldAdvanceTime: true })` lets fake time run while an `await` is
-    // pending, so under full-suite parallelism a slow `user.click` can burn a
-    // 1s budget by itself and lock the bench between the sign-in and the
-    // assertion. Every lock here is driven by an EXPLICIT advance instead, and
-    // the budget is far enough above incidental elapsed time that nothing else
-    // can reach it. (Found by the pre-commit run, which is the only place the
-    // whole suite competes for the same CPU.)
-    const IDLE = 30_000;
+    // Both locks are driven by an EXPLICIT `advanceIdlePeriod()`, against the
+    // file's deliberately large `IDLE_TIMEOUT_MS` — so no amount of wall-clock
+    // time spent in the sign-in click can reach the budget and lock the bench
+    // behind the test's back.
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     const adapter = createSwitchableSessionAdapter(true);
     renderWithProviders(
       <>
         <SignInTrigger onSignIn={() => adapter.signIn()} />
-        <BenchSurface idleTimeoutMs={IDLE}>
+        <BenchSurface idleTimeoutMs={IDLE_TIMEOUT_MS}>
           <ProgressStub />
         </BenchSurface>
       </>,
       { sessionAdapter: adapter }
     );
-    await screen.findByTestId('bench-identity-bar');
+    await awaitSignedIn();
 
     // First lock: the idle hook fires and `lock()` clears the session, so the
     // provider goes anonymous for real.
-    act(() => {
-      vi.advanceTimersByTime(IDLE + 1000);
-    });
+    await advanceIdlePeriod();
     await waitFor(() => expect(screen.getByTestId('bench-locked')).toBeInTheDocument());
 
     await user.click(screen.getByRole('button', { name: /sign in as someone$/i }));
     await waitFor(() => expect(screen.queryByTestId('bench-locked')).not.toBeInTheDocument());
+    await awaitSignedIn();
     // The incoming packer inherits the parcel, untouched.
     expect(screen.getByTestId('verified-count')).toHaveTextContent('0');
 
     // Second lock. Without `reset()` the hook stays fired and this never
     // happens: a bench that locks exactly once and then never again, which
     // reads as working.
-    act(() => {
-      vi.advanceTimersByTime(IDLE + 1000);
-    });
+    await advanceIdlePeriod();
     await waitFor(() => expect(screen.getByTestId('bench-locked')).toBeInTheDocument());
   });
 
@@ -370,12 +419,12 @@ describe('BenchSurface (#2413)', () => {
     const clearSpy = vi.spyOn(adapter, 'clearSession');
 
     renderWithProviders(
-      <BenchSurface idleTimeoutMs={1000}>
+      <BenchSurface idleTimeoutMs={IDLE_TIMEOUT_MS}>
         <ProgressStub />
       </BenchSurface>,
       { sessionAdapter: adapter }
     );
-    await screen.findByTestId('bench-identity-bar');
+    await awaitSignedIn();
 
     await user.click(screen.getByRole('button', { name: /verify one/i }));
     await user.click(screen.getByRole('button', { name: /switch packer/i }));
