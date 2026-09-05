@@ -1,7 +1,7 @@
 /**
  * A CLOSED parcel must name an actor (#2890 F1, spec § 2.7 G1).
  *
- * `CHK_fulfillment_works_packed_actor` (#2413, migration `1869000001000`) is
+ * `CHK_fulfillment_works_packed_actor` (#2413, migration `1870000001000`) is
  * AT-MOST-ONE: it forbids both actor columns being set and admits both being
  * NULL. That was correct when it was written — a work is created unpacked, so
  * `fulfillment_holds`' XOR would have been unsatisfiable at INSERT — and #2413
@@ -54,7 +54,7 @@
  *
  * `ADD CONSTRAINT` takes `ACCESS EXCLUSIVE` and validates every existing row.
  * Acceptable HERE and not in general: `parcelClosedAt` itself ships in the same
- * unreleased wave (#2418, migration `1869000003000` immediately preceding), so
+ * unreleased wave (#2418, migration `1870000003000` immediately preceding), so
  * no released row can be closed at all and the scan is over a table that is
  * empty or nearly so on every install. A dev database that somehow carries a
  * closed, unattributed row fails this migration loudly — which is the correct
@@ -63,15 +63,15 @@
  * be required instead; do not copy this shape blind.
  *
  * Generated: 2026-09-04 (synthetic sequential prefix per docs/migrations.md
- * rule 3; 1869000003000 is #2418's parcel-verification table).
+ * rule 3; 1870000003000 is #2418's parcel-verification table).
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddFulfillmentWorkClosedParcelActor1869000004000 implements MigrationInterface {
-  name = 'AddFulfillmentWorkClosedParcelActor1869000004000';
+export class AddFulfillmentWorkClosedParcelActor1870000004000 implements MigrationInterface {
+  name = 'AddFulfillmentWorkClosedParcelActor1870000004000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    // DROP-then-ADD, matching `1869000001000`: Postgres has no
+    // DROP-then-ADD, matching `1870000001000`: Postgres has no
     // `ADD CONSTRAINT IF NOT EXISTS`, and a half-re-runnable `up()` is the kind
     // of asymmetry that only bites during a recovery.
     await queryRunner.query(

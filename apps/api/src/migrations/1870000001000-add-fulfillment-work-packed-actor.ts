@@ -31,7 +31,7 @@
  * competing with the phase model #2418 owns.
  *
  * **Superseded (#2890).** #2418 landed that model as `parcelClosedAt`, and
- * migration `1869000004000` uses it to close the gap with a sibling constraint,
+ * migration `1870000004000` uses it to close the gap with a sibling constraint,
  * `CHK_fulfillment_works_closed_parcel_actor`: both-NULL stays legal while the
  * parcel is open and is refused once it is closed. The limitation above no
  * longer holds — read the two constraints together.
@@ -60,12 +60,12 @@
  * adapter and would later read as "unattributed" rather than "not applicable".
  *
  * Generated: 2026-09-04 (synthetic sequential prefix per docs/migrations.md
- * rule 3; 1869000000900 is the automation retry-attempt column).
+ * rule 3; 1870000000100 is the WooCommerce tax-treatment backfill).
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddFulfillmentWorkPackedActor1869000001000 implements MigrationInterface {
-  name = 'AddFulfillmentWorkPackedActor1869000001000';
+export class AddFulfillmentWorkPackedActor1870000001000 implements MigrationInterface {
+  name = 'AddFulfillmentWorkPackedActor1870000001000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(

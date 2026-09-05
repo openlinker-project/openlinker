@@ -248,7 +248,7 @@ overlay and asserting its state after a full lock → switch → sign-in cycle.
 **Backend**
 - `libs/core/src/users/domain/types/role.types.ts` — `packer` + `ROLE_PERMISSIONS.packer`
 - `libs/core/src/fulfillment/infrastructure/persistence/entities/fulfillment-work.orm-entity.ts`
-- `apps/api/src/migrations/1869000001000-add-fulfillment-work-packed-actor.ts`
+- `apps/api/src/migrations/1870000001000-add-fulfillment-work-packed-actor.ts`
 - 12 controllers — `@Roles('admin','operator','viewer')` on 38 handlers
 - `apps/api/src/auth/user-role-values.spec.ts` (rewritten)
 - `apps/api/src/auth/packer-exclusion.spec.ts` (new)

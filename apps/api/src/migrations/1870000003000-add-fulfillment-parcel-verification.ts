@@ -44,8 +44,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddFulfillmentParcelVerification1869000003000 implements MigrationInterface {
-  name = 'AddFulfillmentParcelVerification1869000003000';
+export class AddFulfillmentParcelVerification1870000003000 implements MigrationInterface {
+  name = 'AddFulfillmentParcelVerification1870000003000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(

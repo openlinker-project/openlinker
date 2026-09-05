@@ -281,7 +281,7 @@ work's lines and can express no other.
 
 ## 10. Schema
 
-Migration `1869000003000-add-fulfillment-parcel-verification.ts`:
+Migration `1870000003000-add-fulfillment-parcel-verification.ts`:
 
 1. `fulfillment_works."parcelClosedAt" timestamptz NULL`.
 2. `fulfillment_work_verifications`:
