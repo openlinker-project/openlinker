@@ -79,12 +79,13 @@ describe('Sales analytics daily aggregates (integration, #1987)', () => {
     // Tokyo) would truncate this to the FOLLOWING calendar day under a bare
     // date_trunc('day', placedAt); the explicit `AT TIME ZONE 'UTC'` pair
     // must keep it on 2026-08-02.
-    await seedStampedOrder({
+    const orderId = await seedStampedOrder({
       placedAt: new Date('2026-08-02T23:30:00.000Z'),
       totalAmount: 100,
       reportingCurrency: 'EUR',
       reportingTotalAmount: 100,
     });
+    await seedLineItem({ orderRecordId: orderId, unitPrice: 100, quantity: 1 });
 
     // Testcontainers Postgres boots with TimeZone = UTC, so this assertion
     // would pass identically with or without the `AT TIME ZONE 'UTC'` pair —
@@ -118,13 +119,14 @@ describe('Sales analytics daily aggregates (integration, #1987)', () => {
   it('folds a prior-era stamp into the unconverted bucket rather than mixing it into revenue (#1987 review notes, ported from #2172)', async () => {
     const day = new Date('2026-08-03T10:00:00.000Z');
     // Current-era stamp — the system reporting currency is EUR at read time.
-    await seedStampedOrder({
+    const currentEraOrderId = await seedStampedOrder({
       placedAt: day,
       currency: 'EUR',
       totalAmount: 100,
       reportingCurrency: 'EUR',
       reportingTotalAmount: 100,
     });
+    await seedLineItem({ orderRecordId: currentEraOrderId, unitPrice: 100, quantity: 1 });
     // A stamp taken while the operator's reporting-currency setting held a
     // different value (#2096) — `reportingCurrency` never moves once set
     // (ADR-040), so this row must NOT be summed into `revenue` alongside the
@@ -158,18 +160,20 @@ describe('Sales analytics daily aggregates (integration, #1987)', () => {
 
   it('reports the shared reportingCurrency when a bucket agrees', async () => {
     const day = new Date('2026-08-04T10:00:00.000Z');
-    await seedStampedOrder({
+    const orderIdA = await seedStampedOrder({
       placedAt: day,
       totalAmount: 50,
       reportingCurrency: 'EUR',
       reportingTotalAmount: 50,
     });
-    await seedStampedOrder({
+    await seedLineItem({ orderRecordId: orderIdA, unitPrice: 50, quantity: 1 });
+    const orderIdB = await seedStampedOrder({
       placedAt: day,
       totalAmount: 60,
       reportingCurrency: 'EUR',
       reportingTotalAmount: 60,
     });
+    await seedLineItem({ orderRecordId: orderIdB, unitPrice: 60, quantity: 1 });
 
     const rows = await repository.getDailyOrderAggregates(
       {
@@ -182,6 +186,56 @@ describe('Sales analytics daily aggregates (integration, #1987)', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].reportingCurrency).toBe('EUR');
     expect(rows[0].revenue).toBe(110);
+  });
+
+  it('excludes shipping from revenue (GMV) — the order total includes it, the line items do not (#2892)', async () => {
+    // Mirrors the live-confirmed defect shape: subtotal=44.97, shipping=10.95,
+    // total=55.92. Revenue must report the merchandise-only 44.97, never the
+    // shipping-inclusive order total.
+    const day = new Date('2026-08-05T10:00:00.000Z');
+    const orderId = await seedStampedOrder({
+      placedAt: day,
+      totalAmount: 55.92,
+      reportingCurrency: 'EUR',
+      reportingTotalAmount: 55.92,
+      taxTreatment: 'inclusive',
+    });
+    await seedLineItem({ orderRecordId: orderId, unitPrice: 44.97, quantity: 1, taxRate: '0' });
+
+    const rows = await repository.getDailyOrderAggregates(
+      {
+        from: new Date('2026-08-01T00:00:00.000Z'),
+        to: new Date('2026-08-08T00:00:00.000Z'),
+      },
+      'EUR'
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].revenue).toBeCloseTo(44.97, 5);
+  });
+
+  it('grosses up an exclusive (net-priced) line via its tax rate, rather than reporting the net value as revenue (#2892)', async () => {
+    const day = new Date('2026-08-06T10:00:00.000Z');
+    // Net-priced line: unitPrice is VAT-exclusive. 100 net at 23% VAT -> 123 gross.
+    const orderId = await seedStampedOrder({
+      placedAt: day,
+      totalAmount: 123,
+      reportingCurrency: 'EUR',
+      reportingTotalAmount: 123,
+      taxTreatment: 'exclusive',
+    });
+    await seedLineItem({ orderRecordId: orderId, unitPrice: 100, quantity: 1, taxRate: '23' });
+
+    const rows = await repository.getDailyOrderAggregates(
+      {
+        from: new Date('2026-08-01T00:00:00.000Z'),
+        to: new Date('2026-08-08T00:00:00.000Z'),
+      },
+      'EUR'
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].revenue).toBeCloseTo(123, 5);
   });
 
   it('getMedianOrderValue returns null when no stamped order matches the range', async () => {

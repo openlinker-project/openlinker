@@ -48,6 +48,7 @@ import { isHoldReason, OrderLifecyclePhaseValues } from '@openlinker/core/order-
 import { SLA_AT_RISK_WINDOW_MS } from '../../../domain/types/order-sla.types';
 import type { FulfillmentRollupState } from '../../../domain/types/order-fulfillment.types';
 import {
+  grossRevenueLineAmountSql,
   netSalesLineNetAmountSql,
   netSalesOrderNetEligibleSql,
 } from '../../../domain/types/net-sales-tax-rate.types';
@@ -532,8 +533,13 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    *
    * Currency correctness (#2049/ADR-040 follow-up): `order_count`/`revenue`
    * are further restricted to `reportingCurrency IS NOT NULL` — one
-   * comparable currency, `SUM(reportingTotalAmount)` — with the complementary
-   * unstamped slice reported separately as `unconverted_count`/
+   * comparable currency. `revenue` itself is GMV per
+   * `docs/specs/metrics-analytics-dashboard.md` — gross, shipping-EXCLUDED
+   * merchandise value summed from `order_line_items` and converted via the
+   * order's own stamped FX multiplier, never the shipping-inclusive
+   * `reportingTotalAmount` directly (#2892; see `buildGrossRevenueOrderAmountSql`)
+   * — with the complementary unstamped slice reported separately as
+   * `unconverted_count`/
    * `unconverted_value` (native `totalAmount`, informational only) rather
    * than silently mixed in or silently dropped. `cancelled_value` now follows
    * the SAME split (epic #2452): `SUM(reportingTotalAmount)` restricted to
@@ -577,6 +583,11 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     const netAndNotCancelled = `${stampedAndNotCancelled} AND ${netEligible}`;
     const netExcludedAndNotCancelled = `${stampedAndNotCancelled} AND NOT ${netEligible}`;
 
+    // GMV/revenue (#2892) — gross, shipping-EXCLUDED merchandise value from
+    // `order_line_items`, never the shipping-inclusive `reportingTotalAmount`.
+    // See `buildGrossRevenueOrderAmountSql`.
+    const grossRevenueOrderAmount = this.buildGrossRevenueOrderAmountSql();
+
     // UTC day boundary made explicit (#1987 review, IMPORTANT 2): `placedAt`
     // is `timestamptz`, so a bare `date_trunc('day', ...)` truncates at local
     // midnight per the Postgres session `TimeZone` GUC — on a non-UTC server
@@ -593,7 +604,14 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       .addSelect('rec.sourceConnectionId', 'source_connection_id')
       .addSelect(`COUNT(*) FILTER (WHERE ${stampedAndNotCancelled})`, 'order_count')
       .addSelect(
-        `COALESCE(SUM(rec."reportingTotalAmount") FILTER (WHERE ${stampedAndNotCancelled}), 0)`,
+        // Line-derived gross sum in the order's NATIVE currency, converted
+        // into the reporting currency via the order's own already-stamped
+        // FX multiplier (`reportingTotalAmount / totalAmount`) — the same
+        // trick `net_revenue` below already uses, so this never re-looks-up
+        // a rate and always reconciles with every other reporting-currency
+        // figure on the page (#2892, docs/specs/metrics-analytics-dashboard.md
+        // GMV: gross, excluding shipping).
+        `COALESCE(SUM((${grossRevenueOrderAmount}) * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedAndNotCancelled}), 0)`,
         'revenue'
       )
       .addSelect(`COUNT(*) FILTER (WHERE ${unconvertedAndNotCancelled})`, 'unconverted_count')
@@ -1105,6 +1123,34 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       WHERE net_li."orderRecordId" = rec."internalOrderId"
     )`;
     return { netEligible, netOrderAmount };
+  }
+
+  /**
+   * GMV/revenue (#2892) scalar subquery: the order's gross, shipping-excluded
+   * merchandise value in its NATIVE currency, summed from `order_line_items`
+   * via {@link grossRevenueLineAmountSql}. Deliberately a scalar subquery
+   * rather than a join, for the same reason `buildNetSalesOrderFragments`
+   * uses one — joining `order_line_items` at the order-grain SELECT would
+   * multiply row cardinality and corrupt every `COUNT(*)`/`SUM` aggregate
+   * grouped at the order level.
+   *
+   * Unlike Net Sales, there is no eligibility gate here: revenue does not
+   * exclude an order for lacking a resolvable tax rate (see
+   * {@link grossRevenueLineAmountSql}'s per-line fallback) — every `'ready'`
+   * order carries line items (ADR-039), so this always has something to sum.
+   */
+  private buildGrossRevenueOrderAmountSql(): string {
+    const grossLineAmount = grossRevenueLineAmountSql(
+      'rev_li."unitPrice"',
+      'rev_li."quantity"',
+      'rev_li."taxRate"',
+      'rec."taxTreatment"'
+    );
+    return `(
+      SELECT COALESCE(SUM(${grossLineAmount}), 0)
+      FROM order_line_items rev_li
+      WHERE rev_li."orderRecordId" = rec."internalOrderId"
+    )`;
   }
 
   /**

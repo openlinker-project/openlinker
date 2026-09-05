@@ -1,5 +1,6 @@
 import {
   deriveNetLineAmount,
+  grossRevenueLineAmountSql,
   netSalesEraEligibleSql,
   netSalesLineNetAmountSql,
   netSalesLineNetEligibleConditionSql,
@@ -137,6 +138,44 @@ describe('netSalesLineNetAmountSql', () => {
     );
     expect(sql).toContain("rec.\"taxTreatment\" = 'exclusive'");
     expect(sql).toContain('li."unitPrice" * li."quantity"');
+  });
+});
+
+describe('grossRevenueLineAmountSql (#2892)', () => {
+  it('branches on taxTreatment, passing an inclusive/absent-treatment line through unchanged', () => {
+    const sql = grossRevenueLineAmountSql(
+      'li."unitPrice"',
+      'li."quantity"',
+      'li."taxRate"',
+      'rec."taxTreatment"'
+    );
+    expect(sql).toContain("rec.\"taxTreatment\" = 'exclusive'");
+    expect(sql).toContain('li."unitPrice" * li."quantity"');
+    expect(sql).toContain('* (1 + COALESCE(');
+  });
+
+  it('never divides by (1 + rate) — that is the net-sales direction, not gross', () => {
+    const sql = grossRevenueLineAmountSql(
+      'li."unitPrice"',
+      'li."quantity"',
+      'li."taxRate"',
+      'rec."taxTreatment"'
+    );
+    expect(sql).not.toMatch(/\/\s*\(1 \+/);
+  });
+
+  it('falls back to the stored value (never NULL) when the rate is unresolvable, via COALESCE(...,0)', () => {
+    const sql = grossRevenueLineAmountSql(
+      'li."unitPrice"',
+      'li."quantity"',
+      'li."taxRate"',
+      'rec."taxTreatment"'
+    );
+    // An unresolvable rateFraction is SQL NULL; COALESCE(...,0) makes the
+    // exclusive-branch multiplier `1 + 0 = 1`, i.e. pass the stored value
+    // through as-is rather than propagating NULL through the whole SUM.
+    expect(sql).toContain('COALESCE((');
+    expect(sql).toContain('), 0))');
   });
 });
 
