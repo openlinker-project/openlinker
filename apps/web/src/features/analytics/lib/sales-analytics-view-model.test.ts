@@ -149,6 +149,33 @@ describe('groupChannelTotalsByCurrency', () => {
     ]);
   });
 
+  it('should add back unconverted units into the Total row unitsSold (#2907)', () => {
+    const totals = groupChannelTotalsByCurrency([
+      channel({
+        sourceConnectionId: 'a',
+        revenue: 3000,
+        orderCount: 25,
+        unitsSold: 40,
+        unconvertedUnitsSold: 5,
+        revenueShare: 0.6,
+        netRevenue: 2400,
+        netExcludedCount: 5,
+      }),
+      channel({
+        sourceConnectionId: 'b',
+        revenue: 2000,
+        orderCount: 15,
+        unitsSold: 20,
+        unconvertedUnitsSold: 3,
+        revenueShare: 0.4,
+        netRevenue: 1600,
+        netExcludedCount: 0,
+      }),
+    ]);
+
+    expect(totals[0]?.unitsSold).toBe(40 + 5 + 20 + 3);
+  });
+
   it('should never emit a total row for unconverted-currency evidence — no matter how many channels share it', () => {
     const totals = groupChannelTotalsByCurrency([
       channel({ sourceConnectionId: 'a', revenue: 3000, orderCount: 25, revenueShare: 1 }),

@@ -478,7 +478,11 @@ export function ChannelSalesTable({
       header: 'Units',
       align: 'right',
       cell: (row) =>
-        intFormat.format(row.kind === 'total' ? row.total.unitsSold : row.channel.unitsSold),
+        intFormat.format(
+          row.kind === 'total'
+            ? row.total.unitsSold
+            : row.channel.unitsSold + row.channel.unconvertedUnitsSold,
+        ),
       hideBelow: 1024,
     },
     {
