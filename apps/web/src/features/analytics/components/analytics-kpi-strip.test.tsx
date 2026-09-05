@@ -46,6 +46,7 @@ function analytics(overrides: Partial<SalesAndChannelAnalytics['headline']> = {}
       averageOrderValue: 120,
       medianOrderValue: 100,
       unitsSold: 60,
+      unconvertedUnitsSold: 0,
       cancelledCount: 2,
       cancelledValue: 200,
       cancelledUnconvertedCount: 0,
@@ -99,6 +100,36 @@ describe('AnalyticsKpiStrip', () => {
     expect(screen.getByText('PLN 90.00')).toBeInTheDocument();
     expect(screen.getByText('60')).toBeInTheDocument();
     expect(screen.getByText('PLN 200.00')).toBeInTheDocument();
+  });
+
+  it('should count unconverted-order units into Units sold and Units per order, matching the Orders card population', async () => {
+    // 40 stamped orders + 10 unconverted = 50 total orders (same population
+    // the Orders card renders, per `totalOrders = orderCount +
+    // unconvertedCount`). Units must follow the same rule: a unit count
+    // needs no currency conversion, so `unconvertedUnitsSold` must be added
+    // in unconditionally rather than silently dropped (#2893).
+    const apiClient = createMockApiClient({
+      analytics: {
+        getSales: vi.fn().mockResolvedValue(
+          analytics({
+            orderCount: 40,
+            unconvertedCount: 10,
+            unitsSold: 60,
+            unconvertedUnitsSold: 15,
+          })
+        ),
+      },
+    });
+
+    renderWithProviders(<AnalyticsKpiStrip filters={FILTERS} connections={[]} />, { apiClient });
+
+    // Total orders: 40 + 10 = 50.
+    expect(await screen.findByText('50')).toBeInTheDocument();
+    // Total units sold: 60 + 15 = 75, never the FX-stamped-only 60.
+    expect(screen.getByText('75')).toBeInTheDocument();
+    expect(screen.queryByText('60')).not.toBeInTheDocument();
+    // Units per order: 75 / 50 = 1.5.
+    expect(screen.getByText('1.5')).toBeInTheDocument();
   });
 
   it('should label the sparklines with the actual selected range, not a hardcoded "last 7 days"', async () => {

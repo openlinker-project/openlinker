@@ -173,6 +173,7 @@ export function createMockApiClient(
           averageOrderValue: 0,
           medianOrderValue: 0,
           unitsSold: 0,
+          unconvertedUnitsSold: 0,
           cancelledCount: 0,
           cancelledValue: 0,
           unconvertedCount: 0,
