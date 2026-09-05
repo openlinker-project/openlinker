@@ -424,7 +424,18 @@ run_strict() {
   local unique_pool_count=$((total_reqs + total_reqs / 5 + 10))
 
   # -------------------------------------------------------------------------
-  # run_one_arm <arm> <results_dir_label> <pool_count> [extra presign args...]
+  # run_one_arm <out_var> <arm> <results_dir_label> <pool_count> [extra presign args...]
+  #
+  # Returns the results dir by ASSIGNING it to the variable named by
+  # $out_var (printf -v), never by echoing it for a caller to capture via
+  # $(...) - the bootstrap.sh ol_ensure_connection precedent. This function
+  # calls guard_queue_empty, window_start, window_stop, verdict_write and
+  # others that all `log` to stdout (lib.sh's log() has no >&2), so a
+  # command-substitution caller would capture the whole transcript instead
+  # of the directory path - found live, #2842 (the F3 run that shipped
+  # this fix): $unique_dir came back polluted with every log line this
+  # function's callees emitted, and a later inline `python3 -c` reading
+  # "$unique_dir/pool.json" choked on the garbage path.
   #
   # window_start is called BEFORE the pool is built, deliberately: it is what
   # inserts #2841's SETTLE_SECS (default 60s) sleep between the last guard
@@ -435,7 +446,7 @@ run_strict() {
   # chosen, and the pool built against it, only after that sleep is over.
   # -------------------------------------------------------------------------
   run_one_arm() {
-    local arm="$1" label="$2" pool_count="$3"; shift 3
+    local out_var="$1" arm="$2" label="$3" pool_count="$4"; shift 4
     local dir pool start_ms summary deadlocks_before deadlocks_after extra_manifest
 
     f3_reset_queue "$CONN_IDS"
@@ -489,11 +500,11 @@ run_strict() {
     # run_one_arm already enforces) has something true to check.
     f3_reset_queue "$CONN_IDS"
 
-    printf '%s' "$dir"
+    printf -v "$out_var" '%s' "$dir"
   }
 
   local unique_dir
-  unique_dir="$(run_one_arm unique "${run_group}-unique" "$unique_pool_count")"
+  run_one_arm unique_dir unique "${run_group}-unique" "$unique_pool_count"
 
   # Ids this arm actually committed - "already committed by unique" (§3.3) -
   # read straight back off ITS OWN pool rather than re-derived, so the set
@@ -507,12 +518,12 @@ open('$unique_dir/committed-ids.json', 'w').write(json.dumps({'eventIds': ids}))
 "
 
   local rc_dir
-  rc_dir="$(run_one_arm replay-committed "${run_group}-replay-committed" "$total_reqs" \
-    --reuse-ids-file "$unique_dir/committed-ids.json")"
+  run_one_arm rc_dir replay-committed "${run_group}-replay-committed" "$total_reqs" \
+    --reuse-ids-file "$unique_dir/committed-ids.json"
 
   local cc_dir
-  cc_dir="$(run_one_arm replay-concurrent "${run_group}-replay-concurrent" "$total_reqs" \
-    --distinct-ids "$REPLAY_CONCURRENT_DISTINCT_IDS")"
+  run_one_arm cc_dir replay-concurrent "${run_group}-replay-concurrent" "$total_reqs" \
+    --distinct-ids "$REPLAY_CONCURRENT_DISTINCT_IDS"
 
   write_dated_report "$run_group" "$probes_dir" "$unique_dir" "$rc_dir" "$cc_dir"
 }
