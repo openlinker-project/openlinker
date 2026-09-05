@@ -55,6 +55,10 @@ import {
 import { Logger } from '@openlinker/shared/logging';
 
 import { readOrderReference } from '../bench-order-facts';
+import {
+  BENCH_WORK_REQUEST_STATUSES,
+  BENCH_WORK_STATUSES,
+} from '../bench-work-eligibility';
 import type { IBenchDocumentsService } from '../interfaces/bench-documents.service.interface';
 import type {
   BenchDocumentsView,
@@ -213,9 +217,17 @@ export class BenchDocumentsService implements IBenchDocumentsService {
 
     // Scoped to this bench's own executor, closed, and bounded — the same three
     // properties the work list has, for the same reasons.
+    //
+    // `status` is the shared selection half of the D2 rule (#2905 review). Its
+    // omission made this a THIRD spelling of "is this a bench parcel": the list
+    // filters on `BENCH_WORK_STATUSES` and the open path applies the same set
+    // through `isBenchWorkSelectable`, so a work at `closed` or `incomplete`
+    // was listed here and then 404'd on click — D2's disagreement exactly, and
+    // the omission the single-rule spec now fails the build on.
     const page = await this.worklist.list({
       assignedConnectionId: executors.map((executor) => executor.id),
-      requestStatus: ['accepted'],
+      status: BENCH_WORK_STATUSES,
+      requestStatus: BENCH_WORK_REQUEST_STATUSES,
       parcelClosed: true,
       orderBy: 'createdAt_ASC',
       limit: BENCH_UNLABELLED_HARD_CAP,

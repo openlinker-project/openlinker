@@ -156,14 +156,27 @@ describe('BenchParcelView (#2418)', () => {
     mount(parcel());
     await screen.findByTestId('bench-parcel');
 
-    // Not "no enabled one" — none at all. The API has no close route, so a
-    // control here, disabled or otherwise, would be a promise nothing keeps.
-    for (const button of screen.queryAllByRole('button')) {
-      expect(button.textContent ?? '').not.toMatch(/done|close parcel|confirm the box|finish|commit/i);
-    }
-    expect(
-      screen.queryByRole('button', { name: /^(done|close parcel|confirm|finish|commit)$/i })
-    ).toBeNull();
+    // Asserts the PERMITTED set, not a denied word list (#2905 review). A grep
+    // for `done|finish|commit` can only refuse the spellings somebody thought
+    // of — "Seal the box", "Mark packed", "Ready for dispatch" all sail past
+    // it — whereas an exhaustive set means ANY new control on this surface
+    // fails here until it is decided against D18. Not "no enabled one": none at
+    // all, since the API has no close route and a disabled control would be a
+    // promise nothing keeps.
+    const names = screen
+      .queryAllByRole('button')
+      .map((button) => (button.textContent ?? '').trim())
+      .sort();
+    expect(names).toEqual(
+      [
+        // The bench's only exit (C2).
+        'Back to the list',
+        // E4's hand-confirm — one per unverified line, and the fixture has one.
+        'Confirm this line',
+        // C4's sound toggle. Renders one of two labels; this is the muted-off one.
+        'Turn the sound off',
+      ].sort()
+    );
   });
 
   it('should promise the packer that the box closes itself', async () => {

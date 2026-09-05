@@ -141,6 +141,19 @@ export function describeParcelRefusal(refusal: string): {
  * `over-packed` is the only arm that needs the line, because it is the only one
  * whose sentence quotes the numbers — E3 requires the packer to be told the
  * count did not move.
+ *
+ * ## A retried CLOSING scan reads as `parcel-closed`, not `deduplicated`
+ *
+ * Worth knowing because it is the gesture most likely to lose its response: the
+ * last unit's answer is the one that also shuts the box, so a network failure
+ * there is followed by a retry that arrives at an already-closed parcel. The
+ * server refuses it `parcel-closed` — its own eligibility check runs before the
+ * gesture-id dedupe — so a SUCCESSFUL retry of a successful scan is rendered as
+ * an error. That is the safe direction (the alternative is telling a packer a
+ * unit counted when the surface cannot prove it) and the count beside it is
+ * already `2 of 2`, so the screen does not contradict itself. It is recorded
+ * here rather than papered over with a cheerier sentence: the copy stays true
+ * to what the server said. (#2905 review)
  */
 export function describeVerificationRefusal(
   reason: string | null,

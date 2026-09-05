@@ -15,6 +15,7 @@
 import type { ReactElement, ReactNode } from 'react';
 
 import { resolveBenchIdleTimeoutMs, useBenchIdentity } from '../hooks/use-bench-identity';
+import { BenchInteractiveContext } from '../hooks/use-bench-interactive';
 import { BenchIdentityBar } from './bench-identity-bar';
 import { BenchIdentityOverlay } from './bench-identity-overlay';
 
@@ -50,7 +51,12 @@ export function BenchSurface({ children, idleTimeoutMs }: BenchSurfaceProps): Re
         onConfirmHandover={() => void identity.confirmHandover()}
         onCancelHandover={identity.cancelHandover}
       >
-        {children}
+        {/* A3's client half. The overlay hides the body visually; this is what
+            takes the scanner off it — `aria-hidden` and `inert` say nothing to
+            a document-level listener. See `use-bench-interactive.ts`. */}
+        <BenchInteractiveContext.Provider value={identity.state === 'open'}>
+          {children}
+        </BenchInteractiveContext.Provider>
       </BenchIdentityOverlay>
     </div>
   );

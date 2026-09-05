@@ -367,6 +367,103 @@ describe('bench under failure (#2421)', () => {
       expect(within(screen.getByTestId('bench-parcel-line')).queryByText('1 of 2')).toBeNull();
     });
 
+    it('should NOT let a stale POLL overwrite a newer verification (#2905)', async () => {
+      // The mutation guards its own cache write on `version`; the 10-second
+      // re-read did not. A read already in flight when a verification resolves
+      // lands afterwards and overwrites with the older parcel — the same "lower
+      // count than the server holds" one channel over, and invisible under
+      // D18's auto-close. `structuralSharing` puts both writers behind
+      // `isNewerParcelRead`.
+      const poll = deferred<BenchParcel>();
+      const getParcel = vi
+        .fn()
+        .mockResolvedValueOnce(parcel())
+        .mockReturnValueOnce(poll.promise);
+      const verifyUnit = vi
+        .fn()
+        .mockResolvedValue(
+          verified({ parcel: parcel({ version: 6, lines: [line({ verifiedQuantity: 2 })] }) })
+        );
+      mount(parcel(), { getParcel, verifyUnit });
+      await screen.findByTestId('bench-parcel');
+
+      // A background re-read starts, and is HELD.
+      act(() => {
+        window.dispatchEvent(new Event('visibilitychange'));
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      await waitFor(() => {
+        expect(getParcel).toHaveBeenCalledTimes(2);
+      });
+
+      scan('5901234123457');
+      await waitFor(() => {
+        expect(
+          within(screen.getByTestId('bench-parcel-line')).getByText('2 of 2')
+        ).toBeInTheDocument();
+      });
+
+      // …and only now does the older read answer, carrying the lower version.
+      await act(async () => {
+        poll.resolve(parcel({ version: 4, lines: [line({ verifiedQuantity: 0 })] }));
+        // Two macrotask flushes: React Query settles a fetch through several
+        // microtasks before it writes, so a single `Promise.resolve()` would
+        // assert before the stale write could have landed — a test that passes
+        // because it looked too early.
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+
+      expect(
+        within(screen.getByTestId('bench-parcel-line')).getByText('2 of 2')
+      ).toBeInTheDocument();
+      expect(within(screen.getByTestId('bench-parcel-line')).queryByText('0 of 2')).toBeNull();
+    });
+
+    it('should NOT announce an older answer\'s count after a newer one (#2905)', async () => {
+      // The live region is the only channel a non-sighted packer has, and under
+      // D18 the box has already shut by the time the older answer lands — so no
+      // later correction arrives to overwrite it. The cache write was guarded on
+      // `version` and the refusal on `seq`; the ACCEPTANCE announcement was not,
+      // so the line correctly read "2 of 2" while the announcer then said
+      // "counted. 1 of 2."
+      const first = deferred<BenchVerificationResult>();
+      const second = deferred<BenchVerificationResult>();
+      const verifyUnit = vi
+        .fn()
+        .mockReturnValueOnce(first.promise)
+        .mockReturnValueOnce(second.promise);
+      mount(parcel(), { verifyUnit });
+      await screen.findByTestId('bench-parcel');
+
+      scan('5901234123457');
+      scan('5901234123457');
+      await waitFor(() => {
+        expect(verifyUnit).toHaveBeenCalledTimes(2);
+      });
+
+      await act(async () => {
+        second.resolve(
+          verified({ parcel: parcel({ version: 6, lines: [line({ verifiedQuantity: 2 })] }) })
+        );
+        await Promise.resolve();
+      });
+      await waitFor(() => {
+        expect(screen.getByTestId('bench-parcel-announcer').textContent).toContain('2 of 2');
+      });
+
+      await act(async () => {
+        first.resolve(
+          verified({ parcel: parcel({ version: 5, lines: [line({ verifiedQuantity: 1 })] }) })
+        );
+        await Promise.resolve();
+      });
+
+      const announcer = screen.getByTestId('bench-parcel-announcer');
+      expect(announcer.textContent).toContain('2 of 2');
+      expect(announcer.textContent).not.toContain('1 of 2');
+    });
+
     it('should NOT let an older REFUSAL replace a newer one on screen', async () => {
       // The other half of the sequence guard. Two refusals, the older answering
       // last: the packer must be left reading the refusal for the item still in

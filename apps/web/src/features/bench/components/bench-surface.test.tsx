@@ -25,6 +25,9 @@ import { renderWithProviders, createAuthenticatedSessionAdapter } from '../../..
 import type { SessionAdapter } from '../../../shared/auth/session-adapter';
 import type { Session } from '../../../shared/auth/session.types';
 import { useSession } from '../../../shared/auth/use-session';
+import { useBenchInteractive } from '../hooks/use-bench-interactive';
+import { useScannerInput } from '../hooks/use-scanner-input';
+import { resetGestureLogForTests } from '../lib/scanner-gesture-log';
 import { BenchSurface } from './bench-surface';
 
 /**
@@ -138,6 +141,36 @@ async function advanceIdlePeriod(): Promise<void> {
   });
 }
 
+/**
+ * A body that listens the way the real bench bodies do (#2905 review, A3).
+ *
+ * `useScannerInput`'s `enabled` docblock says a COVERED surface passes `false`,
+ * and until #2905 neither real consumer did — `aria-hidden` and `inert` do
+ * nothing to a document-level `keydown` listener, so a scan at a locked bench
+ * fired a real `verifyUnit`. This stub is the smallest thing that reproduces
+ * that: it does exactly what `BenchParcelView` and `BenchWorkList` do.
+ */
+function ScannerStub({ seen }: { seen: string[] }): ReactElement {
+  const interactive = useBenchInteractive();
+  useScannerInput({
+    enabled: interactive,
+    onScan: (gesture) => {
+      seen.push(gesture.value);
+    },
+  });
+  return <p data-testid="scanner-stub">listening</p>;
+}
+
+/** One completed scanner gesture, dispatched at the document as a real one is. */
+function scan(value: string): void {
+  act(() => {
+    for (const char of value) {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
+    }
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  });
+}
+
 describe('BenchSurface (#2413)', () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
@@ -201,6 +234,35 @@ describe('BenchSurface (#2413)', () => {
 
     // Still 2. The bench body was never unmounted.
     expect(screen.getByTestId('verified-count')).toHaveTextContent('2');
+  });
+
+  it('A3 — a locked bench takes the SCANNER off, not just the pixels', async () => {
+    // The idle lock clears the session, but the parcel survives in the query
+    // cache and the listener is on `document` — so before #2905 a scan at an
+    // unattended terminal minted a gesture id and fired an (unauthenticated)
+    // `verifyUnit`, landing as an alert UNDERNEATH the lock. The 401 is the
+    // right backstop and the wrong primary.
+    resetGestureLogForTests();
+    const seen: string[] = [];
+    renderWithProviders(
+      <BenchSurface idleTimeoutMs={1000}>
+        <ScannerStub seen={seen} />
+      </BenchSurface>,
+      { sessionAdapter: createAuthenticatedSessionAdapter() }
+    );
+    await screen.findByTestId('bench-identity-bar');
+
+    // Non-vacuity: the listener really is attached while the bench is open, so
+    // the assertion after the lock is about the LOCK and not about a stub that
+    // never listened.
+    scan('5901234123457');
+    expect(seen).toEqual(['5901234123457']);
+
+    await advanceIdlePeriod();
+    await waitFor(() => expect(screen.getByTestId('bench-locked')).toBeInTheDocument());
+
+    scan('4006381333931');
+    expect(seen).toEqual(['5901234123457']);
   });
 
   it('A2 — a handover asks first, and shows what is already verified', async () => {

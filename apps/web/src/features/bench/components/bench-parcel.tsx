@@ -69,6 +69,7 @@ import { Button } from '../../../shared/ui/button';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import type { BenchParcel, BenchParcelLine } from '../api/bench-parcel.types';
+import { useBenchInteractive } from '../hooks/use-bench-interactive';
 import { useBenchParcelQuery } from '../hooks/use-bench-parcel-query';
 import { useBenchReachability, isUnreachableFailure } from '../hooks/use-bench-reachability';
 import { useBenchReopenMutation } from '../hooks/use-bench-reopen-mutation';
@@ -119,6 +120,8 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
   const verify = useBenchVerifyMutation();
   const reopen = useBenchReopenMutation();
   const reachability = useBenchReachability();
+  // A3. False while the idle lock or the handover prompt covers the bench.
+  const interactive = useBenchInteractive();
 
   const [notice, setNotice] = useState<ScanNotice | null>(null);
   const [interrupted, setInterrupted] = useState<string | null>(null);
@@ -138,6 +141,22 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
   // Monotonic per gesture. A ref, not state: it is read and written inside the
   // scan handler and must never trigger a render of its own.
   const sequence = useRef(0);
+
+  /**
+   * The newest gesture the live region has spoken for (#2905 review).
+   *
+   * The cache write is guarded on `version` and the refusal on `seq`, but the
+   * ACCEPTANCE announcement was not — so with two gestures out and the older
+   * answer landing last, the visible line correctly read *2 of 2* while the
+   * live region then said *"recorded, 1 of 2"*. Nothing sighted is affected,
+   * which is exactly why it matters: this is the only channel a non-sighted
+   * packer has, and under D18 the box has already shut, so no later correction
+   * arrives to overwrite it.
+   *
+   * The IN-FLIGHT announcement needs no guard — it is written before the
+   * request, so it is newest by construction; it advances this mark instead.
+   */
+  const announcedSeq = useRef(0);
 
   const parcel = query.data;
   const closed = parcel !== undefined && isParcelClosed(parcel);
@@ -232,6 +251,7 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
     // Before the request, so the surface never has a silent window between the
     // packer's act and the screen acknowledging it.
     adjustInFlight(line.workLineId, 1);
+    announcedSeq.current = seq;
     setAnnouncement(benchParcelCopy.inFlight.sentAnnouncement(lineName(line)));
 
     verify
@@ -263,13 +283,20 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
 
         // Accepted. Announced here and nowhere else — this is the only outcome
         // no `role="alert"` already speaks.
-        setAnnouncement(
-          benchParcelCopy.inFlight.recordedAnnouncement({
-            name: lineName(line),
-            verified: answered?.verifiedQuantity ?? 0,
-            required: answered?.requiredQuantity ?? 0,
-          })
-        );
+        //
+        // Guarded on `seq`, exactly as the refusal below is: `answered` is THIS
+        // gesture's own count, so an older answer landing last would announce a
+        // lower count than the screen holds.
+        if (seq >= announcedSeq.current) {
+          announcedSeq.current = seq;
+          setAnnouncement(
+            benchParcelCopy.inFlight.recordedAnnouncement({
+              name: lineName(line),
+              verified: answered?.verifiedQuantity ?? 0,
+              required: answered?.requiredQuantity ?? 0,
+            })
+          );
+        }
         // Clears only what this gesture or an older one put up.
         setNotice((current) => (current !== null && current.seq > seq ? current : null));
       })
@@ -287,7 +314,11 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
     // Off while the box is closed, refused or still loading: a scan made then
     // has nothing it could legitimately record, and accepting it would be the
     // surface pretending to work.
-    enabled: parcel !== undefined && !closed && !refused,
+    //
+    // And off while the bench is LOCKED (A3) — the cached parcel outlives the
+    // session, so without this a scan at an unattended terminal is attributed
+    // to whoever walked away. See `use-bench-interactive.ts`.
+    enabled: interactive && parcel !== undefined && !closed && !refused,
     onScan: (gesture) => {
       const current = parcelRef.current;
       if (current === undefined) return;
@@ -554,7 +585,6 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
               key={line.workLineId}
               line={line}
               open={!refused}
-              busy={verify.isPending}
               pendingCount={inFlight[line.workLineId] ?? 0}
               unreachable={reachability.unreachable}
               // E4 sends exactly what a scan sends, through the SAME mint. The

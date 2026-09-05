@@ -94,11 +94,17 @@ const PACKER_REACHABLE_ANY_ROLE_ROUTES: readonly string[] = [
 
   // Returns — warehouse-adjacent, and the aggregate carries no buyer PII (the
   // controller allow-lists its projection and `rawPayload` is asserted absent).
+  //
+  // Two siblings were NARROWED out of this group by the #2905 review rather
+  // than left here, because both are fiscal and both are WALKABLE from a route
+  // this same session holds: `listReturnEvents` carries a refund amount and
+  // currency keyed on an `internalOrderId` the bench work list hands out, and
+  // `previewCorrectionProposal` carries an invoice id, its document number, a
+  // currency and a per-line tax rate reachable from `listReturns` above. The
+  // register principle is exclusion, not redaction.
   'ReturnsController.listReturns',
   'ReturnsController.getReturn',
-  'ReturnsController.listReturnEvents',
   'ReturnsController.getIngestionAvailability',
-  'ReturnWritesController.previewCorrectionProposal',
 
   // Catalogue reads: no PII, no configuration, no money. Judged harmless rather
   // than needed — a packer has no route to them in the product.
@@ -155,6 +161,15 @@ const PACKER_GRANTED_ROUTES: readonly string[] = [
   // whoever runs dispatch, from one route so the two cannot disagree about a box
   // on a floor.
   'BenchDocumentsController.getDocuments',
+  // The BYTES are the decision here, not the route shape. This streams the
+  // rendered invoice, which carries the buyer's name, their billing address,
+  // their tax id and the order's totals — everything the projection above is
+  // an allow-list precisely to withhold. It is granted anyway because that
+  // document is the sheet story F1 has the packer fold into this very box, so
+  // a packer who may not read it is a packer who cannot do the job; it is
+  // scoped to ONE work, creates nothing, and cannot be walked to anybody
+  // else's paperwork. The asymmetry with `getParcel` is deliberate, not an
+  // oversight.
   'BenchDocumentsController.downloadInvoice',
   'BenchDocumentsController.listUnlabelled',
 ];

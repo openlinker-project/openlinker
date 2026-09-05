@@ -15,9 +15,13 @@
  * than their types, because a type test would pass on a method added and then
  * cast away, and because the failure message needs to name the decision.
  *
- * The complement is the frontend's own assertion that no such control renders,
- * and the API's that no such route exists. Three layers, because a commit
- * control can be introduced at any of them.
+ * The complement is the frontend's own assertion that no such control renders
+ * (`apps/web/.../bench-parcel.test.tsx`, which pins the whole PERMITTED set of
+ * button names rather than a denied word list) and the API's that no such route
+ * exists (`apps/api/src/bench/__tests__/no-parcel-commit-route.spec.ts`, which
+ * enumerates every bench write off Nest's own route metadata). Three layers,
+ * because a commit control can be introduced at any of them — and all three are
+ * now assertions rather than two assertions and a sentence (#2905).
  *
  * @module libs/core/src/fulfillment/__tests__
  */

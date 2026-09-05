@@ -128,7 +128,7 @@ describe('FulfillmentVerificationService (#2418)', () => {
         workId: 'work-1',
         workLineId: 'line-1',
         gestureId: 'g1',
-        verifiedByUserId: null,
+        verifiedByUserId: 'user-1',
       });
       // The cap is per line and greater than one, so no unique index expresses
       // it and the conflicting row is a phantom. Only the parent row serialises
@@ -175,7 +175,7 @@ describe('FulfillmentVerificationService (#2418)', () => {
         workId: 'work-1',
         workLineId: 'line-1',
         gestureId: 'g4',
-        verifiedByUserId: null,
+        verifiedByUserId: 'user-1',
       });
 
       expect(result).toMatchObject({ outcome: 'refused', reason: 'over-packed' });
@@ -189,7 +189,7 @@ describe('FulfillmentVerificationService (#2418)', () => {
         workId: 'work-1',
         workLineId: 'line-nope',
         gestureId: 'g5',
-        verifiedByUserId: null,
+        verifiedByUserId: 'user-1',
       });
       expect(result).toMatchObject({ outcome: 'refused', reason: 'no-such-line' });
       expect(repo.recordParcelVerification).not.toHaveBeenCalled();
@@ -229,7 +229,7 @@ describe('FulfillmentVerificationService (#2418)', () => {
         workId: 'work-1',
         workLineId: 'a',
         gestureId: 'g7',
-        verifiedByUserId: null,
+        verifiedByUserId: 'user-1',
       });
 
       expect(repo.claimParcelClose).not.toHaveBeenCalled();
@@ -249,7 +249,7 @@ describe('FulfillmentVerificationService (#2418)', () => {
         workId: 'work-1',
         workLineId: 'line-1',
         gestureId: 'g8',
-        verifiedByUserId: null,
+        verifiedByUserId: 'user-1',
       });
 
       expect(repo.claimParcelClose).not.toHaveBeenCalled();
@@ -265,7 +265,7 @@ describe('FulfillmentVerificationService (#2418)', () => {
         workId: 'work-1',
         workLineId: 'line-1',
         gestureId: 'g9',
-        verifiedByUserId: null,
+        verifiedByUserId: 'user-1',
       });
 
       expect(result).toMatchObject({ outcome: 'refused', reason: 'parcel-closed' });
@@ -284,7 +284,7 @@ describe('FulfillmentVerificationService (#2418)', () => {
         workId: 'work-1',
         workLineId: 'line-1',
         gestureId: 'g-same',
-        verifiedByUserId: null,
+        verifiedByUserId: 'user-1',
       });
 
       expect(result.outcome).toBe('deduplicated');
@@ -379,7 +379,14 @@ describe('FulfillmentVerificationService (#2418)', () => {
 
     it('reopens a closed parcel and carries the optimistic token through', async () => {
       const { service, repo } = harness({
-        work: work({ parcelClosedAt: new Date() }),
+        // `packedByUserId` is SEEDED (#2905 review). The fixture defaults it to
+        // `null`, so the `state.packedByUserId` assertion below passed against
+        // an implementation with `reopenParcel`'s own `packedByUserId: null`
+        // override deleted — a closed parcel that keeps naming its packer after
+        // being reopened, asserted by a test that could not fail. A closed
+        // parcel always names one (`CHK_fulfillment_works_closed_parcel_actor`),
+        // so this is also the only honest fixture for the state.
+        work: work({ parcelClosedAt: new Date(), packedByUserId: 'user-1' }),
         counts: [[]],
       });
 

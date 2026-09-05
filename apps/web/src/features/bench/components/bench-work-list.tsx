@@ -30,6 +30,7 @@ import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import { useDemoMode } from '../../system';
 import type { BenchWork } from '../api/bench-work.types';
 import { useBenchExpediteMutation } from '../hooks/use-bench-expedite-mutation';
+import { useBenchInteractive } from '../hooks/use-bench-interactive';
 import { useBenchWorkQuery } from '../hooks/use-bench-work-query';
 import { useScannerInput } from '../hooks/use-scanner-input';
 import { groupBenchWork, matchesBenchSearch } from '../lib/bench-work-presentation';
@@ -54,11 +55,15 @@ export function BenchWorkList({ now, onOpenParcel }: BenchWorkListProps): ReactE
   // control is invisible to one — which is story B5's "someone with write
   // access", not a second permission invented for this surface.
   const write = useWriteAccess('orders:write', demoMode);
+  // A3. See `use-bench-interactive.ts` — a covered surface takes the listener
+  // off, so a scan at a locked bench raises nothing behind the lock.
+  const interactive = useBenchInteractive();
 
   const [search, setSearch] = useState('');
   const [rejectedScan, setRejectedScan] = useState<string | null>(null);
 
   useScannerInput({
+    enabled: interactive,
     // C3. Nothing here is scannable, so every completed gesture is reported and
     // nothing is recorded — no request is made, and no state but this notice
     // changes.

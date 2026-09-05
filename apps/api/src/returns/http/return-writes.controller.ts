@@ -73,7 +73,6 @@ import { Logger } from '@openlinker/shared/logging';
 import { AuthenticatedUser } from '../../auth/auth.types';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
-import { AnyRole } from '../../auth/decorators/any-role.decorator';
 import type {
   RestockBlockedResponseDto,
   ReturnLineCountersDto} from '../dto/return-custody.dto';
@@ -481,7 +480,14 @@ export class ReturnWritesController {
     }
   }
 
-  @AnyRole()
+  // NOT `@AnyRole()` (#2905 review). The DTO carries `invoiceRecordId`,
+  // `invoiceConnectionId`, `invoiceDocumentNumber`, `currency` and a per-line
+  // `taxRate` — and it is WALKABLE, because `ReturnsController.listReturns` is
+  // reachable by the same session, so a return id is one request away. #2413's
+  // principle is that the bench reaches a parcel through its work and is
+  // excluded from every register; a fiscal document reached by enumerating
+  // returns is that trap one context over, and it caught `/orders` once already.
+  @Roles('admin', 'operator', 'viewer')
   @Get(':returnId/correction-proposal')
   @ApiOperation({
     summary: 'Preview the credit-note correction proposal',

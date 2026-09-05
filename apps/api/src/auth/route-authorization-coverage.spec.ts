@@ -15,6 +15,15 @@
  * hidden by BOTH, since `AuthController` was not in the list either. Every PII
  * read was outside that spec by construction.
  *
+ * ## Known limitation, shared with `packer-exclusion.spec.ts`
+ *
+ * `Object.getOwnPropertyNames(proto)` does not see a handler INHERITED from a
+ * base controller class, so a route declared on a base and exposed by a
+ * subclass is invisible here and would escape the decorator requirement
+ * entirely. No controller in `apps/api` extends another today. Stated so it is
+ * a decision rather than an oversight — the sibling spec states it and, until
+ * #2905, the stronger of the two did not.
+ *
  * ## Non-vacuity — five guards
  *
  * `docs/testing-guide.md § Port-contract suites`: the machinery that looks
@@ -82,6 +91,20 @@ const METHOD_METADATA = 'method';
 
 const SRC_ROOT = resolve(__dirname, '..');
 
+/**
+ * The three controllers that may carry `@Public()` on the CLASS.
+ *
+ * Module scope, matching `packer-exclusion.spec.ts`'s allow-lists: a reviewer
+ * reading the file sees the reviewed set without opening an assertion body, and
+ * a fourth entry is a visible diff line rather than an edit inside a test.
+ * Sorted, because the assertion compares against a sorted set.
+ */
+const CLASS_LEVEL_PUBLIC_CONTROLLERS = [
+  'AppController',
+  'McpTransportController',
+  'WebhookController',
+] as const;
+
 interface DiscoveredRoute {
   readonly file: string;
   readonly controller: string;
@@ -94,6 +117,8 @@ interface DiscoveredRoute {
   readonly contradicts: boolean;
   /** `@AnyRole()` on the controller CLASS — banned; see the decorator's header. */
   readonly classLevelAnyRole: boolean;
+  /** `@Public()` on the controller CLASS — allow-listed; see the assertion. */
+  readonly classLevelPublic: boolean;
 }
 
 function walk(dir: string, predicate: (name: string) => boolean, out: string[] = []): string[] {
@@ -167,6 +192,7 @@ function collectRoutes(file: string): DiscoveredRoute[] {
         hasAnyRole,
         contradicts: (handlerHasRoles && handlerAnyRole) || (classHasRoles && classAnyRole),
         classLevelAnyRole: classAnyRole,
+        classLevelPublic: classPublic,
       });
     }
   }
@@ -277,6 +303,31 @@ describe('Route-authorization coverage invariant (#2079)', () => {
       ];
 
       expect(classLevel).toEqual([]);
+    });
+
+    /**
+     * Class-level `@Public()` is the same defect one notch WORSE (#2905 review).
+     *
+     * `@AnyRole()` is banned at class level because a widening default silently
+     * covers routes added to the class later. `@Public()` widens further: a new
+     * route on such a class is not merely open to every role, it is
+     * UNAUTHENTICATED — `JwtAuthGuard` bypasses it and `RolesGuard`
+     * short-circuits before any role test, so there is no principal at all.
+     *
+     * It is allow-listed rather than banned because all three sites are correct
+     * and none can be expressed per-method without repeating the decorator on
+     * every route: two of them exist BECAUSE the whole controller is outside the
+     * session model (`WebhookController` authenticates by HMAC signature,
+     * `McpTransportController` by its own `OAuthTokenVerifier`), and
+     * `AppController` is the unauthenticated health/root surface. What the
+     * assertion buys is that a FOURTH requires a decision.
+     */
+    it('carries @Public() at class level only on the three reviewed controllers', () => {
+      const found = [
+        ...new Set(allRoutes.filter((r) => r.classLevelPublic).map((r) => r.controller)),
+      ].sort();
+
+      expect(found).toEqual([...CLASS_LEVEL_PUBLIC_CONTROLLERS]);
     });
   });
 

@@ -733,6 +733,12 @@ export function createMockApiClient(
     // defect in the surface rather than a missing mock. `ready: true` is the
     // ordinary install, so a test that cares about the not-routed empty state
     // has to say so explicitly.
+    // #2905. Every member is defaulted, and the `as` cast is gone. Two of the
+    // eight were defaulted behind a cast, which is the shape `fulfillment`
+    // below already avoids: an absent member fails as
+    // `apiClient.bench.getParcel is not a function` from inside a render — an
+    // inscrutable crash that reads as a defect in the surface rather than as a
+    // missing mock — and the cast is what let the other six stay absent.
     bench: {
       listWork: vi.fn().mockResolvedValue({
         works: [],
@@ -741,8 +747,20 @@ export function createMockApiClient(
         total: 0,
       }),
       setExpedited: vi.fn().mockResolvedValue(undefined),
+      getParcel: vi.fn().mockRejectedValue(new Error('bench.getParcel not stubbed')),
+      verifyUnit: vi.fn().mockRejectedValue(new Error('bench.verifyUnit not stubbed')),
+      reopenParcel: vi.fn().mockRejectedValue(new Error('bench.reopenParcel not stubbed')),
+      getDocuments: vi.fn().mockResolvedValue({
+        workId: 'work-unstubbed',
+        invoice: { state: 'missing', blockReason: null, unresolvedReason: null },
+        label: { state: 'missing', failedAt: null, carrierMessageRedacted: false },
+      }),
+      downloadInvoice: vi.fn().mockRejectedValue(new Error('bench.downloadInvoice not stubbed')),
+      listUnlabelledParcels: vi
+        .fn()
+        .mockResolvedValue({ parcels: [], total: 0, truncated: false }),
       ...overrides.bench,
-    } as ApiClient['bench'],
+    },
     fulfillment: {
       listByOrder: vi.fn().mockResolvedValue({ works: [], total: 0, limit: 50, offset: 0 }),
       // #2410. `list` and `get` are defaulted HERE rather than in the specs

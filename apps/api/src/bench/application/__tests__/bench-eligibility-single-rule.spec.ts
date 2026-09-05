@@ -176,6 +176,49 @@ describe('one bench eligibility rule, two callers (#2420, G4)', () => {
     );
   });
 
+  /**
+   * The blind spot the two halves above share (#2905 review).
+   *
+   * Both catch a RESTATEMENT of the rule. Neither catches an OMISSION — and an
+   * omission is what shipped: `BenchDocumentsService.listUnlabelled` filtered
+   * the worklist on connection + `accepted` + `parcelClosed` and simply left
+   * `status` off, so it was a third spelling of "is this a bench parcel" that
+   * agreed with nobody. A work at `incomplete` was listed there and 404'd when
+   * a packer clicked it, which is D2's disagreement arriving through the door
+   * neither half was watching.
+   *
+   * The rule below is positional rather than semantic — any file that SELECTS
+   * bench work from the worklist must reach for the shared constants — which is
+   * the same heuristic posture the file header already declares. It cannot
+   * decide whether a filter object is correct; it can insist that the one thing
+   * every bench selection must say is said.
+   */
+  describe('a selection path cannot silently omit the shared statuses', () => {
+    const SELECTS = /this\.worklist\s*\.\s*list\s*\(/;
+
+    it('finds at least one production selection site, so the rule is not vacuous', () => {
+      const selectors = SOURCE_FILES.filter((file) => SELECTS.test(code(file))).map(relative);
+      expect(selectors.length).toBeGreaterThan(0);
+    });
+
+    it.each(SOURCE_FILES.map((file) => [relative(file), file] as const))(
+      '%s applies BENCH_WORK_STATUSES wherever it selects work',
+      (name, file) => {
+        const source = code(file);
+        if (!SELECTS.test(source)) return;
+        expect(
+          source.includes('BENCH_WORK_STATUSES')
+            ? null
+            : `${name} selects bench work from the worklist without applying ` +
+                '`BENCH_WORK_STATUSES`. The list and the open path both scope on it, so a ' +
+                'selection that omits it returns work neither of the other two would — a ' +
+                'parcel this surface offers and the bench then refuses, which is story D2 ' +
+                'exactly. Import it from `application/bench-work-eligibility.ts`.'
+        ).toBeNull();
+      }
+    );
+  });
+
   describe('the selection half is shared too', () => {
     it.each(SOURCE_FILES.map((file) => [relative(file), file] as const))(
       '%s does not restate the selected statuses',

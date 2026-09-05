@@ -49,6 +49,17 @@ import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 
 // id is minted per bench session and only ever offered against one parcel, and
 // a global unique index would make an id collision across two benches look like
 // a duplicate scan.
+//
+// **Deliberately NOT partial on `voidedAt`**, which is an asymmetry with the
+// index two lines below and is stated because it reads as an oversight
+// otherwise (#2905 review). There, rows LEAVING the index on a reopen is the
+// mechanism — a voided row must stop counting. Here it would be the opposite:
+// a gesture id is permanent memory, so letting a voided row leave the index
+// would let the SAME physical scan be recorded again after a reopen and count a
+// second unit, which is the one thing `gestureId` exists to prevent (story G3).
+// The cost is that a reopened parcel cannot re-accept a gesture the packer
+// already made — correct, since re-scanning mints a fresh id, and the safe
+// direction if it were ever wrong.
 @Index('UQ_fulfillment_work_verifications_gesture', ['fulfillmentWorkId', 'gestureId'], {
   unique: true,
 })

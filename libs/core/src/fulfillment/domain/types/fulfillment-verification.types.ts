@@ -61,7 +61,16 @@ export function requiredUnitsForLine(line: {
  * correct scan of the same physical action is not deduplicated away.
  */
 export const ParcelVerificationRefusalValues = [
-  /** The work is not one this bench may pack — story D2's shared rule said so. */
+  /**
+   * The work is not one this bench may pack — story D2's shared rule said so.
+   *
+   * The one member DECLARED here and produced nowhere in this context: the rule
+   * that answers it is `deriveBenchWorkState`, which lives in `apps/api/src/bench`
+   * because it reads a bench's own executor scope, and `BenchParcelService` is
+   * its only writer. Every other member below is produced by the core
+   * verification service. Stated because the asymmetry otherwise reads as a
+   * value nothing emits (#2905 review).
+   */
   'not-packable',
   /** The box is already closed. Reopen it first (E6). */
   'parcel-closed',
@@ -105,10 +114,24 @@ export interface VerifyUnitInput {
   readonly workLineId: string;
   readonly gestureId: string;
   /**
-   * Who verified it. `null` only where no user is attributable; the bench
-   * always has one, because the surface will not accept a scan while locked.
+   * Who verified it. NON-NULLABLE, and that is a constraint rather than a
+   * convenience (#2905 review).
+   *
+   * This value is passed verbatim into `claimParcelClose` as `packedByUserId`
+   * when the unit is the one that shuts the box, and
+   * `CHK_fulfillment_works_closed_parcel_actor` refuses a closed parcel naming
+   * nobody — so a nullable actor here is a 500 for a MODELLED state, raised
+   * from a database constraint rather than from a refusal anybody wrote. It was
+   * unreachable only because `apps/api/src/bench` narrows it one layer above,
+   * which put the invariant above the type that admitted its violation.
+   *
+   * Narrowing rather than a runtime refusal: a verification with no attributable
+   * actor is not a condition to report, it is a call that must not be
+   * expressible. `RecordParcelVerificationInput.verifiedByUserId` stays nullable
+   * because the COLUMN is — rows predating an attributed writer exist — and a
+   * `string` is assignable to it.
    */
-  readonly verifiedByUserId: string | null;
+  readonly verifiedByUserId: string;
 }
 
 /** Per-line verified counts, and whether the box is shut. */

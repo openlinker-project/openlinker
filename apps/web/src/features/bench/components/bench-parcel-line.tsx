@@ -45,7 +45,6 @@ export interface BenchParcelLineRowProps {
   readonly open: boolean;
   /** E4's path. Sends exactly what a scan sends. */
   readonly onConfirm: (line: BenchParcelLine) => void;
-  readonly busy?: boolean;
   /**
    * How many gestures for THIS line are out and unanswered (#2421, story H2).
    *
@@ -83,7 +82,6 @@ export function BenchParcelLineRow({
   line,
   open,
   onConfirm,
-  busy = false,
   pendingCount = 0,
   unreachable = false,
 }: BenchParcelLineRowProps): ReactElement {
@@ -148,7 +146,14 @@ export function BenchParcelLineRow({
           <>
             <Button
               tone="secondary"
-              disabled={busy || unreachable}
+              // Deliberately NOT disabled while a gesture is out (#2905
+              // review). The mutation observer is shared by every line, so
+              // `verify.isPending` greyed line B out because line A was in
+              // flight — and it made the manual path blockable where the scan
+              // path never is, the asymmetry D20 argues against. A second press
+              // mints a second gesture id and is therefore exactly a second
+              // scan, which the server's own over-pack guard adjudicates.
+              disabled={unreachable}
               onClick={() => {
                 onConfirm(line);
               }}

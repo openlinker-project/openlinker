@@ -448,6 +448,64 @@ describe('Bench parcel (#2418)', () => {
     expect(Array.isArray(unlabelled.body.parcels)).toBe(true);
   });
 
+  it('keeps a terminal work OFF the unlabelled list — the shared selection rule (#2905)', async () => {
+    // The BEHAVIOURAL half of the #2905 fix. `bench-eligibility-single-rule.spec.ts`
+    // asserts that this selection reaches for `BENCH_WORK_STATUSES`, but that
+    // spec's own header calls itself a heuristic: it cannot tell a correct
+    // filter from a plausible one, and `status: BENCH_WORK_STATUSES.slice(0, 1)`
+    // would satisfy it. This is what actually bites — a work outside the bench's
+    // selected statuses must not be offered here and then 404 on click, which is
+    // story D2's disagreement.
+    const http = harness.getHttp();
+    const work = await seedParcel(1);
+    const token = await loginAsPacker(http, harness.getDataSource());
+
+    const opened = (
+      await http
+        .get(`/v1/bench/work/${work.id}/parcel`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200)
+    ).body as ParcelBody;
+
+    // Shut the box on its last unit (D18), so it is packed-and-unlabelled.
+    await http
+      .post(`/v1/bench/work/${work.id}/verifications`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ workLineId: opened.lines[0].workLineId, gestureId: 'g-unlabelled' })
+      .expect(201);
+
+    // Non-vacuity: it really is on the list before the status moves, so the
+    // assertion below is about the STATUS and not about a parcel that was never
+    // selected for an unrelated reason.
+    const listed = await http
+      .get('/v1/bench/unlabelled-parcels')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(
+      (listed.body.parcels as { workId: string }[]).map((parcel) => parcel.workId)
+    ).toContain(work.id);
+
+    // A short pick terminalises the work. It is still closed and still
+    // unlabelled — and it is no longer this bench's business.
+    await harness
+      .getDataSource()
+      .query(`UPDATE "fulfillment_works" SET "status" = 'incomplete' WHERE "id" = $1`, [work.id]);
+
+    const after = await http
+      .get('/v1/bench/unlabelled-parcels')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(
+      (after.body.parcels as { workId: string }[]).map((parcel) => parcel.workId)
+    ).not.toContain(work.id);
+    // And the surface agrees with itself: opening it answers 404, which is
+    // exactly the pairing that made the omission a defect rather than noise.
+    await http
+      .get(`/v1/bench/work/${work.id}/parcel`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(404);
+  });
+
   it('STILL refuses a packer /orders and the invoicing register', async () => {
     // The two routes above are the replacements for exactly these. A
     // replacement that quietly reopened what it replaced would be worse than

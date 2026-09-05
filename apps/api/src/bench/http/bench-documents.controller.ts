@@ -23,6 +23,7 @@
  * @module apps/api/src/bench/http
  */
 import {
+  ConflictException,
   Controller,
   Get,
   Inject,
@@ -51,6 +52,7 @@ import {
 } from '@openlinker/core/invoicing';
 import { INTEGRATIONS_SERVICE_TOKEN, IIntegrationsService } from '@openlinker/core/integrations';
 import { ROLE_PERMISSIONS } from '@openlinker/core/users';
+import { Logger } from '@openlinker/shared/logging';
 
 import { AuthenticatedUser } from '../../auth/auth.types';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
@@ -77,6 +79,8 @@ import {
 @ApiTags('bench')
 @Controller('bench')
 export class BenchDocumentsController {
+  private readonly logger = new Logger(BenchDocumentsController.name);
+
   constructor(
     @Inject(BENCH_DOCUMENTS_SERVICE_TOKEN)
     private readonly documents: IBenchDocumentsService,
@@ -124,7 +128,13 @@ export class BenchDocumentsController {
   @ApiProduces('application/pdf', 'text/html')
   @ApiResponse({ status: 200, description: 'Document bytes (Content-Type per provider)' })
   @ApiResponse({ status: 404, description: 'No such parcel, or no issued invoice for its order' })
-  @ApiResponse({ status: 409, description: 'The provider cannot produce a printable document' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'The provider cannot produce a printable document — it renders none, or it could not be ' +
+      'reached at all. One neutral refusal for both, because the remedy is the same and the ' +
+      "provider's own words must not reach a packer.",
+  })
   async downloadInvoice(
     @Param('workId') workId: string,
     @Res({ passthrough: true }) res: Response
@@ -135,15 +145,39 @@ export class BenchDocumentsController {
       throw new NotFoundException('No issued invoice for this parcel’s order');
     }
 
-    const adapter = await this.integrations.getCapabilityAdapter<InvoicingPort>(
-      record.connectionId,
-      'Invoicing'
-    );
+    // The degrade path the READ already has (#2905 review). `canRenderDocument`
+    // catches an unresolvable adapter and reports `issued-not-printable`; here
+    // an unreachable one — a disabled connection, a credential failure — became
+    // a 500 carrying the provider's own message, on the one surface whose whole
+    // point is keeping provider prose away from a `packer`. Same neutral
+    // refusal the read advertises, and the cause is logged rather than served.
+    let adapter: InvoicingPort;
+    try {
+      adapter = await this.integrations.getCapabilityAdapter<InvoicingPort>(
+        record.connectionId,
+        'Invoicing'
+      );
+    } catch (error) {
+      this.logger.warn(
+        `bench_invoice_adapter_unresolved workId=${workId} connectionId=${record.connectionId}: ` +
+          `${error instanceof Error ? error.message : String(error)}`
+      );
+      throw new ConflictException(
+        'This invoice has no printable version. Send the box without it.'
+      );
+    }
     if (record.regulatoryStatus !== 'accepted' || !isRegulatoryDocumentReader(adapter)) {
+      // 409, matching what this route ADVERTISES (#2905 review). It threw 404,
+      // which contradicted the `@ApiResponse` two decorators up — reported not
+      // matching enforced, on a published contract — and additionally collapsed
+      // into "no such parcel at this bench", a different instruction to the
+      // packer: one says look somewhere else, the other says send the box
+      // without it. The parcel exists; the provider cannot render it.
+      //
       // Deliberately NOT falling back to the `source` document: that is
       // machine-readable XML, and handing a packer XML to fold into a box is
       // worse than telling them there is nothing to print.
-      throw new NotFoundException(
+      throw new ConflictException(
         'This invoice has no printable version. Send the box without it.'
       );
     }
