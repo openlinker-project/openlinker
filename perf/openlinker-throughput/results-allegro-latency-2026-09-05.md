@@ -3,6 +3,13 @@
 Issue: #2861 (child of epic #2840). Probe: `perf/openlinker-throughput/probes/allegro-latency.sh`.
 Raw samples: `perf/openlinker-throughput/allegro-latency-samples-2026-09-05.json`.
 
+**Updated 2026-09-06**: `GET /order/checkout-forms/{id}` moved from
+"not safely measured" to measured (n=118 as of this update), once real sandbox purchases gave
+it organic traffic. `/order/events`' numbers are unchanged from the
+original 2026-09-05 measurement. See Result 2 below for the full account,
+including the incident from the original version of this report, kept in
+place rather than removed.
+
 ## What this is
 
 A one-off **characterisation probe**, not a throughput run - no load beyond a small,
@@ -19,7 +26,7 @@ endpoints the #2856 stub is meant to reproduce, against the Allegro **sandbox**:
 | Connection | `f0636f5f-de3a-4747-9b7f-1c18c0f24582` ("Allegro (sandbox)"), `status=active`, `config.environment=sandbox` |
 | Sandbox host that answered | `https://api.allegro.pl.allegrosandbox.pl` (confirmed both from `allegro-hosts.ts`'s `SANDBOX_REST_API_BASE_URL` resolution for this connection's config, and directly in the worker's own error/request logs) |
 | Stand | a local demo stack (`ol-demo-fresh-*` containers) - **not** the #2854 `lab` stand, which does not exist on `main` yet |
-| Date / window | 2026-09-05, 13:54:06 -> 21:53:08 (local container clock, UTC+2) - approximately 8 hours |
+| Date / window | `/order/events`: 2026-09-05, 13:54:06 -> 21:53:08 (local container clock, UTC+2), approximately 8 hours. `/order/checkout-forms/{id}`: re-harvested 2026-09-06 over the worker container's full uptime (started 2026-09-05 13:38:09 UTC), which is when the operator's 25 sandbox purchases landed |
 | Measurement method | see "Methodology" below - the worker's own `AllegroHttpClient` debug log line (`Response: <status> (<ms>ms) - <method> <path>`), which times only the `fetch()` round-trip, never OpenLinker's own downstream processing |
 
 ## Result 1 - `GET /order/events` - **MEASURED**
@@ -56,7 +63,8 @@ not, and no mechanism is offered here beyond the one that was ruled out.
 
 Percentiles use the nearest-rank method already established in this repo's perf
 tooling (`perf/prestashop-baseline/storefront-probe.sh`):
-`vals_sorted[min(len-1, round(p/100*len)) - 1]`.
+`vals_sorted[min(len-1, round(p/100*len)) - 1]`. Result 2 below uses the
+same method and formula.
 
 **The mean (655 ms) describes neither cluster and should not be read as "the"
 latency.** A stub paced at the mean models every request as half-cold -
@@ -81,14 +89,143 @@ well below the single max).
 
 Zero non-2xx responses were observed across all 480 samples.
 
-## Result 2 - `GET /order/checkout-forms/{id}` - **NOT SAFELY MEASURED**
+## Result 2 - `GET /order/checkout-forms/{id}` - **MEASURED, n=118**
 
-**No active-probe sample set exists for this endpoint on this stand, and none was
-forced through.** This section explains why, in full, because the reason is a
-real incident during this investigation and the honesty rules this issue is
-run under require it to be stated rather than smoothed over.
+An operator purchased on 25 sandbox auctions after the first version of this
+report shipped, which finally gave this endpoint real organic traffic. It was
+re-harvested independently (not by trusting a hand-off sample file), the same
+passive way as `/order/events`: `docker logs ol-demo-fresh-worker` since
+container start, filtered to `Response: <status> (<ms>ms) - GET
+/order/checkout-forms/` and correlated to this connection by trace id -
+**zero added load**, same as Result 1.
 
-### What happened
+| Metric | Value |
+|---|---|
+| n | 118 |
+| p50 | 1106 ms |
+| p90 | 1168 ms |
+| p95 | 1217 ms |
+| p99 | 2139 ms |
+| min | 68 ms |
+| max | 7960 ms (see outlier note below) |
+| mean | 1062.1 ms |
+| stdev (sample) | 718.3 ms |
+
+Bucketed (200 ms):
+
+| Bucket | Count | % of n |
+|---|---|---|
+| 0-199 ms | 4 | 3.4% |
+| 200-399 ms | 5 | 4.2% |
+| 400-599 ms | 6 | 5.1% |
+| 600-799 ms | 6 | 5.1% |
+| 800-999 ms | 3 | 2.5% |
+| 1000-1199 ms | 87 | 73.7% |
+| 1200-1399 ms | 4 | 3.4% |
+| 2000-2199 ms | 2 | 1.7% |
+| 7800-7999 ms | 1 | 0.8% |
+
+Zero non-2xx responses.
+
+**Outlier note.** One sample reads 7960 ms - visibly separate from the
+1000-1199 ms mode and from the two ~2100 ms samples. Unlike `/order/events`'
+11139 ms outlier, no `RedisRateLimiterAdapter` warning or other proximate
+cause appears near this request in the worker log; it is reported as
+unexplained, not attributed to anything. It moves `max`, `mean` and `stdev`
+noticeably (this sample alone accounts for a large share of the jump in
+`stdev` from an earlier, smaller harvest of this same endpoint - see the
+"harvested at a moving target" note below); it does not move `p95` (rank
+112 of 118).
+
+**This sample set was harvested at a moving target, and that is stated
+rather than hidden.** The `source_deleted` orders behind most of these
+requests keep retrying in the background for as long as this report is
+being written, so re-running the harvest minutes apart yields a growing
+`n` and a growing spread - this table reflects one specific harvest,
+`docker logs ol-demo-fresh-worker --since 700m`, taken 2026-09-05T22:56:55Z.
+An earlier harvest of the same endpoint, taken about two minutes prior,
+read n=98 with a materially smaller spread (p50=1084ms, max=2139ms,
+stdev=334.3ms) - both are real, correct readings of the same live retry
+ladder at two different instants, not a discrepancy to reconcile. Re-running
+`probe_checkout_forms` later than this report's own timestamp will read a
+larger `n` again, for the same reason.
+
+**One sample was excluded from this set on purpose**: the smoke-test call
+this report's first version already disclosed
+(`externalOrderId=907b5790-9bbe-11f1-bd08-9328d2ed1733`, 1157 ms, the call
+that produced the PrestaShop side effect described below) is a real HTTP
+response but not part of the real-purchase burst this measurement is about,
+so it is left out of the n=118 above rather than silently mixed in. Including
+it would not move any statistic meaningfully (it falls inside the dominant
+1000-1199 ms bucket), but the exclusion is stated because a mixed-provenance
+sample set is the kind of thing that should never be silent.
+
+**This endpoint is unimodal - unlike `/order/events`.** One dominant peak at
+1000-1199 ms holds 73.7% of the sample, a thin, spread-out fast tail sits
+below 1000 ms (20.3% combined across five buckets, none of them concentrated
+the way `/order/events`' fast cluster was), and a handful of outliers sit
+above 2000 ms. This is a real, measured contrast with Result 1's two tight
+clusters, and it narrows what a bimodal `/order/events` could be down to -
+**the split is a property of that endpoint, not of the client, the network,
+or this connection**, since the same client, network and connection produce
+one mode here. No mechanism for *why* either endpoint has the shape it does
+is offered beyond that comparison.
+
+**p50 here (1106 ms) is roughly four times `/order/events`' p50 (276 ms).**
+On its face this is plausible - a checkout-forms fetch hydrates an entire
+order body while an events-feed page returns references - but that is
+stated as a plausible reading of two measured numbers, not as an explained
+cause; nothing here confirms it.
+
+**The 118 samples come from 23 distinct orders, not 23 the way one order =
+one sample.** Fetch counts per order ranged from 1 to 10 (mean 5.13 fetches
+per order at this harvest instant - see the "moving target" note above for
+why that mean itself keeps climbing). That makes n=118 an honest count of
+independent HTTP requests - which is what a *latency* figure measures - but
+reading a *throughput* claim ("OpenLinker fetched 118 orders") off this
+sample would be wrong; it fetched 23.
+
+**Why the re-fetch count is uneven, and why that is itself a cost finding.**
+Querying `order_records.recordStatus` for these 23 orders: **19 are
+`source_deleted`** (the master-side variant behind at least one order line
+has been deleted - a permanently unresolvable condition per the `#1599`
+deletion-signal design) and **4 are `ready`** (fully resolved). The 4 `ready`
+orders were fetched 1-2 times each; the 19 `source_deleted` orders were
+fetched 5-10 times each at this harvest instant, and climbing - confirmed
+against one of them directly, re-checked at the same instant as this
+harvest (`sync_jobs`: `jobType=marketplace.order.sync`, `attempts=5`,
+`status=queued` (still retrying), `lastError`:
+*"Marketplace order sync failed: Missing mapping for order item productRef"*).
+`OrderIngestionService.syncOrderFromSource` calls `getOrder()` unconditionally
+on every attempt, above item resolution, so **each retry re-issues a full
+`GET /order/checkout-forms/{id}` for zero forward progress** - the
+underlying condition does not change between attempts. This is reported as
+a **cost observation for the measurement programme**, not a claim that the
+retry behaviour is wrong: a mapping can legitimately reappear later (which
+is exactly why `MissingOrderItemMappingError` stays retryable rather than
+terminal), so the repeated fetch is the correct price of keeping that door
+open, not a bug. It does mean a stub or a throughput model that assumes "one
+checkout-forms fetch per order" will undercount real cost on a connection
+carrying any stale-variant backlog - #2856's own `1 + N` cost model
+(§ "Proposed Solution") states the fetch is "1x per `marketplace.order.sync`
+job", which is correct as read (one fetch per JOB) but silently assumes one
+job per order, which this sample shows is not always true.
+
+**The sampling-pattern caveat from Result 1 does not apply here.** This is a
+genuine purchase burst (25 sandbox auctions in a short window), not a
+once-a-minute poll - so nothing here should be read as "coldest possible
+pattern" the way `/order/events`' figure is; see "What this did not
+establish" below for what is still open.
+
+### The earlier incident, kept for the record
+
+The first version of this report measured this endpoint by actively
+re-triggering it (there was no organic traffic yet), and that attempt is
+preserved here in full because it caused a real side effect and the honesty
+rules this issue runs under require it to be stated rather than removed once
+superseded by a better measurement.
+
+#### What happened
 
 There is no organic traffic for this endpoint: `identifier_mappings` on this
 connection carries Order rows going back to 2026-08-20, but **none of them
@@ -154,7 +291,7 @@ already reset to a low value on this stand before this investigation
 started). This is recorded as observed, not fully explained - a second,
 unrelated pre-existing data inconsistency on this demo stand.
 
-### The fix - a safety gate, now built into the script
+#### The fix - a safety gate, now built into the script
 
 `perf/openlinker-throughput/probes/allegro-latency.sh` now refuses to run the
 active checkout-forms probe by default whenever any *other* active
@@ -192,27 +329,18 @@ The safe way to take this measurement is one of:
    judged too disruptive for a one-off measurement, on top of the incident
    already caused.
 
-None of the three was exercised in this run (option 1 had no eligible
-data, option 2's stand does not exist yet, option 3 was declined as
-disproportionate risk for a repeat measurement). **`GET /order/checkout-forms/{id}`
-is therefore unmeasured on this stand as a percentile.**
+None of the three was exercised at the time - option 1 had no eligible data
+on this connection, option 2's stand does not exist yet, and option 3 was
+declined as disproportionate risk for a repeat measurement. **This is why
+the endpoint was reported unmeasured in the first version of this report.**
+It has since become measurable for an unrelated reason (real purchases
+happened), which is Result 2 above; the safety gate stays in the script
+regardless, since the active path it guards is still the only way to
+measure this endpoint on a stand with no organic order traffic at all.
 
-### One incidental data point (not a percentile)
-
-The single real, successful call made during the smoke test above:
-
-| | |
-|---|---|
-| n | 1 |
-| latency | 1157 ms |
-| status | 200 |
-
-This is **not** reported as a p50/p95 - a sample of one supports neither.
-It is noted only because it falls squarely inside the *slow* cluster of the
-`/order/events` distribution above (the 1000-1400 ms hump), which is weak,
-single-point corroboration that the two endpoints are of the same order of
-magnitude on this sandbox rather than wildly different - nothing stronger
-should be read into it.
+The one real sample this incident produced (`externalOrderId=907b5790-...`,
+1157 ms) is the sample excluded from Result 2's n=118 above, for the
+provenance reason given there.
 
 ## What this did not establish
 
@@ -223,13 +351,18 @@ should be read into it.
   under concurrent requests.
 - **Rate-limit response.** No 429 was provoked or observed. Allegro's
   documented budget (9000 req/min/client-id) was never approached.
-- **`GET /order/checkout-forms/{id}` as a percentile**, for the reasons
-  above - only n=1 exists, and it is not reported as one.
-- **Why `/order/events` is two clusters instead of one.** Reported as an
-  observation. One candidate mechanism (cold vs. warm connection reuse) was
-  tested and ruled out (there is exactly one call per minute, so nothing is
-  ever "warm" by that theory); no other mechanism was tested, and none is
-  offered here.
+- **Why `/order/events` is two clusters and `/order/checkout-forms/{id}` is
+  one.** Reported as a comparison of two measured shapes, not diagnosed. One
+  candidate mechanism for the events split (cold vs. warm connection reuse)
+  was tested and ruled out (there is exactly one call per minute, so nothing
+  is ever "warm" by that theory); no other mechanism was tested for either
+  endpoint, and none is offered here.
+- **Why 25 sandbox purchases produced 23 distinct order ids** in the
+  harvested window. Not investigated - stated as observed, not explained.
+- **Whether the `source_deleted` re-fetch pattern (19 of 23 orders, 4-9
+  fetches each) is specific to this sandbox catalogue** or would recur on
+  any connection with a similar rate of deleted master variants. One
+  connection, one snapshot in time.
 - **Whether this sampling pattern is representative of a sustained rate.**
   Every `/order/events` sample here was pulled from a **once-a-minute poll**
   - the coldest possible request pattern the client can produce, with
@@ -265,33 +398,57 @@ recorded so #2856 does not silently absorb a single number as if it were
 sufficient.
 
 If #2856 must ship with one constant anyway (e.g. as a first cut, or
-because the two-point redesign is deferred), the value to use is **p50,
-276 ms - never the mean**. The mean (655 ms) was considered and refused: it
-falls in the empty gap between the two clusters and would pace every stub
-response as "half-cold," a request shape that never actually occurred in
-480 real samples. p50 at least reproduces one real, observed mode (the fast
-cluster) rather than a value between two poles that neither corresponds to
-anything Allegro ever returned.
+because the two-point redesign is deferred), the value to use for
+`/order/events` is **p50, 276 ms - never the mean**. The mean (655 ms) was
+considered and refused: it falls in the empty gap between the two clusters
+and would pace every stub response as "half-cold," a request shape that
+never actually occurred in 480 real samples. p50 at least reproduces one
+real, observed mode (the fast cluster) rather than a value between two
+poles that neither corresponds to anything Allegro ever returned.
+
+**`GET /order/checkout-forms/{id}` is now measured too, and it makes the
+single-constant problem worse, not better.** Its own p50 is 1106 ms - about
+four times `/order/events`' 276 ms - and it is unimodal where events is
+bimodal, so the two endpoints do not even share a shape, let alone a
+number. `STUB_PER_REQUEST_LATENCY_MS` today applies to every stub request
+regardless of which endpoint it answers (`docker-compose.lab.yml` carries
+one env var, not one per endpoint). That means whichever single figure
+#2856 picks, it is now a **known, measured** mismatch for at least one
+endpoint's dominant mode - not an unmeasured gap being filled in for want
+of a second sample, which is what the first version of this report said.
+No blended number is offered in its place: averaging 276 ms and 1106 ms
+would produce a number that matches neither endpoint's actual traffic, the
+same objection that ruled out the events mean above.
+
+**The recommendation is therefore to give the stub a per-endpoint
+constant** (`STUB_ORDER_EVENTS_LATENCY_MS` / `STUB_CHECKOUT_FORMS_LATENCY_MS`,
+or equivalent), each set from that endpoint's own p50, rather than one
+`STUB_PER_REQUEST_LATENCY_MS` shared across both:
 
 ```yaml
 # perf/openlinker-throughput/docker-compose.lab.yml (or wherever #2854 lands
 # the allegro-stub service definition)
 environment:
   STUB_PORT: '8080'
-  # Measured against the Allegro sandbox, 2026-09-05, n=480, sequential -
+  # Measured against the Allegro sandbox, 2026-09-05 (events) and 2026-09-06
+  # (checkout-forms, once real sandbox purchases gave it organic traffic) -
   # see perf/openlinker-throughput/results-allegro-latency-2026-09-05.md.
-  # The real distribution is TWO CLUSTERS (90-338ms, 51.5%; 1059-1374ms,
-  # 48.3%) with almost nothing between them - a single constant cannot
-  # reproduce that shape (see the report's "Hand-off" section: this may be
-  # a finding that the stub needs a two-point distribution, not one knob).
-  # This value is p50 across all real /order/events samples, chosen
-  # because it lands inside a real cluster; the mean (655ms) was
-  # considered and refused because it falls in the gap between the two
-  # clusters and matches no request ever actually observed. checkout-forms
-  # itself is UNMEASURED (only one incidental 1157ms sample exists); this
-  # default is order/events' own figure, applied to both endpoints for
-  # want of a measured second one.
-  STUB_PER_REQUEST_LATENCY_MS: '276'
+  #
+  # /order/events is TWO CLUSTERS (90-338ms, 51.5%; 1059-1374ms, 48.3%);
+  # /order/checkout-forms/{id} is ONE cluster (1000-1199ms, 73.7%) at
+  # roughly 4x the events p50. A single shared constant is a known,
+  # measured mismatch for whichever endpoint it is not tuned to - see the
+  # report's "Hand-off" section. Each value below is that endpoint's own
+  # measured p50 (never the mean - see the report for why the mean is
+  # refused for events; checkout-forms' figure is itself a moving target -
+  # its retry-ladder-driven samples keep accumulating for as long as
+  # stale-variant orders keep retrying, see the report's outlier note - so
+  # re-measure before trusting this value for long).
+  STUB_ORDER_EVENTS_LATENCY_MS: '276'
+  STUB_CHECKOUT_FORMS_LATENCY_MS: '1106'
+  # If the stub cannot yet be split per endpoint, STUB_PER_REQUEST_LATENCY_MS
+  # has no defensible single value - pick one endpoint's figure knowing it
+  # misrepresents the other by roughly 4x.
 ```
 
 Whoever picks this up should also replace #2854's current placeholder
@@ -303,34 +460,42 @@ acceptance criterion.
 
 - [x] p50 and p95 recorded for `/order/events`, with sample size, date, and
       sandbox host.
-- [ ] p50 and p95 recorded for `/order/checkout-forms/{id}` - **not
-      satisfied**; see "Result 2" above for the full reason. One incidental
-      n=1 sample is reported instead of a percentile.
+- [x] p50 and p95 recorded for `/order/checkout-forms/{id}`, with sample
+      size, date, and sandbox host - satisfied on a second pass, once real
+      sandbox purchases gave this endpoint organic traffic (n=118 at this
+      report's own harvest instant, and growing as the sample is a moving
+      target - see "Result 2" above for both why the sample keeps growing
+      and why this endpoint's own n differs from the raw purchase count).
 - [~] The measured value becomes `STUB_PER_REQUEST_LATENCY_MS`'s default in
       #2856 - **cannot be satisfied directly**, since neither #2854 nor
       #2856 exist on `main` yet (both are open, unmerged PRs against this
       same directory - see the epic's own conflict-avoidance note on this
-      issue). See "Hand-off" above for the exact value and citation to carry
-      over once either PR lands.
+      issue). See "Hand-off" above for both endpoints' values, the
+      recommendation to split the knob per endpoint, and the citation to
+      carry over once either PR lands.
 - [x] The report states explicitly that this is sandbox latency and
       production is unmeasured.
 - [x] The report states that a stub answering instantly measures only
       OpenLinker's local overhead, so this constant is what makes #2847 and
       #2848 externally meaningful rather than merely self-consistent - see
       the paragraph immediately below.
-- [x] Labelled **measured** (order/events) in the honesty ledger, with a
+- [x] Labelled **measured** (both endpoints) in the honesty ledger, with a
       "what this did not establish" section.
-- [x] No load applied beyond a sequential probe - order/events used **zero**
-      additional load (pure passive harvest of traffic the deployment
-      already generates every minute); the checkout-forms attempt used
-      exactly one active request before being aborted.
+- [x] No load applied beyond a sequential probe - both endpoints' measured
+      figures used **zero** additional load (pure passive harvest of
+      traffic the deployment/the operator's purchases already generated);
+      the superseded active-probe attempt used exactly one active request
+      before being aborted, per the incident account kept in Result 2.
 
 **On the "mock is now the model" point directly**: a stub configured with
 `STUB_PER_REQUEST_LATENCY_MS: '0'` (or any value far below what was measured
 here) would make every downstream throughput figure (#2847, #2848) a
 measurement of OpenLinker's own per-request overhead alone, with no
-connection to what a real marketplace round-trip actually costs. The 480
-real, sandbox-sourced samples above are what makes that stub's number stand
-for something outside OpenLinker, even though the constant itself is
-necessarily a flattened, single-value stand-in for a distribution that is
-demonstrably not flat.
+connection to what a real marketplace round-trip actually costs. The 598
+real, sandbox-sourced samples above (480 for `/order/events`, 118 for
+`/order/checkout-forms/{id}` at this report's harvest instant) are what
+makes that stub's numbers stand for
+something outside OpenLinker, even though a single constant per endpoint -
+or worse, one constant shared across both - is necessarily a flattened
+stand-in for two distributions that are demonstrably not flat and not even
+shaped alike.

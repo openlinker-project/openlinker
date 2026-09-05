@@ -116,9 +116,13 @@ OL_ADMIN_PASSWORD="${OL_ADMIN_PASSWORD:-admin}"
 CONNECTION_ID="${CONNECTION_ID:?Set CONNECTION_ID to the Allegro sandbox connections UUID}"
 WORKER_CONTAINER="${WORKER_CONTAINER:-lab-worker}"
 
-# How many samples to take for the checkout-forms endpoint (active probe).
+# How many samples to take for the checkout-forms endpoint's ACTIVE probe
+# (the fallback path - see probe_checkout_forms's dispatcher). The passive
+# harvest below caps at this same number too, most-recent-first.
 SAMPLE_SIZE="${SAMPLE_SIZE:-20}"
-# How far back to look for organic /order/events traffic (minutes).
+# How far back to look for organic traffic (minutes) - shared by BOTH
+# passive harvesters (/order/events and, since checkout-forms may now have
+# real buyer traffic too, /order/checkout-forms/{id}).
 EVENTS_LOOKBACK_MINUTES="${EVENTS_LOOKBACK_MINUTES:-120}"
 # Comma-separated externalOrderId values already mapped to CONNECTION_ID.
 # Leave empty to skip the checkout-forms half.
@@ -300,7 +304,7 @@ print(';'.join(found))
   return 0
 }
 
-probe_checkout_forms() {
+probe_checkout_forms_active() {
   log "--- GET /order/checkout-forms/{id} (active, sequential, N=$SAMPLE_SIZE) ---"
 
   if [ -z "$ORDER_EXTERNAL_IDS" ]; then
@@ -402,6 +406,82 @@ raw = '$joined'
 samples = [int(x) for x in raw.split(',') if x]
 print(json.dumps({'checkout_forms': samples, 'skipped': False}))
 "
+}
+
+# ---------------------------------------------------------------------------
+# GET /order/checkout-forms/{id} - passive harvest, mirroring
+# probe_order_events exactly. This exists because there is no reason to
+# risk the active path's side effect (see the SAFETY GATE above) when a real
+# buyer has already generated organic traffic for this endpoint - e.g. via
+# sandbox purchases on the Allegro seller account this connection uses.
+# Zero added load, same as probe_order_events.
+# ---------------------------------------------------------------------------
+probe_checkout_forms_passive() {
+  log "--- GET /order/checkout-forms/{id} (passive harvest, last ${EVENTS_LOOKBACK_MINUTES}m) ---"
+  local log_file
+  log_file="$(mktemp)"
+  docker logs "$WORKER_CONTAINER" --since "${EVENTS_LOOKBACK_MINUTES}m" >"$log_file" 2>&1 || true
+
+  python3 - "$CONNECTION_ID" "checkout_forms" "$SAMPLE_SIZE" "$log_file" <<'PY'
+import re, sys, json
+
+connection_id = sys.argv[1]
+label = sys.argv[2]
+cap = int(sys.argv[3])
+log_path = sys.argv[4]
+with open(log_path, errors='replace') as f:
+    text = f.read()
+
+# Same trace-id correlation as probe_order_events: the request line carries
+# "(connection: <id>)", the response line does not.
+req_re = re.compile(
+    r'\[([0-9a-f-]{36})\]\s+GET\s+/order/checkout-forms/[0-9a-f-]{36}\s+\(connection:\s*([0-9a-f-]{36})\)'
+)
+resp_re = re.compile(
+    r'\[([0-9a-f-]{36})\]\s+Response:\s+(\d+)\s+\((\d+)ms\)\s+-\s+GET\s+/order/checkout-forms/'
+)
+
+trace_to_conn = {}
+for m in req_re.finditer(text):
+    trace_to_conn[m.group(1)] = m.group(2)
+
+samples = []
+for m in resp_re.finditer(text):
+    trace, status, ms = m.group(1), m.group(2), int(m.group(3))
+    if trace_to_conn.get(trace) != connection_id:
+        continue
+    if status != '200':
+        continue  # a fast error is not a fast success - count separately
+    samples.append(ms)
+
+samples = samples[-cap:] if len(samples) > cap else samples
+print(json.dumps({label: samples}))
+PY
+  rm -f "$log_file"
+}
+
+# ---------------------------------------------------------------------------
+# Dispatcher: prefer the passive harvest (zero added load) whenever it finds
+# ANY organic traffic at all; only fall back to the active, side-effecting
+# path (and only then subject to the safety gate) when there is nothing to
+# harvest. This is what actually produced this endpoint's measured figure in
+# #2861's results report once real sandbox purchases gave it organic
+# traffic - the active path below is the fallback for a stand with no such
+# traffic, not the preferred route.
+# ---------------------------------------------------------------------------
+probe_checkout_forms() {
+  local passive_json passive_count
+  passive_json="$(probe_checkout_forms_passive)"
+  passive_count="$(printf '%s' "$passive_json" | python3 -c 'import sys,json; print(len(json.load(sys.stdin).get("checkout_forms") or []))')"
+
+  if [ "$passive_count" -gt 0 ]; then
+    log "checkout-forms: $passive_count sample(s) harvested passively - skipping the active probe entirely"
+    printf '%s' "$passive_json"
+    return 0
+  fi
+
+  log "checkout-forms: no organic traffic found in the last ${EVENTS_LOOKBACK_MINUTES}m - falling back to the active probe"
+  probe_checkout_forms_active
 }
 
 main() {
