@@ -72,10 +72,10 @@ describe('AnalyticsSettingsController', () => {
   });
 
   describe('role gating', () => {
-    it('get carries no @Roles metadata — open to any authenticated user', () => {
+    it('get carries @Roles(admin, operator, viewer) — excludes packer from commercial analytics (#2413)', () => {
       const proto = AnalyticsSettingsController.prototype as unknown as Record<string, object>;
       const roles = Reflect.getMetadata(ROLES_KEY, proto.get) as string[] | undefined;
-      expect(roles).toBeUndefined();
+      expect(roles).toEqual(['admin', 'operator', 'viewer']);
     });
 
     it('update carries @Roles(admin)', () => {

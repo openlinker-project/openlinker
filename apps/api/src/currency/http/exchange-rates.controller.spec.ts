@@ -122,11 +122,11 @@ describe('ExchangeRatesController', () => {
     expect(lookup.findRate).toHaveBeenCalledTimes(1);
   });
 
-  it('should carry no @Roles(...) — reachable by any authenticated user', () => {
+  it('should carry @Roles(admin, operator, viewer) — excludes packer from the currency-rate audit trail (#2413)', () => {
     const roles = Reflect.getMetadata(
       ROLES_KEY,
       ExchangeRatesController.prototype.getRate
     ) as string[] | undefined;
-    expect(roles).toBeUndefined();
+    expect(roles).toEqual(['admin', 'operator', 'viewer']);
   });
 });

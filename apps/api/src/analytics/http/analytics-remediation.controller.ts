@@ -27,7 +27,8 @@
  * criterion, and it is also why the ledger row exists.
  *
  * A SIBLING CONTROLLER, NOT A METHOD ON `AnalyticsCoverageController`. That one
- * is a pure aggregate read with no `@Roles`; this one writes, needs `admin`, and
+ * is a pure aggregate read carrying `@Roles('admin', 'operator', 'viewer')`;
+ * this one writes, needs `admin`, and
  * composes three tokens the read has no use for. The task issue permits either;
  * keeping the write surface separate is the same split
  * `AnalyticsSettingsController` already draws between its open `GET` and its

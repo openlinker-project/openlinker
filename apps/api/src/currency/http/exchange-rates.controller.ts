@@ -15,10 +15,12 @@
  *    never `ICurrencyRateService.getRateFor`, whose get-or-create semantics
  *    would let an HTTP caller mint registry rows and spend the deployment's
  *    provider budget.
- *  - **Not `@Roles('admin')`.** Unlike `/currency-settings` (which writes a
- *    deployment-wide setting), this is the evidence behind a figure any
- *    operator can already see on `/analytics`. Gated by the global
- *    `JwtAuthGuard` only.
+ *  - **Not `@Roles('admin')`-only.** Unlike `/currency-settings` (which writes
+ *    a deployment-wide setting), this is the evidence behind a figure any
+ *    operator can already see on `/analytics`, so it carries
+ *    `@Roles('admin', 'operator', 'viewer')` — the same audience as
+ *    `SalesAnalyticsController`, and deliberately not `@AnyRole()`: this is
+ *    commercial data the #2413 route review excludes the `packer` role from.
  *
  * The 422 body is REWRAPPED, never `ReportingCurrencyUnsupportedError.message`
  * verbatim: that message is worded for `/currency-settings` ("Reporting

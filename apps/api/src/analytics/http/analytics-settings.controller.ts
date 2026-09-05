@@ -8,10 +8,12 @@
  *
  * Endpoints:
  *
- *   GET /analytics/settings — open to any authenticated user (no `@Roles`):
- *                             every operator viewing the dashboard needs to
- *                             read the display preference in effect, not
- *                             just admins.
+ *   GET /analytics/settings — `@Roles('admin', 'operator', 'viewer')`, not
+ *                             `@AnyRole()`: every operator viewing the
+ *                             dashboard needs to read the display preference
+ *                             in effect, not just admins, but this is still
+ *                             commercial analytics the #2413 route review
+ *                             excludes `packer` from.
  *   PUT /analytics/settings — `@Roles('admin')`, mirroring
  *                             `AiProviderSettingsController` /
  *                             `CurrencySettingsController`: changing a

@@ -12,10 +12,11 @@
  * their `parseRange` guard (`to` must be after `from`, bounded to
  * `MAX_COVERAGE_RANGE_DAYS`) — duplicated rather than shared for the same
  * reason those two duplicate it from each other (three lines of
- * DTO-adjacent guard isn't worth a shared helper module). No `@Roles`
- * guard, for the same reason those two have none — a read of the same
- * shape `GET /analytics/coverage` already samples for every authenticated
- * user.
+ * DTO-adjacent guard isn't worth a shared helper module). Carries
+ * `@Roles('admin', 'operator', 'viewer')`, the same audience as
+ * `GET /analytics/coverage` and every other analytics read on this
+ * controller family — commercial data, so `@AnyRole()` would wrongly admit
+ * the #2413 `packer` role.
  *
  * @module apps/api/src/analytics/http
  */
