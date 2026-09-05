@@ -77,6 +77,7 @@ import {
 } from '../lib/display-currency.lib';
 import { AnalyticsInfotip } from './analytics-infotip';
 import { resolveEarliestOrderDate } from '../lib/ingestion-trust.lib';
+import { DEFAULT_MONEY_BASIS, type MoneyBasis } from '../lib/money-basis.lib';
 import {
   averageDailyOrders,
   cancellationRate,
@@ -146,6 +147,16 @@ interface AnalyticsKpiStripProps {
   coverage?: AnalyticsCoverage;
   /** Opens the matching Data Coverage detail modal — omit to keep every `GapMark` inert. */
   onOpenCategory?: (category: CoverageCategory) => void;
+  /**
+   * Page-level Net/Gross view preference (#2895) — defaults to `net`, which
+   * reproduces every figure exactly as this component rendered before the
+   * toggle existed (see `lib/money-basis.lib.ts`'s own doc comment for why
+   * that is the byte-identical default, not `gross`). `gross` swaps the
+   * Revenue card's primary/qualifier pair and the Order value card's
+   * figures to their VAT-inclusive counterparts — Units/Orders/Cancellation
+   * rate never change, since they carry no basis at all.
+   */
+  basis?: MoneyBasis;
 }
 
 /** Tax categories partition the exclusion set (`TaxCoverageDetectionService`'s classification pass) — the one with the largest `affectedCount` is the category actually causing `netExcludedCount`. Falls back to `'tax-a'` (the remediable one) if all three read zero, which should not happen while `netExcludedVisible` is true. */
@@ -166,6 +177,7 @@ export function AnalyticsKpiStrip({
   filters,
   coverage,
   onOpenCategory,
+  basis = DEFAULT_MONEY_BASIS,
 }: AnalyticsKpiStripProps): ReactElement {
   const query = useSalesAnalyticsQuery(filters);
 
@@ -353,13 +365,71 @@ export function AnalyticsKpiStrip({
   // would not be a real number, so this refuses independently of coverage.
   const orderValueCurrenciesMatch =
     headline.currency !== null && headline.currency === previousHeadline?.currency;
+  const averageOrderValueForBasis =
+    basis === 'gross' ? headline.averageOrderValue : headline.netAverageOrderValue;
+  const previousAverageOrderValueForBasis =
+    basis === 'gross' ? previousHeadline?.averageOrderValue : previousHeadline?.netAverageOrderValue;
   const orderValueDelta = orderValueCurrenciesMatch
-    ? buildDelta(headline.netAverageOrderValue, previousHeadline?.netAverageOrderValue, 'higher-is-better')
+    ? buildDelta(averageOrderValueForBasis, previousAverageOrderValueForBasis, 'higher-is-better')
     : null;
   const orderValueDeltaGapReason =
     !orderValueCurrenciesMatch && previousHeadline
       ? 'The two periods are not stamped in the same reporting currency — a percentage between them would not be a real number.'
       : deltaGapReason;
+
+  // Revenue card primary/qualifier pair (#2895): under `net` (default) this
+  // is byte-for-byte the pre-toggle rendering — Net sales primary, GMV
+  // qualifier. Under `gross`, the two SWAP: GMV becomes the primary figure
+  // (reusing the exact conversion/rate-provenance node the qualifier slot
+  // already built) and Net sales moves to the qualifier slot. Both figures
+  // stay visible in both states — approach (a)-adjacent per the PR body's
+  // "one unified card" decision, never approach (b)'s hide-one collapse.
+  const netSalesLabelNode = netExcludedGapOpen ? (
+    <>
+      Net sales <GapMark title={netExcludedGapTitle ?? netExcludedNote} onActivate={onOpenNetExcludedGap} />
+    </>
+  ) : (
+    'Net sales'
+  );
+  const netSalesValueNode = currencyRecalculating ? (
+    <RecalculatingValue />
+  ) : (
+    formatAmount(convertToDisplay(headline.netRevenue), currency)
+  );
+  const gmvLabelNode = stampedGapVisible ? (
+    <>
+      GMV <GapMark title={currencyGapTitle} onActivate={onOpenCurrencyGap} />
+    </>
+  ) : (
+    'GMV'
+  );
+  const gmvValueNode = currencyRecalculating ? (
+    <RecalculatingValue />
+  ) : (
+    <>
+      {formatAmount(gmvValue, gmvCurrency)}
+      {gmvProvenanceDefinitions.length > 0 ? (
+        <span className="kpi-card__qualifier-rate">
+          {gmvInlineRate ? formatAppliedRateLine(gmvInlineRate, rateFormat) : "today's rate(s)"}
+          <AnalyticsInfotip
+            ariaLabel="About this conversion"
+            definitions={gmvProvenanceDefinitions}
+            align="end"
+          />
+        </span>
+      ) : null}
+    </>
+  );
+  const revenuePrimaryLabel = basis === 'gross' ? gmvLabelNode : netSalesLabelNode;
+  const revenuePrimaryValue = basis === 'gross' ? gmvValueNode : netSalesValueNode;
+  const revenueQualifierLabel = basis === 'gross' ? netSalesLabelNode : gmvLabelNode;
+  const revenueQualifierValue = basis === 'gross' ? netSalesValueNode : gmvValueNode;
+
+  // Order value card figures (#2895): `net` (default) is byte-for-byte the
+  // pre-toggle rendering (netAverageOrderValue / netMedianOrderValue);
+  // `gross` swaps in the VAT-inclusive fields the backend already computes.
+  const orderValuePrimaryValue = basis === 'gross' ? headline.averageOrderValue : headline.netAverageOrderValue;
+  const orderValueQualifierValue = basis === 'gross' ? headline.medianOrderValue : headline.netMedianOrderValue;
 
   return (
     <section className="status-strip status-strip--analytics" aria-label="Key sales figures">
@@ -381,48 +451,24 @@ export function AnalyticsKpiStrip({
               : 'Cancelled orders and cancelled items are excluded. Returned/refunded items remain included.',
           },
         ]}
-        metric={
-          netExcludedGapOpen ? (
-            <>
-              Net sales <GapMark title={netExcludedGapTitle ?? netExcludedNote} onActivate={onOpenNetExcludedGap} />
-            </>
-          ) : (
-            'Net sales'
-          )
-        }
+        metric={revenuePrimaryLabel}
         headlineUnavailable={currencyRecalculating}
-        value={currencyRecalculating ? <RecalculatingValue /> : formatAmount(convertToDisplay(headline.netRevenue), currency)}
+        value={revenuePrimaryValue}
         trend={{
           values: revenueTrend,
           tone: trendTone(revenueTrend),
+          // Always "GMV trend" regardless of basis: `revenueTrend` plots
+          // `DailyTrendPoint.revenue`, the raw (gross) daily series — there
+          // is no net-revenue trend anywhere in the backend response, so
+          // the label must never claim to track whichever figure is
+          // currently primary (#2895 review — the default-byte-identical
+          // requirement caught this the first time it was written wrong).
           ariaLabel: `GMV trend, ${trendRangeLabel}`,
         }}
         qualifiers={[
           {
-            label: stampedGapVisible ? (
-              <>
-                GMV <GapMark title={currencyGapTitle} onActivate={onOpenCurrencyGap} />
-              </>
-            ) : (
-              'GMV'
-            ),
-            value: currencyRecalculating ? (
-              <RecalculatingValue />
-            ) : (
-              <>
-                {formatAmount(gmvValue, gmvCurrency)}
-                {gmvProvenanceDefinitions.length > 0 ? (
-                  <span className="kpi-card__qualifier-rate">
-                    {gmvInlineRate ? formatAppliedRateLine(gmvInlineRate, rateFormat) : "today's rate(s)"}
-                    <AnalyticsInfotip
-                      ariaLabel="About this conversion"
-                      definitions={gmvProvenanceDefinitions}
-                      align="end"
-                    />
-                  </span>
-                ) : null}
-              </>
-            ),
+            label: revenueQualifierLabel,
+            value: revenueQualifierValue,
           },
         ]}
       />
@@ -476,11 +522,11 @@ export function AnalyticsKpiStrip({
           )
         }
         headlineUnavailable={currencyRecalculating}
-        value={currencyRecalculating ? <RecalculatingValue /> : formatAmount(convertToDisplay(headline.netAverageOrderValue), currency)}
+        value={currencyRecalculating ? <RecalculatingValue /> : formatAmount(convertToDisplay(orderValuePrimaryValue), currency)}
         qualifiers={[
           {
             label: 'Median',
-            value: currencyRecalculating ? <RecalculatingValue /> : formatAmount(convertToDisplay(headline.netMedianOrderValue), currency),
+            value: currencyRecalculating ? <RecalculatingValue /> : formatAmount(convertToDisplay(orderValueQualifierValue), currency),
           },
         ]}
         delta={orderValueDelta}

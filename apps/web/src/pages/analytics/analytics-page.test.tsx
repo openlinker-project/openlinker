@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
@@ -351,5 +351,96 @@ describe('AnalyticsPage', () => {
     await user.click(screen.getByRole('radio', { name: '7d' }));
 
     expect(await screen.findByRole('combobox', { name: 'Display currency' })).toHaveValue('EUR');
+  });
+
+  it('should render the Net/Gross toggle at the same tier as the date range and currency picker, defaulting to Net (#2895)', async () => {
+    const apiClient = createMockApiClient({
+      analyticsTrust: { getTrust: vi.fn().mockResolvedValue(healthySnapshot()) },
+      analytics: {
+        getSales: vi.fn().mockResolvedValue({
+          headline: {
+            revenue: 4800,
+            currency: 'PLN',
+            orderCount: 40,
+            averageOrderValue: 120,
+            medianOrderValue: 100,
+            unitsSold: 60,
+            cancelledCount: 2,
+            cancelledValue: 200,
+            unconvertedCount: 0,
+            unconvertedValue: 0,
+            unconvertedCurrency: null,
+            netRevenue: 4300,
+            netAverageOrderValue: 107.5,
+            netMedianOrderValue: 90,
+            netExcludedCount: 0,
+            netExcludedValue: 0,
+            trend: [],
+          },
+          channels: [],
+        }),
+      },
+    });
+
+    renderWithProviders(<AnalyticsPage />, { apiClient, route: ROUTE });
+
+    expect(await screen.findByRole('radiogroup', { name: 'Money basis' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Net' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('radio', { name: 'Gross' })).toHaveAttribute('aria-checked', 'false');
+    // Byte-identical default rendering — see money-basis.lib.ts's own doc
+    // comment for why `net` (not `gross`) is the default. Scoped to the KPI
+    // strip region since "Net sales" also appears as the by-channel table's
+    // column header.
+    const kpiStrip = await screen.findByRole('region', { name: 'Key sales figures' });
+    expect(within(kpiStrip).getByText('Net sales')).toBeInTheDocument();
+    expect(within(kpiStrip).getByText('PLN 4,300.00')).toBeInTheDocument();
+  });
+
+  it('should update the URL and recompute figures on gross when the Gross option is clicked (#2895)', async () => {
+    const user = userEvent.setup();
+    const apiClient = createMockApiClient({
+      analyticsTrust: { getTrust: vi.fn().mockResolvedValue(healthySnapshot()) },
+      analytics: {
+        getSales: vi.fn().mockResolvedValue({
+          headline: {
+            revenue: 4800,
+            currency: 'PLN',
+            orderCount: 40,
+            averageOrderValue: 120,
+            medianOrderValue: 100,
+            unitsSold: 60,
+            cancelledCount: 2,
+            cancelledValue: 200,
+            unconvertedCount: 0,
+            unconvertedValue: 0,
+            unconvertedCurrency: null,
+            netRevenue: 4300,
+            netAverageOrderValue: 107.5,
+            netMedianOrderValue: 90,
+            netExcludedCount: 0,
+            netExcludedValue: 0,
+            trend: [],
+          },
+          channels: [],
+        }),
+      },
+    });
+
+    renderWithProviders(<AnalyticsPage />, { apiClient, route: ROUTE });
+
+    const kpiStrip = await screen.findByRole('region', { name: 'Key sales figures' });
+    await within(kpiStrip).findByText('Net sales');
+    await user.click(screen.getByRole('radio', { name: 'Gross' }));
+
+    // The toggle persists to the URL as `basis=gross` and the primary
+    // Revenue figure recomputes to the gross field (4800), never the net
+    // one it showed a moment ago.
+    expect(await screen.findByRole('radio', { name: 'Gross' })).toHaveAttribute('aria-checked', 'true');
+    expect(await within(kpiStrip).findByText('GMV')).toBeInTheDocument();
+    // The Order value card's AOV switches from netAverageOrderValue (107.5)
+    // to the gross averageOrderValue (120) — a figure only visible once
+    // gross basis is genuinely applied end to end from the URL param.
+    expect(within(kpiStrip).getByText('PLN 120.00')).toBeInTheDocument();
+    expect(within(kpiStrip).queryByText('PLN 107.50')).not.toBeInTheDocument();
   });
 });

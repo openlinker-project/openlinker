@@ -474,6 +474,33 @@ describe('ProductSalesTable', () => {
     ).toBeInTheDocument();
   });
 
+  it('renders the net revenue field under a "Net sales" header when basis is omitted (default, #2895)', async () => {
+    const apiClient = createMockApiClient({
+      analytics: { getTopProducts: vi.fn().mockResolvedValue(result([row()])) },
+      connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
+    });
+
+    renderWithProviders(<ProductSalesTable filters={FILTERS} />, { apiClient });
+
+    expect(await screen.findByRole('columnheader', { name: 'Net sales ↓' })).toBeInTheDocument();
+    // row() carries netRevenue: 100, revenue: 110 — net must render.
+    expect(screen.getByText('PLN 100.00')).toBeInTheDocument();
+    expect(screen.queryByText('PLN 110.00')).not.toBeInTheDocument();
+  });
+
+  it('switches to the gross revenue field under a "GMV" header when basis="gross" (#2895)', async () => {
+    const apiClient = createMockApiClient({
+      analytics: { getTopProducts: vi.fn().mockResolvedValue(result([row()])) },
+      connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
+    });
+
+    renderWithProviders(<ProductSalesTable filters={FILTERS} basis="gross" />, { apiClient });
+
+    expect(await screen.findByRole('columnheader', { name: 'GMV ↓' })).toBeInTheDocument();
+    expect(screen.getByText('PLN 110.00')).toBeInTheDocument();
+    expect(screen.queryByText('PLN 100.00')).not.toBeInTheDocument();
+  });
+
   it('never renders "Not listed" when coverageGapAvailable is false, even for a flagged-missing channel (#2172 review, IMPORTANT 1)', async () => {
     const apiClient = createMockApiClient({
       analytics: {

@@ -119,6 +119,7 @@ import type { SalesAnalyticsFilters } from '../api/sales-analytics.types';
 import type { AnalyticsCoverage, AnalyticsCoverageFilters, CoverageCategory } from '../api/analytics-coverage.types';
 import type { TopProductRow, TopProductsSortBy } from '../api/top-products.types';
 import { channelCellFor, deriveChannelColumns, isMissingFrom } from '../lib/top-products-view-model';
+import { DEFAULT_MONEY_BASIS, revenueLabelForBasis, type MoneyBasis } from '../lib/money-basis.lib';
 import {
   createReportingCurrencyConverter,
   isCurrencyRecalculating,
@@ -161,22 +162,24 @@ const DEFAULT_LIMIT = 20;
 function renderNovCell(
   row: TopProductRow,
   currencyRecalculating: boolean,
-  reportingConverter: ReportingCurrencyConverter
+  reportingConverter: ReportingCurrencyConverter,
+  basis: MoneyBasis
 ): ReactElement {
   if (currencyRecalculating) {
     return <RecalculatingValue />;
   }
   if (row.currency) {
+    const value = basis === 'gross' ? row.revenue : row.netRevenue;
     return (
       <>
         {formatAmount(
-          reportingConverter.convertToDisplay(row.netRevenue, row.currency),
+          reportingConverter.convertToDisplay(value, row.currency),
           reportingConverter.displayCurrencyFor(row.currency)
         )}
       </>
     );
   }
-  return <EmptyValue label="No Net sales figure for this product in range" />;
+  return <EmptyValue label={`No ${revenueLabelForBasis(basis)} figure for this product in range`} />;
 }
 
 const SORT_OPTIONS = [
@@ -192,6 +195,13 @@ interface ProductSalesTableProps {
   coverageFilters?: AnalyticsCoverageFilters;
   /** Opens the matching Data Coverage detail modal — omit to keep every row's notes absent. */
   onOpenCategory?: (category: CoverageCategory) => void;
+  /**
+   * Page-level Net/Gross view preference (#2895) — defaults to `net`, the
+   * pre-toggle rendering (`row.netRevenue`, labeled "Net sales"). `gross`
+   * swaps in `row.revenue` and relabels the header to "GMV" — see
+   * `lib/money-basis.lib.ts`.
+   */
+  basis?: MoneyBasis;
 }
 
 function ProductExclusionNotes({
@@ -354,6 +364,7 @@ export function ProductSalesTable({
   coverage,
   coverageFilters,
   onOpenCategory,
+  basis = DEFAULT_MONEY_BASIS,
 }: ProductSalesTableProps): ReactElement {
   const currencyRecalculating = isCurrencyRecalculating(coverage);
   const [sortBy, setSortBy] = useState<TopProductsSortBy>('revenue');
@@ -465,9 +476,9 @@ export function ProductSalesTable({
     },
     {
       id: 'revenue',
-      header: sortBy === 'revenue' ? 'Net sales ↓' : 'Net sales',
+      header: sortBy === 'revenue' ? `${revenueLabelForBasis(basis)} ↓` : revenueLabelForBasis(basis),
       align: 'right',
-      cell: (row) => renderNovCell(row, currencyRecalculating, reportingConverter),
+      cell: (row) => renderNovCell(row, currencyRecalculating, reportingConverter, basis),
     },
     {
       id: 'units',
@@ -534,7 +545,7 @@ export function ProductSalesTable({
           subtitle: (row) => row.sku ?? undefined,
           summary: (row) => (
             <>
-              {renderNovCell(row, currencyRecalculating, reportingConverter)}
+              {renderNovCell(row, currencyRecalculating, reportingConverter, basis)}
               {' · '}
               {intFormat.format(row.units)} units
             </>

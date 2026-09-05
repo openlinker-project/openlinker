@@ -101,6 +101,59 @@ describe('AnalyticsKpiStrip', () => {
     expect(screen.getByText('PLN 200.00')).toBeInTheDocument();
   });
 
+  it('should render byte-identical net figures when basis is omitted (default)', async () => {
+    const apiClient = createMockApiClient({
+      analytics: { getSales: vi.fn().mockResolvedValue(analytics()) },
+    });
+
+    renderWithProviders(<AnalyticsKpiStrip filters={FILTERS} connections={[]} />, { apiClient });
+
+    // Same assertions as the "reporting currency" test above — this is the
+    // #2895 acceptance criterion: an absent `basis` prop must render exactly
+    // as it did before the toggle existed.
+    expect(await screen.findByText('Net sales')).toBeInTheDocument();
+    expect(screen.getByText('PLN 4,200.00')).toBeInTheDocument();
+    expect(screen.getByText('GMV')).toBeInTheDocument();
+    expect(screen.getByText('PLN 4,800.00')).toBeInTheDocument();
+    expect(screen.getByText('PLN 105.00')).toBeInTheDocument();
+    expect(screen.getByText('PLN 90.00')).toBeInTheDocument();
+  });
+
+  it('should render gross figures as primary and net as qualifier when basis="gross"', async () => {
+    const apiClient = createMockApiClient({
+      analytics: { getSales: vi.fn().mockResolvedValue(analytics()) },
+    });
+
+    renderWithProviders(<AnalyticsKpiStrip filters={FILTERS} connections={[]} basis="gross" />, {
+      apiClient,
+    });
+
+    // GMV (gross revenue) is now primary, Net sales the qualifier — both
+    // still visible, roles swapped.
+    expect(await screen.findByText('GMV')).toBeInTheDocument();
+    expect(screen.getByText('PLN 4,800.00')).toBeInTheDocument();
+    expect(screen.getByText('Net sales')).toBeInTheDocument();
+    expect(screen.getByText('PLN 4,200.00')).toBeInTheDocument();
+    // AOV/median switch to the gross fields (120 / 100), not the net ones.
+    expect(screen.getByText('PLN 120.00')).toBeInTheDocument();
+    expect(screen.getByText('PLN 100.00')).toBeInTheDocument();
+  });
+
+  it('should never change non-monetary figures (Units, Orders) when basis toggles', async () => {
+    const apiClient = createMockApiClient({
+      analytics: { getSales: vi.fn().mockResolvedValue(analytics()) },
+    });
+
+    renderWithProviders(<AnalyticsKpiStrip filters={FILTERS} connections={[]} basis="gross" />, {
+      apiClient,
+    });
+
+    expect(await screen.findByText('40')).toBeInTheDocument();
+    expect(screen.getByText('60')).toBeInTheDocument();
+    // Cancelled value has no net counterpart and stays on its one basis.
+    expect(screen.getByText('PLN 200.00')).toBeInTheDocument();
+  });
+
   it('should label the sparklines with the actual selected range, not a hardcoded "last 7 days"', async () => {
     const apiClient = createMockApiClient({
       analytics: {

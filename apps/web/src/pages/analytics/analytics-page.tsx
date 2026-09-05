@@ -23,18 +23,21 @@ import {
   AnalyticsDateRangeToolbar,
   AnalyticsDegradationBanner,
   AnalyticsKpiStrip,
+  AnalyticsMoneyBasisToggle,
   AnalyticsNeedsAttention,
   AnalyticsSettingsDialog,
   AnalyticsTrustHeader,
   ChannelSalesTable,
   ProductSalesTable,
   computePresetRange,
+  parseMoneyBasis,
   toExclusiveEndInstant,
   useAnalyticsCoverageQuery,
   useAnalyticsTrustQuery,
   useSalesAnalyticsQuery,
   type CoverageCategory,
   type DisplayCurrencyRateBasis,
+  type MoneyBasis,
   type SalesAnalyticsFilters,
 } from '../../features/analytics';
 import { Button, EmptyState, ErrorState, LoadingState, PageLayout } from '../../shared/ui';
@@ -106,6 +109,18 @@ export function AnalyticsPage(): ReactElement {
     setSearchParams(next);
   }
 
+  // Net/Gross page-level view preference (#2895) — URL state, matching the
+  // `displayCurrency`/`rateBasis` pattern above. `parseMoneyBasis` resolves
+  // an absent/unrecognized param to `net` — see `money-basis.lib.ts`'s own
+  // doc comment for why the default is `net`, not `gross`.
+  const basis: MoneyBasis = parseMoneyBasis(searchParams.get('basis'));
+
+  function handleBasisChange(nextBasis: MoneyBasis): void {
+    const next = new URLSearchParams(searchParams);
+    next.set('basis', nextBasis);
+    setSearchParams(next);
+  }
+
   // Built once per from/to/displayCurrency/rateBasis so `AnalyticsKpiStrip`,
   // `ChannelSalesTable` and `AnalyticsConvertNote` share a byte-identical
   // query key and therefore one network request — and so a channel-table
@@ -166,11 +181,14 @@ export function AnalyticsPage(): ReactElement {
         to={to}
         onApply={handleApply}
         trailing={
-          <AnalyticsCurrencyPicker
-            reportingCurrency={reportingCurrency}
-            displayCurrency={displayCurrency}
-            onChange={handleDisplayCurrencyChange}
-          />
+          <>
+            <AnalyticsMoneyBasisToggle basis={basis} onChange={handleBasisChange} />
+            <AnalyticsCurrencyPicker
+              reportingCurrency={reportingCurrency}
+              displayCurrency={displayCurrency}
+              onChange={handleDisplayCurrencyChange}
+            />
+          </>
         }
       />
       <AnalyticsConvertNote
@@ -221,18 +239,21 @@ export function AnalyticsPage(): ReactElement {
                 connections={trustQuery.data.connections}
                 coverage={coverageQuery.data}
                 onOpenCategory={setOpenCoverageCategory}
+                basis={basis}
               />
               <ChannelSalesTable
                 filters={salesFilters}
                 coverage={coverageQuery.data}
                 coverageFilters={coverageFilters}
                 onOpenCategory={setOpenCoverageCategory}
+                basis={basis}
               />
               <ProductSalesTable
                 filters={salesFilters}
                 coverage={coverageQuery.data}
                 coverageFilters={coverageFilters}
                 onOpenCategory={setOpenCoverageCategory}
+                basis={basis}
               />
             </>
           )}

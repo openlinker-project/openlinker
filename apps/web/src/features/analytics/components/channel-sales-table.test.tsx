@@ -120,6 +120,43 @@ describe('ChannelSalesTable', () => {
     expect(screen.queryByText('PLN 120.00')).not.toBeInTheDocument();
   });
 
+  it('should render net figures and a "Net sales" header when basis is omitted (default, #2895)', async () => {
+    const apiClient = createMockApiClient({
+      analytics: { getSales: vi.fn().mockResolvedValue(analytics([channel()])) },
+      connections: {
+        list: vi.fn().mockResolvedValue([
+          { id: 'conn-1', name: 'Allegro — main', platformType: 'allegro' },
+        ]),
+      },
+    });
+
+    renderWithProviders(<ChannelSalesTable filters={FILTERS} />, { apiClient });
+
+    expect(await screen.findByRole('columnheader', { name: 'Net sales' })).toBeInTheDocument();
+    expect(screen.getAllByText('PLN 2,700.00')).toHaveLength(2);
+  });
+
+  it('should switch to gross revenue/AOV and relabel the header "GMV" when basis="gross" (#2895)', async () => {
+    const apiClient = createMockApiClient({
+      analytics: { getSales: vi.fn().mockResolvedValue(analytics([channel()])) },
+      connections: {
+        list: vi.fn().mockResolvedValue([
+          { id: 'conn-1', name: 'Allegro — main', platformType: 'allegro' },
+        ]),
+      },
+    });
+
+    renderWithProviders(<ChannelSalesTable filters={FILTERS} basis="gross" />, { apiClient });
+
+    expect(await screen.findByRole('columnheader', { name: 'GMV' })).toBeInTheDocument();
+    // Gross revenue (3000), never net (2700) — appears on the channel row
+    // and its Total · PLN row.
+    expect(screen.getAllByText('PLN 3,000.00')).toHaveLength(2);
+    expect(screen.queryByText('PLN 2,700.00')).not.toBeInTheDocument();
+    // AOV switches to gross (120), never net (108).
+    expect(screen.getAllByText('PLN 120.00')).toHaveLength(2);
+  });
+
   it('should render a partial-history channel with a coverage flag', async () => {
     const apiClient = createMockApiClient({
       analytics: {

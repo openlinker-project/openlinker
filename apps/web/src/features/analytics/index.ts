@@ -18,8 +18,16 @@ export { toExclusiveEndInstant } from './api/sales-analytics.api';
 export { AnalyticsKpiStrip } from './components/analytics-kpi-strip';
 export { ChannelSalesTable } from './components/channel-sales-table';
 export { AnalyticsCurrencyPicker } from './components/analytics-currency-picker';
+export { AnalyticsMoneyBasisToggle } from './components/analytics-money-basis-toggle';
 export { AnalyticsConvertNote } from './components/analytics-convert-note';
 export { DISPLAY_CURRENCY_RATE_BASIS_VALUES } from './api/sales-analytics.types';
+export {
+  DEFAULT_MONEY_BASIS,
+  MoneyBasisValues,
+  parseMoneyBasis,
+  revenueLabelForBasis,
+} from './lib/money-basis.lib';
+export type { MoneyBasis } from './lib/money-basis.lib';
 export type {
   ChannelSalesAnalytics,
   DailyTrendPoint,

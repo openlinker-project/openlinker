@@ -89,6 +89,7 @@ import {
 } from '../lib/display-currency.lib';
 import type { ChannelSalesAnalytics, SalesAnalyticsFilters } from '../api/sales-analytics.types';
 import type { AnalyticsCoverage, AnalyticsCoverageFilters, CoverageCategory } from '../api/analytics-coverage.types';
+import { DEFAULT_MONEY_BASIS, revenueLabelForBasis, type MoneyBasis } from '../lib/money-basis.lib';
 import {
   countUnconvertedOrders,
   groupChannelTotalsByCurrency,
@@ -153,7 +154,7 @@ function ChannelFlags({ row }: { row: ChannelDataRow }): ReactElement | null {
       <Chip
         key="unconverted"
         tone="info"
-        title={`${row.channel.unconvertedCount} order(s) in this channel have no reporting-currency FX stamp yet and are excluded from Net sales/Orders/AOV here.`}
+        title={`${row.channel.unconvertedCount} order(s) in this channel have no reporting-currency FX stamp yet and are excluded from the figures above.`}
       >
         Awaiting FX stamp
       </Chip>
@@ -224,6 +225,13 @@ interface ChannelSalesTableProps {
   coverageFilters?: AnalyticsCoverageFilters;
   /** Opens the matching Data Coverage detail modal — omit to keep every row's notes absent. */
   onOpenCategory?: (category: CoverageCategory) => void;
+  /**
+   * Page-level Net/Gross view preference (#2895) — defaults to `net`, the
+   * pre-toggle rendering (`netRevenue`/`netAverageOrderValue`, labeled "Net
+   * sales"). `gross` swaps both money columns to `revenue`/`averageOrderValue`
+   * and relabels the header to "GMV" — see `lib/money-basis.lib.ts`.
+   */
+  basis?: MoneyBasis;
 }
 
 export function ChannelSalesTable({
@@ -231,6 +239,7 @@ export function ChannelSalesTable({
   coverage,
   coverageFilters,
   onOpenCategory,
+  basis = DEFAULT_MONEY_BASIS,
 }: ChannelSalesTableProps): ReactElement {
   const query = useSalesAnalyticsQuery(filters);
   const connectionsQuery = useConnectionsQuery();
@@ -326,20 +335,19 @@ export function ChannelSalesTable({
       return <RecalculatingValue />;
     }
     if (row.kind === 'total') {
+      const value = basis === 'gross' ? row.total.averageOrderValue : row.total.netAverageOrderValue;
       return (
         <>
-          {formatAmount(
-            convertToDisplay(row.total.netAverageOrderValue, row.total.currency),
-            displayCurrencyFor(row.total.currency)
-          )}
+          {formatAmount(convertToDisplay(value, row.total.currency), displayCurrencyFor(row.total.currency))}
         </>
       );
     }
     if (row.channel.currency !== null) {
+      const value = basis === 'gross' ? row.channel.averageOrderValue : row.channel.netAverageOrderValue;
       return (
         <>
           {formatAmount(
-            convertToDisplay(row.channel.netAverageOrderValue, row.channel.currency),
+            convertToDisplay(value, row.channel.currency),
             displayCurrencyFor(row.channel.currency)
           )}
         </>
@@ -362,26 +370,29 @@ export function ChannelSalesTable({
       );
     }
     if (row.kind === 'total') {
+      const value = basis === 'gross' ? row.total.revenue : row.total.netRevenue;
       return (
         <strong>
-          {formatAmount(
-            convertToDisplay(row.total.netRevenue, row.total.currency),
-            displayCurrencyFor(row.total.currency)
-          )}
+          {formatAmount(convertToDisplay(value, row.total.currency), displayCurrencyFor(row.total.currency))}
         </strong>
       );
     }
     if (row.channel.currency !== null) {
+      const value = basis === 'gross' ? row.channel.revenue : row.channel.netRevenue;
       return (
         <>
           {formatAmount(
-            convertToDisplay(row.channel.netRevenue, row.channel.currency),
+            convertToDisplay(value, row.channel.currency),
             displayCurrencyFor(row.channel.currency)
           )}
         </>
       );
     }
-    return <EmptyValue label="No Net sales figure can be given for this channel in range" />;
+    return (
+      <EmptyValue
+        label={`No ${revenueLabelForBasis(basis)} figure can be given for this channel in range`}
+      />
+    );
   }
 
   const columns: DataTableColumn<ChannelRow>[] = [
@@ -402,7 +413,7 @@ export function ChannelSalesTable({
     },
     {
       id: 'nov',
-      header: 'Net sales',
+      header: revenueLabelForBasis(basis),
       align: 'right',
       cell: renderNovCell,
     },

@@ -2,8 +2,8 @@
 
 **Status:** canonical source
 **Scope:** every figure rendered on the `/analytics` dashboard
-**Related:** [#2003](https://github.com/openlinker-project/openlinker/issues/2003) (Ledger mockup), [#1990](https://github.com/openlinker-project/openlinker/issues/1990) (KPI strip), [#1983](https://github.com/openlinker-project/openlinker/issues/1983) (aggregate computation)
-**Last updated:** 2026-08-14
+**Related:** [#2003](https://github.com/openlinker-project/openlinker/issues/2003) (Ledger mockup), [#1990](https://github.com/openlinker-project/openlinker/issues/1990) (KPI strip), [#1983](https://github.com/openlinker-project/openlinker/issues/1983) (aggregate computation), [#2895](https://github.com/openlinker-project/openlinker/issues/2895) (Net/Gross basis toggle)
+**Last updated:** 2026-09-04
 
 This file is the **single source of truth** for what each analytics figure means and how it is
 computed. The mockup at `docs/plans/mockups/analytics-ledger-2003.html` quotes these definitions in
@@ -26,6 +26,56 @@ name. The mapping is deliberate; neither side is a typo.
 | Units per order | Units per Order |
 
 Every other figure uses its metric name verbatim.
+
+---
+
+## The Net / Gross basis toggle (added 2026-09-04, #2895)
+
+`/analytics` carries a page-level **Net / Gross** toggle, rendered at the same visual tier as the
+date-range toolbar and the display-currency picker, persisted as the URL param `basis` (`net` or
+`gross`). It changes which of two already-defined bases a subset of figures render in — it does not
+redefine any metric above, and it never touches a figure that has no VAT-inclusive/exclusive
+counterpart.
+
+**Default is `net`, not `gross`.** By the time this toggle shipped, GMV, Net Sales, AOV, Median
+Order Value, and the by-channel/by-product revenue figures already rendered on the VAT-exclusive
+("net") basis by default — that is what "Net Sales", "AOV" and "Median Order Value" as defined
+above already mean. So the toggle's resting position reproduces the page exactly as it already
+rendered (an explicit acceptance criterion: the default must be byte-for-byte identical to the
+pre-toggle page), and `gross` is the newly-added alternative view.
+
+**What switches with the toggle:**
+
+- **GMV / Net Sales (Revenue card)** — both figures are already computed and already shown on the
+  same card (GMV as the gross qualifier, Net Sales as the primary figure). The toggle swaps which
+  one is primary and which is the qualifier; both numbers remain visible in both positions.
+- **Average Order Value (AOV)** and **Median Order Value** — switch between the VAT-inclusive
+  (`averageOrderValue` / `medianOrderValue`) and VAT-exclusive (`netAverageOrderValue` /
+  `netMedianOrderValue`) figures the backend already computes over the same eligible-order
+  population per basis (see § Average Order Value / § Median Order Value above).
+- **Per-channel revenue breakdown** (by-channel table) and **per-product revenue breakdown**
+  (top-products table) — the single money column in each table switches between the gross
+  (`revenue`) and net (`netRevenue`) fields, and its header relabels between "GMV" and "Net sales"
+  accordingly.
+
+**What does NOT switch, and why:**
+
+- **Units Sold, Number of Orders, Average Daily Orders, Cancellation Rate, Return Rate** — none of
+  these is a currency figure, so neither basis applies to it. They render identically regardless of
+  the toggle.
+- **Cancellations Value** — the KPI strip's Cancelled value figure has no VAT-exclusive
+  counterpart computed anywhere in the backend today (no `netCancelledValue` field exists), so it
+  stays on its one existing (gross) basis whichever way the toggle is set. Adding a net figure for
+  it is a backend aggregation change, out of scope for this toggle.
+- **Returns Value** — no return/refund entity exists in the orders domain yet (see § Returns Value
+  above); the card renders its existing "planned" placeholder regardless of basis.
+
+**Exclusion reporting is unchanged.** Net Sales / AOV / Median already exclude an order whose
+tax rate cannot be resolved and report that exclusion via `netExcludedCount`/`netExcludedValue`
+(see § Rules common to all metrics and the net-sales tax-rate epic, #2054/#2245). The toggle reuses
+that existing mechanism verbatim — there is no second, toggle-specific exclusion channel, and
+switching to Gross does not create a new exclusion (the gross figures were never subject to that
+tax-rate-resolution requirement in the first place).
 
 ---
 
