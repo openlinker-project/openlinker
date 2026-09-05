@@ -40,16 +40,19 @@
  * open-in-new-tab) for free, in the warning-toned pill from the reference
  * design.
  *
- * Money column terminology (net-sales tax-rate epic): the single money
- * column here renders `row.netRevenue` — the VAT-exclusive figure,
- * technically the spec's NOV until returns are also modeled, but labeled
- * "Net sales" per the reference design mockup and per the KPI strip's /
- * by-channel table's identical naming decision (the returns nuance lives in
- * a tooltip, not repeated as a header here). Unlike the by-channel table
- * (#1990), which renders GMV and Net sales as two separate columns, this
- * table shows only Net sales — a deliberate choice to keep the flagship
- * cross-channel view from doubling its money columns on top of the
- * per-channel unit columns it already has.
+ * Money column terminology (net-sales tax-rate epic, basis-wired by
+ * #2903): the single money column here renders `row.netRevenue` under the
+ * default `netGrossBasis="net"` — the VAT-exclusive figure, technically the
+ * spec's NOV until returns are also modeled, but labeled "Net sales" per the
+ * reference design mockup and per the KPI strip's / by-channel table's
+ * identical naming decision (the returns nuance lives in a tooltip, not
+ * repeated as a header here); `netGrossBasis="gross"` instead renders
+ * `row.revenue`, labeled "GMV". Unlike the by-channel table (#1990), which
+ * renders GMV and Net sales as two separate columns, this table still shows
+ * only ONE money column at a time — a deliberate choice to keep the
+ * flagship cross-channel view from doubling its money columns on top of the
+ * per-channel unit columns it already has; the basis toggle switches which
+ * figure that one column shows rather than adding a second one.
  *
  * Net sales cell fallback: `netRevenue` shares the same `isStamped`
  * precondition as gross revenue (net and gross must be comparable, same
@@ -116,9 +119,17 @@ import { useCoverageCrossReferenceQuery } from '../hooks/use-coverage-cross-refe
 import { ChannelPublishAction } from './channel-publish-action';
 import { VariantChannelMatrix } from './variant-channel-matrix';
 import type { SalesAnalyticsFilters } from '../api/sales-analytics.types';
-import type { AnalyticsCoverage, AnalyticsCoverageFilters, CoverageCategory } from '../api/analytics-coverage.types';
+import type {
+  AnalyticsCoverage,
+  AnalyticsCoverageFilters,
+  CoverageCategory,
+} from '../api/analytics-coverage.types';
 import type { TopProductRow, TopProductsSortBy } from '../api/top-products.types';
-import { channelCellFor, deriveChannelColumns, isMissingFrom } from '../lib/top-products-view-model';
+import {
+  channelCellFor,
+  deriveChannelColumns,
+  isMissingFrom,
+} from '../lib/top-products-view-model';
 import {
   createReportingCurrencyConverter,
   isCurrencyRecalculating,
@@ -132,6 +143,7 @@ import {
 } from '../lib/product-exclusion-map.lib';
 import { AnalyticsExclusionNote } from './analytics-exclusion-note';
 import { RecalculatingValue } from './recalculating-value';
+import type { NetGrossBasis } from '../api/analytics-settings.types';
 
 const DEFAULT_LIMIT = 20;
 
@@ -161,22 +173,25 @@ const DEFAULT_LIMIT = 20;
 function renderNovCell(
   row: TopProductRow,
   currencyRecalculating: boolean,
-  reportingConverter: ReportingCurrencyConverter
+  reportingConverter: ReportingCurrencyConverter,
+  netGrossBasis: NetGrossBasis
 ): ReactElement {
   if (currencyRecalculating) {
     return <RecalculatingValue />;
   }
+  const amount = netGrossBasis === 'net' ? row.netRevenue : row.revenue;
+  const label = netGrossBasis === 'net' ? 'Net sales' : 'GMV';
   if (row.currency) {
     return (
       <>
         {formatAmount(
-          reportingConverter.convertToDisplay(row.netRevenue, row.currency),
+          reportingConverter.convertToDisplay(amount, row.currency),
           reportingConverter.displayCurrencyFor(row.currency)
         )}
       </>
     );
   }
-  return <EmptyValue label="No Net sales figure for this product in range" />;
+  return <EmptyValue label={`No ${label} figure for this product in range`} />;
 }
 
 const SORT_OPTIONS = [
@@ -192,6 +207,15 @@ interface ProductSalesTableProps {
   coverageFilters?: AnalyticsCoverageFilters;
   /** Opens the matching Data Coverage detail modal — omit to keep every row's notes absent. */
   onOpenCategory?: (category: CoverageCategory) => void;
+  /**
+   * VAT basis for the money column (#2903 — wiring the #2895 toggle).
+   * `'net'` (the default) reproduces this table's pre-#2903 rendering
+   * exactly — `row.netRevenue`, labeled "Net sales" — the ONLY figure this
+   * table ever showed (a deliberate choice, see this file's own module doc
+   * comment, to keep the flagship cross-channel view from doubling its
+   * money column). `'gross'` reads `row.revenue` instead, labeled "GMV".
+   */
+  netGrossBasis?: NetGrossBasis;
 }
 
 function ProductExclusionNotes({
@@ -208,14 +232,16 @@ function ProductExclusionNotes({
   if (!byCategory || byCategory.size === 0) return null;
   return (
     <>
-      {CROSS_REFERENCEABLE_CATEGORIES.filter((category) => byCategory.has(category)).map((category) => (
-        <AnalyticsExclusionNote
-          key={category}
-          category={category}
-          affectedCount={byCategory.get(category) ?? 0}
-          onOpenCategory={onOpenCategory}
-        />
-      ))}
+      {CROSS_REFERENCEABLE_CATEGORIES.filter((category) => byCategory.has(category)).map(
+        (category) => (
+          <AnalyticsExclusionNote
+            key={category}
+            category={category}
+            affectedCount={byCategory.get(category) ?? 0}
+            onOpenCategory={onOpenCategory}
+          />
+        )
+      )}
     </>
   );
 }
@@ -354,6 +380,7 @@ export function ProductSalesTable({
   coverage,
   coverageFilters,
   onOpenCategory,
+  netGrossBasis = 'gross',
 }: ProductSalesTableProps): ReactElement {
   const currencyRecalculating = isCurrencyRecalculating(coverage);
   const [sortBy, setSortBy] = useState<TopProductsSortBy>('revenue');
@@ -380,7 +407,12 @@ export function ProductSalesTable({
   // `ChannelSalesTable`'s identical pattern and `useCoverageCrossReferenceQuery`'s
   // own doc comment on why the hook count must never vary across renders.
   const openCategoryCodes = useMemo(
-    () => new Set((coverage?.categories ?? []).filter((row) => row.affectedCount > 0).map((row) => row.category)),
+    () =>
+      new Set(
+        (coverage?.categories ?? [])
+          .filter((row) => row.affectedCount > 0)
+          .map((row) => row.category)
+      ),
     [coverage]
   );
   const crossRefFilters: AnalyticsCoverageFilters = coverageFilters ?? { from: '', to: '' };
@@ -415,9 +447,7 @@ export function ProductSalesTable({
   const items = query.data?.items ?? [];
   const productIds = items.map((item) => item.productId);
   const productQueries = useProductsBatchQuery(productIds, { enabled: productIds.length > 0 });
-  const productsById = new Map(
-    productIds.map((id, index) => [id, productQueries[index]?.data])
-  );
+  const productsById = new Map(productIds.map((id, index) => [id, productQueries[index]?.data]));
   const connectionsById = new Map((connectionsQuery.data ?? []).map((c: Connection) => [c.id, c]));
 
   if (query.isLoading) {
@@ -461,13 +491,17 @@ export function ProductSalesTable({
       id: 'sku',
       header: 'SKU',
       hideBelow: 768,
-      cell: (row) => (row.sku ? <span className="mono-text">{row.sku}</span> : <EmptyValue label="No SKU" />),
+      cell: (row) =>
+        row.sku ? <span className="mono-text">{row.sku}</span> : <EmptyValue label="No SKU" />,
     },
     {
       id: 'revenue',
-      header: sortBy === 'revenue' ? 'Net sales ↓' : 'Net sales',
+      header: (function revenueHeader(): string {
+        const label = netGrossBasis === 'net' ? 'Net sales' : 'GMV';
+        return sortBy === 'revenue' ? `${label} ↓` : label;
+      })(),
       align: 'right',
-      cell: (row) => renderNovCell(row, currencyRecalculating, reportingConverter),
+      cell: (row) => renderNovCell(row, currencyRecalculating, reportingConverter, netGrossBasis),
     },
     {
       id: 'units',
@@ -534,7 +568,7 @@ export function ProductSalesTable({
           subtitle: (row) => row.sku ?? undefined,
           summary: (row) => (
             <>
-              {renderNovCell(row, currencyRecalculating, reportingConverter)}
+              {renderNovCell(row, currencyRecalculating, reportingConverter, netGrossBasis)}
               {' · '}
               {intFormat.format(row.units)} units
             </>
@@ -556,8 +590,7 @@ export function ProductSalesTable({
       />
       {!coverageGapAvailable ? (
         <p className="data-table__footnote">
-          Listing-coverage check unavailable — channel columns show sales only, never "Not
-          listed".
+          Listing-coverage check unavailable — channel columns show sales only, never "Not listed".
         </p>
       ) : null}
       {unresolvedProductCount > 0 ? (

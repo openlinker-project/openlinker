@@ -12,10 +12,30 @@ const FILTERS = { from: '2026-08-01', to: '2026-08-14' };
 function coverage(overrides: Partial<Record<string, number>> = {}): AnalyticsCoverage {
   return {
     categories: [
-      { category: 'currency', status: 'open', affectedCount: overrides.currency ?? 0, sampleOrderIds: [] },
-      { category: 'tax-a', status: 'open', affectedCount: overrides['tax-a'] ?? 0, sampleOrderIds: [] },
-      { category: 'tax-b', status: 'open', affectedCount: overrides['tax-b'] ?? 0, sampleOrderIds: [] },
-      { category: 'tax-c', status: 'open', affectedCount: overrides['tax-c'] ?? 0, sampleOrderIds: [] },
+      {
+        category: 'currency',
+        status: 'open',
+        affectedCount: overrides.currency ?? 0,
+        sampleOrderIds: [],
+      },
+      {
+        category: 'tax-a',
+        status: 'open',
+        affectedCount: overrides['tax-a'] ?? 0,
+        sampleOrderIds: [],
+      },
+      {
+        category: 'tax-b',
+        status: 'open',
+        affectedCount: overrides['tax-b'] ?? 0,
+        sampleOrderIds: [],
+      },
+      {
+        category: 'tax-c',
+        status: 'open',
+        affectedCount: overrides['tax-c'] ?? 0,
+        sampleOrderIds: [],
+      },
       { category: 'product-matching', status: 'open', affectedCount: 0, sampleOrderIds: [] },
     ],
   };
@@ -37,7 +57,9 @@ function connectionWithEarliestOrder(earliestOrderDate: string | null): Connecti
   };
 }
 
-function analytics(overrides: Partial<SalesAndChannelAnalytics['headline']> = {}): SalesAndChannelAnalytics {
+function analytics(
+  overrides: Partial<SalesAndChannelAnalytics['headline']> = {}
+): SalesAndChannelAnalytics {
   return {
     headline: {
       revenue: 4800,
@@ -102,6 +124,37 @@ describe('AnalyticsKpiStrip', () => {
     expect(screen.getByText('PLN 100.00')).toBeInTheDocument();
     expect(screen.getByText('60')).toBeInTheDocument();
     expect(screen.getByText('PLN 200.00')).toBeInTheDocument();
+  });
+
+  it('should render the gross AOV/Median fields when netGrossBasis is omitted (#2903 gross-mode regression)', async () => {
+    // Byte-identical to the pre-#2895 rendering (#2894's own fix) — the
+    // omitted prop must default to 'gross', never silently switch basis.
+    const apiClient = createMockApiClient({
+      analytics: { getSales: vi.fn().mockResolvedValue(analytics()) },
+    });
+
+    renderWithProviders(<AnalyticsKpiStrip filters={FILTERS} connections={[]} />, { apiClient });
+
+    expect(await screen.findByText('PLN 120.00')).toBeInTheDocument(); // averageOrderValue
+    expect(screen.getByText('PLN 100.00')).toBeInTheDocument(); // medianOrderValue
+    expect(screen.queryByText('PLN 105.00')).not.toBeInTheDocument(); // netAverageOrderValue
+    expect(screen.queryByText('PLN 90.00')).not.toBeInTheDocument(); // netMedianOrderValue
+  });
+
+  it('should render the net AOV/Median fields when netGrossBasis="net" (#2903)', async () => {
+    const apiClient = createMockApiClient({
+      analytics: { getSales: vi.fn().mockResolvedValue(analytics()) },
+    });
+
+    renderWithProviders(
+      <AnalyticsKpiStrip filters={FILTERS} connections={[]} netGrossBasis="net" />,
+      { apiClient }
+    );
+
+    expect(await screen.findByText('PLN 105.00')).toBeInTheDocument(); // netAverageOrderValue
+    expect(screen.getByText('PLN 90.00')).toBeInTheDocument(); // netMedianOrderValue
+    expect(screen.queryByText('PLN 120.00')).not.toBeInTheDocument(); // averageOrderValue
+    expect(screen.queryByText('PLN 100.00')).not.toBeInTheDocument(); // medianOrderValue
   });
 
   it('should count unconverted-order units into Units sold and Units per order, matching the Orders card population', async () => {
@@ -320,7 +373,7 @@ describe('AnalyticsKpiStrip', () => {
       expect(onOpenCategory).toHaveBeenCalledWith('currency');
     });
 
-    it("picks the tax category with the LARGEST affectedCount for the Net Sales GapMark, never just tax-a", async () => {
+    it('picks the tax category with the LARGEST affectedCount for the Net Sales GapMark, never just tax-a', async () => {
       const user = userEvent.setup();
       const onOpenCategory = vi.fn();
       const apiClient = createMockApiClient({
@@ -542,7 +595,10 @@ describe('AnalyticsKpiStrip', () => {
     });
 
     renderWithProviders(
-      <AnalyticsKpiStrip filters={{ ...FILTERS, displayCurrency: 'EUR', rateBasis: 'order-date' }} connections={[]} />,
+      <AnalyticsKpiStrip
+        filters={{ ...FILTERS, displayCurrency: 'EUR', rateBasis: 'order-date' }}
+        connections={[]}
+      />,
       { apiClient }
     );
 
@@ -618,7 +674,13 @@ describe('AnalyticsKpiStrip', () => {
     });
     const inProgressCoverage: AnalyticsCoverage = {
       categories: [
-        { category: 'currency', status: 'in-progress', affectedCount: 40, sampleOrderIds: [], activeRunId: 'ol_remrun_1' },
+        {
+          category: 'currency',
+          status: 'in-progress',
+          affectedCount: 40,
+          sampleOrderIds: [],
+          activeRunId: 'ol_remrun_1',
+        },
         { category: 'tax-a', status: 'open', affectedCount: 0, sampleOrderIds: [] },
         { category: 'tax-b', status: 'open', affectedCount: 0, sampleOrderIds: [] },
         { category: 'tax-c', status: 'open', affectedCount: 0, sampleOrderIds: [] },

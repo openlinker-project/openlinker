@@ -17,10 +17,30 @@ const COVERAGE_FILTERS = { from: '2026-08-01T00:00:00.000Z', to: '2026-08-15T00:
 function coverage(overrides: Partial<Record<string, number>> = {}): AnalyticsCoverage {
   return {
     categories: [
-      { category: 'currency', status: 'open', affectedCount: overrides.currency ?? 0, sampleOrderIds: [] },
-      { category: 'tax-a', status: 'open', affectedCount: overrides['tax-a'] ?? 0, sampleOrderIds: [] },
-      { category: 'tax-b', status: 'open', affectedCount: overrides['tax-b'] ?? 0, sampleOrderIds: [] },
-      { category: 'tax-c', status: 'open', affectedCount: overrides['tax-c'] ?? 0, sampleOrderIds: [] },
+      {
+        category: 'currency',
+        status: 'open',
+        affectedCount: overrides.currency ?? 0,
+        sampleOrderIds: [],
+      },
+      {
+        category: 'tax-a',
+        status: 'open',
+        affectedCount: overrides['tax-a'] ?? 0,
+        sampleOrderIds: [],
+      },
+      {
+        category: 'tax-b',
+        status: 'open',
+        affectedCount: overrides['tax-b'] ?? 0,
+        sampleOrderIds: [],
+      },
+      {
+        category: 'tax-c',
+        status: 'open',
+        affectedCount: overrides['tax-c'] ?? 0,
+        sampleOrderIds: [],
+      },
       { category: 'product-matching', status: 'open', affectedCount: 0, sampleOrderIds: [] },
     ],
   };
@@ -102,7 +122,7 @@ describe('ProductSalesTable', () => {
       analytics: { getTopProducts: vi.fn(() => new Promise<TopProductsResult>(() => {})) },
     });
 
-    renderWithProviders(<ProductSalesTable filters={FILTERS} />, { apiClient });
+    renderWithProviders(<ProductSalesTable netGrossBasis="net" filters={FILTERS} />, { apiClient });
 
     expect(screen.getByText('Loading top products')).toBeInTheDocument();
   });
@@ -112,7 +132,7 @@ describe('ProductSalesTable', () => {
       analytics: { getTopProducts: vi.fn().mockRejectedValue(new Error('boom')) },
     });
 
-    renderWithProviders(<ProductSalesTable filters={FILTERS} />, { apiClient });
+    renderWithProviders(<ProductSalesTable netGrossBasis="net" filters={FILTERS} />, { apiClient });
 
     expect(await screen.findByText('Unable to load top products')).toBeInTheDocument();
   });
@@ -143,13 +163,48 @@ describe('ProductSalesTable', () => {
       connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
     });
 
-    renderWithProviders(<ProductSalesTable filters={FILTERS} />, { apiClient });
+    renderWithProviders(<ProductSalesTable netGrossBasis="net" filters={FILTERS} />, { apiClient });
 
     expect(await screen.findByText('Widget A')).toBeInTheDocument();
     // conn-a sold a real 0 — rendered as a tabular number (both the Units
     // total column and the conn-a channel column read 0), not "Not listed".
     expect(screen.getAllByText('0').length).toBeGreaterThan(0);
     expect(screen.queryByText('Not listed')).not.toBeInTheDocument();
+  });
+
+  it('renders GMV (row.revenue) instead of Net sales (row.netRevenue) when netGrossBasis="gross" (#2903)', async () => {
+    const apiClient = createMockApiClient({
+      analytics: {
+        getTopProducts: vi.fn().mockResolvedValue(result([row({ revenue: 110, netRevenue: 100 })])),
+      },
+      connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
+    });
+
+    renderWithProviders(<ProductSalesTable filters={FILTERS} netGrossBasis="gross" />, {
+      apiClient,
+    });
+
+    // Header renders "GMV ↓" (sortBy defaults to 'revenue') — match by prefix.
+    expect(await screen.findByText(/^GMV/)).toBeInTheDocument();
+    expect(screen.queryByText(/^Net sales/)).not.toBeInTheDocument();
+    expect(screen.getByText('PLN 110.00')).toBeInTheDocument();
+    expect(screen.queryByText('PLN 100.00')).not.toBeInTheDocument();
+  });
+
+  it('renders Net sales (row.netRevenue) by default (#2903 gross/net wiring)', async () => {
+    const apiClient = createMockApiClient({
+      analytics: {
+        getTopProducts: vi.fn().mockResolvedValue(result([row({ revenue: 110, netRevenue: 100 })])),
+      },
+      connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
+    });
+
+    renderWithProviders(<ProductSalesTable netGrossBasis="net" filters={FILTERS} />, { apiClient });
+
+    expect(await screen.findByText(/^Net sales/)).toBeInTheDocument();
+    expect(screen.queryByText(/^GMV/)).not.toBeInTheDocument();
+    expect(screen.getByText('PLN 100.00')).toBeInTheDocument();
+    expect(screen.queryByText('PLN 110.00')).not.toBeInTheDocument();
   });
 
   it('renders a real 0 for a channel a product has no entry for, when it is not flagged missing', async () => {
@@ -205,7 +260,7 @@ describe('ProductSalesTable', () => {
       connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
     });
 
-    renderWithProviders(<ProductSalesTable filters={FILTERS} />, {
+    renderWithProviders(<ProductSalesTable netGrossBasis="net" filters={FILTERS} />, {
       apiClient,
       sessionAdapter: createAuthenticatedSessionAdapter(),
     });
@@ -244,7 +299,7 @@ describe('ProductSalesTable', () => {
       connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
     });
 
-    renderWithProviders(<ProductSalesTable filters={FILTERS} />, {
+    renderWithProviders(<ProductSalesTable netGrossBasis="net" filters={FILTERS} />, {
       apiClient,
       sessionAdapter: createAuthenticatedSessionAdapter(),
     });
@@ -283,7 +338,7 @@ describe('ProductSalesTable', () => {
       connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
     });
 
-    renderWithProviders(<ProductSalesTable filters={FILTERS} />, {
+    renderWithProviders(<ProductSalesTable netGrossBasis="net" filters={FILTERS} />, {
       apiClient,
       sessionAdapter: createAuthenticatedSessionAdapter(viewerUser),
     });
@@ -320,7 +375,7 @@ describe('ProductSalesTable', () => {
       system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
     });
 
-    renderWithProviders(<ProductSalesTable filters={FILTERS} />, {
+    renderWithProviders(<ProductSalesTable netGrossBasis="net" filters={FILTERS} />, {
       apiClient,
       sessionAdapter: createAuthenticatedSessionAdapter(viewerUser),
     });
@@ -337,7 +392,7 @@ describe('ProductSalesTable', () => {
       connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
     });
 
-    renderWithProviders(<ProductSalesTable filters={FILTERS} />, { apiClient });
+    renderWithProviders(<ProductSalesTable netGrossBasis="net" filters={FILTERS} />, { apiClient });
     await screen.findByText('Widget A');
 
     expect(getTopProducts).toHaveBeenCalledWith(expect.objectContaining({ sortBy: 'revenue' }));
@@ -355,7 +410,7 @@ describe('ProductSalesTable', () => {
       connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
     });
 
-    renderWithProviders(<ProductSalesTable filters={FILTERS} />, { apiClient });
+    renderWithProviders(<ProductSalesTable netGrossBasis="net" filters={FILTERS} />, { apiClient });
 
     expect(await screen.findByLabelText('No SKU')).toBeInTheDocument();
   });
@@ -368,7 +423,7 @@ describe('ProductSalesTable', () => {
       connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
     });
 
-    renderWithProviders(<ProductSalesTable filters={FILTERS} />, { apiClient });
+    renderWithProviders(<ProductSalesTable netGrossBasis="net" filters={FILTERS} />, { apiClient });
     await screen.findByText('Widget A');
 
     // No row-level navigation link exists any more — the whole row is a
@@ -389,7 +444,7 @@ describe('ProductSalesTable', () => {
     expect(openProductLink).toHaveAttribute('href', '/products/p1');
     expect(screen.getByRole('link', { name: /Edit content/ })).toHaveAttribute(
       'href',
-      '/products/p1?view=content',
+      '/products/p1?view=content'
     );
 
     await userEvent.click(toggle);
@@ -439,7 +494,7 @@ describe('ProductSalesTable', () => {
       connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
     });
 
-    renderWithProviders(<ProductSalesTable filters={FILTERS} />, { apiClient });
+    renderWithProviders(<ProductSalesTable netGrossBasis="net" filters={FILTERS} />, { apiClient });
     await screen.findByText('Widget A');
 
     await userEvent.click(screen.getByRole('button', { name: 'Expand details for Widget A' }));
@@ -467,7 +522,7 @@ describe('ProductSalesTable', () => {
       connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
     });
 
-    renderWithProviders(<ProductSalesTable filters={FILTERS} />, { apiClient });
+    renderWithProviders(<ProductSalesTable netGrossBasis="net" filters={FILTERS} />, { apiClient });
 
     expect(
       await screen.findByLabelText('No Net sales figure for this product in range')
@@ -504,7 +559,7 @@ describe('ProductSalesTable', () => {
       connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
     });
 
-    renderWithProviders(<ProductSalesTable filters={FILTERS} />, {
+    renderWithProviders(<ProductSalesTable netGrossBasis="net" filters={FILTERS} />, {
       apiClient,
       sessionAdapter: createAuthenticatedSessionAdapter(),
     });
@@ -528,7 +583,7 @@ describe('ProductSalesTable', () => {
       connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
     });
 
-    renderWithProviders(<ProductSalesTable filters={FILTERS} />, { apiClient });
+    renderWithProviders(<ProductSalesTable netGrossBasis="net" filters={FILTERS} />, { apiClient });
 
     expect(
       await screen.findByText('1 product on this page could not be resolved to a catalogue entry.')
@@ -541,7 +596,7 @@ describe('ProductSalesTable', () => {
       connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
     });
 
-    renderWithProviders(<ProductSalesTable filters={FILTERS} />, { apiClient });
+    renderWithProviders(<ProductSalesTable netGrossBasis="net" filters={FILTERS} />, { apiClient });
 
     expect(await screen.findByLabelText('No orders in this range')).toBeInTheDocument();
   });
@@ -549,17 +604,26 @@ describe('ProductSalesTable', () => {
   it('shows "Recalculating…" for Net sales instead of a bare 0 while a currency remediation run is in progress', async () => {
     const apiClient = createMockApiClient({
       analytics: {
-        getTopProducts: vi.fn().mockResolvedValue(result([row({ productId: 'p1', netRevenue: 0 })])),
+        getTopProducts: vi
+          .fn()
+          .mockResolvedValue(result([row({ productId: 'p1', netRevenue: 0 })])),
       },
       connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
     });
 
     renderWithProviders(
       <ProductSalesTable
+        netGrossBasis="net"
         filters={FILTERS}
         coverage={{
           categories: [
-            { category: 'currency', status: 'in-progress', affectedCount: 25, sampleOrderIds: [], activeRunId: 'ol_remrun_1' },
+            {
+              category: 'currency',
+              status: 'in-progress',
+              affectedCount: 25,
+              sampleOrderIds: [],
+              activeRunId: 'ol_remrun_1',
+            },
             { category: 'tax-a', status: 'open', affectedCount: 0, sampleOrderIds: [] },
             { category: 'tax-b', status: 'open', affectedCount: 0, sampleOrderIds: [] },
             { category: 'tax-c', status: 'open', affectedCount: 0, sampleOrderIds: [] },
@@ -577,7 +641,9 @@ describe('ProductSalesTable', () => {
   it('converts Net sales using the real headline rate shared with AnalyticsKpiStrip/ChannelSalesTable (#2779 course correction)', async () => {
     const apiClient = createMockApiClient({
       analytics: {
-        getTopProducts: vi.fn().mockResolvedValue(result([row({ netRevenue: 100, currency: 'PLN' })])),
+        getTopProducts: vi
+          .fn()
+          .mockResolvedValue(result([row({ netRevenue: 100, currency: 'PLN' })])),
         getSales: vi.fn().mockResolvedValue({
           headline: {
             revenue: 1000,
@@ -624,7 +690,7 @@ describe('ProductSalesTable', () => {
     });
 
     renderWithProviders(
-      <ProductSalesTable filters={{ ...FILTERS, displayCurrency: 'EUR' }} />,
+      <ProductSalesTable netGrossBasis="net" filters={{ ...FILTERS, displayCurrency: 'EUR' }} />,
       { apiClient }
     );
 
@@ -646,9 +712,14 @@ describe('ProductSalesTable', () => {
     it("should attribute each product's exclusion note to its own category, never the other product's", async () => {
       const apiClient = createMockApiClient({
         analytics: {
-          getTopProducts: vi.fn().mockResolvedValue(
-            result([row({ productId: 'p1', name: 'Widget A' }), row({ productId: 'p2', name: 'Widget B' })])
-          ),
+          getTopProducts: vi
+            .fn()
+            .mockResolvedValue(
+              result([
+                row({ productId: 'p1', name: 'Widget A' }),
+                row({ productId: 'p2', name: 'Widget B' }),
+              ])
+            ),
           getCurrencyMismatchOrders: vi.fn().mockResolvedValue({
             items: [
               {
@@ -679,6 +750,7 @@ describe('ProductSalesTable', () => {
 
       renderWithProviders(
         <ProductSalesTable
+          netGrossBasis="net"
           filters={FILTERS}
           coverage={coverage({ currency: 1, 'tax-b': 1 })}
           coverageFilters={COVERAGE_FILTERS}
@@ -707,7 +779,9 @@ describe('ProductSalesTable', () => {
     it('should annotate a product for every cross-referenceable category it has an excluded order in', async () => {
       const apiClient = createMockApiClient({
         analytics: {
-          getTopProducts: vi.fn().mockResolvedValue(result([row({ productId: 'p1', name: 'Widget A' })])),
+          getTopProducts: vi
+            .fn()
+            .mockResolvedValue(result([row({ productId: 'p1', name: 'Widget A' })])),
           getCurrencyMismatchOrders: vi.fn().mockResolvedValue({
             items: [
               {
@@ -742,6 +816,7 @@ describe('ProductSalesTable', () => {
 
       renderWithProviders(
         <ProductSalesTable
+          netGrossBasis="net"
           filters={FILTERS}
           coverage={coverage({ currency: 1, 'tax-a': 1, 'tax-b': 1, 'tax-c': 1 })}
           coverageFilters={COVERAGE_FILTERS}
@@ -765,9 +840,14 @@ describe('ProductSalesTable', () => {
       // lines span p1 AND p2 — both rows must get the note.
       const apiClient = createMockApiClient({
         analytics: {
-          getTopProducts: vi.fn().mockResolvedValue(
-            result([row({ productId: 'p1', name: 'Widget A' }), row({ productId: 'p2', name: 'Widget B' })])
-          ),
+          getTopProducts: vi
+            .fn()
+            .mockResolvedValue(
+              result([
+                row({ productId: 'p1', name: 'Widget A' }),
+                row({ productId: 'p2', name: 'Widget B' }),
+              ])
+            ),
           getCurrencyMismatchOrders: vi.fn().mockResolvedValue({
             items: [
               {
@@ -790,6 +870,7 @@ describe('ProductSalesTable', () => {
 
       renderWithProviders(
         <ProductSalesTable
+          netGrossBasis="net"
           filters={FILTERS}
           coverage={coverage({ currency: 1 })}
           coverageFilters={COVERAGE_FILTERS}
@@ -808,13 +889,16 @@ describe('ProductSalesTable', () => {
     it('never annotates product-matching, which cannot resolve to any product', async () => {
       const apiClient = createMockApiClient({
         analytics: {
-          getTopProducts: vi.fn().mockResolvedValue(result([row({ productId: 'p1', name: 'Widget A' })])),
+          getTopProducts: vi
+            .fn()
+            .mockResolvedValue(result([row({ productId: 'p1', name: 'Widget A' })])),
         },
         connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
       });
 
       renderWithProviders(
         <ProductSalesTable
+          netGrossBasis="net"
           filters={FILTERS}
           coverage={coverage()}
           coverageFilters={COVERAGE_FILTERS}
