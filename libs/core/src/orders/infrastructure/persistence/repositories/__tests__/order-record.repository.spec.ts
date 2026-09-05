@@ -761,6 +761,37 @@ describe('OrderRecordRepository', () => {
       );
     });
 
+    it('computes revenue (GMV) from order_line_items, never the shipping-inclusive reportingTotalAmount directly (#2892)', async () => {
+      const addSelect = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect,
+        groupBy: jest.fn().mockReturnThis(),
+        addGroupBy: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        setParameter: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([]),
+      });
+
+      await repository.getDailyOrderAggregates(baseFilters, 'EUR');
+
+      const calls = addSelect.mock.calls as Array<[string, string]>;
+      const revenueCall = calls.find(([, alias]) => alias === 'revenue');
+      expect(revenueCall?.[0]).toContain('FROM order_line_items rev_li');
+      // The order's own stamped FX multiplier is still applied — this must
+      // never re-look-up a fresh rate, or the figure stops reconciling with
+      // every other reporting-currency figure on the page.
+      expect(revenueCall?.[0]).toContain(
+        'rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0)'
+      );
+      // The bare pre-#2892 fragment (shipping-inclusive, no line-item join)
+      // must not survive — a straight `SUM(rec."reportingTotalAmount")` with
+      // no line-item subquery is exactly the regression this test guards.
+      expect(revenueCall?.[0]).not.toBe(
+        `COALESCE(SUM(rec."reportingTotalAmount") FILTER (WHERE rec."cancelledAt" IS NULL AND rec."reportingCurrency" = :currentReportingCurrency), 0)`
+      );
+    });
+
     it('treats a bucket with an unrecorded native currency as not-uniform (#1987 review, suggestion 4)', async () => {
       const addSelect = jest.fn().mockReturnThis();
       (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({

@@ -163,6 +163,40 @@ export function netSalesRateFractionSql(taxRateColumnRef: string): string {
 }
 
 /**
+ * SQL for one line's GROSS (VAT-inclusive) amount, honoring the parent
+ * order's {@link PriceTaxTreatment} — the mirror image of
+ * {@link netSalesLineNetAmountSql}. This is the GMV/revenue building block
+ * (`docs/specs/metrics-analytics-dashboard.md`): "gross selling prices
+ * (incl. VAT)", computed from `order_line_items` so shipping (never
+ * itemized as a line) is structurally excluded — unlike the order's own
+ * `reportingTotalAmount`, which is `subtotal + tax + shipping` (#2892).
+ *
+ * An `exclusive`-priced line is grossed UP via `* (1 + rate)`; an
+ * `inclusive`/absent-treatment line is already gross and passes through
+ * unchanged. When an `exclusive` line's own rate does not resolve
+ * (`rateFraction` is NULL), this falls back to the line's stored value
+ * AS-IS rather than excluding the whole order from revenue — unlike Net
+ * Sales, GMV has no precedent for a silent per-order exclusion category,
+ * and a computable-but-slightly-understated figure (bounded by whatever
+ * rate would have applied to that one line) is preferable to a metric that
+ * can silently stop covering an order (#2892).
+ */
+export function grossRevenueLineAmountSql(
+  unitPriceColumnRef: string,
+  quantityColumnRef: string,
+  taxRateColumnRef: string,
+  taxTreatmentColumnRef: string
+): string {
+  const lineTotal = `${unitPriceColumnRef} * ${quantityColumnRef}`;
+  const rateFraction = netSalesRateFractionSql(taxRateColumnRef);
+  return `CASE
+      WHEN ${taxTreatmentColumnRef} = 'exclusive'
+        THEN ${lineTotal} * (1 + COALESCE((${rateFraction}), 0))
+      ELSE ${lineTotal}
+    END`;
+}
+
+/**
  * SQL for one line's VAT-exclusive amount, honoring the parent order's
  * {@link PriceTaxTreatment}. Mirrors {@link deriveNetLineAmount} — divides
  * the gross line total by `(1 + rate)` rather than multiplying by
