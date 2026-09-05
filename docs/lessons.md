@@ -995,3 +995,15 @@ media queries evaluate against, which at a boundary inverts the reading.
   `resolveSalesDocumentRouting`, and the `check-*-mirror.mjs` family that exists for the same
   class of split-brain.
 - **Source**: #2666 (plan-stage `/tech-review`, escalated to BLOCKING before implementation).
+
+## Re-running an ingestion pipeline for its read step can still trigger its write step
+
+**Context**: #2861, a probe measuring the real latency of `GET /order/checkout-forms/{id}`. The plan was to re-enqueue `marketplace.order.sync` for a pre-existing, already-ingested `externalOrderId`, on the assumption that `OrderIngestionService.syncOrderFromSource` calling `getOrder()` first, then `OrderSyncService.createOrderIdempotently` skipping any destination create when a mapping already exists, made a re-sync a safe, side-effect-free way to exercise just the read.
+
+**Problem**: the skip only fires when a destination mapping for *that specific internal order* already exists. An order can be fully ingested into OpenLinker (source mapping present, `recordStatus='ready'`) and still have never been pushed to any destination shop - which turned out to be true of every order on the probed connection. Re-syncing such an order ran `getOrder()` (the intended read) and then fell through into a real `createOrder()` call at every active `OrderProcessorManager` connection, creating a genuine duplicate order in a shared demo PrestaShop.
+
+**Rule**: before reusing a full ingestion/sync pipeline "just for its read step," check every side-effecting branch downstream of that read, not only the one idempotency guard the plan is leaning on - and check that the guard's *precondition* actually holds for the specific data being reused, rather than assuming it does because the record "already exists." If a pipeline can write, verify with a query (not an assumption) that the specific rows being replayed are already past every write it could perform, or gate the replay behind an explicit check for that precondition (see `probe_checkout_forms`'s `step_check_destination_safety` in `perf/openlinker-throughput/probes/allegro-latency.sh` for the guard added after this incident).
+
+**Applies to**: `libs/core/src/orders/application/services/order-ingestion.service.ts`, `libs/core/src/orders/application/services/order-sync.service.ts`; any future probe or ops script that replays a marketplace job type for measurement rather than for its intended effect.
+
+**Source**: #2861.
