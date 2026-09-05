@@ -132,4 +132,4 @@ If a sync is stalled (the cursor hasn't advanced in an unexpectedly long time, o
 
 For platform-wide configuration and AI settings:
 
-→ **[Settings & Admin](./08-settings-and-admin.md)**
+→ **[Settings & Admin](./09-settings-and-admin.md)**
