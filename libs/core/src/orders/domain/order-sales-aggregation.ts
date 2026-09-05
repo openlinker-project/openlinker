@@ -41,8 +41,14 @@ import type {
   SalesAndChannelAnalytics,
 } from './types/order-sales-analytics.types';
 
-/** Number of trailing days rendered in a trend sparkline. */
-const TREND_WINDOW_DAYS = 7;
+/**
+ * Maximum number of points rendered in a trend sparkline (#2899). A range no
+ * wider than this stays daily (one point per day); a wider range is
+ * resampled into exactly this many contiguous buckets spanning the FULL
+ * selected range, so the sparkline always reflects the whole window the
+ * operator picked rather than only its trailing days. See {@link buildTrend}.
+ */
+const TREND_BUCKET_COUNT = 7;
 
 export interface BuildSalesAndChannelAnalyticsInput {
   filters: SalesAnalyticsFilters;
@@ -281,10 +287,29 @@ function toDayKey(date: Date): string {
 }
 
 /**
- * Zero-filled daily series over every day in `dayKeys`, then trimmed to the
- * trailing {@link TREND_WINDOW_DAYS} days (closest to the range end) for the
- * sparkline. A day with zero rows renders as `{ revenue: 0, orderCount: 0 }`
- * rather than being omitted, so a 7-day window always has exactly 7 points.
+ * Zero-filled daily series over every day in `dayKeys`, resampled to span the
+ * FULL selected range (#2899). A day with zero rows renders as
+ * `{ revenue: 0, orderCount: 0 }` rather than being omitted, so the series is
+ * dense before any resampling happens.
+ *
+ * Before this, the series was trimmed to the trailing {@link
+ * TREND_BUCKET_COUNT} calendar days regardless of how wide `[from, to)`
+ * actually was — so a 7d, 30d and 90d selection sharing the same `to` all
+ * produced byte-identical trends, and the sparkline never visibly changed
+ * when an operator widened the range. A range no wider than {@link
+ * TREND_BUCKET_COUNT} days is returned as-is (one point per day, unbucketed —
+ * the pre-existing behaviour for the common 7d case). A wider range is
+ * resampled into exactly {@link TREND_BUCKET_COUNT} contiguous buckets
+ * covering every day in `[from, to)` — see {@link resampleTrend} — each
+ * summing the days it covers, so the trend always reflects the operator's
+ * whole selection rather than only its last week.
+ *
+ * The response shape is unchanged (`DailyTrendPoint[]`, same fields): a
+ * bucket's `date` is its first covered day. Frontend consumers only read
+ * `.revenue`/`.orderCount` off each point (`revenueTrendValues`/
+ * `orderCountTrendValues` in `sales-analytics-view-model.ts`) and the
+ * `Sparkline` primitive itself is array-length-agnostic, so no DTO or
+ * frontend change is required alongside this.
  */
 function buildTrend(dayKeys: string[], rows: DailyOrderAggregateRow[]): DailyTrendPoint[] {
   const byDay = new Map<string, { revenue: number; orderCount: number }>();
@@ -296,10 +321,38 @@ function buildTrend(dayKeys: string[], rows: DailyOrderAggregateRow[]): DailyTre
     byDay.set(key, existing);
   }
 
-  const series: DailyTrendPoint[] = dayKeys.map((date) => {
+  const daily: DailyTrendPoint[] = dayKeys.map((date) => {
     const point = byDay.get(date);
     return { date, revenue: point?.revenue ?? 0, orderCount: point?.orderCount ?? 0 };
   });
 
-  return series.slice(-TREND_WINDOW_DAYS);
+  if (daily.length <= TREND_BUCKET_COUNT) {
+    return daily;
+  }
+
+  return resampleTrend(daily, TREND_BUCKET_COUNT);
+}
+
+/**
+ * Split a dense daily series into `bucketCount` contiguous groups covering
+ * every entry exactly once, each summed and labelled with its first day.
+ * Group sizes are as even as possible (any two groups differ by at most one
+ * day) via the standard `floor(i * n / k)` partition — since this is only
+ * called with `daily.length > bucketCount`, every group is guaranteed
+ * non-empty.
+ */
+function resampleTrend(daily: DailyTrendPoint[], bucketCount: number): DailyTrendPoint[] {
+  const total = daily.length;
+  const buckets: DailyTrendPoint[] = [];
+  for (let i = 0; i < bucketCount; i++) {
+    const start = Math.floor((i * total) / bucketCount);
+    const end = Math.floor(((i + 1) * total) / bucketCount);
+    const slice = daily.slice(start, end);
+    buckets.push({
+      date: slice[0].date,
+      revenue: sum(slice, (p) => p.revenue),
+      orderCount: sum(slice, (p) => p.orderCount),
+    });
+  }
+  return buckets;
 }

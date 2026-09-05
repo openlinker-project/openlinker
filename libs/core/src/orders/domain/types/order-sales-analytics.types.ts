@@ -128,8 +128,11 @@ export interface ConnectionUnitsSold {
 }
 
 /**
- * One point of the 7-day daily trend series (revenue + order count only —
- * AOV/median/units carry no trend, per the #1987 scope).
+ * One point of the trend series (revenue + order count only — AOV/median/
+ * units carry no trend, per the #1987 scope). Daily for a range no wider than
+ * 7 days; for a wider range, resampled into up to 7 contiguous buckets
+ * spanning the FULL selected range rather than only its trailing days
+ * (#2899) — `date` on a multi-day bucket is that bucket's first covered day.
  */
 export interface DailyTrendPoint {
   date: string; // yyyy-mm-dd

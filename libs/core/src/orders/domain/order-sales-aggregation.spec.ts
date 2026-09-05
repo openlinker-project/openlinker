@@ -253,7 +253,7 @@ describe('orderSalesAggregation', () => {
       });
     });
 
-    it('trims a longer range to the trailing 7 days, closest to `to`', () => {
+    it('resamples a longer range into 7 buckets spanning the FULL range, not just its trailing days (#2899)', () => {
       const longFilters: SalesAnalyticsFilters = {
         from: new Date('2026-08-01T00:00:00.000Z'),
         to: new Date('2026-08-31T00:00:00.000Z'), // 30-day range
@@ -269,8 +269,70 @@ describe('orderSalesAggregation', () => {
       });
 
       expect(result.headline.trend).toHaveLength(7);
-      expect(result.headline.trend[0].date).toBe('2026-08-24');
-      expect(result.headline.trend[6].date).toBe('2026-08-30');
+      // The first bucket now starts at the range's own `from`, not somewhere
+      // 23 days into it — the whole 30-day window is covered, not just its
+      // trailing 7 days. (A bucket's `date` is its first covered day, so the
+      // last bucket's `date` is 2026-08-26, covering the final 5-day group —
+      // 30 days split 7 ways is not evenly divisible, so the trailing group
+      // is slightly larger; see `resampleTrend`.)
+      expect(result.headline.trend[0].date).toBe('2026-08-01');
+      expect(result.headline.trend.at(-1)?.date).toBe('2026-08-26');
+    });
+
+    it('reflects orders spread across the full range, not only its last 7 days (#2899)', () => {
+      const longFilters: SalesAnalyticsFilters = {
+        from: new Date('2026-08-01T00:00:00.000Z'),
+        to: new Date('2026-08-31T00:00:00.000Z'), // 30-day range
+      };
+
+      // One order early in the range (day 2) and one late (day 29) — both
+      // fall well outside a naive trailing-7-day trim from `to`.
+      const result = buildSalesAndChannelAnalytics({
+        filters: longFilters,
+        dailyRows: [
+          row({ day: new Date('2026-08-02T00:00:00.000Z'), revenue: 500, orderCount: 5 }),
+          row({ day: new Date('2026-08-29T00:00:00.000Z'), revenue: 700, orderCount: 7 }),
+        ],
+        medianOrderValue: null,
+        netMedianOrderValue: null,
+        unitsByConnection: new Map(),
+        earliestOrderDateByConnection: new Map(),
+      });
+
+      expect(result.headline.trend).toHaveLength(7);
+      const totalRevenue = result.headline.trend.reduce((sum, point) => sum + point.revenue, 0);
+      const totalOrders = result.headline.trend.reduce((sum, point) => sum + point.orderCount, 0);
+      // Both orders are represented somewhere in the resampled series...
+      expect(totalRevenue).toBe(1200);
+      expect(totalOrders).toBe(12);
+      // ...and they land in DIFFERENT buckets (the early- and late-range
+      // orders are far enough apart that a 7-bucket even split can't merge
+      // them), so the sparkline actually has more than one non-zero point —
+      // this is what "the shape changes across the range" means concretely.
+      const nonZeroBuckets = result.headline.trend.filter((point) => point.revenue > 0);
+      expect(nonZeroBuckets.length).toBeGreaterThan(1);
+    });
+
+    it('keeps daily granularity for a range no wider than 7 days, unbucketed', () => {
+      const result = buildSalesAndChannelAnalytics({
+        filters: filters(), // 7-day range from the shared fixture above
+        dailyRows: [row({ day: new Date('2026-08-05T00:00:00.000Z'), revenue: 10, orderCount: 1 })],
+        medianOrderValue: null,
+        netMedianOrderValue: null,
+        unitsByConnection: new Map(),
+        earliestOrderDateByConnection: new Map(),
+      });
+
+      expect(result.headline.trend).toHaveLength(7);
+      expect(result.headline.trend.map((p) => p.date)).toEqual([
+        '2026-08-01',
+        '2026-08-02',
+        '2026-08-03',
+        '2026-08-04',
+        '2026-08-05',
+        '2026-08-06',
+        '2026-08-07',
+      ]);
     });
   });
 
