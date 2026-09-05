@@ -1026,21 +1026,34 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * reports them in a separate column rather than omitting them). `null`
    * when no row matches (an empty ordered-set aggregate).
    *
-   * Currency correctness (#1987 review notes): computed over
-   * `reportingTotalAmount`, restricted to `reportingCurrency =
-   * currentReportingCurrency` — the same current-era stamped subset
-   * {@link getDailyOrderAggregates} uses for `revenue`, so the headline
-   * median stays comparable with the headline revenue/AOV figures rather
-   * than mixing a native-currency or prior-era distribution into the
-   * current one.
+   * Currency correctness (#1987 review notes): restricted to
+   * `reportingCurrency = currentReportingCurrency` — the same current-era
+   * stamped subset {@link getDailyOrderAggregates} uses for `revenue`, so
+   * the headline median stays comparable with the headline revenue/AOV
+   * figures rather than mixing a native-currency or prior-era distribution
+   * into the current one.
+   *
+   * Basis correctness (#2906): computed over the SAME gross, shipping-EXCLUDED
+   * per-order merchandise amount `revenue`/`averageOrderValue` use — see
+   * {@link buildGrossRevenueOrderAmountSql} — converted via the order's own
+   * already-stamped FX multiplier, exactly as `getDailyOrderAggregates`'s
+   * `revenue` column does. Previously ran `PERCENTILE_CONT` directly over
+   * `reportingTotalAmount`, the shipping-INCLUSIVE order total, which
+   * contradicted AOV/Revenue's merchandise-only basis and reported an
+   * inflated median whenever orders carried non-zero shipping.
    */
   async getMedianOrderValue(
     filters: SalesAnalyticsFilters,
     currentReportingCurrency: string
   ): Promise<number | null> {
+    const grossRevenueOrderAmount = this.buildGrossRevenueOrderAmountSql();
+
     const qb = this.repository
       .createQueryBuilder('rec')
-      .select(`PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY rec."reportingTotalAmount")`, 'median')
+      .select(
+        `PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY (${grossRevenueOrderAmount}) * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0)))`,
+        'median'
+      )
       .andWhere('rec."cancelledAt" IS NULL')
       .andWhere('rec."reportingCurrency" = :currentReportingCurrency', { currentReportingCurrency });
 

@@ -250,34 +250,46 @@ describe('Sales analytics daily aggregates (integration, #1987)', () => {
     expect(median).toBeNull();
   });
 
-  it('getMedianOrderValue computes PERCENTILE_CONT over stamped, non-cancelled orders', async () => {
+  it('getMedianOrderValue computes PERCENTILE_CONT over stamped, non-cancelled orders, on the gross merchandise-only basis (#2906)', async () => {
     const day = new Date('2026-08-05T10:00:00.000Z');
-    await seedStampedOrder({
+    // Each order's `totalAmount` (shipping-INCLUSIVE) diverges from its
+    // merchandise-only line-item value by a flat 5 shipping charge, so a
+    // regression back to `reportingTotalAmount` would shift the median from
+    // 20 to 25 — the assertion below fails on that basis, not just on this
+    // one.
+    const order1 = await seedStampedOrder({
       placedAt: day,
-      totalAmount: 10,
+      totalAmount: 15,
       reportingCurrency: 'EUR',
-      reportingTotalAmount: 10,
+      reportingTotalAmount: 15,
     });
-    await seedStampedOrder({
+    await seedLineItem({ orderRecordId: order1, unitPrice: 10, quantity: 1 });
+
+    const order2 = await seedStampedOrder({
       placedAt: day,
-      totalAmount: 20,
+      totalAmount: 25,
       reportingCurrency: 'EUR',
-      reportingTotalAmount: 20,
+      reportingTotalAmount: 25,
     });
-    await seedStampedOrder({
+    await seedLineItem({ orderRecordId: order2, unitPrice: 20, quantity: 1 });
+
+    const order3 = await seedStampedOrder({
       placedAt: day,
-      totalAmount: 30,
+      totalAmount: 35,
       reportingCurrency: 'EUR',
-      reportingTotalAmount: 30,
+      reportingTotalAmount: 35,
     });
+    await seedLineItem({ orderRecordId: order3, unitPrice: 30, quantity: 1 });
+
     // Cancelled — must not enter the median.
-    await seedStampedOrder({
+    const cancelledOrder = await seedStampedOrder({
       placedAt: day,
       totalAmount: 1000,
       reportingCurrency: 'EUR',
       reportingTotalAmount: 1000,
       cancelledAt: new Date('2026-08-05T11:00:00.000Z'),
     });
+    await seedLineItem({ orderRecordId: cancelledOrder, unitPrice: 990, quantity: 1 });
 
     const median = await repository.getMedianOrderValue(
       {
@@ -288,6 +300,36 @@ describe('Sales analytics daily aggregates (integration, #1987)', () => {
     );
 
     expect(median).toBe(20);
+  });
+
+  it('getMedianOrderValue shares AOV/Revenue\'s gross, shipping-EXCLUDED basis instead of the shipping-inclusive order total (#2906)', async () => {
+    // Live-proven regression: for this exact shape (a shipping-inclusive
+    // order total of 300 against a merchandise-only line value of 200), the
+    // pre-#2906 implementation — PERCENTILE_CONT over `reportingTotalAmount`
+    // directly — returned 300. AOV/Revenue for the identical order set report
+    // 200 (`getSalesAndChannelAnalytics`/`getDailyOrderAggregates`, computed
+    // from `order_line_items` via `buildGrossRevenueOrderAmountSql`). The
+    // spec's own contract (`docs/specs/metrics-analytics-dashboard.md`)
+    // requires median and AOV to share the same value field.
+    const day = new Date('2026-08-05T10:00:00.000Z');
+    const orderId = await seedStampedOrder({
+      placedAt: day,
+      totalAmount: 300,
+      reportingCurrency: 'EUR',
+      reportingTotalAmount: 300,
+    });
+    await seedLineItem({ orderRecordId: orderId, unitPrice: 200, quantity: 1 });
+
+    const median = await repository.getMedianOrderValue(
+      {
+        from: new Date('2026-08-01T00:00:00.000Z'),
+        to: new Date('2026-08-08T00:00:00.000Z'),
+      },
+      'EUR'
+    );
+
+    expect(median).toBe(200);
+    expect(median).not.toBe(300);
   });
 
   describe('findCurrencyMismatchOrders (#2464)', () => {

@@ -1541,6 +1541,26 @@ describe('OrderRecordRepository', () => {
         currentReportingCurrency: 'EUR',
       });
     });
+
+    it('computes PERCENTILE_CONT over the gross merchandise-only line-item basis, not the shipping-inclusive reportingTotalAmount (#2906)', async () => {
+      const select = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select,
+        andWhere: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn().mockResolvedValue({ median: null }),
+      });
+
+      await repository.getMedianOrderValue(baseFilters, 'EUR');
+
+      const [selectSql, alias] = select.mock.calls[0] as [string, string];
+      expect(alias).toBe('median');
+      expect(selectSql).toContain('PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY');
+      // The gross-revenue scalar subquery reads from order_line_items —
+      // the same basis AOV/Revenue use — rather than reading
+      // `reportingTotalAmount` bare (the shipping-inclusive bug).
+      expect(selectSql).toContain('FROM order_line_items');
+      expect(selectSql).toContain('rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0)');
+    });
   });
 
   /**
