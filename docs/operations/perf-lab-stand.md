@@ -3,9 +3,107 @@
 Operational runbook for the isolated stand the performance measurement programme
 (epic #2840) runs on.
 
-**This page currently covers the bootstrap step only.** Standing the stack up,
-tearing it down, the Postgres tuning and the preflight are #2854's, and land in
-this file beside this section.
+**This page covers stand-up and the bootstrap step.** A `preflight.sh`
+wrapper, `pg_stat_statements`/`auto_explain` (a second overlay, for #2843
+only), the `allegro-stub`/`prestashop-stub` services and a Prometheus/Grafana
+scrape config are not built yet - see #2854 for that remaining scope.
+
+## Standing the stack up
+
+`docker-compose.lab.yml` (repo root) is a **self-contained** compose file, not
+an overlay on `docker-compose.yml`/`docker-compose.demo.yml` - project name
+`lab`, container names `lab-*`, ports shifted into the 19xxx range so it runs
+alongside both the `openlinker` (dev) and `ol-demo-fresh` (demo) stacks with no
+collision. It reuses the already-built `ol-perf:api` / `ol-perf:worker` images
+(built with `--build-arg OL_GIT_SHA=$(git rev-parse HEAD)`, which
+`guard_build` checks) rather than rebuilding - rebuild those two images
+yourself before standing this up against a different commit.
+
+```bash
+cp .env.lab.example .env.lab   # then fill in the REPLACE_ME secrets, or:
+#   OPENLINKER_CREDENTIALS_ENCRYPTION_KEY: openssl rand -base64 32
+#   JWT_SECRET / OL_PII_HASH_SALT:         openssl rand -hex 32
+
+# one-time: self-signed cert for the wc-tls proxy (see its own header comment)
+bash perf/openlinker-throughput/stand/wc-tls/generate-certs.sh
+
+docker compose -f docker-compose.lab.yml --env-file .env.lab -p lab up -d
+```
+
+`--env-file .env.lab` REPLACES compose's default `.env` lookup - it does not
+merge with the repo root `.env` the other two stacks use, so this stand
+cannot leak into or collide with them, and vice versa.
+
+### WooCommerce needs an https origin, and that needs two things done in order
+
+WooCommerce's REST API refuses Basic Auth unless `is_ssl()` is true (over
+cleartext it accepts only OAuth 1.0a), and OpenLinker's own WooCommerce
+connection config DTO independently rejects a non-https `siteUrl`. The `wc-tls`
+service is a plain `nginx:1.27-alpine` terminating a self-signed cert
+(`perf/openlinker-throughput/stand/wc-tls/generate-certs.sh` generates it on
+the **host**, so nothing here needs a `docker build`) in front of the
+plain-HTTP `woocommerce` container, and `api`/`worker` trust that one CA via
+`NODE_EXTRA_CA_CERTS` rather than disabling TLS validation stack-wide.
+
+That gets the TLS handshake to succeed, but WordPress core's `is_ssl()` never
+looks at `X-Forwarded-Proto` on its own, so WooCommerce still sees a plain-HTTP
+request and still refuses Basic Auth. **A one-time manual step closes that
+gap**, run once per fresh `woocommerce` volume:
+
+```bash
+docker exec lab-woocommerce mkdir -p /opt/bitnami/wordpress/wp-content/mu-plugins
+docker cp perf/openlinker-throughput/stand/wc-mu-plugins/force-https.php \
+  lab-woocommerce:/opt/bitnami/wordpress/wp-content/mu-plugins/force-https.php
+```
+
+This is a `docker cp` **after** the container reports healthy, not a
+bind-mount in the compose file - bind-mounting a file under
+`/bitnami/wordpress/wp-content/` before the Bitnami entrypoint's first boot
+was tried first and made that entrypoint take its "restore an existing
+install" branch against an empty volume, which fails with `wp-config.php not
+found` (verified live). Whatever ships this permanently (baking the mu-plugin
+into a tiny custom WooCommerce image, or a `docker-entrypoint-initdb.d` script
+that copies it in after `wp core is-installed`) is left for whoever picks up
+the remaining #2854 scope.
+
+### Seeding a fresh catalogue
+
+A brand-new PrestaShop fixture install carries **no `ps_tax_rules_group` row
+at all** under `PS_COUNTRY=US` (the default both `docker-compose.yml` and this
+file use), and `bootstrap.sh`'s tax-group step can only repair "some products
+have no group" - it has nothing to repair to when *no* product has one
+either. Assign one manually before running `bootstrap.sh`:
+
+```sql
+INSERT INTO ps_tax_rules_group (name, active, deleted, date_add, date_upd)
+  VALUES ('Lab standard rate', 1, 0, NOW(), NOW());
+UPDATE ps_product SET id_tax_rules_group = LAST_INSERT_ID();
+```
+
+And `bootstrap.sh`'s Allegro offer-mapping step needs at least one non-stale
+`product_variants` row to point mappings at, which only exists once
+OpenLinker has actually synced the PrestaShop catalogue - nothing does that on
+a schedule with `OL_SCHEDULER_ENABLED=false` / `WORKER_RUNNER_ENABLED=false`
+(this stand's own F3 posture). Run one sync manually first: recreate `worker`
+with `WORKER_RUNNER_ENABLED=true` (`docker compose ... up -d --force-recreate
+worker` with that var overridden in the shell, which takes precedence over
+`.env.lab`), enqueue `master.product.syncAll` against the PrestaShop
+connection via `POST /v1/sync/jobs`, wait for it to drain, then recreate
+`worker` again with the runner back off.
+
+### Running migrations without a rebuild
+
+`migrate` reuses `ol-perf:api` rather than a second `target: base` build -
+unnecessary once verified live: the production image's compiled
+`apps/api/dist/apps/api/src/database/data-source.js` needs no `ts-node`
+registration, and its entity/migration globs already resolve against the
+compiled `libs/*/dist` tree shipped in the same image. It is invoked as `sh
+node_modules/.bin/typeorm migration:run -d
+apps/api/dist/apps/api/src/database/data-source.js` - **`sh`, not `bash`**:
+the `.bin/typeorm` shim is a POSIX `#!/bin/sh` script and this alpine-based
+image has no `bash` at all (both facts verified live; `apps/api/package.json`'s
+own `migration:run` script invokes it via `bash` on a dev machine that has
+one).
 
 ---
 
