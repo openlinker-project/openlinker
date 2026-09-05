@@ -1,4 +1,5 @@
 import { ciStabilityConfig } from '../../../jest.ci-stability.mjs';
+import { ESM_DEPS_TRANSFORM_IGNORE_PATTERN, esmDepsJsTransform } from '../../../jest.esm-deps.cjs';
 
 export default {
   testEnvironment: 'node',
@@ -18,7 +19,12 @@ export default {
         tsconfig: '<rootDir>/tsconfig.spec.json',
       },
     ],
+    // ESM-only htmlparser2 chain pulled in transitively by sanitize-html
+    // >=2.17.6 via @openlinker/shared/html — see jest.esm-deps.cjs.
+    '^.+\\.js$': esmDepsJsTransform,
   },
+
+  transformIgnorePatterns: [ESM_DEPS_TRANSFORM_IGNORE_PATTERN],
 
   // Helps when TS/Node16 emits/assumes .js in import paths
   moduleNameMapper: {

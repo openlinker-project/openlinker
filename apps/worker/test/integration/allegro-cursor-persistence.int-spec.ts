@@ -25,11 +25,14 @@ import { DataSource } from 'typeorm';
 import { randomUUID } from 'crypto';
 
 // This suite manually drives jobs via `pollHandler.execute(...)` and only
-// marks them succeeded afterwards. The harness also runs a live
-// `SyncJobRunner` polling loop (1s interval) that would otherwise claim the
-// same 'queued' row and reprocess it concurrently, racing the manual
-// execution and the cursor assertions below. Scheduling `runAfter` far in
-// the future keeps every job in this file out of the runner's claim window.
+// marks them succeeded afterwards. The harness used to run a live
+// `SyncJobRunner` polling loop (1s interval) that would claim the same
+// 'queued' row and reprocess it concurrently, racing the manual execution and
+// the cursor assertions below; `harness.ts` now sets
+// `WORKER_RUNNER_ENABLED=false` for the whole integration run (#2825), so
+// that loop is gone. Scheduling `runAfter` far in the future is retained as
+// defence in depth: it keeps every job in this file outside any claim
+// window, so re-enabling the runner cannot silently reopen the race here.
 // Module-scoped, so `Date.now()` is read once at load and every test in the
 // file shares the same horizon - fine at 24h (no suite runs anywhere near
 // that long), but not a per-test-fresh value.
@@ -106,10 +109,11 @@ describe('Allegro Cursor Persistence Integration', () => {
           idempotencyKey: pollJobRequest.idempotencyKey,
           maxAttempts: 10,
         },
-        // Keep the row out of the live SyncJobRunner's claim window (it polls
-        // every 1s in this harness) — this test drives the handler manually
-        // and asserts on the resulting cursor, so a background reprocessing
-        // of the same row races the assertions below.
+        // Keep the row outside any SyncJobRunner claim window: this test
+        // drives the handler manually and asserts on the resulting cursor, so
+        // a background reprocessing of the same row would race the assertions
+        // below. The harness disables the runner (#2825); this is the belt to
+        // that braces.
         { runAfter: FAR_FUTURE_RUN_AFTER }
       );
 

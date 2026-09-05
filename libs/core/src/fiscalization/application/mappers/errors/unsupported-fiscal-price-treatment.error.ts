@@ -9,6 +9,10 @@
  * silently mis-state the registered sale, which is why this fails loud instead
  * of degrading.
  *
+ * This is a PERMANENT limitation of a net-line-price source (PrestaShop,
+ * WooCommerce), not a gap #2829/#2832's `totalTaxTreatment` signal relaxes -
+ * see `describeNetPricedOrderRefusal` (#2835) for why.
+ *
  * @module libs/core/src/fiscalization/application/mappers/errors
  */
 export class UnsupportedFiscalPriceTreatmentError extends Error {

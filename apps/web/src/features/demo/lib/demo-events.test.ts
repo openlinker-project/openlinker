@@ -20,6 +20,7 @@ describe('DemoEventCatalog', () => {
     'demo_orders_viewed',
     'demo_order_opened',
     'demo_invoice_issue_attempted',
+    'demo_fiscal_register_attempted',
     'demo_connection_sync_dialog_opened',
     'demo_category_source_selected',
     'demo_category_map_attempted',

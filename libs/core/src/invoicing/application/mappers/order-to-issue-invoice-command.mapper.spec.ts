@@ -42,7 +42,14 @@ function makeOrder(overrides: Partial<Order> = {}): Order {
     id: 'order-1',
     status: 'processing',
     items: [makeItem()],
-    totals: { subtotal: 100, tax: 23, shipping: 0, total: 123, currency: 'PLN', taxTreatment: 'inclusive' },
+    totals: {
+      subtotal: 100,
+      tax: 23,
+      shipping: 0,
+      total: 123,
+      currency: 'PLN',
+      taxTreatment: 'inclusive',
+    },
     billingAddress: makeAddress(),
     createdAt: new Date('2026-06-22T10:00:00.000Z'),
     updatedAt: new Date('2026-06-22T10:00:00.000Z'),
@@ -90,11 +97,25 @@ describe('toIssueInvoiceCommand', () => {
 
   it('multi-line: items -> lines, currency from totals.currency, name fallback to sku then productId', () => {
     const order = makeOrder({
-      totals: { subtotal: 0, tax: 0, shipping: 0, total: 0, currency: 'EUR', taxTreatment: 'inclusive' },
+      totals: {
+        subtotal: 0,
+        tax: 0,
+        shipping: 0,
+        total: 0,
+        currency: 'EUR',
+        taxTreatment: 'inclusive',
+      },
       items: [
         makeItem({ id: 'a', name: 'Named', price: 10, quantity: 2 }),
         makeItem({ id: 'b', name: undefined, sku: 'SKU-9', price: 20, quantity: 1 }),
-        makeItem({ id: 'c', name: undefined, sku: undefined, productId: 'PID-5', price: 30, quantity: 3 }),
+        makeItem({
+          id: 'c',
+          name: undefined,
+          sku: undefined,
+          productId: 'PID-5',
+          price: 30,
+          quantity: 3,
+        }),
       ],
     });
 
@@ -123,12 +144,15 @@ describe('toIssueInvoiceCommand', () => {
     ['zero', 0],
     ['negative', -2],
     ['NaN', Number.NaN],
-  ])('should throw InvalidInvoiceLineError for a %s item quantity (#1525 review)', (_label, quantity) => {
-    const order = makeOrder({ items: [makeItem({ quantity })] });
-    expect(() => toIssueInvoiceCommand({ order, connectionId: 'conn-1' })).toThrow(
-      InvalidInvoiceLineError,
-    );
-  });
+  ])(
+    'should throw InvalidInvoiceLineError for a %s item quantity (#1525 review)',
+    (_label, quantity) => {
+      const order = makeOrder({ items: [makeItem({ quantity })] });
+      expect(() => toIssueInvoiceCommand({ order, connectionId: 'conn-1' })).toThrow(
+        InvalidInvoiceLineError
+      );
+    }
+  );
 
   it('InvalidInvoiceLineError is PII-clean: cites only the order id', () => {
     const order = makeOrder({ items: [makeItem({ quantity: 0, name: 'SECRET_ITEM' })] });
@@ -169,11 +193,15 @@ describe('toIssueInvoiceCommand', () => {
 
   it('name derivation: firstName+lastName absent AND no company -> throws InvalidBuyerProfileError (no "undefined undefined")', () => {
     const order = makeOrder({
-      billingAddress: makeAddress({ firstName: undefined, lastName: undefined, company: undefined }),
+      billingAddress: makeAddress({
+        firstName: undefined,
+        lastName: undefined,
+        company: undefined,
+      }),
     });
 
     expect(() => toIssueInvoiceCommand({ order, connectionId: 'conn-1' })).toThrow(
-      InvalidBuyerProfileError,
+      InvalidBuyerProfileError
     );
   });
 
@@ -191,7 +219,11 @@ describe('toIssueInvoiceCommand', () => {
       billingAddress: makeAddress({ firstName: 'Jan', lastName: 'Kowalski', company: 'Big Corp' }),
     });
 
-    const cmd = toIssueInvoiceCommand({ order, connectionId: 'conn-1', buyerTaxId: { scheme: 'eu-vat', value: 'PL1' } });
+    const cmd = toIssueInvoiceCommand({
+      order,
+      connectionId: 'conn-1',
+      buyerTaxId: { scheme: 'eu-vat', value: 'PL1' },
+    });
     expect(cmd.buyer.name).toBe('Big Corp');
   });
 
@@ -199,7 +231,7 @@ describe('toIssueInvoiceCommand', () => {
     const order = makeOrder({ billingAddress: undefined, shippingAddress: undefined });
 
     expect(() => toIssueInvoiceCommand({ order, connectionId: 'conn-1' })).toThrow(
-      InvalidBuyerProfileError,
+      InvalidBuyerProfileError
     );
   });
 
@@ -227,7 +259,11 @@ describe('toIssueInvoiceCommand', () => {
       shippingAddress: undefined,
     });
     // Force the name-derivation failure path.
-    order.billingAddress = makeAddress({ firstName: undefined, lastName: undefined, address1: 'SecretStreet 42' });
+    order.billingAddress = makeAddress({
+      firstName: undefined,
+      lastName: undefined,
+      address1: 'SecretStreet 42',
+    });
 
     try {
       toIssueInvoiceCommand({ order, connectionId: 'conn-1' });
@@ -242,7 +278,14 @@ describe('toIssueInvoiceCommand', () => {
   it('price treatment: totals.taxTreatment "inclusive" -> unitPriceGross = item.price', () => {
     const order = makeOrder({
       items: [makeItem({ price: 49.99 })],
-      totals: { subtotal: 0, tax: 0, shipping: 0, total: 0, currency: 'PLN', taxTreatment: 'inclusive' },
+      totals: {
+        subtotal: 0,
+        tax: 0,
+        shipping: 0,
+        total: 0,
+        currency: 'PLN',
+        taxTreatment: 'inclusive',
+      },
     });
 
     const cmd = toIssueInvoiceCommand({ order, connectionId: 'conn-1' });
@@ -261,11 +304,36 @@ describe('toIssueInvoiceCommand', () => {
 
   it('price treatment: totals.taxTreatment "exclusive" -> throws UnsupportedPriceTreatmentError', () => {
     const order = makeOrder({
-      totals: { subtotal: 0, tax: 0, shipping: 0, total: 0, currency: 'PLN', taxTreatment: 'exclusive' },
+      totals: {
+        subtotal: 0,
+        tax: 0,
+        shipping: 0,
+        total: 0,
+        currency: 'PLN',
+        taxTreatment: 'exclusive',
+      },
     });
 
     expect(() => toIssueInvoiceCommand({ order, connectionId: 'conn-1' })).toThrow(
-      UnsupportedPriceTreatmentError,
+      UnsupportedPriceTreatmentError
+    );
+  });
+
+  it('price treatment: "exclusive" -> the refusal names the actual constraint (#2835)', () => {
+    const order = makeOrder({
+      id: 'ol_order_abc',
+      totals: {
+        subtotal: 0,
+        tax: 0,
+        shipping: 0,
+        total: 0,
+        currency: 'PLN',
+        taxTreatment: 'exclusive',
+      },
+    });
+
+    expect(() => toIssueInvoiceCommand({ order, connectionId: 'conn-1' })).toThrow(
+      /ol_order_abc cannot be invoiced: its source reports net \(tax-exclusive\) line prices/
     );
   });
 
@@ -305,7 +373,14 @@ describe('toIssueInvoiceCommand', () => {
     // shipping line is still EMITTED (dropping it would understate the total)
     // and still carries an empty rate, and the gate refuses the whole document.
     const order = makeOrder({
-      totals: { subtotal: 100, tax: 0, shipping: 15, total: 115, currency: 'PLN', taxTreatment: 'inclusive' },
+      totals: {
+        subtotal: 100,
+        tax: 0,
+        shipping: 15,
+        total: 115,
+        currency: 'PLN',
+        taxTreatment: 'inclusive',
+      },
     });
 
     const cmd = toIssueInvoiceCommand({ order, connectionId: 'conn-1' });
@@ -317,10 +392,15 @@ describe('toIssueInvoiceCommand', () => {
 
   it('shipping: inherits the basket rate when every line carries the same one (#2248)', () => {
     const order = makeOrder({
-      items: [
-        { id: 'i1', productId: 'p1', quantity: 1, price: 100, taxRate: '23' },
-      ],
-      totals: { subtotal: 100, tax: 0, shipping: 15, total: 115, currency: 'PLN', taxTreatment: 'inclusive' },
+      items: [{ id: 'i1', productId: 'p1', quantity: 1, price: 100, taxRate: '23' }],
+      totals: {
+        subtotal: 100,
+        tax: 0,
+        shipping: 15,
+        total: 115,
+        currency: 'PLN',
+        taxTreatment: 'inclusive',
+      },
     });
 
     const cmd = toIssueInvoiceCommand({ order, connectionId: 'conn-1' });
@@ -338,7 +418,14 @@ describe('toIssueInvoiceCommand', () => {
   ])('shipping: totals.shipping %s -> no phantom shipping line (#1517)', (_label, shipping) => {
     const order = makeOrder({
       items: [makeItem({ price: 100, quantity: 1 })],
-      totals: { subtotal: 100, tax: 0, shipping, total: 100, currency: 'PLN', taxTreatment: 'inclusive' },
+      totals: {
+        subtotal: 100,
+        tax: 0,
+        shipping,
+        total: 100,
+        currency: 'PLN',
+        taxTreatment: 'inclusive',
+      },
     });
 
     const cmd = toIssueInvoiceCommand({ order, connectionId: 'conn-1' });
@@ -349,7 +436,14 @@ describe('toIssueInvoiceCommand', () => {
 
   it('shipping: caller-supplied shippingLineName overrides the neutral default label (#1517)', () => {
     const order = makeOrder({
-      totals: { subtotal: 100, tax: 0, shipping: 15, total: 115, currency: 'PLN', taxTreatment: 'inclusive' },
+      totals: {
+        subtotal: 100,
+        tax: 0,
+        shipping: 15,
+        total: 115,
+        currency: 'PLN',
+        taxTreatment: 'inclusive',
+      },
     });
 
     const cmd = toIssueInvoiceCommand({
@@ -371,13 +465,20 @@ describe('toIssueInvoiceCommand', () => {
     'shipping: %s shippingLineName override falls back to the neutral default label (#1517)',
     (_label, shippingLineName) => {
       const order = makeOrder({
-        totals: { subtotal: 100, tax: 0, shipping: 15, total: 115, currency: 'PLN', taxTreatment: 'inclusive' },
+        totals: {
+          subtotal: 100,
+          tax: 0,
+          shipping: 15,
+          total: 115,
+          currency: 'PLN',
+          taxTreatment: 'inclusive',
+        },
       });
 
       const cmd = toIssueInvoiceCommand({ order, connectionId: 'conn-1', shippingLineName });
 
       const shippingLine = cmd.lines.find((l) => l.unitPriceGross === 15 && l.quantity === 1);
       expect(shippingLine?.name).toBe('Shipping');
-    },
+    }
   );
 });

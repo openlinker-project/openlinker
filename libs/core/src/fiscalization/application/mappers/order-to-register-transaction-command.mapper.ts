@@ -13,7 +13,11 @@
  * @module libs/core/src/fiscalization/application/mappers
  */
 import type { Order, OrderItem } from '@openlinker/core/orders';
-import { minorUnitExponentFor, splitShippingAcrossRates } from '@openlinker/core/sales-documents';
+import {
+  describeNetPricedOrderRefusal,
+  minorUnitExponentFor,
+  splitShippingAcrossRates,
+} from '@openlinker/core/sales-documents';
 
 import type {
   FiscalRecipient,
@@ -101,11 +105,13 @@ export function toRegisterTransactionCommand(
   // and core may not convert (it never computes or defaults a tax rate). Fail
   // loud. An ABSENT treatment is the documented gross assumption - marketplaces
   // report buyer-paid gross - so it is accepted.
-  if (order.totals.taxTreatment === 'exclusive') {
-    throw new UnsupportedFiscalPriceTreatmentError(
-      `Order ${order.id} is net-priced (taxTreatment "exclusive"); ` +
-        `only gross-priced orders can be registered`,
-    );
+  //
+  // This checks LINE-level `taxTreatment`, never `totals.totalTaxTreatment`
+  // (#2829/#2832) — see `describeNetPricedOrderRefusal`'s doc comment
+  // (#2835) for why the latter cannot relax this guard.
+  const refusal = describeNetPricedOrderRefusal(order, 'fiscally registered');
+  if (refusal !== null) {
+    throw new UnsupportedFiscalPriceTreatmentError(refusal);
   }
 
   const lines = order.items.map((item) => toFiscalLine(item, order.id));

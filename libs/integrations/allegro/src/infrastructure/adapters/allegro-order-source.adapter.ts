@@ -10,7 +10,7 @@
  * @implements {OrderSourcePort}
  */
 
-import { PAYMENT_STATUS } from '@openlinker/core/orders';
+import { PAYMENT_STATUS, readSourceBuyerTaxId } from '@openlinker/core/orders';
 import type {
   OrderSourcePort,
   SourceOptionsReader,
@@ -778,6 +778,8 @@ export class AllegroOrderSourceAdapter
             }
           : undefined;
 
+      const resolvedShippingAddress = this.resolveShippingAddress(checkoutForm);
+
       return {
         externalOrderId: checkoutFormId,
         orderNumber: checkoutFormId,
@@ -819,8 +821,8 @@ export class AllegroOrderSourceAdapter
           // (#895 / ADR-014).
           taxTreatment: 'inclusive',
         },
-        shippingAddress: this.resolveShippingAddress(checkoutForm),
-        billingAddress: undefined,
+        shippingAddress: resolvedShippingAddress,
+        billingAddress: this.resolveBillingAddress(checkoutForm, resolvedShippingAddress),
         shipping: this.resolveShipping(checkoutForm),
         pickupPoint: this.resolvePickupPoint(checkoutForm),
         deliverySmart: checkoutForm.delivery?.smart,
@@ -919,6 +921,62 @@ export class AllegroOrderSourceAdapter
       };
     }
     return undefined;
+  }
+
+  /**
+   * Resolve `billingAddress` from the checkout form's VAT-invoice block
+   * (#2822). Present only when the buyer requested a VAT invoice — a
+   * private (non-invoice) checkout carries no `invoice.address.company` at
+   * all, and `taxId` then stays `undefined` (unknown), never a false
+   * asserted-none.
+   *
+   * Allegro's invoice block carries no street address of its own (only the
+   * company name + tax id), so the result is the resolved SHIPPING address
+   * with the company/tax-id fields overlaid — never a standalone object with
+   * blank required fields, which would be truthy and defeat a caller's
+   * `billingAddress ?? shippingAddress` fallback (e.g. the invoice-issuance
+   * buyer-profile resolver) with an address that has no real street data.
+   *
+   * When `shippingAddress` itself could not be resolved (delivery address,
+   * pickup-point address, and buyer profile address all absent/empty — see
+   * `resolveShippingAddress`), there is no real address data to overlay the
+   * company/tax-id onto, so `billingAddress` is `undefined` too rather than
+   * falling back to the same blank-but-truthy stub this method exists to
+   * eliminate. The company/tax-id are dropped in that (narrow) case; a
+   * caller needing them without a real address has no representable answer
+   * to give.
+   *
+   * Note this address is also consumed by destination-side provisioning
+   * (`OrderProcessorManagerPort` adapters gate a second, billing-type
+   * address creation on `order.billingAddress && order.customerId`) — a
+   * VAT-invoice order therefore provisions a second destination address
+   * carrying the same street data as the shipping one, plus this company
+   * name (no `company`/`taxId` field reaches the destination address
+   * itself; that is destination-adapter scope, not this adapter's).
+   */
+  private resolveBillingAddress(
+    checkoutForm: AllegroCheckoutForm,
+    shippingAddress: IncomingOrderAddress | undefined
+  ): IncomingOrderAddress | undefined {
+    const company = checkoutForm.invoice?.address?.company;
+    if (!company || !shippingAddress) {
+      return undefined;
+    }
+
+    // First-of-`ids[]`-wins is deliberate, pending a real multi-id sample:
+    // `ids[].type` enumerates `PL_NIP | CZ_ICO | CZ_DIC | OTHER`, and a CZ
+    // buyer may legitimately carry both `CZ_ICO` (company registration) and
+    // `CZ_DIC` (VAT) — array order then decides which identifier is read.
+    // `buyerHasTaxId` presence checks don't care which one wins; the value
+    // is carried verbatim into invoice issuance, so a future sample of a
+    // real multi-id payload should inform an explicit type preference here.
+    const rawTaxId = company.ids?.[0]?.value ?? company.taxId;
+
+    return {
+      ...shippingAddress,
+      company: company.name,
+      taxId: readSourceBuyerTaxId(rawTaxId),
+    };
   }
 
   /**

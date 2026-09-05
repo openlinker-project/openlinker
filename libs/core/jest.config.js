@@ -1,3 +1,8 @@
+const {
+  ESM_DEPS_TRANSFORM_IGNORE_PATTERN,
+  esmDepsJsTransform,
+} = require('../../jest.esm-deps.cjs');
+
 module.exports = {
   moduleFileExtensions: ['js', 'json', 'ts'],
   rootDir: 'src',
@@ -11,7 +16,7 @@ module.exports = {
   // affecting wall time on reasonable hosts.
   maxWorkers: 2,
   transform: {
-    '^.+\\.(t|j)s$': [
+    '^.+\\.ts$': [
       'ts-jest',
       {
         tsconfig: {
@@ -23,7 +28,11 @@ module.exports = {
         }
       },
     ],
+    // ESM-only htmlparser2 chain pulled in transitively by sanitize-html
+    // >=2.17.6 via @openlinker/shared/html — see jest.esm-deps.cjs.
+    '^.+\\.js$': esmDepsJsTransform,
   },
+  transformIgnorePatterns: [ESM_DEPS_TRANSFORM_IGNORE_PATTERN],
   collectCoverageFrom: ['**/*.(t|j)s'],
   coverageDirectory: '../coverage',
   testEnvironment: 'node',

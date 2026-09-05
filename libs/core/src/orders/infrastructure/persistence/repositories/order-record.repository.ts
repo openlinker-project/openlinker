@@ -1885,8 +1885,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * `cancelledAt` (#1984), the three `salesDocument*` columns (#2100), the six
    * FX snapshot columns (#2124), the two packed columns (#2287), the two
    * amendment columns `lastAmendedAt` / `lastAmendmentChanges` (#2283) and the
-   * four analytics scalars (#1985 - `placedAt` / `currency` / `taxTreatment` /
-   * `totalAmount`) are deliberately outside the write set - see the
+   * five analytics scalars (#1985/#2832 - `placedAt` / `currency` / `taxTreatment` /
+   * `totalAmount` / `totalTaxTreatment`) are deliberately outside the write set - see the
    * {@link toOrm} comments. A consequence is that the returned record reports
    * all of them as empty (`[]` / `null`) regardless of what the row holds,
    * because none of those columns was part of the statement; callers needing
@@ -1938,9 +1938,9 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // `omsAttention` (#2352 -
     // sole writer `updateOmsAttention`, whose whole contract is that it edits
     // ONE producer's entry; a round-trip here would drop every producer's entry
-    // on every ingestion and then re-add none), and the four #1985
+    // on every ingestion and then re-add none), and the five #1985/#2832
     // analytics scalars (`placedAt` / `currency` / `taxTreatment` /
-    // `totalAmount`, which only `upsertWithLineItems` writes). Do not add one
+    // `totalAmount` / `totalTaxTreatment`, which only `upsertWithLineItems` writes). Do not add one
     // of them to either half of this statement - each has a narrow, atomic
     // out-of-band writer that owns it. This list is illustrative only:
     // `fromRawRow` DERIVES the reset from the statement's write set, so it
@@ -1976,7 +1976,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * - `createdAt` is never updated: it records the first write.
    *
    * `includeReadyPathColumns` adds the columns only `upsertWithLineItems`
-   * resolves — the four #1985 analytics scalars and the #2599 `buyerTaxId`.
+   * resolves — the five #1985/#2832 analytics scalars and the #2599 `buyerTaxId`.
    * `persistIncomingSnapshot`, which reaches `upsert`, has no figure or resolved
    * billing address to offer yet and must not null them out. They are appended
    * after the shared tuple so the shared placeholders — including the
@@ -2047,6 +2047,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       add('currency', entity.currency ?? null);
       add('taxTreatment', entity.taxTreatment ?? null);
       add('totalAmount', entity.totalAmount ?? null);
+      // #2829/#2832 — same ready-path-only reasoning as `taxTreatment` above.
+      add('totalTaxTreatment', entity.totalTaxTreatment ?? null);
       // #2599, and it MUST be added here rather than left to the caller's
       // `entity.buyerTaxId = ...`: this statement enumerates its columns, so a
       // column the caller stamps on the entity but never adds here is simply
@@ -2088,7 +2090,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * `order_records` that the statement did not write is reset. A hand-kept
    * list is what let six columns brought forward from main
    * (`salesDocumentBlockedAt` / `salesDocumentBlockReleasedAt`, plus
-   * `placedAt` / `currency` / `taxTreatment` / `totalAmount` on the
+   * `placedAt` / `currency` / `taxTreatment` / `totalAmount` / `totalTaxTreatment` on the
    * analytics-free `upsert` path) escape the guarantee the docblock states —
    * the same drift argument {@link buildFrozenAttributionUpsert} makes about
    * forked statements, one layer up. Deriving it means a column added to the
@@ -2129,13 +2131,13 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * the same transactional `EntityManager`, so a failure on either side rolls
    * back both (no order_records/order_line_items desync).
    *
-   * The sole writer of the four analytics scalars (#1985) - stamped onto the
+   * The sole writer of the five analytics scalars (#1985/#2832) - stamped onto the
    * entity here, not in the shared {@link toOrm}, because `upsert()` above
    * reaches the same conversion from `persistIncomingSnapshot`, which has no
    * resolved figure to offer yet (see its comment there).
    *
    * The order-record half is {@link buildFrozenAttributionUpsert}, the SAME
-   * statement `upsert` runs, with the four scalars parameterised on. It used to
+   * statement `upsert` runs, with the five scalars parameterised on. It used to
    * be a full-object `manager.save()` - the exact shape #2282 abandoned - which
    * UPDATEd `sourceConnectionId` and so let a re-ingestion from a second
    * connection silently rewrite an order's origin, bypassing a freeze the other
@@ -2151,7 +2153,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     entity.currency = orderRecord.currency;
     entity.taxTreatment = orderRecord.taxTreatment;
     entity.totalAmount = orderRecord.totalAmount;
-    // Same reason the four scalars above are stamped here rather than in the
+    entity.totalTaxTreatment = orderRecord.totalTaxTreatment;
+    // Same reason the five scalars above are stamped here rather than in the
     // shared toOrm: `upsert()` is also reached by `persistIncomingSnapshot`,
     // which has no resolved billing address to read a tax id off, so mapping
     // the column there would NULL a value a previous ready-path write settled.
@@ -2366,7 +2369,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       // is the same call the two reason guards above make.
       readAuthorityAttentionEntries(entity.omsAttention),
       entity.buyerTaxId ?? null,
-      entity.shippingAddressHash ?? null
+      entity.shippingAddressHash ?? null,
+      (entity.totalTaxTreatment as PriceTaxTreatment | null) ?? null
     );
   }
 
@@ -2442,8 +2446,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    *   very upsert is about to overwrite, so mapping them here would have the
    *   detecting re-poll erase its own finding. No source payload carries them
    *   either - they are OpenLinker's observation, not the source's report.
-   * - The four analytics scalars (#1985) - `placedAt` / `currency` /
-   *   `taxTreatment` / `totalAmount` - are mapped by {@link upsertWithLineItems}
+   * - The five analytics scalars (#1985/#2832) - `placedAt` / `currency` /
+   *   `taxTreatment` / `totalAmount` / `totalTaxTreatment` - are mapped by {@link upsertWithLineItems}
    *   directly, NOT here, because this shared conversion also backs
    *   `upsert()`, reached by `persistIncomingSnapshot` with no resolved figure
    *   to offer. Mapping them in this shared method would NULL an
@@ -2474,7 +2478,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     entity.recordStatus = orderRecord.recordStatus;
     entity.mappingFailureReason = orderRecord.mappingFailureReason;
     entity.dispatchByAt = orderRecord.dispatchByAt;
-    // The four analytics scalars (#1985) are deliberately NOT mapped here -
+    // The five analytics scalars (#1985/#2832) are deliberately NOT mapped here -
     // see the class comment above and `upsertWithLineItems`, their sole writer.
     // The six FX snapshot columns (#2124) are deliberately NOT mapped here,
     // for the strongest version of the reason documented above for
