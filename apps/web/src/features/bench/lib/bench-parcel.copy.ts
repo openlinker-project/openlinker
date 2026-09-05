@@ -91,9 +91,6 @@ export const benchParcelCopy = {
     /** A refusal this build does not recognise. Never silently swallowed. */
     unknownRefusal:
       'Nothing was recorded, and this bench cannot say why. Show this screen to your supervisor.',
-    failedTitle: 'That did not go through',
-    failedBody:
-      'Nothing was recorded. Scan the item again — a scan that did not reach us is never counted twice.',
     dismissAction: 'Dismiss',
   },
 
@@ -154,6 +151,67 @@ export const benchParcelCopy = {
     noCommit:
       'This box closes itself the moment the last line is verified. There is nothing here to press.',
     scannerReady: 'Scanner in · keyboard not needed',
+  },
+
+  /**
+   * H2 — the running answer to *"did my last scan count?"* (#2421)
+   *
+   * Read by ONE `aria-live="polite"` region, so a packer who cannot see the
+   * screen still gets a spoken answer for every gesture. Refusals are
+   * deliberately absent from this table: `Alert tone="error"` already renders
+   * `role="alert"`, so announcing them here too would say each refusal twice.
+   *
+   * `sent` is the state the surface had no words for at all before this issue.
+   * Under D18 the box closes on the system's own count, so a packer reading an
+   * optimistic screen never reaches a moment where the two are compared — which
+   * is why the in-flight state is named rather than papered over with a tick
+   * that arrives early.
+   */
+  inFlight: {
+    sent: 'Sent — waiting for the system',
+    sentAnnouncement: (name: string): string => `${name} sent. Waiting for the system.`,
+    recordedAnnouncement: (parts: {
+      readonly name: string;
+      readonly verified: number;
+      readonly required: number;
+    }): string =>
+      `${parts.name} counted. ${String(parts.verified)} of ${String(parts.required)}.`,
+    /**
+     * The unit is neither in nor out until the server answers. Said in those
+     * words because the packer's next act depends on it: scan the same item
+     * again, which the per-gesture id makes safe.
+     */
+    unresolved: (name: string): string =>
+      `${name} was sent and we have no answer yet. It is not counted. Scan the same item again — one scan is never counted twice.`,
+    unresolvedTitle: 'That scan has no answer yet',
+  },
+
+  /**
+   * H1 — said plainly, and claiming only what the bench can know. (#2421)
+   *
+   * Never "you are offline": one failed request establishes nothing about the
+   * packer's network, and the two signals behind this state (a request with no
+   * answer, and the browser reporting its own link down) have one honest
+   * sentence between them.
+   */
+  unreachable: {
+    title: 'This bench cannot reach OpenLinker',
+    body: 'Everything already counted is safe — nothing you scanned has been lost. New scans are turned down until the bench is back, because a scan it cannot record is a scan that did not happen.',
+    whatToDo: 'Stop scanning and wait. This clears by itself the moment the bench gets through.',
+    refusedTitle: 'Not counted — the bench cannot reach OpenLinker',
+    refusedBody:
+      'Nothing was recorded. Wait for the message above to clear, then scan this item again.',
+    badge: 'No connection',
+    confirmDisabledHint: 'Not while the bench is out of touch with OpenLinker.',
+  },
+
+  /** C4 — sound is an addition to the visible signal, and it can be turned off. */
+  audio: {
+    onLabel: 'Sound on',
+    offLabel: 'Sound off',
+    muteAction: 'Turn the sound off',
+    unmuteAction: 'Turn the sound on',
+    hint: 'Refusals are always shown on screen. The sound is extra, for when you are looking at the box.',
   },
 
   loading: {

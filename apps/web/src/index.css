@@ -22239,3 +22239,282 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
     align-items: start;
   }
 }
+
+/* ── Pack bench — the open box (#2418 layout, #2421 story C4) ────────────────
+ *
+ * C4's conditions are glare, gloves, one hand occupied, and a bench-height
+ * screen. Three rules follow, and each is written unconditionally on purpose.
+ *
+ * 1. **The ≥44 px touch floor is NOT behind `@media (hover: none) and
+ *    (pointer: coarse)`.** That global rule near the top of this file keys on
+ *    POINTER TYPE, while the acceptance criterion and § 2.3 both frame the
+ *    guarantee in terms of WIDTH. A bench terminal is routinely a mouse-driven
+ *    all-in-one, so the pointer test would give it nothing — and neither a
+ *    768 px desktop window nor any component test would get a floor at all,
+ *    which makes the criterion a claim nothing proves. The same trap was
+ *    recorded for the returns custody forms (#2380). Do not "simplify" these
+ *    declarations into that media query.
+ *    `bench-parcel-targets.test.ts` fails the build if they move inside one.
+ *
+ * 2. **No state that matters is carried by colour.** Every tint below sits
+ *    beside a word the component already renders — the count, the state badge,
+ *    the in-flight marker. Deleting this entire block leaves the surface
+ *    correct and merely plain, which is the property `bench-parcel.test.tsx`
+ *    asserts from `textContent`.
+ *
+ * 3. **Motion is optional.** The one animation is the in-flight pulse, and it
+ *    is suppressed under `prefers-reduced-motion` — where the marker's own
+ *    words remain, so nothing is lost.
+ */
+.bench-parcel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-6);
+  min-height: 100vh;
+  background: var(--bg-canvas);
+}
+
+.bench-parcel__header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+.bench-parcel__identity {
+  display: grid;
+  gap: 2px;
+}
+
+.bench-parcel__reference {
+  font-family: var(--font-mono);
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.bench-parcel__buyer {
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.bench-parcel__scope,
+.bench-parcel__unreachable-next {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+/* Read from arm's length across a bench, so it carries the largest type on the
+   surface after the order reference. */
+.bench-parcel__progress {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 1.375rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.bench-parcel__lines {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bench-parcel-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: 2px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+}
+
+/* Tints. Additions to the words, never the carrier — see rule 2 above. */
+.bench-parcel-line--verified {
+  border-color: var(--status-success-border);
+  background: var(--status-success-soft);
+}
+
+.bench-parcel-line--in-progress {
+  border-color: var(--accent-primary);
+}
+
+.bench-parcel-line__name {
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.3;
+  text-wrap: pretty;
+}
+
+.bench-parcel-line__codes {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.bench-parcel-line__count {
+  display: grid;
+  gap: 2px;
+  justify-items: end;
+}
+
+.bench-parcel-line__count-value {
+  font-family: var(--font-mono);
+  font-size: 2.25rem;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+}
+
+.bench-parcel-line__count-note {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.bench-parcel-line__state {
+  display: grid;
+  gap: var(--space-1);
+  justify-items: end;
+}
+
+/* H2's in-flight marker. A word, in a colour that is not any of the three line
+   states, so it can never be mistaken for one of them. */
+.bench-parcel-line__pending {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.bench-parcel-line--pending {
+  border-style: dashed;
+  animation: bench-pending-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes bench-pending-pulse {
+  50% {
+    border-color: var(--accent-primary);
+  }
+}
+
+.bench-parcel-line__actions {
+  display: grid;
+  gap: var(--space-1);
+  justify-items: end;
+}
+
+.bench-parcel-line__confirm-hint,
+.bench-parcel__audio-state {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+/* Rule 1 — the width-keyed touch floor, declared outside every media query. */
+.bench-parcel .button,
+.bench-parcel-line .button,
+.bench-parcel__footer .button {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.bench-parcel-line__actions .button {
+  min-height: 44px;
+  min-width: 44px;
+  font-size: 1rem;
+  padding-inline: var(--space-4);
+}
+
+.bench-parcel__closed {
+  display: grid;
+  gap: var(--space-3);
+  justify-items: start;
+  padding: var(--space-5);
+  border: 2px solid var(--status-success-border);
+  border-radius: var(--radius-lg);
+  background: var(--status-success-soft);
+}
+
+.bench-parcel__closed-title {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.bench-parcel__closed-summary {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.9375rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+.bench-parcel__closed-next,
+.bench-parcel__reopen-hint {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+.bench-parcel__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-top: auto;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-default);
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+.bench-parcel__footer-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+/* Rule 3 — the pulse is the only motion here, and its words survive without it. */
+@media (prefers-reduced-motion: reduce) {
+  .bench-parcel-line--pending {
+    animation: none;
+  }
+}
+
+/* One column below the tablet breakpoint, for the reason the work row reflows:
+   the four columns cannot hold their meaning narrow, and hiding the state
+   column would drop the part that must never depend on anything but text. */
+@media (max-width: 768px) {
+  .bench-parcel-line {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bench-parcel-line__count,
+  .bench-parcel-line__state,
+  .bench-parcel-line__actions {
+    justify-items: start;
+  }
+}

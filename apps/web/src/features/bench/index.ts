@@ -45,6 +45,14 @@ export type { PendingGesture } from './lib/scanner-gesture-log';
 export { BenchParcelView } from './components/bench-parcel';
 export type { BenchParcelProps } from './components/bench-parcel';
 
+// #2421 — Surface H and C4 are BEHAVIOUR of the parcel view, not a component a
+// caller composes, so nothing new leaves this barrel. The reachability hook,
+// the sound module and the in-flight ledger are deliberately private: a second
+// consumer of the reachability hook would be a second answer to "can this bench
+// reach OpenLinker" with its own recovery rule, and a caller reaching
+// `playScanSound` directly could sound a refusal the surface never showed —
+// which is precisely the audio-instead-of-visible arrangement C4 forbids.
+
 export type { BenchWork, BenchWorkList as BenchWorkListData } from './api/bench-work.types';
 export type { BenchParcel, BenchParcelLine } from './api/bench-parcel.types';
 

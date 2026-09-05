@@ -48,6 +48,39 @@ export function parcelTotals(parcel: BenchParcel): {
   };
 }
 
+/**
+ * Which of two reads of one box is the newer? (#2421, story H2)
+ *
+ * The bench sends one request per physical gesture and a fast packer has
+ * several in flight at once. Nothing orders the answers: the response recording
+ * unit 1 can land AFTER the response recording unit 2, and a cache write that
+ * takes whichever arrived last then shows `1 of 2` for a box the server holds
+ * at `2 of 2`.
+ *
+ * That is H2's mirror image — a line displaying as LESS verified than the system
+ * accepted — and under D18 it never surfaces, because the box closes on the
+ * system's own count with no confirmation step in which the two are compared.
+ * The packer sees a line still wanting a unit that is already in the box, scans
+ * a third, and gets an over-pack refusal for a box that is simply finished.
+ *
+ * `version` is the API's own monotonic answer — the same field `reopen` sends
+ * as `expectedVersion` — so the rule is a comparison rather than a guess.
+ * Equal versions are accepted: a retry under one gesture id answers with the
+ * identical parcel, and refusing it would leave a redundant but correct read
+ * out for no gain.
+ */
+export function isNewerParcelRead(
+  incoming: BenchParcel,
+  cached: BenchParcel | undefined
+): boolean {
+  if (cached === undefined) return true;
+  // A read of a DIFFERENT box is never comparable — versions are per work, so
+  // comparing across them would drop a legitimate first read of the next
+  // parcel whose version happens to be lower.
+  if (cached.workId !== incoming.workId) return true;
+  return incoming.version >= cached.version;
+}
+
 /** Is this box shut? The API's own answer, never inferred from the counts. */
 export function isParcelClosed(parcel: BenchParcel): boolean {
   return parcel.closedAt !== null;

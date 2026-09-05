@@ -30,7 +30,8 @@ import { useMutation, useQueryClient, type UseMutationResult } from '@tanstack/r
 
 import { useApiClient } from '../../../app/api/api-client-provider';
 import { benchQueryKeys } from '../api/bench-work.query-keys';
-import type { BenchVerificationResult } from '../api/bench-parcel.types';
+import type { BenchParcel, BenchVerificationResult } from '../api/bench-parcel.types';
+import { isNewerParcelRead } from '../lib/bench-parcel-presentation';
 import { settleGesture } from '../lib/scanner-gesture-log';
 
 export interface BenchVerifyInput {
@@ -61,7 +62,16 @@ export function useBenchVerifyMutation(): UseMutationResult<
       // The response already carries the parcel as it now stands, so the
       // surface re-renders from it without waiting for a poll. A refusal
       // carries it too, which is what makes the count visibly NOT move.
-      queryClient.setQueryData(benchQueryKeys.parcel(variables.workId), result.parcel);
+      //
+      // Guarded on `version` (#2421, H2). A fast packer has several gestures in
+      // flight and nothing orders the answers, so an unguarded write lets an
+      // EARLIER answer land last and show a lower count than the server holds.
+      // See `isNewerParcelRead` for why that is invisible under D18's
+      // auto-close.
+      queryClient.setQueryData<BenchParcel>(
+        benchQueryKeys.parcel(variables.workId),
+        (cached) => (isNewerParcelRead(result.parcel, cached) ? result.parcel : cached)
+      );
       // The list holds this parcel's row; a box that just closed must not keep
       // sitting in the queue behind the packer.
       void queryClient.invalidateQueries({ queryKey: benchQueryKeys.work() });
