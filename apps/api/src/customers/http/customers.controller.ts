@@ -6,6 +6,15 @@
  * individual customer details with addresses.
  *
  * @module apps/api/src/customers/http
+ *
+ * **Reads are `@Roles('admin', 'operator', 'viewer')`, not `@AnyRole()` (#2413).**
+ * This is wave-spec story A5 as an acceptance criterion rather than a product
+ * decision: a bench session must be refused the customer list and a customer
+ * record. Naming the three roles is behaviourally identical for every user who
+ * exists today and excludes the new `packer` role by construction. Asserted by
+ * `apps/api/test/integration/bench-packer-authorization.int-spec.ts` and by
+ * `apps/api/src/auth/packer-exclusion.spec.ts` — a comment here would be
+ * discharged the moment somebody adds a route.
  */
 import {
   Controller,
@@ -27,6 +36,7 @@ import { ListCustomersQueryDto } from './dto/list-customers-query.dto';
 import { CustomerProjectionResponseDto } from './dto/customer-projection-response.dto';
 import type { CustomerAddressResponseDto } from './dto/customer-address-response.dto';
 import { PaginatedCustomersResponseDto } from './dto/paginated-customers-response.dto';
+import { Roles } from '../../auth/decorators/roles.decorator';
 
 @ApiBearerAuth()
 @ApiTags('customers')
@@ -37,6 +47,7 @@ export class CustomersController {
     private readonly customerRepository: CustomerProjectionRepositoryPort
   ) {}
 
+  @Roles('admin', 'operator', 'viewer')
   @Get()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -68,6 +79,7 @@ export class CustomersController {
     };
   }
 
+  @Roles('admin', 'operator', 'viewer')
   @Get(':id')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id', description: 'Internal customer ID (e.g. ol_customer_...)' })

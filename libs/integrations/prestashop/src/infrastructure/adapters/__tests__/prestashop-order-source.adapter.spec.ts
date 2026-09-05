@@ -24,6 +24,7 @@ import type {
 } from '../../mappers/prestashop.mapper.interface';
 import type { IPrestashopWebserviceClient } from '../../http/prestashop-webservice.client.interface';
 import type { PrestashopOrderCurrencyResolver } from '../../provisioners/prestashop-order-currency.resolver';
+import { PrestashopOrderFeedCapabilityCache } from '../../provisioners/prestashop-order-feed-capability.cache';
 
 /**
  * Stub order-currency resolver (#2277). The adapter's own contract is "ask the
@@ -491,6 +492,227 @@ describe('PrestashopOrderSourceAdapter', () => {
         // Cursor still advances past the filtered-out cancelled order.
         expect(result.nextCursor).toBe('2024-03-11 09:00:00|12');
       });
+    });
+  });
+
+  describe('listOrderFeed — date_upd sort/filter fallback (#2877)', () => {
+    /**
+     * PrestaShop's own refusal, verified live on 9.0.2: `date_upd` is not on
+     * this shop's allowed sort/filter field list for `orders`.
+     */
+    const codeThirtyEightError = (): PrestashopApiException =>
+      new PrestashopApiException(
+        'PrestaShop API server error (500): /api/orders',
+        500,
+        JSON.stringify({
+          errors: [
+            {
+              code: 38,
+              message:
+                'Unable to filter by this field. However, these are available: id, id_address_delivery, ...',
+            },
+          ],
+        })
+      );
+
+    it('should fall back to an id-ordered read within the same poll on a code-38 refusal', async () => {
+      const orders: PrestashopOrder[] = [
+        { id: '5', date_add: '2024-06-01 08:00:00', date_upd: '2024-06-01 08:00:00' },
+      ];
+      mockHttpClient.listResources = jest
+        .fn()
+        .mockRejectedValueOnce(codeThirtyEightError())
+        .mockResolvedValueOnce(orders);
+
+      const result = await adapter.listOrderFeed({ fromCursor: null, limit: 10 });
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].externalOrderId).toBe('5');
+      // Wire format is unchanged (#2605) - still `date_upd|id`, never a
+      // second cursor shape.
+      expect(result.nextCursor).toBe('2024-06-01 08:00:00|5');
+
+      const calls = listCallsExcludingStates(mockHttpClient);
+      expect(calls).toHaveLength(2);
+      // Second (fallback) attempt sorts purely by id, no date_upd anywhere.
+      expect(calls[1]).toEqual(['orders', { sort: ['id_ASC'] }, 10, 0]);
+    });
+
+    it('should skip straight to the id-ordered read once the connection is known unsupported', async () => {
+      const sharedCache = new PrestashopOrderFeedCapabilityCache();
+      sharedCache.markDateUpdSortUnsupported(connection.id);
+      const fallbackAdapter = new PrestashopOrderSourceAdapter(
+        mockHttpClient,
+        orderMapper,
+        connection,
+        currencyResolver as unknown as PrestashopOrderCurrencyResolver,
+        sharedCache
+      );
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([]);
+
+      await fallbackAdapter.listOrderFeed({ fromCursor: '2024-06-01 08:00:00|5', limit: 10 });
+
+      const calls = listCallsExcludingStates(mockHttpClient);
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toEqual(['orders', { idAfter: 5, sort: ['id_ASC'] }, 10, 0]);
+    });
+
+    it('should remember the refusal across adapter instances sharing the same cache', async () => {
+      const sharedCache = new PrestashopOrderFeedCapabilityCache();
+      const firstAdapter = new PrestashopOrderSourceAdapter(
+        mockHttpClient,
+        orderMapper,
+        connection,
+        currencyResolver as unknown as PrestashopOrderCurrencyResolver,
+        sharedCache
+      );
+      mockHttpClient.listResources = jest
+        .fn()
+        .mockRejectedValueOnce(codeThirtyEightError())
+        .mockResolvedValueOnce([]);
+      await firstAdapter.listOrderFeed({ fromCursor: null, limit: 10 });
+
+      const secondAdapter = new PrestashopOrderSourceAdapter(
+        mockHttpClient,
+        orderMapper,
+        connection,
+        currencyResolver as unknown as PrestashopOrderCurrencyResolver,
+        sharedCache
+      );
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([]);
+      await secondAdapter.listOrderFeed({ fromCursor: null, limit: 10 });
+
+      // One request only - the second adapter never re-attempts the
+      // date_upd sort, because the shared (factory-held) cache already knows.
+      expect(listCallsExcludingStates(mockHttpClient)).toHaveLength(1);
+    });
+
+    it('should not fall back and should propagate an unrelated PrestashopApiException unchanged', async () => {
+      const unrelatedError = new PrestashopApiException(
+        'PrestaShop API server error (500): /api/orders',
+        500,
+        JSON.stringify({ errors: [{ code: 5, message: 'Unable to load object' }] })
+      );
+      mockHttpClient.listResources = jest.fn().mockRejectedValueOnce(unrelatedError);
+
+      await expect(adapter.listOrderFeed({ fromCursor: null, limit: 10 })).rejects.toBe(
+        unrelatedError
+      );
+      expect(listCallsExcludingStates(mockHttpClient)).toHaveLength(1);
+    });
+
+    it('should propagate a non-JSON-body error unchanged rather than guessing it is the known refusal', async () => {
+      const opaqueError = new PrestashopApiException(
+        'PrestaShop API server error (500): /api/orders',
+        500,
+        'not json'
+      );
+      mockHttpClient.listResources = jest.fn().mockRejectedValueOnce(opaqueError);
+
+      await expect(adapter.listOrderFeed({ fromCursor: null, limit: 10 })).rejects.toBe(
+        opaqueError
+      );
+    });
+
+    it('should read from the beginning (no id filter) when falling back with no prior cursor', async () => {
+      mockHttpClient.listResources = jest
+        .fn()
+        .mockRejectedValueOnce(codeThirtyEightError())
+        .mockResolvedValueOnce([]);
+
+      await adapter.listOrderFeed({ fromCursor: null, limit: 10 });
+
+      const calls = listCallsExcludingStates(mockHttpClient);
+      expect(calls[1]).toEqual(['orders', { sort: ['id_ASC'] }, 10, 0]);
+    });
+
+    it('should not re-observe an update to an already-read order id in fallback mode (documented guarantee narrowing)', async () => {
+      // The order the shop later updates (id 1) never reappears once the
+      // connection has fallen back, because the id filter never revisits an
+      // id behind the cursor - this is the narrowed #2605 guarantee.
+      const sharedCache = new PrestashopOrderFeedCapabilityCache();
+      sharedCache.markDateUpdSortUnsupported(connection.id);
+      const fallbackAdapter = new PrestashopOrderSourceAdapter(
+        mockHttpClient,
+        orderMapper,
+        connection,
+        currencyResolver as unknown as PrestashopOrderCurrencyResolver,
+        sharedCache
+      );
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([
+        // The shop reports order 1's row again (its date_upd bumped), but the
+        // id filter `id > 1` excludes it from the response entirely.
+        { id: '2', date_add: '2024-06-02 09:00:00', date_upd: '2024-06-02 09:00:00' },
+      ]);
+
+      const result = await fallbackAdapter.listOrderFeed({
+        fromCursor: '2024-06-01 08:00:00|1',
+        limit: 10,
+      });
+
+      expect(result.items.map((i) => i.externalOrderId)).toEqual(['2']);
+    });
+
+    it('should advance the cursor past a row with an unusable date_upd, in id-only mode (#2877 review)', async () => {
+      // Order 6 carries no usable date_upd (dropped by `toFeedItem`); order 7
+      // is fine. Without advancing `lastOrderId` off the raw row id even for
+      // the dropped row, the fallback would still make progress here only
+      // because order 7 succeeds - so this test isolates the poison row by
+      // also covering the case where it is the ONLY thing this page holds.
+      const sharedCache = new PrestashopOrderFeedCapabilityCache();
+      sharedCache.markDateUpdSortUnsupported(connection.id);
+      const fallbackAdapter = new PrestashopOrderSourceAdapter(
+        mockHttpClient,
+        orderMapper,
+        connection,
+        currencyResolver as unknown as PrestashopOrderCurrencyResolver,
+        sharedCache
+      );
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([
+        { id: '6', date_add: '2024-06-02 09:00:00' }, // no date_upd - unusable
+      ]);
+
+      const result = await fallbackAdapter.listOrderFeed({
+        fromCursor: '2024-06-01 08:00:00|5',
+        limit: 10,
+      });
+
+      // Nothing usable was emitted, but the read position still moved past
+      // id 6 - a re-poll must ask for `id > 6`, not `id > 5` again.
+      expect(result.items).toHaveLength(0);
+      expect(result.nextCursor).toBe('2024-06-01 08:00:00|6');
+    });
+
+    it('should not re-read the identical page forever when every row on it is malformed', async () => {
+      const sharedCache = new PrestashopOrderFeedCapabilityCache();
+      sharedCache.markDateUpdSortUnsupported(connection.id);
+      const fallbackAdapter = new PrestashopOrderSourceAdapter(
+        mockHttpClient,
+        orderMapper,
+        connection,
+        currencyResolver as unknown as PrestashopOrderCurrencyResolver,
+        sharedCache
+      );
+      mockHttpClient.listResources = jest
+        .fn()
+        .mockResolvedValueOnce([{ id: '6' }, { id: '7' }])
+        .mockResolvedValueOnce([]);
+
+      const first = await fallbackAdapter.listOrderFeed({
+        fromCursor: '2024-06-01 08:00:00|5',
+        limit: 10,
+      });
+      expect(first.nextCursor).toBe('2024-06-01 08:00:00|7');
+
+      const second = await fallbackAdapter.listOrderFeed({
+        fromCursor: first.nextCursor,
+        limit: 10,
+      });
+
+      const calls = listCallsExcludingStates(mockHttpClient);
+      // The second poll asks for `id > 7`, never `id > 5` again.
+      expect(calls[1]).toEqual(['orders', { idAfter: 7, sort: ['id_ASC'] }, 10, 0]);
+      expect(second.items).toHaveLength(0);
     });
   });
 

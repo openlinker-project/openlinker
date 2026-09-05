@@ -23,9 +23,53 @@
  *
  * @module libs/core/src/fulfillment/infrastructure/persistence/entities
  */
-import { Column, CreateDateColumn, Entity, Index, PrimaryColumn, UpdateDateColumn } from 'typeorm';
+import {
+  Check,
+  Column,
+  CreateDateColumn,
+  Entity,
+  Index,
+  PrimaryColumn,
+  UpdateDateColumn,
+} from 'typeorm';
 
 @Entity('fulfillment_works')
+// AT-MOST-ONE packing actor (#2413, ADR-071 decision 2) — deliberately NOT the
+// `CHK_fulfillment_holds_actor` XOR (`<>`, exactly one) this pair otherwise
+// mirrors. A hold always has an actor; a WORK is created unpacked and spends
+// most of its life that way, so both-NULL is the normal state here rather than
+// an anomaly, and `<>` would refuse every INSERT the router makes. What the XOR
+// buys is preserved exactly: "a 3PL packed this" and "a human packed it" can
+// never be the same value. Both-NULL is admitted here because an OPEN work
+// genuinely has no packer yet; what it must not survive is CLOSURE, which is
+// the sibling constraint below. #2413 wrote here that no `packedAt` was added
+// "because that would be a second completion instant competing with the model
+// #2418 owns"; #2418 has since landed that model, and `parcelClosedAt` IS its
+// instant — one completion instant on this table, not two. Declared under the
+// SAME NAME as the migration, per this file's own naming discipline.
+@Check(
+  'CHK_fulfillment_works_packed_actor',
+  'NOT ("packedByUserId" IS NOT NULL AND "packedByService" IS NOT NULL)'
+)
+// A CLOSED parcel must NAME someone (#2890 F1, spec § 2.7 G1). The constraint
+// above admits both-NULL, which #2413 justified by saying `status` tells "not
+// yet packed" apart from "packed, unattributed". #2418's `parcelClosedAt` is
+// what actually answers that question, and it also made the bad state
+// representable: closed, with neither actor — *packed, and we do not know by
+// whom*. Together the two constraints are G1's "exactly one", scoped to
+// closure, which is the only form of the XOR a table whose rows are created
+// unpacked can satisfy.
+//
+// A SECOND named constraint rather than a widened one, departing deliberately
+// from this tree's one-`@Check`-per-table habit: mutual exclusion and
+// presence-on-closure quantify over different columns under different
+// conditions and are fixed differently, so one predicate would report both
+// faults under one name. See the migration for the full argument — and note
+// the spelling is `NOT (… AND …)` only so the pair reads as one idiom.
+@Check(
+  'CHK_fulfillment_works_closed_parcel_actor',
+  'NOT ("parcelClosedAt" IS NOT NULL AND "packedByUserId" IS NULL AND "packedByService" IS NULL)'
+)
 // The grouping key. Its LEADING COLUMN serves every `WHERE "orderId" = ?`
 // lookup, so there is deliberately no separate (orderId) index — the same
 // argument this tree makes against a redundant index on `return_lines`.
@@ -135,6 +179,29 @@ export class FulfillmentWorkOrmEntity {
   dispatchRelayedAt!: Date | null;
 
   /**
+   * When an operator pushed this work object ahead of deadline order (#2416,
+   * spec D22). `null` means it is in ordinary deadline order.
+   *
+   * ONE column, because D22 asks for one flag and one sort key and explicitly
+   * *"adds no concept to the model"*. It is both: the presence answers "is this
+   * expedited", and the instant is the tiebreak between two expedited parcels —
+   * first pushed, first out — which a boolean could not supply.
+   *
+   * **No index.** Nothing orders by this column in SQL: the bench's sort key is
+   * the ORDER's `dispatchByAt`, which lives in another context, so the ordering
+   * happens above the query (see `BenchWorkService`). An index nothing reads is
+   * cost, and the day a SQL `ORDER BY` arrives is the day to add one.
+   *
+   * Reversible by construction — `release_expedite` writes `null` back — because
+   * D22 is explicit that a permanent override would be a second deadline system.
+   * It carries no actor column: B5 requires the expedite to be VISIBLE and
+   * REVERSIBLE, not attributed, and a column nothing reads is the same cost as
+   * an index nothing reads.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  expeditedAt!: Date | null;
+
+  /**
    * The HOLDER's acceptance instant — and the at-most-once CLAIM column for
    * acceptance (#2399, ADR-054).
    *
@@ -201,6 +268,85 @@ export class FulfillmentWorkOrmEntity {
    */
   @Column({ type: 'integer', default: 0 })
   version!: number;
+
+  /**
+   * OL user id of whoever closed this work object's packing phase (#2413).
+   * `null` when a service packed it, or when nothing has.
+   *
+   * **`uuid`, deliberately diverging from `fulfillment_holds.placedByUserId`,
+   * which is `text`.** The shape and the name discipline are copied from that
+   * pair; the TYPE is not, and the reason is D4: the order-grain fact is
+   * DERIVED from this column, and its target `order_records.packedByUserId`
+   * (#2287) is `uuid`. A `text` source can hold a value the derivation target
+   * cannot store — a failure that would surface in #2418's writer, far from the
+   * column that admitted it. Nothing derives from `placedByUserId`, so the
+   * holds precedent is not load-bearing in the same way. `packedByService`
+   * stays `text`, because a service NAME is free-form: the two columns are two
+   * different kinds of value and the split types say so.
+   *
+   * No FK to `users`, matching both precedents: a dangling id from a deleted
+   * user is the honest outcome for an audit fact, and this table carries
+   * cross-aggregate references by value throughout.
+   *
+   * **The last verifier owns the parcel** (spec D13, a consequence of D18's
+   * auto-close). Under roaming benches this can be someone who checked one item
+   * of five, so a reader must NOT take this field as a complete account of who
+   * handled the box — the verification ledger holds the rest.
+   *
+   * **Grain is per work, per phase** (spec D4). This column is the detailed
+   * answer; `order_records.packedAt` / `packedByUserId` (#2287) is the order's
+   * single one, and since #2890 the bench DERIVES it — closing a parcel calls
+   * `IOrderRecordService.markPacked`, whose `WHERE packedAt IS NULL` guard is
+   * D10's first-writer-wins. So a split order names one packer at the order
+   * grain and drops the other, which is exactly why the grain here is per work
+   * and why that derivation can never be reversed: the order fact is not a
+   * rival to this one, and nothing recomputes this column from it.
+   *
+   * The join lives in `apps/api/src/bench`, not here: this context is a
+   * registered zero-sibling-edge leaf and may not read `orders` (ADR-053).
+   *
+   * Written by #2418's `claimParcelClose`, in the same guarded UPDATE as
+   * `parcelClosedAt` below — never on its own, so the pair cannot disagree, and
+   * `CHK_fulfillment_works_closed_parcel_actor` refuses the row if it ever were.
+   */
+  @Column({ type: 'uuid', nullable: true })
+  packedByUserId!: string | null;
+
+  /**
+   * Name of the service that packed this work object (#2413). `null` when a
+   * human packed it, or when nothing has. Never set alongside
+   * `packedByUserId` — see `CHK_fulfillment_works_packed_actor` on the class.
+   *
+   * Nothing writes it yet; the column exists for a non-bench packer that does
+   * not exist. Whoever adds one must set it AT THE CLOSE, because
+   * `CHK_fulfillment_works_closed_parcel_actor` (#2890) refuses a closed parcel
+   * naming neither actor — a service close can no longer leave this null.
+   */
+  @Column({ type: 'text', nullable: true })
+  packedByService!: string | null;
+
+  /**
+   * When the last verification shut the box at the pack bench (#2418, spec D18),
+   * or `null` while it is open.
+   *
+   * **The parcel closes on the last verification, with no confirmation step**,
+   * so this is written as a CONSEQUENCE of a verification and never by a commit
+   * control — there is none anywhere on that surface. `claimParcelClose` writes
+   * it under `WHERE "parcelClosedAt" IS NULL`, which is the at-most-once claim
+   * that keeps `packedByUserId` unambiguous when two completing verifications
+   * race; `reopenParcel` clears it under the mirror guard (E6/D19).
+   *
+   * **Distinct from `status = 'closed'`**, which is the executor finishing the
+   * whole job. A packed parcel still has to be labelled and leave, so packing is
+   * a part of that job rather than the end of it, and conflating the two would
+   * make a box that cannot ship read as complete.
+   *
+   * No index: the one predicate that reads it is the bench's unlabelled-parcel
+   * list, which is already narrowed to one executor's accepted work — an index
+   * nothing else reads is cost on every write to this table.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  parcelClosedAt!: Date | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;

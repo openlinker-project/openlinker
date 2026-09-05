@@ -294,7 +294,8 @@ export class OrderRecordService implements IOrderRecordService {
       null,
       [],
       buyerTaxId,
-      shippingAddressHash
+      shippingAddressHash,
+      analyticsScalars.totalTaxTreatment
     );
 
     // #1985: persist the order record AND its order_line_items rows in one

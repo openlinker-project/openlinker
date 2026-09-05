@@ -4,7 +4,11 @@
 import { describe, expect, it } from 'vitest';
 
 import { REDACTED_ERROR_MESSAGE, type Shipment } from '../api/shipments.types';
-import { groupFailedShipmentsByCause, normaliseErrorMessage } from './group-failed-shipments-by-cause';
+import {
+  groupFailedShipmentsByCause,
+  isExactProviderCode,
+  normaliseErrorMessage,
+} from './group-failed-shipments-by-cause';
 
 function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
   return {
@@ -264,6 +268,109 @@ describe('groupFailedShipmentsByCause', () => {
     expect(groupFailedShipmentsByCause(shipments)).toEqual([]);
   });
 
+  it('does NOT group two rows sharing only a COARSE shipx.* code when their messages differ (#2873)', () => {
+    // #2805 gives every no-details ShipX rejection the same bucket code, so
+    // trusting it alone would collapse a bad postcode and an over-limit COD
+    // into one "shared rejection code" group.
+    const shipments = [
+      makeShipment({
+        id: 'ol_shipment_1',
+        errorMessage: 'sender postcode invalid',
+        providerCode: 'shipx.validation_failed',
+      }),
+      makeShipment({
+        id: 'ol_shipment_2',
+        errorMessage: 'declared value exceeds the insured limit',
+        providerCode: 'shipx.validation_failed',
+      }),
+    ];
+    expect(groupFailedShipmentsByCause(shipments)).toEqual([]);
+  });
+
+  it('groups two rows sharing a coarse code AND a message, and still carries the code for display (#2873)', () => {
+    const shipments = [
+      makeShipment({
+        id: 'ol_shipment_1',
+        errorMessage: 'sender postcode "22-213" invalid',
+        providerCode: 'shipx.validation_failed',
+      }),
+      makeShipment({
+        id: 'ol_shipment_2',
+        errorMessage: 'sender postcode "22999" invalid',
+        providerCode: 'shipx.validation_failed',
+      }),
+    ];
+    const groups = groupFailedShipmentsByCause(shipments);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].providerCode).toBe('shipx.validation_failed');
+    expect(groups[0].shipments.map((s) => s.id)).toEqual(['ol_shipment_1', 'ol_shipment_2']);
+  });
+
+  it('keeps two DIFFERENT coarse codes apart even when the message is identical (#2873)', () => {
+    const shipments = [
+      makeShipment({
+        id: 'ol_shipment_1',
+        errorMessage: 'sender postcode invalid',
+        providerCode: 'shipx.validation_failed',
+      }),
+      makeShipment({
+        id: 'ol_shipment_2',
+        errorMessage: 'sender postcode invalid',
+        providerCode: 'shipx.not_found',
+      }),
+    ];
+    expect(groupFailedShipmentsByCause(shipments)).toEqual([]);
+  });
+
+  it('applies the minimum-cause-key guard to a coarse code whose message normalises away (#2873)', () => {
+    // '500' / '404' both normalise to '', so the composite key would be the
+    // bare code and the group would assert a shared cause between two
+    // failures that have nothing in common but a carrier bucket.
+    const shipments = [
+      makeShipment({
+        id: 'ol_shipment_1',
+        errorMessage: '500',
+        providerCode: 'shipx.validation_failed',
+      }),
+      makeShipment({
+        id: 'ol_shipment_2',
+        errorMessage: '404',
+        providerCode: 'shipx.validation_failed',
+      }),
+    ];
+    expect(groupFailedShipmentsByCause(shipments)).toEqual([]);
+  });
+
+  it('still groups an EXACT providerCode across differing messages after the #2873 narrowing', () => {
+    const shipments = [
+      makeShipment({
+        id: 'ol_shipment_1',
+        errorMessage: 'Service temporarily unavailable',
+        providerCode: 'api.http-503',
+      }),
+      makeShipment({
+        id: 'ol_shipment_2',
+        errorMessage: 'Upstream is down, try later',
+        providerCode: 'api.http-503',
+      }),
+    ];
+    const groups = groupFailedShipmentsByCause(shipments);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].providerCode).toBe('api.http-503');
+  });
+
+  it('does not mix a coarse-code row with a no-code row even when the message matches (#2873)', () => {
+    const shipments = [
+      makeShipment({
+        id: 'ol_shipment_1',
+        errorMessage: 'sender postcode invalid',
+        providerCode: 'shipx.validation_failed',
+      }),
+      makeShipment({ id: 'ol_shipment_2', errorMessage: 'sender postcode invalid', providerCode: null }),
+    ];
+    expect(groupFailedShipmentsByCause(shipments)).toEqual([]);
+  });
+
   it('does NOT form a group across two connections that would total 2+ only when combined', () => {
     // One shipment per connection sharing a cause — neither connection alone
     // has a repeatable pattern, so no strip should fire for either.
@@ -280,5 +387,25 @@ describe('groupFailedShipmentsByCause', () => {
       }),
     ];
     expect(groupFailedShipmentsByCause(shipments)).toEqual([]);
+  });
+});
+
+describe('isExactProviderCode', () => {
+  it.each(['api.http-503', 'api.http-401', 'preflight.missing-parcel-template', 'command.rejected', 'target_point'])(
+    'treats %s as exact, because its family narrows the cause',
+    (code) => {
+      expect(isExactProviderCode(code)).toBe(true);
+    },
+  );
+
+  it.each(['shipx.validation_failed', 'shipx.not_found', 'PARCEL_TOO_LARGE'])(
+    'treats %s as coarse, because it names a bucket rather than a cause',
+    (code) => {
+      expect(isExactProviderCode(code)).toBe(false);
+    },
+  );
+
+  it('treats a missing code as coarse — it carries no structure at all', () => {
+    expect(isExactProviderCode(null)).toBe(false);
   });
 });

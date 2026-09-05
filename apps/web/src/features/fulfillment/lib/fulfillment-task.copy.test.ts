@@ -17,12 +17,14 @@ import {
 } from './fulfillment-task.copy';
 
 describe('fulfillment task copy (#2411)', () => {
-  it('should label the six operator-invocable actions', () => {
+  it('should label the eight operator-invocable actions', () => {
     expect(Object.keys(FULFILLMENT_ACTION_COPY).sort()).toEqual([
       'close',
+      'expedite',
       'force_cancel',
       'hold',
       'mark_in_progress',
+      'release_expedite',
       'release_hold',
       'schedule',
     ]);

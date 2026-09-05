@@ -255,6 +255,39 @@ describe('SalesDocumentViewService', () => {
     },
   );
 
+  it('should prefer totalTaxTreatment over taxTreatment in the routing facts (#2829/#2832)', async () => {
+    // Must match `toSalesDocumentOrderFacts`'s `totalTaxTreatment ?? taxTreatment`
+    // fallback exactly: a PrestaShop order (line prices net, total gross)
+    // routed as gross by the gate must not be reported net-priced here.
+    orderRecords.findByIds.mockResolvedValue([
+      orderRecord({ taxTreatment: 'exclusive', totalTaxTreatment: 'inclusive' }),
+    ]);
+    rules.resolveRoutingBatch.mockResolvedValue([
+      { kind: 'unresolved', reason: 'no-configuration-for-country' },
+    ]);
+
+    await service.getForOrders(['ol_order_1']);
+
+    expect(rules.resolveRoutingBatch).toHaveBeenCalledWith([
+      expect.objectContaining({ taxTreatment: 'inclusive' }),
+    ]);
+  });
+
+  it('should fall back to taxTreatment when totalTaxTreatment is absent from the record', async () => {
+    orderRecords.findByIds.mockResolvedValue([
+      orderRecord({ taxTreatment: 'exclusive', totalTaxTreatment: null }),
+    ]);
+    rules.resolveRoutingBatch.mockResolvedValue([
+      { kind: 'unresolved', reason: 'no-configuration-for-country' },
+    ]);
+
+    await service.getForOrders(['ol_order_1']);
+
+    expect(rules.resolveRoutingBatch).toHaveBeenCalledWith([
+      expect.objectContaining({ taxTreatment: 'exclusive' }),
+    ]);
+  });
+
   it('should keep an order with no document in the map, with the kind routing resolves', async () => {
     orderRecords.findByIds.mockResolvedValue([orderRecord()]);
     connections.list.mockResolvedValue([connection()]);

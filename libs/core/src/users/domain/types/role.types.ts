@@ -16,8 +16,19 @@
  * - `operator`: Day-to-day operational access — orders, listings, inventory,
  *   shipments. Cannot touch administrative surfaces.
  * - `viewer`: Read-only access to operational data.
+ * - `packer`: A pack-bench packer (#2413, ADR-071). NARROWER than `operator`,
+ *   deliberately: at 1000 orders/day with temporary staff, "every temp packer
+ *   can read the customer database" is not a defensible posture (spec D12).
+ *   ADR-071 gives the bench no principal of its own, so a packer is an ordinary
+ *   user and the ONLY thing making the bench narrower than any other session is
+ *   this role plus the routes that name it.
+ *
+ * **Adding a role here widens every `@AnyRole()` route in `apps/api` silently.**
+ * That is what `apps/api/src/auth/user-role-values.spec.ts` exists to stop:
+ * review the routes first, narrow the ones the new role must not reach, and
+ * only then extend that spec's list. Never the other way round.
  */
-export const UserRoleValues = ['admin', 'operator', 'viewer'] as const;
+export const UserRoleValues = ['admin', 'operator', 'viewer', 'packer'] as const;
 
 /**
  * Union type derived from UserRoleValues.
@@ -125,4 +136,21 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'invoices:read',
     'webhooks:read',
   ],
+  /**
+   * **Empty, deliberately — not an oversight and not a placeholder to fill in.**
+   *
+   * `PermissionValues` has no member describing packing. The nearest candidate,
+   * `orders:read`, is read by `usePermission` to decide FE navigation
+   * visibility, so granting it to satisfy this `Record` would light up the
+   * orders surface for a packer — the opposite of what a narrower role is for.
+   *
+   * This map is display-only (see the header above): backend authorization is
+   * `@Roles`, which #2413 sets route by route. So an empty set costs a packer
+   * no access they were meant to have, and it is the fail-closed direction.
+   *
+   * A `pack:*` member arrives with the bench's own surfaces (#2416/#2418), when
+   * it can be named for something that exists — ADR-048 decision 1's "no
+   * interface without an implementer", applied to a permission.
+   */
+  packer: [],
 } as const;

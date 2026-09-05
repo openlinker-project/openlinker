@@ -14729,6 +14729,12 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .sales-document-panel__skeleton {
   height: 14px;
 }
+/* #2562 — sized to match the loaded `DocumentHeadline`'s two-line height, so
+   the section does not change height once the real content arrives. */
+.sales-document-panel__skeleton--headline {
+  height: 38px;
+  margin-bottom: var(--space-3);
+}
 @keyframes invoice-skeleton-shimmer {
   0% { background-position: 100% 0; }
   100% { background-position: -100% 0; }
@@ -15409,13 +15415,41 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   max-width: 22rem;
 }
 
-/* ─ Correction trigger in the sales document panel (issued state) ─ */
+/* ─ Correction disclosure in the sales document panel (issued state, #2558) ─
+   A `<details>`: a correction is a new linked document, not a replacement, so
+   its trigger sits behind its own disclosure rather than beside the record
+   it corrects. */
 .sales-document-panel__correction {
   margin-top: var(--space-3);
   padding-top: var(--space-3);
   border-top: 1px solid var(--border-subtle);
-  display: flex;
-  justify-content: flex-end;
+}
+.sales-document-panel__correction summary {
+  cursor: pointer;
+  font-size: 0.8125rem;
+  color: var(--text-link);
+  width: fit-content;
+}
+.sales-document-panel__correction .panel-copy {
+  margin: var(--space-2) 0;
+}
+
+/* ─ Scope note under a manual override action (#2561) ─
+   The override applies to ONE order, and the note says so beside the control
+   rather than in a tooltip. Full-width so it sits on its own row below a
+   wrapped flex action group. */
+.sales-document-panel__scope-note {
+  width: 100%;
+  font-size: 0.75rem;
+}
+
+/* ─ Routing-explanation disclosure above the manual override (#2561) ─ */
+.sales-document-panel__routing-disclosure summary {
+  cursor: pointer;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-2);
 }
 
 /* ── KSeF UPO inline preview dialog (#1234) ─────────────────────────
@@ -22358,4 +22392,559 @@ legend.analytics-settings-dialog__label {
   font-family: var(--font-mono);
   font-size: 0.6875rem;
   color: var(--text-muted);
+}
+
+/* Pack bench (#2413, W3b-1) -------------------------------------------------
+ *
+ * `bench-body--concealed` is load-bearing, not decoration. The bench body is
+ * deliberately never UNMOUNTED — that is how a lock and a handover leave the
+ * packer's half-verified parcel intact (stories A2/A3) — so on the locked
+ * state it has to be hidden instead. The locked screen must show "nothing
+ * about the order — no reference, no buyer, no address, nothing about what is
+ * in the box", because a shared floor terminal is routinely unattended.
+ *
+ * `visibility: hidden` rather than `display: none`: it removes the content
+ * from view and from the accessibility tree while leaving the subtree laid out,
+ * so the overlay does not reflow the page as it appears and disappears. The
+ * component pairs it with `aria-hidden` and `inert`.
+ */
+.bench-surface {
+  position: relative;
+}
+
+.bench-body--concealed {
+  visibility: hidden;
+}
+
+.bench-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background: var(--bg-surface-elevated);
+}
+
+.bench-identity-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* ── Pack bench — work list (#2416, W3b-3) ──────────────────────────────────
+ *
+ * Sized for a bench rather than a desk: the deadline headline and the order
+ * reference are the two things read from arm's length across a room, so they
+ * carry the largest type on the surface, and every control clears the 44 px
+ * touch floor unconditionally — not behind a `pointer: coarse` media query,
+ * because a bench terminal is routinely a mouse-driven all-in-one and the
+ * guarantee is about gloved hands, not about the input device.
+ *
+ * State is carried by TEXT and by SECTION (story B4). Everything below is an
+ * addition to that, never the carrier — `bench-work-row.test.tsx` asserts state
+ * from `textContent` alone, so removing all of this would leave the surface
+ * correct and merely plain.
+ */
+.bench-work-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-6);
+  min-height: 100vh;
+  background: var(--bg-canvas);
+}
+
+.bench-work-list__header {
+  display: grid;
+  gap: 2px;
+}
+
+.bench-work-list__title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.bench-work-list__ordering {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.bench-work-list__scope,
+.bench-work-list__search-hint,
+.bench-work-list__truncated,
+.bench-work-list__no-matches {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+.bench-work-list__search {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.bench-work-list__search label {
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.bench-work-list__search input {
+  /* Deliberately oversized: this is the one field on the surface, and D11 makes
+     it the only way a parcel is found. */
+  height: 3.5rem;
+  padding: 0 var(--space-3);
+  font-family: var(--font-mono);
+  font-size: 1.25rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  border: 2px solid var(--border-strong);
+  border-radius: var(--radius-md);
+}
+
+.bench-work-list__search input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: var(--shadow-focus);
+}
+
+.bench-work-list__section {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.bench-work-list__section-heading {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.bench-work-list__rows {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bench-work-row {
+  display: grid;
+  grid-template-columns: minmax(11rem, 14rem) minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-4);
+  min-height: 6rem;
+  padding: var(--space-3);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-left: 6px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+}
+
+/* Tint and left rule follow the state the row already states in words. */
+.bench-work-row--held {
+  background: var(--status-error-soft);
+  border-color: var(--status-error-border);
+  border-left-color: var(--status-error);
+}
+
+.bench-work-row--cancelled {
+  background: var(--bg-surface-muted);
+  border-left-color: var(--text-muted);
+}
+
+.bench-work-row__deadline,
+.bench-work-row__identity {
+  display: grid;
+  gap: 3px;
+}
+
+.bench-work-row__deadline-headline {
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.bench-work-row__deadline-detail {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.bench-work-row__reference {
+  font-family: var(--font-mono);
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.bench-work-row__meta,
+.bench-work-row__note {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+.bench-work-row__state,
+.bench-work-row__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* The 44 px floor, unconditional. See the section header. */
+.bench-work-row__actions .button {
+  min-height: 2.75rem;
+  min-width: 2.75rem;
+}
+
+.bench-work-empty {
+  display: grid;
+  gap: var(--space-3);
+  justify-items: start;
+  max-width: 42rem;
+  padding: var(--space-6) 0;
+}
+
+.bench-work-empty__title {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  text-wrap: pretty;
+}
+
+.bench-work-empty__body,
+.bench-work-empty__note {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+.bench-work-empty__note {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.bench-work-list__footer {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-top: auto;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-default);
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+/* One column below the tablet breakpoint: the row's four columns cannot hold
+   their meaning at a narrow width, and reflowing keeps every part visible
+   rather than hiding the state column — which is the one part story B4 says
+   must never depend on anything but text and position. */
+@media (max-width: 768px) {
+  .bench-work-row {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+}
+
+/* ── Pack bench — the open box (#2418 layout, #2421 story C4) ────────────────
+ *
+ * C4's conditions are glare, gloves, one hand occupied, and a bench-height
+ * screen. Three rules follow, and each is written unconditionally on purpose.
+ *
+ * 1. **The ≥44 px touch floor is NOT behind `@media (hover: none) and
+ *    (pointer: coarse)`.** That global rule near the top of this file keys on
+ *    POINTER TYPE, while the acceptance criterion and § 2.3 both frame the
+ *    guarantee in terms of WIDTH. A bench terminal is routinely a mouse-driven
+ *    all-in-one, so the pointer test would give it nothing — and neither a
+ *    768 px desktop window nor any component test would get a floor at all,
+ *    which makes the criterion a claim nothing proves. The same trap was
+ *    recorded for the returns custody forms (#2380). Do not "simplify" these
+ *    declarations into that media query.
+ *    `bench-parcel-targets.test.ts` fails the build if they move inside one.
+ *
+ * 2. **No state that matters is carried by colour.** Every tint below sits
+ *    beside a word the component already renders — the count, the state badge,
+ *    the in-flight marker. Deleting this entire block leaves the surface
+ *    correct and merely plain, which is the property `bench-parcel.test.tsx`
+ *    asserts from `textContent`.
+ *
+ * 3. **Motion is optional.** The one animation is the in-flight pulse, and it
+ *    is suppressed under `prefers-reduced-motion` — where the marker's own
+ *    words remain, so nothing is lost.
+ */
+.bench-parcel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-6);
+  min-height: 100vh;
+  background: var(--bg-canvas);
+}
+
+.bench-parcel__header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+.bench-parcel__identity {
+  display: grid;
+  gap: 2px;
+}
+
+.bench-parcel__reference {
+  font-family: var(--font-mono);
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.bench-parcel__buyer {
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.bench-parcel__scope,
+.bench-parcel__unreachable-next {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+/* Read from arm's length across a bench, so it carries the largest type on the
+   surface after the order reference. */
+.bench-parcel__progress {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 1.375rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.bench-parcel__lines {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bench-parcel-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: 2px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+}
+
+/* Tints. Additions to the words, never the carrier — see rule 2 above. */
+.bench-parcel-line--verified {
+  border-color: var(--status-success-border);
+  background: var(--status-success-soft);
+}
+
+.bench-parcel-line--in-progress {
+  border-color: var(--accent-primary);
+}
+
+.bench-parcel-line__name {
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.3;
+  text-wrap: pretty;
+}
+
+.bench-parcel-line__codes {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.bench-parcel-line__count {
+  display: grid;
+  gap: 2px;
+  justify-items: end;
+}
+
+.bench-parcel-line__count-value {
+  font-family: var(--font-mono);
+  font-size: 2.25rem;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+}
+
+.bench-parcel-line__count-note {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.bench-parcel-line__state {
+  display: grid;
+  gap: var(--space-1);
+  justify-items: end;
+}
+
+/* H2's in-flight marker. A word, in a colour that is not any of the three line
+   states, so it can never be mistaken for one of them. */
+.bench-parcel-line__pending {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.bench-parcel-line--pending {
+  border-style: dashed;
+  animation: bench-pending-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes bench-pending-pulse {
+  50% {
+    border-color: var(--accent-primary);
+  }
+}
+
+.bench-parcel-line__actions {
+  display: grid;
+  gap: var(--space-1);
+  justify-items: end;
+}
+
+.bench-parcel-line__confirm-hint,
+.bench-parcel__audio-state {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+/* Rule 1 — the width-keyed touch floor, declared outside every media query. */
+.bench-parcel .button,
+.bench-parcel-line .button,
+.bench-parcel__footer .button {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.bench-parcel-line__actions .button {
+  min-height: 44px;
+  min-width: 44px;
+  font-size: 1rem;
+  padding-inline: var(--space-4);
+}
+
+.bench-parcel__closed {
+  display: grid;
+  gap: var(--space-3);
+  justify-items: start;
+  padding: var(--space-5);
+  border: 2px solid var(--status-success-border);
+  border-radius: var(--radius-lg);
+  background: var(--status-success-soft);
+}
+
+.bench-parcel__closed-title {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.bench-parcel__closed-summary {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.9375rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+.bench-parcel__closed-next,
+.bench-parcel__reopen-hint {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+.bench-parcel__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-top: auto;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-default);
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+.bench-parcel__footer-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+/* Rule 3 — the pulse is the only motion here, and its words survive without it. */
+@media (prefers-reduced-motion: reduce) {
+  .bench-parcel-line--pending {
+    animation: none;
+  }
+}
+
+/* One column below the tablet breakpoint, for the reason the work row reflows:
+   the four columns cannot hold their meaning narrow, and hiding the state
+   column would drop the part that must never depend on anything but text. */
+@media (max-width: 768px) {
+  .bench-parcel-line {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bench-parcel-line__count,
+  .bench-parcel-line__state,
+  .bench-parcel-line__actions {
+    justify-items: start;
+  }
 }

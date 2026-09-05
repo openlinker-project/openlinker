@@ -5,6 +5,10 @@
  * flow (connect, callback) and Allegro-specific connection management.
  *
  * @module apps/api/src/integrations/http
+ *
+ * **The cursor and command reads are `@Roles('admin', 'operator', 'viewer')`,
+ * not `@AnyRole()` (#2413).** Both are connection diagnostics; the `packer`
+ * role has no business in them. Behaviourally identical for every role today.
  */
 import {
   Controller,
@@ -36,7 +40,6 @@ import {
   ApiBody,
 } from '@nestjs/swagger';
 import { Public } from '../../auth/decorators/public.decorator';
-import { Roles } from '../../auth/decorators/roles.decorator';
 import {
   IOAuthConnectionService,
   OAUTH_CONNECTION_SERVICE_TOKEN,
@@ -70,6 +73,7 @@ import {
   ALLEGRO_SAFETY_ATTACHMENT_MIME_PATTERN,
 } from '@openlinker/integrations-allegro';
 import { UploadSafetyAttachmentResponseDto } from './dto/upload-safety-attachment-response.dto';
+import { Roles } from '../../auth/decorators/roles.decorator';
 
 @ApiTags('allegro')
 @Controller('integrations/allegro')
@@ -227,6 +231,7 @@ export class AllegroController {
     }
   }
 
+  @Roles('admin', 'operator', 'viewer')
   @ApiBearerAuth()
   @Get('connections/:id/cursors')
   @ApiOperation({ summary: 'Get all cursors for an Allegro connection' })
@@ -289,6 +294,7 @@ export class AllegroController {
     return { cursors: [] };
   }
 
+  @Roles('admin', 'operator', 'viewer')
   @ApiBearerAuth()
   @Get('connections/:id/commands')
   @ApiOperation({ summary: 'Get quantity commands for an Allegro connection' })
@@ -316,6 +322,7 @@ export class AllegroController {
     );
   }
 
+  @Roles('admin', 'operator', 'viewer')
   @ApiBearerAuth()
   @Get('connections/:id/commands/failed')
   @ApiOperation({ summary: 'Get failed quantity commands for an Allegro connection' })
@@ -348,6 +355,7 @@ export class AllegroController {
     );
   }
 
+  @Roles('admin', 'operator', 'viewer')
   @ApiBearerAuth()
   @Get('connections/:id/commands/:commandId')
   @ApiOperation({

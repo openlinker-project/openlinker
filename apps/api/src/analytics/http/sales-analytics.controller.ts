@@ -34,6 +34,18 @@
  * the acceptance criterion literal: toggling the setting changes the very next
  * query's result set, and toggling it back reverts it, without touching a
  * single `order_records` row.
+ *
+ * **`@Roles('admin', 'operator', 'viewer')`, not `@AnyRole()` (#2413).**
+ *
+ * This route returns revenue, AOV, median order value and a per-channel
+ * breakdown. #2413's owner enumerated buyer PII, fiscal documents and
+ * connection configuration as surfaces the new `packer` role must not reach;
+ * commercial analytics was not enumerated, and is added by that issue's route
+ * review on the same rationale — if an invoice PDF is not packer-facing, the
+ * company's revenue is not either, and the argument is stronger here, since an
+ * invoice concerns one order and this concerns the business. Flagged in the
+ * pull request rather than applied silently. Behaviourally identical for every
+ * role that exists today, so re-admitting `packer` is one word.
  */
 import { BadRequestException, Controller, Get, Inject, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
@@ -57,6 +69,7 @@ import {
   DisplayCurrencyConversionDto,
   SalesAnalyticsResponseDto,
 } from './dto/sales-analytics-response.dto';
+import { Roles } from '../../auth/decorators/roles.decorator';
 
 /** Shared shape of a headline/channel row's currency-bucket fields — the input to `buildDisplayCurrencyConversion`. */
 interface CurrencyBucketRow {
@@ -91,6 +104,7 @@ export class SalesAnalyticsController {
     private readonly displaySettings: IAnalyticsDisplaySettingsService
   ) {}
 
+  @Roles('admin', 'operator', 'viewer')
   @Get('sales')
   @ApiOperation({
     summary:

@@ -380,6 +380,138 @@ describe('AllegroOrderSourceAdapter', () => {
       expect(incoming.codToCollect).toBeUndefined();
     });
 
+    it('should leave billingAddress undefined when the checkout carries no VAT invoice block (#2822)', async () => {
+      const checkoutForm: AllegroCheckoutForm = {
+        id: 'checkout-no-invoice',
+        updatedAt: '2024-01-01T01:00:00Z',
+        buyer: { id: 'b1', email: 'b1@example.com', login: 'b1' },
+        lineItems: [
+          {
+            id: 'l1',
+            offer: { id: 'o1', name: 'O1' },
+            quantity: 1,
+            price: { amount: '10.00', currency: 'PLN' },
+          },
+        ],
+        summary: { totalToPay: { amount: '10.00', currency: 'PLN' } },
+        payment: { type: 'ONLINE' },
+      };
+      httpClient.get.mockResolvedValueOnce({ data: checkoutForm, status: 200, headers: {} });
+
+      const incoming = await adapter.getOrder({ externalOrderId: 'checkout-no-invoice' });
+
+      expect(incoming.billingAddress).toBeUndefined();
+    });
+
+    it('should read the buyer tax id from invoice.address.company.ids[] when present (#2822)', async () => {
+      const checkoutForm: AllegroCheckoutForm = {
+        id: 'checkout-invoice-ids',
+        updatedAt: '2024-01-01T01:00:00Z',
+        buyer: {
+          id: 'b1',
+          email: 'b1@example.com',
+          login: 'b1',
+          address: { street: 'Marszalkowska 1', city: 'Warszawa', zipCode: '00-001', countryCode: 'PL' },
+        },
+        lineItems: [
+          {
+            id: 'l1',
+            offer: { id: 'o1', name: 'O1' },
+            quantity: 1,
+            price: { amount: '10.00', currency: 'PLN' },
+          },
+        ],
+        summary: { totalToPay: { amount: '10.00', currency: 'PLN' } },
+        payment: { type: 'ONLINE' },
+        invoice: {
+          address: {
+            company: {
+              name: 'Acme Sp. z o.o.',
+              ids: [{ type: 'PL_NIP', value: '5252674798' }],
+              vatPayerStatus: 'ACTIVE',
+              taxId: '525-26-74-798',
+            },
+          },
+        },
+      };
+      httpClient.get.mockResolvedValueOnce({ data: checkoutForm, status: 200, headers: {} });
+
+      const incoming = await adapter.getOrder({ externalOrderId: 'checkout-invoice-ids' });
+
+      expect(incoming.billingAddress?.taxId).toBe('5252674798');
+      expect(incoming.billingAddress?.company).toBe('Acme Sp. z o.o.');
+    });
+
+    it('should fall back to the deprecated flat taxId when ids[] is absent (#2822)', async () => {
+      const checkoutForm: AllegroCheckoutForm = {
+        id: 'checkout-invoice-deprecated',
+        updatedAt: '2024-01-01T01:00:00Z',
+        buyer: {
+          id: 'b1',
+          email: 'b1@example.com',
+          login: 'b1',
+          address: { street: 'Marszalkowska 1', city: 'Warszawa', zipCode: '00-001', countryCode: 'PL' },
+        },
+        lineItems: [
+          {
+            id: 'l1',
+            offer: { id: 'o1', name: 'O1' },
+            quantity: 1,
+            price: { amount: '10.00', currency: 'PLN' },
+          },
+        ],
+        summary: { totalToPay: { amount: '10.00', currency: 'PLN' } },
+        payment: { type: 'ONLINE' },
+        invoice: {
+          address: {
+            company: { name: 'Acme Sp. z o.o.', taxId: '525-26-74-798' },
+          },
+        },
+      };
+      httpClient.get.mockResolvedValueOnce({ data: checkoutForm, status: 200, headers: {} });
+
+      const incoming = await adapter.getOrder({ externalOrderId: 'checkout-invoice-deprecated' });
+
+      expect(incoming.billingAddress?.taxId).toBe('525-26-74-798');
+    });
+
+    it('should leave billingAddress undefined when a VAT invoice was requested but no address resolves anywhere (#2824 review)', async () => {
+      // Regression: delivery.address, delivery.pickupPoint.address, and
+      // buyer.address are all absent, so resolveShippingAddress() returns
+      // undefined. Without a real address to overlay the company/tax-id
+      // onto, resolveBillingAddress() must not fall back to a standalone
+      // blank-but-truthy stub — that would defeat a caller's
+      // `billingAddress ?? shippingAddress` fallback with an address that
+      // has no real street data (the exact failure mode #2822's docblock
+      // describes resolveBillingAddress as designed to avoid).
+      const checkoutForm: AllegroCheckoutForm = {
+        id: 'checkout-invoice-no-address',
+        updatedAt: '2024-01-01T01:00:00Z',
+        buyer: { id: 'b1', email: 'b1@example.com', login: 'b1' },
+        lineItems: [
+          {
+            id: 'l1',
+            offer: { id: 'o1', name: 'O1' },
+            quantity: 1,
+            price: { amount: '10.00', currency: 'PLN' },
+          },
+        ],
+        summary: { totalToPay: { amount: '10.00', currency: 'PLN' } },
+        payment: { type: 'ONLINE' },
+        invoice: {
+          address: {
+            company: { name: 'Acme Sp. z o.o.', taxId: '525-26-74-798' },
+          },
+        },
+      };
+      httpClient.get.mockResolvedValueOnce({ data: checkoutForm, status: 200, headers: {} });
+
+      const incoming = await adapter.getOrder({ externalOrderId: 'checkout-invoice-no-address' });
+
+      expect(incoming.shippingAddress).toBeUndefined();
+      expect(incoming.billingAddress).toBeUndefined();
+    });
+
     it('should report pending status when the buyer has not yet completed payment', async () => {
       const checkoutForm: AllegroCheckoutForm = {
         id: 'checkout-2',
@@ -752,6 +884,46 @@ describe('AllegroOrderSourceAdapter', () => {
           postalCode: '99-999',
           country: 'PL',
           phone: '+48999999999',
+        });
+      });
+
+      it('should carry the resolved shipping street data onto billingAddress when a VAT invoice was requested (#2822)', async () => {
+        // Regression: billingAddress must never be a standalone object with
+        // blank address1/city/postalCode/country — such an object is truthy
+        // and defeats a caller's `billingAddress ?? shippingAddress` fallback
+        // (e.g. invoice-issuance buyer-profile resolution) with an address
+        // that has no real street data, even though a real one exists.
+        const form = baseForm();
+        form.delivery = {
+          address: {
+            firstName: 'Recipient',
+            lastName: 'Different',
+            street: 'Delivery Street 99',
+            city: 'DeliveryCity',
+            zipCode: '99-999',
+            countryCode: 'PL',
+            phoneNumber: '+48999999999',
+          },
+        };
+        form.invoice = {
+          address: {
+            company: {
+              name: 'Acme Sp. z o.o.',
+              ids: [{ type: 'PL_NIP', value: '5252674798' }],
+            },
+          },
+        };
+        httpClient.get.mockResolvedValueOnce({ data: form, status: 200, headers: {} });
+
+        const incoming = await adapter.getOrder({ externalOrderId: 'cf' });
+
+        expect(incoming.billingAddress).toMatchObject({
+          address1: 'Delivery Street 99',
+          city: 'DeliveryCity',
+          postalCode: '99-999',
+          country: 'PL',
+          company: 'Acme Sp. z o.o.',
+          taxId: '5252674798',
         });
       });
 

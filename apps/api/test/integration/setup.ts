@@ -240,6 +240,11 @@ const harness = createIntegrationTestHarness({
     // FK to fulfillment_works is migration-only too, so it is likewise
     // unreachable by the closure walk. Before `fulfillment_works`, being a child.
     'fulfillment_progress_claims',
+    // fulfillment_work_verifications (#2418) — the pack bench's ledger. Same
+    // shape as its neighbours above: the FK to `fulfillment_works` is
+    // migration-only, so the closure walk cannot reach it. Found the hard way —
+    // a verification written by one case was still counted by the next.
+    'fulfillment_work_verifications',
     'fulfillment_works',
     // routing_decisions (#2394) — the routing INTENT row. Carries no FK at all
     // (both its references are cross-aggregate by value), so nothing cascades

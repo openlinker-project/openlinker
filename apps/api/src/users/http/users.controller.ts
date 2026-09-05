@@ -2,7 +2,7 @@
  * Users Controller
  *
  * Admin-only HTTP REST API endpoints for user management. All write endpoints
- * carry @Roles('admin') individually so the write-guard-coverage invariant
+ * carry @Roles('admin') individually so the route-authorization-coverage invariant
  * can detect regressions per method.
  *
  * GET    /users                — list all users (optional ?status filter)

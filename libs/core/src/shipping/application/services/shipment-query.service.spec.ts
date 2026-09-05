@@ -64,8 +64,55 @@ describe('ShipmentQueryService', () => {
       listDispatchedAwaitingReservationConsume: jest.fn(),
       claimReservationConsume: jest.fn(),
       claimFulfillmentWorkLink: jest.fn(),
+      findByFulfillmentWorkIds: jest.fn(),
     };
     service = new ShipmentQueryService(repository);
+  });
+
+  describe('findByFulfillmentWorkIds', () => {
+    it('should ask the repository once for the whole page, never per work', async () => {
+      // The `getEarliestOrderDateByConnection` (#2083) N+1 precedent: batched
+      // BEFORE any loop, so a page of 100 works is one query and not 100.
+      repository.findByFulfillmentWorkIds.mockResolvedValue([]);
+
+      await service.findByFulfillmentWorkIds(['w1', 'w2', 'w3'], 'outbound');
+
+      expect(repository.findByFulfillmentWorkIds).toHaveBeenCalledTimes(1);
+      expect(repository.findByFulfillmentWorkIds).toHaveBeenCalledWith(
+        ['w1', 'w2', 'w3'],
+        'outbound',
+      );
+    });
+
+    it('should omit a work with no shipment rather than key it to an empty array', async () => {
+      // The `listActiveHoldsForWorks` convention — absence means "no outbound
+      // parcel", so a caller defaults with `?? []`.
+      repository.findByFulfillmentWorkIds.mockResolvedValue([
+        makeShipment({ id: 'ol_shipment_1', fulfillmentWorkId: 'w1' }),
+      ]);
+
+      const byWork = await service.findByFulfillmentWorkIds(['w1', 'w2'], 'outbound');
+
+      expect(byWork.has('w2')).toBe(false);
+      expect([...byWork.keys()]).toEqual(['w1']);
+    });
+
+    it('should bucket several shipments for one work under that work id', async () => {
+      // A cancel + re-issue leaves two rows on one work; neither may be lost.
+      repository.findByFulfillmentWorkIds.mockResolvedValue([
+        makeShipment({ id: 'ol_shipment_1', fulfillmentWorkId: 'w1' }),
+        makeShipment({ id: 'ol_shipment_2', fulfillmentWorkId: 'w1' }),
+        makeShipment({ id: 'ol_shipment_3', fulfillmentWorkId: 'w2' }),
+      ]);
+
+      const byWork = await service.findByFulfillmentWorkIds(['w1', 'w2'], 'outbound');
+
+      expect(byWork.get('w1')?.map((shipment) => shipment.id)).toEqual([
+        'ol_shipment_1',
+        'ol_shipment_2',
+      ]);
+      expect(byWork.get('w2')?.map((shipment) => shipment.id)).toEqual(['ol_shipment_3']);
+    });
   });
 
   describe('list', () => {

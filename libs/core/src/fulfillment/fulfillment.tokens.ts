@@ -67,3 +67,6 @@ export const ROUTING_COMMIT_SERVICE_TOKEN = Symbol('IRoutingCommitService');
  * different question — see the interface docblock.
  */
 export const FULFILLMENT_WORKLIST_SERVICE_TOKEN = Symbol('IFulfillmentWorklistService');
+
+/** Parcel verification at the pack bench (#2418). `FulfillmentVerificationService` binds here. */
+export const FULFILLMENT_VERIFICATION_SERVICE_TOKEN = Symbol('IFulfillmentVerificationService');

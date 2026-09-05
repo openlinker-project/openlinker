@@ -40,6 +40,9 @@ const DEFAULT_RETRY_CONFIG: RetryConfig = {
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
+/** Caps the raw ShipX `message` echoed into the no-details warn log (#2805 review). */
+const WARN_LOG_MESSAGE_MAX_LENGTH = 200;
+
 /**
  * Internal marker for retryable transport failures (429 / 5xx / network).
  * Never escapes the client — the retry loop converts it to
@@ -194,9 +197,40 @@ export class InpostHttpClient implements IInpostHttpClient {
       throw new RetryableHttpError(message, response.status);
     }
     const flatDetails = flattenShipXFieldErrors(errorBody?.details);
+    // ShipX's `details` map is the primary classifier (it names the offending
+    // FIELD). When it's empty — no field-level info at all, e.g. a purged/
+    // unfetchable label document — fall back to ShipX's own short `error`
+    // code, namespaced `shipx.{code}` (#2805 review) so this tier is
+    // distinguishable from a field name at the value alone and can never
+    // collide with one — a distinct tier from a field name so the caller
+    // still gets a stable, non-null `providerCode` instead of `null` with
+    // nothing but the carrier's generic prose message (#2804). `errorBody`
+    // is an untrusted cast (`safeParseError`), so a non-string or blank
+    // `error` is rejected rather than passed through as a code. The
+    // namespace matches no `deriveRetryabilityClass` family convention
+    // (`preflight.*` / `command.*` / `api.http-NNN`), so it classifies
+    // `'unknown'` — unchanged from the pre-fallback `null` case.
+    const shipxErrorCode =
+      typeof errorBody?.error === 'string' && errorBody.error.trim().length > 0
+        ? `shipx.${errorBody.error.trim()}`
+        : null;
+    const providerCode = firstDetailKey(flatDetails) ?? shipxErrorCode;
+    if (Object.keys(flatDetails).length === 0) {
+      // No field-level classifier available — log the resolved fallback (or
+      // its absence) at warn so a `providerCode: null` case still leaves a
+      // record of what ShipX actually said (#2804 review; mirrors the DPD
+      // `dpd-shipping.adapter.ts` precedent for an unclassifiable rejection).
+      // Never logs `errorBody.details` itself — it can echo a rejected
+      // address fragment; `message` is truncated for the same reason, since
+      // it sits one field over in the same untrusted body and can carry the
+      // same kind of content for some ShipX validation shapes (#2805 review).
+      this.logger.warn(
+        `ShipX ${options.method} ${options.path} failed (${response.status}) with no field-level details; resolved providerCode=${String(providerCode)}, message=${message.slice(0, WARN_LOG_MESSAGE_MAX_LENGTH)}`,
+      );
+    }
     throw new ShippingProviderRejectionException(
       'inpost',
-      firstDetailKey(flatDetails),
+      providerCode,
       message,
       Object.keys(flatDetails).length > 0 ? { fieldErrors: flatDetails } : undefined,
     );
@@ -258,6 +292,16 @@ function parseRetryAfterMs(header: string | null): number | undefined {
  * typed error code is the field that triggered the rejection (e.g.
  * `'target_point'`, `'sender'`, `'parcels'`). Returns `null` when no details
  * are available.
+ *
+ * `providerCode` therefore carries one of two distinct tiers depending on
+ * which classifier answered: a ShipX FIELD NAME from this function, or a
+ * `shipx.`-namespaced ShipX ERROR CODE (e.g. `'shipx.not_found'`,
+ * `'shipx.validation_failed'`) from the `errorBody.error` fallback in
+ * `throwIfNotOk` when no field-level details exist (#2804, namespaced per
+ * #2805 review). The namespace is what makes the tier readable from the
+ * value alone — a consumer matching on `providerCode` can distinguish a
+ * bare field name from a `shipx.*` error code, and the prefix rules out a
+ * collision with a ShipX field name at the same key.
  */
 function firstDetailKey(
   details: Record<string, readonly string[]> | undefined,

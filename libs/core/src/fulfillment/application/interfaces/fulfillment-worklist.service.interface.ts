@@ -38,6 +38,24 @@ export interface IFulfillmentWorklistService {
   get(workId: string): Promise<FulfillmentWorkView>;
 
   /**
+   * The ids of every work object covering each of these orders, ordered
+   * `createdAt, id`, keyed by order id (#2416).
+   *
+   * Exists so a surface can say *"parcel 1 of 2"* truthfully. The denominator
+   * counts EVERY work for the order — whatever its status, whoever holds it —
+   * because a FILTERED read cannot answer it: a sibling parcel that is closed,
+   * routed to another executor, or not yet accepted is absent from such a page,
+   * so the count would be wrong precisely on the split orders the number exists
+   * for, while reading authoritative.
+   *
+   * Ids only, and BATCHED across a whole page. It carries no PII, no status and
+   * no holder, so a caller learns how many parcels an order has and nothing
+   * else about the ones it was not shown. An order with no work is simply
+   * absent from the map.
+   */
+  listSiblingWorkIds(orderIds: readonly string[]): Promise<Map<string, string[]>>;
+
+  /**
    * Apply an operator action, guarded by the optimistic token.
    *
    * @throws {UnsupportedFulfillmentWorkActionError} the action is not one this surface executes.

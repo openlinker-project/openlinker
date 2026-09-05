@@ -14,10 +14,18 @@
  *   caller treats this exactly like "no rule-engine configuration for this
  *   order" and falls back to the pre-#2170 single-primary resolver rather than
  *   guessing a jurisdiction.
- * - `totalGross` / `currency` / `taxTreatment` — read verbatim from
- *   `order.totals`. The evaluator itself is what turns an `exclusive`
- *   treatment into the terminal `net-priced-order` signal; this mapper never
- *   re-derives or converts anything.
+ * - `totalGross` / `currency` — read verbatim from `order.totals`.
+ * - `taxTreatment` — `order.totals.totalTaxTreatment ?? order.totals.taxTreatment`
+ *   (#2829). `totals.taxTreatment` is source-uniform and also governs the
+ *   per-line/subtotal net-conversion path (`convertGrossToNet`, the ADR-063
+ *   net-sales tax-rate resolution), so a source whose line prices are net but
+ *   whose `total` is genuinely gross (PrestaShop, WooCommerce) cannot flip it
+ *   without breaking those. `totalTaxTreatment` is the narrower, `total`-only
+ *   signal such a source may set instead; every other source leaves it unset
+ *   and falls back to `taxTreatment` unchanged. The evaluator itself is what
+ *   turns an `exclusive` (or absent) result into the terminal
+ *   `net-priced-order` signal; this mapper never re-derives or converts
+ *   anything.
  * - `buyerHasTaxId` - read from the order's own buyer tax id (#2599), which
  *   closed the prerequisite ADR-041 decision 5 was waiting on. It stays
  *   `undefined` whenever the source asserted nothing, and is `false` only when
@@ -54,7 +62,7 @@ export function toSalesDocumentOrderFacts(order: Order): SalesDocumentOrderFacts
     country,
     totalGross: order.totals.total,
     currency: order.totals.currency,
-    taxTreatment: order.totals.taxTreatment,
+    taxTreatment: order.totals.totalTaxTreatment ?? order.totals.taxTreatment,
     // Stays `undefined` when the source asserted nothing — see the module doc
     // comment. Never defaulted to `false`.
     buyerHasTaxId: buyerHasTaxId(readBuyerTaxId(order)),

@@ -79,10 +79,11 @@ export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps)
 
       {taxIdRuleCount > 0 ? (
         <Alert tone="warning" title={describeBuyerTaxIdRuleCount(taxIdRuleCount)}>
-          A buyer-tax-ID condition matches only an order whose source records that fact — today
-          that is PrestaShop orders only. An order from Allegro or WooCommerce carries no buyer
-          tax ID at all, so a rule like this one never matches those orders, but it matches a
-          PrestaShop order normally.
+          A buyer-tax-ID condition matches only an order whose source actually recorded that
+          fact. PrestaShop reports it only when the buyer filled in a VAT number on the address;
+          Allegro and Erli report it only when the buyer requested a VAT invoice; WooCommerce
+          reports it only if the store runs a supported VAT-number plugin. An order whose source
+          didn&apos;t assert a tax ID never matches this rule.
         </Alert>
       ) : null}
 
@@ -111,9 +112,9 @@ export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps)
               {usesBuyerTaxIdCondition(rule) ? (
                 <span
                   className="provenance-tag"
-                  title="Matches only orders from a source that records a buyer tax ID (today: PrestaShop)"
+                  title="Matches only when the order's source recorded a buyer tax ID — conditionally for every source (PrestaShop, Allegro, Erli, WooCommerce)"
                 >
-                  PrestaShop orders only
+                  tax-ID-aware sources only
                 </span>
               ) : null}
               <span className="rule-card__dates">

@@ -79,6 +79,7 @@ import { ROLE_PERMISSIONS } from '@openlinker/core/users';
 import { Logger } from '@openlinker/shared/logging';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { AnyRole } from '../../auth/decorators/any-role.decorator';
 import { AuthenticatedUser } from '../../auth/auth.types';
 import { BulkDispatchResultResponseDto } from './dto/bulk-dispatch-result-response.dto';
 import { BulkGenerateLabelsDto } from './dto/bulk-generate-labels.dto';
@@ -113,6 +114,7 @@ export class ShipmentController {
     private readonly orders: IOrderRecordService,
   ) {}
 
+  @AnyRole()
   @Get()
   @ApiOperation({ summary: 'List shipments across orders and connections' })
   @ApiResponse({ status: 200, type: PaginatedShipmentsResponseDto })
@@ -155,6 +157,7 @@ export class ShipmentController {
 
   // Declared BEFORE `:id` — Express matches in order, so `:id` would otherwise
   // capture the literal segment `active`.
+  @AnyRole()
   @Get('active')
   @ApiOperation({ summary: "Get an order's current active (non-terminal) shipment" })
   @ApiQuery({ name: 'orderId', type: String, required: true })
@@ -179,6 +182,7 @@ export class ShipmentController {
     );
   }
 
+  @AnyRole()
   @Get(':id')
   @ApiOperation({ summary: 'Get a shipment by id' })
   @ApiResponse({ status: 200, type: ShipmentResponseDto })
@@ -199,6 +203,7 @@ export class ShipmentController {
     );
   }
 
+  @AnyRole()
   @Get(':id/label')
   @ApiOperation({
     summary: "Download a shipment's label document (PDF/ZPL/PNG, provider-dependent)",

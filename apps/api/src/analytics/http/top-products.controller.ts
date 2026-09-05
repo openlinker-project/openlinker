@@ -15,6 +15,10 @@
  * field on the list rows above: see `ITopProductsService`'s doc for why.
  *
  * @module apps/api/src/analytics/http
+ *
+ * **`@Roles('admin', 'operator', 'viewer')`, not `@AnyRole()` (#2413).** See
+ * `sales-analytics.controller.ts` for the reasoning shared by every analytics
+ * read.
  */
 import { BadRequestException, Controller, Get, Inject, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
@@ -30,6 +34,7 @@ import {
   TOP_PRODUCTS_SERVICE_TOKEN,
   type ITopProductsService,
 } from '../application/services/top-products.service.interface';
+import { Roles } from '../../auth/decorators/roles.decorator';
 
 @ApiBearerAuth()
 @ApiTags('analytics')
@@ -42,6 +47,7 @@ export class TopProductsController {
     private readonly displaySettings: IAnalyticsDisplaySettingsService
   ) {}
 
+  @Roles('admin', 'operator', 'viewer')
   @Get('top-products')
   @ApiOperation({
     summary:
@@ -75,6 +81,7 @@ export class TopProductsController {
     );
   }
 
+  @Roles('admin', 'operator', 'viewer')
   @Get('top-products/:productId/variants')
   @ApiParam({ name: 'productId', description: 'Internal product id' })
   @ApiOperation({
