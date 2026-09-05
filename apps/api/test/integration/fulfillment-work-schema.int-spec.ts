@@ -147,10 +147,25 @@ describe('Fulfillment Work Schema Integration', () => {
         'createdAt timestamp with time zone NOT NULL DEFAULT now()',
         'deliveryMethod text NULL',
         'dispatchRelayedAt timestamp with time zone NULL',
+        // #2416's D22 marker. MISSING from this roster until #2418 — this spec
+        // asserts an EXACT column set, so it has been failing since #2416
+        // shipped. Added with `parcelClosedAt` below rather than left red.
+        'expeditedAt timestamp with time zone NULL',
         'externalWorkId text NULL',
         'id text NOT NULL',
         'locationId text NULL',
         'orderId text NOT NULL',
+        // #2413, ADR-071 decision 2. `uuid` for the user id (the order-grain
+        // fact derived from it lands on `order_records.packedByUserId`, which
+        // is `uuid`), `text` for the free-form service name. Guarded together
+        // by CHK_fulfillment_works_packed_actor, asserted below.
+        'packedByService text NULL',
+        'packedByUserId uuid NULL',
+        // #2418, spec D18. The completion instant #2413 deliberately withheld
+        // from this table so there would not be two — written in the SAME
+        // guarded UPDATE as `packedByUserId`, and distinct from `status`, which
+        // is the executor finishing the whole job rather than the box shutting.
+        'parcelClosedAt timestamp with time zone NULL',
         "requestStatus character varying(32) NOT NULL DEFAULT 'unsubmitted'::character varying",
         "status character varying(32) NOT NULL DEFAULT 'open'::character varying",
         'updatedAt timestamp with time zone NOT NULL DEFAULT now()',
@@ -265,6 +280,51 @@ describe('Fulfillment Work Schema Integration', () => {
         insertHold('ol_fw_h4', { placedByUserId: 'u1', placedByService: 'router' })
       );
       expect(message).toContain('CHK_fulfillment_holds_actor');
+    });
+  });
+
+  describe('CHK_fulfillment_works_packed_actor (#2413)', () => {
+    const insertPacked = (id: string, actor: Record<string, string>): Promise<unknown> => {
+      const cols = Object.keys(actor);
+      const values = Object.values(actor);
+      return query(
+        `INSERT INTO "fulfillment_works" ("id", "orderId", "status", "requestStatus"${cols
+          .map((c) => `, "${c}"`)
+          .join('')})
+         VALUES ($1, $2, 'open', 'unsubmitted'${values.map((_, i) => `, $${i + 3}`).join('')})`,
+        [id, `ol_order_${id}`, ...values]
+      );
+    };
+
+    it('should accept a work with NEITHER actor — the normal, unpacked state', async () => {
+      // THE difference from `CHK_fulfillment_holds_actor`, which is a true XOR.
+      // A hold always has an actor; a work is CREATED unpacked and spends most
+      // of its life that way, so copying `<>` would refuse every INSERT the
+      // router makes. If this test ever fails, the constraint was "tidied" into
+      // the holds shape and the router is broken.
+      await expect(insertPacked('ol_fw_p1', {})).resolves.toBeDefined();
+    });
+
+    it('should accept a work packed by a human', async () => {
+      await expect(
+        insertPacked('ol_fw_p2', { packedByUserId: '00000000-0000-0000-0000-000000000001' })
+      ).resolves.toBeDefined();
+    });
+
+    it('should accept a work packed by a service', async () => {
+      await expect(insertPacked('ol_fw_p3', { packedByService: '3pl' })).resolves.toBeDefined();
+    });
+
+    it('should reject a work claiming BOTH a human and a service packed it', async () => {
+      // What the pair exists to prevent: "a 3PL packed this" and "a human
+      // packed it" must never be the same value.
+      const message = await messageOf(
+        insertPacked('ol_fw_p4', {
+          packedByUserId: '00000000-0000-0000-0000-000000000001',
+          packedByService: '3pl',
+        })
+      );
+      expect(message).toContain('CHK_fulfillment_works_packed_actor');
     });
   });
 

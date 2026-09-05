@@ -61,6 +61,11 @@ const TABLES = [
   // #2399's append-only rejection ledger.
   'fulfillment_work_rejections',
   'fulfillment_progress_claims',
+  // #2418's verification ledger. It carries a PARTIAL index and a FK, which is
+  // exactly what this file's `indexdef` and CASCADE comparisons exist to catch —
+  // a predicate differing between the migration and the entity would let the
+  // count read return voided units in production and not in tests.
+  'fulfillment_work_verifications',
   'routing_decisions',
   // Waves 1b/1c/2, added under review of PR #2675: their migrations were as
   // unexercised as the fulfilment ones were before #2392 - the harness builds
@@ -389,6 +394,18 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
     expect(checkNames).toEqual(expect.arrayContaining([
       'CHK_fulfillment_holds_actor',
       'CHK_fulfillment_work_lines_capacity',
+      // #2413. Named here rather than left to the definition diff because this
+      // file's prose reasons about it: it is the one CHECK in the slice that
+      // deliberately DIVERGES from the holds XOR it otherwise mirrors (at-most-
+      // one, not exactly-one — a work is created unpacked). A silent drop would
+      // otherwise leave both sides matching and both wrong.
+      'CHK_fulfillment_works_packed_actor',
+      // #2890. Named for the same reason and one stronger: it is the SECOND
+      // `@Check` on this table, departing from the one-per-table habit the rest
+      // of `libs/core` keeps, so a later tidy-up folding it into its sibling is
+      // a plausible edit — and one that would leave both schemas matching and
+      // the constraint's own name gone.
+      'CHK_fulfillment_works_closed_parcel_actor',
     ]));
 
     // The capacity predicate spelled out clause by clause, so a weakening
@@ -405,6 +422,43 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
       expect(capacity).toContain(clause);
     }
 
+    // Same treatment for the packing actor (#2413), for the same reason: a
+    // predicate weakened on BOTH sides at once passes the parity diff. Both
+    // column names must appear, and the operator must be `AND` under a `NOT` —
+    // an `OR` there would forbid exactly the both-NULL state the router needs.
+    const packedActor = checksOf(fromMigration).find((entry) =>
+      entry.startsWith('CHK_fulfillment_works_packed_actor')
+    );
+    expect(packedActor).toBeDefined();
+    for (const clause of ['"packedByUserId" IS NOT NULL', '"packedByService" IS NOT NULL', 'NOT']) {
+      expect(packedActor).toContain(clause);
+    }
+    expect(packedActor).not.toContain(' OR ');
+
+    // And the sibling that makes it conditional-on-closure (#2890). All three
+    // columns must appear, or the predicate has stopped being about closure or
+    // has stopped covering one of the two actors — both of which weaken it in
+    // a way the definition diff above cannot see, since that diff only proves
+    // the two SCHEMAS agree, not that either is right.
+    //
+    // Deliberately NO `not.toContain(' OR ')` here. That ban is meaningful for
+    // the constraint above, where an `OR` would forbid the both-NULL state the
+    // router needs. For THIS predicate the natural spelling
+    // (`"parcelClosedAt" IS NULL OR <actor set>`) is a correct equivalent, so
+    // banning `OR` would encode a rule that means nothing.
+    const closedParcelActor = checksOf(fromMigration).find((entry) =>
+      entry.startsWith('CHK_fulfillment_works_closed_parcel_actor')
+    );
+    expect(closedParcelActor).toBeDefined();
+    for (const clause of [
+      '"parcelClosedAt" IS NOT NULL',
+      '"packedByUserId" IS NULL',
+      '"packedByService" IS NULL',
+      'NOT',
+    ]) {
+      expect(closedParcelActor).toContain(clause);
+    }
+
     const foreignKeys = fromMigration.filter((r) => r.contype === 'f');
     // Containment, not an exhaustive roster — the same trap the `TABLES`-derived
     // assertion above names. The four fulfilment FKs are the ones this file's
@@ -415,6 +469,9 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
       'FK_fulfillment_progress_claims_work',
       'FK_fulfillment_work_lines_work',
       'FK_fulfillment_work_rejections_work',
+      // #2418's verification ledger. A verification is a PART of its work, so
+      // deleting the work must take it — the same reading as the three above.
+      'FK_fulfillment_work_verifications_work',
     ]));
     // Each FK's DELETE RULE asserted individually, because they are not one
     // rule: the fulfilment children CASCADE with their parent work, a return's
@@ -427,6 +484,7 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
       FK_fulfillment_progress_claims_work: 'ON DELETE CASCADE',
       FK_fulfillment_work_lines_work: 'ON DELETE CASCADE',
       FK_fulfillment_work_rejections_work: 'ON DELETE CASCADE',
+      FK_fulfillment_work_verifications_work: 'ON DELETE CASCADE',
       FK_return_lines_return: 'ON DELETE CASCADE',
       FK_inventory_locations_owner_connection: 'ON DELETE SET NULL',
       FK_reservations_inventory_item: 'ON DELETE RESTRICT',

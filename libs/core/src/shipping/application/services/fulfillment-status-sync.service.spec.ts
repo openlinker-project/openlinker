@@ -97,6 +97,7 @@ describe('FulfillmentStatusSyncService', () => {
       listDispatchedAwaitingReservationConsume: jest.fn(),
       claimReservationConsume: jest.fn(),
       claimFulfillmentWorkLink: jest.fn(),
+      findByFulfillmentWorkIds: jest.fn(),
     };
 
     orderRecords = {

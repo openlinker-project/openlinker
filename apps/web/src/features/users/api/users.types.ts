@@ -1,5 +1,14 @@
 export type UserStatus = 'pending' | 'active' | 'deactivated';
-export type UserRole = 'admin' | 'operator' | 'viewer';
+/**
+ * Mirrors `UserRoleValues` in `@openlinker/core/users`. `apps/web` cannot
+ * import from `@openlinker/core` (#591), so this union is a hand-kept copy —
+ * extend it in the same change that adds a backend role, or an admin cannot
+ * assign the role that was just created.
+ *
+ * `packer` (#2413, ADR-071): a pack-bench packer, deliberately NARROWER than
+ * `operator`. Sign-in is a shift-boundary event at a shared, roaming terminal.
+ */
+export type UserRole = 'admin' | 'operator' | 'viewer' | 'packer';
 
 export interface UserSummary {
   id: string;

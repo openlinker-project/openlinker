@@ -52,8 +52,8 @@ export interface FulfillmentActionCopy {
 /**
  * Copy per operator-invocable action.
  *
- * The keys are the six members of the server's `OPERATOR_INVOCABLE_ACTIONS` as
- * of #2406. This is a lookup table, not a declaration of what is legal — the
+ * The keys are the eight members of the server's `OPERATOR_INVOCABLE_ACTIONS`
+ * as of #2416 (six from #2406, plus the expedite pair). This is a lookup table, not a declaration of what is legal — the
  * server's `supportedActions` decides that, and this map is consulted only for
  * entries that array already contains.
  */
@@ -87,6 +87,26 @@ export const FULFILLMENT_ACTION_COPY: Record<string, FulfillmentActionCopy> = {
     label: 'Force cancel',
     tone: 'danger',
     hint: 'Cancel this task outright, without asking whoever holds it.',
+  },
+  // #2416. `exposedActions` is shared, so these reach this worklist as well as
+  // the pack bench — which is right: a supervisor pushing a parcel forward does
+  // it from here. Labelled rather than left to the humanising fallback, which
+  // would render a bare "Expedite" with no hint on a control that reorders
+  // somebody else's queue.
+  //
+  // Exactly one of the two is ever offered for a given task, because the server
+  // picks the direction. Neither is `danger`: both are reversible, and colouring
+  // a reversible act as destructive spends the signal that marks the one act on
+  // this surface that is not.
+  expedite: {
+    label: 'Move to the front',
+    tone: 'secondary',
+    hint: 'Pack this ahead of its deadline order. It stays marked as moved, and it can be moved back.',
+  },
+  release_expedite: {
+    label: 'Back to deadline order',
+    tone: 'secondary',
+    hint: 'Stop moving this ahead of the queue. It returns to its place by dispatch deadline.',
   },
 };
 

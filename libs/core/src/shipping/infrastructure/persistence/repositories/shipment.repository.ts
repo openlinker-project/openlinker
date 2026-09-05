@@ -104,6 +104,21 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
     return entity ? this.toDomain(entity) : null;
   }
 
+  async findByFulfillmentWorkIds(
+    workIds: readonly string[],
+    direction: ShipmentDirection,
+  ): Promise<readonly Shipment[]> {
+    // `IN ()` is a Postgres syntax error, not an empty set — and an empty ask
+    // has an answer that needs no round trip.
+    if (workIds.length === 0) return [];
+
+    const entities = await this.repository.find({
+      where: { fulfillmentWorkId: In([...workIds]), direction },
+      order: { createdAt: 'ASC' },
+    });
+    return entities.map((entity) => this.toDomain(entity));
+  }
+
   async findByProviderShipmentId(providerShipmentId: string): Promise<Shipment | null> {
     const entity = await this.repository.findOne({ where: { providerShipmentId } });
     return entity ? this.toDomain(entity) : null;

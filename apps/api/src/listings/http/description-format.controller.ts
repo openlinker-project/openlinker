@@ -30,7 +30,8 @@ import { DescriptionFormatResponseDto } from './dto/description-format-response.
 
 @ApiBearerAuth()
 @ApiTags('listings')
-// Declared explicitly, matching `TaxonomyController`. `RolesGuard` allows any
+// Declared explicitly, matching `TaxonomyController`. Since #2079 `RolesGuard`
+// DENIES a route carrying no decorator, so this is required, not decorative. Any
 // authenticated user when the decorator is absent, so omitting it is fail-open
 // on role even where the effective audience happens to be the same set.
 @Roles('admin', 'operator', 'viewer')

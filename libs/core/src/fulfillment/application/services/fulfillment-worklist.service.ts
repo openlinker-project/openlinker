@@ -99,6 +99,12 @@ export class FulfillmentWorklistService implements IFulfillmentWorklistService {
     return this.toView(work, await this.works.listActiveHolds(workId));
   }
 
+  async listSiblingWorkIds(orderIds: readonly string[]): Promise<Map<string, string[]>> {
+    // A straight delegation, and it stays one: the count is deliberately not
+    // filtered by anything, because filtering is what makes it wrong.
+    return await this.works.listWorkIdsByOrderIds(orderIds);
+  }
+
   async applyAction(input: ApplyFulfillmentWorkActionInput): Promise<FulfillmentWorkView> {
     // Refused before anything is read: an action this surface does not execute
     // is a client error, not a state question.
@@ -209,6 +215,23 @@ export class FulfillmentWorklistService implements IFulfillmentWorklistService {
         return true;
       }
 
+      case 'expedite':
+      case 'release_expedite': {
+        // Both directions are ONE conditional UPDATE with the state guard
+        // (`"expeditedAt" IS NULL` / `IS NOT NULL`) and the version guard in the
+        // same statement, so a replay of an already-applied expedite is told
+        // apart from a stale token exactly as every other transition is.
+        //
+        // `expeditedAt` is the instant the operator pushed it, so it is OL's
+        // own clock: this is an act performed inside OpenLinker, not a fact
+        // reported by another system.
+        return await this.works.setExpedited({
+          workId,
+          expeditedAt: action === 'expedite' ? new Date() : null,
+          expectedVersion,
+        });
+      }
+
       case 'release_hold': {
         if (input.holdId === undefined) {
           throw new MissingFulfillmentWorkActionFieldError('release_hold', 'holdId');
@@ -271,6 +294,7 @@ export class FulfillmentWorklistService implements IFulfillmentWorklistService {
       requestStatus: work.requestStatus,
       activeHoldCount: activeHolds.length,
       assignedConnectionId: work.assignedConnectionId,
+      isExpedited: work.expeditedAt !== null,
     }).filter((action) => invocable.includes(action));
   }
 
@@ -293,6 +317,9 @@ export class FulfillmentWorklistService implements IFulfillmentWorklistService {
       externalWorkId: work.externalWorkId,
       acceptedAt: work.acceptedAt,
       cancelledAt: work.cancelledAt,
+      expeditedAt: work.expeditedAt,
+      parcelClosedAt: work.parcelClosedAt,
+      packedByUserId: work.packedByUserId,
       createdAt: work.createdAt,
       updatedAt: work.updatedAt,
       lines: work.lines.map((line) => ({

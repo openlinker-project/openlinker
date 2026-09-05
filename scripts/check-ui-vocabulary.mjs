@@ -182,6 +182,17 @@ const SCAN_ROOTS = [
     pending: false,
   },
   {
+    // #2413's pack-bench identity surface (locked / sign-in / handover). Added
+    // with the folder, not after it — the same rule `features/fulfillment`
+    // records above: the epic's UI naming rule is binding on every FE child,
+    // and a gate that arrives a wave later scans copy nobody re-reads. This
+    // surface is where an operator-facing "FulfillmentWork" would be most
+    // tempting, since the bench is literally looking at one.
+    dir: join('apps', 'web', 'src', 'features', 'bench'),
+    owner: 'W3b-1 (#2413)',
+    pending: false,
+  },
+  {
     // #2342's hold copy (badge, dialogs, timeline) lives here, and the gate was
     // scanning three folders none of which contained it. Added after a trial run
     // proved the folder is already clean — widening a shared gate onto existing

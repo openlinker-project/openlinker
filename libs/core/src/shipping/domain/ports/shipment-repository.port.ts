@@ -70,6 +70,30 @@ export interface ShipmentRepositoryPort {
    */
   findActiveByOrderId(orderId: string, direction: ShipmentDirection): Promise<Shipment | null>;
 
+  /**
+   * Every shipment linked to any of `workIds` IN ONE DIRECTION, ordered by
+   * `createdAt ASC`. The first reader of `shipments.fulfillmentWorkId`, which
+   * #2402 added and left with no query behind it (#2418).
+   *
+   * BATCHED across the whole set on purpose: the pack bench asks three
+   * questions at once for a page of work — has this parcel shipped (the reopen
+   * refusal), what state is its label in, and which packed works are still
+   * unlabelled — and a per-work query would be one round trip per row. Served
+   * by `IDX_shipments_fulfillmentWorkId` (#2402), so no index is added here.
+   *
+   * An empty `workIds` returns `[]` WITHOUT touching the database: `IN ()` is a
+   * Postgres syntax error rather than an empty set, and an empty ask has an
+   * answer that needs no query.
+   *
+   * `direction` is REQUIRED for the reason given on `findByOrderId` above —
+   * a return label linked to the same work must not be read as the outbound
+   * parcel having shipped.
+   */
+  findByFulfillmentWorkIds(
+    workIds: readonly string[],
+    direction: ShipmentDirection,
+  ): Promise<readonly Shipment[]>;
+
   findByProviderShipmentId(providerShipmentId: string): Promise<Shipment | null>;
 
   /**

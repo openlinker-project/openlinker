@@ -107,6 +107,40 @@ export const FulfillmentWorkActionValues = [
    * disabled holder connection cannot be resolved for negotiation at all.
    */
   'force_cancel',
+  /**
+   * Push this work ahead of ordinary deadline order, and take it back again.
+   *
+   * ## The first members whose provenance is the SPEC, not DESIGN
+   *
+   * Every member above cites a DESIGN §5.x sentence. These two come from the
+   * Wave-3b product spec's decision **D22** — *"an operator can expedite a
+   * parcel ahead of deadline order, visibly and reversibly"* — because ordering
+   * is otherwise purely `dispatchByAt` and the only lever on it is holding
+   * everything else, which stops work rather than advancing it. Stated rather
+   * than left to be inferred: a reader checking provenance against DESIGN alone
+   * would find nothing and conclude these were invented.
+   *
+   * ## Why TWO verbs rather than one carrying a direction
+   *
+   * `supportedActions` exists so the SERVER says what is legal next.
+   * `deriveSupportedActions` offers `expedite` only on a work that is not
+   * expedited and `release_expedite` only on one that is, so the control's
+   * direction is never a client-side derivation — which is the whole of what
+   * "actions yes, states no" buys. A single verb carrying a boolean would be
+   * offered in both states and hand that decision back to the client. It is
+   * also the shape `hold` / `release_hold` already established for a reversible
+   * act.
+   *
+   * ## Adding to a CLOSED union is the sanctioned route, not a reopening
+   *
+   * The rule above forbids a PLUGIN widening this union and forbids reopening
+   * it as an open string set. A core PR adding a member that a core service
+   * applies and a SQL predicate matches is exactly what that rule names as the
+   * fix when the contract is missing an operation. ADR-054 is unamended.
+   */
+  'expedite',
+  /** The reverse of `expedite`. See it for why this is a verb of its own. */
+  'release_expedite',
 ] as const;
 
 export type FulfillmentWorkAction = (typeof FulfillmentWorkActionValues)[number];

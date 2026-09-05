@@ -6,6 +6,10 @@
  * Cursors track incremental sync position per connection.
  *
  * @module apps/api/src/cursors/http
+ *
+ * **`@Roles('admin', 'operator', 'viewer')`, not `@AnyRole()` (#2413).** A sync
+ * cursor is connection diagnostics; the `packer` role has no business in one.
+ * Behaviourally identical for every role that exists today.
  */
 import {
   Controller,
@@ -26,6 +30,7 @@ import type { ConnectionCursor } from '@openlinker/core/sync';
 import { ListCursorsQueryDto } from './dto/list-cursors-query.dto';
 import { CursorResponseDto } from './dto/cursor-response.dto';
 import { PaginatedCursorsResponseDto } from './dto/paginated-cursors-response.dto';
+import { Roles } from '../../auth/decorators/roles.decorator';
 
 @ApiBearerAuth()
 @ApiTags('cursors')
@@ -36,6 +41,7 @@ export class CursorsController {
     private readonly cursorRepository: ConnectionCursorRepositoryPort,
   ) {}
 
+  @Roles('admin', 'operator', 'viewer')
   @Get()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -61,6 +67,7 @@ export class CursorsController {
     };
   }
 
+  @Roles('admin', 'operator', 'viewer')
   @Get(':connectionId/:cursorKey')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get a single cursor by connection ID and cursor key' })

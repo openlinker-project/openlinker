@@ -438,7 +438,7 @@ describe('NumberingSeriesController', () => {
   });
 
   describe('role guards', () => {
-    it('should gate write endpoints behind @Roles(admin) and leave reads open', () => {
+    it('should gate writes behind @Roles(admin) and reads behind admin/operator/viewer', () => {
       const admin = (method: string): unknown =>
         Reflect.getMetadata(
           ROLES_KEY,
@@ -449,11 +449,24 @@ describe('NumberingSeriesController', () => {
       expect(admin('upsertRoute')).toEqual(['admin']);
       expect(admin('deleteRoute')).toEqual(['admin']);
       expect(admin('recordGapNote')).toEqual(['admin']);
-      expect(admin('listSeries')).toBeUndefined();
-      expect(admin('getSeries')).toBeUndefined();
-      expect(admin('listUnassignedSeries')).toBeUndefined();
-      expect(admin('listRoutes')).toBeUndefined();
-      expect(admin('getSeriesAudit')).toBeUndefined();
+      // #2413: the reads were `@AnyRole()`. They now name the three roles
+      // explicitly — behaviourally identical for every user who exists today,
+      // and excluding the `packer` role by construction. A numbering series is
+      // a fiscal-document register, which a temporary packer has no business
+      // in.
+      const READS = ['admin', 'operator', 'viewer'];
+      for (const read of [
+        'listSeries',
+        'getSeries',
+        'listUnassignedSeries',
+        'listRoutes',
+        'getSeriesAudit',
+      ]) {
+        expect(admin(read)).toEqual(READS);
+        // The invariant, spelled out: it is the ABSENCE of `packer` that
+        // matters, not the presence of the other three.
+        expect(admin(read)).not.toContain('packer');
+      }
     });
   });
 });

@@ -266,6 +266,7 @@ export class FulfillmentWorkController {
       externalWorkId: view.externalWorkId,
       acceptedAt: view.acceptedAt,
       cancelledAt: view.cancelledAt,
+      expeditedAt: view.expeditedAt,
       createdAt: view.createdAt,
       updatedAt: view.updatedAt,
       lines: view.lines.map((line) => ({

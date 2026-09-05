@@ -100,6 +100,7 @@ describe('BulkShipmentDispatchService', () => {
       listDispatchedAwaitingReservationConsume: jest.fn(),
       claimReservationConsume: jest.fn(),
       claimFulfillmentWorkLink: jest.fn(),
+      findByFulfillmentWorkIds: jest.fn(),
     };
     protocolAdapter = {
       generateLabel: jest.fn(),

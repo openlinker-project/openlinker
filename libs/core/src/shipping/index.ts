@@ -20,7 +20,14 @@ export {
   SHIPMENT_STATUS,
   TerminalShipmentStatusValues,
 } from './domain/types/shipment-status.types';
+// "The goods left the building" (#2347). On the barrel since #2418, whose
+// reopen refusal (spec D19) asks the identical question of the identical set —
+// a box that has gone cannot be reopened in software. Shared rather than
+// restated: a second departure vocabulary is how the two answers start to
+// disagree about a parcel somebody is holding.
+export { ReservationConsumeCandidateStatusValues } from './domain/types/shipment-status.types';
 export type {
+  ReservationConsumeCandidateStatus,
   ShipmentStatus,
   TerminalShipmentStatus,
 } from './domain/types/shipment-status.types';

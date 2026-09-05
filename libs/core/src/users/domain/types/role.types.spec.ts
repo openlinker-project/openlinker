@@ -72,8 +72,30 @@ describe('ROLE_PERMISSIONS', () => {
     it('should have an entry in ROLE_PERMISSIONS for every role', () => {
       for (const role of UserRoleValues) {
         expect(ROLE_PERMISSIONS[role]).toBeDefined();
+      }
+    });
+
+    /**
+     * The non-emptiness assertion used to run over EVERY role. `packer` (#2413,
+     * ADR-071) is deliberately empty — `PermissionValues` has no member
+     * describing packing, and granting one merely to populate the Record would
+     * light up an FE surface for a role whose whole purpose is to be narrower
+     * (see the docblock on `ROLE_PERMISSIONS.packer`).
+     *
+     * So the loop is NARROWED and the exception is asserted POSITIVELY rather
+     * than the assertion being deleted: an empty set for any other role stays a
+     * failure, and `packer` becoming non-empty by accident is one too. A
+     * `pack:*` permission arriving with #2416/#2418 is a deliberate edit here.
+     */
+    it('gives every role except `packer` at least one permission', () => {
+      for (const role of UserRoleValues) {
+        if (role === 'packer') continue;
         expect(ROLE_PERMISSIONS[role].length).toBeGreaterThan(0);
       }
+    });
+
+    it('gives `packer` no permissions, deliberately', () => {
+      expect(ROLE_PERMISSIONS.packer).toEqual([]);
     });
   });
 

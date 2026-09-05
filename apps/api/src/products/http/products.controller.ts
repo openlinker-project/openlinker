@@ -66,6 +66,7 @@ import type { ExternalIdMappingDto } from './dto/external-id-mapping.dto';
 import type { ProductListingsCoverageDto } from './dto/product-listings-coverage.dto';
 import type { TaxRateJournalEntryResponseDto } from './dto/tax-rate-journal-entry-response.dto';
 import { TaxRateJournalResponseDto } from './dto/tax-rate-journal-entry-response.dto';
+import { AnyRole } from '../../auth/decorators/any-role.decorator';
 
 const MAX_VARIANTS_IN_DETAIL = 100;
 
@@ -158,6 +159,7 @@ export class ProductsController {
     private readonly taxRateJournal: ITaxRateJournalService
   ) {}
 
+  @AnyRole()
   @Get()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -300,6 +302,7 @@ export class ProductsController {
   // by this handler rather than getProduct (which would treat 'variants' as
   // an invalid product ID). Nest's pattern matcher follows registration order,
   // so route ordering matters here.
+  @AnyRole()
   @Get('variants/:variantId')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -324,6 +327,7 @@ export class ProductsController {
     return this.toVariantSummaryDto(variant);
   }
 
+  @AnyRole()
   @Get(':id')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -369,6 +373,7 @@ export class ProductsController {
     return dto;
   }
 
+  @AnyRole()
   @Get(':productId/variants')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -413,6 +418,7 @@ export class ProductsController {
    * deliberately not merged here - a variant with no override of its own has no
    * entries, and folding the product's in would present them as the variant's.
    */
+  @AnyRole()
   @Get(':productId/tax-rate-journal')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -534,6 +540,7 @@ export class VariantsController {
     private readonly productsService: IProductsService
   ) {}
 
+  @AnyRole()
   @Get('search')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

@@ -8,6 +8,10 @@
  * additional role restriction (operator-facing read).
  *
  * @module apps/api/src/analytics-trust/http
+ *
+ * **`@Roles('admin', 'operator', 'viewer')`, not `@AnyRole()` (#2413).** See
+ * `sales-analytics.controller.ts` for the reasoning shared by every analytics
+ * read.
  */
 import { Controller, Get, Inject } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
@@ -20,6 +24,7 @@ import {
   AnalyticsTrustResponseDto,
   ConnectionIngestionTrustResponseDto,
 } from '../dto/analytics-trust-response.dto';
+import { Roles } from '../../auth/decorators/roles.decorator';
 
 @ApiBearerAuth()
 @ApiTags('analytics-trust')
@@ -30,6 +35,7 @@ export class AnalyticsTrustController {
     private readonly analyticsTrustService: IAnalyticsTrustService
   ) {}
 
+  @Roles('admin', 'operator', 'viewer')
   @Get('trust')
   @ApiOperation({
     summary: 'Get the analytics data-trust snapshot',

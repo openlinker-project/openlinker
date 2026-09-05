@@ -44,6 +44,7 @@ import { Response } from 'express';
 import { Logger } from '@openlinker/shared/logging';
 
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { AnyRole } from '../../auth/decorators/any-role.decorator';
 import {
   AdapterCapabilityNotSupportedException,
   CatalogProductNotFoundException,
@@ -197,6 +198,7 @@ export class ListingsController {
     return { publishedVariantIds };
   }
 
+  @AnyRole()
   @Get()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -272,6 +274,7 @@ export class ListingsController {
     };
   }
 
+  @AnyRole()
   @Get(':id')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id', description: 'Offer mapping row ID (UUID)' })
@@ -313,6 +316,7 @@ export class ListingsController {
     return dto;
   }
 
+  @AnyRole()
   @Get(':id/offer')
   @HttpCode(HttpStatus.OK)
   // 30 s cache lets quick back-and-forth navigation between the listings
@@ -503,6 +507,7 @@ export class ListingsController {
     return { jobId, offerCreationRecordId: offerCreationRecord.id };
   }
 
+  @AnyRole()
   @Get('connections/:connectionId/offers/creation/:offerCreationRecordId')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })

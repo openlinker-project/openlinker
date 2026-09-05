@@ -66,9 +66,66 @@ export interface FulfillmentWorkListFilter {
   readonly requestStatus?: readonly FulfillmentRequestStatus[];
   readonly locationId?: string;
   readonly orderId?: string;
+  /**
+   * Restrict to work assigned to one of these connections (#2416).
+   *
+   * A LIST rather than a scalar, unlike every other axis here, because the
+   * caller that needs it — the pack bench, whose list is *what routing assigned
+   * to this executor* (spec D8) — resolves its executor from configuration and
+   * an install may legitimately carry two such connections. A scalar would force
+   * that caller to pick one silently and show half the bench's work.
+   *
+   * An EMPTY array is a positive statement — "these zero connections" — and
+   * therefore matches nothing, rather than degrading to "any". The three states
+   * (absent / non-empty / empty) are the #2397 `destinationConnectionIds`
+   * discipline: a caller with no answer must OMIT the field, never pass `[]`.
+   * Getting that backwards here would show a bench every executor's work,
+   * including a logistics provider's, which is exactly what D8 forbids.
+   *
+   * Optional, so every pre-#2416 caller is byte-identical.
+   */
+  readonly assignedConnectionId?: readonly string[];
+
+  /**
+   * Whether the pack bench has shut the box (#2418).
+   *
+   * `true` selects parcels that are packed, `false` those that are not, and
+   * ABSENT selects both — the ordinary three-state optional-filter reading, so
+   * every existing caller is byte-identical.
+   *
+   * Added for the bench's packed-but-unlabelled list (story F4), which needs
+   * "closed here, no label on it" and cannot express the first half any other
+   * way. It is deliberately NOT a status: `status = 'closed'` is the executor
+   * finishing the whole job, and a packed parcel still has to be labelled and
+   * leave.
+   */
+  readonly parcelClosed?: boolean;
+  /**
+   * Which end of the creation order the page is taken from (#2416).
+   *
+   * The default is `'createdAt_DESC'`, which is what `listWorks` has always
+   * done, so an omitted value is byte-identical to every pre-#2416 read.
+   *
+   * It exists because SELECTION and ORDERING are different questions once a
+   * caller sorts the page itself. The pack bench sorts by the ORDER's
+   * `dispatchByAt`, which lives in another context and cannot reach this query
+   * — so with the default the page it received was the NEWEST works, and
+   * truncation dropped the most overdue ones under a heading promising the most
+   * urgent first. Asking for `'createdAt_ASC'` moves the truncation to the
+   * newest end, which is the safe direction: an older work object is the one
+   * closer to its deadline.
+   *
+   * A `dispatchByAt` order is deliberately NOT offered. This context may not
+   * read `orders` (ADR-053), so the only honest keys are its own columns.
+   */
+  readonly orderBy?: FulfillmentWorkListOrder;
   readonly limit?: number;
   readonly offset?: number;
 }
+
+/** Selection order for a worklist page. See `FulfillmentWorkListFilter.orderBy`. */
+export const FulfillmentWorkListOrderValues = ['createdAt_DESC', 'createdAt_ASC'] as const;
+export type FulfillmentWorkListOrder = (typeof FulfillmentWorkListOrderValues)[number];
 
 /** One page of works plus the unpaged total, for a worklist's pager. */
 export interface FulfillmentWorkPage {

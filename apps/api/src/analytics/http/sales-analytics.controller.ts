@@ -9,12 +9,25 @@
  * specifically to fan out across two core contexts).
  *
  * @module apps/api/src/analytics/http
+ *
+ * **`@Roles('admin', 'operator', 'viewer')`, not `@AnyRole()` (#2413).**
+ *
+ * This route returns revenue, AOV, median order value and a per-channel
+ * breakdown. #2413's owner enumerated buyer PII, fiscal documents and
+ * connection configuration as surfaces the new `packer` role must not reach;
+ * commercial analytics was not enumerated, and is added by that issue's route
+ * review on the same rationale — if an invoice PDF is not packer-facing, the
+ * company's revenue is not either, and the argument is stronger here, since an
+ * invoice concerns one order and this concerns the business. Flagged in the
+ * pull request rather than applied silently. Behaviourally identical for every
+ * role that exists today, so re-admitting `packer` is one word.
  */
 import { BadRequestException, Controller, Get, Inject, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ORDER_RECORD_SERVICE_TOKEN, type IOrderRecordService } from '@openlinker/core/orders';
 import { SalesAnalyticsQueryDto } from './dto/sales-analytics-query.dto';
 import { SalesAnalyticsResponseDto } from './dto/sales-analytics-response.dto';
+import { Roles } from '../../auth/decorators/roles.decorator';
 
 /**
  * Upper bound on a requested range (#1987 review, suggestion 3). Unbounded,
@@ -35,6 +48,7 @@ export class SalesAnalyticsController {
     private readonly orderRecordService: IOrderRecordService
   ) {}
 
+  @Roles('admin', 'operator', 'viewer')
   @Get('sales')
   @ApiOperation({
     summary:

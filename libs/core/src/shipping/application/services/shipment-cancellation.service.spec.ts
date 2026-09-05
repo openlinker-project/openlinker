@@ -74,6 +74,7 @@ describe('ShipmentCancellationService', () => {
       listDispatchedAwaitingReservationConsume: jest.fn(),
       claimReservationConsume: jest.fn(),
       claimFulfillmentWorkLink: jest.fn(),
+      findByFulfillmentWorkIds: jest.fn(),
     };
     cancellerAdapter = {
       generateLabel: jest.fn(),
