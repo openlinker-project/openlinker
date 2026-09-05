@@ -56,6 +56,21 @@ function makeOrder(overrides: Partial<Order> = {}): Order {
       postalCode: '60-001',
       country: 'PL',
     },
+    // A delivery-address country is what `toSalesDocumentOrderFacts` (#2173)
+    // needs to build a non-null facts projection at all — post-retirement of
+    // the single-primary fallback ("opcja b"), an order with none can NEVER
+    // route, structurally, regardless of what `resolveRouting` is mocked to
+    // return. Every test in this file that cares about routing selection
+    // mechanics (ambiguity, absence of configuration) overrides this back to
+    // `undefined` explicitly rather than relying on omission.
+    shippingAddress: {
+      firstName: 'Jan',
+      lastName: 'Kowalski',
+      address1: 'ul. Testowa 1',
+      city: 'Poznań',
+      postalCode: '60-001',
+      country: 'PL',
+    },
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
@@ -63,12 +78,14 @@ function makeOrder(overrides: Partial<Order> = {}): Order {
 }
 
 /**
- * `makeOrder()` plus a delivery (shipping) address — the one fact
- * `toSalesDocumentOrderFacts` (#2173) needs to build a non-null order-facts
- * projection at all. Every PRE-#2173 test in this file uses the plain
- * `makeOrder()` (billing address only), which keeps `resolveRouting` from
- * ever being called — this helper is for the new rule-engine-wiring tests
- * that need it to be reachable.
+ * `makeOrder()` with an explicit, overridable delivery-address country. Since
+ * `makeOrder()` now defaults a `shippingAddress` itself (the single-primary
+ * fallback that used to tolerate its absence was retired — "opcja b" —
+ * so an order with no delivery country can NEVER route), this helper exists
+ * only for tests that need a country OTHER than `makeOrder()`'s default
+ * `'PL'`; kept as a named helper rather than an inline override so the intent
+ * ("this test cares about country X specifically") stays visible at the call
+ * site.
  */
 function makeOrderWithDelivery(overrides: Partial<Order> = {}, country = 'PL'): Order {
   return makeOrder({
@@ -165,17 +182,41 @@ describe('AutoIssueTriggerService', () => {
     // block. Default = no document, so the block paths are reachable; the
     // suppression + read-failure cases override it per test.
     invoices = { getLatestInvoiceForOrder: jest.fn().mockResolvedValue(null) };
-    // #2173: default = "no configuration at all for this order's country",
-    // which is what makes every PRE-#2173 test in this file exercise the
-    // fallback single-primary resolver unchanged. Most of them also build
-    // their order via `makeOrder()`, which carries no `shippingAddress` at
-    // all, so `toSalesDocumentOrderFacts` returns `null` and this mock is
-    // never even called for them — the regression guarantee is structural,
-    // not just a default-return-value coincidence.
+    // #2173/#2516: the operator-configured single-primary fallback is
+    // retired ("opcja b") — `chooseSalesDocumentDecision` returns whatever
+    // the rule engine answered, verbatim, with no second resolver. Most
+    // tests in this file predate that retirement and were written to expect
+    // the OLD fallback's outcome (route to the sole eligible connection;
+    // refuse — unresolved — with zero or multiple candidates), so the
+    // default mock here reproduces that exact selection by reading back
+    // `connectionPort.list()` itself, purely to keep those tests reachable —
+    // it is a TEST DOUBLE of what an operator would have configured via a
+    // real country default/rule, not a resurrection of the retired
+    // production fallback. A test that cares about routing-selection
+    // mechanics specifically (ambiguity, absence of configuration) overrides
+    // this per-call via `mockResolvedValueOnce`/`mockResolvedValue`.
     salesDocumentRules = {
-      resolveRouting: jest
-        .fn()
-        .mockResolvedValue({ kind: 'unresolved', reason: 'no-configuration-for-country' }),
+      resolveRouting: jest.fn().mockImplementation(async () => {
+        const connections = await connectionPort.list({ status: 'active' });
+        const eligible = Array.isArray(connections)
+          ? connections.filter(
+              (connection) =>
+                (connection.config as { salesDocument?: { documentKind?: string } } | undefined)
+                  ?.salesDocument?.documentKind,
+            )
+          : [];
+        if (eligible.length === 0) {
+          return { kind: 'unresolved', reason: 'no-configuration-for-country' };
+        }
+        if (eligible.length > 1) {
+          return { kind: 'unresolved', reason: 'ambiguous-connection-no-primary' };
+        }
+        const [connection] = eligible;
+        const documentKind = (
+          connection.config as { salesDocument: { documentKind: string } }
+        ).salesDocument.documentKind;
+        return { kind: 'route', documentKind, connectionId: connection.id };
+      }),
     };
     // Default: fiscalization is not wired into this process (mirrors
     // `InvoiceService.resolveFiscalRegistrationService`'s own spec default)
@@ -325,10 +366,15 @@ describe('AutoIssueTriggerService', () => {
       connectionPort.list.mockResolvedValue([
         makeConnection('auto-on-paid', { id: 'unconfigured', config: { invoicing: { triggerModel: 'auto-on-paid' } } }),
       ]);
-      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+      // No delivery address: `resolveRouting` is never even reached (facts is
+      // `null`), so nothing about THIS connection's missing
+      // `salesDocument.documentKind` can produce a spurious "ambiguous" error
+      // either — the assertion below is about a call that never happens.
+      await service.onOrderTransition(
+        makeOrder({ paymentStatus: 'paid', shippingAddress: undefined }),
+        'src-1',
+      );
       expect(syncJobs.schedule).not.toHaveBeenCalled();
-      // Zero eligible candidates short-circuits before the resolver — no
-      // spurious "ambiguous" error either.
       expect(errorSpy).not.toHaveBeenCalled();
     });
   });
@@ -695,7 +741,13 @@ describe('AutoIssueTriggerService', () => {
         makeConnection('auto-on-paid', { id: 'conn-b' }),
       ]);
 
-      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1', 'evt-1');
+      // No delivery address: this block proves NOTHING short of a real
+      // rule-engine answer routes, regardless of connection count.
+      await service.onOrderTransition(
+        makeOrder({ paymentStatus: 'paid', shippingAddress: undefined }),
+        'src-1',
+        'evt-1',
+      );
 
       expect(syncJobs.schedule).not.toHaveBeenCalled();
       expect(errorSpy).not.toHaveBeenCalled();
@@ -707,7 +759,10 @@ describe('AutoIssueTriggerService', () => {
         primary('conn-b'),
       ]);
 
-      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+      await service.onOrderTransition(
+        makeOrder({ paymentStatus: 'paid', shippingAddress: undefined }),
+        'src-1',
+      );
 
       expect(syncJobs.schedule).not.toHaveBeenCalled();
       expect(errorSpy).not.toHaveBeenCalled();
@@ -716,7 +771,10 @@ describe('AutoIssueTriggerService', () => {
     it('should enqueue nothing on the lone connection either — isPrimary is never consulted', async () => {
       connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid', { id: 'only' })]);
 
-      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+      await service.onOrderTransition(
+        makeOrder({ paymentStatus: 'paid', shippingAddress: undefined }),
+        'src-1',
+      );
 
       expect(syncJobs.schedule).not.toHaveBeenCalled();
       expect(errorSpy).not.toHaveBeenCalled();
@@ -728,7 +786,10 @@ describe('AutoIssueTriggerService', () => {
         makeFiscalConnection('auto-on-paid', { id: 'conn-fiscal' }),
       ]);
 
-      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+      await service.onOrderTransition(
+        makeOrder({ paymentStatus: 'paid', shippingAddress: undefined }),
+        'src-1',
+      );
 
       expect(syncJobs.schedule).not.toHaveBeenCalled();
       expect(errorSpy).not.toHaveBeenCalled();
@@ -759,7 +820,7 @@ describe('AutoIssueTriggerService', () => {
       twoCandidates();
 
       const outcome = await service.onOrderTransition(
-        makeOrder({ paymentStatus: 'paid' }),
+        makeOrder({ paymentStatus: 'paid', shippingAddress: undefined }),
         'src-1',
         'evt-1',
       );
@@ -782,8 +843,12 @@ describe('AutoIssueTriggerService', () => {
         });
       connectionPort.list.mockResolvedValue([primaryConn('conn-a'), primaryConn('conn-b')]);
 
+      // No delivery address: `decision` is `null` regardless of how many
+      // connections are primary, which is the "isPrimary is never consulted"
+      // guarantee this test names — `reportUnresolved` (which would answer
+      // `{ kind: 'blocked' }`, not `{ kind: 'none' }`) is never reached.
       const outcome = await service.onOrderTransition(
-        makeOrder({ paymentStatus: 'paid' }),
+        makeOrder({ paymentStatus: 'paid', shippingAddress: undefined }),
         'src-1',
       );
 
@@ -1140,10 +1205,23 @@ describe('AutoIssueTriggerService', () => {
 
   describe('selected-connection isolation + PII-safe catch (F9/D11)', () => {
     it('a connection whose composition throws InvalidBuyerProfileError is skipped, and nothing escapes', async () => {
-      // No address ⇒ InvalidBuyerProfileError from the mapper.
+      // No billing address AND no name on the delivery address either ⇒
+      // `buildBuyerProfile` falls back from billing to shipping and still
+      // finds nothing to derive a name from ⇒ InvalidBuyerProfileError. The
+      // delivery address keeps its COUNTRY (routing reads only that field),
+      // which is what lets `dispatchRoute` be reached at all.
       connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid', { id: 'bad' })]);
       const badOrder = makeOrder({ paymentStatus: 'paid' });
-      const noAddr = { ...badOrder, billingAddress: undefined, shippingAddress: undefined };
+      const noAddr = {
+        ...badOrder,
+        billingAddress: undefined,
+        shippingAddress: {
+          address1: 'ul. Testowa 1',
+          city: 'Poznań',
+          postalCode: '60-001',
+          country: 'PL',
+        },
+      };
       // #2100: the method now RESOLVES to an outcome. `InvalidBuyerProfileError` is
       // deterministic — it will throw identically on every future transition — so
       // the outcome is `indeterminate`, which tells the caller to leave any
@@ -1208,8 +1286,10 @@ describe('AutoIssueTriggerService', () => {
 
     it('does NOT call the rule engine when the order carries no delivery address at all, and issues nothing (fallback retired)', async () => {
       connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
-      // Plain makeOrder() carries only a billingAddress.
-      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+      await service.onOrderTransition(
+        makeOrder({ paymentStatus: 'paid', shippingAddress: undefined }),
+        'src-1',
+      );
 
       expect(salesDocumentRules.resolveRouting).not.toHaveBeenCalled();
       // No rule-engine answer -> ruleDecision is null -> chooseSalesDocumentDecision
