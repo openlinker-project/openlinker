@@ -541,13 +541,30 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * — with the complementary unstamped slice reported separately as
    * `unconverted_count`/
    * `unconverted_value` (native `totalAmount`, informational only) rather
-   * than silently mixed in or silently dropped. `cancelled_value` now follows
-   * the SAME split (epic #2452): `SUM(reportingTotalAmount)` restricted to
-   * the current-era-stamped, cancelled population, with the unstamped
-   * remainder reported separately as `cancelled_unconverted_count`/
+   * than silently mixed in or silently dropped. `cancelled_value` follows the
+   * SAME currency-safety split (epic #2452): restricted to the
+   * current-era-stamped, cancelled population, with the unstamped remainder
+   * reported separately as `cancelled_unconverted_count`/
    * `cancelled_unconverted_value` — it previously summed raw, unrestricted
    * `totalAmount` across every currency in the bucket, which silently mixed
    * currencies into one meaningless total.
+   *
+   * **Cancellations Value is net-of-VAT and shipping-excluded (#2910).**
+   * `docs/specs/metrics-analytics-dashboard.md` defines Cancellations Value as
+   * "the NET value of orders placed in the period with cancelled status" —
+   * `cancelled_value` therefore no longer sums the shipping-inclusive, gross
+   * `reportingTotalAmount` (the same column #2892 deliberately avoided for
+   * GMV). It reuses the SAME per-line net-computation machinery Net Sales
+   * uses (`buildNetSalesOrderFragments`/`netOrderAmount`), applied to the
+   * CANCELLED cohort instead of the non-cancelled one, with the identical
+   * exclusion-reporting discipline: a cancelled order with an unresolvable
+   * tax rate is excluded from `cancelled_value` and reported instead via
+   * `cancelled_net_excluded_count`/`cancelled_net_excluded_value` (native
+   * `totalAmount`, informational, mirrors `net_excluded_value`'s
+   * convention) — never silently folded in at a guessed rate. The
+   * cancellation COHORT itself (every `cancelledAt IS NOT NULL` order,
+   * matching Cancellation Rate) is unchanged — only the value field computed
+   * for that cohort changed basis.
    *
    * `unconverted_currency` (#1987 scope, not FX-epic scope — `order_records.
    * currency` is the pre-existing native-currency column from #1985, untouched
@@ -582,6 +599,19 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     );
     const netAndNotCancelled = `${stampedAndNotCancelled} AND ${netEligible}`;
     const netExcludedAndNotCancelled = `${stampedAndNotCancelled} AND NOT ${netEligible}`;
+    // Cancellations Value (#2910, docs/specs/metrics-analytics-dashboard.md):
+    // the spec defines it as "the NET value of orders placed in the period
+    // with cancelled status" — VAT-excluded and, since it is derived from
+    // `order_line_items` rather than `reportingTotalAmount`, shipping-excluded
+    // too (`reportingTotalAmount` is `subtotal + tax + shipping`, #2892). This
+    // reuses the SAME `netEligible`/`netOrderAmount` fragments Net Sales uses,
+    // applied to the CANCELLED cohort instead of the non-cancelled one, with
+    // the identical exclusion-reporting discipline: an order with an
+    // unresolvable rate is excluded from `cancelled_value` and counted
+    // instead in `cancelled_net_excluded_count`/`cancelled_net_excluded_value`
+    // — never silently folded in at a guessed rate.
+    const netAndCancelled = `${stampedAndCancelled} AND ${netEligible}`;
+    const netExcludedAndCancelled = `${stampedAndCancelled} AND NOT ${netEligible}`;
 
     // GMV/revenue (#2892) — gross, shipping-EXCLUDED merchandise value from
     // `order_line_items`, never the shipping-inclusive `reportingTotalAmount`.
@@ -635,7 +665,10 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       )
       .addSelect(`COUNT(*) FILTER (WHERE ${isCancelled})`, 'cancelled_count')
       .addSelect(
-        `COALESCE(SUM(rec."reportingTotalAmount") FILTER (WHERE ${stampedAndCancelled}), 0)`,
+        // Net-of-VAT, shipping-excluded (#2910) — same construction as
+        // `net_revenue` below, restricted to the cancelled, net-eligible
+        // population instead of the non-cancelled one.
+        `COALESCE(SUM((${netOrderAmount}) * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${netAndCancelled}), 0)`,
         'cancelled_value'
       )
       .addSelect(
@@ -645,6 +678,14 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       .addSelect(
         `COALESCE(SUM(rec."totalAmount") FILTER (WHERE ${unconvertedAndCancelled}), 0)`,
         'cancelled_unconverted_value'
+      )
+      .addSelect(
+        `COUNT(*) FILTER (WHERE ${netExcludedAndCancelled})`,
+        'cancelled_net_excluded_count'
+      )
+      .addSelect(
+        `COALESCE(SUM(rec."totalAmount") FILTER (WHERE ${netExcludedAndCancelled}), 0)`,
+        'cancelled_net_excluded_value'
       )
       .addSelect(
         // `isStamped` now filters on `reportingCurrency = :currentReportingCurrency`
@@ -683,6 +724,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       cancelled_value: string;
       cancelled_unconverted_count: string;
       cancelled_unconverted_value: string;
+      cancelled_net_excluded_count: string;
+      cancelled_net_excluded_value: string;
       reporting_currency: string | null;
       net_revenue: string;
       net_excluded_count: string;
@@ -701,6 +744,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       cancelledValue: Number(row.cancelled_value),
       cancelledUnconvertedCount: Number(row.cancelled_unconverted_count),
       cancelledUnconvertedValue: Number(row.cancelled_unconverted_value),
+      cancelledNetExcludedCount: Number(row.cancelled_net_excluded_count),
+      cancelledNetExcludedValue: Number(row.cancelled_net_excluded_value),
       reportingCurrency: row.reporting_currency,
       netRevenue: Number(row.net_revenue),
       netExcludedCount: Number(row.net_excluded_count),

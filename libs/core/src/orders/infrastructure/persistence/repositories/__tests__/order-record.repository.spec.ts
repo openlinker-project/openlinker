@@ -627,6 +627,8 @@ describe('OrderRecordRepository', () => {
             cancelled_value: '20.00',
             cancelled_unconverted_count: '0',
             cancelled_unconverted_value: '0',
+            cancelled_net_excluded_count: '0',
+            cancelled_net_excluded_value: '0',
             reporting_currency: 'EUR',
             net_revenue: '0',
             net_excluded_count: '0',
@@ -653,6 +655,8 @@ describe('OrderRecordRepository', () => {
           cancelledValue: 20,
           cancelledUnconvertedCount: 0,
           cancelledUnconvertedValue: 0,
+          cancelledNetExcludedCount: 0,
+          cancelledNetExcludedValue: 0,
           reportingCurrency: 'EUR',
         },
       ]);
@@ -790,6 +794,44 @@ describe('OrderRecordRepository', () => {
       expect(revenueCall?.[0]).not.toBe(
         `COALESCE(SUM(rec."reportingTotalAmount") FILTER (WHERE rec."cancelledAt" IS NULL AND rec."reportingCurrency" = :currentReportingCurrency), 0)`
       );
+    });
+
+    it('computes cancelledValue net-of-VAT from order_line_items, never the shipping-inclusive reportingTotalAmount directly (#2910)', async () => {
+      const addSelect = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect,
+        groupBy: jest.fn().mockReturnThis(),
+        addGroupBy: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        setParameter: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([]),
+      });
+
+      await repository.getDailyOrderAggregates(baseFilters, 'EUR');
+
+      const calls = addSelect.mock.calls as Array<[string, string]>;
+      const cancelledValueCall = calls.find(([, alias]) => alias === 'cancelled_value');
+      // Net-of-VAT, shipping-excluded: derived from the SAME per-line net
+      // subquery Net Sales uses, joined against `order_line_items`, never a
+      // bare `SUM(rec."reportingTotalAmount")` (which is shipping-inclusive
+      // and gross, #2892).
+      expect(cancelledValueCall?.[0]).toContain('FROM order_line_items net_li');
+      expect(cancelledValueCall?.[0]).toContain(
+        'rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0)'
+      );
+      expect(cancelledValueCall?.[0]).toContain('rec."cancelledAt" IS NOT NULL');
+      expect(cancelledValueCall?.[0]).not.toBe(
+        `COALESCE(SUM(rec."reportingTotalAmount") FILTER (WHERE rec."cancelledAt" IS NOT NULL AND rec."reportingCurrency" = :currentReportingCurrency), 0)`
+      );
+
+      // The exclusion-reporting counterpart is scoped to the CANCELLED
+      // cohort too, so an order with an unresolvable rate is reported here
+      // rather than silently folded into cancelledValue at a guessed rate.
+      const cancelledNetExcludedCountCall = calls.find(
+        ([, alias]) => alias === 'cancelled_net_excluded_count'
+      );
+      expect(cancelledNetExcludedCountCall?.[0]).toContain('rec."cancelledAt" IS NOT NULL');
     });
 
     it('treats a bucket with an unrecorded native currency as not-uniform (#1987 review, suggestion 4)', async () => {

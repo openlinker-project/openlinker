@@ -245,9 +245,14 @@ export interface OrderRecordRepositoryPort {
    * `unconvertedCount`/`unconvertedValue` (native `totalAmount`,
    * informational, may mix currencies) rather than being silently summed
    * into `revenue` or silently dropped. `cancelledValue` follows the same
-   * split: `SUM(reportingTotalAmount)` over current-era-stamped, cancelled
+   * currency-safety split, restricted to current-era-stamped, cancelled
    * orders, with the unstamped remainder reported separately as
-   * `cancelledUnconvertedCount`/`cancelledUnconvertedValue`.
+   * `cancelledUnconvertedCount`/`cancelledUnconvertedValue`. `cancelledValue`
+   * is ALSO net-of-VAT and shipping-excluded (#2910) — computed via the same
+   * per-line net machinery as `netRevenue`, restricted to the cancelled
+   * cohort; a cancelled order with an unresolvable rate is excluded and
+   * reported instead via `cancelledNetExcludedCount`/
+   * `cancelledNetExcludedValue`.
    *
    * `unconvertedCurrency` (#1987 scope, not an FX-epic deliverable —
    * `order_records.currency` predates #2049) labels `unconvertedValue` with

@@ -238,6 +238,69 @@ describe('Sales analytics daily aggregates (integration, #1987)', () => {
     expect(rows[0].revenue).toBeCloseTo(123, 5);
   });
 
+  it('computes cancelledValue net-of-VAT and shipping-excluded for a cancelled order (#2910)', async () => {
+    // Same shape as the GMV shipping-exclusion fixture above: subtotal=123
+    // gross (23% VAT, so 100 net), shipping=10, total=133. cancelledValue
+    // must report the merchandise-only NET figure (100), never the
+    // shipping-inclusive gross order total (133) and never the gross
+    // merchandise value (123).
+    const day = new Date('2026-08-05T10:00:00.000Z');
+    const orderId = await seedStampedOrder({
+      placedAt: day,
+      totalAmount: 133,
+      reportingCurrency: 'EUR',
+      reportingTotalAmount: 133,
+      taxTreatment: 'inclusive',
+      cancelledAt: new Date('2026-08-05T12:00:00.000Z'),
+    });
+    await seedLineItem({ orderRecordId: orderId, unitPrice: 123, quantity: 1, taxRate: '23' });
+
+    const rows = await repository.getDailyOrderAggregates(
+      {
+        from: new Date('2026-08-01T00:00:00.000Z'),
+        to: new Date('2026-08-08T00:00:00.000Z'),
+      },
+      'EUR'
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].cancelledCount).toBe(1);
+    expect(rows[0].cancelledValue).toBeCloseTo(100, 5);
+    expect(rows[0].cancelledNetExcludedCount).toBe(0);
+    expect(rows[0].cancelledNetExcludedValue).toBe(0);
+  });
+
+  it('excludes a cancelled order with an unresolvable tax rate from cancelledValue and reports it via cancelledNetExcludedCount/Value (#2910)', async () => {
+    const day = new Date('2026-08-06T10:00:00.000Z');
+    const orderId = await seedStampedOrder({
+      placedAt: day,
+      totalAmount: 133,
+      reportingCurrency: 'EUR',
+      reportingTotalAmount: 133,
+      taxTreatment: 'inclusive',
+      cancelledAt: new Date('2026-08-06T12:00:00.000Z'),
+    });
+    // No resolvable rate on the only line — gross-priced (`inclusive`) with
+    // an unparseable taxRate, so net cannot be derived for this order.
+    await seedLineItem({ orderRecordId: orderId, unitPrice: 123, quantity: 1, taxRate: null });
+
+    const rows = await repository.getDailyOrderAggregates(
+      {
+        from: new Date('2026-08-01T00:00:00.000Z'),
+        to: new Date('2026-08-08T00:00:00.000Z'),
+      },
+      'EUR'
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].cancelledCount).toBe(1);
+    expect(rows[0].cancelledValue).toBe(0);
+    expect(rows[0].cancelledNetExcludedCount).toBe(1);
+    // Reported at the order's native gross total (informational), mirroring
+    // netExcludedValue's convention for the non-cancelled cohort.
+    expect(rows[0].cancelledNetExcludedValue).toBe(133);
+  });
+
   it('getMedianOrderValue returns null when no stamped order matches the range', async () => {
     const median = await repository.getMedianOrderValue(
       {

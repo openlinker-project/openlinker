@@ -27,6 +27,8 @@ describe('orderSalesAggregation', () => {
     cancelledValue: 0,
     cancelledUnconvertedCount: 0,
     cancelledUnconvertedValue: 0,
+    cancelledNetExcludedCount: 0,
+    cancelledNetExcludedValue: 0,
     reportingCurrency: 'EUR',
     netRevenue: 0,
     netExcludedCount: 0,
@@ -57,6 +59,8 @@ describe('orderSalesAggregation', () => {
         cancelledValue: 0,
         cancelledUnconvertedCount: 0,
         cancelledUnconvertedValue: 0,
+        cancelledNetExcludedCount: 0,
+        cancelledNetExcludedValue: 0,
         currency: null,
         unconvertedCount: 0,
         unconvertedValue: 0,
@@ -217,6 +221,46 @@ describe('orderSalesAggregation', () => {
       // Per-channel cancelled totals sum back to the headline figure.
       expect(result.headline.cancelledCount).toBe(3);
       expect(result.headline.cancelledValue).toBe(90);
+    });
+
+    it('rolls up cancelledNetExcludedCount/cancelledNetExcludedValue across rows, headline and per channel (#2910)', () => {
+      const result = buildSalesAndChannelAnalytics({
+        filters: filters(),
+        dailyRows: [
+          row({
+            sourceConnectionId: 'conn-a',
+            cancelledCount: 2,
+            cancelledValue: 70,
+            cancelledNetExcludedCount: 1,
+            cancelledNetExcludedValue: 30,
+          }),
+          row({
+            sourceConnectionId: 'conn-b',
+            cancelledCount: 1,
+            cancelledValue: 10,
+            cancelledNetExcludedCount: 0,
+            cancelledNetExcludedValue: 0,
+          }),
+        ],
+        medianOrderValue: 100,
+        netMedianOrderValue: null,
+        unitsByConnection: new Map(),
+        earliestOrderDateByConnection: new Map(),
+      });
+
+      expect(result.headline.cancelledValue).toBe(80);
+      expect(result.headline.cancelledNetExcludedCount).toBe(1);
+      expect(result.headline.cancelledNetExcludedValue).toBe(30);
+
+      const byId = new Map(result.channels.map((c) => [c.sourceConnectionId, c]));
+      expect(byId.get('conn-a')).toMatchObject({
+        cancelledNetExcludedCount: 1,
+        cancelledNetExcludedValue: 30,
+      });
+      expect(byId.get('conn-b')).toMatchObject({
+        cancelledNetExcludedCount: 0,
+        cancelledNetExcludedValue: 0,
+      });
     });
   });
 
