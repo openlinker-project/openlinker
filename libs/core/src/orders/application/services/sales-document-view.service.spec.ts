@@ -288,7 +288,7 @@ describe('SalesDocumentViewService', () => {
     ]);
   });
 
-  it('should keep an order with no document in the map, with the kind routing resolves', async () => {
+  it('should keep an order with no document in the map, with a null kind when the rule engine has no configuration for it (single-primary fallback retired, "opcja b")', async () => {
     orderRecords.findByIds.mockResolvedValue([orderRecord()]);
     connections.list.mockResolvedValue([connection()]);
     rules.resolveRoutingBatch.mockResolvedValue([
@@ -299,7 +299,11 @@ describe('SalesDocumentViewService', () => {
 
     expect(views.has('ol_order_1')).toBe(true);
     expect(views.get('ol_order_1')?.document).toBeNull();
-    expect(views.get('ol_order_1')?.documentKind).toBe('invoice');
+    // `chooseSalesDocumentDecision` returns the rule-engine's `unresolved`
+    // answer as-is — `candidates` is unused since the operator-configured
+    // single-primary fallback was retired — so `toDocumentKind` reports
+    // `null` here even though a single eligible connection exists.
+    expect(views.get('ol_order_1')?.documentKind).toBeNull();
   });
 
   it('should report a null kind when routing has not decided', async () => {

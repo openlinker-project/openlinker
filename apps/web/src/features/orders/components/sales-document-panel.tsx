@@ -245,9 +245,8 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   const demoMode = useDemoMode();
   // #2561 — both write paths are admin-only server-side (`@Roles('admin')`);
   // the manual "pick either kind" override is gated on the same fact so a
-  // non-admin session never sees a control that would 403. This panel's own
-  // role check goes through `useIsAdmin()` (#2342), never an inline
-  // `role === 'admin'` comparison.
+  // non-admin session never sees a control that would 403. `useIsAdmin()` is
+  // the one place `role` is compared against `'admin'` in `apps/web`.
   const isAdmin = useIsAdmin();
   // #2562 — one live region carries every wait/outcome announcement below.
   const [liveAnnouncement, setLiveAnnouncement] = useState('');
@@ -1273,26 +1272,26 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
             </Alert>
           ) : null}
 
-          {/* #2561 — the routing explanation, as a disclosure directly above
-              the manual override below it. Open by default: this is the fact
-              the operator most needs, and a control below (`canOverride`)
-              exists only once they have read it. */}
+          {/* #2807 — routing failed to decide is the LEADING fact, rendered as
+              a primary block (not a collapsed disclosure) with the primary
+              remedy — fix routing in Settings — as the primary action. This
+              mirrors the mockup's "No document · No routing" empty state,
+              where the fix lives in Settings rather than in a per-order form. */}
           {blockCopy ? (
-            <details className="sales-document-panel__routing-disclosure" open>
-              <summary>{blockCopy.title}</summary>
-              <Alert
-                tone="warning"
-                action={
-                  setPrimaryTarget ? (
-                    <Link className="button button--secondary button--sm" to={`/connections/${setPrimaryTarget.id}/edit`}>
-                      {t('invoice.panel.setPrimary', 'Set a primary')}
-                    </Link>
-                  ) : undefined
-                }
-              >
-                {blockCopy.body}
-              </Alert>
-            </details>
+            <div className="sales-document-panel__routing-block">
+              <p className="sales-document-panel__routing-block-title">{blockCopy.title}</p>
+              <p className="panel-copy">{blockCopy.body}</p>
+              <div className="sales-document-panel__actions">
+                <Link className="button button--primary button--sm" to="/settings/sales-documents">
+                  {t('salesDocument.panel.fixRouting', 'Fix routing settings')}
+                </Link>
+                {setPrimaryTarget ? (
+                  <Link className="button button--secondary button--sm" to={`/connections/${setPrimaryTarget.id}/edit`}>
+                    {t('invoice.panel.setPrimary', 'Set a primary')}
+                  </Link>
+                ) : null}
+              </div>
+            </div>
           ) : null}
 
           {/* #2254 (epic F6) - the return path. Every remedy in this epic leaves
@@ -1363,6 +1362,15 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
               )}
             </Alert>
           ) : null}
+
+          {/* #2807 — the manual override is a legitimate but SECONDARY path:
+              closed by default behind a disclosure, mirroring the mockup
+              (whose primary action is fixing routing, not overriding it per
+              order) and the existing `routing-disclosure` pattern above. */}
+          {(invoiceSettled && invoicingConnections.length > 0 && invoiceWrite.visible && canOverride) ||
+          (fiscalSettled && fiscalCandidates.length > 0 && canOverride) ? (
+            <details className="sales-document-panel__routing-disclosure">
+              <summary>{t('salesDocument.panel.manualOverride', 'Issue or register manually instead')}</summary>
 
           {/* Issue-invoice affordance — the override (#2561): admin-only, and
               refused once a hard block already says the manual path is
@@ -1517,6 +1525,8 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                 {t('salesDocument.override.scopeNote', 'This applies to this order only.')}
               </p>
             </div>
+          ) : null}
+            </details>
           ) : null}
         </div>
       ) : null}

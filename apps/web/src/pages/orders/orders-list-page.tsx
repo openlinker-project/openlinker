@@ -1965,11 +1965,7 @@ export function OrdersListPage(): ReactElement {
                           {/* SAME component as the desktop status cell. An
                               absent value renders an em dash, never a "fine"
                               claim — see `stock-at-risk-copy.ts`. */}
-                          <StockAtRiskBadge
-                            shortfalls={order.reservationShortfalls}
-                            layout="row"
-                            emptyFallback="—"
-                          />
+                          <StockAtRiskBadge shortfalls={order.reservationShortfalls} />
                         </dd>
                       </div>
                       <div>

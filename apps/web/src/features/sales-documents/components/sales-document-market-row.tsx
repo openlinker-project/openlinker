@@ -22,19 +22,16 @@
  * count *and* the discovery window it was measured over (`windowDays`),
  * because "12 orders" on its own answers "how many" but not "over what
  * period" — an operator needs both to judge whether it's worth acting on.
- * The suggested-setup caption is honest about scope: when this row's
- * `hasTemplate` market is the ONLY one among the rendered rows carrying a
- * template, the caption says so explicitly (`isSoleTemplatedMarket`,
- * computed by the section over every row and passed down) rather than
- * implying every market has guidance. A template-less market never gets a
- * recommendation — its action stays a plain "Set up".
+ * A `hasTemplate` market gets a plain "Starter setup available" caption; a
+ * template-less market never gets a recommendation — its action stays a
+ * plain "Set up".
  *
  * @module apps/web/src/features/sales-documents/components
  */
 import type { ReactElement } from 'react';
 import { Button } from '../../../shared/ui/button';
 import { DocumentKindGlyph } from '../../../shared/ui/document-kind-glyph';
-import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
+import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
 import {
   describeSalesDocumentMarketOutcome,
   type SalesDocumentMarketOutcomeCopy,
@@ -52,9 +49,35 @@ function toneFor(copy: SalesDocumentMarketOutcomeCopy): StatusBadgeTone {
   return 'neutral';
 }
 
-function actionLabel(row: MarketRowData, copy: SalesDocumentMarketOutcomeCopy): string {
-  if (!copy.needsDecision) return 'Configure';
-  return row.hasTemplate ? 'Use starter setup' : 'Set up';
+// Review finding: "Use starter setup" (PL) vs "Set up" (everywhere else) vs
+// "Configure" (already routed) made the SAME action read as three different
+// actions depending on the row — an operator scanning the list for "how do I
+// configure a market" had to learn three labels for one button. The
+// "Starter setup available" caption already says a template exists; the
+// button itself now always says the one thing it always does.
+function actionLabel(): string {
+  return 'Configure';
+}
+
+// #2806 — plain-sentence meta copy, replacing the mono "PL · 0 rules · 3
+// orders in the last 30 days" fragment with prose an operator can read
+// without decoding a delimiter convention.
+function describeMarketMeta(
+  row: MarketRowData,
+  isDetectedOnly: boolean,
+  windowDays?: number,
+): string {
+  const ruleClause = row.ruleCount === 1 ? '1 rule configured' : `${row.ruleCount} rules configured`;
+  if (!isDetectedOnly) return ruleClause;
+  const orderClause =
+    row.orderCount === 1
+      ? windowDays !== undefined
+        ? `1 order in the last ${windowDays} days`
+        : '1 order'
+      : windowDays !== undefined
+        ? `${row.orderCount} orders in the last ${windowDays} days`
+        : `${row.orderCount} orders`;
+  return `${orderClause}, ${ruleClause}`;
 }
 
 export interface SalesDocumentMarketRowProps {
@@ -69,13 +92,6 @@ export interface SalesDocumentMarketRowProps {
    * (e.g. a standalone render in a test) where the window isn't known.
    */
   windowDays?: number;
-  /**
-   * True when this row's `hasTemplate` market is the ONLY templated market
-   * among the section's rows — changes the suggested-setup caption from a
-   * generic "Starter setup available" to one naming the scope explicitly
-   * (#2542). Ignored when `row.hasTemplate` is false.
-   */
-  isSoleTemplatedMarket?: boolean;
 }
 
 export function SalesDocumentMarketRow({
@@ -83,10 +99,9 @@ export function SalesDocumentMarketRow({
   onSelect,
   disabled = false,
   windowDays,
-  isSoleTemplatedMarket = false,
 }: SalesDocumentMarketRowProps): ReactElement {
   const copy = describeSalesDocumentMarketOutcome(row.outcome);
-  const isDetected = row.orderCount !== null;
+  const isDetectedOnly = row.orderCount !== null;
 
   return (
     <li
@@ -98,23 +113,22 @@ export function SalesDocumentMarketRow({
         .join(' ')}
     >
       <div className="sales-document-market-row__status">
-        <StatusBadge tone={toneFor(copy)} withDot compact>
-          <span className="sr-only">
-            {copy.needsDecision ? 'Needs attention' : 'No action needed'}
-          </span>
-        </StatusBadge>
+        {/* #2806 review — the mockup's status signal is a bare colored dot;
+            `StatusBadge` is a full chip (border, background, padding), which
+            with no visible text still rendered as a wide pill around one
+            tiny dot. A plain dot matches the mockup and is still never the
+            only signal — the row's own outcome text/tone carries the rest. */}
+        <span
+          className={`sales-document-market-row__dot sales-document-market-row__dot--${toneFor(copy)}`}
+          aria-hidden="true"
+        />
+        <span className="sr-only">{copy.needsDecision ? 'Needs attention' : 'Set up'}</span>
       </div>
 
       <div className="sales-document-market-row__identity">
         <span className="sales-document-market-row__name">{countryLabel(row.country)}</span>
-        <span className="sales-document-market-row__meta muted-text mono-text">
-          {row.country === SALES_DOCUMENT_REST_OF_WORLD_COUNTRY ? 'Catch-all' : row.country} ·{' '}
-          {row.ruleCount === 1 ? '1 rule' : `${row.ruleCount} rules`}
-          {isDetected
-            ? ` · ${row.orderCount === 1 ? '1 order' : `${row.orderCount} orders`}${
-                windowDays !== undefined ? ` in the last ${windowDays} days` : ''
-              }`
-            : ''}
+        <span className="sales-document-market-row__meta muted-text">
+          {describeMarketMeta(row, isDetectedOnly, windowDays)}
         </span>
       </div>
 
@@ -126,11 +140,7 @@ export function SalesDocumentMarketRow({
         {copy.needsDecision && copy.reasonShort ? (
           <span className="sales-document-market-row__reason muted-text">
             {copy.reasonShort}
-            {row.hasTemplate
-              ? isSoleTemplatedMarket
-                ? ` · Starter setup available — the only market with guidance so far`
-                : ' · Starter setup available'
-              : ''}
+            {row.hasTemplate ? ' · Starter setup available' : ''}
           </span>
         ) : null}
       </div>
@@ -142,7 +152,7 @@ export function SalesDocumentMarketRow({
           disabled={disabled}
           onClick={() => onSelect(row.country)}
         >
-          {actionLabel(row, copy)}
+          {actionLabel()}
         </Button>
       </div>
     </li>

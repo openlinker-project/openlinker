@@ -82,11 +82,15 @@ export function summarizeSalesDocumentMarkets(
     };
   }
 
+  // #2807 review — states the fraction (mirroring the mockup's "3 of your 4
+  // markets are issuing nothing right now"), not just an enumeration: an
+  // operator reading "4 markets — CZ, FI, NO, and 1 more" has no way to tell
+  // whether that is most of their footprint or a small corner of it.
   return {
     tone: 'attention',
     sentence:
       blocked.length === 1
-        ? `${namesSentenceFragment(blocked)} issues nothing right now. Nothing is lost while it's unconfigured — set up routing to start issuing.`
-        : `${blocked.length} markets — ${namesSentenceFragment(blocked)} — issue nothing right now. Nothing is lost while they're unconfigured — set up routing to start issuing.`,
+        ? `1 of ${rows.length} markets — ${namesSentenceFragment(blocked)} — issues nothing right now. Nothing is lost while it's unconfigured — set up routing to start issuing.`
+        : `${blocked.length} of ${rows.length} markets — ${namesSentenceFragment(blocked)} — issue nothing right now. Nothing is lost while they're unconfigured — set up routing to start issuing.`,
   };
 }

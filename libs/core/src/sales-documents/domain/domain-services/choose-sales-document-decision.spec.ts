@@ -1,5 +1,6 @@
 /**
- * chooseSalesDocumentDecision - unit spec (#2516, ADR-041 decision 5)
+ * chooseSalesDocumentDecision - unit spec (#2516, ADR-041 decision 5,
+ * fallback retired by the "opcja b" decision)
  *
  * @module libs/core/src/sales-documents/domain/domain-services
  */
@@ -45,43 +46,30 @@ describe('chooseSalesDocumentDecision', () => {
     );
   });
 
-  it('should fall back to the connection-configured resolver on no-configuration-for-country', () => {
+  it('should return no-configuration-for-country as-is rather than falling back to the candidates', () => {
+    const ruleDecision: SalesDocumentDecision = {
+      kind: 'unresolved',
+      reason: 'no-configuration-for-country',
+    };
+
     expect(
       chooseSalesDocumentDecision({
-        ruleDecision: { kind: 'unresolved', reason: 'no-configuration-for-country' },
+        ruleDecision,
         candidates: [candidate({ connectionId: 'conn-only' })],
       }),
-    ).toEqual({ kind: 'route', documentKind: 'invoice', connectionId: 'conn-only' });
+    ).toEqual(ruleDecision);
   });
 
-  it('should treat an absent rule-engine answer exactly like no-configuration-for-country', () => {
+  it('should report null when no rule-engine answer exists at all, regardless of candidates', () => {
     expect(
       chooseSalesDocumentDecision({
         ruleDecision: null,
         candidates: [candidate({ connectionId: 'conn-only' })],
-      }),
-    ).toEqual({ kind: 'route', documentKind: 'invoice', connectionId: 'conn-only' });
-  });
-
-  it('should report null when no candidate carries a configured document kind', () => {
-    expect(
-      chooseSalesDocumentDecision({
-        ruleDecision: null,
-        candidates: [candidate({ documentKind: null })],
       }),
     ).toBeNull();
   });
 
-  it('should report null when there are no candidates at all', () => {
+  it('should report null when there are no candidates and no rule-engine answer', () => {
     expect(chooseSalesDocumentDecision({ ruleDecision: null, candidates: [] })).toBeNull();
-  });
-
-  it('should report the ambiguity rather than picking one of several non-primary candidates', () => {
-    expect(
-      chooseSalesDocumentDecision({
-        ruleDecision: null,
-        candidates: [candidate({ connectionId: 'conn-a' }), candidate({ connectionId: 'conn-b' })],
-      }),
-    ).toEqual({ kind: 'unresolved', reason: 'ambiguous-connection-no-primary' });
   });
 });

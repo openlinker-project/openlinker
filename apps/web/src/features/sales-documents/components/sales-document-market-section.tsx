@@ -5,10 +5,9 @@
  * each market issue" (#2541), then a scannable market list (#2540) — both
  * read the single merged `useSalesDocumentMarketsQuery` snapshot, so they
  * can never disagree about what "right now" means. Detected-market wording
- * (#2542) — the order count, its discovery window, and the sole-templated-
- * market caption — is computed here from the full row set and passed down
- * to each row, since only the section can know whether a template is unique
- * across the rendered markets. The loading skeleton (#2543) is
+ * (#2542) — the order count and its discovery window — is computed here
+ * from the full row set and passed down to each row. The loading skeleton
+ * (#2543) is
  * `SalesDocumentMarketSectionSkeleton`, sized from the real row's own shape
  * so the section never reflows on arrival — a blank load must never be
  * mistaken for "nothing is configured" (the empty state's job), so the
@@ -32,13 +31,24 @@
  *
  * @module apps/web/src/features/sales-documents/components
  */
-import type { ReactElement } from 'react';
+import { useState, type ReactElement, type ReactNode } from 'react';
 import { EmptyState, ErrorState } from '../../../shared/ui/feedback-state';
 import { useSalesDocumentMarketsQuery } from '../hooks/use-sales-document-markets-query';
 import { orderSalesDocumentMarkets } from '../lib/order-sales-document-markets';
 import { summarizeSalesDocumentMarkets } from '../lib/summarize-sales-document-markets';
+import { describeSalesDocumentMarketOutcome } from '../lib/sales-document-market-outcome-copy';
 import { SalesDocumentMarketRow } from './sales-document-market-row';
 import { SalesDocumentMarketSectionSkeleton } from './sales-document-market-section-skeleton';
+import type { SalesDocumentMarketRow as MarketRowData } from '../api/sales-document-markets.types';
+
+// #2806 review — one list, filtered, instead of two separate tables (the
+// "recently active" markets read here and the "everything ever configured"
+// `SalesDocumentCountryIndex`) that both opened the identical routing
+// dialog for the identical underlying config. `GET /sales-documents/markets`
+// already unions both populations server-side (a country appears once,
+// however it qualified) — see that controller's own doc comment — so this
+// was always ONE data set wearing two UIs, not two data sets.
+type MarketFilter = 'all' | 'active' | 'configured' | 'attention';
 
 export interface SalesDocumentMarketSectionProps {
   onSelectCountry: (country: string) => void;
@@ -48,6 +58,7 @@ export function SalesDocumentMarketSection({
   onSelectCountry,
 }: SalesDocumentMarketSectionProps): ReactElement {
   const marketsQuery = useSalesDocumentMarketsQuery();
+  const [filter, setFilter] = useState<MarketFilter>('all');
 
   if (marketsQuery.isLoading) {
     return <SalesDocumentMarketSectionSkeleton />;
@@ -87,19 +98,32 @@ export function SalesDocumentMarketSection({
 
   const summary = summarizeSalesDocumentMarkets(rows);
   const windowDays = marketsQuery.data?.windowDays;
-  // #2542 — a suggested-setup caption may only claim exclusivity ("the only
-  // market with guidance so far") when it's actually true of THIS section's
-  // rows, never hand-asserted from the current single-template catalogue.
-  const templatedMarketCount = rows.filter((row) => row.hasTemplate).length;
   // #2543 — a background refetch (e.g. the error state's Retry, or React
   // Query's own focus/interval refetch) keeps the loaded rows visible but
   // must disable every action: the section already read `isLoading` above,
-  // so this branch only covers "loaded once, fetching again." This also
-  // fires on the default `refetchOnWindowFocus` past `staleTime`, so a brief
-  // tab switch disables every row action and announces "Refreshing
-  // markets…" — deliberate: a routing decision changed here is a fiscal
-  // fact, so a stale-looking action must not be clickable mid-refetch.
+  // so this branch only covers "loaded once, fetching again."
   const isBusy = marketsQuery.isFetching;
+
+  // #2806 review — the two old lists ("recently active" / "everything ever
+  // configured") become filter chips over this ONE row set, so a country
+  // never renders twice. `orderCount !== null` is exactly "had activity in
+  // the discovery window" (never 0 — see the row type's own doc comment);
+  // "configured" reuses the same predicate the market row already renders a
+  // tag for, so the chip counts and the badges can't disagree.
+  const activeCount = rows.filter((row) => row.orderCount !== null).length;
+  const configuredOnlyCount = rows.filter(
+    (row) => row.orderCount === null && isConfigured(row),
+  ).length;
+  const attentionCount = rows.filter(
+    (row) => describeSalesDocumentMarketOutcome(row.outcome).needsDecision,
+  ).length;
+
+  const filteredRows = rows.filter((row) => {
+    if (filter === 'active') return row.orderCount !== null;
+    if (filter === 'configured') return row.orderCount === null && isConfigured(row);
+    if (filter === 'attention') return describeSalesDocumentMarketOutcome(row.outcome).needsDecision;
+    return true;
+  });
 
   return (
     <div className="page-section sales-document-market-section">
@@ -111,22 +135,73 @@ export function SalesDocumentMarketSection({
         </p>
       ) : null}
 
+      <div className="sales-document-market-section__filters" role="group" aria-label="Filter markets">
+        <FilterChip active={filter === 'all'} onClick={() => setFilter('all')} count={rows.length}>
+          All markets
+        </FilterChip>
+        <FilterChip active={filter === 'active'} onClick={() => setFilter('active')} count={activeCount}>
+          Recent orders
+        </FilterChip>
+        <FilterChip
+          active={filter === 'configured'}
+          onClick={() => setFilter('configured')}
+          count={configuredOnlyCount}
+        >
+          Configured, no recent orders
+        </FilterChip>
+        <FilterChip active={filter === 'attention'} onClick={() => setFilter('attention')} count={attentionCount}>
+          Needs a decision
+        </FilterChip>
+      </div>
+
       <span className="sr-only" role="status" aria-live="polite">
         {isBusy ? 'Refreshing markets…' : ''}
       </span>
 
-      <ul className="sales-document-market-row-list" aria-label="Sales-document markets">
-        {rows.map((row) => (
-          <SalesDocumentMarketRow
-            key={row.country}
-            row={row}
-            onSelect={onSelectCountry}
-            windowDays={windowDays}
-            isSoleTemplatedMarket={row.hasTemplate && templatedMarketCount === 1}
-            disabled={isBusy}
-          />
-        ))}
-      </ul>
+      {filteredRows.length === 0 ? (
+        <p className="muted-text">No markets match this filter.</p>
+      ) : (
+        <ul className="sales-document-market-row-list" aria-label="Sales-document markets">
+          {filteredRows.map((row) => (
+            <SalesDocumentMarketRow
+              key={row.country}
+              row={row}
+              onSelect={onSelectCountry}
+              windowDays={windowDays}
+              disabled={isBusy}
+            />
+          ))}
+        </ul>
+      )}
     </div>
+  );
+}
+
+function isConfigured(row: MarketRowData): boolean {
+  return (
+    row.ruleCount > 0 ||
+    row.invoiceDefaultConnectionId !== null ||
+    row.receiptDefaultConnectionId !== null ||
+    row.acknowledgedNoDocumentAt !== null
+  );
+}
+
+interface FilterChipProps {
+  active: boolean;
+  count: number;
+  onClick: () => void;
+  children: ReactNode;
+}
+
+function FilterChip({ active, count, onClick, children }: FilterChipProps): ReactElement {
+  return (
+    <button
+      type="button"
+      className={`sales-document-market-section__chip${active ? ' sales-document-market-section__chip--active' : ''}`}
+      onClick={onClick}
+      aria-pressed={active}
+    >
+      {children} <span className="sales-document-market-section__chip-count">{count}</span>
+    </button>
   );
 }

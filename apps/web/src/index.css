@@ -646,6 +646,39 @@ button:disabled,
   box-shadow: none;
 }
 
+/* ── Button in-flight spinner (#2807 review) ────────────────────────
+   A `disabled` button with no other signal reads as dead, not busy - the
+   sales-document panel's Issue-invoice/Register-receipt actions can each sit
+   pending for several seconds (a real provider round-trip), and the plain
+   opacity dim above is a static "nothing happening" look, indistinguishable
+   from a refused control. This is a leading icon, not a layout swap: the
+   button keeps its width and the label text still renders beside it. */
+.button__spinner {
+  display: inline-block;
+  width: 0.8em;
+  height: 0.8em;
+  margin-right: var(--space-2);
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: var(--radius-pill);
+  opacity: 0.85;
+  animation: button-spinner-rotate var(--duration-slow) linear infinite;
+  vertical-align: -0.125em;
+}
+@keyframes button-spinner-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .button__spinner {
+    animation: none;
+    /* Half-ring still reads as "not a solid dot" without motion. */
+    border-top-color: currentColor;
+    opacity: 0.4;
+  }
+}
+
 /* ── Card-button reset (#2675) ────────────────────────────────────────
  * For a `<button>` that exists only as a click target around a card: the
  * card does the drawing, the button must get out of its way.
@@ -3671,6 +3704,140 @@ a.delivery-rider-banner__button:focus-visible {
 .sales-document-country-routing-dialog__body {
   display: grid;
   gap: var(--space-5);
+}
+
+/* ── Per-tier cards (review finding: tiers read as one unbroken block) ──
+ * Each fallback-ladder tier is a discrete decision an operator can act on
+ * independently, but a bare heading + content with only vertical `gap`
+ * between siblings gave no visual boundary — the numbered "Tier N" title,
+ * a component's own internal eyebrow label, and its body all read as one
+ * continuous wall of small-caps text. A bordered card per tier, with the
+ * step number pulled out as its own badge, is what makes "these are four
+ * separate steps" legible at a glance rather than something the operator
+ * has to parse from the prose. */
+.sales-document-tier {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  padding: var(--space-4);
+  display: grid;
+  gap: var(--space-3);
+}
+.sales-document-tier__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.sales-document-tier__number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  flex: none;
+  border-radius: 999px;
+  background: var(--accent-primary-soft);
+  color: var(--accent-primary);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.sales-document-tier__title {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.sales-document-tier__content {
+  display: grid;
+  gap: var(--space-3);
+  padding-left: calc(1.5rem + var(--space-2));
+}
+
+/* ── Rule composer sections (review finding: no visual grouping at all) ──
+ * Mirrors `.sales-document-tier`'s bordered-card treatment for the "Add
+ * rule" dialog, minus the numbered badge — these aren't a fallback ladder,
+ * just grouped fields, so a plain eyebrow heading is enough to separate
+ * "Conditions" from "Document & destination" from "Effective window". */
+.rule-composer-section {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  padding: var(--space-4);
+  display: grid;
+  gap: var(--space-3);
+}
+.rule-composer-section__header {
+  display: grid;
+  gap: 2px;
+}
+.rule-composer-section__header .eyebrow {
+  margin: 0;
+}
+.rule-composer-section__footnote {
+  margin: 0;
+}
+.rule-composer-section__footnote-row {
+  background: var(--bg-surface-muted);
+}
+
+.rule-composer-conditions {
+  display: grid;
+  gap: var(--space-2);
+}
+/* field select | value control | warning-glyph slot (always reserved, so a
+   row without a caveat doesn't shift width relative to one that has it). */
+.rule-composer-condition-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  align-items: center;
+  gap: var(--space-2);
+}
+.rule-composer-condition-row__threshold {
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* One small glyph per row instead of a repeated full-width Alert — an
+   operator adding three buyerHasTaxId conditions used to see the identical
+   multi-paragraph warning box three times over; the fact is now stated once,
+   on demand, per row. */
+.rule-composer-warning-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--status-warning-fg, var(--accent-primary));
+  cursor: pointer;
+}
+.rule-composer-warning-trigger:hover,
+.rule-composer-warning-trigger:focus-visible {
+  background: var(--status-warning-soft, var(--accent-primary-soft));
+  outline: none;
+}
+.rule-composer-warning-glyph {
+  pointer-events: none;
+}
+/* This tooltip's trigger always lives inside the ELEVATED "Add rule" dialog
+   (z-index 101, nested inside the routing dialog) — the base `.tooltip__content`
+   z-index (60, #775) sits well below that tier, so without an override the
+   tooltip rendered but was fully hidden behind the dialog surface (review
+   finding: "modal in modal" - the same class of gap `.bulk-image-lightbox`
+   (120) already solved for the lightbox-over-edit-modal case). */
+.rule-composer-warning-tooltip {
+  max-width: 320px;
+}
+/* Higher specificity than `.tooltip__content`'s own z-index:60 (#775),
+   which otherwise wins on source order alone — both are single-class
+   selectors of equal specificity, and `.tooltip__content` is declared
+   later in this file. */
+.tooltip__content.rule-composer-warning-tooltip {
+  z-index: 120;
 }
 
 .sales-document-country-routing-dialog__save-note {
@@ -14993,9 +15160,22 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   padding: 1px 7px;
 }
 .invoice-connection-lock__hint {
-  grid-column: 2;
   font-size: 0.75rem;
   color: var(--text-muted);
+}
+/* #2807 review — a settled document's hint is wrapped in a "Why this
+   document?" disclosure instead of rendered as a bare grid item (the mockup
+   keeps routing rationale secondary/collapsed); the wrapper needs the grid
+   placement its bare `__hint` sibling used to carry. */
+.invoice-connection-lock__why {
+  grid-column: 2;
+}
+.invoice-connection-lock__why > summary {
+  font-size: 0.75rem;
+}
+.invoice-connection-lock__why .invoice-connection-lock__hint {
+  display: block;
+  margin-top: var(--space-1);
 }
 
 /* ── Regulatory section card (#1282) ──────────────────────────────────
@@ -15390,6 +15570,66 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   font-weight: 600;
   color: var(--text-secondary);
   margin-bottom: var(--space-2);
+}
+
+/* ─ Manual-override cards (review finding: Issue-invoice and Register-receipt
+ * used to be two differently-shaped flex rows — one aligned its button left,
+ * the other pushed its button right via a `.spacer` hack, and the two had no
+ * shared visual boundary. Both are now identically-structured bordered cards
+ * (the `.rule-composer-section` / `.sales-document-tier` precedent), each
+ * with its own title, so the manual path reads as "one form with two equal
+ * options" instead of two ad hoc rows. ─ */
+.sales-document-panel__override-cards {
+  display: grid;
+  gap: var(--space-3);
+}
+.sales-document-panel__override-card {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  padding: var(--space-4);
+  display: grid;
+  gap: var(--space-3);
+}
+.sales-document-panel__override-card-title {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.sales-document-panel__override-card-fields {
+  display: grid;
+  gap: var(--space-3);
+}
+.sales-document-panel__override-card-action {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.sales-document-panel__override-card-hint {
+  font-size: 0.82rem;
+}
+.sales-document-panel__override-card-scope {
+  margin: 0;
+  font-size: 0.78rem;
+}
+
+/* ─ Empty-state "routing could not decide" lead block (#2807) ─
+ * Mirrors the mockup: the headline + explanation + primary "fix it in
+ * Settings" action lead the empty state, ahead of the demoted manual
+ * override disclosure below. */
+.sales-document-panel__routing-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.sales-document-panel__routing-block-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
 }
 
 /* ── KSeF UPO inline preview dialog (#1234) ─────────────────────────
@@ -19701,9 +19941,50 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 }
 
 /* ── Sales-document market section (#2540/#2541) ── */
+/* #2806 review — filter chips replacing the second, now-redundant table. */
+.sales-document-market-section__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-4);
+}
+.sales-document-market-section__chip {
+  font-family: var(--font-mono);
+  font-size: 0.71875rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  padding: 7px 14px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.sales-document-market-section__chip-count {
+  background: var(--bg-surface-muted);
+  border-radius: var(--radius-pill);
+  padding: 1px 6px;
+  font-size: 0.65625rem;
+}
+.sales-document-market-section__chip--active {
+  background: var(--text-primary);
+  border-color: var(--text-primary);
+  color: var(--bg-surface);
+}
+.sales-document-market-section__chip--active .sales-document-market-section__chip-count {
+  background: rgba(255, 255, 255, 0.18);
+  color: inherit;
+}
+
 .sales-document-market-section__summary {
   margin: 0 0 var(--space-4);
   font-size: 0.9375rem;
+  color: var(--text-secondary);
+}
+.sales-document-market-section__summary--fresh-install {
   color: var(--text-secondary);
 }
 .sales-document-market-section__summary--attention {
@@ -19716,32 +19997,61 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .sales-document-market-row-list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--space-3);
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
+/* #2807 review — the mockup renders each market as a distinct card with real
+   breathing room; the shipped rows were tighter and flatter (thin 1px border,
+   small gap, no lift), which read as denser and busier side by side. Wider
+   padding + a soft shadow gets the same information closer to that rhythm
+   without touching the underlying markup, colors, or the "no full-row tint"
+   rule directly above. */
 .sales-document-market-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1.4fr) minmax(0, 1.6fr) auto;
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: var(--bg-surface);
-  min-height: 4.25rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  min-height: 4.5rem;
 }
+/* #2806 — the mockup signals "needs a decision" with a small status dot on
+   an otherwise plain row, not a full-row tint; the dot + reason text already
+   carry the meaning (color is never the only signal), so this rule stays
+   deliberately minimal rather than repeating the warning color a second
+   time across the whole row. */
 .sales-document-market-row--attention {
   border-color: var(--status-warning-border);
-  background: var(--status-warning-soft);
 }
 
 .sales-document-market-row__status {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+/* #2806 review — a bare dot (mockup), not a `StatusBadge` chip: with no
+   visible text the chip's border/background/padding rendered as a wide pill
+   around one tiny dot instead of the plain small dot the mockup shows. */
+.sales-document-market-row__dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.sales-document-market-row__dot--warning {
+  background: var(--status-warning-fg);
+}
+.sales-document-market-row__dot--success {
+  background: var(--status-success-fg);
+}
+.sales-document-market-row__dot--neutral {
+  background: var(--text-muted);
 }
 
 .sales-document-market-row__identity {
@@ -19784,6 +20094,11 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 @media (max-width: 767.98px) {
   .sales-document-market-row {
     grid-template-columns: 1fr;
+    grid-template-areas:
+      'status'
+      'identity'
+      'outcome'
+      'action';
     align-items: start;
   }
   .sales-document-market-row__status {
@@ -19798,26 +20113,25 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 }
 
 /* Loading skeleton (#2543) — sized off the real row above so arrival never
-   reflows the section. Shimmer + reduced-motion guard come from the shared
-   `data-table-skeleton__bar` primitive (extended above); only per-slot sizing
-   is page-local. */
+   reflows the section. */
 .sales-document-market-section__summary-skeleton {
+  display: block;
   width: min(32rem, 80%);
   height: 0.9375rem;
   margin-bottom: var(--space-4);
   border-radius: var(--radius-sm);
+  background: var(--bg-surface-muted);
 }
 
 .sales-document-market-row--skeleton {
   background: var(--bg-surface);
 }
 
-/* Shimmer itself is the shared `data-table-skeleton__bar` primitive (extended
-   above, with its `prefers-reduced-motion` guard); only the per-slot sizing is
-   page-local. */
 .sales-document-market-row .skeleton-bar {
   display: block;
   border-radius: var(--radius-sm);
+  background: var(--bg-surface-muted);
+  animation: sales-document-market-skeleton-shimmer 1.4s ease-in-out infinite;
 }
 .sales-document-market-row .skeleton-bar--dot {
   width: 0.625rem;
@@ -19847,16 +20161,50 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   height: 1.75rem;
 }
 
-/* ── Sales-document country index (#2187) ── */
-.sales-document-country-index__add-row {
-  margin-top: var(--space-3);
+@keyframes sales-document-market-skeleton-shimmer {
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
 }
-.sales-document-country-index__add-row-controls {
+
+/* ── Sales-document market table layout (#2806) ── */
+/* #2806 review — an inline text input + button replacing the "Add a market"
+   button that used to jump focus into a hidden disclosure's own input; with
+   no disclosure left to reveal, the control lives here directly. */
+.sales-document-add-market-row {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  margin-bottom: var(--space-2);
-  flex-wrap: wrap;
+  margin: var(--space-3) 0 var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px dashed var(--border-default);
+}
+.sales-document-add-market-row__input {
+  max-width: 220px;
+}
+/* ★ Rest of world's own row — visually a market row's sibling (border,
+   radius, padding) but dashed rather than solid to read as "the catch-all",
+   not one more real market in the list above it (review finding: a bare
+   ghost button here was nearly invisible). */
+.sales-document-rest-of-world-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-5);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface-muted);
+}
+.sales-document-rest-of-world-row__title {
+  margin: 0;
+  font-weight: 600;
+  color: var(--text-primary);
 }
 
 .rule-card {
@@ -19926,16 +20274,57 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   margin-left: var(--space-1);
 }
 
-.template-card {
-  border: 1px solid var(--border-default);
+/* ── Suggested starter template accordion (review finding) ──────────
+ * The card used to render permanently open, at full height, above the
+ * ordinary empty-ladder tiers — the least relevant thing on first paint of
+ * a brand-new country pushed the actually-empty state below the fold. A
+ * native <details> costs no JS and needs no open/close state of its own. */
+.template-accordion {
+  border: 1px solid var(--accent-primary-border, var(--border-default));
   border-radius: var(--radius-lg);
   background: var(--bg-surface-elevated);
+  overflow: hidden;
+}
+.template-accordion__summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+  list-style: none;
+  flex-wrap: wrap;
+}
+.template-accordion__summary::-webkit-details-marker {
+  display: none;
+}
+.template-accordion__summary::before {
+  content: '▸';
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+.template-accordion[open] > .template-accordion__summary::before {
+  transform: rotate(90deg);
+}
+.template-accordion__summary:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.template-accordion__hint {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+.template-accordion .template-card {
+  border-top: 1px solid var(--border-subtle);
+  border-radius: 0;
+}
+
+.template-card {
   padding: var(--space-4);
 }
 .template-card__head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: var(--space-3);
   margin-bottom: var(--space-3);
   flex-wrap: wrap;
@@ -21896,10 +22285,7 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
    words, so the trail survives without colour. */
 
 .document-lifecycle {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 1fr;
-  gap: var(--space-3);
+  display: flex;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -21907,40 +22293,62 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 
 .document-lifecycle__step {
   position: relative;
-  display: grid;
-  grid-template-rows: auto auto auto;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   gap: 2px;
-  padding-top: var(--space-3);
+  padding-top: 20px;
+  text-align: center;
 }
 
-/* The connector runs from the previous marker to this one, so the first step
-   has none to its left and the last none to its right. */
+/* Review fix (#2536 regression): the connector used to run from THIS column's
+   own left edge to its own center (`left:0; right:50%`) — it never reached
+   the PREVIOUS step's marker at all, so on any two unequally-sized columns
+   the line visibly started partway through the row instead of connecting the
+   two circles. `left:-50%; width:100%` is the standard connected-track trick:
+   with equal `flex:1` columns, half of THIS column's width plus half of the
+   PREVIOUS column's width is exactly one full inter-marker span, so the line
+   now runs center-to-center regardless of how long either label is. */
 .document-lifecycle__step::before {
   content: '';
   position: absolute;
-  top: 5px;
-  left: 0;
-  right: 50%;
+  z-index: 0;
+  top: 6px;
+  left: -50%;
+  width: 100%;
   height: 2px;
   background: var(--border-subtle);
 }
 
 .document-lifecycle__step:first-child::before {
-  left: 50%;
+  content: none;
 }
 
 .document-lifecycle__step--done::before {
   background: var(--status-success-border);
 }
 
+/* `left: 50%; transform: translateX(-50%)` centers regardless of the
+   marker's own width — the previous `calc(50% - 6px)` silently assumed a
+   fixed 12px box and drifted the moment that number and the width diverged.
+   Flex centering (not `inline-grid; place-items`) for the SVG child fixes
+   the "object in circle not centered" finding — a checkmark/cross SVG's
+   reported intrinsic size does not always agree with a grid track's sizing
+   pass, but always agrees with flex's content-box centering. */
 .document-lifecycle__marker {
   position: absolute;
+  z-index: 1;
   top: 0;
-  left: calc(50% - 6px);
-  display: inline-grid;
-  place-items: center;
-  width: 12px;
-  height: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   border: 2px solid var(--border-strong);
   background: var(--bg-surface);

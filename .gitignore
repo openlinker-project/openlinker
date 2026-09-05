@@ -61,6 +61,10 @@ Thumbs.db
 # E2E script screenshot output (apps/web/e2e/*.mjs, OUT_DIR)
 e2e-out/
 
+# Playwright spec screenshots (apps/e2e) — captured locally for manual
+# review/PR-comment attachment, never committed to the repo.
+apps/e2e/tests/**/__screenshots__/
+
 # Husky
 .husky/_
 

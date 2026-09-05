@@ -13,9 +13,13 @@
  * capability each carries), and it cannot be set correctly from inside one
  * connection's own edit form without seeing every other candidate at once. N
  * independent checkboxes across N connection forms is exactly the shape that
- * produces a conflict (two sessions, two saves, neither aware of the other) —
- * a single radio group in one place (`SalesDocumentsPanel`) structurally
- * eliminates that possibility at the UI level.
+ * produces a conflict (two sessions, two saves, neither aware of the other).
+ *
+ * STALE as of the "opcja b" fallback retirement: `AutoIssueTriggerService`
+ * no longer consults `config.invoicing.isPrimary` at all, so the
+ * "Primary"/"Not primary" badge below reports a flag the backend never
+ * reads. Tracked for a follow-up pass — this section needs to report the
+ * connection's role in the rule-engine routing instead (or be retired).
  *
  * @module features/connections/components
  */

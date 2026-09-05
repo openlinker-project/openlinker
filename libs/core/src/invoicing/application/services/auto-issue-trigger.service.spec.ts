@@ -56,6 +56,21 @@ function makeOrder(overrides: Partial<Order> = {}): Order {
       postalCode: '60-001',
       country: 'PL',
     },
+    // A delivery-address country is what `toSalesDocumentOrderFacts` (#2173)
+    // needs to build a non-null facts projection at all — post-retirement of
+    // the single-primary fallback ("opcja b"), an order with none can NEVER
+    // route, structurally, regardless of what `resolveRouting` is mocked to
+    // return. Every test in this file that cares about routing selection
+    // mechanics (ambiguity, absence of configuration) overrides this back to
+    // `undefined` explicitly rather than relying on omission.
+    shippingAddress: {
+      firstName: 'Jan',
+      lastName: 'Kowalski',
+      address1: 'ul. Testowa 1',
+      city: 'Poznań',
+      postalCode: '60-001',
+      country: 'PL',
+    },
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
@@ -63,12 +78,14 @@ function makeOrder(overrides: Partial<Order> = {}): Order {
 }
 
 /**
- * `makeOrder()` plus a delivery (shipping) address — the one fact
- * `toSalesDocumentOrderFacts` (#2173) needs to build a non-null order-facts
- * projection at all. Every PRE-#2173 test in this file uses the plain
- * `makeOrder()` (billing address only), which keeps `resolveRouting` from
- * ever being called — this helper is for the new rule-engine-wiring tests
- * that need it to be reachable.
+ * `makeOrder()` with an explicit, overridable delivery-address country. Since
+ * `makeOrder()` now defaults a `shippingAddress` itself (the single-primary
+ * fallback that used to tolerate its absence was retired — "opcja b" —
+ * so an order with no delivery country can NEVER route), this helper exists
+ * only for tests that need a country OTHER than `makeOrder()`'s default
+ * `'PL'`; kept as a named helper rather than an inline override so the intent
+ * ("this test cares about country X specifically") stays visible at the call
+ * site.
  */
 function makeOrderWithDelivery(overrides: Partial<Order> = {}, country = 'PL'): Order {
   return makeOrder({
@@ -165,17 +182,41 @@ describe('AutoIssueTriggerService', () => {
     // block. Default = no document, so the block paths are reachable; the
     // suppression + read-failure cases override it per test.
     invoices = { getLatestInvoiceForOrder: jest.fn().mockResolvedValue(null) };
-    // #2173: default = "no configuration at all for this order's country",
-    // which is what makes every PRE-#2173 test in this file exercise the
-    // fallback single-primary resolver unchanged. Most of them also build
-    // their order via `makeOrder()`, which carries no `shippingAddress` at
-    // all, so `toSalesDocumentOrderFacts` returns `null` and this mock is
-    // never even called for them — the regression guarantee is structural,
-    // not just a default-return-value coincidence.
+    // #2173/#2516: the operator-configured single-primary fallback is
+    // retired ("opcja b") — `chooseSalesDocumentDecision` returns whatever
+    // the rule engine answered, verbatim, with no second resolver. Most
+    // tests in this file predate that retirement and were written to expect
+    // the OLD fallback's outcome (route to the sole eligible connection;
+    // refuse — unresolved — with zero or multiple candidates), so the
+    // default mock here reproduces that exact selection by reading back
+    // `connectionPort.list()` itself, purely to keep those tests reachable —
+    // it is a TEST DOUBLE of what an operator would have configured via a
+    // real country default/rule, not a resurrection of the retired
+    // production fallback. A test that cares about routing-selection
+    // mechanics specifically (ambiguity, absence of configuration) overrides
+    // this per-call via `mockResolvedValueOnce`/`mockResolvedValue`.
     salesDocumentRules = {
-      resolveRouting: jest
-        .fn()
-        .mockResolvedValue({ kind: 'unresolved', reason: 'no-configuration-for-country' }),
+      resolveRouting: jest.fn().mockImplementation(async () => {
+        const connections = await connectionPort.list({ status: 'active' });
+        const eligible = Array.isArray(connections)
+          ? connections.filter(
+              (connection) =>
+                (connection.config as { salesDocument?: { documentKind?: string } } | undefined)
+                  ?.salesDocument?.documentKind,
+            )
+          : [];
+        if (eligible.length === 0) {
+          return { kind: 'unresolved', reason: 'no-configuration-for-country' };
+        }
+        if (eligible.length > 1) {
+          return { kind: 'unresolved', reason: 'ambiguous-connection-no-primary' };
+        }
+        const [connection] = eligible;
+        const documentKind = (
+          connection.config as { salesDocument: { documentKind: string } }
+        ).salesDocument.documentKind;
+        return { kind: 'route', documentKind, connectionId: connection.id };
+      }),
     };
     // Default: fiscalization is not wired into this process (mirrors
     // `InvoiceService.resolveFiscalRegistrationService`'s own spec default)
@@ -325,10 +366,15 @@ describe('AutoIssueTriggerService', () => {
       connectionPort.list.mockResolvedValue([
         makeConnection('auto-on-paid', { id: 'unconfigured', config: { invoicing: { triggerModel: 'auto-on-paid' } } }),
       ]);
-      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+      // No delivery address: `resolveRouting` is never even reached (facts is
+      // `null`), so nothing about THIS connection's missing
+      // `salesDocument.documentKind` can produce a spurious "ambiguous" error
+      // either — the assertion below is about a call that never happens.
+      await service.onOrderTransition(
+        makeOrder({ paymentStatus: 'paid', shippingAddress: undefined }),
+        'src-1',
+      );
       expect(syncJobs.schedule).not.toHaveBeenCalled();
-      // Zero eligible candidates short-circuits before the resolver — no
-      // spurious "ambiguous" error either.
       expect(errorSpy).not.toHaveBeenCalled();
     });
   });
@@ -671,11 +717,14 @@ describe('AutoIssueTriggerService', () => {
     });
   });
 
-  // #2047/#2155: one sale is one document. The gate resolves EXACTLY ONE
-  // (documentKind, connectionId) pair via resolveSalesDocumentRouting instead
-  // of fanning out — and across BOTH kinds, since the routing pool is
-  // cross-kind (ADR-041 decision 3a: invoice XOR receipt, never both).
-  describe('single-connection resolution (#2047/#2155/#2156)', () => {
+  // #2047/#2155/#2173, single-primary fallback RETIRED (the "opcja b"
+  // decision): a country with no rule-engine configuration now ALWAYS
+  // resolves to manual — `config.invoicing.isPrimary` is never consulted.
+  // `makeOrder()` (no delivery address) means the rule engine is never even
+  // called (see the "rule-engine-first precedence" describe below), so
+  // `chooseSalesDocumentDecision` receives `ruleDecision: null` and returns
+  // `null` regardless of how many candidates exist or which is "primary".
+  describe('single-connection resolution retired the isPrimary fallback (#2047/#2155/#2156, opcja b)', () => {
     function primary(id: string): Connection {
       return makeConnection('auto-on-paid', {
         id,
@@ -686,90 +735,67 @@ describe('AutoIssueTriggerService', () => {
       });
     }
 
-    it('should enqueue zero jobs and log an error when two connections exist and none is primary', async () => {
+    it('should enqueue nothing when two connections exist and none is primary', async () => {
       connectionPort.list.mockResolvedValue([
         makeConnection('auto-on-paid', { id: 'conn-a' }),
         makeConnection('auto-on-paid', { id: 'conn-b' }),
       ]);
 
-      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1', 'evt-1');
+      // No delivery address: this block proves NOTHING short of a real
+      // rule-engine answer routes, regardless of connection count.
+      await service.onOrderTransition(
+        makeOrder({ paymentStatus: 'paid', shippingAddress: undefined }),
+        'src-1',
+        'evt-1',
+      );
 
       expect(syncJobs.schedule).not.toHaveBeenCalled();
-      expect(errorSpy).toHaveBeenCalledTimes(1);
-      const logged = errorSpy.mock.calls[0][0];
-      expect(logged).toContain('ambiguous-connection-no-primary');
-      expect(logged).toContain('conn-a');
-      expect(logged).toContain('conn-b');
-      expect(logged).toContain('order-1');
+      expect(errorSpy).not.toHaveBeenCalled();
     });
 
-    it('should enqueue exactly one job on the primary when two connections exist and one is primary', async () => {
+    it('should enqueue nothing even when one of two connections is marked primary', async () => {
       connectionPort.list.mockResolvedValue([
         makeConnection('auto-on-paid', { id: 'conn-a' }),
         primary('conn-b'),
       ]);
 
-      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+      await service.onOrderTransition(
+        makeOrder({ paymentStatus: 'paid', shippingAddress: undefined }),
+        'src-1',
+      );
 
-      expect(syncJobs.schedule).toHaveBeenCalledTimes(1);
-      expect(syncJobs.schedule.mock.calls[0][0].connectionId).toBe('conn-b');
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
       expect(errorSpy).not.toHaveBeenCalled();
     });
 
-    it('should enqueue zero jobs and log an error when more than one connection is primary', async () => {
-      connectionPort.list.mockResolvedValue([primary('conn-a'), primary('conn-b')]);
-
-      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
-
-      expect(syncJobs.schedule).not.toHaveBeenCalled();
-      expect(errorSpy.mock.calls[0][0]).toContain('ambiguous-connection-no-primary');
-    });
-
-    it('should keep issuing on the lone connection even when it is not marked primary', async () => {
+    it('should enqueue nothing on the lone connection either — isPrimary is never consulted', async () => {
       connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid', { id: 'only' })]);
 
-      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+      await service.onOrderTransition(
+        makeOrder({ paymentStatus: 'paid', shippingAddress: undefined }),
+        'src-1',
+      );
 
-      expect(syncJobs.schedule).toHaveBeenCalledTimes(1);
-      expect(syncJobs.schedule.mock.calls[0][0].connectionId).toBe('only');
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
       expect(errorSpy).not.toHaveBeenCalled();
     });
 
-    it('should ignore a non-boolean isPrimary value when resolving the winner', async () => {
-      connectionPort.list.mockResolvedValue([
-        makeConnection('auto-on-paid', {
-          id: 'conn-a',
-          // The stored jsonb is untrusted: `isPrimary` is documented as a boolean
-          // but nothing stops a hand-edited config from holding a string.
-          config: {
-            invoicing: { triggerModel: 'auto-on-paid', isPrimary: 'yes' },
-            salesDocument: { documentKind: 'invoice' },
-          } as unknown as Connection['config'],
-        }),
-        makeConnection('auto-on-paid', { id: 'conn-b' }),
-      ]);
-
-      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
-
-      expect(syncJobs.schedule).not.toHaveBeenCalled();
-      expect(errorSpy.mock.calls[0][0]).toContain('ambiguous-connection-no-primary');
-    });
-
-    it('an invoice candidate and a fiscal-receipt candidate compete in the SAME cross-kind pool', async () => {
+    it('an invoice candidate and a fiscal-receipt candidate both stay unrouted with no rule-engine answer', async () => {
       connectionPort.list.mockResolvedValue([
         makeConnection('auto-on-paid', { id: 'conn-inv' }),
         makeFiscalConnection('auto-on-paid', { id: 'conn-fiscal' }),
       ]);
 
-      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+      await service.onOrderTransition(
+        makeOrder({ paymentStatus: 'paid', shippingAddress: undefined }),
+        'src-1',
+      );
 
-      // Two candidates, neither primary ⇒ unresolved, exactly like two
-      // same-kind candidates would be.
       expect(syncJobs.schedule).not.toHaveBeenCalled();
-      expect(errorSpy.mock.calls[0][0]).toContain('ambiguous-connection-no-primary');
+      expect(errorSpy).not.toHaveBeenCalled();
     });
 
-    it('should not log an ambiguity error when no connection has Invoicing or Fiscalization', async () => {
+    it('should not log anything when no connection has Invoicing or Fiscalization', async () => {
       connectionPort.list.mockResolvedValue([
         makeConnection('auto-on-paid', { id: 'x', enabledCapabilities: [] }),
       ]);
@@ -778,47 +804,6 @@ describe('AutoIssueTriggerService', () => {
 
       expect(syncJobs.schedule).not.toHaveBeenCalled();
       expect(errorSpy).not.toHaveBeenCalled();
-    });
-
-    // Selection resolves the winner BEFORE the trigger model is read, so a
-    // primary on a `manual` connection turns auto-issue off for the whole
-    // install. That is a legitimate operator choice, but it must not be
-    // indistinguishable from "the trigger never fired".
-    it('should warn once when the chosen winner is manual while sibling candidates exist', async () => {
-      const connections = [
-        makeConnection('manual', {
-          id: 'conn-primary',
-          config: {
-            invoicing: { triggerModel: 'manual', isPrimary: true },
-            salesDocument: { documentKind: 'invoice' },
-          },
-        }),
-        makeConnection('auto-on-paid', { id: 'conn-sibling' }),
-      ];
-      connectionPort.list.mockResolvedValue(connections);
-
-      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
-      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
-
-      expect(syncJobs.schedule).not.toHaveBeenCalled();
-      const manualWarnings = warnSpy.mock.calls.filter(([message]) =>
-        message.includes('triggerModel=manual'),
-      );
-      expect(manualWarnings).toHaveLength(1);
-      expect(manualWarnings[0][0]).toContain('conn-primary');
-    });
-
-    it('should not warn about a manual connection when it is the only candidate', async () => {
-      // With one candidate there is no sibling being passed over, so the manual
-      // setting is simply the operator invoicing by hand — nothing to diagnose.
-      connectionPort.list.mockResolvedValue([makeConnection('manual', { id: 'only' })]);
-
-      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
-
-      expect(syncJobs.schedule).not.toHaveBeenCalled();
-      expect(
-        warnSpy.mock.calls.filter(([message]) => message.includes('triggerModel=manual')),
-      ).toHaveLength(0);
     });
   });
 
@@ -831,28 +816,23 @@ describe('AutoIssueTriggerService', () => {
       ]);
     }
 
-    it('should report the routing-unresolved bridge value with its own reason when no primary singles a connection out', async () => {
+    it('should report `none` (never the retired ambiguous-connection-no-primary reason) with no rule-engine answer', async () => {
       twoCandidates();
 
       const outcome = await service.onOrderTransition(
-        makeOrder({ paymentStatus: 'paid' }),
+        makeOrder({ paymentStatus: 'paid', shippingAddress: undefined }),
         'src-1',
         'evt-1',
       );
 
-      // ADR-041 §107: ambiguity is a ROUTING-vocabulary fact, so the gate records
-      // the bridge value and carries the routing reason alongside it.
-      expect(outcome).toEqual({
-        kind: 'blocked',
-        block: {
-          reason: 'unresolved-routing',
-          unresolvedReason: 'ambiguous-connection-no-primary',
-          detail: '2 invoicing connections, none marked primary',
-        },
-      });
+      // `makeOrder()` has no delivery address, so the rule engine is never
+      // consulted and `ruleDecision` is `null` — chooseSalesDocumentDecision
+      // returns `null` regardless of how many candidates exist, per the
+      // "opcja b" fallback retirement.
+      expect(outcome).toEqual({ kind: 'none' });
     });
 
-    it('should distinguish more-than-one-primary from none in the detail', async () => {
+    it('marking two connections primary no longer produces a distinguishable outcome — both stay unrouted', async () => {
       const primaryConn = (id: string): Connection =>
         makeConnection('auto-on-paid', {
           id,
@@ -863,14 +843,17 @@ describe('AutoIssueTriggerService', () => {
         });
       connectionPort.list.mockResolvedValue([primaryConn('conn-a'), primaryConn('conn-b')]);
 
+      // No delivery address: `decision` is `null` regardless of how many
+      // connections are primary, which is the "isPrimary is never consulted"
+      // guarantee this test names — `reportUnresolved` (which would answer
+      // `{ kind: 'blocked' }`, not `{ kind: 'none' }`) is never reached.
       const outcome = await service.onOrderTransition(
-        makeOrder({ paymentStatus: 'paid' }),
+        makeOrder({ paymentStatus: 'paid', shippingAddress: undefined }),
         'src-1',
       );
 
-      expect(outcome).toMatchObject({
-        block: { detail: '2 invoicing connections, more than one marked primary' },
-      });
+      expect(outcome).toEqual({ kind: 'none' });
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
     });
 
     it('should report trigger-model-manual', async () => {
@@ -1222,10 +1205,23 @@ describe('AutoIssueTriggerService', () => {
 
   describe('selected-connection isolation + PII-safe catch (F9/D11)', () => {
     it('a connection whose composition throws InvalidBuyerProfileError is skipped, and nothing escapes', async () => {
-      // No address ⇒ InvalidBuyerProfileError from the mapper.
+      // No billing address AND no name on the delivery address either ⇒
+      // `buildBuyerProfile` falls back from billing to shipping and still
+      // finds nothing to derive a name from ⇒ InvalidBuyerProfileError. The
+      // delivery address keeps its COUNTRY (routing reads only that field),
+      // which is what lets `dispatchRoute` be reached at all.
       connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid', { id: 'bad' })]);
       const badOrder = makeOrder({ paymentStatus: 'paid' });
-      const noAddr = { ...badOrder, billingAddress: undefined, shippingAddress: undefined };
+      const noAddr = {
+        ...badOrder,
+        billingAddress: undefined,
+        shippingAddress: {
+          address1: 'ul. Testowa 1',
+          city: 'Poznań',
+          postalCode: '60-001',
+          country: 'PL',
+        },
+      };
       // #2100: the method now RESOLVES to an outcome. `InvalidBuyerProfileError` is
       // deterministic — it will throw identically on every future transition — so
       // the outcome is `indeterminate`, which tells the caller to leave any
@@ -1288,14 +1284,17 @@ describe('AutoIssueTriggerService', () => {
       });
     });
 
-    it('does NOT call the rule engine when the order carries no delivery address at all', async () => {
+    it('does NOT call the rule engine when the order carries no delivery address at all, and issues nothing (fallback retired)', async () => {
       connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
-      // Plain makeOrder() carries only a billingAddress.
-      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+      await service.onOrderTransition(
+        makeOrder({ paymentStatus: 'paid', shippingAddress: undefined }),
+        'src-1',
+      );
 
       expect(salesDocumentRules.resolveRouting).not.toHaveBeenCalled();
-      // Falls back to the operator-configured resolver and still issues.
-      expect(syncJobs.schedule).toHaveBeenCalledTimes(1);
+      // No rule-engine answer -> ruleDecision is null -> chooseSalesDocumentDecision
+      // returns null. There is no operator-configured fallback left to consult.
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
     });
 
     it('routes to the rule engine\'s decision, even when the winning connection has no config.salesDocument.documentKind set', async () => {
@@ -1324,21 +1323,27 @@ describe('AutoIssueTriggerService', () => {
       expect(syncJobs.schedule.mock.calls[0][0].jobType).toBe('invoicing.issue');
     });
 
-    it('falls back to the single-primary resolver when the rule engine reports no-configuration-for-country', async () => {
+    it('reports no-configuration-for-country as-is rather than falling back to an operator-configured connection (fallback retired)', async () => {
       salesDocumentRules.resolveRouting.mockResolvedValue({
         kind: 'unresolved',
         reason: 'no-configuration-for-country',
       });
       connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid', { id: 'legacy-conn' })]);
 
-      await service.onOrderTransition(
+      const outcome = await service.onOrderTransition(
         makeOrderWithDelivery({ paymentStatus: 'paid' }),
         'src-1',
       );
 
       expect(salesDocumentRules.resolveRouting).toHaveBeenCalledTimes(1);
-      expect(syncJobs.schedule).toHaveBeenCalledTimes(1);
-      expect(syncJobs.schedule.mock.calls[0][0].connectionId).toBe('legacy-conn');
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
+      expect(outcome).toMatchObject({
+        kind: 'blocked',
+        block: {
+          reason: 'unresolved-routing',
+          unresolvedReason: 'no-configuration-for-country',
+        },
+      });
     });
 
     it('never falls back on a DIFFERENT unresolved reason — surfaces it via SalesDocumentBlockOutcome instead', async () => {
@@ -1373,12 +1378,14 @@ describe('AutoIssueTriggerService', () => {
       });
     });
 
-    it('reports `none` (not a block) when the rule engine has nothing AND the operator-configured pool is also empty', async () => {
+    it('reports the no-configuration-for-country block even when the operator-configured pool is also empty (fallback retired)', async () => {
       salesDocumentRules.resolveRouting.mockResolvedValue({
         kind: 'unresolved',
         reason: 'no-configuration-for-country',
       });
-      // No config.salesDocument.documentKind ⇒ zero eligible operator-configured candidates.
+      // No config.salesDocument.documentKind ⇒ zero eligible operator-configured
+      // candidates — irrelevant now, since there is no fallback left to
+      // consult them for.
       connectionPort.list.mockResolvedValue([
         makeConnection('auto-on-paid', {
           id: 'unconfigured',
@@ -1392,8 +1399,10 @@ describe('AutoIssueTriggerService', () => {
       );
 
       expect(syncJobs.schedule).not.toHaveBeenCalled();
-      expect(outcome).toEqual({ kind: 'none' });
-      expect(errorSpy).not.toHaveBeenCalled();
+      expect(outcome).toMatchObject({
+        kind: 'blocked',
+        block: { reason: 'unresolved-routing', unresolvedReason: 'no-configuration-for-country' },
+      });
     });
   });
 
