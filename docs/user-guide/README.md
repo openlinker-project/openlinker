@@ -28,10 +28,13 @@ The guide is organized around the left-navigation groups in the admin UI:
 6. **[Orders](./06-orders.md)**
    Orders list, order detail, status timeline, line items, and the shipment panel.
 
-7. **[Diagnostics](./07-diagnostics.md)**
+7. **[Analytics](./07-analytics.md)**
+   The revenue dashboard: date range, display currency, Net/Gross basis, KPI definitions, channel and product tables, Needs Attention, and the Data Coverage panel's five remediation flows.
+
+8. **[Diagnostics](./08-diagnostics.md)**
    Jobs & Logs, Webhooks, and Cursors — how to inspect and unblock a stalled sync.
 
-8. **[Settings & Admin](./08-settings-and-admin.md)**
+9. **[Settings & Admin](./09-settings-and-admin.md)**
    General settings, AI provider configuration, prompt templates, and the Adapters registry.
 
 ---
