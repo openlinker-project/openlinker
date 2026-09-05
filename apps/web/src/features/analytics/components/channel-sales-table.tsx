@@ -14,23 +14,25 @@
  * row's own figures always reconcile with each other and with the single
  * `Total · {currency}` row below.
  *
- * `Net sales`/`AOV`, not `GMV`/gross AOV (net-sales tax-rate epic): both
- * money columns here are VAT-exclusive — `netRevenue` (technically the
- * spec's NOV until returns are also modeled, but shown under the "Net
- * sales" label per the reference design mockup) and `netAverageOrderValue`
- * (`netRevenue` divided by the net-eligible order count, computed once in
- * `groupChannelTotalsByCurrency` for the Total row and per-channel by the
- * API). A prior revision showed gross `revenue`/`averageOrderValue`
- * alongside them; those columns are gone — the KPI strip above already
- * carries the GMV qualifier for the same range, so this table doesn't need
- * to repeat it, and a row's Net sales and AOV can never disagree with each
- * other about which basis they're on (the bug this fixed: AOV kept reading
- * gross while Net sales read net, so a channel with nothing net-eligible
- * showed "Net sales 0.00" next to a real, nonzero gross AOV). Neither
- * column falls back to unconverted evidence when `currency` is null (an
- * unconverted amount is a GROSS figure and would misrepresent itself as
- * net), so that channel's cells render a plain empty state instead — see
- * the KPI strip's own doc comment for the full nuance on that tradeoff.
+ * `Net sales`/`AOV` OR `GMV`/`AOV`, driven by the `netGrossBasis` prop
+ * (net-sales tax-rate epic, basis-wired by #2903): both money columns
+ * always read the SAME basis together — `net` (the default, and this
+ * table's ONLY rendering before #2903) shows `netRevenue`/
+ * `netAverageOrderValue` (technically the spec's NOV until returns are also
+ * modeled, but shown under the "Net sales" label per the reference design
+ * mockup); `gross` shows `revenue`/`averageOrderValue`, labeled "GMV"/"AOV".
+ * A prior revision showed gross and net revenue in separate columns at the
+ * same time; that design is gone — the bug it caused was AOV reading gross
+ * while Net sales read net IN THE SAME ROW, so a channel with nothing
+ * net-eligible showed "Net sales 0.00" next to a real, nonzero gross AOV.
+ * Switching BOTH columns together off one shared basis, rather than
+ * restoring a second column, is what keeps that disagreement structurally
+ * impossible: at any given basis the two figures are either both gross or
+ * both net, never a mix. Neither column falls back to unconverted evidence
+ * when `currency` is null (an unconverted amount is a GROSS figure and
+ * would misrepresent itself as net under the `net` basis), so that
+ * channel's cells render a plain empty state instead — see the KPI strip's
+ * own doc comment for the full nuance on that tradeoff.
  *
  * **No `Total · {currency} (unconverted)` row (#2098 follow-up review):**
  * unconverted native-currency evidence can share its currency string with the
@@ -88,7 +90,12 @@ import {
   resolveReportingCurrencyRate,
 } from '../lib/display-currency.lib';
 import type { ChannelSalesAnalytics, SalesAnalyticsFilters } from '../api/sales-analytics.types';
-import type { AnalyticsCoverage, AnalyticsCoverageFilters, CoverageCategory } from '../api/analytics-coverage.types';
+import type { NetGrossBasis } from '../api/analytics-settings.types';
+import type {
+  AnalyticsCoverage,
+  AnalyticsCoverageFilters,
+  CoverageCategory,
+} from '../api/analytics-coverage.types';
 import {
   countUnconvertedOrders,
   groupChannelTotalsByCurrency,
@@ -129,7 +136,10 @@ function ChannelIdentity({
       connection={row.connection ?? null}
       loading={connectionsLoading}
       adornment={
-        <ConnectionDot name={row.connection?.name ?? null} platformType={row.connection?.platformType} />
+        <ConnectionDot
+          name={row.connection?.name ?? null}
+          platformType={row.connection?.platformType}
+        />
       }
     />
   );
@@ -177,14 +187,16 @@ function ChannelExclusionNotes({
   if (!byCategory || byCategory.size === 0) return null;
   return (
     <>
-      {CROSS_REFERENCEABLE_CATEGORIES.filter((category) => byCategory.has(category)).map((category) => (
-        <AnalyticsExclusionNote
-          key={category}
-          category={category}
-          affectedCount={byCategory.get(category) ?? 0}
-          onOpenCategory={onOpenCategory}
-        />
-      ))}
+      {CROSS_REFERENCEABLE_CATEGORIES.filter((category) => byCategory.has(category)).map(
+        (category) => (
+          <AnalyticsExclusionNote
+            key={category}
+            category={category}
+            affectedCount={byCategory.get(category) ?? 0}
+            onOpenCategory={onOpenCategory}
+          />
+        )
+      )}
     </>
   );
 }
@@ -224,6 +236,20 @@ interface ChannelSalesTableProps {
   coverageFilters?: AnalyticsCoverageFilters;
   /** Opens the matching Data Coverage detail modal — omit to keep every row's notes absent. */
   onOpenCategory?: (category: CoverageCategory) => void;
+  /**
+   * VAT basis for the money/AOV columns (#2903 — wiring the #2895 toggle).
+   * `'net'` (the default) reproduces this table's pre-#2903 rendering
+   * exactly — `netRevenue`/`netAverageOrderValue`, labeled "Net sales"/"AOV"
+   * — since that was this table's ONLY rendering before the toggle existed
+   * (a prior revision that also showed gross figures was removed, see this
+   * file's own module doc comment on the cohort-mismatch bug that caused).
+   * `'gross'` reads `revenue`/`averageOrderValue` instead, labeled "GMV"/
+   * "AOV" — a genuinely new capability this table never had, not a
+   * regression risk, since both columns always switch TOGETHER under one
+   * basis and can therefore never disagree with each other the way the
+   * removed dual-column design once did.
+   */
+  netGrossBasis?: NetGrossBasis;
 }
 
 export function ChannelSalesTable({
@@ -231,6 +257,7 @@ export function ChannelSalesTable({
   coverage,
   coverageFilters,
   onOpenCategory,
+  netGrossBasis = 'gross',
 }: ChannelSalesTableProps): ReactElement {
   const query = useSalesAnalyticsQuery(filters);
   const connectionsQuery = useConnectionsQuery();
@@ -248,7 +275,12 @@ export function ChannelSalesTable({
   // component's own prop doc comments), so the guarantee is "no request
   // when the panel overall reads all-clear," not a filter-range match.
   const openCategoryCodes = useMemo(
-    () => new Set((coverage?.categories ?? []).filter((row) => row.affectedCount > 0).map((row) => row.category)),
+    () =>
+      new Set(
+        (coverage?.categories ?? [])
+          .filter((row) => row.affectedCount > 0)
+          .map((row) => row.category)
+      ),
     [coverage]
   );
   const crossRefFilters: AnalyticsCoverageFilters = coverageFilters ?? { from: '', to: '' };
@@ -296,7 +328,10 @@ export function ChannelSalesTable({
   // A row whose `currency` doesn't resolve to a rate stays native.
   const gmvConversion = headline?.displayCurrencyConversion;
   const reportingRate = resolveReportingCurrencyRate(gmvConversion, headline?.currency ?? null);
-  const reportingConverter = createReportingCurrencyConverter(reportingRate, headline?.currency ?? null);
+  const reportingConverter = createReportingCurrencyConverter(
+    reportingRate,
+    headline?.currency ?? null
+  );
   function convertToDisplay(amount: number, nativeCurrency: string): number {
     return reportingConverter.convertToDisplay(amount, nativeCurrency);
   }
@@ -321,6 +356,21 @@ export function ChannelSalesTable({
   // run instead of disclosing that a fix is already in progress.
   const currencyRecalculating = isCurrencyRecalculating(coverage);
 
+  // Which basis feeds the money/AOV columns — see this component's own
+  // `netGrossBasis` prop doc comment. Both columns always read the SAME
+  // basis, so they can never disagree with each other the way the removed
+  // dual-column design once did.
+  const revenueLabel = netGrossBasis === 'net' ? 'Net sales' : 'GMV';
+  function revenueOf(value: { revenue: number; netRevenue: number }): number {
+    return netGrossBasis === 'net' ? value.netRevenue : value.revenue;
+  }
+  function averageOrderValueOf(value: {
+    averageOrderValue: number;
+    netAverageOrderValue: number;
+  }): number {
+    return netGrossBasis === 'net' ? value.netAverageOrderValue : value.averageOrderValue;
+  }
+
   function renderAovCell(row: ChannelRow): ReactElement {
     if (currencyRecalculating) {
       return <RecalculatingValue />;
@@ -329,7 +379,7 @@ export function ChannelSalesTable({
       return (
         <>
           {formatAmount(
-            convertToDisplay(row.total.netAverageOrderValue, row.total.currency),
+            convertToDisplay(averageOrderValueOf(row.total), row.total.currency),
             displayCurrencyFor(row.total.currency)
           )}
         </>
@@ -339,15 +389,15 @@ export function ChannelSalesTable({
       return (
         <>
           {formatAmount(
-            convertToDisplay(row.channel.netAverageOrderValue, row.channel.currency),
+            convertToDisplay(averageOrderValueOf(row.channel), row.channel.currency),
             displayCurrencyFor(row.channel.currency)
           )}
         </>
       );
     }
-    // No unconverted-evidence fallback, same reasoning as Net sales: an
-    // unconverted amount is a GROSS figure and would misrepresent itself as
-    // a net average.
+    // No unconverted-evidence fallback, same reasoning as the money column:
+    // an unconverted amount is a GROSS figure and would misrepresent itself
+    // as a net average under the `net` basis.
     return <EmptyValue label="No AOV figure can be given for this channel in range" />;
   }
 
@@ -365,7 +415,7 @@ export function ChannelSalesTable({
       return (
         <strong>
           {formatAmount(
-            convertToDisplay(row.total.netRevenue, row.total.currency),
+            convertToDisplay(revenueOf(row.total), row.total.currency),
             displayCurrencyFor(row.total.currency)
           )}
         </strong>
@@ -375,13 +425,15 @@ export function ChannelSalesTable({
       return (
         <>
           {formatAmount(
-            convertToDisplay(row.channel.netRevenue, row.channel.currency),
+            convertToDisplay(revenueOf(row.channel), row.channel.currency),
             displayCurrencyFor(row.channel.currency)
           )}
         </>
       );
     }
-    return <EmptyValue label="No Net sales figure can be given for this channel in range" />;
+    return (
+      <EmptyValue label={`No ${revenueLabel} figure can be given for this channel in range`} />
+    );
   }
 
   const columns: DataTableColumn<ChannelRow>[] = [
@@ -402,7 +454,7 @@ export function ChannelSalesTable({
     },
     {
       id: 'nov',
-      header: 'Net sales',
+      header: revenueLabel,
       align: 'right',
       cell: renderNovCell,
     },
@@ -410,7 +462,8 @@ export function ChannelSalesTable({
       id: 'orders',
       header: 'Orders',
       align: 'right',
-      cell: (row) => intFormat.format(row.kind === 'total' ? row.total.orderCount : row.channel.orderCount),
+      cell: (row) =>
+        intFormat.format(row.kind === 'total' ? row.total.orderCount : row.channel.orderCount),
       hideBelow: 480,
     },
     {
@@ -424,14 +477,16 @@ export function ChannelSalesTable({
       id: 'units',
       header: 'Units',
       align: 'right',
-      cell: (row) => intFormat.format(row.kind === 'total' ? row.total.unitsSold : row.channel.unitsSold),
+      cell: (row) =>
+        intFormat.format(row.kind === 'total' ? row.total.unitsSold : row.channel.unitsSold),
       hideBelow: 1024,
     },
     {
       id: 'share',
       header: 'Share',
       align: 'right',
-      cell: (row) => pctFormat.format(row.kind === 'total' ? row.total.revenueShare : row.channel.revenueShare),
+      cell: (row) =>
+        pctFormat.format(row.kind === 'total' ? row.total.revenueShare : row.channel.revenueShare),
       hideBelow: 768,
     },
     {
@@ -441,7 +496,13 @@ export function ChannelSalesTable({
         if (row.kind === 'total') return null;
         const values = revenueTrendValues(row.channel.trend);
         return values.length >= 2 ? (
-          <Sparkline values={values} tone={trendTone(values)} width={72} height={20} ariaLabel="Channel revenue trend" />
+          <Sparkline
+            values={values}
+            tone={trendTone(values)}
+            width={72}
+            height={20}
+            ariaLabel="Channel revenue trend"
+          />
         ) : (
           <EmptyValue label="Not enough data for a trend" />
         );
@@ -458,13 +519,15 @@ export function ChannelSalesTable({
         caption="Sales by channel"
         rows={rows}
         columns={columns}
-        rowKey={(row) => (row.kind === 'total' ? `total:${row.total.currency}` : row.channel.sourceConnectionId)}
+        rowKey={(row) =>
+          row.kind === 'total' ? `total:${row.total.currency}` : row.channel.sourceConnectionId
+        }
         emptyState={<EmptyValue label="No channel has any orders in this range" />}
       />
       {unconvertedCount > 0 ? (
         <p className="data-table__footnote">
-          {unconvertedCount} {unconvertedCount === 1 ? 'order' : 'orders'} not yet converted to the reporting
-          currency — excluded from the figures above.
+          {unconvertedCount} {unconvertedCount === 1 ? 'order' : 'orders'} not yet converted to the
+          reporting currency — excluded from the figures above.
         </p>
       ) : null}
     </>

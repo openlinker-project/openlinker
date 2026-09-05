@@ -119,7 +119,7 @@ export function AnalyticsPage(): ReactElement {
   const netGrossBasis: NetGrossBasis =
     netGrossBasisParam === 'net' || netGrossBasisParam === 'gross'
       ? netGrossBasisParam
-      : (settingsQuery.data?.netGrossBasis ?? 'gross');
+      : settingsQuery.data?.netGrossBasis ?? 'gross';
 
   function handleNetGrossBasisChange(next: NetGrossBasis): void {
     const nextParams = new URLSearchParams(searchParams);
@@ -151,7 +151,10 @@ export function AnalyticsPage(): ReactElement {
   // Same range as `salesFilters`, converted to the ISO-instant shape
   // `GET /analytics/coverage` expects (#2473).
   const coverageFilters = useMemo(
-    () => ({ from: new Date(`${from}T00:00:00.000Z`).toISOString(), to: toExclusiveEndInstant(to) }),
+    () => ({
+      from: new Date(`${from}T00:00:00.000Z`).toISOString(),
+      to: toExclusiveEndInstant(to),
+    }),
     [from, to]
   );
 
@@ -245,18 +248,21 @@ export function AnalyticsPage(): ReactElement {
                 connections={trustQuery.data.connections}
                 coverage={coverageQuery.data}
                 onOpenCategory={setOpenCoverageCategory}
+                netGrossBasis={netGrossBasis}
               />
               <ChannelSalesTable
                 filters={salesFilters}
                 coverage={coverageQuery.data}
                 coverageFilters={coverageFilters}
                 onOpenCategory={setOpenCoverageCategory}
+                netGrossBasis={netGrossBasis}
               />
               <ProductSalesTable
                 filters={salesFilters}
                 coverage={coverageQuery.data}
                 coverageFilters={coverageFilters}
                 onOpenCategory={setOpenCoverageCategory}
+                netGrossBasis={netGrossBasis}
               />
             </>
           )}
