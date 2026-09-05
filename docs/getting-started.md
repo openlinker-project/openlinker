@@ -343,4 +343,4 @@ In **Jobs & Logs** (`http://localhost:4173/jobs-logs`):
 
 The **user guide** at [`docs/user-guide/README.md`](./user-guide/README.md) covers the full OpenLinker admin UI — Listings, Diagnostics, Settings, and AI offer description generation — with screenshots of every surface.
 
-The **Jobs & Logs** page (`http://localhost:4173/jobs-logs`) is the best place to watch sync activity and investigate stalled jobs. The **Webhooks** page shows every inbound event delivery. See [Diagnostics](./user-guide/06-diagnostics.md) in the user guide for details.
+The **Jobs & Logs** page (`http://localhost:4173/jobs-logs`) is the best place to watch sync activity and investigate stalled jobs. The **Webhooks** page shows every inbound event delivery. See [Diagnostics](./user-guide/08-diagnostics.md) in the user guide for details.
