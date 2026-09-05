@@ -58,6 +58,7 @@ import {
   type ITaxCoverageDetectionService,
   type ITaxRateBackfillService,
 } from '@openlinker/core/orders';
+import { AnyRole } from '../../auth/decorators/any-role.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { TaxCoverageOrdersQueryDto } from './dto/tax-coverage-orders-query.dto';
 import {
@@ -112,6 +113,7 @@ export class AnalyticsTaxRemediationController {
     return dto;
   }
 
+  @AnyRole()
   @Get('orders')
   @ApiOperation({
     summary:

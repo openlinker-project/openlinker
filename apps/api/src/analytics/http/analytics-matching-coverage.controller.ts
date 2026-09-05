@@ -21,6 +21,7 @@
  */
 import { BadRequestException, Controller, Get, Inject, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { AnyRole } from '../../auth/decorators/any-role.decorator';
 import { ORDER_RECORD_SERVICE_TOKEN, type IOrderRecordService } from '@openlinker/core/orders';
 import { ProductMatchingOrdersQueryDto } from './dto/product-matching-orders-query.dto';
 import {
@@ -42,6 +43,7 @@ export class AnalyticsMatchingCoverageController {
     private readonly orderRecordService: IOrderRecordService
   ) {}
 
+  @AnyRole()
   @Get('orders')
   @ApiOperation({
     summary: "Paginated list of orders OL couldn't fully match to a mapped product (detail-mapping modal)",

@@ -38,6 +38,7 @@
  */
 import { BadRequestException, Controller, Get, Inject, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { AnyRole } from '../../auth/decorators/any-role.decorator';
 import {
   ORDER_RECORD_SERVICE_TOKEN,
   TAX_COVERAGE_DETECTION_SERVICE_TOKEN,
@@ -94,6 +95,7 @@ export class AnalyticsCoverageController {
     private readonly remediationRuns: IAnalyticsRemediationRunService
   ) {}
 
+  @AnyRole()
   @Get('coverage')
   @ApiOperation({
     summary:
@@ -162,6 +164,7 @@ export class AnalyticsCoverageController {
     return response;
   }
 
+  @AnyRole()
   @Get('coverage/by-connection')
   @ApiOperation({
     summary:
