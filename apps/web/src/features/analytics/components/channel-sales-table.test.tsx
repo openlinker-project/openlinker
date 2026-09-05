@@ -167,6 +167,31 @@ describe('ChannelSalesTable', () => {
     expect(screen.queryByText('PLN 108.00')).not.toBeInTheDocument();
   });
 
+  it('should add back unconverted units into both the row and the Total row (#2907)', async () => {
+    const apiClient = createMockApiClient({
+      analytics: {
+        getSales: vi
+          .fn()
+          .mockResolvedValue(analytics([channel({ unitsSold: 40, unconvertedUnitsSold: 5 })])),
+      },
+      connections: {
+        list: vi
+          .fn()
+          .mockResolvedValue([{ id: 'conn-1', name: 'Allegro — main', platformType: 'allegro' }]),
+      },
+    });
+
+    renderWithProviders(<ChannelSalesTable netGrossBasis="net" filters={FILTERS} />, { apiClient });
+
+    await screen.findByRole('link', { name: 'Allegro — main' });
+
+    // 40 unitsSold + 5 unconvertedUnitsSold = 45, on both the channel row and
+    // the Total row it fully composes — reconciling with the headline KPI's
+    // own unitsSold + unconvertedUnitsSold add-back (#2893).
+    expect(screen.getAllByText('45')).toHaveLength(2);
+    expect(screen.queryByText('40')).not.toBeInTheDocument();
+  });
+
   it('should render a partial-history channel with a coverage flag', async () => {
     const apiClient = createMockApiClient({
       analytics: {
