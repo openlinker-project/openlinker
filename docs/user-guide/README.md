@@ -22,6 +22,12 @@ The guide is organized around the left-navigation groups in the admin UI:
 4. **[Invoices](./04-invoices.md)**
    Issuing invoices per order, the Invoices list and detail pages, regulatory (KSeF) clearance status, and fiscal-safety retry rules.
 
+4a. **[Fiscal receipts](./04a-fiscal-receipts.md)**
+   Registering a Polish fiscal e-receipt for an order through eparagony.pl.
+
+4b. **[Sales documents (routing)](./04b-sales-documents.md)**
+   Configuring per-market rules, country defaults, and the ★ Rest of world fallback that decide which document (invoice or receipt) an order gets and through which connection — plus reading the per-order Sales document panel.
+
 5. **[Listings & Offers](./05-listings.md)**
    Listings list, offer status chips, and the offer-creation wizard end-to-end: category, parameters, GPSR, seller policies, AI description, submit.
 
