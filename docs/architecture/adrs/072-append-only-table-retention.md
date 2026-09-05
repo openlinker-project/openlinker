@@ -1,8 +1,17 @@
 # ADR-072: Retention for the append-only tables
 
 - **Status**: Proposed
+- **Blocked on**: #2843. **Not adoptable until it reports.**
 - **Date**: 2026-09-05
 - **Authors**: @norbert-kulus-blockydevs
+
+> **This ADR is held, not merely undecided.** Every retention window in it is a
+> judgement, and the one input that would turn a judgement into a decision is
+> the growth rate #2843 produces. Until that figure exists, nothing here should
+> be read as a direction the project has taken, and no window should be
+> implemented against it. The status stays `Proposed` because the README's
+> taxonomy has exactly four values and none of them means *held pending a
+> measurement* - this line is that state, written out.
 
 ## Context
 
@@ -34,7 +43,9 @@ the designated input and has not run, so no window here is sized against data.
 1. **A per-table registry** declares what is prunable: table, age column,
    terminal predicate, window setting key, and the reason. One list, read by
    the handler and asserted against the operator page, so code and documentation
-   cannot drift.
+   cannot drift. A window is one of a **closed set** - `7 d`, `30 d`, `90 d`,
+   `365 d`, `2 y`, or `never` - so that two tables can be compared and a new one
+   has to argue for its placement rather than inventing a number.
 2. **One job**, `retention.prune`, global scope under the nil-UUID
    `SYSTEM_CONNECTION_ID`, `bulk` lane, registered beside
    `inventory-provenance-backfill`. `OL_RETENTION_PRUNE_ENABLED` defaults to

@@ -70,6 +70,31 @@ takes a row per login *and* per rotation, and rotation happens on every
 refresh, so it tracks session activity rather than login count and nothing has
 ever deleted an expired one.
 
+## The window vocabulary
+
+A table is placed on one of five values, or on **never**. A closed set exists so
+that a reader can compare two tables, and so that a new table has to argue for
+its placement rather than inventing a number.
+
+| Value | Means | Placed here when |
+|---|---|---|
+| **7 d** | one week past the row becoming terminal | the row has no operational value after a week and no idempotency, dedup or claim consequence at all |
+| **30 d** | a month | operational diagnosis reaches back about a month |
+| **90 d** | a quarter | an operator investigating "why did this happen" plausibly starts from a quarter ago |
+| **365 d** | a year | year-over-year comparison, or an incident record someone may still be arguing about |
+| **2 y** | two years | order-scoped audit - a buyer or carrier dispute about what was agreed, held or routed |
+| **never** | no window | the row is a claim, a legal record, or live state |
+
+**7 d is the hard floor for `sync_jobs` specifically, and it is a floor rather
+than a margin.** It is exactly where the Redis `jobdedup:{key}` mark expires
+(`redis-streams-job-enqueue.service.ts:24`), so a table placed on 7 d that
+participates in job dedup is sitting on the boundary, not comfortably inside it.
+That is why `sync_jobs` is **not** placed there and never should be: see the
+re-enqueue section below. The two tables that do carry 7 d -
+`password_reset_tokens` and `email_confirmation_tokens` - have no interaction
+with an idempotency key of any kind, so the floor does not apply to them and
+the coincidence of number is not a coincidence of meaning.
+
 ## Class A - the tables this policy is for
 
 Every row is `createdAt`-ordered history that nothing reads after a point.
@@ -78,7 +103,7 @@ rate are not known and #2843 is the input that supplies them.
 
 | Table | One row per | Proposed window | What you lose |
 |---|---|---|---|
-| `sync_jobs` | every job, including sweep children | **90 days**, terminal rows only (`succeeded`/`dead`) | job history on the Jobs page and the connection health panel past 90 days. See the re-enqueue section below - this one is not only disk. |
+| `sync_jobs` | every job, including sweep children | **90 days**, terminal rows only (`succeeded`/`dead`). **Never 7 d**: that value is this table's hard floor, not a margin - see the re-enqueue section. | job history on the Jobs page and the connection health panel past 90 days. This one is not only disk. |
 | `allegro_quantity_commands` | every Allegro quantity write, per offer | **30 days**, `status` terminal | the ability to explain a stock write that Allegro accepted and later failed asynchronously (#2621) |
 | `webhook_deliveries` | every inbound webhook | **90 days** | the delivery log, and the durable replay gate for events older than the window |
 | `automation_runs` | every rule firing | **90 days** | the automation run log. The spec already asks for 90 days; the UI currently says *"Every automation run recorded so far is listed here"* precisely because nothing prunes (`automation.copy.ts:474-485`). |
@@ -87,15 +112,15 @@ rate are not known and #2843 is the input that supplies them.
 | `return_line_events` | every custody act | **never** | `seq` is the `{seq}` in the master idempotency key `return:{returnId}:{lineId}:{seq}` (#2368). Deleting a row lets a later act re-mint a used key and double-restock. |
 | `fulfillment_work_rejections` | every holder refusal | **never** | `blocking` is the re-sourcing exclusion set. Deleting one re-admits the holder that just refused, which is the loop the table exists to terminate. |
 | `fulfillment_work_verifications` | every pack-bench scan gesture | **never** | the scan idempotency key, and the "who handled this box" audit. Voided rows are retained by design (a reopen voids, it never deletes). |
-| `routing_decisions` | every routing intent | **never** for `live`; **365 days** for terminal | a `live` row is the double-ship guard. A terminal row is the audit of what was decided. |
-| `order_changes` | every change request | **365 days**, terminal only | the change history on an order |
-| `order_holds` | every hold | **365 days**, released only | why an order was held |
-| `reservation_shortfall_episodes` | every shortfall episode | **365 days**, closed only | the record that stock was promised and not there |
-| `fulfillment_holds` | every work hold | **365 days**, released only | the suspension audit. An **open** hold must never be pruned - deleting it silently un-suspends work. |
-| `tax_rate_journal` | every observed tax-rate change | **never** | the observed rate a fiscal document was issued at. No unique constraint protects it; deleting the latest row silently rewrites history. |
-| `refresh_tokens` | every login **and every rotation** | **90 days past `expires_at`** | session forensics. Note `rotated_from_id` is a chain: pruning an ancestor breaks reuse detection, so a window must not cut a chain in the middle. |
-| `password_reset_tokens` | every reset request | **30 days past `expires_at`** | nothing operational. `used_at` is a single-use marker and an expired token cannot be replayed. |
-| `email_confirmation_tokens` | every signup / email change | **30 days past `expires_at`** | nothing operational |
+| `routing_decisions` | every routing intent | **never** for `live`; **2 y** for terminal | a `live` row is the double-ship guard. A terminal row is order-scoped audit: which location and holder was chosen, which is what a shipping dispute turns on. |
+| `order_changes` | every change request | **2 y**, terminal only | what was agreed on an order, and when. A buyer dispute reaches back further than a year. |
+| `order_holds` | every hold | **2 y**, released only | why an order was held, which is what a "why was this late" dispute turns on |
+| `fulfillment_holds` | every work hold | **2 y**, released only | the suspension audit, one grain below `order_holds` and read beside it on the order timeline - so the two carry the same window deliberately. An **open** hold must never be pruned: deleting it silently un-suspends work. |
+| `reservation_shortfall_episodes` | every shortfall episode | **365 days**, closed only | the record that stock was promised and not there. Deliberately *not* 2 y: only OPEN episodes are read by any surface (`listOpenByOrderRecordId`), so a closed one is operational history rather than dispute evidence. |
+| `tax_rate_journal` | every observed tax-rate change | **never** | **the latest row per `(product, variant, connection)` is live state, not history** - `getLatestPerConnection` serves the operator product surface from it. An age window would delete the current rate for any product whose rate has not changed inside it. That is a live-data hazard, not a retention trade-off, and it is why no window is offered rather than a long one. |
+| `refresh_tokens` | every login **and every rotation** | **90 days past `expires_at`** | session forensics. `rotated_from_id` is a chain, so the predicate must not cut one in the middle: prune a chain only once its whole descent is past the window. |
+| `password_reset_tokens` | every reset request | **7 days past `expires_at`** | nothing. `used_at` is a single-use marker and an expired token cannot be replayed. No idempotency-key interaction, so the `sync_jobs` 7-day floor does not apply here. |
+| `email_confirmation_tokens` | every signup / email change | **7 days past `expires_at`** | nothing. Same reasoning as `password_reset_tokens`. |
 | `mcp_tokens` | every issued MCP token | **never** | `revoked_at` is the revocation record, and `last_used_at` is the usage evidence. Operator-paced; growth is negligible. |
 | `exchange_rates` | every `(source, pair, date)` | **never** | the audited rate behind every stamped order amount. One row per pair per day: negligible. |
 | `invoice_number_gap_notes` | every operator-explained numbering gap | **never** | the written justification for a missing fiscal sequence number |
@@ -115,9 +140,17 @@ different reasons:
 
 - **Legal.** `invoice_records` and `fiscal_registration_records` are the fiscal
   document records. They carry `documentContent`, `issuedLineSnapshot`,
-  `artefacts` and the numbering evidence. Retention here is a jurisdiction
-  question, not an engineering one, and OpenLinker does not get to pick a
-  number.
+  `artefacts` and the numbering evidence. **They are deliberately not placed on
+  2 y**, even though it is the longest value in the vocabulary and the obvious
+  shelf for anything fiscal: putting them there would assert that two years is
+  *enough*, which is an invented legal requirement in the permissive direction
+  and is the more dangerous of the two. Nothing in this tree establishes a
+  statutory horizon - no migration, no constant, no comment names one - and the
+  real figures differ by jurisdiction and are commonly several years measured
+  from the end of a tax year rather than from the row. What would settle it is a
+  jurisdiction decision by the operator, and the shape it should then take is a
+  **per-install setting they justify**, never a shipped default. `never` is the
+  only defensible default.
 - **Cascade.** `fulfillment_works` is the parent of **five** `ON DELETE CASCADE`
   children, one of which (`fulfillment_progress_claims`) is permanent replay
   memory and another (`fulfillment_work_rejections`) is the re-sourcing
