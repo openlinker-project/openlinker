@@ -206,6 +206,49 @@ export class SyncJobs {
   }
 
   /**
+   * Build a `retriggerPoll` callback for `waitForOrderByExternalId` that
+   * enqueues a direct `marketplace.order.sync` for ONE known
+   * `externalOrderId` — the bypass for `marketplace.orders.poll`'s feed-listing
+   * `date_upd` sort, which this PrestaShop version rejects outright (#2877).
+   *
+   * Deliberately RATE-LIMITED (at most once per `minIntervalMs`, default 30s)
+   * rather than fired on every ~3s poll tick like the feed-poll retrigger it
+   * replaces: unlike a feed poll (idempotent, cheap, re-reads a cursor), each
+   * call here enqueues a NEW `sync_jobs` row with a fresh idempotency key —
+   * firing it every tick for the whole wait window floods the `realtime` lane
+   * with duplicates of the same job and can starve the one that would
+   * actually resolve the wait (observed live: 188 queued duplicates from one
+   * seed call before this existed).
+   */
+  retriggerDirectOrderSync(
+    connectionId: string,
+    externalOrderId: string,
+    options: { minIntervalMs?: number } = {},
+  ): () => Promise<unknown> {
+    const minIntervalMs = options.minIntervalMs ?? 30_000;
+    let lastTriggeredAt = 0;
+    return async () => {
+      const now = Date.now();
+      if (now - lastTriggeredAt < minIntervalMs) return undefined;
+      lastTriggeredAt = now;
+      return this.trigger({
+        connectionId,
+        jobType: 'marketplace.order.sync',
+        payload: {
+          schemaVersion: 1,
+          externalOrderId,
+          // `matchesExternalOrderId` (orders.ts) keys on `sourceEventId`
+          // starting with `{externalOrderId}:`, the shape the poll's feed
+          // listing normally produces (`${externalOrderId}:${occurredAt}:${eventType}`).
+          // A direct per-order sync carries no feed-derived eventKey, so one
+          // is fabricated here purely as an identity token for the matcher.
+          sourceEventId: `${externalOrderId}:e2e-direct-sync:${now}`,
+        },
+      });
+    };
+  }
+
+  /**
    * Propagate OL master inventory out to every mapped marketplace offer of a
    * product/variant. The handler requires `productId` (+ optional `variantId`)
    * and fans out one quantity-update job per offer mapping across connections;

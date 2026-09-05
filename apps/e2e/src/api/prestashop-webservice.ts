@@ -92,6 +92,14 @@ export interface CreateProductInput {
   quantity: number;
   /** Default category id (`id_category_default`). Defaults to `2` (Home). */
   idCategoryDefault?: string;
+  /**
+   * Explicit tax-rules group id. Omit to inherit the shop's default. Pass the
+   * id of a group created with zero `tax_rules` (see `createTaxRulesGroup`) to
+   * produce PrestaShop's genuine "the shop has not said what it charges"
+   * state — distinct from `id_tax_rules_group=0` ("No tax", a resolved 0%,
+   * see `PrestashopTaxRateResolver`'s docblock).
+   */
+  idTaxRulesGroup?: string;
   /** Language id for localized fields. Defaults to `1`. */
   languageId?: string;
   /**
@@ -338,6 +346,40 @@ export class PrestashopWebserviceClient {
   }
 
   /**
+   * Delete a product this SAME call created moments earlier (the analytics
+   * product-matching fixture's own cleanup step — no destructive-opt-in gate,
+   * unlike `deleteCombination`, since the caller owns the product's whole
+   * lifecycle within one test run rather than pruning shared catalogue data).
+   * Deleting it AFTER an order already references it is what makes the order
+   * PERMANENTLY unresolvable: a product OL never synced is merely awaiting a
+   * sync that would eventually resolve it (this stack's webhook-driven
+   * catalog sync does exactly that within seconds — verified live, which is
+   * why the fixture used to flake), whereas a product that no longer exists
+   * at all can never be synced by anything.
+   */
+  async deleteProduct(productId: string): Promise<void> {
+    const url = `${this.baseUrl}/api/products/${productId}?output_format=JSON`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: 'DELETE',
+        headers: { Authorization: this.authHeader, Accept: 'application/json' },
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (!response.ok) {
+      const raw = await response.text();
+      throw new Error(
+        `PrestaShop webservice DELETE /api/products/${productId} → HTTP ${response.status}: ${raw.slice(0, 300)}`,
+      );
+    }
+  }
+
+  /**
    * Sum available quantity across a product's `stock_availables` rows.
    *
    * For a product with combinations PrestaShop keeps one row per combination
@@ -438,6 +480,39 @@ export class PrestashopWebserviceClient {
   }
 
   /**
+   * Create an EMPTY tax-rules group (no `tax_rules` under it).
+   *
+   * `PrestashopTaxRateResolver.selectRule` reports `{kind: 'none'}` when a
+   * group's `tax_rules` read comes back empty — the shop has genuinely never
+   * said what it charges for this group, which is what `taxRateState()`
+   * (`libs/core/src/products/domain/types/tax-rate.types.ts`) surfaces as
+   * `'no-rate'` (the analytics `tax-b` coverage category, #2482). This is
+   * deliberately different from `id_tax_rules_group=0` ("No tax"), which
+   * resolves to a known 0% rate.
+   */
+  async createTaxRulesGroup(name: string): Promise<{ id: string }> {
+    const xml = [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<prestashop>',
+      '  <tax_rules_group>',
+      `    <name>${escapeXml(name)}</name>`,
+      '    <active>1</active>',
+      '  </tax_rules_group>',
+      '</prestashop>',
+    ].join('\n');
+
+    const body = await this.send('POST', '/api/tax_rule_groups', xml);
+    const group = asRecord(pick(body, 'tax_rule_group'));
+    const id = asStringOrNull(pick(group, 'id'));
+    if (!id) {
+      throw new Error(
+        `PrestaShop createTaxRulesGroup returned no id: ${JSON.stringify(body).slice(0, 200)}`,
+      );
+    }
+    return { id };
+  }
+
+  /**
    * Create a fresh master product (E3) and set its starting stock — SIMPLE by
    * default, MULTI-VARIANT when `input.combinations` is supplied.
    *
@@ -465,6 +540,9 @@ export class PrestashopWebserviceClient {
       '  <product>',
       `    <price>${escapeXml(input.price)}</price>`,
       `    <id_category_default>${escapeXml(categoryId)}</id_category_default>`,
+      ...(input.idTaxRulesGroup
+        ? [`    <id_tax_rules_group>${escapeXml(input.idTaxRulesGroup)}</id_tax_rules_group>`]
+        : []),
       '    <active>1</active>',
       '    <state>1</state>',
       '    <available_for_order>1</available_for_order>',

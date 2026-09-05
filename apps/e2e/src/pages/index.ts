@@ -17,6 +17,8 @@ import { BulkOfferWizard } from './bulk-offer-wizard.page';
 import { BulkBatchProgressPage } from './bulk-batch-progress.page';
 import { OrdersListPage, OrderDetailPage } from './orders.page';
 import { WooCommerceAdminPage } from './woocommerce-admin.page';
+import { AnalyticsPage } from './analytics.page';
+import { AnalyticsMockupPage } from './analytics-mockup.page';
 
 export interface PageObjects {
   login: LoginPage;
@@ -30,6 +32,8 @@ export interface PageObjects {
   ordersList: OrdersListPage;
   orderDetail: OrderDetailPage;
   woocommerceAdmin: WooCommerceAdminPage;
+  analytics: AnalyticsPage;
+  analyticsMockup: AnalyticsMockupPage;
 }
 
 export function createPageObjects(page: Page): PageObjects {
@@ -45,6 +49,8 @@ export function createPageObjects(page: Page): PageObjects {
     ordersList: new OrdersListPage(page),
     orderDetail: new OrderDetailPage(page),
     woocommerceAdmin: new WooCommerceAdminPage(page),
+    analytics: new AnalyticsPage(page),
+    analyticsMockup: new AnalyticsMockupPage(page),
   };
 }
 
@@ -58,3 +64,5 @@ export * from './bulk-batch-progress.page';
 export * from './orders.page';
 export * from './invoice-panel.page';
 export * from './woocommerce-admin.page';
+export * from './analytics.page';
+export * from './analytics-mockup.page';
