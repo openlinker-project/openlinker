@@ -72,6 +72,32 @@ export interface FulfillmentWorkView {
   readonly externalWorkId: string | null;
   readonly acceptedAt: Date | null;
   readonly cancelledAt: Date | null;
+  /**
+   * When an operator pushed this ahead of deadline order (#2416, spec D22), or
+   * `null` for ordinary deadline order.
+   *
+   * On the allowlist because D22 requires the surface to show *that* a parcel
+   * was expedited rather than silently reordering the list under a packer — a
+   * list that reorders itself is a list they stop trusting.
+   */
+  readonly expeditedAt: Date | null;
+  /**
+   * When the pack bench shut the box (#2418, D18), or `null` while it is open.
+   *
+   * On the allowlist because the bench's own parcel read is built over this
+   * view, and because the unlabelled-parcel list selects on it. It is NOT
+   * `status`: packing is a part of the executor's job, not the end of it.
+   */
+  readonly parcelClosedAt: Date | null;
+  /**
+   * Who shut it — the LAST verifier (#2418, D13), `null` while it is open.
+   *
+   * A USER ID rather than a name: resolving a name is the consumer's, and this
+   * view holds no PII (see the allowlist note above). `packedByService` is
+   * deliberately absent for the same reason `placedByService` is on a hold —
+   * an internal actor an operator surface has no use for.
+   */
+  readonly packedByUserId: string | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
   readonly lines: readonly FulfillmentWorkLineView[];
@@ -133,6 +159,10 @@ export const OPERATOR_INVOCABLE_ACTIONS = [
   'mark_in_progress',
   'close',
   'force_cancel',
+  // #2416 / spec D22. Exactly one of the two is ever offered on a given work —
+  // the derivation picks the direction, so a client never has to.
+  'expedite',
+  'release_expedite',
 ] as const satisfies readonly FulfillmentWorkAction[];
 
 export type OperatorInvocableAction = (typeof OPERATOR_INVOCABLE_ACTIONS)[number];

@@ -8,6 +8,7 @@
 import * as bcrypt from 'bcryptjs';
 import { DataSource } from 'typeorm';
 import request from 'supertest';
+import type { UserRole } from '@openlinker/core/users';
 
 /**
  * Seed a user with a given role and return a valid Bearer token.
@@ -24,7 +25,10 @@ import request from 'supertest';
 export async function loginAs(
   http: ReturnType<typeof request>,
   dataSource: DataSource,
-  role: 'admin' | 'operator' | 'viewer',
+  // `UserRole`, not a hand-listed tuple: the literals had to be extended by
+  // hand for `packer` (#2413) and would silently exclude role five from every
+  // integration test that needs to seed one.
+  role: UserRole,
   username: string,
   password = 'test-password',
 ): Promise<string> {
@@ -76,4 +80,19 @@ export async function loginAsViewer(
   password = 'test-password',
 ): Promise<string> {
   return loginAs(http, dataSource, 'viewer', username, password);
+}
+
+/**
+ * Seed a pack-bench packer and return a valid Bearer token (#2413, ADR-071).
+ *
+ * The bench has no principal of its own — a packer is an ordinary user on a
+ * narrower role — so this is the same seeding path as every other role.
+ */
+export async function loginAsPacker(
+  http: ReturnType<typeof request>,
+  dataSource: DataSource,
+  username = 'packer',
+  password = 'test-password',
+): Promise<string> {
+  return loginAs(http, dataSource, 'packer', username, password);
 }

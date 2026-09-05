@@ -57,6 +57,14 @@ export class FulfillmentWorkResponseDto {
   @ApiPropertyOptional({ nullable: true }) externalWorkId!: string | null;
   @ApiPropertyOptional({ nullable: true }) acceptedAt!: Date | null;
   @ApiPropertyOptional({ nullable: true }) cancelledAt!: Date | null;
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'When an operator pushed this ahead of ordinary deadline order (#2416); null otherwise. ' +
+      'Present so a surface can SHOW that a task was expedited rather than silently reordering ' +
+      'itself under whoever is reading it.',
+  })
+  expeditedAt!: Date | null;
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
   @ApiProperty({ type: [FulfillmentWorkLineResponseDto] })

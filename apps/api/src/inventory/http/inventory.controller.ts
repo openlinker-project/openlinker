@@ -20,6 +20,7 @@ import { InventoryAvailabilityResponseDto } from './dto/inventory-availability-r
 import { GetDuplicatePositionsQueryDto } from './dto/get-duplicate-positions-query.dto';
 import { DuplicatePositionsResponseDto } from './dto/duplicate-positions-response.dto';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { AnyRole } from '../../auth/decorators/any-role.decorator';
 
 @ApiBearerAuth()
 @ApiTags('inventory')
@@ -30,6 +31,7 @@ export class InventoryController {
     private readonly queryService: IInventoryQueryService
   ) {}
 
+  @AnyRole()
   @Get()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -61,6 +63,7 @@ export class InventoryController {
     };
   }
 
+  @AnyRole()
   @Get('availability')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

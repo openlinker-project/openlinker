@@ -73,6 +73,7 @@ describe('ShipmentLabelService', () => {
       listDispatchedAwaitingReservationConsume: jest.fn(),
       claimReservationConsume: jest.fn(),
       claimFulfillmentWorkLink: jest.fn(),
+      findByFulfillmentWorkIds: jest.fn(),
     };
     readerAdapter = {
       generateLabel: jest.fn(),
