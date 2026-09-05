@@ -163,6 +163,7 @@ One pointer per section, identical format every time.
 | [ADR-069](./069-operator-settable-sweep-pacing.md) | Sweep pacing is the operator's decision, bounded by a two-tier ceiling, and reported must equal enforced | Accepted | 2026-08-28 |
 | [ADR-070](./070-sales-document-market-discovery.md) | Market discovery, and what OpenLinker may recommend | Proposed | 2026-08-26 |
 | [ADR-071](./071-pack-station-principal.md) | The pack station has no principal of its own | Proposed | 2026-09-02 |
+| [ADR-072](./072-append-only-table-retention.md) | Retention for the append-only tables | Proposed | 2026-09-05 |
 
 > *Dates for pre-trail ADRs (001, 004) are approximate to the month — the underlying decisions predate the project's current git history. Other dates are merge-date of the cited PR.*
 
