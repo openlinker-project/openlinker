@@ -157,6 +157,52 @@ describe('AnalyticsKpiStrip', () => {
     expect(screen.queryByText('PLN 100.00')).not.toBeInTheDocument(); // medianOrderValue
   });
 
+  it('should render GMV as the primary Revenue figure and Net sales as its qualifier under the gross basis (#2908 fix)', async () => {
+    // Under `netGrossBasis="gross"` (the default), the headline Revenue
+    // card's primary figure must swap to GMV — matching the channel/product
+    // tables' own `revenueLabel`/`revenueOf` primary-column choice for the
+    // same basis — while Net sales moves to the qualifier row. Neither
+    // figure is dropped; only which one is primary changes.
+    const apiClient = createMockApiClient({
+      analytics: { getSales: vi.fn().mockResolvedValue(analytics()) },
+    });
+
+    renderWithProviders(
+      <AnalyticsKpiStrip filters={FILTERS} connections={[]} netGrossBasis="gross" />,
+      { apiClient }
+    );
+
+    const primaryValue = await screen.findByText('PLN 4,800.00'); // headline.revenue (GMV)
+    expect(primaryValue.closest('.kpi-card__value')).not.toBeNull();
+    expect(screen.getByText('GMV').closest('.kpi-card__metric')).not.toBeNull();
+
+    const qualifierValue = screen.getByText('PLN 4,200.00'); // headline.netRevenue (Net sales)
+    expect(qualifierValue.closest('.kpi-card__qualifier-value')).not.toBeNull();
+    expect(screen.getByText('Net sales').closest('.kpi-card__qualifier-label')).not.toBeNull();
+  });
+
+  it('should render Net sales as the primary Revenue figure and GMV as its qualifier under the net basis (#2908 fix)', async () => {
+    // The mirror-image case: under `netGrossBasis="net"`, Net sales stays
+    // primary (byte-identical to this card's pre-#2908 rendering) and GMV
+    // becomes the qualifier.
+    const apiClient = createMockApiClient({
+      analytics: { getSales: vi.fn().mockResolvedValue(analytics()) },
+    });
+
+    renderWithProviders(
+      <AnalyticsKpiStrip filters={FILTERS} connections={[]} netGrossBasis="net" />,
+      { apiClient }
+    );
+
+    const primaryValue = await screen.findByText('PLN 4,200.00'); // headline.netRevenue (Net sales)
+    expect(primaryValue.closest('.kpi-card__value')).not.toBeNull();
+    expect(screen.getByText('Net sales').closest('.kpi-card__metric')).not.toBeNull();
+
+    const qualifierValue = screen.getByText('PLN 4,800.00'); // headline.revenue (GMV)
+    expect(qualifierValue.closest('.kpi-card__qualifier-value')).not.toBeNull();
+    expect(screen.getByText('GMV').closest('.kpi-card__qualifier-label')).not.toBeNull();
+  });
+
   it('should count unconverted-order units into Units sold and Units per order, matching the Orders card population', async () => {
     // 40 stamped orders + 10 unconverted = 50 total orders (same population
     // the Orders card renders, per `totalOrders = orderCount +
