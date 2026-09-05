@@ -95,8 +95,10 @@ describe('AnalyticsKpiStrip', () => {
     renderWithProviders(<AnalyticsKpiStrip filters={FILTERS} connections={[]} />, { apiClient });
 
     expect(await screen.findByText('40')).toBeInTheDocument();
-    expect(screen.getByText('PLN 105.00')).toBeInTheDocument();
-    expect(screen.getByText('PLN 90.00')).toBeInTheDocument();
+    // AOV/Median render the GROSS headline fields (#2894) — same FX-stamped
+    // order set as Number of Orders, not the VAT-exclusive net-eligible ones.
+    expect(screen.getByText('PLN 120.00')).toBeInTheDocument();
+    expect(screen.getByText('PLN 100.00')).toBeInTheDocument();
     expect(screen.getByText('60')).toBeInTheDocument();
     expect(screen.getByText('PLN 200.00')).toBeInTheDocument();
   });
@@ -353,8 +355,8 @@ describe('AnalyticsKpiStrip', () => {
           analytics({
             revenue: 1000,
             netRevenue: 900,
-            netAverageOrderValue: 90,
-            netMedianOrderValue: 85,
+            averageOrderValue: 90,
+            medianOrderValue: 85,
             cancelledValue: 50,
             displayCurrencyConversion: {
               displayCurrency: 'EUR',
@@ -401,8 +403,8 @@ describe('AnalyticsKpiStrip', () => {
           analytics({
             revenue: 1000,
             netRevenue: 900,
-            netAverageOrderValue: 90,
-            netMedianOrderValue: 85,
+            averageOrderValue: 90,
+            medianOrderValue: 85,
             cancelledValue: 50,
             displayCurrencyConversion: {
               displayCurrency: 'EUR',
@@ -570,6 +572,8 @@ describe('AnalyticsKpiStrip', () => {
           analytics({
             revenue: 0,
             currency: null,
+            averageOrderValue: 0,
+            medianOrderValue: 0,
             netRevenue: 0,
             netAverageOrderValue: 0,
             netMedianOrderValue: 0,
