@@ -27,13 +27,20 @@
  *     at all — `totalUnitsSold` below adds back `headline.
  *     unconvertedUnitsSold` unconditionally, so Units sold/Units per order
  *     count every placed, non-cancelled order's units.
- *   - Order value (AOV + median): renders `headline.netAverageOrderValue` /
- *     `netMedianOrderValue` (net-sales tax-rate epic), not the gross
- *     `averageOrderValue`/`medianOrderValue` — same VAT-exclusive basis as
- *     the Revenue card's headline figure, so a reader comparing "Revenue"
- *     against "Order value" isn't silently comparing net against gross.
- *     Both stay on the FX-stamped subset and disclose that gap explicitly,
- *     same as before.
+ *   - Order value (AOV + median, #2894 fix): renders the gross
+ *     `headline.averageOrderValue`/`medianOrderValue`, NOT the VAT-exclusive
+ *     `netAverageOrderValue`/`netMedianOrderValue`. The metrics spec requires
+ *     AOV/Median's numerator and denominator to "operate on exactly the same
+ *     set of orders as Number of Orders" — the net fields are additionally
+ *     restricted to `netExcludedCount`-eligible orders (a stored, resolved
+ *     per-line tax rate; see ADR-063), a restriction Number of Orders never
+ *     applies. AOV/Median need only the order's gross total
+ *     (`reportingTotalAmount`), so there is no principled reason to exclude
+ *     a tax-rate-unresolved order from them. The ONE restriction kept is the
+ *     FX-stamp one — a currency-denominated average genuinely cannot include
+ *     an order with no known amount in the reporting currency, and that is
+ *     the SAME restriction `revenue`/`orderCount` (Number of Orders) already
+ *     apply, disclosed via the same `STAMPED_GAP` gap mark as before.
  *   - Returns & refunds: no return/refund entity exists anywhere in the
  *     orders domain — fully planned.
  *   - Cancellations: `cancelledCount`/`cancelledValue` are real fields —
@@ -366,7 +373,7 @@ export function AnalyticsKpiStrip({
   const orderValueCurrenciesMatch =
     headline.currency !== null && headline.currency === previousHeadline?.currency;
   const orderValueDelta = orderValueCurrenciesMatch
-    ? buildDelta(headline.netAverageOrderValue, previousHeadline?.netAverageOrderValue, 'higher-is-better')
+    ? buildDelta(headline.averageOrderValue, previousHeadline?.averageOrderValue, 'higher-is-better')
     : null;
   const orderValueDeltaGapReason =
     !orderValueCurrenciesMatch && previousHeadline
@@ -470,12 +477,12 @@ export function AnalyticsKpiStrip({
         definitions={[
           {
             term: 'Average order value (AOV)',
-            text: 'Net sales divided by the number of FX-stamped, net-eligible orders it was computed from — not by every placed order.',
+            text: 'The gross value of every FX-stamped order placed in the period, divided by the number of FX-stamped orders it was computed from — the same order set as Number of Orders, minus the not-yet-stamped ones.',
             caveat: stampedGapVisible ? STAMPED_GAP : undefined,
           },
           {
             term: 'Median order value',
-            text: 'The middle net-sales value of every FX-stamped, net-eligible order in the range — less skewed by a handful of very large or very small orders than the average.',
+            text: 'The middle gross value of every FX-stamped order in the range — less skewed by a handful of very large or very small orders than the average.',
           },
         ]}
         metric={
@@ -488,11 +495,11 @@ export function AnalyticsKpiStrip({
           )
         }
         headlineUnavailable={currencyRecalculating}
-        value={currencyRecalculating ? <RecalculatingValue /> : formatAmount(convertToDisplay(headline.netAverageOrderValue), currency)}
+        value={currencyRecalculating ? <RecalculatingValue /> : formatAmount(convertToDisplay(headline.averageOrderValue), currency)}
         qualifiers={[
           {
             label: 'Median',
-            value: currencyRecalculating ? <RecalculatingValue /> : formatAmount(convertToDisplay(headline.netMedianOrderValue), currency),
+            value: currencyRecalculating ? <RecalculatingValue /> : formatAmount(convertToDisplay(headline.medianOrderValue), currency),
           },
         ]}
         delta={orderValueDelta}
