@@ -271,9 +271,12 @@ export function AnalyticsPage(): ReactElement {
               install with a full catalogue and no orders yet is exactly
               when they matter most (#2120 review, SUGGESTION). This section
               and the Data Coverage panel below render unconditionally,
-              after the order-derived figures above. */}
-          <AnalyticsNeedsAttention />
+              after the order-derived figures above.
+              Order is deliberately sync -> needs attention -> data coverage:
+              an operator first confirms ingestion is healthy, then reads
+              what needs action, then drills into coverage detail. */}
           <AnalyticsTrustHeader connections={trustQuery.data.connections} />
+          <AnalyticsNeedsAttention />
           {/* Deliberately the LAST section on the page: an operator reads
               revenue/channel/product figures first, and only then the
               detail behind any coverage gap. The title-adjacent
