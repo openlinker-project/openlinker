@@ -19,14 +19,19 @@ import {
 } from '../../../domain/entities/analytics-display-settings.entity';
 import type { AnalyticsDisplaySettingsRepositoryPort } from '../../../domain/ports/analytics-display-settings-repository.port';
 import {
+  NetGrossBasisValues,
   RateBasisValues,
   type AnalyticsDisplaySettingsInput,
+  type NetGrossBasis,
   type RateBasis,
 } from '../../../domain/types/analytics-display-settings.types';
 import { AnalyticsDisplaySettingsOrmEntity } from '../entities/analytics-display-settings.orm-entity';
 
 const isRateBasis = (value: string): value is RateBasis =>
   (RateBasisValues as readonly string[]).includes(value);
+
+const isNetGrossBasis = (value: string): value is NetGrossBasis =>
+  (NetGrossBasisValues as readonly string[]).includes(value);
 
 @Injectable()
 export class AnalyticsDisplaySettingsRepository implements AnalyticsDisplaySettingsRepositoryPort {
@@ -52,6 +57,7 @@ export class AnalyticsDisplaySettingsRepository implements AnalyticsDisplaySetti
         displayCurrency: input.displayCurrency,
         rateBasis: input.rateBasis,
         includeBackfilledTaxRatesInNetSales: input.includeBackfilledTaxRatesInNetSales,
+        netGrossBasis: input.netGrossBasis,
         updatedByUserId,
         // TypeORM's upsert() only includes explicitly-passed columns in the
         // ON CONFLICT DO UPDATE SET clause — @UpdateDateColumn()'s auto-touch
@@ -77,10 +83,16 @@ export class AnalyticsDisplaySettingsRepository implements AnalyticsDisplaySetti
       // silently — same posture as `PosthogSettingsRepository.toDomain`.
       throw new Error(`analytics_display_settings.rate_basis has an unknown value '${entity.rateBasis}'`);
     }
+    if (!isNetGrossBasis(entity.netGrossBasis)) {
+      throw new Error(
+        `analytics_display_settings.net_gross_basis has an unknown value '${entity.netGrossBasis}'`
+      );
+    }
     return new AnalyticsDisplaySettings(
       entity.displayCurrency,
       entity.rateBasis,
       entity.includeBackfilledTaxRatesInNetSales,
+      entity.netGrossBasis,
       entity.updatedAt,
       entity.updatedByUserId
     );

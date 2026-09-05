@@ -39,6 +39,7 @@ describe('AnalyticsDisplaySettingsService', () => {
         displayCurrency: null,
         rateBasis: 'current',
         includeBackfilledTaxRatesInNetSales: false,
+        netGrossBasis: 'gross',
         updatedAt: null,
         updatedByUserId: null,
       });
@@ -47,7 +48,7 @@ describe('AnalyticsDisplaySettingsService', () => {
     it('returns the persisted row verbatim', async () => {
       const updatedAt = new Date('2026-08-20T10:00:00Z');
       repository.findSettings.mockResolvedValue(
-        new AnalyticsDisplaySettings('EUR', 'order-date', true, updatedAt, 'user-9')
+        new AnalyticsDisplaySettings('EUR', 'order-date', true, 'net', updatedAt, 'user-9')
       );
 
       const view = await service.getSettings();
@@ -56,6 +57,7 @@ describe('AnalyticsDisplaySettingsService', () => {
         displayCurrency: 'EUR',
         rateBasis: 'order-date',
         includeBackfilledTaxRatesInNetSales: true,
+        netGrossBasis: 'net',
         updatedAt,
         updatedByUserId: 'user-9',
       });
@@ -65,33 +67,49 @@ describe('AnalyticsDisplaySettingsService', () => {
   describe('updateSettings', () => {
     it('delegates to the repository with the resolved actor', async () => {
       repository.upsertSettings.mockResolvedValue(
-        new AnalyticsDisplaySettings('PLN', 'current', false, new Date(), 'user-1')
+        new AnalyticsDisplaySettings('PLN', 'current', false, 'gross', new Date(), 'user-1')
       );
 
       await service.updateSettings(
-        { displayCurrency: 'PLN', rateBasis: 'current', includeBackfilledTaxRatesInNetSales: false },
+        {
+          displayCurrency: 'PLN',
+          rateBasis: 'current',
+          includeBackfilledTaxRatesInNetSales: false,
+          netGrossBasis: 'gross',
+        },
         'user-1'
       );
 
       expect(repository.upsertSettings).toHaveBeenCalledWith(
-        { displayCurrency: 'PLN', rateBasis: 'current', includeBackfilledTaxRatesInNetSales: false },
+        {
+          displayCurrency: 'PLN',
+          rateBasis: 'current',
+          includeBackfilledTaxRatesInNetSales: false,
+          netGrossBasis: 'gross',
+        },
         'user-1'
       );
     });
 
     it('passes a null actor for a system-driven write', async () => {
       repository.upsertSettings.mockResolvedValue(
-        new AnalyticsDisplaySettings(null, 'current', false, new Date(), null)
+        new AnalyticsDisplaySettings(null, 'current', false, 'gross', new Date(), null)
       );
 
       await service.updateSettings({
         displayCurrency: null,
         rateBasis: 'current',
         includeBackfilledTaxRatesInNetSales: false,
+        netGrossBasis: 'gross',
       });
 
       expect(repository.upsertSettings).toHaveBeenCalledWith(
-        { displayCurrency: null, rateBasis: 'current', includeBackfilledTaxRatesInNetSales: false },
+        {
+          displayCurrency: null,
+          rateBasis: 'current',
+          includeBackfilledTaxRatesInNetSales: false,
+          netGrossBasis: 'gross',
+        },
         null
       );
     });

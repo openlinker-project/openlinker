@@ -24,6 +24,7 @@ import {
   AnalyticsDegradationBanner,
   AnalyticsKpiStrip,
   AnalyticsNeedsAttention,
+  AnalyticsNetGrossToggle,
   AnalyticsSettingsDialog,
   AnalyticsTrustHeader,
   ChannelSalesTable,
@@ -31,10 +32,12 @@ import {
   computePresetRange,
   toExclusiveEndInstant,
   useAnalyticsCoverageQuery,
+  useAnalyticsSettingsQuery,
   useAnalyticsTrustQuery,
   useSalesAnalyticsQuery,
   type CoverageCategory,
   type DisplayCurrencyRateBasis,
+  type NetGrossBasis,
   type SalesAnalyticsFilters,
 } from '../../features/analytics';
 import { Button, EmptyState, ErrorState, LoadingState, PageLayout } from '../../shared/ui';
@@ -106,6 +109,24 @@ export function AnalyticsPage(): ReactElement {
     setSearchParams(next);
   }
 
+  // Reads the operator-saved default basis (`AnalyticsSettingsView.
+  // netGrossBasis`) so a returning operator sees their own default without
+  // reselecting it via the toolbar toggle — the same dual mechanism as
+  // `displayCurrency`/`rateBasis`: a URL override always wins for the
+  // current view/session; absent one, the persisted default applies.
+  const settingsQuery = useAnalyticsSettingsQuery();
+  const netGrossBasisParam = searchParams.get('netGrossBasis');
+  const netGrossBasis: NetGrossBasis =
+    netGrossBasisParam === 'net' || netGrossBasisParam === 'gross'
+      ? netGrossBasisParam
+      : (settingsQuery.data?.netGrossBasis ?? 'gross');
+
+  function handleNetGrossBasisChange(next: NetGrossBasis): void {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('netGrossBasis', next);
+    setSearchParams(nextParams);
+  }
+
   // Built once per from/to/displayCurrency/rateBasis so `AnalyticsKpiStrip`,
   // `ChannelSalesTable` and `AnalyticsConvertNote` share a byte-identical
   // query key and therefore one network request — and so a channel-table
@@ -166,11 +187,14 @@ export function AnalyticsPage(): ReactElement {
         to={to}
         onApply={handleApply}
         trailing={
-          <AnalyticsCurrencyPicker
-            reportingCurrency={reportingCurrency}
-            displayCurrency={displayCurrency}
-            onChange={handleDisplayCurrencyChange}
-          />
+          <div className="analytics-toolbar__trailing-stack">
+            <AnalyticsCurrencyPicker
+              reportingCurrency={reportingCurrency}
+              displayCurrency={displayCurrency}
+              onChange={handleDisplayCurrencyChange}
+            />
+            <AnalyticsNetGrossToggle value={netGrossBasis} onChange={handleNetGrossBasisChange} />
+          </div>
         }
       />
       <AnalyticsConvertNote

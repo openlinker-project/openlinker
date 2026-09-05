@@ -21,6 +21,21 @@ export const RateBasisValues = ['current', 'order-date'] as const;
 export type RateBasis = (typeof RateBasisValues)[number];
 
 /**
+ * Which basis a currency-denominated figure is shown in.
+ *
+ * - `'gross'` — VAT-inclusive (the pre-existing default; every figure's
+ *   raw, as-charged amount).
+ * - `'net'` — VAT-exclusive (NOV — see `SalesAnalyticsHeadline.netRevenue`).
+ *
+ * This is a read-time DISPLAY preference only, same as `rateBasis` — it
+ * never changes which figures the backend computes (both are already
+ * returned on every headline/channel row), only which one a view treats as
+ * primary.
+ */
+export const NetGrossBasisValues = ['gross', 'net'] as const;
+export type NetGrossBasis = (typeof NetGrossBasisValues)[number];
+
+/**
  * Non-secret settings fields, as written by `PUT /analytics/settings` (#2462).
  */
 export interface AnalyticsDisplaySettingsInput {
@@ -38,6 +53,8 @@ export interface AnalyticsDisplaySettingsInput {
    * unchanged from the pre-#2456 exclusion until an operator opts in.
    */
   includeBackfilledTaxRatesInNetSales: boolean;
+  /** Default basis a view opens in when no `?netGrossBasis=` URL override is present. Default `'gross'`. */
+  netGrossBasis: NetGrossBasis;
 }
 
 /**

@@ -24,8 +24,10 @@
  */
 import { ApiProperty } from '@nestjs/swagger';
 import {
+  NetGrossBasisValues,
   RateBasisValues,
   type AnalyticsDisplaySettingsView,
+  type NetGrossBasis,
   type RateBasis,
 } from '@openlinker/core/analytics';
 
@@ -61,6 +63,13 @@ export class AnalyticsSettingsResponseDto {
   includeBackfilledTaxRatesInNetSales!: boolean;
 
   @ApiProperty({
+    enum: NetGrossBasisValues,
+    description:
+      "Default VAT basis a view opens in when no `?netGrossBasis=` URL override is present: `gross` (VAT-inclusive) or `net` (VAT-exclusive, NOV).",
+  })
+  netGrossBasis!: NetGrossBasis;
+
+  @ApiProperty({
     type: String,
     nullable: true,
     description: 'When the settings row was last written. `null` when no row exists yet.',
@@ -86,6 +95,7 @@ export class AnalyticsSettingsResponseDto {
     dto.displayCurrencySource = hasExplicitOverride ? 'setting' : 'default';
     dto.rateBasis = input.view.rateBasis;
     dto.includeBackfilledTaxRatesInNetSales = input.view.includeBackfilledTaxRatesInNetSales;
+    dto.netGrossBasis = input.view.netGrossBasis;
     dto.updatedAt = input.view.updatedAt ? input.view.updatedAt.toISOString() : null;
     dto.updatedByUserId = input.view.updatedByUserId;
     return dto;

@@ -16,6 +16,7 @@ function ormRow(
     displayCurrency: 'PLN',
     rateBasis: 'current',
     includeBackfilledTaxRatesInNetSales: false,
+    netGrossBasis: 'gross',
     updatedAt: new Date('2026-08-14T06:00:00Z'),
     updatedByUserId: 'user-1',
     ...overrides,
@@ -61,6 +62,7 @@ describe('AnalyticsDisplaySettingsRepository', () => {
         displayCurrency: 'PLN',
         rateBasis: 'current',
         includeBackfilledTaxRatesInNetSales: false,
+        netGrossBasis: 'gross',
         updatedAt: new Date('2026-08-14T06:00:00Z'),
         updatedByUserId: 'user-1',
       });
@@ -96,6 +98,7 @@ describe('AnalyticsDisplaySettingsRepository', () => {
           displayCurrency: 'EUR',
           rateBasis: 'order-date',
           includeBackfilledTaxRatesInNetSales: true,
+          netGrossBasis: 'net',
         },
         'user-2'
       );
@@ -106,6 +109,7 @@ describe('AnalyticsDisplaySettingsRepository', () => {
           displayCurrency: 'EUR',
           rateBasis: 'order-date',
           includeBackfilledTaxRatesInNetSales: true,
+          netGrossBasis: 'net',
           updatedByUserId: 'user-2',
         }),
         { conflictPaths: ['id'] }
@@ -122,6 +126,7 @@ describe('AnalyticsDisplaySettingsRepository', () => {
           displayCurrency: null,
           rateBasis: 'current',
           includeBackfilledTaxRatesInNetSales: false,
+          netGrossBasis: 'gross',
         },
         null
       );

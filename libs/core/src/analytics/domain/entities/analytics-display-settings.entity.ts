@@ -9,7 +9,7 @@
  *
  * @module libs/core/src/analytics/domain/entities
  */
-import type { RateBasis } from '../types/analytics-display-settings.types';
+import type { NetGrossBasis, RateBasis } from '../types/analytics-display-settings.types';
 
 export const ANALYTICS_DISPLAY_SETTINGS_SINGLETON_ID = 'singleton';
 
@@ -18,6 +18,7 @@ export class AnalyticsDisplaySettings {
     public readonly displayCurrency: string | null,
     public readonly rateBasis: RateBasis,
     public readonly includeBackfilledTaxRatesInNetSales: boolean,
+    public readonly netGrossBasis: NetGrossBasis,
     public readonly updatedAt: Date,
     public readonly updatedByUserId: string | null
   ) {}

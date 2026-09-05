@@ -14,14 +14,19 @@
  *      `rateBasis` (the persisted, admin-only DEFAULT those fields resolve
  *      from when no URL override is present) — a different axis, never
  *      written by this section.
- *   2. "Currency — recalculation" / "Tax rates" — real, persisted actions.
- *      Recalculating enqueues a real remediation run
+ *   2. "Currency — recalculation" / "Tax rates" / "Default VAT basis" — real,
+ *      persisted actions. Recalculating enqueues a real remediation run
  *      (`POST /analytics/coverage/currency/recalculate`, #2468); the tax
- *      toggle writes `includeBackfilledTaxRatesInNetSales` via
- *      `useUpdateAnalyticsSettingsMutation` (#2471), preserving whatever
- *      `displayCurrency`/`rateBasis` defaults are already persisted, since
- *      this dialog must never overwrite an admin default with an ephemeral
- *      view preference.
+ *      toggle and the VAT-basis default both write via
+ *      `useUpdateAnalyticsSettingsMutation` (#2471, #2895), preserving
+ *      whatever `displayCurrency`/`rateBasis`/other fields are already
+ *      persisted, since this dialog must never overwrite an admin default
+ *      with an ephemeral view preference. "Default VAT basis" is the
+ *      save-as-default counterpart to the toolbar's `AnalyticsNetGrossToggle`
+ *      (rendered stacked directly below the currency picker, #2895): the
+ *      toggle is the URL-encoded session choice — see (1) — while this
+ *      section is what a returning operator's future visits fall back to
+ *      when no session override is present.
  *
  * The "automatically recalculate" toggle from the reference mockup has no
  * backend counterpart yet (no persisted setting exists for it) — rendered
@@ -53,6 +58,7 @@ import { useRecalculateCurrencyMutation } from '../hooks/use-recalculate-currenc
 import { DISPLAY_CURRENCY_OPTIONS } from '../lib/display-currency.lib';
 import type { AnalyticsCoverageFilters } from '../api/analytics-coverage.types';
 import type { DisplayCurrencyRateBasis } from '../api/sales-analytics.types';
+import type { NetGrossBasis } from '../api/analytics-settings.types';
 
 interface AnalyticsSettingsDialogProps {
   open: boolean;
@@ -149,6 +155,34 @@ export function AnalyticsSettingsDialog({
             : null,
         rateBasis: settingsQuery.data.rateBasis,
         includeBackfilledTaxRatesInNetSales: nextInclude,
+        netGrossBasis: settingsQuery.data.netGrossBasis,
+      },
+      {
+        onError: (error) => {
+          showToast({ tone: 'error', description: error.message });
+        },
+      }
+    );
+  }
+
+  // Persists the ORG-WIDE default a view opens in when no `?netGrossBasis=`
+  // URL override is present — the save-as-default counterpart to the
+  // toolbar's `AnalyticsNetGrossToggle`, exactly mirroring how the tax-rate
+  // toggle above is this dialog's one already-shipped immediate-write
+  // pattern (Apply only ever pushes a URL param, never a persisted write).
+  function handleNetGrossBasisDefaultChange(next: NetGrossBasis): void {
+    if (!settingsQuery.data) {
+      return;
+    }
+    updateSettings.mutate(
+      {
+        displayCurrency:
+          settingsQuery.data.displayCurrencySource === 'setting'
+            ? settingsQuery.data.displayCurrency
+            : null,
+        rateBasis: settingsQuery.data.rateBasis,
+        includeBackfilledTaxRatesInNetSales: settingsQuery.data.includeBackfilledTaxRatesInNetSales,
+        netGrossBasis: next,
       },
       {
         onError: (error) => {
@@ -221,6 +255,51 @@ export function AnalyticsSettingsDialog({
             </span>
           </label>
         </fieldset>
+
+        <section className="analytics-settings-dialog__section">
+          <h3 className="analytics-settings-dialog__section-title">Default VAT basis</h3>
+          <p className="analytics-settings-dialog__status">
+            Saved immediately and applies to every future visit that doesn&rsquo;t pick its own basis
+            via the toolbar toggle.
+          </p>
+          {write.visible && (
+            <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+              <fieldset className="analytics-settings-dialog__field">
+                <legend className="sr-only">Default VAT basis</legend>
+                <label className="analytics-settings-dialog__rate-basis-option">
+                  <input
+                    type="radio"
+                    name="net-gross-basis-default"
+                    checked={(settingsQuery.data?.netGrossBasis ?? 'gross') === 'gross'}
+                    disabled={!settingsQuery.data || updateSettings.isPending || write.demoReadOnly}
+                    onChange={() => handleNetGrossBasisDefaultChange('gross')}
+                  />
+                  <span>
+                    <strong>Gross</strong>
+                    <span className="analytics-settings-dialog__rate-basis-desc">
+                      VAT-inclusive figures, by default.
+                    </span>
+                  </span>
+                </label>
+                <label className="analytics-settings-dialog__rate-basis-option">
+                  <input
+                    type="radio"
+                    name="net-gross-basis-default"
+                    checked={settingsQuery.data?.netGrossBasis === 'net'}
+                    disabled={!settingsQuery.data || updateSettings.isPending || write.demoReadOnly}
+                    onChange={() => handleNetGrossBasisDefaultChange('net')}
+                  />
+                  <span>
+                    <strong>Net</strong>
+                    <span className="analytics-settings-dialog__rate-basis-desc">
+                      VAT-exclusive figures, by default.
+                    </span>
+                  </span>
+                </label>
+              </fieldset>
+            </ReadOnlyLock>
+          )}
+        </section>
 
         <section className="analytics-settings-dialog__section">
           <h3 className="analytics-settings-dialog__section-title">Currency — recalculation</h3>

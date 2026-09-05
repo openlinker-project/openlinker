@@ -257,6 +257,7 @@ export function createMockApiClient(
         displayCurrencySource: 'default',
         rateBasis: 'current',
         includeBackfilledTaxRatesInNetSales: false,
+        netGrossBasis: 'gross',
         updatedAt: null,
         updatedByUserId: null,
       }),

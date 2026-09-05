@@ -91,6 +91,7 @@ describe('AnalyticsSettingsController', () => {
         displayCurrency: 'PLN',
         rateBasis: 'order-date',
         includeBackfilledTaxRatesInNetSales: true,
+        netGrossBasis: 'net',
         updatedAt: new Date('2026-08-01T00:00:00Z'),
         updatedByUserId: 'admin-1',
       };
@@ -103,6 +104,7 @@ describe('AnalyticsSettingsController', () => {
       expect(dto.displayCurrencySource).toBe('setting');
       expect(dto.rateBasis).toBe('order-date');
       expect(dto.includeBackfilledTaxRatesInNetSales).toBe(true);
+      expect(dto.netGrossBasis).toBe('net');
       expect(dto.updatedAt).toBe('2026-08-01T00:00:00.000Z');
       expect(dto.updatedByUserId).toBe('admin-1');
       expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store');
@@ -113,6 +115,7 @@ describe('AnalyticsSettingsController', () => {
         displayCurrency: null,
         rateBasis: 'current',
         includeBackfilledTaxRatesInNetSales: false,
+        netGrossBasis: 'gross',
         updatedAt: null,
         updatedByUserId: null,
       };
@@ -134,6 +137,7 @@ describe('AnalyticsSettingsController', () => {
         displayCurrency: 'PLN',
         rateBasis: 'order-date',
         includeBackfilledTaxRatesInNetSales: true,
+        netGrossBasis: 'net',
       };
 
       await controller.update(dto, user, res as unknown as Response);
@@ -143,6 +147,7 @@ describe('AnalyticsSettingsController', () => {
           displayCurrency: 'PLN',
           rateBasis: 'order-date',
           includeBackfilledTaxRatesInNetSales: true,
+          netGrossBasis: 'net',
         },
         'admin-1'
       );

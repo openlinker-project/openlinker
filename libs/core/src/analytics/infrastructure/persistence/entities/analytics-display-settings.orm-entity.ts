@@ -28,6 +28,9 @@ export class AnalyticsDisplaySettingsOrmEntity {
   })
   includeBackfilledTaxRatesInNetSales!: boolean;
 
+  @Column({ type: 'text', name: 'net_gross_basis', default: 'gross' })
+  netGrossBasis!: string;
+
   @UpdateDateColumn({ type: 'timestamptz', name: 'updated_at' })
   updatedAt!: Date;
 

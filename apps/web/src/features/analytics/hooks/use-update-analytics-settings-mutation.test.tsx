@@ -34,12 +34,14 @@ describe('useUpdateAnalyticsSettingsMutation', () => {
       displayCurrency: 'PLN',
       rateBasis: 'current',
       includeBackfilledTaxRatesInNetSales: true,
+      netGrossBasis: 'gross',
     });
 
     expect(updateSettings).toHaveBeenCalledWith({
       displayCurrency: 'PLN',
       rateBasis: 'current',
       includeBackfilledTaxRatesInNetSales: true,
+      netGrossBasis: 'gross',
     });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
   });
@@ -59,6 +61,7 @@ describe('useUpdateAnalyticsSettingsMutation', () => {
       displayCurrency: null,
       rateBasis: 'order-date',
       includeBackfilledTaxRatesInNetSales: false,
+      netGrossBasis: 'gross',
     });
 
     await waitFor(() =>
@@ -81,6 +84,7 @@ describe('useUpdateAnalyticsSettingsMutation', () => {
         displayCurrency: 'PLN',
         rateBasis: 'current',
         includeBackfilledTaxRatesInNetSales: false,
+        netGrossBasis: 'gross',
       })
     ).rejects.toThrow('boom');
   });
