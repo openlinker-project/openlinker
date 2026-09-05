@@ -22,6 +22,7 @@ export const ORDER_ITEM_REF_RESOLVER_SERVICE_TOKEN = Symbol('IOrderItemRefResolv
 export const ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN = Symbol('IOrderLifecycleRelayService');
 // Per-order reporting-currency stamp (#2125, ADR-040).
 export const ORDER_FX_STAMP_SERVICE_TOKEN = Symbol('IOrderFxStampService');
+export const ORDER_FX_RESTATEMENT_SERVICE_TOKEN = Symbol('IOrderFxRestatementService');
 // FX aggregate reads consumed by the reporting-currency settings surface (#2126).
 export const ORDER_FX_READ_SERVICE_TOKEN = Symbol('IOrderFxReadService');
 // Refund record capture (#2036).
@@ -64,3 +65,9 @@ export const ORDER_HOLD_PROJECTION_RECONCILE_SERVICE_TOKEN = Symbol(
 export const FULFILLMENT_DISPATCH_RELAY_SERVICE_TOKEN = Symbol('IFulfillmentDispatchRelayService');
 // One per-order sales-document read (#2516, ADR-065).
 export const SALES_DOCUMENT_VIEW_SERVICE_TOKEN = Symbol('ISalesDocumentViewService');
+// Data Coverage tax A/B/C detector (#2465).
+export const TAX_COVERAGE_DETECTION_SERVICE_TOKEN = Symbol('ITaxCoverageDetectionService');
+// Analytics display-currency conversion read model (#2458, ADR-064).
+export const DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN = Symbol(
+  'IDisplayCurrencyConversionService'
+);

@@ -12,7 +12,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { SelectQueryBuilder } from 'typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { OrderLineItemOrmEntity } from '../entities/order-line-item.orm-entity';
 import { OrderRecordOrmEntity } from '../entities/order-record.orm-entity';
 import type { OrderLineItemRepositoryPort } from '../../../domain/ports/order-line-item-repository.port';
@@ -46,6 +46,27 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       order: { lineNumber: 'ASC' },
     });
     return entities.map((e) => this.toDomain(e));
+  }
+
+  async findByOrderIds(orderRecordIds: string[]): Promise<Map<string, OrderLineItem[]>> {
+    if (orderRecordIds.length === 0) {
+      return new Map();
+    }
+
+    // One query for the whole id set — the real batch a cross-cutting read
+    // needs, as opposed to an N-call fan-out over `findByOrderId` (#2826).
+    const entities = await this.repository.find({
+      where: { orderRecordId: In(orderRecordIds) },
+      order: { orderRecordId: 'ASC', lineNumber: 'ASC' },
+    });
+
+    const grouped = new Map<string, OrderLineItem[]>();
+    for (const entity of entities) {
+      const lines = grouped.get(entity.orderRecordId) ?? [];
+      lines.push(this.toDomain(entity));
+      grouped.set(entity.orderRecordId, lines);
+    }
+    return grouped;
   }
 
   /**
@@ -141,7 +162,8 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
    */
   async getTopProductRanking(
     filters: TopProductFilters,
-    reportingCurrency: string
+    reportingCurrency: string,
+    includeBackfilledPreRollout = false
   ): Promise<{ rows: ProductRankingRow[]; total: number }> {
     const {
       stampedNonZero,
@@ -149,7 +171,7 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       lineNetAmount,
       stampedNonZeroKnownRate,
       stampedNonZeroUnknownRate,
-    } = this.buildTopProductsSqlFragments();
+    } = this.buildTopProductsSqlFragments(includeBackfilledPreRollout);
 
     const rankingQb = this.repository
       .createQueryBuilder('li')
@@ -254,7 +276,8 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
   async getProductChannelBreakdown(
     productIds: string[],
     filters: SalesAnalyticsFilters,
-    reportingCurrency: string
+    reportingCurrency: string,
+    includeBackfilledPreRollout = false
   ): Promise<ProductChannelBreakdownRow[]> {
     if (productIds.length === 0) {
       return [];
@@ -266,7 +289,7 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       lineNetAmount,
       stampedNonZeroKnownRate,
       stampedNonZeroUnknownRate,
-    } = this.buildTopProductsSqlFragments();
+    } = this.buildTopProductsSqlFragments(includeBackfilledPreRollout);
 
     const qb = this.repository
       .createQueryBuilder('li')
@@ -544,7 +567,7 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
    * fragment is parameter-name-only (`:reportingCurrency`); the actual value
    * is bound once per query via `.setParameter(...)`, so this needs none.
    */
-  private buildTopProductsSqlFragments(): {
+  private buildTopProductsSqlFragments(includeBackfilledPreRollout = false): {
     stampedNonZero: string;
     unconvertedOrZeroTotal: string;
     lineNetAmount: string;
@@ -574,7 +597,8 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
     );
     const netEligibleCondition = netSalesLineNetEligibleConditionSql(
       'li."taxRate"',
-      'rec."taxTreatment"'
+      'rec."taxTreatment"',
+      includeBackfilledPreRollout
     );
 
     return {
@@ -655,6 +679,48 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
     }
     const entities = await qb.getMany();
     return entities.map((e) => this.toDomain(e));
+  }
+
+  /**
+   * Every distinct (productId, variantId) pair per order, batched (#2799,
+   * corrected per #2799 review BLOCKING 1) — see the port's JSDoc. Grouping
+   * by all three columns (rather than the prior `DISTINCT ON
+   * orderRecordId`) is deliberate: `DISTINCT ON` collapses an order to its
+   * single lowest-`lineNumber` line, which silently dropped every other
+   * product a multi-product order touched. No aggregate function is
+   * selected, so `GROUP BY` here is a plain dedup, not an aggregation.
+   */
+  async findProductRefsByOrderIds(
+    orderRecordIds: string[]
+  ): Promise<Map<string, Array<{ productId: string; variantId: string | null }>>> {
+    if (orderRecordIds.length === 0) {
+      return new Map();
+    }
+
+    const rows = await this.repository
+      .createQueryBuilder('li')
+      .select('li."orderRecordId"', 'order_record_id')
+      .addSelect('li."productId"', 'product_id')
+      .addSelect('li."variantId"', 'variant_id')
+      .where('li."orderRecordId" IN (:...orderRecordIds)', { orderRecordIds })
+      .groupBy('li."orderRecordId"')
+      .addGroupBy('li."productId"')
+      .addGroupBy('li."variantId"')
+      .orderBy('li."orderRecordId"', 'ASC')
+      .addOrderBy('li."productId"', 'ASC')
+      .getRawMany<{ order_record_id: string; product_id: string; variant_id: string | null }>();
+
+    const map = new Map<string, Array<{ productId: string; variantId: string | null }>>();
+    for (const row of rows) {
+      const existing = map.get(row.order_record_id);
+      const ref = { productId: row.product_id, variantId: row.variant_id };
+      if (existing) {
+        existing.push(ref);
+      } else {
+        map.set(row.order_record_id, [ref]);
+      }
+    }
+    return map;
   }
 
   async backfillTaxRate(

@@ -118,6 +118,13 @@ describe('OrdersController', () => {
       patchSnapshotTaxRates: jest.fn(),
       getNetMedianOrderValue: jest.fn(),
       findDispatchDeadlineCandidates: jest.fn(),
+      findCurrencyMismatchOrders: jest.fn(),
+      findCurrencyMismatchOrdersByConnection: jest.fn(),
+      findNetExcludedOrderCandidates: jest.fn(),
+      findProductMatchingErrorOrders: jest.fn(),
+      findCurrencyMismatchOrderRefsAfter: jest.fn(),
+      clearFxStampForRestatement: jest.fn(),
+      countRemainingCurrencyMismatch: jest.fn(),
     };
 
     const mockOrderRecordService = {

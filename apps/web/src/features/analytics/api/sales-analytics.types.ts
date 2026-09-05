@@ -28,6 +28,56 @@ export interface DailyTrendPoint {
   orderCount: number;
 }
 
+/**
+ * Sales-query vocabulary for ADR-064's two conversion modes — distinct from
+ * the Analytics Settings `RateBasis` (`'current' | 'order-date'`,
+ * `analytics-settings.types.ts`), which is a saved operator preference, not
+ * a request parameter. There is no FE mapper between the two yet — #2473
+ * (the settings dialog) is where that reconciliation belongs, once the
+ * dialog actually needs to turn a saved preference into a query param.
+ */
+export const DISPLAY_CURRENCY_RATE_BASIS_VALUES = ['current-rate', 'order-date'] as const;
+export type DisplayCurrencyRateBasis = (typeof DISPLAY_CURRENCY_RATE_BASIS_VALUES)[number];
+
+/**
+ * Mirrors `AppliedRateDto` (#2778) — what produced one converted figure.
+ * Never a statutory/invoice rate; see ADR-040's own warning about the FA(3)
+ * `KursWaluty` distinction. `rate` stays a string, exactly as the backend
+ * sends it (a `numeric(18,8)` column) — the audited value. This app DOES
+ * `Number()` it, in `convertToDisplay`, to compute the on-screen figure; that
+ * float is acceptable only because the result is display-only and never
+ * written back or re-audited. `formatAppliedRateLine` separately `Number()`s
+ * it again purely for rounding the inline provenance line.
+ */
+export interface AppliedRate {
+  from: string;
+  to: string;
+  rate: string;
+  /** ISO yyyy-mm-dd — the day the source published for. */
+  rateDate: string;
+  source: string;
+  derivation: 'direct' | 'inverted' | 'pivot';
+  sourceRef: string | null;
+}
+
+/**
+ * Mirrors `DisplayCurrencyConversionDto` (ADR-064). Present on the headline
+ * and per-channel figures only when the request carried a `displayCurrency`.
+ * `convertedRevenue: null` is the explicit "couldn't get a rate" state — see
+ * `resolveConvertNoteState` in `../lib/display-currency.lib.ts`.
+ *
+ * `appliedRates` (#2778) is 0..N: empty when nothing converted (mirrors
+ * `unresolvedNativeCurrencies` covering the whole set), one entry per
+ * resolved native-currency row for `current-rate`, 0-or-1 for `order-date`.
+ */
+export interface DisplayCurrencyConversion {
+  displayCurrency: string;
+  rateBasis: DisplayCurrencyRateBasis;
+  convertedRevenue: number | null;
+  unresolvedNativeCurrencies: string[];
+  appliedRates: AppliedRate[];
+}
+
 export interface SalesAnalyticsHeadline {
   /** `SUM(reportingTotalAmount)` over stamped, non-cancelled orders — expressed in `currency`. */
   revenue: number;
@@ -37,10 +87,18 @@ export interface SalesAnalyticsHeadline {
   orderCount: number;
   averageOrderValue: number;
   medianOrderValue: number;
+  /** Units sold on stamped, non-cancelled orders — same population as `orderCount`/`revenue`. */
   unitsSold: number;
+  /** Units sold on `unconvertedCount` orders — the `unitsSold` companion to `unconvertedValue`. A unit count needs no currency conversion, so callers should add this to `unitsSold` to get every placed, non-cancelled order's units (mirrors `orderCount + unconvertedCount`). */
+  unconvertedUnitsSold: number;
+  /** All cancelled orders in range, regardless of FX-stamp state. */
   cancelledCount: number;
-  /** Native-currency sum — may mix currencies; a secondary figure, not gated behind a stamp. */
+  /** `SUM(reportingTotalAmount)` over current-era-stamped, cancelled orders — expressed in `currency`. */
   cancelledValue: number;
+  /** Cancelled orders in range with no current-era reporting-currency stamp — not reflected in `cancelledValue`. */
+  cancelledUnconvertedCount: number;
+  /** Native-currency sum for `cancelledUnconvertedCount` — informational only, may mix currencies. */
+  cancelledUnconvertedValue: number;
   /** Non-cancelled orders in range with no reporting-currency stamp yet — not reflected in `revenue`. */
   unconvertedCount: number;
   /** Native-currency sum for `unconvertedCount` — informational only, may mix currencies. */
@@ -68,6 +126,8 @@ export interface SalesAnalyticsHeadline {
   netExcludedCount: number;
   /** Native-currency sum for `netExcludedCount` — informational only, may mix currencies. */
   netExcludedValue: number;
+  /** Present only when the request carried a `displayCurrency` (#2472, ADR-064). */
+  displayCurrencyConversion?: DisplayCurrencyConversion;
 }
 
 export interface ChannelSalesAnalytics {
@@ -79,8 +139,12 @@ export interface ChannelSalesAnalytics {
   orderCount: number;
   averageOrderValue: number;
   unitsSold: number;
+  /** Same meaning as {@link SalesAnalyticsHeadline.unconvertedUnitsSold}, scoped to this channel. */
+  unconvertedUnitsSold: number;
   cancelledCount: number;
   cancelledValue: number;
+  cancelledUnconvertedCount: number;
+  cancelledUnconvertedValue: number;
   unconvertedCount: number;
   unconvertedValue: number;
   unconvertedCurrency: string | null;
@@ -97,6 +161,8 @@ export interface ChannelSalesAnalytics {
   trend: DailyTrendPoint[];
   /** `false` when this channel's oldest ingested order postdates the requested range start. */
   coverageComplete: boolean;
+  /** Same meaning as {@link SalesAnalyticsHeadline.displayCurrencyConversion}, scoped to this channel. */
+  displayCurrencyConversion?: DisplayCurrencyConversion;
 }
 
 export interface SalesAndChannelAnalytics {
@@ -110,4 +176,8 @@ export interface SalesAnalyticsFilters {
   /** Range end, inclusive, `yyyy-mm-dd` — converted to an exclusive instant before the request is sent, see `sales-analytics.api.ts`. */
   to: string;
   sourceConnectionId?: string;
+  /** ISO-4217 code to convert into (#2472, ADR-064). Omit for the reporting-currency (native) view. */
+  displayCurrency?: string;
+  /** Required together with `displayCurrency`; ignored when `displayCurrency` is absent. */
+  rateBasis?: DisplayCurrencyRateBasis;
 }

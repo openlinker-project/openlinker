@@ -40,16 +40,19 @@
  * open-in-new-tab) for free, in the warning-toned pill from the reference
  * design.
  *
- * Money column terminology (net-sales tax-rate epic): the single money
- * column here renders `row.netRevenue` — the VAT-exclusive figure,
- * technically the spec's NOV until returns are also modeled, but labeled
- * "Net sales" per the reference design mockup and per the KPI strip's /
- * by-channel table's identical naming decision (the returns nuance lives in
- * a tooltip, not repeated as a header here). Unlike the by-channel table
- * (#1990), which renders GMV and Net sales as two separate columns, this
- * table shows only Net sales — a deliberate choice to keep the flagship
- * cross-channel view from doubling its money columns on top of the
- * per-channel unit columns it already has.
+ * Money column terminology (net-sales tax-rate epic, basis-wired by
+ * #2903): the single money column here renders `row.netRevenue` under the
+ * default `netGrossBasis="net"` — the VAT-exclusive figure, technically the
+ * spec's NOV until returns are also modeled, but labeled "Net sales" per the
+ * reference design mockup and per the KPI strip's / by-channel table's
+ * identical naming decision (the returns nuance lives in a tooltip, not
+ * repeated as a header here); `netGrossBasis="gross"` instead renders
+ * `row.revenue`, labeled "GMV". Unlike the by-channel table (#1990), which
+ * renders GMV and Net sales as two separate columns, this table still shows
+ * only ONE money column at a time — a deliberate choice to keep the
+ * flagship cross-channel view from doubling its money columns on top of the
+ * per-channel unit columns it already has; the basis toggle switches which
+ * figure that one column shows rather than adding a second one.
  *
  * Net sales cell fallback: `netRevenue` shares the same `isStamped`
  * precondition as gross revenue (net and gross must be comparable, same
@@ -79,9 +82,21 @@
  * since the two are independent facts (a product can fail to resolve to a
  * catalogue entry regardless of whether the coverage-gap enrichment ran).
  *
+ * `.excl-note` exclusion annotations (#2799, mirroring `ChannelSalesTable`'s
+ * #2481 Phase 8 wiring at the channel grain): a row whose product has
+ * orders in an open Data Coverage category's affected set (currency, or one
+ * of tax-a/b/c — never `product-matching`, which cannot resolve to any
+ * product by construction, see `product-exclusion-map.lib.ts`'s doc
+ * comment) gets one `AnalyticsExclusionNote` per affected category. The
+ * cross-reference is exact, not approximated: each open category's *full*
+ * affected-order list is grouped by `productId` (`buildProductExclusionMap`)
+ * — every distinct `productId` a currency row's `lineProducts` touches, or
+ * across a tax row's per-line `lineRates` — never a channel-wide flag
+ * standing in for product-level granularity.
+ *
  * @module features/analytics/components
  */
-import { type ReactElement, useState } from 'react';
+import { type ReactElement, useMemo, useState } from 'react';
 import { DataTable, type DataTableColumn } from '../../../shared/ui/data-table';
 import { Button } from '../../../shared/ui/button';
 import { EmptyValue } from '../../../shared/ui/empty-value';
@@ -99,19 +114,84 @@ import {
 } from '../../products';
 import { useDemoMode } from '../../system';
 import { useTopProductsQuery } from '../hooks/use-top-products-query';
+import { useSalesAnalyticsQuery } from '../hooks/use-sales-analytics-query';
+import { useCoverageCrossReferenceQuery } from '../hooks/use-coverage-cross-reference-query';
 import { ChannelPublishAction } from './channel-publish-action';
 import { VariantChannelMatrix } from './variant-channel-matrix';
 import type { SalesAnalyticsFilters } from '../api/sales-analytics.types';
+import type {
+  AnalyticsCoverage,
+  AnalyticsCoverageFilters,
+  CoverageCategory,
+} from '../api/analytics-coverage.types';
 import type { TopProductRow, TopProductsSortBy } from '../api/top-products.types';
-import { channelCellFor, deriveChannelColumns, isMissingFrom } from '../lib/top-products-view-model';
+import {
+  channelCellFor,
+  deriveChannelColumns,
+  isMissingFrom,
+} from '../lib/top-products-view-model';
+import {
+  createReportingCurrencyConverter,
+  isCurrencyRecalculating,
+  resolveReportingCurrencyRate,
+} from '../lib/display-currency.lib';
+import type { ReportingCurrencyConverter } from '../lib/display-currency.lib';
+import {
+  buildProductExclusionMap,
+  CROSS_REFERENCEABLE_CATEGORIES,
+  type ProductExclusionMap,
+} from '../lib/product-exclusion-map.lib';
+import { AnalyticsExclusionNote } from './analytics-exclusion-note';
+import { RecalculatingValue } from './recalculating-value';
+import type { NetGrossBasis } from '../api/analytics-settings.types';
 
 const DEFAULT_LIMIT = 20;
 
-function renderNovCell(row: TopProductRow): ReactElement {
-  if (row.currency) {
-    return <>{formatAmount(row.netRevenue, row.currency)}</>;
+/**
+ * `GET /analytics/top-products` has no `displayCurrency`/`rateBasis` axis of
+ * its own (confirmed: no query param, no response field, no per-bucket
+ * `appliedRate`) — a genuine backend gap that #2778/#2779 did not close for
+ * this endpoint specifically. What DID change: `row.currency` is the same
+ * system-wide reporting currency `headline.currency` is (ADR-040 — exactly
+ * ONE reporting currency at any time), so the ONE real rate the backend
+ * already resolved for the sales-analytics headline bucket
+ * (`resolveReportingCurrencyRate`, reused verbatim from `ChannelSalesTable`)
+ * is the correct rate here too — this is not a client-side derivation from
+ * two unrelated totals (the earlier REJECTED `convertedRevenue / revenue`
+ * shortcut that produced a live wrong number, 29 000 PLN read as ~20 000
+ * "EUR" — see `display-currency.lib.ts`'s "REJECTED APPROACH" note), it is
+ * the same audited rate reused for a second same-currency figure.
+ * `useSalesAnalyticsQuery(filters)` below reads the byte-identical cache
+ * entry `AnalyticsKpiStrip`/`ChannelSalesTable` already populate — no extra
+ * request.
+ *
+ * `currencyRecalculating`: same in-flight-run signal `AnalyticsKpiStrip` and
+ * `ChannelSalesTable` read from Data Coverage (`isCurrencyRecalculating`) —
+ * without it, every row here reads a bare 0.00 for the whole duration of a
+ * recalculation run.
+ */
+function renderNovCell(
+  row: TopProductRow,
+  currencyRecalculating: boolean,
+  reportingConverter: ReportingCurrencyConverter,
+  netGrossBasis: NetGrossBasis
+): ReactElement {
+  if (currencyRecalculating) {
+    return <RecalculatingValue />;
   }
-  return <EmptyValue label="No Net sales figure for this product in range" />;
+  const amount = netGrossBasis === 'net' ? row.netRevenue : row.revenue;
+  const label = netGrossBasis === 'net' ? 'Net sales' : 'GMV';
+  if (row.currency) {
+    return (
+      <>
+        {formatAmount(
+          reportingConverter.convertToDisplay(amount, row.currency),
+          reportingConverter.displayCurrencyFor(row.currency)
+        )}
+      </>
+    );
+  }
+  return <EmptyValue label={`No ${label} figure for this product in range`} />;
 }
 
 const SORT_OPTIONS = [
@@ -121,13 +201,69 @@ const SORT_OPTIONS = [
 
 interface ProductSalesTableProps {
   filters: SalesAnalyticsFilters;
+  /** Same Data Coverage aggregate `AnalyticsKpiStrip`/`ChannelSalesTable` read — no extra request when the page fetches it once. `undefined` renders as if nothing is recalculating. */
+  coverage?: AnalyticsCoverage;
+  /** ISO-instant range for the cross-reference reads — same shape `ChannelSalesTable` takes. Required together with `coverage`/`onOpenCategory` to render exclusion notes. */
+  coverageFilters?: AnalyticsCoverageFilters;
+  /** Opens the matching Data Coverage detail modal — omit to keep every row's notes absent. */
+  onOpenCategory?: (category: CoverageCategory) => void;
+  /**
+   * VAT basis for the money column (#2903 — wiring the #2895 toggle).
+   * `'net'` (the default) reproduces this table's pre-#2903 rendering
+   * exactly — `row.netRevenue`, labeled "Net sales" — the ONLY figure this
+   * table ever showed (a deliberate choice, see this file's own module doc
+   * comment, to keep the flagship cross-channel view from doubling its
+   * money column). `'gross'` reads `row.revenue` instead, labeled "GMV".
+   */
+  netGrossBasis?: NetGrossBasis;
 }
 
-function ProductCell({ row, product }: { row: TopProductRow; product: Product | undefined }): ReactElement {
+function ProductExclusionNotes({
+  row,
+  exclusions,
+  onOpenCategory,
+}: {
+  row: TopProductRow;
+  exclusions: ProductExclusionMap;
+  onOpenCategory?: (category: CoverageCategory) => void;
+}): ReactElement | null {
+  if (!onOpenCategory) return null;
+  const byCategory = exclusions.get(row.productId);
+  if (!byCategory || byCategory.size === 0) return null;
+  return (
+    <>
+      {CROSS_REFERENCEABLE_CATEGORIES.filter((category) => byCategory.has(category)).map(
+        (category) => (
+          <AnalyticsExclusionNote
+            key={category}
+            category={category}
+            affectedCount={byCategory.get(category) ?? 0}
+            onOpenCategory={onOpenCategory}
+          />
+        )
+      )}
+    </>
+  );
+}
+
+function ProductCell({
+  row,
+  product,
+  exclusions,
+  onOpenCategory,
+}: {
+  row: TopProductRow;
+  product: Product | undefined;
+  exclusions: ProductExclusionMap;
+  onOpenCategory?: (category: CoverageCategory) => void;
+}): ReactElement {
   return (
     <span className="product-row">
       <ProductThumbnail src={product?.images?.[0]} name={row.name ?? row.productId} />
-      <span>{row.name ?? row.productId}</span>
+      <span className="data-table__stack">
+        <span>{row.name ?? row.productId}</span>
+        <ProductExclusionNotes row={row} exclusions={exclusions} onOpenCategory={onOpenCategory} />
+      </span>
     </span>
   );
 }
@@ -239,19 +375,79 @@ function resolveNotListedConnectionIds(
   return coverageGapAvailable ? row.missingFromConnectionIds : [];
 }
 
-export function ProductSalesTable({ filters }: ProductSalesTableProps): ReactElement {
+export function ProductSalesTable({
+  filters,
+  coverage,
+  coverageFilters,
+  onOpenCategory,
+  netGrossBasis = 'gross',
+}: ProductSalesTableProps): ReactElement {
+  const currencyRecalculating = isCurrencyRecalculating(coverage);
   const [sortBy, setSortBy] = useState<TopProductsSortBy>('revenue');
   const query = useTopProductsQuery({ ...filters, sortBy, limit: DEFAULT_LIMIT, offset: 0 });
   const connectionsQuery = useConnectionsQuery();
   const intFormat = useNumberFormat();
   const demoMode = useDemoMode();
 
+  // Shares the exact cache entry AnalyticsKpiStrip/ChannelSalesTable read
+  // for the same `filters` — no second network request.
+  const salesQuery = useSalesAnalyticsQuery(filters);
+  const headline = salesQuery.data?.headline;
+  const gmvConversion = headline?.displayCurrencyConversion;
+  const reportingRate = resolveReportingCurrencyRate(gmvConversion, headline?.currency ?? null);
+  // While the shared sales-analytics cache entry is still in flight, hold
+  // every row native rather than rendering it native and then flipping to
+  // the display currency once `salesQuery` resolves (PR #2788 review).
+  const reportingConverter = createReportingCurrencyConverter(
+    salesQuery.isLoading ? null : reportingRate,
+    headline?.currency ?? null
+  );
+
+  // Fixed set of hooks, one per cross-referenceable category — see
+  // `ChannelSalesTable`'s identical pattern and `useCoverageCrossReferenceQuery`'s
+  // own doc comment on why the hook count must never vary across renders.
+  const openCategoryCodes = useMemo(
+    () =>
+      new Set(
+        (coverage?.categories ?? [])
+          .filter((row) => row.affectedCount > 0)
+          .map((row) => row.category)
+      ),
+    [coverage]
+  );
+  const crossRefFilters: AnalyticsCoverageFilters = coverageFilters ?? { from: '', to: '' };
+  const crossRefEnabled = Boolean(coverageFilters) && Boolean(onOpenCategory);
+  const currencyOrders = useCoverageCrossReferenceQuery(
+    'currency',
+    crossRefFilters,
+    crossRefEnabled && openCategoryCodes.has('currency')
+  );
+  const taxAOrders = useCoverageCrossReferenceQuery(
+    'tax-a',
+    crossRefFilters,
+    crossRefEnabled && openCategoryCodes.has('tax-a')
+  );
+  const taxBOrders = useCoverageCrossReferenceQuery(
+    'tax-b',
+    crossRefFilters,
+    crossRefEnabled && openCategoryCodes.has('tax-b')
+  );
+  const taxCOrders = useCoverageCrossReferenceQuery(
+    'tax-c',
+    crossRefFilters,
+    crossRefEnabled && openCategoryCodes.has('tax-c')
+  );
+  const productExclusions = buildProductExclusionMap({
+    currency: currencyOrders.data,
+    'tax-a': taxAOrders.data,
+    'tax-b': taxBOrders.data,
+    'tax-c': taxCOrders.data,
+  });
+
   const items = query.data?.items ?? [];
   const productIds = items.map((item) => item.productId);
   const productQueries = useProductsBatchQuery(productIds, { enabled: productIds.length > 0 });
-  const productsById = new Map(
-    productIds.map((id, index) => [id, productQueries[index]?.data])
-  );
+  const productsById = new Map(productIds.map((id, index) => [id, productQueries[index]?.data]));
   const connectionsById = new Map((connectionsQuery.data ?? []).map((c: Connection) => [c.id, c]));
 
   if (query.isLoading) {
@@ -282,19 +478,30 @@ export function ProductSalesTable({ filters }: ProductSalesTableProps): ReactEle
     {
       id: 'product',
       header: 'Product',
-      cell: (row) => <ProductCell row={row} product={productsById.get(row.productId)} />,
+      cell: (row) => (
+        <ProductCell
+          row={row}
+          product={productsById.get(row.productId)}
+          exclusions={productExclusions}
+          onOpenCategory={onOpenCategory}
+        />
+      ),
     },
     {
       id: 'sku',
       header: 'SKU',
       hideBelow: 768,
-      cell: (row) => (row.sku ? <span className="mono-text">{row.sku}</span> : <EmptyValue label="No SKU" />),
+      cell: (row) =>
+        row.sku ? <span className="mono-text">{row.sku}</span> : <EmptyValue label="No SKU" />,
     },
     {
       id: 'revenue',
-      header: sortBy === 'revenue' ? 'Net sales ↓' : 'Net sales',
+      header: (function revenueHeader(): string {
+        const label = netGrossBasis === 'net' ? 'Net sales' : 'GMV';
+        return sortBy === 'revenue' ? `${label} ↓` : label;
+      })(),
       align: 'right',
-      cell: renderNovCell,
+      cell: (row) => renderNovCell(row, currencyRecalculating, reportingConverter, netGrossBasis),
     },
     {
       id: 'units',
@@ -361,7 +568,7 @@ export function ProductSalesTable({ filters }: ProductSalesTableProps): ReactEle
           subtitle: (row) => row.sku ?? undefined,
           summary: (row) => (
             <>
-              {renderNovCell(row)}
+              {renderNovCell(row, currencyRecalculating, reportingConverter, netGrossBasis)}
               {' · '}
               {intFormat.format(row.units)} units
             </>
@@ -383,8 +590,7 @@ export function ProductSalesTable({ filters }: ProductSalesTableProps): ReactEle
       />
       {!coverageGapAvailable ? (
         <p className="data-table__footnote">
-          Listing-coverage check unavailable — channel columns show sales only, never "Not
-          listed".
+          Listing-coverage check unavailable — channel columns show sales only, never "Not listed".
         </p>
       ) : null}
       {unresolvedProductCount > 0 ? (

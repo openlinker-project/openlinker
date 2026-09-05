@@ -23,6 +23,40 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## Never derive a currency-conversion rate by dividing two figures that don't share a population
+
+**Context**: wiring the ADR-064 display-currency picker to figures beyond the one the backend
+actually converts (GMV). `SalesAnalyticsHeadline.displayCurrencyConversion.convertedRevenue` is a
+real, backend-computed converted number for GMV — it looked reasonable to derive an implied
+exchange rate as `convertedRevenue / revenue` and apply that rate client-side to every other
+same-currency figure (Net sales, AOV, median, cancelled value, the channel table, Top Products).
+
+**Problem**: in "current rate" mode, `convertedRevenue` is not `revenue` converted — it is `revenue`
+(the stamped bucket) PLUS the separate `unconvertedValue` pool (not-yet-stamped or prior-era money),
+both converted and summed (`SalesAnalyticsController.buildNativeCurrencyAmounts`). The two addends
+come from different populations of orders, so `convertedRevenue / revenue` is not the real exchange
+rate — it's contaminated by however much unconverted money happens to exist that day. This shipped
+briefly and produced a real wrong number in review: 29 000 PLN rendered as ~20 000 "EUR" instead of
+the correct ~6 700 EUR (a genuine rate is ~0.23, the derived one came out ~0.69). A wrong number that
+looks plausible is worse than an honest gap, because nothing about the UI signals it's wrong.
+
+**Rule**: never derive a rate, ratio, or multiplier from two aggregate figures unless they are
+guaranteed to sum over the *exact same population* of rows. When a backend field converts figure A
+but not figure B, and A and B don't share a population, there is no safe client-side shortcut —
+either extend the backend to convert B directly, or leave B in its native currency with an honest
+"not converted yet" state. Record the rejected shortcut in code (see
+`display-currency.lib.ts`'s "REJECTED APPROACH" doc comment) so a later contributor doesn't
+reach for the same shortcut without reading the history first.
+
+**Applies to**: any client-side derivation over a backend aggregate that mixes more than one
+population (e.g. a stamped bucket + an unconverted/unresolved bucket) — currently
+`apps/web/src/features/analytics/lib/display-currency.lib.ts` and its four consumers
+(`AnalyticsKpiStrip`, `ChannelSalesTable`, `ProductSalesTable`, `AnalyticsConvertNote`).
+
+**Source**: PR #2781, epic #2452 (ADR-064 display-currency conversion)
+
+---
+
 ## Before a surface asserts a behaviour, read the code that implements it
 
 **Context**: redesigning the three sales-document surfaces (#2513). The design was worked out from

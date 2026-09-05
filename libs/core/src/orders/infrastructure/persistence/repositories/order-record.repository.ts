@@ -48,11 +48,13 @@ import { isHoldReason, OrderLifecyclePhaseValues } from '@openlinker/core/order-
 import { SLA_AT_RISK_WINDOW_MS } from '../../../domain/types/order-sla.types';
 import type { FulfillmentRollupState } from '../../../domain/types/order-fulfillment.types';
 import {
+  grossRevenueLineAmountSql,
   netSalesLineNetAmountSql,
   netSalesOrderNetEligibleSql,
 } from '../../../domain/types/net-sales-tax-rate.types';
 import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
+import type { FxRestatementRemainingSummary } from '../../../domain/types/order-fx-restatement.types';
 import {
   AuthorityAttentionCountedReasonValues,
   buildAuthorityAttentionPayload,
@@ -77,6 +79,13 @@ import type {
   DailyOrderAggregateRow,
   SalesAnalyticsFilters,
 } from '../../../domain/types/order-sales-analytics.types';
+import type {
+  CoverageDetectionPagination,
+  PaginatedCurrencyMismatchOrders,
+  NetExcludedOrderCandidate,
+  PaginatedProductMatchingErrorOrders,
+  CoverageConnectionAggregateRow,
+} from '../../../domain/types/coverage-detection.types';
 
 /**
  * Empty defaults for the columns whose "unwritten" value is not `null`, keyed
@@ -111,6 +120,19 @@ function orderRecordColumnProperties(): readonly string[] {
 
 @Injectable()
 export class OrderRecordRepository implements OrderRecordRepositoryPort {
+  /**
+   * The "currency mismatch" predicate (#2464/#2713/#2468 review) — a row
+   * that either never got an FX stamp (`reportingCurrency IS NULL`) or was
+   * stamped under a PREVIOUS reporting-currency era (ADR-040). Every reader
+   * of this population — {@link findCurrencyMismatchOrders},
+   * {@link findCurrencyMismatchOrdersByConnection},
+   * {@link findCurrencyMismatchOrderRefsAfter}, and
+   * {@link countRemainingCurrencyMismatch} — shares this ONE fragment so the
+   * definition of "unconverted" can never silently diverge between them.
+   */
+  private static readonly CURRENCY_MISMATCH_FRAGMENT =
+    '(rec."reportingCurrency" IS NULL OR rec."reportingCurrency" != :currentReportingCurrency)';
+
   constructor(
     @InjectRepository(OrderRecordOrmEntity)
     private readonly repository: Repository<OrderRecordOrmEntity>
@@ -511,11 +533,38 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    *
    * Currency correctness (#2049/ADR-040 follow-up): `order_count`/`revenue`
    * are further restricted to `reportingCurrency IS NOT NULL` — one
-   * comparable currency, `SUM(reportingTotalAmount)` — with the complementary
-   * unstamped slice reported separately as `unconverted_count`/
+   * comparable currency. `revenue` itself is GMV per
+   * `docs/specs/metrics-analytics-dashboard.md` — gross, shipping-EXCLUDED
+   * merchandise value summed from `order_line_items` and converted via the
+   * order's own stamped FX multiplier, never the shipping-inclusive
+   * `reportingTotalAmount` directly (#2892; see `buildGrossRevenueOrderAmountSql`)
+   * — with the complementary unstamped slice reported separately as
+   * `unconverted_count`/
    * `unconverted_value` (native `totalAmount`, informational only) rather
-   * than silently mixed in or silently dropped. `cancelled_value` is left on
-   * native `totalAmount`, unchanged — a secondary figure, not revisited here.
+   * than silently mixed in or silently dropped. `cancelled_value` follows the
+   * SAME currency-safety split (epic #2452): restricted to the
+   * current-era-stamped, cancelled population, with the unstamped remainder
+   * reported separately as `cancelled_unconverted_count`/
+   * `cancelled_unconverted_value` — it previously summed raw, unrestricted
+   * `totalAmount` across every currency in the bucket, which silently mixed
+   * currencies into one meaningless total.
+   *
+   * **Cancellations Value is net-of-VAT and shipping-excluded (#2910).**
+   * `docs/specs/metrics-analytics-dashboard.md` defines Cancellations Value as
+   * "the NET value of orders placed in the period with cancelled status" —
+   * `cancelled_value` therefore no longer sums the shipping-inclusive, gross
+   * `reportingTotalAmount` (the same column #2892 deliberately avoided for
+   * GMV). It reuses the SAME per-line net-computation machinery Net Sales
+   * uses (`buildNetSalesOrderFragments`/`netOrderAmount`), applied to the
+   * CANCELLED cohort instead of the non-cancelled one, with the identical
+   * exclusion-reporting discipline: a cancelled order with an unresolvable
+   * tax rate is excluded from `cancelled_value` and reported instead via
+   * `cancelled_net_excluded_count`/`cancelled_net_excluded_value` (native
+   * `totalAmount`, informational, mirrors `net_excluded_value`'s
+   * convention) — never silently folded in at a guessed rate. The
+   * cancellation COHORT itself (every `cancelledAt IS NOT NULL` order,
+   * matching Cancellation Rate) is unchanged — only the value field computed
+   * for that cohort changed basis.
    *
    * `unconverted_currency` (#1987 scope, not FX-epic scope — `order_records.
    * currency` is the pre-existing native-currency column from #1985, untouched
@@ -528,7 +577,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    */
   async getDailyOrderAggregates(
     filters: SalesAnalyticsFilters,
-    currentReportingCurrency: string
+    currentReportingCurrency: string,
+    includeBackfilledPreRollout = false
   ): Promise<DailyOrderAggregateRow[]> {
     const notCancelled = 'rec."cancelledAt" IS NULL';
     const isCancelled = 'rec."cancelledAt" IS NOT NULL';
@@ -537,14 +587,36 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // figures into `revenue` after an operator changes the reporting setting.
     // A prior-era stamp therefore reads as unconverted, same as never-stamped.
     const isStamped = 'rec."reportingCurrency" = :currentReportingCurrency';
-    const isUnconverted = `(rec."reportingCurrency" IS NULL OR rec."reportingCurrency" != :currentReportingCurrency)`;
+    const isUnconverted = OrderRecordRepository.CURRENCY_MISMATCH_FRAGMENT;
     const stampedAndNotCancelled = `${notCancelled} AND ${isStamped}`;
     const unconvertedAndNotCancelled = `${notCancelled} AND ${isUnconverted}`;
+    const stampedAndCancelled = `${isCancelled} AND ${isStamped}`;
+    const unconvertedAndCancelled = `${isCancelled} AND ${isUnconverted}`;
 
     // Net-sales (VAT-exclusive) eligibility — see `buildNetSalesOrderFragments`.
-    const { netEligible, netOrderAmount } = this.buildNetSalesOrderFragments();
+    const { netEligible, netOrderAmount } = this.buildNetSalesOrderFragments(
+      includeBackfilledPreRollout
+    );
     const netAndNotCancelled = `${stampedAndNotCancelled} AND ${netEligible}`;
     const netExcludedAndNotCancelled = `${stampedAndNotCancelled} AND NOT ${netEligible}`;
+    // Cancellations Value (#2910, docs/specs/metrics-analytics-dashboard.md):
+    // the spec defines it as "the NET value of orders placed in the period
+    // with cancelled status" — VAT-excluded and, since it is derived from
+    // `order_line_items` rather than `reportingTotalAmount`, shipping-excluded
+    // too (`reportingTotalAmount` is `subtotal + tax + shipping`, #2892). This
+    // reuses the SAME `netEligible`/`netOrderAmount` fragments Net Sales uses,
+    // applied to the CANCELLED cohort instead of the non-cancelled one, with
+    // the identical exclusion-reporting discipline: an order with an
+    // unresolvable rate is excluded from `cancelled_value` and counted
+    // instead in `cancelled_net_excluded_count`/`cancelled_net_excluded_value`
+    // — never silently folded in at a guessed rate.
+    const netAndCancelled = `${stampedAndCancelled} AND ${netEligible}`;
+    const netExcludedAndCancelled = `${stampedAndCancelled} AND NOT ${netEligible}`;
+
+    // GMV/revenue (#2892) — gross, shipping-EXCLUDED merchandise value from
+    // `order_line_items`, never the shipping-inclusive `reportingTotalAmount`.
+    // See `buildGrossRevenueOrderAmountSql`.
+    const grossRevenueOrderAmount = this.buildGrossRevenueOrderAmountSql();
 
     // UTC day boundary made explicit (#1987 review, IMPORTANT 2): `placedAt`
     // is `timestamptz`, so a bare `date_trunc('day', ...)` truncates at local
@@ -562,7 +634,14 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       .addSelect('rec.sourceConnectionId', 'source_connection_id')
       .addSelect(`COUNT(*) FILTER (WHERE ${stampedAndNotCancelled})`, 'order_count')
       .addSelect(
-        `COALESCE(SUM(rec."reportingTotalAmount") FILTER (WHERE ${stampedAndNotCancelled}), 0)`,
+        // Line-derived gross sum in the order's NATIVE currency, converted
+        // into the reporting currency via the order's own already-stamped
+        // FX multiplier (`reportingTotalAmount / totalAmount`) — the same
+        // trick `net_revenue` below already uses, so this never re-looks-up
+        // a rate and always reconciles with every other reporting-currency
+        // figure on the page (#2892, docs/specs/metrics-analytics-dashboard.md
+        // GMV: gross, excluding shipping).
+        `COALESCE(SUM((${grossRevenueOrderAmount}) * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedAndNotCancelled}), 0)`,
         'revenue'
       )
       .addSelect(`COUNT(*) FILTER (WHERE ${unconvertedAndNotCancelled})`, 'unconverted_count')
@@ -586,8 +665,27 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       )
       .addSelect(`COUNT(*) FILTER (WHERE ${isCancelled})`, 'cancelled_count')
       .addSelect(
-        `COALESCE(SUM(rec."totalAmount") FILTER (WHERE ${isCancelled}), 0)`,
+        // Net-of-VAT, shipping-excluded (#2910) — same construction as
+        // `net_revenue` below, restricted to the cancelled, net-eligible
+        // population instead of the non-cancelled one.
+        `COALESCE(SUM((${netOrderAmount}) * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${netAndCancelled}), 0)`,
         'cancelled_value'
+      )
+      .addSelect(
+        `COUNT(*) FILTER (WHERE ${unconvertedAndCancelled})`,
+        'cancelled_unconverted_count'
+      )
+      .addSelect(
+        `COALESCE(SUM(rec."totalAmount") FILTER (WHERE ${unconvertedAndCancelled}), 0)`,
+        'cancelled_unconverted_value'
+      )
+      .addSelect(
+        `COUNT(*) FILTER (WHERE ${netExcludedAndCancelled})`,
+        'cancelled_net_excluded_count'
+      )
+      .addSelect(
+        `COALESCE(SUM(rec."totalAmount") FILTER (WHERE ${netExcludedAndCancelled}), 0)`,
+        'cancelled_net_excluded_value'
       )
       .addSelect(
         // `isStamped` now filters on `reportingCurrency = :currentReportingCurrency`
@@ -624,6 +722,10 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       unconverted_currency: string | null;
       cancelled_count: string;
       cancelled_value: string;
+      cancelled_unconverted_count: string;
+      cancelled_unconverted_value: string;
+      cancelled_net_excluded_count: string;
+      cancelled_net_excluded_value: string;
       reporting_currency: string | null;
       net_revenue: string;
       net_excluded_count: string;
@@ -640,6 +742,10 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       unconvertedCurrency: row.unconverted_currency,
       cancelledCount: Number(row.cancelled_count),
       cancelledValue: Number(row.cancelled_value),
+      cancelledUnconvertedCount: Number(row.cancelled_unconverted_count),
+      cancelledUnconvertedValue: Number(row.cancelled_unconverted_value),
+      cancelledNetExcludedCount: Number(row.cancelled_net_excluded_count),
+      cancelledNetExcludedValue: Number(row.cancelled_net_excluded_value),
       reportingCurrency: row.reporting_currency,
       netRevenue: Number(row.net_revenue),
       netExcludedCount: Number(row.net_excluded_count),
@@ -648,26 +754,351 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   }
 
   /**
+   * Data Coverage 'currency' category drill-down (#2464). Paged list of
+   * orders whose reporting-currency stamp does not (yet) match the current
+   * setting, covering BOTH populations under one combined predicate - a
+   * never-stamped row (`reportingCurrency IS NULL`) and a stamped-but-stale
+   * row from a prior reporting-currency era (ADR-040) - so the returned
+   * `total` is exactly the same figure {@link getDailyOrderAggregates}
+   * reports as `unconvertedCount`, summed over the same filters (asserted
+   * as a regression guard by the #2464 tests).
+   *
+   * Deliberately the SAME scope predicate as `unconvertedAndNotCancelled`
+   * in {@link getDailyOrderAggregates} (`recordStatus = 'ready'`, resolvable
+   * `placedAt`/`totalAmount`, in-range, optional connection, non-cancelled)
+   * so the two reads can never silently diverge on what counts as
+   * "unconverted". Ordered newest-first so an operator drilling in sees the
+   * most recent mismatches first, mirroring `findUnstampedFxOrderIds`'s
+   * "most likely to matter" ordering convention.
+   */
+  async findCurrencyMismatchOrders(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string,
+    pagination: CoverageDetectionPagination
+  ): Promise<PaginatedCurrencyMismatchOrders> {
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .andWhere('rec."cancelledAt" IS NULL')
+      .andWhere(
+        OrderRecordRepository.CURRENCY_MISMATCH_FRAGMENT,
+        { currentReportingCurrency }
+      )
+      .orderBy('rec."placedAt"', 'DESC')
+      .take(pagination.limit)
+      .skip(pagination.offset);
+
+    this.applySalesAnalyticsScope(qb, filters);
+
+    const [entities, total] = await qb.getManyAndCount();
+
+    return {
+      items: entities.map((entity) => ({
+        internalOrderId: entity.internalOrderId,
+        sourceConnectionId: entity.sourceConnectionId,
+        nativeCurrency: entity.currency,
+        stampedCurrency: entity.reportingCurrency,
+        stampedAt: entity.fxStampedAt,
+        // Filled in by `OrderRecordService.getCurrencyMismatchOrders`
+        // (#2799), which owns the batched `order_line_items` join — this
+        // repository has no line-item access of its own (see the service's
+        // doc comment for why the enrichment lives one layer up).
+        lineProducts: [],
+      })),
+      total,
+    };
+  }
+
+  /**
+   * Data Coverage `'currency'` category aggregate-by-connection (#2713) —
+   * see the port's JSDoc. Same predicate as {@link findCurrencyMismatchOrders}
+   * (`cancelledAt IS NULL`, the currency-mismatch condition, and
+   * {@link applySalesAnalyticsScope}), swapping the paginated row hydration
+   * for a `GROUP BY rec.sourceConnectionId` count — mirrors
+   * {@link getDailyOrderAggregates}'s own `sourceConnectionId` grouping.
+   */
+  async findCurrencyMismatchOrdersByConnection(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string
+  ): Promise<CoverageConnectionAggregateRow[]> {
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .select('rec.sourceConnectionId', 'source_connection_id')
+      .addSelect('COUNT(*)', 'affected_count')
+      .andWhere('rec."cancelledAt" IS NULL')
+      .andWhere(
+        OrderRecordRepository.CURRENCY_MISMATCH_FRAGMENT,
+        { currentReportingCurrency }
+      )
+      .groupBy('rec.sourceConnectionId');
+
+    this.applySalesAnalyticsScope(qb, filters);
+
+    const rows = await qb.getRawMany<{ source_connection_id: string; affected_count: string }>();
+
+    return rows.map((row) => ({
+      sourceConnectionId: row.source_connection_id,
+      affectedCount: Number(row.affected_count),
+    }));
+  }
+
+  /**
+   * Currency-restatement enumeration page (#2468) — see the port's JSDoc for
+   * why this is keyset-ordered on `internalOrderId` rather than reusing
+   * {@link findCurrencyMismatchOrders}' `placedAt DESC`.
+   *
+   * `select`-narrowed to the one column the caller actually uses — the id it
+   * repairs — so a page of `orderSnapshot` JSONB is never hydrated for
+   * nothing (same reasoning as {@link findUnstampedFxOrderIds}). Used to also
+   * select `sourceConnectionId` for a child job to carry; #2776 replaced the
+   * child job with an in-process stamp that re-reads the full `OrderRecord`
+   * (connection included) itself, so that column became a per-row cost with
+   * no consumer.
+   */
+  async findCurrencyMismatchOrderRefsAfter(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string,
+    page: { afterOrderId: string | null; limit: number }
+  ): Promise<string[]> {
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .select('rec."internalOrderId"', 'internal_order_id')
+      .andWhere('rec."cancelledAt" IS NULL')
+      .andWhere(
+        OrderRecordRepository.CURRENCY_MISMATCH_FRAGMENT,
+        { currentReportingCurrency }
+      )
+      .orderBy('rec."internalOrderId"', 'ASC')
+      .limit(page.limit);
+
+    if (page.afterOrderId !== null) {
+      qb.andWhere('rec."internalOrderId" > :afterOrderId', { afterOrderId: page.afterOrderId });
+    }
+
+    this.applySalesAnalyticsScope(qb, filters);
+
+    const rows = await qb.getRawMany<{ internal_order_id: string }>();
+    return rows.map((row) => row.internal_order_id);
+  }
+
+  /**
+   * Clear one order's ADR-040 FX stamp so the pipeline can re-answer it
+   * (#2468). See the port's JSDoc for the full column-by-column rationale and
+   * for why this is the ONE writer allowed to move a stamp.
+   *
+   * The six columns are set in a single guarded statement — the same
+   * "the group can never half-apply" shape {@link stampFxIfAbsent} uses — so
+   * a partial clear that would violate `ck_order_records_fx_group` is not
+   * expressible.
+   *
+   * The guard is a DISJUNCTION over the three columns that can independently
+   * carry FX state (#2775), not `reportingCurrency IS NOT NULL` alone. A row
+   * can hold a pinned `fxIntendedCurrency` with no figure at all — the
+   * deferred path (`claimFxIntentIfAbsent` pinned an intent, then the provider
+   * blipped) and the terminal-marked path (`fxStampedAt` set, no figure, which
+   * {@link countRemainingCurrencyMismatch} counts explicitly). Both are inside
+   * {@link findCurrencyMismatchOrderRefsAfter}'s population, and for both a
+   * figure-only guard matched nothing, left the stale intent behind, and let
+   * `resolveIntent` re-pin the currency the operator just moved away from — so
+   * the run could never converge.
+   *
+   * A query builder rather than the object-literal `where`, because TypeORM
+   * cannot express an OR across columns in that API. Idempotency is preserved
+   * by the disjunction itself: a virgin row (all six columns `NULL`) still
+   * matches nothing and reports `false`, so a re-delivered driver job does not
+   * re-clear a row the stamp pipeline has already re-answered.
+   */
+  async clearFxStampForRestatement(internalOrderId: string): Promise<boolean> {
+    const result = await this.repository
+      .createQueryBuilder()
+      .update(OrderRecordOrmEntity)
+      .set({
+        reportingCurrency: null,
+        reportingTotalAmount: null,
+        exchangeRateId: null,
+        fxStampedAt: null,
+        fxIntendedCurrency: null,
+        fxRule: null,
+      })
+      .where('"internalOrderId" = :internalOrderId', { internalOrderId })
+      .andWhere(
+        '("reportingCurrency" IS NOT NULL OR "fxIntendedCurrency" IS NOT NULL OR "fxStampedAt" IS NOT NULL)'
+      )
+      .execute();
+    return (result.affected ?? 0) > 0;
+  }
+
+  /**
+   * Remaining mismatched population in scope, split by terminal marker
+   * (#2468) — see the port's JSDoc for why the marker is the only evidence
+   * available and what a run's failure detail may therefore claim.
+   *
+   * `COUNT(*)::int` for the same reason
+   * {@link countStampedByReportingCurrency} needs it: node-postgres returns
+   * `bigint` as a string, which would leak into the ledger row's `detail` as
+   * concatenated text.
+   */
+  async countRemainingCurrencyMismatch(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string
+  ): Promise<FxRestatementRemainingSummary> {
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .select('COUNT(*)::int', 'total')
+      .addSelect(
+        `COUNT(*) FILTER (WHERE rec."fxStampedAt" IS NOT NULL AND rec."reportingCurrency" IS NULL)::int`,
+        'terminal_marked'
+      )
+      .andWhere('rec."cancelledAt" IS NULL')
+      .andWhere(
+        OrderRecordRepository.CURRENCY_MISMATCH_FRAGMENT,
+        { currentReportingCurrency }
+      );
+
+    this.applySalesAnalyticsScope(qb, filters);
+
+    const raw = await qb.getRawOne<{ total: number | string; terminal_marked: number | string }>();
+    const total = Number(raw?.total ?? 0);
+    const terminalMarked = Number(raw?.terminal_marked ?? 0);
+    return { total, terminalMarked, pending: total - terminalMarked };
+  }
+
+  /**
+   * Data Coverage tax A/B/C detector's base population (#2465) — see the
+   * port's JSDoc for the predicate rationale. Mirrors
+   * `getDailyOrderAggregates`'s `netExcludedAndNotCancelled` fragment
+   * EXACTLY (non-cancelled, current-era stamped, `NOT` net-eligible) so
+   * `candidates.length` is always the same figure as `netExcludedCount`
+   * for the identical filters/currency.
+   *
+   * Reads only the four columns {@link NetExcludedOrderCandidate} needs via
+   * `getRawMany`, not `getMany` (#2826) — the full `OrderRecordOrmEntity`
+   * additionally carries `orderSnapshot` (an arbitrary-size JSONB column)
+   * that this classification pass never reads, so hydrating it for every
+   * candidate in the window was pure waste on top of an already-unpaged
+   * read (unpaged by design — see this method's port-level doc comment).
+   */
+  async findNetExcludedOrderCandidates(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string,
+    includeBackfilledPreRollout = false
+  ): Promise<NetExcludedOrderCandidate[]> {
+    const { netEligible } = this.buildNetSalesOrderFragments(includeBackfilledPreRollout);
+    const netExcludedAndNotCancelled = `rec."cancelledAt" IS NULL AND rec."reportingCurrency" = :currentReportingCurrency AND NOT ${netEligible}`;
+
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .select('rec."internalOrderId"', 'internal_order_id')
+      .addSelect('rec."sourceConnectionId"', 'source_connection_id')
+      .addSelect('rec."placedAt"', 'placed_at')
+      .addSelect('rec."taxRateEra"', 'tax_rate_era')
+      .andWhere(netExcludedAndNotCancelled, { currentReportingCurrency })
+      .orderBy('rec."placedAt"', 'DESC');
+
+    this.applySalesAnalyticsScope(qb, filters);
+
+    const rows = await qb.getRawMany<{
+      internal_order_id: string;
+      source_connection_id: string;
+      placed_at: Date | null;
+      tax_rate_era: string | null;
+    }>();
+
+    return rows.map((row) => ({
+      internalOrderId: row.internal_order_id,
+      sourceConnectionId: row.source_connection_id,
+      placedAt: row.placed_at,
+      taxRateEra: row.tax_rate_era,
+    }));
+  }
+
+  /**
+   * Data Coverage `'product-matching'` category drill-down (#2466) — see
+   * the port's JSDoc. Same `source_deleted` / `awaiting_mapping` predicate
+   * {@link countByHealth} sums, filtered via {@link OrderHealthSummaryFilters}
+   * (`createdAt`-scoped, matching every other health-bucket read in this
+   * class) rather than the `placedAt`-scoped `SalesAnalyticsFilters`, since
+   * a matched row never carries a resolved `placedAt` (#1985).
+   */
+  async findProductMatchingErrorOrders(
+    filters: OrderHealthSummaryFilters,
+    pagination: CoverageDetectionPagination
+  ): Promise<PaginatedProductMatchingErrorOrders> {
+    const isProductMatchingError = `(${OrderRecordRepository.IS_SOURCE_DELETED} OR ${OrderRecordRepository.IS_MAPPING})`;
+
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .andWhere(isProductMatchingError)
+      .orderBy('rec."createdAt"', 'DESC')
+      .take(pagination.limit)
+      .skip(pagination.offset);
+
+    if (filters.sourceConnectionId) {
+      qb.andWhere('rec.sourceConnectionId = :sourceConnectionId', {
+        sourceConnectionId: filters.sourceConnectionId,
+      });
+    }
+    if (filters.customerId) {
+      qb.andWhere('rec.customerId = :customerId', { customerId: filters.customerId });
+    }
+    if (filters.createdFrom) {
+      qb.andWhere('rec.createdAt >= :createdFrom', { createdFrom: filters.createdFrom });
+    }
+    if (filters.createdTo) {
+      qb.andWhere('rec.createdAt <= :createdTo', { createdTo: filters.createdTo });
+    }
+
+    const [entities, total] = await qb.getManyAndCount();
+
+    return {
+      items: entities.map((entity) => ({
+        internalOrderId: entity.internalOrderId,
+        sourceConnectionId: entity.sourceConnectionId,
+        recordStatus: entity.recordStatus as 'awaiting_mapping' | 'source_deleted',
+        mappingFailureReason: entity.mappingFailureReason,
+        createdAt: entity.createdAt,
+        // Always null — see `ProductMatchingErrorOrderRow.productId`'s doc
+        // comment (#2799) for why this category can never resolve one.
+        productId: null,
+        variantId: null,
+      })),
+      total,
+    };
+  }
+
+  /**
    * Headline median order value via `PERCENTILE_CONT` (#1987) — always
    * excludes cancelled orders, unlike {@link getDailyOrderAggregates} (which
    * reports them in a separate column rather than omitting them). `null`
    * when no row matches (an empty ordered-set aggregate).
    *
-   * Currency correctness (#1987 review notes): computed over
-   * `reportingTotalAmount`, restricted to `reportingCurrency =
-   * currentReportingCurrency` — the same current-era stamped subset
-   * {@link getDailyOrderAggregates} uses for `revenue`, so the headline
-   * median stays comparable with the headline revenue/AOV figures rather
-   * than mixing a native-currency or prior-era distribution into the
-   * current one.
+   * Currency correctness (#1987 review notes): restricted to
+   * `reportingCurrency = currentReportingCurrency` — the same current-era
+   * stamped subset {@link getDailyOrderAggregates} uses for `revenue`, so
+   * the headline median stays comparable with the headline revenue/AOV
+   * figures rather than mixing a native-currency or prior-era distribution
+   * into the current one.
+   *
+   * Basis correctness (#2906): computed over the SAME gross, shipping-EXCLUDED
+   * per-order merchandise amount `revenue`/`averageOrderValue` use — see
+   * {@link buildGrossRevenueOrderAmountSql} — converted via the order's own
+   * already-stamped FX multiplier, exactly as `getDailyOrderAggregates`'s
+   * `revenue` column does. Previously ran `PERCENTILE_CONT` directly over
+   * `reportingTotalAmount`, the shipping-INCLUSIVE order total, which
+   * contradicted AOV/Revenue's merchandise-only basis and reported an
+   * inflated median whenever orders carried non-zero shipping.
    */
   async getMedianOrderValue(
     filters: SalesAnalyticsFilters,
     currentReportingCurrency: string
   ): Promise<number | null> {
+    const grossRevenueOrderAmount = this.buildGrossRevenueOrderAmountSql();
+
     const qb = this.repository
       .createQueryBuilder('rec')
-      .select(`PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY rec."reportingTotalAmount")`, 'median')
+      .select(
+        `PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY (${grossRevenueOrderAmount}) * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0)))`,
+        'median'
+      )
       .andWhere('rec."cancelledAt" IS NULL')
       .andWhere('rec."reportingCurrency" = :currentReportingCurrency', { currentReportingCurrency });
 
@@ -685,9 +1116,12 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    */
   async getNetMedianOrderValue(
     filters: SalesAnalyticsFilters,
-    currentReportingCurrency: string
+    currentReportingCurrency: string,
+    includeBackfilledPreRollout = false
   ): Promise<number | null> {
-    const { netEligible, netOrderAmount } = this.buildNetSalesOrderFragments();
+    const { netEligible, netOrderAmount } = this.buildNetSalesOrderFragments(
+      includeBackfilledPreRollout
+    );
 
     const qb = this.repository
       .createQueryBuilder('rec')
@@ -717,12 +1151,23 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * multiply the caller's row cardinality (one row per order-line instead of
    * one per order), corrupting every `COUNT(*)`/`SUM` aggregate grouped at
    * the order level.
+   *
+   * `includeBackfilledPreRollout` (#2469) is threaded straight through to the
+   * era half of the predicate — see `netSalesEraEligibleSql`. Deliberately a
+   * PARAMETER of this helper rather than a field on the repository: the flag is
+   * a per-request operator preference, and holding it as instance state would
+   * make one request's setting leak into a concurrent one on the same
+   * (singleton-scoped) repository.
    */
-  private buildNetSalesOrderFragments(): { netEligible: string; netOrderAmount: string } {
+  private buildNetSalesOrderFragments(includeBackfilledPreRollout: boolean): {
+    netEligible: string;
+    netOrderAmount: string;
+  } {
     const netEligible = netSalesOrderNetEligibleSql(
       'rec."internalOrderId"',
       'net_li',
-      'rec."taxTreatment"'
+      'rec."taxTreatment"',
+      includeBackfilledPreRollout
     );
     const lineNetAmount = netSalesLineNetAmountSql(
       'net_li."unitPrice"',
@@ -736,6 +1181,34 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       WHERE net_li."orderRecordId" = rec."internalOrderId"
     )`;
     return { netEligible, netOrderAmount };
+  }
+
+  /**
+   * GMV/revenue (#2892) scalar subquery: the order's gross, shipping-excluded
+   * merchandise value in its NATIVE currency, summed from `order_line_items`
+   * via {@link grossRevenueLineAmountSql}. Deliberately a scalar subquery
+   * rather than a join, for the same reason `buildNetSalesOrderFragments`
+   * uses one — joining `order_line_items` at the order-grain SELECT would
+   * multiply row cardinality and corrupt every `COUNT(*)`/`SUM` aggregate
+   * grouped at the order level.
+   *
+   * Unlike Net Sales, there is no eligibility gate here: revenue does not
+   * exclude an order for lacking a resolvable tax rate (see
+   * {@link grossRevenueLineAmountSql}'s per-line fallback) — every `'ready'`
+   * order carries line items (ADR-039), so this always has something to sum.
+   */
+  private buildGrossRevenueOrderAmountSql(): string {
+    const grossLineAmount = grossRevenueLineAmountSql(
+      'rev_li."unitPrice"',
+      'rev_li."quantity"',
+      'rev_li."taxRate"',
+      'rec."taxTreatment"'
+    );
+    return `(
+      SELECT COALESCE(SUM(${grossLineAmount}), 0)
+      FROM order_line_items rev_li
+      WHERE rev_li."orderRecordId" = rec."internalOrderId"
+    )`;
   }
 
   /**

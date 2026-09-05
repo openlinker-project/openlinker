@@ -2,9 +2,43 @@ import { screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 import type { ChannelSalesAnalytics, SalesAndChannelAnalytics } from '../api/sales-analytics.types';
+import type { AnalyticsCoverage } from '../api/analytics-coverage.types';
 import { ChannelSalesTable } from './channel-sales-table';
 
 const FILTERS = { from: '2026-08-01', to: '2026-08-14' };
+const COVERAGE_FILTERS = { from: '2026-08-01T00:00:00.000Z', to: '2026-08-15T00:00:00.000Z' };
+
+function coverage(overrides: Partial<Record<string, number>> = {}): AnalyticsCoverage {
+  return {
+    categories: [
+      {
+        category: 'currency',
+        status: 'open',
+        affectedCount: overrides.currency ?? 0,
+        sampleOrderIds: [],
+      },
+      {
+        category: 'tax-a',
+        status: 'open',
+        affectedCount: overrides['tax-a'] ?? 0,
+        sampleOrderIds: [],
+      },
+      {
+        category: 'tax-b',
+        status: 'open',
+        affectedCount: overrides['tax-b'] ?? 0,
+        sampleOrderIds: [],
+      },
+      {
+        category: 'tax-c',
+        status: 'open',
+        affectedCount: overrides['tax-c'] ?? 0,
+        sampleOrderIds: [],
+      },
+      { category: 'product-matching', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+    ],
+  };
+}
 
 function channel(overrides: Partial<ChannelSalesAnalytics> = {}): ChannelSalesAnalytics {
   return {
@@ -14,8 +48,11 @@ function channel(overrides: Partial<ChannelSalesAnalytics> = {}): ChannelSalesAn
     orderCount: 25,
     averageOrderValue: 120,
     unitsSold: 40,
+    unconvertedUnitsSold: 0,
     cancelledCount: 0,
     cancelledValue: 0,
+    cancelledUnconvertedCount: 0,
+    cancelledUnconvertedValue: 0,
     unconvertedCount: 0,
     unconvertedValue: 0,
     unconvertedCurrency: null,
@@ -39,8 +76,11 @@ function analytics(channels: ChannelSalesAnalytics[]): SalesAndChannelAnalytics 
       averageOrderValue: 120,
       medianOrderValue: 100,
       unitsSold: 60,
+      unconvertedUnitsSold: 0,
       cancelledCount: 2,
       cancelledValue: 200,
+      cancelledUnconvertedCount: 0,
+      cancelledUnconvertedValue: 0,
       unconvertedCount: 0,
       unconvertedValue: 0,
       unconvertedCurrency: null,
@@ -61,7 +101,7 @@ describe('ChannelSalesTable', () => {
       analytics: { getSales: vi.fn(() => new Promise<SalesAndChannelAnalytics>(() => {})) },
     });
 
-    renderWithProviders(<ChannelSalesTable filters={FILTERS} />, { apiClient });
+    renderWithProviders(<ChannelSalesTable netGrossBasis="net" filters={FILTERS} />, { apiClient });
 
     expect(screen.getByText('Loading by-channel figures')).toBeInTheDocument();
   });
@@ -71,7 +111,7 @@ describe('ChannelSalesTable', () => {
       analytics: { getSales: vi.fn().mockRejectedValue(new Error('boom')) },
     });
 
-    renderWithProviders(<ChannelSalesTable filters={FILTERS} />, { apiClient });
+    renderWithProviders(<ChannelSalesTable netGrossBasis="net" filters={FILTERS} />, { apiClient });
 
     expect(await screen.findByText('Unable to load by-channel figures')).toBeInTheDocument();
   });
@@ -80,13 +120,13 @@ describe('ChannelSalesTable', () => {
     const apiClient = createMockApiClient({
       analytics: { getSales: vi.fn().mockResolvedValue(analytics([channel()])) },
       connections: {
-        list: vi.fn().mockResolvedValue([
-          { id: 'conn-1', name: 'Allegro — main', platformType: 'allegro' },
-        ]),
+        list: vi
+          .fn()
+          .mockResolvedValue([{ id: 'conn-1', name: 'Allegro — main', platformType: 'allegro' }]),
       },
     });
 
-    renderWithProviders(<ChannelSalesTable filters={FILTERS} />, { apiClient });
+    renderWithProviders(<ChannelSalesTable netGrossBasis="net" filters={FILTERS} />, { apiClient });
 
     expect(await screen.findByRole('link', { name: 'Allegro — main' })).toBeInTheDocument();
     // Appears twice: the channel's own row, plus the Total · PLN row it
@@ -102,6 +142,56 @@ describe('ChannelSalesTable', () => {
     expect(screen.queryByText('PLN 120.00')).not.toBeInTheDocument();
   });
 
+  it('should render GMV/gross AOV instead of Net sales/net AOV when netGrossBasis="gross" (#2903)', async () => {
+    const apiClient = createMockApiClient({
+      analytics: { getSales: vi.fn().mockResolvedValue(analytics([channel()])) },
+      connections: {
+        list: vi
+          .fn()
+          .mockResolvedValue([{ id: 'conn-1', name: 'Allegro — main', platformType: 'allegro' }]),
+      },
+    });
+
+    renderWithProviders(<ChannelSalesTable filters={FILTERS} netGrossBasis="gross" />, {
+      apiClient,
+    });
+
+    expect(await screen.findByText('GMV')).toBeInTheDocument();
+    expect(screen.queryByText('Net sales')).not.toBeInTheDocument();
+    // Row + Total both read the gross revenue/averageOrderValue (3000/120),
+    // never the net figures (2700/108) — the toggle genuinely switches the
+    // basis rather than defaulting to what the table always showed before.
+    expect(screen.getAllByText('PLN 3,000.00')).toHaveLength(2);
+    expect(screen.getAllByText('PLN 120.00')).toHaveLength(2);
+    expect(screen.queryByText('PLN 2,700.00')).not.toBeInTheDocument();
+    expect(screen.queryByText('PLN 108.00')).not.toBeInTheDocument();
+  });
+
+  it('should add back unconverted units into both the row and the Total row (#2907)', async () => {
+    const apiClient = createMockApiClient({
+      analytics: {
+        getSales: vi
+          .fn()
+          .mockResolvedValue(analytics([channel({ unitsSold: 40, unconvertedUnitsSold: 5 })])),
+      },
+      connections: {
+        list: vi
+          .fn()
+          .mockResolvedValue([{ id: 'conn-1', name: 'Allegro — main', platformType: 'allegro' }]),
+      },
+    });
+
+    renderWithProviders(<ChannelSalesTable netGrossBasis="net" filters={FILTERS} />, { apiClient });
+
+    await screen.findByRole('link', { name: 'Allegro — main' });
+
+    // 40 unitsSold + 5 unconvertedUnitsSold = 45, on both the channel row and
+    // the Total row it fully composes — reconciling with the headline KPI's
+    // own unitsSold + unconvertedUnitsSold add-back (#2893).
+    expect(screen.getAllByText('45')).toHaveLength(2);
+    expect(screen.queryByText('40')).not.toBeInTheDocument();
+  });
+
   it('should render a partial-history channel with a coverage flag', async () => {
     const apiClient = createMockApiClient({
       analytics: {
@@ -112,7 +202,7 @@ describe('ChannelSalesTable', () => {
       },
     });
 
-    renderWithProviders(<ChannelSalesTable filters={FILTERS} />, { apiClient });
+    renderWithProviders(<ChannelSalesTable netGrossBasis="net" filters={FILTERS} />, { apiClient });
 
     expect(await screen.findByText('Partial history')).toBeInTheDocument();
   });
@@ -136,11 +226,13 @@ describe('ChannelSalesTable', () => {
         ),
       },
       connections: {
-        list: vi.fn().mockResolvedValue([{ id: 'conn-1', name: 'Shop DE', platformType: 'woocommerce' }]),
+        list: vi
+          .fn()
+          .mockResolvedValue([{ id: 'conn-1', name: 'Shop DE', platformType: 'woocommerce' }]),
       },
     });
 
-    renderWithProviders(<ChannelSalesTable filters={FILTERS} />, { apiClient });
+    renderWithProviders(<ChannelSalesTable netGrossBasis="net" filters={FILTERS} />, { apiClient });
 
     expect(await screen.findByText('Awaiting FX stamp')).toBeInTheDocument();
     // Net sales has no unconverted counterpart to fall back to — an
@@ -154,18 +246,34 @@ describe('ChannelSalesTable', () => {
     // No "Total · X" row at all — nothing has a stamped currency yet — and
     // the footnote reports the count, never a "Total · EUR (unconverted)" row.
     expect(screen.queryByText(/^Total ·/)).not.toBeInTheDocument();
-    expect(screen.getByText('5 orders not yet converted to the reporting currency — excluded from the figures above.')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        '5 orders not yet converted to the reporting currency — excluded from the figures above.'
+      )
+    ).toBeInTheDocument();
   });
 
   it('should render a reporting-currency Total row summing more than one channel', async () => {
     const apiClient = createMockApiClient({
       analytics: {
-        getSales: vi.fn().mockResolvedValue(
-          analytics([
-            channel({ sourceConnectionId: 'conn-1', revenue: 3000, orderCount: 25, revenueShare: 0.6 }),
-            channel({ sourceConnectionId: 'conn-2', revenue: 2000, orderCount: 15, revenueShare: 0.4 }),
-          ])
-        ),
+        getSales: vi
+          .fn()
+          .mockResolvedValue(
+            analytics([
+              channel({
+                sourceConnectionId: 'conn-1',
+                revenue: 3000,
+                orderCount: 25,
+                revenueShare: 0.6,
+              }),
+              channel({
+                sourceConnectionId: 'conn-2',
+                revenue: 2000,
+                orderCount: 15,
+                revenueShare: 0.4,
+              }),
+            ])
+          ),
       },
       connections: {
         list: vi.fn().mockResolvedValue([
@@ -175,7 +283,7 @@ describe('ChannelSalesTable', () => {
       },
     });
 
-    renderWithProviders(<ChannelSalesTable filters={FILTERS} />, { apiClient });
+    renderWithProviders(<ChannelSalesTable netGrossBasis="net" filters={FILTERS} />, { apiClient });
 
     expect(await screen.findByText('Total · PLN')).toBeInTheDocument();
     // Both channels keep their default netRevenue (2700 each) — the
@@ -188,7 +296,12 @@ describe('ChannelSalesTable', () => {
       analytics: {
         getSales: vi.fn().mockResolvedValue(
           analytics([
-            channel({ sourceConnectionId: 'conn-1', revenue: 3000, orderCount: 25, revenueShare: 1 }),
+            channel({
+              sourceConnectionId: 'conn-1',
+              revenue: 3000,
+              orderCount: 25,
+              revenueShare: 1,
+            }),
             channel({
               sourceConnectionId: 'conn-2',
               revenue: 0,
@@ -221,23 +334,29 @@ describe('ChannelSalesTable', () => {
       },
     });
 
-    renderWithProviders(<ChannelSalesTable filters={FILTERS} />, { apiClient });
+    renderWithProviders(<ChannelSalesTable netGrossBasis="net" filters={FILTERS} />, { apiClient });
 
     expect(await screen.findByText('Total · PLN')).toBeInTheDocument();
     expect(screen.queryByText(/^Total · EUR/)).not.toBeInTheDocument();
     expect(screen.queryByText('€800.00')).not.toBeInTheDocument();
-    expect(screen.getByText('8 orders not yet converted to the reporting currency — excluded from the figures above.')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        '8 orders not yet converted to the reporting currency — excluded from the figures above.'
+      )
+    ).toBeInTheDocument();
   });
 
   it('should still render a Total row for a single contributing channel', async () => {
     const apiClient = createMockApiClient({
       analytics: { getSales: vi.fn().mockResolvedValue(analytics([channel()])) },
       connections: {
-        list: vi.fn().mockResolvedValue([{ id: 'conn-1', name: 'Allegro — main', platformType: 'allegro' }]),
+        list: vi
+          .fn()
+          .mockResolvedValue([{ id: 'conn-1', name: 'Allegro — main', platformType: 'allegro' }]),
       },
     });
 
-    renderWithProviders(<ChannelSalesTable filters={FILTERS} />, { apiClient });
+    renderWithProviders(<ChannelSalesTable netGrossBasis="net" filters={FILTERS} />, { apiClient });
 
     expect(await screen.findByRole('link', { name: 'Allegro — main' })).toBeInTheDocument();
     expect(screen.getByText('Total · PLN')).toBeInTheDocument();
@@ -246,22 +365,236 @@ describe('ChannelSalesTable', () => {
   it('should render an empty Net sales value for a channel with no FX-stamped revenue', async () => {
     const apiClient = createMockApiClient({
       analytics: {
-        getSales: vi.fn().mockResolvedValue(
-          analytics([
-            channel({ revenue: 0, currency: null, orderCount: 0, averageOrderValue: 0, revenueShare: 0 }),
-          ])
-        ),
+        getSales: vi
+          .fn()
+          .mockResolvedValue(
+            analytics([
+              channel({
+                revenue: 0,
+                currency: null,
+                orderCount: 0,
+                averageOrderValue: 0,
+                revenueShare: 0,
+              }),
+            ])
+          ),
       },
       connections: {
         list: vi.fn().mockResolvedValue([{ id: 'conn-1', name: 'Erli', platformType: 'erli' }]),
       },
     });
 
-    renderWithProviders(<ChannelSalesTable filters={FILTERS} />, { apiClient });
+    renderWithProviders(<ChannelSalesTable netGrossBasis="net" filters={FILTERS} />, { apiClient });
 
     expect(await screen.findByRole('link', { name: 'Erli' })).toBeInTheDocument();
     expect(
       screen.getByLabelText('No Net sales figure can be given for this channel in range')
     ).toBeInTheDocument();
+  });
+
+  // #2481 regression guards — the mockup's own two found bugs: a row
+  // wrongly labeled with a *different* category's issue, and a row with
+  // orders in an open category's affected set missing its annotation
+  // entirely. Both fixtures cross-reference against the aggregate-by-
+  // connection endpoint (#2713/#2714), grouped by `sourceConnectionId`
+  // server-side.
+  describe('.excl-note cross-reference (#2481, ported to the aggregate endpoint by #2714)', () => {
+    it("should attribute each channel's exclusion note to its own category, never the other channel's", async () => {
+      const apiClient = createMockApiClient({
+        analytics: {
+          getSales: vi
+            .fn()
+            .mockResolvedValue(
+              analytics([
+                channel({ sourceConnectionId: 'conn-1' }),
+                channel({ sourceConnectionId: 'conn-2' }),
+              ])
+            ),
+          getCoverageByConnection: vi.fn().mockResolvedValue({
+            categories: [
+              { category: 'currency', rows: [{ sourceConnectionId: 'conn-1', affectedCount: 1 }] },
+              { category: 'tax-a', rows: [] },
+              { category: 'tax-b', rows: [{ sourceConnectionId: 'conn-2', affectedCount: 1 }] },
+              { category: 'tax-c', rows: [] },
+            ],
+          }),
+        },
+        connections: {
+          list: vi.fn().mockResolvedValue([
+            { id: 'conn-1', name: 'Allegro — main', platformType: 'allegro' },
+            { id: 'conn-2', name: 'Sklep główny', platformType: 'prestashop' },
+          ]),
+        },
+      });
+
+      renderWithProviders(
+        <ChannelSalesTable
+          netGrossBasis="net"
+          filters={FILTERS}
+          coverage={coverage({ currency: 1, 'tax-b': 1 })}
+          coverageFilters={COVERAGE_FILTERS}
+          onOpenCategory={() => {}}
+        />,
+        { apiClient }
+      );
+
+      const conn1Row = (await screen.findByRole('link', { name: 'Allegro — main' })).closest('tr');
+      const conn2Row = (await screen.findByRole('link', { name: 'Sklep główny' })).closest('tr');
+      expect(conn1Row).not.toBeNull();
+      expect(conn2Row).not.toBeNull();
+
+      // conn-1's own order is a currency exclusion — its note must say so,
+      // and must NOT carry conn-2's tax-B note (the exact mislabeling bug
+      // the mockup's own design review caught).
+      const conn1Notes = conn1Row!.querySelectorAll('.excl-note');
+      expect(conn1Notes).toHaveLength(1);
+      expect(conn1Notes[0]).toHaveTextContent('1 order counted in an outdated currency');
+
+      const conn2Notes = conn2Row!.querySelectorAll('.excl-note');
+      expect(conn2Notes).toHaveLength(1);
+      expect(conn2Notes[0]).toHaveTextContent('1 order have no tax rate at all');
+    });
+
+    it('should annotate a channel for every cross-referenceable category it has an excluded order in', async () => {
+      const apiClient = createMockApiClient({
+        analytics: {
+          getSales: vi
+            .fn()
+            .mockResolvedValue(analytics([channel({ sourceConnectionId: 'conn-1' })])),
+          getCoverageByConnection: vi.fn().mockResolvedValue({
+            categories: [
+              { category: 'currency', rows: [{ sourceConnectionId: 'conn-1', affectedCount: 1 }] },
+              { category: 'tax-a', rows: [{ sourceConnectionId: 'conn-1', affectedCount: 1 }] },
+              { category: 'tax-b', rows: [{ sourceConnectionId: 'conn-1', affectedCount: 1 }] },
+              { category: 'tax-c', rows: [{ sourceConnectionId: 'conn-1', affectedCount: 1 }] },
+            ],
+          }),
+        },
+        connections: {
+          list: vi
+            .fn()
+            .mockResolvedValue([{ id: 'conn-1', name: 'Allegro — main', platformType: 'allegro' }]),
+        },
+      });
+
+      renderWithProviders(
+        <ChannelSalesTable
+          netGrossBasis="net"
+          filters={FILTERS}
+          coverage={coverage({ currency: 1, 'tax-a': 1, 'tax-b': 1, 'tax-c': 1 })}
+          coverageFilters={COVERAGE_FILTERS}
+          onOpenCategory={() => {}}
+        />,
+        { apiClient }
+      );
+
+      const row = (await screen.findByRole('link', { name: 'Allegro — main' })).closest('tr');
+      expect(row).not.toBeNull();
+      // One note per open category this channel has an order in — every
+      // category is represented, none silently dropped.
+      expect(row!.querySelectorAll('.excl-note')).toHaveLength(4);
+    });
+  });
+
+  it('shows "Recalculating…" for Net sales/AOV instead of a bare 0 while a currency remediation run is in progress', async () => {
+    const apiClient = createMockApiClient({
+      analytics: {
+        getSales: vi.fn().mockResolvedValue(
+          analytics([
+            channel({
+              revenue: 0,
+              currency: null,
+              netRevenue: 0,
+              netAverageOrderValue: 0,
+              orderCount: 0,
+              revenueShare: 0,
+              unconvertedCount: 25,
+              unconvertedValue: 3000,
+              unconvertedCurrency: 'PLN',
+            }),
+          ])
+        ),
+      },
+      connections: {
+        list: vi
+          .fn()
+          .mockResolvedValue([{ id: 'conn-1', name: 'Allegro — main', platformType: 'allegro' }]),
+      },
+    });
+    const inProgressCoverage: AnalyticsCoverage = {
+      categories: [
+        {
+          category: 'currency',
+          status: 'in-progress',
+          affectedCount: 25,
+          sampleOrderIds: [],
+          activeRunId: 'ol_remrun_1',
+        },
+        { category: 'tax-a', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+        { category: 'tax-b', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+        { category: 'tax-c', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+        { category: 'product-matching', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+      ],
+    };
+
+    renderWithProviders(
+      <ChannelSalesTable netGrossBasis="net" filters={FILTERS} coverage={inProgressCoverage} />,
+      { apiClient }
+    );
+
+    await screen.findByRole('link', { name: 'Allegro — main' });
+    // The one channel row's Net sales + AOV cells — no Total row is emitted
+    // here since nothing is stamped yet (groupChannelTotalsByCurrency's own
+    // rule), so exactly 2 occurrences, never a bare "PLN 0.00".
+    expect(screen.getAllByText('Recalculating…')).toHaveLength(2);
+    expect(screen.queryByText(/0\.00/)).not.toBeInTheDocument();
+  });
+
+  it('converts per-channel Net sales/AOV and the Total row using the real headline rate (#2779 course correction)', async () => {
+    const apiClient = createMockApiClient({
+      analytics: {
+        getSales: vi.fn().mockResolvedValue({
+          ...analytics([channel({ netRevenue: 2700, netAverageOrderValue: 108, currency: 'PLN' })]),
+          headline: {
+            ...analytics([]).headline,
+            currency: 'PLN',
+            displayCurrencyConversion: {
+              displayCurrency: 'EUR',
+              rateBasis: 'current-rate',
+              convertedRevenue: 1132.8,
+              unresolvedNativeCurrencies: [],
+              appliedRates: [
+                {
+                  from: 'PLN',
+                  to: 'EUR',
+                  rate: '0.236',
+                  rateDate: '2026-08-29',
+                  source: 'nbp',
+                  derivation: 'direct',
+                  sourceRef: '167/A/NBP/2026',
+                },
+              ],
+            },
+          },
+        }),
+      },
+      connections: {
+        list: vi
+          .fn()
+          .mockResolvedValue([{ id: 'conn-1', name: 'Allegro — main', platformType: 'allegro' }]),
+      },
+    });
+
+    renderWithProviders(
+      <ChannelSalesTable netGrossBasis="net" filters={{ ...FILTERS, displayCurrency: 'EUR' }} />,
+      { apiClient }
+    );
+
+    await screen.findByRole('link', { name: 'Allegro — main' });
+    // Channel row + Total row both read €637.20 (one channel), so 2 occurrences.
+    expect(screen.getAllByText('€637.20')).toHaveLength(2); // Net sales: 2700 * 0.236
+    expect(screen.getAllByText('€25.49')).toHaveLength(2); // AOV: 108 * 0.236
+    expect(screen.getByText('Total · EUR')).toBeInTheDocument();
+    expect(screen.queryByText(/^PLN /)).not.toBeInTheDocument();
   });
 });

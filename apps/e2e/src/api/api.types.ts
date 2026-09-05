@@ -819,3 +819,111 @@ export interface DescriptionFormatView {
   declared: boolean;
   resolvedVia: 'OfferManager' | 'ProductPublisher' | null;
 }
+
+// ── Analytics (#2482) ───────────────────────────────────────────────────
+//
+// Narrowed to what the mockup-parity spec reads. `tax-a`/`tax-c` (both keyed
+// on `order_records.taxRateEra = 'pre-rollout'`, written only by a one-time
+// historical backfill migration and never by ingestion) are typed here for
+// completeness of `CoverageCategory` but have no seed path in this suite —
+// see the follow-up issue referenced from `tests/analytics/mockup-parity.spec.ts`.
+
+export type CoverageCategory = 'currency' | 'tax-a' | 'tax-b' | 'tax-c' | 'product-matching';
+export type CoverageResolutionStatus = 'open' | 'in-progress' | 'resolved' | 'failed';
+
+/** GET /analytics/settings response. */
+export interface AnalyticsSettingsView {
+  displayCurrency: string;
+  displayCurrencySource: 'setting' | 'default';
+  rateBasis: 'current-rate' | 'order-date';
+  includeBackfilledTaxRatesInNetSales: boolean;
+  updatedAt: string | null;
+  updatedByUserId: string | null;
+}
+
+/** PUT /analytics/settings request body. */
+export interface UpdateAnalyticsSettingsInput {
+  displayCurrency?: string | null;
+  rateBasis?: 'current-rate' | 'order-date';
+  includeBackfilledTaxRatesInNetSales?: boolean;
+}
+
+export interface CoverageCategoryRow {
+  category: CoverageCategory;
+  status: CoverageResolutionStatus;
+  affectedCount: number;
+  sampleOrderIds: string[];
+  /** Only ever set on the `'currency'` row, and only while `status === 'in-progress'`. */
+  activeRunId?: string | null;
+}
+
+/** GET /analytics/coverage (and /coverage/by-connection) response. */
+export interface AnalyticsCoverageView {
+  categories: CoverageCategoryRow[];
+}
+
+/** GET /analytics/coverage/currency/status/:runId and POST .../recalculate response. */
+export interface AnalyticsRemediationRun {
+  id: string;
+  category: string;
+  status: CoverageResolutionStatus;
+  detail: string | null;
+  affectedCount: number;
+  triggeredByUserId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AnalyticsRangeQuery {
+  from: string;
+  to: string;
+  sourceConnectionId?: string;
+}
+
+/** GET /analytics/coverage/currency/orders item (detail-currency modal row). */
+export interface CurrencyMismatchOrder {
+  internalOrderId: string;
+  sourceConnectionId: string;
+  nativeCurrency: string | null;
+  stampedCurrency: string | null;
+  stampedAt: string | null;
+  lineProducts: { productId: string; variantId: string | null }[];
+}
+
+/** GET /analytics/coverage/tax/orders item (detail-tax / detail-novat / detail-postrollout modal row). */
+export interface TaxCoverageLineRateObservation {
+  productId: string;
+  variantId: string | null;
+  rateCode: string | null;
+  state: 'known' | 'no-rate' | 'not-checked';
+  unknownReason?: 'ambiguous' | 'unreadable' | 'not-configured' | null;
+}
+
+export interface TaxCoverageOrder {
+  internalOrderId: string;
+  sourceConnectionId: string;
+  placedAt: string | null;
+  lineRates: TaxCoverageLineRateObservation[];
+}
+
+/** GET /analytics/coverage/matching/orders item (detail-mapping modal row). */
+export interface ProductMatchingOrder {
+  internalOrderId: string;
+  sourceConnectionId: string;
+  recordStatus: 'awaiting_mapping' | 'source_deleted';
+  mappingFailureReason: string | null;
+  createdAt: string;
+}
+
+/** POST /analytics/coverage/tax/rerun-backfill response. */
+export interface TaxRerunBackfillResult {
+  scanned: number;
+  updated: number;
+}
+
+/** GET /currency-settings response — narrowed to what the suite reads. */
+export interface CurrencySettingsView {
+  reportingCurrency: string;
+  source: 'setting' | 'env' | 'default';
+  supportedCurrencies: string[];
+}

@@ -63,6 +63,12 @@ describe('OrderRecordService', () => {
       getDailyOrderAggregates: jest.fn(),
       getMedianOrderValue: jest.fn(),
       getNetMedianOrderValue: jest.fn(),
+      findCurrencyMismatchOrders: jest.fn(),
+      findCurrencyMismatchOrdersByConnection: jest.fn(),
+      findProductMatchingErrorOrders: jest.fn(),
+      findCurrencyMismatchOrderRefsAfter: jest.fn(),
+      clearFxStampForRestatement: jest.fn(),
+      countRemainingCurrencyMismatch: jest.fn(),
     } as unknown as jest.Mocked<OrderRecordRepositoryPort>;
 
     // Defaults to `deferred`, which is the outcome that owes NO refresh - so
@@ -82,6 +88,7 @@ describe('OrderRecordService', () => {
       getUnitsSoldByConnection: jest.fn(),
       getTopProductRanking: jest.fn(),
       getProductChannelBreakdown: jest.fn(),
+      findProductRefsByOrderIds: jest.fn().mockResolvedValue(new Map()),
     } as unknown as jest.Mocked<OrderLineItemRepositoryPort>;
 
     reportingCurrencySettings = {
@@ -1354,6 +1361,10 @@ describe('OrderRecordService', () => {
           unconvertedCurrency: null,
           cancelledCount: 0,
           cancelledValue: 0,
+          cancelledUnconvertedCount: 0,
+          cancelledUnconvertedValue: 0,
+          cancelledNetExcludedCount: 0,
+          cancelledNetExcludedValue: 0,
           reportingCurrency: 'EUR',
           netRevenue: 150,
           netExcludedCount: 0,
@@ -1371,9 +1382,9 @@ describe('OrderRecordService', () => {
 
       const result = await service.getSalesAndChannelAnalytics(filters);
 
-      expect(repository.getDailyOrderAggregates).toHaveBeenCalledWith(filters, 'EUR');
+      expect(repository.getDailyOrderAggregates).toHaveBeenCalledWith(filters, 'EUR', false);
       expect(repository.getMedianOrderValue).toHaveBeenCalledWith(filters, 'EUR');
-      expect(repository.getNetMedianOrderValue).toHaveBeenCalledWith(filters, 'EUR');
+      expect(repository.getNetMedianOrderValue).toHaveBeenCalledWith(filters, 'EUR', false);
       expect(lineItemRepository.getUnitsSoldByConnection).toHaveBeenCalledWith(filters, 'EUR');
       expect(repository.findEarliestOrderDateByConnection).toHaveBeenCalledWith(['conn-a']);
       expect(result.headline.revenue).toBe(200);
@@ -1467,14 +1478,15 @@ describe('OrderRecordService', () => {
 
       const result = await service.getTopProducts(filters);
 
-      expect(lineItemRepository.getTopProductRanking).toHaveBeenCalledWith(filters, 'PLN');
+      expect(lineItemRepository.getTopProductRanking).toHaveBeenCalledWith(filters, 'PLN', false);
       // Breakdown query MUST receive only the ranked page's product ids —
       // never re-derived from the full scoped set — to keep its cost bounded
       // by page size (#1988 correctness requirement).
       expect(lineItemRepository.getProductChannelBreakdown).toHaveBeenCalledWith(
         ['p1', 'p2'],
         filters,
-        'PLN'
+        'PLN',
+        false
       );
       expect(result.total).toBe(2);
       expect(result.items).toHaveLength(2);
@@ -1507,7 +1519,8 @@ describe('OrderRecordService', () => {
       expect(lineItemRepository.getProductChannelBreakdown).toHaveBeenCalledWith(
         ['p1'],
         filters,
-        'PLN'
+        'PLN',
+        false
       );
     });
 
@@ -1520,7 +1533,8 @@ describe('OrderRecordService', () => {
       expect(lineItemRepository.getProductChannelBreakdown).toHaveBeenCalledWith(
         [],
         filters,
-        'PLN'
+        'PLN',
+        false
       );
       expect(result).toEqual({ items: [], total: 0 });
     });
@@ -1533,12 +1547,136 @@ describe('OrderRecordService', () => {
       await service.getTopProducts(filters);
 
       expect(reportingCurrencySettings.resolve).toHaveBeenCalled();
-      expect(lineItemRepository.getTopProductRanking).toHaveBeenCalledWith(filters, 'EUR');
+      expect(lineItemRepository.getTopProductRanking).toHaveBeenCalledWith(filters, 'EUR', false);
       expect(lineItemRepository.getProductChannelBreakdown).toHaveBeenCalledWith(
         [],
         filters,
+        'EUR',
+        false
+      );
+    });
+  });
+
+  describe('getCurrencyMismatchOrders (#2466 / #2799)', () => {
+    it('is a thin pass-through to the repository read, forwarding args verbatim, when the page is empty', async () => {
+      const salesFilters = {
+        from: new Date('2026-08-01T00:00:00.000Z'),
+        to: new Date('2026-08-08T00:00:00.000Z'),
+      };
+      const pagination = { limit: 10, offset: 0 };
+      repository.findCurrencyMismatchOrders.mockResolvedValue({ items: [], total: 0 });
+
+      const result = await service.getCurrencyMismatchOrders(salesFilters, 'EUR', pagination);
+
+      expect(repository.findCurrencyMismatchOrders).toHaveBeenCalledWith(
+        salesFilters,
+        'EUR',
+        pagination
+      );
+      expect(lineItemRepository.findProductRefsByOrderIds).not.toHaveBeenCalled();
+      expect(result).toEqual({ items: [], total: 0 });
+    });
+
+    it('enriches each row with EVERY distinct product it touches via one batched lookup (#2799, corrected per #2799 review BLOCKING 1)', async () => {
+      const salesFilters = {
+        from: new Date('2026-08-01T00:00:00.000Z'),
+        to: new Date('2026-08-08T00:00:00.000Z'),
+      };
+      const pagination = { limit: 10, offset: 0 };
+      repository.findCurrencyMismatchOrders.mockResolvedValue({
+        items: [
+          {
+            internalOrderId: 'order-1',
+            sourceConnectionId: 'conn-a',
+            nativeCurrency: 'PLN',
+            stampedCurrency: null,
+            stampedAt: null,
+            lineProducts: [],
+          },
+          {
+            internalOrderId: 'order-2',
+            sourceConnectionId: 'conn-a',
+            nativeCurrency: 'PLN',
+            stampedCurrency: null,
+            stampedAt: null,
+            lineProducts: [],
+          },
+        ],
+        total: 2,
+      });
+      lineItemRepository.findProductRefsByOrderIds.mockResolvedValue(
+        new Map([
+          [
+            'order-1',
+            [
+              { productId: 'ol_product_1', variantId: 'ol_variant_1' },
+              { productId: 'ol_product_2', variantId: null },
+            ],
+          ],
+        ])
+      );
+
+      const result = await service.getCurrencyMismatchOrders(salesFilters, 'EUR', pagination);
+
+      expect(lineItemRepository.findProductRefsByOrderIds).toHaveBeenCalledWith([
+        'order-1',
+        'order-2',
+      ]);
+      // A multi-product order's row carries EVERY product it touches, not
+      // just the first — the exact regression #2799 review BLOCKING 1 caught.
+      expect(result.items[0]).toEqual(
+        expect.objectContaining({
+          internalOrderId: 'order-1',
+          lineProducts: [
+            { productId: 'ol_product_1', variantId: 'ol_variant_1' },
+            { productId: 'ol_product_2', variantId: null },
+          ],
+        })
+      );
+      // order-2 has no line items — the batched Map has no entry for it —
+      // so it stays an empty array rather than throwing or fabricating one.
+      expect(result.items[1]).toEqual(
+        expect.objectContaining({ internalOrderId: 'order-2', lineProducts: [] })
+      );
+    });
+  });
+
+  describe('getCurrencyMismatchOrdersByConnection (#2713)', () => {
+    it('is a thin pass-through to the repository read, forwarding args verbatim, with no enrichment', async () => {
+      const salesFilters = {
+        from: new Date('2026-08-01T00:00:00.000Z'),
+        to: new Date('2026-08-08T00:00:00.000Z'),
+      };
+      const rows = [
+        { sourceConnectionId: 'conn-a', affectedCount: 3 },
+        { sourceConnectionId: 'conn-b', affectedCount: 1 },
+      ];
+      repository.findCurrencyMismatchOrdersByConnection.mockResolvedValue(rows);
+
+      const result = await service.getCurrencyMismatchOrdersByConnection(salesFilters, 'EUR');
+
+      expect(repository.findCurrencyMismatchOrdersByConnection).toHaveBeenCalledWith(
+        salesFilters,
         'EUR'
       );
+      expect(lineItemRepository.findProductRefsByOrderIds).not.toHaveBeenCalled();
+      expect(result).toEqual(rows);
+    });
+  });
+
+  describe('getProductMatchingErrorOrders (#2466)', () => {
+    it('is a thin pass-through to the repository read, forwarding args verbatim', async () => {
+      const healthFilters = { sourceConnectionId: 'conn-a' };
+      const pagination = { limit: 10, offset: 0 };
+      repository.findProductMatchingErrorOrders.mockResolvedValue({ items: [], total: 0 });
+
+      const result = await service.getProductMatchingErrorOrders(healthFilters, pagination);
+
+      expect(repository.findProductMatchingErrorOrders).toHaveBeenCalledWith(
+        healthFilters,
+        pagination
+      );
+      expect(result).toEqual({ items: [], total: 0 });
     });
   });
 });

@@ -24,6 +24,39 @@
  *    `NeedsAttentionService` — it composes them via `TopProductsService` at
  *    this layer rather than adding a new core-to-core dependency edge; see
  *    that service's own header.
+ * 5. **`/analytics/settings`** (`AnalyticsSettingsController`, #2462) — the
+ *    display-currency / rate-basis / backfilled-tax-rate-inclusion singleton
+ *    row (#2461). `GET` composes the row with the system reporting currency
+ *    from `@openlinker/core/currency`, which is why `CurrencyModule` is
+ *    imported here alongside `CoreAnalyticsModule`.
+ * 6. **`/analytics/coverage`** (`AnalyticsCoverageController`, #2466) — the
+ *    Data Coverage panel aggregate: one row per category (currency, tax
+ *    A/B/C, product-matching), elevating #2464/#2465's detectors plus the
+ *    new product-matching-error detector. Single-context read (`orders`),
+ *    same reasoning as `SalesAnalyticsController` — no new composition
+ *    service. Reuses `CurrencyModule` (already imported above) for its one
+ *    cross-context dependency, `IReportingCurrencySettingsService`.
+ *
+ * 7. **`/analytics/coverage/currency/*`** (`AnalyticsRemediationController`,
+ *    #2468) — the one genuinely-async Data Coverage remediation: open an
+ *    `analytics_remediation_runs` row, enqueue the driver job, poll the run,
+ *    and page the affected orders. Kept as a sibling of the read-only
+ *    `AnalyticsCoverageController` because it writes and needs `admin`; see
+ *    its own header. Composes `CoreAnalyticsModule` (the ledger),
+ *    `OrdersModule` (the detector count), `CurrencyModule` and `SyncModule`.
+ * 8. **`/analytics/coverage/tax/rerun-backfill`**
+ *    (`AnalyticsTaxRemediationController`, #2469) — the one tax-side action
+ *    that does real work: triggering the existing `TaxRateBackfillService`
+ *    resolution early for a selected set of orders. No run ledger and no
+ *    polling, because a backfill attempt is idempotent; see the controller's
+ *    own header for why tax categories A and B have no endpoint at all.
+ * 9. **`/analytics/coverage/matching/orders`**
+ *    (`AnalyticsMatchingCoverageController`, #2474 Phase 7) — the
+ *    `'product-matching'` category's paginated drill-down, added alongside
+ *    the FE Data Coverage panel for the same reason as item 8's `GET
+ *    orders`: `GET /analytics/coverage` only ever samples 10 ids, and the
+ *    mockup's `detail-mapping` modal needs a real page. Read-only — this
+ *    category has no remediation action, see the controller's own header.
  *
  * The concerns share nothing except the URL prefix. If a future
  * `/analytics` route (#1986 route shell, KPI strip, etc.) needs its own
@@ -39,9 +72,11 @@
  */
 import { Module } from '@nestjs/common';
 import { AnalyticsModule as CoreAnalyticsModule } from '@openlinker/core/analytics';
+import { CurrencyModule } from '@openlinker/core/currency';
 import { InventoryModule } from '@openlinker/core/inventory';
 import { ListingsModule } from '@openlinker/core/listings/services';
 import { OrdersModule } from '@openlinker/core/orders';
+import { SyncModule } from '@openlinker/core/sync';
 import { ProductsModule } from '@openlinker/core/products';
 // The apps/api-layer IntegrationsModule (not the core one, which ListingsModule
 // already imports for its own internal providers without re-exporting
@@ -52,6 +87,11 @@ import { PosthogSettingsController } from './http/posthog-settings.controller';
 import { NeedsAttentionController } from './http/needs-attention.controller';
 import { SalesAnalyticsController } from './http/sales-analytics.controller';
 import { TopProductsController } from './http/top-products.controller';
+import { AnalyticsSettingsController } from './http/analytics-settings.controller';
+import { AnalyticsCoverageController } from './http/analytics-coverage.controller';
+import { AnalyticsRemediationController } from './http/analytics-remediation.controller';
+import { AnalyticsTaxRemediationController } from './http/analytics-tax-remediation.controller';
+import { AnalyticsMatchingCoverageController } from './http/analytics-matching-coverage.controller';
 import { NeedsAttentionService } from './application/services/needs-attention.service';
 import { NEEDS_ATTENTION_SERVICE_TOKEN } from './application/services/needs-attention.service.interface';
 import { TopProductsService } from './application/services/top-products.service';
@@ -60,17 +100,25 @@ import { TOP_PRODUCTS_SERVICE_TOKEN } from './application/services/top-products.
 @Module({
   imports: [
     CoreAnalyticsModule,
+    CurrencyModule,
     InventoryModule,
     ListingsModule,
     OrdersModule,
     ProductsModule,
     ApiIntegrationsModule,
+    // #2468 — JOB_ENQUEUE_TOKEN for the currency-remediation driver enqueue.
+    SyncModule,
   ],
   controllers: [
     PosthogSettingsController,
     NeedsAttentionController,
     SalesAnalyticsController,
     TopProductsController,
+    AnalyticsSettingsController,
+    AnalyticsCoverageController,
+    AnalyticsRemediationController,
+    AnalyticsTaxRemediationController,
+    AnalyticsMatchingCoverageController,
   ],
   providers: [
     NeedsAttentionService,

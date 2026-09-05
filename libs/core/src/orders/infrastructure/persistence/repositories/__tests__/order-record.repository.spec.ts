@@ -625,6 +625,10 @@ describe('OrderRecordRepository', () => {
             unconverted_currency: 'PLN',
             cancelled_count: '1',
             cancelled_value: '20.00',
+            cancelled_unconverted_count: '0',
+            cancelled_unconverted_value: '0',
+            cancelled_net_excluded_count: '0',
+            cancelled_net_excluded_value: '0',
             reporting_currency: 'EUR',
             net_revenue: '0',
             net_excluded_count: '0',
@@ -649,6 +653,10 @@ describe('OrderRecordRepository', () => {
           netExcludedValue: 0,
           cancelledCount: 1,
           cancelledValue: 20,
+          cancelledUnconvertedCount: 0,
+          cancelledUnconvertedValue: 0,
+          cancelledNetExcludedCount: 0,
+          cancelledNetExcludedValue: 0,
           reportingCurrency: 'EUR',
         },
       ]);
@@ -757,6 +765,75 @@ describe('OrderRecordRepository', () => {
       );
     });
 
+    it('computes revenue (GMV) from order_line_items, never the shipping-inclusive reportingTotalAmount directly (#2892)', async () => {
+      const addSelect = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect,
+        groupBy: jest.fn().mockReturnThis(),
+        addGroupBy: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        setParameter: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([]),
+      });
+
+      await repository.getDailyOrderAggregates(baseFilters, 'EUR');
+
+      const calls = addSelect.mock.calls as Array<[string, string]>;
+      const revenueCall = calls.find(([, alias]) => alias === 'revenue');
+      expect(revenueCall?.[0]).toContain('FROM order_line_items rev_li');
+      // The order's own stamped FX multiplier is still applied — this must
+      // never re-look-up a fresh rate, or the figure stops reconciling with
+      // every other reporting-currency figure on the page.
+      expect(revenueCall?.[0]).toContain(
+        'rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0)'
+      );
+      // The bare pre-#2892 fragment (shipping-inclusive, no line-item join)
+      // must not survive — a straight `SUM(rec."reportingTotalAmount")` with
+      // no line-item subquery is exactly the regression this test guards.
+      expect(revenueCall?.[0]).not.toBe(
+        `COALESCE(SUM(rec."reportingTotalAmount") FILTER (WHERE rec."cancelledAt" IS NULL AND rec."reportingCurrency" = :currentReportingCurrency), 0)`
+      );
+    });
+
+    it('computes cancelledValue net-of-VAT from order_line_items, never the shipping-inclusive reportingTotalAmount directly (#2910)', async () => {
+      const addSelect = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect,
+        groupBy: jest.fn().mockReturnThis(),
+        addGroupBy: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        setParameter: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([]),
+      });
+
+      await repository.getDailyOrderAggregates(baseFilters, 'EUR');
+
+      const calls = addSelect.mock.calls as Array<[string, string]>;
+      const cancelledValueCall = calls.find(([, alias]) => alias === 'cancelled_value');
+      // Net-of-VAT, shipping-excluded: derived from the SAME per-line net
+      // subquery Net Sales uses, joined against `order_line_items`, never a
+      // bare `SUM(rec."reportingTotalAmount")` (which is shipping-inclusive
+      // and gross, #2892).
+      expect(cancelledValueCall?.[0]).toContain('FROM order_line_items net_li');
+      expect(cancelledValueCall?.[0]).toContain(
+        'rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0)'
+      );
+      expect(cancelledValueCall?.[0]).toContain('rec."cancelledAt" IS NOT NULL');
+      expect(cancelledValueCall?.[0]).not.toBe(
+        `COALESCE(SUM(rec."reportingTotalAmount") FILTER (WHERE rec."cancelledAt" IS NOT NULL AND rec."reportingCurrency" = :currentReportingCurrency), 0)`
+      );
+
+      // The exclusion-reporting counterpart is scoped to the CANCELLED
+      // cohort too, so an order with an unresolvable rate is reported here
+      // rather than silently folded into cancelledValue at a guessed rate.
+      const cancelledNetExcludedCountCall = calls.find(
+        ([, alias]) => alias === 'cancelled_net_excluded_count'
+      );
+      expect(cancelledNetExcludedCountCall?.[0]).toContain('rec."cancelledAt" IS NOT NULL');
+    });
+
     it('treats a bucket with an unrecorded native currency as not-uniform (#1987 review, suggestion 4)', async () => {
       const addSelect = jest.fn().mockReturnThis();
       (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
@@ -774,6 +851,678 @@ describe('OrderRecordRepository', () => {
       const calls = addSelect.mock.calls as Array<[string, string]>;
       const unconvertedCurrencyCall = calls.find(([, alias]) => alias === 'unconverted_currency');
       expect(unconvertedCurrencyCall?.[0]).toContain('rec."currency" IS NULL) = 0');
+    });
+  });
+
+  describe('findCurrencyMismatchOrders (#2464)', () => {
+    const baseFilters = {
+      from: new Date('2026-08-01T00:00:00.000Z'),
+      to: new Date('2026-08-08T00:00:00.000Z'),
+    };
+
+    const createMismatchEntity = (overrides: Partial<OrderRecordOrmEntity>): OrderRecordOrmEntity => {
+      const entity = createOrmEntity();
+      Object.assign(entity, overrides);
+      return entity;
+    };
+
+    it('applies the combined never-stamped-or-stale predicate, non-cancelled, with pagination', async () => {
+      const andWhere = jest.fn().mockReturnThis();
+      const orderBy = jest.fn().mockReturnThis();
+      const take = jest.fn().mockReturnThis();
+      const skip = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        andWhere,
+        orderBy,
+        take,
+        skip,
+        getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+      });
+
+      await repository.findCurrencyMismatchOrders(baseFilters, 'EUR', { limit: 20, offset: 40 });
+
+      expect(andWhere).toHaveBeenCalledWith('rec."cancelledAt" IS NULL');
+      expect(andWhere).toHaveBeenCalledWith(
+        '(rec."reportingCurrency" IS NULL OR rec."reportingCurrency" != :currentReportingCurrency)',
+        { currentReportingCurrency: 'EUR' }
+      );
+      expect(orderBy).toHaveBeenCalledWith('rec."placedAt"', 'DESC');
+      expect(take).toHaveBeenCalledWith(20);
+      expect(skip).toHaveBeenCalledWith(40);
+    });
+
+    it('scopes to the sourceConnectionId filter when provided (via the shared analytics scope)', async () => {
+      const andWhere = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        andWhere,
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+      });
+
+      await repository.findCurrencyMismatchOrders(
+        { ...baseFilters, sourceConnectionId: 'conn-a' },
+        'EUR',
+        { limit: 20, offset: 0 }
+      );
+
+      expect(andWhere).toHaveBeenCalledWith('rec.sourceConnectionId = :salesConnectionId', {
+        salesConnectionId: 'conn-a',
+      });
+    });
+
+    it('maps a never-stamped row (reportingCurrency null) to the row shape', async () => {
+      const entity = createMismatchEntity({
+        internalOrderId: 'order-never-stamped',
+        sourceConnectionId: 'conn-a',
+        currency: 'PLN',
+        reportingCurrency: null,
+        fxStampedAt: null,
+      });
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[entity], 1]),
+      });
+
+      const result = await repository.findCurrencyMismatchOrders(baseFilters, 'EUR', {
+        limit: 20,
+        offset: 0,
+      });
+
+      expect(result.total).toBe(1);
+      expect(result.items).toEqual([
+        {
+          internalOrderId: 'order-never-stamped',
+          sourceConnectionId: 'conn-a',
+          nativeCurrency: 'PLN',
+          stampedCurrency: null,
+          stampedAt: null,
+          lineProducts: [],
+        },
+      ]);
+    });
+
+    it('maps a stale-stamp row (reportingCurrency set to a prior era) to the row shape', async () => {
+      const stampedAt = new Date('2026-06-01T10:00:00.000Z');
+      const entity = createMismatchEntity({
+        internalOrderId: 'order-stale-stamp',
+        sourceConnectionId: 'conn-a',
+        currency: 'PLN',
+        reportingCurrency: 'EUR',
+        fxStampedAt: stampedAt,
+      });
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[entity], 1]),
+      });
+
+      // The demo-DB shape from the issue: a same-currency stale stamp
+      // (reportingCurrency='EUR', currency='PLN') — the current setting has
+      // since moved on to a different value, e.g. 'PLN'.
+      const result = await repository.findCurrencyMismatchOrders(baseFilters, 'PLN', {
+        limit: 20,
+        offset: 0,
+      });
+
+      expect(result.total).toBe(1);
+      expect(result.items).toEqual([
+        {
+          internalOrderId: 'order-stale-stamp',
+          sourceConnectionId: 'conn-a',
+          nativeCurrency: 'PLN',
+          stampedCurrency: 'EUR',
+          stampedAt,
+          lineProducts: [],
+        },
+      ]);
+    });
+
+    it('returns an empty page when nothing matches (backs the all-clear mockup state)', async () => {
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+      });
+
+      const result = await repository.findCurrencyMismatchOrders(baseFilters, 'EUR', {
+        limit: 20,
+        offset: 0,
+      });
+
+      expect(result).toEqual({ items: [], total: 0 });
+    });
+  });
+
+  describe('findCurrencyMismatchOrdersByConnection (#2713)', () => {
+    const baseFilters = {
+      from: new Date('2026-08-01T00:00:00.000Z'),
+      to: new Date('2026-08-08T00:00:00.000Z'),
+    };
+
+    it('applies the same predicate as findCurrencyMismatchOrders and groups by connection', async () => {
+      const select = jest.fn().mockReturnThis();
+      const addSelect = jest.fn().mockReturnThis();
+      const andWhere = jest.fn().mockReturnThis();
+      const groupBy = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select,
+        addSelect,
+        andWhere,
+        groupBy,
+        getRawMany: jest.fn().mockResolvedValue([]),
+      });
+
+      await repository.findCurrencyMismatchOrdersByConnection(baseFilters, 'EUR');
+
+      expect(select).toHaveBeenCalledWith('rec.sourceConnectionId', 'source_connection_id');
+      expect(addSelect).toHaveBeenCalledWith('COUNT(*)', 'affected_count');
+      expect(andWhere).toHaveBeenCalledWith('rec."cancelledAt" IS NULL');
+      expect(andWhere).toHaveBeenCalledWith(
+        '(rec."reportingCurrency" IS NULL OR rec."reportingCurrency" != :currentReportingCurrency)',
+        { currentReportingCurrency: 'EUR' }
+      );
+      expect(groupBy).toHaveBeenCalledWith('rec.sourceConnectionId');
+    });
+
+    it('scopes to the sourceConnectionId filter when provided (via the shared analytics scope)', async () => {
+      const andWhere = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        andWhere,
+        groupBy: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([]),
+      });
+
+      await repository.findCurrencyMismatchOrdersByConnection(
+        { ...baseFilters, sourceConnectionId: 'conn-a' },
+        'EUR'
+      );
+
+      expect(andWhere).toHaveBeenCalledWith('rec.sourceConnectionId = :salesConnectionId', {
+        salesConnectionId: 'conn-a',
+      });
+    });
+
+    it('maps raw rows across multiple connections to camelCase counts', async () => {
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        groupBy: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([
+          { source_connection_id: 'conn-a', affected_count: '3' },
+          { source_connection_id: 'conn-b', affected_count: '1' },
+        ]),
+      });
+
+      const result = await repository.findCurrencyMismatchOrdersByConnection(baseFilters, 'EUR');
+
+      expect(result).toEqual([
+        { sourceConnectionId: 'conn-a', affectedCount: 3 },
+        { sourceConnectionId: 'conn-b', affectedCount: 1 },
+      ]);
+    });
+
+    it('returns an empty array when nothing matches — a connection with zero mismatches is simply absent', async () => {
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        groupBy: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([]),
+      });
+
+      const result = await repository.findCurrencyMismatchOrdersByConnection(baseFilters, 'EUR');
+
+      expect(result).toEqual([]);
+    });
+  });
+
+  describe('currency restatement reads/writes (#2468)', () => {
+    const baseFilters = {
+      from: new Date('2026-08-01T00:00:00.000Z'),
+      to: new Date('2026-08-08T00:00:00.000Z'),
+    };
+
+    it('enumerates by keyset ASC on internalOrderId, never by offset', async () => {
+      // A cleared stamp still satisfies the mismatch predicate
+      // (`reportingCurrency IS NULL`), so an offset walk would re-read the same
+      // page forever. A strictly-increasing key can only move forward.
+      const andWhere = jest.fn().mockReturnThis();
+      const orderBy = jest.fn().mockReturnThis();
+      const limit = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        andWhere,
+        orderBy,
+        limit,
+        getRawMany: jest.fn().mockResolvedValue([]),
+      });
+
+      await repository.findCurrencyMismatchOrderRefsAfter(baseFilters, 'EUR', {
+        afterOrderId: 'ol_order_m',
+        limit: 200,
+      });
+
+      expect(orderBy).toHaveBeenCalledWith('rec."internalOrderId"', 'ASC');
+      expect(limit).toHaveBeenCalledWith(200);
+      expect(andWhere).toHaveBeenCalledWith('rec."internalOrderId" > :afterOrderId', {
+        afterOrderId: 'ol_order_m',
+      });
+      expect(andWhere).toHaveBeenCalledWith(
+        '(rec."reportingCurrency" IS NULL OR rec."reportingCurrency" != :currentReportingCurrency)',
+        { currentReportingCurrency: 'EUR' }
+      );
+    });
+
+    it('omits the keyset bound entirely on the first page', async () => {
+      const andWhere = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        andWhere,
+        orderBy: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([]),
+      });
+
+      await repository.findCurrencyMismatchOrderRefsAfter(baseFilters, 'EUR', {
+        afterOrderId: null,
+        limit: 50,
+      });
+
+      expect(andWhere).not.toHaveBeenCalledWith(
+        'rec."internalOrderId" > :afterOrderId',
+        expect.anything()
+      );
+    });
+
+    it('returns bare internalOrderIds — the page now stamps in-process (#2776)', async () => {
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([{ internal_order_id: 'ol_order_a' }]),
+      });
+
+      await expect(
+        repository.findCurrencyMismatchOrderRefsAfter(baseFilters, 'EUR', {
+          afterOrderId: null,
+          limit: 50,
+        })
+      ).resolves.toEqual(['ol_order_a']);
+    });
+
+    /**
+     * Builds a mock `createQueryBuilder().update()` chain and returns it, so the
+     * guard can be asserted as SQL rather than as a TypeORM operator object.
+     */
+    const mockClearQueryBuilder = (
+      affected: number
+    ): { set: jest.Mock; where: jest.Mock; andWhere: jest.Mock } => {
+      const chain = {
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        execute: jest.fn().mockResolvedValue({ affected }),
+      };
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(chain);
+      return chain;
+    };
+
+    it('clears exactly the six FX columns in one statement', async () => {
+      // Every one of the six matters - see the port's JSDoc. `fxIntendedCurrency`
+      // is the subtle one: leaving it behind makes `resolveIntent` re-pin the
+      // stale currency and re-stamp it, so the bug looks fixed and is not.
+      const chain = mockClearQueryBuilder(1);
+
+      await expect(repository.clearFxStampForRestatement('ol_order_a')).resolves.toBe(true);
+
+      expect(chain.set).toHaveBeenCalledWith({
+        reportingCurrency: null,
+        reportingTotalAmount: null,
+        exchangeRateId: null,
+        fxStampedAt: null,
+        fxIntendedCurrency: null,
+        fxRule: null,
+      });
+      expect(chain.where).toHaveBeenCalledWith(expect.stringContaining('"internalOrderId"'), {
+        internalOrderId: 'ol_order_a',
+      });
+    });
+
+    it('guards on ANY FX-group state, not on a figure alone, so deferred and terminal-marked rows are repaired (#2775)', async () => {
+      // The enumeration deliberately includes rows carrying no figure. A
+      // figure-only guard skipped exactly those, left the stale
+      // `fxIntendedCurrency` standing, and had the child re-stamp the currency
+      // the operator moved away from - so the run could never converge.
+      const chain = mockClearQueryBuilder(1);
+
+      await repository.clearFxStampForRestatement('ol_order_a');
+
+      const guard = (chain.andWhere.mock.calls as unknown[][])
+        .map((call) => String(call[0]))
+        .join(' ');
+      expect(guard).toContain('"reportingCurrency" IS NOT NULL');
+      expect(guard).toContain('"fxIntendedCurrency" IS NOT NULL');
+      expect(guard).toContain('"fxStampedAt" IS NOT NULL');
+    });
+
+    it('reports false when the row carries no FX state at all, so the clear is idempotent (#2775)', async () => {
+      mockClearQueryBuilder(0);
+
+      await expect(repository.clearFxStampForRestatement('ol_order_a')).resolves.toBe(false);
+    });
+
+    it('partitions the remaining population by the terminal marker', async () => {
+      const addSelect = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect,
+        andWhere: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn().mockResolvedValue({ total: 5, terminal_marked: 3 }),
+      });
+
+      await expect(
+        repository.countRemainingCurrencyMismatch(baseFilters, 'EUR')
+      ).resolves.toEqual({ total: 5, terminalMarked: 3, pending: 2 });
+
+      // `fxStampedAt IS NOT NULL AND reportingCurrency IS NULL` is the ONLY
+      // durable evidence of a terminal FX answer — the reason itself is never
+      // persisted.
+      expect(addSelect).toHaveBeenCalledWith(
+        expect.stringContaining('rec."fxStampedAt" IS NOT NULL AND rec."reportingCurrency" IS NULL'),
+        'terminal_marked'
+      );
+    });
+
+    it('coerces bigint-as-string counts so the failure detail cannot concatenate text', async () => {
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn().mockResolvedValue({ total: '4', terminal_marked: '1' }),
+      });
+
+      await expect(
+        repository.countRemainingCurrencyMismatch(baseFilters, 'EUR')
+      ).resolves.toEqual({ total: 4, terminalMarked: 1, pending: 3 });
+    });
+  });
+
+  describe('findNetExcludedOrderCandidates (#2465)', () => {
+    const baseFilters = {
+      from: new Date('2026-08-01T00:00:00.000Z'),
+      to: new Date('2026-08-08T00:00:00.000Z'),
+    };
+
+    /** A raw row shape as `getRawMany` returns it (#2826 — no longer `getMany`). */
+    const rawCandidateRow = (overrides: {
+      internal_order_id: string;
+      source_connection_id: string;
+      placed_at: Date | null;
+      tax_rate_era: string | null;
+    }): typeof overrides => overrides;
+
+    it('selects only the four candidate columns and applies the non-cancelled, current-era-stamped, NOT-net-eligible predicate (#2826)', async () => {
+      const select = jest.fn().mockReturnThis();
+      const addSelect = jest.fn().mockReturnThis();
+      const andWhere = jest.fn().mockReturnThis();
+      const orderBy = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select,
+        addSelect,
+        andWhere,
+        orderBy,
+        getRawMany: jest.fn().mockResolvedValue([]),
+      });
+
+      await repository.findNetExcludedOrderCandidates(baseFilters, 'EUR');
+
+      expect(select).toHaveBeenCalledWith('rec."internalOrderId"', 'internal_order_id');
+      expect(addSelect).toHaveBeenCalledWith('rec."sourceConnectionId"', 'source_connection_id');
+      expect(addSelect).toHaveBeenCalledWith('rec."placedAt"', 'placed_at');
+      expect(addSelect).toHaveBeenCalledWith('rec."taxRateEra"', 'tax_rate_era');
+      expect(andWhere).toHaveBeenCalledWith(
+        expect.stringContaining('rec."cancelledAt" IS NULL AND rec."reportingCurrency" = :currentReportingCurrency AND NOT'),
+        { currentReportingCurrency: 'EUR' }
+      );
+      expect(orderBy).toHaveBeenCalledWith('rec."placedAt"', 'DESC');
+    });
+
+    it('is unpaged — no take/skip call on the query builder', async () => {
+      const qb: Record<string, jest.Mock> = {
+        select: jest.fn(),
+        addSelect: jest.fn(),
+        andWhere: jest.fn(),
+        orderBy: jest.fn(),
+        getRawMany: jest.fn().mockResolvedValue([]),
+      };
+      qb.select.mockReturnValue(qb);
+      qb.addSelect.mockReturnValue(qb);
+      qb.andWhere.mockReturnValue(qb);
+      qb.orderBy.mockReturnValue(qb);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      await repository.findNetExcludedOrderCandidates(baseFilters, 'EUR');
+
+      expect(qb.take).toBeUndefined();
+      expect(qb.skip).toBeUndefined();
+    });
+
+    it('maps a pre-rollout candidate to the row shape, including taxRateEra', async () => {
+      const row = rawCandidateRow({
+        internal_order_id: 'order-pre-rollout',
+        source_connection_id: 'conn-a',
+        placed_at: new Date('2026-08-02T00:00:00.000Z'),
+        tax_rate_era: 'pre-rollout',
+      });
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([row]),
+      });
+
+      const result = await repository.findNetExcludedOrderCandidates(baseFilters, 'EUR');
+
+      expect(result).toEqual([
+        {
+          internalOrderId: 'order-pre-rollout',
+          sourceConnectionId: 'conn-a',
+          placedAt: row.placed_at,
+          taxRateEra: 'pre-rollout',
+        },
+      ]);
+    });
+
+    it('maps a non-pre-rollout candidate with taxRateEra: null', async () => {
+      const row = rawCandidateRow({
+        internal_order_id: 'order-post-rollout',
+        source_connection_id: 'conn-a',
+        placed_at: new Date('2026-08-03T00:00:00.000Z'),
+        tax_rate_era: null,
+      });
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([row]),
+      });
+
+      const result = await repository.findNetExcludedOrderCandidates(baseFilters, 'EUR');
+
+      expect(result).toEqual([
+        {
+          internalOrderId: 'order-post-rollout',
+          sourceConnectionId: 'conn-a',
+          placedAt: row.placed_at,
+          taxRateEra: null,
+        },
+      ]);
+    });
+
+    it('scopes to the sourceConnectionId filter when provided (via the shared analytics scope)', async () => {
+      const andWhere = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        andWhere,
+        orderBy: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([]),
+      });
+
+      await repository.findNetExcludedOrderCandidates(
+        { ...baseFilters, sourceConnectionId: 'conn-a' },
+        'EUR'
+      );
+
+      expect(andWhere).toHaveBeenCalledWith('rec.sourceConnectionId = :salesConnectionId', {
+        salesConnectionId: 'conn-a',
+      });
+    });
+  });
+
+  describe('findProductMatchingErrorOrders (#2466)', () => {
+    const createMappingEntity = (
+      overrides: Partial<OrderRecordOrmEntity>
+    ): OrderRecordOrmEntity => {
+      const entity = createOrmEntity();
+      Object.assign(entity, overrides);
+      return entity;
+    };
+
+    it('applies the source_deleted OR awaiting_mapping predicate, newest-first, with pagination', async () => {
+      const andWhere = jest.fn().mockReturnThis();
+      const orderBy = jest.fn().mockReturnThis();
+      const take = jest.fn().mockReturnThis();
+      const skip = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        andWhere,
+        orderBy,
+        take,
+        skip,
+        getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+      });
+
+      await repository.findProductMatchingErrorOrders({}, { limit: 20, offset: 40 });
+
+      expect(andWhere).toHaveBeenCalledWith(
+        `(rec."recordStatus" = 'source_deleted' OR rec."recordStatus" = 'awaiting_mapping')`
+      );
+      expect(orderBy).toHaveBeenCalledWith('rec."createdAt"', 'DESC');
+      expect(take).toHaveBeenCalledWith(20);
+      expect(skip).toHaveBeenCalledWith(40);
+    });
+
+    it('scopes to sourceConnectionId/customerId/createdFrom/createdTo when provided', async () => {
+      const andWhere = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        andWhere,
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+      });
+      const createdFrom = new Date('2026-08-01T00:00:00.000Z');
+      const createdTo = new Date('2026-08-08T00:00:00.000Z');
+
+      await repository.findProductMatchingErrorOrders(
+        { sourceConnectionId: 'conn-a', customerId: 'cust-a', createdFrom, createdTo },
+        { limit: 20, offset: 0 }
+      );
+
+      expect(andWhere).toHaveBeenCalledWith('rec.sourceConnectionId = :sourceConnectionId', {
+        sourceConnectionId: 'conn-a',
+      });
+      expect(andWhere).toHaveBeenCalledWith('rec.customerId = :customerId', {
+        customerId: 'cust-a',
+      });
+      expect(andWhere).toHaveBeenCalledWith('rec.createdAt >= :createdFrom', { createdFrom });
+      expect(andWhere).toHaveBeenCalledWith('rec.createdAt <= :createdTo', { createdTo });
+    });
+
+    it('maps an awaiting_mapping row to the row shape', async () => {
+      const entity = createMappingEntity({
+        internalOrderId: 'order-awaiting-mapping',
+        sourceConnectionId: 'conn-a',
+        recordStatus: 'awaiting_mapping',
+        mappingFailureReason: 'no variant mapping for SKU-123',
+        createdAt: new Date('2026-08-02T10:00:00.000Z'),
+      });
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[entity], 1]),
+      });
+
+      const result = await repository.findProductMatchingErrorOrders({}, { limit: 20, offset: 0 });
+
+      expect(result.total).toBe(1);
+      expect(result.items).toEqual([
+        {
+          internalOrderId: 'order-awaiting-mapping',
+          sourceConnectionId: 'conn-a',
+          recordStatus: 'awaiting_mapping',
+          mappingFailureReason: 'no variant mapping for SKU-123',
+          createdAt: entity.createdAt,
+          productId: null,
+          variantId: null,
+        },
+      ]);
+    });
+
+    it('maps a source_deleted row to the row shape', async () => {
+      const entity = createMappingEntity({
+        internalOrderId: 'order-source-deleted',
+        sourceConnectionId: 'conn-a',
+        recordStatus: 'source_deleted',
+        mappingFailureReason: 'variant deleted at master',
+        createdAt: new Date('2026-08-03T10:00:00.000Z'),
+      });
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[entity], 1]),
+      });
+
+      const result = await repository.findProductMatchingErrorOrders({}, { limit: 20, offset: 0 });
+
+      expect(result.items[0].recordStatus).toBe('source_deleted');
+    });
+
+    it('returns an empty page when nothing matches (backs the all-clear mockup state)', async () => {
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+      });
+
+      const result = await repository.findProductMatchingErrorOrders({}, { limit: 20, offset: 0 });
+
+      expect(result).toEqual({ items: [], total: 0 });
     });
   });
 
@@ -833,6 +1582,26 @@ describe('OrderRecordRepository', () => {
       expect(andWhere).toHaveBeenCalledWith('rec."reportingCurrency" = :currentReportingCurrency', {
         currentReportingCurrency: 'EUR',
       });
+    });
+
+    it('computes PERCENTILE_CONT over the gross merchandise-only line-item basis, not the shipping-inclusive reportingTotalAmount (#2906)', async () => {
+      const select = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select,
+        andWhere: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn().mockResolvedValue({ median: null }),
+      });
+
+      await repository.getMedianOrderValue(baseFilters, 'EUR');
+
+      const [selectSql, alias] = select.mock.calls[0] as [string, string];
+      expect(alias).toBe('median');
+      expect(selectSql).toContain('PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY');
+      // The gross-revenue scalar subquery reads from order_line_items —
+      // the same basis AOV/Revenue use — rather than reading
+      // `reportingTotalAmount` bare (the shipping-inclusive bug).
+      expect(selectSql).toContain('FROM order_line_items');
+      expect(selectSql).toContain('rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0)');
     });
   });
 

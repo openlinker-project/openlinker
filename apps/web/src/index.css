@@ -4979,6 +4979,27 @@ a.kpi-card:focus-visible {
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-1);
+}
+
+/* ── Rate provenance line under a converted qualifier (#2778/#2779) ── */
+/* `--text-secondary`, not `--text-muted`: this line's whole job is to be READ
+   and checked against the figure above it (#2788 review). Both tokens clear
+   WCAG AA on `--bg-surface` (muted measures 5.51:1 light / 4.91:1 dark), but
+   4.91:1 at 11px is close to the floor for evidence an operator is asked to
+   verify; `--text-secondary` measures 10.02:1 / 9.69:1 on the same surfaces. */
+.kpi-card__qualifier-rate {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 400;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
 }
 
 .status-strip--analytics .kpi-card--planned {
@@ -5013,6 +5034,21 @@ a.kpi-card:focus-visible {
   font-weight: 700;
   cursor: help;
   font-family: var(--font-mono);
+}
+
+/* ── GapMark clickable variant (#2480) — opens the coverage category's
+   own detail modal instead of only showing a tooltip. */
+.gap-mark--clickable {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.gap-mark--clickable:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
 }
 
 .section-infotip {
@@ -5484,6 +5520,30 @@ a.kpi-card:focus-visible {
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-md);
   z-index: 50;
+}
+
+/* ── Analytics coverage alert badge (title-adjacent) ─────────────────── */
+.analytics-coverage-alert-badge__trigger {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  margin-left: var(--space-2);
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+.analytics-coverage-alert-badge__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 280px;
+}
+
+.analytics-coverage-alert-badge__content p {
+  margin: 0;
+  color: var(--text-secondary);
 }
 
 /* ── Command Palette (#333) ──────────────────────────────────────────
@@ -19248,6 +19308,20 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   font-weight: 600;
 }
 
+/* ── Trailing toolbar stack (#2895) ──
+   The currency picker and the VAT-basis toggle are both "how to read this
+   view" preferences, stacked in one column — the toggle sits directly
+   below the picker rather than beside it, since the currency choice is the
+   taller and more consequential of the two. This div is the ONE child of
+   the trailing `.toolbar__group` (a flex row), so it becomes a single flex
+   item that switches its own children to a column. */
+.analytics-toolbar__trailing-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
 /* The † gap marker on the "Order date" chip — a real <button> opening a
    Popover on click, not a Tooltip, so it's reachable on touch devices
    (Radix Tooltip ignores pointerType === 'touch'). */
@@ -19264,6 +19338,150 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 
 .analytics-gap-mark:focus-visible {
   box-shadow: var(--shadow-focus);
+}
+
+/* ── Analytics settings dialog (#2473) ──
+   Mirrors the mockup's `.settings-field` / `.rate-basis-option` /
+   `.settings-section` / `.settings-toggle` shapes — see
+   docs/plans/mockups/analytics-display-currency-picker.html. */
+.analytics-settings-dialog__field {
+  display: grid;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+}
+
+fieldset.analytics-settings-dialog__field {
+  border: none;
+  padding: 0;
+  margin: 0 0 var(--space-5);
+  min-width: 0;
+}
+
+.analytics-settings-dialog__label {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+legend.analytics-settings-dialog__label {
+  padding: 0;
+  margin-bottom: var(--space-2);
+}
+
+.analytics-settings-dialog__hint {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.analytics-settings-dialog__rate-basis-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.analytics-settings-dialog__rate-basis-option + .analytics-settings-dialog__rate-basis-option {
+  margin-top: var(--space-2);
+}
+
+.analytics-settings-dialog__rate-basis-option:has(input:checked) {
+  border-color: var(--accent-primary);
+  background: var(--accent-primary-soft);
+}
+
+.analytics-settings-dialog__rate-basis-option:has(input:checked) strong {
+  color: var(--accent-primary-soft-strong);
+}
+
+.analytics-settings-dialog__rate-basis-desc {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  padding-left: 1.4rem;
+}
+
+.analytics-settings-dialog__section {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+  display: grid;
+  gap: var(--space-3);
+}
+
+.analytics-settings-dialog__section:last-of-type {
+  margin-bottom: 0;
+}
+
+.analytics-settings-dialog__section-title {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.analytics-settings-dialog__toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+
+.analytics-settings-dialog__toggle input {
+  margin-top: 3px;
+  flex: none;
+  width: 0.875rem;
+  height: 0.875rem;
+  accent-color: var(--accent-primary);
+  cursor: pointer;
+}
+
+.analytics-settings-dialog__toggle:has(input:disabled) {
+  cursor: not-allowed;
+}
+
+.analytics-settings-dialog__toggle-desc {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+
+.analytics-settings-dialog__status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.analytics-settings-dialog__tax-summary {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.analytics-settings-dialog__tax-summary li {
+  padding: 7px 0;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.analytics-settings-dialog__tax-summary li:first-child {
+  border-top: none;
 }
 
 /* ── Analytics trust header (#1986) ──
@@ -19414,6 +19632,184 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   .attention-list__item {
     flex-wrap: wrap;
   }
+}
+
+/* ── Data coverage panel (#2474) — reuses .attention-list/.panel above;
+   this block is only the pieces that section didn't already have: a
+   clickable row wrapping the badge/body/action, the row's own action
+   pill, the dismissible success banner, and the detail-modal row list. */
+.row-trigger {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  /* Opt out of the global `button, .button { height: 2rem }` (line ~541) —
+     this row's two-line headline+sub body needs its real content height,
+     not a fixed 32px that clips it and collapses the visual gap between
+     rows (mirrors .orders-sortbtn's identical fix, #1747). */
+  height: auto;
+  padding: var(--space-3) var(--space-4);
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.row-trigger:hover {
+  background: var(--bg-surface-hover);
+}
+
+.row-trigger:focus-visible {
+  outline: none;
+  box-shadow: inset var(--shadow-focus);
+}
+
+.attention-list__action {
+  flex: none;
+  pointer-events: none;
+}
+
+.coverage-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  margin: 0 var(--space-4) var(--space-3);
+  background: var(--status-success-soft);
+  border: 1px solid var(--status-success-border);
+  border-left: 3px solid var(--status-success);
+  border-radius: var(--radius-md);
+}
+
+.coverage-alert__icon {
+  flex: none;
+  color: var(--status-success-strong);
+  font-weight: 700;
+}
+
+.coverage-alert__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.coverage-alert__title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--status-success-strong);
+}
+
+.coverage-alert__sub {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.coverage-alert__close {
+  flex: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--status-success-strong);
+  font-size: 1rem;
+  line-height: 1;
+  padding: 2px;
+  border-radius: var(--radius-xs);
+}
+
+.coverage-alert__close:hover {
+  background: color-mix(in oklab, var(--status-success) 15%, transparent);
+}
+
+/* ── Analytics exclusion note (#2481) — per-row `.excl-note` annotation on
+   ChannelSalesTable when a row is under-counted by an open Data Coverage
+   category. Opens the same detail modal the Data Coverage panel uses.
+   Renders on the shared `.chip`/`.chip--warning` primitive (tone, border,
+   background, padding, font already come from there) — this only ADDS the
+   truncation behavior a table cell needs, never re-declares the pill. */
+.excl-note {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.coverage-detail__table-wrap {
+  max-height: 21rem;
+  overflow-y: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.coverage-detail-row-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.coverage-detail-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.coverage-detail-row:last-child {
+  border-bottom: none;
+}
+
+.coverage-detail-row__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.coverage-detail-row__title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.coverage-detail-row__meta {
+  font-size: 0.72rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.coverage-detail-row__trail {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.coverage-detail-row__tag {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--status-warning-soft);
+  color: var(--status-warning-strong);
+  border: 1px solid var(--status-warning-border);
+  white-space: nowrap;
+}
+
+.coverage-detail-row__tag--neutral {
+  background: var(--bg-surface-muted);
+  color: var(--text-muted);
+  border-color: var(--border-subtle);
 }
 
 /* ── Rich text editor + view (ADR-046 / #2199) ──────────────────────────────

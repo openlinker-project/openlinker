@@ -15,6 +15,16 @@
  */
 import { ApiError } from './api-error';
 import type {
+  AnalyticsCoverageView,
+  AnalyticsRangeQuery,
+  AnalyticsRemediationRun,
+  AnalyticsSettingsView,
+  CurrencyMismatchOrder,
+  CurrencySettingsView,
+  ProductMatchingOrder,
+  TaxCoverageOrder,
+  TaxRerunBackfillResult,
+  UpdateAnalyticsSettingsInput,
   ProductContentState,
   ApproveUserInput,
   BulkBatchSummary,
@@ -829,6 +839,96 @@ export class ApiClient {
       this.request<RoutingRule[]>(`/connections/${connectionId}/routing-rules`, {
         method: 'PUT',
         body: JSON.stringify({ items }),
+      }),
+  };
+
+  // ── Analytics (#2482) ────────────────────────────────────────────────────
+  analytics = {
+    getSettings: (): Promise<AnalyticsSettingsView> =>
+      this.request<AnalyticsSettingsView>('/analytics/settings'),
+    updateSettings: (input: UpdateAnalyticsSettingsInput): Promise<void> =>
+      this.request<void>('/analytics/settings', {
+        method: 'PUT',
+        body: JSON.stringify(input),
+      }),
+    getCoverage: (query: AnalyticsRangeQuery): Promise<AnalyticsCoverageView> =>
+      this.request<AnalyticsCoverageView>(
+        `/analytics/coverage${buildQuery({
+          from: query.from,
+          to: query.to,
+          sourceConnectionId: query.sourceConnectionId,
+        })}`,
+      ),
+    /** POST /analytics/coverage/currency/recalculate — opens a remediation run. */
+    recalculateCurrency: (query: AnalyticsRangeQuery): Promise<AnalyticsRemediationRun> =>
+      this.request<AnalyticsRemediationRun>('/analytics/coverage/currency/recalculate', {
+        method: 'POST',
+        body: JSON.stringify(query),
+      }),
+    /** POST /analytics/coverage/currency/cancel — recovers a run stranded at `in-progress`. */
+    cancelCurrencyRun: (): Promise<AnalyticsRemediationRun> =>
+      this.request<AnalyticsRemediationRun>('/analytics/coverage/currency/cancel', { method: 'POST' }),
+    getCurrencyRunStatus: (runId: string): Promise<AnalyticsRemediationRun> =>
+      this.request<AnalyticsRemediationRun>(`/analytics/coverage/currency/status/${runId}`),
+    /** GET /analytics/coverage/currency/orders — the detail-currency modal's paginated list. */
+    getCurrencyMismatchOrders: (
+      query: AnalyticsRangeQuery & { limit?: number; offset?: number },
+    ): Promise<Paginated<CurrencyMismatchOrder>> =>
+      this.request<Paginated<CurrencyMismatchOrder>>(
+        `/analytics/coverage/currency/orders${buildQuery({
+          from: query.from,
+          to: query.to,
+          sourceConnectionId: query.sourceConnectionId,
+          limit: query.limit,
+          offset: query.offset,
+        })}`,
+      ),
+    /** GET /analytics/coverage/tax/orders — backs detail-tax / detail-novat / detail-postrollout. */
+    getTaxCoverageOrders: (
+      query: AnalyticsRangeQuery & {
+        category: 'tax-a' | 'tax-b' | 'tax-c';
+        limit?: number;
+        offset?: number;
+      },
+    ): Promise<Paginated<TaxCoverageOrder>> =>
+      this.request<Paginated<TaxCoverageOrder>>(
+        `/analytics/coverage/tax/orders${buildQuery({
+          category: query.category,
+          from: query.from,
+          to: query.to,
+          sourceConnectionId: query.sourceConnectionId,
+          limit: query.limit,
+          offset: query.offset,
+        })}`,
+      ),
+    /** POST /analytics/coverage/tax/rerun-backfill — category-C "sync the catalog now". */
+    rerunTaxBackfill: (internalOrderIds: string[]): Promise<TaxRerunBackfillResult> =>
+      this.request<TaxRerunBackfillResult>('/analytics/coverage/tax/rerun-backfill', {
+        method: 'POST',
+        body: JSON.stringify({ internalOrderIds }),
+      }),
+    /** GET /analytics/coverage/matching/orders — the detail-mapping modal's paginated list. */
+    getMatchingCoverageOrders: (
+      query: AnalyticsRangeQuery & { limit?: number; offset?: number },
+    ): Promise<Paginated<ProductMatchingOrder>> =>
+      this.request<Paginated<ProductMatchingOrder>>(
+        `/analytics/coverage/matching/orders${buildQuery({
+          from: query.from,
+          to: query.to,
+          sourceConnectionId: query.sourceConnectionId,
+          limit: query.limit,
+          offset: query.offset,
+        })}`,
+      ),
+  };
+
+  // ── Currency settings (#2482 — currency-mismatch fixture) ────────────────
+  currencySettings = {
+    get: (): Promise<CurrencySettingsView> => this.request<CurrencySettingsView>('/currency-settings'),
+    setReportingCurrency: (reportingCurrency: string): Promise<CurrencySettingsView> =>
+      this.request<CurrencySettingsView>('/currency-settings/reporting-currency', {
+        method: 'PUT',
+        body: JSON.stringify({ reportingCurrency }),
       }),
   };
 }

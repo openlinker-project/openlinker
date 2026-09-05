@@ -11,25 +11,49 @@
  *   - Revenue: the spec's "Net Sales" is NOV (net order value, VAT-exclusive)
  *     minus the value of returns (`docs/specs/metrics-analytics-dashboard.md`
  *     § Net Sales). The net-sales tax-rate epic made NOV real
- *     (`headline.netRevenue`) — per the reference design mockup this renders
- *     as a normal, complete "Net sales" headline (no gap badge on the card
- *     face); the still-open returns caveat and the tax-rate exclusion count
- *     (`headline.netExcludedCount` — pre-rollout orders, or an order with an
- *     unresolvable line-level tax rate) live only in the (i) tooltip's
- *     definition, never as a second qualifier row. Its GMV qualifier
- *     (`headline.revenue`, real, FX-stamped, in `headline.currency`) renders
- *     normally, unchanged.
+ *     (`headline.netRevenue`); the still-open returns caveat and the
+ *     tax-rate exclusion count (`headline.netExcludedCount` — pre-rollout
+ *     orders, or an order with an unresolvable line-level tax rate) live
+ *     only in the (i) tooltip's definition, never as a second qualifier row.
+ *     Both Net sales and GMV (`headline.revenue`, real, FX-stamped, in
+ *     `headline.currency`) always render — one as the primary headline
+ *     figure, the other as the qualifier below it — and which one is
+ *     primary is driven by `netGrossBasis` (#2908 fix): `'net'` (the
+ *     default) shows Net sales primary / GMV qualifier; `'gross'` shows GMV
+ *     primary / Net sales qualifier, matching the channel/product tables'
+ *     own basis-driven primary column (`channel-sales-table.tsx`'s
+ *     `revenueLabel`/`revenueOf`). Neither figure is ever hidden — the
+ *     toggle only decides which one is labelled and rendered as the
+ *     headline.
  *   - Orders, Units: fully real. `headline.orderCount` only counts
  *     FX-stamped orders (ADR-040) — `totalOrders` below adds back `headline.
  *     unconvertedCount` so Orders/Avg. daily/Units per order/Cancellation
- *     rate count every placed order.
- *   - Order value (AOV + median): renders `headline.netAverageOrderValue` /
- *     `netMedianOrderValue` (net-sales tax-rate epic), not the gross
- *     `averageOrderValue`/`medianOrderValue` — same VAT-exclusive basis as
- *     the Revenue card's headline figure, so a reader comparing "Revenue"
- *     against "Order value" isn't silently comparing net against gross.
- *     Both stay on the FX-stamped subset and disclose that gap explicitly,
- *     same as before.
+ *     rate count every placed order. `headline.unitsSold` carries the same
+ *     FX-stamped restriction, but a unit count needs no currency conversion
+ *     at all — `totalUnitsSold` below adds back `headline.
+ *     unconvertedUnitsSold` unconditionally, so Units sold/Units per order
+ *     count every placed, non-cancelled order's units.
+ *   - Order value (AOV + median, #2894 fix, basis-wired by #2903): under the
+ *     default `netGrossBasis="gross"` this renders `headline.
+ *     averageOrderValue`/`medianOrderValue`, byte-identical to #2894's fix —
+ *     NOT the VAT-exclusive `netAverageOrderValue`/`netMedianOrderValue`. The
+ *     metrics spec requires AOV/Median's numerator and denominator to
+ *     "operate on exactly the same set of orders as Number of Orders" — the
+ *     net fields are additionally restricted to `netExcludedCount`-eligible
+ *     orders (a stored, resolved per-line tax rate; see ADR-063), a
+ *     restriction Number of Orders never applies. AOV/Median need only the
+ *     order's gross total (`reportingTotalAmount`), so there is no
+ *     principled reason to exclude a tax-rate-unresolved order from the
+ *     GROSS figure. The ONE restriction kept there is the FX-stamp one — a
+ *     currency-denominated average genuinely cannot include an order with no
+ *     known amount in the reporting currency, and that is the SAME
+ *     restriction `revenue`/`orderCount` (Number of Orders) already apply,
+ *     disclosed via the same `STAMPED_GAP` gap mark as before. Under
+ *     `netGrossBasis="net"` — an operator's own explicit choice to view the
+ *     page net-of-VAT — the card instead reads `netAverageOrderValue`/
+ *     `netMedianOrderValue`, whose narrower net-eligible cohort is disclosed
+ *     via `netExcludedNote` instead. The Revenue card now ALSO reads this
+ *     prop (#2908 fix), for the primary/qualifier swap described above.
  *   - Returns & refunds: no return/refund entity exists anywhere in the
  *     orders domain — fully planned.
  *   - Cancellations: `cancelledCount`/`cancelledValue` are real fields —
@@ -41,8 +65,10 @@
  *     (never a lopsided comparison) unless that ENTIRE previous window is
  *     covered by ingested order history (`isPreviousPeriodCovered`, keyed
  *     off `GET /analytics/trust`'s per-connection `earliestOrderDate`,
- *     #2083) — see the per-card `deltaFor*` helpers below. Revenue's
- *     headline and Returns & refunds are both already `unavailable`/
+ *     #2083) — see the per-card `deltaFor*` helpers below. Revenue carries
+ *     no delta today (confirmed still true by #2908 — nothing here compares
+ *     a toggled current figure against a fixed-basis previous one, since
+ *     there is no comparison to begin with); Returns & refunds stays
  *     `planned`, so a delta there would compare against nothing real.
  *
  * Currency (#1987/#2049/ADR-040): there is exactly ONE system-wide reporting
@@ -67,6 +93,16 @@ import { useSalesAnalyticsQuery } from '../hooks/use-sales-analytics-query';
 import type { ConnectionIngestionTrust } from '../api/analytics-trust.types';
 import type { SalesAnalyticsFilters } from '../api/sales-analytics.types';
 import { computePreviousPeriodRange, isPreviousPeriodCovered } from '../lib/date-range.lib';
+import {
+  buildRateProvenanceDefinitions,
+  createReportingCurrencyConverter,
+  formatAppliedRateLine,
+  isCurrencyRecalculating,
+  pickInlineAppliedRate,
+  resolveReportingCurrencyRate,
+} from '../lib/display-currency.lib';
+import { AnalyticsInfotip } from './analytics-infotip';
+import type { NetGrossBasis } from '../api/analytics-settings.types';
 import { resolveEarliestOrderDate } from '../lib/ingestion-trust.lib';
 import {
   averageDailyOrders,
@@ -84,6 +120,13 @@ import {
 } from '../lib/sales-analytics-view-model';
 import { AnalyticsKpiCard, type AnalyticsKpiDelta } from './analytics-kpi-card';
 import { GapMark } from './gap-mark';
+import { RecalculatingValue } from './recalculating-value';
+import { deriveCoverageRowCopy } from '../lib/data-coverage-copy.lib';
+import type {
+  AnalyticsCoverage,
+  CoverageCategory,
+  CoverageCategoryRow,
+} from '../api/analytics-coverage.types';
 
 // The metrics spec defines Net Sales as NOV minus the value of returns
 // (docs/specs/metrics-analytics-dashboard.md § Net Sales) — quoted, not
@@ -110,14 +153,67 @@ const DELTA_FORMAT_OPTIONS: Intl.NumberFormatOptions = {
   minimumFractionDigits: 1,
   maximumFractionDigits: 1,
 };
+// The GMV qualifier's applied-rate line is a provenance figure - it must be
+// checkable (amount × rate reproduces the displayed figure), so it renders
+// up to 8 fraction digits, matching the `numeric(18,8)` `rate.rate` column
+// (#2788 review). Trailing zeros beyond the source precision still trim.
+const RATE_FORMAT_OPTIONS: Intl.NumberFormatOptions = {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 8,
+};
 
 interface AnalyticsKpiStripProps {
   filters: SalesAnalyticsFilters;
   /** For `earliestOrderDate` coverage-gating the previous-period delta — already fetched at the page level for the trust header, so this never issues its own `GET /analytics/trust` call. */
   connections: ConnectionIngestionTrust[];
+  /**
+   * The Data Coverage aggregate (#2474 Phase 7), read at the page level —
+   * same query key as `AnalyticsDataCoveragePanel`'s own fetch, so this
+   * never issues a second `GET /analytics/coverage` call (#2480, epic
+   * #2452 Phase 8). `undefined` while still loading, or when the caller
+   * never wired coverage in (e.g. an older test) — every `GapMark` below
+   * falls back to its pre-Phase-8 generic title in that case.
+   */
+  coverage?: AnalyticsCoverage;
+  /** Opens the matching Data Coverage detail modal — omit to keep every `GapMark` inert. */
+  onOpenCategory?: (category: CoverageCategory) => void;
+  /**
+   * VAT basis for the Order value card's AOV/Median (#2903 — wiring the
+   * #2895 toggle). `'gross'` (the default) reads `headline.
+   * averageOrderValue`/`medianOrderValue`, byte-identical to this card's
+   * pre-#2895 rendering (#2894's fix). `'net'` reads the VAT-exclusive
+   * `netAverageOrderValue`/`netMedianOrderValue` instead — a genuinely
+   * narrower cohort (net-sales-eligible orders only, see
+   * `netExcludedCount`), which is an accepted, disclosed tradeoff of an
+   * operator's own explicit choice to view the page net, not a silent
+   * population mismatch the way #2894 found and fixed. The Revenue card is
+   * deliberately NOT gated on this — it already renders both Net Sales
+   * (primary) and GMV (qualifier) unconditionally, so there is nothing for
+   * a basis toggle to add there.
+   */
+  netGrossBasis?: NetGrossBasis;
 }
 
-export function AnalyticsKpiStrip({ connections, filters }: AnalyticsKpiStripProps): ReactElement {
+/** Tax categories partition the exclusion set (`TaxCoverageDetectionService`'s classification pass) — the one with the largest `affectedCount` is the category actually causing `netExcludedCount`. Falls back to `'tax-a'` (the remediable one) if all three read zero, which should not happen while `netExcludedVisible` is true. */
+function resolveNetExcludedTaxCategory(categories: CoverageCategoryRow[]): CoverageCategoryRow {
+  const taxRows = categories.filter(
+    (row): row is CoverageCategoryRow & { category: 'tax-a' | 'tax-b' | 'tax-c' } =>
+      row.category === 'tax-a' || row.category === 'tax-b' || row.category === 'tax-c'
+  );
+  const best = taxRows.reduce<CoverageCategoryRow | null>(
+    (max, row) => (max === null || row.affectedCount > max.affectedCount ? row : max),
+    null
+  );
+  return best ?? { category: 'tax-a', status: 'open', affectedCount: 0, sampleOrderIds: [] };
+}
+
+export function AnalyticsKpiStrip({
+  connections,
+  filters,
+  coverage,
+  onOpenCategory,
+  netGrossBasis = 'gross',
+}: AnalyticsKpiStripProps): ReactElement {
   const query = useSalesAnalyticsQuery(filters);
 
   // Computed and the second query issued UNCONDITIONALLY, before any early
@@ -136,6 +232,7 @@ export function AnalyticsKpiStrip({ connections, filters }: AnalyticsKpiStripPro
   const ratioFormat = useNumberFormat(RATIO_FORMAT_OPTIONS);
   const pctFormat = useNumberFormat(PERCENT_FORMAT_OPTIONS);
   const deltaFormat = useNumberFormat(DELTA_FORMAT_OPTIONS);
+  const rateFormat = useNumberFormat(RATE_FORMAT_OPTIONS);
 
   if (query.isLoading) {
     return (
@@ -174,12 +271,152 @@ export function AnalyticsKpiStrip({ connections, filters }: AnalyticsKpiStripPro
   // placed, non-cancelled order also includes the not-yet-stamped ones.
   const totalOrders = headline.orderCount + headline.unconvertedCount;
   const avgDaily = averageDailyOrders(totalOrders, filters.from, filters.to);
-  const unitsRatio = unitsPerOrder(headline.unitsSold, totalOrders);
+  // headline.unitsSold only counts units on FX-stamped orders (ADR-040), the
+  // same restriction as orderCount/revenue — a unit count needs no currency
+  // conversion, so unlike orders/AOV there is no reason to leave the
+  // unconverted units out of the total at all.
+  const totalUnitsSold = headline.unitsSold + headline.unconvertedUnitsSold;
+  const unitsRatio = unitsPerOrder(totalUnitsSold, totalOrders);
   const cancelRate = cancellationRate(headline.cancelledCount, totalOrders);
-  const currency = headline.currency ?? undefined;
+  const nativeCurrency = headline.currency ?? undefined;
+  const gmvConversion = headline.displayCurrencyConversion;
+  const gmvValue =
+    gmvConversion && gmvConversion.convertedRevenue !== null
+      ? gmvConversion.convertedRevenue
+      : headline.revenue;
+  const gmvCurrency =
+    gmvConversion && gmvConversion.convertedRevenue !== null
+      ? gmvConversion.displayCurrency
+      : nativeCurrency;
+  // Rate provenance for the GMV qualifier (#2778/#2779) — `null` unless the
+  // figure was actually converted (never for the unavailable/identity paths,
+  // which report no applied rate at all). See `pickInlineAppliedRate`'s own
+  // doc for why only an UNAMBIGUOUS single rate ever renders inline.
+  const gmvAppliedRates =
+    gmvConversion && gmvConversion.convertedRevenue !== null ? gmvConversion.appliedRates : [];
+  const gmvInlineRate = pickInlineAppliedRate(gmvAppliedRates);
+  const gmvProvenanceDefinitions = buildRateProvenanceDefinitions(
+    gmvConversion?.rateBasis ?? 'current-rate',
+    gmvAppliedRates,
+    rateFormat
+  );
+  // #2778/#2779: the REAL published rate for `headline.currency ->
+  // displayCurrency`, picked out of the exact backend response GMV itself
+  // used — never derived by dividing two totals (see `display-currency.
+  // lib.ts`'s "REJECTED APPROACH" note for why that failed in production).
+  // `netRevenue`/AOV/median/cancelledValue are all denominated in the SAME
+  // `headline.currency` bucket `revenue` came from (ADR-040's one
+  // system-wide reporting currency invariant), so applying this one rate to
+  // each of them is ordinary arithmetic on a real number, not a shortcut.
+  // `null` (unresolved, or nothing converted) means every one of them stays
+  // native — the same "never guess" discipline as before, just no longer
+  // refusing conversion outright.
+  const headlineCurrency = headline.currency;
+  const reportingRate = resolveReportingCurrencyRate(gmvConversion, headlineCurrency);
+  const reportingConverter = createReportingCurrencyConverter(reportingRate, headlineCurrency);
+  const currency = reportingRate && gmvConversion ? gmvConversion.displayCurrency : nativeCurrency;
+  function convertToDisplay(amount: number): number {
+    return reportingConverter.convertToDisplay(amount, headlineCurrency);
+  }
   const stampedGapVisible = headline.unconvertedCount > 0;
   const netExcludedVisible = headline.netExcludedCount > 0;
   const netExcludedNote = `${headline.netExcludedCount} order(s) predate per-line tax rates or carry a line with an unresolvable rate, and are excluded from NOV.`;
+
+  // Currency/tax exclusion `GapMark`s (#2480, epic #2452 Phase 8) — a
+  // category-specific title + click-to-open only when the coverage
+  // aggregate reports the SAME category as genuinely open; otherwise every
+  // one of these falls back to the pre-Phase-8 generic `STAMPED_GAP` text,
+  // inert (nothing to open without real coverage data).
+  const currencyCoverageRow = coverage?.categories.find(
+    (row) => row.category === 'currency' && row.affectedCount > 0
+  );
+  // A currency recalculation run is actively in flight (operator clicked
+  // "Recalculate now" in Data Coverage, or changed the reporting currency).
+  // Until now this state was indistinguishable from "genuinely nothing to
+  // report" — every revenue/order-value figure just read as a bare `0`
+  // (unconverted orders excluded from `revenue`/`netRevenue`), which reads
+  // as broken rather than "wait, this is being fixed right now".
+  const currencyRecalculating = isCurrencyRecalculating(coverage);
+  const currencyGapTitle =
+    stampedGapVisible && currencyCoverageRow
+      ? deriveCoverageRowCopy(currencyCoverageRow).sub
+      : STAMPED_GAP;
+  const onOpenCurrencyGap =
+    stampedGapVisible && currencyCoverageRow && onOpenCategory
+      ? () => onOpenCategory('currency')
+      : undefined;
+
+  const netExcludedTaxRow =
+    netExcludedVisible && coverage ? resolveNetExcludedTaxCategory(coverage.categories) : undefined;
+  const netExcludedGapOpen = netExcludedTaxRow !== undefined && netExcludedTaxRow.affectedCount > 0;
+  const netExcludedGapTitle = netExcludedTaxRow
+    ? deriveCoverageRowCopy(netExcludedTaxRow).sub
+    : undefined;
+  const onOpenNetExcludedGap =
+    netExcludedGapOpen && netExcludedTaxRow && onOpenCategory
+      ? () => onOpenCategory(netExcludedTaxRow.category)
+      : undefined;
+  // Headline Revenue card (#2908 fix): the primary rendered value/label now
+  // tracks `netGrossBasis` the same way the channel/product tables do
+  // (`revenueLabel` / `revenueOf` there) — under `'gross'` GMV is primary
+  // and Net sales is the qualifier; under `'net'` (the default) it's the
+  // reverse, byte-identical to this card's pre-#2908 rendering. Both
+  // figures still always render — this only swaps which one is primary.
+  function renderNetSalesLabel(): ReactElement | string {
+    return netExcludedGapOpen ? (
+      <>
+        Net sales{' '}
+        <GapMark title={netExcludedGapTitle ?? netExcludedNote} onActivate={onOpenNetExcludedGap} />
+      </>
+    ) : (
+      'Net sales'
+    );
+  }
+  const netRevenue = headline.netRevenue;
+  function renderNetSalesValue(): ReactElement {
+    return currencyRecalculating ? (
+      <RecalculatingValue />
+    ) : (
+      <>{formatAmount(convertToDisplay(netRevenue), currency)}</>
+    );
+  }
+  function renderGmvLabel(): ReactElement | string {
+    return stampedGapVisible ? (
+      <>
+        GMV <GapMark title={currencyGapTitle} onActivate={onOpenCurrencyGap} />
+      </>
+    ) : (
+      'GMV'
+    );
+  }
+  function renderGmvValue(): ReactElement {
+    return currencyRecalculating ? (
+      <RecalculatingValue />
+    ) : (
+      <>
+        {formatAmount(gmvValue, gmvCurrency)}
+        {gmvProvenanceDefinitions.length > 0 ? (
+          <span className="kpi-card__qualifier-rate">
+            {gmvInlineRate
+              ? formatAppliedRateLine(gmvInlineRate, rateFormat)
+              : "today's rate(s)"}
+            <AnalyticsInfotip
+              ariaLabel="About this conversion"
+              definitions={gmvProvenanceDefinitions}
+              align="end"
+            />
+          </span>
+        ) : null}
+      </>
+    );
+  }
+  const revenuePrimaryLabel = netGrossBasis === 'gross' ? renderGmvLabel() : renderNetSalesLabel();
+  const revenuePrimaryValue = netGrossBasis === 'gross' ? renderGmvValue() : renderNetSalesValue();
+  const revenueQualifierLabel =
+    netGrossBasis === 'gross' ? renderNetSalesLabel() : renderGmvLabel();
+  const revenueQualifierValue =
+    netGrossBasis === 'gross' ? renderNetSalesValue() : renderGmvValue();
+
   const trendDays = rangeDays(filters.from, filters.to);
   const trendRangeLabel = trendDays === 1 ? 'the selected day' : `the last ${trendDays} days`;
 
@@ -228,21 +465,37 @@ export function AnalyticsKpiStrip({ connections, filters }: AnalyticsKpiStripPro
     ? previousHeadline.orderCount + previousHeadline.unconvertedCount
     : undefined;
   const ordersDelta = buildDelta(totalOrders, previousTotalOrders, 'higher-is-better');
-  const unitsDelta = buildDelta(headline.unitsSold, previousHeadline?.unitsSold, 'higher-is-better');
+  const previousTotalUnitsSold = previousHeadline
+    ? previousHeadline.unitsSold + previousHeadline.unconvertedUnitsSold
+    : undefined;
+  const unitsDelta = buildDelta(totalUnitsSold, previousTotalUnitsSold, 'higher-is-better');
   const previousCancelRate = previousHeadline
     ? cancellationRate(
         previousHeadline.cancelledCount,
         previousHeadline.orderCount + previousHeadline.unconvertedCount
       )
     : undefined;
-  const cancelRateDelta = buildDelta(cancelRate, previousCancelRate, 'lower-is-better', { pp: true });
+  const cancelRateDelta = buildDelta(cancelRate, previousCancelRate, 'lower-is-better', {
+    pp: true,
+  });
   // AOV is currency-denominated — a percentage between two different
   // reporting-currency eras (or a period where nothing is stamped yet)
   // would not be a real number, so this refuses independently of coverage.
   const orderValueCurrenciesMatch =
     headline.currency !== null && headline.currency === previousHeadline?.currency;
+  // The basis picks which pair of fields the card reads — see this
+  // component's own `netGrossBasis` prop doc comment.
+  const averageOrderValue =
+    netGrossBasis === 'net' ? headline.netAverageOrderValue : headline.averageOrderValue;
+  const medianOrderValue =
+    netGrossBasis === 'net' ? headline.netMedianOrderValue : headline.medianOrderValue;
+  const previousAverageOrderValue = previousHeadline
+    ? netGrossBasis === 'net'
+      ? previousHeadline.netAverageOrderValue
+      : previousHeadline.averageOrderValue
+    : undefined;
   const orderValueDelta = orderValueCurrenciesMatch
-    ? buildDelta(headline.netAverageOrderValue, previousHeadline?.netAverageOrderValue, 'higher-is-better')
+    ? buildDelta(averageOrderValue, previousAverageOrderValue, 'higher-is-better')
     : null;
   const orderValueDeltaGapReason =
     !orderValueCurrenciesMatch && previousHeadline
@@ -269,8 +522,9 @@ export function AnalyticsKpiStrip({ connections, filters }: AnalyticsKpiStripPro
               : 'Cancelled orders and cancelled items are excluded. Returned/refunded items remain included.',
           },
         ]}
-        metric="Net sales"
-        value={formatAmount(headline.netRevenue, currency)}
+        metric={revenuePrimaryLabel}
+        headlineUnavailable={currencyRecalculating}
+        value={revenuePrimaryValue}
         trend={{
           values: revenueTrend,
           tone: trendTone(revenueTrend),
@@ -278,14 +532,8 @@ export function AnalyticsKpiStrip({ connections, filters }: AnalyticsKpiStripPro
         }}
         qualifiers={[
           {
-            label: stampedGapVisible ? (
-              <>
-                GMV <GapMark title={STAMPED_GAP} />
-              </>
-            ) : (
-              'GMV'
-            ),
-            value: formatAmount(headline.revenue, currency),
+            label: revenueQualifierLabel,
+            value: revenueQualifierValue,
           },
         ]}
       />
@@ -321,25 +569,54 @@ export function AnalyticsKpiStrip({ connections, filters }: AnalyticsKpiStripPro
         definitions={[
           {
             term: 'Average order value (AOV)',
-            text: 'Net sales divided by the number of FX-stamped, net-eligible orders it was computed from — not by every placed order.',
-            caveat: stampedGapVisible ? STAMPED_GAP : undefined,
+            text:
+              netGrossBasis === 'net'
+                ? 'The VAT-exclusive value of every net-sales-eligible order placed in the period, divided by the number of such orders — a narrower cohort than Number of Orders (see the caveat below).'
+                : 'The gross value of every FX-stamped order placed in the period, divided by the number of FX-stamped orders it was computed from — the same order set as Number of Orders, minus the not-yet-stamped ones.',
+            caveat:
+              netGrossBasis === 'net'
+                ? netExcludedVisible
+                  ? netExcludedNote
+                  : undefined
+                : stampedGapVisible
+                  ? STAMPED_GAP
+                  : undefined,
           },
           {
             term: 'Median order value',
-            text: 'The middle net-sales value of every FX-stamped, net-eligible order in the range — less skewed by a handful of very large or very small orders than the average.',
+            text:
+              netGrossBasis === 'net'
+                ? 'The middle VAT-exclusive value of every net-sales-eligible order in the range — less skewed by a handful of very large or very small orders than the average.'
+                : 'The middle gross value of every FX-stamped order in the range — less skewed by a handful of very large or very small orders than the average.',
           },
         ]}
         metric={
           stampedGapVisible ? (
             <>
-              Average <GapMark title={STAMPED_GAP} />
+              Average <GapMark title={currencyGapTitle} onActivate={onOpenCurrencyGap} />
             </>
           ) : (
             'Average'
           )
         }
-        value={formatAmount(headline.netAverageOrderValue, currency)}
-        qualifiers={[{ label: 'Median', value: formatAmount(headline.netMedianOrderValue, currency) }]}
+        headlineUnavailable={currencyRecalculating}
+        value={
+          currencyRecalculating ? (
+            <RecalculatingValue />
+          ) : (
+            formatAmount(convertToDisplay(averageOrderValue), currency)
+          )
+        }
+        qualifiers={[
+          {
+            label: 'Median',
+            value: currencyRecalculating ? (
+              <RecalculatingValue />
+            ) : (
+              formatAmount(convertToDisplay(medianOrderValue), currency)
+            ),
+          },
+        ]}
         delta={orderValueDelta}
         deltaGapReason={orderValueDeltaGapReason}
       />
@@ -348,11 +625,14 @@ export function AnalyticsKpiStrip({ connections, filters }: AnalyticsKpiStripPro
         label="Units"
         infotipLabel="About the Units figures"
         definitions={[
-          { term: 'Units sold', text: 'Total item quantity across every non-cancelled order line in the selected period.' },
+          {
+            term: 'Units sold',
+            text: 'Total item quantity across every non-cancelled order line in the selected period.',
+          },
           { term: 'Units per order', text: 'Units sold divided by placed orders.' },
         ]}
         metric="Units sold"
-        value={numberFormat.format(headline.unitsSold)}
+        value={numberFormat.format(totalUnitsSold)}
         qualifiers={[{ label: 'Per order', value: ratioFormat.format(unitsRatio) }]}
         delta={unitsDelta}
         deltaGapReason={deltaGapReason}
@@ -375,7 +655,14 @@ export function AnalyticsKpiStrip({ connections, filters }: AnalyticsKpiStripPro
         value={pctFormat.format(cancelRate)}
         qualifiers={[
           { label: 'Cancelled orders', value: numberFormat.format(headline.cancelledCount) },
-          { label: 'Cancelled value', value: formatAmount(headline.cancelledValue, currency) },
+          {
+            label: 'Cancelled value',
+            value: currencyRecalculating ? (
+              <RecalculatingValue />
+            ) : (
+              formatAmount(convertToDisplay(headline.cancelledValue), currency)
+            ),
+          },
         ]}
         delta={cancelRateDelta}
         deltaGapReason={deltaGapReason}

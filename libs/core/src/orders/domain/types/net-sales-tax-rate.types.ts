@@ -77,7 +77,19 @@ export function resolveNetSalesTaxRate(
   if ((NetSalesExemptTaxRateCodeValues as readonly string[]).includes(trimmed)) {
     return { kind: 'known', rateFraction: 0 };
   }
-  const parsed = Number.parseFloat(trimmed);
+  // Require the same numeric shape the SQL half enforces
+  // (`~ '^[0-9]+(\.[0-9]+)?$'`) before converting to a number.
+  // `Number.parseFloat` is prefix-lenient - it reads '0x10' as `0` and
+  // '23,5' as `23`, silently confirming a rate for a value the SQL
+  // predicate would reject outright as `NULL` - exactly the "0% VAT" false
+  // claim this file's contract forbids. Anything not matching this shape
+  // resolves to `unknown`, same as the SQL predicate; `Number()` is used
+  // afterwards rather than `parseFloat` so nothing with trailing garbage
+  // past a leading number can slip through even once the shape is confirmed.
+  if (!/^\d+(\.\d+)?$/.test(trimmed)) {
+    return { kind: 'unknown' };
+  }
+  const parsed = Number(trimmed);
   if (!Number.isFinite(parsed)) {
     return { kind: 'unknown' };
   }
@@ -99,6 +111,13 @@ export function resolveNetSalesTaxRate(
  * - `'exclusive'`: `unitPrice` is already net — return `unitPrice × quantity`.
  * - `'inclusive'` or absent: treat `unitPrice` as gross and strip VAT via the
  *   resolved rate fraction; return `null` when the rate is unresolvable.
+ *
+ * A gross price already includes the tax on top of net (`gross = net × (1 +
+ * rate)`), so recovering net divides by `(1 + rate)` — it does NOT multiply
+ * by `(1 - rate)`, which is a different (and wrong) computation that
+ * understates net by `gross × rate²/(1+rate)` (#2637 review: caught by the
+ * tax-inclusion-setting int-spec expecting 123 gross / 1.23 = 100, not
+ * 123 × 0.77 = 94.71).
  */
 export function deriveNetLineAmount(
   unitPrice: number,
@@ -114,7 +133,7 @@ export function deriveNetLineAmount(
   if (rateOutcome.kind === 'unknown') {
     return null;
   }
-  return lineTotal * (1 - rateOutcome.rateFraction);
+  return lineTotal / (1 + rateOutcome.rateFraction);
 }
 
 /**
@@ -122,8 +141,10 @@ export function deriveNetLineAmount(
  * numeric/exempt-code rule, parameterized on a qualified column reference
  * (e.g. `li."taxRate"`) so every SQL call site shares one expression instead
  * of hand-retyping it. Evaluates to `NULL` for the `unknown` outcome — a
- * caller sums `<gross> * (1 - <this>)` and must gate on `IS NOT NULL`
- * separately (there is no SQL equivalent of the tagged-union `kind` field).
+ * caller divides `<gross> / (1 + <this>)` (never multiplies by
+ * `(1 - <this>)`, which understates net — see {@link netSalesLineNetAmountSql})
+ * and must gate on `IS NOT NULL` separately (there is no SQL equivalent of
+ * the tagged-union `kind` field).
  *
  * Both halves of this file change together: adding a member to
  * {@link NetSalesExemptTaxRateCodeValues} or changing the numeric bounds
@@ -142,8 +163,44 @@ export function netSalesRateFractionSql(taxRateColumnRef: string): string {
 }
 
 /**
+ * SQL for one line's GROSS (VAT-inclusive) amount, honoring the parent
+ * order's {@link PriceTaxTreatment} — the mirror image of
+ * {@link netSalesLineNetAmountSql}. This is the GMV/revenue building block
+ * (`docs/specs/metrics-analytics-dashboard.md`): "gross selling prices
+ * (incl. VAT)", computed from `order_line_items` so shipping (never
+ * itemized as a line) is structurally excluded — unlike the order's own
+ * `reportingTotalAmount`, which is `subtotal + tax + shipping` (#2892).
+ *
+ * An `exclusive`-priced line is grossed UP via `* (1 + rate)`; an
+ * `inclusive`/absent-treatment line is already gross and passes through
+ * unchanged. When an `exclusive` line's own rate does not resolve
+ * (`rateFraction` is NULL), this falls back to the line's stored value
+ * AS-IS rather than excluding the whole order from revenue — unlike Net
+ * Sales, GMV has no precedent for a silent per-order exclusion category,
+ * and a computable-but-slightly-understated figure (bounded by whatever
+ * rate would have applied to that one line) is preferable to a metric that
+ * can silently stop covering an order (#2892).
+ */
+export function grossRevenueLineAmountSql(
+  unitPriceColumnRef: string,
+  quantityColumnRef: string,
+  taxRateColumnRef: string,
+  taxTreatmentColumnRef: string
+): string {
+  const lineTotal = `${unitPriceColumnRef} * ${quantityColumnRef}`;
+  const rateFraction = netSalesRateFractionSql(taxRateColumnRef);
+  return `CASE
+      WHEN ${taxTreatmentColumnRef} = 'exclusive'
+        THEN ${lineTotal} * (1 + COALESCE((${rateFraction}), 0))
+      ELSE ${lineTotal}
+    END`;
+}
+
+/**
  * SQL for one line's VAT-exclusive amount, honoring the parent order's
- * {@link PriceTaxTreatment}. Mirrors {@link deriveNetLineAmount}.
+ * {@link PriceTaxTreatment}. Mirrors {@link deriveNetLineAmount} — divides
+ * the gross line total by `(1 + rate)` rather than multiplying by
+ * `(1 - rate)`, which understates net (#2637 review).
  */
 export function netSalesLineNetAmountSql(
   unitPriceColumnRef: string,
@@ -155,22 +212,66 @@ export function netSalesLineNetAmountSql(
   const rateFraction = netSalesRateFractionSql(taxRateColumnRef);
   return `CASE
       WHEN ${taxTreatmentColumnRef} = 'exclusive' THEN ${lineTotal}
-      ELSE ${lineTotal} * (1 - (${rateFraction}))
+      ELSE ${lineTotal} / (1 + (${rateFraction}))
     END`;
 }
 
 /**
- * Order-level net-sales eligibility predicate: post-rollout, has line items,
- * and either net-priced (`exclusive`) or every line resolves a tax rate.
+ * The ERA half of net-sales eligibility, split out so the two eligibility
+ * predicates below cannot disagree about it (#2469, epic #2452 Phase 5).
+ *
+ * `false` (the default everywhere) keeps ADR-063's blanket exclusion: a
+ * `taxRateEra = 'pre-rollout'` order never enters a net figure, whatever its
+ * lines say.
+ *
+ * `true` is the operator's org-wide opt-in
+ * (`analytics_display_settings.include_backfilled_tax_rates_in_net_sales`,
+ * #2461, ADR-063's amendment for #2456) and it makes the era clause VACUOUS —
+ * it does NOT drop the requirement that the rate resolve. That requirement is
+ * already the sibling clauses of both predicates: an order still needs line
+ * items and either net pricing or a resolvable rate on every line, and a line
+ * still needs its own resolvable rate. So a pre-rollout order is admitted
+ * exactly when `TaxRateBackfillService` (or ingestion) has actually written a
+ * real rate for it — which IS Phase 4's category-A definition, reached through
+ * the same `netSalesRateFractionSql` resolution rule the detector's
+ * `resolveNetSalesTaxRate` uses, rather than a second copy of it.
+ *
+ * ONE HALF OF CATEGORY A IS DELIBERATELY NOT ADMITTED, and the difference
+ * matters. `TaxCoverageDetectionService` also counts an order as category A
+ * when a rate is merely RESOLVABLE from the live catalogue right now
+ * (`IProductsService.getEffectiveTaxRate`) but has not been written to
+ * `order_line_items.taxRate` yet. A live catalogue read has no SQL equivalent,
+ * and net-sales arithmetic needs a stored rate to compute with — there is
+ * nothing to multiply by. Turning the setting ON therefore does not by itself
+ * pull such an order into Net Sales; running the backfill does, which is
+ * exactly what `POST /analytics/coverage/tax/rerun-backfill` exists for.
+ *
+ * Never a bare `TRUE` at a call site: both predicates route through this
+ * function so the flag has one meaning and one place to change.
+ */
+export function netSalesEraEligibleSql(includeBackfilledPreRollout: boolean): string {
+  return includeBackfilledPreRollout ? 'TRUE' : `rec."taxRateEra" IS DISTINCT FROM 'pre-rollout'`;
+}
+
+/**
+ * Order-level net-sales eligibility predicate: era-eligible (see
+ * {@link netSalesEraEligibleSql}), has line items, and either net-priced
+ * (`exclusive`) or every line resolves a tax rate.
+ *
+ * `includeBackfilledPreRollout` is REQUIRED rather than defaulted: this
+ * predicate decides whether a range of orders appears in a revenue figure, and
+ * a caller that forgot to thread the operator's setting through would silently
+ * report the pre-#2469 number while the UI said the setting was on.
  */
 export function netSalesOrderNetEligibleSql(
   orderRecordIdColumnRef: string,
   lineItemTableAlias: string,
-  taxTreatmentColumnRef: string
+  taxTreatmentColumnRef: string,
+  includeBackfilledPreRollout: boolean
 ): string {
   const rateFraction = netSalesRateFractionSql(`${lineItemTableAlias}."taxRate"`);
   return `(
-      rec."taxRateEra" IS DISTINCT FROM 'pre-rollout'
+      ${netSalesEraEligibleSql(includeBackfilledPreRollout)}
       AND EXISTS (
         SELECT 1 FROM order_line_items ${lineItemTableAlias}
         WHERE ${lineItemTableAlias}."orderRecordId" = ${orderRecordIdColumnRef}
@@ -187,13 +288,23 @@ export function netSalesOrderNetEligibleSql(
 }
 
 /**
- * Line-level net-sales eligibility for stamped orders: post-rollout and
- * either net-priced or the line's own tax rate resolves.
+ * Line-level net-sales eligibility for stamped orders: era-eligible (see
+ * {@link netSalesEraEligibleSql}) and either net-priced or the line's own tax
+ * rate resolves.
+ *
+ * Note this is per LINE, so with the opt-in on, a pre-rollout order with one
+ * resolvable line and one unresolvable line contributes its resolvable line to
+ * the per-product net figures while the ORDER-level predicate above excludes
+ * the order entirely. That asymmetry predates this change — it is the same
+ * grain difference #1988's per-product read has always had against #1987's
+ * order-level aggregates — and the flag is threaded identically into both so
+ * it cannot introduce a third behaviour.
  */
 export function netSalesLineNetEligibleConditionSql(
   taxRateColumnRef: string,
-  taxTreatmentColumnRef: string
+  taxTreatmentColumnRef: string,
+  includeBackfilledPreRollout: boolean
 ): string {
   const rateFraction = netSalesRateFractionSql(taxRateColumnRef);
-  return `(rec."taxRateEra" IS DISTINCT FROM 'pre-rollout' AND (${taxTreatmentColumnRef} = 'exclusive' OR (${rateFraction}) IS NOT NULL))`;
+  return `(${netSalesEraEligibleSql(includeBackfilledPreRollout)} AND (${taxTreatmentColumnRef} = 'exclusive' OR (${rateFraction}) IS NOT NULL))`;
 }

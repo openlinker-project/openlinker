@@ -12,18 +12,32 @@
  *
  * @module apps/web/src/pages/analytics
  */
-import { useEffect, useMemo, useRef, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
+  ANALYTICS_DATA_COVERAGE_ANCHOR_ID,
+  AnalyticsConvertNote,
+  AnalyticsCoverageAlertBadge,
+  AnalyticsCurrencyPicker,
+  AnalyticsDataCoveragePanel,
   AnalyticsDateRangeToolbar,
   AnalyticsDegradationBanner,
   AnalyticsKpiStrip,
   AnalyticsNeedsAttention,
+  AnalyticsNetGrossToggle,
+  AnalyticsSettingsDialog,
   AnalyticsTrustHeader,
   ChannelSalesTable,
   ProductSalesTable,
   computePresetRange,
+  toExclusiveEndInstant,
+  useAnalyticsCoverageQuery,
+  useAnalyticsSettingsQuery,
   useAnalyticsTrustQuery,
+  useSalesAnalyticsQuery,
+  type CoverageCategory,
+  type DisplayCurrencyRateBasis,
+  type NetGrossBasis,
   type SalesAnalyticsFilters,
 } from '../../features/analytics';
 import { Button, EmptyState, ErrorState, LoadingState, PageLayout } from '../../shared/ui';
@@ -45,7 +59,10 @@ export function AnalyticsPage(): ReactElement {
   // not an implicit fallback that only exists in memory.
   useEffect(() => {
     if (!searchParams.get('from') || !searchParams.get('to')) {
-      setSearchParams({ from, to }, { replace: true });
+      const next = new URLSearchParams(searchParams);
+      next.set('from', from);
+      next.set('to', to);
+      setSearchParams(next, { replace: true });
     }
     // Deliberate `[]`: this project's ESLint config carries no
     // `react-hooks/exhaustive-deps` rule (verified via `pnpm lint` — an
@@ -57,24 +74,137 @@ export function AnalyticsPage(): ReactElement {
   }, []);
 
   function handleApply(nextFrom: string, nextTo: string): void {
-    setSearchParams({ from: nextFrom, to: nextTo });
+    // Merge onto the existing params, never replace wholesale — `from`/`to`
+    // are not the only state this URL carries (ADR-064: `displayCurrency` /
+    // `rateBasis` are URL-encoded "like the existing date-range filter"), and
+    // a literal-object `setSearchParams` call drops every other param.
+    const next = new URLSearchParams(searchParams);
+    next.set('from', nextFrom);
+    next.set('to', nextTo);
+    setSearchParams(next);
   }
 
   const trustQuery = useAnalyticsTrustQuery();
 
-  // Built once per from/to so `AnalyticsKpiStrip` and `ChannelSalesTable`
-  // share a byte-identical query key and therefore one network request —
-  // and so a channel-table failure can never blank the KPI strip: they
-  // render independently even though they fetch from the same cache entry.
-  const salesFilters: SalesAnalyticsFilters = useMemo(() => ({ from, to }), [from, to]);
+  // `null` means no override — the dashboard renders in the reporting
+  // currency (#2472, ADR-064). Read raw rather than derived-from-settings:
+  // the choice lives in the URL like the date range, never in a saved
+  // preference (that's `AnalyticsSettingsView`, a different axis).
+  const displayCurrency = searchParams.get('displayCurrency');
+  const rateBasis: DisplayCurrencyRateBasis =
+    searchParams.get('rateBasis') === 'order-date' ? 'order-date' : 'current-rate';
+
+  function handleDisplayCurrencyChange(
+    nextDisplayCurrency: string | null,
+    nextRateBasis: DisplayCurrencyRateBasis = rateBasis
+  ): void {
+    const next = new URLSearchParams(searchParams);
+    if (nextDisplayCurrency) {
+      next.set('displayCurrency', nextDisplayCurrency);
+      next.set('rateBasis', nextRateBasis);
+    } else {
+      next.delete('displayCurrency');
+      next.delete('rateBasis');
+    }
+    setSearchParams(next);
+  }
+
+  // Reads the operator-saved default basis (`AnalyticsSettingsView.
+  // netGrossBasis`) so a returning operator sees their own default without
+  // reselecting it via the toolbar toggle — the same dual mechanism as
+  // `displayCurrency`/`rateBasis`: a URL override always wins for the
+  // current view/session; absent one, the persisted default applies.
+  const settingsQuery = useAnalyticsSettingsQuery();
+  const netGrossBasisParam = searchParams.get('netGrossBasis');
+  const netGrossBasis: NetGrossBasis =
+    netGrossBasisParam === 'net' || netGrossBasisParam === 'gross'
+      ? netGrossBasisParam
+      : settingsQuery.data?.netGrossBasis ?? 'gross';
+
+  function handleNetGrossBasisChange(next: NetGrossBasis): void {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('netGrossBasis', next);
+    setSearchParams(nextParams);
+  }
+
+  // Built once per from/to/displayCurrency/rateBasis so `AnalyticsKpiStrip`,
+  // `ChannelSalesTable` and `AnalyticsConvertNote` share a byte-identical
+  // query key and therefore one network request — and so a channel-table
+  // failure can never blank the KPI strip: they render independently even
+  // though they fetch from the same cache entry.
+  const salesFilters: SalesAnalyticsFilters = useMemo(
+    () => ({ from, to, ...(displayCurrency ? { displayCurrency, rateBasis } : {}) }),
+    [from, to, displayCurrency, rateBasis]
+  );
+
+  // Reads the same cache entry `AnalyticsKpiStrip` populates (byte-identical
+  // query key) — no extra request. `headline.currency` is the TRUE system
+  // reporting currency these figures are stamped in, open to every
+  // authenticated user (unlike `GET /currency-settings`, which is
+  // admin-only). This must not be read from `AnalyticsSettingsView.
+  // displayCurrency` — that field resolves to an operator-saved *view*
+  // default when one exists, which is a different axis and would mislabel
+  // the "native" option the moment an admin sets a non-default preference.
+  const salesQuery = useSalesAnalyticsQuery(salesFilters);
+  const reportingCurrency = salesQuery.data?.headline.currency ?? null;
+
+  // Same range as `salesFilters`, converted to the ISO-instant shape
+  // `GET /analytics/coverage` expects (#2473).
+  const coverageFilters = useMemo(
+    () => ({
+      from: new Date(`${from}T00:00:00.000Z`).toISOString(),
+      to: toExclusiveEndInstant(to),
+    }),
+    [from, to]
+  );
+
+  const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
+
+  // Reads the SAME cache entry `AnalyticsDataCoveragePanel` populates
+  // internally (byte-identical query key) — no extra request, same pattern
+  // `salesQuery` above already establishes. Owning it at the page level is
+  // what lets the KPI strip's `GapMark`s and the channel table's
+  // `AnalyticsExclusionNote`s open the panel's own detail modals (#2474
+  // Phase 7 → #2480/#2481, epic #2452 Phase 8) without a second
+  // `CoverageDetailDialog` implementation.
+  const coverageQuery = useAnalyticsCoverageQuery(coverageFilters);
+  const [openCoverageCategory, setOpenCoverageCategory] = useState<CoverageCategory | null>(null);
 
   return (
     <PageLayout
       eyebrow="Operations"
-      title="Analytics"
+      title={
+        <>
+          Analytics <AnalyticsCoverageAlertBadge categories={coverageQuery.data?.categories} />
+        </>
+      }
       description="Sales across connected channels, with clear data coverage."
+      actions={
+        <Button type="button" tone="secondary" onClick={() => setSettingsDialogOpen(true)}>
+          Analytics settings
+        </Button>
+      }
     >
-      <AnalyticsDateRangeToolbar from={from} to={to} onApply={handleApply} />
+      <AnalyticsDateRangeToolbar
+        from={from}
+        to={to}
+        onApply={handleApply}
+        trailing={
+          <div className="analytics-toolbar__trailing-stack">
+            <AnalyticsCurrencyPicker
+              reportingCurrency={reportingCurrency}
+              displayCurrency={displayCurrency}
+              onChange={handleDisplayCurrencyChange}
+            />
+            <AnalyticsNetGrossToggle value={netGrossBasis} onChange={handleNetGrossBasisChange} />
+          </div>
+        }
+      />
+      <AnalyticsConvertNote
+        filters={salesFilters}
+        coverage={coverageQuery.data}
+        onSwitchBack={() => handleDisplayCurrencyChange(null)}
+      />
 
       {trustQuery.isLoading ? (
         <LoadingState title="Loading data coverage" message="Checking ingestion status…" />
@@ -113,21 +243,65 @@ export function AnalyticsPage(): ReactElement {
             />
           ) : (
             <>
-              <AnalyticsKpiStrip filters={salesFilters} connections={trustQuery.data.connections} />
-              <ChannelSalesTable filters={salesFilters} />
-              <ProductSalesTable filters={salesFilters} />
+              <AnalyticsKpiStrip
+                filters={salesFilters}
+                connections={trustQuery.data.connections}
+                coverage={coverageQuery.data}
+                onOpenCategory={setOpenCoverageCategory}
+                netGrossBasis={netGrossBasis}
+              />
+              <ChannelSalesTable
+                filters={salesFilters}
+                coverage={coverageQuery.data}
+                coverageFilters={coverageFilters}
+                onOpenCategory={setOpenCoverageCategory}
+                netGrossBasis={netGrossBasis}
+              />
+              <ProductSalesTable
+                filters={salesFilters}
+                coverage={coverageQuery.data}
+                coverageFilters={coverageFilters}
+                onOpenCategory={setOpenCoverageCategory}
+                netGrossBasis={netGrossBasis}
+              />
             </>
           )}
           {/* Coverage gaps and stock-at-risk are listing facts, not order
               facts, so they render regardless of ingestion status — a fresh
               install with a full catalogue and no orders yet is exactly
-              when they matter most (#2120 review, SUGGESTION). Both this
-              section and the data-coverage header below it render
-              unconditionally, after the order-derived figures above. */}
-          <AnalyticsNeedsAttention />
+              when they matter most (#2120 review, SUGGESTION). This section
+              and the Data Coverage panel below render unconditionally,
+              after the order-derived figures above.
+              Order is deliberately sync -> needs attention -> data coverage:
+              an operator first confirms ingestion is healthy, then reads
+              what needs action, then drills into coverage detail. */}
           <AnalyticsTrustHeader connections={trustQuery.data.connections} />
+          <AnalyticsNeedsAttention />
+          {/* Deliberately the LAST section on the page: an operator reads
+              revenue/channel/product figures first, and only then the
+              detail behind any coverage gap. The title-adjacent
+              `AnalyticsCoverageAlertBadge` is the way back here without
+              scrolling past everything above when something needs action. */}
+          <div id={ANALYTICS_DATA_COVERAGE_ANCHOR_ID}>
+            <AnalyticsDataCoveragePanel
+              filters={coverageFilters}
+              onOpenSettings={() => setSettingsDialogOpen(true)}
+              openCategory={openCoverageCategory}
+              onOpenCategoryChange={setOpenCoverageCategory}
+            />
+          </div>
         </>
       ) : null}
+
+      <AnalyticsSettingsDialog
+        open={settingsDialogOpen}
+        onOpenChange={setSettingsDialogOpen}
+        displayCurrency={displayCurrency}
+        rateBasis={rateBasis}
+        reportingCurrency={reportingCurrency}
+        onApplyView={handleDisplayCurrencyChange}
+        coverageFilters={coverageFilters}
+      />
     </PageLayout>
   );
 }

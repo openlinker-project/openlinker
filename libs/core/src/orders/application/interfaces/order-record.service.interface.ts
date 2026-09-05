@@ -34,6 +34,12 @@ import type {
   TopProductsResult,
   VariantSalesResult,
 } from '../../domain/types/top-products.types';
+import type {
+  CoverageDetectionPagination,
+  PaginatedCurrencyMismatchOrders,
+  PaginatedProductMatchingErrorOrders,
+  CoverageConnectionAggregateRow,
+} from '../../domain/types/coverage-detection.types';
 
 export interface IOrderRecordService {
   /**
@@ -321,8 +327,18 @@ export interface IOrderRecordService {
    * per-channel coverage signal. Currency-mixing detection and gross/net
    * tax-treatment normalization are deliberately out of scope — see
    * #2049/ADR-040 and a separate tax-normalization effort.
+   *
+   * `includeBackfilledPreRollout` (#2469) carries the operator's org-wide
+   * Net-Sales opt-in for backfilled pre-rollout tax rates (#2461). It is a
+   * caller-supplied parameter rather than something this service resolves,
+   * because the setting lives in the `analytics` context and `orders` must not
+   * import it — see `OrderRecordRepositoryPort.getDailyOrderAggregates`. It
+   * defaults to `false`, which is byte-identical to the pre-#2469 figure.
    */
-  getSalesAndChannelAnalytics(filters: SalesAnalyticsFilters): Promise<SalesAndChannelAnalytics>;
+  getSalesAndChannelAnalytics(
+    filters: SalesAnalyticsFilters,
+    includeBackfilledPreRollout?: boolean
+  ): Promise<SalesAndChannelAnalytics>;
 
   /**
    * Products ranked by revenue or units for a date range, each carrying its
@@ -332,9 +348,15 @@ export interface IOrderRecordService {
    * FX-stamped orders; unstamped orders' contribution is surfaced separately
    * via `unconvertedRevenue`/`unconvertedOrderCount`, never silently summed
    * in or dropped. Product-level grouping only — variant-level ranking is a
-   * separate, not-yet-scoped read (spec row C3).
+   * separate, not-yet-scoped read (spec row C3). `includeBackfilledPreRollout`
+   * carries the same meaning as in {@link getSalesAndChannelAnalytics}, and is
+   * applied at LINE grain here — a pre-existing grain difference, not one the
+   * flag introduces.
    */
-  getTopProducts(filters: TopProductFilters): Promise<TopProductsResult>;
+  getTopProducts(
+    filters: TopProductFilters,
+    includeBackfilledPreRollout?: boolean
+  ): Promise<TopProductsResult>;
 
   /**
    * One page of T4 `order.dispatch_deadline_near` candidates (#2360) — orders on
@@ -367,4 +389,47 @@ export interface IOrderRecordService {
     productId: string,
     filters: SalesAnalyticsFilters
   ): Promise<VariantSalesResult>;
+
+  /**
+   * Data Coverage `'currency'` category drill-down (#2464/#2466) — the
+   * cross-context surface `AnalyticsCoverageController`'s
+   * `GET /analytics/coverage` uses. Repository ports are forbidden across
+   * context boundaries (`docs/architecture-overview.md § Cross-context
+   * dependencies in core`), so this thin pass-through to {@link
+   * OrderRecordRepositoryPort.findCurrencyMismatchOrders} is the seam.
+   * `currentReportingCurrency` is an explicit caller-supplied param rather
+   * than resolved internally (unlike {@link getSalesAndChannelAnalytics}),
+   * because the same request also threads it into
+   * `ITaxCoverageDetectionService`'s call — resolving it twice per request
+   * risks the two reads straddling a setting change mid-request.
+   */
+  getCurrencyMismatchOrders(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string,
+    pagination: CoverageDetectionPagination
+  ): Promise<PaginatedCurrencyMismatchOrders>;
+
+  /**
+   * Data Coverage `'currency'` category aggregate-by-connection (#2713) —
+   * thin pass-through to {@link
+   * OrderRecordRepositoryPort.findCurrencyMismatchOrdersByConnection}, for
+   * the same cross-context-boundary reason as {@link
+   * getCurrencyMismatchOrders}. Unlike that method, no line-item enrichment
+   * runs here — a count carries no `lineProducts` to attach.
+   */
+  getCurrencyMismatchOrdersByConnection(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string
+  ): Promise<CoverageConnectionAggregateRow[]>;
+
+  /**
+   * Data Coverage `'product-matching'` category drill-down (#2466) — thin
+   * pass-through to {@link
+   * OrderRecordRepositoryPort.findProductMatchingErrorOrders}, for the same
+   * cross-context-boundary reason as {@link getCurrencyMismatchOrders}.
+   */
+  getProductMatchingErrorOrders(
+    filters: OrderHealthSummaryFilters,
+    pagination: CoverageDetectionPagination
+  ): Promise<PaginatedProductMatchingErrorOrders>;
 }
