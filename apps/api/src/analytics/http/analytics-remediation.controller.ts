@@ -72,7 +72,6 @@ import {
 } from '@openlinker/core/sync';
 import { AuthenticatedUser } from '../../auth/auth.types';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
-import { AnyRole } from '../../auth/decorators/any-role.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { AnalyticsRemediationRunResponseDto } from './dto/analytics-remediation-run-response.dto';
 import { CurrencyRecalculateRequestDto } from './dto/currency-recalculate-request.dto';
@@ -229,7 +228,7 @@ export class AnalyticsRemediationController {
     return AnalyticsRemediationRunResponseDto.fromView(run);
   }
 
-  @AnyRole()
+  @Roles('admin', 'operator', 'viewer')
   @Get('status/:runId')
   @ApiOperation({ summary: 'Poll one currency remediation run’s lifecycle state' })
   @ApiResponse({ status: 200, type: AnalyticsRemediationRunResponseDto })
@@ -241,7 +240,7 @@ export class AnalyticsRemediationController {
     return AnalyticsRemediationRunResponseDto.fromView(run);
   }
 
-  @AnyRole()
+  @Roles('admin', 'operator', 'viewer')
   @Get('orders')
   @ApiOperation({ summary: 'Paginated list of currency-mismatched orders (detail-currency modal)' })
   @ApiResponse({ status: 200, type: CurrencyMismatchOrdersResponseDto })

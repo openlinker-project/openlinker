@@ -47,7 +47,7 @@ import {
   type ExchangeRateSource,
   type IExchangeRateLookupService,
 } from '@openlinker/core/currency';
-import { AnyRole } from '../../auth/decorators/any-role.decorator';
+import { Roles } from '../../auth/decorators/roles.decorator';
 import { ExchangeRateResponseDto } from './dto/exchange-rate-response.dto';
 import { GetExchangeRateDto } from './dto/get-exchange-rate.dto';
 
@@ -60,7 +60,7 @@ export class ExchangeRatesController {
     private readonly lookup: IExchangeRateLookupService
   ) {}
 
-  @AnyRole()
+  @Roles('admin', 'operator', 'viewer')
   @Get()
   @ApiOperation({
     summary: 'Read one stored exchange rate — never fetches, never writes.',

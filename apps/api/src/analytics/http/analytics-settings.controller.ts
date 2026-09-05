@@ -42,7 +42,6 @@ import {
 } from '@openlinker/core/currency';
 import { AuthenticatedUser } from '../../auth/auth.types';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
-import { AnyRole } from '../../auth/decorators/any-role.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { AnalyticsSettingsResponseDto } from './dto/analytics-settings-response.dto';
 import { UpdateAnalyticsSettingsDto } from './dto/update-analytics-settings.dto';
@@ -58,7 +57,7 @@ export class AnalyticsSettingsController {
     private readonly reportingCurrency: IReportingCurrencySettingsService
   ) {}
 
-  @AnyRole()
+  @Roles('admin', 'operator', 'viewer')
   @Get('settings')
   @ApiOperation({
     summary:
