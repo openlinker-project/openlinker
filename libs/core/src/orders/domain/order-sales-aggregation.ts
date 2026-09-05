@@ -84,6 +84,8 @@ export function buildSalesAndChannelAnalytics(
   const headlineCancelledValue = sum(dailyRows, (r) => r.cancelledValue);
   const headlineCancelledUnconvertedCount = sum(dailyRows, (r) => r.cancelledUnconvertedCount);
   const headlineCancelledUnconvertedValue = sum(dailyRows, (r) => r.cancelledUnconvertedValue);
+  const headlineCancelledNetExcludedCount = sum(dailyRows, (r) => r.cancelledNetExcludedCount);
+  const headlineCancelledNetExcludedValue = sum(dailyRows, (r) => r.cancelledNetExcludedValue);
   const headlineUnitsSold = sum([...unitsByConnection.values()], (row) => row.unitsSold);
   const headlineUnconvertedUnitsSold = sum(
     [...unitsByConnection.values()],
@@ -118,6 +120,8 @@ export function buildSalesAndChannelAnalytics(
     cancelledValue: headlineCancelledValue,
     cancelledUnconvertedCount: headlineCancelledUnconvertedCount,
     cancelledUnconvertedValue: headlineCancelledUnconvertedValue,
+    cancelledNetExcludedCount: headlineCancelledNetExcludedCount,
+    cancelledNetExcludedValue: headlineCancelledNetExcludedValue,
     currency,
     unconvertedCount: headlineUnconvertedCount,
     unconvertedValue: headlineUnconvertedValue,
@@ -159,6 +163,8 @@ export function buildSalesAndChannelAnalytics(
         cancelledValue: sum(rows, (r) => r.cancelledValue),
         cancelledUnconvertedCount: sum(rows, (r) => r.cancelledUnconvertedCount),
         cancelledUnconvertedValue: sum(rows, (r) => r.cancelledUnconvertedValue),
+        cancelledNetExcludedCount: sum(rows, (r) => r.cancelledNetExcludedCount),
+        cancelledNetExcludedValue: sum(rows, (r) => r.cancelledNetExcludedValue),
         currency: resolveUniformReportingCurrency(rows),
         unconvertedCount: sum(rows, (r) => r.unconvertedCount),
         unconvertedValue: sum(rows, (r) => r.unconvertedValue),

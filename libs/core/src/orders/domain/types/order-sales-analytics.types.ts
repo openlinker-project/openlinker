@@ -14,14 +14,30 @@
  * silently omitting them or silently mixing their native-currency amount into
  * `revenue`. `unconvertedValue` itself sums each order's own native
  * `totalAmount` and MAY mix currencies — it is informational only, never a
- * KPI. `cancelledValue` now follows the same currency-safe split as `revenue`:
- * `SUM(reportingTotalAmount)` over current-era-stamped, cancelled orders,
- * with the unstamped remainder reported separately as
- * `cancelledUnconvertedCount`/`cancelledUnconvertedValue` (native
- * `totalAmount`, informational, may mix currencies) — it previously summed
- * raw `totalAmount` across every currency in the bucket with no restriction.
- * Gross/net tax-treatment normalization remains out of scope — a separate,
- * not-yet-scoped effort.
+ * KPI. `cancelledValue` follows the same currency-safe split as `revenue`
+ * (current-era-stamped, cancelled orders only), with the unstamped remainder
+ * reported separately as `cancelledUnconvertedCount`/
+ * `cancelledUnconvertedValue` (native `totalAmount`, informational, may mix
+ * currencies) — it previously summed raw `totalAmount` across every
+ * currency in the bucket with no restriction.
+ *
+ * `cancelledValue` is NET-of-VAT and shipping-EXCLUDED (#2910), per
+ * `docs/specs/metrics-analytics-dashboard.md`'s "net value of orders placed
+ * in the period with cancelled status" — computed from `order_line_items`
+ * (never the shipping-inclusive `reportingTotalAmount`) via the same
+ * per-line net-computation machinery Net Sales uses
+ * (`resolveNetSalesTaxRate`/`netSalesRateFractionSql`), restricted to
+ * cancelled orders whose lines all resolve a tax rate. A cancelled order
+ * carrying at least one unresolvable-rate line is excluded from
+ * `cancelledValue` and counted instead in
+ * `cancelledNetExcludedCount`/`cancelledNetExcludedValue` — the same
+ * exclusion-reporting discipline `netExcludedCount`/`netExcludedValue` use
+ * for Net Sales, never a silent guessed rate. The cancellation COHORT itself
+ * (matching Cancellation Rate's "fully cancelled orders" scope) is
+ * unchanged — only the value field's basis changed.
+ *
+ * Gross/net tax-treatment normalization otherwise remains out of scope — a
+ * separate, not-yet-scoped effort.
  *
  * `unconvertedCurrency` labels the `unconvertedValue` figure with the one
  * native currency (`order_records.currency` — a pre-existing #1985 column,
@@ -79,12 +95,28 @@ export interface DailyOrderAggregateRow {
   unconvertedCurrency: string | null;
   /** All cancelled orders in range, regardless of FX-stamp state. */
   cancelledCount: number;
-  /** `SUM(reportingTotalAmount)` over current-era-stamped, cancelled orders — expressed in `reportingCurrency`. */
+  /**
+   * VAT-exclusive, shipping-excluded value (#2910) of current-era-stamped,
+   * cancelled, net-eligible orders — expressed in `reportingCurrency`. See
+   * this file's module doc comment for the full derivation.
+   */
   cancelledValue: number;
   /** Cancelled orders in range with no CURRENT-era `reportingCurrency` stamp — not reflected in `cancelledValue`. */
   cancelledUnconvertedCount: number;
   /** Native-currency `SUM(totalAmount)` for `cancelledUnconvertedCount` — informational, may mix currencies, mirrors `unconvertedValue`. */
   cancelledUnconvertedValue: number;
+  /**
+   * Current-era-stamped, cancelled orders in range excluded from
+   * `cancelledValue` — carrying at least one line whose tax rate does not
+   * resolve. Mirrors `netExcludedCount` for the cancelled cohort.
+   */
+  cancelledNetExcludedCount: number;
+  /**
+   * Native-currency `SUM(totalAmount)` for `cancelledNetExcludedCount` —
+   * informational, may mix currencies, mirrors `netExcludedValue`'s
+   * convention.
+   */
+  cancelledNetExcludedValue: number;
   /**
    * The `reportingCurrency` this row's `revenue` (and `cancelledValue`) is expressed in — `null`
    * when every order in the group is unconverted, OR when the stamped orders
@@ -174,12 +206,16 @@ export interface SalesAnalyticsHeadline {
   unconvertedUnitsSold: number;
   /** All cancelled orders in range, regardless of FX-stamp state. */
   cancelledCount: number;
-  /** `SUM(reportingTotalAmount)` over current-era-stamped, cancelled orders — expressed in `currency`. */
+  /** Same meaning as {@link DailyOrderAggregateRow.cancelledValue}, rolled up over the range — expressed in `currency`. */
   cancelledValue: number;
   /** Cancelled orders in range with no CURRENT-era `reportingCurrency` stamp — not reflected in `cancelledValue`. */
   cancelledUnconvertedCount: number;
   /** Native-currency `SUM(totalAmount)` for `cancelledUnconvertedCount` — informational, may mix currencies. */
   cancelledUnconvertedValue: number;
+  /** Same meaning as {@link DailyOrderAggregateRow.cancelledNetExcludedCount}, rolled up over the range. */
+  cancelledNetExcludedCount: number;
+  /** Same meaning as {@link DailyOrderAggregateRow.cancelledNetExcludedValue}, rolled up over the range. */
+  cancelledNetExcludedValue: number;
   /**
    * The reporting currency `revenue`/`averageOrderValue`/`medianOrderValue`/
    * `unitsSold` are expressed in. `null` when no order in range has been
@@ -236,6 +272,10 @@ export interface ChannelSalesAnalytics {
   cancelledUnconvertedCount: number;
   /** Same meaning as {@link SalesAnalyticsHeadline.cancelledUnconvertedValue}, scoped to this channel. */
   cancelledUnconvertedValue: number;
+  /** Same meaning as {@link SalesAnalyticsHeadline.cancelledNetExcludedCount}, scoped to this channel. */
+  cancelledNetExcludedCount: number;
+  /** Same meaning as {@link SalesAnalyticsHeadline.cancelledNetExcludedValue}, scoped to this channel. */
+  cancelledNetExcludedValue: number;
   /** Same meaning as {@link SalesAnalyticsHeadline.currency}, scoped to this channel. */
   currency: string | null;
   /** Same meaning as {@link SalesAnalyticsHeadline.unconvertedCount}, scoped to this channel. */
