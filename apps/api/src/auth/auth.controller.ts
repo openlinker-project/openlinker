@@ -49,6 +49,7 @@ import {
 } from '@openlinker/core/users';
 import { AUTH_SERVICE_TOKEN, IAuthService } from './auth.service.interface';
 import { Public } from './decorators/public.decorator';
+import { AnyRole } from './decorators/any-role.decorator';
 import { SkipAnalyticsConsent } from './decorators/skip-analytics-consent.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { CsrfGuard } from './guards/csrf.guard';
@@ -306,6 +307,7 @@ export class AuthController {
 
   // Exempt from the demo consent gate (#1938): the frontend reads this to
   // decide whether to send the account to the consent page at all.
+  @AnyRole()
   @SkipAnalyticsConsent()
   @Get('me')
   @ApiBearerAuth()
@@ -322,6 +324,7 @@ export class AuthController {
   // is what a demo signup gets — must be able to change it (#1882).
   // Exempt from the demo consent gate (#1938) — gating the route that grants
   // consent would make the missing consent unresolvable.
+  @AnyRole()
   @SkipAnalyticsConsent()
   @Patch('me/analytics-consent')
   @HttpCode(HttpStatus.OK)

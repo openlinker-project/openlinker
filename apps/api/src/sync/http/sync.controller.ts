@@ -5,6 +5,11 @@
  * enqueuing sync jobs manually and querying job status.
  *
  * @module apps/api/src/sync/http
+ *
+ * **The job reads are `@Roles('admin', 'operator', 'viewer')`, not `@AnyRole()`
+ * (#2413).** A job row carries payload and error detail from connection
+ * configuration; the `packer` role has no business in one. Behaviourally
+ * identical for every role that exists today.
  */
 import {
   Controller,
@@ -22,7 +27,6 @@ import {
   ParseUUIDPipe,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { Roles } from '../../auth/decorators/roles.decorator';
 import {
   JobEnqueuePort,
   JOB_ENQUEUE_TOKEN,
@@ -46,6 +50,7 @@ import { GroupedSyncJobsResponseDto } from './dto/grouped-sync-jobs-response.dto
 import { RetryGroupedSyncJobsDto } from './dto/retry-grouped-sync-jobs.dto';
 import { RetryGroupedSyncJobsResponseDto } from './dto/retry-grouped-sync-jobs-response.dto';
 import { Logger } from '@openlinker/shared/logging';
+import { Roles } from '../../auth/decorators/roles.decorator';
 
 @ApiBearerAuth()
 @ApiTags('sync')
@@ -122,6 +127,7 @@ export class SyncController {
     }
   }
 
+  @Roles('admin', 'operator', 'viewer')
   @Get('jobs')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -150,6 +156,7 @@ export class SyncController {
     };
   }
 
+  @Roles('admin', 'operator', 'viewer')
   @Get('jobs/grouped')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -187,6 +194,7 @@ export class SyncController {
     };
   }
 
+  @Roles('admin', 'operator', 'viewer')
   @Get('jobs/lookup')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -245,6 +253,7 @@ export class SyncController {
     };
   }
 
+  @Roles('admin', 'operator', 'viewer')
   @Get('jobs/:id')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get sync job by ID' })

@@ -147,6 +147,7 @@ describe('ShipmentDispatchService', () => {
       listDispatchedAwaitingReservationConsume: jest.fn(),
       claimReservationConsume: jest.fn(),
       claimFulfillmentWorkLink: jest.fn(),
+      findByFulfillmentWorkIds: jest.fn(),
     };
     routing = {
       getRules: jest.fn(),
