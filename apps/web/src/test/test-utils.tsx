@@ -6,6 +6,7 @@ import { vi } from 'vitest';
 import type { ApiClient, CoreApiClient, PluginApiNamespaces } from '../app/api/api-client';
 import { ApiClientProvider } from '../app/api/api-client-provider';
 import { ApiError } from '../shared/api/api-error';
+import type { BenchApi } from '../features/bench/api/bench-work.api';
 import type { Connection } from '../features/connections/api/connections.types';
 import type { EanCategoryMatchStreamEvent } from '../features/listings/api/listings.types';
 import { createNoopSessionAdapter } from '../shared/auth/noop-session-adapter';
@@ -733,31 +734,70 @@ export function createMockApiClient(
     // defect in the surface rather than a missing mock. `ready: true` is the
     // ordinary install, so a test that cares about the not-routed empty state
     // has to say so explicitly.
-    // #2905. Every member is defaulted, and the `as` cast is gone. Two of the
-    // eight were defaulted behind a cast, which is the shape `fulfillment`
-    // below already avoids: an absent member fails as
+    // #2905. Every member is defaulted, the `as` cast is gone, AND every
+    // `vi.fn()` is parameterised with the member's own signature.
+    //
+    // Two of the eight were defaulted behind a cast, which is the shape
+    // `fulfillment` below already avoids: an absent member fails as
     // `apiClient.bench.getParcel is not a function` from inside a render — an
     // inscrutable crash that reads as a defect in the surface rather than as a
     // missing mock — and the cast is what let the other six stay absent.
+    //
+    // Dropping the cast bought member-NAME presence and nothing more: a bare
+    // `vi.fn()` is `Mock<any>`, so `mockResolvedValue` accepted any payload at
+    // all and the `getDocuments` default was in fact three fields short of
+    // `BenchDocuments` with a `label.state` outside its own union — which made
+    // `label.shipmentId` undefined and walked `bench-documents.tsx`'s
+    // `=== null` guard straight into `downloadLabel(undefined)`. The
+    // `vi.fn<BenchApi['x']>()` parameter is what turns a future drift into a
+    // compile error rather than a payload that merely looks plausible.
     bench: {
-      listWork: vi.fn().mockResolvedValue({
+      listWork: vi.fn<BenchApi['listWork']>().mockResolvedValue({
         works: [],
         executorName: null,
         routing: { ready: true, reason: null },
         total: 0,
       }),
-      setExpedited: vi.fn().mockResolvedValue(undefined),
-      getParcel: vi.fn().mockRejectedValue(new Error('bench.getParcel not stubbed')),
-      verifyUnit: vi.fn().mockRejectedValue(new Error('bench.verifyUnit not stubbed')),
-      reopenParcel: vi.fn().mockRejectedValue(new Error('bench.reopenParcel not stubbed')),
-      getDocuments: vi.fn().mockResolvedValue({
+      setExpedited: vi.fn<BenchApi['setExpedited']>().mockResolvedValue(undefined),
+      getParcel: vi
+        .fn<BenchApi['getParcel']>()
+        .mockRejectedValue(new Error('bench.getParcel not stubbed')),
+      verifyUnit: vi
+        .fn<BenchApi['verifyUnit']>()
+        .mockRejectedValue(new Error('bench.verifyUnit not stubbed')),
+      reopenParcel: vi
+        .fn<BenchApi['reopenParcel']>()
+        .mockRejectedValue(new Error('bench.reopenParcel not stubbed')),
+      // The neutral "no paper exists yet" answer: an unissued invoice and a
+      // box no label was ever bought for. Every nullable field is spelled out
+      // rather than omitted, so a surface reading one gets `null` — the value
+      // the API would really send — and not `undefined`.
+      getDocuments: vi.fn<BenchApi['getDocuments']>().mockResolvedValue({
         workId: 'work-unstubbed',
-        invoice: { state: 'missing', blockReason: null, unresolvedReason: null },
-        label: { state: 'missing', failedAt: null, carrierMessageRedacted: false },
+        invoice: {
+          state: 'missing',
+          invoiceId: null,
+          documentNumber: null,
+          issuedAt: null,
+          blockReason: null,
+          unresolvedReason: null,
+        },
+        label: {
+          state: 'none',
+          shipmentId: null,
+          carrier: null,
+          trackingNumber: null,
+          providerCode: null,
+          carrierMessage: null,
+          carrierMessageRedacted: false,
+          failedAt: null,
+        },
       }),
-      downloadInvoice: vi.fn().mockRejectedValue(new Error('bench.downloadInvoice not stubbed')),
+      downloadInvoice: vi
+        .fn<BenchApi['downloadInvoice']>()
+        .mockRejectedValue(new Error('bench.downloadInvoice not stubbed')),
       listUnlabelledParcels: vi
-        .fn()
+        .fn<BenchApi['listUnlabelledParcels']>()
         .mockResolvedValue({ parcels: [], total: 0, truncated: false }),
       ...overrides.bench,
     },

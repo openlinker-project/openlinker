@@ -224,6 +224,24 @@ export class BenchDocumentsService implements IBenchDocumentsService {
     // through `isBenchWorkSelectable`, so a work at `closed` or `incomplete`
     // was listed here and then 404'd on click — D2's disagreement exactly, and
     // the omission the single-rule spec now fails the build on.
+    //
+    // The DISPATCH half of this read's audience was weighed and not served
+    // differently (#2905 second review). A closed-but-unlabelled box whose work
+    // has since reached `closed` or `incomplete` drops out here, and this is the
+    // only surface that lists such boxes — so for that one combination the two
+    // audiences would want different answers. It is believed unreachable
+    // through the product: a work is terminalised by its own execution path,
+    // which does not run for a parcel nothing was ever bought for, and the
+    // int-spec covering the exclusion has to construct the state with raw SQL
+    // rather than by driving the surfaces. Splitting the filter by caller role
+    // would reinstate the second spelling of "is this a bench parcel" that the
+    // `status` line above exists to remove, for a state nobody can produce.
+    //
+    // Revisit if a terminal-state unlabelled box ever becomes reachable — a
+    // sweep that terminalises stale work, or a cancellation path that closes a
+    // work while a packed box still sits on the floor. The fix then is a
+    // dispatch-scoped read with its own status set, NOT a widening of this one:
+    // the bench must keep seeing exactly what it may open.
     const page = await this.worklist.list({
       assignedConnectionId: executors.map((executor) => executor.id),
       status: BENCH_WORK_STATUSES,

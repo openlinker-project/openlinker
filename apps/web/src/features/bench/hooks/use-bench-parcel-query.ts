@@ -32,6 +32,20 @@
  * now sit behind ONE rule — `isNewerParcelRead`. Two guards that agree today is
  * what the single-rule discipline elsewhere in this feature refuses.
  *
+ * ### It costs the default's reference stability, deliberately
+ *
+ * Supplying `structuralSharing` replaces TanStack's own, which returns the
+ * CACHED object whenever an incoming read is deeply equal. An unchanged poll
+ * therefore now hands back a fresh reference, and the parcel view plus every
+ * line row re-render once every ten seconds where they previously did not.
+ *
+ * That is accepted rather than overlooked. The re-render is ten seconds apart on
+ * a page holding one box's worth of lines, and nothing downstream is keyed on
+ * identity: D4/D21's interrupt compares `refusal`, not object identity, so it
+ * cannot misfire on a new reference. Restoring deep-equality on the newer branch
+ * would mean re-implementing what the default does — a second copy of a rule, to
+ * save a render nobody can see.
+ *
  * @module apps/web/src/features/bench/hooks
  */
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
