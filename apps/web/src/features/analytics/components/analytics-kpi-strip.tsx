@@ -11,14 +11,20 @@
  *   - Revenue: the spec's "Net Sales" is NOV (net order value, VAT-exclusive)
  *     minus the value of returns (`docs/specs/metrics-analytics-dashboard.md`
  *     § Net Sales). The net-sales tax-rate epic made NOV real
- *     (`headline.netRevenue`) — per the reference design mockup this renders
- *     as a normal, complete "Net sales" headline (no gap badge on the card
- *     face); the still-open returns caveat and the tax-rate exclusion count
- *     (`headline.netExcludedCount` — pre-rollout orders, or an order with an
- *     unresolvable line-level tax rate) live only in the (i) tooltip's
- *     definition, never as a second qualifier row. Its GMV qualifier
- *     (`headline.revenue`, real, FX-stamped, in `headline.currency`) renders
- *     normally, unchanged.
+ *     (`headline.netRevenue`); the still-open returns caveat and the
+ *     tax-rate exclusion count (`headline.netExcludedCount` — pre-rollout
+ *     orders, or an order with an unresolvable line-level tax rate) live
+ *     only in the (i) tooltip's definition, never as a second qualifier row.
+ *     Both Net sales and GMV (`headline.revenue`, real, FX-stamped, in
+ *     `headline.currency`) always render — one as the primary headline
+ *     figure, the other as the qualifier below it — and which one is
+ *     primary is driven by `netGrossBasis` (#2908 fix): `'net'` (the
+ *     default) shows Net sales primary / GMV qualifier; `'gross'` shows GMV
+ *     primary / Net sales qualifier, matching the channel/product tables'
+ *     own basis-driven primary column (`channel-sales-table.tsx`'s
+ *     `revenueLabel`/`revenueOf`). Neither figure is ever hidden — the
+ *     toggle only decides which one is labelled and rendered as the
+ *     headline.
  *   - Orders, Units: fully real. `headline.orderCount` only counts
  *     FX-stamped orders (ADR-040) — `totalOrders` below adds back `headline.
  *     unconvertedCount` so Orders/Avg. daily/Units per order/Cancellation
@@ -46,10 +52,8 @@
  *     `netGrossBasis="net"` — an operator's own explicit choice to view the
  *     page net-of-VAT — the card instead reads `netAverageOrderValue`/
  *     `netMedianOrderValue`, whose narrower net-eligible cohort is disclosed
- *     via `netExcludedNote` instead. The Revenue card is deliberately NOT
- *     gated on this prop: it already shows Net Sales (primary) and GMV
- *     (qualifier) unconditionally, both bases visible at once, so there is
- *     nothing for a basis toggle to add there.
+ *     via `netExcludedNote` instead. The Revenue card now ALSO reads this
+ *     prop (#2908 fix), for the primary/qualifier swap described above.
  *   - Returns & refunds: no return/refund entity exists anywhere in the
  *     orders domain — fully planned.
  *   - Cancellations: `cancelledCount`/`cancelledValue` are real fields —
@@ -61,8 +65,10 @@
  *     (never a lopsided comparison) unless that ENTIRE previous window is
  *     covered by ingested order history (`isPreviousPeriodCovered`, keyed
  *     off `GET /analytics/trust`'s per-connection `earliestOrderDate`,
- *     #2083) — see the per-card `deltaFor*` helpers below. Revenue's
- *     headline and Returns & refunds are both already `unavailable`/
+ *     #2083) — see the per-card `deltaFor*` helpers below. Revenue carries
+ *     no delta today (confirmed still true by #2908 — nothing here compares
+ *     a toggled current figure against a fixed-basis previous one, since
+ *     there is no comparison to begin with); Returns & refunds stays
  *     `planned`, so a delta there would compare against nothing real.
  *
  * Currency (#1987/#2049/ADR-040): there is exactly ONE system-wide reporting
@@ -350,6 +356,67 @@ export function AnalyticsKpiStrip({
     netExcludedGapOpen && netExcludedTaxRow && onOpenCategory
       ? () => onOpenCategory(netExcludedTaxRow.category)
       : undefined;
+  // Headline Revenue card (#2908 fix): the primary rendered value/label now
+  // tracks `netGrossBasis` the same way the channel/product tables do
+  // (`revenueLabel` / `revenueOf` there) — under `'gross'` GMV is primary
+  // and Net sales is the qualifier; under `'net'` (the default) it's the
+  // reverse, byte-identical to this card's pre-#2908 rendering. Both
+  // figures still always render — this only swaps which one is primary.
+  function renderNetSalesLabel(): ReactElement | string {
+    return netExcludedGapOpen ? (
+      <>
+        Net sales{' '}
+        <GapMark title={netExcludedGapTitle ?? netExcludedNote} onActivate={onOpenNetExcludedGap} />
+      </>
+    ) : (
+      'Net sales'
+    );
+  }
+  const netRevenue = headline.netRevenue;
+  function renderNetSalesValue(): ReactElement {
+    return currencyRecalculating ? (
+      <RecalculatingValue />
+    ) : (
+      <>{formatAmount(convertToDisplay(netRevenue), currency)}</>
+    );
+  }
+  function renderGmvLabel(): ReactElement | string {
+    return stampedGapVisible ? (
+      <>
+        GMV <GapMark title={currencyGapTitle} onActivate={onOpenCurrencyGap} />
+      </>
+    ) : (
+      'GMV'
+    );
+  }
+  function renderGmvValue(): ReactElement {
+    return currencyRecalculating ? (
+      <RecalculatingValue />
+    ) : (
+      <>
+        {formatAmount(gmvValue, gmvCurrency)}
+        {gmvProvenanceDefinitions.length > 0 ? (
+          <span className="kpi-card__qualifier-rate">
+            {gmvInlineRate
+              ? formatAppliedRateLine(gmvInlineRate, rateFormat)
+              : "today's rate(s)"}
+            <AnalyticsInfotip
+              ariaLabel="About this conversion"
+              definitions={gmvProvenanceDefinitions}
+              align="end"
+            />
+          </span>
+        ) : null}
+      </>
+    );
+  }
+  const revenuePrimaryLabel = netGrossBasis === 'gross' ? renderGmvLabel() : renderNetSalesLabel();
+  const revenuePrimaryValue = netGrossBasis === 'gross' ? renderGmvValue() : renderNetSalesValue();
+  const revenueQualifierLabel =
+    netGrossBasis === 'gross' ? renderNetSalesLabel() : renderGmvLabel();
+  const revenueQualifierValue =
+    netGrossBasis === 'gross' ? renderNetSalesValue() : renderGmvValue();
+
   const trendDays = rangeDays(filters.from, filters.to);
   const trendRangeLabel = trendDays === 1 ? 'the selected day' : `the last ${trendDays} days`;
 
@@ -455,27 +522,9 @@ export function AnalyticsKpiStrip({
               : 'Cancelled orders and cancelled items are excluded. Returned/refunded items remain included.',
           },
         ]}
-        metric={
-          netExcludedGapOpen ? (
-            <>
-              Net sales{' '}
-              <GapMark
-                title={netExcludedGapTitle ?? netExcludedNote}
-                onActivate={onOpenNetExcludedGap}
-              />
-            </>
-          ) : (
-            'Net sales'
-          )
-        }
+        metric={revenuePrimaryLabel}
         headlineUnavailable={currencyRecalculating}
-        value={
-          currencyRecalculating ? (
-            <RecalculatingValue />
-          ) : (
-            formatAmount(convertToDisplay(headline.netRevenue), currency)
-          )
-        }
+        value={revenuePrimaryValue}
         trend={{
           values: revenueTrend,
           tone: trendTone(revenueTrend),
@@ -483,32 +532,8 @@ export function AnalyticsKpiStrip({
         }}
         qualifiers={[
           {
-            label: stampedGapVisible ? (
-              <>
-                GMV <GapMark title={currencyGapTitle} onActivate={onOpenCurrencyGap} />
-              </>
-            ) : (
-              'GMV'
-            ),
-            value: currencyRecalculating ? (
-              <RecalculatingValue />
-            ) : (
-              <>
-                {formatAmount(gmvValue, gmvCurrency)}
-                {gmvProvenanceDefinitions.length > 0 ? (
-                  <span className="kpi-card__qualifier-rate">
-                    {gmvInlineRate
-                      ? formatAppliedRateLine(gmvInlineRate, rateFormat)
-                      : "today's rate(s)"}
-                    <AnalyticsInfotip
-                      ariaLabel="About this conversion"
-                      definitions={gmvProvenanceDefinitions}
-                      align="end"
-                    />
-                  </span>
-                ) : null}
-              </>
-            ),
+            label: revenueQualifierLabel,
+            value: revenueQualifierValue,
           },
         ]}
       />
