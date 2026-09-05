@@ -9,8 +9,12 @@
  * architecture-overview.md § Cross-context dependencies in core).
  *
  * Guards are GLOBAL (auth.module APP_GUARD = JwtAuthGuard then RolesGuard), so
- * we never declare a redundant `@UseGuards(JwtAuthGuard)`. The read carries no
- * `@Roles` (open to any authenticated role); the write carries its own
+ * we never declare a redundant `@UseGuards(JwtAuthGuard)`. The read carries
+ * `@Roles('admin', 'operator', 'viewer')` rather than `@AnyRole()` (#2413) — a
+ * refund is money, and the `packer` role is excluded from the order register
+ * along with `OrdersController`; see that file's header for the reasoning and
+ * for what the bench reads instead. The write
+ * carries its own
  * `@Roles('admin', 'operator')`, mirroring `ShipmentController`'s manual
  * operator-facing dispatch actions.
  *
@@ -105,6 +109,7 @@ export class RefundsController {
     }
   }
 
+  @Roles('admin', 'operator', 'viewer')
   @Get(':internalOrderId/refunds')
   @ApiOperation({
     summary: 'List refunds recorded against an order',

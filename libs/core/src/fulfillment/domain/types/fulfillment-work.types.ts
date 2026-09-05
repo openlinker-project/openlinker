@@ -169,6 +169,15 @@ export interface FulfillmentWork {
   readonly dispatchRelayedAt: Date | null;
 
   /**
+   * When an operator pushed this ahead of deadline order (#2416, spec D22), or
+   * `null` for ordinary deadline order.
+   *
+   * The instant, not a boolean: it is the tiebreak between two expedited
+   * parcels. See the ORM column for why there is no index and no actor.
+   */
+  readonly expeditedAt: Date | null;
+
+  /**
    * The HOLDER's acceptance instant, and the at-most-once claim marker for
    * acceptance (#2399, ADR-054).
    *
@@ -186,6 +195,35 @@ export interface FulfillmentWork {
    * to correlate inbound progress.
    */
   readonly externalWorkId: string | null;
+
+  /**
+   * When the last verification shut the box at the pack bench (#2418, D18), or
+   * `null` while it is open.
+   *
+   * The completion instant #2413 deliberately withheld from the ORM entity —
+   * *"that would be a second completion instant competing with the model #2418
+   * owns"*. This is that model's instant.
+   *
+   * It is NOT `status = 'closed'`: that status is the executor finishing the
+   * whole job, and a packed parcel is not a finished one — it still has to be
+   * labelled and leave. Telling the rest of the system about a packed parcel is
+   * #2420's.
+   */
+  readonly parcelClosedAt: Date | null;
+
+  /**
+   * Who shut the box — the LAST verifier (D13), `null` while it is open or where
+   * no user is attributable.
+   *
+   * Under roaming benches this can be someone who checked one item of five, so a
+   * reader must not take it as a complete account of who handled the box; the
+   * verification ledger holds every contributor. Never set alongside
+   * `packedByService` — `CHK_fulfillment_works_packed_actor`.
+   */
+  readonly packedByUserId: string | null;
+
+  /** The service that packed it (#2413). `null` when a human did. */
+  readonly packedByService: string | null;
 
   readonly lines: readonly FulfillmentWorkLine[];
   readonly createdAt: Date;

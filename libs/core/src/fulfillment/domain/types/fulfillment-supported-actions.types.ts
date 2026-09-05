@@ -90,6 +90,20 @@ export interface SupportedActionsInput {
   readonly requestStatus: FulfillmentRequestStatus;
   readonly activeHoldCount: number;
   readonly assignedConnectionId: string | null;
+  /**
+   * Whether the work already carries an expedite (#2416, spec D22).
+   *
+   * A SCALAR, like every other member — the instant itself is not read here, and
+   * passing the aggregate is what the narrow-input rule above forbids.
+   *
+   * OPTIONAL, and absent reads as "not expedited", which is what a caller
+   * compiled against the pre-#2416 shape means: it offers `expedite` and
+   * withholds `release_expedite`, so the worst an un-updated caller can do is
+   * offer a control whose write is then refused by its own state guard. A
+   * REQUIRED field would instead have broken every existing object literal for
+   * a value most of them do not have an opinion about.
+   */
+  readonly isExpedited?: boolean;
 }
 
 /**
@@ -101,7 +115,7 @@ export interface SupportedActionsInput {
 export function deriveSupportedActions(
   input: SupportedActionsInput
 ): readonly FulfillmentWorkAction[] {
-  const { status, requestStatus, activeHoldCount, assignedConnectionId } = input;
+  const { status, requestStatus, activeHoldCount, assignedConnectionId, isExpedited } = input;
 
   const terminal = isTerminalFulfillmentWorkStatus(status);
   const held = activeHoldCount > 0;
@@ -156,6 +170,19 @@ export function deriveSupportedActions(
   // resolved for negotiation at all.
   if (!terminal) {
     actions.push('force_cancel');
+  }
+
+  // Exactly ONE direction is ever offered, which is the whole reason expedite is
+  // two verbs — the server answers "what is legal next" and the client never
+  // decides which way the toggle points.
+  //
+  // NOT suppressed by `held`, deliberately: a held parcel may still be pushed to
+  // the front, because the hold will be released and the ordering should already
+  // be right when it is. Suppressed by `terminal`, because reordering something
+  // that will never be packed is not an ordering, it is noise on a row whose
+  // only honest state is "do not pack this".
+  if (!terminal) {
+    actions.push(isExpedited === true ? 'release_expedite' : 'expedite');
   }
 
   return actions;

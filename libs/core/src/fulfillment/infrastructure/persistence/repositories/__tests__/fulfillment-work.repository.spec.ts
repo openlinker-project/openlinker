@@ -50,6 +50,7 @@ const makeRepository = (overrides: {
   lines?: Partial<Record<string, unknown>>;
   holds?: Partial<Record<string, unknown>>;
   rejections?: Partial<Record<string, unknown>>;
+  verifications?: Partial<Record<string, unknown>>;
   dataSource?: Partial<Record<string, unknown>>;
 }) => {
   const works = {
@@ -67,6 +68,11 @@ const makeRepository = (overrides: {
     ...overrides.holds,
   };
   const rejections = { createQueryBuilder: jest.fn(), find: jest.fn(), ...overrides.rejections };
+  const verifications = {
+    createQueryBuilder: jest.fn(),
+    find: jest.fn(),
+    ...overrides.verifications,
+  };
   const dataSource = { transaction: jest.fn(), ...overrides.dataSource };
   return {
     repo: new FulfillmentWorkRepository(
@@ -74,6 +80,7 @@ const makeRepository = (overrides: {
       lines as never,
       holds as never,
       rejections as never,
+      verifications as never,
       dataSource as never
     ),
     works,
@@ -556,6 +563,7 @@ describe('fulfillment work id format', () => {
       .fn()
       .mockImplementation((_entity: unknown, payload: unknown) => Promise.resolve(payload));
     const repo = new FulfillmentWorkRepository(
+      {} as never,
       {} as never,
       {} as never,
       {} as never,

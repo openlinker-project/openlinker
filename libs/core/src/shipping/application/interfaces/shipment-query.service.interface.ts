@@ -11,6 +11,7 @@
  */
 
 import type { Shipment } from '../../domain/entities/shipment.entity';
+import type { ShipmentDirection } from '../../domain/types/shipment-direction.types';
 import type {
   PaginatedShipments,
   ShipmentFilters,
@@ -30,6 +31,32 @@ export interface IShipmentQueryService {
    * (`TerminalShipmentStatusValues`) so the FE doesn't re-derive it.
    */
   getActiveByOrderId(orderId: string): Promise<Shipment | null>;
+
+  /**
+   * Outbound shipments for a page of `FulfillmentWork` ids, keyed by work id
+   * (#2418) — the first read of the `shipments.fulfillmentWorkId` link #2402
+   * persisted. Three pack-bench answers come off it: whether a parcel has
+   * already shipped (the reopen refusal), the label state, and which packed
+   * works are still unlabelled.
+   *
+   * ONE query for the whole page, never one per work — batched BEFORE any
+   * loop, the `getEarliestOrderDateByConnection` (#2083) precedent, which the
+   * `listActiveHoldsForWorks` worklist read already follows one context over.
+   *
+   * A work with no shipment is ABSENT from the map rather than present with an
+   * empty array, so a caller must default (`?? []`). Same convention as
+   * `listActiveHoldsForWorks`; absence here means "no outbound parcel", never
+   * "the read failed".
+   *
+   * `direction` is REQUIRED, and the scoping is load-bearing: since #2373 a
+   * return label shares this table and may name the same work, so an unscoped
+   * read would let an inbound row answer "this parcel shipped". Bench callers
+   * pass `'outbound'`.
+   */
+  findByFulfillmentWorkIds(
+    workIds: readonly string[],
+    direction: ShipmentDirection,
+  ): Promise<Map<string, Shipment[]>>;
 
   /**
    * Did this order's goods already leave the building — i.e. has any of its

@@ -44,6 +44,7 @@ import {
 import type { ListingCreationRecord } from '@openlinker/core/listings';
 
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { AnyRole } from '../../auth/decorators/any-role.decorator';
 import { PublishProductRequestDto } from './dto/publish-product.dto';
 import {
   ListingCreationRecordResponseDto,
@@ -102,6 +103,7 @@ export class ShopPublishController {
     return { jobId, listingCreationRecordId: listingCreationRecord.id };
   }
 
+  @AnyRole()
   @Get('categories')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -133,6 +135,7 @@ export class ShopPublishController {
     return categories.map((c) => ({ id: c.id, name: c.name, parentId: c.parentId }));
   }
 
+  @AnyRole()
   @Get('attributes')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -151,6 +154,7 @@ export class ShopPublishController {
     return attributes.map((a) => ({ id: a.id, name: a.name, slug: a.slug }));
   }
 
+  @AnyRole()
   @Get('attributes/:attributeId/terms')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'attributeId', description: 'Destination-native global-attribute id.' })
@@ -171,6 +175,7 @@ export class ShopPublishController {
     return terms.map((t) => ({ id: t.id, name: t.name, slug: t.slug }));
   }
 
+  @AnyRole()
   @Get(':recordId')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'recordId', format: 'uuid' })
