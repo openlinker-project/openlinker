@@ -87,7 +87,10 @@ export interface SalesAnalyticsHeadline {
   orderCount: number;
   averageOrderValue: number;
   medianOrderValue: number;
+  /** Units sold on stamped, non-cancelled orders — same population as `orderCount`/`revenue`. */
   unitsSold: number;
+  /** Units sold on `unconvertedCount` orders — the `unitsSold` companion to `unconvertedValue`. A unit count needs no currency conversion, so callers should add this to `unitsSold` to get every placed, non-cancelled order's units (mirrors `orderCount + unconvertedCount`). */
+  unconvertedUnitsSold: number;
   /** All cancelled orders in range, regardless of FX-stamp state. */
   cancelledCount: number;
   /** `SUM(reportingTotalAmount)` over current-era-stamped, cancelled orders — expressed in `currency`. */
@@ -136,6 +139,8 @@ export interface ChannelSalesAnalytics {
   orderCount: number;
   averageOrderValue: number;
   unitsSold: number;
+  /** Same meaning as {@link SalesAnalyticsHeadline.unconvertedUnitsSold}, scoped to this channel. */
+  unconvertedUnitsSold: number;
   cancelledCount: number;
   cancelledValue: number;
   cancelledUnconvertedCount: number;

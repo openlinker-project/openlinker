@@ -22,7 +22,11 @@
  *   - Orders, Units: fully real. `headline.orderCount` only counts
  *     FX-stamped orders (ADR-040) — `totalOrders` below adds back `headline.
  *     unconvertedCount` so Orders/Avg. daily/Units per order/Cancellation
- *     rate count every placed order.
+ *     rate count every placed order. `headline.unitsSold` carries the same
+ *     FX-stamped restriction, but a unit count needs no currency conversion
+ *     at all — `totalUnitsSold` below adds back `headline.
+ *     unconvertedUnitsSold` unconditionally, so Units sold/Units per order
+ *     count every placed, non-cancelled order's units.
  *   - Order value (AOV + median): renders `headline.netAverageOrderValue` /
  *     `netMedianOrderValue` (net-sales tax-rate epic), not the gross
  *     `averageOrderValue`/`medianOrderValue` — same VAT-exclusive basis as
@@ -224,7 +228,12 @@ export function AnalyticsKpiStrip({
   // placed, non-cancelled order also includes the not-yet-stamped ones.
   const totalOrders = headline.orderCount + headline.unconvertedCount;
   const avgDaily = averageDailyOrders(totalOrders, filters.from, filters.to);
-  const unitsRatio = unitsPerOrder(headline.unitsSold, totalOrders);
+  // headline.unitsSold only counts units on FX-stamped orders (ADR-040), the
+  // same restriction as orderCount/revenue — a unit count needs no currency
+  // conversion, so unlike orders/AOV there is no reason to leave the
+  // unconverted units out of the total at all.
+  const totalUnitsSold = headline.unitsSold + headline.unconvertedUnitsSold;
+  const unitsRatio = unitsPerOrder(totalUnitsSold, totalOrders);
   const cancelRate = cancellationRate(headline.cancelledCount, totalOrders);
   const nativeCurrency = headline.currency ?? undefined;
   const gmvConversion = headline.displayCurrencyConversion;
@@ -340,7 +349,10 @@ export function AnalyticsKpiStrip({
     ? previousHeadline.orderCount + previousHeadline.unconvertedCount
     : undefined;
   const ordersDelta = buildDelta(totalOrders, previousTotalOrders, 'higher-is-better');
-  const unitsDelta = buildDelta(headline.unitsSold, previousHeadline?.unitsSold, 'higher-is-better');
+  const previousTotalUnitsSold = previousHeadline
+    ? previousHeadline.unitsSold + previousHeadline.unconvertedUnitsSold
+    : undefined;
+  const unitsDelta = buildDelta(totalUnitsSold, previousTotalUnitsSold, 'higher-is-better');
   const previousCancelRate = previousHeadline
     ? cancellationRate(
         previousHeadline.cancelledCount,
@@ -495,7 +507,7 @@ export function AnalyticsKpiStrip({
           { term: 'Units per order', text: 'Units sold divided by placed orders.' },
         ]}
         metric="Units sold"
-        value={numberFormat.format(headline.unitsSold)}
+        value={numberFormat.format(totalUnitsSold)}
         qualifiers={[{ label: 'Per order', value: ratioFormat.format(unitsRatio) }]}
         delta={unitsDelta}
         deltaGapReason={deltaGapReason}

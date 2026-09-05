@@ -180,6 +180,7 @@ describe('AnalyticsPage', () => {
             averageOrderValue: 120,
             medianOrderValue: 100,
             unitsSold: 60,
+            unconvertedUnitsSold: 0,
             cancelledCount: 2,
             cancelledValue: 200,
             unconvertedCount: 0,

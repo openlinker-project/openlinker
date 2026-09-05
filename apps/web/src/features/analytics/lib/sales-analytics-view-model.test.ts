@@ -24,6 +24,7 @@ function channel(overrides: Partial<ChannelSalesAnalytics> = {}): ChannelSalesAn
     orderCount: 10,
     averageOrderValue: 10,
     unitsSold: 20,
+    unconvertedUnitsSold: 0,
     cancelledCount: 0,
     cancelledValue: 0,
     cancelledUnconvertedCount: 0,
