@@ -8,6 +8,7 @@
  * @module libs/core/src/identifier-mapping/domain/types
  */
 import type { PricingRule } from './pricing-rule.types';
+import type { Connection } from '../entities/connection.entity';
 
 /**
  * Platform type identifier (e.g., 'prestashop', 'allegro', 'shopify')
@@ -193,6 +194,38 @@ export interface ConnectionUpdate {
 export interface ConnectionFilters {
   platformType?: PlatformType;
   status?: ConnectionStatus;
+}
+
+/**
+ * Connection list pagination (#2937).
+ *
+ * Deliberately a SEPARATE method (`ConnectionPort.listPaginated`) rather than
+ * an optional param on the existing `list`, which stays unbounded and keeps
+ * returning a bare array: the overwhelming majority of `list()` callers (the
+ * command palette, capability pickers, lookup tables — dozens of them) need
+ * EVERY connection matching a filter to search/filter client-side, not one
+ * page of them, and an install's connection count is small in every one of
+ * those cases by construction (an operator configures integrations, they
+ * don't accumulate at data volume). Defaulting `list()` itself to a page
+ * would silently truncate every one of those callers on the one install
+ * shape this pagination exists to protect — a large connection count — which
+ * is the opposite of what it is for. Only the connections LIST PAGE, which
+ * genuinely renders a growing table, asks for a page.
+ */
+export interface ConnectionPagination {
+  limit: number;
+  offset: number;
+}
+
+/**
+ * Paginated connection list — the connections-list-page shape (#2937),
+ * mirroring `PaginatedOrders` / `PaginatedProducts`.
+ */
+export interface PaginatedConnections {
+  items: Connection[];
+  total: number;
+  limit: number;
+  offset: number;
 }
 
 

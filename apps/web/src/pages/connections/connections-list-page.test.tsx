@@ -35,15 +35,60 @@ describe('ConnectionsListPage', () => {
 
   it('displays connections returned by the API', async () => {
     const apiClient = createMockApiClient({
-      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+      connections: { listPaginated: vi.fn().mockResolvedValue({ items: [sampleConnection], total: 1, limit: 20, offset: 0 }) },
     });
     renderWithProviders(<ConnectionsListPage />, { apiClient });
     expect(await screen.findByText(sampleConnection.name)).toBeInTheDocument();
   });
 
+  describe('pagination (#2937)', () => {
+    it('requests limit/offset from the paginated read and renders the page summary', async () => {
+      const listPaginated = vi
+        .fn()
+        .mockResolvedValue({ items: [sampleConnection], total: 45, limit: 20, offset: 0 });
+      const apiClient = createMockApiClient({ connections: { listPaginated } });
+      renderWithProviders(<ConnectionsListPage />, { apiClient });
+
+      await screen.findByText(sampleConnection.name);
+
+      expect(listPaginated).toHaveBeenCalledWith(expect.anything(), { limit: 20, offset: 0 });
+      expect(screen.getByText('Showing 1–20 of 45')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Next' })).toBeEnabled();
+    });
+
+    it('advances the offset param when Next is clicked', async () => {
+      const user = userEvent.setup();
+      const listPaginated = vi
+        .fn()
+        .mockResolvedValue({ items: [sampleConnection], total: 45, limit: 20, offset: 0 });
+      const apiClient = createMockApiClient({ connections: { listPaginated } });
+      renderWithProviders(<ConnectionsListPage />, { apiClient });
+
+      await screen.findByText(sampleConnection.name);
+      await user.click(screen.getByRole('button', { name: 'Next' }));
+
+      expect(listPaginated).toHaveBeenLastCalledWith(expect.anything(), { limit: 20, offset: 20 });
+    });
+
+    it('disables Next on the final page', async () => {
+      const apiClient = createMockApiClient({
+        connections: {
+          listPaginated: vi
+            .fn()
+            .mockResolvedValue({ items: [sampleConnection], total: 5, limit: 20, offset: 0 }),
+        },
+      });
+      renderWithProviders(<ConnectionsListPage />, { apiClient });
+
+      await screen.findByText(sampleConnection.name);
+      expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+    });
+  });
+
   it('shows loading state while fetching', () => {
     const apiClient = createMockApiClient({
-      connections: { list: vi.fn().mockReturnValue(new Promise(() => {})) },
+      connections: { listPaginated: vi.fn().mockReturnValue(new Promise(() => {})) },
     });
     renderWithProviders(<ConnectionsListPage />, { apiClient });
     expect(screen.getByRole('heading', { name: 'Loading connections' })).toBeInTheDocument();
@@ -51,7 +96,7 @@ describe('ConnectionsListPage', () => {
 
   it('shows error state when fetch fails', async () => {
     const apiClient = createMockApiClient({
-      connections: { list: vi.fn().mockRejectedValue(new Error('Network error')) },
+      connections: { listPaginated: vi.fn().mockRejectedValue(new Error('Network error')) },
     });
     renderWithProviders(<ConnectionsListPage />, { apiClient });
     expect(await screen.findByRole('heading', { name: 'Unable to load connections' })).toBeInTheDocument();
@@ -59,7 +104,7 @@ describe('ConnectionsListPage', () => {
 
   it('shows empty state with the Add the first connection CTA when no connections exist', async () => {
     const apiClient = createMockApiClient({
-      connections: { list: vi.fn().mockResolvedValue([]) },
+      connections: { listPaginated: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }) },
     });
     renderWithProviders(<ConnectionsListPage />, { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() });
     expect(await screen.findByRole('heading', { name: 'No connections found' })).toBeInTheDocument();
@@ -70,7 +115,7 @@ describe('ConnectionsListPage', () => {
   it('shows a Clear filters button that clears platform and status params when filters are active', async () => {
     const user = userEvent.setup();
     const apiClient = createMockApiClient({
-      connections: { list: vi.fn().mockResolvedValue([]) },
+      connections: { listPaginated: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }) },
     });
     renderWithProviders(<ConnectionsListPage />, {
       apiClient,
@@ -110,7 +155,7 @@ describe('ConnectionsListPage', () => {
 
     it('renders "New connection" visible and enabled for a demo viewer', async () => {
       renderWithProviders(<ConnectionsListPage />, {
-        apiClient: demoApiClient({ connections: { list: vi.fn().mockResolvedValue([sampleConnection]) } }),
+        apiClient: demoApiClient({ connections: { listPaginated: vi.fn().mockResolvedValue({ items: [sampleConnection], total: 1, limit: 20, offset: 0 }) } }),
         sessionAdapter: viewerSession,
       });
 
@@ -120,7 +165,7 @@ describe('ConnectionsListPage', () => {
 
     it('renders "Add the first connection" visible and enabled for a demo viewer on the empty state', async () => {
       renderWithProviders(<ConnectionsListPage />, {
-        apiClient: demoApiClient({ connections: { list: vi.fn().mockResolvedValue([]) } }),
+        apiClient: demoApiClient({ connections: { listPaginated: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }) } }),
         sessionAdapter: viewerSession,
       });
 
@@ -130,7 +175,7 @@ describe('ConnectionsListPage', () => {
 
     it('hides "New connection" for a genuinely unauthorized non-demo viewer', async () => {
       renderWithProviders(<ConnectionsListPage />, {
-        apiClient: createMockApiClient({ connections: { list: vi.fn().mockResolvedValue([sampleConnection]) } }),
+        apiClient: createMockApiClient({ connections: { listPaginated: vi.fn().mockResolvedValue({ items: [sampleConnection], total: 1, limit: 20, offset: 0 }) } }),
         sessionAdapter: viewerSession,
       });
 

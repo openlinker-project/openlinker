@@ -1,9 +1,11 @@
-import type { ConnectionFilters } from './connections.types';
+import type { ConnectionFilters, ConnectionPagination } from './connections.types';
 
 export const connectionsQueryKeys = {
   all: ['connections'] as const,
   list: (filters?: ConnectionFilters) =>
     ['connections', 'list', filters?.platformType ?? 'all', filters?.status ?? 'all'] as const,
+  listPaginated: (filters?: ConnectionFilters, pagination?: ConnectionPagination) =>
+    ['connections', 'list-paginated', filters ?? {}, pagination ?? {}] as const,
   detail: (connectionId: string) => ['connections', 'detail', connectionId] as const,
   diagnostics: (connectionId: string) => ['connections', 'diagnostics', connectionId] as const,
   bankAccounts: (connectionId: string) => ['connections', 'bank-accounts', connectionId] as const,

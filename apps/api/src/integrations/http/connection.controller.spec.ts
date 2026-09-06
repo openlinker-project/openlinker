@@ -78,6 +78,7 @@ describe('ConnectionController', () => {
     const mockService = {
       create: jest.fn(),
       list: jest.fn(),
+      listPaginated: jest.fn(),
       get: jest.fn(),
       update: jest.fn(),
       updateCredentials: jest.fn(),
@@ -265,7 +266,7 @@ describe('ConnectionController', () => {
     it('should return list of connection DTOs', async () => {
       service.list.mockResolvedValue([mockConnection]);
 
-      const result = await controller.list({}, mockAdminUser);
+      const result = (await controller.list({}, mockAdminUser)) as ConnectionResponseDto[];
 
       expect(result).toHaveLength(1);
       expect(result[0]).toBeInstanceOf(ConnectionResponseDto);
@@ -279,6 +280,62 @@ describe('ConnectionController', () => {
 
       expect(service.list).toHaveBeenCalledWith({
         platformType: 'prestashop',
+      });
+    });
+
+    // #2937 — pagination is additive and opt-in per request.
+    describe('pagination', () => {
+      it('calls the unpaginated list() when neither limit nor offset is supplied', async () => {
+        service.list.mockResolvedValue([mockConnection]);
+
+        await controller.list({}, mockAdminUser);
+
+        expect(service.list).toHaveBeenCalled();
+        expect(service.listPaginated).not.toHaveBeenCalled();
+      });
+
+      it('calls listPaginated() and returns the envelope shape when limit is supplied', async () => {
+        service.listPaginated.mockResolvedValue({
+          items: [mockConnection],
+          total: 7,
+          limit: 10,
+          offset: 0,
+        });
+
+        const result = await controller.list({ limit: 10 }, mockAdminUser);
+
+        expect(service.list).not.toHaveBeenCalled();
+        expect(service.listPaginated).toHaveBeenCalledWith({}, { limit: 10, offset: 0 });
+        expect(result).toEqual({
+          items: [expect.any(ConnectionResponseDto)],
+          total: 7,
+          limit: 10,
+          offset: 0,
+        });
+      });
+
+      it('calls listPaginated() when only offset is supplied, defaulting limit', async () => {
+        service.listPaginated.mockResolvedValue({
+          items: [],
+          total: 0,
+          limit: 20,
+          offset: 40,
+        });
+
+        await controller.list({ offset: 40 }, mockAdminUser);
+
+        expect(service.listPaginated).toHaveBeenCalledWith({}, { limit: 20, offset: 40 });
+      });
+
+      it('threads filters through to listPaginated()', async () => {
+        service.listPaginated.mockResolvedValue({ items: [], total: 0, limit: 10, offset: 0 });
+
+        await controller.list({ limit: 10, platformType: 'prestashop' }, mockAdminUser);
+
+        expect(service.listPaginated).toHaveBeenCalledWith(
+          { platformType: 'prestashop' },
+          { limit: 10, offset: 0 }
+        );
       });
     });
   });

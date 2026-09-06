@@ -345,6 +345,9 @@ export function PromptTemplatesListPage(): ReactElement {
           message="The suggestion flow uses these prompts. Seed migrations usually create the first versions."
         />
       ) : (
+        // #2937 audit: deliberately NOT virtualized — bounded by the
+        // operator-authored (key x channel) template slot set, a small
+        // configuration surface rather than accumulated data.
         <DataTable
           rows={rows}
           columns={columns}

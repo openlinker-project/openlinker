@@ -13,7 +13,7 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, QueryFailedError } from 'typeorm';
+import { Repository, QueryFailedError, type SelectQueryBuilder } from 'typeorm';
 import { ConnectionOrmEntity } from '../entities/connection.orm-entity';
 import { Connection } from '../../../domain/entities/connection.entity';
 import type { ConnectionPort } from '../../../domain/ports/connection.port';
@@ -21,6 +21,8 @@ import type {
   ConnectionCreate,
   ConnectionUpdate,
   ConnectionFilters,
+  ConnectionPagination,
+  PaginatedConnections,
 } from '../../../domain/types/connection.types';
 import { ConnectionNotFoundException } from '../../../domain/exceptions/connection-not-found.exception';
 import { Logger } from '@openlinker/shared/logging';
@@ -61,6 +63,31 @@ export class ConnectionRepository implements ConnectionPort {
   }
 
   async list(filters?: ConnectionFilters): Promise<Connection[]> {
+    const entities = await this.filteredQueryBuilder(filters).getMany();
+    return entities.map((entity) => this.toDomain(entity));
+  }
+
+  async listPaginated(
+    filters: ConnectionFilters | undefined,
+    pagination: ConnectionPagination
+  ): Promise<PaginatedConnections> {
+    const [entities, total] = await this.filteredQueryBuilder(filters)
+      .orderBy('connection.createdAt', 'DESC')
+      .take(pagination.limit)
+      .skip(pagination.offset)
+      .getManyAndCount();
+
+    return {
+      items: entities.map((entity) => this.toDomain(entity)),
+      total,
+      limit: pagination.limit,
+      offset: pagination.offset,
+    };
+  }
+
+  private filteredQueryBuilder(
+    filters?: ConnectionFilters
+  ): SelectQueryBuilder<ConnectionOrmEntity> {
     const queryBuilder = this.repository.createQueryBuilder('connection');
 
     if (filters?.platformType) {
@@ -75,8 +102,7 @@ export class ConnectionRepository implements ConnectionPort {
       });
     }
 
-    const entities = await queryBuilder.getMany();
-    return entities.map((entity) => this.toDomain(entity));
+    return queryBuilder;
   }
 
   async create(payload: ConnectionCreate): Promise<Connection> {

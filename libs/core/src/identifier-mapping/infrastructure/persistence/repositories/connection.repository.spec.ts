@@ -153,6 +153,63 @@ describe('ConnectionRepository', () => {
     });
   });
 
+  describe('listPaginated (#2937)', () => {
+    it('should return a page plus the total matching count', async () => {
+      const queryBuilder = {
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[mockOrmEntity], 7]),
+      } as unknown as SelectQueryBuilder<ConnectionOrmEntity>;
+      ormRepository.createQueryBuilder.mockReturnValue(queryBuilder);
+
+      const result = await repository.listPaginated(undefined, { limit: 10, offset: 0 });
+
+      expect(result).toEqual({
+        items: [mockDomainEntity],
+        total: 7,
+        limit: 10,
+        offset: 0,
+      });
+      expect(queryBuilder.take).toHaveBeenCalledWith(10);
+      expect(queryBuilder.skip).toHaveBeenCalledWith(0);
+    });
+
+    it('should apply the same filters as list()', async () => {
+      const queryBuilder = {
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+      } as unknown as SelectQueryBuilder<ConnectionOrmEntity>;
+      ormRepository.createQueryBuilder.mockReturnValue(queryBuilder);
+
+      const filters: ConnectionFilters = { platformType: 'prestashop', status: 'active' };
+      await repository.listPaginated(filters, { limit: 5, offset: 15 });
+
+      expect(queryBuilder.andWhere).toHaveBeenCalledTimes(2);
+      expect(queryBuilder.take).toHaveBeenCalledWith(5);
+      expect(queryBuilder.skip).toHaveBeenCalledWith(15);
+    });
+
+    it('should echo back the requested limit/offset even against an empty page', async () => {
+      const queryBuilder = {
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+      } as unknown as SelectQueryBuilder<ConnectionOrmEntity>;
+      ormRepository.createQueryBuilder.mockReturnValue(queryBuilder);
+
+      const result = await repository.listPaginated(undefined, { limit: 20, offset: 100 });
+
+      expect(result).toEqual({ items: [], total: 0, limit: 20, offset: 100 });
+    });
+  });
+
   describe('create', () => {
     it('should create and return new connection', async () => {
       const createPayload: ConnectionCreate = {

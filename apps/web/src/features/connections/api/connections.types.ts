@@ -134,6 +134,25 @@ export interface ConnectionFilters {
   status?: ConnectionStatus;
 }
 
+/**
+ * Connection list pagination (#2937) — used ONLY by the connections list
+ * page. Every other reader of the connections list wants every matching
+ * connection to filter/search over client-side, not one page of them, so
+ * `useConnectionsQuery` (unpaginated) stays the default and this is a
+ * separate, deliberately-opt-in shape.
+ */
+export interface ConnectionPagination {
+  limit: number;
+  offset: number;
+}
+
+export interface PaginatedConnections {
+  items: Connection[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export interface CreateConnectionInput {
   name: string;
   platformType: PlatformType;

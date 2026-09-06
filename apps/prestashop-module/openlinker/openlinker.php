@@ -34,7 +34,7 @@
  * @see {@link HmacRequestVerifier} for inbound HMAC verification
  *
  * @author OpenLinker Team
- * @version 1.10.0
+ * @version 1.11.0
  */
 
 if (!defined('_PS_VERSION_')) {
@@ -117,7 +117,7 @@ class OpenLinker extends CarrierModule
     {
         $this->name = 'openlinker';
         $this->tab = 'administration';
-        $this->version = '1.10.0';
+        $this->version = '1.11.0';
         $this->author = 'OpenLinker Team';
         $this->need_instance = 0;
         $this->ps_versions_compliancy = [
@@ -143,12 +143,31 @@ class OpenLinker extends CarrierModule
         // carrier capability — PS duplicates carrier rows on BO edit and
         // reassigns id_carrier; the hook keeps DYNAMIC_CARRIER_CONFIG_KEY
         // in sync with the live row.
+        // actionUpdateQuantity fires only when a stock write happens to touch
+        // a product-with-combinations row (StockAvailableCore::postSave()
+        // recomputes and rewrites the id_product_attribute=0 aggregate through
+        // the static setQuantity() helper, which is the only call site of
+        // Hook::exec('actionUpdateQuantity', ...) anywhere in PrestaShop core,
+        // on both 8.x and 9.x - the mechanism is identical across majors). A
+        // write that lands on a SIMPLE product's own stock_availables row
+        // (id_product_attribute = 0, no combinations) never reaches that
+        // helper at all - postSave() returns immediately for that row - so
+        // the webservice's generic PUT (StockAvailableCore::updateWs() ->
+        // update(), used by most third-party integrations) silently produced
+        // no webhook for the most common product shape (#2924). The generic
+        // ObjectModel hooks fire unconditionally on every StockAvailable
+        // add()/update(), so they close that gap without depending on which
+        // row shape was touched. actionUpdateQuantity stays registered too -
+        // it is harmless (the outbox dedup key collapses a duplicate fire)
+        // and still the first hook to run for a combination write.
         $hooks = [
             'actionProductSave',
             'actionProductDelete',
             'actionValidateOrderAfter',
             'actionOrderHistoryAddAfter',
             'actionUpdateQuantity',
+            'actionObjectStockAvailableUpdateAfter',
+            'actionObjectStockAvailableAddAfter',
             'actionCarrierUpdate',
             'actionEmailSendBefore',
         ];
@@ -208,6 +227,8 @@ class OpenLinker extends CarrierModule
             'actionValidateOrderAfter',
             'actionOrderHistoryAddAfter',
             'actionUpdateQuantity',
+            'actionObjectStockAvailableUpdateAfter',
+            'actionObjectStockAvailableAddAfter',
             'actionCarrierUpdate',
             'actionEmailSendBefore',
         ];
@@ -2043,8 +2064,15 @@ class OpenLinker extends CarrierModule
     /**
      * Hook: Stock quantity updated
      *
-     * Captures stock change events. Note: Stock hooks are inconsistent across update paths;
-     * OpenLinker must also run periodic reconciliation as a safety net.
+     * Captures stock change events fired by StockAvailable::setQuantity() -
+     * the only call site of Hook::exec('actionUpdateQuantity', ...) anywhere
+     * in PrestaShop core. That call site is reached directly by the admin
+     * panel and the CLI, and INDIRECTLY by a webservice write that lands on
+     * a product-with-combinations row (StockAvailableCore::postSave()
+     * recomputes the id_product_attribute=0 aggregate through it). A
+     * webservice write that lands on a SIMPLE product's own row never
+     * reaches this hook at all (#2924) - see hookActionObjectStockAvailable*
+     * below, which covers that gap.
      * Non-blocking: only enqueues to outbox, no HTTP calls.
      *
      * @param array $params Hook parameters
@@ -2052,25 +2080,88 @@ class OpenLinker extends CarrierModule
      */
     public function hookActionUpdateQuantity(array $params)
     {
+        $productId = isset($params['id_product']) ? (int)$params['id_product'] : null;
+        $productAttributeId = isset($params['id_product_attribute'])
+            ? (int)$params['id_product_attribute']
+            : 0;
+
+        $this->enqueueStockChangedEvent($productId, $productAttributeId);
+    }
+
+    /**
+     * Hook: a StockAvailable row was saved (added or updated).
+     *
+     * actionObjectStockAvailableAddAfter / actionObjectStockAvailableUpdateAfter
+     * are the generic ObjectModel hooks PrestaShop core dispatches on EVERY
+     * StockAvailable::add()/update() call, unconditionally - unlike
+     * actionUpdateQuantity above, which only fires from inside the static
+     * setQuantity() helper. Every code path that changes stock (the admin
+     * panel, the CLI, StockManager, setQuantity() itself, and - critically -
+     * the webservice's generic updateWs()) routes through add()/update(), so
+     * this pair is the one hook that reliably observes a quantity change on
+     * a SIMPLE product's own stock_availables row (id_product_attribute = 0),
+     * which StockAvailableCore::postSave() never forwards to
+     * actionUpdateQuantity because postSave() returns immediately for that
+     * row shape (#2924). It is registered ALONGSIDE actionUpdateQuantity,
+     * not instead of it: firing both for the same write is harmless (the
+     * outbox dedup key collapses the duplicate) and actionUpdateQuantity
+     * still runs first for a combination write.
+     *
+     * @param array $params Hook parameters, carrying the saved object
+     * @return void
+     */
+    public function hookActionObjectStockAvailableUpdateAfter(array $params)
+    {
+        $this->enqueueStockChangedEventFromObject($params);
+    }
+
+    /**
+     * @param array $params Hook parameters, carrying the saved object
+     * @return void
+     * @see hookActionObjectStockAvailableUpdateAfter
+     */
+    public function hookActionObjectStockAvailableAddAfter(array $params)
+    {
+        $this->enqueueStockChangedEventFromObject($params);
+    }
+
+    /**
+     * Shared extraction for the two generic ObjectModel stock hooks above.
+     *
+     * @param array $params Hook parameters, carrying the saved object
+     * @return void
+     */
+    private function enqueueStockChangedEventFromObject(array $params)
+    {
+        $object = isset($params['object']) ? $params['object'] : null;
+        if (!($object instanceof StockAvailable)) {
+            return;
+        }
+
+        $this->enqueueStockChangedEvent((int)$object->id_product, (int)$object->id_product_attribute);
+    }
+
+    /**
+     * Shared body for every stock-quantity hook: validates inputs, enqueues
+     * the outbox row, and schedules the urgent-event fast-path drain.
+     *
+     * Note: Stock hooks are inconsistent across update paths; OpenLinker
+     * must also run periodic reconciliation as a safety net.
+     *
+     * @param int|null $productId
+     * @param int $productAttributeId May be 0 for product-level stock
+     * @return void
+     */
+    private function enqueueStockChangedEvent($productId, $productAttributeId)
+    {
         // Check if stock events are enabled
         if (!Configuration::get('ENABLE_STOCK_EVENTS')) {
             return;
         }
 
-        // Extract product ID
-        $productId = null;
-        if (isset($params['id_product'])) {
-            $productId = (int)$params['id_product'];
-        }
-
         if (!$productId) {
             return;
         }
-
-        // Extract product attribute ID (may be 0 for product-level stock)
-        $productAttributeId = isset($params['id_product_attribute']) 
-            ? (int)$params['id_product_attribute'] 
-            : 0;
 
         // Get connection ID
         $connectionId = Configuration::get('OPENLINKER_CONNECTION_ID');
