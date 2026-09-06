@@ -849,7 +849,19 @@ sample_queue() {
   dbsize="$(pg_sql "SELECT pg_database_size('$PG_DB')" 2>/dev/null || printf 0)"
   stats="$(docker stats --no-stream --format '{"name":"{{.Name}}","cpu":"{{.CPUPerc}}","mem":"{{.MemUsage}}"}' 2>/dev/null | jq -cs '.' || printf '[]')"
 
-  printf '%s,%s,%s,%s,%s,%s,%s,%s\n' \
+  # #2930 review: `docker_stats_json` is a JSON array, so it is thick with
+  # internal commas - it MUST be RFC4180-quoted (wrapped in a literal `"..."`
+  # pair) or a naive CSV reader silently comma-splits it into extra columns
+  # instead of erroring, which is exactly what happened the first time this
+  # scenario tried to machine-read the field: python's csv.DictReader parsed
+  # every row "successfully" while silently truncating docker_stats_json at
+  # its own first internal comma and stuffing the genuine remainder into the
+  # reader's own restkey bucket, unnoticed until something finally tried to
+  # json.loads() the (truncated) value. Every prior consumer of this file
+  # read it by eye (grep/awk over a known substring), which never surfaced
+  # the corruption. The internal `"` was ALREADY escaped to `""` (the correct
+  # half of RFC4180 quoting); the missing half was the outer quote pair.
+  printf '%s,%s,%s,%s,%s,%s,%s,"%s"\n' \
     "$(iso_now)" "$dt" "${queued:-0}" "${running:-0}" "${dead:-0}" "${deferred:-0}" "${dbsize:-0}" \
     "$(printf '%s' "$stats" | sed 's/"/""/g')" >> "$csv"
 }
@@ -1162,8 +1174,19 @@ GENERATOR_VU_UTILISATION_MAX="${GENERATOR_VU_UTILISATION_MAX:-0.9}"
 # iteration is load the system never saw.
 GENERATOR_DROPPED_RATIO_MAX="${GENERATOR_DROPPED_RATIO_MAX:-0.05}"
 
+# executor <"" | ramping-arrival-rate | constant-vus> - #2930. Under
+# constant-vus the VU count IS the configuration (vus.max == vus_max.max by
+# design - the executor holds a FIXED pool, it never grows one to chase a
+# rate), so the vus/vus_max ratio this guard otherwise reads as "the
+# generator is running out of headroom" is, for that executor, simply
+# "the fixed pool is fully in use" - not a fault, and not evidence the
+# achieved concurrency is a generator artifact rather than the deliberate
+# point of the run. The dropped_iterations arm is untouched: constant-vus
+# has no arrival rate to fall behind, so it never emits that metric at all,
+# and an absent metric already reads as not-applicable below (never as
+# zero), so no executor-specific branch is needed there.
 post_guard_generator_saturated() {
-  local summary_path="${1:-}"
+  local summary_path="${1:-}" executor="${2:-ramping-arrival-rate}"
   [ -n "$summary_path" ] || { echo "ok"; return 0; }
   if [ ! -f "$summary_path" ]; then
     echo "DISCARDED post_guard_generator_saturated: the scenario drives a load generator but wrote no summary at $summary_path - a run whose instrument vanished (an OOM-killed k6 is the known shape, #2931) cannot be reported"
@@ -1171,14 +1194,16 @@ post_guard_generator_saturated() {
   fi
 
   jq -r --argjson vu_max "$GENERATOR_VU_UTILISATION_MAX" \
-        --argjson drop_max "$GENERATOR_DROPPED_RATIO_MAX" '
+        --argjson drop_max "$GENERATOR_DROPPED_RATIO_MAX" \
+        --arg executor "$executor" '
     .metrics as $m
     | ($m.vus.max // null) as $used
     | ($m.vus_max.max // null) as $cfg
     | ($m.dropped_iterations.count // null) as $dropped
     | ($m.http_reqs.count // 0) as $reqs
     | [
-        (if ($used == null or $cfg == null or $cfg == 0) then
+        (if ($executor == "constant-vus") then empty
+         elif ($used == null or $cfg == null or $cfg == 0) then
            "DISCARDED post_guard_generator_saturated: the summary carries no vus/vus_max, so the generator posture cannot be established - a run that cannot show its instrument was healthy is not reportable"
          elif (($used / $cfg) > $vu_max) then
            "DISCARDED post_guard_generator_saturated: k6 used \($used) of \($cfg) virtual users (\((($used / $cfg) * 100) | floor)% of its own ceiling, limit \(($vu_max * 100) | floor)%) - the achieved rate may be the generator, not the system. Raise MAX_VUS/PRE_ALLOCATED_VUS well clear of the observed usage and re-run"
@@ -1231,14 +1256,14 @@ verdict_read() {
 # generator check, which is the shape post_guard_generator_saturated exists to
 # stop - so scenarios should pass it even when they expect it to pass.
 run_post_guards() {
-  local dir="$1" conn_ids="$2" ws_iso="$3" ws_epoch="$4" we_epoch="$5" dest="${6:-}" k6_summary="${7:-}"
+  local dir="$1" conn_ids="$2" ws_iso="$3" ws_epoch="$4" we_epoch="$5" dest="${6:-}" k6_summary="${7:-}" k6_executor="${8:-ramping-arrival-rate}"
   local results=() r
   results+=("$(post_guard_attempts "$conn_ids" "$ws_iso")")
   results+=("$(post_guard_deferrals "$conn_ids" "$ws_iso")")
   results+=("$(post_guard_requeues "$conn_ids")")
   results+=("$(post_guard_destination_creates "$ws_iso" "$dest")")
   results+=("$(post_guard_limiter_degraded "$ws_epoch" "$we_epoch")")
-  results+=("$(post_guard_generator_saturated "$k6_summary")")
+  results+=("$(post_guard_generator_saturated "$k6_summary" "$k6_executor")")
 
   local reasons=()
   for r in "${results[@]}"; do
