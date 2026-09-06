@@ -6,8 +6,7 @@ This page explains how it follows it, so you can work out why any given order go
 
 > Setting a market up for the first time: see [Setting up a market](./sales-documents-setting-up-a-market.md).
 > What a state on an order means: see [Sales document states](./sales-documents-state-reference.md).
->
-> This page describes the routing settings and screens that ship with the #2513 redesign, which is proposed but has no code yet — see `docs/architecture-overview.md § 17. Sales Documents`. Today's routing is the simpler operator-configured model this page's own "not yet distinguished" notes point to.
+> A screen-by-screen walkthrough of the settings and the per-order panel: see [Sales documents (routing)](./user-guide/04b-sales-documents.md).
 
 ## The short version
 
@@ -34,7 +33,7 @@ So if you see *Two rules matched*, narrow the conditions until only one can appl
 
 **A rule that asks about something OpenLinker does not know can never match.** If a condition reads a fact that is not recorded on your orders, the answer is neither yes nor no, so the rule simply never fires. The market page reports how many of your rules read such a fact.
 
-This is not a hypothetical, but it is only partly true today. The starter rules for Poland all ask whether the buyer gave a tax ID. OpenLinker records that fact only when the order's source reports it — today, that means PrestaShop. An order from a source that asserts nothing about it, such as Allegro or WooCommerce, leaves the condition neither true nor false, so the rule does not fire for that order. Adopt the template as it stands and it is live for your PrestaShop-sourced orders and dormant for the rest, depending on your own mix of connections — the market page reports how many of your rules read the buyer's tax ID, so you can judge whether the gap matters for you.
+This is not a hypothetical. The starter rules for Poland all ask whether the buyer gave a tax ID, and OpenLinker records that fact only when the order's source reports it. All four sources can, but each only under its own condition: PrestaShop when the buyer filled in a VAT number on the address; Allegro and Erli when the buyer requested a VAT invoice; WooCommerce only if the store runs a supported VAT-number plugin. An order whose source asserted nothing leaves the condition neither true nor false, so the rule does not fire for that order. How much of your traffic that covers depends on your own mix of connections and on how your buyers check out — the market page reports how many of your rules read the buyer's tax ID, so you can judge whether the gap matters for you. Keep a default in place beneath such rules either way.
 
 ## Step 2: the country's default
 
@@ -44,7 +43,7 @@ If no rule matched, the default for that country applies. A default says: *anyth
 
 This is the single most common way a market ends up issuing nothing while looking configured. If a market shows *Two defaults set*, remove one, or add a rule that decides between them.
 
-> **Not yet distinguished.** Today this case shares its reason with *Two rules matched* and with a connection-level ambiguity, and the short explanation an order carries can name connections rather than defaults. Telling the two apart, so the order states which one it hit, is part of the work that builds these screens.
+> **Not yet distinguished.** *Two rules matched* now carries its own reason, but this case still shares one with a connection-level ambiguity — several providers able to issue with none marked to go first. The explanation an order carries names both possibilities rather than telling you which of the two you hit.
 
 ## Step 3: Rest of world
 

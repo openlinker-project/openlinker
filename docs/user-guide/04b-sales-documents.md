@@ -4,22 +4,29 @@ OpenLinker never decides what a sale legally requires — that stays your call a
 your accountant's. What it does is **execute the routing you configure**: given
 an order, decide which document (an invoice, or a fiscal receipt) it gets and
 through which connection, automatically, the moment the order settles. This
-section covers the Settings → **Sales documents** screen where you configure
-that routing, and the per-order **Sales document** panel that shows what
-happened (or explains why nothing did).
+section walks through the Settings → **Sales documents** screen where you
+configure that routing, and the per-order **Sales document** panel that shows
+what happened (or explains why nothing did).
 
 If you haven't set up an invoicing or fiscalization connection yet, do that
 first — see [Invoices](./04-invoices.md#prerequisites) and
 [Fiscal receipts](./04a-fiscal-receipts.md#prerequisites).
 
+This page is the screen-by-screen walkthrough. Three shorter reference pages
+sit alongside it and go deeper on one question each:
+
+- [How OpenLinker decides which document a sale gets](../sales-documents-how-routing-decides.md) — the decision, in prose, for working out why one order got what it got.
+- [Setting up a market](../sales-documents-setting-up-a-market.md) — a checklist for configuring a country the first time.
+- [Sales document states](../sales-documents-state-reference.md) — every state an order can show, and what to do about it.
+
 ---
 
 ## The idea in one sentence
 
-For every **market** (a country your orders ship to), you tell OpenLinker: *"an
-order like this gets that document, through that connection."* OpenLinker
-re-evaluates this on every order and issues automatically — no daily review, no
-manual clicking, unless you want it that way.
+For every **market** (a country your orders are delivered to), you tell
+OpenLinker: *"an order like this gets that document, through that connection."*
+OpenLinker re-evaluates this on every order and issues automatically — no daily
+review, no manual clicking, unless you want it that way.
 
 ---
 
@@ -28,247 +35,283 @@ manual clicking, unless you want it that way.
 - At least one **active** connection with `Invoicing` and/or `Fiscalization`
   enabled (KSeF, inFakt, Subiekt, or eparagony.pl — see the two guides linked
   above).
-- Knowing which of your order sources actually reports a **buyer tax ID**. As of
-  this writing, only PrestaShop-sourced orders carry one (from the customer's
-  address on that platform) — an order from Allegro or WooCommerce is treated
-  as **not asserting** a tax ID, never as "known to have none." Any rule
-  condition that reads the buyer's tax ID only ever matches an order from a
-  source that reports it.
+- Knowing which of your order sources actually reports a **buyer tax ID**, if
+  you plan to write rules that read one. All four sources can report it, but
+  each only under its own condition: PrestaShop when the buyer filled in a VAT
+  number on the address; Allegro and Erli when the buyer requested a VAT
+  invoice; WooCommerce only if the store runs a supported VAT-number plugin. An
+  order whose source asserted nothing is treated as **not asserting** a tax ID —
+  never as "known to have none" — so a rule reading that condition neither
+  matches nor rejects it. It simply never fires for that order.
 
 ---
 
 ## Settings → Sales documents
 
 Open **Settings → Sales documents**. This is the market list — one row per
-country you've configured or that has recent order activity, plus a standing
-**★ Rest of world** row that always exists.
+country you have configured, plus every country that has had recent order
+activity.
 
-![Sales documents market list — filter chips (All markets / Recent orders / Configured, no recent orders / Needs a decision), one row per country with its rule count and what it currently issues, and the ★ Rest of world catch-all callout at the bottom](./images/04b-sales-documents-market-list.png)
+![Sales documents settings — a summary line, one highlighted row per market needing a decision (country, rule count, orders in the last 30 days, "Nothing issued" and a short reason, and a Set up action), a plain row for the market that is routing, a table of configured countries, and the Add country field](./images/04b-sales-documents-market-list.png)
 
-- The **filter chips** at the top narrow the list: markets with recent orders,
-  markets that are configured but haven't seen an order lately, and markets
-  that genuinely need a decision from you.
-- Each row shows what that market **currently issues** (or "Nothing issued" if
-  it's unconfigured) and how many rules it has.
-- **★ Rest of world** is the catch-all every unconfigured market falls through
-  to — it always exists and is always at the bottom of the list.
-- **Add a market** lets you search for and add a country that has no row yet.
+- The **summary line** above the list says how many markets currently issue
+  nothing, and states plainly that nothing is lost while they are unconfigured.
+- Rows are **ordered and highlighted, not filtered** — every market needing a
+  decision is listed first and drawn highlighted; markets that are already
+  routing follow, plain. There is no filter control to set; the ordering is the
+  whole mechanism.
+- Each row shows the market's rule count, its order count over the last 30 days,
+  what it **currently issues** (or *Nothing issued*), and — when it issues
+  nothing — a short reason such as *No routing anywhere* or *Order is
+  net-priced*.
+- The row's action is **Set up** for a market that needs a decision (or **Use
+  starter setup** where OpenLinker ships a template for that country), and
+  **Configure** for one that is already routing.
+- Below the list, a table shows **every country carrying rules, defaults, or a
+  no-document acknowledgment**, with what each kind defaults to.
+- **Add country** takes any ISO 3166-1 alpha-2 code — and `*`, which opens
+  **★ Rest of world**. Rest of world has no standing row in the list; `*` is how
+  you reach it.
 
-Click **Configure** on any row to open that market's routing dialog.
+Where OpenLinker ships a **starter template** for a country (Poland is the only
+one today), the page offers it below the list: the template's rules with a
+connection picker each, its cited public source, and a plain statement that this
+is not legal advice and nothing is active until you adopt it.
 
 ---
 
 ## The routing dialog: four tiers
 
 Every market's dialog follows the same four-tier ladder. An order is evaluated
-top to bottom; the first tier that resolves it wins.
+top to bottom; the first tier that resolves it wins. Every control saves as you
+change it — there is nothing to submit.
 
 ### Tier 1 — Rules
 
-Rules are the sharpest tool: conditions you author yourself (buyer has a tax
-ID, order total above/below a threshold, order country), each pointing at a
+Rules are the sharpest tool: conditions you author yourself, each pointing at a
 document type and a connection.
 
-![Add rule dialog — three sections: Conditions (with the three distinct condition-field shapes — a yes/no toggle for "Buyer has a tax ID", a free-text country code, and a comparison + threshold picker for order total), Document & destination, and Effective window](./images/04b-sales-documents-rule-composer.png)
+![Add rule dialog — a Conditions section with a condition-field picker and its value, a warning that a buyer-tax-ID condition cannot match on this install yet, an Add condition button, then Document type, Integration, Effective from and Effective to (optional), with Cancel and Save rule](./images/04b-sales-documents-rule-composer.png)
 
 - **Conditions** are AND-combined — every one you add must be true for the rule
   to match. Three condition fields exist today: **Buyer has a tax ID**
-  (yes/no), **Order country is** (a country code), and **Order total (gross)**
-  (a comparison operator against a named threshold — never a free number, so
-  the same threshold can be reused and reasoned about across rules).
-- **Document & destination** picks what this rule issues and through which
-  connection. The connection picker is filtered to connections that actually
-  support the chosen document type.
-- **Effective window** lets a rule apply only from a given date, optionally
-  until another — useful when a threshold or a provider changes and you don't
-  want to rewrite history.
-- **Exactly one rule may match an order.** If two rules both match, the order
-  is **held**, not guessed at — you'll see this reported on the order itself
-  (see below).
+  (yes/no), **Order country is**, and **Order total (gross)** (a comparison
+  against a *named threshold*, never a free number, so the same threshold can be
+  reused and reasoned about across rules).
+- **Document type** is Invoice or Receipt.
+- **Integration** picks the connection that issues it, filtered to connections
+  that actually support the chosen document type.
+- **Effective from** and **Effective to (optional)** let a rule apply only from
+  a given date, optionally until another — useful when a threshold or a provider
+  changes and you don't want to rewrite history.
+- **Exactly one rule may match an order.** Rules have no priority and no order.
+  If two rules both match, the order is **held**, not guessed at — you'll see
+  this reported on the order itself.
 
-#### Worked example: a real 3-tier setup
+The composer also warns you where a condition cannot match on **your** install
+— if no order OpenLinker has seen carries a buyer tax ID yet, a rule reading one
+is flagged as unable to fire until that data arrives.
 
-Here's a genuine three-rule configuration for Poland, mixing all three
-condition fields, that a company seller might use — route by whether the buyer
-asserted a tax ID and how large the order is:
+#### Worked example: three rules for Poland
 
-![Poland's Rules tier showing three real rules: buyer has a tax ID AND total below a simplified-invoice threshold routes to a fiscal receipt via eparagony; buyer has a tax ID AND total at or above a 1000 PLN threshold routes to an invoice via inFakt; and the narrow band in between routes to an invoice via a direct KSeF connection](./images/04b-sales-documents-pl-rules-example.png)
+Here is a genuine three-rule configuration for Poland that a company seller
+might use — route by whether the buyer asserted a tax ID and how large the order
+is:
 
-Read top to bottom, these three rules say:
+![Poland's routing dialog — the buyer-tax-ID banner above three rules, each rendered as its conditions, an arrow, and its document and connection (invoice via a direct KSeF connection, invoice via inFakt, receipt via eparagony), followed by the country-default tier](./images/04b-sales-documents-pl-rules-example.png)
+
+Read together, these three rules say:
 
 | Buyer has tax ID | Order total | → | Document | Connection |
 |---|---|---|---|---|
-| No | (any) | | *(falls through — no rule matches; see Tier 2/3)* | |
-| Yes | < 450 PLN | → | Fiscal receipt | eparagony.pl |
-| Yes | 450 – 999.99 PLN | → | Invoice | KSeF (direct) |
+| Yes | < 450 PLN | → | Receipt | eparagony |
+| Yes | 450 – 999.99 PLN | → | Invoice | KSeF (direct, test) |
 | Yes | ≥ 1000 PLN | → | Invoice | inFakt |
 
-The banner above the rule list ("3 of these rules read the buyer's tax ID")
-is a standing reminder that a buyer-tax-ID condition only ever matches an order
-from a source that actually reports one — it isn't a warning that something is
-wrong.
+An order where the buyer asserted no tax ID matches none of them and falls to
+Tier 2.
+
+The banner above the rule list — **"3 rules read the buyer's tax ID"** — is a
+standing count, not an error, and it carries the caveat that matters: a
+buyer-tax-ID condition only matches an order whose source actually recorded that
+fact. On an install whose sources rarely report one, a market built entirely out
+of tax-ID rules will fall to its default on almost every order, so keep a
+default in place beneath them.
 
 **Note (a known limitation as of this writing):** an `Order total (gross)`
-condition requires the order to be reported with a **gross** total. Some order
-sources report totals net of tax even when the buyer paid the gross amount —
-an order from such a source will never match an amount-based rule, however
-correctly its catalogue is tax-rated. If a country's orders are consistently
-landing as **unresolved / net-priced-order** (see the order-panel section
-below), this is why — check with your OpenLinker operator or the project's
-issue tracker for the current state of that gap for your specific order
-source.
+condition needs the order to be reported with a **gross** total. Some order
+sources report totals net of tax even when the buyer paid the gross amount — an
+order from such a source can never match an amount-based rule. If a market's
+orders are consistently landing as **Order is net-priced**, this is why; the
+remedy is a condition that does not depend on the total.
 
 ### Tier 2 — Country default
 
-If no rule matches (or the country has no rules at all), the **country
-default** applies — a single Invoice connection and/or a single Fiscal receipt
-connection, with no conditions.
+If no rule matches (or the country has no rules at all), the **country default**
+applies — one connection, no conditions.
 
-- You may set an invoice default, a receipt default, or both — but only one of
-  each **per market**, since setting a default for both document kinds for the
-  same market would leave nothing to discriminate between them for an
-  unmatched order.
-- The default's connection pickers are filtered exactly like a rule's: invoice
-  defaults only show `Invoicing`-capable connections, receipt defaults only
-  show `Fiscalization`-capable ones.
+You can set an invoice default and a receipt default separately. **Setting both
+disables the fallback**: the tier then has nothing to choose between, so every
+order that no rule matched is held instead of issued. The dialog says so under
+the pickers, and this is the single most common way a market ends up issuing
+nothing while looking configured. Set one, not two — or add a rule that decides
+between them.
 
-### Tier 3 — ★ Rest of world
+The default's pickers are filtered exactly like a rule's: the invoice default
+lists `Invoicing`-capable connections, the receipt default `Fiscalization`-capable
+ones.
 
-Every market that has **no rules and no default at all** falls through to the
-standing **★ Rest of world** market — configured exactly like any other market,
-with its own rules and its own default.
+### Tier 3 — depends on whether the market is configured
 
-![★ Rest of world's own routing dialog — Rules tier (empty), Country default tier (Invoice via inFakt, Receipt not set), and the Unresolved tier explaining what happens if nothing above matches](./images/04b-sales-documents-rest-of-world.png)
+Tier 3 is the one tier whose meaning changes, and reading it wrong is the
+easiest way to misconfigure a market:
 
-This is what makes Rest of world genuinely useful: set an invoice default here
-once, and every market you haven't touched yet auto-issues through it — you
-don't have to configure every country you might ever sell to in advance.
+- On a market with **no rules and no default at all**, Tier 3 reads *Falls
+  through to ★ Rest of world* — the order goes to Rest of world's own rules and
+  defaults, and the dialog links straight there.
+- On a market that carries **any** rule or default of its own, Tier 3 reads *An
+  unmatched order is held*. A configured market never falls through. If its own
+  rules and default produce no answer, the order stops there.
 
-★ Rest of world's own dialog has only **three** tiers (Rules, Country default,
-Unresolved) — never a fourth "falls through to Rest of world" tier, since it
-*is* that fallback and cannot fall through to itself.
+That distinction matters when you are debugging: setting up Rest of world does
+not rescue a configured market that is not working.
+
+![★ Rest of world's routing dialog, reached by entering * in Add country — the same acknowledgment offer and Rules and Country default tiers as any market, ending at Tier 3 · Unresolved with no fall-through tier](./images/04b-sales-documents-rest-of-world.png)
+
+This is what makes Rest of world useful: set an invoice default there once, and
+every market you have not touched auto-issues through it — you don't have to
+configure every country you might ever sell to in advance.
+
+Its own dialog is the one place with only **three** tiers (Rules, Country
+default, Unresolved). There is no fall-through tier because Rest of world *is*
+the fall-through, and it cannot fall through to itself.
 
 ### Tier 4 — Unresolved
 
-If nothing above matches — the market's own rules don't match, it has no
-default, and ★ Rest of world doesn't resolve it either — the order is reported
-**unresolved**. Nothing is issued, nothing is silently guessed, and the reason
-is persisted on the order itself (see the next section).
+If nothing above resolved the order, it is reported **unresolved**. Nothing is
+issued, nothing is silently guessed, and the reason is persisted on the order
+itself (see the next section).
 
 ### "No sales document, by design"
 
 Not every market needs a document at all — maybe you don't sell there, or a
-local rule makes it genuinely out of scope. Closing the dialog on a completely
-untouched market routes you through a confirmation, and afterwards the market
-shows a settled, explicit **acknowledgment** instead of a nagging "needs a
-decision" state:
+local rule puts it out of scope. An untouched market's dialog offers **Mark as
+no sales document** at the top, so operators can tell a deliberate decision apart
+from a market nobody has looked at yet:
 
-![A market's dialog showing the green "No sales document, by design" acknowledgment banner above the same three empty tiers, with an inline Undo button](./images/04b-sales-documents-fallthrough-acknowledged.png)
+![An unconfigured market's dialog: the "Nothing configured for this country yet" block with its "Mark as no sales document" action, above the four tiers — with Tier 3 reading "Falls through to ★ Rest of world" and offering a link straight to it](./images/04b-sales-documents-fallthrough-acknowledged.png)
 
-This is reversible any time via the inline **Undo** — acknowledging a market
-"by design" is a statement you're making today, not a permanent lock.
+The acknowledgment is a statement you are making today, not a permanent lock —
+the market keeps its dialog and you can configure it whenever you like.
 
 ---
 
 ## The order-level Sales document panel
 
 Every order's detail page ([Orders](./06-orders.md#order-detail)) carries a
-**Sales document** panel reporting what routing decided for that specific
-order.
+**Sales document** panel reporting what routing decided for that specific order.
+[Sales document states](../sales-documents-state-reference.md) is the full
+reference; the states below are the ones you will meet most.
 
-### Unresolved — no configuration for this market
+### Unresolved — no routing anywhere
 
-If the order's market has no rule, no default, and ★ Rest of world doesn't
-resolve it either, the panel says so plainly and gives you two ways forward:
+If the order's market has no rule and no default, and ★ Rest of world doesn't
+resolve it either, the panel says so plainly:
 
-![Sales document panel showing the "Not issued: no rules configured for this country" empty state, explaining that neither this order's own country nor ★ Rest of world has a rule or default configured, with "Fix routing settings" and "Set a primary" actions](./images/04b-order-panel-unresolved.png)
+![Sales document panel reading "No document · Not issued", with the title "Not issued: no rules configured for this country." and a Set a primary action](./images/04b-order-panel-unresolved.png)
 
-- **Fix routing settings** jumps straight to that market's dialog in Settings.
-- **Set a primary** is a quick, order-independent way to designate one
-  connection as the fallback issuer for this document kind, if you'd rather not
-  build out full rules yet.
+The one action offered is **Set a primary**, which designates a connection as
+the fallback issuer so orders like this one start issuing without full rules.
+The panel does not link into Settings — set the routing up from
+Settings → Sales documents, or issue this order by hand from the cards below.
 
-### Not issued — rules exist, but manual override is available
+### Not issued — issuing by hand
 
-Where routing resolved to *manual issuance* (or nothing has fired yet), the
-panel offers a disclosure to issue or register by hand instead of waiting:
+Where the connection is configured to issue by hand, the panel says nothing is
+wrong and offers both cards inline — one for an invoice, one for a fiscal
+receipt, because either, or neither, may apply to a given order:
 
-![Sales document panel in the collapsed "Not issued" state with an "Issue or register manually instead" disclosure link](./images/04b-order-panel-not-issued.png)
+![Sales document panel in the "nothing issued" state: an alert saying this connection issues sales documents by hand, then an Invoice card with connection and document-type pickers and an Issue invoice button, and a Fiscal receipt card with a Register receipt button](./images/04b-order-panel-not-issued.png)
 
-Expanding it reveals two independent cards — one for an invoice, one for a
-fiscal receipt — because either, or neither, may apply to a given order:
+Each card notes that it **applies to this order only** — issuing here changes
+nothing about the market's routing.
 
-![Expanded manual-override cards: an Invoice card with a document-type selector and Issue invoice button, and a Fiscal receipt card explaining that whether this sale needs one is the operator's call, with a Register receipt button](./images/04b-order-panel-manual-cards.png)
-
-Only one of the two can ever be exercised per order — issuing an invoice
-retires the receipt card (and vice versa), since an order gets **one**
-originating sales document, never both.
+Only one of the two can be exercised per order. Once either has been used, the
+other is replaced by a blocking notice — *This order already has a document* —
+because an order gets **one** originating sales document, never both. The two
+notices differ: an existing invoice tells you to void it first if a receipt is
+what the order actually needed.
 
 ### In progress
 
 Once you (or auto-issue) trigger a registration, the panel shows a live
-progress state and keeps polling — you can leave the page and come back:
+progress state and keeps polling:
 
-![Sales document panel showing "Fiscal receipt · Registering" with an in-progress bar and a note that this continues even if you leave the page](./images/04b-order-panel-registering.png)
+![Sales document panel showing "Fiscal receipt · Registering" with a note that registering continues if you leave the page and the result will be there when you come back](./images/04b-order-panel-registering.png)
 
 ### Issued — the lifecycle stepper
 
-Once a document is issued, the panel shows the **document type**, a
-**lifecycle stepper**, and every provider-reported field. Two real lifecycle
-states, captured live:
+Once a document is issued, the panel shows the **document type**, a **lifecycle
+stepper**, and every provider-reported field. Two real lifecycle states,
+captured live:
 
 **Invoice submitted, awaiting the tax authority's clearance:**
 
-![Sales document panel: Invoice · Awaiting clearance — a two-step stepper with "Issued" filled green and "Awaiting the authority" still hollow, an inline KSeF-submitted note, and the Issue correction disclosure](./images/04b-order-panel-awaiting-clearance.png)
+![Sales document panel: Invoice · Awaiting clearance — a two-step stepper with Issued done and "Awaiting the authority" in progress, clearance reading KSEF: SUBMITTED, and the Issue correction action](./images/04b-order-panel-awaiting-clearance.png)
 
-**The same invoice, minutes later, after KSeF accepted it:**
+**The same invoice, after KSeF accepted it:**
 
-![Sales document panel: Invoice · Cleared — both stepper steps filled green with checkmarks, the KSeF clearance badge reading ACCEPTED, the document number, and Send by email / Issue correction actions](./images/04b-order-panel-cleared.png)
+![Sales document panel: Invoice · Cleared — both stepper steps done, clearance reading KSEF: ACCEPTED, and the UPO and FA(3) document rows now available](./images/04b-order-panel-cleared.png)
 
-A **fiscal receipt**, once registered, has no clearance step — it's a single
+Note the two words for one thing: the panel's own heading and stepper say
+**Cleared**, while the clearance field reports the authority's own answer,
+**KSEF: ACCEPTED**. The Invoices pages use the authority's word throughout, so
+expect *Accepted* there.
+
+A **fiscal receipt**, once registered, has no clearance step — it is a single
 terminal state with every field the provider returned:
 
-![Sales document panel: Fiscal receipt · Registered — the full provider artefact table (receipt number, signing identity, registered timestamp, document IDs) plus a link to open the receipt and a note that this registration is final and cannot be corrected here](./images/04b-order-panel-receipt-registered.png)
+![Sales document panel: Fiscal receipt · Registered — receipt number, signing identity, registered timestamp and a link to open the receipt, plus a note that the registration is final](./images/04b-order-panel-receipt-registered.png)
 
 Note the receipt panel's own honesty: **"This registration is final and cannot
 be corrected here."** Unlike an invoice, a fiscal receipt has no correction
-primitive in OpenLinker — check with your provider directly if one is needed.
+primitive in OpenLinker — talk to your provider directly if one is needed.
 
 ### Issuing a correction
 
 An issued **invoice** (not a receipt) can carry a correction — a new document
-linked to the original, never an edit of what was already issued. The
-disclosure is visible in the "Cleared" and "Awaiting clearance" screenshots
-above; opening it walks you through a per-line correction, the same flow
-documented in [Invoices → Issuing a correction](./04-invoices.md#issuing-a-correction).
+linked to the original, never an edit of what was already issued. The action is
+visible in both invoice screenshots above; it walks you through a per-line
+correction, the same flow documented in
+[Invoices → Issuing a correction](./04-invoices.md#issuing-a-correction).
 
 ---
 
 ## How auto-issue actually decides (so you can predict it)
 
-Put together, this is the full decision an order goes through the moment it
-settles:
+Put together, this is the decision an order goes through the moment it settles:
 
 1. Does this order's own **market** have a rule that matches it? → issue there.
-2. No rule matched (or none exist) — does the market have a **country
-   default**? → issue there.
+2. No rule matched (or none exist) — does the market have a **country default**?
+   → issue there.
 3. The market has **nothing configured at all** — does **★ Rest of world**
    resolve it (its own rules, then its own default)? → issue there.
-4. Nothing above resolved it → the order is **unresolved**. Nothing is issued,
-   and the reason is persisted and shown on the order (see above).
+4. Nothing above resolved it → the order is **unresolved**, and the reason is
+   persisted and shown on the order.
 
-Two things are true by design, not by accident:
+Two things are worth stating plainly, because both surprise people:
 
 - **Two matching rules never mean "pick one."** If a market's rules are
-  ambiguous for a given order, that order is held, exactly like an unresolved
-  one — a wrong pick on a fiscal document is a legal event, not a UX
-  inconvenience.
-- **An order never silently routes through a connection just because it's
-  marked "primary."** A connection's primary flag only matters for the
-  quick **Set a primary** fallback mentioned above — it has no effect on rule
-  or default evaluation, and a market with no rule or default genuinely stays
-  unresolved rather than picking whatever connection happens to be marked
-  primary.
+  ambiguous for an order, that order is held exactly like an unresolved one — a
+  wrong pick on a fiscal document is a legal event, not a UX inconvenience.
+- **A connection's "primary" flag is a last resort, not a routing input.** It
+  has no effect on rule or default evaluation at all. It is consulted only when
+  the market, *and* Rest of world, have nothing configured: if exactly one
+  connection could issue, that one is used; if several could, the one marked
+  primary wins; if several could and none is primary, the order is held. So an
+  install with a primary set and no routing anywhere still issues — which is
+  usually what you want, and worth knowing before you conclude that an
+  unconfigured market issues nothing.
 
 ---
 
