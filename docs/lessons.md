@@ -23,6 +23,46 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## A raw stock write to `id_product_attribute=0` on a PrestaShop combination product is a silent no-op
+
+**Context**: raising stock across a demo catalogue for the #2848 measurement, via 25 raw
+`stock_availables` PUTs through the PrestaShop webservice. Only 2 produced a `stock.changed` outbox
+row; the other 23 were product-level writes (`id_product_attribute=0`) against products that have
+combinations.
+
+**Problem**: PrestaShop treats the `id_product_attribute=0` row on a combination product as an
+aggregate it recomputes from the combination rows, not as a real, independently-writable row. A PUT
+against it is accepted (200, no error) and silently discarded - the quantity does not change, and
+nothing in PrestaShop or in a naive caller reports that. Seeding or correcting stock by writing the
+product-level row is indistinguishable, from the outside, between "it worked" and "it was thrown
+away".
+
+`PrestashopInventoryMasterAdapter.adjustInventory` already guards the OpenLinker write path against
+this (`resolveTargetAttributeId` refuses with `PrestashopNotSupportedException` rather than writing
+attribute 0 on a product it can see has combinations) - but that guard only covered the *caller
+named no variant* case. A second, narrower gap survived: a variant minted while its product was
+still simple keeps a synthetic `product:<id>` external-id mapping until the product's next full
+variant sync replaces it with real per-combination mappings; a caller handing in that variant id
+between "the shop admin adds the first combination" and "that re-sync completes" reached the same
+silent no-op through a resolved `variantId` instead of an absent one. Fixed in #2925 by running the
+same "does this product currently have combinations" probe whenever the resolved target is the
+product-level row, whichever branch resolved it there.
+
+**Rule**: when writing PrestaShop stock at product grain, never trust a cached/mapped "this is a
+simple product" fact without re-checking it against a live combinations read at write time - a
+product can gain combinations after the mapping that named it was minted, and the shop will accept
+and discard the write with no signal. A tool seeding stock for measurement or QA should always write
+at the resolved combination (`id_product_attribute`) level, never at `0`, unless it has just verified
+the product carries no combinations.
+
+**Applies to**: any script or adapter path that writes `stock_availables` directly or via
+`InventoryMasterPort.adjustInventory` — `libs/integrations/prestashop/src/infrastructure/adapters/prestashop-inventory-master.adapter.ts`,
+and any `perf/**` seeding/correction tooling that raises stock through the raw webservice.
+
+**Source**: #2925, found during the #2848 measurement.
+
+---
+
 ## Before a surface asserts a behaviour, read the code that implements it
 
 **Context**: redesigning the three sales-document surfaces (#2513). The design was worked out from

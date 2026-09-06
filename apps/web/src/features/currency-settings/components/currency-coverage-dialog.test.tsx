@@ -74,4 +74,19 @@ describe('CurrencyCoverageDialog', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Close' }));
     expect(onClose).toHaveBeenCalled();
   });
+
+  it('degrades to the zero-state rather than throwing when `stampedOrders` is missing (#2926)', async () => {
+    // A degraded API response (a 500 handled into an empty object, a partial
+    // payload, a field dropped by version skew) can arrive as a resolved
+    // query whose shape doesn't match the contract.
+    const degradedView = {
+      ...baseView,
+      stampedOrders: undefined,
+    } as unknown as CurrencySettingsView;
+
+    renderWithProviders(<CurrencyCoverageDialog open view={degradedView} onClose={vi.fn()} />);
+
+    expect(await screen.findByText('Analytics coverage')).toBeInTheDocument();
+    expect(screen.getByText(/No orders have been stamped yet/)).toBeInTheDocument();
+  });
 });

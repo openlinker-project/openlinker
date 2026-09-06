@@ -65,6 +65,24 @@ USER node
 # Production stage
 FROM node:22.23.1-alpine3.24 AS production
 
+# A deliberate, narrow exception to keeping product code out of the perf
+# harness's Week 1 (#2841, epic #2840): there is no version/build-info surface
+# anywhere in apps/api/src, and a plain image-digest diff is not
+# content-reproducible (a clean rebuild of identical source can land a
+# different digest, and a layer-cache hit can reproduce a STALE digest
+# without rebuilding anything) - so neither approach can tell a perf run it is
+# measuring a stale image. `guard_build` (perf/openlinker-throughput/lib.sh)
+# reads this label back with `docker inspect --format
+# '{{index .Config.Labels "org.opencontainers.image.revision"}}'` and compares
+# it against `git rev-parse HEAD`. Pass `--build-arg OL_GIT_SHA=$(git rev-parse HEAD)`
+# when building (docker-compose.lab.yml, #2854) - omitted, it defaults to
+# "unknown", which correctly fails the guard rather than silently passing.
+#
+# The ARG and LABEL sit at the END of this stage, not here, deliberately: the
+# sha changes on every commit, and an ARG whose value changes invalidates its
+# own layer and every layer after it - placed before the dependency install
+# it would turn every build into a cold one.
+
 WORKDIR /app
 
 # Copy package files
@@ -137,6 +155,15 @@ COPY --from=base --chown=node:node /app/libs/shared/node_modules ./libs/shared/n
 # `COPY --from=base` above carries `--chown=node:node`.
 USER node
 
+# Build provenance (#2841) — see the note at the top of this stage for why the
+# label exists. It is declared HERE, after every COPY and install step, because
+# `ARG OL_GIT_SHA` invalidates its own layer and all layers after it whenever
+# the value changes — and the value changes on every commit. Declared earlier
+# it would cold-build `pnpm install` on every CI run; declared here only the
+# metadata layers are rebuilt.
+ARG OL_GIT_SHA=unknown
+LABEL org.opencontainers.image.revision=$OL_GIT_SHA
+
 # Expose port
 EXPOSE 3000
 
@@ -159,5 +186,15 @@ FROM production AS worker
 # `USER root` round-trip and no extra `RUN chown` layer.
 COPY --from=base --chown=node:node /app/apps/worker/dist ./apps/worker/dist
 COPY --from=base --chown=node:node /app/apps/worker/node_modules ./apps/worker/node_modules
+
+# Restated rather than relied-upon-by-inheritance: `worker` extends
+# `production` so the LABEL above already carries forward, but `guard_build`
+# (perf/openlinker-throughput/lib.sh, #2841) checks the worker image
+# independently of the api image, and an explicit re-declaration here means
+# that stays true even if `worker` is ever restructured to build standalone.
+# Placed after the COPYs for the same cache reason as in `production`: the sha
+# changes every commit, and an ARG invalidates every layer after it.
+ARG OL_GIT_SHA=unknown
+LABEL org.opencontainers.image.revision=$OL_GIT_SHA
 
 CMD ["node", "apps/worker/dist/apps/worker/src/main.js"]

@@ -1161,6 +1161,42 @@ describe('PrestashopInventoryMasterAdapter', () => {
       );
     });
 
+    it('should refuse rather than silently no-op when a variant carries a stale pre-combination mapping (#2925)', async () => {
+      // The variant was mapped as `product:<id>` before the shop admin added
+      // combinations. The next full variant sync would replace that mapping
+      // with a real per-combination one, but until it does, this write must
+      // never reach the recomputed-aggregate row silently.
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockIdentifierMapping.getExternalIds = jest
+        .fn()
+        .mockImplementation((entityType: string) =>
+          entityType === 'ProductVariant'
+            ? Promise.resolve([
+                {
+                  connectionId: connection.id,
+                  externalId: `product:${PS_PRODUCT_ID}`,
+                  entityType: 'ProductVariant',
+                },
+              ])
+            : Promise.resolve([
+                { connectionId: connection.id, externalId: PS_PRODUCT_ID, entityType: 'Product' },
+              ])
+        );
+      respondWithRows([
+        simpleStockRow(10),
+        { ...simpleStockRow(4), id: '202', id_product_attribute: '77' },
+      ]);
+
+      await expect(
+        adapter.adjustInventory({
+          productId: PRODUCT_ID,
+          variantId: 'internal-variant-now-stale',
+          quantity: 1,
+        })
+      ).rejects.toThrow(PrestashopNotSupportedException);
+      expect(mockHttpClient.updateResource).not.toHaveBeenCalled();
+    });
+
     describe('refusals', () => {
       it('should refuse and name shopId when several shops match the row', async () => {
         respondWithRows([

@@ -1007,17 +1007,31 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort, Bu
    * GAP, not a master deletion — same carve-out, and same reasoning, as
    * {@link resolvePrestashopProductId}.
    *
-   * With no variant named, the target is the product-level row — but only once
-   * the product is known to have no combinations. On a combination product that
-   * row is an aggregate PrestaShop recomputes from its combinations, so writing
-   * it would be discarded; and picking a combination on the caller's behalf
-   * would move stock the caller never named. Mirrors the WooCommerce refusal to
-   * adjust a variable product without a `variantId`.
+   * With no variant named, the target is the product-level row. Either way,
+   * once the resolved target IS the product-level row (`0`), it is refused
+   * unless the product is currently known to have no combinations — never
+   * written silently. On a combination product that row is an aggregate
+   * PrestaShop recomputes from its combinations and discards any write to it
+   * (#2925); and picking a combination on the caller's behalf would move stock
+   * the caller never named. Mirrors the WooCommerce refusal to adjust a
+   * variable product without a `variantId`.
+   *
+   * The same refusal also covers a STALE synthetic mapping: a variant minted
+   * while its product was still simple keeps its `product:<id>` externalId
+   * until the next full variant sync of that product replaces it with real
+   * per-combination mappings ({@link PrestashopProductMasterAdapter.getProductVariants}
+   * deletes it "once combinations exist"). Between the shop admin adding the
+   * first combination and that re-sync completing, a caller could still hand
+   * in the old variant id — this check is what turns that narrow staleness
+   * window into a loud refusal instead of a silent no-op.
    */
   private async resolveTargetAttributeId(
     adjustment: InventoryAdjustment,
     psProductId: string
   ): Promise<string> {
+    let attributeId = '0';
+    let resolvedViaStaleSyntheticMapping = false;
+
     if (adjustment.variantId) {
       const externalIds = await this.identifierMapping.getExternalIds(
         CORE_ENTITY_TYPE.ProductVariant,
@@ -1040,7 +1054,15 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort, Bu
         );
       }
 
-      return mapping.externalId.startsWith('product:') ? '0' : mapping.externalId;
+      if (mapping.externalId.startsWith('product:')) {
+        resolvedViaStaleSyntheticMapping = true;
+      } else {
+        attributeId = mapping.externalId;
+      }
+    }
+
+    if (attributeId !== '0') {
+      return attributeId;
     }
 
     const allRows = await this.listStockRecords(adjustment.productId, {
@@ -1050,11 +1072,19 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort, Bu
 
     if (hasCombinations) {
       throw new PrestashopNotSupportedException(
-        `Inventory adjustment is ambiguous: product ${psProductId} has combinations, so an ` +
-          `adjustment must name which variant it applies to. The product-level stock row is an ` +
-          `aggregate PrestaShop recomputes from its combinations, so writing it would be discarded.`,
+        resolvedViaStaleSyntheticMapping
+          ? `Inventory adjustment refused: variant ${adjustment.variantId} is mapped to the ` +
+              `pre-combination product-level row of product ${psProductId}, but that product now ` +
+              `has combinations in PrestaShop. The product-level row is an aggregate PrestaShop ` +
+              `recomputes from its combinations, so writing it would be discarded.`
+          : `Inventory adjustment is ambiguous: product ${psProductId} has combinations, so an ` +
+              `adjustment must name which variant it applies to. The product-level stock row is an ` +
+              `aggregate PrestaShop recomputes from its combinations, so writing it would be discarded.`,
         'adjustInventory',
-        'Supply adjustment.variantId to target a specific combination'
+        resolvedViaStaleSyntheticMapping
+          ? 'Re-run the product/variant sync for this connection so OpenLinker maps to the real ' +
+              'combination rows, then retry the adjustment'
+          : 'Supply adjustment.variantId to target a specific combination'
       );
     }
 

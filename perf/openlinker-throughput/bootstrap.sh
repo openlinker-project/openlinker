@@ -4,10 +4,21 @@
 # See `usage()` below (or `./bootstrap.sh --help`) for the full description,
 # the sources of truth this script ports from, and usage.
 #
+# Sources `lib.sh` (#2841) for every helper that script also needs: log/warn/
+# die, the ps_sql/pg_sql/wc_wp/ol_api/ol_login family, and json_field. #2841's
+# whole argument is that a second copy of any of those is how a run silently
+# lies about the conditions it was taken under - so this script owns nothing
+# lib.sh already owns, and PS_CONTAINER/PG_CONTAINER/etc below are read by
+# both, not duplicated between them.
+#
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ---------------------------------------------------------------------------
 # Configuration. Defaults point at the `lab` stand (#2854); override per stand.
+# Set BEFORE sourcing lib.sh so its own `${VAR:-default}` lines see these
+# values and do not need to repeat them.
 # ---------------------------------------------------------------------------
 PS_CONTAINER="${PS_CONTAINER:-lab-prestashop}"
 PS_MYSQL_CONTAINER="${PS_MYSQL_CONTAINER:-lab-mysql}"
@@ -22,6 +33,12 @@ OL_API_URL="${OL_API_URL:-http://127.0.0.1:13000}"
 OL_ADMIN_USER="${OL_ADMIN_USER:-admin}"
 OL_ADMIN_PASSWORD="${OL_ADMIN_PASSWORD:-admin}"
 
+# lib.sh's log/warn/die default to a `[lib]` prefix; this keeps bootstrap.sh's
+# own `[bootstrap]` voice unchanged.
+LIB_LOG_PREFIX="bootstrap"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib.sh"
+
 # Internal hostnames as seen from the api/worker containers on the compose network.
 PS_INTERNAL_URL="${PS_INTERNAL_URL:-http://prestashop}"
 WC_INTERNAL_URL="${WC_INTERNAL_URL:-https://wc-tls}"
@@ -32,8 +49,11 @@ ALLEGRO_STUB_URL="${ALLEGRO_STUB_URL:-http://allegro-stub:8080}"
 # it must match the stub's own offer-id space (#2856).
 ALLEGRO_OFFER_POOL_SIZE="${ALLEGRO_OFFER_POOL_SIZE:-200}"
 
-OUT_FILE="${OUT_FILE:-$(dirname "$0")/stand-ids.env}"
-UNDO_FILE="${UNDO_FILE:-$(dirname "$0")/stand-bootstrap-undo.txt}"
+# SCRIPT_DIR, not "$(dirname "$0")" - $0 is the CALLING script when this file
+# is sourced rather than executed (lib-test.sh does exactly that), and would
+# otherwise resolve these paths relative to the wrong directory.
+OUT_FILE="${OUT_FILE:-$SCRIPT_DIR/stand-ids.env}"
+UNDO_FILE="${UNDO_FILE:-$SCRIPT_DIR/stand-bootstrap-undo.txt}"
 
 usage() {
   cat <<'EOF'
@@ -82,11 +102,13 @@ done
 
 # ---------------------------------------------------------------------------
 # Helpers
+#
+# log/warn/die, ps_sql/ps_sql_write, wc_wp, pg_sql, ol_api and json_field all
+# now come from lib.sh (sourced above) - this is the extraction #2841 exists
+# for. Only bootstrap-specific bookkeeping (the FOUND/CREATED/GAPS summary,
+# `would()` for --dry-run) stays local, since lib.sh has no notion of a
+# bootstrap run's found/created/gap summary.
 # ---------------------------------------------------------------------------
-log()  { printf '[bootstrap] %s\n' "$*"; }
-warn() { printf '[bootstrap] WARN  %s\n' "$*" >&2; }
-die()  { printf '[bootstrap] FATAL %s\n' "$*" >&2; exit 1; }
-
 FOUND=()      # things already present
 CREATED=()    # things this run wrote
 GAPS=()       # things missing that --verify-only reports
@@ -100,64 +122,15 @@ would() {
   return 1
 }
 
-# MySQL over docker exec. The password lives in the container's own environment,
-# so it is read once rather than passed on the host command line.
-#
-# Two forms, deliberately kept apart. `ps_sql` is lenient - it folds stderr into
-# stdout and always exits 0 - which is correct for a PROBE (a SELECT whose
-# absence is the answer, not a failure), but was wrong for a WRITE: with the
-# same leniency, a failed INSERT/DELETE/UPDATE reported success and the script
-# reached "stand is bootstrapped" without ever having granted permissions,
-# bound the shop, or turned on PS_WEBSERVICE. `ps_sql_write` is strict - no
-# stderr fold, no swallowed exit code - and `die`s on the first failure.
-PS_MYSQL_PWD=""
-ps_sql() {
-  docker exec -i -e MYSQL_PWD="$PS_MYSQL_PWD" "$PS_MYSQL_CONTAINER" \
-    mysql -uroot -N -B "$PS_DB" -e "$1" 2>&1 | grep -v '^mysql: \[Warning\]' || true
-}
-
-ps_sql_write() {
-  docker exec -i -e MYSQL_PWD="$PS_MYSQL_PWD" "$PS_MYSQL_CONTAINER" \
-    mysql -uroot -N -B "$PS_DB" -e "$1" \
-    || die "MySQL write failed: $1"
-}
-
-wc_wp() {
-  docker exec -i "$WC_CONTAINER" wp --allow-root --no-debug --path="$WC_PATH" "$@" 2>/dev/null
-}
-
-pg_sql() {
-  docker exec -i "$PG_CONTAINER" psql -U "$PG_USER" -d "$PG_DB" -tA -c "$1"
-}
-
-OL_TOKEN=""
-# `-f` alone hides the response body on a 4xx/5xx, which is exactly where a
-# stand bootstrap tends to fail (a rejected field name, a validation error) -
-# so this captures body+status separately and prints the body before dying.
-ol_api() {
-  local method="$1" path="$2" body="${3:-}" resp status resp_body
-  if [ -n "$body" ]; then
-    resp="$(curl -sS -w '\n%{http_code}' -X "$method" "$OL_API_URL$path" \
-      -H "Authorization: Bearer $OL_TOKEN" -H 'Content-Type: application/json' -d "$body")"
-  else
-    resp="$(curl -sS -w '\n%{http_code}' -X "$method" "$OL_API_URL$path" -H "Authorization: Bearer $OL_TOKEN")"
-  fi
-  status="${resp##*$'\n'}"
-  resp_body="${resp%$'\n'*}"
-  if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
-    die "$method $path -> HTTP $status: $resp_body"
-  fi
-  printf '%s' "$resp_body"
-}
-
-json_field() { python3 -c "import json,sys; print(json.load(sys.stdin).get('$1',''))"; }
-
 # ---------------------------------------------------------------------------
 # Step 0 - preflight
 # ---------------------------------------------------------------------------
 step_preflight() {
   log "--- preflight ---"
-  for tool in docker curl python3; do
+  # jq joins the tool list here because lib.sh's json_field/ol_ensure_connection
+  # below now parse JSON with jq rather than bootstrap.sh's former python3 -c -
+  # see README "jq vs python3".
+  for tool in docker curl python3 jq; do
     command -v "$tool" >/dev/null 2>&1 || die "missing host tool: $tool"
   done
   for c in "$PS_CONTAINER" "$PS_MYSQL_CONTAINER" "$WC_CONTAINER" "$PG_CONTAINER"; do
@@ -360,25 +333,17 @@ step_woocommerce() {
 
 # ---------------------------------------------------------------------------
 # Step 5 - OpenLinker connections
+#
+# ol_login is lib.sh's (sourced above) - no local copy here any more.
 # ---------------------------------------------------------------------------
-ol_login() {
-  # The API answers `access_token`; older builds answered `accessToken`. Accept
-  # either, matching perf/prestashop-baseline/run-scenario.sh:24-28.
-  OL_TOKEN="$(curl -fsS -X POST "$OL_API_URL/v1/auth/login" -H 'Content-Type: application/json' \
-    -d "{\"username\":\"$OL_ADMIN_USER\",\"password\":\"$OL_ADMIN_PASSWORD\"}" \
-    | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("access_token") or d.get("accessToken") or "")')"
-  [ -n "$OL_TOKEN" ] || die "login failed at $OL_API_URL as $OL_ADMIN_USER"
-}
 
 # Look a connection up by name; echo its id or nothing.
 # GET /v1/connections takes no pagination parameters and answers a plain array;
 # an unexpected `limit` is rejected with 400 "property limit should not exist".
 ol_connection_id_by_name() {
   ol_api GET "/v1/connections" \
-    | python3 -c "import json,sys
-d=json.load(sys.stdin)
-items=d if isinstance(d,list) else d.get('items',[])
-print(next((c['id'] for c in items if c.get('name')=='$1'), ''))"
+    | jq -r --arg name "$1" 'if type == "array" then . else (.items // []) end
+        | map(select(.name == $name)) | .[0].id // empty'
 }
 
 # Assigns the connection id to the variable NAMED by $1 rather than echoing it.
@@ -439,6 +404,31 @@ JSON
  "enabledCapabilities":["OrderSource"],
  "config":{"environment":"production","apiBaseUrl":"$ALLEGRO_STUB_URL"},
  "credentials":{"accessToken":"stub-token-b"}}
+JSON
+)"
+
+  # perf-webhook-ingress (#2842) - a connection whose ONLY job is to be a
+  # legal target for a signed POST /webhooks/prestashop/:connectionId. It
+  # reuses perf-prestashop's config shape (same stub PrestaShop, same
+  # webservice key) so nothing new has to be provisioned, but declares
+  # `enabledCapabilities: ["OrderSource"]` ALONE - deliberately different
+  # from perf-prestashop's ["ProductMaster","InventoryMaster",
+  # "OrderProcessorManager"]. `InboundRoutingPolicyService.resolveRoute`
+  # (libs/core/src/sync/application/services/inbound-routing-policy.service.ts)
+  # gates the `order` domain on `OrderSource` and the `product` domain on
+  # `ProductMaster` - so on THIS connection an `order.*` webhook event is
+  # routable (job_enqueued) while a `product.*` one is not (deadlettered),
+  # which is exactly the split probe P3/P4 needs (see the F3 scenario
+  # script's differential-probe section). Measuring against perf-prestashop
+  # itself would not show this split: it has no `OrderSource` at all, so
+  # EVERY order event on it deadletters and the "routed" arm of the burst
+  # would silently measure a one-insert transaction instead of the real
+  # two-insert gate.
+  ol_ensure_connection WEBHOOK_CONN_ID 'perf-webhook-ingress' "$(cat <<JSON
+{"name":"perf-webhook-ingress","platformType":"prestashop",
+ "enabledCapabilities":["OrderSource"],
+ "config":{"baseUrl":"$PS_INTERNAL_URL","shopId":1},
+ "credentials":{"webserviceApiKey":"${PS_WS_KEY:-}"}}
 JSON
 )"
 }
@@ -510,7 +500,7 @@ except Exception: sys.exit(1)'
 step_verify_connections() {
   log "--- connection tests ---"
   local name id
-  for pair in "perf-prestashop:${PS_CONN_ID:-}" "perf-woocommerce:${WC_CONN_ID:-}"; do
+  for pair in "perf-prestashop:${PS_CONN_ID:-}" "perf-woocommerce:${WC_CONN_ID:-}" "perf-webhook-ingress:${WEBHOOK_CONN_ID:-}"; do
     name="${pair%%:*}"; id="${pair##*:}"
     [ -n "$id" ] || continue
     if connection_test "$id"; then
@@ -548,6 +538,7 @@ PS_CONNECTION_ID=${PS_CONN_ID:-}
 WC_CONNECTION_ID=${WC_CONN_ID:-}
 ALLEGRO_A_CONNECTION_ID=${ALLEGRO_A_ID:-}
 ALLEGRO_B_CONNECTION_ID=${ALLEGRO_B_ID:-}
+WEBHOOK_CONNECTION_ID=${WEBHOOK_CONN_ID:-}
 PS_WEBSERVICE_KEY=${PS_WS_KEY:-}
 WC_CONSUMER_KEY=${WC_CK:-}
 WC_CONSUMER_SECRET=${WC_CS:-}
@@ -583,4 +574,10 @@ main() {
   log "stand is bootstrapped"
 }
 
-main
+# Only auto-run when EXECUTED, not when sourced - this is what lets
+# lib-test.sh (#2841) source this file to exercise its argument parsing and
+# `would()` without touching a real stand. `./bootstrap.sh` still runs `main`
+# exactly as before, since BASH_SOURCE[0] equals $0 in that case.
+if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+  main
+fi
