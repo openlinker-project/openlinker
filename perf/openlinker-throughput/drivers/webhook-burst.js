@@ -36,6 +36,7 @@ import http from 'k6/http';
 import { check } from 'k6';
 import { Trend, Counter } from 'k6/metrics';
 import exec from 'k6/execution';
+import { SharedArray } from 'k6/data';
 
 function readEnv(name, fallback) {
   const v = __ENV[name];
@@ -60,19 +61,55 @@ const RAMP_DOWN_SECS = Number(readEnv('RAMP_DOWN_SECS', '5'));
 const PRE_ALLOCATED_VUS = Number(readEnv('PRE_ALLOCATED_VUS', '20'));
 const MAX_VUS = Number(readEnv('MAX_VUS', '100'));
 
-// `open()` only works in the init context (top-level module scope) - loaded
-// once per VU. A `SharedArray` would dedupe this across VUs, but the pool
-// object here is `{ meta, generations: [...] }`, not a flat array, and
-// SharedArray requires a flat-array-returning function; keeping the plain
-// per-VU parse is a stated, honest limitation (see the scenario README
-// section this driver is documented under) rather than a silent one - on the
-// PRE_ALLOCATED_VUS/MAX_VUS scale this scenario runs at, the duplication cost
-// is bytes-of-JSON times tens of VUs, not a real constraint.
-const pool = JSON.parse(open(POOL_FILE));
+// Loaded ONCE, not once per VU (#2931). Two things had to change together to
+// get there, both verified live against the pinned grafana/k6:1.0.0 image:
+//
+// 1. `SharedArray` - k6's own answer to "parse this once, share it read-only
+//    across every VU". A plain `JSON.parse(open(POOL_FILE))` here (the
+//    pre-#2931 shape) gave every VU its OWN parsed copy of the whole pool,
+//    so memory grew as pool-bytes times VU count - confirmed as the cause of
+//    two real OOM kills at the 1000/s tier (results-F3-2026-09-06.md).
+//
+// 2. A FLAT entries array. `SharedArray` genuinely shares a flat array of
+//    plain objects, but the pre-#2931 pool shape was
+//    `{ meta, generations: [ { timestampMs, entries: [...] } ] }` - an array
+//    of objects each holding a NESTED array. Measured live: wrapping that
+//    nested shape in a `SharedArray` did NOT hold memory flat as VU count
+//    rose (5 VUs -> ~730 MB; 50 VUs -> ~5.2 GB; 150 VUs -> OOM-killed at a
+//    3 GB cgroup limit) - each VU still ends up materializing its own copy
+//    of every nested sub-array it indexes into. Flattening `entries` (one
+//    array, no nesting - `timestampMs` denormalized onto EACH entry instead
+//    of living once on a wrapping generation object) and sharing THAT
+//    measured flat regardless of VU count (5 VUs and 150 VUs both landed
+//    within a few percent of each other - see presign-webhooks.mjs's own
+//    pre-flight-budget comment for the exact figures this drove).
+//
+// `generationIndex` stays a SEPARATE, small `SharedArray` rather than being
+// folded into a per-entry field, because a VU still needs O(1) access to
+// "which contiguous slice of `entries` belongs to generation g" on every
+// single request - scanning 90 000 entries by `timestampMs` per HTTP call
+// would spend k6's own CPU on work this driver exists specifically to avoid
+// (see the file header: k6 must never contend with the api for CPU).
+//
+// Both `SharedArray` constructors read `POOL_FILE` independently rather than
+// sharing one parse - each is a self-contained, one-time cost (not
+// VU-scaled), which is simpler and safer than trying to smuggle a second
+// value out of one SharedArray's constructor via a closure side effect.
+const generationIndex = new SharedArray('webhook_burst_generation_index', function () {
+  const pool = JSON.parse(open(POOL_FILE));
+  if (!pool.generationIndex || pool.generationIndex.length === 0) {
+    throw new Error(`webhook-burst.js: pool at ${POOL_FILE} carries no generationIndex`);
+  }
+  return pool.generationIndex;
+});
 
-if (!pool.generations || pool.generations.length === 0) {
-  throw new Error(`webhook-burst.js: pool at ${POOL_FILE} carries no generations`);
-}
+const entries = new SharedArray('webhook_burst_entries', function () {
+  const pool = JSON.parse(open(POOL_FILE));
+  if (!pool.entries || pool.entries.length === 0) {
+    throw new Error(`webhook-burst.js: pool at ${POOL_FILE} carries no entries`);
+  }
+  return pool.entries;
+});
 
 // One Trend per ARM (plan § 3.3 - "never averaged": `unique`, `replay-committed`
 // and `replay-concurrent` measure different things - one lock-free, one fully
@@ -121,19 +158,21 @@ export const options = {
 };
 
 /**
- * Pick the generation whose timestamp is legal for THIS moment in the run
- * (plan § 3.2). Elapsed time is measured against RUN_START_MS - the same
+ * Pick the generation slice whose timestamp is legal for THIS moment in the
+ * run (plan § 3.2). Elapsed time is measured against RUN_START_MS - the same
  * instant the pre-signer used to build generation 0's timestamp - so a
  * request fired at elapsed=90s picks generation 1 (timestamp = start + 60s),
  * which is within the ±120s default skew window of "now" for the whole time
- * generation 1 is in use.
+ * generation 1 is in use. Returns `{ timestampMs, startIndex, count }` - a
+ * slice into the flat `entries` SharedArray (#2931), not an object holding
+ * its own copy of the entries.
  */
 function pickGeneration() {
   const elapsedMs = Date.now() - RUN_START_MS;
   let g = Math.floor(elapsedMs / GEN_INTERVAL_MS);
   if (g < 0) g = 0;
-  if (g >= pool.generations.length) g = pool.generations.length - 1;
-  return pool.generations[g];
+  if (g >= generationIndex.length) g = generationIndex.length - 1;
+  return generationIndex[g];
 }
 
 export default function () {
@@ -141,16 +180,16 @@ export default function () {
   // `iterationInTest` is a monotonically increasing counter across every VU
   // for this scenario (k6/execution) - a global sequential index with no
   // shared mutable state to race on, which is exactly what "replay bytes,
-  // compute nothing" needs. Modulo into the CURRENT generation's own entry
-  // list - not the whole pool - so an entry is never replayed from a
+  // compute nothing" needs. Modulo into the CURRENT generation's own slice
+  // of `entries` - not the whole pool - so an entry is never replayed from a
   // generation whose timestamp is not the one legal for this moment.
-  const idx = exec.scenario.iterationInTest % gen.entries.length;
-  const entry = gen.entries[idx];
+  const idx = gen.startIndex + (exec.scenario.iterationInTest % gen.count);
+  const entry = entries[idx];
 
   const res = http.post(TARGET_URL, entry.body, {
     headers: {
       'Content-Type': 'application/json',
-      'X-OpenLinker-Timestamp': String(gen.timestampMs),
+      'X-OpenLinker-Timestamp': String(entry.timestampMs),
       'X-OpenLinker-Signature': entry.signature,
     },
     tags: { arm: ARM },
