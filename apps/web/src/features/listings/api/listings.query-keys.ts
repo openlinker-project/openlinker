@@ -8,6 +8,17 @@ export const listingsQueryKeys = {
   lists: () => ['listings', 'list'] as const,
   list: (filters?: ListingsFilters, pagination?: ListingsPagination) =>
     ['listings', 'list', filters ?? {}, pagination ?? {}] as const,
+  /** The rows-only page (#2947) - a different response shape, so a different key. */
+  rows: (filters?: ListingsFilters, pagination?: ListingsPagination) =>
+    ['listings', 'rows', filters ?? {}, pagination ?? {}] as const,
+  /**
+   * The two-stage total, and the tab-bar buckets it is derived from (#2947).
+   *
+   * Carries no pagination - the answer depends on the filters alone - and the
+   * caller additionally keys it without `lifecycle`, so switching tabs is a
+   * cache hit rather than a refetch that blanks the tab bar (#2029).
+   */
+  count: (filters?: ListingsFilters) => ['listings', 'count', filters ?? {}] as const,
   detail: (id: string) => ['listings', 'detail', id] as const,
   marketplaceOffer: (mappingId: string) => ['listings', 'marketplaceOffer', mappingId] as const,
   offerCreationStatus: (connectionId: string, offerCreationRecordId: string) =>

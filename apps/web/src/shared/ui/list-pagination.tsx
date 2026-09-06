@@ -28,7 +28,7 @@
  */
 import { forwardRef, type ComponentPropsWithoutRef } from 'react';
 import { Button } from './button';
-import type { PaginatedTotalState } from '../hooks/use-paginated-total';
+import { formatPaginatedTotal, type PaginatedTotalState } from '../hooks/use-paginated-total';
 
 export interface ListPaginationProps extends ComponentPropsWithoutRef<'div'> {
   /** Zero-based index of the first row on this page. */
@@ -59,7 +59,7 @@ export const ListPagination = forwardRef<HTMLDivElement, ListPaginationProps>(
       className,
       ...rest
     },
-    ref,
+    ref
   ) {
     const hasPrev = offset > 0;
     // Needs no total: a page that came back FULL may have more behind it, and a
@@ -71,11 +71,7 @@ export const ListPagination = forwardRef<HTMLDivElement, ListPaginationProps>(
     const totalUnavailable = totalState === 'unavailable';
 
     return (
-      <div
-        ref={ref}
-        className={['pagination', className].filter(Boolean).join(' ')}
-        {...rest}
-      >
+      <div ref={ref} className={['pagination', className].filter(Boolean).join(' ')} {...rest}>
         <span className="text-muted" aria-busy={showTotalLoader || undefined}>
           {rowCount === 0 ? (
             'No results'
@@ -84,7 +80,7 @@ export const ListPagination = forwardRef<HTMLDivElement, ListPaginationProps>(
               Showing {(offset + 1).toLocaleString()}&ndash;
               {(offset + rowCount).toLocaleString()} of{' '}
               {total !== null ? (
-                <span className="tabular">{total.toLocaleString()}</span>
+                <span className="tabular">{formatPaginatedTotal(total, offset + rowCount)}</span>
               ) : (
                 <span
                   className="tabular pagination__total-pending"
@@ -94,7 +90,7 @@ export const ListPagination = forwardRef<HTMLDivElement, ListPaginationProps>(
                       : 'Counting the full result set'
                   }
                 >
-                  {(offset + rowCount).toLocaleString()}+
+                  {formatPaginatedTotal(total, offset + rowCount)}
                   {showTotalLoader ? (
                     <span className="pagination__counting-dot" aria-hidden="true" />
                   ) : null}
@@ -123,5 +119,5 @@ export const ListPagination = forwardRef<HTMLDivElement, ListPaginationProps>(
         </div>
       </div>
     );
-  },
+  }
 );

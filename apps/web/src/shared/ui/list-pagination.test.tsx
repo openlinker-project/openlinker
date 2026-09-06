@@ -25,7 +25,7 @@ function renderPagination(overrides: Partial<ComponentProps<typeof ListPaginatio
       showTotalLoader={false}
       onOffsetChange={onOffsetChange}
       {...overrides}
-    />,
+    />
   );
   return { onOffsetChange };
 }
@@ -111,7 +111,7 @@ describe('ListPagination (#2945)', () => {
           totalState="pending"
           showTotalLoader={false}
           onOffsetChange={vi.fn()}
-        />,
+        />
       );
       expect(container.querySelector('.pagination__counting-dot')).toBeNull();
     });
@@ -126,7 +126,7 @@ describe('ListPagination (#2945)', () => {
           totalState="pending"
           showTotalLoader
           onOffsetChange={vi.fn()}
-        />,
+        />
       );
       expect(container.querySelector('.pagination__counting-dot')).not.toBeNull();
     });

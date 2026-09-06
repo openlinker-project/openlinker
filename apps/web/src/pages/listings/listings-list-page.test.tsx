@@ -19,6 +19,19 @@ const ZERO_LIFECYCLE_COUNTS: OfferLifecycleCounts = {
   Unsynced: 0,
 };
 
+/**
+ * The rows-only half of a page fixture (#2947), for a test that drives the two
+ * stages apart. Derived from the same fixture so the two cannot disagree about
+ * which rows they describe.
+ */
+function rowsOf(page: PaginatedOfferMappings): {
+  items: PaginatedOfferMappings['items'];
+  limit: number;
+  offset: number;
+} {
+  return { items: page.items, limit: page.limit, offset: page.offset };
+}
+
 function emptyPage(counts: OfferLifecycleCounts = ZERO_LIFECYCLE_COUNTS): PaginatedOfferMappings {
   return { items: [], total: 0, limit: 20, offset: 0, lifecycleCounts: counts };
 }
@@ -865,17 +878,21 @@ describe('ListingsListPage', () => {
 
     it('shows a refetch indicator while a tab switch is in flight, and clears it once it resolves (#2032 review round 2, finding 2)', async () => {
       const user = userEvent.setup();
-      let resolveSecondFetch: (value: PaginatedOfferMappings) => void = () => {};
-      const list = vi
+      type Rows = ReturnType<typeof rowsOf>;
+      let resolveSecondFetch: (value: Rows) => void = () => {};
+      // The indicator tracks the ROWS query, which is the one a tab switch
+      // refetches (#2947) - the counts query is keyed without `lifecycle` and
+      // does not move at all.
+      const listRows = vi
         .fn()
-        .mockResolvedValueOnce(sampleMappings)
+        .mockResolvedValueOnce(rowsOf(sampleMappings))
         .mockImplementationOnce(
           () =>
-            new Promise<PaginatedOfferMappings>((resolve) => {
+            new Promise<Rows>((resolve) => {
               resolveSecondFetch = resolve;
             }),
         );
-      const mockApi = createListingsMockApiClient({ listings: { list } });
+      const mockApi = createListingsMockApiClient({ listings: { listRows } });
 
       renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
@@ -892,7 +909,7 @@ describe('ListingsListPage', () => {
       });
       expect(screen.getByText('Doniczka ceramiczna Terra')).toBeInTheDocument();
 
-      resolveSecondFetch(emptyPage());
+      resolveSecondFetch(rowsOf(emptyPage()));
 
       await waitFor(() => {
         expect(document.querySelector('.listings-refetch-indicator')).toBeNull();
@@ -937,16 +954,17 @@ describe('ListingsListPage', () => {
     it("renders each tab's own count from lifecycleCounts, not the active bucket's row count", async () => {
       const mockApi = createListingsMockApiClient({
         listings: {
-          list: vi.fn().mockResolvedValue({
-            ...sampleMappings,
-            lifecycleCounts: { Active: 7, Invalid: 3, Draft: 2, Ended: 1, Unsynced: 0 },
-          }),
+          listRows: vi.fn().mockResolvedValue(rowsOf(sampleMappings)),
+          count: vi.fn().mockResolvedValue({ total: 13, lifecycleCounts: { Active: 7, Invalid: 3, Draft: 2, Ended: 1, Unsynced: 0 } }),
         },
       });
 
       renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
+      // The counts are a SECOND stage (#2947), so they land after the rows -
+      // `findBy` rather than `getBy` is the difference, and it is the point.
       await screen.findByText('Doniczka ceramiczna Terra');
+      expect(await screen.findByRole('tab', { name: 'Active 7' })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: /^Active/ })).toHaveTextContent('7');
       expect(screen.getByRole('tab', { name: /^Invalid/ })).toHaveTextContent('3');
       expect(screen.getByRole('tab', { name: /^Draft/ })).toHaveTextContent('2');
@@ -956,7 +974,10 @@ describe('ListingsListPage', () => {
 
     it('renders tab counts as skeleton placeholders while loading, never as a placeholder zero', () => {
       const mockApi = createListingsMockApiClient({
-        listings: { list: vi.fn().mockReturnValue(new Promise(() => {})) },
+        listings: {
+          listRows: vi.fn().mockReturnValue(new Promise(() => {})),
+          count: vi.fn().mockReturnValue(new Promise(() => {})),
+        },
       });
 
       const { container } = renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
@@ -967,27 +988,29 @@ describe('ListingsListPage', () => {
 
     it("keeps every tab's already-known count visible - no skeleton reappears - while a switched-to tab is still loading its own rows", async () => {
       const user = userEvent.setup();
-      const list = vi
+      const listRows = vi
         .fn()
-        .mockResolvedValueOnce({
-          ...sampleMappings,
-          lifecycleCounts: { Active: 7, Invalid: 3, Draft: 2, Ended: 1, Unsynced: 0 },
-        })
-        // The Draft tab's own fetch never resolves in this test - it is the
+        .mockResolvedValueOnce(rowsOf(sampleMappings))
+        // The Draft tab's own row fetch never resolves in this test - it is the
         // "still loading" window the skeleton must not reappear during.
         .mockReturnValueOnce(new Promise(() => {}));
-      const mockApi = createListingsMockApiClient({ listings: { list } });
+      const count = vi
+        .fn()
+        .mockResolvedValue({ total: 13, lifecycleCounts: { Active: 7, Invalid: 3, Draft: 2, Ended: 1, Unsynced: 0 } });
+      const mockApi = createListingsMockApiClient({ listings: { listRows, count } });
 
       const { container } = renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
       await screen.findByText('Doniczka ceramiczna Terra');
-      expect(screen.getByRole('tab', { name: 'Active 7' })).toBeInTheDocument();
+      expect(await screen.findByRole('tab', { name: 'Active 7' })).toBeInTheDocument();
 
       await user.click(screen.getByRole('tab', { name: /^Draft/ }));
 
-      // The Draft tab's own request is now pending (a fresh query key with no
-      // cached data), which used to blank every badge - including the four
-      // that did not just change - back to skeleton.
+      // The counts query is keyed WITHOUT `lifecycle` (#2947), so a tab switch
+      // is a cache hit and issues no second request at all - which is what now
+      // keeps the four unchanged badges on screen, structurally, where a
+      // hand-rolled ref and fingerprint used to.
+      expect(count).toHaveBeenCalledTimes(1);
       expect(container.querySelectorAll('.tabs__count-skeleton')).toHaveLength(0);
       expect(screen.getByRole('tab', { name: 'Active 7' })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: 'Invalid 3' })).toBeInTheDocument();
@@ -997,33 +1020,33 @@ describe('ListingsListPage', () => {
     });
 
     it("falls back to skeletons - not the pre-search counts - once the search term changes and the new query has not resolved (#2029 round 2 review)", async () => {
-      const list = vi
+      const listRows = vi
         .fn()
-        .mockResolvedValueOnce({
-          ...sampleMappings,
-          lifecycleCounts: { Active: 7, Invalid: 3, Draft: 2, Ended: 1, Unsynced: 0 },
-        })
-        // The new search term's query key has never been fetched before - it
-        // hangs, which is the window during which a state+Effect pair used to
-        // keep showing the now-wrong "Active 7" (it only ever cleared on the
-        // NEXT successful fetch, so an error here would have left it stuck
-        // forever). The fingerprint-gated ref must drop it immediately.
+        .mockResolvedValueOnce(rowsOf(sampleMappings))
         .mockReturnValueOnce(new Promise(() => {}));
-      const mockApi = createListingsMockApiClient({ listings: { list } });
+      const count = vi
+        .fn()
+        .mockResolvedValueOnce({ total: 13, lifecycleCounts: { Active: 7, Invalid: 3, Draft: 2, Ended: 1, Unsynced: 0 } })
+        // The new search term's count key has never been fetched before - it
+        // hangs, which is the window during which the now-wrong "Active 7"
+        // must not survive. Unlike a tab switch, a search change IS part of
+        // the count key, so it genuinely refetches.
+        .mockReturnValueOnce(new Promise(() => {}));
+      const mockApi = createListingsMockApiClient({ listings: { listRows, count } });
 
       const { container } = renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
       await screen.findByText('Doniczka ceramiczna Terra');
-      expect(screen.getByRole('tab', { name: 'Active 7' })).toBeInTheDocument();
+      expect(await screen.findByRole('tab', { name: 'Active 7' })).toBeInTheDocument();
 
       fireEvent.change(
         screen.getByLabelText('Search listings by product name, SKU, EAN or external ID'),
         { target: { value: 'brand new search term' } },
       );
 
-      // Wait past the debounce window for the new (still-pending) request.
+      // Wait past the debounce window for the new (still-pending) requests.
       await vi.waitFor(() => {
-        expect(list).toHaveBeenCalledTimes(2);
+        expect(count).toHaveBeenCalledTimes(2);
       });
 
       // The stale count must not survive the filter change - it falls
@@ -1036,10 +1059,8 @@ describe('ListingsListPage', () => {
     it("separates a tab's label from its count badge in the accessible name", async () => {
       const mockApi = createListingsMockApiClient({
         listings: {
-          list: vi.fn().mockResolvedValue({
-            ...sampleMappings,
-            lifecycleCounts: { Active: 7, Invalid: 3, Draft: 2, Ended: 1, Unsynced: 0 },
-          }),
+          listRows: vi.fn().mockResolvedValue(rowsOf(sampleMappings)),
+          count: vi.fn().mockResolvedValue({ total: 13, lifecycleCounts: { Active: 7, Invalid: 3, Draft: 2, Ended: 1, Unsynced: 0 } }),
         },
       });
 
@@ -1048,7 +1069,7 @@ describe('ListingsListPage', () => {
       await screen.findByText('Doniczka ceramiczna Terra');
       // A missing separator collapses the JSX whitespace entirely, so the
       // accessible name would read the run-on "Active7" instead of "Active 7".
-      expect(screen.getByRole('tab', { name: 'Active 7' })).toBeInTheDocument();
+      expect(await screen.findByRole('tab', { name: 'Active 7' })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: 'Invalid 3' })).toBeInTheDocument();
     });
 
@@ -1061,7 +1082,7 @@ describe('ListingsListPage', () => {
 
       expect(screen.getByText('Loading listing counts…')).toBeInTheDocument();
       await screen.findByText('Doniczka ceramiczna Terra');
-      expect(screen.getByText('Listing counts loaded.')).toBeInTheDocument();
+      expect(await screen.findByText('Listing counts loaded.')).toBeInTheDocument();
       expect(screen.queryByText('Loading listing counts…')).not.toBeInTheDocument();
     });
   });
@@ -1239,4 +1260,47 @@ describe('ListingsListPage', () => {
       expect(screen.getByRole('combobox', { name: 'Filter by channel' })).toHaveValue('');
     });
   });
+
+  /**
+   * The two-stage total (#2947). This list has TWO second-stage numbers - the
+   * pager total and the tab-bar buckets - and both must be absent rather than
+   * zero while they are unknown.
+   */
+  describe('two-stage total (#2947)', () => {
+    // A page reported FULL, so the rows imply no exact total.
+    const fullPage = { items: sampleMappings.items.slice(0, 1), limit: 1, offset: 0 };
+
+    it('renders its rows while both aggregates are still in flight', async () => {
+      const { container } = renderWithProviders(<ListingsListPage />, {
+        apiClient: createListingsMockApiClient({
+          listings: {
+            listRows: vi.fn().mockResolvedValue(fullPage),
+            count: vi.fn().mockReturnValue(new Promise(() => {})),
+          },
+        }),
+      });
+
+      expect(await screen.findByText('Doniczka ceramiczna Terra')).toBeInTheDocument();
+      expect(screen.getByText('1+')).toBeInTheDocument();
+      // The tab bar is unknown, not empty: five skeletons, never five zeroes.
+      expect(container.querySelectorAll('.tabs__count-skeleton')).toHaveLength(5);
+    });
+
+    it('keeps both placeholders when the count FAILS, and renders neither as 0', async () => {
+      const { container } = renderWithProviders(<ListingsListPage />, {
+        apiClient: createListingsMockApiClient({
+          listings: {
+            listRows: vi.fn().mockResolvedValue(fullPage),
+            count: vi.fn().mockRejectedValue(new Error('count blew up')),
+          },
+        }),
+      });
+
+      expect(await screen.findByText('Doniczka ceramiczna Terra')).toBeInTheDocument();
+      expect(await screen.findByTitle(/could not be loaded/i)).toBeInTheDocument();
+      expect(screen.getByText('1+')).toBeInTheDocument();
+      expect(container.querySelectorAll('.tabs__count-skeleton')).toHaveLength(5);
+    });
+  });
+
 });

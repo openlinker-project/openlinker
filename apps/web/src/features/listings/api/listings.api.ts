@@ -7,6 +7,7 @@
  * @module apps/web/src/features/listings/api
  */
 import type { DescriptionFormat } from '../../../shared/ui/rich-text.types';
+import type { RowsPage } from '../../../shared/api/paginated-total.types';
 import type {
   CatalogProduct,
   CatalogProductMatchResult,
@@ -18,6 +19,7 @@ import type {
   ListingsFilters,
   ListingsPagination,
   MarketplaceOfferResponse,
+  OfferMappingCount,
   OfferCreationStatusResponse,
   OfferPublicationStatusResponse,
   RefreshOfferPublicationStatusResponse,
@@ -66,6 +68,23 @@ export interface ListingsApi {
     filters?: ListingsFilters,
     pagination?: ListingsPagination,
   ) => Promise<PaginatedOfferMappings>;
+  /**
+   * The page WITHOUT its total or its lifecycle buckets (#2947). Pair with
+   * {@link ListingsApi.count} - the `ILIKE` search spanning product name,
+   * SKUs, barcodes and the external offer id means neither aggregate can stop
+   * early, so the rows must not wait for them.
+   */
+  listRows: (
+    filters?: ListingsFilters,
+    pagination?: ListingsPagination,
+  ) => Promise<RowsPage<OfferMapping>>;
+  /**
+   * The total WITHOUT its page (#2947), plus the tab-bar buckets when
+   * `filters.includeLifecycleCounts` is set - the total is DERIVED from those
+   * buckets server-side when they are asked for, so the second stage is one
+   * request rather than two.
+   */
+  count: (filters?: ListingsFilters, init?: RequestInit) => Promise<OfferMappingCount>;
   getById: (id: string) => Promise<OfferMapping>;
   /**
    * Fetches the live marketplace-side offer (#464). Returns 404 if the
@@ -245,7 +264,11 @@ interface ApiRequest {
   <T>(path: string, init?: RequestInit): Promise<T>;
 }
 
-function buildQuery(filters?: ListingsFilters, pagination?: ListingsPagination): string {
+function buildQuery(
+  filters?: ListingsFilters,
+  pagination?: ListingsPagination,
+  options?: { withTotal?: false },
+): string {
   const params = new URLSearchParams();
   if (filters?.connectionId) params.set('connectionId', filters.connectionId);
   if (filters?.internalId) params.set('internalId', filters.internalId);
@@ -254,6 +277,7 @@ function buildQuery(filters?: ListingsFilters, pagination?: ListingsPagination):
   if (filters?.includeLifecycleCounts) params.set('includeLifecycleCounts', 'true');
   if (pagination?.limit !== undefined) params.set('limit', String(pagination.limit));
   if (pagination?.offset !== undefined) params.set('offset', String(pagination.offset));
+  if (options?.withTotal === false) params.set('withTotal', 'false');
   const qs = params.toString();
   return qs.length > 0 ? `?${qs}` : '';
 }
@@ -434,6 +458,16 @@ export function createListingsApi(
   return {
     list(filters, pagination): Promise<PaginatedOfferMappings> {
       return request<PaginatedOfferMappings>(`/listings${buildQuery(filters, pagination)}`);
+    },
+    listRows(filters, pagination): Promise<RowsPage<OfferMapping>> {
+      return request<RowsPage<OfferMapping>>(
+        `/listings${buildQuery(filters, pagination, { withTotal: false })}`,
+      );
+    },
+    count(filters, init): Promise<OfferMappingCount> {
+      // No pagination: the answer depends on the filters alone, which is what
+      // lets one cached count serve every page of a result set.
+      return request<OfferMappingCount>(`/listings/count${buildQuery(filters)}`, init);
     },
     getById(id): Promise<OfferMapping> {
       return request<OfferMapping>(`/listings/${id}`);

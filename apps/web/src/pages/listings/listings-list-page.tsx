@@ -11,9 +11,7 @@
  */
 import {
   useCallback,
-  useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactElement,
   type ReactNode,
@@ -44,7 +42,9 @@ import {
   type ConnectionCellFacts,
 } from '../../features/connections';
 import { resolvePlatformLabel } from '../../features/mappings';
-import { useListingsQuery } from '../../features/listings/hooks/use-listings-query';
+import { useListingRowsQuery } from '../../features/listings/hooks/use-listings-query';
+import { useListingsTotal } from '../../features/listings/hooks/use-listings-total';
+import { ListPagination } from '../../shared/ui/list-pagination';
 import { OfferProductPickerModal } from '../../features/listings/components/offer-product-picker-modal';
 import {
   listingRowAlert,
@@ -61,7 +61,6 @@ import { useDemoMode } from '../../features/system';
 import type {
   ListingsFilters,
   OfferLifecycle,
-  OfferLifecycleCounts,
   OfferMapping,
 } from '../../features/listings/api/listings.types';
 
@@ -454,56 +453,27 @@ export function ListingsListPage(): ReactElement {
   };
   const pagination = { limit: PAGE_SIZE, offset };
 
-  const query = useListingsQuery(filters, pagination);
+  // Two-stage read (#2947): the rows do not wait for either aggregate over
+  // this list's four-way join and `ILIKE` search.
+  const query = useListingRowsQuery(filters, pagination);
+  const totalStage = useListingsTotal(filters, query.data);
 
   /**
-   * `useListingsQuery`'s `placeholderData: keepPreviousData` keeps `query.data`
-   * (rows AND counts) populated with the PRIOR key's response while any new
-   * key's fetch is in flight - tab, search, or connection change alike. That
-   * is exactly right for the table (round-1 "blanking" fix): showing the
-   * previous rows for a moment during any transition beats a full-page
-   * skeleton on every keystroke.
+   * The tab-bar buckets (#2947).
    *
-   * It is NOT right for `lifecycleCounts` on its own (round-2 fix; regression
-   * caught by CI): `keepPreviousData` cannot tell "just switched tabs" apart
-   * from "changed search/connection", but the two must be treated
-   * oppositely. The counts genuinely don't change across a lifecycle-only
-   * refetch (the backend computes every bucket regardless of which tab is
-   * selected), so keeping the OLD counts visible while a tab's own rows load
-   * is correct and was this page's very first requirement (#2029). But a
-   * search/connection change makes the PRIOR counts describe a filter set
-   * that no longer applies - keeping them visible, even briefly, is
-   * dishonest, and dropping to the skeleton immediately (not waiting for the
-   * new fetch, which may hang or error) is what a hand-rolled ref+fingerprint
-   * used to guarantee. `keepPreviousData` alone regressed exactly that case,
-   * so the fingerprint is restored here - scoped ONLY to `lifecycleCounts`,
-   * deliberately excluding `lifecycle` itself so a tab switch never trips it.
+   * The hand-rolled ref + fingerprint this replaced existed because the rows
+   * and the counts shared ONE query under `placeholderData: keepPreviousData`,
+   * which cannot tell "switched tabs" (keep the counts - they do not change)
+   * from "changed search or connection" (drop them - they now describe a
+   * filter set that no longer applies). They are separate queries now, and the
+   * counts query is keyed WITHOUT `lifecycle`, so TanStack gives both
+   * behaviours for free: a tab switch is a cache hit, and a search change is a
+   * new key with no data.
    *
-   * The ref is written from an effect, never during render: a render body must
-   * stay side-effect-free, or a StrictMode double-invoke / a concurrent render
-   * React discards would both stamp it. Writing after commit is equivalent
-   * here, because the ref is only ever READ on a later, placeholder-serving
-   * render - the render that receives fresh counts uses them directly.
+   * `null` while unknown, and rendered as a skeleton - never as zeroes, which
+   * would state that every bucket is empty.
    */
-  const lifecycleCountsRef = useRef<{ fingerprint: string; counts: OfferLifecycleCounts } | null>(
-    null,
-  );
-  const countsFingerprint = `${debouncedSearch}::${urlConnectionId}`;
-  const freshLifecycleCounts =
-    query.data?.lifecycleCounts && !query.isPlaceholderData ? query.data.lifecycleCounts : null;
-  useEffect(() => {
-    if (freshLifecycleCounts) {
-      lifecycleCountsRef.current = {
-        fingerprint: countsFingerprint,
-        counts: freshLifecycleCounts,
-      };
-    }
-  }, [countsFingerprint, freshLifecycleCounts]);
-  const lifecycleCounts =
-    freshLifecycleCounts ??
-    (lifecycleCountsRef.current?.fingerprint === countsFingerprint
-      ? lifecycleCountsRef.current.counts
-      : null);
+  const lifecycleCounts = totalStage.lifecycleCounts;
 
   const platforms = usePlatforms();
   // One batched read for the whole page - the Connection column must never cost
@@ -662,9 +632,6 @@ export function ListingsListPage(): ReactElement {
   }
 
   const hasFilters = !!(debouncedSearch || urlConnectionId);
-  const total = query.data?.total ?? 0;
-  const hasPrev = offset > 0;
-  const hasNext = offset + PAGE_SIZE < total;
 
   // /listings is backed exclusively by OfferManager-capable connections (the
   // channel <Select> below filters on the same capability) - a shop with only
@@ -1033,29 +1000,15 @@ export function ListingsListPage(): ReactElement {
                 }}
               />
 
-              <div className="pagination">
-                <span className="text-muted">
-                  Showing {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of {total}
-                </span>
-                <div className="pagination__actions">
-                  <Button
-                    disabled={!hasPrev}
-                    onClick={() => {
-                      setOffset(offset - PAGE_SIZE);
-                    }}
-                  >
-                    Previous
-                  </Button>
-                  <Button
-                    disabled={!hasNext}
-                    onClick={() => {
-                      setOffset(offset + PAGE_SIZE);
-                    }}
-                  >
-                    Next
-                  </Button>
-                </div>
-              </div>
+              <ListPagination
+                offset={offset}
+                limit={PAGE_SIZE}
+                rowCount={query.data?.items.length ?? 0}
+                total={totalStage.total}
+                totalState={totalStage.state}
+                showTotalLoader={totalStage.showLoader}
+                onOffsetChange={setOffset}
+              />
             </>
           )}
         </TabsContent>

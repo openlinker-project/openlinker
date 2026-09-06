@@ -10,6 +10,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { PropsWithChildren, ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  inferTotalFromLoadedPage,
   inferTotalFromPage,
   usePaginatedTotal,
   TOTAL_DEBOUNCE_MS,
@@ -40,6 +41,12 @@ async function advance(ms: number): Promise<void> {
     await vi.advanceTimersByTimeAsync(ms);
   });
 }
+
+/**
+ * These fakes resolve a plain number, so identity is the honest selector. A
+ * real caller's `/count` answers with `{ total }` and selects that field.
+ */
+const selectTotal = (n: number): number => n;
 
 /** Let pending promises settle without moving the clock. */
 async function flush(): Promise<void> {
@@ -86,9 +93,10 @@ describe('usePaginatedTotal (#2945)', () => {
         usePaginatedTotal({
           queryKey: ['orders', 'count', {}],
           queryFn,
+          selectTotal,
           knownTotal: 12,
         }),
-      { wrapper: createWrapper() },
+      { wrapper: createWrapper() }
     );
 
     await advance(TOTAL_DEBOUNCE_MS + TOTAL_LOADER_DELAY_MS + 50);
@@ -105,8 +113,8 @@ describe('usePaginatedTotal (#2945)', () => {
     const queryFn = vi.fn().mockResolvedValue(9000);
     const { result, rerender } = renderHook(
       ({ search }: { search: string }) =>
-        usePaginatedTotal({ queryKey: ['orders', 'count', { search }], queryFn }),
-      { wrapper: createWrapper(), initialProps: { search: '' } },
+        usePaginatedTotal({ queryKey: ['orders', 'count', { search }], queryFn, selectTotal }),
+      { wrapper: createWrapper(), initialProps: { search: '' } }
     );
 
     // The FIRST mount is not debounced - there is nothing to settle, and making
@@ -143,9 +151,13 @@ describe('usePaginatedTotal (#2945)', () => {
     const { result, rerender } = renderHook(
       ({ search }: { search: string }) => {
         currentSearch = search;
-        return usePaginatedTotal({ queryKey: ['orders', 'count', { search }], queryFn });
+        return usePaginatedTotal({
+          queryKey: ['orders', 'count', { search }],
+          queryFn,
+          selectTotal,
+        });
       },
-      { wrapper: createWrapper(), initialProps: { search: 'slow' } },
+      { wrapper: createWrapper(), initialProps: { search: 'slow' } }
     );
 
     // The first filter's count goes in flight on mount (nothing to settle).
@@ -184,8 +196,8 @@ describe('usePaginatedTotal (#2945)', () => {
     });
     const { rerender } = renderHook(
       ({ search }: { search: string }) =>
-        usePaginatedTotal({ queryKey: ['orders', 'count', { search }], queryFn }),
-      { wrapper: createWrapper(), initialProps: { search: 'first' } },
+        usePaginatedTotal({ queryKey: ['orders', 'count', { search }], queryFn, selectTotal }),
+      { wrapper: createWrapper(), initialProps: { search: 'first' } }
     );
 
     await flush();
@@ -204,12 +216,12 @@ describe('usePaginatedTotal (#2945)', () => {
     expect(signals[1].aborted).toBe(false);
   });
 
-  it('reports null - never the previous filter\'s number - while the debounce settles', async () => {
+  it("reports null - never the previous filter's number - while the debounce settles", async () => {
     const queryFn = vi.fn().mockResolvedValue(500);
     const { result, rerender } = renderHook(
       ({ search }: { search: string }) =>
-        usePaginatedTotal({ queryKey: ['orders', 'count', { search }], queryFn }),
-      { wrapper: createWrapper(), initialProps: { search: 'first' } },
+        usePaginatedTotal({ queryKey: ['orders', 'count', { search }], queryFn, selectTotal }),
+      { wrapper: createWrapper(), initialProps: { search: 'first' } }
     );
 
     await flush();
@@ -227,11 +239,11 @@ describe('usePaginatedTotal (#2945)', () => {
       () =>
         new Promise<number>((resolve) => {
           resolveTotal = resolve;
-        }),
+        })
     );
     const { result } = renderHook(
-      () => usePaginatedTotal({ queryKey: ['orders', 'count', {}], queryFn }),
-      { wrapper: createWrapper() },
+      () => usePaginatedTotal({ queryKey: ['orders', 'count', {}], queryFn, selectTotal }),
+      { wrapper: createWrapper() }
     );
 
     await flush();
@@ -256,8 +268,8 @@ describe('usePaginatedTotal (#2945)', () => {
   it('shows the loader once the count has been in flight past the delay', async () => {
     const queryFn = vi.fn().mockImplementation(() => new Promise<number>(() => undefined));
     const { result } = renderHook(
-      () => usePaginatedTotal({ queryKey: ['orders', 'count', {}], queryFn }),
-      { wrapper: createWrapper() },
+      () => usePaginatedTotal({ queryKey: ['orders', 'count', {}], queryFn, selectTotal }),
+      { wrapper: createWrapper() }
     );
 
     await flush();
@@ -271,8 +283,8 @@ describe('usePaginatedTotal (#2945)', () => {
   it('leaves the total null on failure - it is never rendered as 0', async () => {
     const queryFn = vi.fn().mockRejectedValue(new Error('count blew up'));
     const { result } = renderHook(
-      () => usePaginatedTotal({ queryKey: ['orders', 'count', {}], queryFn }),
-      { wrapper: createWrapper() },
+      () => usePaginatedTotal({ queryKey: ['orders', 'count', {}], queryFn, selectTotal }),
+      { wrapper: createWrapper() }
     );
 
     await flush();
@@ -286,15 +298,33 @@ describe('usePaginatedTotal (#2945)', () => {
   it('does not fetch while disabled', async () => {
     const queryFn = vi.fn().mockResolvedValue(5);
     const { result } = renderHook(
-      () => usePaginatedTotal({ queryKey: ['orders', 'count', {}], queryFn, enabled: false }),
-      { wrapper: createWrapper() },
+      () =>
+        usePaginatedTotal({
+          queryKey: ['orders', 'count', {}],
+          queryFn,
+          selectTotal,
+          enabled: false,
+        }),
+      { wrapper: createWrapper() }
     );
 
     await advance(TOTAL_DEBOUNCE_MS + TOTAL_LOADER_DELAY_MS + 50);
 
     expect(queryFn).not.toHaveBeenCalled();
     expect(result.current.total).toBeNull();
-    expect(result.current.state).toBe('unavailable');
+    // `idle`, NOT `unavailable`: nothing failed, the caller simply has not
+    // asked yet. A surface renders the two differently, so collapsing them
+    // would make an ordinary refetch report a failure that did not happen.
+    expect(result.current.state).toBe('idle');
+  });
+
+  it('infers nothing from a page that has not loaded', () => {
+    // `rowCount: 0, offset: 0` is an exact zero for a page that HAS loaded.
+    // Before it lands there is no page to infer from, and inferring `0` there
+    // would render a confident "0 results" over rows that are on their way.
+    expect(inferTotalFromLoadedPage(undefined)).toBeNull();
+    expect(inferTotalFromLoadedPage({ items: [], limit: 20, offset: 0 })).toBe(0);
+    expect(inferTotalFromLoadedPage({ items: [1, 2, 3], limit: 20, offset: 40 })).toBe(43);
   });
 
   it('reuses one count across pages, because the key carries no offset', async () => {
@@ -307,11 +337,12 @@ describe('usePaginatedTotal (#2945)', () => {
         usePaginatedTotal({
           queryKey: ['orders', 'count', { search: 'x' }],
           queryFn,
+          selectTotal,
           knownTotal: null,
           // referenced so the test reads as page-dependent even though the key is not
           enabled: offset >= 0,
         }),
-      { wrapper, initialProps: { offset: 0 } },
+      { wrapper, initialProps: { offset: 0 } }
     );
 
     await flush();

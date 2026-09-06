@@ -68,11 +68,17 @@ export const TOTAL_LOADER_DELAY_MS = 175;
  * - `known`       the total is available (fetched, or inferred from a short page)
  * - `settling`    a filter changed and the debounce has not elapsed
  * - `pending`     the count is in flight
- * - `unavailable` the count failed, or was not asked for
+ * - `idle`        not asked for - typically the rows have not landed yet
+ * - `unavailable` the count was asked for and FAILED
+ *
+ * `idle` and `unavailable` are kept apart because a surface renders them
+ * differently: both leave the placeholder standing, but only one may say the
+ * count could not be loaded. Collapsing them would make an ordinary refetch
+ * report a failure that did not happen.
  */
-export type PaginatedTotalState = 'known' | 'settling' | 'pending' | 'unavailable';
+export type PaginatedTotalState = 'known' | 'settling' | 'pending' | 'idle' | 'unavailable';
 
-export interface PaginatedTotalResult {
+export interface PaginatedTotalResult<TData = PaginatedTotalPayload> {
   /** The exact total, or `null` when it is not known. NEVER `0` as a stand-in. */
   total: number | null;
   state: PaginatedTotalState;
@@ -81,17 +87,37 @@ export interface PaginatedTotalResult {
    * even while `state === 'pending'`, so a fast count never flickers.
    */
   showLoader: boolean;
+  /**
+   * The count response as fetched, for a route whose `/count` answers with more
+   * than the number - `/listings` returns the tab-bar buckets alongside it.
+   * `undefined` until it lands, and while an inferred total made the request
+   * unnecessary.
+   */
+  data: TData | undefined;
 }
 
-export interface UsePaginatedTotalOptions {
+/** The minimum every `/count` route answers with. */
+export interface PaginatedTotalPayload {
+  total: number;
+}
+
+export interface UsePaginatedTotalOptions<TData = PaginatedTotalPayload> {
   /**
    * The total's own query key. MUST be derived from the FILTERS ONLY - never
    * from `limit`/`offset`. That is what lets paging through a result set reuse
    * one cached count instead of recomputing the expensive aggregate per page.
    */
   queryKey: readonly unknown[];
-  /** Fetches the total. Forward `signal` so a superseded request is aborted. */
-  queryFn: (context: { signal: AbortSignal }) => Promise<number>;
+  /** Fetches the count response. Forward `signal` so a superseded request is aborted. */
+  queryFn: (context: { signal: AbortSignal }) => Promise<TData>;
+  /**
+   * Pulls the number out of that response.
+   *
+   * Explicit rather than assumed, so a route answering with more than the total
+   * has one obvious place to say which field is the total - and so two
+   * observers of the same query key can never disagree about the cached shape.
+   */
+  selectTotal: (data: TData) => number;
   /**
    * An exact total the caller already knows, typically from
    * {@link inferTotalFromPage}. When non-null the count is NOT requested.
@@ -101,6 +127,24 @@ export interface UsePaginatedTotalOptions {
   enabled?: boolean;
   debounceMs?: number;
   loaderDelayMs?: number;
+}
+
+/**
+ * {@link inferTotalFromPage} for a page that may not have loaded yet.
+ *
+ * An absent page implies NOTHING - in particular not `0`. Calling the raw
+ * helper with `rowCount: 0` before the rows land would infer an exact zero
+ * from a page nobody has seen.
+ */
+export function inferTotalFromLoadedPage(
+  page: { items: readonly unknown[]; limit: number; offset: number } | undefined
+): number | null {
+  if (!page) return null;
+  return inferTotalFromPage({
+    rowCount: page.items.length,
+    limit: page.limit,
+    offset: page.offset,
+  });
 }
 
 /**
@@ -132,10 +176,28 @@ export function inferTotalFromPage(page: {
   return offset + rowCount;
 }
 
-export function usePaginatedTotal(options: UsePaginatedTotalOptions): PaginatedTotalResult {
+/**
+ * Render a total, or the `N+` placeholder when it is not known yet (#2947).
+ *
+ * `atLeast` is the floor the rows already prove - `offset + rowCount`. It is
+ * never `0` as a stand-in for "unknown": the rows on screen are evidence for
+ * that many, and claiming none matched would be a positive statement from an
+ * absent value.
+ *
+ * One function so every surface showing the same total spells the placeholder
+ * the same way - `<ListPagination>` and any per-page "N results" line alike.
+ */
+export function formatPaginatedTotal(total: number | null, atLeast: number): string {
+  return total !== null ? total.toLocaleString() : `${atLeast.toLocaleString()}+`;
+}
+
+export function usePaginatedTotal<TData = PaginatedTotalPayload>(
+  options: UsePaginatedTotalOptions<TData>
+): PaginatedTotalResult<TData> {
   const {
     queryKey,
     queryFn,
+    selectTotal,
     knownTotal = null,
     enabled = true,
     debounceMs = TOTAL_DEBOUNCE_MS,
@@ -182,14 +244,14 @@ export function usePaginatedTotal(options: UsePaginatedTotalOptions): PaginatedT
     state = 'known';
     total = knownTotal;
   } else if (!enabled) {
-    state = 'unavailable';
+    state = 'idle';
     total = null;
   } else if (!settled) {
     state = 'settling';
     total = null;
   } else if (query.isSuccess) {
     state = 'known';
-    total = query.data;
+    total = selectTotal(query.data);
   } else if (query.isError) {
     // A failed count leaves the placeholder standing. Never `0`.
     state = 'unavailable';
@@ -206,7 +268,7 @@ export function usePaginatedTotal(options: UsePaginatedTotalOptions): PaginatedT
   // precisely the flicker the delay exists to prevent, introduced by the delay.
   const showLoader = useDelayedFlag(state === 'pending', loaderDelayMs);
 
-  return { total, state, showLoader };
+  return { total, state, showLoader, data: query.data };
 }
 
 /**

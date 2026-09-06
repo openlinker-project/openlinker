@@ -106,6 +106,53 @@ async function* emptyResolveCategoryStream(): AsyncGenerator<
   };
 }
 
+/**
+ * Derive the two-stage reads from a namespace's `list` mock (#2947).
+ *
+ * The four expensive lists fetch their rows (`listRows`) and their total
+ * (`count`) separately. Hundreds of existing tests mock only `list`, and
+ * mechanically editing every one of them would be churn that proves nothing -
+ * worse, a test still asserting on a `list` spy the page no longer calls would
+ * pass for the wrong reason.
+ *
+ * So the two stages are DERIVED from whatever `list` answers, which is exactly
+ * the relationship the real API has: the same page, split in two. A test that
+ * needs the two to diverge - a count that fails while the rows succeed, say -
+ * overrides `listRows` / `count` explicitly, and an explicit override wins.
+ */
+function withTwoStageReads<T extends Record<string, unknown>>(namespace: T): T {
+  const list = namespace.list;
+  if (typeof list !== 'function') return namespace;
+  const call = list as (...args: unknown[]) => Promise<{
+    items: unknown[];
+    total: number;
+    limit: number;
+    offset: number;
+  }>;
+  return {
+    listRows:
+      namespace.listRows ??
+      vi.fn(async (...args: unknown[]) => {
+        const page = await call(...args);
+        return { items: page.items, limit: page.limit, offset: page.offset };
+      }),
+    count:
+      namespace.count ??
+      vi.fn(async (filters?: unknown) => {
+        // Everything the page carries EXCEPT the page itself. `/listings/count`
+        // answers with `lifecycleCounts` beside `total`, and dropping it here
+        // would leave the tab bar permanently unlabelled in every test.
+        const page = await call(filters);
+        const rest: Record<string, unknown> = { ...page };
+        delete rest.items;
+        delete rest.limit;
+        delete rest.offset;
+        return rest;
+      }),
+    ...namespace,
+  };
+}
+
 export function createMockApiClient(
   overrides: DeepPartialApiClient = {},
   mockApiNamespaces: readonly PluginMockApiNamespacesFactory[] = IN_TREE_MOCK_API_NAMESPACES,
@@ -321,7 +368,7 @@ export function createMockApiClient(
       }),
       ...overrides.cursors,
     } as ApiClient['cursors'],
-    customers: {
+    customers: withTwoStageReads({
       list: vi.fn().mockResolvedValue({
         items: [],
         total: 0,
@@ -330,7 +377,7 @@ export function createMockApiClient(
       }),
       getById: vi.fn().mockResolvedValue(null),
       ...overrides.customers,
-    } as ApiClient['customers'],
+    }) as ApiClient['customers'],
     fiscalization: {
       // #1909 — empty list default: the normal never-registered state, never a
       // 404 (OpenLinker never asserts an order requires a receipt).
@@ -496,7 +543,7 @@ export function createMockApiClient(
       update: vi.fn().mockResolvedValue(undefined),
       ...overrides.operationalSettings,
     } as ApiClient['operationalSettings'],
-    orders: {
+    orders: withTwoStageReads({
       list: vi.fn().mockResolvedValue({
         items: [],
         total: 0,
@@ -532,8 +579,8 @@ export function createMockApiClient(
         jobType: '',
       }),
       ...overrides.orders,
-    } as ApiClient['orders'],
-    listings: {
+    }) as ApiClient['orders'],
+    listings: withTwoStageReads({
       list: vi.fn().mockResolvedValue({
         items: [],
         total: 0,
@@ -628,7 +675,7 @@ export function createMockApiClient(
       // produces. Tests that exercise the Resolve step override it.
       resolveCategoriesStream: vi.fn(() => emptyResolveCategoryStream()),
       ...overrides.listings,
-    } as ApiClient['listings'],
+    }) as ApiClient['listings'],
     mailerSettings: {
       get: vi.fn().mockResolvedValue({
         transport: 'console',
@@ -671,7 +718,7 @@ export function createMockApiClient(
       clearCredentials: vi.fn().mockResolvedValue(undefined),
       ...overrides.posthogSettings,
     } as ApiClient['posthogSettings'],
-    products: {
+    products: withTwoStageReads({
       list: vi.fn().mockResolvedValue({
         items: [],
         total: 0,
@@ -684,7 +731,7 @@ export function createMockApiClient(
       // care about the SKU/EAN tags.
       getVariant: vi.fn().mockRejectedValue(new ApiError('Variant not found', 404, null)),
       ...overrides.products,
-    } as ApiClient['products'],
+    }) as ApiClient['products'],
     promptTemplates: {
       list: vi.fn().mockResolvedValue([]),
       get: vi.fn().mockResolvedValue(null),

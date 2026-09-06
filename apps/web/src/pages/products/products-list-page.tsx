@@ -56,7 +56,13 @@ import { usePlatforms } from '../../shared/plugins';
 import { resolvePlatformLabel } from '../../features/mappings';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
-import { useProductsQuery } from '../../features/products/hooks/use-products-query';
+import {
+  useProductRowsQuery,
+  useProductsQuery,
+} from '../../features/products/hooks/use-products-query';
+import { useProductsTotal } from '../../features/products/hooks/use-products-total';
+import { formatPaginatedTotal } from '../../shared/hooks/use-paginated-total';
+import { ListPagination } from '../../shared/ui/list-pagination';
 import type {
   Product,
   ProductFilters,
@@ -347,20 +353,30 @@ export function ProductsListPage(): ReactElement {
   const sort: ProductListSort = { field: sortField, dir: sortDir };
   const pagination = { limit: PAGE_SIZE, offset };
 
-  const query = useProductsQuery(filters, pagination, sort);
+  // Two-stage read (#2947): the rows do not wait for a count that cannot stop
+  // early under this list's name / SKU `ILIKE` search.
+  const query = useProductRowsQuery(filters, pagination, sort);
+  const totalStage = useProductsTotal(filters, query.data);
+  // `20+` until the count lands (#2947), never `0` - the rows on screen are
+  // evidence for at least that many.
+  const totalLabel = formatPaginatedTotal(totalStage.total, offset + (query.data?.items.length ?? 0));
   const items = query.data?.items ?? [];
 
   // Fire once per successful list load, not on every filter/page refetch —
   // demo-mode analytics only (#1788), no-op elsewhere.
   const hasFiredViewedRef = useRef(false);
   useEffect(() => {
-    if (query.data && !hasFiredViewedRef.current) {
+    // Waits for the TOTAL, not just the rows (#2947): the bucket describes the
+    // whole result set, and bucketing a page size would silently redefine the
+    // metric. A count that never resolves therefore fires no event, which is
+    // the right trade - a wrong bucket is worse than a missing one.
+    if (totalStage.total !== null && !hasFiredViewedRef.current) {
       hasFiredViewedRef.current = true;
       captureDemoEvent('demo_products_viewed', {
-        resultCountBucket: bucketCount(query.data.total),
+        resultCountBucket: bucketCount(totalStage.total),
       });
     }
-  }, [query.data]);
+  }, [totalStage.total]);
 
   // KPI tile counts — four cheap limit:1 probes with distinct query keys
   // (nav-counts precedent). The gaps probe is disabled with zero OfferCreator
@@ -923,9 +939,6 @@ export function ProductsListPage(): ReactElement {
     ],
   );
 
-  const total = query.data?.total ?? 0;
-  const hasPrev = offset > 0;
-  const hasNext = offset + PAGE_SIZE < total;
 
   // Controlled (server-side) sort state for the DataTable: the active sort
   // key maps 1:1 to its column id when that column is visible/sortable; the
@@ -1164,7 +1177,7 @@ export function ProductsListPage(): ReactElement {
             active={stock === undefined}
             onClick={() => { setFilterParam('stock', ''); }}
           >
-            All {total}
+            All {totalLabel}
           </Chip>
           {STOCK_CHIPS.map((chip) => (
             <Chip
@@ -1200,7 +1213,7 @@ export function ProductsListPage(): ReactElement {
               className="text-muted mono tabular"
               style={{ marginLeft: 'auto', fontSize: '0.75rem' }}
             >
-              {query.data.total.toLocaleString()} results
+              {formatPaginatedTotal(totalStage.total, offset + query.data.items.length)} results
             </span>
           ) : null}
         </div>
@@ -1216,7 +1229,7 @@ export function ProductsListPage(): ReactElement {
                 active={stock === undefined}
                 onClick={() => { setFilterParam('stock', ''); }}
               >
-                All {total}
+                All {totalLabel}
               </Chip>
               {STOCK_CHIPS.map((chip) => (
                 <Chip
@@ -1500,25 +1513,15 @@ export function ProductsListPage(): ReactElement {
             }}
           />
 
-          <div className="pagination">
-            <span className="text-muted">
-              Showing {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of {total}
-            </span>
-            <div className="pagination__actions">
-              <Button
-                disabled={!hasPrev}
-                onClick={() => { setOffset(offset - PAGE_SIZE); }}
-              >
-                Previous
-              </Button>
-              <Button
-                disabled={!hasNext}
-                onClick={() => { setOffset(offset + PAGE_SIZE); }}
-              >
-                Next
-              </Button>
-            </div>
-          </div>
+          <ListPagination
+            offset={offset}
+            limit={PAGE_SIZE}
+            rowCount={query.data?.items.length ?? 0}
+            total={totalStage.total}
+            totalState={totalStage.state}
+            showTotalLoader={totalStage.showLoader}
+            onOffsetChange={setOffset}
+          />
 
           <OfferProductPickerModal
             isOpen={pickerOpen}

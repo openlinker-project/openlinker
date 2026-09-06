@@ -43,7 +43,10 @@ import { useToast } from '../../shared/ui/toast-provider';
 import { formatShipBy, type ShipByLevel } from '../../shared/format/format-ship-by';
 import { useTranslation, getBcp47Locale } from '../../shared/i18n';
 import type { LocaleCode } from '../../shared/i18n';
-import { useOrdersQuery } from '../../features/orders/hooks/use-orders-query';
+import { useOrderRowsQuery } from '../../features/orders/hooks/use-orders-query';
+import { useOrdersTotal } from '../../features/orders/hooks/use-orders-total';
+import { formatPaginatedTotal } from '../../shared/hooks/use-paginated-total';
+import { ListPagination } from '../../shared/ui/list-pagination';
 import { useOrderStatusSummaryQuery } from '../../features/orders/hooks/use-order-status-summary-query';
 import { useOrderSlaSummaryQuery } from '../../features/orders/hooks/use-order-sla-summary-query';
 import { useOrderLifecycleSummaryQuery } from '../../features/orders/hooks/use-order-lifecycle-summary-query';
@@ -467,7 +470,10 @@ export function OrdersListPage(): ReactElement {
   };
   const pagination = { limit: PAGE_SIZE, offset };
 
-  const query = useOrdersQuery(filters, pagination);
+  // Two-stage read (#2947): the rows do not wait for the count #2843 measured
+  // at 142 ms of a 149 ms request against a million orders.
+  const query = useOrderRowsQuery(filters, pagination);
+  const totalStage = useOrdersTotal(filters, query.data);
 
   // Single count endpoint — partitions the set, so segment counts sum to total.
   // Scoped by the same source + date axes as the table (NOT `health`, so the
@@ -1343,9 +1349,6 @@ export function OrdersListPage(): ReactElement {
     });
   }
 
-  const total = query.data?.total ?? 0;
-  const hasPrev = offset > 0;
-  const hasNext = offset + PAGE_SIZE < total;
 
   const freshness = useMemo(
     () => formatFreshness(query.data?.items ?? [], locale),
@@ -1643,7 +1646,7 @@ export function OrdersListPage(): ReactElement {
             className="text-muted mono tabular"
             style={{ marginLeft: 'auto', fontSize: '0.75rem' }}
           >
-            {query.data.total.toLocaleString()} results
+            {formatPaginatedTotal(totalStage.total, offset + query.data.items.length)} results
           </span>
         )}
       </div>
@@ -2116,19 +2119,15 @@ export function OrdersListPage(): ReactElement {
             }}
           />
 
-          <div className="pagination">
-            <span className="text-muted">
-              Showing {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of {total}
-            </span>
-            <div className="pagination__actions">
-              <Button disabled={!hasPrev} onClick={() => { setOffset(offset - PAGE_SIZE); }}>
-                Previous
-              </Button>
-              <Button disabled={!hasNext} onClick={() => { setOffset(offset + PAGE_SIZE); }}>
-                Next
-              </Button>
-            </div>
-          </div>
+          <ListPagination
+            offset={offset}
+            limit={PAGE_SIZE}
+            rowCount={query.data?.items.length ?? 0}
+            total={totalStage.total}
+            totalState={totalStage.state}
+            showTotalLoader={totalStage.showLoader}
+            onOffsetChange={setOffset}
+          />
         </>
       )}
 
