@@ -146,10 +146,22 @@ describe('OrderReturnsPanel', () => {
     expect(screen.queryByText(RETURN_RESTOCK_BLOCKED_COPY.badge)).not.toBeInTheDocument();
   });
 
-  it('should disclose a truncated page with both numbers', async () => {
-    renderPanel(listResult({ items: [item()], total: 7 }));
+  it('should disclose a genuinely truncated page with both numbers', async () => {
+    // Truncation is a PAGE-SIZE fact: `total` past the panel's own page size.
+    renderPanel(listResult({ items: [item()], total: 25 }));
 
-    expect(await screen.findByText(COPY.truncated(1, 7))).toBeInTheDocument();
+    expect(await screen.findByText(COPY.truncated(1, 25))).toBeInTheDocument();
+  });
+
+  it('should NOT call an unreadable row a truncated page', async () => {
+    // `parseReturnList` excludes an unreadable row from `items` and counts it
+    // in `droppedCount`, so gating truncation on the item count would report
+    // the same row twice — once as unreadable, once as a page limit that was
+    // never reached.
+    renderPanel(listResult({ items: [item()], total: 2, droppedCount: 1 }));
+
+    expect(await screen.findByText(/could not be read/i)).toBeInTheDocument();
+    expect(screen.queryByText(COPY.truncated(1, 2))).not.toBeInTheDocument();
   });
 
   it('should report rows it could not read rather than dropping them silently', async () => {

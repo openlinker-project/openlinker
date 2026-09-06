@@ -96,9 +96,14 @@ describe('Return-Detail Timeline Read Integration', () => {
       .query('UPDATE returns SET "openedAt" = $1 WHERE id = $2', [at, returnId]);
 
   /**
-   * The orphan-match act (#2372). Written by direct UPDATE because ingestion
-   * never writes these OL-owned columns — that asymmetry is the model's, not
-   * the test's convenience.
+   * The orphan-match act (#2372).
+   *
+   * Written by direct UPDATE, and the honest reason is convenience rather than
+   * necessity: `matchOrphanToOrder` -> `claimAttribution` is a real writer and
+   * is reachable over HTTP. So this seeds a state the machine really can enter
+   * (unlike `docs/lessons.md`:506's hand-built impossible fixture) but does NOT
+   * prove the writer targets these columns — that belongs to #2372's own
+   * coverage. What is under test here is the READ.
    */
   const setMatched = (returnId: string, at: string, userId: string): Promise<unknown> =>
     harness

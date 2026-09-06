@@ -172,7 +172,11 @@ export function OrderReturnsPanel({ internalOrderId }: OrderReturnsPanelProps): 
         {result.droppedCount > 0 ? (
           <p className="text-muted">{describeUnreadableRows(result.droppedCount)}</p>
         ) : null}
-        {result.total > items.length ? (
+        {/* Gated on the PAGE SIZE, never on `items.length`: an unreadable row
+            is excluded from `items` and counted in `droppedCount`, so comparing
+            against the item count would report the SAME row twice — once as
+            unreadable and once as a page limit that was never reached. */}
+        {result.total > PANEL_PAGE_SIZE ? (
           <p className="text-muted">{COPY.truncated(items.length, result.total)}</p>
         ) : null}
       </>

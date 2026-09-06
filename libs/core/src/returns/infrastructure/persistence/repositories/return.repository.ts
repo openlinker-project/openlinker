@@ -90,13 +90,6 @@ import {
 import { ReturnLineNotFoundError } from '../../../domain/exceptions/return-line-not-found.error';
 
 /**
- * What one aggregate row supplies for a list row (#2377 counters, #2381 flag).
- *
- * The flag is a SIBLING of the counters rather than a member, because the fetch
- * mechanism must not dictate the projection shape — see
- * `ReturnRecord.restockBlocked`.
- */
-/**
  * One joined row of the timeline read — a `returns` header repeated once per
  * act (or once with every `ev.*` null, for a return with no acts yet).
  */
@@ -120,6 +113,13 @@ interface ReturnTimelineRawRow {
   occurredAt: Date | null;
 }
 
+/**
+ * What one aggregate row supplies for a list row (#2377 counters, #2381 flag).
+ *
+ * The flag is a SIBLING of the counters rather than a member, because the fetch
+ * mechanism must not dictate the projection shape — see
+ * `ReturnRecord.restockBlocked`.
+ */
 interface ReturnRowAggregate {
   counters: ReturnStageCounters;
   restockBlocked: boolean;
@@ -1491,6 +1491,11 @@ export class ReturnRepository implements ReturnRepositoryPort {
           ['authorized', row.authorizedAt, null],
           ['declined', row.declinedAt, null],
           ['matched', row.matchedAt, row.matchedByUserId],
+          // `closed` is DECLARED and not written by anything today: `create`
+          // takes it and its one production caller passes null, and
+          // `upsertFromSource` blanks it. Emitted anyway because the column is
+          // real and the four timestamps are independent facts (ADR-060) — but
+          // no operator sees this entry until something writes that column.
           ['closed', row.closedAt, null],
         ] as const) {
           if (at === null) continue;

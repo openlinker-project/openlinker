@@ -40,8 +40,11 @@ export const ORDER_RETURNS_PANEL_COPY = {
   loading: 'Loading returns…',
   loadingMessage: 'Reading the returns recorded against this order.',
 
-  viewAll: 'Open in Returns',
-  openReturn: 'Open return',
+  /**
+   * Deliberately NO `viewAll` deep link. `internalOrderId` is not in
+   * `RETURN_FILTER_PARAMS`, so a link to `/returns` would land on an
+   * UNFILTERED list — worse than stating the truncation in words.
+   */
   noChannelReference: 'No channel reference',
 
   /**

@@ -53,6 +53,10 @@ apart would mean two consecutive edits to both.
 ## Deliberately out of scope
 
 - `credit note issued` stays deferred (#2383's ruling — `invoicing` / `order_changes`).
-- `authorizedAt` / `closedAt` timeline entries: #2383 chose `opened` + `declined`, and widening
-  the header vocabulary beyond what #2646's AC requires is a separate decision.
+- ~~`authorizedAt` / `closedAt` timeline entries~~ — **reversed during review, and both ship.**
+  The original reasoning ("#2383 chose `opened` + `declined`") does not carry once the same change
+  widens that very vocabulary with `matched`: the four header timestamps are independent facts
+  (ADR-060), `authorizedAt` has a real writer (`claimAuthorizedAt`, #2372), and emitting three of
+  four would have been an arbitrary line. `closed` is declared and written by nothing today —
+  stated in the repository rather than implied reachable.
 - No new permission value; no write affordance is added by either surface.
