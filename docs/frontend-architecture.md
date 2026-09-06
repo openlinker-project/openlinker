@@ -248,6 +248,28 @@ Rules:
 - mutations invalidate or update the Query cache
 - do not copy Query data into local component state or Context unless there is a very specific reason
 
+### Paginated Totals As A Second Stage (#2950)
+
+Some list totals are expensive. A paged read stops after its `LIMIT`; the `COUNT` beside it cannot stop at all, so under a filter no plain index serves it scans the table however small the page is — measured at 142 ms of a 149 ms `/orders` request against a million rows (#2843). `docs/engineering-standards.md` § When A Paginated Total Is Expensive is the backend half: which filters cost this, and how the read is split.
+
+**The convention: render the rows from the paged query, and render the total as a second stage.** `usePaginatedTotal` (`shared/hooks/use-paginated-total.ts`) with `<ListPagination>` (`shared/ui/list-pagination.tsx`) is that mechanism; a new list adopts it rather than reinventing it, because four things have to be right or the change is a regression.
+
+- **Debounce the total's own key.** A total re-fetched on every keystroke turns one slow page into a request storm against the most expensive query in the system. The first mount is not debounced — there is nothing to settle, and making the operator wait for the initial count would be worse than the problem.
+- **Cancel the in-flight request when the filter changes again**, and never render a superseded answer. A slow earlier response arriving after a fast later one shows a total belonging to a filter the operator has already left, which is worse than a missing number because it looks authoritative. Keying the query on the filters is what makes that unrepresentable — a late answer lands in a different cache entry. **`placeholderData: keepPreviousData` is the one thing you must not add here**: it is precisely the mechanism that surfaces the previous filter's total. It is right for the ROWS and wrong for the number beside them.
+- **Delay the loader by ~150–200 ms** (the hook uses 175). At small row counts the total returns in about 11 ms, and a spinner that appears and vanishes inside that window is a flicker — worse than no state change at all. This is what keeps the change invisible on an install that never had the problem. Arm the delay on the fetch alone, never on the debounce, or a keystroke burst produces the very flash the delay exists to prevent.
+- **`20+`, never skeleton rows.** The rows are already on screen and only a number is missing; a skeleton claims content is missing and makes the page read as slower than it is. `inferTotalFromPage` goes further: a page that came back SHORT already carries its own exact total, so most small installs never request the count at all.
+
+**Pagination degrades per affordance, not as a block.** Disabling the whole pager until the total lands throws away most of the benefit:
+
+| Control | Available before the total |
+|---|---|
+| Next / Previous | yes — neither needs it |
+| Page numbers already reached | yes |
+| "Page 3 **of 47**" | no |
+| Jump to last page | no |
+
+**A failed count leaves the placeholder, and never renders `0`.** Absence and "none matched" are different claims, and only one of them is safe to make from a failed read — the same principle `docs/architecture-overview.md` records for the returns surfaces, which catch to empty and never render a positive claim from an absent value. The hook keeps `idle` (not asked for yet) distinct from `unavailable` (asked, and failed) for the same reason: only one of those may tell an operator the count could not be loaded.
+
 ### URL State
 
 Use the URL for state that should be linkable, shareable, restorable, or browser-navigation-friendly:
@@ -692,6 +714,7 @@ FE-001 defaults:
 - no optimistic updates by default
 - mutations should prefer explicit invalidation over clever cache mutation until workflows are well understood
 - every list and detail screen should render loading, empty, error, and success-aware states deliberately
+- a list whose TOTAL is expensive renders it as a second stage rather than making the rows wait — see § Paginated Totals As A Second Stage, which also covers why a failed count must leave its placeholder rather than render `0`
 
 ## Testing Baseline
 
