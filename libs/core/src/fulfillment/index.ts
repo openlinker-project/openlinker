@@ -66,6 +66,7 @@ export * from './domain/types/routing.types';
 export * from './domain/types/fulfillment-execution.types';
 
 export * from './domain/ports/fulfillment-router.port';
+export * from './domain/ports/fulfillment-router-resolver.port';
 export * from './domain/ports/fulfillment-executor.port';
 export * from './domain/ports/capabilities/fulfillment-status-source.capability';
 

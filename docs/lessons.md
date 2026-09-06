@@ -23,6 +23,39 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## A `@Global()` module publishes its EXPORTS, and an optional token hides the host that forgot it
+
+**Context**: wiring OpenLinker's fulfilment router (#2408). The router is resolved through a token
+bound host-side in a `@Global()` module, and injected by `OrderIngestionService`, which is declared
+in `OrdersModule`.
+
+**Problem**: three ways to wire it that all type-check, all pass unit tests, and all do nothing.
+
+- **`providers` without `exports`.** `@Global()` publishes a module's *exports*, not its providers.
+  Without the `exports: [TOKEN]` line the token is invisible outside the module, so the injection
+  resolves from somewhere else or not at all.
+- **Importing the bare `PluginRegistryModule`.** It is a `@Module({})` shell with a static
+  `forRoot`; importing the class yields an *empty* module, so any token a plugin exports through it
+  never resolves. Calling `forRoot` a second time is worse - it double-registers every plugin. The
+  established route is the HOST's own `IntegrationsModule` wrapper, which re-exports it.
+- **`@Optional()` on a token whose absence is a valid state.** A router-less install is a silent,
+  fully-specified pass-through, so a host that FORGOT the binding is indistinguishable from one
+  deliberately running without a router - and nothing fails to say so.
+
+**Rule**: a `@Global()` binding module must `exports` its token, and must import the host's
+`IntegrationsModule` rather than `PluginRegistryModule`. Make the injection **required** whenever
+the degenerate behaviour is silent, so a missing binding is a boot failure rather than a feature
+that quietly does nothing - and pin it with a spec that resolves the token from the CONSUMING
+module's injector (`app.select(OrdersModule).get(TOKEN)`), never the root injector, which passes
+even when the consumer cannot see it.
+
+**Applies to**: any `@Global()` provider binding in `apps/api/src/**` or `apps/worker/src/**`; any
+core service injecting a token a host supplies.
+
+**Source**: #2408 (`/tech-review` + `/pre-implement`, both flagged it before implementation).
+
+---
+
 ## Before a surface asserts a behaviour, read the code that implements it
 
 **Context**: redesigning the three sales-document surfaces (#2513). The design was worked out from
