@@ -33,6 +33,46 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 4173,
     },
+    build: {
+      rollupOptions: {
+        output: {
+          // #2866: with no manualChunks, react/react-dom, Radix and Tiptap
+          // were interleaved into the app's own route chunks (verified:
+          // `ui-*.js` carried both `@radix-ui` and `@tiptap` alongside
+          // shared/ui code, `index-*.js` carried `react-dom`). Every one of
+          // these vendor packages changes far less often than app code, so
+          // bundling them together means a one-line app change invalidates
+          // the browser cache for React itself on every deploy. Splitting
+          // them into their own named, content-hashed chunks lets a repeat
+          // visitor keep the vendor chunk cached across releases that only
+          // touch app code — this does not shrink what a cold visitor
+          // downloads, it changes what a WARM visitor re-downloads.
+          //
+          // Grouped by "how often does this change", not by package name:
+          // react-vendor and editor-vendor are the two heaviest, most
+          // stable groups (confirmed via `check-bundle-budgets.mjs`'s
+          // baseline measurement); everything else under node_modules falls
+          // into one shared vendor chunk rather than one chunk per package,
+          // which would multiply small-file HTTP overhead for no cache
+          // benefit (nothing else here is anywhere near react/tiptap in size).
+          manualChunks(id) {
+            if (!id.includes('node_modules')) {
+              return undefined;
+            }
+            if (/node_modules\/(react|react-dom|scheduler)\//.test(id)) {
+              return 'react-vendor';
+            }
+            if (/node_modules\/@tiptap\//.test(id)) {
+              return 'editor-vendor';
+            }
+            if (/node_modules\/@radix-ui\//.test(id)) {
+              return 'radix-vendor';
+            }
+            return 'vendor';
+          },
+        },
+      },
+    },
     test: {
       environment: 'happy-dom',
       // Self-hosted CI runner (added 2026-04 via 444244f) is materially slower

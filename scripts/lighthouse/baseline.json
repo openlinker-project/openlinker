@@ -1,0 +1,106 @@
+{
+  "generatedAt": "2026-09-06T09:34:08.035Z",
+  "hostContended": true,
+  "repeatRuns": 3,
+  "routes": {
+    "orders-list": {
+      "runs": 3,
+      "performance": {
+        "median": 0.59,
+        "min": 0.59,
+        "max": 0.59,
+        "spread": 0
+      },
+      "accessibility": {
+        "median": 0.96,
+        "min": 0.96,
+        "max": 0.96,
+        "spread": 0
+      },
+      "best-practices": {
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "spread": 0
+      },
+      "seo": {
+        "median": 0.91,
+        "min": 0.91,
+        "max": 0.91,
+        "spread": 0
+      },
+      "metrics": {
+        "firstContentfulPaintMsMedian": 6629.757999999998,
+        "largestContentfulPaintMsMedian": 7667.619999999997,
+        "totalBlockingTimeMsMedian": 106.00000000000091,
+        "numRequestsMedian": 130
+      }
+    },
+    "products-list": {
+      "runs": 3,
+      "performance": {
+        "median": 0.59,
+        "min": 0.59,
+        "max": 0.6,
+        "spread": 0.010000000000000009
+      },
+      "accessibility": {
+        "median": 0.96,
+        "min": 0.96,
+        "max": 0.96,
+        "spread": 0
+      },
+      "best-practices": {
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "spread": 0
+      },
+      "seo": {
+        "median": 0.91,
+        "min": 0.91,
+        "max": 0.91,
+        "spread": 0
+      },
+      "metrics": {
+        "firstContentfulPaintMsMedian": 6626.482725000004,
+        "largestContentfulPaintMsMedian": 7526.934449999993,
+        "totalBlockingTimeMsMedian": 93,
+        "numRequestsMedian": 126
+      }
+    },
+    "connections-list": {
+      "runs": 3,
+      "performance": {
+        "median": 0.6,
+        "min": 0.6,
+        "max": 0.6,
+        "spread": 0
+      },
+      "accessibility": {
+        "median": 0.96,
+        "min": 0.96,
+        "max": 0.96,
+        "spread": 0
+      },
+      "best-practices": {
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "spread": 0
+      },
+      "seo": {
+        "median": 0.91,
+        "min": 0.91,
+        "max": 0.91,
+        "spread": 0
+      },
+      "metrics": {
+        "firstContentfulPaintMsMedian": 6473.219550000009,
+        "largestContentfulPaintMsMedian": 7520.227499999994,
+        "totalBlockingTimeMsMedian": 90,
+        "numRequestsMedian": 114
+      }
+    }
+  }
+}

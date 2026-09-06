@@ -26,6 +26,13 @@ sources it rather than re-implementing any piece of it.
 | `scenarios/f3-webhook-burst.sh` | First scenario built on `lib.sh` (#2842) - webhook ingress burst throughput. See "F3 - webhook ingress burst throughput" below. |
 | `drivers/presign-webhooks.mjs` | Node pre-signer for `f3-webhook-burst.sh` - builds a pool of fully OL-HMAC-signed webhook requests ahead of time, reusing `apps/e2e/src/support/webhooks.ts` rather than restating the scheme. |
 | `drivers/webhook-burst.js` | k6 driver for `f3-webhook-burst.sh` - replays the pre-signed pool under `ramping-arrival-rate`. Computes no HMAC. |
+| `seed/seed-lib.sh` | Shared helpers for the #2849 set-based seeders below - a single-session SQL runner (`seed_sql`), the prefix-exists refusal, the wall-clock ceiling check, `VACUUM ANALYZE` + `pg_stat_statements_reset()`. |
+| `seed/seed-catalogue.sh` | Set-based products/variants/inventory_items/identifier_mappings seeder (#2849) across the two connections the lab stand carries - seeded ONCE, independent of order-dataset size. |
+| `seed/seed-jobs.sh` | Set-based `sync_jobs` sweep-child history seeder (#2849) - ~1 year at real cadence (20min/15min), also seeded ONCE. |
+| `seed/seed-orders.sh` | Set-based `order_records` + `order_line_items` seeder (#2849), ADDITIVE across `TARGET_ORDERS` - the three #2843 dataset sizes are three calls, each inserting only the delta. |
+| `seed/cleanup.sh` | Removes every row the three seeders above wrote, matching on the `perfseed` tag alone. Standalone - does NOT touch #2854's `stand-down.sh`. |
+| `scenarios/f5-read-path.sh` | Operator read-path scenario (#2843) - orders/products/jobs-dashboard routes + the app-shell nav-probe fan-out, at each of the three seeded dataset sizes. See "F5 - operator read path at row count" below. |
+| `drivers/read-path.js` | k6 driver for `f5-read-path.sh` - a weighted browse-mix scenario plus a separate page-shell scenario, one Trend per named route. |
 
 Not owned here: `docker-compose.lab.yml` and `preflight.sh` are **#2854's**
 (the `lab` stand itself - Postgres's `pg_stat_statements`/`auto_explain`
@@ -476,6 +483,73 @@ This scenario calls `guard_stand_exclusive` (see above) as its very first
 step, before touching the shared PrestaShop module config or the worker's
 `WORKER_RUNNER_ENABLED` posture - both of which it mutates before the
 measurement window even opens.
+
+## F5 - operator read path at row count (#2843) / set-based seeders (#2849)
+
+Two children shipped together: #2849's seeders exist only to feed #2843's
+measurement, and #2843 has no dataset to run against without them.
+
+**The seeders are set-based, never row-by-row** - `seed/seed-catalogue.sh`
+(products/variants/inventory_items/identifier_mappings across the two
+connections the lab stand carries, seeded ONCE), `seed/seed-jobs.sh`
+(~1 year of `sync_jobs` sweep-child history at real 20min/15min cadence,
+also ONCE), and `seed/seed-orders.sh` (`order_records`+`order_line_items`,
+ADDITIVE - call it once per `TARGET_ORDERS` and it inserts only the delta
+needed to reach that size). Measured live on the `lab` stand: 10k products
+with variants in 2s, 122 750 `sync_jobs` rows in 1s, and the three order
+sizes (10k / 100k-delta-of-90k / 1M-delta-of-900k) in 2s / 7s / 93s -
+comfortably inside #2849's own stated ceilings (10s / 60s / 10min).
+
+**Every seeded row satisfies the MIGRATION-built schema's CHECK
+constraints**, not just the harness's `synchronize` one - verified live: a
+row stamping `reportingCurrency` also stamps `reportingTotalAmount` and
+`fxRule='prev-business-day'` together (`ck_order_records_fx_group` /
+`ck_order_records_fx_rule`), or all three stay NULL. `syncStatus` is written
+as the real per-destination array shape
+(`[{"destinationConnectionId":...,"status":"synced"|"failed"}]`), never the
+`'[]'` default, so rows do not collapse into the residual
+`awaiting_dispatch` health bucket. The RNG seed is fixed by `setseed()`
+inside ONE psql session per seeder call (`SEED_RNG`, default `0.271828`),
+recorded in every log line, so a re-run reproduces the identical
+distribution rather than merely a similar one. Distribution targets are
+asserted post-seed (recordStatus/connection/currency/reportingCurrency
+mix), not left as a prose claim - see each seeder's own `check_share` /
+distribution-log lines.
+
+**Deliberately deferred, named rather than silently skipped**: the
+sample-through-real-ingestion diff against #2846's stubs (#2846 is a
+separate epic-scale build; doing it here would have spent this pass's
+whole budget proving one property instead of shipping the measurement), and
+`offer_mappings` / `destination_categories` seeding (no `Offer` /
+`DestinationCategory` rows exist in this pass, so the ILIKE/trigram search
+sites `#2843` also names stay unexercised - `f5-read-path.sh`'s
+`explain_representative` says so explicitly rather than pretending
+coverage it does not have). `inventory_items.findDuplicatePositions` is
+excluded per #2843's OWN text - "an operator-run diagnostic rather than a
+page on the operator read path".
+
+`scenarios/f5-read-path.sh` is READ-ONLY and deliberately does **not** call
+`guard_queue_empty` or require the runner disabled - the whole point is
+measuring against a real, non-purged `sync_jobs` history, which is the
+opposite of every other scenario's precondition. Per size step it: grows
+the order dataset to the target (a no-op if already there), runs
+`VACUUM ANALYZE` + `pg_stat_statements_reset()`, sets
+`ALTER ROLE ... SET statement_timeout` on the api's OWN db role (the
+runaway-read risk #2843 names is issued from the api's pool connection, not
+from a session this scenario controls, and restarts the api so every pool
+connection picks the new setting up), samples order/product ids for k6's
+detail routes, opens the window, runs `drivers/read-path.js` inside the k6
+container, then captures `pg_stat_statements` top-20-by-total-time
+(excluding this scenario's own sampler query and every seeder statement by
+text pattern) and `EXPLAIN (ANALYZE, BUFFERS)` for the representative
+documented-unindexed sites it can actually exercise this pass.
+
+`drivers/read-path.js` runs TWO k6 scenarios in one file: `browse_mix` (a
+weighted `ramping-arrival-rate` mix of orders-list / orders-list-filtered /
+order-detail / products-list / product-detail / jobs-dashboard, one Trend
+per route) and `page_shell` (the five nav-probe requests fired together as
+one group per "page load", measured separately per #2843's own AC that the
+page-shell tax must not be folded into a route's own number).
 
 ## Not built here
 

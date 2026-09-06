@@ -227,6 +227,76 @@ enqueue_perf_job() {
 # would not be a cap at all). The no-op UPDATE (WHERE 1=0) exercises the same
 # write path enqueue_perf_job uses without touching a real row.
 # ---------------------------------------------------------------------------
+# guard_stand_exclusive <scenario-name> - ONE scenario may measure a stand at
+# a time.
+#
+# This exists because two scenarios ran against the `lab` stand concurrently
+# and silently invalidated each other (#2842/#2848, 2026-09-06). F3 declares
+# `guard_runner_state disabled`; F2 needs the runner ENABLED and flips it. F3's
+# guards had passed a minute earlier, and because `manifest_write` re-renders
+# MANIFEST_RUNNER_STATE per arm from that single check, two of its arms carried
+# `"runnerState": "disabled"` for windows in which the runner was in fact
+# executing jobs. `post_guard_attempts` caught one of them; nothing would have
+# caught the other.
+#
+# The general shape is worth stating, because it is not specific to the runner:
+# **every pre-flight guard describes the world at script start, and a peer with
+# write access to the stand can falsify any of them before the window opens.**
+# A guard cannot defend against that on its own - only exclusivity can.
+#
+# Held in the stand's own Redis rather than a local lock file: the stand is the
+# contended resource, two scenarios can legitimately be launched from different
+# working trees or by different people, and a lock local to one checkout would
+# not see the other. `SET NX` is the atomic claim; nothing here reads the key
+# and then decides on it.
+#
+# The TTL is a crash bound, not a run bound. A holder that dies leaves the key
+# behind, and the next scenario is refused until it expires - so the TTL is the
+# longest a mistake can block the stand, and OL_STAND_LOCK_TTL_SECS is the knob
+# for a genuinely long sweep. Breaking a stale lock by hand is one `redis-cli
+# DEL` and the refusal message says so, rather than offering a --force flag
+# that would be reached for reflexively.
+STAND_LOCK_KEY="${STAND_LOCK_KEY:-perf:stand:exclusive}"
+STAND_LOCK_TTL_SECS="${OL_STAND_LOCK_TTL_SECS:-3600}"
+STAND_LOCK_HELD=0
+
+guard_stand_exclusive() {
+  local scenario="${1:?guard_stand_exclusive: scenario name required}" owner holder set_result
+  owner="$scenario:pid$$@$(hostname 2>/dev/null || printf 'unknown-host'):$(iso_now)"
+
+  set_result="$(redis_cli SET "$STAND_LOCK_KEY" "$owner" NX EX "$STAND_LOCK_TTL_SECS" 2>/dev/null || printf '')"
+  if [ "$set_result" != "OK" ]; then
+    holder="$(redis_cli GET "$STAND_LOCK_KEY" 2>/dev/null || printf '<unreadable>')"
+    die "guard_stand_exclusive: the stand is already being measured by [${holder:-<unknown>}].
+  Two scenarios on one stand invalidate each other - they disagree about the
+  runner posture, the scheduler, and the queue, and a manifest written by one
+  will assert conditions the other has already changed.
+  Wait for it to finish, or if you are certain that holder is dead:
+    docker exec -i $REDIS_CONTAINER redis-cli DEL $STAND_LOCK_KEY"
+  fi
+
+  STAND_LOCK_HELD=1
+  # Released on ANY exit path, including a guard's own `die` - a scenario that
+  # aborts must not leave the stand locked for the whole TTL.
+  trap 'release_stand_exclusive' EXIT
+  log "guard_stand_exclusive ok (held by $owner, ttl ${STAND_LOCK_TTL_SECS}s)"
+}
+
+# Releases only a lock THIS process holds. The value check matters: without it
+# a scenario whose lock had already expired would delete the key a different,
+# legitimately-running scenario has since taken.
+release_stand_exclusive() {
+  [ "$STAND_LOCK_HELD" = "1" ] || return 0
+  STAND_LOCK_HELD=0
+  local current
+  current="$(redis_cli GET "$STAND_LOCK_KEY" 2>/dev/null || printf '')"
+  case "$current" in
+    *":pid$$@"*) redis_cli DEL "$STAND_LOCK_KEY" >/dev/null 2>&1 || true ;;
+    "") : ;;
+    *) warn "release_stand_exclusive: the stand lock is held by [$current], not by this process - leaving it alone" ;;
+  esac
+}
+
 guard_perf_max_attempts() {
   [ "$PERF_MAX_ATTEMPTS" -gt 0 ] 2>/dev/null || die "guard_perf_max_attempts: PERF_MAX_ATTEMPTS must be a positive integer, got '$PERF_MAX_ATTEMPTS' - set PERF_MAX_ATTEMPTS to a small number (default 3)"
   [ "$PERF_MAX_ATTEMPTS" -lt 10 ] || die "guard_perf_max_attempts: PERF_MAX_ATTEMPTS=$PERF_MAX_ATTEMPTS is not lower than the sync_jobs entity default (10) - it would cap nothing"
@@ -337,21 +407,70 @@ guard_pool_recorded() {
 # revision, never assumed (#2841 "guard_build is redefined: a LABEL, not a
 # digest diff"). Requires the root Dockerfile's production/worker stages to
 # carry `LABEL org.opencontainers.image.revision` (this child adds it).
+# Paths whose contents actually reach the running api/worker. A commit that
+# touches only the harness, the docs or the browser bundle cannot change what
+# those two processes execute, so it must not invalidate the image - see the
+# note in guard_build.
+#
+# `apps/api` and `apps/worker` rather than a bare `apps`: the production and
+# worker image stages copy only those two dists plus the libs, so `apps/web`
+# and `apps/e2e` are never executed by the processes under measurement. The
+# first version of this list said `apps`, and it immediately produced a false
+# refusal - a frontend agent's uncommitted `vite.config.ts` change blocked an
+# unrelated backend scenario whose image could not possibly contain it
+# (#2842/#2852). A guard that refuses for a reason the code does not have
+# trains people to work around it, which is worse than the gap it closes.
+BUILD_RELEVANT_PATHS="${BUILD_RELEVANT_PATHS:-apps/api apps/worker libs Dockerfile package.json pnpm-lock.yaml pnpm-workspace.yaml}"
+
 guard_build() {
-  local head containers c rev
+  local head containers c rev path want got dirty
   head="$(git -C "$LIB_DIR" rev-parse HEAD)"
+
+  # Uncommitted product-code changes are refused outright, and this is the half
+  # the previous implementation missed entirely: comparing the image's label
+  # against HEAD says nothing about edits that were never committed, so a stand
+  # could be measured against source that exists only in the working tree.
+  dirty="$(git -C "$LIB_DIR" status --porcelain -- $BUILD_RELEVANT_PATHS 2>/dev/null || true)"
+  if [ -n "$dirty" ]; then
+    die "guard_build: uncommitted changes under [$BUILD_RELEVANT_PATHS] - the image cannot contain them, so the run would measure something that is not in the tree:
+$dirty"
+  fi
+
   containers="$OL_API_CONTAINER $WORKER_CONTAINERS"
   for c in $containers; do
     rev="$(docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$c" 2>/dev/null || true)"
     if [ -z "$rev" ]; then
       die "guard_build: $c carries no org.opencontainers.image.revision label - the image predates the LABEL added by this child's Dockerfile change, or was built without --build-arg OL_GIT_SHA=\$(git rev-parse HEAD). Rebuild the stand (#2854)."
     fi
-    if [ "$rev" != "$head" ]; then
-      die "guard_build: $c was built from $rev but the working tree is at $head - rebuild before measuring (a stale image silently measures pre-change code)"
+
+    # A TREE comparison, not a commit comparison. The question a build guard has
+    # to answer is "does this image contain the code under test", and a commit
+    # sha answers a stricter, wrong question - it also refuses an image whose
+    # product code is byte-identical and whose only difference is a harness or
+    # docs commit. That is not pedantry: measuring and committing necessarily
+    # interleave during a campaign (a scenario fix, a report), and under the sha
+    # rule every one of those commits forced a full rebuild before the next run
+    # could start. Verified on this tree - `apps` and `libs` hashed identically
+    # across two commits that differed only under perf/, and the rebuild those
+    # commits demanded was pure waste (#2842).
+    if ! git -C "$LIB_DIR" cat-file -e "$rev^{commit}" 2>/dev/null; then
+      die "guard_build: $c reports revision $rev, which is not a commit in this repository - the image was built somewhere else, so its contents cannot be verified against this tree"
     fi
+    for path in $BUILD_RELEVANT_PATHS; do
+      want="$(git -C "$LIB_DIR" rev-parse "HEAD:$path" 2>/dev/null || printf 'missing-at-head')"
+      got="$(git -C "$LIB_DIR" rev-parse "$rev:$path" 2>/dev/null || printf 'missing-in-image-commit')"
+      if [ "$want" != "$got" ]; then
+        die "guard_build: $c was built from $rev, whose '$path' ($got) differs from the working tree's ($want) - rebuild before measuring, or a stale image silently measures pre-change code"
+      fi
+    done
   done
-  MANIFEST_GIT_SHA="$head"
-  log "guard_build ok (sha=$head)"
+
+  # The manifest records the IMAGE's commit, never HEAD: that is the code the
+  # run actually exercised, and after this change the two can legitimately
+  # differ by harness-only commits.
+  MANIFEST_GIT_SHA="$rev"
+  MANIFEST_TREE_HEAD_SHA="$head"
+  log "guard_build ok (image sha=$rev, tree HEAD=$head, product paths identical)"
 }
 
 # guard_runner_state - the running worker's WORKER_RUNNER_ENABLED posture
@@ -388,13 +507,25 @@ guard_runner_state() {
 # the worker's log level does not suppress them (#2841's own note).
 guard_log_level() {
   local w val
+  # Every container's value is recorded, not just checked. `manifest_write`
+  # renders MANIFEST_LOG_BODY_MAX_BYTES and, before this, nothing ever set it -
+  # so a run whose guard had just verified 8192 still wrote
+  # `"olLogBodyMaxBytes": "unknown"` into its own manifest. That is the
+  # reported-versus-enforced gap this harness exists to close, one level in
+  # (found on the first real F3 run, #2842).
+  #
+  # Recorded as `container=value` pairs rather than a single scalar: the guard
+  # reads N containers and they can legitimately differ, and a manifest that
+  # printed only the last one would be silently wrong on a mixed fleet.
+  MANIFEST_LOG_BODY_MAX_BYTES=""
   for w in $OL_API_CONTAINER $WORKER_CONTAINERS; do
     val="$(docker exec "$w" printenv OL_LOG_BODY_MAX_BYTES 2>/dev/null || printf '')"
     if [ -z "$val" ] || ! [ "$val" -gt 0 ] 2>/dev/null; then
       die "guard_log_level: $w has OL_LOG_BODY_MAX_BYTES='${val:-<unset>}' - unset or 0 means UNCAPPED full-body logging at error level regardless of the worker's log level. Set OL_LOG_BODY_MAX_BYTES to a positive value before measuring."
     fi
+    MANIFEST_LOG_BODY_MAX_BYTES="${MANIFEST_LOG_BODY_MAX_BYTES:+$MANIFEST_LOG_BODY_MAX_BYTES }$w=$val"
   done
-  log "guard_log_level ok"
+  log "guard_log_level ok ($MANIFEST_LOG_BODY_MAX_BYTES)"
 }
 
 # ---------------------------------------------------------------------------

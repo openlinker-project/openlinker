@@ -79,10 +79,31 @@ if (!pool.generations || pool.generations.length === 0) {
 // serialized - and must never land in the same bucket). Only a 2xx response's
 // duration is recorded here; every non-2xx goes to `non2xx` instead and is
 // excluded from the reported percentiles (plan § 4.4).
-const gateDuration = new Trend(`webhook_${ARM}_duration_ms`, true);
+//
+// k6 Trend names may only contain letters/digits/underscores - `ARM` carries
+// a hyphen for both replay arms ("replay-committed", "replay-concurrent"),
+// which k6 rejects with a hard GoError script exception at Trend-construction
+// time (found live, run 1 of #2842's rate sweep: the `unique` arm completed
+// clean, then `replay-committed` aborted the whole scenario before sending a
+// single request). The metric NAME is sanitized; ARM itself (used for the
+// `tags: {arm: ARM}` request tag and every log line) is left exactly as the
+// scenario passes it, so the report's arm labels stay human-readable.
+const metricArm = ARM.replace(/-/g, '_');
+const gateDuration = new Trend(`webhook_${metricArm}_duration_ms`, true);
 const non2xx = new Counter('non_2xx_responses');
 
 export const options = {
+  // k6's default summaryTrendStats is ['avg','min','med','max','p(90)','p(95)']
+  // - NO p99, on every Trend the run produces, including the built-in
+  // `http_req_duration`. The whole point of this scenario is "the sustained
+  // arrival rate before p99 breaches 1s" (plan §3.3/AC), so the un-overridden
+  // default silently made the AC's own headline number unreachable from the
+  // --summary-export JSON (found live, #2842's rate sweep: run
+  // `run1788650401-unique`'s k6-summary.json carries p(90)/p(95) and no
+  // p(99) at all). p(99) is added explicitly rather than replacing the
+  // existing five, so a report built before this fix and one built after it
+  // both still carry p50/p90/p95 in the same shape.
+  summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)'],
   scenarios: {
     [ARM]: {
       executor: 'ramping-arrival-rate',

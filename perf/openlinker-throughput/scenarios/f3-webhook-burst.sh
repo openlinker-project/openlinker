@@ -347,6 +347,13 @@ run_strict() {
   local CONN_IDS="'$WEBHOOK_CONNECTION_ID'"
 
   log "=== pre-flight guards ==="
+  # First, and unconditionally: claiming the stand is what makes every guard
+  # below actually mean what it says. #2842/#2848 (2026-09-06) - a second
+  # scenario (F2) shared this stand mid-run, flipped WORKER_RUNNER_ENABLED for
+  # its own needs, and two of F3's three arms wrote `"runnerState": "disabled"`
+  # into their own manifest for a window the runner was, in fact, executing
+  # jobs in. See lib.sh's guard_stand_exclusive docblock for the full account.
+  guard_stand_exclusive f3-webhook-burst
   guard_queue_empty "$CONN_IDS"
   guard_scheduler_off
   guard_demo_mode_off
@@ -410,7 +417,17 @@ run_strict() {
     while read -r mode status eventid; do
       [ -n "$mode" ] || continue
       local dstatus
-      dstatus="$(pg_sql "SELECT status FROM webhook_deliveries WHERE \"eventId\"='$eventid' AND \"connectionId\"='$WEBHOOK_CONNECTION_ID'" 2>/dev/null || printf '')"
+      # `</dev/null` is load-bearing, not defensive styling: `pg_sql` runs
+      # `docker exec -i`, and with no explicit stdin this inherits the loop's
+      # own fd0 - the `<<< "$probes_out"` here-string. Without the redirect,
+      # the FIRST iteration's `docker exec -i` drains the rest of that
+      # here-string trying to forward it to psql, so the outer `while read`
+      # sees EOF after one line and every probe past the first silently never
+      # reaches this file (found live, #2842: `probes.csv` carried only the
+      # `auth-fail` row across every real run so far, P2-P4 rows dropped
+      # silently with no error - this is the AC's own "stage breakdown table"
+      # deliverable, so a silent 1-of-4 truncation is not a cosmetic gap).
+      dstatus="$(pg_sql "SELECT status FROM webhook_deliveries WHERE \"eventId\"='$eventid' AND \"connectionId\"='$WEBHOOK_CONNECTION_ID'" 2>/dev/null </dev/null || printf '')"
       printf '%s,%s,%s,%s\n' "$mode" "$status" "$eventid" "${dstatus:-<none - auth-fail/decode-reject never reach webhook_deliveries>}"
     done <<< "$probes_out"
   } > "$probes_dir/probes.csv"
@@ -451,6 +468,19 @@ run_strict() {
 
     f3_reset_queue "$CONN_IDS"
     guard_queue_empty "$CONN_IDS"
+    # Re-assert per arm, not just once in run_strict's pre-flight block -
+    # #2842/#2848 (2026-09-06): a peer scenario sharing this stand (or an
+    # operator, or a plain `docker compose up --force-recreate` silently
+    # resolving a different default - confirmed to happen independently of
+    # any peer scenario) can falsify either of these between arms, and
+    # `manifest_write` re-renders MANIFEST_RUNNER_STATE from whatever the
+    # pre-flight check found, script-wide, every time it is called. Mirrors
+    # guard_queue_empty's own existing per-arm re-check immediately above.
+    # This catches a flip BETWEEN arms; it does not poll continuously during
+    # an arm's own settle-plus-load window, which stays a residual gap on the
+    # same footing `post_guard_attempts` already covers after the fact.
+    guard_runner_state disabled
+    guard_scheduler_off
 
     dir="$(results_dir_init f3-webhook-burst "$label")"
     pool="$dir/pool.json"
@@ -537,7 +567,15 @@ open('$unique_dir/committed-ids.json', 'w').write(json.dumps({'eventIds': ids}))
 # ---------------------------------------------------------------------------
 write_dated_report() {
   local run_group="$1" probes_dir="$2" unique_dir="$3" rc_dir="$4" cc_dir="$5"
-  local report="$RESULTS_ROOT/results-F3-$(date -u +%Y-%m-%d).md"
+  # The package ROOT, never $RESULTS_ROOT: `perf/openlinker-throughput/results/`
+  # is wholesale .gitignore'd (line 100), so a written report would never be
+  # committed - found live, #2842/#2848 (2026-09-06), after the first interim
+  # report was hand-authored straight into the ignored directory. The
+  # per-prestashop-baseline precedent is exactly this split: raw per-run
+  # artifacts stay in an ignored directory, the written report sits at the
+  # package root (`perf/prestashop-baseline/results-A-2026-08-27.md` and
+  # siblings). $LIB_DIR is lib.sh's own package-root variable.
+  local report="$LIB_DIR/results-F3-$(date -u +%Y-%m-%d).md"
   {
     printf '# F3 - webhook ingress burst throughput\n\n'
     printf '_generated %s, run group %s_\n\n' "$(iso_now)" "$run_group"
@@ -550,13 +588,24 @@ write_dated_report() {
     for d in "$unique_dir:unique" "$rc_dir:replay-committed" "$cc_dir:replay-concurrent"; do
       local dir="${d%%:*}" arm="${d##*:}"
       printf '### %s\n\n' "$arm"
-      printf '- verdict: `%s`\n' "$(verdict_read "$dir" | head -1)"
+      # `--` is load-bearing on every one of these three, not stylistic: bash's
+      # printf builtin parses a leading "-" on its FORMAT argument as the
+      # start of an option (it accepts `-v var`), so a format string starting
+      # "- " throws `printf: - : invalid option` and aborts the whole
+      # function - found live, #2842: this is exactly why the two static
+      # "What this did not establish" lines below already carry `--`, and why
+      # this loop's three DYNAMIC lines, missing it, took down report
+      # generation on every real run so far (the partial
+      # `results-F3-2026-09-05.md` this bug produced stops mid-way through
+      # the very first `### unique` section, right where this line used to
+      # sit unguarded).
+      printf -- '- verdict: `%s`\n' "$(verdict_read "$dir" | head -1)"
       if [ -f "$dir/k6-summary.json" ]; then
         read -r reqs non2xx ratio <<< "$(k6_non2xx_ratio "$dir/k6-summary.json")"
-        printf '- requests (measured, n=%s): %s total, %s non-2xx (ratio %s)\n' "$reqs" "$reqs" "$non2xx" "$ratio"
+        printf -- '- requests (measured, n=%s): %s total, %s non-2xx (ratio %s)\n' "$reqs" "$reqs" "$non2xx" "$ratio"
       fi
       if [ -f "$dir/pg-deadlocks.json" ]; then
-        printf '- deadlocks delta (measured): %s\n' "$(jq -r '.deadlocksDelta' "$dir/pg-deadlocks.json")"
+        printf -- '- deadlocks delta (measured): %s\n' "$(jq -r '.deadlocksDelta' "$dir/pg-deadlocks.json")"
       fi
       printf '\n'
     done

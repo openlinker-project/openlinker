@@ -49,10 +49,28 @@ services:
     # so even a single worker needs headroom above the stock image's default
     # of 100; 200 leaves room for a later multi-replica run without editing
     # this file again.
+    # pg_stat_statements + auto_explain (#2843's "instrumentation is a stand
+    # dependency" - both need shared_preload_libraries + a restart, so they
+    # cannot be turned on from inside a running server). auto_explain logs
+    # only plans over its own threshold (2s) to keep the F5 window's own log
+    # volume bounded; pg_stat_statements is reset per dataset size by the
+    # scenario itself, never here.
     command:
       - postgres
       - -c
       - max_connections=200
+      - -c
+      - shared_preload_libraries=pg_stat_statements,auto_explain
+      - -c
+      - pg_stat_statements.track=all
+      - -c
+      - pg_stat_statements.max=10000
+      - -c
+      - auto_explain.log_min_duration=2000
+      - -c
+      - auto_explain.log_analyze=on
+      - -c
+      - auto_explain.log_buffers=on
     ports:
       - '127.0.0.1:${POSTGRES_HOST_PORT:-19432}:5432'
     volumes:
