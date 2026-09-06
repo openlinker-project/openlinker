@@ -2045,10 +2045,12 @@ describe('ListingsController', () => {
       const result = await controller.listOfferMappings({
         withTotal: false,
         limit: 20,
-        offset: 0,
+        offset: 40,
       });
 
       expect(repository.findManyRows).toHaveBeenCalledTimes(1);
+      // The page WINDOW too - see the orders sibling (#2957 review round 6, I5).
+      expect(repository.findManyRows.mock.calls[0][1]).toStrictEqual({ limit: 20, offset: 40 });
       expect(repository.findMany).not.toHaveBeenCalled();
       expect(repository.countByLifecycle).not.toHaveBeenCalled();
       // `in`, not truthiness: `total: 0` passes the latter and is the exact

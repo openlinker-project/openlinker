@@ -247,16 +247,25 @@ describe('OrderRecordRepository paged/count predicate parity (#2944)', () => {
     // I1), because the consequence is operator-visible: `GET /orders?slaState=`
     // and `GET /orders/count?slaState=` are two requests binding two instants,
     // so an order crossing `dispatchByAt` between them is in the page and not
-    // in the total. `<ListPagination>` compensates by enabling Next on any full
-    // page; a reader changing either half needs to know the other exists.
+    // in the total. `<ListPagination>` mitigates it by enabling Next when the
+    // rows OVERRUN the total - not on any full page, which would send the
+    // operator to a blank one at every exact multiple of the page size - and
+    // the mitigation is incomplete at a page boundary. A reader changing either
+    // half needs to know the other exists.
     //
     // Break it by making a SECOND predicate time-dependent and this fails,
     // which is the point: the impurity must stay confined to one filter.
+    // The combined case is INCLUDED (#2957 review round 6, S1): a term that
+    // binds an instant only when two filters are both present is invisible in
+    // every single-filter case, and skipping the one case that sets them all
+    // was the only place it could have shown up.
     const impure: Array<readonly [string, OrderRecordFilters]> = [];
     for (const [label, filters] of CASES) {
-      if (label === 'every filter at once') continue;
       const first = await record(() => repository.countMany(filters));
-      jest.setSystemTime(new Date('2026-06-01T00:00:05Z'));
+      // Two hours, not five seconds: a predicate binding a MINUTE- or
+      // DAY-truncated instant is still impure and would read pure across a
+      // five-second step (#2957 review round 6, S1).
+      jest.setSystemTime(new Date('2026-06-01T02:00:00Z'));
       const second = await record(() => repository.countMany(filters));
       jest.setSystemTime(new Date('2026-06-01T00:00:00Z'));
       if (JSON.stringify(first.predicates) !== JSON.stringify(second.predicates)) {
@@ -264,6 +273,8 @@ describe('OrderRecordRepository paged/count predicate parity (#2944)', () => {
       }
     }
 
-    expect(impure.map(([label]) => label)).toEqual(['slaState']);
+    // The combined case carries `slaState`, so it is impure for the same one
+    // reason rather than a second.
+    expect(impure.map(([label]) => label)).toEqual(['slaState', 'every filter at once']);
   });
 });

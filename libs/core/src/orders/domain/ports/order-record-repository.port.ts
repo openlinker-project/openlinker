@@ -183,10 +183,15 @@ export interface OrderRecordRepositoryPort {
    * `dispatchByAt` against `new Date()`, minted per call - so a page request
    * and a count request bind two different instants, and an order that crosses
    * its deadline between them is in the rows and not in the total. Every other
-   * filter is a pure function of its arguments. `<ListPagination>` compensates
-   * by enabling Next whenever the rows OVERRUN the total, so no row is ever
-   * unreachable; a caller that needs the two to agree exactly must pass one
-   * instant into both, which this port does not yet accept.
+   * filter is a pure function of its arguments.
+   *
+   * OpenLinker's own list UI MITIGATES this by enabling Next when the rows
+   * overrun the total - it does not remove it, and this port must not claim it
+   * does (#2957 review round 6, I2). A row is still unreachable when the stale
+   * total falls exactly on a page boundary, and the mitigation lives in a React
+   * component while `GET /orders/count` is a public route also reached by MCP
+   * tooling and curl. A caller that needs the two to agree exactly must pass
+   * ONE instant into both, which this port does not yet accept.
    *
    * {@link findMany} deliberately does NOT delegate to this method plus
    * {@link countMany}. It keeps the single `getManyAndCount()` it already had,

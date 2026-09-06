@@ -88,8 +88,33 @@ export const ListPagination = forwardRef<HTMLElement, ListPaginationProps>(funct
   // Next there would send the operator to a blank page on every well-behaved
   // list. Only a page that runs PAST its own total is evidence the total is
   // stale, and that is the only case worth overruling it for.
+  // `rowCount > 0` first: this component documents `rowCount: 0` as a supported
+  // state and renders `No results` for it, and without the guard
+  // `offset + 0 > total` would enable Next on an empty pager whenever the
+  // operator has paged past the end (#2957 review round 6, S2). Unreachable
+  // through the four adopters, which short-circuit to an `EmptyState` before
+  // rendering this - but the protection belongs where the state is declared.
   const hasNext =
-    total !== null ? offset + limit < total || offset + rowCount > total : rowCount === limit;
+    rowCount > 0 &&
+    (total !== null ? offset + limit < total || offset + rowCount > total : rowCount === limit);
+
+  /**
+   * The end of the range this page covers, never past the total (#2957 review
+   * round 6, I1).
+   *
+   * `main` clamped this (`Math.min(offset + PAGE_SIZE, total)`) and the first
+   * version of this component did not, which is a regression rather than a
+   * simplification: `/listings` keeps the previous page alive with
+   * `placeholderData` while `offset` is read fresh from the URL, so for the
+   * duration of every page request the two describe different pages. Clicking
+   * Next onto the last page of 1,234 rendered "Showing 1221-1240 of 1,234" -
+   * a range past its own total, which is the wrong-number failure this epic
+   * exists to prevent.
+   *
+   * With no total there is nothing to clamp against, and `offset + rowCount` is
+   * exactly the floor the rows prove.
+   */
+  const rangeEnd = total !== null ? Math.min(offset + rowCount, total) : offset + rowCount;
 
   const totalUnavailable = totalState === 'unavailable';
 
@@ -111,7 +136,7 @@ export const ListPagination = forwardRef<HTMLElement, ListPaginationProps>(funct
         ) : (
           <>
             Showing {(offset + 1).toLocaleString()}&ndash;
-            {(offset + rowCount).toLocaleString()} of{' '}
+            {rangeEnd.toLocaleString()} of{' '}
             {total !== null ? (
               <span className="tabular">{formatPaginatedTotal(total, offset + rowCount)}</span>
             ) : (

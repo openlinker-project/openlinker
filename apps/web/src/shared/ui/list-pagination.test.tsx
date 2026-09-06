@@ -155,6 +155,33 @@ describe('ListPagination (#2945)', () => {
       expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled();
     });
 
+    it('enables Next mid-list when the known total exceeds the page', () => {
+      // The component's PRIMARY rule, and it was deletable: removing
+      // `offset + limit < total` passed every test in this file and every
+      // migrated page spec, while disabling Next on every mid-list page of all
+      // four lists (#2957 review round 6, I4).
+      renderPagination({ offset: 0, limit: 20, rowCount: 20, total: 1234, totalState: 'known' });
+      expect(screen.getByRole('button', { name: 'Next' })).toBeEnabled();
+    });
+
+    it('disables Next on a SHORT page even when the total is known', () => {
+      // Pins `rowCount` against `limit` in the overrun clause: with `limit`
+      // substituted for `rowCount` there, `20 + 20 > 25` enables Next over a
+      // page that already reached the end.
+      renderPagination({ offset: 20, limit: 20, rowCount: 5, total: 25, totalState: 'known' });
+      expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+    });
+
+    it('never states a range past its own total', () => {
+      // `main` clamped this and the first version of the component did not
+      // (#2957 review round 6, I1). On `/listings` the rows are a placeholder
+      // from the previous page while `offset` is already the new page's, so
+      // clicking Next onto the last page rendered "Showing 1221-1240 of 1,234".
+      renderPagination({ offset: 1220, limit: 20, rowCount: 20, total: 1234, totalState: 'known' });
+      expect(screen.getByText(/Showing 1,221.*1,234 of/)).toBeInTheDocument();
+      expect(screen.queryByText(/1,240/)).not.toBeInTheDocument();
+    });
+
     it('lets a known total overrule the full-page guess at the boundary', () => {
       // Exactly 20 rows in total: the page is full, but nothing follows it.
       renderPagination({ offset: 0, limit: 20, rowCount: 20, total: 20, totalState: 'known' });

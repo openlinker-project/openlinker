@@ -657,18 +657,24 @@ export class VariantsController {
   async searchVariants(
     @Query() query: ListProductVariantsQueryDto
   ): Promise<PaginatedProductVariantsResponseDto> {
-    const { search, withTotal, limit = 20, offset = 0 } = query;
+    const { withTotal, limit = 20, offset = 0 } = query;
 
     // `?withTotal=false` omits `total` rather than reporting 0 (#2944); the
     // second stage is `GET /variants/search/count`. This is the variant read
     // with the non-sargable predicate - the SKU / EAN / GTIN `ILIKE` - so it
     // is the one where the split earns its keep.
     if (withTotal === false) {
-      const rows = await this.productsService.listVariantRows({ search }, { limit, offset });
+      const rows = await this.productsService.listVariantRows(toProductVariantFilters(query), {
+        limit,
+        offset,
+      });
       return { items: rows.map((v) => this.toVariantDto(v)), limit, offset };
     }
 
-    const { items, total } = await this.productsService.listVariants({ search }, { limit, offset });
+    const { items, total } = await this.productsService.listVariants(
+      toProductVariantFilters(query),
+      { limit, offset }
+    );
 
     return {
       items: items.map((v) => this.toVariantDto(v)),

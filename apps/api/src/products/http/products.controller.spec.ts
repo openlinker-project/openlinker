@@ -664,9 +664,14 @@ describe('ProductsController', () => {
     it('reads the page ALONE and omits total when withTotal=false', async () => {
       productsService.listProductRows.mockResolvedValue([makeProduct()]);
 
-      const result = await controller.listProducts({ withTotal: false, limit: 20, offset: 0 });
+      const result = await controller.listProducts({ withTotal: false, limit: 20, offset: 40 });
 
       expect(productsService.listProductRows).toHaveBeenCalledTimes(1);
+      // The page WINDOW too - see the orders sibling (#2957 review round 6, I5).
+      expect(productsService.listProductRows.mock.calls[0][1]).toStrictEqual({
+        limit: 20,
+        offset: 40,
+      });
       expect(productsService.listProducts).not.toHaveBeenCalled();
       // `in`, not truthiness: `total: 0` passes the latter while being exactly
       // the failure the omission exists to prevent.
@@ -834,14 +839,18 @@ describe('VariantsController', () => {
       productsService.listVariantRows.mockResolvedValue([]);
       productsService.countVariants.mockResolvedValue(4);
 
-      await controller.searchVariants({ search: 'abc', withTotal: false, limit: 20, offset: 0 });
+      await controller.searchVariants({ search: 'abc', withTotal: false, limit: 20, offset: 40 });
       const counted = await controller.countSearchVariants({ search: 'abc' });
 
-      expect(productsService.listVariantRows).toHaveBeenCalledWith(
-        { search: 'abc' },
-        { limit: 20, offset: 0 }
-      );
-      expect(productsService.countVariants).toHaveBeenCalledWith({ search: 'abc' });
+      const [listFilters, listPage] = productsService.listVariantRows.mock.calls[0];
+      const [countFilters] = productsService.countVariants.mock.calls[0];
+      expect(countFilters).toEqual(listFilters);
+      // `toStrictEqual`, and the page window asserted too (#2957 review round
+      // 6, I3/I5): `toHaveBeenCalledWith` uses `toEqual` semantics, so a new
+      // filter read from an unset query field satisfies a literal that omits
+      // it - and no test anywhere pinned a non-zero offset on a rows-only read.
+      expect(countFilters).toStrictEqual({ search: 'abc' });
+      expect(listPage).toStrictEqual({ limit: 20, offset: 40 });
       expect(counted).toEqual({ total: 4 });
     });
   });

@@ -1443,9 +1443,14 @@ describe('OrdersController', () => {
     it('reads the page ALONE and omits total when withTotal=false', async () => {
       repository.findManyRows.mockResolvedValue([]);
 
-      const result = await controller.listOrders({ withTotal: false, limit: 20, offset: 0 });
+      const result = await controller.listOrders({ withTotal: false, limit: 20, offset: 40 });
 
       expect(repository.findManyRows).toHaveBeenCalledTimes(1);
+      // The page WINDOW, not only the filters (#2957 review round 6, I5). Every
+      // `withTotal=false` assertion in the repo passed `offset: 0`, so
+      // `{ limit, offset }` -> `{ limit, offset: 0 }` survived the whole suite -
+      // page 2 showing page 1's rows under a correct total, with Next enabled.
+      expect(repository.findManyRows.mock.calls[0][1]).toStrictEqual({ limit: 20, offset: 40 });
       expect(repository.findMany).not.toHaveBeenCalled();
       expect('total' in result).toBe(false);
       expect(result.total).toBeUndefined();

@@ -123,6 +123,27 @@ describe('Paginated total split (integration, #2944)', () => {
       expect(total).toBe(6);
     });
 
+    it('windows the rows-only read at the offset it was given', async () => {
+      await seed();
+
+      // Every `withTotal=false` assertion in the repo passed `offset: 0`, so
+      // `{ limit, offset }` -> `{ limit, offset: 0 }` survived the whole suite
+      // (#2957 review round 6, I5) - page 2 would show page 1's rows under a
+      // correct total. Proved here against real SQL rather than a mock's
+      // arguments, and the pages must not overlap.
+      const first = await repository.findManyRows({}, { limit: 2, offset: 0 });
+      const second = await repository.findManyRows({}, { limit: 2, offset: 2 });
+
+      expect(first).toHaveLength(2);
+      expect(second).toHaveLength(2);
+      const firstIds = first.map((r) => r.internalOrderId);
+      const secondIds = second.map((r) => r.internalOrderId);
+      expect(secondIds.some((id) => firstIds.includes(id))).toBe(false);
+      // And the same window the combined read returns for that offset.
+      const combined = await repository.findMany({}, { limit: 2, offset: 2 });
+      expect(secondIds).toEqual(combined.items.map((r) => r.internalOrderId));
+    });
+
     it('moves both paths together when the non-sargable jsonb filter changes', async () => {
       await seed();
 
