@@ -406,6 +406,31 @@ JSON
  "credentials":{"accessToken":"stub-token-b"}}
 JSON
 )"
+
+  # perf-webhook-ingress (#2842) - a connection whose ONLY job is to be a
+  # legal target for a signed POST /webhooks/prestashop/:connectionId. It
+  # reuses perf-prestashop's config shape (same stub PrestaShop, same
+  # webservice key) so nothing new has to be provisioned, but declares
+  # `enabledCapabilities: ["OrderSource"]` ALONE - deliberately different
+  # from perf-prestashop's ["ProductMaster","InventoryMaster",
+  # "OrderProcessorManager"]. `InboundRoutingPolicyService.resolveRoute`
+  # (libs/core/src/sync/application/services/inbound-routing-policy.service.ts)
+  # gates the `order` domain on `OrderSource` and the `product` domain on
+  # `ProductMaster` - so on THIS connection an `order.*` webhook event is
+  # routable (job_enqueued) while a `product.*` one is not (deadlettered),
+  # which is exactly the split probe P3/P4 needs (see the F3 scenario
+  # script's differential-probe section). Measuring against perf-prestashop
+  # itself would not show this split: it has no `OrderSource` at all, so
+  # EVERY order event on it deadletters and the "routed" arm of the burst
+  # would silently measure a one-insert transaction instead of the real
+  # two-insert gate.
+  ol_ensure_connection WEBHOOK_CONN_ID 'perf-webhook-ingress' "$(cat <<JSON
+{"name":"perf-webhook-ingress","platformType":"prestashop",
+ "enabledCapabilities":["OrderSource"],
+ "config":{"baseUrl":"$PS_INTERNAL_URL","shopId":1},
+ "credentials":{"webserviceApiKey":"${PS_WS_KEY:-}"}}
+JSON
+)"
 }
 
 # ---------------------------------------------------------------------------
@@ -475,7 +500,7 @@ except Exception: sys.exit(1)'
 step_verify_connections() {
   log "--- connection tests ---"
   local name id
-  for pair in "perf-prestashop:${PS_CONN_ID:-}" "perf-woocommerce:${WC_CONN_ID:-}"; do
+  for pair in "perf-prestashop:${PS_CONN_ID:-}" "perf-woocommerce:${WC_CONN_ID:-}" "perf-webhook-ingress:${WEBHOOK_CONN_ID:-}"; do
     name="${pair%%:*}"; id="${pair##*:}"
     [ -n "$id" ] || continue
     if connection_test "$id"; then
@@ -513,6 +538,7 @@ PS_CONNECTION_ID=${PS_CONN_ID:-}
 WC_CONNECTION_ID=${WC_CONN_ID:-}
 ALLEGRO_A_CONNECTION_ID=${ALLEGRO_A_ID:-}
 ALLEGRO_B_CONNECTION_ID=${ALLEGRO_B_ID:-}
+WEBHOOK_CONNECTION_ID=${WEBHOOK_CONN_ID:-}
 PS_WEBSERVICE_KEY=${PS_WS_KEY:-}
 WC_CONSUMER_KEY=${WC_CK:-}
 WC_CONSUMER_SECRET=${WC_CS:-}

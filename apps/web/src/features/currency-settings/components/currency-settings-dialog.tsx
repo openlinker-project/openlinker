@@ -57,9 +57,21 @@ export function CurrencySettingsDialog({
   view,
   onClose,
 }: CurrencySettingsDialogProps): ReactElement {
+  // `view` reflects whatever the API returned; a degraded response (a
+  // partial payload, a field dropped by version skew) can arrive as a
+  // successful query with these fields missing. Defaulting the arrays to
+  // empty and the currency to `''` degrades into "no coverage gap known" /
+  // "nothing else stamped" / "nothing selected yet" rather than crashing —
+  // the same no-positive-claim-from-absent-data convention documented for
+  // the returns surfaces in docs/architecture-overview.md.
+  const reportingCurrency = view.reportingCurrency ?? '';
+  const coverage = view.coverage ?? [];
+  const stampedOrders = view.stampedOrders ?? [];
+  const supportedCurrencies = view.supportedCurrencies ?? [];
+
   const { showToast } = useToast();
   const mutation = useSetReportingCurrencyMutation();
-  const [selected, setSelected] = useState(view.reportingCurrency);
+  const [selected, setSelected] = useState(reportingCurrency);
   const [acknowledged, setAcknowledged] = useState(false);
 
   // Reset whenever the dialog opens, matching the ai-provider-key-dialog /
@@ -73,17 +85,17 @@ export function CurrencySettingsDialog({
   const { reset: resetMutation } = mutation;
   useEffect(() => {
     if (open) {
-      setSelected(view.reportingCurrency);
+      setSelected(reportingCurrency);
       setAcknowledged(false);
       resetMutation();
     }
   }, [open, resetMutation]);
 
-  const selectedCoverage = view.coverage.find((entry) => entry.reportingCurrency === selected);
+  const selectedCoverage = coverage.find((entry) => entry.reportingCurrency === selected);
   const hasCoverageGap = (selectedCoverage?.uncoverableCurrencies.length ?? 0) > 0;
 
-  const otherEraStamped = view.stampedOrders.filter((entry) => entry.reportingCurrency !== selected);
-  const willSplitHistory = selected !== view.reportingCurrency && otherEraStamped.length > 0;
+  const otherEraStamped = stampedOrders.filter((entry) => entry.reportingCurrency !== selected);
+  const willSplitHistory = selected !== reportingCurrency && otherEraStamped.length > 0;
 
   const canSubmit = selected.length > 0 && (!hasCoverageGap || acknowledged);
 
@@ -175,7 +187,7 @@ export function CurrencySettingsDialog({
                 setAcknowledged(false);
               }}
             >
-              {view.supportedCurrencies.map((code) => (
+              {supportedCurrencies.map((code) => (
                 <option key={code} value={code}>
                   {code}
                 </option>

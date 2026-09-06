@@ -1,0 +1,404 @@
+# The isolated `lab` measurement stand (#2854, epic #2840).
+#
+# A dedicated, wipeable stack for perf/openlinker-throughput/**'s scenarios -
+# deliberately NOT a third long-lived environment beside `demo` and
+# `openlinker` (dev). Nobody uses it interactively and its database is
+# zeroed before each measurement campaign.
+#
+# Run it with:
+#   docker compose -f docker-compose.lab.yml --env-file .env.lab -p lab up -d
+#
+# `--env-file .env.lab` REPLACES compose's default `.env` lookup rather than
+# merging with it, so this stack cannot pick up the repo root `.env` the
+# `openlinker` / `ol-demo-fresh` stacks use, and vice versa. `-p lab` is
+# belt-and-suspenders - `name: lab` below already pins the project name, but
+# passing it explicitly protects against an older Compose that ignores the
+# top-level `name:` key.
+#
+# Ports are shifted into the 19xxx range (see .env.lab.example) so this
+# stand can run alongside both `openlinker` (dev, :3000/:8080/:8090/...) and
+# `ol-demo-fresh` (:13000/:18080/:8090/...) without a port collision.
+#
+# `api` / `worker` reuse the ALREADY-BUILT `ol-perf:api` / `ol-perf:worker`
+# images (built from this exact commit, carrying
+# org.opencontainers.image.revision = the working tree's HEAD) - this file
+# deliberately carries no `build:` section for either. If the working tree
+# moves past that commit, rebuild those images before trusting `guard_build`.
+#
+# `migrate` reuses `ol-perf:api` too, rather than a `target: base` build the
+# way docker-compose.demo.yml's migrate service does - that stage isn't
+# available without a rebuild, and it turns out unnecessary: the production
+# image's compiled apps/api/dist/apps/api/src/database/data-source.js needs
+# no ts-node registration (it require()s only compiled .js siblings, and its
+# entity/migration globs already resolve against the compiled libs/core/dist
+# tree that ships in the same image) - verified live against this image
+# before writing this file.
+name: lab
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: lab-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: '${POSTGRES_PASSWORD:-lab-postgres}'
+      POSTGRES_DB: openlinker
+    # guard_connection_budget (perf/openlinker-throughput/lib.sh) requires
+    # OL_DB_POOL_MAX x (1 api + N workers) < max_connections. The code
+    # default OL_DB_POOL_MAX is 40 (libs/shared/src/database/database.module.ts),
+    # so even a single worker needs headroom above the stock image's default
+    # of 100; 200 leaves room for a later multi-replica run without editing
+    # this file again.
+    # pg_stat_statements + auto_explain (#2843's "instrumentation is a stand
+    # dependency" - both need shared_preload_libraries + a restart, so they
+    # cannot be turned on from inside a running server). auto_explain logs
+    # only plans over its own threshold (2s) to keep the F5 window's own log
+    # volume bounded; pg_stat_statements is reset per dataset size by the
+    # scenario itself, never here.
+    #
+    # statement_timeout=30s (#2934): this was, until this change, a LIVE-ONLY
+    # `ALTER ROLE postgres SET statement_timeout = ...` applied by
+    # f5-read-path.sh's own apply_statement_timeout() and never declared
+    # anywhere - so it existed only in a running database, did not survive a
+    # stand rebuild, and no run's generic manifest recorded that it was in
+    # force (found #2843/#2934: the same role's own 1M-order seed got
+    # cancelled mid-transaction by it, before the seeder learned to
+    # `SET statement_timeout = 0` for its own session - see seed-lib.sh's
+    # seed_sql()). It bounds the API's runaway-read risk for EVERY session on
+    # this stand now, server-wide, from boot - f5-read-path.sh's own
+    # apply_statement_timeout() still runs (still useful for an operator who
+    # wants a DIFFERENT STATEMENT_TIMEOUT_MS for one F5 run) and simply
+    # re-asserts the same 30s by default via its own ALTER ROLE, which is
+    # captured into every scenario's manifest generically now - see
+    # manifest_gather_environment's `postgres.nonDefaultSettings` in lib.sh.
+    command:
+      - postgres
+      - -c
+      - max_connections=200
+      - -c
+      - shared_preload_libraries=pg_stat_statements,auto_explain
+      - -c
+      - pg_stat_statements.track=all
+      - -c
+      - pg_stat_statements.max=10000
+      - -c
+      - auto_explain.log_min_duration=2000
+      - -c
+      - auto_explain.log_analyze=on
+      - -c
+      - auto_explain.log_buffers=on
+      - -c
+      - statement_timeout=30000
+    ports:
+      - '127.0.0.1:${POSTGRES_HOST_PORT:-19432}:5432'
+    volumes:
+      - lab-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:8.4-alpine
+    container_name: lab-redis
+    command:
+      - redis-server
+      - --maxmemory
+      - 2gb
+      - --maxmemory-policy
+      - noeviction
+    ports:
+      - '127.0.0.1:${REDIS_HOST_PORT:-19379}:6379'
+    volumes:
+      - lab-redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mysql:
+    image: mysql:8.4.7-oraclelinux9
+    container_name: lab-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: '${PRESTASHOP_MYSQL_ROOT_PASSWORD:-lab-root}'
+      MYSQL_DATABASE: prestashop
+      MYSQL_USER: prestashop
+      MYSQL_PASSWORD: '${PRESTASHOP_MYSQL_PASSWORD:-lab-prestashop}'
+    ports:
+      - '127.0.0.1:${MYSQL_HOST_PORT:-19306}:3306'
+    volumes:
+      - lab-mysql-data:/var/lib/mysql
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'mysqladmin',
+          'ping',
+          '-h',
+          'localhost',
+          '-u',
+          'root',
+          '-p${PRESTASHOP_MYSQL_ROOT_PASSWORD:-lab-root}',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 180s
+
+  woocommerce-mysql:
+    image: mysql:8.4.7-oraclelinux9
+    container_name: lab-woocommerce-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: '${WOOCOMMERCE_MYSQL_ROOT_PASSWORD:-lab-root}'
+      MYSQL_DATABASE: woocommerce
+      MYSQL_USER: woocommerce
+      MYSQL_PASSWORD: '${WOOCOMMERCE_MYSQL_PASSWORD:-lab-woocommerce}'
+    ports:
+      - '127.0.0.1:${WOOCOMMERCE_MYSQL_HOST_PORT:-19307}:3306'
+    volumes:
+      - lab-woocommerce-mysql-data:/var/lib/mysql
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'mysqladmin',
+          'ping',
+          '-h',
+          'localhost',
+          '-u',
+          'root',
+          '-p${WOOCOMMERCE_MYSQL_ROOT_PASSWORD:-lab-root}',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  prestashop:
+    image: prestashop/prestashop:9.0.2-2.0-classic-8.4
+    container_name: lab-prestashop
+    environment:
+      PS_DOMAIN: 'localhost:${PRESTASHOP_HOST_PORT:-19080}'
+      PS_FOLDER_ADMIN: admin
+      PS_COUNTRY: US
+      PS_LANGUAGE: en
+      PS_DB_SERVER: mysql
+      PS_DB_NAME: prestashop
+      PS_DB_USER: prestashop
+      PS_DB_PASSWD: '${PRESTASHOP_MYSQL_PASSWORD:-lab-prestashop}'
+      PS_DB_PREFIX: ps_
+      PS_ENABLE_SSL: 0
+      PS_DEMO_MODE: 0
+      PS_DEV_MODE: 0
+      PS_INSTALL_AUTO: 1
+      DB_SERVER: mysql
+      DB_NAME: prestashop
+      DB_USER: prestashop
+      DB_PASSWD: '${PRESTASHOP_MYSQL_PASSWORD:-lab-prestashop}'
+      DB_PREFIX: ps_
+      ADMIN_MAIL: '${ADMIN_MAIL:-demo@lab.local}'
+      ADMIN_PASSWD: '${ADMIN_PASSWD:-lab-prestashop-admin}'
+    ports:
+      - '127.0.0.1:${PRESTASHOP_HOST_PORT:-19080}:80'
+    volumes:
+      - lab-prestashop-data:/var/www/html
+      # Same module source bind-mount docker-compose.yml uses - the module
+      # itself is installed by perf/openlinker-throughput/bootstrap.sh
+      # (step_module), not by a post-install script here.
+      - ./apps/prestashop-module/openlinker:/var/www/html/modules/openlinker
+      - ./docker/prestashop/post-install:/tmp/post-install-scripts:ro
+      - ./docker/prestashop/post-install-lib:/tmp/post-install-lib:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', '-o', '/dev/null', 'http://localhost:80']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  woocommerce:
+    image: bitnamilegacy/wordpress:6.7.1
+    platform: linux/amd64
+    container_name: lab-woocommerce
+    depends_on:
+      woocommerce-mysql:
+        condition: service_healthy
+    environment:
+      WORDPRESS_DATABASE_HOST: woocommerce-mysql
+      WORDPRESS_DATABASE_PORT_NUMBER: 3306
+      WORDPRESS_DATABASE_NAME: woocommerce
+      WORDPRESS_DATABASE_USER: woocommerce
+      WORDPRESS_DATABASE_PASSWORD: '${WOOCOMMERCE_MYSQL_PASSWORD:-lab-woocommerce}'
+      WORDPRESS_USERNAME: '${WOOCOMMERCE_ADMIN_USERNAME:-admin}'
+      WORDPRESS_PASSWORD: '${WOOCOMMERCE_ADMIN_PASSWORD:-lab-wc-admin}'
+      WORDPRESS_EMAIL: '${WOOCOMMERCE_ADMIN_EMAIL:-admin@lab.local}'
+      WORDPRESS_SITE_TITLE: OpenLinker Lab Stand
+      WORDPRESS_PLUGINS: https://downloads.wordpress.org/plugin/woocommerce.10.1.0.zip
+    ports:
+      - '127.0.0.1:${WOOCOMMERCE_HOST_PORT:-19082}:8080'
+    volumes:
+      - lab-woocommerce-data:/bitnami/wordpress
+      # force-https.php is NOT bind-mounted here (tried first, reverted):
+      # bind-mounting a file under /bitnami/wordpress/wp-content/ before the
+      # Bitnami entrypoint's first boot creates the mu-plugins directory
+      # ahead of that entrypoint's own "is this a fresh install or a
+      # restore?" detection, which then took the restore branch against an
+      # empty volume and failed with "wp-config.php not found" (verified
+      # live). It is copied in AFTER the container reports healthy instead -
+      # see docker-compose.lab.yml's own top comment / the report for the
+      # one-line `docker cp` this stand-up needs.
+    healthcheck:
+      test: ['CMD-SHELL', 'php -r ''exit(strpos((string) @file_get_contents("http://localhost:8080/wp-json/wc/v3/"), "wc\/v3") === false ? 1 : 0);''']
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+
+  # Internal TLS terminator in front of `woocommerce` (#2854). See
+  # perf/openlinker-throughput/stand/wc-tls/generate-certs.sh, which must be
+  # run once before `up` - this service bind-mounts its output rather than
+  # building a custom image, so no `docker build` is needed anywhere in this
+  # stand.
+  wc-tls:
+    image: nginx:1.27-alpine
+    container_name: lab-wc-tls
+    volumes:
+      - ./perf/openlinker-throughput/stand/wc-tls/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./perf/openlinker-throughput/stand/wc-tls/certs/server.crt:/etc/nginx/certs/server.crt:ro
+      - ./perf/openlinker-throughput/stand/wc-tls/certs/server.key:/etc/nginx/certs/server.key:ro
+    depends_on:
+      woocommerce:
+        condition: service_healthy
+    # No published port - reachable only on the `lab` compose network, at
+    # https://wc-tls (the OpenLinker WooCommerce connection's siteUrl).
+
+  # One-shot schema bootstrap. Runs the SAME compiled data-source the api/
+  # worker processes use (apps/api/dist/apps/api/src/database/data-source.js),
+  # invoked directly through the typeorm CLI binary already in
+  # node_modules/.bin - no ts-node, no rebuild. `migration:run` is
+  # idempotent: re-running it against an already-migrated volume is a no-op.
+  migrate:
+    image: ol-perf:api
+    container_name: lab-migrate
+    working_dir: /app
+    entrypoint: []
+    # `sh node_modules/.bin/typeorm ...`, not `node ...` - the .bin shim is
+    # a POSIX `#!/bin/sh` wrapper (it resolves NODE_PATH into the pnpm
+    # store, then execs the real `typeorm/cli.js`), so running it with
+    # `node` directly fails with a SyntaxError on its shebang line (verified
+    # live). apps/api/package.json's own migration:run script invokes it via
+    # `bash`, but this alpine-based image has no bash at all (also verified
+    # live) - `sh` (busybox ash) runs the same POSIX-compatible script fine.
+    command:
+      [
+        'sh',
+        'node_modules/.bin/typeorm',
+        'migration:run',
+        '-d',
+        'apps/api/dist/apps/api/src/database/data-source.js',
+      ]
+    environment:
+      NODE_ENV: production
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: postgres
+      DB_PASSWORD: '${POSTGRES_PASSWORD:-lab-postgres}'
+      DB_DATABASE: openlinker
+      OPENLINKER_CREDENTIALS_ENCRYPTION_KEY: '${OPENLINKER_CREDENTIALS_ENCRYPTION_KEY:?set OPENLINKER_CREDENTIALS_ENCRYPTION_KEY in .env.lab (see .env.lab.example) - generate with: openssl rand -base64 32}'
+    restart: 'no'
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    image: ol-perf:api
+    container_name: lab-api
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: postgres
+      DB_PASSWORD: '${POSTGRES_PASSWORD:-lab-postgres}'
+      DB_DATABASE: openlinker
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: '${JWT_SECRET:?set JWT_SECRET in .env.lab (see .env.lab.example) - generate with: openssl rand -hex 32}'
+      JWT_EXPIRES_IN: '${JWT_EXPIRES_IN:-1d}'
+      OL_PII_HASH_SALT: '${OL_PII_HASH_SALT:?set OL_PII_HASH_SALT in .env.lab (see .env.lab.example) - generate with: openssl rand -hex 32}'
+      OPENLINKER_CREDENTIALS_ENCRYPTION_KEY: '${OPENLINKER_CREDENTIALS_ENCRYPTION_KEY:?set OPENLINKER_CREDENTIALS_ENCRYPTION_KEY in .env.lab (see .env.lab.example) - generate with: openssl rand -base64 32}'
+      OL_BOOTSTRAP_ADMIN_PASSWORD: '${OL_BOOTSTRAP_ADMIN_PASSWORD:-admin}'
+      # guard_demo_mode_off (lib.sh) - must be anything but 'true'.
+      OL_DEMO_MODE: '${OL_DEMO_MODE:-false}'
+      OL_REGISTRATION_ENABLED: 'false'
+      OL_CORS_ORIGIN: 'http://localhost:${API_HOST_PORT:-19000}'
+      WEB_URL: 'http://localhost:${API_HOST_PORT:-19000}'
+      # guard_log_level (lib.sh) - must be a positive integer, or
+      # apps/{api,worker}'s error-level full-body log sites (allegro-http-client.ts,
+      # prestashop-webservice.client.ts) write uncapped bodies regardless of
+      # log LEVEL.
+      OL_LOG_BODY_MAX_BYTES: '${OL_LOG_BODY_MAX_BYTES:-8192}'
+      OL_REPORTING_CURRENCY: '${OL_REPORTING_CURRENCY:-PLN}'
+      PRESTASHOP_BASE_URL: 'http://prestashop'
+      # Trust the wc-tls self-signed CA rather than disabling certificate
+      # validation stack-wide (the #2590 campaign's NODE_TLS_REJECT_UNAUTHORIZED=0,
+      # which would also blind this process to a real MITM on every OTHER
+      # outbound HTTPS call it makes).
+      NODE_EXTRA_CA_CERTS: /etc/ssl/lab/wc-tls-ca.pem
+    ports:
+      - '127.0.0.1:${API_HOST_PORT:-19000}:3000'
+    volumes:
+      - ./perf/openlinker-throughput/stand/wc-tls/certs/ca.pem:/etc/ssl/lab/wc-tls-ca.pem:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    image: ol-perf:worker
+    container_name: lab-worker
+    environment:
+      NODE_ENV: production
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: postgres
+      DB_PASSWORD: '${POSTGRES_PASSWORD:-lab-postgres}'
+      DB_DATABASE: openlinker
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      OL_PII_HASH_SALT: '${OL_PII_HASH_SALT:?set OL_PII_HASH_SALT in .env.lab (see .env.lab.example) - generate with: openssl rand -hex 32}'
+      OPENLINKER_CREDENTIALS_ENCRYPTION_KEY: '${OPENLINKER_CREDENTIALS_ENCRYPTION_KEY:?set OPENLINKER_CREDENTIALS_ENCRYPTION_KEY in .env.lab (see .env.lab.example) - generate with: openssl rand -base64 32}'
+      OL_REPORTING_CURRENCY: '${OL_REPORTING_CURRENCY:-PLN}'
+      # guard_scheduler_off / guard_runner_state disabled (lib.sh) - F3's own
+      # gate. Default OFF here; a scenario that deliberately wants the
+      # scheduler/runner on (a mixed-workload campaign) overrides these in
+      # .env.lab per-run rather than editing this file.
+      OL_SCHEDULER_ENABLED: '${OL_SCHEDULER_ENABLED:-false}'
+      WORKER_RUNNER_ENABLED: '${WORKER_RUNNER_ENABLED:-false}'
+      OL_LOG_BODY_MAX_BYTES: '${OL_LOG_BODY_MAX_BYTES:-8192}'
+      NODE_EXTRA_CA_CERTS: /etc/ssl/lab/wc-tls-ca.pem
+    volumes:
+      - ./perf/openlinker-throughput/stand/wc-tls/certs/ca.pem:/etc/ssl/lab/wc-tls-ca.pem:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  lab-postgres-data:
+  lab-redis-data:
+  lab-mysql-data:
+  lab-prestashop-data:
+  lab-woocommerce-mysql-data:
+  lab-woocommerce-data:

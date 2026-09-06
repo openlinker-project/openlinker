@@ -107,4 +107,25 @@ describe('CurrencySettingsDialog', () => {
     fireEvent.change(select, { target: { value: 'PLN' } });
     expect(liveRegion().textContent).toBe('');
   });
+
+  it('does not throw when `view` arrives with array fields missing (#2926)', async () => {
+    // The tile mounts this dialog unconditionally (`open` merely controls
+    // Radix's own visibility), so the component body runs on every render of
+    // the settings page — a degraded API response (a 500 handled into an
+    // empty object, a partial payload, a field dropped by version skew)
+    // must not crash it even while closed.
+    const degradedView = {
+      reportingCurrency: 'PLN',
+      source: 'setting',
+      updatedAt: null,
+      updatedBy: null,
+      rateSource: 'nbp',
+      rateDateRule: 'prev-business-day',
+      // coverage / stampedOrders / supportedCurrencies deliberately absent
+    } as unknown as CurrencySettingsView;
+
+    expect(() => {
+      renderWithProviders(<CurrencySettingsDialog open={false} view={degradedView} onClose={vi.fn()} />);
+    }).not.toThrow();
+  });
 });

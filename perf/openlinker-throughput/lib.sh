@@ -227,6 +227,76 @@ enqueue_perf_job() {
 # would not be a cap at all). The no-op UPDATE (WHERE 1=0) exercises the same
 # write path enqueue_perf_job uses without touching a real row.
 # ---------------------------------------------------------------------------
+# guard_stand_exclusive <scenario-name> - ONE scenario may measure a stand at
+# a time.
+#
+# This exists because two scenarios ran against the `lab` stand concurrently
+# and silently invalidated each other (#2842/#2848, 2026-09-06). F3 declares
+# `guard_runner_state disabled`; F2 needs the runner ENABLED and flips it. F3's
+# guards had passed a minute earlier, and because `manifest_write` re-renders
+# MANIFEST_RUNNER_STATE per arm from that single check, two of its arms carried
+# `"runnerState": "disabled"` for windows in which the runner was in fact
+# executing jobs. `post_guard_attempts` caught one of them; nothing would have
+# caught the other.
+#
+# The general shape is worth stating, because it is not specific to the runner:
+# **every pre-flight guard describes the world at script start, and a peer with
+# write access to the stand can falsify any of them before the window opens.**
+# A guard cannot defend against that on its own - only exclusivity can.
+#
+# Held in the stand's own Redis rather than a local lock file: the stand is the
+# contended resource, two scenarios can legitimately be launched from different
+# working trees or by different people, and a lock local to one checkout would
+# not see the other. `SET NX` is the atomic claim; nothing here reads the key
+# and then decides on it.
+#
+# The TTL is a crash bound, not a run bound. A holder that dies leaves the key
+# behind, and the next scenario is refused until it expires - so the TTL is the
+# longest a mistake can block the stand, and OL_STAND_LOCK_TTL_SECS is the knob
+# for a genuinely long sweep. Breaking a stale lock by hand is one `redis-cli
+# DEL` and the refusal message says so, rather than offering a --force flag
+# that would be reached for reflexively.
+STAND_LOCK_KEY="${STAND_LOCK_KEY:-perf:stand:exclusive}"
+STAND_LOCK_TTL_SECS="${OL_STAND_LOCK_TTL_SECS:-3600}"
+STAND_LOCK_HELD=0
+
+guard_stand_exclusive() {
+  local scenario="${1:?guard_stand_exclusive: scenario name required}" owner holder set_result
+  owner="$scenario:pid$$@$(hostname 2>/dev/null || printf 'unknown-host'):$(iso_now)"
+
+  set_result="$(redis_cli SET "$STAND_LOCK_KEY" "$owner" NX EX "$STAND_LOCK_TTL_SECS" 2>/dev/null || printf '')"
+  if [ "$set_result" != "OK" ]; then
+    holder="$(redis_cli GET "$STAND_LOCK_KEY" 2>/dev/null || printf '<unreadable>')"
+    die "guard_stand_exclusive: the stand is already being measured by [${holder:-<unknown>}].
+  Two scenarios on one stand invalidate each other - they disagree about the
+  runner posture, the scheduler, and the queue, and a manifest written by one
+  will assert conditions the other has already changed.
+  Wait for it to finish, or if you are certain that holder is dead:
+    docker exec -i $REDIS_CONTAINER redis-cli DEL $STAND_LOCK_KEY"
+  fi
+
+  STAND_LOCK_HELD=1
+  # Released on ANY exit path, including a guard's own `die` - a scenario that
+  # aborts must not leave the stand locked for the whole TTL.
+  trap 'release_stand_exclusive' EXIT
+  log "guard_stand_exclusive ok (held by $owner, ttl ${STAND_LOCK_TTL_SECS}s)"
+}
+
+# Releases only a lock THIS process holds. The value check matters: without it
+# a scenario whose lock had already expired would delete the key a different,
+# legitimately-running scenario has since taken.
+release_stand_exclusive() {
+  [ "$STAND_LOCK_HELD" = "1" ] || return 0
+  STAND_LOCK_HELD=0
+  local current
+  current="$(redis_cli GET "$STAND_LOCK_KEY" 2>/dev/null || printf '')"
+  case "$current" in
+    *":pid$$@"*) redis_cli DEL "$STAND_LOCK_KEY" >/dev/null 2>&1 || true ;;
+    "") : ;;
+    *) warn "release_stand_exclusive: the stand lock is held by [$current], not by this process - leaving it alone" ;;
+  esac
+}
+
 guard_perf_max_attempts() {
   [ "$PERF_MAX_ATTEMPTS" -gt 0 ] 2>/dev/null || die "guard_perf_max_attempts: PERF_MAX_ATTEMPTS must be a positive integer, got '$PERF_MAX_ATTEMPTS' - set PERF_MAX_ATTEMPTS to a small number (default 3)"
   [ "$PERF_MAX_ATTEMPTS" -lt 10 ] || die "guard_perf_max_attempts: PERF_MAX_ATTEMPTS=$PERF_MAX_ATTEMPTS is not lower than the sync_jobs entity default (10) - it would cap nothing"
@@ -239,7 +309,69 @@ guard_perf_max_attempts() {
 # Guards - fatal, pre-flight. Every one of these must pass BEFORE
 # window_start, per the epic's own rule: "a guard that aborts before the
 # window costs seconds; one that discards after costs the whole run."
+#
+# VOLATILE versus FIXED (#2932). Every guard describes the world as of the
+# moment it runs, and until this issue every guard ran exactly ONCE, at
+# script start, before the first window ever opened. A scenario that opens
+# several windows (F3's per-arm loop, a repeated F2/F7 run) kept trusting
+# that single start-of-script check for every later window - and a peer
+# with write access to the stand can falsify it before a later window opens.
+# That peer need not be another scenario: an operator, an unrelated
+# automation, or a plain `docker compose up --force-recreate` silently
+# resolving a different default all do it, and none of them takes
+# guard_stand_exclusive's lock (that lock stops a second SCENARIO; it
+# cannot stop a human or an automation from touching the one it already
+# granted the stand to).
+#
+# Confirmed live, #2842/#2848 (2026-09-06): F3 declared
+# `guard_runner_state disabled`. F3's guards passed at 23:27, a peer
+# scenario (F2, needing the runner ENABLED) flipped it on the SAME stand at
+# 23:30:24, and F3's next two arms (23:30:49, 23:34:38) wrote
+# `"runnerState": "disabled"` into their own manifests for windows in which
+# the runner was in fact executing jobs - because `manifest_write` re-renders
+# MANIFEST_RUNNER_STATE from whatever the one, stale, script-wide check
+# found. `post_guard_attempts` caught one of the two arms after the fact;
+# nothing would have caught the other.
+#
+# The guards below therefore split into two classes:
+#
+#   VOLATILE - describes a live property of a CONTAINER that a *different*
+#   writer to the same stand can flip WHILE this scenario is running:
+#   guard_runner_state (WORKER_RUNNER_ENABLED + the lane-caps boot line) and
+#   guard_scheduler_off (OL_SCHEDULER_ENABLED). `window_start` re-asserts
+#   BOTH, once per window, via `reassert_volatile_guards` below - but only
+#   for whichever of the two this scenario actually declared during its own
+#   pre-flight (see that function's docblock for why absence is a
+#   deliberate "not this scenario's concern", not an oversight).
+#
+#   FIXED - describes something that cannot change under a running
+#   scenario without ALSO invalidating the very build or stand it is
+#   measuring, so re-checking it every window buys noise, not safety:
+#     - guard_build: the running image's revision label is baked in at
+#       `docker build`; changing it needs a rebuild, which
+#       guard_stand_exclusive's own lock already serialises against.
+#     - guard_demo_mode_off, guard_log_level, guard_perf_max_attempts: all
+#       three are env vars fixed at container start (`docker run`/`up`),
+#       unreadable and unwritable from outside a recreate.
+#     - guard_connection_budget / guard_pool_recorded: OL_DB_POOL_MAX and
+#       Postgres max_connections are both boot-time arguments (env var,
+#       `-c` flag) for the same reason.
+#   guard_queue_empty is a THIRD, orthogonal case - a DATA precondition
+#   rather than a stand-configuration one, and every scenario already
+#   re-checks it itself, per arm, directly (see its own docblock).
+#
+# The next guard added here should state, in its own docblock, which side
+# of this line it is on and why - "fixed" is the right default only for a
+# property that is provably immutable while every container involved keeps
+# running without a restart.
 # ===========================================================================
+
+# Tracking globals for the two VOLATILE guards (#2932). Populated by
+# guard_runner_state / guard_scheduler_off THEMSELVES, on success, so
+# `reassert_volatile_guards` below knows both WHETHER a scenario declared a
+# posture and WHAT it declared - never guessed at, never defaulted.
+GUARD_RUNNER_STATE_EXPECTED=""
+GUARD_SCHEDULER_OFF_ACTIVE=0
 
 # guard_queue_empty - no queued/running sync_jobs rows for the given
 # connection ids. A leftover row from a previous, unrelated run would enqueue
@@ -272,6 +404,12 @@ guard_scheduler_off() {
     [ "$w_enabled" = "false" ] || die "guard_scheduler_off: $w has OL_SCHEDULER_ENABLED=$w_enabled - a cron could fire into the measurement window"
   done
   MANIFEST_SCHEDULER_CADENCE_ROW="$(scheduler_cadence_row)"
+  # VOLATILE (#2932): a peer with write access to the stand can flip this
+  # between windows. Recording that this guard was called - and with what
+  # it verified - is what lets reassert_volatile_guards() re-run it at every
+  # window_start without every scenario script having to remember to do so
+  # itself. See the "volatile vs fixed" block above guard_queue_empty.
+  GUARD_SCHEDULER_OFF_ACTIVE=1
   log "guard_scheduler_off ok (operational_settings cadence row: ${MANIFEST_SCHEDULER_CADENCE_ROW:-<none>})"
 }
 
@@ -337,21 +475,70 @@ guard_pool_recorded() {
 # revision, never assumed (#2841 "guard_build is redefined: a LABEL, not a
 # digest diff"). Requires the root Dockerfile's production/worker stages to
 # carry `LABEL org.opencontainers.image.revision` (this child adds it).
+# Paths whose contents actually reach the running api/worker. A commit that
+# touches only the harness, the docs or the browser bundle cannot change what
+# those two processes execute, so it must not invalidate the image - see the
+# note in guard_build.
+#
+# `apps/api` and `apps/worker` rather than a bare `apps`: the production and
+# worker image stages copy only those two dists plus the libs, so `apps/web`
+# and `apps/e2e` are never executed by the processes under measurement. The
+# first version of this list said `apps`, and it immediately produced a false
+# refusal - a frontend agent's uncommitted `vite.config.ts` change blocked an
+# unrelated backend scenario whose image could not possibly contain it
+# (#2842/#2852). A guard that refuses for a reason the code does not have
+# trains people to work around it, which is worse than the gap it closes.
+BUILD_RELEVANT_PATHS="${BUILD_RELEVANT_PATHS:-apps/api apps/worker libs Dockerfile package.json pnpm-lock.yaml pnpm-workspace.yaml}"
+
 guard_build() {
-  local head containers c rev
+  local head containers c rev path want got dirty
   head="$(git -C "$LIB_DIR" rev-parse HEAD)"
+
+  # Uncommitted product-code changes are refused outright, and this is the half
+  # the previous implementation missed entirely: comparing the image's label
+  # against HEAD says nothing about edits that were never committed, so a stand
+  # could be measured against source that exists only in the working tree.
+  dirty="$(git -C "$LIB_DIR" status --porcelain -- $BUILD_RELEVANT_PATHS 2>/dev/null || true)"
+  if [ -n "$dirty" ]; then
+    die "guard_build: uncommitted changes under [$BUILD_RELEVANT_PATHS] - the image cannot contain them, so the run would measure something that is not in the tree:
+$dirty"
+  fi
+
   containers="$OL_API_CONTAINER $WORKER_CONTAINERS"
   for c in $containers; do
     rev="$(docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$c" 2>/dev/null || true)"
     if [ -z "$rev" ]; then
       die "guard_build: $c carries no org.opencontainers.image.revision label - the image predates the LABEL added by this child's Dockerfile change, or was built without --build-arg OL_GIT_SHA=\$(git rev-parse HEAD). Rebuild the stand (#2854)."
     fi
-    if [ "$rev" != "$head" ]; then
-      die "guard_build: $c was built from $rev but the working tree is at $head - rebuild before measuring (a stale image silently measures pre-change code)"
+
+    # A TREE comparison, not a commit comparison. The question a build guard has
+    # to answer is "does this image contain the code under test", and a commit
+    # sha answers a stricter, wrong question - it also refuses an image whose
+    # product code is byte-identical and whose only difference is a harness or
+    # docs commit. That is not pedantry: measuring and committing necessarily
+    # interleave during a campaign (a scenario fix, a report), and under the sha
+    # rule every one of those commits forced a full rebuild before the next run
+    # could start. Verified on this tree - `apps` and `libs` hashed identically
+    # across two commits that differed only under perf/, and the rebuild those
+    # commits demanded was pure waste (#2842).
+    if ! git -C "$LIB_DIR" cat-file -e "$rev^{commit}" 2>/dev/null; then
+      die "guard_build: $c reports revision $rev, which is not a commit in this repository - the image was built somewhere else, so its contents cannot be verified against this tree"
     fi
+    for path in $BUILD_RELEVANT_PATHS; do
+      want="$(git -C "$LIB_DIR" rev-parse "HEAD:$path" 2>/dev/null || printf 'missing-at-head')"
+      got="$(git -C "$LIB_DIR" rev-parse "$rev:$path" 2>/dev/null || printf 'missing-in-image-commit')"
+      if [ "$want" != "$got" ]; then
+        die "guard_build: $c was built from $rev, whose '$path' ($got) differs from the working tree's ($want) - rebuild before measuring, or a stale image silently measures pre-change code"
+      fi
+    done
   done
-  MANIFEST_GIT_SHA="$head"
-  log "guard_build ok (sha=$head)"
+
+  # The manifest records the IMAGE's commit, never HEAD: that is the code the
+  # run actually exercised, and after this change the two can legitimately
+  # differ by harness-only commits.
+  MANIFEST_GIT_SHA="$rev"
+  MANIFEST_TREE_HEAD_SHA="$head"
+  log "guard_build ok (image sha=$rev, tree HEAD=$head, product paths identical)"
 }
 
 # guard_runner_state - the running worker's WORKER_RUNNER_ENABLED posture
@@ -378,7 +565,40 @@ guard_runner_state() {
     fi
   done
   MANIFEST_RUNNER_STATE="$expected"
+  # VOLATILE (#2932): recorded so reassert_volatile_guards() can re-run
+  # THIS SAME check, with the SAME expectation, at every later window_start -
+  # see the "volatile vs fixed" block above guard_queue_empty.
+  GUARD_RUNNER_STATE_EXPECTED="$expected"
   log "guard_runner_state ok (expected=$expected${MANIFEST_LANE_CAPS:+, lane caps: $MANIFEST_LANE_CAPS})"
+}
+
+# reassert_volatile_guards - called by window_start, once per window, BEFORE
+# manifest_write (#2932). Re-runs guard_runner_state / guard_scheduler_off
+# with the SAME expectation this scenario already verified during its own
+# pre-flight, so a change landed by a peer between two windows is caught
+# HERE - at the one place every window necessarily passes through - rather
+# than depending on every scenario script remembering to re-call the guard
+# itself before every window_start (which is what F3/F7/F2 each did by hand
+# after the incident this issue is about; that per-scenario copy is now
+# redundant, harmless, and no longer required of a new scenario).
+#
+# A guard whose tracking global was never set (this scenario never called
+# it) is skipped, not defaulted to some assumed expectation - F5 never
+# calls guard_runner_state at all (its own header: "READ-ONLY... guard_
+# queue_empty and guard_runner_state are therefore deliberately NOT
+# called"), and inventing a posture for it here would refuse a run over a
+# condition the scenario never claimed to depend on.
+#
+# Cheap by design (#2932's own assumption): each re-check is a handful of
+# `docker exec printenv` calls plus, for the runner, one `docker logs |
+# grep` - negligible against a measurement window measured in minutes.
+reassert_volatile_guards() {
+  if [ -n "$GUARD_RUNNER_STATE_EXPECTED" ]; then
+    guard_runner_state "$GUARD_RUNNER_STATE_EXPECTED"
+  fi
+  if [ "$GUARD_SCHEDULER_OFF_ACTIVE" = "1" ]; then
+    guard_scheduler_off
+  fi
 }
 
 # guard_log_level - OL_LOG_BODY_MAX_BYTES must be a positive value.
@@ -388,13 +608,25 @@ guard_runner_state() {
 # the worker's log level does not suppress them (#2841's own note).
 guard_log_level() {
   local w val
+  # Every container's value is recorded, not just checked. `manifest_write`
+  # renders MANIFEST_LOG_BODY_MAX_BYTES and, before this, nothing ever set it -
+  # so a run whose guard had just verified 8192 still wrote
+  # `"olLogBodyMaxBytes": "unknown"` into its own manifest. That is the
+  # reported-versus-enforced gap this harness exists to close, one level in
+  # (found on the first real F3 run, #2842).
+  #
+  # Recorded as `container=value` pairs rather than a single scalar: the guard
+  # reads N containers and they can legitimately differ, and a manifest that
+  # printed only the last one would be silently wrong on a mixed fleet.
+  MANIFEST_LOG_BODY_MAX_BYTES=""
   for w in $OL_API_CONTAINER $WORKER_CONTAINERS; do
     val="$(docker exec "$w" printenv OL_LOG_BODY_MAX_BYTES 2>/dev/null || printf '')"
     if [ -z "$val" ] || ! [ "$val" -gt 0 ] 2>/dev/null; then
       die "guard_log_level: $w has OL_LOG_BODY_MAX_BYTES='${val:-<unset>}' - unset or 0 means UNCAPPED full-body logging at error level regardless of the worker's log level. Set OL_LOG_BODY_MAX_BYTES to a positive value before measuring."
     fi
+    MANIFEST_LOG_BODY_MAX_BYTES="${MANIFEST_LOG_BODY_MAX_BYTES:+$MANIFEST_LOG_BODY_MAX_BYTES }$w=$val"
   done
-  log "guard_log_level ok"
+  log "guard_log_level ok ($MANIFEST_LOG_BODY_MAX_BYTES)"
 }
 
 # ---------------------------------------------------------------------------
@@ -404,9 +636,46 @@ guard_log_level() {
 # once, by `window_start`, so "before any load" is structural rather than a
 # convention a scenario script has to remember.
 # ---------------------------------------------------------------------------
+# manifest_pg_non_default_settings - EVERY non-default Postgres setting in
+# force, not a hand-picked subset (#2934). A `statement_timeout=30s` was set
+# on this stand's `postgres` role with a live `ALTER ROLE`, existed nowhere
+# else (not in docker-compose.lab.yml, not in any manifest), and was in
+# force for every F5 measurement without a single guard or report saying so
+# (#2843/#2934). `pg_settings` alone would answer for only the CONNECTING
+# role's own resolved session, so this is joined by two reads that answer
+# for every role/database regardless of which one happens to be connecting:
+# `pg_roles.rolconfig` (what an `ALTER ROLE ... SET` left standing - the
+# statement_timeout's own home before this issue moved its DEFAULT into
+# docker-compose.lab.yml) and `pg_db_role_setting` (an `ALTER DATABASE ...
+# SET`, optionally scoped to one role). A guard refusing an unexpected
+# setting would be the wrong instrument - the set of things an operator may
+# legitimately tune is open - so this RECORDS rather than refuses; what must
+# not happen is a run whose conditions cannot be reconstructed from its own
+# manifest.
+manifest_pg_non_default_settings() {
+  local out
+  out="$(pg_sql "SELECT jsonb_build_object(
+      'liveSettingsSourceNotDefault', (
+        SELECT COALESCE(jsonb_object_agg(name, jsonb_build_object('setting', setting, 'source', source)), '{}'::jsonb)
+        FROM pg_settings WHERE source <> 'default'
+      ),
+      'roleConfig', (
+        SELECT COALESCE(jsonb_object_agg(rolname, to_jsonb(rolconfig)), '{}'::jsonb)
+        FROM pg_roles WHERE rolconfig IS NOT NULL
+      ),
+      'databaseRoleConfig', (
+        SELECT COALESCE(jsonb_agg(jsonb_build_object('database', d.datname, 'role', r.rolname, 'config', to_jsonb(s.setconfig))), '[]'::jsonb)
+        FROM pg_db_role_setting s
+        JOIN pg_database d ON d.oid = s.setdatabase
+        LEFT JOIN pg_roles r ON r.oid = s.setrole
+      )
+    )" 2>/dev/null)"
+  [ -n "$out" ] && printf '%s' "$out" || printf '{}'
+}
+
 manifest_gather_environment() {
   local pg_shared_buffers pg_work_mem pg_preload pg_stat_ext node_ver pg_image redis_image \
-    redis_used_mem host_cpu host_ram host_load
+    redis_used_mem host_cpu host_ram host_load pg_overrides
   pg_shared_buffers="$(pg_sql "SHOW shared_buffers" 2>/dev/null || printf 'unknown')"
   pg_work_mem="$(pg_sql "SHOW work_mem" 2>/dev/null || printf 'unknown')"
   pg_preload="$(pg_sql "SHOW shared_preload_libraries" 2>/dev/null || printf 'unknown')"
@@ -419,6 +688,11 @@ manifest_gather_environment() {
   host_ram="$( { free -m 2>/dev/null || true; } | awk '/^Mem:/{print $2"MB"}')"
   host_ram="${host_ram:-unknown}"
   host_load="$(uptime 2>/dev/null | grep -oP 'load average[s:]* \K.*' || printf 'unknown')"
+  pg_overrides="$(manifest_pg_non_default_settings)"
+  # jq's own validation, not a hand-rolled JSON check: a malformed blob (a
+  # broken query, a psql error message leaking through) must not silently
+  # become a manifest that looks fine and is not.
+  jq -e . >/dev/null 2>&1 <<<"$pg_overrides" || pg_overrides='{"error":"manifest_pg_non_default_settings returned non-JSON output"}'
 
   jq -n \
     --arg shared_buffers "$pg_shared_buffers" \
@@ -432,7 +706,8 @@ manifest_gather_environment() {
     --arg host_cpu_count "$host_cpu" \
     --arg host_ram "$host_ram" \
     --arg host_load_average "$host_load" \
-    '{postgres:{shared_buffers:$shared_buffers, work_mem:$work_mem, shared_preload_libraries:$shared_preload_libraries, installed_extensions:$installed_extensions},
+    --argjson postgres_overrides "$pg_overrides" \
+    '{postgres:{shared_buffers:$shared_buffers, work_mem:$work_mem, shared_preload_libraries:$shared_preload_libraries, installed_extensions:$installed_extensions, nonDefaultSettings:$postgres_overrides},
       node_version:$node_version, postgres_image_digest:$postgres_image_digest, redis_image_digest:$redis_image_digest,
       redis_used_memory_bytes:$redis_used_memory_bytes,
       host:{cpu_count:$host_cpu_count, ram:$host_ram, load_average:$host_load_average}}'
@@ -613,9 +888,17 @@ WINDOW_STOP_EPOCH=""
 
 # window_start <results_dir> <scenario> <conn_ids_csv> <quick:0|1> [extra_manifest_json]
 #
-# Writes manifest.json BEFORE any load (AC), then inserts the settle period
+# Re-asserts the volatile guards (#2932 - see reassert_volatile_guards), then
+# writes manifest.json BEFORE any load (AC), then inserts the settle period
 # (#2841 "A settle window between pre-flight and the measurement") between
 # the last guard and the window actually opening, then starts the sampler.
+#
+# The re-assert runs FIRST, before manifest_write, deliberately: a scenario
+# that opens N windows (one call per arm/repeat) must have its manifest
+# describe the window IT LABELS, not the state a pre-flight check observed
+# possibly windows ago - and it must die here, before any side effect
+# (before the manifest is written, before the sampler starts), rather than
+# be recorded as though it had passed.
 window_start() {
   local dir="$1" scenario="$2" conn_ids="$3" quick="$4" extra="${5:-}"
   # ${5:-{}} looks equivalent but is NOT: bash matches braces generically when
@@ -623,6 +906,7 @@ window_start() {
   # the default-value branch of ${VAR:-...} consumes one extra `}` even when
   # $5 IS set - verified: `set -- x; : "${1:-{}}"` yields `x}`, not `x`.
   [ -n "$extra" ] || extra='{}'
+  reassert_volatile_guards
   manifest_write "$dir" "$scenario" "$conn_ids" "$quick" "$extra"
   log "settling ${SETTLE_SECS}s before window_start (letting the build/rebuild's CPU and page-cache impact fade)"
   sleep "$SETTLE_SECS"
@@ -839,6 +1123,76 @@ post_guard_limiter_degraded() {
   fi
 }
 
+# post_guard_generator_saturated - the LOAD GENERATOR must not have been at its
+# own limit, or the run measured k6 rather than OpenLinker.
+#
+# This exists because F3's headline was nearly published as "the system's
+# ceiling is ~600 requests per second" when it was nothing of the kind. Every
+# guard passed, the verdict read VALID, and only reading `dropped_iterations`
+# and the VU configuration side by side revealed that k6 had been at 92-97% of
+# its own ceiling and dropping a fifth to a quarter of its iterations (#2933).
+# Two signals pointed in opposite directions - the api at 97.7% CPU said the
+# system saturated, the VU exhaustion said the generator did - and the run
+# could not separate them.
+#
+# There is deliberately NO opt-out, not even for a sweep that is intentionally
+# hunting a ceiling. That case feels like the exception and is in fact the
+# strongest reason to refuse: if the generator is at its limit, the system's
+# ceiling is exactly what the run cannot tell you. The remedy is to raise
+# MAX_VUS and re-run, which is what the refusal says.
+#
+# summary_path is the k6 summary JSON. Three cases, told apart on purpose:
+#   - empty string      -> the scenario drives no generator (F2). Not applicable.
+#   - path that is missing -> the scenario CLAIMED a generator and produced no
+#     summary. That is the OOM-killed-run shape, and it discards: a run whose
+#     instrument vanished is not a run whose instrument behaved.
+#   - readable file     -> evaluate the two ratios below.
+#
+# `dropped_iterations` is absent under a constant-vus executor, which has no
+# arrival rate to fall behind. Absent means NOT APPLICABLE and is skipped -
+# never read as zero, which would silently pass the very check it belongs to.
+
+# Above this fraction of its configured ceiling, k6's own concurrency is a
+# plausible cause of the achieved rate. 0.9 leaves a tenth of the pool as
+# headroom; a run that needs more than that is not measuring the system alone.
+GENERATOR_VU_UTILISATION_MAX="${GENERATOR_VU_UTILISATION_MAX:-0.9}"
+# Above this fraction of intended iterations dropped, the offered load never
+# reached the system, so the achieved rate is a floor on the generator rather
+# than a measurement of the target. 0.05 is deliberately strict: a dropped
+# iteration is load the system never saw.
+GENERATOR_DROPPED_RATIO_MAX="${GENERATOR_DROPPED_RATIO_MAX:-0.05}"
+
+post_guard_generator_saturated() {
+  local summary_path="${1:-}"
+  [ -n "$summary_path" ] || { echo "ok"; return 0; }
+  if [ ! -f "$summary_path" ]; then
+    echo "DISCARDED post_guard_generator_saturated: the scenario drives a load generator but wrote no summary at $summary_path - a run whose instrument vanished (an OOM-killed k6 is the known shape, #2931) cannot be reported"
+    return 0
+  fi
+
+  jq -r --argjson vu_max "$GENERATOR_VU_UTILISATION_MAX" \
+        --argjson drop_max "$GENERATOR_DROPPED_RATIO_MAX" '
+    .metrics as $m
+    | ($m.vus.max // null) as $used
+    | ($m.vus_max.max // null) as $cfg
+    | ($m.dropped_iterations.count // null) as $dropped
+    | ($m.http_reqs.count // 0) as $reqs
+    | [
+        (if ($used == null or $cfg == null or $cfg == 0) then
+           "DISCARDED post_guard_generator_saturated: the summary carries no vus/vus_max, so the generator posture cannot be established - a run that cannot show its instrument was healthy is not reportable"
+         elif (($used / $cfg) > $vu_max) then
+           "DISCARDED post_guard_generator_saturated: k6 used \($used) of \($cfg) virtual users (\((($used / $cfg) * 100) | floor)% of its own ceiling, limit \(($vu_max * 100) | floor)%) - the achieved rate may be the generator, not the system. Raise MAX_VUS/PRE_ALLOCATED_VUS well clear of the observed usage and re-run"
+         else empty end),
+        (if ($dropped == null) then empty
+         elif (($dropped + $reqs) == 0) then empty
+         elif (($dropped / ($dropped + $reqs)) > $drop_max) then
+           "DISCARDED post_guard_generator_saturated: k6 dropped \($dropped) of \($dropped + $reqs) intended iterations (\((($dropped / ($dropped + $reqs)) * 100) | floor)%, limit \(($drop_max * 100) | floor)%) - that load never reached the system, so the achieved rate is a floor on the generator. Raise MAX_VUS/PRE_ALLOCATED_VUS and re-run"
+         else empty end)
+      ]
+    | if length == 0 then "ok" else .[0] end
+  ' "$summary_path" 2>/dev/null || echo "DISCARDED post_guard_generator_saturated: could not parse $summary_path"
+}
+
 # ---------------------------------------------------------------------------
 # verdict - VALID / DISCARDED + reason, with a documented, machine-parseable
 # schema (--resume parses it, #2845). One `key=value` per line, LF-terminated,
@@ -871,14 +1225,20 @@ verdict_read() {
 # run_post_guards <dir> <conn_ids_csv> <window_start_iso> <window_start_epoch> <window_stop_epoch> [destination_conn_id]
 # Runs every post-guard and writes verdict.txt: VALID if every one answered
 # "ok", DISCARDED with every non-"ok" reason otherwise.
+# `k6_summary` is optional and its ABSENCE is meaningful: pass the path for any
+# scenario that drives a load generator, and leave it empty only for one that
+# genuinely has none (F2). Omitting it for a k6 scenario silently skips the
+# generator check, which is the shape post_guard_generator_saturated exists to
+# stop - so scenarios should pass it even when they expect it to pass.
 run_post_guards() {
-  local dir="$1" conn_ids="$2" ws_iso="$3" ws_epoch="$4" we_epoch="$5" dest="${6:-}"
+  local dir="$1" conn_ids="$2" ws_iso="$3" ws_epoch="$4" we_epoch="$5" dest="${6:-}" k6_summary="${7:-}"
   local results=() r
   results+=("$(post_guard_attempts "$conn_ids" "$ws_iso")")
   results+=("$(post_guard_deferrals "$conn_ids" "$ws_iso")")
   results+=("$(post_guard_requeues "$conn_ids")")
   results+=("$(post_guard_destination_creates "$ws_iso" "$dest")")
   results+=("$(post_guard_limiter_degraded "$ws_epoch" "$we_epoch")")
+  results+=("$(post_guard_generator_saturated "$k6_summary")")
 
   local reasons=()
   for r in "${results[@]}"; do

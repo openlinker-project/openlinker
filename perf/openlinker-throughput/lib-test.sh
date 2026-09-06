@@ -93,6 +93,7 @@ pg_sql() {
     *"operational_settings"*) echo "${FAKE_PG[operational_settings]:-{\}}" ;;
     *"COUNT(*)"*) echo "${FAKE_PG[count]:-0}" ;;
     *"pg_database_size"*) echo "${FAKE_PG[db_size]:-123456}" ;;
+    *"pg_db_role_setting"*) echo "${FAKE_PG[pg_overrides]:-}" ;;
     *"string_agg"*) echo "${FAKE_PG[agg]:-}" ;;
     *) echo "" ;;
   esac
@@ -145,14 +146,38 @@ docker() {
   esac
 }
 
-git() {
-  # guard_build's ONLY real-git call is `git -C <dir> rev-parse HEAD` - fake
-  # it so the test's expectation of "the working tree's head" is a fixed,
-  # known value rather than whatever this checkout's actual HEAD happens to be.
-  echo "$FAKE_HEAD_SHA"
-}
-
+# guard_build makes four kinds of real-git call now, so the fake dispatches on
+# the subcommand rather than answering everything with one string. An
+# always-answer fake made the guard's own dirty-tree check see the sha as
+# "uncommitted output" and die - a fake too blunt for the code it stands in
+# for is a test that fails for a reason the code does not have.
 FAKE_HEAD_SHA="cafef00dcafef00dcafef00dcafef00dcafef00"
+FAKE_DIRTY=""                 # `git status --porcelain -- <paths>` output
+declare -A FAKE_TREE          # "<sha>:<path>" -> tree hash
+FAKE_KNOWN_COMMITS="$FAKE_HEAD_SHA"
+
+git() {
+  # Strip the leading `-C <dir>` the library always passes.
+  if [ "${1:-}" = "-C" ]; then shift 2; fi
+  case "${1:-}" in
+    rev-parse)
+      case "${2:-}" in
+        HEAD) echo "$FAKE_HEAD_SHA" ;;
+        *:*)
+          local key="${2}"
+          # Default: a path resolves identically at HEAD and at any known
+          # commit, i.e. "the product code did not change".
+          echo "${FAKE_TREE[$key]-tree-of-${key#*:}}" ;;
+        *) echo "$FAKE_HEAD_SHA" ;;
+      esac ;;
+    status) printf '%s' "$FAKE_DIRTY" ;;
+    cat-file)
+      # `cat-file -e <sha>^{commit}` - exit 0 iff the commit is "in the repo".
+      local want="${3:-}"; want="${want%%^*}"
+      case " $FAKE_KNOWN_COMMITS " in *" $want "*) return 0 ;; *) return 1 ;; esac ;;
+    *) echo "$FAKE_HEAD_SHA" ;;
+  esac
+}
 
 # ===========================================================================
 # guard argument handling
@@ -238,6 +263,108 @@ WORKER_CONTAINERS="runner-nocaps-container"
 assert_dies "absent lane-caps line is a failure, never 'nothing to record'" guard_runner_state enabled
 WORKER_CONTAINERS="lab-worker"
 
+echo "--- guard_build tree comparison ---"
+OL_API_CONTAINER="lab-api"; WORKER_CONTAINERS="lab-worker"
+FAKE_REVISION=(); FAKE_DIRTY=""
+
+# The case this change exists for: the image was built from an EARLIER commit
+# whose product paths are byte-identical, because the commits since touched
+# only the harness. Under the old sha comparison this was refused and forced a
+# full rebuild for no behavioural difference.
+harness_only_commit="beefbeefbeefbeefbeefbeefbeefbeefbeefbeef"
+FAKE_KNOWN_COMMITS="$FAKE_HEAD_SHA $harness_only_commit"
+FAKE_REVISION[lab-api]="$harness_only_commit"
+FAKE_REVISION[lab-worker]="$harness_only_commit"
+# Called directly rather than through assert_ok, which runs its argument in a
+# subshell - the MANIFEST_* assignment would be discarded there and the second
+# assertion would read an unset variable rather than the guard's output.
+MANIFEST_GIT_SHA=""
+guard_build >/dev/null 2>&1
+build_status=$?
+assert_eq "accepts an image whose product paths match, on an earlier commit" "0" "$build_status"
+assert_eq "manifest records the IMAGE's sha, not HEAD" "$harness_only_commit" "$MANIFEST_GIT_SHA"
+
+# ...and it must still refuse when the product code genuinely differs.
+FAKE_TREE["$harness_only_commit:libs"]="a-different-libs-tree"
+assert_dies "refuses an image whose libs tree differs" guard_build
+unset 'FAKE_TREE[$harness_only_commit:libs]'
+
+# An image built somewhere else cannot be verified against this tree at all,
+# and must not be waved through just because its label is non-empty.
+FAKE_REVISION[lab-api]="0123456789012345678901234567890123456789"
+assert_dies "refuses an image whose commit is not in this repository" guard_build
+FAKE_REVISION[lab-api]="$harness_only_commit"
+
+# Uncommitted product-code changes cannot be in any image, whatever the label
+# says. The pre-change guard missed this entirely.
+FAKE_DIRTY=" M libs/core/src/something.ts"
+assert_dies "refuses uncommitted changes under the product paths" guard_build
+FAKE_DIRTY=""
+
+FAKE_REVISION=(); FAKE_KNOWN_COMMITS="$FAKE_HEAD_SHA"
+
+echo "--- guard_stand_exclusive ---"
+# A fake Redis with just enough SET NX / GET / DEL to exercise the claim. The
+# guard must never read-then-decide, so the fake makes SET NX the only thing
+# that can grant the lock.
+#
+# State lives in a FILE, not a variable: `guard_stand_exclusive` calls
+# `redis_cli SET ...` inside a command substitution, which bash runs in a
+# subshell, so a variable the fake assigned there would be discarded the
+# instant the substitution closed - the claim would appear to succeed while
+# leaving no lock behind, and the refusal test would then pass vacuously.
+FAKE_REDIS_FILE="$(mktemp)"
+fake_redis_get() { cat "$FAKE_REDIS_FILE" 2>/dev/null || printf ''; }
+fake_redis_set() { printf '%s' "$1" > "$FAKE_REDIS_FILE"; }
+redis_cli() {
+  case "$1" in
+    SET)
+      # SET <key> <value> NX EX <ttl>
+      if [ -n "$(fake_redis_get)" ]; then printf ''; else fake_redis_set "$3"; printf 'OK'; fi ;;
+    GET) fake_redis_get ;;
+    DEL) fake_redis_set ""; printf '1' ;;
+    *) printf '' ;;
+  esac
+}
+
+fake_redis_set ""
+STAND_LOCK_HELD=0
+# Called directly, NOT through assert_ok: that helper runs its argument in a
+# subshell so a `die` cannot kill the suite, which also means the function's
+# writes to STAND_LOCK_HELD and the fake Redis would be discarded. The claim
+# has to happen in this shell for the refusal test below to have a lock to
+# collide with.
+guard_stand_exclusive f3-webhook-burst >/dev/null 2>&1
+claim_status=$?
+trap - EXIT   # the guard registers its own EXIT trap; the suite owns its exit
+assert_eq "claims a free stand" "0" "$claim_status"
+assert_eq "records that it holds the lock" "1" "$STAND_LOCK_HELD"
+assert_contains "lock value names the scenario" "$(fake_redis_get)" "f3-webhook-burst"
+
+# The whole point: a second scenario must be refused, not queued and not
+# allowed through with a warning. This is the case that silently invalidated
+# two real measurement arms before the guard existed.
+assert_dies "refuses a stand another scenario already holds" guard_stand_exclusive f2-stock-propagation
+
+# Releasing must be owner-scoped. A scenario whose lock expired must not
+# delete the key a different, legitimately-running scenario has since taken -
+# that would hand the stand to two holders at once, which is the exact failure
+# the lock exists to prevent.
+fake_redis_set "someone-else:pid999999@other-host:2026-09-06T00:00:00Z"
+STAND_LOCK_HELD=1
+release_stand_exclusive >/dev/null 2>&1
+assert_eq "does not delete a lock held by another process" \
+  "someone-else:pid999999@other-host:2026-09-06T00:00:00Z" "$(fake_redis_get)"
+
+# And a release with nothing held is a no-op rather than an error, so the EXIT
+# trap is safe on every abort path.
+fake_redis_set ""
+STAND_LOCK_HELD=0
+assert_ok "release with no lock held is a no-op" release_stand_exclusive
+
+fake_redis_set ""
+STAND_LOCK_HELD=0
+
 echo "--- guard_log_level ---"
 FAKE_ENV["ok-container:OL_LOG_BODY_MAX_BYTES"]="4096"
 OL_API_CONTAINER="ok-container"; WORKER_CONTAINERS="ok-container"
@@ -248,7 +375,77 @@ assert_dies "unset OL_LOG_BODY_MAX_BYTES dies" guard_log_level
 FAKE_ENV["zero-log-container:OL_LOG_BODY_MAX_BYTES"]="0"
 OL_API_CONTAINER="zero-log-container"; WORKER_CONTAINERS="ok-container"
 assert_dies "OL_LOG_BODY_MAX_BYTES=0 dies (uncapped, not 'no cap wanted')" guard_log_level
+
+# A guard that CHECKS a value and does not RECORD it lets the manifest print
+# "unknown" for something the run verified - which is the reported-versus-
+# enforced gap the whole harness exists to close, one level in. The three
+# assertions above all passed while that was true (found on the first real F3
+# run, #2842), so the shape is asserted here rather than left to the next
+# reader to notice.
+FAKE_ENV["ok-container:OL_LOG_BODY_MAX_BYTES"]="4096"
+FAKE_ENV["second-container:OL_LOG_BODY_MAX_BYTES"]="8192"
+OL_API_CONTAINER="ok-container"; WORKER_CONTAINERS="second-container"
+MANIFEST_LOG_BODY_MAX_BYTES=""
+guard_log_level >/dev/null 2>&1
+assert_eq "guard_log_level records what it verified" \
+  "ok-container=4096 second-container=8192" "$MANIFEST_LOG_BODY_MAX_BYTES"
+
 OL_API_CONTAINER="lab-api"; WORKER_CONTAINERS="lab-worker"
+
+echo "--- post_guard_generator_saturated ---"
+# Writes a k6-shaped summary to $1 with the metrics given, so each case differs
+# in exactly the field it is about.
+write_k6_summary() {
+  local out="$1" used="$2" cfg="$3" dropped="$4" reqs="$5" extra=""
+  [ "$dropped" = "none" ] || extra=",\"dropped_iterations\":{\"count\":$dropped}"
+  cat > "$out" <<JSON
+{"metrics":{"vus":{"max":$used},"vus_max":{"max":$cfg},
+ "http_reqs":{"count":$reqs}$extra}}
+JSON
+}
+
+sat_dir="$(mktemp -d)"
+
+write_k6_summary "$sat_dir/healthy.json" 12 300 0 10000
+assert_eq "a generator with headroom passes" "ok" \
+  "$(post_guard_generator_saturated "$sat_dir/healthy.json")"
+
+# The case this guard exists for: F3's ~600/s runs sat at 92-97% of their VU
+# ceiling and their numbers were nearly published as a system ceiling.
+write_k6_summary "$sat_dir/vu-bound.json" 132 137 0 18100
+assert_contains "a generator at 96% of its VU ceiling is discarded" \
+  "$(post_guard_generator_saturated "$sat_dir/vu-bound.json")" "DISCARDED"
+assert_contains "the refusal names the remedy, not just the fault" \
+  "$(post_guard_generator_saturated "$sat_dir/vu-bound.json")" "MAX_VUS"
+
+write_k6_summary "$sat_dir/dropped.json" 20 300 4400 18100
+assert_contains "a high dropped-iteration fraction is discarded" \
+  "$(post_guard_generator_saturated "$sat_dir/dropped.json")" "DISCARDED"
+
+# constant-vus has no arrival rate to fall behind, so k6 emits no
+# dropped_iterations at all. Absent must mean NOT APPLICABLE - reading it as
+# zero would silently pass the check it belongs to.
+write_k6_summary "$sat_dir/no-drop-metric.json" 20 300 none 18100
+assert_eq "an absent dropped_iterations metric is not applicable, not zero" "ok" \
+  "$(post_guard_generator_saturated "$sat_dir/no-drop-metric.json")"
+
+# A scenario with no load generator at all (F2) is not applicable...
+assert_eq "no summary path means no generator, which passes" "ok" \
+  "$(post_guard_generator_saturated "")"
+# ...but one that CLAIMED a generator and produced nothing is the OOM shape.
+# Asserted on the SPECIFIC message, not merely on the word DISCARDED: without
+# the missing-file branch the function falls through to jq, which fails on a
+# nonexistent path and hits the could-not-parse fallback - which also says
+# DISCARDED. A weaker assertion passed against the broken code (found red-first).
+assert_contains "a claimed-but-missing summary is discarded, never skipped" \
+  "$(post_guard_generator_saturated "$sat_dir/never-written.json")" "wrote no summary at"
+
+# A summary that cannot show its instrument was healthy is not reportable.
+printf '{"metrics":{"http_reqs":{"count":100}}}\n' > "$sat_dir/no-vus.json"
+assert_contains "a summary carrying no vus/vus_max is discarded" \
+  "$(post_guard_generator_saturated "$sat_dir/no-vus.json")" "DISCARDED"
+
+rm -rf "$sat_dir"
 
 # ===========================================================================
 # post-guards
@@ -342,6 +539,104 @@ manifest_set_sync_jobs_end "$MDIR"
 assert_eq "syncJobsRowsAtEnd is set after window_stop" "42" "$(jq -r .syncJobsRowsAtEnd "$MDIR/manifest.json")"
 FAKE_PG[count]=0
 rm -rf "$MDIR"
+
+echo "--- manifest_pg_non_default_settings (#2934) ---"
+FAKE_PG[pg_overrides]='{"liveSettingsSourceNotDefault":{"statement_timeout":{"setting":"30000","source":"user"}},"roleConfig":{"postgres":["statement_timeout=30000ms"]},"databaseRoleConfig":[]}'
+assert_eq "returns the live query's JSON verbatim" \
+  "${FAKE_PG[pg_overrides]}" "$(manifest_pg_non_default_settings)"
+
+MDIR2="$(mktemp -d)"
+manifest_write "$MDIR2" "test-scenario" "conn-1" 1 '{}'
+assert_eq "a role-level ALTER ROLE ... SET reaches the manifest" \
+  '["statement_timeout=30000ms"]' "$(jq -c '.environment.postgres.nonDefaultSettings.roleConfig.postgres' "$MDIR2/manifest.json")"
+assert_eq "a non-default live pg_settings row's source is recorded too - what a SHOW from a DIFFERENT role would miss is exactly why roleConfig exists alongside this" \
+  "user" "$(jq -r '.environment.postgres.nonDefaultSettings.liveSettingsSourceNotDefault.statement_timeout.source' "$MDIR2/manifest.json")"
+rm -rf "$MDIR2"
+
+# A stand with no ALTER ROLE/DATABASE override and no non-default
+# pg_settings row at all must still round-trip as an empty, VALID object -
+# never as a blank string that would break the manifest's own JSON.
+FAKE_PG[pg_overrides]=""
+assert_eq "empty query result degrades to an empty JSON object, not a blank string" \
+  "{}" "$(manifest_pg_non_default_settings)"
+
+# A malformed/garbage answer (a psql error message slipping through the
+# `2>/dev/null`, a truncated query) must not silently produce an invalid
+# manifest.json - it degrades to a JSON object NAMING the failure, so the
+# rest of the manifest (which the run genuinely needs) still writes. This is
+# the "recording beats refusing" rule applied to the recorder's own failure
+# mode: a broken read must be visible in the manifest, not swallowed into a
+# manifest that merely looks complete.
+FAKE_PG[pg_overrides]='ERROR: relation "pg_db_role_setting" does not exist'
+MDIR3="$(mktemp -d)"
+manifest_write "$MDIR3" "test-scenario" "conn-1" 1 '{}'
+assert_eq "manifest.json is still valid JSON when the pg-overrides query answers garbage" \
+  "1" "$(jq -e . "$MDIR3/manifest.json" >/dev/null 2>&1 && echo 1 || echo 0)"
+assert_contains "the garbage is recorded as an error field, not silently dropped" \
+  "$(jq -r '.environment.postgres.nonDefaultSettings.error' "$MDIR3/manifest.json")" "non-JSON"
+rm -rf "$MDIR3"
+FAKE_PG[pg_overrides]=""
+
+echo "--- reassert_volatile_guards (#2932) ---"
+# Neither volatile guard was ever declared by this "scenario" - a no-op,
+# even though the live environment would fail either check outright. This is
+# F5's own shape: read-only, never calls guard_runner_state at all, and
+# reassert must not invent a posture for it.
+GUARD_RUNNER_STATE_EXPECTED=""
+GUARD_SCHEDULER_OFF_ACTIVE=0
+WORKER_CONTAINERS="reassert-worker"
+FAKE_ENV["reassert-worker:WORKER_RUNNER_ENABLED"]="true"
+FAKE_ENV["reassert-worker:OL_SCHEDULER_ENABLED"]="true"
+assert_ok "neither volatile guard declared -> reassert is a no-op" reassert_volatile_guards
+
+# guard_runner_state disabled was declared and the runner is STILL disabled
+# -> reassert re-verifies and passes silently.
+FAKE_ENV["reassert-worker:WORKER_RUNNER_ENABLED"]="false"
+guard_runner_state disabled
+assert_ok "runner still disabled at the next window -> reassert passes" reassert_volatile_guards
+
+# THE CASE #2932 IS ABOUT: a peer (or an operator, or a force-recreate)
+# flips the runner BETWEEN windows. guard_runner_state disabled passed once,
+# at pre-flight; the runner is enabled by the time a later window opens.
+# reassert must catch this and abort - never record the stale "disabled" as
+# though it still held.
+FAKE_ENV["reassert-worker:WORKER_RUNNER_ENABLED"]="true"
+assert_dies "runner flipped enabled after guard_runner_state disabled passed -> reassert dies" reassert_volatile_guards
+
+# Same shape for the scheduler, independently of the runner.
+GUARD_RUNNER_STATE_EXPECTED=""
+FAKE_ENV["reassert-worker:WORKER_RUNNER_ENABLED"]="false"
+guard_runner_state disabled
+FAKE_ENV["reassert-worker:OL_SCHEDULER_ENABLED"]="false"
+guard_scheduler_off
+assert_ok "scheduler still off at the next window -> reassert passes" reassert_volatile_guards
+FAKE_ENV["reassert-worker:OL_SCHEDULER_ENABLED"]="true"
+assert_dies "scheduler flipped on after guard_scheduler_off passed -> reassert dies" reassert_volatile_guards
+
+GUARD_RUNNER_STATE_EXPECTED=""
+GUARD_SCHEDULER_OFF_ACTIVE=0
+WORKER_CONTAINERS="lab-worker"
+
+echo "--- window_start re-asserts before any side effect (#2932) ---"
+# window_start must die on the identical flip, and must die BEFORE
+# manifest_write/sampler_start ever run - proven by asserting no
+# manifest.json was written on the aborted call (the AC's own wording: "a
+# mid-run change aborts the run rather than being recorded as the
+# start-of-script value").
+WORKER_CONTAINERS="reassert-worker"
+FAKE_ENV["reassert-worker:WORKER_RUNNER_ENABLED"]="false"
+guard_runner_state disabled
+FAKE_ENV["reassert-worker:WORKER_RUNNER_ENABLED"]="true"
+WSDIR="$(mktemp -d)"
+SETTLE_SECS=0
+assert_dies "window_start dies when a volatile guard flips between windows" \
+  window_start "$WSDIR" test-scenario "'conn-1'" 1 '{}'
+assert_eq "no manifest.json was written on the aborted window_start" \
+  "0" "$([ -f "$WSDIR/manifest.json" ] && echo 1 || echo 0)"
+rm -rf "$WSDIR"
+GUARD_RUNNER_STATE_EXPECTED=""
+GUARD_SCHEDULER_OFF_ACTIVE=0
+WORKER_CONTAINERS="lab-worker"
 
 # ===========================================================================
 # agreement-rule arithmetic
