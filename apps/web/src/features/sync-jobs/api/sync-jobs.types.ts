@@ -45,8 +45,13 @@ export type JobOutcome = (typeof JOB_OUTCOME_VALUES)[number];
  * - `'master_deleted'`: the source product/variant was deleted at its master
  *   (#1599) — the master-product-sync job's `business_failure` was caused by
  *   this, distinguishing it from any other business failure.
+ * - `'source_deleted'`: an order item mapped to a product/variant deleted at
+ *   its master (#1599/#2928) — the marketplace-order-sync job's
+ *   `business_failure` was caused by this. Never self-heals (a recreate at
+ *   the master usually mints a new external id), so the job stops after one
+ *   attempt instead of retrying the marketplace hydration for no progress.
  */
-export const JOB_OUTCOME_REASON_VALUES = ['master_deleted'] as const;
+export const JOB_OUTCOME_REASON_VALUES = ['master_deleted', 'source_deleted'] as const;
 export type JobOutcomeReason = (typeof JOB_OUTCOME_REASON_VALUES)[number];
 
 export const JOB_TYPE_VALUES = [

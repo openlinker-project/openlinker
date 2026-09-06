@@ -4,6 +4,9 @@
  * Thin delegate for jobs of type 'marketplace.order.sync'. Delegates hydration + routing
  * to core OrderIngestionService.
  *
+ * A `source_deleted` item-resolution failure (#2928) is reported as a
+ * terminal `business_failure` rather than retried — see the catch block.
+ *
  * @module apps/worker/src/sync/handlers
  */
 
@@ -15,7 +18,11 @@ import type {
   MarketplaceOrderSyncPayloadV1,
 } from '@openlinker/core/sync';
 import { SyncJobExecutionError } from '@openlinker/core/sync';
-import { IOrderIngestionService, ORDER_INGESTION_SERVICE_TOKEN } from '@openlinker/core/orders';
+import {
+  IOrderIngestionService,
+  ORDER_INGESTION_SERVICE_TOKEN,
+  MissingOrderItemMappingError,
+} from '@openlinker/core/orders';
 import { Logger } from '@openlinker/shared/logging';
 
 type SyncJob = SyncJobEntity;
@@ -46,6 +53,28 @@ export class MarketplaceOrderSyncHandler implements SyncJobHandler {
 
       return { outcome: 'ok' };
     } catch (error) {
+      // #2928 — a `source_deleted` item resolution failure never self-heals
+      // (the master deleted the product a mapped variant pointed at, and a
+      // recreate there usually mints a new external id, so the old mapping
+      // stays stale forever). Retrying it re-pays the full marketplace
+      // hydration (`OrderSourcePort.getOrder`) on every attempt to
+      // re-discover a fact already persisted on `order_records` — measured
+      // at ~5 attempts/order against a stale sandbox catalogue, ~1.1 s each.
+      // Report it as a terminal `business_failure` (ADR-007) instead of
+      // throwing, so the runner does not retry a permanent condition — the
+      // `master_deleted` precedent on `master.product.syncByExternalId`.
+      // An ordinary `awaiting_mapping` gap (`recordStatus` undefined here)
+      // is unaffected and still retries with backoff.
+      if (
+        error instanceof MissingOrderItemMappingError &&
+        error.recordStatus === 'source_deleted'
+      ) {
+        this.logger.warn(
+          `Marketplace order sync: order item deleted at source, will not retry (job ${job.id}, connection: ${job.connectionId}, externalOrderId=${payload.externalOrderId}): ${error.message}`
+        );
+        return { outcome: 'business_failure', outcomeReason: 'source_deleted' };
+      }
+
       const message = error instanceof Error ? error.message : String(error);
       throw new SyncJobExecutionError(
         `Marketplace order sync failed: ${message}`,

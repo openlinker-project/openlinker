@@ -472,11 +472,15 @@ export class OrderIngestionService implements IOrderIngestionService {
     }
 
     // Step 4: if any unresolved, persist the honest record state (#1689) then
-    // throw so the job runner retries with backoff. A `source_deleted` ref is
-    // a permanently unresolvable state (deleted at the master, #1599) — distinct
-    // from the ordinary, self-healing `awaiting_mapping` gap; the retry itself
-    // is unchanged (review #11 — routing a stale line to a terminal outcome
-    // and partial-order fulfilment — is out of scope for this issue).
+    // throw. A `source_deleted` ref is a permanently unresolvable state
+    // (deleted at the master, #1599) — distinct from the ordinary,
+    // self-healing `awaiting_mapping` gap, which the job runner still retries
+    // with backoff. `recordStatus` rides on the thrown error (#2928) so the
+    // worker handler can tell the two apart without re-deriving them: a
+    // `source_deleted` order is retried at most once (this attempt already
+    // paid the marketplace hydration and it will never resolve differently),
+    // reported as a terminal `business_failure` instead — routing a stale
+    // line to a partial-order fulfilment remains out of scope (review #11).
     if (unresolvedRefs.length > 0) {
       const first = unresolvedRefs[0];
       const firstItem = incoming.items.find((i) => i.id === first.itemId);
@@ -489,7 +493,8 @@ export class OrderIngestionService implements IOrderIngestionService {
       throw new MissingOrderItemMappingError(
         connectionId,
         firstItem?.productRef ?? { type: 'offer', externalId: first.itemId },
-        first.reason
+        first.reason,
+        recordStatus
       );
     }
 

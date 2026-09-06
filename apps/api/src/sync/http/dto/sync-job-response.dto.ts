@@ -43,8 +43,10 @@ export class SyncJobResponseDto {
     nullable: true,
     description:
       'Stable machine-readable code further classifying `outcome` (#1689), e.g. `master_deleted` when a ' +
-      'business_failure was caused by the source product being deleted at its master — distinguishing that ' +
-      'from any other business failure. `null` when the outcome needs no finer classification.',
+      'business_failure was caused by the source product being deleted at its master, or `source_deleted` ' +
+      '(#2928) when it was caused by an order item resolving to a mapping whose product/variant was deleted ' +
+      'at its master — distinguishing either from any other business failure. `null` when the outcome needs ' +
+      'no finer classification.',
   })
   outcomeReason!: JobOutcomeReason | null;
 

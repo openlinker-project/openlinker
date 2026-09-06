@@ -255,8 +255,14 @@ export type JobOutcome = (typeof JobOutcomeValues)[number];
  * - `'master_deleted'`: the source product/variant was deleted at its master
  *   (#1599) — `master.product.syncByExternalId` returns `business_failure`
  *   with this reason rather than retrying a permanent condition.
+ * - `'source_deleted'`: an order item resolved to a mapping whose product/
+ *   variant was deleted at the master (#1599/#2928) — the mapping will not
+ *   self-heal (a recreate at the master usually mints a new external id), so
+ *   `marketplace.order.sync` returns `business_failure` with this reason
+ *   after one attempt rather than re-hydrating the same order from the
+ *   marketplace on every retry to re-discover a fact already on file.
  */
-export const JobOutcomeReasonValues = ['master_deleted'] as const;
+export const JobOutcomeReasonValues = ['master_deleted', 'source_deleted'] as const;
 
 /**
  * Job Outcome Reason
