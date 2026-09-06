@@ -261,7 +261,7 @@ describe('Fulfilment router wiring (#2408)', () => {
       expect(works[0].requestStatus).toBe('unsubmitted');
 
       const lines = (await dataSource.query(
-        `SELECT "productVariantId", "totalQuantity" FROM "fulfillment_work_lines" WHERE "workId" = $1`,
+        `SELECT "productVariantId", "totalQuantity" FROM "fulfillment_work_lines" WHERE "fulfillmentWorkId" = $1`,
         [works[0].id]
       )) as { productVariantId: string; totalQuantity: number }[];
       expect(lines).toHaveLength(1);

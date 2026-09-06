@@ -22,9 +22,16 @@
  * host wrapper re-exports it, which is how `HealthModule` and `WorkerContentModule`
  * already reach plugin-registered providers.
  *
- * **`InventoryModule` here is the API's own wrapper**, not core's — that is what
- * `AppModule` composes, and it is what exports `LOCATION_SERVICE_TOKEN` and
- * `INVENTORY_QUERY_SERVICE_TOKEN` in this graph.
+ * **`InventoryModule` here is CORE's, never the API's own wrapper.** The wrapper
+ * (`apps/api/src/inventory/inventory.module.ts`) imports core's module to get
+ * providers for its two controllers and declares **no `exports` array at all**,
+ * so importing it hands this module nothing and `LOCATION_SERVICE_TOKEN` does
+ * not resolve. That is not a style preference: the injection below is REQUIRED,
+ * so the mistake is an API BOOT FAILURE rather than a degraded feature — it was
+ * caught by `fulfillment-router-wiring.int-spec.ts` and by no unit test, because
+ * `pnpm test` never builds the Nest graph. Core's module is what exports both
+ * `LOCATION_SERVICE_TOKEN` and `INVENTORY_QUERY_SERVICE_TOKEN`, which is also
+ * exactly what the worker's twin imports.
  *
  * ## Two host modules, one body
  *
@@ -52,6 +59,7 @@ import {
 } from '@openlinker/core/identifier-mapping';
 import {
   INVENTORY_QUERY_SERVICE_TOKEN,
+  InventoryModule,
   LOCATION_SERVICE_TOKEN,
   type IInventoryQueryService,
   type ILocationService,
@@ -63,7 +71,6 @@ import {
 } from '@openlinker/oms';
 
 import { IntegrationsModule } from '../integrations/integrations.module';
-import { InventoryModule } from '../inventory/inventory.module';
 
 @Global()
 @Module({
