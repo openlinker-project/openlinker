@@ -41,6 +41,12 @@ in `OrdersModule`.
 - **`@Optional()` on a token whose absence is a valid state.** A router-less install is a silent,
   fully-specified pass-through, so a host that FORGOT the binding is indistinguishable from one
   deliberately running without a router - and nothing fails to say so.
+- **Importing a host WRAPPER that re-exports nothing.** This is the one that actually shipped, and
+  it shipped because the bullet above generalises and the generalisation is false. `apps/api`'s
+  `IntegrationsModule` really does re-export `PluginRegistryModule`; `apps/api`'s `InventoryModule`
+  imports core's module for its two controllers and declares **no `exports` array at all**. Both are
+  "the host's own wrapper", and only one of them hands you a token. Read the wrapper's `exports`
+  before importing it for a token - never infer it from a sibling wrapper's behaviour.
 
 **Rule**: a `@Global()` binding module must `exports` its token, and must import the host's
 `IntegrationsModule` rather than `PluginRegistryModule`. Make the injection **required** whenever
@@ -49,10 +55,20 @@ that quietly does nothing - and pin it with a spec that resolves the token from 
 module's injector (`app.select(OrdersModule).get(TOKEN)`), never the root injector, which passes
 even when the consumer cannot see it.
 
+**No unit test can catch any of this, which is the half that decides the gate.** `pnpm test` never
+builds the Nest graph and the pre-commit hook runs no integration tests, so a required-injection
+wiring error passes lint, type-check, `pnpm test` and the whole commit path, then fails EVERY
+integration suite in the app at boot. For a change whose subject is host-side DI wiring, the
+integration suite is the gate rather than an extra - run the relevant int-spec with
+`--runTestsByPath` before calling the work done, and if Docker is down, say the gate did not run
+instead of reporting the unit gate as if it covered this.
+
 **Applies to**: any `@Global()` provider binding in `apps/api/src/**` or `apps/worker/src/**`; any
 core service injecting a token a host supplies.
 
-**Source**: #2408 (`/tech-review` + `/pre-implement`, both flagged it before implementation).
+**Source**: #2408. `/tech-review` and `/pre-implement` both flagged the first three traps before
+implementation; the fourth was found only by running the int-spec, after CI went red on a diff whose
+unit gate was green.
 
 ---
 
