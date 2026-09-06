@@ -50,6 +50,17 @@ export interface ReturnListFilter {
   sourceConnectionId?: string;
   /** Which side of the attribution partition. Absent = both. */
   bucket?: ReturnBucket;
+  /**
+   * One order's returns (#2640) — what the order-detail returns panel reads.
+   *
+   * A SEPARATE dimension from {@link ReturnListFilter.bucket}, and never
+   * translated into `bucket: 'attributed'` at any boundary. It does imply
+   * attribution (an orphan has no `internalOrderId`), but writing the bucket
+   * for the caller is the conflation `segment` documents above: the bucket
+   * counts strip `bucket` and would then report a scope the caller never asked
+   * for, and `bucket` must stay independently usable beside this arm.
+   */
+  internalOrderId?: string;
   /** Inclusive lower bound on `createdAt`. */
   createdFrom?: Date;
   /** Inclusive upper bound on `createdAt`. */

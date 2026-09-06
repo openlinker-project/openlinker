@@ -20056,6 +20056,56 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   color: var(--text-muted);
 }
 
+/* The order-detail returns panel (#2640).
+   A LIST, not a `DataTable`: three facts per row on a page that already carries
+   several tables, and the row's own composite (stage badge + restock badge +
+   counter line) is what `DataTable`'s dense 36 px row is least suited to. One
+   column below 640 px so nothing is hidden — the truncation notice is the only
+   thing this panel is allowed to elide, and it says so in words. Tokens only. */
+.returns-order-panel {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.returns-order-panel__item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto;
+  align-items: start;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.returns-order-panel__item:last-child {
+  border-bottom: none;
+}
+
+.returns-order-panel__identity {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.returns-order-panel__time {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .returns-order-panel__item {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .returns-order-panel__time {
+    white-space: normal;
+  }
+}
+
 /* The one horizontal member of the family: a chip and the sentence that says
    OpenLinker is not following the axis yet read as one statement, so they sit
    on a line together and wrap as a unit. */

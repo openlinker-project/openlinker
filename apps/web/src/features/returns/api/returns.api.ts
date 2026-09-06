@@ -202,6 +202,7 @@ function buildQuery(filters?: ReturnFilters, pagination?: ReturnPagination): str
   const params = new URLSearchParams();
   if (filters?.sourceConnectionId) params.set('sourceConnectionId', filters.sourceConnectionId);
   if (filters?.bucket) params.set('bucket', filters.bucket);
+  if (filters?.internalOrderId) params.set('internalOrderId', filters.internalOrderId);
   if (filters?.createdFrom) params.set('createdFrom', filters.createdFrom);
   if (filters?.createdTo) params.set('createdTo', filters.createdTo);
   // Clamped rather than forwarded: the backend answers HTTP 400 above 100, so

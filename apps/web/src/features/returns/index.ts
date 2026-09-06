@@ -139,6 +139,14 @@ export {
 } from './lib/return-segments';
 export type { ReturnSegment, ReturnSegmentCounts } from './lib/return-segments';
 
+// The order-detail returns panel (#2640, returns spec § 5.4 surface 3).
+//
+// It lives in THIS feature rather than `features/orders` — see the component's
+// own docblock: `features/returns` already value-imports the orders barrel, so
+// the reverse edge would close a runtime cycle.
+export { OrderReturnsPanel } from './components/order-returns-panel';
+export { ORDER_RETURNS_PANEL_COPY } from './lib/order-returns-panel.copy';
+
 // Returns activity on the ORDER timeline (#2383, `W2-45`).
 //
 // The mapper is exported, the timeline component is not: `features/orders` owns

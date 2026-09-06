@@ -108,6 +108,10 @@ export class ReturnsController {
     // bucket they are currently looking at.
     const scope: ReturnListFilter = {
       sourceConnectionId: query.sourceConnectionId,
+      // #2640 — part of the SCOPE, so all four count reads see it. An order's
+      // panel that counted against every order's returns would report numbers
+      // describing a scope the operator is not looking at.
+      internalOrderId: query.internalOrderId,
       createdFrom: query.createdFrom === undefined ? undefined : new Date(query.createdFrom),
       createdTo: query.createdTo === undefined ? undefined : new Date(query.createdTo),
       // #2378 value filters. `openedAt` is the SOURCE's instant — deliberately

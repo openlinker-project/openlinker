@@ -843,6 +843,16 @@ export class ReturnRepository implements ReturnRepositoryPort {
       query.andWhere(`NOT (${ReturnRepository.ORPHAN_PREDICATE})`);
     }
 
+    // #2640 — the order-detail returns panel. An ORDINARY arm, deliberately not
+    // a translation of `bucket: 'attributed'`: it necessarily selects attributed
+    // returns, but conflating the two dimensions is the #2378 `orphans` mistake,
+    // and `bucket` must stay independently usable beside it.
+    if (filter.internalOrderId !== undefined) {
+      query.andWhere('r."internalOrderId" = :internalOrderId', {
+        internalOrderId: filter.internalOrderId,
+      });
+    }
+
     if (filter.createdFrom !== undefined) {
       query.andWhere('r."createdAt" >= :createdFrom', { createdFrom: filter.createdFrom });
     }
