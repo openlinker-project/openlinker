@@ -445,6 +445,21 @@ printf '{"metrics":{"http_reqs":{"count":100}}}\n' > "$sat_dir/no-vus.json"
 assert_contains "a summary carrying no vus/vus_max is discarded" \
   "$(post_guard_generator_saturated "$sat_dir/no-vus.json")" "DISCARDED"
 
+# #2930 - constant-vus holds a FIXED pool, so vus.max == vus_max.max by
+# design (the executor never grows the pool to chase a rate). The default
+# (ramping-arrival-rate) reading of that as "used its whole ceiling" would
+# discard every single constant-vus run - the executor param exists so the
+# guard can tell "fully in use because that's the deliberate configuration"
+# apart from "fully in use because the generator ran out of headroom".
+write_k6_summary "$sat_dir/constant-vus-full.json" 32 32 none 5000
+assert_eq "constant-vus at vus==vus_max is NOT discarded" "ok" \
+  "$(post_guard_generator_saturated "$sat_dir/constant-vus-full.json" constant-vus)"
+# Same summary, no executor hint (i.e. the default) - still discarded, so
+# the new arm is additive and does not weaken the existing ramping-arrival-rate
+# check for any caller that omits the hint.
+assert_contains "the same summary WITHOUT the hint still discards (default unchanged)" \
+  "$(post_guard_generator_saturated "$sat_dir/constant-vus-full.json")" "DISCARDED"
+
 rm -rf "$sat_dir"
 
 # ===========================================================================
@@ -510,6 +525,16 @@ run_post_guards "$RPGDIR2" "'c1'" '2026-01-01T00:00:00Z' 0 9999999999 ''
 assert_eq "any post-guard failing -> DISCARDED" "DISCARDED" "$(verdict_read "$RPGDIR2" | head -1)"
 rm -rf "$RPGDIR2"
 FAKE_PG[count]=0
+
+# #2930 - the optional 8th (executor) arg threads through to
+# post_guard_generator_saturated: a fixed-pool-at-ceiling summary passed with
+# the constant-vus hint must still resolve VALID, never DISCARDED.
+RPGDIR3="$(mktemp -d)"
+write_k6_summary "$RPGDIR3/k6-summary.json" 16 16 none 2000
+run_post_guards "$RPGDIR3" "'c1'" '2026-01-01T00:00:00Z' 0 9999999999 '' "$RPGDIR3/k6-summary.json" constant-vus
+assert_eq "run_post_guards threads the executor hint through to the generator guard" "VALID" \
+  "$(verdict_read "$RPGDIR3" | head -1)"
+rm -rf "$RPGDIR3"
 
 # ===========================================================================
 # manifest assembly

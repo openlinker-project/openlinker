@@ -25,12 +25,28 @@
  *                     averaged", so each arm gets its own bucket) (required)
  *   GEN_INTERVAL_MS   default 60000 - MUST equal the pre-signer's
  *                     --gen-interval-secs * 1000
- *   TARGET_RATE       requests/sec at plateau, default 50
- *   RAMP_UP_SECS      default 10
- *   PLATEAU_SECS      default 30
- *   RAMP_DOWN_SECS    default 5
- *   PRE_ALLOCATED_VUS default 20
- *   MAX_VUS           default 100
+ *   EXECUTOR          ramping-arrival-rate (default) | constant-vus (#2930).
+ *                     ramping-arrival-rate holds the REQUEST RATE constant -
+ *                     the right shape for the `unique`/`replay-committed`
+ *                     throughput-ceiling arms, where concurrency is whatever
+ *                     it needs to be to sustain the rate. constant-vus holds
+ *                     the VIRTUAL-USER COUNT constant instead - the right
+ *                     shape for forcing a DELIBERATE collision on one
+ *                     eventId at a rate the system is otherwise comfortable
+ *                     with, rather than getting concurrency only as a
+ *                     side effect of the system falling behind an arrival
+ *                     rate (which arrives entangled with CPU/pool/WAL
+ *                     saturation - see results-F3-2026-09-06.md's own
+ *                     "replay-concurrent is a null result at 43/s" finding).
+ *   TARGET_RATE       requests/sec at plateau, default 50 (ramping-arrival-rate only)
+ *   RAMP_UP_SECS      default 10 (ramping-arrival-rate only)
+ *   PLATEAU_SECS      default 30 (ramping-arrival-rate only)
+ *   RAMP_DOWN_SECS    default 5 (ramping-arrival-rate only)
+ *   PRE_ALLOCATED_VUS default 20 (ramping-arrival-rate only)
+ *   MAX_VUS           default 100 (ramping-arrival-rate only)
+ *   VUS               fixed virtual-user count, default 1 (constant-vus only)
+ *   DURATION_SECS     how long the fixed VU pool runs, default
+ *                     RAMP_UP_SECS+PLATEAU_SECS+RAMP_DOWN_SECS (constant-vus only)
  */
 import http from 'k6/http';
 import { check } from 'k6';
@@ -54,12 +70,21 @@ const TARGET_URL = readEnv('TARGET_URL');
 const RUN_START_MS = Number(readEnv('RUN_START_MS'));
 const ARM = readEnv('ARM');
 const GEN_INTERVAL_MS = Number(readEnv('GEN_INTERVAL_MS', '60000'));
+const EXECUTOR = readEnv('EXECUTOR', 'ramping-arrival-rate');
 const TARGET_RATE = Number(readEnv('TARGET_RATE', '50'));
 const RAMP_UP_SECS = Number(readEnv('RAMP_UP_SECS', '10'));
 const PLATEAU_SECS = Number(readEnv('PLATEAU_SECS', '30'));
 const RAMP_DOWN_SECS = Number(readEnv('RAMP_DOWN_SECS', '5'));
 const PRE_ALLOCATED_VUS = Number(readEnv('PRE_ALLOCATED_VUS', '20'));
 const MAX_VUS = Number(readEnv('MAX_VUS', '100'));
+const VUS = Number(readEnv('VUS', '1'));
+const DURATION_SECS = Number(
+  readEnv('DURATION_SECS', String(RAMP_UP_SECS + PLATEAU_SECS + RAMP_DOWN_SECS))
+);
+
+if (EXECUTOR !== 'ramping-arrival-rate' && EXECUTOR !== 'constant-vus') {
+  throw new Error(`webhook-burst.js: EXECUTOR must be ramping-arrival-rate or constant-vus, got '${EXECUTOR}'`);
+}
 
 // Loaded ONCE, not once per VU (#2931). Two things had to change together to
 // get there, both verified live against the pinned grafana/k6:1.0.0 image:
@@ -142,18 +167,31 @@ export const options = {
   // both still carry p50/p90/p95 in the same shape.
   summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)'],
   scenarios: {
-    [ARM]: {
-      executor: 'ramping-arrival-rate',
-      startRate: 0,
-      timeUnit: '1s',
-      preAllocatedVUs: PRE_ALLOCATED_VUS,
-      maxVUs: MAX_VUS,
-      stages: [
-        { target: TARGET_RATE, duration: `${RAMP_UP_SECS}s` },
-        { target: TARGET_RATE, duration: `${PLATEAU_SECS}s` },
-        { target: 0, duration: `${RAMP_DOWN_SECS}s` },
-      ],
-    },
+    // #2930: constant-vus is a DELIBERATE collision instrument, not a
+    // throughput probe - a fixed pool of VUS virtual users all replaying
+    // the SAME pre-signed entry (the pool is built with --distinct-ids 1)
+    // for DURATION_SECS, so index-tuple contention is forced at a rate the
+    // system is otherwise comfortable with, rather than arriving only as a
+    // side effect of a ramping-arrival-rate run falling behind its target.
+    [ARM]:
+      EXECUTOR === 'constant-vus'
+        ? {
+            executor: 'constant-vus',
+            vus: VUS,
+            duration: `${DURATION_SECS}s`,
+          }
+        : {
+            executor: 'ramping-arrival-rate',
+            startRate: 0,
+            timeUnit: '1s',
+            preAllocatedVUs: PRE_ALLOCATED_VUS,
+            maxVUs: MAX_VUS,
+            stages: [
+              { target: TARGET_RATE, duration: `${RAMP_UP_SECS}s` },
+              { target: TARGET_RATE, duration: `${PLATEAU_SECS}s` },
+              { target: 0, duration: `${RAMP_DOWN_SECS}s` },
+            ],
+          },
   },
 };
 
