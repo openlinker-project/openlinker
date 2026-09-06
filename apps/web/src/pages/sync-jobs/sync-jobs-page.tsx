@@ -276,6 +276,12 @@ export function SyncJobsPage(): ReactElement {
             rowHref={(job) => job.id}
             sort={sort}
             onSortChange={setSort}
+            // Virtualized deliberately (#2937 audit): PAGE_SIZE is
+            // SYNC_JOBS_MAX_LIMIT (100), 4-5x every other list page's 20-25,
+            // and an operator monitoring a live queue pages through this one
+            // repeatedly — the one list page in the app whose per-page
+            // render cost is worth trimming. No `expandable`/variable-height
+            // rows here, so it is layout-compatible.
             virtualize
             containerHeight={600}
             cardView={{

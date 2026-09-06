@@ -520,6 +520,42 @@ FE-002 expanded the primitive layer in `apps/web/src/shared/ui`. Every primitive
 
 - `DataTable` — wraps `@tanstack/react-table` for sort/filter/column state. Dense rows (36 px default), row-click navigation, integrated empty state, status badge cells. `align` is **`'left' | 'right'` only** — the `.data-table__cell--center` rule was deleted in #2023 once it proved consumerless (its two former call sites, the dashboard *Attempts* and failed-orders *Items* counts, are numeric and moved to `'right'`), and `'center'` was dropped from the type with it: a member that type-checks, stamps a class nothing matches, and then renders *left* declares the opposite of what it does. Re-adding it means re-adding the CSS in the same change. `rowLinkDisplay` (`'inline'` default | `'block'`) controls how the first cell's navigation `<a>` participates in layout — pass `'block'` when that cell renders a tall composite, or the `:focus-visible` ring sizes itself from the anchor's own inline metrics and paints across the row's middle (see § Density & Row Heights, listings carve-out). Pairs with `@tanstack/react-virtual` when row count ≥ 500. `hideBelow` (per-column, breakpoint-gated hiding) and `expandable` (a per-row accordion detail panel, opened via a leading toggle, `#1620`) are two independent, composable strategies for keeping a wide table usable at narrower widths — `hideBelow` drops non-essential columns outright below a breakpoint, `expandable` keeps every column queryable but moves non-essential fields into a click-to-open detail row instead of hiding them. A table can use either, both, or neither; the orders list (`#1620`) uses `expandable` with no `hideBelow` columns, relying on the table's own horizontal scroll at tablet width for anything that doesn't fit. `expandable` is not currently supported together with `virtualize` on the same table — see the `DataTableExpandable` JSDoc in `data-table.tsx`.
 
+**Virtualization adoption audit (#2937).** The `≥ 500` threshold above is the
+project's own stated criterion; this table is the per-page decision the
+`DataTable` docblock's own instruction ("record it, don't blind-flip it")
+asked for, so the next reader does not have to re-derive it. Re-derive the
+row count column when adding a page here — it is the reason the decision was
+made, and it moves as the page's own pagination changes.
+
+| Page / component | Row count bound | Decision | Reason |
+|---|---|---|---|
+| `sync-jobs-page.tsx` | up to 100/page (`SYNC_JOBS_MAX_LIMIT`) | **Virtualized** | Only page whose per-page size (4-5x every other list) clears the ≥500 threshold's *intent*; an operator pages through it repeatedly while monitoring a live queue. No `expandable`/variable-height rows. |
+| `orders-list-page.tsx` | 20/page | Not virtualized | Paginated well under 500, **and** structurally ineligible regardless of row count — uses `expandable` (#1620), which `DataTable` disables `virtualize` for (variable-height accordion panel breaks the virtualizer's fixed row-height assumption). |
+| `customers-list-page.tsx` | 20/page | Not virtualized | Paginated well under 500. |
+| `cursors-list-page.tsx` | 20/page | Not virtualized | Paginated well under 500. |
+| `invoices-list-page.tsx` | 20/page | Not virtualized | Paginated well under 500. |
+| `listings-list-page.tsx` | 20/page | Not virtualized | Paginated well under 500. |
+| `dispatch-risk-page.tsx` | 25/page | Not virtualized | Paginated well under 500. |
+| `failed-orders-page.tsx` | 25/page | Not virtualized | Paginated well under 500. |
+| `products-list-page.tsx` | 20/page | Not virtualized | Paginated well under 500. |
+| `returns-list-page.tsx` (`RETURNS_PAGE_SIZE`) | 20/page | Not virtualized | Paginated well under 500. |
+| `shipments-page.tsx` (`SHIPMENTS_PAGE_SIZE`) | 20/page | Not virtualized | Paginated well under 500. |
+| `users-page.tsx` | 25/page | Not virtualized | Paginated well under 500. |
+| `webhook-deliveries-page.tsx` | 20/page | Not virtualized | Paginated well under 500. |
+| `connections-list-page.tsx` | 20/page (#2937) | Not virtualized | Paginated well under 500 — the connections read itself was unpaginated before #2937; `usePaginatedConnectionsQuery` is this page's own read, kept deliberately separate from the unbounded `useConnectionsQuery` every other consumer (pickers, lookups, the command palette) still uses on purpose. |
+| `adapters-catalog-page.tsx` | build-time constant | Not virtualized | Bounded by the number of shipped adapter *packages*, never by operator data volume — cannot grow the way a customer/order/product list can. |
+| `prompt-templates-list-page.tsx` | operator-authored (key × channel) slots | Not virtualized | A small configuration surface, not accumulated data. |
+| `return-lines-table.tsx` (return-detail sub-panel) | one return's own lines (a handful) | Not virtualized | Bounded by nature, and structurally ineligible regardless — uses `expandable` for per-line custody detail. |
+| `insights-page.tsx` | dashboard widgets (e.g. recent jobs `limit: 5`) | Not virtualized | A composite dashboard of small widget-level lists, not a primary browseable list surface. |
+| `/settings/who-decides` | 7 fixed rows | N/A — not `DataTable` | Documented non-`DataTable` carve-out, see above. |
+
+Every embedded, per-entity sub-table not listed here (connection diagnostics,
+one order's line items, one bulk batch's progress rows, routing-rule panels,
+analytics channel/product tables, automation activity/trigger indexes) is
+bounded by its OWNING record's own child count — never by install-wide data
+volume — for the same reason `return-lines-table.tsx` is, and is out of scope
+for the same reason.
+
 ### Status & data surfaces
 
 - `StatusBadge` — tones: `success` / `warning` / `error` / `info` / `review` / `neutral`. Dot + text; never color alone.

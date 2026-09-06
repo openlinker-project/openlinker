@@ -95,6 +95,7 @@ describe('ConnectionService', () => {
     const mockConnectionPort = {
       get: jest.fn(),
       list: jest.fn(),
+      listPaginated: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
       disable: jest.fn(),
@@ -945,6 +946,38 @@ describe('ConnectionService', () => {
       await service.list(filters);
 
       expect(connectionPort.list).toHaveBeenCalledWith(filters);
+    });
+  });
+
+  describe('listPaginated (#2937)', () => {
+    it('should delegate to the port and return its envelope verbatim', async () => {
+      const page = { items: [mockConnection], total: 3, limit: 10, offset: 0 };
+      connectionPort.listPaginated.mockResolvedValue(page);
+
+      const result = await service.listPaginated(undefined, { limit: 10, offset: 0 });
+
+      expect(result).toEqual(page);
+      expect(connectionPort.listPaginated).toHaveBeenCalledWith(undefined, {
+        limit: 10,
+        offset: 0,
+      });
+    });
+
+    it('should pass filters through alongside pagination', async () => {
+      connectionPort.listPaginated.mockResolvedValue({
+        items: [],
+        total: 0,
+        limit: 5,
+        offset: 20,
+      });
+      const filters: ConnectionFilters = { status: 'active' };
+
+      await service.listPaginated(filters, { limit: 5, offset: 20 });
+
+      expect(connectionPort.listPaginated).toHaveBeenCalledWith(filters, {
+        limit: 5,
+        offset: 20,
+      });
     });
   });
 

@@ -135,6 +135,10 @@ export function ReturnLinesTable({
   );
 
   return (
+    // #2937 audit: deliberately NOT virtualized — bounded by nature (one
+    // return's own line items, never more than a handful) rather than by
+    // pagination, and `expandable` below is independently incompatible with
+    // `virtualize` on DataTable regardless of row count.
     <DataTable
       caption={RETURN_LINES_COPY.tableCaption}
       columns={columns}

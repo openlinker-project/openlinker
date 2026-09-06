@@ -165,7 +165,64 @@ Triggered when a new order is validated/created.
 Triggered when order status changes.
 
 ### `stock.changed`
-Triggered when product stock quantity changes.
+Triggered when product stock quantity changes. Registered on **two** hooks,
+deliberately:
+
+- `actionUpdateQuantity` - fired from inside PrestaShop's
+  `StockAvailable::setQuantity()`, which the admin panel and the CLI call
+  directly.
+- `actionObjectStockAvailableUpdateAfter` / `actionObjectStockAvailableAddAfter`
+  - the generic `ObjectModel` hooks PrestaShop core fires unconditionally on
+  every `StockAvailable::add()`/`update()`, including the REST webservice's
+  own write path (`PUT /api/stock_availables/{id}`).
+
+**Why both, and what a shop that skips the upgrade is missing**: a
+webservice write only reaches `actionUpdateQuantity` when the row belongs to
+a product WITH combinations - PrestaShop's own `postSave()` recomputes the
+combined stock and rewrites it through `setQuantity()`, which is the only
+thing that fires that hook. A webservice write to a SIMPLE product's own
+row (no combinations) never reaches `setQuantity()` at all, so on a shop
+running only the first hook that write is silently invisible to the module
+until the next inventory sweep - on **any** supported PrestaShop major,
+8.x included, since the mechanism is identical on both. Module v1.11.0
+added the second pair to close that gap for every row shape; a shop
+upgrading from an earlier version picks it up automatically
+(`upgrade/upgrade-1.11.0.php`). Both hooks stay registered together - firing
+twice for the same write is harmless, since the outbox's dedup key
+collapses the duplicate before it is ever sent.
+
+**Stock hook coverage by supported PrestaShop major** (`ps_versions_compliancy`
+declares `8.0` through the running `_PS_VERSION_`):
+
+| Write path | PS 8.x | PS 9.x |
+|---|---|---|
+| Admin panel / CLI (`StockAvailable::setQuantity()`) | webhook | webhook |
+| Webservice PUT on a combination's own row | webhook (via the aggregate rewrite) | webhook (via the aggregate rewrite) |
+| Webservice PUT on a simple product's row, before v1.11.0 | sweep only | sweep only |
+| Webservice PUT on any row, v1.11.0+ | webhook | webhook |
+
+The "sweep only" rows are not a defect specific to one major - the identical
+gap exists on every PrestaShop version the module supports, and the sweep
+(the hourly `master.inventory.syncAll` pass, see
+`docs/architecture-overview.md` § Inventory) is what has always caught it;
+v1.11.0 simply makes the low-latency path cover it too.
+
+**Manually verifying coverage on a given PrestaShop install** (the two live
+probes #2924 was root-caused with; run against a disposable/staging shop,
+never production):
+
+1. Find a simple product's `stock_available` row (`id_product_attribute = 0`,
+   no combinations) and a combination product's own row
+   (`id_product_attribute != 0`) via the admin panel or
+   `SELECT * FROM ps_stock_available`.
+2. `GET /api/stock_availables/{id}` with the shop's webservice key to read
+   the current XML, then `PUT` it back with a genuinely changed `<quantity>`.
+3. Watch `ps_openlinker_webhook_outbox` for a new row with
+   `event_type = 'stock.changed'` and `external_id` matching the product.
+
+On a shop running only `actionUpdateQuantity` (pre-v1.11.0), step 3 produces
+a row for the combination write and none for the simple-product write. On
+v1.11.0+, both writes produce a row.
 
 ## Troubleshooting
 

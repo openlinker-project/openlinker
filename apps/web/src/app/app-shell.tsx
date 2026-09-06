@@ -184,8 +184,16 @@ function WorkspaceFooter({ onLogout, username, location, demoMode }: WorkspaceFo
 }
 
 function TopbarSearchTrigger(): ReactElement {
-  const { open } = useCommandPalette();
-  return <CommandPaletteTrigger onClick={open} />;
+  const { open, prefetch } = useCommandPalette();
+  // Warm the palette's data queries on hover/focus rather than at open time
+  // (#2936) — a mouse click is almost always preceded by a hover, and a
+  // keyboard Tab lands focus here before Enter/Space activates it, so most
+  // real opens through this trigger never see the loading state at all.
+  // The pure ⌘K shortcut has no hover/focus of its own to hook and still
+  // warms exactly at open — see command-palette-provider.tsx.
+  return (
+    <CommandPaletteTrigger onClick={open} onMouseEnter={prefetch} onFocus={prefetch} />
+  );
 }
 
 function initialsFrom(username: string): string {

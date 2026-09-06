@@ -1826,6 +1826,11 @@ export function OrdersListPage(): ReactElement {
                 }
               />
             }
+            // #2937 audit: deliberately NOT virtualized, and not eligible
+            // even if PAGE_SIZE (20) grew — `expandable` below and
+            // `virtualize` are mutually exclusive on DataTable (a variable-
+            // height accordion panel breaks the virtualizer's fixed
+            // estimateRowHeight; see DataTableExpandable's own JSDoc).
             expandable={{
               // Non-essential fields (order ref, items, exact ship-by, carrier,
               // created, payment, addresses) live in the accordion (#1620); the

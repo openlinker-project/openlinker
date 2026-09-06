@@ -18,6 +18,8 @@ import type {
   Connection,
   ConnectionUpdate,
   ConnectionFilters,
+  ConnectionPagination,
+  PaginatedConnections,
 } from '@openlinker/core/identifier-mapping';
 import {
   ConnectionPort,
@@ -654,6 +656,22 @@ export class ConnectionService implements IConnectionService {
       return connections;
     } catch (error) {
       this.logger.error('Failed to list connections', error);
+      throw error;
+    }
+  }
+
+  async listPaginated(
+    filters: ConnectionFilters | undefined,
+    pagination: ConnectionPagination
+  ): Promise<PaginatedConnections> {
+    try {
+      this.logger.debug(
+        `Listing connections (paginated, limit=${pagination.limit}, offset=${pagination.offset})` +
+          `${filters ? ` with filters: ${JSON.stringify(filters)}` : ''}`
+      );
+      return await this.connectionPort.listPaginated(filters, pagination);
+    } catch (error) {
+      this.logger.error('Failed to list connections (paginated)', error);
       throw error;
     }
   }

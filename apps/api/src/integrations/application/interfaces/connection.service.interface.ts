@@ -11,6 +11,8 @@ import type {
   Connection,
   ConnectionUpdate,
   ConnectionFilters,
+  ConnectionPagination,
+  PaginatedConnections,
 } from '@openlinker/core/identifier-mapping';
 import type {
   ConnectionTestResult,
@@ -36,6 +38,17 @@ export interface IConnectionService {
    * @returns Array of Connection entities
    */
   list(filters?: ConnectionFilters): Promise<Connection[]>;
+
+  /**
+   * List connections with optional filters, paged (#2937) — for the
+   * connections list PAGE only; every other caller wants {@link list}.
+   * @param filters - Optional filter criteria
+   * @param pagination - Page bounds
+   */
+  listPaginated(
+    filters: ConnectionFilters | undefined,
+    pagination: ConnectionPagination
+  ): Promise<PaginatedConnections>;
 
   /**
    * Get connection by ID

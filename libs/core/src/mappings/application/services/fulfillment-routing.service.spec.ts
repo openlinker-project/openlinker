@@ -82,6 +82,7 @@ describe('FulfillmentRoutingService', () => {
     connectionPort = {
       get: jest.fn(),
       list: jest.fn(),
+      listPaginated: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
       disable: jest.fn(),

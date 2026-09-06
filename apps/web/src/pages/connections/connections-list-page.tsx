@@ -1,6 +1,6 @@
 import { useMemo, type ReactElement } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { useConnectionsQuery } from '../../features/connections/hooks/use-connections-query';
+import { usePaginatedConnectionsQuery } from '../../features/connections/hooks/use-paginated-connections-query';
 import type { Connection, ConnectionFilters, ConnectionStatus } from '../../features/connections/api/connections.types';
 import { usePlatforms } from '../../shared/plugins';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
@@ -16,6 +16,7 @@ import { captureDemoEvent } from '../../features/demo';
 import { OmsAttentionBadges, useOmsAttentionQuery } from '../../features/fulfillment-authority';
 
 const CONNECTION_STATUSES = ['active', 'disabled', 'error', 'needs_reauth'] as const;
+const PAGE_SIZE = 20;
 
 function isValidStatus(value: string): value is ConnectionStatus {
   return CONNECTION_STATUSES.includes(value as ConnectionStatus);
@@ -111,13 +112,14 @@ export function ConnectionsListPage(): ReactElement {
   const platformType = searchParams.get('platformType') ?? '';
   const status = searchParams.get('status') ?? '';
   const isKnownPlatform = platformType !== '' && plugins.some((p) => p.platformType === platformType);
+  const offset = Number(searchParams.get('offset') ?? '0');
 
   const filters: ConnectionFilters = {
     platformType: isKnownPlatform ? platformType : undefined,
     status: isValidStatus(status) ? status : undefined,
   };
 
-  const query = useConnectionsQuery(filters);
+  const query = usePaginatedConnectionsQuery(filters, { limit: PAGE_SIZE, offset });
 
   function handleFilterChange(key: string, value: string): void {
     captureDemoEvent('demo_connections_filtered', { filter: key, value });
@@ -128,6 +130,9 @@ export function ConnectionsListPage(): ReactElement {
       } else {
         next.delete(key);
       }
+      // A filter change invalidates the current page offset — the #2148
+      // orders-list-page rule, applied here too.
+      next.delete('offset');
       return next;
     });
   }
@@ -137,9 +142,27 @@ export function ConnectionsListPage(): ReactElement {
       const next = new URLSearchParams(prev);
       next.delete('platformType');
       next.delete('status');
+      next.delete('offset');
       return next;
     });
   }
+
+  function setOffset(next: number): void {
+    setSearchParams((prev) => {
+      const params = new URLSearchParams(prev);
+      if (next === 0) {
+        params.delete('offset');
+      } else {
+        params.set('offset', String(next));
+      }
+      return params;
+    });
+  }
+
+  const total = query.data?.total ?? 0;
+  const hasPrev = offset > 0;
+  const hasNext = offset + PAGE_SIZE < total;
+  const rows = query.data?.items ?? [];
 
   const filtersActive = Boolean(filters.platformType || filters.status);
 
@@ -196,7 +219,7 @@ export function ConnectionsListPage(): ReactElement {
             <Button onClick={() => { void query.refetch(); }}>Retry</Button>
           }
         />
-      ) : (query.data ?? []).length === 0 ? (
+      ) : rows.length === 0 ? (
         <EmptyState
           title="No connections found"
           message={
@@ -215,28 +238,44 @@ export function ConnectionsListPage(): ReactElement {
           }
         />
       ) : (
-        <DataTable
-          caption="Configured connections"
-          columns={columns}
-          rowKey={(connection) => connection.id}
-          rows={query.data ?? []}
-          rowHref={(connection) => `/connections/${connection.id}`}
-          sort={sort}
-          onSortChange={setSort}
-          cardView={{
-            title: (connection) => connection.name,
-            subtitle: (connection) =>
-              `${connection.platformType} · ${connection.adapterKey ?? 'default adapter'}`,
-            meta: (connection) => (
-              <span className="data-table__badge-row">
-                <StatusBadge tone={toStatusTone(connection.status)} compact>
-                  {connection.status}
-                </StatusBadge>
-                <OmsAttentionBadges entries={attentionFor(connection.id)} compact />
-              </span>
-            ),
-          }}
-        />
+        <>
+          <DataTable
+            caption="Configured connections"
+            columns={columns}
+            rowKey={(connection) => connection.id}
+            rows={rows}
+            rowHref={(connection) => `/connections/${connection.id}`}
+            sort={sort}
+            onSortChange={setSort}
+            cardView={{
+              title: (connection) => connection.name,
+              subtitle: (connection) =>
+                `${connection.platformType} · ${connection.adapterKey ?? 'default adapter'}`,
+              meta: (connection) => (
+                <span className="data-table__badge-row">
+                  <StatusBadge tone={toStatusTone(connection.status)} compact>
+                    {connection.status}
+                  </StatusBadge>
+                  <OmsAttentionBadges entries={attentionFor(connection.id)} compact />
+                </span>
+              ),
+            }}
+          />
+
+          <div className="pagination">
+            <span className="text-muted">
+              Showing {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of {total}
+            </span>
+            <div className="pagination__actions">
+              <Button disabled={!hasPrev} onClick={() => { setOffset(offset - PAGE_SIZE); }}>
+                Previous
+              </Button>
+              <Button disabled={!hasNext} onClick={() => { setOffset(offset + PAGE_SIZE); }}>
+                Next
+              </Button>
+            </div>
+          </div>
+        </>
       )}
     </PageLayout>
   );

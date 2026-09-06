@@ -93,6 +93,10 @@ export function AdaptersCatalogPage(): ReactElement {
           message="No integration adapters are registered in the system."
         />
       ) : (
+        // #2937 audit: deliberately NOT virtualized — bounded by the number
+        // of shipped adapter PACKAGES (a build-time constant), never by
+        // operator data volume, so it cannot grow the way a customer/order/
+        // product list can.
         <DataTable
           caption="Available adapters"
           columns={COLUMNS}

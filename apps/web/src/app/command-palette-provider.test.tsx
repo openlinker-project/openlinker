@@ -6,14 +6,16 @@
  *
  * @module app
  */
-import { cleanup, fireEvent, screen } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createAuthenticatedSessionAdapter,
+  createMockApiClient,
   renderWithProviders,
   sampleConnection,
 } from '../test/test-utils';
+import type { ApiClient } from './api/api-client';
 import { CommandPaletteProvider, useCommandPalette } from './command-palette-provider';
 
 const captureDemoEvent = vi.fn();
@@ -32,6 +34,20 @@ function OpenButton() {
   );
 }
 
+function OpenAndPrefetchButtons() {
+  const { open, prefetch } = useCommandPalette();
+  return (
+    <>
+      <button type="button" onClick={open}>
+        open palette
+      </button>
+      <button type="button" onMouseEnter={prefetch}>
+        search trigger
+      </button>
+    </>
+  );
+}
+
 function renderPalette() {
   return renderWithProviders(
     <CommandPaletteProvider>
@@ -39,6 +55,22 @@ function renderPalette() {
     </CommandPaletteProvider>,
     { sessionAdapter: createAuthenticatedSessionAdapter() },
   );
+}
+
+/**
+ * Renders with an explicit mock ApiClient so a test can assert on the
+ * palette's underlying `list` calls directly (#2936) — the four data
+ * sources' network activity, not just what the DOM ends up showing.
+ */
+function renderPaletteWithApiClient(): { apiClient: ApiClient } {
+  const apiClient = createMockApiClient();
+  renderWithProviders(
+    <CommandPaletteProvider>
+      <OpenAndPrefetchButtons />
+    </CommandPaletteProvider>,
+    { sessionAdapter: createAuthenticatedSessionAdapter(), apiClient },
+  );
+  return { apiClient };
 }
 
 describe('CommandPaletteProvider', () => {
@@ -208,6 +240,57 @@ describe('CommandPaletteProvider', () => {
       expect(captureDemoEvent).toHaveBeenCalledWith('demo_command_palette_result_selected', {
         source: 'connections',
       });
+    });
+  });
+
+  describe('data query gating (#2936)', () => {
+    it('fires none of the four palette data queries before the palette is ever touched', () => {
+      const { apiClient } = renderPaletteWithApiClient();
+
+      expect(apiClient.connections.list).not.toHaveBeenCalled();
+      expect(apiClient.orders.list).not.toHaveBeenCalled();
+      expect(apiClient.products.list).not.toHaveBeenCalled();
+      expect(apiClient.syncJobs.list).not.toHaveBeenCalled();
+    });
+
+    it('fires the data queries once the palette opens via the keyboard shortcut', async () => {
+      const { apiClient } = renderPaletteWithApiClient();
+
+      fireEvent.keyDown(document, { key: 'k', metaKey: true });
+
+      await waitFor(() => {
+        expect(apiClient.connections.list).toHaveBeenCalled();
+        expect(apiClient.orders.list).toHaveBeenCalled();
+        expect(apiClient.syncJobs.list).toHaveBeenCalled();
+      });
+    });
+
+    it('warms the queries on prefetch() without opening the palette', async () => {
+      const user = userEvent.setup();
+      const { apiClient } = renderPaletteWithApiClient();
+
+      await user.hover(screen.getByRole('button', { name: 'search trigger' }));
+
+      await waitFor(() => {
+        expect(apiClient.connections.list).toHaveBeenCalled();
+      });
+      // Warming is not opening: the palette combobox must still be absent.
+      expect(screen.queryByRole('combobox')).toBeNull();
+    });
+
+    it('does not re-fire a query that a prior open already warmed', async () => {
+      const { apiClient } = renderPaletteWithApiClient();
+
+      fireEvent.keyDown(document, { key: 'k', metaKey: true }); // open
+      await waitFor(() => expect(apiClient.connections.list).toHaveBeenCalledTimes(1));
+
+      fireEvent.keyDown(document, { key: 'k', metaKey: true }); // close
+      fireEvent.keyDown(document, { key: 'k', metaKey: true }); // reopen
+
+      // TanStack's own staleTime/cache behaviour governs refetching from
+      // here — the provider's gating flag itself must not force a second
+      // fetch on every subsequent open.
+      expect(apiClient.connections.list).toHaveBeenCalledTimes(1);
     });
   });
 });

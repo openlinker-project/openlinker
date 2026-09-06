@@ -6,7 +6,7 @@ import { useApiClient } from '../../../app/api/api-client-provider';
 export function useSyncJobsQuery(
   filters?: SyncJobFilters,
   pagination?: SyncJobPagination,
-  options?: { refetchInterval?: number | false },
+  options?: { refetchInterval?: number | false; enabled?: boolean },
 ): UseQueryResult<PaginatedSyncJobs> {
   const apiClient = useApiClient();
 

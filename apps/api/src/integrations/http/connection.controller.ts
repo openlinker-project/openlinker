@@ -28,7 +28,13 @@ import {
   Res,
 } from '@nestjs/common';
 import { Response } from 'express';
-import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiExtraModels,
+} from '@nestjs/swagger';
 import { Logger } from '@openlinker/shared/logging';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../auth/auth.types';
@@ -55,6 +61,7 @@ import { UpdateConnectionDto } from './dto/update-connection.dto';
 import { UpdateConnectionCredentialsDto } from './dto/update-connection-credentials.dto';
 import { ConnectionFiltersDto } from './dto/connection-filters.dto';
 import { ConnectionResponseDto } from './dto/connection-response.dto';
+import { PaginatedConnectionsResponseDto } from './dto/paginated-connections-response.dto';
 import { ConnectionDiagnosticsResponseDto } from './dto/connection-diagnostics-response.dto';
 import { ConnectionTestResultDto } from './dto/connection-test-result.dto';
 import { ConnectionService } from '../application/services/connection.service';
@@ -80,6 +87,7 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 
 @ApiBearerAuth()
 @ApiTags('connections')
+@ApiExtraModels(ConnectionResponseDto, PaginatedConnectionsResponseDto)
 @Controller('connections')
 export class ConnectionController {
   private readonly logger = new Logger(ConnectionController.name);
@@ -157,20 +165,45 @@ export class ConnectionController {
 
   @Roles('admin', 'operator', 'viewer')
   @Get()
-  @ApiOperation({ summary: 'List connections with optional filters' })
+  @ApiOperation({
+    summary: 'List connections with optional filters',
+    description:
+      'Returns every matching connection as a bare array by default. Passing ' +
+      '`limit` and/or `offset` (#2937) switches the response to the paginated ' +
+      'envelope shape instead - for the connections list page only. Every ' +
+      'other consumer (capability pickers, lookup tables, the command ' +
+      'palette) should keep omitting both and read the bare array.',
+  })
   @ApiResponse({
     status: 200,
-    description: 'List of connections',
-    type: [ConnectionResponseDto],
+    description: 'List of connections, or a paginated page when limit/offset is supplied',
+    schema: {
+      oneOf: [
+        { type: 'array', items: { $ref: '#/components/schemas/ConnectionResponseDto' } },
+        { $ref: '#/components/schemas/PaginatedConnectionsResponseDto' },
+      ],
+    },
   })
   async list(
     @Query() filtersDto: ConnectionFiltersDto,
     @CurrentUser() user: AuthenticatedUser
-  ): Promise<ConnectionResponseDto[]> {
+  ): Promise<ConnectionResponseDto[] | PaginatedConnectionsResponseDto> {
     const filters: ConnectionFilters = {
       ...(filtersDto.platformType && { platformType: filtersDto.platformType }),
       ...(filtersDto.status && { status: filtersDto.status }),
     };
+
+    if (filtersDto.limit !== undefined || filtersDto.offset !== undefined) {
+      const pagination = { limit: filtersDto.limit ?? 20, offset: filtersDto.offset ?? 0 };
+      const page = await this.connectionService.listPaginated(filters, pagination);
+      return {
+        items: await Promise.all(page.items.map((connection) => this.toResponse(connection, user))),
+        total: page.total,
+        limit: page.limit,
+        offset: page.offset,
+      };
+    }
+
     const connections = await this.connectionService.list(filters);
     return Promise.all(connections.map((connection) => this.toResponse(connection, user)));
   }

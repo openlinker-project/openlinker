@@ -240,6 +240,12 @@ export function createMockApiClient(
       }),
       getById: vi.fn().mockResolvedValue(sampleConnection),
       list: vi.fn().mockResolvedValue([sampleConnection]),
+      listPaginated: vi.fn().mockResolvedValue({
+        items: [sampleConnection],
+        total: 1,
+        limit: 20,
+        offset: 0,
+      }),
       test: vi.fn().mockResolvedValue({ success: true, status: 200, message: 'OK', latencyMs: 42 }),
       update: vi.fn().mockResolvedValue(sampleConnection),
       updateCredentials: vi.fn().mockResolvedValue(undefined),

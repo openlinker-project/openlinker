@@ -7,10 +7,12 @@
  * - Recent-selections persistence to localStorage (`ol:palette:recent`)
  * - Recents cleared on logout (when session status transitions to 'anonymous')
  *
- * Data queries fire at mount inside the authenticated shell and are served
- * from TanStack Query's cache on subsequent opens. Client-side substring
- * filtering is applied because the Orders and SyncJobs list APIs do not
- * expose a `search` parameter.
+ * Data queries fire on first use, not at mount (#2936) — warmed by a hover
+ * or focus on the visible search trigger, by the ⌘K shortcut itself, or by
+ * calling context's `open()`/`prefetch()` — and are served from TanStack
+ * Query's cache on every subsequent open. Client-side substring filtering
+ * is applied because the Orders and SyncJobs list APIs do not expose a
+ * `search` parameter.
  *
  * @module app
  */
@@ -97,6 +99,13 @@ const SOURCE_BY_PREFIX: Record<string, string> = {
 
 interface CommandPaletteContextValue {
   open: () => void;
+  /**
+   * Warms the palette's data queries without opening it (#2936) — call on
+   * hover/focus of a visible trigger so the ⌘K shortcut and a slower mouse
+   * click both land on an already-in-flight (often already-resolved) fetch
+   * instead of starting one at open time.
+   */
+  prefetch: () => void;
 }
 
 const CommandPaletteContext = createContext<CommandPaletteContextValue | null>(null);
@@ -111,6 +120,12 @@ export function useCommandPalette(): CommandPaletteContextValue {
 
 export function CommandPaletteProvider({ children }: PropsWithChildren): ReactElement {
   const [isOpen, setIsOpen] = useState(false);
+  // Every prior open stays true — a query already warmed by an earlier open
+  // must not go back to disabled and re-fetch cold on the next one. Starts
+  // false so the four data queries below fire NEITHER at mount NOR on every
+  // route change, only once something has actually asked for palette data
+  // (an open, or a prefetch() priming call) (#2936).
+  const [queriesWarmed, setQueriesWarmed] = useState(false);
   const [query, setQuery] = useState('');
   const [recents, setRecents] = useState<RecentEntry[]>(() => loadRecents());
   const navigate = useNavigate();
@@ -133,7 +148,10 @@ export function CommandPaletteProvider({ children }: PropsWithChildren): ReactEl
         event.preventDefault();
         setIsOpen((prev) => {
           const next = !prev;
-          if (next) captureDemoEvent('demo_command_palette_opened', { trigger: 'keyboard' });
+          if (next) {
+            captureDemoEvent('demo_command_palette_opened', { trigger: 'keyboard' });
+            setQueriesWarmed(true);
+          }
           return next;
         });
       }
@@ -166,18 +184,28 @@ export function CommandPaletteProvider({ children }: PropsWithChildren): ReactEl
     [navigate, recents],
   );
 
-  // ── Data queries (unconditional — served from TanStack Query cache) ──
+  // ── Data queries (gated on queriesWarmed — see #2936) ──
+  //
+  // Every route mounts this provider once at the authenticated-shell level,
+  // so firing these unconditionally meant four requests on EVERY page load
+  // whether or not the palette is ever opened. Gating on `queriesWarmed`
+  // costs nothing once it flips true (TanStack Query then behaves exactly
+  // as before — cached across opens, refetched per its own staleTime) and
+  // costs three-to-four requests on every load where the operator never
+  // touches ⌘K or the search trigger.
 
   const debouncedQuery = useDebouncedValue(query, 300);
   const searchTerm = debouncedQuery.toLowerCase();
 
-  const connectionsQuery = useConnectionsQuery();
-  const ordersQuery = useOrdersQuery(undefined, { limit: 20 });
+  const connectionsQuery = useConnectionsQuery(undefined, { enabled: queriesWarmed });
+  const ordersQuery = useOrdersQuery(undefined, { limit: 20 }, { enabled: queriesWarmed });
   const productsQuery = useProductsQuery(
     searchTerm.length >= 2 ? { search: debouncedQuery } : undefined,
     { limit: 10 },
+    undefined,
+    { enabled: queriesWarmed },
   );
-  const syncJobsQuery = useSyncJobsQuery(undefined, { limit: 20 });
+  const syncJobsQuery = useSyncJobsQuery(undefined, { limit: 20 }, { enabled: queriesWarmed });
   const demoMode = useDemoMode();
   const isAdmin = session.status === 'authenticated' && session.user?.role === 'admin';
 
@@ -359,8 +387,10 @@ export function CommandPaletteProvider({ children }: PropsWithChildren): ReactEl
     () => ({
       open: () => {
         captureDemoEvent('demo_command_palette_opened', { trigger: 'click' });
+        setQueriesWarmed(true);
         setIsOpen(true);
       },
+      prefetch: () => setQueriesWarmed(true),
     }),
     [],
   );

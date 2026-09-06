@@ -13,6 +13,8 @@ import type {
   ConnectionCreate,
   ConnectionUpdate,
   ConnectionFilters,
+  ConnectionPagination,
+  PaginatedConnections,
 } from '../types/connection.types';
 
 export interface ConnectionPort {
@@ -29,6 +31,19 @@ export interface ConnectionPort {
    * @returns Array of Connection entities matching the filters
    */
   list(filters?: ConnectionFilters): Promise<Connection[]>;
+
+  /**
+   * List connections with optional filters, paged (#2937). A separate
+   * method from {@link list} on purpose — see `ConnectionPagination`'s
+   * docblock for why the two must not collapse into one signature.
+   * @param filters - Optional filter criteria (platformType, status)
+   * @param pagination - Page bounds
+   * @returns A page of Connection entities plus the total matching count
+   */
+  listPaginated(
+    filters: ConnectionFilters | undefined,
+    pagination: ConnectionPagination
+  ): Promise<PaginatedConnections>;
 
   /**
    * Create a new connection

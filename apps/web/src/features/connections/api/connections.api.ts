@@ -5,9 +5,11 @@ import type {
   Connection,
   ConnectionDiagnostics,
   ConnectionFilters,
+  ConnectionPagination,
   ConnectionTestResult,
   CreateConnectionInput,
   InstallWebhooksResult,
+  PaginatedConnections,
   RateLimitStatus,
   RotateWebhookSecretResult,
   SubiektBankAccount,
@@ -32,6 +34,14 @@ export interface ConnectionsApi {
   getCatalogTrust: (connectionId: string) => Promise<CatalogTrust>;
   getSyncStatus: (connectionId: string) => Promise<ConnectionSyncStatus>;
   list: (filters?: ConnectionFilters) => Promise<Connection[]>;
+  /**
+   * The connections list PAGE's read (#2937). Every other caller should use
+   * {@link ConnectionsApi.list} instead — see its docblock.
+   */
+  listPaginated: (
+    filters: ConnectionFilters | undefined,
+    pagination: ConnectionPagination,
+  ) => Promise<PaginatedConnections>;
   setDefaultBankAccount: (connectionId: string, accountId: string) => Promise<void>;
   test: (connectionId: string) => Promise<ConnectionTestResult>;
   update: (connectionId: string, input: UpdateConnectionInput) => Promise<Connection>;
@@ -128,6 +138,14 @@ export function createConnectionsApi(request: ApiRequest): ConnectionsApi {
     },
     list(filters): Promise<Connection[]> {
       return request<Connection[]>(`/connections${buildQuery(filters)}`);
+    },
+    listPaginated(filters, pagination): Promise<PaginatedConnections> {
+      const params = new URLSearchParams();
+      if (filters?.platformType) params.set('platformType', filters.platformType);
+      if (filters?.status) params.set('status', filters.status);
+      params.set('limit', String(pagination.limit));
+      params.set('offset', String(pagination.offset));
+      return request<PaginatedConnections>(`/connections?${params.toString()}`);
     },
     test(connectionId): Promise<ConnectionTestResult> {
       return request<ConnectionTestResult>(`/connections/${connectionId}/test`, {
