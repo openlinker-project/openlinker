@@ -111,6 +111,14 @@ export { FulfillmentWorkUnassignedError } from './domain/exceptions/fulfillment-
 export * from './domain/types/fulfillment-progress-event.types';
 export * from './domain/types/routing-decision.types';
 
+// #2869 R7 / M3 — the live-decision refusal. Ships with NO caller: the manual
+// route producer is #2869's and does not exist yet. Exported anyway because it
+// is permanent and guards a physical, unrecoverable event (two parcels, two
+// carriers, no compensating write). See the file header for the full argument,
+// including the fact that the obligation on #2869's producer to call it is
+// enforced socially rather than by a guard.
+export * from './domain/types/manual-route-admissibility.types';
+
 // #2396's held-order reason. Narrower than the issue text on purpose — see the
 // file header for the #2352 `sourcing-ambiguous` double-count it avoids.
 export * from './domain/types/fulfillment-block-reason.types';
