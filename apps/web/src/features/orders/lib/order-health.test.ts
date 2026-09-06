@@ -233,8 +233,20 @@ describe('deriveFulfillment + fulfillmentLabel', () => {
     expect(deriveFulfillment([], true)).toBe('not-shipped');
   });
 
-  it('prefers delivered over in-flight states', () => {
-    expect(deriveFulfillment(['dispatched', 'delivered'], true)).toBe('delivered');
+  /**
+   * PRE-#2727 THIS ASSERTED `'delivered'` ("prefers delivered over in-flight
+   * states"). That was the defect: an order with one parcel delivered and one
+   * still in transit reported as fully delivered. An in-progress shipment now
+   * outranks a delivered sibling, matching the BE twin.
+   */
+  it('reports dispatched when a delivered parcel has an in-flight sibling (#2727)', () => {
+    expect(deriveFulfillment(['dispatched', 'delivered'], true)).toBe('dispatched');
+    expect(deriveFulfillment(['delivered', 'generated'], true)).toBe('dispatched');
+  });
+
+  it('reports delivered when every shipment is finished and one delivered', () => {
+    expect(deriveFulfillment(['delivered'], true)).toBe('delivered');
+    expect(deriveFulfillment(['cancelled', 'delivered'], true)).toBe('delivered');
   });
 
   it('reports dispatched for generated / dispatched / in-transit', () => {
