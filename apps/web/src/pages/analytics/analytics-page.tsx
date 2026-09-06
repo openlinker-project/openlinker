@@ -68,6 +68,16 @@ export function AnalyticsPage(): ReactElement {
   // render independently even though they fetch from the same cache entry.
   const salesFilters: SalesAnalyticsFilters = useMemo(() => ({ from, to }), [from, to]);
 
+  // A degraded response (a 500 handled into an empty object, a partial
+  // payload, a field dropped by version skew) can arrive as a successful
+  // query with `data` present but `connections` missing. Defaulting to an
+  // empty array here — rather than reading `trustQuery.data.connections`
+  // directly at each use below — degrades into the same "connect a channel"
+  // empty state a genuinely connection-less install renders, matching the
+  // no-positive-claim-from-absent-data convention documented for the
+  // returns surfaces in docs/architecture-overview.md.
+  const connections = trustQuery.data?.connections ?? [];
+
   return (
     <PageLayout
       eyebrow="Operations"
@@ -88,7 +98,7 @@ export function AnalyticsPage(): ReactElement {
             </Button>
           }
         />
-      ) : trustQuery.data && trustQuery.data.connections.length === 0 ? (
+      ) : trustQuery.data && connections.length === 0 ? (
         <EmptyState
           title="Connect a sales channel to see figures here"
           message="This page reports the orders OpenLinker has ingested. Once a marketplace or shop is connected and its first orders arrive, figures appear here without further setup."
@@ -100,8 +110,8 @@ export function AnalyticsPage(): ReactElement {
         />
       ) : trustQuery.data ? (
         <>
-          <AnalyticsDegradationBanner connections={trustQuery.data.connections} />
-          {trustQuery.data.connections.every((entry) => entry.status === 'never-ingested') ? (
+          <AnalyticsDegradationBanner connections={connections} />
+          {connections.every((entry) => entry.status === 'never-ingested') ? (
             <EmptyState
               title="First orders are still arriving"
               message="Nothing is missing; it is not here yet. Figures will appear as orders land."
@@ -113,7 +123,7 @@ export function AnalyticsPage(): ReactElement {
             />
           ) : (
             <>
-              <AnalyticsKpiStrip filters={salesFilters} connections={trustQuery.data.connections} />
+              <AnalyticsKpiStrip filters={salesFilters} connections={connections} />
               <ChannelSalesTable filters={salesFilters} />
               <ProductSalesTable filters={salesFilters} />
             </>
@@ -125,7 +135,7 @@ export function AnalyticsPage(): ReactElement {
               section and the data-coverage header below it render
               unconditionally, after the order-derived figures above. */}
           <AnalyticsNeedsAttention />
-          <AnalyticsTrustHeader connections={trustQuery.data.connections} />
+          <AnalyticsTrustHeader connections={connections} />
         </>
       ) : null}
     </PageLayout>

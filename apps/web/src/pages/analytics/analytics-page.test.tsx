@@ -40,6 +40,26 @@ describe('AnalyticsPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('should degrade to the empty-instance state, not crash, when the trust snapshot arrives with no `connections` field (#2926)', async () => {
+    // A malformed/degraded response (a 500 handled into an empty object, a
+    // partial payload, a field dropped by version skew) can arrive as a
+    // resolved query whose shape doesn't match the contract. This must
+    // degrade into the same "connect a channel" empty state a genuinely
+    // connection-less install renders, never throw.
+    const degraded = { generatedAt: '2026-08-14T14:32:00.000Z', worstStatus: 'fresh' };
+    const apiClient = createMockApiClient({
+      analyticsTrust: {
+        getTrust: vi.fn().mockResolvedValue(degraded as unknown as AnalyticsTrustSnapshot),
+      },
+    });
+
+    renderWithProviders(<AnalyticsPage />, { apiClient, route: ROUTE });
+
+    expect(
+      await screen.findByText('Connect a sales channel to see figures here'),
+    ).toBeInTheDocument();
+  });
+
   it('should show the "still arriving" card when every connection is never-ingested', async () => {
     const apiClient = createMockApiClient({
       analyticsTrust: {

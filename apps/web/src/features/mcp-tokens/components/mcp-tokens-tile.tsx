@@ -12,7 +12,17 @@ import { useMcpTokensQuery } from '../hooks/use-mcp-tokens-query';
 
 export function McpTokensTile(): ReactElement {
   const tokensQuery = useMcpTokensQuery();
-  const activeCount = tokensQuery.data?.filter((token) => token.isActive).length ?? null;
+  // A degraded response (a 500 handled into an empty object, a partial
+  // payload) can arrive as a successful query whose `data` is not actually
+  // an array — `?? null` alone only guards `undefined`, not a truthy
+  // non-array value, and `.filter` on that throws. Treating anything but a
+  // real array as "unknown" (`null`, rendered as `—`) rather than crashing
+  // or claiming zero matches the no-positive-claim-from-absent-data
+  // convention documented for the returns surfaces in
+  // docs/architecture-overview.md.
+  const activeCount = Array.isArray(tokensQuery.data)
+    ? tokensQuery.data.filter((token) => token.isActive).length
+    : null;
 
   return (
     <article className="panel panel--dense">

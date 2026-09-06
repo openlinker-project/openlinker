@@ -41,8 +41,16 @@ export function CurrencyCoverageDialog({
   view,
   onClose,
 }: CurrencyCoverageDialogProps): ReactElement {
-  const total = view.stampedOrders.reduce((sum, entry) => sum + entry.count, 0);
-  const hasMultipleEras = view.stampedOrders.length > 1;
+  // `view` reflects whatever the API returned; a degraded response (a
+  // partial payload, a field dropped by version skew) can arrive as a
+  // successful query with `stampedOrders` missing. Defaulting to empty
+  // degrades into "no orders stamped yet" rather than crashing — the same
+  // no-positive-claim-from-absent-data convention documented for the
+  // returns surfaces in docs/architecture-overview.md.
+  const stampedOrders = view.stampedOrders ?? [];
+
+  const total = stampedOrders.reduce((sum, entry) => sum + entry.count, 0);
+  const hasMultipleEras = stampedOrders.length > 1;
 
   const items: KeyValueItem[] = [
     {
@@ -52,7 +60,7 @@ export function CurrencyCoverageDialog({
       mono: true,
     },
     ...(hasMultipleEras
-      ? view.stampedOrders.map((entry) => ({
+      ? stampedOrders.map((entry) => ({
           id: entry.reportingCurrency,
           label: `— stamped in ${entry.reportingCurrency}`,
           value: <span className="tabular">{entry.count}</span>,
