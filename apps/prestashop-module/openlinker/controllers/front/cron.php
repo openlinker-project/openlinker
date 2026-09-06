@@ -91,8 +91,10 @@ class OpenLinkerCronModuleFrontController extends ModuleFrontController
         try {
             $stats = DeliveryRunner::run('http');
 
+            http_response_code(200);
             header('Content-Type: application/json');
             echo json_encode($stats);
+            exit;
         } catch (Exception $e) {
             http_response_code(500);
             header('Content-Type: application/json');
@@ -100,6 +102,7 @@ class OpenLinkerCronModuleFrontController extends ModuleFrontController
                 'error' => 'Internal Server Error',
                 'message' => 'Cron delivery failed: ' . WebhookSender::getErrorMessage($e)
             ]);
+            exit;
         }
     }
 }

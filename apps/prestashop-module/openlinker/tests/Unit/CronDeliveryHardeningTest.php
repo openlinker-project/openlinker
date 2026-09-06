@@ -75,6 +75,47 @@ class CronDeliveryHardeningTest extends TestCase
         self::assertStringContainsString('Deny from all', $htaccess);
     }
 
+    /**
+     * #2923: the HTTP cron front controller's success branch had no `exit;`,
+     * unlike its four early-return branches - so a successful delivery fell
+     * through into PrestaShop's ordinary page render, which either fatals
+     * (an unwritable theme cache) or appends a whole HTML document after the
+     * JSON (a writable one). Both the success and catch branches must
+     * terminate the request immediately after their envelope.
+     */
+    public function testTheSuccessBranchExitsAfterItsJsonEnvelope(): void
+    {
+        $source = self::sourceOf('controllers/front/cron.php');
+
+        $runAt = strpos($source, 'DeliveryRunner::run');
+        $echoAt = strpos($source, 'echo json_encode($stats);');
+        $catchAt = strpos($source, 'catch (Exception $e)');
+
+        self::assertIsInt($runAt);
+        self::assertIsInt($echoAt);
+        self::assertIsInt($catchAt);
+        self::assertGreaterThan($runAt, $echoAt);
+        self::assertLessThan($catchAt, $echoAt);
+
+        $betweenEchoAndCatch = substr($source, $echoAt, $catchAt - $echoAt);
+        self::assertStringContainsString('exit;', $betweenEchoAndCatch);
+    }
+
+    public function testTheCatchBranchAlsoExitsAfterItsJsonEnvelope(): void
+    {
+        $source = self::sourceOf('controllers/front/cron.php');
+
+        $catchAt = strpos($source, 'catch (Exception $e)');
+        self::assertIsInt($catchAt);
+
+        $afterCatch = substr($source, $catchAt);
+        $echoAt = strpos($afterCatch, 'echo json_encode([');
+        self::assertIsInt($echoAt);
+
+        $afterEcho = substr($afterCatch, $echoAt);
+        self::assertStringContainsString('exit;', $afterEcho);
+    }
+
     private static function sourceOf(string $relativePath): string
     {
         $path = __DIR__ . '/../../' . $relativePath;
