@@ -80,9 +80,9 @@ import {
   HoldReleaseNoteRequiredError,
   HoldReleaseNotPermittedError,
   deriveSlaState,
-
   IOrderHoldService,
-  IOrderProvisioningResumeService} from '@openlinker/core/orders';
+  IOrderProvisioningResumeService,
+} from '@openlinker/core/orders';
 import type {
   OrderRecord,
   OrderSyncStatus,
@@ -94,10 +94,7 @@ import {
   ISalesDocumentViewService,
   SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
 } from '@openlinker/core/orders';
-import {
-  INVOICE_SERVICE_TOKEN,
-  IInvoiceService,
-} from '@openlinker/core/invoicing';
+import { INVOICE_SERVICE_TOKEN, IInvoiceService } from '@openlinker/core/invoicing';
 import { Logger } from '@openlinker/shared/logging';
 import type { InvoiceRecord } from '@openlinker/core/invoicing';
 import {
@@ -120,7 +117,10 @@ import {
   deriveOrderLifecyclePhase,
   DEFAULT_LIFECYCLE_AUTHORITY,
 } from '@openlinker/core/order-lifecycle';
+import type { OrderLifecyclePhase } from '@openlinker/core/order-lifecycle';
 import { ListOrdersQueryDto } from './dto/list-orders-query.dto';
+import { CountOrdersQueryDto } from './dto/count-orders-query.dto';
+import { PaginatedTotalResponseDto } from '../../common/dto/paginated-total-response.dto';
 import { OrderHealthSummaryQueryDto } from './dto/order-health-summary-query.dto';
 import { OrderHealthSummaryResponseDto } from './dto/order-health-summary-response.dto';
 import { OrderSlaSummaryResponseDto } from './dto/order-sla-summary-response.dto';
@@ -133,9 +133,7 @@ import { PaginatedOrdersResponseDto } from './dto/paginated-orders-response.dto'
 import { RetryOrderDestinationResponseDto } from './dto/retry-order-destination-response.dto';
 import { PlaceOrderHoldRequestDto } from './dto/place-order-hold-request.dto';
 import { ReleaseOrderHoldRequestDto } from './dto/release-order-hold-request.dto';
-import type {
-  OrderHoldDto,
-  ProvisioningResumeDto} from './dto/order-hold-response.dto';
+import type { OrderHoldDto, ProvisioningResumeDto } from './dto/order-hold-response.dto';
 import {
   PlaceOrderHoldResponseDto,
   ReleaseOrderHoldResponseDto,
@@ -148,6 +146,36 @@ import {
 } from './dto/sales-document-view-response.dto';
 import type { OrderDeliveryResolutionDto } from './dto/order-delivery-resolution.dto';
 import type { OrderDeliveryRiderDto } from './dto/order-delivery-rider.dto';
+
+/**
+ * #2441 review I-1 - `?cancelled=` (#2306) and `?phase=` (#2309) are two filters over
+ * the SAME fact: the lifecycle `CASE`'s top arm is `cancelledAt IS NOT NULL`, so
+ * `phase=cancelled` IS `cancelled=true`. ANDed, a contradictory pair is structurally
+ * empty for every row in the table - which reads to an operator as "no orders match"
+ * rather than "these two filters cannot both hold", and beside a non-zero summary count
+ * it is exactly the "the number and the rows disagree" failure the wave's
+ * `total = Sigma buckets` design exists to prevent. Reject naming the conflict instead.
+ *
+ * Shared by `GET /orders` and `GET /orders/count` (#2944): the two must refuse the
+ * identical pairs, or the list would 400 while the count answered a number for a
+ * filter combination that can never match a row.
+ */
+function assertCancelledPhaseAgree(
+  cancelled: boolean | undefined,
+  phase: OrderLifecyclePhase | undefined
+): void {
+  if (cancelled === undefined || phase === undefined) return;
+  const phaseIsCancelled = phase === 'cancelled';
+  if (phaseIsCancelled === cancelled) return;
+  throw new BadRequestException(
+    phaseIsCancelled
+      ? '?phase=cancelled contradicts ?cancelled=false: the cancelled phase IS the cancelled ' +
+        'set, so this pair can never match a row. Omit ?cancelled, or pass ?cancelled=true.'
+      : `?phase=${phase} contradicts ?cancelled=true: only ?phase=cancelled can match a ` +
+        'cancelled order, so this pair can never match a row. Omit ?cancelled, or pass ' +
+        '?cancelled=false.'
+  );
+}
 
 @ApiBearerAuth()
 @ApiTags('orders')
@@ -219,64 +247,60 @@ export class OrdersController {
       taxRateConflict,
       attention,
       hold,
+      withTotal,
       limit = 20,
       offset = 0,
     } = query;
 
-    // #2441 review I-1 — `?cancelled=` (#2306) and `?phase=` (#2309) are two filters over
-    // the SAME fact: the lifecycle `CASE`'s top arm is `cancelledAt IS NOT NULL`, so
-    // `phase=cancelled` IS `cancelled=true`. ANDed, a contradictory pair is structurally
-    // empty for every row in the table — which reads to an operator as "no orders match"
-    // rather than "these two filters cannot both hold", and beside a non-zero summary count
-    // it is exactly the "the number and the rows disagree" failure the wave's
-    // `total = Σ buckets` design exists to prevent. Reject naming the conflict instead.
-    if (cancelled !== undefined && phase !== undefined) {
-      const phaseIsCancelled = phase === 'cancelled';
-      if (phaseIsCancelled !== cancelled) {
-        throw new BadRequestException(
-          phaseIsCancelled
-            ? '?phase=cancelled contradicts ?cancelled=false: the cancelled phase IS the cancelled ' +
-              'set, so this pair can never match a row. Omit ?cancelled, or pass ?cancelled=true.'
-            : `?phase=${phase} contradicts ?cancelled=true: only ?phase=cancelled can match a ` +
-              'cancelled order, so this pair can never match a row. Omit ?cancelled, or pass ' +
-              '?cancelled=false.'
-        );
-      }
-    }
+    assertCancelledPhaseAgree(cancelled, phase);
 
-    const { items, total } = await this.orderRecordRepository.findMany(
-      {
-        sourceConnectionId,
-        syncStatus,
-        customerId,
-        createdFrom: createdFrom ? new Date(createdFrom) : undefined,
-        createdTo: createdTo ? new Date(createdTo) : undefined,
-        recordStatus,
-        health,
-        sort,
-        dir,
-        dueBefore: dueBefore ? new Date(dueBefore) : undefined,
-        slaState,
-        fulfillmentState,
-        salesDocumentBlocked,
-        cancelled,
-        // #2309 — the query param is `phase`; the repository filter names the
-        // full axis, since `OrderRecordFilters` already carries several
-        // orthogonal ones.
-        lifecyclePhase: phase,
-        taxRateConflict,
-        // #2353 - the query param is `attention` (the operator-facing word the
-        // FE chip uses); the repository filter names the full axis, the same
-        // `phase` -> `lifecyclePhase` split, which exists precisely because
-        // `OrderRecordFilters` already carries several orthogonal ones.
-        omsAttention: attention,
-        // #2342 — the query param is the short `hold`; the repository filter
-        // names the column it reads, matching the `phase` -> `lifecyclePhase`
-        // precedent two lines up.
-        activeHoldReason: hold,
-      },
-      { limit, offset }
-    );
+    const filters = {
+      sourceConnectionId,
+      syncStatus,
+      customerId,
+      createdFrom: createdFrom ? new Date(createdFrom) : undefined,
+      createdTo: createdTo ? new Date(createdTo) : undefined,
+      recordStatus,
+      health,
+      sort,
+      dir,
+      dueBefore: dueBefore ? new Date(dueBefore) : undefined,
+      slaState,
+      fulfillmentState,
+      salesDocumentBlocked,
+      cancelled,
+      // #2309 — the query param is `phase`; the repository filter names the
+      // full axis, since `OrderRecordFilters` already carries several
+      // orthogonal ones.
+      lifecyclePhase: phase,
+      taxRateConflict,
+      // #2353 - the query param is `attention` (the operator-facing word the
+      // FE chip uses); the repository filter names the full axis, the same
+      // `phase` -> `lifecyclePhase` split, which exists precisely because
+      // `OrderRecordFilters` already carries several orthogonal ones.
+      omsAttention: attention,
+      // #2342 — the query param is the short `hold`; the repository filter
+      // names the column it reads, matching the `phase` -> `lifecyclePhase`
+      // precedent two lines up.
+      activeHoldReason: hold,
+    };
+
+    // `?withTotal=false` skips the COUNT entirely and the response OMITS
+    // `total` rather than reporting 0 (#2944) - an absent total and a genuine
+    // zero must stay distinguishable, or a client renders "0 orders" for a
+    // number it simply did not ask for. This is the read #2843 measured: at a
+    // million rows the count was 142 ms of a 149 ms request, because a paged
+    // read stops after twenty matches and a count cannot stop at all. The
+    // second stage is `GET /orders/count`.
+    let items: OrderRecord[];
+    let total: number | undefined;
+    if (withTotal === false) {
+      items = await this.orderRecordRepository.findManyRows(filters, { limit, offset });
+    } else {
+      const page = await this.orderRecordRepository.findMany(filters, { limit, offset });
+      items = page.items;
+      total = page.total;
+    }
 
     // Batch the invoice projection for the whole page (#1713): one query, not an
     // N+1 of per-row `getLatestInvoiceForOrder`. Orders with no invoice are
@@ -348,6 +372,44 @@ export class OrdersController {
   }
 
   @Roles('admin', 'operator', 'viewer')
+  @Get('count')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Count order records matching the filters',
+    description:
+      'The total for the same filters `GET /orders` accepts, without a page. Paired with ' +
+      '`GET /orders?withTotal=false` so the list renders its rows without waiting for a count ' +
+      'that cannot stop early - #2843 measured that count at 142 ms of a 149 ms request against ' +
+      'a million orders (#2944). Takes no limit/offset/sort: the answer depends on the filters ' +
+      'alone, which is what makes it cacheable per filter combination.',
+  })
+  @ApiResponse({ status: 200, description: 'Row count', type: PaginatedTotalResponseDto })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async countOrders(@Query() query: CountOrdersQueryDto): Promise<PaginatedTotalResponseDto> {
+    assertCancelledPhaseAgree(query.cancelled, query.phase);
+
+    const total = await this.orderRecordRepository.countMany({
+      sourceConnectionId: query.sourceConnectionId,
+      syncStatus: query.syncStatus,
+      customerId: query.customerId,
+      createdFrom: query.createdFrom ? new Date(query.createdFrom) : undefined,
+      createdTo: query.createdTo ? new Date(query.createdTo) : undefined,
+      recordStatus: query.recordStatus,
+      health: query.health,
+      dueBefore: query.dueBefore ? new Date(query.dueBefore) : undefined,
+      slaState: query.slaState,
+      fulfillmentState: query.fulfillmentState,
+      salesDocumentBlocked: query.salesDocumentBlocked,
+      cancelled: query.cancelled,
+      lifecyclePhase: query.phase,
+      taxRateConflict: query.taxRateConflict,
+      omsAttention: query.attention,
+      activeHoldReason: query.hold,
+    });
+    return { total };
+  }
+
+  @Roles('admin', 'operator', 'viewer')
   @Get('status-summary')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -392,9 +454,7 @@ export class OrdersController {
     type: OrderSlaSummaryResponseDto,
   })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
-  async slaSummary(
-    @Query() query: OrderSlaSummaryQueryDto
-  ): Promise<OrderSlaSummaryResponseDto> {
+  async slaSummary(@Query() query: OrderSlaSummaryQueryDto): Promise<OrderSlaSummaryResponseDto> {
     const { sourceConnectionId, customerId, createdFrom, createdTo, cancelled } = query;
     return this.orderRecordRepository.countBySla({
       sourceConnectionId,
@@ -452,11 +512,12 @@ export class OrdersController {
     // sub-tree off the snapshot. The list endpoint now shares the same projection
     // via a batch read (`getLatestInvoicesForOrders`, one query per page — #1713);
     // this detail read joins the single record for one order.
-    const invoiceRecord = await this.invoiceService.getLatestInvoiceForOrder(
-      order.internalOrderId
-    );
+    const invoiceRecord = await this.invoiceService.getLatestInvoiceForOrder(order.internalOrderId);
     if (invoiceRecord) {
-      dto.orderSnapshot = { ...dto.orderSnapshot, invoice: this.toInvoiceProjection(invoiceRecord) };
+      dto.orderSnapshot = {
+        ...dto.orderSnapshot,
+        invoice: this.toInvoiceProjection(invoiceRecord),
+      };
     }
     // Delivery-routing-resolution + rider projection (#1791/#1792): a
     // single-order counterpart to the list read's batched resolution below.
@@ -511,7 +572,11 @@ export class OrdersController {
       'issues, registers, routes and configures nothing. The same shape is carried on every row of ' +
       'GET /orders, so the detail panel needs this endpoint only when it is opened directly.',
   })
-  @ApiResponse({ status: 200, description: 'Sales-document projection', type: SalesDocumentViewResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Sales-document projection',
+    type: SalesDocumentViewResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Order not found' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async getOrderSalesDocument(
@@ -781,9 +846,7 @@ export class OrdersController {
     // refusal: a concurrent release in the window is caught below as 409.
     const holds = await this.holdService.listHolds(internalOrderId);
     if (!holds.some((hold) => hold.id === holdId)) {
-      throw new NotFoundException(
-        `Hold not found on order ${internalOrderId}: ${holdId}`
-      );
+      throw new NotFoundException(`Hold not found on order ${internalOrderId}: ${holdId}`);
     }
 
     let released: OrderHold;
@@ -860,9 +923,7 @@ export class OrdersController {
     };
   }
 
-  private toProvisioningResumeDto(
-    result: OrderProvisioningResumeResult
-  ): ProvisioningResumeDto {
+  private toProvisioningResumeDto(result: OrderProvisioningResumeResult): ProvisioningResumeDto {
     return {
       status: result.status,
       jobId: result.status === 'enqueued' ? result.jobId : null,
@@ -961,7 +1022,8 @@ export class OrdersController {
    * action. No regime/provider vocabulary crosses here.
    */
   private toInvoiceProjection(record: InvoiceRecord): OrderInvoiceProjectionDto {
-    const confirmationDocumentAvailable = record.status === 'issued' && record.regulatoryStatus === 'accepted';
+    const confirmationDocumentAvailable =
+      record.status === 'issued' && record.regulatoryStatus === 'accepted';
     return {
       invoiceId: record.id,
       documentType: record.documentType,

@@ -149,6 +149,8 @@ describe('ListingsController', () => {
     repository = {
       findById: jest.fn(),
       findMany: jest.fn(),
+      findManyRows: jest.fn(),
+      countMany: jest.fn(),
       findMappingPage: jest.fn(),
       countByLifecycle: jest.fn().mockResolvedValue(emptyOfferLifecycleCounts()),
       countByConnectionAndVariants: jest.fn().mockResolvedValue(new Map<string, number>()),
@@ -194,15 +196,17 @@ describe('ListingsController', () => {
       countStaleByProductIds: jest.fn().mockResolvedValue(new Map<string, number>()),
       findBySku: jest.fn(),
       findBySkuIn: jest.fn(),
-    findByIdIn: jest.fn(),
+      findByIdIn: jest.fn(),
       findByEanOrGtinIn: jest.fn(),
       upsert: jest.fn(),
       upsertMany: jest.fn(),
       findMany: jest.fn(),
+      findManyRows: jest.fn(),
+      countMany: jest.fn(),
       markStaleExceptVariants: jest.fn(),
-    recordTaxRate: jest.fn(),
-    findTaxRate: jest.fn(),
-    clearTaxRate: jest.fn(),
+      recordTaxRate: jest.fn(),
+      findTaxRate: jest.fn(),
+      clearTaxRate: jest.fn(),
     };
     categoryResolution = {
       resolveCategory: jest.fn(),
@@ -350,7 +354,12 @@ describe('ListingsController', () => {
         expect(result.total).toBe(5);
         expect(repository.countByLifecycle).not.toHaveBeenCalled();
         expect(repository.findMany).toHaveBeenCalledWith(
-          { connectionId: undefined, internalId: undefined, search: undefined, lifecycle: undefined },
+          {
+            connectionId: undefined,
+            internalId: undefined,
+            search: undefined,
+            lifecycle: undefined,
+          },
           { limit: 20, offset: 0 }
         );
       });
@@ -1083,7 +1092,10 @@ describe('ListingsController', () => {
 
       const result = await controller.getCategoryPath('conn-1', '10');
 
-      expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith('conn-1', 'OfferManager');
+      expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith(
+        'conn-1',
+        'OfferManager'
+      );
       expect(fetch).toHaveBeenCalledWith('10');
       expect(result.path).toEqual(samplePath);
     });
@@ -1212,10 +1224,7 @@ describe('ListingsController', () => {
       categoryResolution.resolveCategoriesBatch.mockResolvedValue(serviceResult);
 
       const result = await controller.resolveCategoriesBatch('conn-1', {
-        items: [
-          { variantId: 'v1', ean: '5901234567890' },
-          { variantId: 'v2' },
-        ],
+        items: [{ variantId: 'v1', ean: '5901234567890' }, { variantId: 'v2' }],
       });
 
       expect(categoryResolution.resolveCategoriesBatch).toHaveBeenCalledWith('conn-1', {
@@ -1287,7 +1296,6 @@ describe('ListingsController', () => {
       ).rejects.toBeInstanceOf(ConnectionNotFoundException);
     });
   });
-
 
   // ─── NDJSON category-resolution stream (#2209, epic #2205) ──────────────────
   //
@@ -1399,7 +1407,8 @@ describe('ListingsController', () => {
           kind: 'done',
           resolvedCount: 1,
           unresolvedCount: 1,
-          completion: 'complete', catalogueLookupPerformed: true
+          completion: 'complete',
+          catalogueLookupPerformed: true,
         })
       );
       const res = makeRes();
@@ -1419,7 +1428,13 @@ describe('ListingsController', () => {
       expect(linesOf(res)).toEqual([
         matchedV1,
         noEanV2,
-        { kind: 'done', resolvedCount: 1, unresolvedCount: 1, completion: 'complete', catalogueLookupPerformed: true },
+        {
+          kind: 'done',
+          resolvedCount: 1,
+          unresolvedCount: 1,
+          completion: 'complete',
+          catalogueLookupPerformed: true,
+        },
       ]);
       expect(res.writableEnded).toBe(true);
     });
@@ -1431,18 +1446,17 @@ describe('ListingsController', () => {
       // never disposed; without the `end()` guard, ending a destroyed response
       // throws out of the `finally` and replaces the logged cause.
       let closed = false;
-      categoryResolution.resolveCategoriesStream.mockImplementation(
-        () =>
-          (async function* generate(): AsyncGenerator<EanCategoryMatchStreamEvent> {
-            try {
-              await tick();
-              yield matchedV1;
-              await tick();
-              yield noEanV2;
-            } finally {
-              closed = true;
-            }
-          })()
+      categoryResolution.resolveCategoriesStream.mockImplementation(() =>
+        (async function* generate(): AsyncGenerator<EanCategoryMatchStreamEvent> {
+          try {
+            await tick();
+            yield matchedV1;
+            await tick();
+            yield noEanV2;
+          } finally {
+            closed = true;
+          }
+        })()
       );
 
       const res = makeRes();
@@ -1459,7 +1473,13 @@ describe('ListingsController', () => {
 
     it('forwards the same item mapping the batch route uses, plus an abort signal', async () => {
       categoryResolution.resolveCategoriesStream.mockImplementation(
-        streamOf({ kind: 'done', resolvedCount: 0, unresolvedCount: 0, completion: 'complete', catalogueLookupPerformed: true })
+        streamOf({
+          kind: 'done',
+          resolvedCount: 0,
+          unresolvedCount: 0,
+          completion: 'complete',
+          catalogueLookupPerformed: true,
+        })
       );
 
       await run(makeRes());
@@ -1480,8 +1500,20 @@ describe('ListingsController', () => {
       categoryResolution.resolveCategoriesStream.mockImplementation(
         streamOf(
           matchedV1,
-          { kind: 'done', resolvedCount: 1, unresolvedCount: 0, completion: 'complete', catalogueLookupPerformed: true },
-          { kind: 'done', resolvedCount: 9, unresolvedCount: 9, completion: 'complete', catalogueLookupPerformed: true }
+          {
+            kind: 'done',
+            resolvedCount: 1,
+            unresolvedCount: 0,
+            completion: 'complete',
+            catalogueLookupPerformed: true,
+          },
+          {
+            kind: 'done',
+            resolvedCount: 9,
+            unresolvedCount: 9,
+            completion: 'complete',
+            catalogueLookupPerformed: true,
+          }
         )
       );
       const res = makeRes();
@@ -1490,7 +1522,13 @@ describe('ListingsController', () => {
 
       const terminals = linesOf(res).filter((line) => line.kind === 'done');
       expect(terminals).toEqual([
-        { kind: 'done', resolvedCount: 1, unresolvedCount: 0, completion: 'complete', catalogueLookupPerformed: true },
+        {
+          kind: 'done',
+          resolvedCount: 1,
+          unresolvedCount: 0,
+          completion: 'complete',
+          catalogueLookupPerformed: true,
+        },
       ]);
     });
 
@@ -1500,7 +1538,13 @@ describe('ListingsController', () => {
         async function* generate(): AsyncGenerator<EanCategoryMatchStreamEvent> {
           await tick();
           yield matchedV1;
-          yield { kind: 'done', resolvedCount: 1, unresolvedCount: 0, completion: 'failed', catalogueLookupPerformed: true };
+          yield {
+            kind: 'done',
+            resolvedCount: 1,
+            unresolvedCount: 0,
+            completion: 'failed',
+            catalogueLookupPerformed: true,
+          };
           throw new Error('allegro-503');
         }
       );
@@ -1514,7 +1558,8 @@ describe('ListingsController', () => {
         kind: 'done',
         resolvedCount: 1,
         unresolvedCount: 0,
-        completion: 'failed', catalogueLookupPerformed: true
+        completion: 'failed',
+        catalogueLookupPerformed: true,
       });
       expect(res.writableEnded).toBe(true);
     });
@@ -1538,7 +1583,8 @@ describe('ListingsController', () => {
         kind: 'done',
         resolvedCount: 1,
         unresolvedCount: 1,
-        completion: 'failed', catalogueLookupPerformed: true
+        completion: 'failed',
+        catalogueLookupPerformed: true,
       });
     });
 
@@ -1552,7 +1598,13 @@ describe('ListingsController', () => {
         async function* generate(): AsyncGenerator<EanCategoryMatchStreamEvent> {
           yield matchedV1;
           await quiet;
-          yield { kind: 'done', resolvedCount: 1, unresolvedCount: 0, completion: 'complete', catalogueLookupPerformed: true };
+          yield {
+            kind: 'done',
+            resolvedCount: 1,
+            unresolvedCount: 0,
+            completion: 'complete',
+            catalogueLookupPerformed: true,
+          };
         }
       );
       const res = makeRes();
@@ -1570,7 +1622,8 @@ describe('ListingsController', () => {
         kind: 'done',
         resolvedCount: 1,
         unresolvedCount: 0,
-        completion: 'complete', catalogueLookupPerformed: true
+        completion: 'complete',
+        catalogueLookupPerformed: true,
       });
       expect(jest.getTimerCount()).toBe(0);
     });
@@ -1595,11 +1648,23 @@ describe('ListingsController', () => {
             yield matchedV1;
             await quiet;
             if (options?.signal?.aborted) {
-              yield { kind: 'done', resolvedCount: 1, unresolvedCount: 0, completion: 'aborted', catalogueLookupPerformed: true };
+              yield {
+                kind: 'done',
+                resolvedCount: 1,
+                unresolvedCount: 0,
+                completion: 'aborted',
+                catalogueLookupPerformed: true,
+              };
               return;
             }
             yield noEanV2;
-            yield { kind: 'done', resolvedCount: 1, unresolvedCount: 1, completion: 'complete', catalogueLookupPerformed: true };
+            yield {
+              kind: 'done',
+              resolvedCount: 1,
+              unresolvedCount: 1,
+              completion: 'complete',
+              catalogueLookupPerformed: true,
+            };
           })();
         }
       );
@@ -1625,7 +1690,8 @@ describe('ListingsController', () => {
         kind: 'done',
         resolvedCount: 1,
         unresolvedCount: 0,
-        completion: 'aborted', catalogueLookupPerformed: true
+        completion: 'aborted',
+        catalogueLookupPerformed: true,
       });
       // The close listener is detached, so a reused socket cannot abort a later
       // request through this handler's controller.
@@ -1652,7 +1718,13 @@ describe('ListingsController', () => {
       expect(linesOf(res)).toEqual([
         matchedV1,
         noEanV2,
-        { kind: 'done', resolvedCount: 1, unresolvedCount: 1, completion: 'complete', catalogueLookupPerformed: true },
+        {
+          kind: 'done',
+          resolvedCount: 1,
+          unresolvedCount: 1,
+          completion: 'complete',
+          catalogueLookupPerformed: true,
+        },
       ]);
       // Nothing subscribed to the request at all, which is what keeps the above
       // true no matter when the body happens to drain.
@@ -1661,7 +1733,13 @@ describe('ListingsController', () => {
 
     it('does not abort on the close that follows a completed body', async () => {
       categoryResolution.resolveCategoriesStream.mockImplementation(
-        streamOf({ kind: 'done', resolvedCount: 0, unresolvedCount: 0, completion: 'complete', catalogueLookupPerformed: true })
+        streamOf({
+          kind: 'done',
+          resolvedCount: 0,
+          unresolvedCount: 0,
+          completion: 'complete',
+          catalogueLookupPerformed: true,
+        })
       );
       const res = makeRes();
 
@@ -1721,7 +1799,8 @@ describe('ListingsController', () => {
           kind: 'done',
           resolvedCount: 0,
           unresolvedCount: 0,
-          completion: 'complete', catalogueLookupPerformed: true
+          completion: 'complete',
+          catalogueLookupPerformed: true,
         })();
       });
       const res = makeRes();
@@ -1737,14 +1816,26 @@ describe('ListingsController', () => {
       // Epic #2205 decision 4's sibling case: the stream can terminate at once,
       // and a 0/0 tally must still arrive as a well-formed body.
       categoryResolution.resolveCategoriesStream.mockImplementation(
-        streamOf({ kind: 'done', resolvedCount: 0, unresolvedCount: 0, completion: 'aborted', catalogueLookupPerformed: true })
+        streamOf({
+          kind: 'done',
+          resolvedCount: 0,
+          unresolvedCount: 0,
+          completion: 'aborted',
+          catalogueLookupPerformed: true,
+        })
       );
       const res = makeRes();
 
       await run(res);
 
       expect(linesOf(res)).toEqual([
-        { kind: 'done', resolvedCount: 0, unresolvedCount: 0, completion: 'aborted', catalogueLookupPerformed: true },
+        {
+          kind: 'done',
+          resolvedCount: 0,
+          unresolvedCount: 0,
+          completion: 'aborted',
+          catalogueLookupPerformed: true,
+        },
       ]);
       expect(res.writableEnded).toBe(true);
     });
@@ -1932,9 +2023,12 @@ describe('ListingsController', () => {
       expect(rolesOf(methodName)).toEqual(['admin', 'operator', 'viewer']);
     });
 
-    it.each(WRITE_METHODS)('%s stays restricted to admin and operator (no viewer)', (methodName) => {
-      expect(rolesOf(methodName)).toEqual(['admin', 'operator']);
-    });
+    it.each(WRITE_METHODS)(
+      '%s stays restricted to admin and operator (no viewer)',
+      (methodName) => {
+        expect(rolesOf(methodName)).toEqual(['admin', 'operator']);
+      }
+    );
   });
 
   describe('getProductOfferStatus (#1760)', () => {
@@ -2016,9 +2110,9 @@ describe('ListingsController', () => {
     it('throws 404 when live status is unavailable', async () => {
       offerStatusSync.refreshOne.mockResolvedValue(null);
 
-      await expect(controller.refreshOfferStatus('conn-1', '7781896308', body)).rejects.toBeInstanceOf(
-        NotFoundException
-      );
+      await expect(
+        controller.refreshOfferStatus('conn-1', '7781896308', body)
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 });

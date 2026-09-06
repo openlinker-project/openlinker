@@ -15,7 +15,7 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, type SelectQueryBuilder } from 'typeorm';
 import { CustomerProjectionOrmEntity } from '../entities/customer-projection.orm-entity';
 import { CustomerAddressProjectionOrmEntity } from '../entities/customer-address-projection.orm-entity';
 import { DestinationAddressMappingOrmEntity } from '../entities/destination-address-mapping.orm-entity';
@@ -53,15 +53,23 @@ export class CustomerProjectionRepository implements CustomerProjectionRepositor
     return this.toDomainCustomer(entity);
   }
 
-  async findMany(
-    filters: CustomerProjectionFilters,
-    pagination: CustomerProjectionPagination
-  ): Promise<PaginatedCustomerProjections> {
+  /**
+   * The WHERE clause shared by every read of this list (#2944).
+   *
+   * `findMany`, `findManyRows` and `countMany` all start here, so the total can
+   * never describe a different set than the page: there is one predicate, and
+   * the three methods differ only in what they do after it. Note `andWhere` on
+   * the first branch even though it is first - the builder is shared, so no
+   * branch may assume it opens the clause.
+   */
+  private buildFilteredQuery(
+    filters: CustomerProjectionFilters
+  ): SelectQueryBuilder<CustomerProjectionOrmEntity> {
     const qb = this.customerRepository.createQueryBuilder('customer');
 
     if (filters.search) {
       const escapedSearch = filters.search.replace(/[%_]/g, '\\$&');
-      qb.where(
+      qb.andWhere(
         '(customer.emailHash ILIKE :search OR customer.normalizedEmail ILIKE :search OR customer.firstName ILIKE :search OR customer.lastName ILIKE :search)',
         { search: `%${escapedSearch}%` }
       );
@@ -73,10 +81,42 @@ export class CustomerProjectionRepository implements CustomerProjectionRepositor
       });
     }
 
-    qb.orderBy('customer.lastSeenAt', 'DESC').skip(pagination.offset).take(pagination.limit);
+    return qb;
+  }
 
-    const [entities, total] = await qb.getManyAndCount();
+  /** {@link buildFilteredQuery} plus this list's ordering and page window. */
+  private buildPagedQuery(
+    filters: CustomerProjectionFilters,
+    pagination: CustomerProjectionPagination
+  ): SelectQueryBuilder<CustomerProjectionOrmEntity> {
+    return this.buildFilteredQuery(filters)
+      .orderBy('customer.lastSeenAt', 'DESC')
+      .skip(pagination.offset)
+      .take(pagination.limit);
+  }
+
+  async findMany(
+    filters: CustomerProjectionFilters,
+    pagination: CustomerProjectionPagination
+  ): Promise<PaginatedCustomerProjections> {
+    // Deliberately still ONE `getManyAndCount()` rather than `findManyRows()` +
+    // `countMany()`: TypeORM's `lazyCount` infers the total with NO count query
+    // at all when a page comes back short, so composing this from the two new
+    // methods would add a statement on every small install (#2944).
+    const [entities, total] = await this.buildPagedQuery(filters, pagination).getManyAndCount();
     return { items: entities.map((e) => this.toDomainCustomer(e)), total };
+  }
+
+  async findManyRows(
+    filters: CustomerProjectionFilters,
+    pagination: CustomerProjectionPagination
+  ): Promise<CustomerProjection[]> {
+    const entities = await this.buildPagedQuery(filters, pagination).getMany();
+    return entities.map((e) => this.toDomainCustomer(e));
+  }
+
+  async countMany(filters: CustomerProjectionFilters): Promise<number> {
+    return this.buildFilteredQuery(filters).getCount();
   }
 
   async findByEmailHash(emailHash: string): Promise<CustomerProjection[]> {

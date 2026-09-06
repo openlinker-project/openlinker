@@ -146,6 +146,36 @@ export interface ProductVariantRepositoryPort {
   ): Promise<PaginatedProductVariants>;
 
   /**
+   * The page WITHOUT its total (#2944).
+   *
+   * A paged read stops after its `LIMIT`; the `COUNT` beside it cannot stop at
+   * all, so under a predicate no plain index serves - here the SKU / EAN / GTIN `ILIKE` search - the count
+   * scans the table however small the page is. This read pays only for the page.
+   *
+   * It applies the identical predicate to {@link countMany}: both are built by
+   * one private `buildFilteredQuery`, so the total can never describe a
+   * different set than the page.
+   *
+   * {@link findMany} deliberately does NOT delegate to this method plus
+   * {@link countMany}. TypeORM's `getManyAndCount` infers the total with no
+   * count query at all when a page comes back short, so composing it would add
+   * a statement on every small install - the opposite of this issue's point.
+   */
+  findManyRows(
+    filters: ProductVariantListFilters,
+    pagination: ProductPagination
+  ): Promise<ProductVariant[]>;
+
+  /**
+   * The total WITHOUT its page (#2944) - the second half of {@link findManyRows}.
+   *
+   * Takes no pagination, which is the point: the answer depends on the filters
+   * alone, so a caller may cache it per filter combination and paging through a
+   * result set never recomputes it.
+   */
+  countMany(filters: ProductVariantListFilters): Promise<number>;
+
+  /**
    * Soft-mark every live variant of `productId` NOT in `keepVariantIds` as
    * stale (#1599 — deleted at the master). An empty keep-set marks all live
    * variants (the product-fully-deleted / 404 path). Returns the ids actually
@@ -155,10 +185,7 @@ export interface ProductVariantRepositoryPort {
    * @param keepVariantIds - Variant ids present in the current master response
    * @returns Ids of the variants newly marked stale
    */
-  markStaleExceptVariants(
-    productId: string,
-    keepVariantIds: readonly string[]
-  ): Promise<string[]>;
+  markStaleExceptVariants(productId: string, keepVariantIds: readonly string[]): Promise<string[]>;
 
   /**
    * Record what the ProductMaster said about this variant's tax rate (#2054).

@@ -31,7 +31,10 @@ import type {
 import type { OrderFxIntent, OrderFxStamp } from '../types/order-fx.types';
 import type { StampedReportingCurrencyCount } from '../types/order-fx-read.types';
 import type { OrderAmendmentChange } from '../order-amendment-diff';
-import type { DailyOrderAggregateRow, SalesAnalyticsFilters } from '../types/order-sales-analytics.types';
+import type {
+  DailyOrderAggregateRow,
+  SalesAnalyticsFilters,
+} from '../types/order-sales-analytics.types';
 
 export interface OrderRecordRepositoryPort {
   /**
@@ -166,6 +169,38 @@ export interface OrderRecordRepositoryPort {
   ): Promise<PaginatedOrderRecords>;
 
   /**
+   * The page WITHOUT its total (#2944).
+   *
+   * A paged read stops after its `LIMIT`; the `COUNT` beside it cannot stop at
+   * all, so under a predicate no plain index serves - here the `syncStatus @>`
+   * jsonb containment, which #2843 measured at 155x the paged read beside it -
+   * the count scans the table however small the page is. This read pays only
+   * for the page.
+   *
+   * It applies the identical predicate to {@link countMany}: both are built by
+   * one private `buildFilteredQuery`, so the total can never describe a
+   * different set than the page.
+   *
+   * {@link findMany} deliberately does NOT delegate to this method plus
+   * {@link countMany}. TypeORM's `getManyAndCount` infers the total with no
+   * count query at all when a page comes back short, so composing it would add
+   * a statement on every small install - the opposite of this issue's point.
+   */
+  findManyRows(
+    filters: OrderRecordFilters,
+    pagination: OrderRecordPagination
+  ): Promise<OrderRecord[]>;
+
+  /**
+   * The total WITHOUT its page (#2944) - the second half of {@link findManyRows}.
+   *
+   * Takes no pagination, which is the point: the answer depends on the filters
+   * alone, so a caller may cache it per filter combination and paging through a
+   * result set never recomputes it.
+   */
+  countMany(filters: OrderRecordFilters): Promise<number>;
+
+  /**
    * Count order records per derived health bucket (#929).
    *
    * Single aggregate query partitioning every record in scope into exactly one
@@ -198,9 +233,7 @@ export interface OrderRecordRepositoryPort {
    * label claiming to count cancellations). `lifecyclePhase` itself is likewise
    * not a valid input.
    */
-  countByLifecyclePhase(
-    filters: OrderHealthSummaryFilters
-  ): Promise<OrderLifecyclePhaseSummary>;
+  countByLifecyclePhase(filters: OrderHealthSummaryFilters): Promise<OrderLifecyclePhaseSummary>;
 
   /**
    * "Value stuck in failed syncs" — the needs-attention aggregate (#1983).
@@ -349,10 +382,7 @@ export interface OrderRecordRepositoryPort {
    *
    * No-op (no throw) when the order row doesn't exist.
    */
-  updateFulfillmentBlock(
-    internalOrderId: string,
-    block: FulfillmentBlock | null
-  ): Promise<void>;
+  updateFulfillmentBlock(internalOrderId: string, block: FulfillmentBlock | null): Promise<void>;
 
   /**
    * How many orders carry at least one COUNTED OMS inert state (#2352)?
@@ -452,11 +482,7 @@ export interface OrderRecordRepositoryPort {
    * row matches the id at all. It never throws, so a caller that must tell
    * those two apart re-reads via {@link findById}.
    */
-  markPacked(
-    internalOrderId: string,
-    packedAt: Date,
-    packedByUserId: string
-  ): Promise<boolean>;
+  markPacked(internalOrderId: string, packedAt: Date, packedByUserId: string): Promise<boolean>;
 
   /**
    * Clear this order's packed fact (#2287) — nulls `packedAt` +

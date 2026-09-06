@@ -201,14 +201,23 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     return rows.map((row) => ({ country: row.country, orderCount: Number(row.order_count) }));
   }
 
-  async findMany(
-    filters: OrderRecordFilters,
-    pagination: OrderRecordPagination
-  ): Promise<PaginatedOrderRecords> {
-    const qb: SelectQueryBuilder<OrderRecordOrmEntity> = this.repository
-      .createQueryBuilder('rec')
-      .take(pagination.limit)
-      .skip(pagination.offset);
+  /**
+   * The WHERE clause shared by every read of this list (#2944).
+   *
+   * `findMany`, `findManyRows` and `countMany` all start here, so the total can
+   * never describe a different set than the page: there is one predicate, and
+   * the three methods differ only in what they do after it. This is the list
+   * #2843 measured - `COUNT(*)` under `syncStatus @> ...` ran 155x slower than
+   * the `LIMIT 20` beside it, because a paged read stops after twenty matches
+   * and a count cannot stop at all.
+   *
+   * Carries no ordering and no page window: {@link buildPagedQuery} adds those,
+   * and a count must have neither.
+   */
+  private buildFilteredQuery(
+    filters: OrderRecordFilters
+  ): SelectQueryBuilder<OrderRecordOrmEntity> {
+    const qb: SelectQueryBuilder<OrderRecordOrmEntity> = this.repository.createQueryBuilder('rec');
 
     if (filters.sourceConnectionId) {
       qb.andWhere('rec.sourceConnectionId = :sourceConnectionId', {
@@ -253,9 +262,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       // v1 scale (≤30k rows in the typical 30-day window), file a follow-up
       // if scan time creeps.
       qb.andWhere(`rec."syncStatus" @> :destFilter::jsonb`, {
-        destFilter: JSON.stringify([
-          { destinationConnectionId: filters.destinationConnectionId },
-        ]),
+        destFilter: JSON.stringify([{ destinationConnectionId: filters.destinationConnectionId }]),
       });
     }
 
@@ -296,7 +303,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       qb.andWhere(
         filters.salesDocumentBlocked
           ? OrderRecordRepository.IS_SALES_DOCUMENT_BLOCKED
-          : `NOT (${OrderRecordRepository.IS_SALES_DOCUMENT_BLOCKED})`,
+          : `NOT (${OrderRecordRepository.IS_SALES_DOCUMENT_BLOCKED})`
       );
     }
 
@@ -314,7 +321,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       qb.andWhere(
         filters.taxRateConflict
           ? OrderRecordRepository.HAS_TAX_RATE_CONFLICT
-          : `NOT (${OrderRecordRepository.HAS_TAX_RATE_CONFLICT})`,
+          : `NOT (${OrderRecordRepository.HAS_TAX_RATE_CONFLICT})`
       );
     }
 
@@ -327,7 +334,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       qb.andWhere(
         filters.omsAttention
           ? OrderRecordRepository.HAS_OMS_ATTENTION
-          : `NOT (${OrderRecordRepository.HAS_OMS_ATTENTION})`,
+          : `NOT (${OrderRecordRepository.HAS_OMS_ATTENTION})`
       );
     }
 
@@ -345,14 +352,45 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       });
     }
 
-    this.applySort(qb, filters.sort, filters.dir);
+    return qb;
+  }
 
-    const [entities, total] = await qb.getManyAndCount();
+  /** {@link buildFilteredQuery} plus this list's ordering and page window. */
+  private buildPagedQuery(
+    filters: OrderRecordFilters,
+    pagination: OrderRecordPagination
+  ): SelectQueryBuilder<OrderRecordOrmEntity> {
+    const qb = this.buildFilteredQuery(filters);
+    this.applySort(qb, filters.sort, filters.dir);
+    return qb.take(pagination.limit).skip(pagination.offset);
+  }
+
+  async findMany(
+    filters: OrderRecordFilters,
+    pagination: OrderRecordPagination
+  ): Promise<PaginatedOrderRecords> {
+    // Deliberately still ONE `getManyAndCount()` rather than `findManyRows()` +
+    // `countMany()`: TypeORM's `lazyCount` infers the total with NO count query
+    // at all when a page comes back short, so composing this from the two new
+    // methods would add a statement on every small install (#2944).
+    const [entities, total] = await this.buildPagedQuery(filters, pagination).getManyAndCount();
 
     return {
       items: entities.map((e) => this.toDomain(e)),
       total,
     };
+  }
+
+  async findManyRows(
+    filters: OrderRecordFilters,
+    pagination: OrderRecordPagination
+  ): Promise<OrderRecord[]> {
+    const entities = await this.buildPagedQuery(filters, pagination).getMany();
+    return entities.map((e) => this.toDomain(e));
+  }
+
+  async countMany(filters: OrderRecordFilters): Promise<number> {
+    return this.buildFilteredQuery(filters).getCount();
   }
 
   /**
@@ -669,7 +707,9 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       .createQueryBuilder('rec')
       .select(`PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY rec."reportingTotalAmount")`, 'median')
       .andWhere('rec."cancelledAt" IS NULL')
-      .andWhere('rec."reportingCurrency" = :currentReportingCurrency', { currentReportingCurrency });
+      .andWhere('rec."reportingCurrency" = :currentReportingCurrency', {
+        currentReportingCurrency,
+      });
 
     this.applySalesAnalyticsScope(qb, filters);
 
@@ -774,8 +814,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    */
   private static readonly IS_SOURCE_DELETED = `rec."recordStatus" = 'source_deleted'`;
   private static readonly IS_MAPPING = `rec."recordStatus" = 'awaiting_mapping'`;
-  private static readonly NOT_MAPPING_OR_DELETED =
-    `NOT (${OrderRecordRepository.IS_MAPPING}) AND NOT (${OrderRecordRepository.IS_SOURCE_DELETED})`;
+  private static readonly NOT_MAPPING_OR_DELETED = `NOT (${OrderRecordRepository.IS_MAPPING}) AND NOT (${OrderRecordRepository.IS_SOURCE_DELETED})`;
   private static readonly HAS_FAILED = `rec."syncStatus" @> '[{"status":"failed"}]'::jsonb`;
   private static readonly HAS_SYNCED = `rec."syncStatus" @> '[{"status":"synced"}]'::jsonb`;
   /**
@@ -825,7 +864,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   private static readonly HAS_TAX_RATE_CONFLICT = `jsonb_path_exists(rec."orderSnapshot", '$.items[*].taxRateChannel')`;
 
   private static readonly IS_SALES_DOCUMENT_BLOCKED = `COALESCE(rec."salesDocumentBlockReason", '') IN (${SalesDocumentAttentionReasonValues.map(
-    (reason) => `'${reason}'`,
+    (reason) => `'${reason}'`
   ).join(', ')})`;
 
   /**
@@ -863,7 +902,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       : `jsonb_path_exists(
     COALESCE(rec."omsAttention", '[]'::jsonb),
     '$[*].reason ? (${AuthorityAttentionCountedReasonValues.map(
-      (reason) => `@ == "${reason}"`,
+      (reason) => `@ == "${reason}"`
     ).join(' || ')})'
   )`;
 
@@ -1025,8 +1064,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * shipped. Shared by the SLA filter + the SLA summary so the badge, filter,
    * and KPI all agree.
    */
-  private static readonly NOT_SHIPPED =
-    `(rec."fulfillmentState" IS NULL OR rec."fulfillmentState" NOT IN ('dispatched','delivered'))`;
+  private static readonly NOT_SHIPPED = `(rec."fulfillmentState" IS NULL OR rec."fulfillmentState" NOT IN ('dispatched','delivered'))`;
 
   /**
    * Fulfillment-rollup sort ordinal (#1108) — most-actionable first when
@@ -1101,9 +1139,12 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         qb.andWhere(`(NOT ${notShipped}) OR rec."dispatchByAt" IS NULL`);
         break;
       case 'overdue':
-        qb.andWhere(`${notShipped} AND rec."dispatchByAt" IS NOT NULL AND rec."dispatchByAt" <= :slaNow`, {
-          slaNow: now,
-        });
+        qb.andWhere(
+          `${notShipped} AND rec."dispatchByAt" IS NOT NULL AND rec."dispatchByAt" <= :slaNow`,
+          {
+            slaNow: now,
+          }
+        );
         break;
       case 'at_risk':
         qb.andWhere(
@@ -1824,7 +1865,9 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
 
     return rows
       .map((row) => row as { currency?: unknown; count?: unknown })
-      .filter((row): row is { currency: string; count: unknown } => typeof row.currency === 'string')
+      .filter(
+        (row): row is { currency: string; count: unknown } => typeof row.currency === 'string'
+      )
       .map((row) => ({
         reportingCurrency: row.currency,
         count: Number(row.count ?? 0),
@@ -2097,11 +2140,11 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * ORM entity is covered on the day it is added.
    *
    * Two standing assumptions, both asserted by the repository's unit spec: the
- * statement quotes PROPERTY names, so this match is sound only while no column
- * renames its database name; and the write set is the statement's own, so the
- * two can never disagree about which columns were written.
- *
- * The empty default is `null` for every column except the two `jsonb`
+   * statement quotes PROPERTY names, so this match is sound only while no column
+   * renames its database name; and the write set is the statement's own, so the
+   * two can never disagree about which columns were written.
+   *
+   * The empty default is `null` for every column except the two `jsonb`
    * array columns whose DB default is `'[]'` (mapped in
    * {@link EMPTY_COLUMN_DEFAULTS}); a future NOT NULL column with a scalar
    * DB default would surface loudly at the domain mapping rather than
@@ -2498,10 +2541,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * Convert a derived {@link OrderLineItemDraft} to its ORM entity for
    * insertion. `id`/`createdAt` are left for TypeORM to generate.
    */
-  private lineItemToOrm(
-    orderRecordId: string,
-    item: OrderLineItemDraft
-  ): OrderLineItemOrmEntity {
+  private lineItemToOrm(orderRecordId: string, item: OrderLineItemDraft): OrderLineItemOrmEntity {
     const entity = new OrderLineItemOrmEntity();
     entity.orderRecordId = orderRecordId;
     entity.lineNumber = item.lineNumber;

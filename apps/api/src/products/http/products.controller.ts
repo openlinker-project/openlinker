@@ -56,6 +56,9 @@ import {
 import type { ProductListingsCoverage } from '@openlinker/core/listings';
 import { Logger } from '@openlinker/shared/logging';
 import { ListProductsQueryDto } from './dto/list-products-query.dto';
+import { CountProductsQueryDto } from './dto/count-products-query.dto';
+import { CountProductVariantsQueryDto } from './dto/count-product-variants-query.dto';
+import { PaginatedTotalResponseDto } from '../../common/dto/paginated-total-response.dto';
 import { ListProductVariantsQueryDto } from './dto/list-product-variants-query.dto';
 import { ProductResponseDto } from './dto/product-response.dto';
 import type { ProductVariantResponseDto } from './dto/product-variant-response.dto';
@@ -180,6 +183,7 @@ export class ProductsController {
       sort,
       dir,
       hideFullyStale,
+      withTotal,
       limit = 20,
       offset = 0,
     } = query;
@@ -188,28 +192,37 @@ export class ProductsController {
     const sortSpec: ProductListSort | undefined = sort
       ? { field: sort, dir: dir ?? 'desc' }
       : undefined;
+    const filters = {
+      search,
+      stock,
+      taxRateState,
+      unlistedOnConnectionIds,
+      sourceConnectionId: connectionId,
+      hideFullyStale,
+    };
 
-    const { items, total } = await this.productsService.listProducts(
-      {
-        search,
-        stock,
-        taxRateState,
-        unlistedOnConnectionIds,
-        sourceConnectionId: connectionId,
-        hideFullyStale,
-      },
-      { limit, offset },
-      sortSpec
-    );
+    // `?withTotal=false` skips the COUNT entirely and the response OMITS
+    // `total` rather than reporting 0 (#2944) - an absent total and a genuine
+    // zero must stay distinguishable, or a client renders "0 products" for a
+    // number it simply did not ask for. The second stage is `/products/count`.
+    let rows: Product[];
+    let total: number | undefined;
+    if (withTotal === false) {
+      rows = await this.productsService.listProductRows(filters, { limit, offset }, sortSpec);
+    } else {
+      const page = await this.productsService.listProducts(filters, { limit, offset }, sortSpec);
+      rows = page.items;
+      total = page.total;
+    }
 
-    const dtos = items.map((p) => this.toProductDto(p));
+    const dtos = rows.map((p) => this.toProductDto(p));
 
     // Display enrichment (#1720): page-scoped cross-context reads composed
     // at the interface layer - stock aggregates (inventory), listings
     // coverage (listings), variant counts (products), and source external
     // ids (identifier mapping), all in parallel.
-    if (items.length > 0) {
-      const ids = items.map((p) => p.id);
+    if (rows.length > 0) {
+      const ids = rows.map((p) => p.id);
       const [
         aggregates,
         offerCoverage,
@@ -263,6 +276,31 @@ export class ProductsController {
       limit,
       offset,
     };
+  }
+
+  @AnyRole()
+  @Get('count')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Count products matching the filters',
+    description:
+      'The total for the same filters `GET /products` accepts, without a page. Paired with ' +
+      '`GET /products?withTotal=false` so the list renders its rows without waiting for a count ' +
+      'that cannot stop early (#2944). Takes no limit/offset/sort - the answer depends on the ' +
+      'filters alone.',
+  })
+  @ApiResponse({ status: 200, description: 'Row count', type: PaginatedTotalResponseDto })
+  async countProducts(@Query() query: CountProductsQueryDto): Promise<PaginatedTotalResponseDto> {
+    const { search, stock, taxRateState, connectionId, hideFullyStale } = query;
+    const total = await this.productsService.countProducts({
+      search,
+      stock,
+      taxRateState,
+      unlistedOnConnectionIds: this.parseUnlistedOn(query.unlistedOn),
+      sourceConnectionId: connectionId,
+      hideFullyStale,
+    });
+    return { total };
   }
 
   /**
@@ -390,7 +428,17 @@ export class ProductsController {
     @Param('productId') productId: string,
     @Query() query: ListProductVariantsQueryDto
   ): Promise<PaginatedProductVariantsResponseDto> {
-    const { search, limit = 20, offset = 0 } = query;
+    const { search, withTotal, limit = 20, offset = 0 } = query;
+
+    // `?withTotal=false` omits `total` rather than reporting 0 (#2944); the
+    // second stage is `GET /products/:productId/variants/count`.
+    if (withTotal === false) {
+      const rows = await this.productsService.listVariantRows(
+        { productId, search },
+        { limit, offset }
+      );
+      return { items: rows.map((v) => this.toVariantDto(v)), limit, offset };
+    }
 
     const { items, total } = await this.productsService.listVariants(
       { productId, search },
@@ -403,6 +451,25 @@ export class ProductsController {
       limit,
       offset,
     };
+  }
+
+  @AnyRole()
+  @Get(':productId/variants/count')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'productId', description: 'Internal product ID (e.g. ol_product_...)' })
+  @ApiOperation({
+    summary: 'Count variants for a product',
+    description:
+      'The total for the same filters `GET /products/:productId/variants` accepts, without a ' +
+      'page (#2944).',
+  })
+  @ApiResponse({ status: 200, description: 'Row count', type: PaginatedTotalResponseDto })
+  async countVariantsByProduct(
+    @Param('productId') productId: string,
+    @Query() query: CountProductVariantsQueryDto
+  ): Promise<PaginatedTotalResponseDto> {
+    const total = await this.productsService.countVariants({ productId, search: query.search });
+    return { total };
   }
 
   /**
@@ -555,7 +622,16 @@ export class VariantsController {
   async searchVariants(
     @Query() query: ListProductVariantsQueryDto
   ): Promise<PaginatedProductVariantsResponseDto> {
-    const { search, limit = 20, offset = 0 } = query;
+    const { search, withTotal, limit = 20, offset = 0 } = query;
+
+    // `?withTotal=false` omits `total` rather than reporting 0 (#2944); the
+    // second stage is `GET /variants/search/count`. This is the variant read
+    // with the non-sargable predicate - the SKU / EAN / GTIN `ILIKE` - so it
+    // is the one where the split earns its keep.
+    if (withTotal === false) {
+      const rows = await this.productsService.listVariantRows({ search }, { limit, offset });
+      return { items: rows.map((v) => this.toVariantDto(v)), limit, offset };
+    }
 
     const { items, total } = await this.productsService.listVariants({ search }, { limit, offset });
 
@@ -565,6 +641,22 @@ export class VariantsController {
       limit,
       offset,
     };
+  }
+
+  @AnyRole()
+  @Get('search/count')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Count variants matching a search',
+    description:
+      'The total for the same filters `GET /variants/search` accepts, without a page (#2944).',
+  })
+  @ApiResponse({ status: 200, description: 'Row count', type: PaginatedTotalResponseDto })
+  async countSearchVariants(
+    @Query() query: CountProductVariantsQueryDto
+  ): Promise<PaginatedTotalResponseDto> {
+    const total = await this.productsService.countVariants({ search: query.search });
+    return { total };
   }
 
   private toVariantDto(variant: ProductVariant): ProductVariantResponseDto {

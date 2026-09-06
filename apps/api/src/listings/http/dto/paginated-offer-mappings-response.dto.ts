@@ -31,8 +31,8 @@ export class OfferLifecycleCountsResponseDto implements Record<OfferLifecycle, n
   @ApiProperty({
     description:
       'Offers the channel validator rejected (they carry messages). Named Invalid, not Inactive ' +
-      "(#2032 review thread 9) - Allegro's own INACTIVE already means \"not live\", which this " +
-      "bucket is not. NOTE: these still count as already-listed for the duplicate guard, so " +
+      '(#2032 review thread 9) - Allegro\'s own INACTIVE already means "not live", which this ' +
+      'bucket is not. NOTE: these still count as already-listed for the duplicate guard, so ' +
       'their variants cannot be re-listed through the offer wizard - only Ended can.',
   })
   Invalid!: number;
@@ -68,12 +68,18 @@ export class PaginatedOfferMappingsResponseDto {
   @ApiProperty({ type: [OfferMappingResponseDto] })
   items!: OfferMappingResponseDto[];
 
-  @ApiProperty({
+  /**
+   * Absent - not `0` - when the caller passed `?withTotal=false` (#2944). A
+   * caller that reads it as a row count must therefore treat `undefined` as
+   * "not asked for", never as "none matched".
+   */
+  @ApiPropertyOptional({
     description:
       'Total number of offer mappings matching the filters - including `lifecycle`, so it is the ' +
-      'size of the selected tab when one is selected and paging inside a tab stays correct.',
+      'size of the selected tab when one is selected and paging inside a tab stays correct. ' +
+      'Omitted when ?withTotal=false.',
   })
-  total!: number;
+  total?: number;
 
   @ApiPropertyOptional({
     type: OfferLifecycleCountsResponseDto,

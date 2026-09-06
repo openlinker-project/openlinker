@@ -68,11 +68,21 @@ export class ProductRepository implements ProductRepositoryPort {
     return entities.map((entity) => this.toDomain(entity));
   }
 
-  async findMany(
+  /**
+   * The WHERE clause (and the stock join it may need) shared by every read of
+   * this list (#2944).
+   *
+   * `findMany`, `findManyRows` and `countMany` all start here, so the total can
+   * never describe a different set than the page: there is one predicate, and
+   * the three methods differ only in what they do after it.
+   *
+   * `sort` is taken because it can pull in the stock join, not because it can
+   * narrow anything - see {@link countMany}, which omits it.
+   */
+  private buildFilteredQuery(
     filters: ProductListFilters,
-    pagination: ProductPagination,
     sort?: ProductListSort
-  ): Promise<PaginatedProducts> {
+  ): SelectQueryBuilder<ProductOrmEntity> {
     const qb = this.repository.createQueryBuilder('product');
 
     if (filters.search) {
@@ -182,17 +192,60 @@ export class ProductRepository implements ProductRepositoryPort {
       );
     }
 
-    // Count on a clone taken before ordering/pagination - getManyAndCount's
-    // skip/take path miscounts once a joined alias appears in ORDER BY, so
-    // pagination uses raw offset/limit and the total comes from a dedicated
-    // COUNT(DISTINCT product.id) query with identical WHERE/joins.
-    const countQb = qb.clone();
+    return qb;
+  }
 
+  /**
+   * {@link buildFilteredQuery} plus ordering and the page window.
+   *
+   * Pagination is raw `offset`/`limit`, not `skip`/`take`: `getManyAndCount`'s
+   * skip/take path miscounts once a joined alias appears in `ORDER BY`, which
+   * is why this list has always taken its total from a separate `getCount()`
+   * on a pre-ordering clone.
+   */
+  private buildPagedQuery(
+    filters: ProductListFilters,
+    pagination: ProductPagination,
+    sort?: ProductListSort
+  ): SelectQueryBuilder<ProductOrmEntity> {
+    const qb = this.buildFilteredQuery(filters, sort);
     this.applySort(qb, sort);
-    qb.offset(pagination.offset).limit(pagination.limit);
+    return qb.offset(pagination.offset).limit(pagination.limit);
+  }
 
-    const [entities, total] = await Promise.all([qb.getMany(), countQb.getCount()]);
-    return { items: entities.map((e) => this.toDomain(e)), total };
+  async findMany(
+    filters: ProductListFilters,
+    pagination: ProductPagination,
+    sort?: ProductListSort
+  ): Promise<PaginatedProducts> {
+    // Unchanged: two statements in parallel, exactly as before #2944. Unlike
+    // the other four lists this one never used `getManyAndCount`, so there is
+    // no short-page inference to lose by composing it from the split reads.
+    const [items, total] = await Promise.all([
+      this.findManyRows(filters, pagination, sort),
+      this.countMany(filters),
+    ]);
+    return { items, total };
+  }
+
+  async findManyRows(
+    filters: ProductListFilters,
+    pagination: ProductPagination,
+    sort?: ProductListSort
+  ): Promise<Product[]> {
+    const entities = await this.buildPagedQuery(filters, pagination, sort).getMany();
+    return entities.map((e) => this.toDomain(e));
+  }
+
+  /**
+   * Deliberately takes no `sort`. Ordering cannot change a count, and the only
+   * thing `sort` contributes to the query is the stock LEFT JOIN, which is at
+   * most 1:1 (the subquery groups by `productId`) and so cannot change the
+   * number of rows either. Omitting it means a count never pays for a join it
+   * has no use for.
+   */
+  async countMany(filters: ProductListFilters): Promise<number> {
+    return this.buildFilteredQuery(filters).getCount();
   }
 
   /**

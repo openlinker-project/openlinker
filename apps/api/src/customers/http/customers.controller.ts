@@ -36,6 +36,8 @@ import { ListCustomersQueryDto } from './dto/list-customers-query.dto';
 import { CustomerProjectionResponseDto } from './dto/customer-projection-response.dto';
 import type { CustomerAddressResponseDto } from './dto/customer-address-response.dto';
 import { PaginatedCustomersResponseDto } from './dto/paginated-customers-response.dto';
+import { CountCustomersQueryDto } from './dto/count-customers-query.dto';
+import { PaginatedTotalResponseDto } from '../../common/dto/paginated-total-response.dto';
 import { Roles } from '../../auth/decorators/roles.decorator';
 
 @ApiBearerAuth()
@@ -64,12 +66,21 @@ export class CustomersController {
   async listCustomers(
     @Query() query: ListCustomersQueryDto
   ): Promise<PaginatedCustomersResponseDto> {
-    const { search, lastSourceConnectionId, limit = 20, offset = 0 } = query;
+    const { search, lastSourceConnectionId, withTotal, limit = 20, offset = 0 } = query;
+    const filters = { search, lastSourceConnectionId };
 
-    const { items, total } = await this.customerRepository.findMany(
-      { search, lastSourceConnectionId },
-      { limit, offset }
-    );
+    // `?withTotal=false` skips the COUNT entirely and the response OMITS
+    // `total` rather than reporting 0 (#2944) - an absent total and a genuine
+    // zero must stay distinguishable, or a client renders "0 customers" for a
+    // number it simply did not ask for. Anything else keeps the pre-#2944
+    // combined read byte-for-byte, including its `getManyAndCount` short-page
+    // optimisation.
+    if (withTotal === false) {
+      const items = await this.customerRepository.findManyRows(filters, { limit, offset });
+      return { items: items.map((c) => this.toDto(c)), limit, offset };
+    }
+
+    const { items, total } = await this.customerRepository.findMany(filters, { limit, offset });
 
     return {
       items: items.map((c) => this.toDto(c)),
@@ -77,6 +88,25 @@ export class CustomersController {
       limit,
       offset,
     };
+  }
+
+  @Roles('admin', 'operator', 'viewer')
+  @Get('count')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Count customer projections matching the filters',
+    description:
+      'The total for the same filters `GET /customers` accepts, without a page. Paired with ' +
+      '`GET /customers?withTotal=false` so a list renders its rows without waiting for a count ' +
+      'that cannot stop early (#2944). Takes no limit/offset - the answer depends on the ' +
+      'filters alone.',
+  })
+  @ApiResponse({ status: 200, description: 'Row count', type: PaginatedTotalResponseDto })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async countCustomers(@Query() query: CountCustomersQueryDto): Promise<PaginatedTotalResponseDto> {
+    const { search, lastSourceConnectionId } = query;
+    const total = await this.customerRepository.countMany({ search, lastSourceConnectionId });
+    return { total };
   }
 
   @Roles('admin', 'operator', 'viewer')

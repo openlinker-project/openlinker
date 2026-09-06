@@ -81,6 +81,8 @@ import type {
   CategoryPathSegment,
   EanCategoryMatchStreamEvent,
   OfferCreationRecord,
+  OfferLifecycle,
+  OfferLifecycleCounts,
   OfferManagerPort,
   OfferMappingListItem,
   OfferPublicationStatusView,
@@ -97,6 +99,8 @@ import { ListOfferMappingsQueryDto } from './dto/list-offer-mappings-query.dto';
 import { MarketplaceOfferResponseDto } from './dto/marketplace-offer-response.dto';
 import { OfferMappingResponseDto } from './dto/offer-mapping-response.dto';
 import { PaginatedOfferMappingsResponseDto } from './dto/paginated-offer-mappings-response.dto';
+import { CountOfferMappingsQueryDto } from './dto/count-offer-mappings-query.dto';
+import { OfferMappingCountResponseDto } from './dto/offer-mapping-count-response.dto';
 import {
   PublishedVariantsRequestDto,
   PublishedVariantsResponseDto,
@@ -230,15 +234,26 @@ export class ListingsController {
       search,
       lifecycle,
       includeLifecycleCounts,
+      withTotal,
       limit = 20,
       offset = 0,
     } = query;
+    const filters = { connectionId, internalId, search, lifecycle };
+
+    // `?withTotal=false` skips BOTH aggregates - the list's own count and the
+    // lifecycle buckets - and the response OMITS `total` rather than reporting
+    // 0 (#2944), so an absent total and a genuine zero stay distinguishable.
+    // The second stage is `GET /listings/count`, which answers both.
+    if (withTotal === false) {
+      const items = await this.offerMappingRepository.findManyRows(filters, { limit, offset });
+      return { items: items.map((m) => this.toListDto(m)), limit, offset };
+    }
 
     if (!includeLifecycleCounts) {
-      const { items, total } = await this.offerMappingRepository.findMany(
-        { connectionId, internalId, search, lifecycle },
-        { limit, offset }
-      );
+      const { items, total } = await this.offerMappingRepository.findMany(filters, {
+        limit,
+        offset,
+      });
       return { items: items.map((m) => this.toListDto(m)), total, limit, offset };
     }
 
@@ -248,30 +263,71 @@ export class ListingsController {
     // they label every tab, not the selected one.
     //
     // `total` is DERIVED from `lifecycleCounts` rather than from a second
-    // `findMany`-owned `getCount()` (#2032 review thread 3) - the five buckets
-    // partition the filtered set (see `OfferLifecycleValues`'s docblock), so
-    // their sum is provably the same number a second `COUNT(DISTINCT)` over
-    // the identical join would return. `findMany` is told to skip its own
-    // count accordingly.
-    const [lifecycleCounts, { items }] = await Promise.all([
+    // `countMany()` (#2032 review thread 3) - the five buckets partition the
+    // filtered set (see `OfferLifecycleValues`'s docblock), so their sum is
+    // provably the same number a second `COUNT(DISTINCT)` over the identical
+    // join would return. `findManyRows` therefore fetches the page alone.
+    const [lifecycleCounts, items] = await Promise.all([
       this.offerMappingRepository.countByLifecycle({ connectionId, internalId, search }),
-      this.offerMappingRepository.findMany(
-        { connectionId, internalId, search, lifecycle },
-        { limit, offset },
-        { skipTotal: true }
-      ),
+      this.offerMappingRepository.findManyRows(filters, { limit, offset }),
     ]);
-    const total = lifecycle
-      ? lifecycleCounts[lifecycle]
-      : sumOfferLifecycleCounts(lifecycleCounts);
 
     return {
       items: items.map((m) => this.toListDto(m)),
-      total,
+      total: this.deriveTotal(lifecycleCounts, lifecycle),
       lifecycleCounts,
       limit,
       offset,
     };
+  }
+
+  /**
+   * The one place the tab-bar buckets become a total (#2944), shared by the
+   * list route and `GET /listings/count` so the two can never disagree about
+   * what a selected tab's size is.
+   */
+  private deriveTotal(
+    lifecycleCounts: OfferLifecycleCounts,
+    lifecycle: OfferLifecycle | undefined
+  ): number {
+    return lifecycle ? lifecycleCounts[lifecycle] : sumOfferLifecycleCounts(lifecycleCounts);
+  }
+
+  @AnyRole()
+  @Get('count')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Count offer mappings matching the filters',
+    description:
+      'The total for the same filters `GET /listings` accepts, without a page. Paired with ' +
+      '`GET /listings?withTotal=false` so the list renders its rows without waiting for a count ' +
+      'that cannot stop early (#2944). Pass `includeLifecycleCounts=true` to get the tab-bar ' +
+      'buckets in the same request - `total` is then derived from them, exactly as the list ' +
+      'route derives it. Takes no limit/offset.',
+  })
+  @ApiResponse({ status: 200, description: 'Row count', type: OfferMappingCountResponseDto })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async countOfferMappings(
+    @Query() query: CountOfferMappingsQueryDto
+  ): Promise<OfferMappingCountResponseDto> {
+    const { connectionId, internalId, search, lifecycle, includeLifecycleCounts } = query;
+
+    if (!includeLifecycleCounts) {
+      const total = await this.offerMappingRepository.countMany({
+        connectionId,
+        internalId,
+        search,
+        lifecycle,
+      });
+      return { total };
+    }
+
+    const lifecycleCounts = await this.offerMappingRepository.countByLifecycle({
+      connectionId,
+      internalId,
+      search,
+    });
+    return { total: this.deriveTotal(lifecycleCounts, lifecycle), lifecycleCounts };
   }
 
   @AnyRole()
@@ -827,7 +883,8 @@ export class ListingsController {
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
   @ApiOperation({
-    summary: 'Batch-resolve marketplace categories by variant EAN, with mapping fallback (#795 / #1522)',
+    summary:
+      'Batch-resolve marketplace categories by variant EAN, with mapping fallback (#795 / #1522)',
     description:
       'Resolves up to 200 variants to marketplace categories in one call. EAN catalogue ' +
       'match (via the connection adapter’s EanCategoryMatcher sub-capability, #735) is the ' +

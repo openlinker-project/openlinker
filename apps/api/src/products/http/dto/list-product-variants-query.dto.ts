@@ -9,8 +9,9 @@
 import { IsOptional, IsString, IsInt, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { PaginatedReadQueryDto } from '../../../common/dto/paginated-read-query.dto';
 
-export class ListProductVariantsQueryDto {
+export class ListProductVariantsQueryDto extends PaginatedReadQueryDto {
   @ApiPropertyOptional({ description: 'Case-insensitive search on variant SKU, EAN, or GTIN' })
   @IsOptional()
   @IsString()

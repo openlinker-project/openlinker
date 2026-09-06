@@ -37,11 +37,46 @@ export interface CustomerProjectionRepositoryPort {
   /**
    * Find customer projections matching filters with offset pagination.
    * Results are ordered by lastSeenAt DESC.
+   *
+   * Rows AND total in one call. Unchanged by #2944 and still the right choice
+   * for a caller that wants both at once - see {@link findManyRows} for why it
+   * is not composed from the two split reads.
    */
   findMany(
     filters: CustomerProjectionFilters,
     pagination: CustomerProjectionPagination
   ): Promise<PaginatedCustomerProjections>;
+
+  /**
+   * The page WITHOUT its total (#2944).
+   *
+   * A paged read stops after its `LIMIT`; the `COUNT` beside it cannot stop at
+   * all, so under a predicate no plain index serves - here the four-column
+   * `ILIKE` search - the count scans the table however small the page is. This
+   * read pays only for the page.
+   *
+   * It applies the identical predicate to {@link countMany}: both are built by
+   * one private `buildFilteredQuery`, so the total can never describe a
+   * different set than the page.
+   *
+   * {@link findMany} deliberately does NOT delegate to this method plus
+   * {@link countMany}. TypeORM's `getManyAndCount` infers the total with no
+   * count query at all when a page comes back short, so composing it would add
+   * a statement on every small install - the opposite of this issue's point.
+   */
+  findManyRows(
+    filters: CustomerProjectionFilters,
+    pagination: CustomerProjectionPagination
+  ): Promise<CustomerProjection[]>;
+
+  /**
+   * The total WITHOUT its page (#2944) - the second half of {@link findManyRows}.
+   *
+   * Takes no pagination, which is the point: the answer depends on the filters
+   * alone, so a caller may cache it per filter combination and paging through
+   * a result set never recomputes it.
+   */
+  countMany(filters: CustomerProjectionFilters): Promise<number>;
 
   /**
    * Upsert customer projection (insert or update)

@@ -67,19 +67,23 @@ function createMockProductsService(): jest.Mocked<IProductsService> {
     getVariantsByProductId: jest.fn(),
     getVariantsByProductIds: jest.fn(),
     getVariantsBySkus: jest.fn(),
-  getVariantsByIds: jest.fn(),
+    getVariantsByIds: jest.fn(),
     getVariantsByBarcodes: jest.fn(),
     listProducts: jest.fn(),
+    listProductRows: jest.fn(),
+    countProducts: jest.fn(),
     listVariants: jest.fn(),
+    listVariantRows: jest.fn(),
+    countVariants: jest.fn(),
     getVariantCountsByProductIds: jest.fn(),
     getStaleVariantCountsByProductIds: jest.fn(),
     markVariantsStaleExcept: jest.fn(),
-  recordProductTaxRate: jest.fn(),
-  recordVariantTaxRate: jest.fn(),
-  clearVariantTaxRate: jest.fn(),
-  getEffectiveTaxRate: jest.fn(),
-  getTaxRateCoverage: jest.fn(),
-  getTaxRateCoverageByConnection: jest.fn(),
+    recordProductTaxRate: jest.fn(),
+    recordVariantTaxRate: jest.fn(),
+    clearVariantTaxRate: jest.fn(),
+    getEffectiveTaxRate: jest.fn(),
+    getTaxRateCoverage: jest.fn(),
+    getTaxRateCoverageByConnection: jest.fn(),
   };
 }
 
@@ -297,9 +301,9 @@ describe('ProductsController', () => {
     });
 
     it('should reject non-UUID unlistedOn entries with 400 (#1720)', async () => {
-      await expect(
-        controller.listProducts({ unlistedOn: 'not-a-uuid' })
-      ).rejects.toThrow(BadRequestException);
+      await expect(controller.listProducts({ unlistedOn: 'not-a-uuid' })).rejects.toThrow(
+        BadRequestException
+      );
       expect(productsService.listProducts).not.toHaveBeenCalled();
     });
 
