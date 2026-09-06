@@ -72,9 +72,11 @@ import {
   FULFILLMENT_PROCESSOR_KIND,
 } from '@openlinker/core/mappings';
 import {
+  FULFILLMENT_ROUTER_RESOLVER_TOKEN,
   ROUTING_COMMIT_SERVICE_TOKEN,
   buildRoutingShipTo,
   type FulfillmentBlock,
+  type FulfillmentRouterResolverPort,
   type IRoutingCommitService,
   type RoutingCommitOutcome,
   type RoutingInputLine,
@@ -85,7 +87,6 @@ import {
   selectPrimaryFulfillmentRouter,
   type AuthorityClaimantInput,
 } from '@openlinker/core/fulfillment-authority';
-import { resolveFulfillmentRouter } from './fulfillment-router-resolution';
 import type { ReservationAtpEffect } from '@openlinker/core/inventory';
 import type { Order } from '../../domain/types/order.types';
 import type { OrderFeedEventType } from '../../domain/types/order-feed.types';
@@ -189,7 +190,14 @@ export class OrderIngestionService implements IOrderIngestionService {
     // needs the connection list. `selectPrimaryFulfillmentRouter` is pure and
     // does the deciding.
     @Inject(CONNECTION_PORT_TOKEN)
-    private readonly connections: ConnectionPort
+    private readonly connections: ConnectionPort,
+    // #2408: the ONE seam answering "is there a router for this connection?".
+    // REQUIRED, never `@Optional()` — an optional token defaulting to `null`
+    // would make a host that FORGOT the binding indistinguishable from one
+    // deliberately running router-less, and that misconfiguration is otherwise
+    // invisible (the router-less path is a silent, fully-specified pass-through).
+    @Inject(FULFILLMENT_ROUTER_RESOLVER_TOKEN)
+    private readonly routerResolver: FulfillmentRouterResolverPort
   ) {}
 
   async ingestOrders(
@@ -573,8 +581,8 @@ export class OrderIngestionService implements IOrderIngestionService {
     // exists, its advisory holds are recorded, and its projections are synced.
     //
     // On every installation today this resolves to the pass-through arm — no
-    // connection claims A2, and `resolveFulfillmentRouter` answers `null`
-    // regardless — so `syncOrder` below is reached with a byte-identical
+    // connection claims A2, and the router resolver answers `null` for any
+    // connection that is not an OMS one — so `syncOrder` below is reached with a byte-identical
     // request. That is ADR-054's specified degenerate behaviour, not a stub.
     const routing = await this.interceptFulfillmentRouting(
       order,
@@ -816,7 +824,7 @@ export class OrderIngestionService implements IOrderIngestionService {
         return { held: false, block: null };
       }
 
-      const router = await resolveFulfillmentRouter(selection.holder);
+      const router = await this.routerResolver.resolve(selection.holder);
       if (router === null) {
         // The degenerate pass-through (ADR-054). Not an error, and not a block:
         // the order follows today's path unchanged, so there is nothing held to

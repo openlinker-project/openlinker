@@ -214,11 +214,12 @@ export {
   OrderIngestionResult,
 } from './application/interfaces/order-ingestion.service.interface';
 
-// #2396 — the SINGLE fulfilment-router resolution seam, shared by the ingestion
-// intercept and the `fulfillment.work.route` handler. Exported so the worker
-// handler consumes the same body; a second copy is a double shipment the day
-// #2408 wires a real router into only one of them.
-export { resolveFulfillmentRouter } from './application/services/fulfillment-router-resolution';
+// #2408: the fulfilment-router resolution seam moved OUT of this context and
+// onto `FulfillmentRouterResolverPort` (`@openlinker/core/fulfillment`). It had
+// to: resolving a router needs an inventory read, a location read, a work read
+// and the operator's ruleset, and a module function can obtain none of them,
+// while `orders` may not import `@openlinker/oms` where the one implementation
+// lives. Still exactly ONE body — a second copy is a double shipment.
 export { IOrderRecordService } from './application/interfaces/order-record.service.interface';
 export { OrderRecordService } from './application/services/order-record.service';
 export { ISalesDocumentViewService } from './application/interfaces/sales-document-view.service.interface';
