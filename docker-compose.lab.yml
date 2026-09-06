@@ -364,7 +364,27 @@ services:
 
   worker:
     image: ol-perf:worker
-    container_name: lab-worker
+    # NO `container_name` (#2851). A fixed container name makes
+    # `docker compose up --scale worker=N` refuse to run outright, and the
+    # multi-replica arm is the ONLY way to measure ADR-050's own documented
+    # limitation - "the caps bound one worker PROCESS, so N replicas multiply
+    # every effective cap by N" (#2302). Compose therefore names the replicas
+    # itself: `lab-worker-1`, `lab-worker-2`, ... - and it does so at
+    # `--scale worker=1` too, so the single-replica container is `lab-worker-1`
+    # and NOT `lab-worker`.
+    #
+    # That rename is a breaking change for anything that hardcoded the old
+    # name. The harness absorbs it: `WORKER_CONTAINERS` (perf/openlinker-
+    # throughput/lib.sh) now DISCOVERS the running worker replicas from
+    # compose's own service label when it is left unset, and refuses loudly
+    # when an explicitly-exported value names a container that does not
+    # exist - rather than letting a scenario die inside `docker exec` with a
+    # message that says nothing about why. Stop exporting
+    # `WORKER_CONTAINERS=lab-worker`; leave it unset and let discovery answer.
+    #
+    # `docker-compose.demo.yml`'s own `container_name` is deliberately NOT
+    # touched: whether the shipped demo stack should be scalable is a
+    # separate call, and this file is a perf-stand artefact.
     environment:
       NODE_ENV: production
       DB_HOST: postgres
@@ -382,6 +402,22 @@ services:
       # scheduler/runner on (a mixed-workload campaign) overrides these in
       # .env.lab per-run rather than editing this file.
       OL_SCHEDULER_ENABLED: '${OL_SCHEDULER_ENABLED:-false}'
+      # Roles (ADR-051, #2279). Empty resolves to ALL four roles
+      # (`resolveWorkerRoles`), which is the default here and is what every
+      # replica of a `--scale worker=N` stand carries, because compose gives
+      # every replica of one service the same environment.
+      #
+      # Three replicas therefore each carry `scheduler` and `maintenance`, and
+      # that is SAFE rather than merely tolerated: `OL_SCHEDULER_ENABLED` is
+      # false above so no cron registers at all, and `SchedulerLeaseCoordinator`
+      # would make it a fleet singleton even if it were true; while
+      # `StuckJobRecoveryService.requeueStuckJobs` is an idempotent conditional
+      # UPDATE on a stale `lockedAt` and needs no lease (#2279 says so in
+      # those words). Pin it to `jobs` here if a run wants the roles visibly
+      # split rather than merely harmless - it applies to every replica, so a
+      # genuinely split fleet needs a second service definition, which this
+      # file deliberately does not carry.
+      OL_WORKER_ROLE: '${OL_WORKER_ROLE:-}'
       WORKER_RUNNER_ENABLED: '${WORKER_RUNNER_ENABLED:-false}'
       OL_LOG_BODY_MAX_BYTES: '${OL_LOG_BODY_MAX_BYTES:-8192}'
       NODE_EXTRA_CA_CERTS: /etc/ssl/lab/wc-tls-ca.pem

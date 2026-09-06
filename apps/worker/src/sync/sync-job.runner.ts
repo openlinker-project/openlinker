@@ -41,11 +41,53 @@ import { ConnectionPort, CONNECTION_PORT_TOKEN } from '@openlinker/core/identifi
 import { SyncJobHandlerRegistry } from './handlers/sync-job-handler.registry';
 import { Logger } from '@openlinker/shared/logging';
 import { runWithPriority, RateLimitTimeoutError } from '@openlinker/shared/rate-limit';
+import { WORKER_ID_ENV } from '@openlinker/shared/redis';
+import { hostname } from 'node:os';
+
+/**
+ * The host-identifying part of {@link SyncJobRunner.WORKER_ID}.
+ *
+ * `OL_WORKER_ID` -> hostname -> pid, matching `resolveConsumerName`'s own
+ * precedence. The pid rung is a last resort and is marked as such in the
+ * value, so a `lockedBy` that fell back to it is visibly a fallback rather
+ * than looking like a legitimate host name.
+ */
+export function resolveWorkerHostId(env: NodeJS.ProcessEnv = process.env): string {
+  const configured = env[WORKER_ID_ENV]?.trim();
+  if (configured) {
+    return configured;
+  }
+  const host = hostname()?.trim();
+  return host || `pid${process.pid}`;
+}
 
 @Injectable()
 export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(SyncJobRunner.name);
-  private readonly WORKER_ID = `worker-${process.pid}-${Date.now()}`;
+  /**
+   * This process's identity, written to `sync_jobs.lockedBy` on every claim.
+   *
+   * **The host part is what makes a claim attributable to a replica (#2851).**
+   * It used to be `process.pid`, which is `1` in every container, so on a
+   * `--scale worker=N` deployment every replica wrote the same pid and
+   * `lockedBy` could not answer *"which replica claimed this job"* - the one
+   * question a multi-replica claim-contention measurement is about. It now
+   * carries `OL_WORKER_ID`, or the hostname (the container id under Docker),
+   * falling back to the pid where neither resolves. That is the same
+   * precedence `resolveConsumerName` already uses for the Redis stream
+   * consumer identity; the two are threaded separately because they answer
+   * different questions, and a literal shared `OL_WORKER_ID` is right for
+   * neither (it makes replicas share one Pending Entries List there, and one
+   * `lockedBy` value here).
+   *
+   * **The `Date.now()` suffix stays, and is load-bearing rather than
+   * decoration.** `refreshJobLock` guards its heartbeat on `lockedBy`
+   * (`sync-job-repository.port.ts`), so a RESTARTED replica must not present
+   * the same identity as the incarnation whose rows it no longer owns. A bare
+   * hostname would be stable across restarts and would silently re-acquire
+   * that ownership.
+   */
+  private readonly WORKER_ID = `worker-${resolveWorkerHostId()}-${Date.now()}`;
   private readonly POLL_INTERVAL_MS = 1000; // Poll interval when no jobs available
   private readonly JOB_HEARTBEAT_INTERVAL_MS = 3 * 60 * 1000; // Refresh lockedAt every 3 minutes while a job runs (#1810)
   private readonly RATE_LIMIT_TIMEOUT_REQUEUE_DELAY_SECONDS = 30; // Fixed short requeue delay for RateLimitTimeoutError — not exponential, since attempts never increments (#1810 review follow-up)

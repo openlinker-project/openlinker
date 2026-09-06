@@ -10,7 +10,8 @@
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { SyncJobRunner } from '../sync-job.runner';
+import { SyncJobRunner, resolveWorkerHostId } from '../sync-job.runner';
+import { hostname } from 'node:os';
 import type { SyncJobRepositoryPort, RetryDeferral } from '@openlinker/core/sync';
 import {
   SYNC_JOB_REPOSITORY_TOKEN,
@@ -1600,6 +1601,32 @@ describe('SyncJobRunner', () => {
       runner.onModuleInit();
 
       expect((runner as any).startRunner).not.toHaveBeenCalled();
+    });
+  });
+
+  // #2851. `process.pid` is 1 in every container, so before this the whole
+  // fleet wrote one `lockedBy` value and a multi-replica claim measurement
+  // had nothing to attribute a claim to.
+  describe('worker identity (#2851)', () => {
+    it('should prefer OL_WORKER_ID when it is set', () => {
+      expect(resolveWorkerHostId({ OL_WORKER_ID: 'worker-a' })).toBe('worker-a');
+    });
+
+    it('should ignore a blank OL_WORKER_ID and fall back to the hostname', () => {
+      expect(resolveWorkerHostId({ OL_WORKER_ID: '   ' })).toBe(hostname());
+    });
+
+    it('should use the hostname when OL_WORKER_ID is unset', () => {
+      expect(resolveWorkerHostId({})).toBe(hostname());
+    });
+
+    it('should carry the host id and a per-boot suffix in WORKER_ID', () => {
+      // The suffix is load-bearing: `refreshJobLock` guards its heartbeat on
+      // `lockedBy`, so a restarted replica must not present the identity of
+      // the incarnation whose rows it no longer owns.
+      const workerId = (runner as any).WORKER_ID as string;
+      expect(workerId).toContain(resolveWorkerHostId());
+      expect(workerId).toMatch(/-\d{10,}$/);
     });
   });
 

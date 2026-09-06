@@ -76,6 +76,14 @@ source "$SCRIPT_DIR/lib.sh" >/dev/null
 RESULTS_ROOT="$(mktemp -d)"
 trap 'rm -rf "$RESULTS_ROOT"' EXIT
 
+# Worker-replica discovery (#2851) is latched OFF for the guard tests below.
+# Those tests set WORKER_CONTAINERS directly to names that suit each case
+# ("worker-sched-off", "w1 w2", ...), and `_ensure_worker_containers` would
+# otherwise verify each of them against `docker inspect` on its first call and
+# refuse. Discovery itself is tested separately, in its own section, which
+# un-latches this in a subshell so the flag can never leak between tests.
+WORKER_CONTAINERS_RESOLVED=1
+
 # ---------------------------------------------------------------------------
 # Fakes. Every one of these OVERRIDES a function lib.sh calls directly, so
 # no test below reaches a real container, database or HTTP endpoint.
@@ -112,8 +120,23 @@ declare -A FAKE_ENV        # key "container:VAR" -> value
 declare -A FAKE_REVISION   # key "container" -> org.opencontainers.image.revision label
 declare -A FAKE_LOG        # key "container" -> full canned log text
 
+# What `docker ps --filter label=com.docker.compose.service=worker` answers
+# (#2851's worker-replica discovery). Newline-separated, deliberately NOT
+# pre-sorted - discover_worker_containers' own `sort` is part of what is under
+# test, since a manifest diff between two runs is only meaningful if the
+# container list reads the same way every time.
+FAKE_WORKER_PS="lab-worker-2
+lab-worker-1
+lab-worker-3"
+# Which container names `docker inspect` will admit to knowing. Discovery
+# VERIFIES an explicitly-exported WORKER_CONTAINERS against this, which is the
+# whole point of the check (`WORKER_CONTAINERS=lab-worker` was the documented
+# export until the rename).
+FAKE_EXISTING_CONTAINERS="lab-worker-1 lab-worker-2 lab-worker-3 lab-api"
+
 docker() {
   case "$1" in
+    ps) printf '%s\n' "$FAKE_WORKER_PS" ;;
     exec)
       local container="$2" cmd="$3"
       case "$cmd" in
@@ -125,6 +148,13 @@ docker() {
     inspect)
       local last="${@: -1}"
       case "$*" in
+        *'{{.Id}}'*)
+          # _ensure_worker_containers' existence probe. Answering for every
+          # name would make the "explicit but stale" test unreachable.
+          case " $FAKE_EXISTING_CONTAINERS " in
+            *" $last "*) echo "fake-container-id-$last" ;;
+            *) return 1 ;;
+          esac ;;
         *'index .Config.Labels "org.opencontainers.image.revision"'*)
           # Unset means "container never registered in FAKE_REVISION", the
           # empty-string case (`guard_build` must die on absence, never
@@ -690,6 +720,86 @@ assert_eq "sourcing with --verify-only sets VERIFY_ONLY=1" "0" "$?"
 
 assert_dies "an unrecognised argument is rejected rather than silently ignored" \
   bash -c "cd '$SCRIPT_DIR' && source ./bootstrap.sh --bogus-flag-that-does-not-exist"
+
+echo "--- worker-replica discovery (#2851) ---"
+
+# `docker ps` answers out of order on purpose (see FAKE_WORKER_PS); the sort is
+# what makes two runs' manifests comparable.
+assert_eq "discover_worker_containers returns every replica, sorted" \
+  "lab-worker-1 lab-worker-2 lab-worker-3" \
+  "$(discover_worker_containers)"
+
+# Each case runs in a subshell so WORKER_CONTAINERS_RESOLVED / WORKER_CONTAINERS
+# cannot leak into the guard tests above (or into each other).
+assert_eq "unset WORKER_CONTAINERS is filled in from discovery" \
+  "lab-worker-1 lab-worker-2 lab-worker-3" \
+  "$( ( WORKER_CONTAINERS=""; WORKER_CONTAINERS_RESOLVED=0
+       _ensure_worker_containers >/dev/null 2>&1
+       printf '%s' "$WORKER_CONTAINERS" ) )"
+
+assert_eq "discovery records the replica count for the manifest" \
+  "3" \
+  "$( ( WORKER_CONTAINERS=""; WORKER_CONTAINERS_RESOLVED=0
+       _ensure_worker_containers >/dev/null 2>&1
+       printf '%s' "$MANIFEST_WORKER_REPLICAS" ) )"
+
+# An explicit list is honoured rather than overwritten - a stand compose does
+# not own still needs one.
+assert_eq "an explicit, existing WORKER_CONTAINERS is left alone" \
+  "lab-worker-2" \
+  "$( ( WORKER_CONTAINERS="lab-worker-2"; WORKER_CONTAINERS_RESOLVED=0
+       _ensure_worker_containers >/dev/null 2>&1
+       printf '%s' "$WORKER_CONTAINERS" ) )"
+
+# The case this check exists for: `WORKER_CONTAINERS=lab-worker` was the
+# documented export until the worker lost its fixed container_name, so a stale
+# one is the most likely way a scenario reaches this code.
+assert_dies "an explicit WORKER_CONTAINERS naming a container that does not exist dies" \
+  eval 'WORKER_CONTAINERS=lab-worker; WORKER_CONTAINERS_RESOLVED=0; _ensure_worker_containers'
+FAKE_WORKER_PS_SAVED="$FAKE_WORKER_PS"
+FAKE_WORKER_PS=""
+assert_dies "no running worker replica at all dies rather than proceeding with an empty list" \
+  eval 'WORKER_CONTAINERS=""; WORKER_CONTAINERS_RESOLVED=0; _ensure_worker_containers'
+FAKE_WORKER_PS="$FAKE_WORKER_PS_SAVED"
+
+echo "--- enqueue_perf_job / cap_perf_job_attempts (#2851, the F7 defect) ---"
+
+# The defect: the old implementation read `.id` off the enqueue response, which
+# EnqueueSyncJobResponseDto does not have, so no perf job on any run before this
+# ever carried the maxAttempts cap. The cap is now applied by idempotencyKey.
+ol_api() { printf '%s' '{"jobId":"1788690321451-0","jobType":"t","connectionId":"c","isExisting":false}'; }
+PERF_ENQUEUED_KEYS_FILE="$(mktemp)"
+enqueue_perf_job "master.product.syncFromSweep" "conn-1" '{}' 'f4:probe:1' >/dev/null
+enqueue_perf_job "master.product.syncFromSweep" "conn-1" '{}' 'f4:probe:2' >/dev/null
+assert_eq "enqueue_perf_job records each idempotency key" \
+  "f4:probe:1 f4:probe:2" "$(tr '\n' ' ' < "$PERF_ENQUEUED_KEYS_FILE" | sed 's/ $//')"
+
+FAKE_PG[count]=2
+FAKE_PG_WRITE_CALLS=()
+cap_perf_job_attempts >/dev/null 2>&1
+assert_contains "cap_perf_job_attempts caps by idempotencyKey, never by a response id" \
+  "${FAKE_PG_WRITE_CALLS[0]:-}" 'WHERE "idempotencyKey" IN'
+assert_contains "the cap UPDATE names every recorded key" \
+  "${FAKE_PG_WRITE_CALLS[0]:-}" "'f4:probe:1','f4:probe:2'"
+assert_eq "the key file is cleared so a second batch is not re-capped" \
+  "0" "$(wc -c < "$PERF_ENQUEUED_KEYS_FILE" | tr -d ' ')"
+
+# A shortfall must WARN and still apply the cap to whatever did land - a
+# scenario decides for itself whether a missing row is fatal to what it
+# measures. Bounded wait, so a broken intake is a slow test and not a hang.
+enqueue_perf_job "master.product.syncFromSweep" "conn-1" '{}' 'f4:probe:3' >/dev/null
+FAKE_PG[count]=0
+FAKE_PG_WRITE_CALLS=()
+# Redirected to a file rather than captured with $( ), which would run the
+# function in a SUBSHELL and lose its FAKE_PG_WRITE_CALLS mutations.
+CAP_LOG="$(mktemp)"
+PERF_CAP_WAIT_SECS=0 cap_perf_job_attempts >"$CAP_LOG" 2>&1
+CAP_OUT="$(cat "$CAP_LOG")"; rm -f "$CAP_LOG"
+assert_contains "a shortfall is reported rather than passed over" "$CAP_OUT" "capped 0 of 1"
+assert_eq "the cap is still applied to whatever rows exist" "1" "${#FAKE_PG_WRITE_CALLS[@]}"
+rm -f "$PERF_ENQUEUED_KEYS_FILE"
+PERF_ENQUEUED_KEYS_FILE=""
+unset -f ol_api
 
 # ---------------------------------------------------------------------------
 echo

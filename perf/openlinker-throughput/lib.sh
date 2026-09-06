@@ -38,10 +38,85 @@ PG_DB="${PG_DB:-openlinker}"
 PG_USER="${PG_USER:-postgres}"
 REDIS_CONTAINER="${REDIS_CONTAINER:-lab-redis}"
 OL_API_CONTAINER="${OL_API_CONTAINER:-lab-api}"
-# Space-separated list. A `--scale worker=3` stand (#2854) does not carry a
-# fixed `container_name` per replica the way the single-worker default does -
-# override this per stand, e.g. WORKER_CONTAINERS="lab-worker-1 lab-worker-2 lab-worker-3".
-WORKER_CONTAINERS="${WORKER_CONTAINERS:-lab-worker}"
+# Space-separated list of the worker replica containers, RESOLVED rather than
+# assumed (#2851).
+#
+# The `lab` stand's worker service carries no `container_name` any more - a
+# fixed one makes `docker compose up --scale worker=N` refuse outright, and
+# the multi-replica arm is the only way to measure ADR-050's own documented
+# per-process limitation (#2302). Compose names the replicas itself, and it
+# does so at scale 1 too, so the container is `lab-worker-1` and no longer
+# `lab-worker`.
+#
+# Leaving this UNSET is now the recommended posture: `_ensure_worker_containers`
+# discovers every running replica from compose's own service label. An
+# explicitly-exported value still wins - a stand that is not a compose project
+# needs one - but it is CHECKED rather than trusted, because the failure it
+# replaces is a `docker exec` against a container that does not exist, whose
+# error message says nothing about the rename that caused it.
+#
+# Discovery is deliberately LAZY (first use), not at source time: `docker ps`
+# is not free, lib-test.sh sources this file before installing its fakes, and a
+# scenario that never touches a worker should not need docker at all.
+WORKER_CONTAINERS="${WORKER_CONTAINERS:-}"
+WORKER_CONTAINERS_RESOLVED=0
+
+# The compose project / service the worker replicas belong to. Only ever read
+# by discovery, and overridable for a stand that renamed either.
+LAB_COMPOSE_PROJECT="${LAB_COMPOSE_PROJECT:-lab}"
+WORKER_COMPOSE_SERVICE="${WORKER_COMPOSE_SERVICE:-worker}"
+
+# Every RUNNING container compose owns for this project's worker service, in a
+# stable order (`sort`, so `lab-worker-1 lab-worker-2 lab-worker-3` reads the
+# same on every call and a manifest diff between two runs is meaningful).
+# Prints an empty string when nothing matches; the caller decides whether that
+# is fatal.
+discover_worker_containers() {
+  docker ps --format '{{.Names}}' \
+    --filter "label=com.docker.compose.project=$LAB_COMPOSE_PROJECT" \
+    --filter "label=com.docker.compose.service=$WORKER_COMPOSE_SERVICE" \
+    2>/dev/null | sort | tr '\n' ' ' | sed 's/[[:space:]]*$//'
+}
+
+# Resolve WORKER_CONTAINERS once, then leave it alone. Idempotent, so every
+# function that reads the list can call this without caring who called it
+# first.
+#
+# An explicit value is VERIFIED, never merely accepted: the whole reason this
+# function exists is that `WORKER_CONTAINERS=lab-worker` was the documented
+# export until the rename, so a stale one is the single most likely way a
+# scenario meets this code. It dies naming the rename and the fix.
+_ensure_worker_containers() {
+  [ "$WORKER_CONTAINERS_RESOLVED" = "1" ] && return 0
+  local w discovered explicit=0
+  # Explicit is decided at CALL time, not at source time: a scenario (or a
+  # test) may set the list after sourcing this library, and a source-time
+  # snapshot would silently discard that.
+  [ -z "$WORKER_CONTAINERS" ] || explicit=1
+  if [ "$explicit" = "1" ]; then
+    for w in $WORKER_CONTAINERS; do
+      docker inspect --format '{{.Id}}' "$w" >/dev/null 2>&1 || die \
+"WORKER_CONTAINERS names '$w', which is not a container on this host.
+  The lab stand's worker no longer carries a fixed container_name (#2851) - compose
+  names its replicas itself, so a single-replica stand is 'lab-worker-1', not
+  'lab-worker'. Unset WORKER_CONTAINERS and let discovery answer:
+    unset WORKER_CONTAINERS
+  Currently running worker replicas: [$(discover_worker_containers)]"
+    done
+  else
+    discovered="$(discover_worker_containers)"
+    [ -n "$discovered" ] || die \
+"no worker replica found for compose project '$LAB_COMPOSE_PROJECT', service '$WORKER_COMPOSE_SERVICE'.
+  Bring the stand up (docker compose -f docker-compose.lab.yml --env-file .env.lab -p lab up -d),
+  or set WORKER_CONTAINERS explicitly for a stand compose does not own."
+    WORKER_CONTAINERS="$discovered"
+  fi
+  WORKER_CONTAINERS_RESOLVED=1
+  MANIFEST_WORKER_CONTAINERS="$WORKER_CONTAINERS"
+  MANIFEST_WORKER_REPLICAS=0
+  for w in $WORKER_CONTAINERS; do MANIFEST_WORKER_REPLICAS=$((MANIFEST_WORKER_REPLICAS + 1)); done
+  log "worker replicas: $MANIFEST_WORKER_REPLICAS [$WORKER_CONTAINERS] ($([ "$explicit" = 1 ] && printf 'explicit' || printf 'discovered'))"
+}
 
 OL_API_URL="${OL_API_URL:-http://127.0.0.1:13000}"
 OL_ADMIN_USER="${OL_ADMIN_USER:-admin}"
@@ -206,16 +281,76 @@ ol_login() {
 # an operational action taken by the harness against its own database, not a
 # product-code change or a new config surface.
 # ---------------------------------------------------------------------------
+#
+# THE CAP IS APPLIED BY `cap_perf_job_attempts`, NOT HERE, and that split is a
+# defect fix rather than a style choice (found by F7, #2852; filed there as an
+# issue candidate). This function used to read `.id` off the enqueue response
+# and `UPDATE sync_jobs ... WHERE id = <that>`. Two things were wrong with it
+# at once, and both were silent:
+#
+#   1. `EnqueueSyncJobResponseDto` has no `id` field at all - it returns
+#      `jobId`, `jobType`, `connectionId`, `isExisting`. So `.id` was always
+#      empty, the UPDATE never ran, and every call logged a warning that the
+#      cap could not be applied. No scenario had noticed, which means no
+#      perf-enqueued job on any run before F7 ever carried the cap.
+#   2. Reading `.jobId` instead would not have fixed it. That value is the
+#      REDIS STREAM entry id (e.g. "1788690321451-0", `jobs.sync`), not a
+#      `sync_jobs` primary key - the durable row is written asynchronously by
+#      the `job-intake` consumer, so at the moment this function returns the
+#      row may not exist yet.
+#
+# The row's only caller-known stable handle is therefore `idempotencyKey`,
+# which is unique on `sync_jobs` and which this function already supplies. It
+# records each key it enqueued, and `cap_perf_job_attempts` applies ONE bulk
+# UPDATE over the recorded set once intake has caught up - which is also
+# cheaper than N single-row updates for a scenario that enqueues hundreds.
+PERF_ENQUEUED_KEYS_FILE="${PERF_ENQUEUED_KEYS_FILE:-}"
+
 enqueue_perf_job() {
-  local job_type="$1" connection_id="$2" payload="$3" idempotency_key="$4" resp job_id
-  resp="$(ol_api POST /v1/sync/jobs "{\"jobType\":\"$job_type\",\"connectionId\":\"$connection_id\",\"payload\":$payload,\"idempotencyKey\":\"$idempotency_key\"}")"
-  job_id="$(printf '%s' "$resp" | jq -r '.id // empty')"
-  if [ -n "$job_id" ]; then
-    pg_sql_write "UPDATE sync_jobs SET \"maxAttempts\"=$PERF_MAX_ATTEMPTS WHERE id='$job_id' AND status IN ('queued','running')" >/dev/null
-  else
-    warn "enqueue_perf_job: response carried no id - could not cap maxAttempts ($resp)"
+  local job_type="$1" connection_id="$2" payload="$3" idempotency_key="$4" resp
+  if [ -z "$PERF_ENQUEUED_KEYS_FILE" ]; then
+    PERF_ENQUEUED_KEYS_FILE="$(mktemp)"
   fi
+  resp="$(ol_api POST /v1/sync/jobs "{\"jobType\":\"$job_type\",\"connectionId\":\"$connection_id\",\"payload\":$payload,\"idempotencyKey\":\"$idempotency_key\"}")"
+  printf '%s\n' "$idempotency_key" >> "$PERF_ENQUEUED_KEYS_FILE"
   printf '%s' "$resp"
+}
+
+# cap_perf_job_attempts - apply PERF_MAX_ATTEMPTS to every row `enqueue_perf_job`
+# has enqueued since the last call, and REPORT the shortfall rather than
+# assuming the intake consumer kept up.
+#
+# Call it after an enqueue batch and before the drain it feeds. It waits, up to
+# `PERF_CAP_WAIT_SECS`, for intake to have written the rows - a bounded wait,
+# because an unbounded one turns a broken intake into a hang, and a zero-length
+# one turns an ordinary sub-second lag into a silently uncapped run.
+#
+# A shortfall WARNS and is returned in the count rather than dying: some keys
+# legitimately never produce a row (an idempotent duplicate that collapsed onto
+# an existing job), and a scenario should decide for itself whether that is
+# fatal to the thing it is measuring.
+PERF_CAP_WAIT_SECS="${PERF_CAP_WAIT_SECS:-30}"
+
+cap_perf_job_attempts() {
+  local keys_file="${PERF_ENQUEUED_KEYS_FILE:-}" want got=0 waited=0 in_list
+  [ -n "$keys_file" ] && [ -s "$keys_file" ] || { log "cap_perf_job_attempts: nothing enqueued through enqueue_perf_job yet"; return 0; }
+  want="$(wc -l < "$keys_file" | tr -d ' ')"
+  # Quoted, comma-separated SQL list. Keys are scenario-authored (`f4:...`),
+  # never user input, but they are still quoted rather than interpolated bare.
+  in_list="$(sed "s/'/''/g; s/^/'/; s/$/'/" "$keys_file" | paste -sd, -)"
+  while [ "$waited" -lt "$PERF_CAP_WAIT_SECS" ]; do
+    got="$(pg_sql "SELECT COUNT(*) FROM sync_jobs WHERE \"idempotencyKey\" IN ($in_list)" 2>/dev/null || printf 0)"
+    [ "${got:-0}" -lt "$want" ] || break
+    sleep 1
+    waited=$((waited + 1))
+  done
+  pg_sql_write "UPDATE sync_jobs SET \"maxAttempts\"=$PERF_MAX_ATTEMPTS WHERE \"idempotencyKey\" IN ($in_list) AND status IN ('queued','running')" >/dev/null
+  if [ "${got:-0}" -lt "$want" ]; then
+    warn "cap_perf_job_attempts: capped $got of $want enqueued key(s) after ${waited}s - the rest had no sync_jobs row yet (slow intake, or an idempotent duplicate that produced none)"
+  else
+    log "cap_perf_job_attempts ok ($got row(s) capped at maxAttempts=$PERF_MAX_ATTEMPTS after ${waited}s)"
+  fi
+  : > "$keys_file"
 }
 
 # ---------------------------------------------------------------------------
@@ -394,6 +529,7 @@ guard_queue_empty() {
 # the scheduler off; a scenario that wants it on should not call this guard
 # at all and should instead record its posture via manifest_set directly).
 guard_scheduler_off() {
+  _ensure_worker_containers
   local w w_enabled
   # #2279 moved the scheduler singleton out of apps/api entirely (worker
   # roles own it now), so only the worker containers' posture matters here -
@@ -441,6 +577,7 @@ guard_demo_mode_off() {
 # the pool ceiling is also the real ingress concurrency ceiling #2842
 # measures against - a reported condition, not just a pre-flight.
 guard_connection_budget() {
+  _ensure_worker_containers
   local max_conn pool_max n_workers total
   max_conn="$(pg_sql "SHOW max_connections")"
   pool_max="$(docker exec "$OL_API_CONTAINER" printenv OL_DB_POOL_MAX 2>/dev/null || printf '40')"
@@ -491,6 +628,7 @@ guard_pool_recorded() {
 BUILD_RELEVANT_PATHS="${BUILD_RELEVANT_PATHS:-apps/api apps/worker libs Dockerfile package.json pnpm-lock.yaml pnpm-workspace.yaml}"
 
 guard_build() {
+  _ensure_worker_containers
   local head containers c rev path want got dirty
   head="$(git -C "$LIB_DIR" rev-parse HEAD)"
 
@@ -550,6 +688,7 @@ $dirty"
 #
 # expected: "enabled" or "disabled".
 guard_runner_state() {
+  _ensure_worker_containers
   local expected="$1" w enabled line caps
   for w in $WORKER_CONTAINERS; do
     enabled="$(docker exec "$w" printenv WORKER_RUNNER_ENABLED 2>/dev/null || printf 'true')"
@@ -607,6 +746,7 @@ reassert_volatile_guards() {
 # prestashop-webservice.client.ts) log at `error`, not `debug` - so raising
 # the worker's log level does not suppress them (#2841's own note).
 guard_log_level() {
+  _ensure_worker_containers
   local w val
   # Every container's value is recorded, not just checked. `manifest_write`
   # renders MANIFEST_LOG_BODY_MAX_BYTES and, before this, nothing ever set it -
@@ -718,6 +858,7 @@ manifest_gather_environment() {
 # no limit is set - reported as the literal string "none" rather than "0",
 # which would read as a zero limit.
 manifest_container_limits() {
+  _ensure_worker_containers
   local c cpus mem out="[]"
   for c in $OL_API_CONTAINER $WORKER_CONTAINERS; do
     cpus="$(docker inspect --format '{{.HostConfig.NanoCpus}}' "$c" 2>/dev/null || printf '0')"
@@ -756,6 +897,11 @@ manifest_write() {
   # $5 IS set - verified: `set -- x; : "${1:-{}}"` yields `x}`, not `x`.
   [ -n "$extra" ] || extra='{}'
   local sync_before sync_after env_json limits_json
+  # #2851: the replica count is a first-class manifest field, not something a
+  # reader infers from a container list. Every lane cap the manifest records
+  # is enforced PER PROCESS (ADR-050 amendment #2594), so a cap figure without
+  # a replica count beside it does not state the deployment's real concurrency.
+  _ensure_worker_containers
   sync_before="$(pg_sql "SELECT COUNT(*) FROM sync_jobs" 2>/dev/null || printf '0')"
   env_json="$(manifest_gather_environment)"
   limits_json="$(manifest_container_limits)"
@@ -772,6 +918,8 @@ manifest_write() {
     --argjson quick "$([ "$quick" = 1 ] && echo true || echo false)" \
     --arg runner_state "${MANIFEST_RUNNER_STATE:-unknown}" \
     --arg lane_caps "${MANIFEST_LANE_CAPS:-unknown}" \
+    --arg worker_containers "${MANIFEST_WORKER_CONTAINERS:-unknown}" \
+    --arg worker_replicas "${MANIFEST_WORKER_REPLICAS:-unknown}" \
     --arg max_connections "${MANIFEST_MAX_CONNECTIONS:-unknown}" \
     --arg ol_db_pool_max "${MANIFEST_OL_DB_POOL_MAX:-unknown}" \
     --arg db_process_count "${MANIFEST_DB_PROCESS_COUNT:-unknown}" \
@@ -790,6 +938,9 @@ manifest_write() {
       quick: $quick,
       runnerState: $runner_state,
       laneCaps: $lane_caps,
+      workerReplicas: ($worker_replicas | tonumber? // $worker_replicas),
+      workerContainers: $worker_containers,
+      laneCapEnforcement: "per-process - the laneCaps above bound ONE worker process, so effective deployment concurrency is laneCaps x workerReplicas (ADR-050 amendment #2594 / #2302)",
       pool: {maxConnections: $max_connections, olDbPoolMax: $ol_db_pool_max, processCount: $db_process_count, budget: $db_connection_budget},
       schedulerCadenceRow: ($scheduler_cadence_row | fromjson? // {}),
       olLogBodyMaxBytes: $ol_log_body_max_bytes,
@@ -1110,6 +1261,7 @@ post_guard_destination_creates() {
 # window_start_epoch/window_stop_epoch bound the `docker logs --since/--until`
 # read so an episode from a PREVIOUS scenario cannot discard this one.
 post_guard_limiter_degraded() {
+  _ensure_worker_containers
   local window_start_epoch="$1" window_stop_epoch="$2" w n=0 hit
   for w in $WORKER_CONTAINERS; do
     hit="$(docker logs --since "@$window_start_epoch" --until "@$window_stop_epoch" "$w" 2>&1 \
