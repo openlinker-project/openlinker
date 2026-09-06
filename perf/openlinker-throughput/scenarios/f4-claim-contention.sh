@@ -151,7 +151,7 @@ ORIGINAL_REPLICAS="$(discover_worker_containers | wc -w | tr -d ' ')"
 # guard_stand_exclusive serialises SCENARIOS, not every hand on the stand).
 ORIGINAL_RUNNER_ENABLED="$(docker exec "$(discover_worker_containers | awk '{print $1}')" printenv WORKER_RUNNER_ENABLED 2>/dev/null || printf '')"
 [ -n "$ORIGINAL_RUNNER_ENABLED" ] || \
-  ORIGINAL_RUNNER_ENABLED="$(grep -E '^WORKER_RUNNER_ENABLED=' "$ENV_FILE" | head -1 | cut -d= -f2 || printf 'false')"
+  ORIGINAL_RUNNER_ENABLED="$(awk -F= '/^WORKER_RUNNER_ENABLED=/{print $2; exit}' "$ENV_FILE" || printf 'false')"
 [ -n "$ORIGINAL_RUNNER_ENABLED" ] || ORIGINAL_RUNNER_ENABLED=false
 log "stand posture at scenario start: replicas=$ORIGINAL_REPLICAS WORKER_RUNNER_ENABLED=$ORIGINAL_RUNNER_ENABLED (both restored on exit)"
 
@@ -186,10 +186,23 @@ scale_workers() {
   # opens its window against a worker that has not started claiming yet. A
   # disabled runner prints nothing, so that case waits only for the boot.
   if [ "$runner" = "true" ]; then
-    local w
+    local w hits
     for w in $WORKER_CONTAINERS; do
       tries=0
-      until docker logs "$w" 2>&1 | grep -qF 'Starting sync job runner loop'; do
+      # `grep -c`, never `grep -q`. `grep -q` exits on its FIRST match, which
+      # closes the pipe while `docker logs` is still writing; `docker logs`
+      # then dies of SIGPIPE (141) and `set -o pipefail` makes the whole
+      # pipeline non-zero EVEN THOUGH THE LINE MATCHED. The bug is invisible
+      # while the log is short enough that `docker logs` finishes first, and
+      # appears the moment the worker has been up a while - which is exactly
+      # how it was found here (one run passed, the next spun to its retry
+      # ceiling against a container whose log plainly carried the line).
+      # `grep -c` reads its input to the end, so there is no early close.
+      # lib.sh's own guard_runner_state avoids it a different way, by piping
+      # through `tail -1`.
+      while true; do
+        hits="$(docker logs "$w" 2>&1 | grep -cF 'Starting sync job runner loop' || true)"
+        [ "${hits:-0}" -eq 0 ] || break
         tries=$((tries + 1))
         [ "$tries" -lt 60 ] || die "scale_workers: $w never logged 'Starting sync job runner loop'"
         sleep 1
@@ -333,7 +346,7 @@ enqueue_bulk_job() {
 # Apache's access log to stdout, so `docker logs` IS the access log. This is
 # the #2302 concern made concrete: it is what the destination actually saw.
 ps_request_count() {
-  docker logs --since "@$1" --until "@$2" "$PS_CONTAINER" 2>&1 \
+  docker logs --since "$1" --until "$2" "$PS_CONTAINER" 2>&1 \
     | grep -c -E '"(GET|POST|PUT|PATCH|DELETE) /api/' || true
 }
 
@@ -353,8 +366,26 @@ ps_request_count() {
 limiter_degraded_count() {
   local w n=0 hit
   for w in $WORKER_CONTAINERS; do
-    hit="$(docker logs --since "@$1" --until "@$2" "$w" 2>&1 \
+    hit="$(docker logs --since "$1" --until "$2" "$w" 2>&1 \
       | grep -c -F 'falling back to per-process in-memory limiting' || true)"
+    n=$((n + hit))
+  done
+  printf '%s' "$n"
+}
+
+# rate_limit_timeout_count - jobs that spent MAX_TOTAL_WAIT_MS (120 s) waiting
+# for a slot from the shared per-connection limiter and were requeued
+# penalty-free (#1810). This is the sixth channel, and on this stand it is the
+# one most likely to bind: `prestashopAdapterManifest.defaultRateLimit` is
+# `{requestsPerMinute: 60, maxConcurrent: 4}` and the perf-prestashop
+# connection carries no override, so 24 concurrent bulk children at three
+# replicas all queue behind ONE globally-enforced limiter. A high count here
+# means the lane cap was never the ceiling.
+rate_limit_timeout_count() {
+  local w n=0 hit
+  for w in $WORKER_CONTAINERS; do
+    hit="$(docker logs --since "$1" --until "$2" "$w" 2>&1 \
+      | grep -c -F 'timed out waiting for a rate-limit slot' || true)"
     n=$((n + hit))
   done
   printf '%s' "$n"
@@ -367,7 +398,7 @@ limiter_degraded_count() {
 pool_timeout_count() {
   local w n=0 hit
   for w in $WORKER_CONTAINERS; do
-    hit="$(docker logs --since "@$1" --until "@$2" "$w" 2>&1 \
+    hit="$(docker logs --since "$1" --until "$2" "$w" 2>&1 \
       | grep -c -E 'timeout exceeded when trying to connect|Connection terminated due to connection timeout' || true)"
     n=$((n + hit))
   done
@@ -375,7 +406,7 @@ pool_timeout_count() {
 }
 
 SUMMARY="$DIR/arm-summary.csv"
-printf 'replicas,jobs,elapsed_secs,jobs_per_sec,peak_queued_due,peak_running,max_lock_waits,peak_pg_backends,distinct_lockedby,ps_requests,ps_requests_per_min,pool_timeouts,limiter_degraded,claim_calls,claim_total_ms,claim_mean_ms,drain_result,verdict\n' > "$SUMMARY"
+printf 'replicas,jobs,elapsed_secs,jobs_per_sec,peak_queued_due,peak_running,max_lock_waits,peak_pg_backends,distinct_lockedby,ps_requests,ps_requests_per_min,pool_timeouts,limiter_degraded,rate_limit_timeouts,max_deferred,claim_calls,claim_total_ms,claim_mean_ms,drain_result,verdict\n' > "$SUMMARY"
 
 # ===========================================================================
 # One arm.
@@ -444,7 +475,23 @@ run_arm() {
   # lose the arm that had already completed. A timeout is recorded as the
   # arm's own result instead - a throughput figure taken across one is not
   # comparable and the report must be able to say so.
-  drain_result="$(drain_wait "$CONN_IDS" || true)"
+  # Two traps here, both hit while building this scenario.
+  #
+  # `drain_wait` writes its per-tick progress to stdout via `log` as well as
+  # its one-word verdict, so capturing the lot puts a multi-line blob into a
+  # CSV cell - which is what it did on the first run, taking the awk that
+  # reads that CSV down with a division by zero. Hence the last line only.
+  #
+  # And the obvious way to keep the progress visible while doing that -
+  # piping through `tee /dev/stderr` - TRUNCATES THE LOG. When stderr is a
+  # regular file (`>> run.log 2>&1`), `/dev/stderr` is `/proc/self/fd/2`, and
+  # `tee` opens it for writing with O_TRUNC: everything written before that
+  # point is erased and `tee` restarts at offset 0. Capture, print, then take
+  # the last line - no second writer to the log at all.
+  local drain_out
+  drain_out="$(drain_wait "$CONN_IDS" || true)"
+  printf '%s\n' "$drain_out"
+  drain_result="$(printf '%s\n' "$drain_out" | tail -1)"
   drain_end="$(epoch)"
   [ "$drain_result" = "timed_out" ] && warn "arm $arm: drain_wait TIMED OUT - its throughput figure is a floor, not a measurement"
   drain_result="${drain_result:-unknown}"
@@ -456,7 +503,13 @@ run_arm() {
   run_post_guards "$arm_dir" "$CONN_IDS" "$(date -u -d "@$WINDOW_START_EPOCH" +%Y-%m-%dT%H:%M:%SZ)" \
     "$WINDOW_START_EPOCH" "$WINDOW_STOP_EPOCH" ""
   local verdict
-  verdict="$(verdict_read "$arm_dir" | head -1)"
+  # `awk NR==1`, never `| head -1`. `head` exits after its first line, the
+  # upstream takes SIGPIPE (141), and `set -o pipefail` makes the whole
+  # substitution non-zero under `set -e` - which killed this scenario's first
+  # full run stone dead AFTER a 17-minute arm had drained successfully. awk
+  # reads to EOF, so there is no early close. Same family as the `grep -q`
+  # trap in scale_workers; see docs/lessons.md.
+  verdict="$(verdict_read "$arm_dir" | awk 'NR==1{print}')"
 
   # --- per-arm aggregates -------------------------------------------------
   local peak_queued peak_running max_waits peak_backends distinct_lockedby
@@ -470,8 +523,13 @@ run_arm() {
   ps_reqs="$(ps_request_count "$drain_start" "$drain_end")"
   ps_rpm="$(awk -v r="$ps_reqs" -v s="$elapsed" 'BEGIN{printf "%.1f", r*60/s}')"
   pool_to="$(pool_timeout_count "$drain_start" "$drain_end")"
-  local degraded
+  local degraded rl_timeouts max_deferred
   degraded="$(limiter_degraded_count "$drain_start" "$drain_end")"
+  rl_timeouts="$(rate_limit_timeout_count "$drain_start" "$drain_end")"
+  # From the shared sampler's own timeseries (queued rows with a FUTURE
+  # nextRunAt): a penalty-free requeue parks a job there, so a rising figure
+  # is the queue churning rather than draining.
+  max_deferred="$(awk -F, 'NR>1 {if ($6+0>m) m=$6+0} END{print m+0}' "$arm_dir/timeseries.csv" 2>/dev/null || printf 0)"
 
   # The claim query, identified by its own text rather than by a query id
   # (which is not stable across a pg_stat_statements reset).
@@ -483,14 +541,15 @@ run_arm() {
 
   local rate
   rate="$(awk -v n="$AGGRESSOR_COUNT" -v s="$elapsed" 'BEGIN{printf "%.3f", n/s}')"
-  printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' \
+  printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' \
     "$replicas" "$AGGRESSOR_COUNT" "$elapsed" "$rate" \
     "$peak_queued" "$peak_running" "$max_waits" "$peak_backends" "$distinct_lockedby" \
-    "$ps_reqs" "$ps_rpm" "$pool_to" "$degraded" "$claim_calls" "$claim_total" "$claim_mean" "$drain_result" "$verdict" >> "$SUMMARY"
+    "$ps_reqs" "$ps_rpm" "$pool_to" "$degraded" "$rl_timeouts" "$max_deferred" "$claim_calls" "$claim_total" "$claim_mean" "$drain_result" "$verdict" >> "$SUMMARY"
 
   log "arm $arm: $AGGRESSOR_COUNT jobs in ${elapsed}s (${rate} jobs/s), peak queued=$peak_queued peak running=$peak_running"
   log "arm $arm: distinct lockedBy=$distinct_lockedby (expected $replicas), lock waits max=$max_waits, pg backends peak=$peak_backends, pool timeouts=$pool_to, limiter degraded lines=$degraded"
-  log "arm $arm: PrestaShop saw $ps_reqs webservice requests (${ps_rpm}/min), claim query calls=$claim_calls mean=${claim_mean}ms"
+  log "arm $arm: PrestaShop saw $ps_reqs webservice requests (${ps_rpm}/min) against a declared 60/min, maxConcurrent 4"
+  log "arm $arm: rate-limit-slot timeouts=$rl_timeouts, max deferred queue depth=$max_deferred, claim query calls=$claim_calls mean=${claim_mean}ms"
   log "arm $arm: verdict=$verdict"
 
   # EXPLAIN at the fixed depth points plus this arm's own observed peak, so

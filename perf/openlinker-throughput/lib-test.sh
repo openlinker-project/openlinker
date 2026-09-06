@@ -801,6 +801,57 @@ rm -f "$PERF_ENQUEUED_KEYS_FILE"
 PERF_ENQUEUED_KEYS_FILE=""
 unset -f ol_api
 
+echo "--- post_guard_limiter_degraded passes a window docker actually honours (#2851) ---"
+
+# The bug this pins: `docker logs --since "@1788734474"` is accepted without
+# error and returns NOTHING. Verified live on Docker 29.5.2 - the same window
+# returns 180 matching lines with a BARE epoch, an RFC3339 timestamp, or a
+# relative `25m`, and 0 with the `@` form. The guard shipped with the `@`
+# form, so it answered "ok" on every scenario in the campaign while being
+# structurally unable to see a degraded-limiter line.
+#
+# Asserted on the ARGUMENTS the guard hands docker, not on a count: a fake
+# that returns lines regardless of the window would pass however the window
+# was spelled, which is exactly how the defect survived in the first place.
+# Recorded to a FILE, not a variable: the guard runs its `docker logs`
+# inside `$( ... )`, a subshell, so an assignment would never reach us.
+DOCKER_LOGS_ARGS_FILE="$(mktemp)"
+docker() {
+  case "$1" in
+    logs) printf '%s' "$*" > "$DOCKER_LOGS_ARGS_FILE"; echo "falling back to per-process in-memory limiting" ;;
+    ps) printf '%s\n' "$FAKE_WORKER_PS" ;;
+    *) : ;;
+  esac
+}
+WORKER_CONTAINERS="lab-worker-1"
+WORKER_CONTAINERS_RESOLVED=1
+LIMITER_OUT="$(post_guard_limiter_degraded 1788730000 1788734000)"
+DOCKER_LOGS_ARGS="$(cat "$DOCKER_LOGS_ARGS_FILE")"
+
+assert_contains "the degraded post-guard passes a BARE epoch to --since" \
+  "$DOCKER_LOGS_ARGS" "--since 1788730000"
+assert_contains "the degraded post-guard passes a BARE epoch to --until" \
+  "$DOCKER_LOGS_ARGS" "--until 1788734000"
+case "$DOCKER_LOGS_ARGS" in
+  *'@'*) FAIL=$((FAIL + 1)); FAILURES+=("the degraded post-guard must not use docker's unsupported @epoch form: [$DOCKER_LOGS_ARGS]") ;;
+  *) PASS=$((PASS + 1)) ;;
+esac
+assert_contains "a degraded line inside the window DISCARDS the run" \
+  "$LIMITER_OUT" "DISCARDED post_guard_limiter_degraded"
+
+# And the negative: no degraded line means ok, so the guard is not simply
+# always-discarding once it can see the log at all.
+docker() {
+  case "$1" in
+    logs) printf '%s' "$*" > "$DOCKER_LOGS_ARGS_FILE"; : ;;
+    ps) printf '%s\n' "$FAKE_WORKER_PS" ;;
+    *) : ;;
+  esac
+}
+assert_eq "no degraded line inside the window passes" \
+  "ok" "$(post_guard_limiter_degraded 1788730000 1788734000)"
+rm -f "$DOCKER_LOGS_ARGS_FILE"
+
 # ---------------------------------------------------------------------------
 echo
 echo "=== $PASS passed, $FAIL failed ==="

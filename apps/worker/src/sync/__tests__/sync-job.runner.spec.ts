@@ -1530,7 +1530,13 @@ describe('SyncJobRunner', () => {
       it('should default bulk to the measured 12/8 and leave the other lanes untouched', () => {
         const caps = resolve({});
 
-        // The catalogue-sweep throttle, measured on the PrestaShop path.
+        // The catalogue-sweep throttle. The two numbers have DIFFERENT
+        // standing (ADR-050 § Amendment (#2851 / #2867)): total 12 is the
+        // figure the #2594 A/B run measured, perScope 8 is a deliberately
+        // conservative fraction of it (decision 4 ships no round-robin
+        // fairness) and has never itself been measured at - F4 ran 600 bulk
+        // jobs on one connection and never reached the total, because a
+        // single scope is bounded by perScope first.
         expect(caps.bulk).toEqual({ total: 12, perScope: 8 });
         // Buyer-facing and deadline-bearing lanes are deliberately unchanged.
         expect(caps.realtime).toEqual({ total: 4, perScope: 2 });

@@ -328,14 +328,25 @@ the day this reverses.
 *Reversal gate (countable):* a deployment running more than one worker replica where a
 destination's own declared rate limit is exceeded because the limiter degraded to its
 per-process fallback - the hazard `results-C` measured at one replica and `results-D` named
-as unexercised. That is a specific, observable event, not a matter of taste.
+as unexercised.
+
+**F4 (#2851) has now observed it, and the observation argues FOR this decision rather than
+against it.** At three replicas the PrestaShop connection saw **158.4 req/min against its
+declared 60**, while a Redis-limiter call timed out at its own 1 s budget and the adapter
+fell back to per-process pacing - N x 60/min. The gate fires on the *effect*; the *cause* is
+one layer below the lane model, and **a globally-enforced lane cap would not have prevented
+it.** The limiter is already globally enforced and it still degraded. A global slot ledger
+would have throttled the queue while leaving the failure open. So the gate stands as
+written, and what it now points at is the limiter's degradation path - it fails **open**,
+to the full per-process allowance - rather than at the caps. That is filed as its own issue
+candidate in `results-F4-2026-09-06.md`; this ADR's decision is unchanged.
 
 ### 2. Cap provenance, per lane
 
 | Lane | Default | Provenance | The measurement that is missing |
 |---|---|---|---|
 | `realtime` | 4 / 2 | **Illustrative** | A saturation run: many concurrent `marketplace.order.sync` against one destination, finding the concurrency at which per-order latency degrades. F7 (#2852) probed this lane's *isolation*, not its size. |
-| `bulk` | 12 / 8 | **TOTAL measured** (#2594); **perScope derived** | Nothing for `total`. For `perScope`: a run with two bulk-capable connections, which is the only way to reach the lane's TOTAL cap and therefore the only way to test the fairness argument the 8 was chosen for. |
+| `bulk` | 12 / 8 | **TOTAL measured** (#2594); **perScope derived** | Nothing for `total` - F4 (#2851) ran 600 `bulk` jobs on one connection and never reached it, because a single scope is bounded by `perScope` first. For `perScope`: a run with two bulk-capable connections, the only way to reach the lane's TOTAL and therefore the only way to test the fairness argument the 8 was chosen for. |
 | `fiscal` | 2 / 1 | **Illustrative** | A run against a real invoicing or fiscalization connection issuing real documents. F7's fiscal probe was rejected before any adapter was touched. |
 | `fan-out` | 8 / 4 | **Derived** (#2609) | A sustained stock-write load that isolates this lane. `results-D` measured the queue converging at 100 000 products (arrival 348/h against drain 380/h; net 0.0/h over an hour), but with `bulk` and `fan-out` in force together, so it attributes convergence to neither. |
 
@@ -354,14 +365,23 @@ a fast sample. It is removed there and stays removed here.
 
 ### 3. What a cap promises, and what it does not
 
-This is the finding that changes how the knob should be described, and it comes from F7
-(#2852), confirmed by F4 (#2851).
+This is the finding that changes how the knob should be described. Two runs establish two
+halves of it, and they are different facts rather than one repeated.
 
 **A cap bounds worker SLOTS in one process. It does not bound the destination's capacity.**
-With the `bulk` lane held at its per-scope cap for seventeen minutes against one PrestaShop
-connection, a probe sharing that connection had *flat* claim latency and **5.5x** its normal
-execution time (median 3.3 s to 18.1 s), while a sibling probe that touches no adapter at all
-was unchanged. Lane isolation held on the axis it governs; the shop did not.
+F7 (#2852): with the `bulk` lane held at its per-scope cap for seventeen minutes against one
+PrestaShop connection, a probe sharing that connection had *flat* claim latency and **5.5x**
+its normal execution time (median 3.3 s to 18.1 s), while a sibling probe that touches no
+adapter at all was unchanged. Lane isolation held on the axis it governs; the shop did not.
+
+**And a cap does not bound the destination's REQUEST RATE either, once replicas multiply
+it.** F4 (#2851), same aggressor at one and three replicas: the identical 600 jobs and
+effectively identical request count (983 vs 1006) were delivered **2.77x faster** because the
+shop was hit at **158.4 req/min against the 60/min its connection declares**. Everything the
+lane model governs behaved - the claim's per-call cost was flat (0.087 ms against 0.086 ms
+while replicas tripled), `sync_jobs` lock waits were zero in every sample, the pool never
+timed out, and the three replicas split the work 33.4 / 33.3 / 33.3 with no coordination
+beyond `FOR UPDATE SKIP LOCKED`. The outbound pacing is what gave way.
 
 The operator-facing consequence is the opposite of the intuition #2594's throughput result
 invites: **raising a scope cap to make a slow destination faster makes it slower.** If the
@@ -370,11 +390,15 @@ capacity, or reduce the work - not to widen the lane. That sentence now sits on 
 `apps/worker/.env.example`, because an operator reading a cap is exactly the person about to
 get this wrong.
 
-It also bounds what section 1's decision costs. Per-process enforcement means N replicas see
-N x the cap; but where the destination saturates first, the cap was never the ceiling, so the
-multiplication changes less than the arithmetic suggests. That is a reason the decision is
-tolerable, not a reason the multiplication is harmless - the limiter-degradation gate above is
-the case where it is not.
+This bounds what section 1's decision costs, and F4 makes the bound tighter than the earlier
+draft of this paragraph claimed. Per-process enforcement means N replicas see N x the cap. The
+comforting reading - that a saturated destination makes the multiplication academic, because
+the cap was never the ceiling - is **only true while the shared limiter holds**. When it
+degrades, N x the cap becomes N x the declared request rate at the shop, which is precisely
+the reversal gate above and precisely what F4 measured. So: the multiplication is usually
+absorbed by the limiter, and the day it is not is the day an operator's destination is taking
+three times the traffic they configured. Size per replica, and treat a degraded-limiter log
+line as an operational event rather than a curiosity.
 
 ## Alternatives considered
 

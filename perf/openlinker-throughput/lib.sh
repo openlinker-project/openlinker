@@ -1264,7 +1264,20 @@ post_guard_limiter_degraded() {
   _ensure_worker_containers
   local window_start_epoch="$1" window_stop_epoch="$2" w n=0 hit
   for w in $WORKER_CONTAINERS; do
-    hit="$(docker logs --since "@$window_start_epoch" --until "@$window_stop_epoch" "$w" 2>&1 \
+    # BARE epoch, never "@$epoch". `docker logs --since "@1788734474"` is
+    # accepted without error and returns NOTHING (verified on Docker 29.5.2:
+    # the same window returns 180 matching lines with a bare epoch, an
+    # RFC3339 timestamp, or a relative `25m`, and 0 with the `@` form). GNU
+    # `date -d` DOES take `@epoch`, which is where the habit comes from and
+    # why the two are easy to conflate - `run_post_guards`' own
+    # `date -u -d "@$WINDOW_START_EPOCH"` callers are correct and must stay.
+    #
+    # This guard carried the broken form from the day it was written, so it
+    # has been answering "ok" on every scenario in this campaign without
+    # being able to see a degraded-limiter line at all. Any earlier report
+    # quoting `degraded_mode_entries = 0` as MEASURED is quoting this bug
+    # (#2851).
+    hit="$(docker logs --since "$window_start_epoch" --until "$window_stop_epoch" "$w" 2>&1 \
       | grep -c -F 'falling back to per-process in-memory limiting' || true)"
     n=$((n + hit))
   done
