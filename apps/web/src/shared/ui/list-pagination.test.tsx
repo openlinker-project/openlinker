@@ -160,6 +160,16 @@ describe('ListPagination (#2945)', () => {
       renderPagination({ offset: 0, limit: 20, rowCount: 20, total: 20, totalState: 'known' });
       expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
     });
+
+    it('overrules a total the rows have already OVERRUN, so no row is unreachable', () => {
+      // The page returned twenty rows for a total of nineteen. That is only
+      // possible if the total is stale - and it can be, because the count is a
+      // second request and `slaState` binds its own `new Date()` (#2957 review
+      // round 5, I1). Trusting it here would disable Next over rows the list is
+      // still returning.
+      renderPagination({ offset: 0, limit: 20, rowCount: 20, total: 19, totalState: 'known' });
+      expect(screen.getByRole('button', { name: 'Next' })).toBeEnabled();
+    });
   });
 
   describe('the counting affordance', () => {

@@ -55,6 +55,17 @@ describe('Paginated total split (integration, #2944)', () => {
     harness = await getTestHarness();
   });
 
+  // BEFORE each case, not only after (CI, #2957). `jest-integration.cjs` runs
+  // `maxWorkers: 1` against ONE Postgres started in `globalSetup`, so all 25
+  // int-spec files share a database and run in sequence. An `afterEach`-only
+  // reset leaves this file's FIRST case reading whatever the previous FILE left
+  // behind - which is exactly how `expect(total).toBe(6)` met 10 on CI while
+  // passing locally, where the file was run alone. Resetting on both edges
+  // makes every absolute count in this suite a property of its own seed.
+  beforeEach(async () => {
+    await resetTestHarness();
+  });
+
   afterEach(async () => {
     await resetTestHarness();
   });
@@ -97,11 +108,19 @@ describe('Paginated total split (integration, #2944)', () => {
       const rows = await repository.findManyRows({}, PAGE);
       const total = await repository.countMany({});
 
-      expect(total).toBe(6);
+      // The AGREEMENT this case is named for, which needs no absolute at all.
+      // It is not a tautology on this repository, unlike `ProductRepository`:
+      // `findMany` ends in `getManyAndCount()` and `countMany` in `getCount()`,
+      // two different statements over two builders, so the two answering alike
+      // is the property under test.
       expect(combined.total).toBe(total);
       expect(rows.map((r) => r.internalOrderId)).toEqual(
         combined.items.map((r) => r.internalOrderId)
       );
+      // And the seed's own six, so a reset that stopped working is still loud
+      // rather than silently making every assertion above vacuous against an
+      // empty table.
+      expect(total).toBe(6);
     });
 
     it('moves both paths together when the non-sargable jsonb filter changes', async () => {

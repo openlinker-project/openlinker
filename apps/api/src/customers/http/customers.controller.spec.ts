@@ -172,7 +172,7 @@ describe('CustomersController', () => {
       // A COMPLETE literal (#2957 review round 4, I2): `toEqual` between the
       // two paths is symmetric and cannot see a mapper dropping the same field
       // on both sides. This fails until a new filter is added here too.
-      expect(countFilters).toEqual({ search: 'ada', lastSourceConnectionId: 'conn-1' });
+      expect(countFilters).toStrictEqual({ search: 'ada', lastSourceConnectionId: 'conn-1' });
       expect(counted).toEqual({ total: 42 });
     });
   });

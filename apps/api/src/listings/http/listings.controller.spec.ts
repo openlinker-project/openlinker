@@ -2105,7 +2105,12 @@ describe('ListingsController', () => {
       // added to the list would have been silently dropped from the count.
       repository.findManyRows.mockResolvedValue([]);
       repository.countMany.mockResolvedValue(9);
-      const query = { connectionId: 'conn-1', internalId: 'ol_variant_1', search: 'terra' };
+      const query = {
+        connectionId: 'conn-1',
+        internalId: 'ol_variant_1',
+        search: 'terra',
+        lifecycle: 'Draft' as const,
+      };
 
       await controller.listOfferMappings({ ...query, withTotal: false, limit: 20, offset: 0 });
       await controller.countOfferMappings({ ...query });
@@ -2113,15 +2118,22 @@ describe('ListingsController', () => {
       const [listFilters] = repository.findManyRows.mock.calls[0];
       const [countFilters] = repository.countMany.mock.calls[0];
       expect(countFilters).toEqual(listFilters);
-      // A COMPLETE literal, not a key subset: `toEqual` between the two paths
-      // is symmetric and cannot see a mapper that drops the same field on both
-      // sides, while a hand-kept `toMatchObject` list has no entry to miss for
-      // a field added later. This fails until a new filter is added here too.
-      expect(countFilters).toEqual({
+      // `toStrictEqual`, not `toEqual` (#2957 review round 5, I3). `toEqual`
+      // treats a received key holding `undefined` as absent, so a new filter
+      // read from an unset query field would produce `{..., newFilter:
+      // undefined}` and satisfy a literal that omits it - which is the exact
+      // scenario this assertion is written for, and the likely one, since
+      // whoever adds a filter is unlikely to also extend the query above.
+      // `toStrictEqual` fails on that extra key, which is the property claimed.
+      //
+      // `lifecycle` is set rather than left undefined for the same reason: with
+      // it undefined, deleting `lifecycle: query.lifecycle` from the mapper
+      // passed both assertions.
+      expect(countFilters).toStrictEqual({
         connectionId: 'conn-1',
         internalId: 'ol_variant_1',
         search: 'terra',
-        lifecycle: undefined,
+        lifecycle: 'Draft',
       });
     });
 

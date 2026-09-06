@@ -178,6 +178,16 @@ export interface OrderRecordRepositoryPort {
    * one private `buildFilteredQuery`, so the total can never describe a
    * different set than the page.
    *
+   * With ONE exception, stated because it is the only way the split can be
+   * observed as a disagreement (#2957 review round 5). `slaState` compares
+   * `dispatchByAt` against `new Date()`, minted per call - so a page request
+   * and a count request bind two different instants, and an order that crosses
+   * its deadline between them is in the rows and not in the total. Every other
+   * filter is a pure function of its arguments. `<ListPagination>` compensates
+   * by enabling Next whenever the rows OVERRUN the total, so no row is ever
+   * unreachable; a caller that needs the two to agree exactly must pass one
+   * instant into both, which this port does not yet accept.
+   *
    * {@link findMany} deliberately does NOT delegate to this method plus
    * {@link countMany}. It keeps the single `getManyAndCount()` it already had,
    * so `?withTotal=true` - the default, and every caller not yet migrated -

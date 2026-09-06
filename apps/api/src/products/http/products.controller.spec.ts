@@ -707,7 +707,7 @@ describe('ProductsController', () => {
       // rather than a `toMatchObject` key subset (round 4): a subset has no
       // entry to miss for a filter added later, so it silently stops covering
       // the field it was written for.
-      expect(countFilters).toEqual({
+      expect(countFilters).toStrictEqual({
         sourceConnectionId: '11111111-1111-4111-8111-111111111111',
         search: 'widget',
         stock: 'low',
@@ -723,6 +723,31 @@ describe('ProductsController', () => {
       // same value would answer a number for a filter the page refuses.
       await expect(controller.countProducts({ unlistedOn: 'not-a-uuid' })).rejects.toThrow();
       expect(productsService.countProducts).not.toHaveBeenCalled();
+    });
+
+    it('maps the per-product variant DTO with ONE function, so list and count cannot drift', async () => {
+      // The assertion the other four list/count pairs carry, and the variant
+      // routes did not (#2957 review round 5, I5) - this controller wrote the
+      // literal four times across two pairs, identical only because
+      // `ListProductVariantsQueryDto` happens to carry nothing but `search`.
+      productsService.listVariantRows.mockResolvedValue([]);
+      productsService.countVariants.mockResolvedValue(9);
+
+      await controller.listVariantsByProduct('ol_product_1', {
+        search: 'AAA',
+        withTotal: false,
+        limit: 20,
+        offset: 0,
+      });
+      await controller.countVariantsByProduct('ol_product_1', { search: 'AAA' });
+
+      const [listFilters] = productsService.listVariantRows.mock.calls[0];
+      const [countFilters] = productsService.countVariants.mock.calls[0];
+      expect(countFilters).toEqual(listFilters);
+      // `toStrictEqual` for the reason recorded in the listings sibling:
+      // `toEqual` treats a key holding `undefined` as absent, so a new filter
+      // read from an unset query field would satisfy a literal that omits it.
+      expect(countFilters).toStrictEqual({ productId: 'ol_product_1', search: 'AAA' });
     });
 
     it('splits the per-product variant page from its count', async () => {

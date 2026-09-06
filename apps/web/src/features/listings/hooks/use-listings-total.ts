@@ -123,8 +123,18 @@ export function useListingsTotal(
     // as `known`, which is precisely the number `deriveListingsTotal`'s own
     // docblock names as wrong. With no tab selected the sum IS the answer.
     selectTotal: (data) => {
-      if (data.lifecycleCounts) return deriveListingsTotal(data.lifecycleCounts, lifecycle);
-      return lifecycle ? null : data.total;
+      // With NO tab selected the server's own `total` is the answer, and it is
+      // authoritative (#2957 review round 5, I2). Re-deriving it here would sum
+      // `OFFER_LIFECYCLE_VALUES` - the FRONTEND's copy of the bucket list, with
+      // no mirror script holding it to the backend's - so a sixth bucket added
+      // server-side would silently under-count, presented as `known`. The
+      // per-bucket `?? 0` in `deriveListingsTotal` is what makes that silent.
+      if (!lifecycle) return data.total;
+      // For a SELECTED tab the payload's `total` is the un-narrowed sum across
+      // every bucket, because the request carries no `lifecycle`. Its size is
+      // its bucket, and with the buckets absent there is no honest number -
+      // reporting `data.total` would print the whole catalogue as the tab's.
+      return data.lifecycleCounts ? deriveListingsTotal(data.lifecycleCounts, lifecycle) : null;
     },
     knownTotal: null,
     enabled: page !== undefined,

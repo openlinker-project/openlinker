@@ -43,6 +43,7 @@ import type {
   Product,
   ProductVariant,
   ProductListFilters,
+  ProductVariantListFilters,
   ProductListSort,
   TaxRateJournalEntry,
 } from '@openlinker/core/products';
@@ -138,6 +139,26 @@ function toTaxRateJournalEntryDto(entry: TaxRateJournalEntry): TaxRateJournalEnt
     observedAt: entry.observedAt.toISOString(),
     createdAt: entry.createdAt.toISOString(),
   };
+}
+
+/**
+ * The one DTO-to-filters mapping the variant lists have (#2957 review round 5,
+ * I5).
+ *
+ * Shared by all four variant routes - `GET /products/:productId/variants` and
+ * its `/count`, `GET /variants/search` and its `/count` - so a count cannot
+ * apply a different filter set than the page it accompanies. Before this the
+ * literal was written four times, identical only because
+ * `ListProductVariantsQueryDto` happens to carry nothing beyond `search`.
+ *
+ * `productId` is a path parameter rather than a query field, so it is passed
+ * separately; the search-scoped routes omit it and read across every product.
+ */
+function toProductVariantFilters(
+  query: CountProductVariantsQueryDto,
+  productId?: string
+): ProductVariantListFilters {
+  return productId === undefined ? { search: query.search } : { productId, search: query.search };
 }
 
 @ApiBearerAuth()
@@ -438,20 +459,20 @@ export class ProductsController {
     @Param('productId') productId: string,
     @Query() query: ListProductVariantsQueryDto
   ): Promise<PaginatedProductVariantsResponseDto> {
-    const { search, withTotal, limit = 20, offset = 0 } = query;
+    const { withTotal, limit = 20, offset = 0 } = query;
 
     // `?withTotal=false` omits `total` rather than reporting 0 (#2944); the
     // second stage is `GET /products/:productId/variants/count`.
     if (withTotal === false) {
       const rows = await this.productsService.listVariantRows(
-        { productId, search },
+        toProductVariantFilters(query, productId),
         { limit, offset }
       );
       return { items: rows.map((v) => this.toVariantDto(v)), limit, offset };
     }
 
     const { items, total } = await this.productsService.listVariants(
-      { productId, search },
+      toProductVariantFilters(query, productId),
       { limit, offset }
     );
 
@@ -478,7 +499,9 @@ export class ProductsController {
     @Param('productId') productId: string,
     @Query() query: CountProductVariantsQueryDto
   ): Promise<PaginatedTotalResponseDto> {
-    const total = await this.productsService.countVariants({ productId, search: query.search });
+    const total = await this.productsService.countVariants(
+      toProductVariantFilters(query, productId)
+    );
     return { total };
   }
 
@@ -667,7 +690,7 @@ export class VariantsController {
   async countSearchVariants(
     @Query() query: CountProductVariantsQueryDto
   ): Promise<PaginatedTotalResponseDto> {
-    const total = await this.productsService.countVariants({ search: query.search });
+    const total = await this.productsService.countVariants(toProductVariantFilters(query));
     return { total };
   }
 

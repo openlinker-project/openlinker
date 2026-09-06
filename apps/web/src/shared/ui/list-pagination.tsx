@@ -73,7 +73,23 @@ export const ListPagination = forwardRef<HTMLElement, ListPaginationProps>(funct
   // short page provably does not. Once the total lands it takes over, which
   // is strictly more accurate at the boundary where a full last page has
   // exactly zero rows after it.
-  const hasNext = total !== null ? offset + limit < total : rowCount === limit;
+  // Next is enabled when the total says more follow, OR when the rows already
+  // on screen OVERRUN the total (#2957 review round 5, I1).
+  //
+  // The second clause exists because the total and the page are now two
+  // requests, and one predicate - `slaState` - binds its own `new Date()`, so
+  // an order crossing `dispatchByAt` between them is in the rows and not in the
+  // count. Gating on the total alone would then kill Next while the list is
+  // still returning a full page, leaving rows the operator can see and cannot
+  // reach.
+  //
+  // `>` and not `>=`, deliberately: at an exact multiple of the page size the
+  // rows END at the total, which is agreement rather than skew, and enabling
+  // Next there would send the operator to a blank page on every well-behaved
+  // list. Only a page that runs PAST its own total is evidence the total is
+  // stale, and that is the only case worth overruling it for.
+  const hasNext =
+    total !== null ? offset + limit < total || offset + rowCount > total : rowCount === limit;
 
   const totalUnavailable = totalState === 'unavailable';
 

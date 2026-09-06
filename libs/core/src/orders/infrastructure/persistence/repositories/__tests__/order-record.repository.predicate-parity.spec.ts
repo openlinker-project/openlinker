@@ -83,10 +83,20 @@ describe('OrderRecordRepository paged/count predicate parity (#2944)', () => {
 
   beforeEach(async () => {
     // `applySlaFilter` binds `new Date()` as a parameter, so three reads a
-    // millisecond apart would differ in that bound value alone and the parity
-    // assertion would flake. Freezing the clock keeps the comparison EXACT
-    // rather than loosening it to ignore Date params - a genuinely different
-    // date bound by one path and not the other must still fail.
+    // millisecond apart differ in that bound value alone.
+    //
+    // An earlier version of this spec froze the clock to make the comparison
+    // exact, and called that hygiene (#2957 review round 5, I1). It was not:
+    // the flake WAS the finding. Parity here is achieved by sharing one
+    // predicate builder, so the only way to break it from inside that builder
+    // is a term that varies per call - which is exactly what `slaState` has,
+    // and freezing the clock turned a true statement about production into a
+    // green test.
+    //
+    // The clock is still frozen, because a spec that flakes teaches nobody
+    // anything - but the property is now asserted positively below rather than
+    // suppressed, and `slaState`'s impurity is stated where a reader will meet
+    // it.
     jest.useFakeTimers().setSystemTime(new Date('2026-06-01T00:00:00Z'));
     builders = [];
     const ormRepository = {
@@ -230,5 +240,30 @@ describe('OrderRecordRepository paged/count predicate parity (#2944)', () => {
     expect(counted.builder.getCount).toHaveBeenCalledTimes(1);
     expect(counted.builder.getMany).not.toHaveBeenCalled();
     expect(counted.builder.getManyAndCount).not.toHaveBeenCalled();
+  });
+  it('binds a per-call instant for slaState, and for NOTHING else', async () => {
+    // The one predicate that is not a pure function of its filters. Stated as a
+    // test rather than left to the frozen clock to hide (#2957 review round 5,
+    // I1), because the consequence is operator-visible: `GET /orders?slaState=`
+    // and `GET /orders/count?slaState=` are two requests binding two instants,
+    // so an order crossing `dispatchByAt` between them is in the page and not
+    // in the total. `<ListPagination>` compensates by enabling Next on any full
+    // page; a reader changing either half needs to know the other exists.
+    //
+    // Break it by making a SECOND predicate time-dependent and this fails,
+    // which is the point: the impurity must stay confined to one filter.
+    const impure: Array<readonly [string, OrderRecordFilters]> = [];
+    for (const [label, filters] of CASES) {
+      if (label === 'every filter at once') continue;
+      const first = await record(() => repository.countMany(filters));
+      jest.setSystemTime(new Date('2026-06-01T00:00:05Z'));
+      const second = await record(() => repository.countMany(filters));
+      jest.setSystemTime(new Date('2026-06-01T00:00:00Z'));
+      if (JSON.stringify(first.predicates) !== JSON.stringify(second.predicates)) {
+        impure.push([label, filters]);
+      }
+    }
+
+    expect(impure.map(([label]) => label)).toEqual(['slaState']);
   });
 });
