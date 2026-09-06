@@ -16,10 +16,55 @@ endpoints are on the order-ingestion path:
 | `GET` | `/order/checkout-forms/{id}` | once per ingested order (zero per line item) |
 
 Plus `GET /me`, reached by the connection tester and by #2860's bootstrap
-readiness check. Everything else answers `404` in Allegro's own error shape
+readiness check.
+
+**#2935 adds one write-path endpoint**, once the F2 stock-propagation
+scenario needed `OfferManager` reachable rather than disabled:
+
+| Method | Path | Cadence |
+|---|---|---|
+| `PUT` | `/sale/offer-quantity-change-commands/{id}` | once per `inventory.propagateToMarketplaces` fan-out child |
+
+This is the ONE synchronous call `AllegroOfferManagerAdapter.
+updateOfferQuantity` makes - #2621 made it return on Allegro's ACCEPT rather
+than polling for a terminal status, so there is no second rung to serve
+here. It always answers `{id, status: 'ACCEPTED'}` - this stub has no
+concept of a genuinely invalid quantity modification to reject, and
+inventing one would be exactly the "the mock is now the model" trap #2840
+names by name. The async status-poll rung (`GET
+/sale/offer-quantity-change-commands/{id}`, consumed only by the separate,
+optional `marketplace.offerQuantity.reconcile` job) is deliberately **not**
+served - nothing on the path this stub measures ever calls it.
+
+**Its latency has no #2861 measurement behind it.** #2856's scope, and
+#2861's probe, both covered order-ingestion only; `STUB_LATENCY_QUANTITY_MS`
+exists as a knob (falls back to `STUB_PER_REQUEST_LATENCY_MS` like the other
+two) but `/__stub/config`'s `latency.quantityMsMeasured` is `false` unless a
+driver sets it explicitly, so a manifest reading the config can tell
+"measured" apart from "unmeasured default" rather than trusting a number
+that was never taken against a real sandbox.
+
+**A real, separate finding surfaced while wiring this up, recorded here
+rather than silently worked around**: `MarketplaceOfferQuantityUpdateHandler`
+(`apps/worker/src/sync/handlers/marketplace-offer-quantity-update.handler.ts`)
+constructs its `SyncJobExecutionError` with `cause: undefined` for any
+non-contention failure in `result.failed[]` - the original
+`AllegroApiException` (and its `statusCode`) never reaches
+`isNonRetryableError`, so even a *genuinely* deterministic 4xx from a real
+Allegro sandbox would retry the full ten-attempt ladder rather than failing
+fast on attempt 1, the same way every OTHER Allegro call in this repo does.
+This stub therefore always answers `ACCEPTED` rather than `REJECTED` for a
+second, independent reason beyond the one above: routing through that code
+path at all would measure a 30-hour retry storm neither this stub nor F2 is
+about. Fixing the classification gap is core product code, out of scope for
+a stub change - filed as its own follow-up rather than patched here.
+
+Everything else answers `404` in Allegro's own error shape
 (`{"errors":[{"code":"NotFound","message":"..."}]}`), because a 404 is
-non-retryable in OpenLinker's Allegro retry classifier - a stray call fails
-loudly on attempt 1 instead of burning a retry ladder.
+non-retryable in OpenLinker's Allegro retry classifier for every OTHER call
+site that reaches this stub's default 404 path with its `statusCode`
+intact - a stray call fails loudly on attempt 1 instead of burning a retry
+ladder.
 
 ## What it deliberately does not serve
 

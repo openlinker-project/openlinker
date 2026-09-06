@@ -77,6 +77,17 @@ const CONFIG = {
   latencyDefaultMs: envInt('STUB_PER_REQUEST_LATENCY_MS', 120),
   latencyEventsMs: process.env.STUB_LATENCY_EVENTS_MS,
   latencyCheckoutMs: process.env.STUB_LATENCY_CHECKOUT_MS,
+  // #2935: PUT /sale/offer-quantity-change-commands/{id}, the ONE
+  // synchronous call updateOfferQuantity makes (allegro-offer-manager.
+  // adapter.ts - #2621 made it return on Allegro's ACCEPT rather than
+  // waiting for a terminal status, so no second call happens here). UNLIKE
+  // latencyEventsMs/latencyCheckoutMs, this has no #2861 sandbox
+  // measurement behind it - #2856's own scope was order-ingestion only, and
+  // #2861 measured exactly the two endpoints above and no others. There is
+  // therefore no defensible p50 to cite, and CONFIG.quantityLatencyKnown
+  // records that fact for /__stub/config so a manifest can tell "measured"
+  // apart from "fell back to the generic default" at a glance.
+  latencyQuantityMs: process.env.STUB_LATENCY_QUANTITY_MS,
   // #2856 "The seeded-mapping contract": offer ids must be a deterministic
   // function of tenant + index so #2860's bootstrap can pre-seed
   // identifier_mappings rows before any order is ever pushed. This value
@@ -97,6 +108,9 @@ function latencyFor(endpoint) {
   }
   if (endpoint === 'checkout' && CONFIG.latencyCheckoutMs !== undefined) {
     return envInt('STUB_LATENCY_CHECKOUT_MS', CONFIG.latencyDefaultMs);
+  }
+  if (endpoint === 'quantity' && CONFIG.latencyQuantityMs !== undefined) {
+    return envInt('STUB_LATENCY_QUANTITY_MS', CONFIG.latencyDefaultMs);
   }
   return CONFIG.latencyDefaultMs;
 }
@@ -521,6 +535,43 @@ const server = createServer((req, res) => {
       return;
     }
 
+    // #2935: the ONE synchronous call `AllegroOfferManagerAdapter.
+    // updateOfferQuantity` makes - see allegro-api.types.ts's
+    // `AllegroOfferQuantityChangeCommandResponse` for the exact, narrow
+    // contract this echoes (`{id, status, errors?}`, status one of
+    // 'QUEUED'|'ACCEPTED'|'REJECTED'). Added so the F2 stock-propagation
+    // scenario's last hop (job dispatched -> marketplace write) is
+    // measurable at all, rather than failing at capability resolution
+    // before any network call - see docs/architecture-overview.md's own
+    // "#2621" note for why no further call happens synchronously here: the
+    // adapter does not poll for a terminal status, it returns as soon as
+    // Allegro acknowledges the submission. Always answers ACCEPTED - this
+    // stub has no notion of a genuinely invalid modification to reject, and
+    // synthesising one would be exactly the invented-semantics trap #2840
+    // warns against; the async status-poll rung
+    // (GET .../offer-quantity-change-commands/{id}, consumed only by the
+    // OPTIONAL, separate marketplace.offerQuantity.reconcile job) is
+    // deliberately NOT served - nothing on the path this scenario measures
+    // ever calls it.
+    const quantityMatch = /^\/sale\/offer-quantity-change-commands\/([^/]+)$/.exec(pathname);
+    if (method === 'PUT' && quantityMatch) {
+      recordRequestCount(tenant, 'PUT', '/sale/offer-quantity-change-commands/:id');
+      await delay(latencyFor('quantity'));
+      if (applyFault(tenant, req, res, (status) => log(status, '/sale/offer-quantity-change-commands/:id')))
+        return;
+      const commandId = decodeURIComponent(quantityMatch[1]);
+      try {
+        await readBody(req);
+      } catch {
+        sendJson(res, 400, allegroError('InvalidRequest', 'invalid JSON body'));
+        log(400, '/sale/offer-quantity-change-commands/:id');
+        return;
+      }
+      sendJson(res, 200, { id: commandId, status: 'ACCEPTED' });
+      log(200, '/sale/offer-quantity-change-commands/:id');
+      return;
+    }
+
     // -----------------------------------------------------------------
     // Control surface - /__stub/, driver-facing. No Allegro path uses this
     // prefix (#2856 Build Specification "Control endpoint"). Deliberately
@@ -546,6 +597,13 @@ const server = createServer((req, res) => {
           defaultMs: CONFIG.latencyDefaultMs,
           eventsMs: latencyFor('events'),
           checkoutMs: latencyFor('checkout'),
+          quantityMs: latencyFor('quantity'),
+          // #2935: false unless the driver set STUB_LATENCY_QUANTITY_MS
+          // explicitly - there is no #2861 sandbox measurement behind this
+          // endpoint, so a manifest reading this field can tell "measured"
+          // apart from "fell back to the generic (also unmeasured-for-this-
+          // endpoint) default" rather than silently trusting a number.
+          quantityMsMeasured: CONFIG.latencyQuantityMs !== undefined,
         },
       });
       return;

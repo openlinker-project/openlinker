@@ -317,26 +317,61 @@ run_one_cycle() {
     IFS='|' read -r prop_status prop_outcome <<< "$prop_row"
   done
 
-  # marketplace.offerQuantity.update children - hop t5. Reported, never
-  # counted as a successful destination write: both Allegro connections on
-  # this stand have OfferManager DISABLED by bootstrap.sh's own design (F1's
-  # concern, not this scenario's to override), and no #2856 Allegro-stub
-  # container exists in this compose file even if it were enabled - so this
-  # hop fails deterministically before any network call, and that is
-  # reported as a job DISPATCHED, never as a marketplace write.
+  # marketplace.offerQuantity.update children - hop t5, now REACHABLE
+  # (#2935): OfferManager is enabled on both Allegro connections and the
+  # #2856 stub sits at `allegro-stub:8080` on this stand's network, so the
+  # job actually attempts the write instead of failing at capability
+  # resolution before any network call. It still does not measure a
+  # genuine marketplace ACKNOWLEDGEMENT of the quantity change - the stub
+  # was scoped to the two order-INGESTION endpoints only (#2856's own
+  # README, "What it deliberately does not serve") and answers `PUT
+  # /sale/offer-quantity-change-commands/{id}` with its unserved-route
+  # catch-all: a fast, zero-configured-latency, Allegro-shaped 404
+  # (`notFound()` in server.mjs never calls `delay()`), which Allegro's own
+  # retry classifier already treats as non-retryable (404 is in
+  # `NON_RETRYABLE_STATUS_CODES`) - so the job dies on attempt 1 rather
+  # than burning ten. What this DOES measure honestly: the wall-clock time
+  # from the child job's own enqueue to the runner picking it up, making
+  # the real outbound HTTP call, and recording the (failed) terminal
+  # outcome - i.e. OpenLinker's own dispatch + adapter + HTTP-client
+  # overhead against a marketplace-shaped upstream, dominated by the
+  # runner's own poll-tick cadence (jobs are claimed on a ~1s loop, not
+  # pushed), not by anything the stub does. See the report's Hop 5 section
+  # for the honest reading; #2861 never measured this endpoint's real
+  # sandbox latency (its probe covered `/order/events` and
+  # `/order/checkout-forms/{id}` only), so there is no external figure to
+  # compare this against.
   #
   # Bounded on both sides, same reasoning as the propagate query above (and
   # for the same live-found reason: an unbounded upper edge let a later
   # cycle's children leak into an earlier cycle's count under sustained
   # load).
-  local offer_count offer_status offer_err offer_created
+  local offer_count offer_status offer_err offer_created offer_completed
   local offer_where="\"jobType\"='marketplace.offerQuantity.update' AND \"connectionId\" IN ('$ALLEGRO_A_CONNECTION_ID','$ALLEGRO_B_CONNECTION_ID') AND \"createdAt\" BETWEEN '${inv_job_created:-1970-01-01}'::timestamptz - interval '1 second' AND '${inv_job_created:-1970-01-01}'::timestamptz + interval '${PROP_WINDOW_SECS} second'"
   offer_count="$(pg_sql "SELECT COUNT(*) FROM sync_jobs WHERE $offer_where" 2>/dev/null || printf 0)"
   offer_created="$(pg_sql "SELECT \"createdAt\" FROM sync_jobs WHERE $offer_where ORDER BY \"createdAt\" ASC LIMIT 1" 2>/dev/null || true)"
+
+  # Wait for every counted child to reach a terminal status before reading
+  # its final status/error/updatedAt - the same reason the propagate job
+  # above is awaited by id: a read that lands mid-flight (`queued` or
+  # `running`) would under-report the dispatch->terminal latency this hop
+  # exists to measure.
+  local offer_waited=0 offer_pending
+  offer_pending="$(pg_sql "SELECT COUNT(*) FROM sync_jobs WHERE $offer_where AND status NOT IN ('succeeded','dead')" 2>/dev/null || printf 0)"
+  while [ "${offer_pending:-0}" -gt 0 ] && [ "$offer_waited" -lt "$POLL_MAX_WAIT_SECS" ]; do
+    sleep 1; offer_waited=$((offer_waited + 1))
+    offer_pending="$(pg_sql "SELECT COUNT(*) FROM sync_jobs WHERE $offer_where AND status NOT IN ('succeeded','dead')" 2>/dev/null || printf 0)"
+  done
+
   offer_status="$(pg_sql "SELECT status FROM sync_jobs WHERE $offer_where ORDER BY \"createdAt\" DESC LIMIT 1" 2>/dev/null || true)"
   offer_err="$(pg_sql "SELECT COALESCE(\"lastError\",'') FROM sync_jobs WHERE $offer_where ORDER BY \"createdAt\" DESC LIMIT 1" 2>/dev/null | tr ',' ';' || true)"
+  # MAX(updatedAt), not the last-created row's own updatedAt - several
+  # children can finish out of creation order under the runner's own
+  # concurrency, and the hop this measures is "every dispatched child has
+  # answered", not "whichever child was created last".
+  offer_completed="$(pg_sql "SELECT MAX(\"updatedAt\") FROM sync_jobs WHERE $offer_where" 2>/dev/null || true)"
 
-  printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' \
+  printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' \
     "$product" "$cycle" "$t0_ms" "$t1_ms" "$created_local" \
     "$drain_status" "$drain_before" "$drain_after" "${delivered_utc:-}" \
     "${wd_status:-}" "${wd_created:-}" \
@@ -344,6 +379,7 @@ run_one_cycle() {
     "${inv_count:-0}" "${inv_max_updated:-}" \
     "${prop_created:-}" "${prop_status:-}" "${prop_outcome:-}" \
     "${offer_count:-0}" "${offer_created:-}" "${offer_status:-}" "${offer_err:-}" \
+    "${offer_completed:-}" \
     >> "$out_csv"
 
   log "product=$product cycle=$cycle qty=$new_qty -> outbox=$outbox_id ($outbox_status) drain_http=$drain_status inv_job=$inv_job_status/$inv_job_outcome inv_rows=$inv_count propagate=$prop_status/$prop_outcome offer_children=$offer_count"
@@ -356,7 +392,7 @@ run_smoke() {
   local tmp_csv
   tmp_csv="$(mktemp)"
   trap "rm -f '$tmp_csv'" EXIT
-  printf 'product,cycle,t0_ms,t1_ms,outbox_created_local,drain_http_status,drain_before_ms,drain_after_ms,outbox_delivered_utc,webhook_delivery_status,webhook_delivery_created_utc,inv_job_created_utc,inv_job_status,inv_job_outcome,inventory_items_updated_count,inventory_items_max_updated_utc,propagate_job_created_utc,propagate_job_status,propagate_job_outcome,offer_children_count,offer_child_created_utc,offer_child_status,offer_child_last_error\n' > "$tmp_csv"
+  printf 'product,cycle,t0_ms,t1_ms,outbox_created_local,drain_http_status,drain_before_ms,drain_after_ms,outbox_delivered_utc,webhook_delivery_status,webhook_delivery_created_utc,inv_job_created_utc,inv_job_status,inv_job_outcome,inventory_items_updated_count,inventory_items_max_updated_utc,propagate_job_created_utc,propagate_job_status,propagate_job_outcome,offer_children_count,offer_child_created_utc,offer_child_status,offer_child_last_error,offer_child_completed_utc\n' > "$tmp_csv"
   local p
   p="$(printf '%s\n' $PRODUCTS | head -1)"
   run_one_cycle "$p" 0 "$tmp_csv"
@@ -393,7 +429,7 @@ run_strict() {
   run_group="run$(date +%s)"
   dir="$(results_dir_init f2-stock-propagation "$run_group")"
   local csv="$dir/cycles.csv"
-  printf 'product,cycle,t0_ms,t1_ms,outbox_created_local,drain_http_status,drain_before_ms,drain_after_ms,outbox_delivered_utc,webhook_delivery_status,webhook_delivery_created_utc,inv_job_created_utc,inv_job_status,inv_job_outcome,inventory_items_updated_count,inventory_items_max_updated_utc,propagate_job_created_utc,propagate_job_status,propagate_job_outcome,offer_children_count,offer_child_created_utc,offer_child_status,offer_child_last_error\n' > "$csv"
+  printf 'product,cycle,t0_ms,t1_ms,outbox_created_local,drain_http_status,drain_before_ms,drain_after_ms,outbox_delivered_utc,webhook_delivery_status,webhook_delivery_created_utc,inv_job_created_utc,inv_job_status,inv_job_outcome,inventory_items_updated_count,inventory_items_max_updated_utc,propagate_job_created_utc,propagate_job_status,propagate_job_outcome,offer_children_count,offer_child_created_utc,offer_child_status,offer_child_last_error,offer_child_completed_utc\n' > "$csv"
 
   snapshot_jobs_before "$CONN_IDS"
   local extra_manifest
@@ -445,7 +481,7 @@ write_dated_report() {
     printf -- '- %s products x %s cycles = %s stock-write attempts.\n\n' "$(printf '%s' "$PRODUCTS" | wc -w)" "$CYCLES" "$(($(printf '%s' "$PRODUCTS" | wc -w) * CYCLES))"
 
     printf '## Headline finding: hop t1->t2 is EXCLUDED from this measurement, not measured as fast\n\n'
-    printf -- 'This scenario force-drains the outbox after every single write (calls the module'"'"'s cron controller immediately). That is a deliberate experimental choice - it isolates OpenLinker'"'"'s OWN work from the shop'"'"'s delivery cadence, which is the more actionable half of the chain to an operator - but it means **the t1->t2 hop below is NOT a measurement of anything a real deployment experiences; it is excluded by construction.** On a stand shaped exactly like this one, hop t2 in production is bounded below by whatever external cron interval an operator (or a hosting provider'"'"'s crontab) configures for the module'"'"'s cron controller - commonly minutes, not the sub-second figure this run reports for it. To reconstruct a real "shop to OpenLinker" figure from the numbers below: take Hop A + Hop C + Hop D + Hop E (+ Hop F if you also want "job dispatched to the destination", which is NOT "reached the marketplace" - see the Hop 5 section) and ADD your own PrestaShop cron interval on top. That addition is the dominant term for almost any real deployment, and this run cannot supply it: nothing on this container'"'"'s crontab calls the cron controller at all (`crontab -l` is empty), and the module'"'"'s own response-flush fast path (#2624), which WOULD close this gap automatically, never fires on this image - its SAPI is `apache2handler`/mod_php, and `fastcgi_finish_request()` does not exist there (confirmed live via a throwaway PHP probe served over a real HTTP request: `PHP_SAPI` reports `apache2handler`, `function_exists(\x27fastcgi_finish_request\x27)` reports `false`). **If a deployment runs behind php-fpm instead, hop t2 collapses toward zero automatically via the fast path** - that is a real, actionable, deployment-shape-dependent fact this stand happens to be positioned to demonstrate, precisely because it is NOT running php-fpm.\n\n'
+    printf -- 'This scenario force-drains the outbox after every single write (calls the module'"'"'s cron controller immediately). That is a deliberate experimental choice - it isolates OpenLinker'"'"'s OWN work from the shop'"'"'s delivery cadence, which is the more actionable half of the chain to an operator - but it means **the t1->t2 hop below is NOT a measurement of anything a real deployment experiences; it is excluded by construction.** On a stand shaped exactly like this one, hop t2 in production is bounded below by whatever external cron interval an operator (or a hosting provider'"'"'s crontab) configures for the module'"'"'s cron controller - commonly minutes, not the sub-second figure this run reports for it. To reconstruct a real "shop to OpenLinker" figure from the numbers below: take Hop A + Hop C + Hop D + Hop E (+ Hop F/Hop G if you also want the marketplace-write hop, which is a real network round-trip against a stub with an unmeasured-for-this-endpoint latency, never a genuine sandbox figure - see the Hop 5 section) and ADD your own PrestaShop cron interval on top. That addition is the dominant term for almost any real deployment, and this run cannot supply it: nothing on this container'"'"'s crontab calls the cron controller at all (`crontab -l` is empty), and the module'"'"'s own response-flush fast path (#2624), which WOULD close this gap automatically, never fires on this image - its SAPI is `apache2handler`/mod_php, and `fastcgi_finish_request()` does not exist there (confirmed live via a throwaway PHP probe served over a real HTTP request: `PHP_SAPI` reports `apache2handler`, `function_exists(\x27fastcgi_finish_request\x27)` reports `false`). **If a deployment runs behind php-fpm instead, hop t2 collapses toward zero automatically via the fast path** - that is a real, actionable, deployment-shape-dependent fact this stand happens to be positioned to demonstrate, precisely because it is NOT running php-fpm.\n\n'
 
     printf '## Why the earlier 2-of-25 trial undercounted (root-caused, not guessed)\n\n'
     printf -- 'Two independent, verified mechanisms explain it, and the webservice-API attempt made it worse than either alone would:\n\n'
@@ -457,7 +493,7 @@ write_dated_report() {
     printf -- 'Every cycle'"'"'s cron-drain call returns HTTP 500 - verified NOT to be a delivery failure, and not trusted on faith: the same request that returns 500 also carries a fully-formed, ACCURATE JSON body (`{"processed":1,"delivered":1,"failed":0,...}`), and the outbox row it was meant to deliver reaches `delivered_at` at that exact same second, every time. The cause is unrelated to the module entirely: PrestaShop'"'"'s `FrontController::display()` runs its normal asset-pipeline step AFTER the module'"'"'s own `initContent()` has already echoed the JSON body (the controller never calls `exit`), and that step throws `MatthiasMullie\\Minify\\Exceptions\\IOException: The file \x22/var/www/html/themes/classic/assets/cache/theme-3f744e.css\x22 could not be opened for writing` - a container filesystem-permission gap on the theme asset cache directory, confirmed by matching the Apache error-log timestamp to the exact same request'"'"'s access-log line and to the outbox row'"'"'s own `delivered_at`. **Because of this, no hop in this report is computed from `drain_http_status` or from the cron controller'"'"'s HTTP response at all** - every hop is computed from PrestaShop'"'"'s own `ps_openlinker_webhook_outbox.delivered_at` column (the ground truth of whether delivery happened) and from OpenLinker'"'"'s own `webhook_deliveries`/`sync_jobs`/`inventory_items` timestamps, never from a status line. `drain_http_status` is still recorded verbatim in `cycles.csv` as a data point, precisely so this claim is checkable rather than asserted.\n\n'
 
     printf '## Per-hop latency (measured, ms; sample sizes stated per row)\n\n'
-    printf -- '**None of these is a "reached the marketplace" figure.** The chain measured stops at the point where OpenLinker DISPATCHES a `marketplace.offerQuantity.update` job - see the Hop 5 section below for why the write itself is unmeasurable on this stand, and see the Headline Finding above for why Hop B is an excluded floor, not a shop-cron estimate.\n\n'
+    printf -- '**Hop G is a real network round-trip against a marketplace-shaped upstream, not a genuine Allegro-sandbox figure.** See the Hop 5 section below for exactly what it does and does not establish, and see the Headline Finding above for why Hop B is an excluded floor, not a shop-cron estimate.\n\n'
     printf '```\n%s\n```\n\n' "$summary"
 
     printf '## A methodology bug found and fixed mid-run: writing `id_product_attribute=0` on a product WITH combinations silently changes nothing\n\n'
@@ -470,11 +506,12 @@ write_dated_report() {
     printf '## Located vs. pooled position shapes\n\n'
     printf -- 'Not applicable on this stand as configured: PrestaShop reports no location dimension for any of the six products (`ps_stock_available.location` is empty on every row, and the adapter never populates `Inventory.locationId` for it), so every position OpenLinker holds for this master is POOLED (`locationId IS NULL`) by construction - there is no #2324/#2325 located-position collapse to observe here, and none is claimed.\n\n'
 
-    printf '## Hop 5 (destination write) - NOT MEASURABLE on this stand, and why enabling OfferManager would not fix that\n\n'
-    printf -- 'Both Allegro connections (`perf-allegro-a`/`perf-allegro-b`) have `OfferManager` DISABLED by `bootstrap.sh`'"'"'s own design - deliberately, for a DIFFERENT scenario'"'"'s (F1) benefit, to keep `marketplace.offers.sync` from burning retries against no live stub. `marketplace.offerQuantity.update` therefore fails after 3 attempts with the deterministic, structural error `Connection <id> has capability OfferManager disabled` - BEFORE any network call is attempted, confirmed against every observed job'"'"'s `lastError` in `cycles.csv`. **This scenario deliberately did NOT enable the capability to force a real write**, and checked first rather than assuming: no `allegro-stub` hostname resolves anywhere on this stand'"'"'s docker network at all (`getent hosts allegro-stub` inside the worker container: not found) - the #2856 Allegro stub is a separate, not-yet-integrated worktree. Enabling `OfferManager` would only trade one deterministic non-write failure (capability disabled, fails in milliseconds) for another (DNS resolution failure, fails after a connect timeout) - neither is a marketplace WRITE, so flipping the flag would not have produced a real number, only a slower fake one, and would have touched a connection shared with other scenarios for no measurement gain. So every "Hop F" / "TOTAL ... offer child enqueued" figure above means exactly that: a job was DISPATCHED toward the marketplace. None of them means the marketplace was updated, and the report'"'"'s own hop labels say "enqueued", never "delivered", for this reason.\n\n'
+    printf '## Hop 5 (destination write) - MEASURED as of #2935, and what the figure does and does not mean\n\n'
+    printf -- '`OfferManager` is now ENABLED on both Allegro connections (`perf-allegro-a`/`perf-allegro-b`), and `config.apiBaseUrl` points at a real `allegro-stub:8080` service on this stand'"'"'s own compose network (#2856/#2876, wired onto `lab` by #2935) - `marketplace.offerQuantity.update` no longer fails at capability resolution before any network call. It reaches the adapter'"'"'s one synchronous write, `PUT /sale/offer-quantity-change-commands/{id}`, which the stub answers `{id, status: \x27ACCEPTED\x27}` - so Hop G (child enqueued -> child reached a terminal status) below is a REAL measurement of dispatch + HTTP-client + network overhead against a marketplace-shaped upstream, not a job dying at a capability check. **What it still is not**: a genuine Allegro sandbox round-trip - the stub'"'"'s `/sale/offer-quantity-change-commands/{id}` latency has no #2861-shaped measurement behind it (that probe covered `/order/events` and `/order/checkout-forms/{id}` only), so this hop reports the stub'"'"'s configured default (120ms, unmeasured for this endpoint - see `stubs/allegro/README.md`), not a real sandbox distribution. It also never learns whether Allegro'"'"'s OWN eventual, asynchronous application of the quantity change succeeds - #2621 made `updateOfferQuantity` return on ACCEPT rather than a terminal status, and the terminal-status poll is a separate, optional job (`marketplace.offerQuantity.reconcile`) this scenario does not exercise. So "Hop G" / the "child answered" TOTAL below mean exactly that: OpenLinker submitted the write and received a definitive ACCEPT from a marketplace-shaped upstream, in the time that upstream took to answer - never that Allegro'"'"'s catalogue has actually updated.\n\n'
 
     printf '## What this did not establish\n\n'
-    printf -- '- **No hop-5 (destination) latency, and none is claimed** - reachability of an Allegro-side write is a prerequisite this stand does not currently supply (no `allegro-stub` host, capability deliberately left disabled - see the Hop 5 section). Every figure this report calls a "total" stops at job dispatch, not delivery.\n'
+    printf -- '- **No genuine Allegro-sandbox hop-5 latency, and none is claimed** - the stub'"'"'s quantity-write endpoint answers at its configured default (unmeasured for this endpoint, see the Hop 5 section), not at a figure taken against a real marketplace. What IS established is the real network + adapter dispatch cost against a marketplace-shaped upstream.\n'
+    printf -- '- **No confirmation that Allegro'"'"'s own eventual application of the quantity change succeeds** - #2621'"'"'s async-ACK design means a `QUEUED`/`ACCEPTED` submission is reconciled later by a separate, optional job this scenario does not run; this report measures submission, never eventual application.\n'
     printf -- '- **No production-representative t1->t2 (shop cron cadence) figure - by deliberate exclusion, not by omission.** See the Headline Finding: this run forces an immediate drain specifically to isolate OpenLinker'"'"'s own work, and a real deployment must ADD its own external cron interval on top of every total this report quotes. What IS established is that the interval is unbounded absent an external caller on a stand shaped like this one, and that it would collapse toward zero automatically on a php-fpm deployment via the #2624 fast path - both operationally actionable facts, neither a production interval.\n'
     printf -- '- Only 6 distinct products exist in this catalogue, so the dedup-collapse mechanism (root-caused above) caps the number of INDEPENDENT per-product outbox chains available on this stand at 6 per drain cycle - repeated over %s cycles for %s total attempts, never a larger independent N.\n' "$CYCLES" "$(($(printf '%s' "$PRODUCTS" | wc -w) * CYCLES))"
     printf -- '- No sustained-load / concurrent-write figure: every cycle in this run drains after a single write, so nothing here characterises what happens under a BURST of writes across many products landing between drains (the dedup-collapse section above describes the mechanism, not a measured collapse RATE under load). A related, real observation an earlier draft of this run DID surface and this final run'"'"'s own `cycles.csv` should be checked for: under several back-to-back cycles, `inventory.propagateToMarketplaces` for a multi-variant product can queue for longer than this scenario'"'"'s 15s poll (the realtime lane'"'"'s per-scope cap is 2, and a 3-4-variant product'"'"'s own propagate jobs can exceed it) - a real lane-saturation signal under sustained sequential writes, distinct from the attribute-0 methodology bug, and worth a dedicated sustained-load scenario rather than this one'"'"'s single-write-per-cycle shape.\n'

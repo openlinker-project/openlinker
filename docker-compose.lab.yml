@@ -277,6 +277,74 @@ services:
     # No published port - reachable only on the `lab` compose network, at
     # https://wc-tls (the OpenLinker WooCommerce connection's siteUrl).
 
+  # Allegro upstream stub (#2856, wired onto this stand by #2935) - a
+  # single-process node:http stand-in for the two Allegro Public API
+  # endpoints on the order-ingestion path, so `bootstrap.sh`'s
+  # `perf-allegro-a` / `perf-allegro-b` connections have something real to
+  # reach instead of a DNS name nothing answers. Built locally (not reused
+  # from `ol-perf:*`) - `perf/openlinker-throughput/stubs/allegro` carries
+  # its own Dockerfile and zero dependencies (node:http/crypto/url only), so
+  # there is nothing to gain from routing it through the multi-stage root
+  # build. Reachable from `lab-api`/`lab-worker` at `http://allegro-stub:8080`
+  # (`bootstrap.sh`'s `ALLEGRO_STUB_URL` default) - service name, not
+  # container name, is what compose's embedded DNS resolves.
+  allegro-stub:
+    build:
+      context: ./perf/openlinker-throughput/stubs/allegro
+      args:
+        # Best-effort only - a `docker build` outside a git checkout (or a
+        # dirty tree) still succeeds; the stub's own `/__stub/config`
+        # reports whatever this resolves to, `unknown` included.
+        STUB_GIT_SHA: '${STUB_GIT_SHA:-unknown}'
+    container_name: lab-allegro-stub
+    environment:
+      STUB_PORT: '8080'
+      # Matches bootstrap.sh's ALLEGRO_A_ID / ALLEGRO_B_ID connection
+      # credentials (`stub-token-a` / `stub-token-b`) and tenant names
+      # (`perf-allegro-a` / `perf-allegro-b`) - this is also server.mjs's own
+      # default, restated here rather than omitted so the pairing is visible
+      # in one file instead of two.
+      STUB_TENANTS: 'stub-token-a=perf-allegro-a,stub-token-b=perf-allegro-b'
+      # Must equal bootstrap.sh's ALLEGRO_OFFER_POOL_SIZE (default 200) -
+      # see stubs/allegro/README.md "The offer-id contract with #2860".
+      STUB_OFFER_POOL_SIZE: '${ALLEGRO_OFFER_POOL_SIZE:-200}'
+      # Per-endpoint latency, set from the real Allegro sandbox measurement
+      # (#2861, perf/openlinker-throughput/results-allegro-latency-2026-09-05.md
+      # Result 1/2, p50 - never the mean, see that report for why). A stub
+      # answering instantly would measure only OpenLinker's own local
+      # overhead; these two constants are what makes a run against it
+      # externally meaningful rather than merely self-consistent. Neither
+      # value is a distribution (both endpoints were measured as
+      # multi-modal, not a single spread) - this remains a known,
+      # documented limitation of a single constant per endpoint, not a
+      # claim of a realistic latency profile.
+      STUB_LATENCY_EVENTS_MS: '${ALLEGRO_STUB_LATENCY_EVENTS_MS:-276}'
+      STUB_LATENCY_CHECKOUT_MS: '${ALLEGRO_STUB_LATENCY_CHECKOUT_MS:-1106}'
+      # `STUB_LATENCY_QUANTITY_MS` (the #2935 write-path endpoint) is
+      # DELIBERATELY left unset here, not merely undocumented - #2861 never
+      # measured this endpoint (its scope was order-ingestion only), so
+      # there is no defensible sandbox p50 to cite the way the two above
+      # have. Setting a number anyway would be exactly the "the mock is now
+      # the model" trap #2840 names by name. Leaving it unset makes the
+      # stub fall back to its own generic `STUB_PER_REQUEST_LATENCY_MS`
+      # default (120ms) and reports that honestly via
+      # `/__stub/config`'s `latency.quantityMsMeasured: false` - set the env
+      # var explicitly only if a future sandbox probe (a #2861-shaped
+      # follow-up) actually measures this endpoint.
+    ports:
+      # Published so a scenario/driver script (running on the HOST, not
+      # inside a container) can reach the `/__stub/*` control surface
+      # directly - e.g. `POST /__stub/tenants/perf-allegro-a/orders` to push
+      # a synthetic order. `lab-api`/`lab-worker` never use this published
+      # port; they resolve the service name on the internal network.
+      - '127.0.0.1:${ALLEGRO_STUB_HOST_PORT:-19081}:8080'
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '-', 'http://127.0.0.1:8080/__stub/health']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 2s
+
   # One-shot schema bootstrap. Runs the SAME compiled data-source the api/
   # worker processes use (apps/api/dist/apps/api/src/database/data-source.js),
   # invoked directly through the typeorm CLI binary already in
