@@ -55,6 +55,22 @@ services:
     # only plans over its own threshold (2s) to keep the F5 window's own log
     # volume bounded; pg_stat_statements is reset per dataset size by the
     # scenario itself, never here.
+    #
+    # statement_timeout=30s (#2934): this was, until this change, a LIVE-ONLY
+    # `ALTER ROLE postgres SET statement_timeout = ...` applied by
+    # f5-read-path.sh's own apply_statement_timeout() and never declared
+    # anywhere - so it existed only in a running database, did not survive a
+    # stand rebuild, and no run's generic manifest recorded that it was in
+    # force (found #2843/#2934: the same role's own 1M-order seed got
+    # cancelled mid-transaction by it, before the seeder learned to
+    # `SET statement_timeout = 0` for its own session - see seed-lib.sh's
+    # seed_sql()). It bounds the API's runaway-read risk for EVERY session on
+    # this stand now, server-wide, from boot - f5-read-path.sh's own
+    # apply_statement_timeout() still runs (still useful for an operator who
+    # wants a DIFFERENT STATEMENT_TIMEOUT_MS for one F5 run) and simply
+    # re-asserts the same 30s by default via its own ALTER ROLE, which is
+    # captured into every scenario's manifest generically now - see
+    # manifest_gather_environment's `postgres.nonDefaultSettings` in lib.sh.
     command:
       - postgres
       - -c
@@ -71,6 +87,8 @@ services:
       - auto_explain.log_analyze=on
       - -c
       - auto_explain.log_buffers=on
+      - -c
+      - statement_timeout=30000
     ports:
       - '127.0.0.1:${POSTGRES_HOST_PORT:-19432}:5432'
     volumes:

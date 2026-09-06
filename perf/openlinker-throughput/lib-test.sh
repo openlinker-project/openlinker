@@ -93,6 +93,7 @@ pg_sql() {
     *"operational_settings"*) echo "${FAKE_PG[operational_settings]:-{\}}" ;;
     *"COUNT(*)"*) echo "${FAKE_PG[count]:-0}" ;;
     *"pg_database_size"*) echo "${FAKE_PG[db_size]:-123456}" ;;
+    *"pg_db_role_setting"*) echo "${FAKE_PG[pg_overrides]:-}" ;;
     *"string_agg"*) echo "${FAKE_PG[agg]:-}" ;;
     *) echo "" ;;
   esac
@@ -391,6 +392,61 @@ assert_eq "guard_log_level records what it verified" \
 
 OL_API_CONTAINER="lab-api"; WORKER_CONTAINERS="lab-worker"
 
+echo "--- post_guard_generator_saturated ---"
+# Writes a k6-shaped summary to $1 with the metrics given, so each case differs
+# in exactly the field it is about.
+write_k6_summary() {
+  local out="$1" used="$2" cfg="$3" dropped="$4" reqs="$5" extra=""
+  [ "$dropped" = "none" ] || extra=",\"dropped_iterations\":{\"count\":$dropped}"
+  cat > "$out" <<JSON
+{"metrics":{"vus":{"max":$used},"vus_max":{"max":$cfg},
+ "http_reqs":{"count":$reqs}$extra}}
+JSON
+}
+
+sat_dir="$(mktemp -d)"
+
+write_k6_summary "$sat_dir/healthy.json" 12 300 0 10000
+assert_eq "a generator with headroom passes" "ok" \
+  "$(post_guard_generator_saturated "$sat_dir/healthy.json")"
+
+# The case this guard exists for: F3's ~600/s runs sat at 92-97% of their VU
+# ceiling and their numbers were nearly published as a system ceiling.
+write_k6_summary "$sat_dir/vu-bound.json" 132 137 0 18100
+assert_contains "a generator at 96% of its VU ceiling is discarded" \
+  "$(post_guard_generator_saturated "$sat_dir/vu-bound.json")" "DISCARDED"
+assert_contains "the refusal names the remedy, not just the fault" \
+  "$(post_guard_generator_saturated "$sat_dir/vu-bound.json")" "MAX_VUS"
+
+write_k6_summary "$sat_dir/dropped.json" 20 300 4400 18100
+assert_contains "a high dropped-iteration fraction is discarded" \
+  "$(post_guard_generator_saturated "$sat_dir/dropped.json")" "DISCARDED"
+
+# constant-vus has no arrival rate to fall behind, so k6 emits no
+# dropped_iterations at all. Absent must mean NOT APPLICABLE - reading it as
+# zero would silently pass the check it belongs to.
+write_k6_summary "$sat_dir/no-drop-metric.json" 20 300 none 18100
+assert_eq "an absent dropped_iterations metric is not applicable, not zero" "ok" \
+  "$(post_guard_generator_saturated "$sat_dir/no-drop-metric.json")"
+
+# A scenario with no load generator at all (F2) is not applicable...
+assert_eq "no summary path means no generator, which passes" "ok" \
+  "$(post_guard_generator_saturated "")"
+# ...but one that CLAIMED a generator and produced nothing is the OOM shape.
+# Asserted on the SPECIFIC message, not merely on the word DISCARDED: without
+# the missing-file branch the function falls through to jq, which fails on a
+# nonexistent path and hits the could-not-parse fallback - which also says
+# DISCARDED. A weaker assertion passed against the broken code (found red-first).
+assert_contains "a claimed-but-missing summary is discarded, never skipped" \
+  "$(post_guard_generator_saturated "$sat_dir/never-written.json")" "wrote no summary at"
+
+# A summary that cannot show its instrument was healthy is not reportable.
+printf '{"metrics":{"http_reqs":{"count":100}}}\n' > "$sat_dir/no-vus.json"
+assert_contains "a summary carrying no vus/vus_max is discarded" \
+  "$(post_guard_generator_saturated "$sat_dir/no-vus.json")" "DISCARDED"
+
+rm -rf "$sat_dir"
+
 # ===========================================================================
 # post-guards
 # ===========================================================================
@@ -483,6 +539,104 @@ manifest_set_sync_jobs_end "$MDIR"
 assert_eq "syncJobsRowsAtEnd is set after window_stop" "42" "$(jq -r .syncJobsRowsAtEnd "$MDIR/manifest.json")"
 FAKE_PG[count]=0
 rm -rf "$MDIR"
+
+echo "--- manifest_pg_non_default_settings (#2934) ---"
+FAKE_PG[pg_overrides]='{"liveSettingsSourceNotDefault":{"statement_timeout":{"setting":"30000","source":"user"}},"roleConfig":{"postgres":["statement_timeout=30000ms"]},"databaseRoleConfig":[]}'
+assert_eq "returns the live query's JSON verbatim" \
+  "${FAKE_PG[pg_overrides]}" "$(manifest_pg_non_default_settings)"
+
+MDIR2="$(mktemp -d)"
+manifest_write "$MDIR2" "test-scenario" "conn-1" 1 '{}'
+assert_eq "a role-level ALTER ROLE ... SET reaches the manifest" \
+  '["statement_timeout=30000ms"]' "$(jq -c '.environment.postgres.nonDefaultSettings.roleConfig.postgres' "$MDIR2/manifest.json")"
+assert_eq "a non-default live pg_settings row's source is recorded too - what a SHOW from a DIFFERENT role would miss is exactly why roleConfig exists alongside this" \
+  "user" "$(jq -r '.environment.postgres.nonDefaultSettings.liveSettingsSourceNotDefault.statement_timeout.source' "$MDIR2/manifest.json")"
+rm -rf "$MDIR2"
+
+# A stand with no ALTER ROLE/DATABASE override and no non-default
+# pg_settings row at all must still round-trip as an empty, VALID object -
+# never as a blank string that would break the manifest's own JSON.
+FAKE_PG[pg_overrides]=""
+assert_eq "empty query result degrades to an empty JSON object, not a blank string" \
+  "{}" "$(manifest_pg_non_default_settings)"
+
+# A malformed/garbage answer (a psql error message slipping through the
+# `2>/dev/null`, a truncated query) must not silently produce an invalid
+# manifest.json - it degrades to a JSON object NAMING the failure, so the
+# rest of the manifest (which the run genuinely needs) still writes. This is
+# the "recording beats refusing" rule applied to the recorder's own failure
+# mode: a broken read must be visible in the manifest, not swallowed into a
+# manifest that merely looks complete.
+FAKE_PG[pg_overrides]='ERROR: relation "pg_db_role_setting" does not exist'
+MDIR3="$(mktemp -d)"
+manifest_write "$MDIR3" "test-scenario" "conn-1" 1 '{}'
+assert_eq "manifest.json is still valid JSON when the pg-overrides query answers garbage" \
+  "1" "$(jq -e . "$MDIR3/manifest.json" >/dev/null 2>&1 && echo 1 || echo 0)"
+assert_contains "the garbage is recorded as an error field, not silently dropped" \
+  "$(jq -r '.environment.postgres.nonDefaultSettings.error' "$MDIR3/manifest.json")" "non-JSON"
+rm -rf "$MDIR3"
+FAKE_PG[pg_overrides]=""
+
+echo "--- reassert_volatile_guards (#2932) ---"
+# Neither volatile guard was ever declared by this "scenario" - a no-op,
+# even though the live environment would fail either check outright. This is
+# F5's own shape: read-only, never calls guard_runner_state at all, and
+# reassert must not invent a posture for it.
+GUARD_RUNNER_STATE_EXPECTED=""
+GUARD_SCHEDULER_OFF_ACTIVE=0
+WORKER_CONTAINERS="reassert-worker"
+FAKE_ENV["reassert-worker:WORKER_RUNNER_ENABLED"]="true"
+FAKE_ENV["reassert-worker:OL_SCHEDULER_ENABLED"]="true"
+assert_ok "neither volatile guard declared -> reassert is a no-op" reassert_volatile_guards
+
+# guard_runner_state disabled was declared and the runner is STILL disabled
+# -> reassert re-verifies and passes silently.
+FAKE_ENV["reassert-worker:WORKER_RUNNER_ENABLED"]="false"
+guard_runner_state disabled
+assert_ok "runner still disabled at the next window -> reassert passes" reassert_volatile_guards
+
+# THE CASE #2932 IS ABOUT: a peer (or an operator, or a force-recreate)
+# flips the runner BETWEEN windows. guard_runner_state disabled passed once,
+# at pre-flight; the runner is enabled by the time a later window opens.
+# reassert must catch this and abort - never record the stale "disabled" as
+# though it still held.
+FAKE_ENV["reassert-worker:WORKER_RUNNER_ENABLED"]="true"
+assert_dies "runner flipped enabled after guard_runner_state disabled passed -> reassert dies" reassert_volatile_guards
+
+# Same shape for the scheduler, independently of the runner.
+GUARD_RUNNER_STATE_EXPECTED=""
+FAKE_ENV["reassert-worker:WORKER_RUNNER_ENABLED"]="false"
+guard_runner_state disabled
+FAKE_ENV["reassert-worker:OL_SCHEDULER_ENABLED"]="false"
+guard_scheduler_off
+assert_ok "scheduler still off at the next window -> reassert passes" reassert_volatile_guards
+FAKE_ENV["reassert-worker:OL_SCHEDULER_ENABLED"]="true"
+assert_dies "scheduler flipped on after guard_scheduler_off passed -> reassert dies" reassert_volatile_guards
+
+GUARD_RUNNER_STATE_EXPECTED=""
+GUARD_SCHEDULER_OFF_ACTIVE=0
+WORKER_CONTAINERS="lab-worker"
+
+echo "--- window_start re-asserts before any side effect (#2932) ---"
+# window_start must die on the identical flip, and must die BEFORE
+# manifest_write/sampler_start ever run - proven by asserting no
+# manifest.json was written on the aborted call (the AC's own wording: "a
+# mid-run change aborts the run rather than being recorded as the
+# start-of-script value").
+WORKER_CONTAINERS="reassert-worker"
+FAKE_ENV["reassert-worker:WORKER_RUNNER_ENABLED"]="false"
+guard_runner_state disabled
+FAKE_ENV["reassert-worker:WORKER_RUNNER_ENABLED"]="true"
+WSDIR="$(mktemp -d)"
+SETTLE_SECS=0
+assert_dies "window_start dies when a volatile guard flips between windows" \
+  window_start "$WSDIR" test-scenario "'conn-1'" 1 '{}'
+assert_eq "no manifest.json was written on the aborted window_start" \
+  "0" "$([ -f "$WSDIR/manifest.json" ] && echo 1 || echo 0)"
+rm -rf "$WSDIR"
+GUARD_RUNNER_STATE_EXPECTED=""
+GUARD_SCHEDULER_OFF_ACTIVE=0
+WORKER_CONTAINERS="lab-worker"
 
 # ===========================================================================
 # agreement-rule arithmetic
