@@ -4,7 +4,7 @@
  * Covers the four async UX states plus the security-critical behaviours:
  * the raw token is revealed exactly once and never re-rendered afterwards.
  */
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, waitForElementToBeRemoved } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -54,6 +54,36 @@ describe('McpTokensPanel', () => {
     });
 
     expect(await screen.findByText('No MCP tokens')).toBeInTheDocument();
+  });
+
+  it('should not crash when the list response is a shapeless envelope instead of an array', async () => {
+    // A degraded response (a 500 handled into an empty object, a partial
+    // payload) can arrive as a successful query whose `data` is truthy but
+    // not actually an array — `Array.isArray` guards that.
+    const apiClient = createMockApiClient({
+      mcpTokens: {
+        list: vi.fn().mockResolvedValue({ data: [], total: 0 } as unknown as (typeof TOKEN)[]),
+      },
+    });
+
+    renderWithProviders(<McpTokensPanel />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    // Wait for the loading state to actually APPEAR first, then disappear —
+    // a bare `queryByText(...).not.toBeInTheDocument()` with no prior
+    // `findBy` can pass trivially on the pre-fetch render, before the mocked
+    // promise even resolves, proving nothing about the crash this guards.
+    await screen.findByText('Loading tokens');
+    await waitForElementToBeRemoved(() => screen.queryByText('Loading tokens'));
+    // Asserted immediately after the removal settles: an uncaught render
+    // exception with no error boundary unmounts the WHOLE tree, so this
+    // sibling heading disappearing too is what tells a crash apart from a
+    // successful settle where only the loading state cleared.
+    expect(screen.getByRole('heading', { name: 'New MCP token' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'MCP tokens' })).toBeInTheDocument();
+    expect(screen.queryByText('Claude Desktop')).not.toBeInTheDocument();
   });
 
   it('should render an error state when the list fails', async () => {

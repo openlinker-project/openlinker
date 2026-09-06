@@ -58,7 +58,7 @@ export function AiProviderSettingsPage(): ReactElement {
             </Button>
           }
         />
-      ) : query.data ? (
+      ) : query.data && Array.isArray(query.data.providers) ? (
         <>
           {!hasAnyKeyConfigured(query.data.providers) ? (
             <Alert tone="warning" title="No AI provider configured">
@@ -69,6 +69,22 @@ export function AiProviderSettingsPage(): ReactElement {
           ) : null}
           <AiProviderTable view={query.data} />
         </>
+      ) : query.data ? (
+        // A degraded response (a 500 handled into an empty object, a
+        // partial payload) can arrive as a successful query whose `data`
+        // is truthy but `providers` is missing — this is one indivisible
+        // answer (which providers exist and which is active), so an
+        // unreadable envelope is reported as unreadable rather than
+        // rendered with the list silently empty.
+        <ErrorState
+          title="Unable to load provider settings"
+          message="The response did not carry the provider list this page needs. Try again in a moment."
+          action={
+            <Button tone="secondary" onClick={() => void query.refetch()}>
+              Retry
+            </Button>
+          }
+        />
       ) : null}
     </PageLayout>
   );

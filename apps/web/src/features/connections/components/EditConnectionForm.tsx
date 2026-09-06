@@ -382,6 +382,12 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
   const demoMode = useDemoMode();
   const write = useWriteAccess('connections:write', demoMode);
   const [showRawJson, setShowRawJson] = useState(false);
+  // A degraded response (a 500 handled into an empty object, a partial
+  // payload) can arrive as a successful query whose `data` is truthy but
+  // `config` is missing — every read below goes through this normalized
+  // local rather than `connection.config` directly.
+  const config = connection.config ?? {};
+  const enabledCapabilities = connection.enabledCapabilities ?? [];
   const plugin = usePlatform(connection.platformType);
   // #1330 — the platform's non-render structured-config half: Zod schema
   // fragment, read-side hydration, write-side assembly. Memoized on the plugin
@@ -396,68 +402,68 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
   const form = useForm<EditConnectionFormValues, undefined, EditConnectionFormSubmission>({
     defaultValues: {
       name: connection.name,
-      baseUrl: readConfigString(connection.config, 'baseUrl'),
-      siteUrl: readConfigString(connection.config, 'siteUrl'),
-      shopId: readConfigString(connection.config, 'shopId'),
-      storefrontBaseUrl: readConfigString(connection.config, 'storefrontBaseUrl'),
+      baseUrl: readConfigString(config, 'baseUrl'),
+      siteUrl: readConfigString(config, 'siteUrl'),
+      shopId: readConfigString(config, 'shopId'),
+      storefrontBaseUrl: readConfigString(config, 'storefrontBaseUrl'),
       // #168 — pre-fill OL callback URL via the platform plugin when the
       // connection has none yet. Browser-context value, not server-trusted; the
       // BE doesn't derive this from request headers (host-header injection risk),
       // so the FE owns the convenience default. Operator can override for dev
       // (e.g. http://host.docker.internal:3000) by editing the field.
       openlinkerCallbackBaseUrl:
-        readConfigString(connection.config, 'openlinkerCallbackBaseUrl') ||
+        readConfigString(config, 'openlinkerCallbackBaseUrl') ||
         plugin?.getCallbackUrlDefault?.() ||
         '',
       // Erli's own callback-URL config key (#1454 follow-up) — same
       // pre-fill convenience as PrestaShop's `openlinkerCallbackBaseUrl`.
       callbackBaseUrl:
-        readConfigString(connection.config, 'callbackBaseUrl') ||
+        readConfigString(config, 'callbackBaseUrl') ||
         plugin?.getCallbackUrlDefault?.() ||
         '',
-      masterCatalogConnectionId: readConfigString(connection.config, 'masterCatalogConnectionId'),
+      masterCatalogConnectionId: readConfigString(config, 'masterCatalogConnectionId'),
       // PS `defaultCarrierId` is persisted as a number; the form keeps it
       // as a string so the same `<Select>` primitive serves both this
       // field and the per-method mapping dropdown (#517).
       defaultCarrierId:
-        typeof connection.config.defaultCarrierId === 'number'
-          ? String(connection.config.defaultCarrierId)
+        typeof config.defaultCarrierId === 'number'
+          ? String(config.defaultCarrierId)
           : '',
       // WC `inventory.unmanagedStockQuantity` is persisted as a number nested
       // under `config.inventory`; the form keeps it as a string (#969 §7.3).
-      unmanagedStockQuantity: readUnmanagedStockQuantity(connection.config),
+      unmanagedStockQuantity: readUnmanagedStockQuantity(config),
       inpostPsModuleType:
-        connection.config.inpostPsModuleType === 'official_inpost' ? 'official_inpost' : '',
-      configText: JSON.stringify(connection.config, null, 2),
+        config.inpostPsModuleType === 'official_inpost' ? 'official_inpost' : '',
+      configText: JSON.stringify(config, null, 2),
       adapterKey: connection.adapterKey ?? '',
-      sellerDefaults: readSellerDefaults(connection.config),
+      sellerDefaults: readSellerDefaults(config),
       // #759 — symmetric read-side hydration for the Subiekt fields, or an
       // existing connection renders empty and an unrelated save blanks the
       // persisted state (reverting the live getInvoiceTriggerModel consumer to 'manual').
-      subiektBridgeUrl: readConfigString(connection.config, 'subiektBridgeUrl'),
-      subiektTriggerModel: readTriggerModel(connection.config),
-      subiektCapabilities: readSubiektCapabilities(connection.config),
+      subiektBridgeUrl: readConfigString(config, 'subiektBridgeUrl'),
+      subiektTriggerModel: readTriggerModel(config),
+      subiektCapabilities: readSubiektCapabilities(config),
       // InPost structured fields (#771) — read from `config.{environment,
       // organizationId,senderAddress}`. Symmetric read-side hydration so an
       // unrelated save doesn't blank the persisted InPost config.
-      inpostEnvironment: readInpostEnvironment(connection.config),
-      inpostOrganizationId: readConfigString(connection.config, 'organizationId'),
-      inpostSenderAddress: readInpostSenderAddress(connection.config),
+      inpostEnvironment: readInpostEnvironment(config),
+      inpostOrganizationId: readConfigString(config, 'organizationId'),
+      inpostSenderAddress: readInpostSenderAddress(config),
       // Infakt default payment method (#1303) — `config.defaultPaymentMethod`.
-      infaktPaymentMethod: readInfaktPaymentMethod(connection.config),
-      infaktBankAccount: readInfaktBankAccount(connection.config),
+      infaktPaymentMethod: readInfaktPaymentMethod(config),
+      infaktBankAccount: readInfaktBankAccount(config),
       // Infakt environment (#2174) — `config.environment`. Symmetric read-side
       // hydration so an unrelated save doesn't blank the persisted choice.
-      infaktEnvironment: readInfaktEnvironment(connection.config),
+      infaktEnvironment: readInfaktEnvironment(config),
       // Per-connection outbound rate limit (#1810) — platform-neutral.
-      rateLimit: readRateLimit(connection.config),
+      rateLimit: readRateLimit(config),
       // Per-connection stock publish policy + pricing rule (#2610) — platform-neutral.
-      stockPolicy: readStockPolicy(connection.config),
-      pricingRule: readPricingRuleForm(connection.config),
+      stockPolicy: readStockPolicy(config),
+      pricingRule: readPricingRuleForm(config),
       // Plugin-owned structured fields (#1330) — the platform's contribution
       // hydrates its own field slice (e.g. KSeF seller/payment) so an
       // unrelated save doesn't blank the persisted platform config.
-      ...(connectionConfig?.readConfigToForm(connection.config) ?? {}),
+      ...(connectionConfig?.readConfigToForm(config) ?? {}),
     },
     resolver: zodResolver(resolverSchema),
   });
@@ -478,9 +484,9 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
   // master-catalog product data (name/description/images/price) through
   // `masterCatalogConnectionId` — `OfferBuilderService` and
   // `ProductPublishBuilderService` share the same requirement.
-  const isMarketplace = connection.enabledCapabilities.includes('OfferManager');
+  const isMarketplace = enabledCapabilities.includes('OfferManager');
   const needsMasterCatalog =
-    isMarketplace || connection.enabledCapabilities.includes('ProductPublisher');
+    isMarketplace || enabledCapabilities.includes('ProductPublisher');
   const hasStructuredInputs = StructuredSection !== undefined || needsMasterCatalog;
 
   // Tracks whether the raw JSON currently parses. When it doesn't, we lock the
@@ -497,7 +503,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
   const localAutoSelectId = candidates.length === 1 ? candidates[0].id : undefined;
 
   const masterCatalogValue = form.watch('masterCatalogConnectionId') ?? '';
-  const storedMasterRaw = connection.config.masterCatalogConnectionId;
+  const storedMasterRaw = config.masterCatalogConnectionId;
   const hasStoredMaster = typeof storedMasterRaw === 'string';
   const isStaleMaster =
     masterCatalogValue !== '' && !candidates.some((c) => c.id === masterCatalogValue);
@@ -798,8 +804,8 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
           issue a sales document (invoice OR fiscal receipt) shows its routing
           status here, read-only. Editing lives ONLY at Settings → Sales
           documents — see `SalesDocumentStatusSection`'s doc comment for why. */}
-      {connection.enabledCapabilities.includes('Invoicing') ||
-      connection.enabledCapabilities.includes('Fiscalization') ? (
+      {enabledCapabilities.includes('Invoicing') ||
+      enabledCapabilities.includes('Fiscalization') ? (
         <SalesDocumentStatusSection
           connection={connection}
           allConnections={connectionsQuery.data ?? []}

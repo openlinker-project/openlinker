@@ -92,8 +92,14 @@ export function CreateConnectionForm(): ReactElement {
   // Prefer the platform DEFAULT, because that is what the backend resolves when
   // the form omits `adapterKey` (`getDefaultAdapterKey`). First-match-wins would
   // read a non-default sibling if a platform ever ships two adapters.
-  const platformAdapters =
-    adaptersQuery.data?.filter((adapter) => adapter.platformType === watchedPlatformType) ?? [];
+  //
+  // A degraded response (a 500 handled into an empty object, a partial
+  // payload) can arrive as a successful query whose `data` is truthy but not
+  // actually an array — `?.` alone only guards `undefined`, not a truthy
+  // non-array value, and `.filter` on that throws.
+  const platformAdapters = Array.isArray(adaptersQuery.data)
+    ? adaptersQuery.data.filter((adapter) => adapter.platformType === watchedPlatformType)
+    : [];
   const selectedAdapter =
     platformAdapters.find((adapter) => adapter.isDefault === true) ?? platformAdapters[0];
   const requiresCredentials = selectedAdapter?.requiresCredentials !== false;

@@ -26,6 +26,23 @@ describe('CreateConnectionForm', () => {
     captureDemoEvent.mockClear();
   });
 
+  it('does not crash when GET /adapters returns a shapeless envelope instead of an array', async () => {
+    // A degraded response (a 500 handled into an empty object, a partial
+    // payload) can arrive as a successful query whose `data` is truthy but
+    // not actually an array — `adaptersQuery.data?.filter` alone only
+    // guards `undefined`, not a truthy non-array value.
+    const list = vi.fn().mockResolvedValue({ data: [], total: 0 });
+    const apiClient = createMockApiClient({ adapters: { list } });
+
+    renderWithProviders(<CreateConnectionForm />, { apiClient });
+
+    await waitFor(() => {
+      expect(list).toHaveBeenCalled();
+    });
+    // The form must still be there — a crash would unmount the whole tree.
+    expect(screen.getByLabelText('Config JSON')).toBeInTheDocument();
+  });
+
   it('shows validation feedback for invalid JSON configuration', async () => {
     const view = renderWithProviders(<CreateConnectionForm />);
 

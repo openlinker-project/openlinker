@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders, sampleConnection } from '../../test/test-utils';
 import { ConnectionCategoryMappingsPage } from './connection-category-mappings-page';
 import type { Connection } from '../../features/connections/api/connections.types';
+import type { CategoryMapping } from '../../features/mappings/api/mappings.types';
 import type * as DemoModule from '../../features/demo';
 
 const captureDemoEvent = vi.fn();
@@ -61,6 +62,27 @@ describe('ConnectionCategoryMappingsPage', () => {
       mappedCountBucket: '0',
     });
     expect(captureDemoEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not crash when the category-mappings response is a shapeless envelope instead of an array', async () => {
+    // A degraded response (a 500 handled into an empty object, a partial
+    // payload) can arrive as a successful query whose `data` is truthy but
+    // not actually an array.
+    const apiClient = createMockApiClient({
+      connections: {
+        list: vi.fn().mockResolvedValue([sampleConnection, ALLEGRO_CONNECTION]),
+      },
+      mappings: {
+        getCategoryMappings: vi
+          .fn()
+          .mockResolvedValue({ data: [], total: 0 } as unknown as CategoryMapping[]),
+        getPrestashopCategories: vi.fn().mockResolvedValue(PS_CATEGORIES),
+      },
+    });
+
+    renderWithProviders(<ConnectionCategoryMappingsPage />, { apiClient });
+
+    expect(await screen.findByText('Men')).toBeInTheDocument();
   });
 
   it('captures demo_category_source_selected when the marketplace select changes (#1789)', async () => {

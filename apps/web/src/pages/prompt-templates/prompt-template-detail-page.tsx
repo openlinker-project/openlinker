@@ -55,6 +55,33 @@ function channelLabel(channel: string | null): string {
   return channel === null ? 'master' : channel;
 }
 
+/**
+ * A degraded response (a 500 handled into an empty object, a partial
+ * payload, a field dropped by version skew) can arrive as a successful
+ * query whose `data` is truthy but not shaped like `PromptTemplate` — every
+ * field below is read unguarded throughout this page (including
+ * `variables`, seeded into local state and then `.map`-ped), so a response
+ * that did not actually carry them would crash rather than render. This is
+ * a whole-envelope check: the template is one indivisible answer, and a
+ * page that "renders" with some of it silently missing would let an
+ * operator edit and save a template built from placeholder blanks.
+ */
+function isPromptTemplate(data: unknown): data is PromptTemplate {
+  if (typeof data !== 'object' || data === null) return false;
+  const candidate = data as Partial<PromptTemplate>;
+  return (
+    typeof candidate.id === 'string' &&
+    typeof candidate.key === 'string' &&
+    typeof candidate.version === 'number' &&
+    typeof candidate.systemPrompt === 'string' &&
+    typeof candidate.userPromptTemplate === 'string' &&
+    Array.isArray(candidate.variables) &&
+    typeof candidate.state === 'string' &&
+    typeof candidate.createdAt === 'string' &&
+    typeof candidate.updatedAt === 'string'
+  );
+}
+
 export function PromptTemplateDetailPage(): ReactElement {
   const { id } = useParams<{ id: string }>();
   const { session } = useSession();
@@ -63,7 +90,8 @@ export function PromptTemplateDetailPage(): ReactElement {
   const isMobile = useMediaQuery('(max-width: 1023.98px)');
 
   const detailQuery = usePromptTemplateQuery(id);
-  const template = detailQuery.data;
+  const template = isPromptTemplate(detailQuery.data) ? detailQuery.data : undefined;
+  const isUnreadable = !detailQuery.isLoading && !detailQuery.error && detailQuery.data !== undefined && template === undefined;
   const versionsQuery = usePromptTemplateVersionsQuery(template?.key, template?.channel ?? null);
 
   const updateMutation = useUpdatePromptTemplateDraftMutation();
@@ -200,6 +228,22 @@ export function PromptTemplateDetailPage(): ReactElement {
         <ErrorState
           title="Unable to load prompt template"
           message={detailQuery.error instanceof Error ? detailQuery.error.message : 'Unknown error'}
+          action={
+            <Button tone="secondary" onClick={() => void detailQuery.refetch()}>
+              Retry
+            </Button>
+          }
+        />
+      </PageLayout>
+    );
+  }
+
+  if (isUnreadable) {
+    return (
+      <PageLayout eyebrow="Settings" title="Prompt template">
+        <ErrorState
+          title="Unable to load prompt template"
+          message="The response did not carry the fields this page needs. Try again in a moment."
           action={
             <Button tone="secondary" onClick={() => void detailQuery.refetch()}>
               Retry

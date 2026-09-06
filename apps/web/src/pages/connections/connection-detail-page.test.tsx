@@ -324,6 +324,29 @@ describe('ConnectionDetailPage', () => {
       expect(await screen.findByText('Product catalog not linked')).toBeInTheDocument();
       expect(screen.queryByText('Product catalog auto-linked')).toBeNull();
     });
+
+    it('does not crash when the connection response has no `enabledCapabilities` or `config`', async () => {
+      // A degraded response (a 500 handled into an empty object, a partial
+      // payload) can arrive as a successful query whose `data` is truthy but
+      // does not carry `enabledCapabilities`/`config` at all.
+      const degraded = { id: ALLEGRO_UUID, name: 'Degraded connection', platformType: 'allegro' };
+      const apiClient = createMockApiClient({
+        connections: {
+          getById: vi.fn().mockResolvedValue(degraded as unknown as Connection),
+          list: vi.fn().mockResolvedValue([]),
+        },
+      });
+      renderWithProviders(
+        <Routes>
+          <Route path="/connections/:connectionId" element={<ConnectionDetailPage />} />
+        </Routes>,
+        { apiClient, route: `/connections/${ALLEGRO_UUID}` },
+      );
+
+      expect(await screen.findByRole('heading', { name: 'Overview' })).toBeInTheDocument();
+      expect(screen.queryByText('Product catalog auto-linked')).toBeNull();
+      expect(screen.queryByText('Product catalog not linked')).toBeNull();
+    });
   });
 
   describe('Health tab access for a demo read-only viewer (#1614)', () => {

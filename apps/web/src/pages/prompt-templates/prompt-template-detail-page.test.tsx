@@ -86,6 +86,27 @@ describe('PromptTemplateDetailPage', () => {
     expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
   });
 
+  it('shows an error, not a crash, when the response has no `variables` array', async () => {
+    // A degraded response (a 500 handled into an empty object, a partial
+    // payload) can arrive as a successful query whose `data` is truthy but
+    // does not carry the fields this page seeds into local state (in
+    // particular `variables`, later `.map`-ped by `collectUndeclared`).
+    renderPage({
+      promptTemplates: {
+        get: vi.fn().mockResolvedValue({
+          id: 'tmpl-1',
+          key: 'offer.description.suggest',
+        } as unknown as PromptTemplate),
+      },
+    });
+
+    expect(
+      await screen.findByText(
+        'The response did not carry the fields this page needs. Try again in a moment.',
+      ),
+    ).toBeInTheDocument();
+  });
+
   it('shows the state-appropriate actions for a draft', async () => {
     renderPage({
       promptTemplates: {

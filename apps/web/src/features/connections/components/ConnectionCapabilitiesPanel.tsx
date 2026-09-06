@@ -51,8 +51,11 @@ export function ConnectionCapabilitiesPanel({
   // also has a non-core capability enabled (e.g. a plugin-registered
   // ShippingProviderManager) silently drops that capability from the saved
   // list. Tracked under the same #576 follow-up.
-  const supported = connection.supportedCapabilities.filter(isCoreCapability);
-  const enabled = new Set(connection.enabledCapabilities.filter(isCoreCapability));
+  // A degraded response (a 500 handled into an empty object, a partial
+  // payload) can arrive as a successful query whose `data` is truthy but
+  // these arrays are missing — treat that as "none known" rather than crash.
+  const supported = (connection.supportedCapabilities ?? []).filter(isCoreCapability);
+  const enabled = new Set((connection.enabledCapabilities ?? []).filter(isCoreCapability));
 
   // Deliberately keyed on SUPPORTED, not ENABLED (#1949). MCP tool registration
   // reads `enabledCapabilities`, so gating the hint on that would make it vanish

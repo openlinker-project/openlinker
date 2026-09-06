@@ -134,14 +134,19 @@ function ProductCatalogLinkBanner({
   isLoading,
   hasError,
 }: ProductCatalogLinkBannerProps): ReactElement | null {
+  // A degraded response (a 500 handled into an empty object, a partial
+  // payload) can arrive as a successful query whose `data` is truthy but
+  // `enabledCapabilities` is missing — treat that as "no capabilities
+  // known" rather than crash.
+  const enabledCapabilities = connection.enabledCapabilities ?? [];
   if (
-    !connection.enabledCapabilities.includes('OfferManager') &&
-    !connection.enabledCapabilities.includes('ProductPublisher')
+    !enabledCapabilities.includes('OfferManager') &&
+    !enabledCapabilities.includes('ProductPublisher')
   ) {
     return null;
   }
 
-  const rawMaster = connection.config.masterCatalogConnectionId;
+  const rawMaster = connection.config?.masterCatalogConnectionId;
   const explicitMaster = typeof rawMaster === 'string' ? rawMaster : null;
   const editHref = `/connections/${connection.id}/edit`;
 
@@ -226,7 +231,12 @@ export function ConnectionDetailPage(): ReactElement {
       eyebrow="Integration detail"
       title={
         connection ? (
-          <EntityLabel id={connection.id} name={connection.name} />
+          // A degraded response (a 500 handled into an empty object, a
+          // partial payload) can arrive as a successful query whose `data`
+          // is truthy but `id` is missing — fall back to the route's own
+          // `connectionId`, the same value a well-formed response echoes
+          // back, rather than pass `EntityLabel` an id it cannot shorten.
+          <EntityLabel id={connection.id || connectionId} name={connection.name} />
         ) : (
           `Connection ${connectionId}`
         )
@@ -242,7 +252,7 @@ export function ConnectionDetailPage(): ReactElement {
             <Link className="button button--secondary" to={`/connections/${connectionId}/mappings`}>
               Mappings
             </Link>
-            {connection.enabledCapabilities.includes('ProductMaster') ? (
+            {(connection.enabledCapabilities ?? []).includes('ProductMaster') ? (
               <Link className="button button--secondary" to={`/connections/${connectionId}/mappings/categories`}>
                 Category Mappings
               </Link>
@@ -349,7 +359,7 @@ export function ConnectionDetailPage(): ReactElement {
           <TabsContent value="health">
             <ConnectionDiagnosticsPanel connectionId={connection.id} />
             <ConnectionSyncStatusPanel connectionId={connection.id} />
-            {connection.enabledCapabilities.includes('ProductMaster') ? (
+            {(connection.enabledCapabilities ?? []).includes('ProductMaster') ? (
               <CatalogTrustPanel connectionId={connection.id} />
             ) : null}
             {/* #2407 — install-wide precondition, rendered here because this is

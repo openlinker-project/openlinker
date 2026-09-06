@@ -150,4 +150,21 @@ describe('SalesDocumentCountryIndex', () => {
 
     expect(await screen.findByText(/No countries configured yet/i)).toBeInTheDocument();
   });
+
+  it('should degrade to the empty state, not crash, when the countries response is a shapeless envelope instead of an array', async () => {
+    // A degraded response (a 500 handled into an empty object, a partial
+    // payload) can arrive as a successful query whose `data` is truthy but
+    // not actually an array.
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([]) },
+      salesDocumentRules: {
+        listConfiguredCountries: vi
+          .fn()
+          .mockResolvedValue({ data: [], total: 0 } as unknown as SalesDocumentCountrySummary[]),
+      },
+    });
+    renderWithProviders(<SalesDocumentCountryIndex onSelectCountry={vi.fn()} />, { apiClient });
+
+    expect(await screen.findByText(/No countries configured yet/i)).toBeInTheDocument();
+  });
 });

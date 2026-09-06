@@ -18,14 +18,23 @@
  * platform type to resolve meaningfully and are not part of the generic
  * authenticated surface this check establishes coverage over.
  *
- * `REGRESSION_GUARD_ROUTES` are the two routes #2926 fixed
- * (`analytics-page.tsx`, `settings-page.tsx` and their tiles) — this script
- * exits non-zero if EITHER of them regresses to an error-boundary or a
- * thrown page error, so the fix stays fixed. Every other route is reported
- * but does NOT fail the process: the point of extending coverage to all of
- * them is to make the extent of the "unguarded `.length`/`.find`/`.filter`
- * read" class of bug visible, not to silently gate on fixing every one of
- * them in this change.
+ * `REGRESSION_GUARD_ROUTES` covers every route in `ROUTES` (widened from the
+ * original 2 — `/` and `/settings`, #2926 — once the remaining 14 crashing
+ * routes were fixed): this script exits non-zero if ANY of them regresses
+ * to an error-boundary or a thrown page error, so the fixed set stays
+ * fixed.
+ *
+ * Crash detection deliberately does NOT match on arbitrary "something went
+ * wrong"-shaped body text. An early version did, and it misclassified
+ * `/settings/who-decides` as crashed: that page's own `WhoDecidesPanel`
+ * validates its response and renders a genuine, designed `ErrorState`
+ * ("We could not load this page…") when the shape is unreadable — exactly
+ * the behaviour this check wants pages to have, not a bug. The one marker
+ * that reliably distinguishes a real unhandled render exception is React
+ * Router's own default `ErrorBoundary` heading, "Unexpected Application
+ * Error!" (verified against the shipped `react-router-dom` bundle) — no
+ * page-authored copy renders that exact string, so it is used instead of a
+ * broader regex.
  */
 import { chromium } from '@playwright/test';
 
@@ -71,7 +80,7 @@ const ROUTES = [
   '/dev/ui',
 ];
 
-const REGRESSION_GUARD_ROUTES = ['/', '/settings'];
+const REGRESSION_GUARD_ROUTES = ROUTES;
 
 async function main() {
   const browser = await chromium.launch();
@@ -98,9 +107,12 @@ async function main() {
     }
     await page.waitForTimeout(500);
     const bodyText = await page.locator('body').innerText();
-    const hasErrorBoundary = /something went wrong|unexpected error|application error/i.test(
-      bodyText,
-    );
+    // React Router's own default `ErrorBoundary` fallback title — the one
+    // marker that means an unhandled render exception, as opposed to a
+    // page's own designed `ErrorState` for an unreadable response (which
+    // uses its own copy, e.g. "We could not load this page…", and must not
+    // be misclassified as a crash — see the header comment).
+    const hasErrorBoundary = /unexpected application error!/i.test(bodyText);
     const crashed = hasErrorBoundary || pageErrors.length > 0;
     const title = await page.title();
     results.push({ route, crashed });
@@ -126,7 +138,7 @@ async function main() {
   const regressed = REGRESSION_GUARD_ROUTES.filter((route) => crashedRoutes.includes(route));
   if (regressed.length > 0) {
     console.error(
-      `\nREGRESSION: ${regressed.join(', ')} crashed against the degraded-data stub — #2926 fixed this.`,
+      `\nREGRESSION: ${regressed.join(', ')} crashed against the degraded-data stub.`,
     );
     process.exitCode = 1;
   }

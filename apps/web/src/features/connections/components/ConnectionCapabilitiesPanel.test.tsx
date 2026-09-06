@@ -25,6 +25,21 @@ describe('ConnectionCapabilitiesPanel', () => {
     expect(screen.getByText(/1 of 2 enabled/)).toBeInTheDocument();
   });
 
+  it('does not crash and renders zero-of-zero when `supportedCapabilities`/`enabledCapabilities` are missing', () => {
+    // A degraded response (a 500 handled into an empty object, a partial
+    // payload) can arrive as a successful query whose `data` is truthy but
+    // these arrays are missing entirely.
+    const degraded = { ...sampleConnection } as Partial<Connection>;
+    delete degraded.supportedCapabilities;
+    delete degraded.enabledCapabilities;
+
+    renderWithProviders(
+      <ConnectionCapabilitiesPanel connection={degraded as unknown as Connection} />,
+    );
+
+    expect(screen.getByText(/0 of 0 enabled/)).toBeInTheDocument();
+  });
+
   it('calls update mutation with new set when a capability is toggled', async () => {
     const update = vi.fn().mockResolvedValue({ ...sampleConnection });
     const apiClient = createMockApiClient({ connections: { update } });
