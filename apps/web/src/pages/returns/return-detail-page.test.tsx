@@ -9,6 +9,7 @@ import {
 } from '../../test/test-utils';
 import { ApiError } from '../../shared/api/api-error';
 import {
+  RETURN_ACTIVITY_COPY,
   RETURN_ORPHAN_BANNER_COPY,
   ReturnDetailUnreadableError,
   type ReturnDetail,
@@ -109,6 +110,7 @@ interface SetupOptions {
   receiveLine?: Mock;
   disposeLine?: Mock;
   getCorrectionProposal?: Mock;
+  listReturnEventsForReturn?: Mock;
   authenticated?: boolean;
 }
 
@@ -141,6 +143,8 @@ function setup(options: SetupOptions = {}): SetupResult {
       getCorrectionProposal:
         options.getCorrectionProposal ??
         vi.fn().mockResolvedValue({ outcome: 'no-invoice', proposal: null }),
+      listReturnEventsForReturn:
+        options.listReturnEventsForReturn ?? vi.fn().mockResolvedValue([]),
     },
     connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
   });
@@ -607,6 +611,103 @@ describe('ReturnDetailPage', () => {
       expect(
         screen.queryByRole('button', { name: 'Receive all as advised' }),
       ).not.toBeInTheDocument();
+    });
+  });
+
+  /**
+   * #2646 — the activity timeline. These assert MOUNTING (docs/lessons.md
+   * § "is this MOUNTED?"): a component test renders the component itself and
+   * can only prove a counterfactual. They are the reason the panel is reachable
+   * at all.
+   */
+  describe('the activity timeline (#2646)', () => {
+    it('should render the activity panel on the page, keyed on the RETURN', async () => {
+      const listReturnEventsForReturn = vi.fn().mockResolvedValue([
+        {
+          id: 'ev-1',
+          source: 'custody_act',
+          kind: 'receive',
+          occurredAt: '2026-01-02T10:00:00.000Z',
+          returnId: RETURN_ID,
+          externalReturnId: 'RET-1',
+          returnOrigin: 'source_ingested',
+          sourceConnectionName: 'Allegro Main',
+          actorUserId: null,
+          quantity: 2,
+          restockState: null,
+          disposition: null,
+          refundExecutedBy: null,
+          amount: null,
+          currency: null,
+        },
+      ]);
+
+      setup({ listReturnEventsForReturn });
+
+      expect(await screen.findByText('Return received')).toBeInTheDocument();
+      expect(listReturnEventsForReturn).toHaveBeenCalledWith(RETURN_ID);
+    });
+
+    it('should render the timeline for an ORPHAN return, which has no order', async () => {
+      // The whole reason this read is keyed on the return: an orphan has no
+      // `internalOrderId`, so the order-scoped read could never serve it.
+      const listReturnEventsForReturn = vi.fn().mockResolvedValue([
+        {
+          id: `${RETURN_ID}:matched`,
+          source: 'record_status',
+          kind: 'matched',
+          occurredAt: '2026-01-03T10:00:00.000Z',
+          returnId: RETURN_ID,
+          externalReturnId: 'RET-1',
+          returnOrigin: 'source_ingested',
+          sourceConnectionName: 'Allegro Main',
+          actorUserId: 'user-other',
+          quantity: null,
+          restockState: null,
+          disposition: null,
+          refundExecutedBy: null,
+          amount: null,
+          currency: null,
+        },
+      ]);
+
+      setup({
+        detail: makeDetail({ internalOrderId: null, bucket: 'orphan' }),
+        listReturnEventsForReturn,
+      });
+
+      // #2372's AC2: the orphan-match entry renders.
+      expect(await screen.findByText('Matched to an order')).toBeInTheDocument();
+      expect(listReturnEventsForReturn).toHaveBeenCalledWith(RETURN_ID);
+    });
+
+    it('should render a FAILED read as a failure, never as an empty history', async () => {
+      setup({
+        listReturnEventsForReturn: vi.fn().mockRejectedValue(new Error('unreadable')),
+      });
+
+      expect(await screen.findByText(RETURN_ACTIVITY_COPY.errorTitle)).toBeInTheDocument();
+      expect(screen.queryByText(RETURN_ACTIVITY_COPY.emptyTitle)).not.toBeInTheDocument();
+    });
+
+    it('should state a 403 as a permission fact, not as a fault', async () => {
+      // Reachable by design: the entries carry refund money, so the read is
+      // narrowed to the roles that own it.
+      setup({
+        listReturnEventsForReturn: vi
+          .fn()
+          .mockRejectedValue(new ApiError('Forbidden', 403, {})),
+      });
+
+      expect(await screen.findByText(RETURN_ACTIVITY_COPY.forbiddenTitle)).toBeInTheDocument();
+      expect(screen.queryByText(RETURN_ACTIVITY_COPY.errorTitle)).not.toBeInTheDocument();
+    });
+
+    it('should render a confirmed-empty history distinctly', async () => {
+      setup({ listReturnEventsForReturn: vi.fn().mockResolvedValue([]) });
+
+      expect(await screen.findByText(RETURN_ACTIVITY_COPY.emptyTitle)).toBeInTheDocument();
+      expect(screen.queryByText(RETURN_ACTIVITY_COPY.errorTitle)).not.toBeInTheDocument();
     });
   });
 });

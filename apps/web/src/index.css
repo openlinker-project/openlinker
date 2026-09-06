@@ -20122,6 +20122,7 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
    different rhythm from every other detail page. */
 .returns-detail__lines,
 .returns-detail__source,
+.returns-detail__activity,
 .returns-decline {
   display: grid;
   gap: var(--space-3);

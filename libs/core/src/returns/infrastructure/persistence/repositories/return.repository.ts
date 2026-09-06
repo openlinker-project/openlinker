@@ -96,6 +96,30 @@ import { ReturnLineNotFoundError } from '../../../domain/exceptions/return-line-
  * mechanism must not dictate the projection shape — see
  * `ReturnRecord.restockBlocked`.
  */
+/**
+ * One joined row of the timeline read — a `returns` header repeated once per
+ * act (or once with every `ev.*` null, for a return with no acts yet).
+ */
+interface ReturnTimelineRawRow {
+  returnId: string;
+  sourceConnectionId: string;
+  externalReturnId: string | null;
+  origin: string;
+  openedAt: Date | null;
+  authorizedAt: Date | null;
+  declinedAt: Date | null;
+  closedAt: Date | null;
+  matchedAt: Date | null;
+  matchedByUserId: string | null;
+  eventId: string | null;
+  kind: string | null;
+  quantity: number | null;
+  restockState: string | null;
+  disposition: string | null;
+  actorUserId: string | null;
+  occurredAt: Date | null;
+}
+
 interface ReturnRowAggregate {
   counters: ReturnStageCounters;
   restockBlocked: boolean;
@@ -1369,7 +1393,33 @@ export class ReturnRepository implements ReturnRepositoryPort {
    * silently drop an `addSelect` column, which `getMany` does.
    */
   async findTimelineEntriesForOrder(internalOrderId: string): Promise<ReturnTimelineEntriesForOrder> {
-    const rows = await this.returns
+    return ReturnRepository.projectTimelineRows(
+      await this.timelineRowsQuery()
+        .where('r."internalOrderId" = :internalOrderId', { internalOrderId })
+        .getRawMany<ReturnTimelineRawRow>()
+    );
+  }
+
+  /**
+   * See {@link ReturnRepositoryPort.findTimelineEntriesForReturn}.
+   *
+   * The SAME query and the SAME projection as the order-scoped read, differing
+   * only in the `WHERE` — which is what makes the two timelines one vocabulary
+   * rather than two that happen to agree today. Keying on `returnId` is also
+   * what makes it work for an ORPHAN, which by definition has no
+   * `internalOrderId` for the sibling read to match on.
+   */
+  async findTimelineEntriesForReturn(returnId: string): Promise<ReturnTimelineEntriesForOrder> {
+    return ReturnRepository.projectTimelineRows(
+      await this.timelineRowsQuery()
+        .where('r."id" = :returnId', { returnId })
+        .getRawMany<ReturnTimelineRawRow>()
+    );
+  }
+
+  /** The one row shape both timeline reads project from. */
+  private timelineRowsQuery(): SelectQueryBuilder<ReturnOrmEntity> {
+    return this.returns
       .createQueryBuilder('r')
       .leftJoin(ReturnLineEventOrmEntity, 'ev', 'ev."returnId" = r.id')
       .select([
@@ -1378,7 +1428,11 @@ export class ReturnRepository implements ReturnRepositoryPort {
         'r."externalReturnId" AS "externalReturnId"',
         'r."origin" AS "origin"',
         'r."openedAt" AS "openedAt"',
+        'r."authorizedAt" AS "authorizedAt"',
         'r."declinedAt" AS "declinedAt"',
+        'r."closedAt" AS "closedAt"',
+        'r."matchedAt" AS "matchedAt"',
+        'r."matchedByUserId" AS "matchedByUserId"',
         'ev."id" AS "eventId"',
         'ev."kind" AS "kind"',
         'ev."quantity" AS "quantity"',
@@ -1387,24 +1441,17 @@ export class ReturnRepository implements ReturnRepositoryPort {
         'ev."actorUserId" AS "actorUserId"',
         'ev."occurredAt" AS "occurredAt"',
       ])
-      .where('r."internalOrderId" = :internalOrderId', { internalOrderId })
-      .orderBy('ev."occurredAt"', 'ASC')
-      .getRawMany<{
-        returnId: string;
-        sourceConnectionId: string;
-        externalReturnId: string | null;
-        origin: string;
-        openedAt: Date | null;
-        declinedAt: Date | null;
-        eventId: string | null;
-        kind: string | null;
-        quantity: number | null;
-        restockState: string | null;
-        disposition: string | null;
-        actorUserId: string | null;
-        occurredAt: Date | null;
-      }>();
+      .orderBy('ev."occurredAt"', 'ASC');
+  }
 
+  /**
+   * Rows → entries. STATIC and shared by both reads (#2646): a second copy of
+   * this loop is how the order timeline and the return timeline would come to
+   * describe the same act in two vocabularies.
+   */
+  private static projectTimelineRows(
+    rows: ReturnTimelineRawRow[]
+  ): ReturnTimelineEntriesForOrder {
     const entries: ReturnTimelineEntry[] = [];
     const sourceConnectionIdByReturn = new Map<string, string>();
     const contexts = new Map<string, ReturnTimelineContext & { sourceConnectionId: string }>();
@@ -1428,9 +1475,23 @@ export class ReturnRepository implements ReturnRepositoryPort {
 
       if (!headersSeen.has(row.returnId)) {
         headersSeen.add(row.returnId);
-        for (const [kind, at] of [
-          ['opened', row.openedAt],
-          ['declined', row.declinedAt],
+        // Five header facts, each an INDEPENDENT nullable column — none excludes
+        // another (`docs/architecture-overview.md` § 22: "authorization is an
+        // ACTION, not a state"), so this emits every one that is set rather than
+        // picking a winner.
+        //
+        // `actorUserId` is per-kind. Most header columns carry NO actor —
+        // `opened` and `declined` are a SOURCE claim or nothing, never a person
+        // — but `matched` is an OPERATOR's act (#2372) and `returns` persists
+        // who performed it. The consumer keys on the actor's PRESENCE rather
+        // than on the kind, so a future actor-bearing column attributes itself
+        // correctly instead of being credited to the channel.
+        for (const [kind, at, actorUserId] of [
+          ['opened', row.openedAt, null],
+          ['authorized', row.authorizedAt, null],
+          ['declined', row.declinedAt, null],
+          ['matched', row.matchedAt, row.matchedByUserId],
+          ['closed', row.closedAt, null],
         ] as const) {
           if (at === null) continue;
           entries.push({
@@ -1442,9 +1503,7 @@ export class ReturnRepository implements ReturnRepositoryPort {
             externalReturnId: row.externalReturnId,
             returnOrigin: origin,
             sourceConnectionName: null,
-            // A header column carries no actor: `opened` and `declined` are a
-            // SOURCE claim or nothing, never a person.
-            actorUserId: null,
+            actorUserId,
             quantity: null,
             restockState: null,
             disposition: null,
