@@ -38,6 +38,8 @@ export type { OmsPluginDeps } from './oms.plugin';
 export { OMS_ADAPTER_KEY, OMS_BRAND, OMS_PLATFORM_TYPE } from './oms.constants';
 
 export { createOlFulfillmentRouter, OlFulfillmentRouter } from './routing/ol-fulfillment-router';
+export { createOmsFulfillmentRouterResolver } from './routing/oms-fulfillment-router.resolver';
+export type { OmsFulfillmentRouterResolverDeps } from './routing/oms-fulfillment-router.resolver';
 export type { OlFulfillmentRouterDeps } from './routing/ol-fulfillment-router';
 export { evaluateRouting } from './routing/evaluate-routing';
 export type { RoutingPipelineResult } from './routing/evaluate-routing';

@@ -70,3 +70,14 @@ export const FULFILLMENT_WORKLIST_SERVICE_TOKEN = Symbol('IFulfillmentWorklistSe
 
 /** Parcel verification at the pack bench (#2418). `FulfillmentVerificationService` binds here. */
 export const FULFILLMENT_VERIFICATION_SERVICE_TOKEN = Symbol('IFulfillmentVerificationService');
+
+/**
+ * {@link FulfillmentRouterResolverPort} — the ONE seam answering "is there a
+ * fulfilment router for this connection?" (#2408).
+ *
+ * Bound host-side, because the implementation lives in `@openlinker/oms` and
+ * `libs/core` may not import it. The injection is REQUIRED at both call sites,
+ * so a host that forgets the binding fails at boot rather than silently running
+ * router-less — see the port's header.
+ */
+export const FULFILLMENT_ROUTER_RESOLVER_TOKEN = Symbol('FulfillmentRouterResolverPort');

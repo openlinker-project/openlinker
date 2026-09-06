@@ -30,6 +30,8 @@ import { AmbiguousReservationPositionError } from '@openlinker/core/inventory';
 import type { IFulfillmentRoutingService } from '@openlinker/core/mappings';
 import type {
   FulfillmentBlockReason,
+  FulfillmentRouterPort,
+  FulfillmentRouterResolverPort,
   IRoutingCommitService,
   RoutingCommitOutcome,
 } from '@openlinker/core/fulfillment';
@@ -42,13 +44,15 @@ import type { OrderRecord } from '../../../domain/entities/order-record.entity';
 // reachable in a unit test; on every real installation it answers `null`, which
 // is why the production default below is `null` too and every pre-existing spec
 // keeps asserting the pass-through.
-jest.mock('../fulfillment-router-resolution', () => ({
-  resolveFulfillmentRouter: jest.fn().mockResolvedValue(null),
-}));
-import { resolveFulfillmentRouter } from '../fulfillment-router-resolution';
-const resolveRouterMock = resolveFulfillmentRouter as jest.MockedFunction<
-  typeof resolveFulfillmentRouter
->;
+// #2408 — the ONE router-resolution seam, now an injected port rather than a
+// module function. Mocked so the `selected` arm is reachable in a unit test; on
+// every installation that has not adopted OMS routing the real resolver answers
+// `null`, which is why the default below is `null` too and every pre-existing
+// spec keeps asserting the pass-through.
+const resolveRouterMock = jest.fn<Promise<FulfillmentRouterPort | null>, [string]>();
+const routerResolver: FulfillmentRouterResolverPort = {
+  resolve: resolveRouterMock,
+};
 
 describe('OrderIngestionService', () => {
   let service: OrderIngestionService;
@@ -83,6 +87,11 @@ describe('OrderIngestionService', () => {
   const cursorKey = 'allegro.orders.lastEventId';
 
   beforeEach(() => {
+    // The router-less default, restated here because the resolver is now an
+    // injected mock rather than a module mock carrying its own default.
+    resolveRouterMock.mockReset();
+    resolveRouterMock.mockResolvedValue(null);
+
     orderSource = {
       listOrderFeed: jest.fn(),
       getOrder: jest.fn(),
@@ -216,7 +225,8 @@ describe('OrderIngestionService', () => {
       reservationService,
       fulfillmentRouting,
       routingCommit,
-      connections as unknown as ConnectionPort
+      connections as unknown as ConnectionPort,
+      routerResolver
     );
   });
 

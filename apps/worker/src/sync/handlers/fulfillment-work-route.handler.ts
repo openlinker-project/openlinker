@@ -14,20 +14,20 @@
  * ADR-053's own rule — "order data enters as arguments" — and it is exactly the
  * shape #2399's `FulfillmentWorkDispatchHandler` established.
  *
- * ## There is no router to call yet, and that is the specified behaviour
+ * ## The router is resolved through a port; `null` is still the default
  *
  * `FulfillmentRouter` is deliberately absent from `CoreCapabilityValues` and
- * from every manifest (#2393/#2403 — A2 is `config-only`), and `@openlinker/oms`
- * ships `supportedCapabilities: []` with an empty dispatch table until
- * #2408/#2409 inject the first router. So the shared `resolveFulfillmentRouter`
- * answers `null` on every installation today and this handler completes as a
- * no-op. That seam is shared with #2396's ingestion intercept deliberately: two
- * copies would let one site route while the other mirrors, which is a double
- * shipment (see the function's own header).
+ * from every manifest (#2393/#2403 — A2 is `config-only`), so the router is
+ * never resolved through `getCapabilityAdapter`. It arrives instead through
+ * `FulfillmentRouterResolverPort` — the ONE seam, shared with #2396's ingestion
+ * intercept deliberately: two copies would let one site route while the other
+ * mirrors, which is a double shipment (see the port's own header).
  *
- * That is not unfinished work. ADR-054: *"with no router configured the layer is
- * a degenerate pass-through: no work objects, today's path byte-identical — the
- * property that survives the Wave-5 kill."*
+ * `null` remains the answer for any connection that is not an OMS one, and on
+ * every installation that has not adopted OMS routing this handler still
+ * completes as a no-op. That is not unfinished work. ADR-054: *"with no router
+ * configured the layer is a degenerate pass-through: no work objects, today's
+ * path byte-identical — the property that survives the Wave-5 kill."*
  *
  * ## Nothing enqueues this job type yet, and no outcome is surfaced yet
  *
@@ -66,8 +66,10 @@
 import { Inject, Injectable } from '@nestjs/common';
 
 import {
+  FULFILLMENT_ROUTER_RESOLVER_TOKEN,
   ROUTING_COMMIT_SERVICE_TOKEN,
   buildRoutingShipTo,
+  type FulfillmentRouterResolverPort,
   type IRoutingCommitService,
   type RoutingInputLine,
   type RoutingShipTo,
@@ -82,7 +84,6 @@ import {
   ORDER_RECORD_SERVICE_TOKEN,
   OrderSnapshotUnavailableError,
   orderFromReadySnapshot,
-  resolveFulfillmentRouter,
   type IOrderRecordService,
 } from '@openlinker/core/orders';
 import type {
@@ -107,7 +108,12 @@ export class FulfillmentWorkRouteHandler implements SyncJobHandler {
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
     private readonly orderRecords: IOrderRecordService,
     @Inject(SYNC_LOCK_TOKEN)
-    private readonly lock: SyncLockPort
+    private readonly lock: SyncLockPort,
+    // #2408: the ONE seam shared with #2396's ingestion intercept. REQUIRED, so
+    // a worker that lost its binding fails to boot rather than quietly routing
+    // nothing — see the port's header.
+    @Inject(FULFILLMENT_ROUTER_RESOLVER_TOKEN)
+    private readonly routerResolver: FulfillmentRouterResolverPort
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
@@ -130,7 +136,7 @@ export class FulfillmentWorkRouteHandler implements SyncJobHandler {
       return { outcome: 'ok' };
     }
 
-    const router = await resolveFulfillmentRouter(selection.holder);
+    const router = await this.routerResolver.resolve(selection.holder);
     if (router === null) {
       // The degenerate pass-through — see this file's header. Not an error.
       this.logger.log(

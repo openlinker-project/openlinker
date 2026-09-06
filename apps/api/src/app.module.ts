@@ -21,6 +21,7 @@ import { CustomersModule } from '@openlinker/core/customers';
 import { ReturnsModule } from '@openlinker/core/returns';
 import { AutomationModule } from '@openlinker/core/automation';
 import { FulfillmentModule } from '@openlinker/core/fulfillment';
+import { FulfillmentRouterBindingModule } from './fulfillment/fulfillment-router-binding.module';
 import { ContentModule } from '@openlinker/core/content';
 import { InvoicingModule } from '@openlinker/core/invoicing';
 import { FiscalizationModule } from '@openlinker/core/fiscalization';
@@ -89,6 +90,11 @@ import { RequestPriorityModule } from './http/request-priority.module';
     // is proven at boot, and so the tables are built by the integration harness
     // (autoLoadEntities + synchronize) rather than only by the migration.
     FulfillmentModule,
+    // #2408: binds FULFILLMENT_ROUTER_RESOLVER_TOKEN. @Global() so `OrdersModule`
+    // — where `OrderIngestionService` is declared — can see it. The injection is
+    // required, so removing this import fails the boot instead of silently
+    // switching routing off.
+    FulfillmentRouterBindingModule,
     CustomersModule, // Import CustomersModule for customer identity resolution and projections
     IntegrationsModule,
     WebhooksModule,
