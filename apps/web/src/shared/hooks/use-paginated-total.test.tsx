@@ -433,4 +433,38 @@ describe('usePaginatedTotal (#2945)', () => {
     expect(queryFn).toHaveBeenCalledTimes(1);
     expect(result.current.total).toBe(4321);
   });
+  it('keeps a KNOWN total when a BACKGROUND refetch fails', async () => {
+    // Query v5 keeps `state.data` across a failed background refetch and only
+    // flips the status to 'error', so reading `isSuccess` discards a good
+    // answer for the very same filters (#2957 review round 3, I2). With
+    // `refetchOnWindowFocus` on and `retry: false` - this app's defaults - one
+    // transient failure after an alt-tab turned "1,234" into
+    // "(count unavailable)" while the real number sat in the cache.
+    const queryFn = vi.fn().mockResolvedValueOnce(1234).mockRejectedValue(new Error('transient'));
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, gcTime: Infinity } },
+    });
+    const wrapper = ({ children }: PropsWithChildren): ReactElement => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+
+    const { result } = renderHook(
+      () => usePaginatedTotal({ queryKey: ['orders', 'count', {}], queryFn, selectTotal }),
+      { wrapper }
+    );
+
+    await flush();
+    expect(result.current.total).toBe(1234);
+    expect(result.current.state).toBe('known');
+
+    // The refetch fails; the answer in hand is still this key's answer.
+    await act(async () => {
+      await client.refetchQueries({ queryKey: ['orders', 'count', {}] });
+    });
+
+    await flush();
+    expect(queryFn).toHaveBeenCalledTimes(2);
+    expect(result.current.total).toBe(1234);
+    expect(result.current.state).toBe('known');
+  });
 });

@@ -632,7 +632,7 @@ describe('CustomersListPage', () => {
 
       expect(await screen.findByText('Jane Smith')).toBeInTheDocument();
       expect(screen.getByText('1+')).toBeInTheDocument();
-      expect(screen.queryByText('0')).not.toBeInTheDocument();
+      expect(screen.queryByText(/\bof 0\b/)).not.toBeInTheDocument();
     });
 
     it('keeps the placeholder when the count FAILS, and never renders it as 0', async () => {
@@ -649,7 +649,7 @@ describe('CustomersListPage', () => {
       expect(await screen.findByText('Jane Smith')).toBeInTheDocument();
       expect(await screen.findByTitle(/could not be loaded/i)).toBeInTheDocument();
       expect(screen.getByText('1+')).toBeInTheDocument();
-      expect(screen.queryByText('0')).not.toBeInTheDocument();
+      expect(screen.queryByText(/\bof 0\b/)).not.toBeInTheDocument();
     });
   });
 

@@ -701,10 +701,18 @@ describe('ProductsController', () => {
       const [listFilters] = productsService.listProductRows.mock.calls[0];
       const [countFilters] = productsService.countProducts.mock.calls[0];
       expect(countFilters).toEqual(listFilters);
-      // And the CSV really was parsed, not merely equal on both sides.
-      expect(countFilters.unlistedOnConnectionIds).toEqual([
-        '22222222-2222-4222-8222-222222222222',
-      ]);
+      // `toEqual` is SYMMETRIC, so it cannot see a mapper that breaks the same
+      // way on both sides (#2957 review round 3, S4) - `sourceConnectionId:
+      // undefined` would satisfy it. Every rename is therefore asserted
+      // positively too, the shape the orders sibling already uses.
+      expect(countFilters).toMatchObject({
+        sourceConnectionId: '11111111-1111-4111-8111-111111111111',
+        search: 'widget',
+        stock: 'low',
+        taxRateState: 'missing',
+        hideFullyStale: true,
+        unlistedOnConnectionIds: ['22222222-2222-4222-8222-222222222222'],
+      });
       expect(counted).toEqual({ total: 42 });
     });
 

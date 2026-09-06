@@ -94,7 +94,10 @@ import {
   ISalesDocumentViewService,
   SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
 } from '@openlinker/core/orders';
-import { INVOICE_SERVICE_TOKEN, IInvoiceService } from '@openlinker/core/invoicing';
+import {
+  INVOICE_SERVICE_TOKEN,
+  IInvoiceService,
+} from '@openlinker/core/invoicing';
 import { Logger } from '@openlinker/shared/logging';
 import type { InvoiceRecord } from '@openlinker/core/invoicing';
 import {

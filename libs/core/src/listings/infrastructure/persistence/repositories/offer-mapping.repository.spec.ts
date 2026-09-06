@@ -631,9 +631,9 @@ describe('OfferMappingRepository', () => {
         const qb = buildListQb([], 137);
         (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
         const order: string[] = [];
-        qb.getCount.mockImplementation(async () => {
+        qb.getCount.mockImplementation(() => {
           order.push('count');
-          return 137;
+          return Promise.resolve(137);
         });
         qb.limit.mockImplementation(() => {
           order.push('limit');

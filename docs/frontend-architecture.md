@@ -270,7 +270,7 @@ Some list totals are expensive. A paged read stops after its `LIMIT`; the `COUNT
 | Previous | no — `offset > 0` is enough |
 | Next | no — a full page means more may follow |
 | "of 1,234" | yes — shows the `N+` placeholder until then |
-| Page numbers, jump-to-last | yes — **not rendered by any list today**; a list that grows them must gate them on `total !== null` |
+| Page numbers, jump-to-last | yes — **not rendered by any list today**; a list that grows them must gate them on `total !== null`, NOT on this component being present |
 
 That table is `<ListPagination>`'s own, restated here rather than paraphrased —
 an earlier draft of this section listed "page numbers already reached" as

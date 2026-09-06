@@ -76,7 +76,7 @@ const PACKER_REACHABLE_ANY_ROLE_ROUTES: readonly string[] = [
   'ProductsController.getTaxRateJournal',
   'VariantsController.searchVariants',
 
-  // The `/count` siblings of the four reads above (#2943). Each answers ONE
+  // The `/count` siblings of the three LIST reads above (#2943). Each answers ONE
   // integer for the SAME filters as the list beside it, so it is a strictly
   // narrower disclosure than the route it accompanies: a packer who may see
   // the rows may certainly see how many there are. Listed rather than inferred

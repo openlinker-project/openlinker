@@ -37,7 +37,7 @@
  * @module features/listings/hooks
  */
 import { useMemo } from 'react';
-import { listingsQueryKeys } from '../api/listings.query-keys';
+import { listingCountFilters, listingsQueryKeys } from '../api/listings.query-keys';
 import type {
   ListingsFilters,
   OfferLifecycleCounts,
@@ -78,6 +78,13 @@ export interface ListingsTotalResult extends PaginatedTotalResult<OfferMappingCo
    * One `state` cannot answer two questions. This one answers "do I know the
    * buckets", and a caller rendering the tab bar must read it rather than
    * `state`.
+   *
+   * It is derived from the BUCKETS, not from `stage.state` (#2957 review round
+   * 3, I4). Those two coincide only while every tab carries a lifecycle: with
+   * no tab selected `selectTotal` falls back to the payload's own `total`, so a
+   * response carrying a readable total and NO buckets reports `'known'` -
+   * exactly the stuck tab bar this field exists to prevent, in the arm the
+   * first fix did not reach.
    */
   lifecycleCountsState: PaginatedTotalState;
 }
@@ -92,17 +99,16 @@ export function useListingsTotal(
   const inferred = isPlaceholderPage ? null : inferTotalFromLoadedPage(page);
   const { lifecycle } = filters;
 
-  // Everything the buckets depend on, and nothing else. `includeLifecycleCounts`
-  // is forced on: this hook's whole job is to answer both aggregates at once.
-  const countFilters: ListingsFilters = useMemo(
-    () => ({
-      connectionId: filters.connectionId,
-      internalId: filters.internalId,
-      search: filters.search,
-      includeLifecycleCounts: true,
-    }),
-    [filters.connectionId, filters.internalId, filters.search]
-  );
+  // Everything the buckets depend on, and nothing else - see
+  // `listingCountFilters`, which is the ONE definition and is shared with the
+  // query key so the two cannot narrow differently.
+  //
+  // Memoised on the whole `filters` object rather than on named fields: the
+  // debounce compares by VALUE through TanStack's `hashKey`, so this saves an
+  // allocation and is not a correctness device. Naming fields here was how the
+  // enumeration crept in (#2957 review round 3, I5) - a deps list is a second
+  // list to keep in step by hand.
+  const countFilters: ListingsFilters = useMemo(() => listingCountFilters(filters), [filters]);
 
   const stage = usePaginatedTotal<OfferMappingCount>({
     queryKey: listingsQueryKeys.count(countFilters),
@@ -124,12 +130,17 @@ export function useListingsTotal(
     enabled: page !== undefined,
   });
 
+  const buckets = stage.data?.lifecycleCounts ?? null;
+
   return {
     ...stage,
     total: inferred ?? stage.total,
     state: inferred !== null ? 'known' : stage.state,
-    lifecycleCounts: stage.data?.lifecycleCounts ?? null,
-    // Deliberately NOT the overridden `state` above - see the field's docblock.
-    lifecycleCountsState: stage.state,
+    lifecycleCounts: buckets,
+    // Deliberately NOT the overridden `state` above, and not `stage.state`
+    // either - see the field's docblock. A settled response with no buckets is
+    // `unavailable` however readable its total was.
+    lifecycleCountsState:
+      buckets !== null ? 'known' : stage.state === 'known' ? 'unavailable' : stage.state,
   };
 }

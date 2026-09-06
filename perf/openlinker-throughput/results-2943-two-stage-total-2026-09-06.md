@@ -16,12 +16,13 @@ What was kept from F5's shape, because it is what makes the numbers mean anythin
 
 **The control is in the run, not in the archive.** The unfiltered and filtered `GET /orders` routes are measured in the same window, on the same dataset, by the same binary - and they are byte-identical in behaviour to their pre-change selves, because `?withTotal=false` is opt-in and the combined path was left untouched. So the before/after here is an A/B inside one run rather than a comparison against a figure recorded on a different day on a differently-loaded machine. For a claim that is a *ratio between two routes*, that is stronger evidence than reproducing F5 would have been.
 
-**Setup.** A container built from this branch's HEAD (`ol-2943:api`, `--target production`) on the lab network, against the same `lab-postgres` / `lab-redis` as the stand. The stand's exclusivity lock (`perf:stand:exclusive`) was held for the run. The existing `lab-api` was left untouched and idle.
+**Setup.** A container built from `0c7c2e67f` - this branch's HEAD at the time of the run, i.e. the four stage commits with no review fixes on top (`ol-2943:api`, `--target production`) on the lab network, against the same `lab-postgres` / `lab-redis` as the stand. The stand's exclusivity lock (`perf:stand:exclusive`) was held for the run. The existing `lab-api` was left untouched and idle.
 
 **Honest caveats.**
 
 - The absolute latencies are higher than #2843's (`184 ms` here versus its `149 ms` for the same combined route). The machine carries three other Docker stacks; this is ambient load, and it is why the report leans on the in-run ratio rather than on cross-day absolutes.
 - One run, no repeats. Per-route `n` is 220-263, so the p50 and p95 are solid; the **p99s are two or three observations each and are indicative only** (at n=259 a p99 interpolates between the 2nd and 3rd worst samples, which is why `count_needs_attention` jumps 221 -> 390 between them). Nothing below rests on a p99 - the argument is entirely p50 ratios. An earlier draft cited an "n>=100 threshold"; there is no such convention in this repository and the claim is withdrawn.
+- The later review rounds changed no SQL on the measured path. Diffing `0c7c2e67f` against HEAD for the two repositories involved leaves, after comments are excluded, three line-wrapping changes and nothing else - no predicate, no clause, no method body. The figures therefore still describe the shipped read.
 - Only `/orders` was measured. `/listings`, `/products` and `/customers` are the same shape and are explicitly **unmeasured**, exactly as the epic states.
 
 ---
@@ -96,8 +97,8 @@ Execution Time: 175.814 ms
 
 **Step 0 - the dataset.** This reuses #2843's 1M-row `order_records` seed
 (`perfseed_ord_*`) and the `lab-postgres` / `lab-redis` / `lab-api` stand, both
-of which live on the **performance-programme branch**, not here. Listing
-`perf/openlinker-throughput/` on this branch returns three files:
+of which live on the **performance-programme branch**, not here. This branch
+carries no seed for them: `perf/openlinker-throughput/` holds only `README.md`,
 `bootstrap.sh` (which seeds PrestaShop/WooCommerce/Allegro-stub, not
 `order_records`), the driver below, and this report. Seed the stand from that
 branch first.

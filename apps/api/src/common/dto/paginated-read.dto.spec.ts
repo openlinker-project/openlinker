@@ -28,6 +28,7 @@ import { ListCustomersQueryDto } from '../../customers/http/dto/list-customers-q
 import { CountCustomersQueryDto } from '../../customers/http/dto/count-customers-query.dto';
 import { ListProductsQueryDto } from '../../products/http/dto/list-products-query.dto';
 import { CountProductsQueryDto } from '../../products/http/dto/count-products-query.dto';
+import { CountProductVariantsQueryDto } from '../../products/http/dto/count-product-variants-query.dto';
 import { ListOfferMappingsQueryDto } from '../../listings/http/dto/list-offer-mappings-query.dto';
 import { CountOfferMappingsQueryDto } from '../../listings/http/dto/count-offer-mappings-query.dto';
 
@@ -62,8 +63,9 @@ describe('PaginatedReadQueryDto - the ?withTotal opt-out (#2944)', () => {
     // `withTotal === false` test would never fire and the caller would silently
     // pay for the count it asked to skip.
     expect(instance.withTotal).toBe(false);
-    expect(plainToInstance(cls as new () => { withTotal?: boolean }, { withTotal: 'true' })
-      .withTotal).toBe(true);
+    expect(
+      plainToInstance(cls as new () => { withTotal?: boolean }, { withTotal: 'true' }).withTotal
+    ).toBe(true);
   });
 
   it.each([
@@ -102,6 +104,10 @@ describe('Count query DTOs are OmitType of their list DTO (#2944)', () => {
     ['orders', CountOrdersQueryDto],
     ['customers', CountCustomersQueryDto],
     ['products', CountProductsQueryDto],
+    // The one count DTO that serves TWO routes (`/products/:id/variants/count`
+    // and `/variants/search/count`), and the one this matrix omitted until
+    // #2957 review round 3.
+    ['product variants', CountProductVariantsQueryDto],
     ['listings', CountOfferMappingsQueryDto],
   ])('drops the withTotal opt-out on %s/count, inherited though it is', (_name, cls) => {
     // The property this most easily gets wrong: `withTotal` is declared on a

@@ -111,3 +111,24 @@ export function listingRowFilters(
   delete (rowFilters as Partial<ListingsFilters>).includeLifecycleCounts;
   return rowFilters;
 }
+
+/**
+ * A COUNT request's filters: everything that decides membership, plus the
+ * buckets, minus the tab.
+ *
+ * `lifecycle` is omitted so switching tabs is a cache hit rather than a
+ * refetch that blanks the tab bar (#2029), and `includeLifecycleCounts` is
+ * forced on because this one request answers both aggregates.
+ *
+ * Written as OMISSION rather than enumeration (#2957 review round 3, I5).
+ * Every field of `ListingsFilters` is optional, so an enumerating version
+ * compiles cleanly when a fifth membership filter is added and silently drops
+ * it from the count - the pager and the whole tab bar would then answer for a
+ * broader set, presented as `known`. That is the authoritative-wrong-number
+ * failure this epic exists to prevent.
+ */
+export function listingCountFilters(filters: ListingsFilters): ListingsFilters {
+  const countFilters: ListingsFilters = { ...filters, includeLifecycleCounts: true };
+  delete countFilters.lifecycle;
+  return countFilters;
+}

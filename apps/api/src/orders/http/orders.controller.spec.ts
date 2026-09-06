@@ -46,7 +46,10 @@ import {
   FULFILLMENT_ROUTING_SERVICE_TOKEN,
   DELIVERY_RIDER_SERVICE_TOKEN,
 } from '@openlinker/core/mappings';
-import type { IFulfillmentRoutingService, IDeliveryRiderService } from '@openlinker/core/mappings';
+import type {
+  IFulfillmentRoutingService,
+  IDeliveryRiderService,
+} from '@openlinker/core/mappings';
 
 describe('OrdersController', () => {
   let controller: OrdersController;

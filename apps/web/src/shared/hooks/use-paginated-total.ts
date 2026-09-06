@@ -288,7 +288,17 @@ export function usePaginatedTotal<TData = PaginatedTotalPayload>(
   // or the debounce is settling. Checked before those two branches on purpose:
   // the key carries no offset, so paging a result set lands here every time,
   // and blanking a number already in hand would be a flicker for nothing.
-  const cached = query.isSuccess ? selectTotal(query.data) : null;
+  //
+  // Read from `data`, NOT from `isSuccess` (#2957 review round 3, I2). Query v5
+  // keeps `state.data` across a failed BACKGROUND refetch and only flips the
+  // status to `'error'`, so gating on success discards a good answer for the
+  // very same filters. With `refetchOnWindowFocus` on and `retry: false` - both
+  // this app's defaults - one transient failure after an alt-tab turned a known
+  // "of 1,234" into "50+ (count unavailable)" while the real number sat in the
+  // cache, which is worse than the pre-#2943 behaviour and contradicts the
+  // paragraph above. `unavailable` must mean asked, failed, and nothing in
+  // hand.
+  const cached = query.data !== undefined ? selectTotal(query.data) : null;
 
   let state: PaginatedTotalState;
   let total: number | null;
@@ -308,7 +318,7 @@ export function usePaginatedTotal<TData = PaginatedTotalPayload>(
     // A failed count leaves the placeholder standing. Never `0`.
     state = 'unavailable';
     total = null;
-  } else if (query.isSuccess) {
+  } else if (query.data !== undefined) {
     // Fetched, but `selectTotal` declined to read a number out of it - see its
     // docblock. Unknown, not zero, and not the payload's own number.
     state = 'unavailable';

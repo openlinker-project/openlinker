@@ -11,7 +11,10 @@
  */
 import type { Product } from '../entities/product.entity';
 import type { StoredTaxRate } from '../types/tax-rate.types';
-import type { ConnectionTaxRateCoverage, TaxRateCoverage } from '../types/tax-rate-coverage.types';
+import type {
+  ConnectionTaxRateCoverage,
+  TaxRateCoverage,
+} from '../types/tax-rate-coverage.types';
 import type {
   ProductListFilters,
   ProductPagination,

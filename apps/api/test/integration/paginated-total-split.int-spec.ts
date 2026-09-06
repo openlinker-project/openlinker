@@ -305,12 +305,21 @@ describe('Paginated total split (integration, #2944)', () => {
       // because the join is at most 1:1 (the subquery groups by `productId`),
       // so it cannot change how many rows match.
       //
-      // The join needs rows that COULD multiply, or the test cannot observe
-      // the property it names (#2957 review, SUGGESTION 5): against an empty
-      // `inventory_items` a 1:N join and a 1:1 join are indistinguishable, so
-      // this seeded TWO positions for one product on purpose. Delete the
-      // subquery's `GROUP BY` and the sorted read returns four rows for three
-      // products while the count still says three.
+      // The join needs rows that COULD multiply, or the test cannot observe the
+      // property it names: against an empty `inventory_items` a 1:N join and a
+      // 1:1 join are indistinguishable. So one product gets TWO positions.
+      //
+      // `productVariantId` carries a real FK to `product_variants`
+      // (`inventory-item.orm-entity.ts` declares the `@ManyToOne`, and the
+      // harness builds schema by `synchronize`, which emits it), so the
+      // variants must exist first - #2957 review round 3, B1: an earlier
+      // version of this block inserted the positions alone and could not run
+      // at all.
+      const variants = harness.getDataSource().getRepository(ProductVariantOrmEntity);
+      await variants.save([
+        variants.create({ id: 'ol_variant_join_a', productId: 'ol_product_split_1' }),
+        variants.create({ id: 'ol_variant_join_b', productId: 'ol_product_split_1' }),
+      ]);
       const inventory = harness.getDataSource().getRepository(InventoryItemOrmEntity);
       await inventory.save([
         inventory.create({
@@ -329,15 +338,25 @@ describe('Paginated total split (integration, #2944)', () => {
         }),
       ]);
 
-      const sortedByStock = await repository.findMany({}, PAGE, {
+      // Read a page NARROWER than the row count, which is what makes a 1:N join
+      // observable (#2957 review round 3, I2). `getMany()` collapses duplicate
+      // raw rows to one entity per primary key, so at a page of 20 a broken
+      // `GROUP BY` yields four raw rows, three entities, and every assertion
+      // passes. At a page of 3 the LIMIT truncates the raw rows first: four
+      // become three, two of which are the same product, and the read returns
+      // TWO products where the correct query returns three.
+      const narrowPage = { limit: 3, offset: 0 };
+      const sortedByStock = await repository.findMany({}, narrowPage, {
         field: 'stock',
         dir: 'desc',
       });
-      expect(await repository.countMany({})).toBe(sortedByStock.total);
-      expect(sortedByStock.total).toBe(3);
-      // The page itself must not have been multiplied by the join either.
       expect(sortedByStock.items).toHaveLength(3);
       expect(new Set(sortedByStock.items.map((p) => p.id)).size).toBe(3);
+
+      // And the count, which builds no join at all because it takes no sort,
+      // still agrees with the sorted read's total.
+      expect(await repository.countMany({})).toBe(sortedByStock.total);
+      expect(sortedByStock.total).toBe(3);
     });
 
     it('moves both paths together when the stock filter changes', async () => {
@@ -371,9 +390,9 @@ describe('Paginated total split (integration, #2944)', () => {
       for (const stock of ['out', 'low'] as const) {
         const page = await repository.findMany({ stock }, PAGE);
         expect(await repository.countMany({ stock })).toBe(page.total);
-        expect(
-          (await repository.findManyRows({ stock }, PAGE)).map((p) => p.id)
-        ).toEqual(page.items.map((p) => p.id));
+        expect((await repository.findManyRows({ stock }, PAGE)).map((p) => p.id)).toEqual(
+          page.items.map((p) => p.id)
+        );
       }
 
       expect(await repository.countMany({ stock: 'low' })).toBe(1);

@@ -23,6 +23,43 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## A claim about a dependency's internals must be read against the installed version
+
+**Context**: #2957 split a paginated read into a fast page and a separate total. The change had to
+say why `findMany` was left on a single `getManyAndCount()` rather than composed from the two new
+methods, and the answer given was TypeORM's `lazyCount` fast path: `getManyAndCount` supposedly
+infers the total with no count query at all when a page comes back short, so composing would add a
+statement on every small install.
+
+**Problem**: there is no such fast path. The pinned version is `typeorm@0.3.17`, where
+`getManyAndCount` awaits `executeEntitiesAndRawResults` and then `executeCountQuery`,
+unconditionally and sequentially - and the identifier `lazyCount` does not appear anywhere in the
+installed package. The claim reached **eight code comments, one engineering standard, and the PR
+body** before a reviewer opened the file. It was not a typo: it was load-bearing, cited as the third
+of four "not negotiable" properties of the repository shape, and it would have governed every future
+paginated read in the codebase. It also pointed the wrong way - because the count ALWAYS runs, the
+true reading is an argument FOR moving it off the page's critical path, which is the change being
+made.
+
+The plausibility is the hazard. `lazyCount` is exactly what such an optimisation would be called,
+the behaviour is exactly what a reasonable ORM might do, and no test can fail over a comment.
+
+**Rule**: before a claim about third-party runtime behaviour justifies a design decision, open the
+implementation at the pinned version and quote it. `node_modules/.pnpm/<pkg>@<version>/node_modules/<pkg>/...`
+is two commands away, and `grep -rl <identifier>` over the package settles whether a named mechanism
+exists at all. The version matters: a behaviour documented on a project's website is documented for
+its current release, not for the one in `pnpm-lock.yaml`. Where the claim survives review, cite the
+version in the comment (`Read against typeorm@0.3.17: ...`) so the next reader knows what was
+checked and when it stops being true.
+
+**Applies to**: any code comment, docblock or engineering standard that asserts what a dependency
+does internally - ORM query builders, HTTP clients, query caches, validation pipelines. Especially
+where the assertion is the stated reason for a structural choice.
+
+**Source**: #2957 (review round 2), which corrected all nine sites.
+
+---
+
 ## Before a surface asserts a behaviour, read the code that implements it
 
 **Context**: redesigning the three sales-document surfaces (#2513). The design was worked out from

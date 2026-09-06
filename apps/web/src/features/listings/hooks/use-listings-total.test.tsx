@@ -109,10 +109,9 @@ describe('useListingsTotal (#2947 review)', () => {
     const apiClient = createMockApiClient({
       listings: { count: vi.fn().mockResolvedValue({ total: 903 }) },
     });
-    const { result } = renderHook(
-      () => useListingsTotal({ lifecycle: 'Draft' }, fullPage, false),
-      { wrapper: createWrapper(apiClient) }
-    );
+    const { result } = renderHook(() => useListingsTotal({ lifecycle: 'Draft' }, fullPage, false), {
+      wrapper: createWrapper(apiClient),
+    });
 
     await flush();
 
@@ -125,16 +124,22 @@ describe('useListingsTotal (#2947 review)', () => {
     const apiClient = createMockApiClient({
       listings: { count: vi.fn().mockResolvedValue({ total: 903 }) },
     });
-    const { result } = renderHook(
-      () => useListingsTotal({}, fullPage, false),
-      { wrapper: createWrapper(apiClient) }
-    );
+    const { result } = renderHook(() => useListingsTotal({}, fullPage, false), {
+      wrapper: createWrapper(apiClient),
+    });
 
     await flush();
 
     // With no tab, the sum IS the answer to the question being asked.
     expect(result.current.total).toBe(903);
     expect(result.current.state).toBe('known');
+
+    // But the BUCKETS are still absent, and this arm is where the first version
+    // of `lifecycleCountsState` reported `'known'` over `null` (#2957 review
+    // round 3, I4) - a stuck tab bar in the one shape the fix did not reach.
+    // Unreachable today only because no tab is unselectable; one "All" tab away.
+    expect(result.current.lifecycleCounts).toBeNull();
+    expect(result.current.lifecycleCountsState).toBe('unavailable');
   });
 
   it('switching tabs is a CACHE HIT and re-derives from the buckets in hand', async () => {
@@ -145,15 +150,21 @@ describe('useListingsTotal (#2947 review)', () => {
     // against an already-populated cache can tell the two apart - a `select`
     // memoised against the first key would keep answering 3 for Draft.
     //
-    // Break either one and this fails: adding `lifecycle` to `countFilters`
-    // makes it a second request (and a second `count` call); moving
-    // `selectTotal` into `select` makes the second render report the FIRST
-    // tab's bucket.
+    // Break it and this fails: adding `lifecycle` to `countFilters` makes the
+    // key change, so the tab switch becomes a second request.
+    //
+    // It does NOT catch moving `selectTotal` into `useQuery({ select })`, and
+    // an earlier version of this comment claimed it did (#2957 review round 3).
+    // Query v5 reuses a memoised select result only while `options.select`
+    // keeps its identity, and an inline arrow changes every render, so `select`
+    // would re-run with the current `lifecycle` and answer correctly. Read-time
+    // application is still right for a different reason - `select` also
+    // rewrites `query.data`, which this hook hands out as the buckets.
     const count = vi.fn().mockResolvedValue({ total: 903, lifecycleCounts: BUCKETS });
     const apiClient = createMockApiClient({ listings: { count } });
     const { result, rerender } = renderHook(
       ({ lifecycle }: { lifecycle: 'Active' | 'Draft' }) =>
-        useListingsTotal({ lifecycle }, fullPage, false),
+        useListingsTotal({ lifecycle, search: 'terra', connectionId: 'conn-1' }, fullPage, false),
       {
         wrapper: createWrapper(apiClient),
         initialProps: { lifecycle: 'Active' } as { lifecycle: 'Active' | 'Draft' },
@@ -170,6 +181,14 @@ describe('useListingsTotal (#2947 review)', () => {
     // one call, and the test reports green over a broken key. Verified by
     // making exactly that mutation.
     expect(count.mock.calls[0][0]).not.toHaveProperty('lifecycle');
+    // And POSITIVELY, or dropping a membership filter from the narrowing goes
+    // unnoticed and the count answers for the whole catalogue (#2957 review
+    // round 3). The negative assertion alone cannot see that.
+    expect(count.mock.calls[0][0]).toMatchObject({
+      search: 'terra',
+      connectionId: 'conn-1',
+      includeLifecycleCounts: true,
+    });
 
     rerender({ lifecycle: 'Draft' });
     await flush();
@@ -225,5 +244,25 @@ describe('useListingsTotal (#2947 review)', () => {
     // The buckets are not, and say so. Break it by returning `state` here.
     expect(result.current.lifecycleCounts).toBeNull();
     expect(result.current.lifecycleCountsState).toBe('unavailable');
+  });
+  it('does NOT ask for the count before the rows have landed', async () => {
+    // `enabled: page !== undefined`. Every other test here supplies a page, so
+    // flipping this to `enabled: true` went unnoticed (#2957 review round 3) -
+    // and it would fire the expensive count on every mount, ahead of the rows
+    // the whole two-stage split exists to get on screen first.
+    const count = vi.fn().mockResolvedValue({ total: 903, lifecycleCounts: BUCKETS });
+    const apiClient = createMockApiClient({ listings: { count } });
+    const { result } = renderHook(
+      () => useListingsTotal({ lifecycle: 'Active' }, undefined, false),
+      {
+        wrapper: createWrapper(apiClient),
+      }
+    );
+
+    await flush();
+
+    expect(count).not.toHaveBeenCalled();
+    expect(result.current.state).toBe('idle');
+    expect(result.current.total).toBeNull();
   });
 });

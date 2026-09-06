@@ -1270,6 +1270,13 @@ describe('ListingsListPage', () => {
     // A page reported FULL, so the rows imply no exact total.
     const fullPage = { items: sampleMappings.items.slice(0, 1), limit: 1, offset: 0 };
 
+    // SHORT - one row against a limit of twenty - so `inferTotalFromPage`
+    // derives the pager total exactly and `useListingsTotal` overrides `state`
+    // to `'known'`. That override is the whole reason the tab bar must read
+    // `lifecycleCountsState` instead, so a test of the failed-count tab bar is
+    // only a test at all against a short page (#2957 review round 3, B1).
+    const shortPage = { items: sampleMappings.items.slice(0, 1), limit: 20, offset: 0 };
+
     it('renders its rows while both aggregates are still in flight', async () => {
       const { container } = renderWithProviders(<ListingsListPage />, {
         apiClient: createListingsMockApiClient({
@@ -1286,7 +1293,7 @@ describe('ListingsListPage', () => {
       expect(container.querySelectorAll('.tabs__count-skeleton')).toHaveLength(5);
     });
 
-    it('renders neither placeholder as 0 when the count FAILS, and STOPS loading', async () => {
+    it('renders neither placeholder as 0 when the count FAILS on a FULL page', async () => {
       const { container } = renderWithProviders(<ListingsListPage />, {
         apiClient: createListingsMockApiClient({
           listings: {
@@ -1299,15 +1306,76 @@ describe('ListingsListPage', () => {
       expect(await screen.findByText('Doniczka ceramiczna Terra')).toBeInTheDocument();
       expect(await screen.findByText(/count unavailable/i)).toBeInTheDocument();
       expect(screen.getByText('1+')).toBeInTheDocument();
-
-      // This assertion was inverted until #2957 review I2: it asserted five
-      // skeletons and therefore PINNED the stuck state as correct. `retry` is
-      // false and nothing re-drives the count, so those skeletons spin for the
-      // life of the page - a positive claim that content is arriving when
-      // nothing is coming. The tabs report an em-dash instead, and the
-      // sr-only region says so rather than announcing a load forever.
       await screen.findByText('Listing counts unavailable.');
       expect(container.querySelectorAll('.tabs__count-skeleton')).toHaveLength(0);
+    });
+
+    it('STOPS loading the tab bar when the count fails and the page implies its own total', async () => {
+      // The case the page-level fix is actually for, and the one the FULL-page
+      // test above cannot reach (#2957 review round 3, B1). A short page makes
+      // `state` `'known'` while the buckets are `unavailable`, so this is the
+      // only shape that distinguishes the two - reverting the page to
+      // `totalStage.state` renders five skeletons here and passes everywhere
+      // else. `retry` is false and nothing re-drives the count, so a skeleton
+      // would spin for the life of the page: a positive claim that content is
+      // arriving when nothing is coming.
+      const { container } = renderWithProviders(<ListingsListPage />, {
+        apiClient: createListingsMockApiClient({
+          listings: {
+            listRows: vi.fn().mockResolvedValue(shortPage),
+            count: vi.fn().mockRejectedValue(new Error('count blew up')),
+          },
+        }),
+      });
+
+      expect(await screen.findByText('Doniczka ceramiczna Terra')).toBeInTheDocument();
+      // The pager is not rendered for a single-page result, so the discriminating
+      // condition is asserted through its EFFECT rather than through the number:
+      // a short page makes `state` `'known'`, and a tab bar reading `state`
+      // therefore renders skeletons here while passing every other test.
+      await screen.findByText('Listing counts unavailable.');
+      expect(container.querySelectorAll('.tabs__count-skeleton')).toHaveLength(0);
+    });
+
+    it('keeps a KNOWN total on screen while paging, rather than blanking it', async () => {
+      // The placeholder suppression must not fire on an ordinary page click
+      // (#2957 review round 3, I3): the count key carries no offset, so the
+      // number is already correct and blanking it to `20+` and back is the
+      // flicker this epic exists to remove, one layer up.
+      const user = userEvent.setup();
+      const rows = Array.from({ length: 20 }, (_, i) => ({
+        ...sampleMappings.items[0],
+        id: `uuid-mapping-page-${i}`,
+        externalId: `allegro-offer-${i}`,
+      }));
+      // The second page NEVER resolves, so the placeholder window stays open
+      // for the assertion. With a resolving mock the window closes before the
+      // test can look and the assertion passes against the broken code too.
+      const listRows = vi
+        .fn()
+        .mockResolvedValueOnce({ items: rows, limit: 20, offset: 0 })
+        .mockReturnValue(new Promise(() => {}));
+      renderWithProviders(<ListingsListPage />, {
+        apiClient: createListingsMockApiClient({
+          listings: {
+            listRows,
+            count: vi.fn().mockResolvedValue({
+              total: 1234,
+              lifecycleCounts: { ...ZERO_LIFECYCLE_COUNTS, Active: 1234 },
+            }),
+          },
+        }),
+      });
+
+      expect(await screen.findByText('1,234')).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: /next/i }));
+      await waitFor(() => expect(listRows).toHaveBeenCalledTimes(2));
+
+      // The rows are now a placeholder and the second page is still in flight.
+      // The total is unaffected - the count key carries no offset - so it must
+      // still read 1,234, not `20+` and not an em-dash.
+      expect(screen.getByText('1,234')).toBeInTheDocument();
+      expect(screen.queryByText('20+')).not.toBeInTheDocument();
     });
   });
 

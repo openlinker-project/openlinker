@@ -31,10 +31,7 @@ import type {
 import type { OrderFxIntent, OrderFxStamp } from '../types/order-fx.types';
 import type { StampedReportingCurrencyCount } from '../types/order-fx-read.types';
 import type { OrderAmendmentChange } from '../order-amendment-diff';
-import type {
-  DailyOrderAggregateRow,
-  SalesAnalyticsFilters,
-} from '../types/order-sales-analytics.types';
+import type { DailyOrderAggregateRow, SalesAnalyticsFilters } from '../types/order-sales-analytics.types';
 
 export interface OrderRecordRepositoryPort {
   /**

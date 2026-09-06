@@ -10,6 +10,7 @@ import type { ComponentProps } from 'react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ListPagination } from './list-pagination';
+import { formatPaginatedTotal } from '../hooks/use-paginated-total';
 
 function renderPagination(overrides: Partial<ComponentProps<typeof ListPagination>> = {}): {
   onOffsetChange: ReturnType<typeof vi.fn>;
@@ -221,5 +222,18 @@ describe('ListPagination (#2945)', () => {
     const dot = container.querySelector('.pagination__counting-dot');
     expect(dot).not.toBeNull();
     expect(dot).toHaveAttribute('aria-hidden', 'true');
+    // And the hiding must be on the DOT, not on its parent (#2957 review round
+    // 3): moving the attribute up one level keeps the dot assertion green while
+    // removing the total from the accessibility tree entirely.
+    expect(screen.getByText('20+').closest('[aria-hidden="true"]')).toBeNull();
+  });
+
+  it('renders an em-dash, not a floor of 0, when there is no page to floor on', () => {
+    // The deep-link case S2 widened the signature for: `?offset=100` before a
+    // row exists has no floor to state, and `0+` would be a floor computed from
+    // nothing. Nothing exercised the `null` arm until now (#2957 review round 3).
+    expect(formatPaginatedTotal(null, null)).toBe('—');
+    expect(formatPaginatedTotal(null, 40)).toBe('40+');
+    expect(formatPaginatedTotal(1234, null)).toBe('1,234');
   });
 });

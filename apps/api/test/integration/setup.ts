@@ -94,6 +94,18 @@ const harness = createIntegrationTestHarness({
     // unlisted, a rule leaks into the next case and collides on
     // UQ_oms_routing_rules_live_name.
     'oms_routing_rules',
+    // customer_projections and its two satellites (#2957 review round 3). None
+    // of the three carries an ORM foreign key the CASCADE-closure walk can
+    // reach - `customer_address_projections` and `destination_address_mappings`
+    // hold indexed text references by value, the same choice as
+    // invoice_records / refund_records - so nothing removes them and a prior
+    // case's customers leak into the next one's aggregate. That went unnoticed
+    // until a spec asserted an EXACT count over them; it passed only because
+    // each int-spec file gets its own container and the seed re-upserts three
+    // fixed ids. Children first.
+    'customer_address_projections',
+    'destination_address_mappings',
+    'customer_projections',
     'order_records',
     // order_line_items (#1985) — the per-line analytics projection. No
     // ORM/migration FK to order_records (plain indexed text column, same

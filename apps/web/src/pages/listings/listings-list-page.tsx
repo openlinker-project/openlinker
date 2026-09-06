@@ -11,7 +11,9 @@
  */
 import {
   useCallback,
+  useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactElement,
   type ReactNode,
@@ -476,7 +478,35 @@ export function ListingsListPage(): ReactElement {
   const lifecycleCounts = totalStage.lifecycleCounts;
   // The buckets are not merely late, they are not coming. Distinct from `null`,
   // which is "not yet" - see `lifecycleCountsState` (#2957 review, I2).
-  const countsUnavailable = lifecycleCounts === null && totalStage.lifecycleCountsState === 'unavailable';
+  const countsUnavailable =
+    lifecycleCounts === null && totalStage.lifecycleCountsState === 'unavailable';
+
+  /**
+   * Are the rows on screen the PREVIOUS tab's? (#2957 review round 3, I3.)
+   *
+   * `keepPreviousData` holds the old page during every transition, but only one
+   * of them is a hazard for the summary. The count query is keyed without
+   * `lifecycle` and without pagination, so:
+   *
+   * - paging: the total is already correct, and suppressing it blanks
+   *   "of 1,234" to "50+" and back on every click - the flicker this epic
+   *   exists to remove, one layer up;
+   * - search / channel change: the count key changes too, so the total is
+   *   `null` on its own and suppression is a no-op;
+   * - TAB SWITCH: the total re-derives for the NEW tab from buckets already in
+   *   hand, while the rows are still the old tab's - so the summary would read
+   *   "Showing 1-25 of 3", a range wider than its own total.
+   *
+   * Only the third is suppressed. The lifecycle the rows were fetched for is
+   * tracked rather than inferred, because the rows page carries no lifecycle of
+   * its own.
+   */
+  const rowsLifecycleRef = useRef(activeTabDef.lifecycle);
+  useEffect(() => {
+    if (!query.isPlaceholderData) rowsLifecycleRef.current = activeTabDef.lifecycle;
+  }, [query.isPlaceholderData, activeTabDef.lifecycle]);
+  const rowsAreForAnotherTab =
+    query.isPlaceholderData && rowsLifecycleRef.current !== activeTabDef.lifecycle;
 
   const platforms = usePlatforms();
   // One batched read for the whole page - the Connection column must never cost
@@ -1019,15 +1049,16 @@ export function ListingsListPage(): ReactElement {
                   without `lifecycle` and re-derives the new tab's bucket
                   immediately. Pairing the two prints "Showing 1-25 of 3"
                   (#2957 review, I1) - a range wider than its own total, which
-                  is a worse artefact than a late number. While the page is a
-                  placeholder the summary describes ONE thing: the rows on
-                  screen, as a floor. */}
+                  is a worse artefact than a late number. For that one
+                  transition the summary describes ONE thing: the rows on
+                  screen, as a floor. Paging is deliberately NOT suppressed -
+                  see `rowsAreForAnotherTab`. */}
               <ListPagination
                 offset={offset}
                 limit={PAGE_SIZE}
                 rowCount={query.data?.items.length ?? 0}
-                total={query.isPlaceholderData ? null : totalStage.total}
-                totalState={query.isPlaceholderData ? 'pending' : totalStage.state}
+                total={rowsAreForAnotherTab ? null : totalStage.total}
+                totalState={rowsAreForAnotherTab ? 'settling' : totalStage.state}
                 showTotalLoader={totalStage.showLoader}
                 onOffsetChange={setOffset}
               />

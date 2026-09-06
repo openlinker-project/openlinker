@@ -54,67 +54,66 @@ export interface ListPaginationProps extends ComponentPropsWithoutRef<'nav'> {
   onOffsetChange: (nextOffset: number) => void;
 }
 
-export const ListPagination = forwardRef<HTMLElement, ListPaginationProps>(
-  function ListPagination(
-    {
-      offset,
-      limit,
-      rowCount,
-      total,
-      totalState,
-      showTotalLoader,
-      onOffsetChange,
-      className,
-      ...rest
-    },
-    ref
-  ) {
-    const hasPrev = offset > 0;
-    // Needs no total: a page that came back FULL may have more behind it, and a
-    // short page provably does not. Once the total lands it takes over, which
-    // is strictly more accurate at the boundary where a full last page has
-    // exactly zero rows after it.
-    const hasNext = total !== null ? offset + limit < total : rowCount === limit;
+export const ListPagination = forwardRef<HTMLElement, ListPaginationProps>(function ListPagination(
+  {
+    offset,
+    limit,
+    rowCount,
+    total,
+    totalState,
+    showTotalLoader,
+    onOffsetChange,
+    className,
+    ...rest
+  },
+  ref
+) {
+  const hasPrev = offset > 0;
+  // Needs no total: a page that came back FULL may have more behind it, and a
+  // short page provably does not. Once the total lands it takes over, which
+  // is strictly more accurate at the boundary where a full last page has
+  // exactly zero rows after it.
+  const hasNext = total !== null ? offset + limit < total : rowCount === limit;
 
-    const totalUnavailable = totalState === 'unavailable';
+  const totalUnavailable = totalState === 'unavailable';
 
-    return (
-      <nav
-        ref={ref}
-        aria-label="Pagination"
-        className={['pagination', className].filter(Boolean).join(' ')}
-        {...rest}
-      >
-        {/*
+  return (
+    <nav
+      ref={ref}
+      aria-label="Pagination"
+      className={['pagination', className].filter(Boolean).join(' ')}
+      {...rest}
+    >
+      {/*
           `aria-live` on the summary, not merely `aria-busy`: a busy flag on a
           non-live region announces nothing, so a screen-reader user would never
           learn that `20+` had become `1,234`. Polite, so it waits for a pause.
         */}
-        <span className="text-muted" aria-live="polite" aria-busy={showTotalLoader || undefined}>
-          {rowCount === 0 ? (
-            'No results'
-          ) : (
-            <>
-              Showing {(offset + 1).toLocaleString()}&ndash;
-              {(offset + rowCount).toLocaleString()} of{' '}
-              {total !== null ? (
-                <span className="tabular">{formatPaginatedTotal(total, offset + rowCount)}</span>
-              ) : (
-                <span
-                  className="tabular pagination__total-pending"
-                  title={
-                    totalUnavailable
-                      ? 'The full count could not be loaded. At least this many match.'
-                      : 'Counting the full result set'
-                  }
-                >
-                  {formatPaginatedTotal(total, offset + rowCount)}
-                  {showTotalLoader ? (
-                    <span className="pagination__counting-dot" aria-hidden="true" />
-                  ) : null}
-                </span>
-              )}
-              {/*
+      <span className="text-muted" aria-live="polite" aria-busy={showTotalLoader || undefined}>
+        {rowCount === 0 ? (
+          'No results'
+        ) : (
+          <>
+            Showing {(offset + 1).toLocaleString()}&ndash;
+            {(offset + rowCount).toLocaleString()} of{' '}
+            {total !== null ? (
+              <span className="tabular">{formatPaginatedTotal(total, offset + rowCount)}</span>
+            ) : (
+              <span
+                className="tabular pagination__total-pending"
+                title={
+                  totalUnavailable
+                    ? 'The full count could not be loaded. At least this many match.'
+                    : 'Counting the full result set'
+                }
+              >
+                {formatPaginatedTotal(total, offset + rowCount)}
+                {showTotalLoader ? (
+                  <span className="pagination__counting-dot" aria-hidden="true" />
+                ) : null}
+              </span>
+            )}
+            {/*
                 A FAILED count gets visible, machine-readable text - not just a
                 `title`. The hook goes to real trouble to keep `unavailable`
                 apart from `pending`, and a tooltip keeps neither promise: it is
@@ -123,31 +122,30 @@ export const ListPagination = forwardRef<HTMLElement, ListPaginationProps>(
                 two states are indistinguishable to the operator, which makes
                 the distinction a comment rather than a behaviour.
               */}
-              {totalUnavailable ? (
-                <span className="pagination__total-failed"> (count unavailable)</span>
-              ) : null}
-            </>
-          )}
-        </span>
-        <div className="pagination__actions">
-          <Button
-            disabled={!hasPrev}
-            onClick={() => {
-              onOffsetChange(Math.max(0, offset - limit));
-            }}
-          >
-            Previous
-          </Button>
-          <Button
-            disabled={!hasNext}
-            onClick={() => {
-              onOffsetChange(offset + limit);
-            }}
-          >
-            Next
-          </Button>
-        </div>
-      </nav>
-    );
-  }
-);
+            {totalUnavailable ? (
+              <span className="pagination__total-failed"> (count unavailable)</span>
+            ) : null}
+          </>
+        )}
+      </span>
+      <div className="pagination__actions">
+        <Button
+          disabled={!hasPrev}
+          onClick={() => {
+            onOffsetChange(Math.max(0, offset - limit));
+          }}
+        >
+          Previous
+        </Button>
+        <Button
+          disabled={!hasNext}
+          onClick={() => {
+            onOffsetChange(offset + limit);
+          }}
+        >
+          Next
+        </Button>
+      </div>
+    </nav>
+  );
+});
