@@ -1510,7 +1510,7 @@ describe('OrderIngestionService', () => {
       expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
     });
 
-    it('stale item ref: marks the record source_deleted with the stale reason, then still throws (#1689)', async () => {
+    it('stale item ref: marks the record source_deleted with the stale reason, then still throws (#1689) carrying recordStatus=source_deleted on the error (#2928)', async () => {
       orderItemRefResolver.tryResolve
         .mockResolvedValueOnce({
           resolved: true,
@@ -1524,9 +1524,18 @@ describe('OrderIngestionService', () => {
           kind: 'source_deleted' as const,
         });
 
-      await expect(
-        service.syncOrderFromSource(connectionId, externalOrderId)
-      ).rejects.toBeInstanceOf(MissingOrderItemMappingError);
+      let thrown: unknown;
+      try {
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(MissingOrderItemMappingError);
+      // #2928 — the caller (the worker handler) reads this off the thrown
+      // error to stop retrying a permanently unresolvable state instead of
+      // re-hydrating the marketplace order on every attempt.
+      expect((thrown as MissingOrderItemMappingError).recordStatus).toBe('source_deleted');
 
       expect(orderRecordService.markItemResolutionFailure).toHaveBeenCalledWith('ol_order_item_test', {
         status: 'source_deleted',
@@ -1560,7 +1569,7 @@ describe('OrderIngestionService', () => {
       });
     });
 
-    it('all missing-mapping (no stale refs) marks the record awaiting_mapping', async () => {
+    it('all missing-mapping (no stale refs) marks the record awaiting_mapping, and the thrown error carries recordStatus=awaiting_mapping (#2928)', async () => {
       orderItemRefResolver.tryResolve
         .mockResolvedValueOnce({
           resolved: false,
@@ -1575,9 +1584,17 @@ describe('OrderIngestionService', () => {
           kind: 'missing_mapping' as const,
         });
 
-      await expect(
-        service.syncOrderFromSource(connectionId, externalOrderId)
-      ).rejects.toBeInstanceOf(MissingOrderItemMappingError);
+      let thrown: unknown;
+      try {
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(MissingOrderItemMappingError);
+      // The ordinary, self-healing gap: the worker handler must still retry
+      // this one with backoff, never terminate it early (#2928).
+      expect((thrown as MissingOrderItemMappingError).recordStatus).toBe('awaiting_mapping');
 
       expect(orderRecordService.markItemResolutionFailure).toHaveBeenCalledWith('ol_order_item_test', {
         status: 'awaiting_mapping',

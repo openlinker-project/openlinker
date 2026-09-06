@@ -363,9 +363,36 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * canonical precedence documented on `OrderHealthValues` — and are the SQL
    * twin of the FE `deriveOrderHealth` helper; keep both in lockstep.
    *
-   * No GIN index on `syncStatus` today — full scan is acceptable at v1 scale
-   * (same trade-off noted on the `findMany` JSONB filters); revisit with an
-   * index if scan time creeps.
+   * No GIN index on `syncStatus` today, and — measured, not merely deferred
+   * (#2843/#2927) — a naive one would make this WORSE, not better. The
+   * `needs_attention` predicate (`HAS_FAILED`) matches ~28% of rows on a
+   * seeded 1M-row table, and at that selectivity a `gin (syncStatus
+   * jsonb_path_ops)` index made the planner switch to a `Parallel Bitmap
+   * Heap Scan` whose lossy bitmap recheck (default `work_mem`) cost
+   * ~200-250 ms — SLOWER than the ~150 ms `Parallel Seq Scan` it replaced,
+   * confirmed by dropping the index and watching the plan and the timing
+   * both revert. GIN indexing pays off only for a selective containment
+   * predicate; ~28% is squarely in "just scan the table" territory.
+   *
+   * A narrow B-tree index matching the exact bucket predicate DOES help —
+   * `CREATE INDEX ... ("internalOrderId") WHERE <the needs_attention
+   * predicate>` turned the same query into an `Index Only Scan` at
+   * ~25-30 ms (≈5-6x) — but it was rejected for this table rather than
+   * shipped, on two grounds, both measured rather than assumed: (1) it only
+   * covers ONE of the five health buckets, so the same win needs one more
+   * index per bucket on the hottest write table in the schema; (2) its
+   * write cost is real and lands in the tail, not the median — a 500-row,
+   * single-statement `UPDATE ... SET "syncStatus" = ...` benchmark (the
+   * exact shape `updateSyncStatus` issues, the sole writer of this column)
+   * showed p50 roughly flat (~0.7 ms → ~1.2 ms) but p95 climbing ~7-20x
+   * (~1.3 ms → 8-24 ms) with an observed outlier at 399 ms, against a
+   * table whose every order-sync attempt rewrites this exact column. The
+   * product decision (#2927) already moved the operator-facing total off
+   * the request's critical path (a two-stage `20+` render); this repo still
+   * pays the same DB time and buffer-pool churn per view, so the index
+   * question is deliberately left open rather than closed by a workaround
+   * that just hides it — revisit if a smaller, single-bucket win is judged
+   * worth the write tail after that migration lands.
    */
   async countByHealth(filters: OrderHealthSummaryFilters): Promise<OrderHealthSummary> {
     const notMappingOrDeleted = OrderRecordRepository.NOT_MAPPING_OR_DELETED;

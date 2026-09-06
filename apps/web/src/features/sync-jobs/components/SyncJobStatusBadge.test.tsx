@@ -44,6 +44,15 @@ describe('SyncJobStatusBadge', () => {
     expect(badge).not.toHaveClass('status-badge--success');
   });
 
+  it('renders succeeded + outcome=business_failure with outcomeReason=source_deleted as its own resolved label, distinct from master_deleted (#2928)', () => {
+    render(
+      <SyncJobStatusBadge status="succeeded" outcome="business_failure" outcomeReason="source_deleted" />,
+    );
+    const badge = screen.getByText('order item deleted at source').closest('.status-badge');
+    expect(badge).toHaveClass('status-badge--warning');
+    expect(badge).not.toHaveClass('status-badge--success');
+  });
+
   it('renders succeeded + outcome=business_failure with no outcomeReason as "business failure" (#1689)', () => {
     render(<SyncJobStatusBadge status="succeeded" outcome="business_failure" />);
     const badge = screen.getByText('business failure').closest('.status-badge');

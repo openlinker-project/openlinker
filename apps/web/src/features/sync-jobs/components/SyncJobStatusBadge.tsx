@@ -37,6 +37,7 @@ const BASE_TONE: Record<JobStatus, StatusBadgeTone> = {
  */
 const OUTCOME_REASON_LABEL: Record<JobOutcomeReason, string> = {
   master_deleted: 'source deleted',
+  source_deleted: 'order item deleted at source',
 };
 
 interface SyncJobStatusBadgeProps {

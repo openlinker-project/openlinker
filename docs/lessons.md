@@ -23,6 +23,60 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## A GIN index on a jsonb containment predicate is not automatically a fix - selectivity decides
+
+**Context**: measuring #2927 (`GET /orders?health=needs_attention` degrades 13x from 10k to 1M
+rows because its pagination `COUNT(*)` runs an unindexed `syncStatus @> '[{"status":"failed"}]'`
+scan). The obvious remedy the issue itself names is "a GIN or expression index on the
+predicate".
+
+**Problem**: the `needs_attention` predicate matches ~28% of rows on a seeded 1M-row
+`order_records` table. Adding `gin (syncStatus jsonb_path_ops)` did not speed the query up - it
+made it WORSE, from a ~150 ms `Parallel Seq Scan` to a ~200-250 ms `Parallel Bitmap Heap Scan`.
+`EXPLAIN (ANALYZE, BUFFERS)` showed why: at this selectivity the bitmap is large enough to go
+lossy at the page level (block-granular, not tuple-granular) under the default `work_mem`,
+forcing a recheck of every tuple on every touched heap page - and even with `work_mem` raised
+high enough for an exact bitmap, the random heap-page access pattern still cost more than reading
+the table in sequence. GIN (and bitmap-scan indexing generally) pays off for a SELECTIVE
+predicate; a rule of thumb is well under ~15% of the table. ~28% is squarely in "the sequential
+scan is already the right plan" territory, and the only way to know which side of that line a
+real predicate sits on is to measure the plan and the timing, not to reason about it from the
+existence of `@>` containment syntax.
+
+A narrow, exactly-matching partial B-tree index (`... WHERE <the same predicate>`) DID help
+enormously - `Index Only Scan`, ~25-30 ms - because it indexes only the ~28% subset, at a fixed,
+small size, and needs no bitmap recheck. But that shape is a single-purpose index that covers
+only the one filter value it was built for (here, one of five `OrderHealth` buckets); the other
+buckets, and any other `syncStatus`/jsonb-containment filter elsewhere in the codebase, remain
+unhelped and would each need their own copy.
+
+Write cost is real but not where a first guess would put it: single-row `UPDATE` latency barely
+moved at the median with either index shape (GIN with `fastupdate` on OR off, or the partial
+B-tree) - it moved in the TAIL. The partial-index benchmark (500 single-row updates, matching the
+exact production write shape) showed p50 roughly flat but p95 climbing 7-20x with an occasional
+multi-hundred-ms outlier, against a column (`order_records.syncStatus`) that every marketplace
+order-sync attempt rewrites. A benchmark that only reports the mean or the median will miss this
+entirely.
+
+**Rule**: before adding an index to make a jsonb-containment (or any `@>`/array-membership)
+predicate faster, measure `EXPLAIN (ANALYZE, BUFFERS)` on the candidate index against a
+representative row count and selectivity - don't assume a GIN index helps just because the
+predicate uses `@>`. If it does help, check whether a narrower, exactly-matching partial index
+beats the general-purpose GIN one (it usually will, at low-to-moderate selectivity), and measure
+write-path cost with the SAME statement shape the production write path issues, over enough
+iterations to see the tail (p95/p99), not just the mean - a tail-only regression on a hot write
+table is easy to miss and expensive to discover in production.
+
+**Applies to**: any predicate index considered for `order_records.syncStatus` or any other
+jsonb-array-containment column in the schema (e.g. `orderSnapshot`, which already carries a GIN
+index for a different, apparently more selective set of lookups - the same selectivity check
+applies before extending its usage or adding a sibling index).
+
+**Source**: #2927 (measurement), #2843 (the original finding), campaign artifact
+`perf/openlinker-throughput/results-F5-2026-09-06.md`.
+
+---
+
 ## A raw stock write to `id_product_attribute=0` on a PrestaShop combination product is a silent no-op
 
 **Context**: raising stock across a demo catalogue for the #2848 measurement, via 25 raw
