@@ -504,8 +504,12 @@ run_strict() {
     deadlocks_after="$(pg_deadlocks_total)"
 
     window_stop "$dir"
+    # The k6 summary is passed so post_guard_generator_saturated can run.
+    # Omitting it would silently skip the generator check on the one scenario
+    # whose headline was nearly published as a system ceiling while k6 sat at
+    # 96% of its own VU limit (#2933).
     run_post_guards "$dir" "$CONN_IDS" "$(date -u -d "@$WINDOW_START_EPOCH" +%Y-%m-%dT%H:%M:%SZ)" \
-      "$WINDOW_START_EPOCH" "$WINDOW_STOP_EPOCH" ""
+      "$WINDOW_START_EPOCH" "$WINDOW_STOP_EPOCH" "" "$dir/k6-summary.json"
 
     jq -n --arg before "$deadlocks_before" --arg after "$deadlocks_after" \
       '{deadlocksBefore:($before|tonumber), deadlocksAfter:($after|tonumber), deadlocksDelta:(($after|tonumber)-($before|tonumber))}' \

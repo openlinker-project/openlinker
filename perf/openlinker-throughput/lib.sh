@@ -970,6 +970,76 @@ post_guard_limiter_degraded() {
   fi
 }
 
+# post_guard_generator_saturated - the LOAD GENERATOR must not have been at its
+# own limit, or the run measured k6 rather than OpenLinker.
+#
+# This exists because F3's headline was nearly published as "the system's
+# ceiling is ~600 requests per second" when it was nothing of the kind. Every
+# guard passed, the verdict read VALID, and only reading `dropped_iterations`
+# and the VU configuration side by side revealed that k6 had been at 92-97% of
+# its own ceiling and dropping a fifth to a quarter of its iterations (#2933).
+# Two signals pointed in opposite directions - the api at 97.7% CPU said the
+# system saturated, the VU exhaustion said the generator did - and the run
+# could not separate them.
+#
+# There is deliberately NO opt-out, not even for a sweep that is intentionally
+# hunting a ceiling. That case feels like the exception and is in fact the
+# strongest reason to refuse: if the generator is at its limit, the system's
+# ceiling is exactly what the run cannot tell you. The remedy is to raise
+# MAX_VUS and re-run, which is what the refusal says.
+#
+# summary_path is the k6 summary JSON. Three cases, told apart on purpose:
+#   - empty string      -> the scenario drives no generator (F2). Not applicable.
+#   - path that is missing -> the scenario CLAIMED a generator and produced no
+#     summary. That is the OOM-killed-run shape, and it discards: a run whose
+#     instrument vanished is not a run whose instrument behaved.
+#   - readable file     -> evaluate the two ratios below.
+#
+# `dropped_iterations` is absent under a constant-vus executor, which has no
+# arrival rate to fall behind. Absent means NOT APPLICABLE and is skipped -
+# never read as zero, which would silently pass the very check it belongs to.
+
+# Above this fraction of its configured ceiling, k6's own concurrency is a
+# plausible cause of the achieved rate. 0.9 leaves a tenth of the pool as
+# headroom; a run that needs more than that is not measuring the system alone.
+GENERATOR_VU_UTILISATION_MAX="${GENERATOR_VU_UTILISATION_MAX:-0.9}"
+# Above this fraction of intended iterations dropped, the offered load never
+# reached the system, so the achieved rate is a floor on the generator rather
+# than a measurement of the target. 0.05 is deliberately strict: a dropped
+# iteration is load the system never saw.
+GENERATOR_DROPPED_RATIO_MAX="${GENERATOR_DROPPED_RATIO_MAX:-0.05}"
+
+post_guard_generator_saturated() {
+  local summary_path="${1:-}"
+  [ -n "$summary_path" ] || { echo "ok"; return 0; }
+  if [ ! -f "$summary_path" ]; then
+    echo "DISCARDED post_guard_generator_saturated: the scenario drives a load generator but wrote no summary at $summary_path - a run whose instrument vanished (an OOM-killed k6 is the known shape, #2931) cannot be reported"
+    return 0
+  fi
+
+  jq -r --argjson vu_max "$GENERATOR_VU_UTILISATION_MAX" \
+        --argjson drop_max "$GENERATOR_DROPPED_RATIO_MAX" '
+    .metrics as $m
+    | ($m.vus.max // null) as $used
+    | ($m.vus_max.max // null) as $cfg
+    | ($m.dropped_iterations.count // null) as $dropped
+    | ($m.http_reqs.count // 0) as $reqs
+    | [
+        (if ($used == null or $cfg == null or $cfg == 0) then
+           "DISCARDED post_guard_generator_saturated: the summary carries no vus/vus_max, so the generator posture cannot be established - a run that cannot show its instrument was healthy is not reportable"
+         elif (($used / $cfg) > $vu_max) then
+           "DISCARDED post_guard_generator_saturated: k6 used \($used) of \($cfg) virtual users (\((($used / $cfg) * 100) | floor)% of its own ceiling, limit \(($vu_max * 100) | floor)%) - the achieved rate may be the generator, not the system. Raise MAX_VUS/PRE_ALLOCATED_VUS well clear of the observed usage and re-run"
+         else empty end),
+        (if ($dropped == null) then empty
+         elif (($dropped + $reqs) == 0) then empty
+         elif (($dropped / ($dropped + $reqs)) > $drop_max) then
+           "DISCARDED post_guard_generator_saturated: k6 dropped \($dropped) of \($dropped + $reqs) intended iterations (\((($dropped / ($dropped + $reqs)) * 100) | floor)%, limit \(($drop_max * 100) | floor)%) - that load never reached the system, so the achieved rate is a floor on the generator. Raise MAX_VUS/PRE_ALLOCATED_VUS and re-run"
+         else empty end)
+      ]
+    | if length == 0 then "ok" else .[0] end
+  ' "$summary_path" 2>/dev/null || echo "DISCARDED post_guard_generator_saturated: could not parse $summary_path"
+}
+
 # ---------------------------------------------------------------------------
 # verdict - VALID / DISCARDED + reason, with a documented, machine-parseable
 # schema (--resume parses it, #2845). One `key=value` per line, LF-terminated,
@@ -1002,14 +1072,20 @@ verdict_read() {
 # run_post_guards <dir> <conn_ids_csv> <window_start_iso> <window_start_epoch> <window_stop_epoch> [destination_conn_id]
 # Runs every post-guard and writes verdict.txt: VALID if every one answered
 # "ok", DISCARDED with every non-"ok" reason otherwise.
+# `k6_summary` is optional and its ABSENCE is meaningful: pass the path for any
+# scenario that drives a load generator, and leave it empty only for one that
+# genuinely has none (F2). Omitting it for a k6 scenario silently skips the
+# generator check, which is the shape post_guard_generator_saturated exists to
+# stop - so scenarios should pass it even when they expect it to pass.
 run_post_guards() {
-  local dir="$1" conn_ids="$2" ws_iso="$3" ws_epoch="$4" we_epoch="$5" dest="${6:-}"
+  local dir="$1" conn_ids="$2" ws_iso="$3" ws_epoch="$4" we_epoch="$5" dest="${6:-}" k6_summary="${7:-}"
   local results=() r
   results+=("$(post_guard_attempts "$conn_ids" "$ws_iso")")
   results+=("$(post_guard_deferrals "$conn_ids" "$ws_iso")")
   results+=("$(post_guard_requeues "$conn_ids")")
   results+=("$(post_guard_destination_creates "$ws_iso" "$dest")")
   results+=("$(post_guard_limiter_degraded "$ws_epoch" "$we_epoch")")
+  results+=("$(post_guard_generator_saturated "$k6_summary")")
 
   local reasons=()
   for r in "${results[@]}"; do

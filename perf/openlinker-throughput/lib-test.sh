@@ -391,6 +391,61 @@ assert_eq "guard_log_level records what it verified" \
 
 OL_API_CONTAINER="lab-api"; WORKER_CONTAINERS="lab-worker"
 
+echo "--- post_guard_generator_saturated ---"
+# Writes a k6-shaped summary to $1 with the metrics given, so each case differs
+# in exactly the field it is about.
+write_k6_summary() {
+  local out="$1" used="$2" cfg="$3" dropped="$4" reqs="$5" extra=""
+  [ "$dropped" = "none" ] || extra=",\"dropped_iterations\":{\"count\":$dropped}"
+  cat > "$out" <<JSON
+{"metrics":{"vus":{"max":$used},"vus_max":{"max":$cfg},
+ "http_reqs":{"count":$reqs}$extra}}
+JSON
+}
+
+sat_dir="$(mktemp -d)"
+
+write_k6_summary "$sat_dir/healthy.json" 12 300 0 10000
+assert_eq "a generator with headroom passes" "ok" \
+  "$(post_guard_generator_saturated "$sat_dir/healthy.json")"
+
+# The case this guard exists for: F3's ~600/s runs sat at 92-97% of their VU
+# ceiling and their numbers were nearly published as a system ceiling.
+write_k6_summary "$sat_dir/vu-bound.json" 132 137 0 18100
+assert_contains "a generator at 96% of its VU ceiling is discarded" \
+  "$(post_guard_generator_saturated "$sat_dir/vu-bound.json")" "DISCARDED"
+assert_contains "the refusal names the remedy, not just the fault" \
+  "$(post_guard_generator_saturated "$sat_dir/vu-bound.json")" "MAX_VUS"
+
+write_k6_summary "$sat_dir/dropped.json" 20 300 4400 18100
+assert_contains "a high dropped-iteration fraction is discarded" \
+  "$(post_guard_generator_saturated "$sat_dir/dropped.json")" "DISCARDED"
+
+# constant-vus has no arrival rate to fall behind, so k6 emits no
+# dropped_iterations at all. Absent must mean NOT APPLICABLE - reading it as
+# zero would silently pass the check it belongs to.
+write_k6_summary "$sat_dir/no-drop-metric.json" 20 300 none 18100
+assert_eq "an absent dropped_iterations metric is not applicable, not zero" "ok" \
+  "$(post_guard_generator_saturated "$sat_dir/no-drop-metric.json")"
+
+# A scenario with no load generator at all (F2) is not applicable...
+assert_eq "no summary path means no generator, which passes" "ok" \
+  "$(post_guard_generator_saturated "")"
+# ...but one that CLAIMED a generator and produced nothing is the OOM shape.
+# Asserted on the SPECIFIC message, not merely on the word DISCARDED: without
+# the missing-file branch the function falls through to jq, which fails on a
+# nonexistent path and hits the could-not-parse fallback - which also says
+# DISCARDED. A weaker assertion passed against the broken code (found red-first).
+assert_contains "a claimed-but-missing summary is discarded, never skipped" \
+  "$(post_guard_generator_saturated "$sat_dir/never-written.json")" "wrote no summary at"
+
+# A summary that cannot show its instrument was healthy is not reportable.
+printf '{"metrics":{"http_reqs":{"count":100}}}\n' > "$sat_dir/no-vus.json"
+assert_contains "a summary carrying no vus/vus_max is discarded" \
+  "$(post_guard_generator_saturated "$sat_dir/no-vus.json")" "DISCARDED"
+
+rm -rf "$sat_dir"
+
 # ===========================================================================
 # post-guards
 # ===========================================================================

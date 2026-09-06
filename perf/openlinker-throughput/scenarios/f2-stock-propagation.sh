@@ -409,6 +409,9 @@ run_strict() {
   done
 
   window_stop "$dir"
+  # No k6 summary argument, deliberately: this scenario's load is stock writes
+  # driven through the shop, not an HTTP generator, so there is nothing for
+  # post_guard_generator_saturated to check (#2933).
   run_post_guards "$dir" "$CONN_IDS" "$(date -u -d "@$WINDOW_START_EPOCH" +%Y-%m-%dT%H:%M:%SZ)" \
     "$WINDOW_START_EPOCH" "$WINDOW_STOP_EPOCH" ""
 
