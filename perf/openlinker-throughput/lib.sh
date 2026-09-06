@@ -309,7 +309,69 @@ guard_perf_max_attempts() {
 # Guards - fatal, pre-flight. Every one of these must pass BEFORE
 # window_start, per the epic's own rule: "a guard that aborts before the
 # window costs seconds; one that discards after costs the whole run."
+#
+# VOLATILE versus FIXED (#2932). Every guard describes the world as of the
+# moment it runs, and until this issue every guard ran exactly ONCE, at
+# script start, before the first window ever opened. A scenario that opens
+# several windows (F3's per-arm loop, a repeated F2/F7 run) kept trusting
+# that single start-of-script check for every later window - and a peer
+# with write access to the stand can falsify it before a later window opens.
+# That peer need not be another scenario: an operator, an unrelated
+# automation, or a plain `docker compose up --force-recreate` silently
+# resolving a different default all do it, and none of them takes
+# guard_stand_exclusive's lock (that lock stops a second SCENARIO; it
+# cannot stop a human or an automation from touching the one it already
+# granted the stand to).
+#
+# Confirmed live, #2842/#2848 (2026-09-06): F3 declared
+# `guard_runner_state disabled`. F3's guards passed at 23:27, a peer
+# scenario (F2, needing the runner ENABLED) flipped it on the SAME stand at
+# 23:30:24, and F3's next two arms (23:30:49, 23:34:38) wrote
+# `"runnerState": "disabled"` into their own manifests for windows in which
+# the runner was in fact executing jobs - because `manifest_write` re-renders
+# MANIFEST_RUNNER_STATE from whatever the one, stale, script-wide check
+# found. `post_guard_attempts` caught one of the two arms after the fact;
+# nothing would have caught the other.
+#
+# The guards below therefore split into two classes:
+#
+#   VOLATILE - describes a live property of a CONTAINER that a *different*
+#   writer to the same stand can flip WHILE this scenario is running:
+#   guard_runner_state (WORKER_RUNNER_ENABLED + the lane-caps boot line) and
+#   guard_scheduler_off (OL_SCHEDULER_ENABLED). `window_start` re-asserts
+#   BOTH, once per window, via `reassert_volatile_guards` below - but only
+#   for whichever of the two this scenario actually declared during its own
+#   pre-flight (see that function's docblock for why absence is a
+#   deliberate "not this scenario's concern", not an oversight).
+#
+#   FIXED - describes something that cannot change under a running
+#   scenario without ALSO invalidating the very build or stand it is
+#   measuring, so re-checking it every window buys noise, not safety:
+#     - guard_build: the running image's revision label is baked in at
+#       `docker build`; changing it needs a rebuild, which
+#       guard_stand_exclusive's own lock already serialises against.
+#     - guard_demo_mode_off, guard_log_level, guard_perf_max_attempts: all
+#       three are env vars fixed at container start (`docker run`/`up`),
+#       unreadable and unwritable from outside a recreate.
+#     - guard_connection_budget / guard_pool_recorded: OL_DB_POOL_MAX and
+#       Postgres max_connections are both boot-time arguments (env var,
+#       `-c` flag) for the same reason.
+#   guard_queue_empty is a THIRD, orthogonal case - a DATA precondition
+#   rather than a stand-configuration one, and every scenario already
+#   re-checks it itself, per arm, directly (see its own docblock).
+#
+# The next guard added here should state, in its own docblock, which side
+# of this line it is on and why - "fixed" is the right default only for a
+# property that is provably immutable while every container involved keeps
+# running without a restart.
 # ===========================================================================
+
+# Tracking globals for the two VOLATILE guards (#2932). Populated by
+# guard_runner_state / guard_scheduler_off THEMSELVES, on success, so
+# `reassert_volatile_guards` below knows both WHETHER a scenario declared a
+# posture and WHAT it declared - never guessed at, never defaulted.
+GUARD_RUNNER_STATE_EXPECTED=""
+GUARD_SCHEDULER_OFF_ACTIVE=0
 
 # guard_queue_empty - no queued/running sync_jobs rows for the given
 # connection ids. A leftover row from a previous, unrelated run would enqueue
@@ -342,6 +404,12 @@ guard_scheduler_off() {
     [ "$w_enabled" = "false" ] || die "guard_scheduler_off: $w has OL_SCHEDULER_ENABLED=$w_enabled - a cron could fire into the measurement window"
   done
   MANIFEST_SCHEDULER_CADENCE_ROW="$(scheduler_cadence_row)"
+  # VOLATILE (#2932): a peer with write access to the stand can flip this
+  # between windows. Recording that this guard was called - and with what
+  # it verified - is what lets reassert_volatile_guards() re-run it at every
+  # window_start without every scenario script having to remember to do so
+  # itself. See the "volatile vs fixed" block above guard_queue_empty.
+  GUARD_SCHEDULER_OFF_ACTIVE=1
   log "guard_scheduler_off ok (operational_settings cadence row: ${MANIFEST_SCHEDULER_CADENCE_ROW:-<none>})"
 }
 
@@ -497,7 +565,40 @@ guard_runner_state() {
     fi
   done
   MANIFEST_RUNNER_STATE="$expected"
+  # VOLATILE (#2932): recorded so reassert_volatile_guards() can re-run
+  # THIS SAME check, with the SAME expectation, at every later window_start -
+  # see the "volatile vs fixed" block above guard_queue_empty.
+  GUARD_RUNNER_STATE_EXPECTED="$expected"
   log "guard_runner_state ok (expected=$expected${MANIFEST_LANE_CAPS:+, lane caps: $MANIFEST_LANE_CAPS})"
+}
+
+# reassert_volatile_guards - called by window_start, once per window, BEFORE
+# manifest_write (#2932). Re-runs guard_runner_state / guard_scheduler_off
+# with the SAME expectation this scenario already verified during its own
+# pre-flight, so a change landed by a peer between two windows is caught
+# HERE - at the one place every window necessarily passes through - rather
+# than depending on every scenario script remembering to re-call the guard
+# itself before every window_start (which is what F3/F7/F2 each did by hand
+# after the incident this issue is about; that per-scenario copy is now
+# redundant, harmless, and no longer required of a new scenario).
+#
+# A guard whose tracking global was never set (this scenario never called
+# it) is skipped, not defaulted to some assumed expectation - F5 never
+# calls guard_runner_state at all (its own header: "READ-ONLY... guard_
+# queue_empty and guard_runner_state are therefore deliberately NOT
+# called"), and inventing a posture for it here would refuse a run over a
+# condition the scenario never claimed to depend on.
+#
+# Cheap by design (#2932's own assumption): each re-check is a handful of
+# `docker exec printenv` calls plus, for the runner, one `docker logs |
+# grep` - negligible against a measurement window measured in minutes.
+reassert_volatile_guards() {
+  if [ -n "$GUARD_RUNNER_STATE_EXPECTED" ]; then
+    guard_runner_state "$GUARD_RUNNER_STATE_EXPECTED"
+  fi
+  if [ "$GUARD_SCHEDULER_OFF_ACTIVE" = "1" ]; then
+    guard_scheduler_off
+  fi
 }
 
 # guard_log_level - OL_LOG_BODY_MAX_BYTES must be a positive value.
@@ -535,9 +636,46 @@ guard_log_level() {
 # once, by `window_start`, so "before any load" is structural rather than a
 # convention a scenario script has to remember.
 # ---------------------------------------------------------------------------
+# manifest_pg_non_default_settings - EVERY non-default Postgres setting in
+# force, not a hand-picked subset (#2934). A `statement_timeout=30s` was set
+# on this stand's `postgres` role with a live `ALTER ROLE`, existed nowhere
+# else (not in docker-compose.lab.yml, not in any manifest), and was in
+# force for every F5 measurement without a single guard or report saying so
+# (#2843/#2934). `pg_settings` alone would answer for only the CONNECTING
+# role's own resolved session, so this is joined by two reads that answer
+# for every role/database regardless of which one happens to be connecting:
+# `pg_roles.rolconfig` (what an `ALTER ROLE ... SET` left standing - the
+# statement_timeout's own home before this issue moved its DEFAULT into
+# docker-compose.lab.yml) and `pg_db_role_setting` (an `ALTER DATABASE ...
+# SET`, optionally scoped to one role). A guard refusing an unexpected
+# setting would be the wrong instrument - the set of things an operator may
+# legitimately tune is open - so this RECORDS rather than refuses; what must
+# not happen is a run whose conditions cannot be reconstructed from its own
+# manifest.
+manifest_pg_non_default_settings() {
+  local out
+  out="$(pg_sql "SELECT jsonb_build_object(
+      'liveSettingsSourceNotDefault', (
+        SELECT COALESCE(jsonb_object_agg(name, jsonb_build_object('setting', setting, 'source', source)), '{}'::jsonb)
+        FROM pg_settings WHERE source <> 'default'
+      ),
+      'roleConfig', (
+        SELECT COALESCE(jsonb_object_agg(rolname, to_jsonb(rolconfig)), '{}'::jsonb)
+        FROM pg_roles WHERE rolconfig IS NOT NULL
+      ),
+      'databaseRoleConfig', (
+        SELECT COALESCE(jsonb_agg(jsonb_build_object('database', d.datname, 'role', r.rolname, 'config', to_jsonb(s.setconfig))), '[]'::jsonb)
+        FROM pg_db_role_setting s
+        JOIN pg_database d ON d.oid = s.setdatabase
+        LEFT JOIN pg_roles r ON r.oid = s.setrole
+      )
+    )" 2>/dev/null)"
+  [ -n "$out" ] && printf '%s' "$out" || printf '{}'
+}
+
 manifest_gather_environment() {
   local pg_shared_buffers pg_work_mem pg_preload pg_stat_ext node_ver pg_image redis_image \
-    redis_used_mem host_cpu host_ram host_load
+    redis_used_mem host_cpu host_ram host_load pg_overrides
   pg_shared_buffers="$(pg_sql "SHOW shared_buffers" 2>/dev/null || printf 'unknown')"
   pg_work_mem="$(pg_sql "SHOW work_mem" 2>/dev/null || printf 'unknown')"
   pg_preload="$(pg_sql "SHOW shared_preload_libraries" 2>/dev/null || printf 'unknown')"
@@ -550,6 +688,11 @@ manifest_gather_environment() {
   host_ram="$( { free -m 2>/dev/null || true; } | awk '/^Mem:/{print $2"MB"}')"
   host_ram="${host_ram:-unknown}"
   host_load="$(uptime 2>/dev/null | grep -oP 'load average[s:]* \K.*' || printf 'unknown')"
+  pg_overrides="$(manifest_pg_non_default_settings)"
+  # jq's own validation, not a hand-rolled JSON check: a malformed blob (a
+  # broken query, a psql error message leaking through) must not silently
+  # become a manifest that looks fine and is not.
+  jq -e . >/dev/null 2>&1 <<<"$pg_overrides" || pg_overrides='{"error":"manifest_pg_non_default_settings returned non-JSON output"}'
 
   jq -n \
     --arg shared_buffers "$pg_shared_buffers" \
@@ -563,7 +706,8 @@ manifest_gather_environment() {
     --arg host_cpu_count "$host_cpu" \
     --arg host_ram "$host_ram" \
     --arg host_load_average "$host_load" \
-    '{postgres:{shared_buffers:$shared_buffers, work_mem:$work_mem, shared_preload_libraries:$shared_preload_libraries, installed_extensions:$installed_extensions},
+    --argjson postgres_overrides "$pg_overrides" \
+    '{postgres:{shared_buffers:$shared_buffers, work_mem:$work_mem, shared_preload_libraries:$shared_preload_libraries, installed_extensions:$installed_extensions, nonDefaultSettings:$postgres_overrides},
       node_version:$node_version, postgres_image_digest:$postgres_image_digest, redis_image_digest:$redis_image_digest,
       redis_used_memory_bytes:$redis_used_memory_bytes,
       host:{cpu_count:$host_cpu_count, ram:$host_ram, load_average:$host_load_average}}'
@@ -744,9 +888,17 @@ WINDOW_STOP_EPOCH=""
 
 # window_start <results_dir> <scenario> <conn_ids_csv> <quick:0|1> [extra_manifest_json]
 #
-# Writes manifest.json BEFORE any load (AC), then inserts the settle period
+# Re-asserts the volatile guards (#2932 - see reassert_volatile_guards), then
+# writes manifest.json BEFORE any load (AC), then inserts the settle period
 # (#2841 "A settle window between pre-flight and the measurement") between
 # the last guard and the window actually opening, then starts the sampler.
+#
+# The re-assert runs FIRST, before manifest_write, deliberately: a scenario
+# that opens N windows (one call per arm/repeat) must have its manifest
+# describe the window IT LABELS, not the state a pre-flight check observed
+# possibly windows ago - and it must die here, before any side effect
+# (before the manifest is written, before the sampler starts), rather than
+# be recorded as though it had passed.
 window_start() {
   local dir="$1" scenario="$2" conn_ids="$3" quick="$4" extra="${5:-}"
   # ${5:-{}} looks equivalent but is NOT: bash matches braces generically when
@@ -754,6 +906,7 @@ window_start() {
   # the default-value branch of ${VAR:-...} consumes one extra `}` even when
   # $5 IS set - verified: `set -- x; : "${1:-{}}"` yields `x}`, not `x`.
   [ -n "$extra" ] || extra='{}'
+  reassert_volatile_guards
   manifest_write "$dir" "$scenario" "$conn_ids" "$quick" "$extra"
   log "settling ${SETTLE_SECS}s before window_start (letting the build/rebuild's CPU and page-cache impact fade)"
   sleep "$SETTLE_SECS"
