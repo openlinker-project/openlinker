@@ -1361,4 +1361,25 @@ describe('ProductsListPage', () => {
     });
   });
 
+  describe('the two-stage total on a deep link (#2957 review round 4)', () => {
+    it('claims no floor from a URL offset before a single row has loaded', async () => {
+      // `?offset=100` with the rows still in flight. The chip renders ABOVE the
+      // loading branch, so an ungated floor reads `All 100+` - a positive claim
+      // about the operator's catalogue computed entirely from the URL. The four
+      // call-site gates are the fix; `formatPaginatedTotal(null, null)` is only
+      // the helper beneath them, and reverting all four leaves every other
+      // products test green.
+      const mockApi = createMockApiClient({
+        products: {
+          listRows: vi.fn().mockReturnValue(new Promise(() => {})),
+          count: vi.fn().mockReturnValue(new Promise(() => {})),
+        },
+      });
+
+      renderWithProviders(<ProductsListPage />, { apiClient: mockApi, route: '/products?offset=100' });
+
+      expect(await screen.findByText(/All\s+—/)).toBeInTheDocument();
+      expect(screen.queryByText(/All\s+100\+/)).not.toBeInTheDocument();
+    });
+  });
 });

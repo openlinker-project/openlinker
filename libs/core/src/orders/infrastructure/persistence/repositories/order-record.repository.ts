@@ -262,7 +262,9 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       // v1 scale (≤30k rows in the typical 30-day window), file a follow-up
       // if scan time creeps.
       qb.andWhere(`rec."syncStatus" @> :destFilter::jsonb`, {
-        destFilter: JSON.stringify([{ destinationConnectionId: filters.destinationConnectionId }]),
+        destFilter: JSON.stringify([
+          { destinationConnectionId: filters.destinationConnectionId },
+        ]),
       });
     }
 
@@ -1146,12 +1148,9 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         qb.andWhere(`(NOT ${notShipped}) OR rec."dispatchByAt" IS NULL`);
         break;
       case 'overdue':
-        qb.andWhere(
-          `${notShipped} AND rec."dispatchByAt" IS NOT NULL AND rec."dispatchByAt" <= :slaNow`,
-          {
-            slaNow: now,
-          }
-        );
+        qb.andWhere(`${notShipped} AND rec."dispatchByAt" IS NOT NULL AND rec."dispatchByAt" <= :slaNow`, {
+          slaNow: now,
+        });
         break;
       case 'at_risk':
         qb.andWhere(
@@ -1872,9 +1871,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
 
     return rows
       .map((row) => row as { currency?: unknown; count?: unknown })
-      .filter(
-        (row): row is { currency: string; count: unknown } => typeof row.currency === 'string'
-      )
+      .filter((row): row is { currency: string; count: unknown } => typeof row.currency === 'string')
       .map((row) => ({
         reportingCurrency: row.currency,
         count: Number(row.count ?? 0),
@@ -2548,7 +2545,10 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * Convert a derived {@link OrderLineItemDraft} to its ORM entity for
    * insertion. `id`/`createdAt` are left for TypeORM to generate.
    */
-  private lineItemToOrm(orderRecordId: string, item: OrderLineItemDraft): OrderLineItemOrmEntity {
+  private lineItemToOrm(
+    orderRecordId: string,
+    item: OrderLineItemDraft
+  ): OrderLineItemOrmEntity {
     const entity = new OrderLineItemOrmEntity();
     entity.orderRecordId = orderRecordId;
     entity.lineNumber = item.lineNumber;

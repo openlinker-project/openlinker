@@ -1093,10 +1093,7 @@ describe('ListingsController', () => {
 
       const result = await controller.getCategoryPath('conn-1', '10');
 
-      expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith(
-        'conn-1',
-        'OfferManager'
-      );
+      expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith('conn-1', 'OfferManager');
       expect(fetch).toHaveBeenCalledWith('10');
       expect(result.path).toEqual(samplePath);
     });
@@ -1225,7 +1222,10 @@ describe('ListingsController', () => {
       categoryResolution.resolveCategoriesBatch.mockResolvedValue(serviceResult);
 
       const result = await controller.resolveCategoriesBatch('conn-1', {
-        items: [{ variantId: 'v1', ean: '5901234567890' }, { variantId: 'v2' }],
+        items: [
+          { variantId: 'v1', ean: '5901234567890' },
+          { variantId: 'v2' },
+        ],
       });
 
       expect(categoryResolution.resolveCategoriesBatch).toHaveBeenCalledWith('conn-1', {
@@ -1441,17 +1441,18 @@ describe('ListingsController', () => {
       // never disposed; without the `end()` guard, ending a destroyed response
       // throws out of the `finally` and replaces the logged cause.
       let closed = false;
-      categoryResolution.resolveCategoriesStream.mockImplementation(() =>
-        (async function* generate(): AsyncGenerator<EanCategoryMatchStreamEvent> {
-          try {
-            await tick();
-            yield matchedV1;
-            await tick();
-            yield noEanV2;
-          } finally {
-            closed = true;
-          }
-        })()
+      categoryResolution.resolveCategoriesStream.mockImplementation(
+        () =>
+          (async function* generate(): AsyncGenerator<EanCategoryMatchStreamEvent> {
+            try {
+              await tick();
+              yield matchedV1;
+              await tick();
+              yield noEanV2;
+            } finally {
+              closed = true;
+            }
+          })()
       );
 
       const res = makeRes();
@@ -1946,12 +1947,9 @@ describe('ListingsController', () => {
       expect(rolesOf(methodName)).toEqual(['admin', 'operator', 'viewer']);
     });
 
-    it.each(WRITE_METHODS)(
-      '%s stays restricted to admin and operator (no viewer)',
-      (methodName) => {
-        expect(rolesOf(methodName)).toEqual(['admin', 'operator']);
-      }
-    );
+    it.each(WRITE_METHODS)('%s stays restricted to admin and operator (no viewer)', (methodName) => {
+      expect(rolesOf(methodName)).toEqual(['admin', 'operator']);
+    });
   });
 
   describe('getProductOfferStatus (#1760)', () => {
@@ -2097,6 +2095,33 @@ describe('ListingsController', () => {
         connectionId: undefined,
         internalId: undefined,
         search: undefined,
+      });
+    });
+
+    it('maps the DTO to filters with ONE function, so list and count cannot drift', async () => {
+      // The assertion `orders` and `products` already had, and `listings` did
+      // not (#2957 review round 4, I2) - this controller wrote its filter
+      // literal FOUR times across two handlers, so a fifth membership filter
+      // added to the list would have been silently dropped from the count.
+      repository.findManyRows.mockResolvedValue([]);
+      repository.countMany.mockResolvedValue(9);
+      const query = { connectionId: 'conn-1', internalId: 'ol_variant_1', search: 'terra' };
+
+      await controller.listOfferMappings({ ...query, withTotal: false, limit: 20, offset: 0 });
+      await controller.countOfferMappings({ ...query });
+
+      const [listFilters] = repository.findManyRows.mock.calls[0];
+      const [countFilters] = repository.countMany.mock.calls[0];
+      expect(countFilters).toEqual(listFilters);
+      // A COMPLETE literal, not a key subset: `toEqual` between the two paths
+      // is symmetric and cannot see a mapper that drops the same field on both
+      // sides, while a hand-kept `toMatchObject` list has no entry to miss for
+      // a field added later. This fails until a new filter is added here too.
+      expect(countFilters).toEqual({
+        connectionId: 'conn-1',
+        internalId: 'ol_variant_1',
+        search: 'terra',
+        lifecycle: undefined,
       });
     });
 

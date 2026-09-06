@@ -37,8 +37,25 @@ import { CustomerProjectionResponseDto } from './dto/customer-projection-respons
 import type { CustomerAddressResponseDto } from './dto/customer-address-response.dto';
 import { PaginatedCustomersResponseDto } from './dto/paginated-customers-response.dto';
 import { CountCustomersQueryDto } from './dto/count-customers-query.dto';
+import type { CustomerProjectionFilters } from '@openlinker/core/customers';
 import { PaginatedTotalResponseDto } from '../../common/dto/paginated-total-response.dto';
 import { Roles } from '../../auth/decorators/roles.decorator';
+
+/**
+ * The one DTO-to-filters mapping this list has (#2957 review round 4, I2).
+ *
+ * Two fields today; the argument is about the third. Shared by `GET /customers`
+ * and `GET /customers/count` so the count cannot apply a different filter set
+ * than the page - the discipline `orders` and `products` already carry.
+ */
+function toCustomerProjectionFilters(
+  query: CountCustomersQueryDto
+): CustomerProjectionFilters {
+  return {
+    search: query.search,
+    lastSourceConnectionId: query.lastSourceConnectionId,
+  };
+}
 
 @ApiBearerAuth()
 @ApiTags('customers')
@@ -67,8 +84,8 @@ export class CustomersController {
   async listCustomers(
     @Query() query: ListCustomersQueryDto
   ): Promise<PaginatedCustomersResponseDto> {
-    const { search, lastSourceConnectionId, withTotal, limit = 20, offset = 0 } = query;
-    const filters = { search, lastSourceConnectionId };
+    const { withTotal, limit = 20, offset = 0 } = query;
+    const filters = toCustomerProjectionFilters(query);
 
     // `?withTotal=false` skips the COUNT entirely and the response OMITS
     // `total` rather than reporting 0 (#2944) - an absent total and a genuine
@@ -107,8 +124,7 @@ export class CustomersController {
   @ApiResponse({ status: 200, description: 'Row count', type: PaginatedTotalResponseDto })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async countCustomers(@Query() query: CountCustomersQueryDto): Promise<PaginatedTotalResponseDto> {
-    const { search, lastSourceConnectionId } = query;
-    const total = await this.customerRepository.countMany({ search, lastSourceConnectionId });
+    const total = await this.customerRepository.countMany(toCustomerProjectionFilters(query));
     return { total };
   }
 

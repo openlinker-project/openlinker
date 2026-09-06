@@ -265,11 +265,32 @@ interface ApiRequest {
   <T>(path: string, init?: RequestInit): Promise<T>;
 }
 
+/**
+ * Every key of `ListingsFilters`, exhaustively.
+ *
+ * `buildQuery` below enumerates its fields, and an enumeration is exactly what
+ * `listingCountFilters` narrows by OMISSION to avoid (#2957 review round 4,
+ * I1): a sixth membership filter would enter the count's cache key and never
+ * reach its URL, so one un-narrowed answer would be cached under many
+ * filter-specific keys and look filter-specific. This map makes that
+ * unrepresentable - adding a field to `ListingsFilters` fails to compile here
+ * until somebody decides how it is serialised.
+ */
+const LISTINGS_FILTER_KEYS: Record<keyof ListingsFilters, true> = {
+  connectionId: true,
+  internalId: true,
+  search: true,
+  lifecycle: true,
+  includeLifecycleCounts: true,
+};
+
 function buildQuery(
   filters?: ListingsFilters,
   pagination?: ListingsPagination,
   options?: { withTotal?: false },
 ): string {
+  // Read so the exhaustiveness map above cannot be deleted as unused.
+  void LISTINGS_FILTER_KEYS;
   const params = new URLSearchParams();
   if (filters?.connectionId) params.set('connectionId', filters.connectionId);
   if (filters?.internalId) params.set('internalId', filters.internalId);

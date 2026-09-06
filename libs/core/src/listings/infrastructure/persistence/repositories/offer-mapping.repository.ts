@@ -595,12 +595,9 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
       .where('mapping.entityType = :entityType', { entityType: OFFER_ENTITY_TYPE })
       .andWhere('mapping.connectionId = :connectionId', { connectionId })
       .andWhere('mapping.internalId IN (:...internalIds)', { internalIds })
-      .andWhere(
-        '(snapshot."publicationStatus" IS NULL OR snapshot."publicationStatus" != :ended)',
-        {
-          ended: ENDED_PUBLICATION_STATUS,
-        }
-      )
+      .andWhere('(snapshot."publicationStatus" IS NULL OR snapshot."publicationStatus" != :ended)', {
+        ended: ENDED_PUBLICATION_STATUS,
+      })
       .groupBy('mapping.internalId')
       .getRawMany<{ internalId: string; count: string }>();
 

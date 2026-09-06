@@ -91,6 +91,10 @@ describe('Count query DTOs are OmitType of their list DTO (#2944)', () => {
     ['orders', CountOrdersQueryDto],
     ['customers', CountCustomersQueryDto],
     ['products', CountProductsQueryDto],
+    // Round 3 added this DTO to the `withTotal` matrix and not to this one
+    // (#2957 review round 4), so deleting `'limit'` from its OmitType list
+    // would have gone unnoticed while its three siblings still 400.
+    ['product variants', CountProductVariantsQueryDto],
     ['listings', CountOfferMappingsQueryDto],
   ])('drops the page arguments on %s/count', (_name, cls) => {
     // `forbidNonWhitelisted` is what makes this observable: a property the

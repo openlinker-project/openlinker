@@ -100,6 +100,10 @@ import { MarketplaceOfferResponseDto } from './dto/marketplace-offer-response.dt
 import { OfferMappingResponseDto } from './dto/offer-mapping-response.dto';
 import { PaginatedOfferMappingsResponseDto } from './dto/paginated-offer-mappings-response.dto';
 import { CountOfferMappingsQueryDto } from './dto/count-offer-mappings-query.dto';
+import type {
+  OfferMappingCountFilters,
+  OfferMappingFilters,
+} from '@openlinker/core/listings';
 import { OfferMappingCountResponseDto } from './dto/offer-mapping-count-response.dto';
 import {
   PublishedVariantsRequestDto,
@@ -142,6 +146,43 @@ import {
   FindProductsByBarcodeRequestDto,
   findProductsByBarcodeResponseSchema,
 } from './dto/catalog-product.dto';
+
+/**
+ * The one DTO-to-filters mapping this list has (#2957 review round 4, I2).
+ *
+ * Shared by `GET /listings` and `GET /listings/count`, so the count cannot
+ * apply a different filter set than the page. Before this, the literal was
+ * written FOUR times across two handlers - the shape `orders` and `products`
+ * already had mappers for, and the one where a fifth membership filter added to
+ * the list would be silently dropped from the count.
+ */
+function toOfferMappingFilters(query: CountOfferMappingsQueryDto): OfferMappingFilters {
+  return { ...toOfferMappingBucketFilters(query), lifecycle: query.lifecycle };
+}
+
+/**
+ * The MEMBERSHIP filters - everything except the lifecycle narrowing.
+ *
+ * `countByLifecycle` partitions the un-narrowed set, so the tab bar keeps
+ * describing every tab while one is selected (#2029). Lifecycle is the one
+ * clause the page and the buckets must NOT share, which is why this is a
+ * second function rather than an argument - a boolean would make the two
+ * indistinguishable at the call site.
+ *
+ * This is the BASE, and `toOfferMappingFilters` adds the tab on top, so a new
+ * membership filter is added here once and reaches both. The inverse (deriving
+ * the buckets by deleting from the list filters) cannot type-check anyway:
+ * `OfferMappingCountFilters` declares `lifecycle?: never`.
+ */
+function toOfferMappingBucketFilters(
+  query: CountOfferMappingsQueryDto
+): OfferMappingCountFilters {
+  return {
+    connectionId: query.connectionId,
+    internalId: query.internalId,
+    search: query.search,
+  };
+}
 
 @ApiBearerAuth()
 @ApiTags('listings')
@@ -233,17 +274,11 @@ export class ListingsController {
   async listOfferMappings(
     @Query() query: ListOfferMappingsQueryDto
   ): Promise<PaginatedOfferMappingsResponseDto> {
-    const {
-      connectionId,
-      internalId,
-      search,
-      lifecycle,
-      includeLifecycleCounts,
-      withTotal,
-      limit = 20,
-      offset = 0,
-    } = query;
-    const filters = { connectionId, internalId, search, lifecycle };
+    // Only what this handler reads DIRECTLY. Every filter now travels through
+    // `toOfferMappingFilters`, so a new one needs no edit here (#2957 review
+    // round 4, I2).
+    const { lifecycle, includeLifecycleCounts, withTotal, limit = 20, offset = 0 } = query;
+    const filters = toOfferMappingFilters(query);
 
     // `?withTotal=false` skips BOTH aggregates - the list's own count and the
     // lifecycle buckets - and the response OMITS `total` rather than reporting
@@ -278,7 +313,7 @@ export class ListingsController {
     // provably the same number a second `COUNT(DISTINCT)` over the identical
     // join would return. `findManyRows` therefore fetches the page alone.
     const [lifecycleCounts, items] = await Promise.all([
-      this.offerMappingRepository.countByLifecycle({ connectionId, internalId, search }),
+      this.offerMappingRepository.countByLifecycle(toOfferMappingBucketFilters(query)),
       this.offerMappingRepository.findManyRows(filters, { limit, offset }),
     ]);
 
@@ -320,23 +355,16 @@ export class ListingsController {
   async countOfferMappings(
     @Query() query: CountOfferMappingsQueryDto
   ): Promise<OfferMappingCountResponseDto> {
-    const { connectionId, internalId, search, lifecycle, includeLifecycleCounts } = query;
+    const { lifecycle, includeLifecycleCounts } = query;
 
     if (!includeLifecycleCounts) {
-      const total = await this.offerMappingRepository.countMany({
-        connectionId,
-        internalId,
-        search,
-        lifecycle,
-      });
+      const total = await this.offerMappingRepository.countMany(toOfferMappingFilters(query));
       return { total };
     }
 
-    const lifecycleCounts = await this.offerMappingRepository.countByLifecycle({
-      connectionId,
-      internalId,
-      search,
-    });
+    const lifecycleCounts = await this.offerMappingRepository.countByLifecycle(
+      toOfferMappingBucketFilters(query)
+    );
     return { total: this.deriveTotal(lifecycleCounts, lifecycle), lifecycleCounts };
   }
 

@@ -1337,6 +1337,47 @@ describe('ListingsListPage', () => {
       expect(container.querySelectorAll('.tabs__count-skeleton')).toHaveLength(0);
     });
 
+    it('SUPPRESSES the total while the rows still belong to the previous tab', async () => {
+      // The defect the suppression exists for (#2957 review I1, pinned in round
+      // 4 after `rowsAreForAnotherTab = false` was found to pass all 50 tests).
+      // The count key omits `lifecycle`, so clicking a tab re-derives the NEW
+      // tab's bucket instantly from cached buckets, while `keepPreviousData`
+      // still has the OLD tab's twenty rows on screen. Pair the two and the
+      // summary reads "Showing 1-20 of 3" - a range wider than its own total.
+      const user = userEvent.setup();
+      const rows = Array.from({ length: 20 }, (_, i) => ({
+        ...sampleMappings.items[0],
+        id: `uuid-mapping-tab-${i}`,
+        externalId: `allegro-offer-tab-${i}`,
+      }));
+      // The Draft page never resolves, so the placeholder window stays open.
+      const listRows = vi
+        .fn()
+        .mockResolvedValueOnce({ items: rows, limit: 20, offset: 0 })
+        .mockReturnValue(new Promise(() => {}));
+      renderWithProviders(<ListingsListPage />, {
+        apiClient: createListingsMockApiClient({
+          listings: {
+            listRows,
+            count: vi.fn().mockResolvedValue({
+              total: 1237,
+              lifecycleCounts: { ...ZERO_LIFECYCLE_COUNTS, Active: 1234, Draft: 3 },
+            }),
+          },
+        }),
+      });
+
+      expect(await screen.findByText('1,234')).toBeInTheDocument();
+      await user.click(screen.getByRole('tab', { name: /draft/i }));
+      await waitFor(() => expect(listRows).toHaveBeenCalledTimes(2));
+
+      // Draft's bucket is 3 and is already in hand - but the twenty rows on
+      // screen are Active's, so stating it would contradict them. `20+` is the
+      // floor those rows actually prove.
+      expect(screen.getByText('20+')).toBeInTheDocument();
+      expect(screen.queryByText(/Showing 1.*20 of 3\b/)).not.toBeInTheDocument();
+    });
+
     it('keeps a KNOWN total on screen while paging, rather than blanking it', async () => {
       // The placeholder suppression must not fire on an ordinary page click
       // (#2957 review round 3, I3): the count key carries no offset, so the

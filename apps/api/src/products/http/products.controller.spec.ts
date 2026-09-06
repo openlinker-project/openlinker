@@ -301,9 +301,9 @@ describe('ProductsController', () => {
     });
 
     it('should reject non-UUID unlistedOn entries with 400 (#1720)', async () => {
-      await expect(controller.listProducts({ unlistedOn: 'not-a-uuid' })).rejects.toThrow(
-        BadRequestException
-      );
+      await expect(
+        controller.listProducts({ unlistedOn: 'not-a-uuid' })
+      ).rejects.toThrow(BadRequestException);
       expect(productsService.listProducts).not.toHaveBeenCalled();
     });
 
@@ -701,11 +701,13 @@ describe('ProductsController', () => {
       const [listFilters] = productsService.listProductRows.mock.calls[0];
       const [countFilters] = productsService.countProducts.mock.calls[0];
       expect(countFilters).toEqual(listFilters);
-      // `toEqual` is SYMMETRIC, so it cannot see a mapper that breaks the same
-      // way on both sides (#2957 review round 3, S4) - `sourceConnectionId:
-      // undefined` would satisfy it. Every rename is therefore asserted
-      // positively too, the shape the orders sibling already uses.
-      expect(countFilters).toMatchObject({
+      // `toEqual` between the two paths is SYMMETRIC, so it cannot see a mapper
+      // that breaks the same way on both sides (#2957 review round 3, S4) -
+      // `sourceConnectionId: undefined` would satisfy it. A COMPLETE literal
+      // rather than a `toMatchObject` key subset (round 4): a subset has no
+      // entry to miss for a filter added later, so it silently stops covering
+      // the field it was written for.
+      expect(countFilters).toEqual({
         sourceConnectionId: '11111111-1111-4111-8111-111111111111',
         search: 'widget',
         stock: 'low',

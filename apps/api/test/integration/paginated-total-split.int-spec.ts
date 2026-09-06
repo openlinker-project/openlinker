@@ -280,20 +280,27 @@ describe('Paginated total split (integration, #2944)', () => {
       const widgetPage = await repository.findMany({ search: 'widget' }, PAGE);
       expect(widgets).toBe(2);
       expect(widgetPage.total).toBe(2);
-      expect((await repository.findManyRows({ search: 'widget' }, PAGE)).map((p) => p.id)).toEqual(
-        widgetPage.items.map((p) => p.id)
-      );
+      // No `findManyRows` vs `findMany.items` comparison here: on THIS
+      // repository the second is literally the first, so it restates its own
+      // implementation (#2957 review round 4, S5). The absolute counts above
+      // are what carry weight.
+      expect((await repository.findManyRows({ search: 'widget' }, PAGE)).map((p) => p.id)).toEqual([
+        'ol_product_split_1',
+        'ol_product_split_2',
+      ]);
     });
 
     it('answers the same total whatever the sort, since sort cannot narrow', async () => {
       await seed();
 
-      // `countMany` deliberately takes no sort. Its answer must equal the
-      // total `findMany` reports under every sort, or omitting it was wrong.
-      const unsorted = await repository.findMany({}, PAGE);
-      const byName = await repository.findMany({}, PAGE, { field: 'name', dir: 'asc' });
-      expect(await repository.countMany({})).toBe(unsorted.total);
-      expect(await repository.countMany({})).toBe(byName.total);
+      // Absolute numbers, not cross-path equality (#2957 review round 4, I1).
+      // `ProductRepository.findMany` IS `Promise.all([findManyRows, countMany])`,
+      // so `findMany(...).total === countMany(...)` is the same call twice and
+      // cannot fail. Three products exist; every sort must still see three.
+      expect((await repository.findMany({}, PAGE)).total).toBe(3);
+      expect((await repository.findMany({}, PAGE, { field: 'name', dir: 'asc' })).total).toBe(3);
+      expect((await repository.findMany({}, PAGE, { field: 'sku', dir: 'desc' })).total).toBe(3);
+      expect(await repository.countMany({})).toBe(3);
     });
 
     it('agrees on the total when SORTING BY STOCK pulls in the join a count omits', async () => {
@@ -308,6 +315,12 @@ describe('Paginated total split (integration, #2944)', () => {
       // The join needs rows that COULD multiply, or the test cannot observe the
       // property it names: against an empty `inventory_items` a 1:N join and a
       // 1:1 join are indistinguishable. So one product gets TWO positions.
+      //
+      // The mutation this catches is replacing the GROUPED subquery with a bare
+      // join on `inventory_items` - not "delete the `GROUP BY`", which an
+      // earlier version of this comment named and which Postgres rejects
+      // outright with 42803 (#2957 review round 4). Verified by making it: the
+      // read returns two products where three exist.
       //
       // `productVariantId` carries a real FK to `product_variants`
       // (`inventory-item.orm-entity.ts` declares the `@ManyToOne`, and the
@@ -353,9 +366,10 @@ describe('Paginated total split (integration, #2944)', () => {
       expect(sortedByStock.items).toHaveLength(3);
       expect(new Set(sortedByStock.items.map((p) => p.id)).size).toBe(3);
 
-      // And the count, which builds no join at all because it takes no sort,
-      // still agrees with the sorted read's total.
-      expect(await repository.countMany({})).toBe(sortedByStock.total);
+      // The count builds no join at all, because it takes no sort. Asserted as
+      // an absolute: `sortedByStock.total` IS `countMany({})` on this
+      // repository, so comparing the two is one call against itself.
+      expect(await repository.countMany({})).toBe(3);
       expect(sortedByStock.total).toBe(3);
     });
 

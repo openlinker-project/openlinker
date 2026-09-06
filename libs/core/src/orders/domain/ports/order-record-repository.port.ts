@@ -240,7 +240,9 @@ export interface OrderRecordRepositoryPort {
    * label claiming to count cancellations). `lifecyclePhase` itself is likewise
    * not a valid input.
    */
-  countByLifecyclePhase(filters: OrderHealthSummaryFilters): Promise<OrderLifecyclePhaseSummary>;
+  countByLifecyclePhase(
+    filters: OrderHealthSummaryFilters
+  ): Promise<OrderLifecyclePhaseSummary>;
 
   /**
    * "Value stuck in failed syncs" — the needs-attention aggregate (#1983).
@@ -389,7 +391,10 @@ export interface OrderRecordRepositoryPort {
    *
    * No-op (no throw) when the order row doesn't exist.
    */
-  updateFulfillmentBlock(internalOrderId: string, block: FulfillmentBlock | null): Promise<void>;
+  updateFulfillmentBlock(
+    internalOrderId: string,
+    block: FulfillmentBlock | null
+  ): Promise<void>;
 
   /**
    * How many orders carry at least one COUNTED OMS inert state (#2352)?
@@ -489,7 +494,11 @@ export interface OrderRecordRepositoryPort {
    * row matches the id at all. It never throws, so a caller that must tell
    * those two apart re-reads via {@link findById}.
    */
-  markPacked(internalOrderId: string, packedAt: Date, packedByUserId: string): Promise<boolean>;
+  markPacked(
+    internalOrderId: string,
+    packedAt: Date,
+    packedByUserId: string
+  ): Promise<boolean>;
 
   /**
    * Clear this order's packed fact (#2287) — nulls `packedAt` +

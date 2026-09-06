@@ -195,7 +195,10 @@ export interface ProductVariantRepositoryPort {
    * @param keepVariantIds - Variant ids present in the current master response
    * @returns Ids of the variants newly marked stale
    */
-  markStaleExceptVariants(productId: string, keepVariantIds: readonly string[]): Promise<string[]>;
+  markStaleExceptVariants(
+    productId: string,
+    keepVariantIds: readonly string[]
+  ): Promise<string[]>;
 
   /**
    * Record what the ProductMaster said about this variant's tax rate (#2054).

@@ -136,7 +136,9 @@ import { PaginatedOrdersResponseDto } from './dto/paginated-orders-response.dto'
 import { RetryOrderDestinationResponseDto } from './dto/retry-order-destination-response.dto';
 import { PlaceOrderHoldRequestDto } from './dto/place-order-hold-request.dto';
 import { ReleaseOrderHoldRequestDto } from './dto/release-order-hold-request.dto';
-import type { OrderHoldDto, ProvisioningResumeDto } from './dto/order-hold-response.dto';
+import type {
+  OrderHoldDto,
+  ProvisioningResumeDto} from './dto/order-hold-response.dto';
 import {
   PlaceOrderHoldResponseDto,
   ReleaseOrderHoldResponseDto,
@@ -454,7 +456,9 @@ export class OrdersController {
     type: OrderSlaSummaryResponseDto,
   })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
-  async slaSummary(@Query() query: OrderSlaSummaryQueryDto): Promise<OrderSlaSummaryResponseDto> {
+  async slaSummary(
+    @Query() query: OrderSlaSummaryQueryDto
+  ): Promise<OrderSlaSummaryResponseDto> {
     const { sourceConnectionId, customerId, createdFrom, createdTo, cancelled } = query;
     return this.orderRecordRepository.countBySla({
       sourceConnectionId,
@@ -512,7 +516,9 @@ export class OrdersController {
     // sub-tree off the snapshot. The list endpoint now shares the same projection
     // via a batch read (`getLatestInvoicesForOrders`, one query per page — #1713);
     // this detail read joins the single record for one order.
-    const invoiceRecord = await this.invoiceService.getLatestInvoiceForOrder(order.internalOrderId);
+    const invoiceRecord = await this.invoiceService.getLatestInvoiceForOrder(
+      order.internalOrderId
+    );
     if (invoiceRecord) {
       dto.orderSnapshot = { ...dto.orderSnapshot, invoice: this.toInvoiceProjection(invoiceRecord) };
     }
@@ -839,7 +845,9 @@ export class OrdersController {
     // refusal: a concurrent release in the window is caught below as 409.
     const holds = await this.holdService.listHolds(internalOrderId);
     if (!holds.some((hold) => hold.id === holdId)) {
-      throw new NotFoundException(`Hold not found on order ${internalOrderId}: ${holdId}`);
+      throw new NotFoundException(
+        `Hold not found on order ${internalOrderId}: ${holdId}`
+      );
     }
 
     let released: OrderHold;
@@ -916,7 +924,9 @@ export class OrdersController {
     };
   }
 
-  private toProvisioningResumeDto(result: OrderProvisioningResumeResult): ProvisioningResumeDto {
+  private toProvisioningResumeDto(
+    result: OrderProvisioningResumeResult
+  ): ProvisioningResumeDto {
     return {
       status: result.status,
       jobId: result.status === 'enqueued' ? result.jobId : null,

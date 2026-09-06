@@ -1177,9 +1177,7 @@ describe('OrdersController', () => {
       });
 
       it('should answer 409 with a distinguishable code when the hold is already released', async () => {
-        holdService.release.mockRejectedValue(
-          new HoldAlreadyReleasedError('hold-1', new Date('2026-08-21T10:00:00.000Z'))
-        );
+        holdService.release.mockRejectedValue(new HoldAlreadyReleasedError('hold-1', new Date('2026-08-21T10:00:00.000Z')));
 
         await expect(
           controller.releaseHold('ol_order_001', 'hold-1', {}, USER)

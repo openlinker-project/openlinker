@@ -122,10 +122,18 @@ export function listingRowFilters(
  *
  * Written as OMISSION rather than enumeration (#2957 review round 3, I5).
  * Every field of `ListingsFilters` is optional, so an enumerating version
- * compiles cleanly when a fifth membership filter is added and silently drops
+ * compiles cleanly when a sixth membership filter is added and silently drops
  * it from the count - the pager and the whole tab bar would then answer for a
  * broader set, presented as `known`. That is the authoritative-wrong-number
  * failure this epic exists to prevent.
+ *
+ * Omission here is NOT sufficient on its own, and an earlier version of this
+ * docblock implied it was (#2957 review round 4, I1). `buildQuery` in
+ * `listings.api.ts` turns these filters into the request and enumerates, so a
+ * new field would reach the cache key and never the URL - strictly worse than
+ * enumerating in both places, because one un-narrowed answer would then be
+ * cached under many filter-specific keys. `LISTINGS_FILTER_KEYS` beside that
+ * function is what closes it, by failing to compile.
  */
 export function listingCountFilters(filters: ListingsFilters): ListingsFilters {
   const countFilters: ListingsFilters = { ...filters, includeLifecycleCounts: true };

@@ -40,6 +40,11 @@ export const ordersQueryKeys = {
  * Exported so the query key and the request URL narrow through ONE function: a
  * key that claims to ignore the sort while the URL still carries it makes two
  * identical answers look like two different requests.
+ *
+ * Note this narrows an EXISTING pair of fields rather than guarding against a
+ * future one. `buildQuery` in `orders.api.ts` enumerates, so a new filter must
+ * still be added there by hand; the listings sibling carries a compile-time
+ * exhaustiveness map for that reason (#2957 review round 4, I1).
  */
 export function orderMembershipFilters(filters?: OrderFilters): Omit<OrderFilters, 'sort' | 'dir'> {
   if (!filters) return {};

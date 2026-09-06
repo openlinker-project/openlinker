@@ -86,7 +86,6 @@ const PACKER_REACHABLE_ANY_ROLE_ROUTES: readonly string[] = [
   'ProductsController.countVariantsByProduct',
   'VariantsController.countSearchVariants',
 
-
   // The parcel's shipment and its label. The label goes ON the box and the
   // bench prints it (spec D14 / F1); `ShipmentResponseDto` carries no recipient.
   'ShipmentController.list',
