@@ -145,6 +145,17 @@ describe('usePaginatedTotal (#2945)', () => {
     expect(queryFn).toHaveBeenCalledTimes(1);
     expect(result.current.state).toBe('settling');
 
+    // The loader is armed by `pending` ALONE, never by `settling`. Six
+    // keystrokes have burned 180 ms of the window and this waits out the rest,
+    // so a timer armed on the debounce would have fired by now and a small
+    // install would flash a loader on every burst - the flicker the delay
+    // exists to prevent, introduced by the delay. That bug shipped in the first
+    // draft and was fixed with no test behind it (#2957 review, I4); this is
+    // the test. Break it by arming `useDelayedFlag` on `settling || pending`.
+    await advance(TOTAL_LOADER_DELAY_MS + 20);
+    expect(result.current.state).toBe('settling');
+    expect(result.current.showLoader).toBe(false);
+
     // Without the debounce this would be seven calls, one per keystroke,
     // against the most expensive query in the system.
     await advance(TOTAL_DEBOUNCE_MS + 10);

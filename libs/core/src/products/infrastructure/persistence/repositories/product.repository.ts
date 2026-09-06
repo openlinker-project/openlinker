@@ -218,9 +218,9 @@ export class ProductRepository implements ProductRepositoryPort {
     pagination: ProductPagination,
     sort?: ProductListSort
   ): Promise<PaginatedProducts> {
-    // Two statements in parallel as before #2944, and unlike the other four
-    // lists this one never used `getManyAndCount`, so there is no short-page
-    // inference to lose by composing it from the split reads.
+    // Two statements in parallel as before #2944. Unlike the other four lists
+    // this one never used `getManyAndCount`, so composing it from the split
+    // reads preserves the shape it already shipped rather than changing it.
     //
     // The PAGED statement is unchanged. The COUNT is not, and saying otherwise
     // in a change whose whole subject is "does the total still describe the

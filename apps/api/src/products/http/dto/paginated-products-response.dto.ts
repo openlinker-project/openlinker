@@ -16,7 +16,7 @@ export class PaginatedProductsResponseDto {
    * Absent - not `0` - when the caller passed `?withTotal=false` (#2944).
    */
   @ApiPropertyOptional({
-    description: 'Total number of products matching the filters Omitted when ?withTotal=false.',
+    description: 'Total number of products matching the filters. Omitted when ?withTotal=false.',
   })
   total?: number;
 

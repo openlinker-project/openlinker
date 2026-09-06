@@ -181,11 +181,7 @@ describe('OrdersController', () => {
     const mockProvisioningResume = {
       resume: jest
         .fn()
-        .mockResolvedValue({
-          status: 'enqueued',
-          jobId: 'job-1',
-          jobType: 'marketplace.order.sync',
-        }),
+        .mockResolvedValue({ status: 'enqueued', jobId: 'job-1', jobType: 'marketplace.order.sync' }),
     } as unknown as jest.Mocked<IOrderProvisioningResumeService>;
     const mockSalesDocumentView: jest.Mocked<ISalesDocumentViewService> = {
       getForOrders: jest.fn().mockResolvedValue(new Map()),
@@ -568,13 +564,7 @@ describe('OrdersController', () => {
         null,
         'conn-source-001',
         null,
-        {
-          dispatchTime: {
-            from: '2026-04-01T00:00:00Z',
-            to: '2026-04-03T00:00:00Z',
-            estimated: true,
-          },
-        },
+        { dispatchTime: { from: '2026-04-01T00:00:00Z', to: '2026-04-03T00:00:00Z', estimated: true } },
         [],
         'ready',
         new Date('2026-04-01T00:00:00Z'),
@@ -605,12 +595,7 @@ describe('OrdersController', () => {
       );
       repository.findMany.mockResolvedValue({ items: [orderWithMethod, mockOrder], total: 2 });
       fulfillmentRouting.resolveBatch.mockResolvedValue([
-        {
-          processorKind: 'ol_managed_carrier',
-          processorConnectionId: 'conn-inpost',
-          source: 'rule',
-          processorAvailable: true,
-        },
+        { processorKind: 'ol_managed_carrier', processorConnectionId: 'conn-inpost', source: 'rule', processorAvailable: true },
       ]);
 
       const result = await controller.listOrders({ limit: 20, offset: 0 });
@@ -650,12 +635,7 @@ describe('OrdersController', () => {
       );
       repository.findMany.mockResolvedValue({ items: [orderWithMethod, mockOrder], total: 2 });
       fulfillmentRouting.resolveBatch.mockResolvedValue([
-        {
-          processorKind: 'omp_fulfilled',
-          processorConnectionId: null,
-          source: 'default',
-          processorAvailable: true,
-        },
+        { processorKind: 'omp_fulfilled', processorConnectionId: null, source: 'default', processorAvailable: true },
       ]);
       deliveryRider.resolveBatch.mockResolvedValue([
         { rider: 'unmapped', candidateCarrier: { platformType: 'inpost', displayName: 'InPost' } },
@@ -698,12 +678,7 @@ describe('OrdersController', () => {
       );
       repository.findMany.mockResolvedValue({ items: [orderWithMethod], total: 1 });
       fulfillmentRouting.resolveBatch.mockResolvedValue([
-        {
-          processorKind: 'omp_fulfilled',
-          processorConnectionId: null,
-          source: 'default',
-          processorAvailable: true,
-        },
+        { processorKind: 'omp_fulfilled', processorConnectionId: null, source: 'default', processorAvailable: true },
       ]);
       deliveryRider.resolveBatch.mockResolvedValue([{ rider: 'none' }]);
 
@@ -723,11 +698,7 @@ describe('OrdersController', () => {
         needsAttention: 1,
         synced: 1,
         awaitingDispatch: 9,
-        salesDocumentBlocked: 0,
-        taxRateConflict: 0,
-        salesDocumentBlockedOldestAt: null,
-        salesDocumentIssuedOnRequest: 0,
-        omsAttention: 0,
+        salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0,
       });
 
       const result = await controller.statusSummary({});
@@ -745,11 +716,7 @@ describe('OrdersController', () => {
         needsAttention: 0,
         synced: 0,
         awaitingDispatch: 0,
-        salesDocumentBlocked: 0,
-        taxRateConflict: 0,
-        salesDocumentBlockedOldestAt: null,
-        salesDocumentIssuedOnRequest: 0,
-        omsAttention: 0,
+        salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0,
       });
 
       await controller.statusSummary({

@@ -104,6 +104,14 @@ export const options = {
   // k6's default summaryTrendStats omits p99, which is the whole point of a
   // per-route Trend (the #2842 lesson).
   summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)', 'count'],
+  // A run that met an error must FAIL, not report a fast one (#2957 review).
+  // k6 omits a Counter that never received a sample, so a missing
+  // `non_2xx_responses` line in a summary is indistinguishable from a counter
+  // nobody wired - the threshold turns that from a reader's inference into the
+  // run's own exit code.
+  thresholds: {
+    non_2xx_responses: ['count == 0'],
+  },
   scenarios: {
     two_stage: {
       executor: 'ramping-arrival-rate',

@@ -1641,12 +1641,22 @@ export function OrdersListPage(): ReactElement {
               : 'Dispatch risk overview'}
           </Link>
         </span>
-        {query.data && (
+        {/* A known total needs no page (#2957 review, S2): gating the whole
+            span on `query.data` unmounted it for a round trip on a pure
+            re-sort, where the count is keyed without `sort` and already
+            cached. Only the FLOOR needs the rows, and only when the total is
+            still unknown - an ungated floor on a deep link would read "100+"
+            computed from a URL offset before a row exists. */}
+        {(totalStage.total !== null || query.data) && (
           <span
             className="text-muted mono tabular"
             style={{ marginLeft: 'auto', fontSize: '0.75rem' }}
           >
-            {formatPaginatedTotal(totalStage.total, offset + query.data.items.length)} results
+            {formatPaginatedTotal(
+              totalStage.total,
+              query.data ? offset + query.data.items.length : null
+            )}{' '}
+            results
           </span>
         )}
       </div>

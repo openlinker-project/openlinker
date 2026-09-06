@@ -474,6 +474,9 @@ export function ListingsListPage(): ReactElement {
    * would state that every bucket is empty.
    */
   const lifecycleCounts = totalStage.lifecycleCounts;
+  // The buckets are not merely late, they are not coming. Distinct from `null`,
+  // which is "not yet" - see `lifecycleCountsState` (#2957 review, I2).
+  const countsUnavailable = lifecycleCounts === null && totalStage.lifecycleCountsState === 'unavailable';
 
   const platforms = usePlatforms();
   // One batched read for the whole page - the Connection column must never cost
@@ -722,15 +725,24 @@ export function ListingsListPage(): ReactElement {
                 {/* A count that snaps from 0 to its real value reads as a
                     bug (#2029 / mockup frame 04) - render a skeleton line
                     instead of a placeholder zero while it's unknown.
-                    Gated on `lifecycleCounts === null`, not `query.isPending`
-                    (#2032 review round 2, regression caught by CI): the
-                    fingerprint above already decides whether the counts on
-                    hand are trustworthy for the CURRENT filters - a tab
-                    switch keeps showing them (fingerprint unchanged), a
-                    search/connection change drops to skeleton immediately
-                    even though `isPending` stays false (placeholder data is
-                    still present). */}
-                {lifecycleCounts === null ? (
+
+                    Gated on the counts themselves, not on `query.isPending`
+                    (#2032 review round 2, regression caught by CI). Since
+                    #2943 the buckets come from their own query, keyed WITHOUT
+                    `lifecycle`, which is what replaced the fingerprint this
+                    comment used to point at: a tab switch is a cache hit and
+                    keeps showing them, a search/connection change mints a new
+                    key and drops to skeleton immediately even though
+                    `isPending` stays false on the rows query.
+
+                    A skeleton is a positive claim that content is arriving, so
+                    a FAILED count must not render one - it would spin for the
+                    life of the page (#2957 review, I2). `lifecycleCountsState`
+                    and not `state`, because a short page overrides the latter
+                    to `'known'` while saying nothing about the other tabs. */}
+                {countsUnavailable ? (
+                  '—'
+                ) : lifecycleCounts === null ? (
                   <span className="tabs__count-skeleton" aria-hidden="true" />
                 ) : (
                   (lifecycleCounts[def.lifecycle] ?? '—')
@@ -755,7 +767,9 @@ export function ListingsListPage(): ReactElement {
             ? 'Refreshing listings…'
             : lifecycleCounts
               ? 'Listing counts loaded.'
-              : 'Loading listing counts…'}
+              : countsUnavailable
+                ? 'Listing counts unavailable.'
+                : 'Loading listing counts…'}
         </span>
 
         {/* `placeholderData: keepPreviousData` (round-1 fix) stops the table
@@ -1000,12 +1014,20 @@ export function ListingsListPage(): ReactElement {
                 }}
               />
 
+              {/* `rowCount` comes from a page that may still be the PREVIOUS
+                  tab's (`keepPreviousData`), while the count query is keyed
+                  without `lifecycle` and re-derives the new tab's bucket
+                  immediately. Pairing the two prints "Showing 1-25 of 3"
+                  (#2957 review, I1) - a range wider than its own total, which
+                  is a worse artefact than a late number. While the page is a
+                  placeholder the summary describes ONE thing: the rows on
+                  screen, as a floor. */}
               <ListPagination
                 offset={offset}
                 limit={PAGE_SIZE}
                 rowCount={query.data?.items.length ?? 0}
-                total={totalStage.total}
-                totalState={totalStage.state}
+                total={query.isPlaceholderData ? null : totalStage.total}
+                totalState={query.isPlaceholderData ? 'pending' : totalStage.state}
                 showTotalLoader={totalStage.showLoader}
                 onOffsetChange={setOffset}
               />

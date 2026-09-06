@@ -1286,7 +1286,7 @@ describe('ListingsListPage', () => {
       expect(container.querySelectorAll('.tabs__count-skeleton')).toHaveLength(5);
     });
 
-    it('keeps both placeholders when the count FAILS, and renders neither as 0', async () => {
+    it('renders neither placeholder as 0 when the count FAILS, and STOPS loading', async () => {
       const { container } = renderWithProviders(<ListingsListPage />, {
         apiClient: createListingsMockApiClient({
           listings: {
@@ -1297,9 +1297,17 @@ describe('ListingsListPage', () => {
       });
 
       expect(await screen.findByText('Doniczka ceramiczna Terra')).toBeInTheDocument();
-      expect(await screen.findByTitle(/could not be loaded/i)).toBeInTheDocument();
+      expect(await screen.findByText(/count unavailable/i)).toBeInTheDocument();
       expect(screen.getByText('1+')).toBeInTheDocument();
-      expect(container.querySelectorAll('.tabs__count-skeleton')).toHaveLength(5);
+
+      // This assertion was inverted until #2957 review I2: it asserted five
+      // skeletons and therefore PINNED the stuck state as correct. `retry` is
+      // false and nothing re-drives the count, so those skeletons spin for the
+      // life of the page - a positive claim that content is arriving when
+      // nothing is coming. The tabs report an em-dash instead, and the
+      // sr-only region says so rather than announcing a load forever.
+      await screen.findByText('Listing counts unavailable.');
+      expect(container.querySelectorAll('.tabs__count-skeleton')).toHaveLength(0);
     });
   });
 

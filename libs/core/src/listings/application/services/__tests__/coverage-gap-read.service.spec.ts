@@ -51,8 +51,7 @@ describe('CoverageGapReadService', () => {
 
   function capableConnections(...connectionIds: string[]): void {
     integrationsService.listCapabilityAdapters.mockImplementation(({ capability }) => {
-      const ids =
-        capability === 'OfferManager' ? connectionIds.slice(0, 1) : connectionIds.slice(1);
+      const ids = capability === 'OfferManager' ? connectionIds.slice(0, 1) : connectionIds.slice(1);
       return Promise.resolve(
         ids.map((connectionId) => ({
           connectionId,

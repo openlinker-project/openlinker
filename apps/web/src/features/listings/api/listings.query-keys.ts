@@ -8,9 +8,16 @@ export const listingsQueryKeys = {
   lists: () => ['listings', 'list'] as const,
   list: (filters?: ListingsFilters, pagination?: ListingsPagination) =>
     ['listings', 'list', filters ?? {}, pagination ?? {}] as const,
-  /** The rows-only page (#2947) - a different response shape, so a different key. */
+  /**
+   * The rows-only page (#2947) - a different response shape, so a different key.
+   *
+   * `includeLifecycleCounts` is stripped (#2957 review, S3): the buckets are
+   * `count()`'s job now and the rows route declines the flag, so leaving it in
+   * would split one page's cache across two keys over a parameter that changes
+   * nothing about the response.
+   */
   rows: (filters?: ListingsFilters, pagination?: ListingsPagination) =>
-    ['listings', 'rows', filters ?? {}, pagination ?? {}] as const,
+    ['listings', 'rows', listingRowFilters(filters), pagination ?? {}] as const,
   /**
    * The two-stage total, and the tab-bar buckets it is derived from (#2947).
    *
@@ -87,3 +94,20 @@ export const listingsQueryKeys = {
   publishedVariants: (connectionId: string, variantIds: readonly string[]) =>
     ['listings', 'publishedVariants', connectionId, [...variantIds].sort()] as const,
 };
+
+/**
+ * A rows-only request's filters: everything except `includeLifecycleCounts`.
+ *
+ * The buckets moved to `count()` in #2943 and the rows route declines the flag
+ * under `?withTotal=false`, so carrying it splits one page's cache across two
+ * keys over a parameter that changes nothing about the response (#2957 review,
+ * S3). Exported so the key and the URL narrow through one function.
+ */
+export function listingRowFilters(
+  filters?: ListingsFilters,
+): Omit<ListingsFilters, 'includeLifecycleCounts'> {
+  if (!filters) return {};
+  const rowFilters: Omit<ListingsFilters, 'includeLifecycleCounts'> = { ...filters };
+  delete (rowFilters as Partial<ListingsFilters>).includeLifecycleCounts;
+  return rowFilters;
+}

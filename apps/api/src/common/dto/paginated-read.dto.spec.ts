@@ -153,4 +153,18 @@ describe('Count query DTOs are OmitType of their list DTO (#2944)', () => {
     expect(errors).toMatch(/sort/);
     expect(errors).toMatch(/dir/);
   });
+
+  it('KEEPS sort and dir on orders/count, because they travel inside its filter object', () => {
+    // The mirror image of the products case above, and the one that actually
+    // bites. `sort`/`dir` are fields of `OrderFilters`, the orders page always
+    // populates them, and one `buildQuery` serves both the list and the count -
+    // so refusing them here 400s the orders total on every request carrying the
+    // default triage sort, which is every request the page makes.
+    //
+    // The controller spec cannot pin this: it calls the handler directly and
+    // never reaches a `ValidationPipe`, so adding `'sort', 'dir'` to the
+    // `OmitType` list stays green there while breaking every real request
+    // (#2957 review, IMPORTANT 3). This is the assertion that fails.
+    expect(check(CountOrdersQueryDto, { sort: 'dispatchBy', dir: 'asc' })).toEqual([]);
+  });
 });

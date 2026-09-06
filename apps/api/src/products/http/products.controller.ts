@@ -168,7 +168,9 @@ export class ProductsController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'List products',
-    description: 'Returns a paginated list of products. Supports search by name or SKU.',
+    description:
+      'Returns a paginated list of products. Supports search by name or SKU. ' +
+      'Set `?withTotal=false` to get the page WITHOUT its total: the `total` field is omitted entirely (never `0`) and the count this list cannot serve from an index is skipped. Fetch the number separately from `GET /products/count` (#2944).',
   })
   @ApiResponse({
     status: 200,
@@ -422,7 +424,9 @@ export class ProductsController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'List variants for a product',
-    description: 'Returns a paginated list of variants belonging to a specific product.',
+    description:
+      'Returns a paginated list of variants belonging to a specific product. ' +
+      'Set `?withTotal=false` to get the page WITHOUT its total: the `total` field is omitted entirely (never `0`) and the count this list cannot serve from an index is skipped. Fetch the number separately from `GET /products/:productId/variants/count` (#2944).',
   })
   @ApiParam({ name: 'productId', description: 'Internal product ID (e.g. ol_product_...)' })
   @ApiResponse({
@@ -618,7 +622,9 @@ export class VariantsController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Search variants',
-    description: 'Search variants across all products by SKU, EAN, or GTIN.',
+    description:
+      'Search variants across all products by SKU, EAN, or GTIN. ' +
+      'Set `?withTotal=false` to get the page WITHOUT its total: the `total` field is omitted entirely (never `0`) and the count this list cannot serve from an index is skipped. Fetch the number separately from `GET /variants/search/count` (#2944).',
   })
   @ApiResponse({
     status: 200,

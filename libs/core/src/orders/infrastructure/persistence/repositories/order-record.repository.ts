@@ -370,9 +370,16 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     pagination: OrderRecordPagination
   ): Promise<PaginatedOrderRecords> {
     // Deliberately still ONE `getManyAndCount()` rather than `findManyRows()` +
-    // `countMany()`: TypeORM's `lazyCount` infers the total with NO count query
-    // at all when a page comes back short, so composing this from the two new
-    // methods would add a statement on every small install (#2944).
+    // `countMany()`, so `?withTotal=true` - the default - emits exactly the two
+    // statements it emitted before #2944, on the one query runner it emitted
+    // them on. Composing would be an unmeasured second change (two pool
+    // connections per list request) inside a change about something else.
+    //
+    // It is NOT because the count is skipped for a short page. Read against
+    // typeorm@0.3.17: `getManyAndCount` awaits `executeEntitiesAndRawResults`
+    // and then `executeCountQuery`, unconditionally and sequentially, with no
+    // short-page branch. The count always runs - which is the argument for
+    // splitting it out, not against.
     const [entities, total] = await this.buildPagedQuery(filters, pagination).getManyAndCount();
 
     return {
@@ -707,9 +714,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       .createQueryBuilder('rec')
       .select(`PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY rec."reportingTotalAmount")`, 'median')
       .andWhere('rec."cancelledAt" IS NULL')
-      .andWhere('rec."reportingCurrency" = :currentReportingCurrency', {
-        currentReportingCurrency,
-      });
+      .andWhere('rec."reportingCurrency" = :currentReportingCurrency', { currentReportingCurrency });
 
     this.applySalesAnalyticsScope(qb, filters);
 
@@ -814,7 +819,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    */
   private static readonly IS_SOURCE_DELETED = `rec."recordStatus" = 'source_deleted'`;
   private static readonly IS_MAPPING = `rec."recordStatus" = 'awaiting_mapping'`;
-  private static readonly NOT_MAPPING_OR_DELETED = `NOT (${OrderRecordRepository.IS_MAPPING}) AND NOT (${OrderRecordRepository.IS_SOURCE_DELETED})`;
+  private static readonly NOT_MAPPING_OR_DELETED =
+    `NOT (${OrderRecordRepository.IS_MAPPING}) AND NOT (${OrderRecordRepository.IS_SOURCE_DELETED})`;
   private static readonly HAS_FAILED = `rec."syncStatus" @> '[{"status":"failed"}]'::jsonb`;
   private static readonly HAS_SYNCED = `rec."syncStatus" @> '[{"status":"synced"}]'::jsonb`;
   /**
@@ -1064,7 +1070,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * shipped. Shared by the SLA filter + the SLA summary so the badge, filter,
    * and KPI all agree.
    */
-  private static readonly NOT_SHIPPED = `(rec."fulfillmentState" IS NULL OR rec."fulfillmentState" NOT IN ('dispatched','delivered'))`;
+  private static readonly NOT_SHIPPED =
+    `(rec."fulfillmentState" IS NULL OR rec."fulfillmentState" NOT IN ('dispatched','delivered'))`;
 
   /**
    * Fulfillment-rollup sort ordinal (#1108) — most-actionable first when
@@ -2140,11 +2147,11 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * ORM entity is covered on the day it is added.
    *
    * Two standing assumptions, both asserted by the repository's unit spec: the
-   * statement quotes PROPERTY names, so this match is sound only while no column
-   * renames its database name; and the write set is the statement's own, so the
-   * two can never disagree about which columns were written.
-   *
-   * The empty default is `null` for every column except the two `jsonb`
+ * statement quotes PROPERTY names, so this match is sound only while no column
+ * renames its database name; and the write set is the statement's own, so the
+ * two can never disagree about which columns were written.
+ *
+ * The empty default is `null` for every column except the two `jsonb`
    * array columns whose DB default is `'[]'` (mapped in
    * {@link EMPTY_COLUMN_DEFAULTS}); a future NOT NULL column with a scalar
    * DB default would surface loudly at the domain mapping rather than

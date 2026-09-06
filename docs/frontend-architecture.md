@@ -265,12 +265,18 @@ Some list totals are expensive. A paged read stops after its `LIMIT`; the `COUNT
 
 **Pagination degrades per affordance, not as a block.** Disabling the whole pager until the total lands throws away most of the benefit:
 
-| Control | Available before the total |
+| Control | Needs the total |
 |---|---|
-| Next / Previous | yes — neither needs it |
-| Page numbers already reached | yes |
-| "Page 3 **of 47**" | no |
-| Jump to last page | no |
+| Previous | no — `offset > 0` is enough |
+| Next | no — a full page means more may follow |
+| "of 1,234" | yes — shows the `N+` placeholder until then |
+| Page numbers, jump-to-last | yes — **not rendered by any list today**; a list that grows them must gate them on `total !== null` |
+
+That table is `<ListPagination>`'s own, restated here rather than paraphrased —
+an earlier draft of this section listed "page numbers already reached" as
+*available*, which is the opposite of what the component says and describes a
+control that does not exist. The component's docblock is the source; keep the
+two identical or delete one of them.
 
 **A failed count leaves the placeholder, and never renders `0`.** Absence and "none matched" are different claims, and only one of them is safe to make from a failed read — the same principle `docs/architecture-overview.md` records for the returns surfaces, which catch to empty and never render a positive claim from an absent value. The hook keeps `idle` (not asked for yet) distinct from `unavailable` (asked, and failed) for the same reason: only one of those may tell an operator the count could not be loaded.
 

@@ -251,9 +251,16 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
     pagination: ProductPagination
   ): Promise<PaginatedProductVariants> {
     // Deliberately still ONE `getManyAndCount()` rather than `findManyRows()` +
-    // `countMany()`: TypeORM's `lazyCount` infers the total with NO count query
-    // at all when a page comes back short, so composing this from the two new
-    // methods would add a statement on every small install (#2944).
+    // `countMany()`, so `?withTotal=true` - the default - emits exactly the two
+    // statements it emitted before #2944, on the one query runner it emitted
+    // them on. Composing would be an unmeasured second change (two pool
+    // connections per list request) inside a change about something else.
+    //
+    // It is NOT because the count is skipped for a short page. Read against
+    // typeorm@0.3.17: `getManyAndCount` awaits `executeEntitiesAndRawResults`
+    // and then `executeCountQuery`, unconditionally and sequentially, with no
+    // short-page branch. The count always runs - which is the argument for
+    // splitting it out, not against.
     const [entities, total] = await this.buildPagedQuery(filters, pagination).getManyAndCount();
     return { items: entities.map((e) => this.toDomain(e)), total };
   }

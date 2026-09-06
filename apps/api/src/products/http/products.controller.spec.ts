@@ -67,7 +67,7 @@ function createMockProductsService(): jest.Mocked<IProductsService> {
     getVariantsByProductId: jest.fn(),
     getVariantsByProductIds: jest.fn(),
     getVariantsBySkus: jest.fn(),
-    getVariantsByIds: jest.fn(),
+  getVariantsByIds: jest.fn(),
     getVariantsByBarcodes: jest.fn(),
     listProducts: jest.fn(),
     listProductRows: jest.fn(),
@@ -78,12 +78,12 @@ function createMockProductsService(): jest.Mocked<IProductsService> {
     getVariantCountsByProductIds: jest.fn(),
     getStaleVariantCountsByProductIds: jest.fn(),
     markVariantsStaleExcept: jest.fn(),
-    recordProductTaxRate: jest.fn(),
-    recordVariantTaxRate: jest.fn(),
-    clearVariantTaxRate: jest.fn(),
-    getEffectiveTaxRate: jest.fn(),
-    getTaxRateCoverage: jest.fn(),
-    getTaxRateCoverageByConnection: jest.fn(),
+  recordProductTaxRate: jest.fn(),
+  recordVariantTaxRate: jest.fn(),
+  clearVariantTaxRate: jest.fn(),
+  getEffectiveTaxRate: jest.fn(),
+  getTaxRateCoverage: jest.fn(),
+  getTaxRateCoverageByConnection: jest.fn(),
   };
 }
 
@@ -660,6 +660,78 @@ describe('ProductsController', () => {
       expect(taxRateJournal.getLatestPerConnection).not.toHaveBeenCalled();
     });
   });
+  describe('the two-stage read (#2944)', () => {
+    it('reads the page ALONE and omits total when withTotal=false', async () => {
+      productsService.listProductRows.mockResolvedValue([makeProduct()]);
+
+      const result = await controller.listProducts({ withTotal: false, limit: 20, offset: 0 });
+
+      expect(productsService.listProductRows).toHaveBeenCalledTimes(1);
+      expect(productsService.listProducts).not.toHaveBeenCalled();
+      // `in`, not truthiness: `total: 0` passes the latter while being exactly
+      // the failure the omission exists to prevent.
+      expect('total' in result).toBe(false);
+    });
+
+    it('reads both when withTotal is not asked for, exactly as before', async () => {
+      productsService.listProducts.mockResolvedValue({ items: [makeProduct()], total: 7 });
+
+      const result = await controller.listProducts({ limit: 20, offset: 0 });
+
+      expect(productsService.listProducts).toHaveBeenCalledTimes(1);
+      expect(productsService.listProductRows).not.toHaveBeenCalled();
+      expect(result.total).toBe(7);
+    });
+
+    it('maps the DTO to filters with ONE function, so list and count cannot drift', async () => {
+      productsService.listProductRows.mockResolvedValue([]);
+      productsService.countProducts.mockResolvedValue(42);
+      const query = {
+        search: 'widget',
+        stock: 'low' as const,
+        taxRateState: 'missing' as const,
+        connectionId: '11111111-1111-4111-8111-111111111111',
+        hideFullyStale: true,
+        unlistedOn: '22222222-2222-4222-8222-222222222222',
+      };
+
+      await controller.listProducts({ ...query, withTotal: false, limit: 20, offset: 0 });
+      const counted = await controller.countProducts({ ...query });
+
+      const [listFilters] = productsService.listProductRows.mock.calls[0];
+      const [countFilters] = productsService.countProducts.mock.calls[0];
+      expect(countFilters).toEqual(listFilters);
+      // And the CSV really was parsed, not merely equal on both sides.
+      expect(countFilters.unlistedOnConnectionIds).toEqual([
+        '22222222-2222-4222-8222-222222222222',
+      ]);
+      expect(counted).toEqual({ total: 42 });
+    });
+
+    it('applies the unlistedOn guard on the COUNT path too', async () => {
+      // The list rejects a malformed CSV with a 400. A count that accepted the
+      // same value would answer a number for a filter the page refuses.
+      await expect(controller.countProducts({ unlistedOn: 'not-a-uuid' })).rejects.toThrow();
+      expect(productsService.countProducts).not.toHaveBeenCalled();
+    });
+
+    it('splits the per-product variant page from its count', async () => {
+      productsService.listVariantRows.mockResolvedValue([makeVariant()]);
+      productsService.countVariants.mockResolvedValue(9);
+
+      const page = await controller.listVariantsByProduct('ol_product_1', {
+        withTotal: false,
+        limit: 20,
+        offset: 0,
+      });
+      const counted = await controller.countVariantsByProduct('ol_product_1', {});
+
+      expect('total' in page).toBe(false);
+      expect(productsService.listVariants).not.toHaveBeenCalled();
+      expect(productsService.countVariants).toHaveBeenCalledWith({ productId: 'ol_product_1' });
+      expect(counted).toEqual({ total: 9 });
+    });
+  });
 });
 
 describe('VariantsController', () => {
@@ -705,6 +777,37 @@ describe('VariantsController', () => {
 
       expect(result.items).toHaveLength(0);
       expect(result.total).toBe(0);
+    });
+  });
+  describe('the two-stage read (#2944)', () => {
+    it('reads the page ALONE and omits total when withTotal=false', async () => {
+      productsService.listVariantRows.mockResolvedValue([makeVariant()]);
+
+      const result = await controller.searchVariants({
+        search: 'abc',
+        withTotal: false,
+        limit: 20,
+        offset: 0,
+      });
+
+      expect(productsService.listVariantRows).toHaveBeenCalledTimes(1);
+      expect(productsService.listVariants).not.toHaveBeenCalled();
+      expect('total' in result).toBe(false);
+    });
+
+    it('counts under the SAME filters the search applies', async () => {
+      productsService.listVariantRows.mockResolvedValue([]);
+      productsService.countVariants.mockResolvedValue(4);
+
+      await controller.searchVariants({ search: 'abc', withTotal: false, limit: 20, offset: 0 });
+      const counted = await controller.countSearchVariants({ search: 'abc' });
+
+      expect(productsService.listVariantRows).toHaveBeenCalledWith(
+        { search: 'abc' },
+        { limit: 20, offset: 0 }
+      );
+      expect(productsService.countVariants).toHaveBeenCalledWith({ search: 'abc' });
+      expect(counted).toEqual({ total: 4 });
     });
   });
 });

@@ -136,4 +136,94 @@ describe('useListingsTotal (#2947 review)', () => {
     expect(result.current.total).toBe(903);
     expect(result.current.state).toBe('known');
   });
+
+  it('switching tabs is a CACHE HIT and re-derives from the buckets in hand', async () => {
+    // The two properties the hook's docblock calls specific to this list, and
+    // neither was exercised (#2957 review, S1): the count key omits
+    // `lifecycle`, and `selectTotal` is applied at READ time rather than handed
+    // to `useQuery({ select })`. Only a rerender with a CHANGED lifecycle
+    // against an already-populated cache can tell the two apart - a `select`
+    // memoised against the first key would keep answering 3 for Draft.
+    //
+    // Break either one and this fails: adding `lifecycle` to `countFilters`
+    // makes it a second request (and a second `count` call); moving
+    // `selectTotal` into `select` makes the second render report the FIRST
+    // tab's bucket.
+    const count = vi.fn().mockResolvedValue({ total: 903, lifecycleCounts: BUCKETS });
+    const apiClient = createMockApiClient({ listings: { count } });
+    const { result, rerender } = renderHook(
+      ({ lifecycle }: { lifecycle: 'Active' | 'Draft' }) =>
+        useListingsTotal({ lifecycle }, fullPage, false),
+      {
+        wrapper: createWrapper(apiClient),
+        initialProps: { lifecycle: 'Active' } as { lifecycle: 'Active' | 'Draft' },
+      }
+    );
+
+    await flush();
+    expect(result.current.total).toBe(3);
+    expect(count).toHaveBeenCalledTimes(1);
+
+    // Asserted on the REQUEST, not only on the call count. A call-count
+    // assertion alone passes against a `countFilters` that carries `lifecycle`
+    // but omits it from the memo's deps - the key never changes, so it is still
+    // one call, and the test reports green over a broken key. Verified by
+    // making exactly that mutation.
+    expect(count.mock.calls[0][0]).not.toHaveProperty('lifecycle');
+
+    rerender({ lifecycle: 'Draft' });
+    await flush();
+
+    expect(result.current.total).toBe(900);
+    expect(result.current.state).toBe('known');
+    // The whole point: no second request. #2029 required that a tab switch not
+    // blank the tab bar, and a re-keyed count would do exactly that.
+    expect(count).toHaveBeenCalledTimes(1);
+  });
+
+  it('prefers the INFERENCE over a stale cached bucket, not the other way round', async () => {
+    // `total: inferred ?? stage.total`. Reversing the two operands survives
+    // every other test here, because they assert before the count resolves
+    // (when `stage.total` is still null). This one lets the count land FIRST,
+    // then asserts the short page still wins - the page is the fresher fact.
+    const apiClient = createMockApiClient({
+      listings: {
+        count: vi.fn().mockResolvedValue({
+          total: 903,
+          lifecycleCounts: { ...BUCKETS, Active: 999 },
+        }),
+      },
+    });
+    const { result } = renderHook(
+      () => useListingsTotal({ lifecycle: 'Active' }, activePage, false),
+      { wrapper: createWrapper(apiClient) }
+    );
+
+    await flush();
+
+    expect(result.current.total).toBe(3);
+  });
+
+  it('reports the BUCKET stage separately, so a failed count cannot spin forever', async () => {
+    // `state` is overridden to `'known'` by a short page, which says nothing
+    // about the other tabs. A tab bar branching on it renders loading skeletons
+    // for the life of the page after a failed count - a positive claim that
+    // content is arriving when nothing is coming (#2957 review, I2).
+    const apiClient = createMockApiClient({
+      listings: { count: vi.fn().mockRejectedValue(new Error('boom')) },
+    });
+    const { result } = renderHook(
+      () => useListingsTotal({ lifecycle: 'Active' }, activePage, false),
+      { wrapper: createWrapper(apiClient) }
+    );
+
+    await flush();
+
+    // The pager total is genuinely known - the three rows prove it.
+    expect(result.current.state).toBe('known');
+    expect(result.current.total).toBe(3);
+    // The buckets are not, and say so. Break it by returning `state` here.
+    expect(result.current.lifecycleCounts).toBeNull();
+    expect(result.current.lifecycleCountsState).toBe('unavailable');
+  });
 });

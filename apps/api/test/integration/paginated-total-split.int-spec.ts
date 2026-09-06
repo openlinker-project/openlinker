@@ -244,6 +244,16 @@ describe('Paginated total split (integration, #2944)', () => {
     });
   });
 
+  /**
+   * Note what parity means for THIS repository (#2957 review, SUGGESTION 5).
+   *
+   * `ProductRepository.findMany` is literally
+   * `Promise.all([findManyRows, countMany])`, so "the split agrees with the
+   * combined read" is structural here and a `findMany` vs `findManyRows`
+   * assertion restates its own implementation. What carries weight below is
+   * the ABSOLUTE numbers and the sort/join cases - the questions composition
+   * does not answer.
+   */
   describe('ProductRepository', () => {
     let repository: ProductRepositoryPort;
 
@@ -293,14 +303,41 @@ describe('Paginated total split (integration, #2944)', () => {
       // than tidy. Sorting by stock adds a LEFT JOIN to the grouped
       // inventory subquery; the count builds without it. That is only safe
       // because the join is at most 1:1 (the subquery groups by `productId`),
-      // so it cannot change how many rows match - and this asserts that
-      // against real SQL rather than against the argument.
+      // so it cannot change how many rows match.
+      //
+      // The join needs rows that COULD multiply, or the test cannot observe
+      // the property it names (#2957 review, SUGGESTION 5): against an empty
+      // `inventory_items` a 1:N join and a 1:1 join are indistinguishable, so
+      // this seeded TWO positions for one product on purpose. Delete the
+      // subquery's `GROUP BY` and the sorted read returns four rows for three
+      // products while the count still says three.
+      const inventory = harness.getDataSource().getRepository(InventoryItemOrmEntity);
+      await inventory.save([
+        inventory.create({
+          id: 'ol_inventory_join_1',
+          productId: 'ol_product_split_1',
+          productVariantId: 'ol_variant_join_a',
+          availableQuantity: 7,
+          reservedQuantity: 0,
+        }),
+        inventory.create({
+          id: 'ol_inventory_join_2',
+          productId: 'ol_product_split_1',
+          productVariantId: 'ol_variant_join_b',
+          availableQuantity: 5,
+          reservedQuantity: 0,
+        }),
+      ]);
+
       const sortedByStock = await repository.findMany({}, PAGE, {
         field: 'stock',
         dir: 'desc',
       });
       expect(await repository.countMany({})).toBe(sortedByStock.total);
       expect(sortedByStock.total).toBe(3);
+      // The page itself must not have been multiplied by the join either.
+      expect(sortedByStock.items).toHaveLength(3);
+      expect(new Set(sortedByStock.items.map((p) => p.id)).size).toBe(3);
     });
 
     it('moves both paths together when the stock filter changes', async () => {
@@ -461,6 +498,17 @@ describe('Paginated total split (integration, #2944)', () => {
       expect(await repository.countMany({ lifecycle: 'Unsynced' })).toBe(3);
       expect(await repository.countMany({ lifecycle: 'Active' })).toBe(0);
       expect((await repository.findMany({ lifecycle: 'Active' }, PAGE)).total).toBe(0);
+
+      // And the two ROUTES that answer the same number must agree (#2957
+      // review, SUGGESTION 7). `GET /listings/count` without the buckets goes
+      // through `countMany({lifecycle})`; with them it reads the bucket. Two
+      // different SQL predicates for one question, reachable by one client a
+      // request apart - so assert them against each other directly rather than
+      // leaving it to the transitive bucket-sums-to-page-rows check elsewhere.
+      const buckets = await repository.countByLifecycle({});
+      for (const lifecycle of ['Unsynced', 'Active', 'Draft', 'Invalid', 'Ended'] as const) {
+        expect(await repository.countMany({ lifecycle })).toBe(buckets[lifecycle]);
+      }
     });
   });
 });

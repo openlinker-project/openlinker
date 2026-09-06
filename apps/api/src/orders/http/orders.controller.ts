@@ -81,8 +81,7 @@ import {
   HoldReleaseNotPermittedError,
   deriveSlaState,
   IOrderHoldService,
-  IOrderProvisioningResumeService,
-} from '@openlinker/core/orders';
+  IOrderProvisioningResumeService} from '@openlinker/core/orders';
 import type {
   OrderRecord,
   OrderRecordFilters,
@@ -263,7 +262,11 @@ export class OrdersController {
   @ApiOperation({
     summary: 'List order records',
     description:
-      'Returns a paginated list of order records. Supports filtering by sourceConnectionId, syncStatus, customerId, and date range.',
+      'Returns a paginated list of order records. Supports filtering by sourceConnectionId, ' +
+      'syncStatus, customerId, and date range. ' +
+      'Set `?withTotal=false` to get the page WITHOUT its total: the `total` field is omitted ' +
+      'entirely (never `0`) and the jsonb-containment count this list cannot serve from an index ' +
+      'is skipped. Fetch the number separately from `GET /orders/count` (#2944).',
   })
   @ApiResponse({
     status: 200,
@@ -508,10 +511,7 @@ export class OrdersController {
     // this detail read joins the single record for one order.
     const invoiceRecord = await this.invoiceService.getLatestInvoiceForOrder(order.internalOrderId);
     if (invoiceRecord) {
-      dto.orderSnapshot = {
-        ...dto.orderSnapshot,
-        invoice: this.toInvoiceProjection(invoiceRecord),
-      };
+      dto.orderSnapshot = { ...dto.orderSnapshot, invoice: this.toInvoiceProjection(invoiceRecord) };
     }
     // Delivery-routing-resolution + rider projection (#1791/#1792): a
     // single-order counterpart to the list read's batched resolution below.
@@ -566,11 +566,7 @@ export class OrdersController {
       'issues, registers, routes and configures nothing. The same shape is carried on every row of ' +
       'GET /orders, so the detail panel needs this endpoint only when it is opened directly.',
   })
-  @ApiResponse({
-    status: 200,
-    description: 'Sales-document projection',
-    type: SalesDocumentViewResponseDto,
-  })
+  @ApiResponse({ status: 200, description: 'Sales-document projection', type: SalesDocumentViewResponseDto })
   @ApiResponse({ status: 404, description: 'Order not found' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async getOrderSalesDocument(
@@ -1016,8 +1012,7 @@ export class OrdersController {
    * action. No regime/provider vocabulary crosses here.
    */
   private toInvoiceProjection(record: InvoiceRecord): OrderInvoiceProjectionDto {
-    const confirmationDocumentAvailable =
-      record.status === 'issued' && record.regulatoryStatus === 'accepted';
+    const confirmationDocumentAvailable = record.status === 'issued' && record.regulatoryStatus === 'accepted';
     return {
       invoiceId: record.id,
       documentType: record.documentType,

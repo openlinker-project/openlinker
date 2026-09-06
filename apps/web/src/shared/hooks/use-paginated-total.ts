@@ -43,7 +43,7 @@
  * @see shared/ui/list-pagination for the presentational half
  */
 import { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { hashKey, useQuery } from '@tanstack/react-query';
 import { useDebouncedValue } from './use-debounced-value';
 
 /**
@@ -169,9 +169,10 @@ export function inferTotalFromLoadedPage(
  * The exact total a page implies, or `null` when it implies none.
  *
  * A page shorter than the limit it asked for is the end of the result set, so
- * `offset + rowCount` is the total exactly - the same inference TypeORM's own
- * `lazyCount` makes server-side. Deriving it here costs nothing and means a
- * list that fits on one page never issues a count at all.
+ * `offset + rowCount` is the total exactly. Deriving it here costs nothing and
+ * means a list that fits on one page never issues a count at all - which is
+ * worth more than it sounds, because the server does NOT make this inference
+ * for us: typeorm@0.3.17's `getManyAndCount` runs its count unconditionally.
  *
  * Two cases return `null` rather than guessing:
  * - a FULL page, where more rows may or may not follow;
@@ -214,11 +215,17 @@ export function inferTotalFromPage(page: {
  * that many, and claiming none matched would be a positive statement from an
  * absent value.
  *
+ * `atLeast` may itself be `null`, meaning the page has not loaded and there is
+ * no floor to state. That renders an em-dash rather than `0+`, which would be a
+ * floor computed from nothing - the deep-link case (`?offset=100` before a row
+ * exists) that #2957 review S2 turned up on both consuming surfaces.
+ *
  * One function so every surface showing the same total spells the placeholder
  * the same way - `<ListPagination>` and any per-page "N results" line alike.
  */
-export function formatPaginatedTotal(total: number | null, atLeast: number): string {
-  return total !== null ? total.toLocaleString() : `${atLeast.toLocaleString()}+`;
+export function formatPaginatedTotal(total: number | null, atLeast: number | null): string {
+  if (total !== null) return total.toLocaleString();
+  return atLeast !== null ? `${atLeast.toLocaleString()}+` : '—';
 }
 
 export function usePaginatedTotal<TData = PaginatedTotalPayload>(
@@ -237,7 +244,14 @@ export function usePaginatedTotal<TData = PaginatedTotalPayload>(
   // Serialised so the debounce compares by VALUE. A caller building its key
   // inline produces a new array identity every render, which would reset the
   // timer forever and mean the count never fires.
-  const keyHash = JSON.stringify(queryKey);
+  //
+  // TanStack's own `hashKey`, not `JSON.stringify` (#2957 review, S7). It sorts
+  // object keys, so a caller that builds its filters conditionally
+  // (`{ ...base, ...(x ? { a } : {}) }`) cannot produce a hash that flips
+  // between renders while TanStack sees one key - which would leave `settled`
+  // permanently false and the count permanently unfetched, silently, behind a
+  // cached value that keeps the UI looking correct.
+  const keyHash = hashKey(queryKey);
   const settledKeyHash = useDebouncedValue(keyHash, debounceMs);
   const settled = settledKeyHash === keyHash;
 

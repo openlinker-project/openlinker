@@ -217,7 +217,12 @@ export class ListingsController {
       'the same filters minus the lifecycle narrowing, so the tab bar stays live while a tab is ' +
       'selected. Off by default (#2032 review thread 3): this endpoint also backs callers that ' +
       'never render a tab bar (the product drawer, the nav badge probe), and the aggregate is a ' +
-      'second full scan they would otherwise pay for on every call.',
+      'second full scan they would otherwise pay for on every call. ' +
+      'Set `?withTotal=false` to get the page WITHOUT its total: the `total` field is omitted ' +
+      'entirely (never `0`) AND `includeLifecycleCounts` is ignored, because both aggregates ' +
+      'move to `GET /listings/count?includeLifecycleCounts=true` (#2944). A caller asking for ' +
+      'the buckets and silently receiving neither them nor an error could not tell a deliberate ' +
+      'refusal from a defect.',
   })
   @ApiResponse({
     status: 200,
@@ -888,8 +893,7 @@ export class ListingsController {
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
   @ApiOperation({
-    summary:
-      'Batch-resolve marketplace categories by variant EAN, with mapping fallback (#795 / #1522)',
+    summary: 'Batch-resolve marketplace categories by variant EAN, with mapping fallback (#795 / #1522)',
     description:
       'Resolves up to 200 variants to marketplace categories in one call. EAN catalogue ' +
       'match (via the connection adapter’s EanCategoryMatcher sub-capability, #735) is the ' +

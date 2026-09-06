@@ -7,6 +7,7 @@
  * @module apps/web/src/features/orders/api
  */
 import type { PaginatedTotal, RowsPage } from '../../../shared/api/paginated-total.types';
+import { orderMembershipFilters } from './orders.query-keys';
 import type {
   OrderFilters,
   OrderPagination,
@@ -154,9 +155,16 @@ export function createOrdersApi(request: ApiRequest): OrdersApi {
       );
     },
     count(filters, init): Promise<PaginatedTotal> {
-      // No pagination: the answer depends on the filters alone, which is what
-      // lets one cached count serve every page of a result set.
-      return request<PaginatedTotal>(`/orders/count${buildQuery(filters)}`, init);
+      // Neither pagination nor sort: the answer depends on membership alone,
+      // which is what lets one cached count serve every page AND every column
+      // ordering of a result set. Stripped here as well as in the query key so
+      // the URL matches what the key claims about it - the backend accepts and
+      // ignores both, but sending them would make two identical answers look
+      // like two different requests in a log (#2957 review, I3).
+      return request<PaginatedTotal>(
+        `/orders/count${buildQuery(orderMembershipFilters(filters))}`,
+        init,
+      );
     },
     statusSummary(filters): Promise<OrderHealthSummary> {
       return request<OrderHealthSummary>(`/orders/status-summary${buildSummaryQuery(filters)}`);

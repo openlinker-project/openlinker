@@ -205,10 +205,15 @@ describe('OrderRecordRepository paged/count predicate parity (#2944)', () => {
   });
 
   it('keeps findMany on a single getManyAndCount rather than two statements', async () => {
-    // TypeORM's `lazyCount` infers the total with NO count query when a page
-    // comes back short, so composing `findMany` from `findManyRows` +
-    // `countMany` would add a statement on every small install. This asserts
-    // the combined read still takes that path.
+    // `?withTotal=true` is the default and every un-migrated caller uses it, so
+    // the combined read must stay byte-identical to its pre-#2944 self: one
+    // `getManyAndCount()` on one query runner. Composing it from the two new
+    // methods would run them on two pool connections - an unmeasured change to
+    // the shipped path, inside a change about something else.
+    //
+    // This is NOT a claim that the count is skipped for a short page. Read
+    // against typeorm@0.3.17, `getManyAndCount` runs both statements
+    // unconditionally; there is no `lazyCount` in that version.
     const paged = await record(() => repository.findMany({}, { limit: 20, offset: 0 }));
 
     expect(paged.builder.getManyAndCount).toHaveBeenCalledTimes(1);

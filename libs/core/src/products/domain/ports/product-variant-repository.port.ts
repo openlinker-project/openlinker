@@ -157,9 +157,19 @@ export interface ProductVariantRepositoryPort {
    * different set than the page.
    *
    * {@link findMany} deliberately does NOT delegate to this method plus
-   * {@link countMany}. TypeORM's `getManyAndCount` infers the total with no
-   * count query at all when a page comes back short, so composing it would add
-   * a statement on every small install - the opposite of this issue's point.
+   * {@link countMany}. It keeps the single `getManyAndCount()` it already had,
+   * so `?withTotal=true` - the default, and every caller not yet migrated -
+   * emits exactly the two statements it emitted before #2944, on the one query
+   * runner it emitted them on. Composing would be a second, unmeasured change
+   * (two pool connections per list request) smuggled into a change about
+   * something else.
+   *
+   * Note what that does NOT claim. Read against typeorm@0.3.17 rather than
+   * assumed: `getManyAndCount` runs `executeEntitiesAndRawResults` and then
+   * `executeCountQuery` unconditionally and sequentially. There is no
+   * short-page branch and no `lazyCount` - the identifier does not exist in
+   * that version. The count always runs, which is the argument FOR splitting
+   * it out, not against.
    */
   findManyRows(
     filters: ProductVariantListFilters,

@@ -21,14 +21,16 @@ What was kept from F5's shape, because it is what makes the numbers mean anythin
 **Honest caveats.**
 
 - The absolute latencies are higher than #2843's (`184 ms` here versus its `149 ms` for the same combined route). The machine carries three other Docker stacks; this is ambient load, and it is why the report leans on the in-run ratio rather than on cross-day absolutes.
-- One run, no repeats. Per-route `n` is 220-263, above the n>=100 threshold at which a p99 is a trustworthy tail estimate, so the percentiles below are reported without a stability caveat - but a single window is a single window.
+- One run, no repeats. Per-route `n` is 220-263, so the p50 and p95 are solid; the **p99s are two or three observations each and are indicative only** (at n=259 a p99 interpolates between the 2nd and 3rd worst samples, which is why `count_needs_attention` jumps 221 -> 390 between them). Nothing below rests on a p99 - the argument is entirely p50 ratios. An earlier draft cited an "n>=100 threshold"; there is no such convention in this repository and the claim is withdrawn.
 - Only `/orders` was measured. `/listings`, `/products` and `/customers` are the same shape and are explicitly **unmeasured**, exactly as the epic states.
 
 ---
 
 ## Time-to-rows and time-to-total, separately
 
-k6, 1450 requests, **0 non-2xx**, ~17 req/s sustained, 60 s plateau. All figures milliseconds.
+k6, 1450 requests, **0 non-2xx**, **20 req/s at the plateau** (17.06 averaged over the whole 85 s window: 15 s ramp + 60 s at `TARGET_RATE=20` + 10 s down, which is 1450 requests exactly, so no iteration was dropped). All figures milliseconds. Env: defaults throughout - `TARGET_RATE=20`, `DATASET_LABEL=1M`.
+
+**"0 non-2xx" is evidenced, not assumed.** k6 omits a Counter that never received a sample, so a missing `non_2xx_responses` line is indistinguishable from a counter that was never wired. The check that does not rely on absence: the driver records a Trend sample only on a 2xx, and the six per-route `n` values sum to 220+235+259+244+229+263 = **1450**, the total request count. Every request was therefore a 2xx. The driver additionally carries a `non_2xx_responses: ['count == 0']` threshold, so a future run FAILS on an error rather than quietly reporting a fast one.
 
 ### The filtered list - `?health=needs_attention`
 
@@ -86,11 +88,19 @@ Partial Aggregate  (actual time=165.492..165.493 rows=1 loops=3)
 Execution Time: 175.814 ms
 ```
 
-**615x apart** at the SQL layer - 0.286 ms against 175.814 ms - and the difference is visible in the plan rather than only in the clock. The page takes an index scan backward and stops after 20 matching rows, having touched **76 buffer pages**. The count takes a parallel sequential scan across three workers and touches **78 436 pages per worker**, roughly 600 MB read through the buffer pool in one execution, which is the eviction pressure #2843 describes and the reason the cost is felt application-wide rather than on one page.
+**615x apart** at the SQL layer - 0.286 ms against 175.814 ms - and the difference is visible in the plan rather than only in the clock. The page takes an index scan backward and stops after 20 matching rows, having touched **76 buffer pages**. The count takes a parallel sequential scan and touches **78 436 buffer pages in total** - 8 KiB each, so ~613 MB read through the buffer pool in one execution, which is the eviction pressure #2843 describes and the reason the cost is felt application-wide rather than on one page. (`Buffers:` is a cumulative total across the three workers, unlike `rows` and `actual time`, which PostgreSQL divides by `loops`. An earlier draft said "per worker" and then quoted the same ~600 MB, which cannot both be true.)
 
 ---
 
 ## Reproducing this
+
+**Step 0 - the dataset.** This reuses #2843's 1M-row `order_records` seed
+(`perfseed_ord_*`) and the `lab-postgres` / `lab-redis` / `lab-api` stand, both
+of which live on the **performance-programme branch**, not here. Listing
+`perf/openlinker-throughput/` on this branch returns three files:
+`bootstrap.sh` (which seeds PrestaShop/WooCommerce/Allegro-stub, not
+`order_records`), the driver below, and this report. Seed the stand from that
+branch first.
 
 ```bash
 # 1. Build the API from the branch under test.
@@ -102,8 +112,12 @@ docker run -d --name api-2943 --network lab_default \
 
 # 3. Take the stand lock, then run the driver.
 docker exec lab-redis redis-cli SET perf:stand:exclusive "<owner>" NX EX 5400
+# `/results` must be MOUNTED - the k6 image has no such directory and runs as a
+# non-root user, so an unmounted --summary-export silently fails, and the
+# per-route `n` values above come from that file.
 docker run --rm --network lab_default \
   -v "$PWD/perf/openlinker-throughput/drivers":/drivers:ro \
+  -v "$PWD/perf/openlinker-throughput/results":/results \
   -e API_BASE_URL=http://api-2943:3000/v1 -e TOKEN="$TOKEN" -e DATASET_LABEL=1M \
   grafana/k6:1.0.0 run --summary-export=/results/summary.json /drivers/two-stage-total.js
 

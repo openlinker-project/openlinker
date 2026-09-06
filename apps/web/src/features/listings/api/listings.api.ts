@@ -8,6 +8,7 @@
  */
 import type { DescriptionFormat } from '../../../shared/ui/rich-text.types';
 import type { RowsPage } from '../../../shared/api/paginated-total.types';
+import { listingRowFilters } from './listings.query-keys';
 import type {
   CatalogProduct,
   CatalogProductMatchResult,
@@ -460,8 +461,13 @@ export function createListingsApi(
       return request<PaginatedOfferMappings>(`/listings${buildQuery(filters, pagination)}`);
     },
     listRows(filters, pagination): Promise<RowsPage<OfferMapping>> {
+      // `includeLifecycleCounts` is dropped, not merely ignored downstream
+      // (#2957 review, S3). The buckets moved to `count()` in #2943, and the
+      // rows route declines the flag under `?withTotal=false` - so asking for
+      // it here is a rows-only request asking for the exact aggregate this
+      // change moved off that path, baked into the cache key for nothing.
       return request<RowsPage<OfferMapping>>(
-        `/listings${buildQuery(filters, pagination, { withTotal: false })}`,
+        `/listings${buildQuery(listingRowFilters(filters), pagination, { withTotal: false })}`,
       );
     },
     count(filters, init): Promise<OfferMappingCount> {

@@ -362,9 +362,15 @@ export function ProductsListPage(): ReactElement {
   // into a claim. These chips render ABOVE the loading branch, so on a deep
   // link like `/products?offset=100` an ungated floor would read "All 100+"
   // before a single row exists - a positive claim computed from a URL.
-  const totalLabel = query.data
-    ? formatPaginatedTotal(totalStage.total, offset + query.data.items.length)
-    : '—';
+  //
+  // A KNOWN total needs no page at all - `formatPaginatedTotal` ignores the
+  // floor when it has a real number - so gating that branch on `query.data`
+  // blanked the chip to `All —` for a round trip on a pure re-sort, where the
+  // count key is unchanged and the answer is already cached (#2957 review, S2).
+  const totalLabel = formatPaginatedTotal(
+    totalStage.total,
+    query.data ? offset + query.data.items.length : null
+  );
   const items = query.data?.items ?? [];
 
   // Fire once per successful list load, not on every filter/page refetch —
@@ -1213,12 +1219,19 @@ export function ProductsListPage(): ReactElement {
           <Chip tone="error" active={hideFullyStale} onClick={toggleHideStale}>
             Hide deleted at source
           </Chip>
-          {query.data ? (
+          {/* A known total needs no page, so a pure re-sort - which leaves the
+              count key untouched - keeps the number on screen instead of
+              unmounting the span for a round trip (#2957 review, S2). */}
+          {totalStage.total !== null || query.data ? (
             <span
               className="text-muted mono tabular"
               style={{ marginLeft: 'auto', fontSize: '0.75rem' }}
             >
-              {formatPaginatedTotal(totalStage.total, offset + query.data.items.length)} results
+              {formatPaginatedTotal(
+                totalStage.total,
+                query.data ? offset + query.data.items.length : null
+              )}{' '}
+              results
             </span>
           ) : null}
         </div>

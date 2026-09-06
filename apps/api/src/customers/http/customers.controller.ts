@@ -55,7 +55,8 @@ export class CustomersController {
   @ApiOperation({
     summary: 'List customer projections',
     description:
-      'Returns a paginated list of customer projections. Supports filtering by search text and lastSourceConnectionId.',
+      'Returns a paginated list of customer projections. Supports filtering by search text and lastSourceConnectionId. ' +
+      'Set `?withTotal=false` to get the page WITHOUT its total: the `total` field is omitted entirely (never `0`) and the count this list cannot serve from an index is skipped. Fetch the number separately from `GET /customers/count` (#2944).',
   })
   @ApiResponse({
     status: 200,
@@ -73,8 +74,10 @@ export class CustomersController {
     // `total` rather than reporting 0 (#2944) - an absent total and a genuine
     // zero must stay distinguishable, or a client renders "0 customers" for a
     // number it simply did not ask for. Anything else keeps the pre-#2944
-    // combined read byte-for-byte, including its `getManyAndCount` short-page
-    // optimisation.
+    // combined read byte-for-byte: one `getManyAndCount()` on one query runner,
+    // which always runs its count - there is no short-page branch in
+    // typeorm@0.3.17, which is why moving the count off this path is worth
+    // doing at all.
     if (withTotal === false) {
       const items = await this.customerRepository.findManyRows(filters, { limit, offset });
       return { items: items.map((c) => this.toDto(c)), limit, offset };

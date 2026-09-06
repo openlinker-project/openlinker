@@ -42,15 +42,17 @@ describe('ListPagination (#2945)', () => {
 
     expect(screen.getByText('60+')).toBeInTheDocument();
     // The number that IS shown is a floor the rows already prove, never a
-    // claim that nothing matched.
-    expect(screen.queryByText('0')).not.toBeInTheDocument();
+    // claim that nothing matched. Matched as a PHRASE, not as the bare string
+    // `0`: `queryByText` is an exact full-text match, so with `60+` on screen
+    // `queryByText('0')` can never fail and asserts nothing (#2957 review, S6).
+    expect(screen.queryByText(/\bof 0\b/)).not.toBeInTheDocument();
   });
 
   it('keeps the placeholder when the count FAILED, and still never renders 0', () => {
     renderPagination({ total: null, totalState: 'unavailable', offset: 0, rowCount: 20 });
 
     expect(screen.getByText('20+')).toBeInTheDocument();
-    expect(screen.queryByText('0')).not.toBeInTheDocument();
+    expect(screen.queryByText(/\bof 0\b/)).not.toBeInTheDocument();
     expect(screen.getByTitle(/could not be loaded/i)).toBeInTheDocument();
   });
 
@@ -86,7 +88,18 @@ describe('ListPagination (#2945)', () => {
     // `aria-busy` on a non-live region announces nothing, so the summary is a
     // polite live region: a screen-reader user learns that `20+` became a real
     // number rather than being left with the placeholder.
-    expect(pager.querySelector('[aria-live="polite"]')).not.toBeNull();
+    //
+    // Asserted THROUGH the number rather than as "a live region exists
+    // somewhere in the pager" (#2957 review, S6) - the latter passes with the
+    // region wrapping the Previous button and the total outside it, which
+    // announces nothing that changed.
+    expect(screen.getByText('20+').closest('[aria-live="polite"]')).not.toBeNull();
+    // The spinner is decorative and must not be read out beside it - and while
+    // it is not showing, `aria-busy` must be absent rather than `false`.
+    expect(pager.querySelector('.pagination__counting-dot')).toBeNull();
+    expect(screen.getByText('20+').closest('[aria-live="polite"]')).not.toHaveAttribute(
+      'aria-busy'
+    );
 
     rerender(
       <ListPagination
@@ -183,5 +196,30 @@ describe('ListPagination (#2945)', () => {
   it('says so plainly when the page is empty, rather than "Showing 1-0 of 0"', () => {
     renderPagination({ rowCount: 0, total: 0, totalState: 'known' });
     expect(screen.getByText('No results')).toBeInTheDocument();
+  });
+  it('marks the summary busy and hides the spinner from the reader while counting', () => {
+    // Two properties the component states explicitly and nothing asserted
+    // (#2957 review, S6): `aria-busy` tracks the delayed loader, and the dot is
+    // decorative. A dot announced as content beside a live region is the
+    // spinner being read out on every count.
+    const { container } = render(
+      <ListPagination
+        offset={0}
+        limit={20}
+        rowCount={20}
+        total={null}
+        totalState="pending"
+        showTotalLoader
+        onOffsetChange={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('20+').closest('[aria-live="polite"]')).toHaveAttribute(
+      'aria-busy',
+      'true'
+    );
+    const dot = container.querySelector('.pagination__counting-dot');
+    expect(dot).not.toBeNull();
+    expect(dot).toHaveAttribute('aria-hidden', 'true');
   });
 });

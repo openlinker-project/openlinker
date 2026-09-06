@@ -151,6 +151,12 @@ describe('OfferMappingRepository', () => {
       return calls.find((call) => call[1]?.search !== undefined);
     }
 
+    /** The `andWhere` call carrying the lifecycle narrowing, if one was emitted. */
+    function findLifecycleCall(qb: ListQb): AndWhereCall | undefined {
+      const calls = qb.andWhere.mock.calls as AndWhereCall[];
+      return calls.find((call) => typeof call[0] === 'string' && call[0].includes('oss.'));
+    }
+
     function buildListQb(rows: Array<Record<string, unknown>>, total = rows.length): ListQb {
       const qb: ListQb = {
         leftJoin: jest.fn(),
@@ -558,6 +564,86 @@ describe('OfferMappingRepository', () => {
         });
         expect(findSearchCall(qb)).toBeDefined();
         expect(findLifecycleCall(qb)).toBeDefined();
+      });
+    });
+
+    describe('the two-stage split (#2944)', () => {
+      // This is the only one of the five repositories whose three reads do not
+      // share a single builder path: `buildFilteredQuery` deliberately OMITS
+      // the lifecycle narrowing so `countByLifecycle` can partition the
+      // un-narrowed set, and `buildListQuery` adds it back. So `countMany`
+      // pointed at the inner builder would silently drop a filter the page
+      // applied - the exact defect the epic exists to prevent, and one no
+      // shared-builder argument rules out here (#2957 review, SUGGESTION 6).
+
+      it('applies the lifecycle narrowing on countMany, not only on the page', async () => {
+        const qb = buildListQb([]);
+        (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+        await repository.countMany({ lifecycle: 'Active' });
+
+        // Break by starting `countMany` from `buildFilteredQuery`: the
+        // lifecycle predicate disappears and this fails.
+        expect(findLifecycleCall(qb)).toBeDefined();
+        expect(qb.getCount).toHaveBeenCalledTimes(1);
+      });
+
+      it('emits the SAME predicate sequence on the page and on the count', async () => {
+        const pageQb = buildListQb([]);
+        (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(pageQb);
+        await repository.findManyRows(
+          { connectionId: 'conn-1', search: 'terra', lifecycle: 'Draft' },
+          { limit: 20, offset: 0 }
+        );
+
+        const countQb = buildListQb([]);
+        (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(countQb);
+        await repository.countMany({ connectionId: 'conn-1', search: 'terra', lifecycle: 'Draft' });
+
+        expect(countQb.andWhere.mock.calls).toEqual(pageQb.andWhere.mock.calls);
+      });
+
+      it('windows and orders the page, and does NEITHER on the count', async () => {
+        const pageQb = buildListQb([]);
+        (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(pageQb);
+        await repository.findManyRows({}, { limit: 20, offset: 40 });
+        expect(pageQb.limit).toHaveBeenCalledWith(20);
+        expect(pageQb.offset).toHaveBeenCalledWith(40);
+        expect(pageQb.orderBy).toHaveBeenCalled();
+
+        const countQb = buildListQb([]);
+        (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(countQb);
+        await repository.countMany({});
+        // A count carrying `LIMIT 20` answers 20 for every large result set.
+        expect(countQb.limit).not.toHaveBeenCalled();
+        expect(countQb.offset).not.toHaveBeenCalled();
+        expect(countQb.orderBy).not.toHaveBeenCalled();
+        expect(countQb.getRawMany).not.toHaveBeenCalled();
+      });
+
+      it('COUNTS BEFORE it pages, which is what makes one shared builder safe', async () => {
+        // `findMany` reuses ONE builder for both statements, so the count must
+        // be taken before `fetchListPage` attaches `limit`/`offset`/`orderBy`.
+        // Invert the two lines in `findMany` and the count answers the page
+        // size instead of the result-set size. Cloning would remove the
+        // ordering requirement, and is declined for the reason recorded in
+        // `fetchListPage`'s docblock.
+        const qb = buildListQb([], 137);
+        (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+        const order: string[] = [];
+        qb.getCount.mockImplementation(async () => {
+          order.push('count');
+          return 137;
+        });
+        qb.limit.mockImplementation(() => {
+          order.push('limit');
+          return qb;
+        });
+
+        const page = await repository.findMany({}, { limit: 20, offset: 0 });
+
+        expect(page.total).toBe(137);
+        expect(order).toEqual(['count', 'limit']);
       });
     });
   });

@@ -76,6 +76,17 @@ const PACKER_REACHABLE_ANY_ROLE_ROUTES: readonly string[] = [
   'ProductsController.getTaxRateJournal',
   'VariantsController.searchVariants',
 
+  // The `/count` siblings of the four reads above (#2943). Each answers ONE
+  // integer for the SAME filters as the list beside it, so it is a strictly
+  // narrower disclosure than the route it accompanies: a packer who may see
+  // the rows may certainly see how many there are. Listed rather than inferred
+  // because this file's whole point is that `@AnyRole()` is decided per route,
+  // and "it mirrors its sibling" is a decision somebody has to make.
+  'ProductsController.countProducts',
+  'ProductsController.countVariantsByProduct',
+  'VariantsController.countSearchVariants',
+
+
   // The parcel's shipment and its label. The label goes ON the box and the
   // bench prints it (spec D14 / F1); `ShipmentResponseDto` carries no recipient.
   'ShipmentController.list',
@@ -109,6 +120,7 @@ const PACKER_REACHABLE_ANY_ROLE_ROUTES: readonly string[] = [
   // Catalogue reads: no PII, no configuration, no money. Judged harmless rather
   // than needed — a packer has no route to them in the product.
   'ListingsController.listOfferMappings',
+  'ListingsController.countOfferMappings',
   'ListingsController.getOfferMapping',
   'ListingsController.getMarketplaceOffer',
   'ListingsController.getOfferCreationStatus',

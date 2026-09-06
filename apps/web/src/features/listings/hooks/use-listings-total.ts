@@ -50,6 +50,7 @@ import {
   inferTotalFromLoadedPage,
   usePaginatedTotal,
   type PaginatedTotalResult,
+  type PaginatedTotalState,
 } from '../../../shared/hooks/use-paginated-total';
 import { useApiClient } from '../../../app/api/api-client-provider';
 
@@ -62,6 +63,23 @@ export interface ListingsTotalResult extends PaginatedTotalResult<OfferMappingCo
    * rule that keeps a missing total from rendering as `0`.
    */
   lifecycleCounts: OfferLifecycleCounts | null;
+
+  /**
+   * The stage of the BUCKETS specifically, which is not always the stage of
+   * `total` (#2957 review, I2).
+   *
+   * `state` above is overridden to `'known'` whenever a short page implies the
+   * pager total exactly, and a short page implies nothing at all about the
+   * other tabs' sizes. So with a short page AND a failed count, `state` is
+   * `'known'` while `lifecycleCounts` is `null` - and a tab bar branching on
+   * `state` would render loading skeletons for the life of the page, which
+   * positively asserts that content is arriving when nothing is coming.
+   *
+   * One `state` cannot answer two questions. This one answers "do I know the
+   * buckets", and a caller rendering the tab bar must read it rather than
+   * `state`.
+   */
+  lifecycleCountsState: PaginatedTotalState;
 }
 
 export function useListingsTotal(
@@ -111,5 +129,7 @@ export function useListingsTotal(
     total: inferred ?? stage.total,
     state: inferred !== null ? 'known' : stage.state,
     lifecycleCounts: stage.data?.lifecycleCounts ?? null,
+    // Deliberately NOT the overridden `state` above - see the field's docblock.
+    lifecycleCountsState: stage.state,
   };
 }
