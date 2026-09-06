@@ -51,7 +51,15 @@ export function findPlatformDisplayName(
   platforms: readonly PlatformLike[],
   platform: string | ConnectionLike,
 ): string | undefined {
-  const platformType = typeof platform === 'string' ? platform : platform.platformType;
+  // `platform` is documented as `string | ConnectionLike`, but a connection
+  // sourced from a degraded response (a 500 handled into an empty object, a
+  // partial payload, a field dropped by version skew) can carry
+  // `platformType: undefined` at runtime despite the declared type — `?.`
+  // guards that without asserting a platform we don't actually know, and
+  // `resolvePlatformLabel` below relies on this to forward a possibly-empty
+  // value safely.
+  const platformType = typeof platform === 'string' ? platform : platform?.platformType;
+  if (!platformType) return undefined;
   return platforms.find((p) => p.platformType === platformType)?.displayName;
 }
 
@@ -80,6 +88,10 @@ export function resolvePlatformLabel(
   platforms: readonly PlatformLike[],
   platform: string | ConnectionLike,
 ): string {
-  const platformType = typeof platform === 'string' ? platform : platform.platformType;
-  return findPlatformDisplayName(platforms, platformType) ?? platformType;
+  // Forward the original `platform`, not a pre-extracted `platformType` —
+  // `findPlatformDisplayName` above already guards a missing field, so
+  // re-deriving it here (`platform?.platformType`) is only for the final
+  // fallback string, never passed on as a bare (possibly-undefined) value.
+  const platformType = typeof platform === 'string' ? platform : platform?.platformType;
+  return findPlatformDisplayName(platforms, platform) ?? platformType ?? 'unknown';
 }

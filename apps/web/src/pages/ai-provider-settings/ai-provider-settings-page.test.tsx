@@ -149,6 +149,30 @@ describe('AiProviderSettingsPage', () => {
     expect(openaiActivate).toBeDisabled();
   });
 
+  it('shows an error, not a crash, when the response has no `providers` array', async () => {
+    // A degraded response (a 500 handled into an empty object, a partial
+    // payload) can arrive as a successful query whose `data` is truthy but
+    // `providers` is missing — `hasAnyKeyConfigured(query.data.providers)`
+    // would otherwise throw reading `.some` off `undefined`.
+    const getAll = vi.fn().mockResolvedValue({
+      activeProvider: 'anthropic',
+      activeUpdatedAt: null,
+      activeUpdatedBy: null,
+    } as unknown as AiProviderSettingsView);
+    const apiClient = createMockApiClient({ aiProviderSettings: { getAll } });
+
+    renderWithProviders(<AiProviderSettingsPage />, {
+      apiClient,
+      sessionAdapter: adminAdapter,
+    });
+
+    expect(
+      await screen.findByText(
+        'The response did not carry the provider list this page needs. Try again in a moment.',
+      ),
+    ).toBeInTheDocument();
+  });
+
   it('renders the ErrorState with retry when the query fails', async () => {
     const getAll = vi.fn().mockRejectedValue(new Error('Network down'));
     const apiClient = createMockApiClient({ aiProviderSettings: { getAll } });

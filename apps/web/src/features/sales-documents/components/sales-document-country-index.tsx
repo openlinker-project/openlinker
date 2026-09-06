@@ -83,7 +83,12 @@ export function SalesDocumentCountryIndex({
     return <span>{name}</span>;
   };
 
-  const rows = orderSalesDocumentCountries(countriesQuery.data ?? []);
+  // A degraded response (a 500 handled into an empty object, a partial
+  // payload) can arrive as a successful query whose `data` is truthy but
+  // not actually an array — `?? []` alone only guards `undefined`.
+  const rows = orderSalesDocumentCountries(
+    Array.isArray(countriesQuery.data) ? countriesQuery.data : [],
+  );
 
   function submitAddCountry(): void {
     const normalized = draftCountry.trim().toUpperCase();

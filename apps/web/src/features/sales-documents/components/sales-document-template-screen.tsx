@@ -41,7 +41,14 @@ export function SalesDocumentTemplateScreen({
     return <LoadingState title="Checking for a starter template" message="" />;
   }
 
-  const template = templateQuery.data ?? null;
+  // A degraded response (a 500 handled into an empty object, a partial
+  // payload) can arrive as a successful query whose `data` is truthy but
+  // not shaped like a real template — `rules` in particular must be an
+  // array, since it's `.map`-ped below. `null` already has a meaning here
+  // ("no curated template for this country"), so an unreadable response
+  // degrades into that same, already-handled state rather than crashing.
+  const rawTemplate = templateQuery.data ?? null;
+  const template = rawTemplate !== null && Array.isArray(rawTemplate.rules) ? rawTemplate : null;
   if (template === null || dismissed) {
     return null;
   }

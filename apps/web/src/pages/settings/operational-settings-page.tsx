@@ -80,6 +80,26 @@ const NUMERIC_FIELDS: readonly OperationalSettingKey[] = [
   'deletionAuditBudget',
 ];
 
+/**
+ * A degraded response (a 500 handled into an empty object, a partial
+ * payload, a field dropped by version skew) can arrive as a successful
+ * query whose `data` is truthy but not shaped like `OperationalSettingsView`
+ * — every numeric field below is read via `.value`, so a query result that
+ * did not actually carry them would crash rather than render. This is a
+ * whole-envelope check, matching how the who-decides status read treats an
+ * unreadable response: the five pacing values are one indivisible answer,
+ * so a page that "renders" with some of them silently missing would assert
+ * settings the operator never confirmed exist.
+ */
+function isOperationalSettingsView(data: unknown): data is OperationalSettingsView {
+  if (typeof data !== 'object' || data === null) return false;
+  const candidate = data as Partial<OperationalSettingsView>;
+  return (
+    NUMERIC_FIELDS.every((key) => typeof candidate[key]?.value === 'number') &&
+    typeof candidate.deletionAuditCadence?.value === 'string'
+  );
+}
+
 function toValues(view: OperationalSettingsView): SyncPacingValues {
   return {
     catalogueSweepBudget: view.catalogueSweepBudget.value,
@@ -123,7 +143,8 @@ export function OperationalSettingsPage(): ReactElement {
    */
   const [acknowledged, setAcknowledged] = useState<Record<string, boolean>>({});
 
-  const view = query.data ?? null;
+  const view = isOperationalSettingsView(query.data) ? query.data : null;
+  const isUnreadable = !query.isPending && !query.error && query.data !== undefined && view === null;
   const savedStamp = view === null ? null : `${view.updatedAt ?? 'none'}:${view.deletionAuditCadence.value}`;
 
   // Adopt the server's values once, and again whenever the saved row changes
@@ -306,6 +327,16 @@ export function OperationalSettingsPage(): ReactElement {
         <ErrorState
           title="Unable to load sync pacing"
           message={query.error instanceof Error ? query.error.message : 'Unknown error'}
+          action={
+            <Button tone="secondary" onClick={() => void query.refetch()}>
+              Retry
+            </Button>
+          }
+        />
+      ) : isUnreadable ? (
+        <ErrorState
+          title="Unable to load sync pacing"
+          message="The response did not carry the values this page needs. Try again in a moment."
           action={
             <Button tone="secondary" onClick={() => void query.refetch()}>
               Retry

@@ -99,7 +99,10 @@ export function ConnectionCategoryMappingsPage(): ReactElement {
   const upsertMutation = useUpsertCategoryMapping(connectionId);
   const deleteMutation = useDeleteCategoryMapping(connectionId);
 
-  const mappings = mappingsQuery.data ?? [];
+  // A degraded response (a 500 handled into an empty object, a partial
+  // payload) can arrive as a successful query whose `data` is truthy but not
+  // actually an array — `?? []` alone only guards `undefined`.
+  const mappings = Array.isArray(mappingsQuery.data) ? mappingsQuery.data : [];
   const categories = prestashopCategoriesQuery.data ?? [];
 
   const mappedCount = useMemo(() => {

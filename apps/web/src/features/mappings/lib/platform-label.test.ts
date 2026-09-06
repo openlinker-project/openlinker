@@ -42,6 +42,15 @@ describe('resolvePlatformLabel', () => {
   it('returns an empty string rather than throwing on an empty platformType', () => {
     expect(resolvePlatformLabel(PLATFORMS, '')).toBe('');
   });
+
+  it('returns "unknown" rather than throwing when a connection-shaped object carries no `platformType` at all', () => {
+    // A degraded response (a 500 handled into an empty object, a partial
+    // payload, a field dropped by version skew) can arrive as a truthy
+    // connection-shaped object with `platformType` genuinely undefined at
+    // runtime, despite the declared `ConnectionLike.platformType: string`.
+    const degraded = {} as unknown as { platformType: string };
+    expect(resolvePlatformLabel(PLATFORMS, degraded)).toBe('unknown');
+  });
 });
 
 describe('findPlatformDisplayName', () => {
@@ -59,5 +68,10 @@ describe('findPlatformDisplayName', () => {
 
   it('returns undefined when the plugin list is empty', () => {
     expect(findPlatformDisplayName([], 'allegro')).toBeUndefined();
+  });
+
+  it('returns undefined rather than throwing when a connection-shaped object carries no `platformType` at all', () => {
+    const degraded = {} as unknown as { platformType: string };
+    expect(findPlatformDisplayName(PLATFORMS, degraded)).toBeUndefined();
   });
 });

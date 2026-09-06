@@ -214,7 +214,10 @@ export function PromptTemplatesListPage(): ReactElement {
     });
   };
 
-  const allRows = query.data ?? [];
+  // A degraded response (a 500 handled into an empty object, a partial
+  // payload) can arrive as a successful query whose `data` is truthy but
+  // not actually an array — `?? []` alone only guards `undefined`.
+  const allRows = Array.isArray(query.data) ? query.data : [];
   const rows = allRows.filter((row) => matchesStatusFilter(row, statusFilter));
 
   const columns: DataTableColumn<PromptTemplateSummary>[] = [

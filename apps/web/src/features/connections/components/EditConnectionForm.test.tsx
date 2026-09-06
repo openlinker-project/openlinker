@@ -86,6 +86,20 @@ describe('EditConnectionForm', () => {
     expect(screen.getByText('Rotate webservice key')).toBeInTheDocument();
   });
 
+  it('does not crash when the connection response has no `config` or `enabledCapabilities`', () => {
+    // A degraded response (a 500 handled into an empty object, a partial
+    // payload) can arrive as a successful query whose `data` is truthy but
+    // `config`/`enabledCapabilities` are missing entirely — every read in
+    // this form goes through `connection.config`/`connection.enabledCapabilities`.
+    const degraded = { ...sampleConnection } as Partial<Connection>;
+    delete degraded.config;
+    delete degraded.enabledCapabilities;
+
+    renderWithProviders(<EditConnectionForm connection={degraded as unknown as Connection} />);
+
+    expect(screen.getByDisplayValue(sampleConnection.name)).toBeInTheDocument();
+  });
+
   it('shows platform type as disabled and credentials behind a rotate button', () => {
     renderWithProviders(<EditConnectionForm connection={sampleConnection} />);
 

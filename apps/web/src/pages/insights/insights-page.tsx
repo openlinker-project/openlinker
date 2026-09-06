@@ -109,7 +109,11 @@ function buildInfraNodeLabels(
 ): string[] {
   if (!data) return [];
   const labels = ['Postgres', 'Redis', 'PrestaShop'];
-  if (data.services.worker) {
+  // A degraded response (a 500 handled into an empty object, a partial
+  // payload) can arrive as a successful query whose `data` is truthy but
+  // `services` is missing entirely — `?.` guards that without asserting the
+  // worker is absent when we simply don't know.
+  if (data.services?.worker) {
     labels.push('Worker');
   }
   for (const connection of data.connections ?? []) {
@@ -617,7 +621,11 @@ export function InsightsPage(): ReactElement {
               action={<Button onClick={() => void healthQuery.refetch()}>Retry</Button>}
             />
           )}
-          {healthQuery.data && (
+          {/* A degraded response can arrive as a successful query whose
+              `data` is truthy but `services` is missing entirely — render
+              nothing rather than claim a status for a service we have no
+              data for. */}
+          {healthQuery.data?.services && (
             <ul className="check-list">
               <ServiceHealthRow name="PostgreSQL" health={healthQuery.data.services.postgres} />
               <ServiceHealthRow name="Redis" health={healthQuery.data.services.redis} />

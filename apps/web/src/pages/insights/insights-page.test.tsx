@@ -9,6 +9,7 @@ import {
 } from '../../test/test-utils';
 import { InsightsPage } from './insights-page';
 import type { Connection } from '../../features/connections/api/connections.types';
+import type { DevStackHealth } from '../../features/health/api/health.types';
 import type {
   JobType,
   SyncJob,
@@ -114,6 +115,38 @@ describe('InsightsPage', () => {
     expect(await within(container).findByText('PostgreSQL')).toBeInTheDocument();
     expect(within(container).getByText('Redis')).toBeInTheDocument();
     expect(within(container).getByText('PrestaShop')).toBeInTheDocument();
+  });
+
+  it('does not crash and omits the service list when the health response has no `services` field', async () => {
+    // A degraded response (a 500 handled into an empty object, a partial
+    // payload) can arrive as a successful query whose `data` is truthy but
+    // `services` is missing entirely.
+    const apiClient = createMockApiClient({
+      health: {
+        getDevStackHealth: vi.fn().mockResolvedValue({
+          status: 'ok',
+          timestamp: '2026-04-06T00:00:00.000Z',
+        } as unknown as DevStackHealth),
+      },
+    });
+    const { container } = renderWithProviders(<InsightsPage />, { apiClient });
+
+    // Wait for the health query to actually settle (the KPI shows the
+    // top-level `status`, which this degraded payload does carry) before
+    // asserting on what the (missing-`services`) render produced — a bare
+    // synchronous `queryByText` here would pass trivially before the mocked
+    // promise even resolves, proving nothing about the crash this guards.
+    await waitFor(() => {
+      const card = findCardByLabel(container, 'System health');
+      expect(within(card).getByText('OK')).toBeInTheDocument();
+    });
+
+    expect(
+      within(container).getByRole('heading', { name: 'Operations overview' })
+    ).toBeInTheDocument();
+    expect(within(container).queryByText('PostgreSQL')).not.toBeInTheDocument();
+    expect(within(container).queryByText('Redis')).not.toBeInTheDocument();
+    expect(within(container).queryByText('PrestaShop')).not.toBeInTheDocument();
   });
 
   it('lists an infra-bearing connection (e.g. WooCommerce) in the Infrastructure panel (#1619)', async () => {

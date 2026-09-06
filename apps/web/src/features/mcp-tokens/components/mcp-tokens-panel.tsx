@@ -78,7 +78,11 @@ export function McpTokensPanel(): ReactElement {
         {tokensQuery.isError ? (
           <ErrorState title="Could not load tokens" message={tokensQuery.error.message} />
         ) : null}
-        {tokensQuery.data ? (
+        {/* A degraded response (a 500 handled into an empty object, a
+            partial payload) can arrive as a successful query whose `data`
+            is truthy but not actually an array — `Array.isArray` guards
+            that, matching the McpTokensTile fix for the same query. */}
+        {Array.isArray(tokensQuery.data) ? (
           <McpTokenList
             tokens={tokensQuery.data}
             isRevoking={revokeMutation.isPending}

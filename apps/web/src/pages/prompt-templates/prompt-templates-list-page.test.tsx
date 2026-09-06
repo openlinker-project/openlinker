@@ -68,6 +68,24 @@ describe('PromptTemplatesListPage', () => {
     expect(await screen.findByText(/No prompt templates yet/i)).toBeInTheDocument();
   });
 
+  it('degrades to the empty state, not a crash, when the response is a shapeless envelope instead of an array', async () => {
+    // A degraded response (a 500 handled into an empty object, a partial
+    // payload) can arrive as a successful query whose `data` is truthy but
+    // not actually an array — `?? []` alone only guards `undefined`.
+    const client = createMockApiClient({
+      promptTemplates: {
+        list: vi
+          .fn()
+          .mockResolvedValue({ data: [], total: 0 } as unknown as PromptTemplateSummary[]),
+      },
+    });
+    renderWithProviders(<PromptTemplatesListPage />, {
+      apiClient: client,
+      sessionAdapter: adminAdapter,
+    });
+    expect(await screen.findByText(/No prompt templates yet/i)).toBeInTheDocument();
+  });
+
   it('renders error state with retry affordance', async () => {
     const client = createMockApiClient({
       promptTemplates: { list: vi.fn().mockRejectedValue(new Error('Network error')) },

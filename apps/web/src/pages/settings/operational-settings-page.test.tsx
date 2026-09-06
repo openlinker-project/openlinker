@@ -128,6 +128,24 @@ describe('OperationalSettingsPage', () => {
     expect(screen.getAllByText('100 (default)').length).toBeGreaterThan(0);
   });
 
+  it('should show an error, not crash, when the response has none of the pacing fields', async () => {
+    // A degraded response (a 500 handled into an empty object, a partial
+    // payload) can arrive as a successful query whose `data` is truthy but
+    // does not carry the five pacing values this page reads via `.value`.
+    renderPage({
+      get: vi.fn().mockResolvedValue({
+        deletionAuditAlwaysEnabled: true,
+        cadenceAppliesAt: 'next-scheduler-start',
+        updatedAt: null,
+        updatedBy: null,
+      }),
+    });
+
+    expect(
+      await screen.findByRole('heading', { name: 'Unable to load sync pacing' }),
+    ).toBeInTheDocument();
+  });
+
   it('should keep the save button inert until something changes', async () => {
     renderPage();
 
