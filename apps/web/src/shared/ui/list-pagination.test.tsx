@@ -172,14 +172,65 @@ describe('ListPagination (#2945)', () => {
       expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
     });
 
-    it('never states a range past its own total', () => {
-      // `main` clamped this and the first version of the component did not
-      // (#2957 review round 6, I1). On `/listings` the rows are a placeholder
-      // from the previous page while `offset` is already the new page's, so
-      // clicking Next onto the last page rendered "Showing 1221-1240 of 1,234".
-      renderPagination({ offset: 1220, limit: 20, rowCount: 20, total: 1234, totalState: 'known' });
+    it('clamps the range when the rows are a PLACEHOLDER from another page', () => {
+      // `/listings` keeps the previous page alive while `offset` is already the
+      // new page's, so `offset + rowCount` is an artefact. Unclamped, clicking
+      // Next onto the last page rendered "Showing 1221-1240 of 1,234" - a range
+      // past its own total (#2957 review round 6, I1).
+      renderPagination({
+        offset: 1220,
+        limit: 20,
+        rowCount: 20,
+        total: 1234,
+        totalState: 'known',
+        rowsArePlaceholder: true,
+      });
       expect(screen.getByText(/Showing 1,221.*1,234 of/)).toBeInTheDocument();
       expect(screen.queryByText(/1,240/)).not.toBeInTheDocument();
+      // And Next must not fire off the artefact either, or one more click lands
+      // past the end of the set.
+      expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+    });
+
+    it('does NOT clamp when the rows are real and the total simply undercounts', () => {
+      // The same arithmetic, the opposite cause (#2957 review round 7, I1).
+      // Three of the four adopters keep no placeholder, so an overrun there is
+      // a genuine disagreement - a stale cached count, or the `slaState` skew.
+      // Clamping it would render "1,001-1,005 of 1,005" over ten visible rows
+      // with Next enabled: internally contradictory, and plausible-looking.
+      renderPagination({
+        offset: 1000,
+        limit: 20,
+        rowCount: 10,
+        total: 1005,
+        totalState: 'known',
+      });
+      expect(screen.getByText(/Showing 1,001.*1,010 of/)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Next' })).toBeEnabled();
+    });
+
+    it('disables Next on an empty page the operator has paged past', () => {
+      // The `rowCount > 0` guard round 6 added, which was itself deletable
+      // (#2957 review round 7, S1): without it `offset + 0 > total` enables
+      // Next on a pager rendering `No results`.
+      renderPagination({ offset: 40, limit: 20, rowCount: 0, total: 30, totalState: 'known' });
+      expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+    });
+
+    it('measures the range from the ROWS, not the limit', () => {
+      // `Math.min(offset + rowCount, total)` and not `offset + limit` (#2957
+      // review round 7, S2). They differ on a short page whose total OVER-counts
+      // - a row deleted between the two requests - where the limit version
+      // renders "Showing 1-20 of 100" over five rows.
+      renderPagination({
+        offset: 0,
+        limit: 20,
+        rowCount: 5,
+        total: 100,
+        totalState: 'known',
+        rowsArePlaceholder: true,
+      });
+      expect(screen.getByText(/Showing 1.*5 of/)).toBeInTheDocument();
     });
 
     it('lets a known total overrule the full-page guess at the boundary', () => {

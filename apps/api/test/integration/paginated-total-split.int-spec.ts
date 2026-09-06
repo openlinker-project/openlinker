@@ -131,6 +131,14 @@ describe('Paginated total split (integration, #2944)', () => {
       // (#2957 review round 6, I5) - page 2 would show page 1's rows under a
       // correct total. Proved here against real SQL rather than a mock's
       // arguments, and the pages must not overlap.
+      //
+      // The DEPTH assertions below carry the weight rather than the non-overlap
+      // one (#2957 review round 7, S4): the default sort is
+      // `ORDER BY rec."createdAt" DESC` with no tiebreaker - the one branch of
+      // eight without the `addOrderBy('rec.createdAt','DESC')` its siblings
+      // carry - so with equal timestamps the row ORDER is heap order. Counting
+      // rows per window needs no ordering at all, and a hardcoded `offset: 0`
+      // makes the last window return rows where it must return none.
       const first = await repository.findManyRows({}, { limit: 2, offset: 0 });
       const second = await repository.findManyRows({}, { limit: 2, offset: 2 });
 
@@ -142,6 +150,11 @@ describe('Paginated total split (integration, #2944)', () => {
       // And the same window the combined read returns for that offset.
       const combined = await repository.findMany({}, { limit: 2, offset: 2 });
       expect(secondIds).toEqual(combined.items.map((r) => r.internalOrderId));
+
+      // Order-independent, and the assertion a hardcoded `offset: 0` cannot
+      // survive: six rows seeded, so a window starting at six holds none.
+      expect(await repository.findManyRows({}, { limit: 2, offset: 4 })).toHaveLength(2);
+      expect(await repository.findManyRows({}, { limit: 2, offset: 6 })).toHaveLength(0);
     });
 
     it('moves both paths together when the non-sargable jsonb filter changes', async () => {

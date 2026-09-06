@@ -664,12 +664,12 @@ describe('ProductsController', () => {
     it('reads the page ALONE and omits total when withTotal=false', async () => {
       productsService.listProductRows.mockResolvedValue([makeProduct()]);
 
-      const result = await controller.listProducts({ withTotal: false, limit: 20, offset: 40 });
+      const result = await controller.listProducts({ withTotal: false, limit: 5, offset: 40 });
 
       expect(productsService.listProductRows).toHaveBeenCalledTimes(1);
       // The page WINDOW too - see the orders sibling (#2957 review round 6, I5).
       expect(productsService.listProductRows.mock.calls[0][1]).toStrictEqual({
-        limit: 20,
+        limit: 5,
         offset: 40,
       });
       expect(productsService.listProducts).not.toHaveBeenCalled();
@@ -761,12 +761,18 @@ describe('ProductsController', () => {
 
       const page = await controller.listVariantsByProduct('ol_product_1', {
         withTotal: false,
-        limit: 20,
-        offset: 0,
+        limit: 5,
+        offset: 40,
       });
       const counted = await controller.countVariantsByProduct('ol_product_1', {});
 
       expect('total' in page).toBe(false);
+      // The window too (#2957 review round 7, I3): this read carried no such
+      // assertion, so `offset` -> `0` passed all 37 products tests.
+      expect(productsService.listVariantRows.mock.calls[0][1]).toStrictEqual({
+        limit: 5,
+        offset: 40,
+      });
       expect(productsService.listVariants).not.toHaveBeenCalled();
       expect(productsService.countVariants).toHaveBeenCalledWith({ productId: 'ol_product_1' });
       expect(counted).toEqual({ total: 9 });

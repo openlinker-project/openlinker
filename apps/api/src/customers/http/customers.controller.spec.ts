@@ -138,11 +138,11 @@ describe('CustomersController', () => {
     it('reads the page ALONE and omits total when withTotal=false', async () => {
       repository.findManyRows.mockResolvedValue([mockCustomer]);
 
-      const result = await controller.listCustomers({ withTotal: false, limit: 20, offset: 40 });
+      const result = await controller.listCustomers({ withTotal: false, limit: 5, offset: 40 });
 
       expect(repository.findManyRows).toHaveBeenCalledTimes(1);
       // The page WINDOW too - see the orders sibling (#2957 review round 6, I5).
-      expect(repository.findManyRows.mock.calls[0][1]).toStrictEqual({ limit: 20, offset: 40 });
+      expect(repository.findManyRows.mock.calls[0][1]).toStrictEqual({ limit: 5, offset: 40 });
       expect(repository.findMany).not.toHaveBeenCalled();
       // `in`, not a truthiness check: `total: 0` would pass the latter while
       // being exactly the failure the omission exists to prevent.

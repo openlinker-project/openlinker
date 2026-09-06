@@ -2044,18 +2044,36 @@ describe('ListingsController', () => {
 
       const result = await controller.listOfferMappings({
         withTotal: false,
-        limit: 20,
+        limit: 5,
         offset: 40,
       });
 
       expect(repository.findManyRows).toHaveBeenCalledTimes(1);
       // The page WINDOW too - see the orders sibling (#2957 review round 6, I5).
-      expect(repository.findManyRows.mock.calls[0][1]).toStrictEqual({ limit: 20, offset: 40 });
+      expect(repository.findManyRows.mock.calls[0][1]).toStrictEqual({ limit: 5, offset: 40 });
       expect(repository.findMany).not.toHaveBeenCalled();
       expect(repository.countByLifecycle).not.toHaveBeenCalled();
       // `in`, not truthiness: `total: 0` passes the latter and is the exact
       // failure the omission exists to prevent.
       expect('total' in result).toBe(false);
+    });
+
+    it('windows the buckets branch at the offset it was given', async () => {
+      // The `includeLifecycleCounts` arm is a SECOND rows-only read, rewritten
+      // by this change from `findMany(..., {skipTotal:true})` to
+      // `findManyRows(filters, {limit, offset})` - and it carried no window
+      // assertion at all, so `offset` -> `0` passed all 102 tests (#2957 review
+      // round 7, I3). That is page 2 showing page 1's rows beneath a correct
+      // tab bar, indefinitely.
+      repository.findManyRows.mockResolvedValue([]);
+
+      await controller.listOfferMappings({
+        includeLifecycleCounts: true,
+        limit: 5,
+        offset: 40,
+      });
+
+      expect(repository.findManyRows.mock.calls[0][1]).toStrictEqual({ limit: 5, offset: 40 });
     });
 
     it('DECLINES includeLifecycleCounts under withTotal=false, as the route description says', async () => {

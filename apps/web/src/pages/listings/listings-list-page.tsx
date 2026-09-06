@@ -1060,6 +1060,11 @@ export function ListingsListPage(): ReactElement {
                 total={rowsAreForAnotherTab ? null : totalStage.total}
                 totalState={rowsAreForAnotherTab ? 'settling' : totalStage.state}
                 showTotalLoader={totalStage.showLoader}
+                // The one list that keeps a previous page alive, so the one
+                // that must say so (#2957 review round 7, I1). Without it the
+                // pager derives a range end and a Next affordance from a fresh
+                // offset paired with another page's rows.
+                rowsArePlaceholder={query.isPlaceholderData}
                 onOffsetChange={setOffset}
               />
             </>

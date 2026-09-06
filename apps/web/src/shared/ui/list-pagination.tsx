@@ -52,6 +52,22 @@ export interface ListPaginationProps extends ComponentPropsWithoutRef<'nav'> {
   /** Whether to render the counting affordance, from `usePaginatedTotal`. */
   showTotalLoader: boolean;
   onOffsetChange: (nextOffset: number) => void;
+
+  /**
+   * `true` while `rowCount` describes a page OTHER than `offset` (#2957 review
+   * round 7, I1).
+   *
+   * Only a list whose rows query sets `placeholderData: keepPreviousData` can
+   * produce that, and only `/listings` does. It matters because
+   * `offset + rowCount` then compares a fresh offset against stale rows, so
+   * both things this component derives from that sum - the range end and the
+   * overrun clause of `hasNext` - are meaningless for the duration.
+   *
+   * Default `false`, which is the truthful answer for a list that does not keep
+   * a placeholder: there, an overrun is a REAL disagreement between the count
+   * and the page, and must be shown rather than clamped away.
+   */
+  rowsArePlaceholder?: boolean;
 }
 
 export const ListPagination = forwardRef<HTMLElement, ListPaginationProps>(function ListPagination(
@@ -63,6 +79,7 @@ export const ListPagination = forwardRef<HTMLElement, ListPaginationProps>(funct
     totalState,
     showTotalLoader,
     onOffsetChange,
+    rowsArePlaceholder = false,
     className,
     ...rest
   },
@@ -94,27 +111,41 @@ export const ListPagination = forwardRef<HTMLElement, ListPaginationProps>(funct
   // operator has paged past the end (#2957 review round 6, S2). Unreachable
   // through the four adopters, which short-circuit to an `EmptyState` before
   // rendering this - but the protection belongs where the state is declared.
+  // The overrun clause is suppressed while the rows belong to another page
+  // (#2957 review round 7, I1): there `offset + rowCount` compares a fresh
+  // offset against stale rows, so it overruns for a reason that says nothing
+  // about the total. Left in, clicking Next on the last page of `/listings`
+  // during a page transition navigated PAST the end.
   const hasNext =
     rowCount > 0 &&
-    (total !== null ? offset + limit < total || offset + rowCount > total : rowCount === limit);
+    (total !== null
+      ? offset + limit < total || (!rowsArePlaceholder && offset + rowCount > total)
+      : rowCount === limit);
 
   /**
    * The end of the range this page covers, never past the total (#2957 review
    * round 6, I1).
    *
-   * `main` clamped this (`Math.min(offset + PAGE_SIZE, total)`) and the first
-   * version of this component did not, which is a regression rather than a
-   * simplification: `/listings` keeps the previous page alive with
-   * `placeholderData` while `offset` is read fresh from the URL, so for the
-   * duration of every page request the two describe different pages. Clicking
-   * Next onto the last page of 1,234 rendered "Showing 1221-1240 of 1,234" -
-   * a range past its own total, which is the wrong-number failure this epic
-   * exists to prevent.
+   * `main` clamped this unconditionally and the first version of this component
+   * did not clamp at all. Both are wrong, in opposite directions, because
+   * `offset + rowCount > total` has TWO causes (#2957 review round 7, I1):
    *
-   * With no total there is nothing to clamp against, and `offset + rowCount` is
-   * exactly the floor the rows prove.
+   * - the rows are a PLACEHOLDER from another page while `offset` is already
+   *   the new one's. Reachable on `/listings` alone. Clamping is right: the
+   *   sum is an artefact and shows a range past its own total.
+   * - the total genuinely UNDERCOUNTS the rows - a stale cached count, or the
+   *   `slaState` skew the orders port documents. Reachable on all four, and the
+   *   only reachable cause on the three with no placeholder. Clamping is a lie:
+   *   it renders "1,001-1,005 of 1,005" over ten visible rows with Next
+   *   enabled, which is internally contradictory and looks plausible, where the
+   *   unclamped "1,001-1,010 of 1,005" at least shows the total is behind.
+   *
+   * So the caller says which it is, because only the caller can know. With no
+   * total there is nothing to clamp against, and `offset + rowCount` is exactly
+   * the floor the rows prove.
    */
-  const rangeEnd = total !== null ? Math.min(offset + rowCount, total) : offset + rowCount;
+  const rangeEnd =
+    total !== null && rowsArePlaceholder ? Math.min(offset + rowCount, total) : offset + rowCount;
 
   const totalUnavailable = totalState === 'unavailable';
 

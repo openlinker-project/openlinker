@@ -262,10 +262,12 @@ describe('OrderRecordRepository paged/count predicate parity (#2944)', () => {
     const impure: Array<readonly [string, OrderRecordFilters]> = [];
     for (const [label, filters] of CASES) {
       const first = await record(() => repository.countMany(filters));
-      // Two hours, not five seconds: a predicate binding a MINUTE- or
-      // DAY-truncated instant is still impure and would read pure across a
-      // five-second step (#2957 review round 6, S1).
-      jest.setSystemTime(new Date('2026-06-01T02:00:00Z'));
+      // A DIFFERENT DAY, not two hours and not five seconds. The comment that
+      // shipped with the two-hour step claimed it covered a day-truncated
+      // instant and did not (#2957 review round 7, S3) - a predicate binding
+      // `new Date(new Date().setHours(0,0,0,0))` is impure and read pure. Every
+      // fixture date is January to March, so stepping a day is free.
+      jest.setSystemTime(new Date('2026-06-02T02:00:00Z'));
       const second = await record(() => repository.countMany(filters));
       jest.setSystemTime(new Date('2026-06-01T00:00:00Z'));
       if (JSON.stringify(first.predicates) !== JSON.stringify(second.predicates)) {
