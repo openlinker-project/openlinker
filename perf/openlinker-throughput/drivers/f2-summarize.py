@@ -12,8 +12,10 @@ verified live against this stand to run UTC (matches Postgres NOW() and the
 host's own `date -u`) - so it is parsed as naive-UTC. Every OL-side
 timestamp (`webhook_delivery_created_utc`, `inv_job_created_utc`,
 `inventory_items_max_updated_utc`, `propagate_job_created_utc`,
-`offer_child_created_utc`) is a Postgres `timestamptz` string and carries
-its own `+00` offset. `outbox_created_local` (PHP `date()`) is Europe/Paris
+`offer_child_created_utc`, `offer_child_completed_utc`) is a Postgres
+`timestamptz` string (`sync_jobs.createdAt`/`updatedAt` are both declared
+`type: 'timestamptz'`) and carries its own `+00` offset.
+`outbox_created_local` (PHP `date()`) is Europe/Paris
 and is NOT used for any hop math here - see the scenario script's own
 header for why comparing it against the UTC columns without correction
 would be off by the DST offset.
@@ -117,7 +119,7 @@ def main():
         for product, cycle, count in contaminated_rows:
             print(f"  product={product} cycle={cycle} offer_children_count={count}")
 
-    hopA, hopB, hopC, hopD, hopE, hopF, total_to_ol, total_to_enqueue = [], [], [], [], [], [], [], []
+    hopA, hopB, hopC, hopD, hopE, hopF, hopG, total_to_ol, total_to_enqueue, total_to_answer = [], [], [], [], [], [], [], [], [], []
     inv_counts = []
     offer_children = []
     inv_job_terminal = {}
@@ -135,6 +137,10 @@ def main():
         inv_max_updated = parse_pg_ts(r.get('inventory_items_max_updated_utc'))
         prop_created = parse_pg_ts(r.get('propagate_job_created_utc'))
         offer_created = parse_pg_ts(r.get('offer_child_created_utc'))
+        # Absent on a CSV produced before #2935 (the column did not exist) -
+        # parse_pg_ts(None) returns None, so hopG/total_to_answer simply have
+        # n=0 on an old file rather than raising.
+        offer_completed = parse_pg_ts(r.get('offer_child_completed_utc'))
 
         if t0 is not None and t1 is not None:
             hopA.append(t1 - t0)
@@ -162,13 +168,28 @@ def main():
             pass
         if contaminated:
             offer_created = None
+            offer_completed = None
 
         if prop_created is not None and offer_created is not None:
             hopF.append(ms(offer_created) - ms(prop_created))
+        # Hop G (#2935): child enqueued -> child reached a terminal status
+        # (succeeded or dead). This is the hop that used to be entirely
+        # absent ("not measured") because both Allegro connections had
+        # OfferManager disabled, so the child died at capability resolution
+        # before any network call. See the scenario script's own comment
+        # at this hop for exactly what it does and does not establish -
+        # in short, real dispatch + HTTP-client + network overhead against
+        # a marketplace-shaped upstream, NOT a genuine marketplace
+        # acknowledgement (the stub's quantity-write endpoint is
+        # deliberately unserved, so every child in this sample failed).
+        if offer_created is not None and offer_completed is not None:
+            hopG.append(ms(offer_completed) - ms(offer_created))
         if t0 is not None and inv_max_updated is not None:
             total_to_ol.append(ms(inv_max_updated) - t0)
         if t0 is not None and offer_created is not None:
             total_to_enqueue.append(ms(offer_created) - t0)
+        if t0 is not None and offer_completed is not None:
+            total_to_answer.append(ms(offer_completed) - t0)
 
         if r.get('inventory_items_updated_count'):
             try:
@@ -193,9 +214,11 @@ def main():
     report_hop("Hop D  OL commit -> inventory_items updated (job pickup + PS webservice re-read + write)", hopD)
     report_hop("Hop E  inventory_items updated -> inventory.propagateToMarketplaces enqueued", hopE)
     report_hop("Hop F  propagate enqueued -> marketplace.offerQuantity.update child enqueued", hopF)
+    report_hop("Hop G  child enqueued -> child reached a terminal status (dispatch + HTTP round-trip to the Allegro stub's write endpoint - see Hop 5 section for what this does/does not establish)", hopG)
     print()
     report_hop("TOTAL  stock write -> landed in OL's own inventory_items", total_to_ol)
-    report_hop("TOTAL  stock write -> marketplace.offerQuantity.update child enqueued (NOT delivered - see Hop 5 section)", total_to_enqueue)
+    report_hop("TOTAL  stock write -> marketplace.offerQuantity.update child enqueued", total_to_enqueue)
+    report_hop("TOTAL  stock write -> marketplace.offerQuantity.update child answered (stub ACCEPT, not a genuine sandbox round-trip - see Hop 5 section)", total_to_answer)
     print()
     if inv_counts:
         print(f"inventory_items rows touched per event: n={len(inv_counts)} min={min(inv_counts)} max={max(inv_counts)} (1 for simple products, up to the combination count for 22/23/24)")

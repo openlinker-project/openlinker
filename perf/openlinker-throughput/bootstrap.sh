@@ -387,13 +387,36 @@ JSON
   # so ensureFreshToken short-circuits and no request is ever made to the
   # hardcoded real allegro.pl token host (#2856).
   #
-  # enabledCapabilities is OrderSource only. Adding OfferManager would arm
-  # marketplace.offers.sync, whose task declares no requiredCapability, turning
-  # a clean 404 into a retryable CapabilityNotEnabledException that burns ten
-  # attempts (#2856).
+  # enabledCapabilities carries OfferManager too, since #2935 (the stub is now
+  # a real service on this stand - ALLEGRO_STUB_URL resolves). This is safe
+  # under exactly ONE precondition, which this stand's own default already
+  # satisfies and F2/F1/F6 must each verify for themselves via
+  # `guard_scheduler_off`: the scheduler must stay OFF (remedy 1 of the two
+  # #2935 names).
+  #
+  # Why that precondition is load-bearing - verified against the actual code,
+  # not assumed: `allegro-offers-sync`'s scheduler task (jobType
+  # marketplace.offers.sync) declares no `requiredCapability`, so it is
+  # enqueued for every ACTIVE allegro connection on every tick regardless of
+  # `enabledCapabilities` - capability is checked only once the job runs, via
+  # `getCapabilityAdapter`. With OfferManager DISABLED, that throws the core
+  # `CapabilityNotEnabledException`, which no platform retry classifier
+  # recognises (each one only owns its own platform's exception hierarchy -
+  # `retry-classifier-registry.service.ts`) - so it is retryable BY DEFAULT
+  # and burns the full ten-attempt ladder, every tick, for ever. With
+  # OfferManager ENABLED the capability check passes and the job actually
+  # reaches the stub - which does not serve `/sale/offer-events` (#2856 scoped
+  # the stub to the two order-ingestion endpoints only) - and gets a fast,
+  # zero-latency, Allegro-shaped 404, which Allegro's OWN classifier already
+  # treats as non-retryable (`allegro-retry-classifier.adapter.ts`,
+  # `NON_RETRYABLE_STATUS_CODES`). So the capability state does not decide
+  # whether a burn-ten-attempts failure CAN happen here - the scheduler does:
+  # with it off (this stand's default, `OL_SCHEDULER_ENABLED=false` on every
+  # worker container), the task is never enqueued at all and neither branch
+  # above is ever reached, whatever `enabledCapabilities` says.
   ol_ensure_connection ALLEGRO_A_ID 'perf-allegro-a' "$(cat <<JSON
 {"name":"perf-allegro-a","platformType":"allegro",
- "enabledCapabilities":["OrderSource"],
+ "enabledCapabilities":["OrderSource","OfferManager"],
  "config":{"environment":"production","apiBaseUrl":"$ALLEGRO_STUB_URL"},
  "credentials":{"accessToken":"stub-token-a"}}
 JSON
@@ -401,7 +424,7 @@ JSON
 
   ol_ensure_connection ALLEGRO_B_ID 'perf-allegro-b' "$(cat <<JSON
 {"name":"perf-allegro-b","platformType":"allegro",
- "enabledCapabilities":["OrderSource"],
+ "enabledCapabilities":["OrderSource","OfferManager"],
  "config":{"environment":"production","apiBaseUrl":"$ALLEGRO_STUB_URL"},
  "credentials":{"accessToken":"stub-token-b"}}
 JSON
@@ -431,6 +454,38 @@ JSON
  "credentials":{"webserviceApiKey":"${PS_WS_KEY:-}"}}
 JSON
 )"
+}
+
+# ---------------------------------------------------------------------------
+# Step 5b (#2935) - ensure OfferManager on Allegro connections created by an
+# EARLIER bootstrap run.
+#
+# `ol_ensure_connection` is create-only (see its own docblock) - it never
+# updates an existing row, so a connection created before #2935 landed
+# (`enabledCapabilities: ["OrderSource"]` only) would otherwise never gain
+# OfferManager just because this script was re-run. This step is the PATCH
+# half: idempotent, and safe under the same precondition step_connections'
+# own comment states - the scheduler must stay off (verified independently
+# by every scenario's own `guard_scheduler_off`, not by this script, which
+# has no container access to check it).
+# ---------------------------------------------------------------------------
+ensure_offer_manager() {
+  local conn_id="$1" tenant="$2" caps has_it
+  [ -n "$conn_id" ] || { warn "no connection id for tenant $tenant - skipping OfferManager check"; return 0; }
+  caps="$(ol_api GET "/v1/connections/$conn_id" | jq -r '(.enabledCapabilities // []) | join(",")')"
+  has_it="$(printf '%s' "$caps" | grep -c '\bOfferManager\b' || true)"
+  if [ "${has_it:-0}" -ge 1 ]; then found "OfferManager on $tenant"; return 0; fi
+  if [ "$VERIFY_ONLY" = 1 ]; then gap "OfferManager not enabled on $tenant (has: ${caps:-<none>})"; return 0; fi
+  would "enable OfferManager on $tenant (has: ${caps:-<none>})" && return 0
+  ol_api PATCH "/v1/connections/$conn_id" "$(jq -cn --arg caps "$caps" \
+    '{enabledCapabilities: (($caps | split(",") | map(select(length > 0))) + ["OfferManager"])}')" >/dev/null
+  created "OfferManager enabled on $tenant"
+}
+
+step_allegro_offer_manager() {
+  log "--- Allegro OfferManager capability ---"
+  ensure_offer_manager "${ALLEGRO_A_ID:-}" 'perf-allegro-a'
+  ensure_offer_manager "${ALLEGRO_B_ID:-}" 'perf-allegro-b'
 }
 
 # ---------------------------------------------------------------------------
@@ -558,6 +613,7 @@ main() {
   step_tax_group
   step_woocommerce
   step_connections
+  step_allegro_offer_manager
   step_offer_mappings
   step_verify_connections
 

@@ -86,6 +86,7 @@ test('never answers 401, for any path, any token, any fault mode', async () => {
     ['GET', '/order/checkout-forms/does-not-exist', TOKEN_A],
     ['GET', '/me', 'garbage'],
     ['GET', '/some/unknown/path', TOKEN_A],
+    ['PUT', '/sale/offer-quantity-change-commands/does-not-matter', TOKEN_A],
   ];
 
   for (const [method, path, token] of attempts) {
@@ -385,6 +386,33 @@ test('GET /me answers 200 with an id and login', async () => {
   assert.equal(status, 200);
   assert.ok(body.id);
   assert.ok(body.login);
+});
+
+// ---------------------------------------------------------------------------
+// #2935 - the one synchronous write updateOfferQuantity makes
+// ---------------------------------------------------------------------------
+
+test('PUT /sale/offer-quantity-change-commands/{id} echoes the id back as ACCEPTED', async () => {
+  await resetRun('t-quantity');
+  const { status, body } = await call('PUT', '/sale/offer-quantity-change-commands/abc-123', {
+    token: TOKEN_A,
+    body: {
+      modification: { changeType: 'FIXED', value: 7 },
+      offerCriteria: [{ offers: [{ id: 'perf-allegro-a-offer-1' }], type: 'CONTAINS_OFFERS' }],
+    },
+  });
+  assert.equal(status, 200);
+  assert.equal(body.id, 'abc-123');
+  assert.equal(body.status, 'ACCEPTED');
+});
+
+test('PUT /sale/offer-quantity-change-commands/{id} accepts an empty body too (no body sent)', async () => {
+  await resetRun('t-quantity-nobody');
+  const { status, body } = await call('PUT', '/sale/offer-quantity-change-commands/xyz-789', {
+    token: TOKEN_A,
+  });
+  assert.equal(status, 200);
+  assert.equal(body.id, 'xyz-789');
 });
 
 // ---------------------------------------------------------------------------
