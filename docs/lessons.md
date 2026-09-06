@@ -1101,3 +1101,92 @@ media queries evaluate against, which at a boundary inverts the reading.
 **Applies to**: `libs/core/src/orders/application/services/order-ingestion.service.ts`, `libs/core/src/orders/application/services/order-sync.service.ts`; any future probe or ops script that replays a marketplace job type for measurement rather than for its intended effect.
 
 **Source**: #2861.
+
+---
+
+## `grep -q` on a pipe under `set -o pipefail` reports failure on a SUCCESSFUL match
+
+**Context**: the F4 scenario (#2851) waited for a worker replica to boot with
+`until docker logs "$w" 2>&1 | grep -qF 'Starting sync job runner loop'; do ... done`.
+It passed on one run and, on the next, spun to its 60-try ceiling and died claiming the
+container "never logged" a line that `docker logs | grep -c` plainly showed was there.
+
+**Problem**: `grep -q` exits the moment it matches. That closes the read end of the pipe
+while the upstream command is still writing, so the upstream dies of `SIGPIPE` and exits
+141 - and `set -o pipefail` takes the pipeline's status from the *rightmost non-zero*
+member, so the pipeline reports 141 even though grep found what it was looking for. The
+condition is therefore never true and the loop cannot terminate.
+
+What makes it dangerous is that it is **length-dependent, not deterministic**: while the
+upstream's output is short enough to be fully buffered before grep exits, there is no
+SIGPIPE and the pipeline returns 0. So the bug appears only once the log (or file, or
+listing) grows - which is to say, on the run that matters and not on the one you tested.
+
+**Rule**: in a `set -o pipefail` script, never end a pipeline with `grep -q`. Use a form
+that drains its input - `grep -c` compared against 0, or `| grep ... | tail -1`, or
+`grep ... > /dev/null` - and add `|| true` where a non-match is an expected outcome rather
+than an error. `grep -q` against a plain FILE argument (no pipe) is unaffected and fine.
+`lib.sh`'s own `guard_runner_state` already avoids this by piping through `tail -1`.
+
+**Applies to**: every `set -euo pipefail` shell script in the repo - `perf/**/*.sh`,
+`scripts/*.sh`, `docker/**`, CI steps.
+
+**Source**: #2851 (F4 claim-contention scenario).
+
+---
+
+## `docker logs --since "@<epoch>"` is accepted and returns NOTHING - pass a bare epoch
+
+**Context**: `post_guard_limiter_degraded` (`perf/openlinker-throughput/lib.sh`) counts
+degraded-rate-limiter log lines inside a measurement window with
+`docker logs --since "@$window_start_epoch" --until "@$window_stop_epoch"`. F4 (#2851) copied
+the same form to count PrestaShop webservice requests and reported **0** for a window in
+which the shop had plainly served 180.
+
+**Problem**: Docker takes `--since` / `--until` as a bare Unix timestamp, an RFC3339
+timestamp, or a Go duration (`25m`). The `@`-prefixed form is **GNU `date` syntax, not
+Docker's** - Docker neither rejects it nor warns; it just matches nothing. Measured on the
+same container and window, Docker 29.5.2: bare epoch 180, RFC3339 180, `25m` 180, `@epoch`
+**0**.
+
+The failure mode is the dangerous one: a *counting* guard whose count is structurally
+always zero reads exactly like a clean run. `post_guard_limiter_degraded` shipped with the
+`@` form, so it answered `ok` on every scenario of the #2840 campaign without ever being
+able to see the thing it exists to detect - and at least one report quoted its
+`degraded_mode_entries = 0` as a measured fact.
+
+**Rule**: pass a **bare** epoch (or RFC3339) to `docker logs --since/--until`. Keep
+`date -u -d "@$EPOCH"` as-is - GNU `date` really does want the `@`, which is exactly why
+the two get conflated. When a guard's whole output is a count of log lines, prove it can
+return non-zero: a test that only asserts the clean case cannot tell "nothing happened"
+from "the query was never capable of matching".
+
+**Applies to**: `perf/openlinker-throughput/lib.sh`, `perf/**/scenarios/*.sh`, and any
+script filtering container logs by a measurement window.
+
+**Source**: #2851 (found while wiring F4's destination-request count).
+
+---
+
+## `tee /dev/stderr` TRUNCATES the log when stderr is a redirected file
+
+**Context**: F4 (#2851) wanted `drain_wait`'s progress visible on the console while
+capturing only its last line, and reached for
+`result="$( { drain_wait ... ; } | tee /dev/stderr | tail -1 )"`. The run's log file came
+out starting midway through, with every guard line before that point gone.
+
+**Problem**: under `cmd >> run.log 2>&1`, `/dev/stderr` is a symlink to `/proc/self/fd/2`,
+which points at the regular file. `tee` **opens** that path for writing, and an ordinary
+open-for-write is `O_TRUNC` - so the file is emptied and `tee` begins writing at offset 0,
+destroying everything the script had already logged. The append mode the shell used does
+not carry across a fresh `open()` of the same path.
+
+**Rule**: never write to `/dev/stderr` (or `/dev/stdout`) with a tool that opens the path -
+`tee`, `>`, `cp`. To both show and capture output, capture it into a variable, `printf` it,
+and post-process the copy. Where `tee` is genuinely wanted, `tee -a` avoids the truncation
+but still risks interleaving at the wrong offset.
+
+**Applies to**: every shell script that redirects its own output to a file and then tees -
+`perf/**/*.sh`, `scripts/*.sh`, CI wrappers.
+
+**Source**: #2851 (F4 claim-contention scenario).

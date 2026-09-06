@@ -10,7 +10,8 @@
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { SyncJobRunner } from '../sync-job.runner';
+import { SyncJobRunner, resolveWorkerHostId } from '../sync-job.runner';
+import { hostname } from 'node:os';
 import type { SyncJobRepositoryPort, RetryDeferral } from '@openlinker/core/sync';
 import {
   SYNC_JOB_REPOSITORY_TOKEN,
@@ -1529,7 +1530,13 @@ describe('SyncJobRunner', () => {
       it('should default bulk to the measured 12/8 and leave the other lanes untouched', () => {
         const caps = resolve({});
 
-        // The catalogue-sweep throttle, measured on the PrestaShop path.
+        // The catalogue-sweep throttle. The two numbers have DIFFERENT
+        // standing (ADR-050 § Amendment (#2851 / #2867)): total 12 is the
+        // figure the #2594 A/B run measured, perScope 8 is a deliberately
+        // conservative fraction of it (decision 4 ships no round-robin
+        // fairness) and has never itself been measured at - F4 ran 600 bulk
+        // jobs on one connection and never reached the total, because a
+        // single scope is bounded by perScope first.
         expect(caps.bulk).toEqual({ total: 12, perScope: 8 });
         // Buyer-facing and deadline-bearing lanes are deliberately unchanged.
         expect(caps.realtime).toEqual({ total: 4, perScope: 2 });
@@ -1600,6 +1607,32 @@ describe('SyncJobRunner', () => {
       runner.onModuleInit();
 
       expect((runner as any).startRunner).not.toHaveBeenCalled();
+    });
+  });
+
+  // #2851. `process.pid` is 1 in every container, so before this the whole
+  // fleet wrote one `lockedBy` value and a multi-replica claim measurement
+  // had nothing to attribute a claim to.
+  describe('worker identity (#2851)', () => {
+    it('should prefer OL_WORKER_ID when it is set', () => {
+      expect(resolveWorkerHostId({ OL_WORKER_ID: 'worker-a' })).toBe('worker-a');
+    });
+
+    it('should ignore a blank OL_WORKER_ID and fall back to the hostname', () => {
+      expect(resolveWorkerHostId({ OL_WORKER_ID: '   ' })).toBe(hostname());
+    });
+
+    it('should use the hostname when OL_WORKER_ID is unset', () => {
+      expect(resolveWorkerHostId({})).toBe(hostname());
+    });
+
+    it('should carry the host id and a per-boot suffix in WORKER_ID', () => {
+      // The suffix is load-bearing: `refreshJobLock` guards its heartbeat on
+      // `lockedBy`, so a restarted replica must not present the identity of
+      // the incarnation whose rows it no longer owns.
+      const workerId = (runner as any).WORKER_ID as string;
+      expect(workerId).toContain(resolveWorkerHostId());
+      expect(workerId).toMatch(/-\d{10,}$/);
     });
   });
 

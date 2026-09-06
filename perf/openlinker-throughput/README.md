@@ -98,13 +98,15 @@ stand.
 | `PG_USER` | `postgres` | `pg_sql`, `pg_sql_write` |
 | `REDIS_CONTAINER` | `lab-redis` | `redis_cli`, `reset_between_repeats` |
 | `OL_API_CONTAINER` | `lab-api` | `guard_build`, `guard_demo_mode_off`, `guard_connection_budget`, `guard_log_level`, `manifest_gather_environment` |
-| `WORKER_CONTAINERS` | `lab-worker` | every worker-facing guard/post-guard. **Space-separated** - override for a `--scale worker=3` stand, e.g. `WORKER_CONTAINERS="lab-worker-1 lab-worker-2 lab-worker-3"` |
+| `WORKER_CONTAINERS` | *(discovered)* | every worker-facing guard/post-guard. **Leave it unset.** The lab worker carries no fixed `container_name` since #2851 (a fixed one makes `docker compose up --scale worker=N` refuse), so compose names the replicas `lab-worker-1`, `lab-worker-2`, ... - at scale 1 as well. `_ensure_worker_containers` discovers them from compose's own service label. Set it only for a stand compose does not own; an explicit value naming a container that does not exist is REFUSED with the rename named, rather than failing later inside `docker exec`. Space-separated. |
+| `LAB_COMPOSE_PROJECT` / `WORKER_COMPOSE_SERVICE` | `lab` / `worker` | which compose project+service `discover_worker_containers` looks for |
 | `OL_API_URL` | `http://127.0.0.1:13000` | `ol_api`, `ol_login` |
 | `OL_ADMIN_USER` / `OL_ADMIN_PASSWORD` | `admin` / `admin` | `ol_login` |
 | `STAND_IDS_FILE` | `<this dir>/stand-ids.env` | sourced at load, if present |
 | `RESULTS_ROOT` | `<this dir>/results` | `results_dir_init` |
 | `LIB_LOG_PREFIX` | `lib` | `log`/`warn`/`die` prefix - set before sourcing |
-| `PERF_MAX_ATTEMPTS` | `3` | `enqueue_perf_job`'s maxAttempts cap; `guard_perf_max_attempts` |
+| `PERF_MAX_ATTEMPTS` | `3` | the maxAttempts cap `cap_perf_job_attempts` applies; `guard_perf_max_attempts` |
+| `PERF_CAP_WAIT_SECS` | `30` | how long `cap_perf_job_attempts` waits for `JobIntakeConsumer` to have written the rows it is about to cap |
 | `DRAIN_POLL_SECS` | `5` | `drain_wait` poll interval |
 | `DRAIN_IDLE_TICKS` | `6` | consecutive quiet polls before `drain_wait` calls it done |
 | `DRAIN_MAX_WAIT_SECS` | `1800` | `drain_wait`'s max-wait timeout before it marks the remainder dead |
@@ -306,8 +308,11 @@ Both modes need the usual `lib.sh` container-name overrides (see
 export PS_CONTAINER=<your-prestashop-container>
 export PG_CONTAINER=<your-postgres-container>
 export OL_API_CONTAINER=<your-api-container>
-export WORKER_CONTAINERS=<your-worker-container(s)>
 export WEBHOOK_CONNECTION_ID=<connection id>
+# Do NOT export WORKER_CONTAINERS on a compose-owned stand - it is discovered
+# (#2851). `WORKER_CONTAINERS=lab-worker` was the documented export until the
+# worker lost its fixed container_name and is now a stale value that the
+# harness refuses outright.
 
 # The driver self-test - proves the moving parts, writes nothing under results/:
 bash perf/openlinker-throughput/scenarios/f3-webhook-burst.sh --smoke

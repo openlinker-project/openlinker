@@ -283,6 +283,123 @@ The scope cap is what keeps that bounded in the meantime. Deferral is per-job an
 *Reversal gate (prose-only):* a lane whose queue depth is dominated by deferred jobs. That is the signal that deferral has become a pacing mechanism rather than an exception, and the destination in question needs a real rate-limit configuration rather than a retry policy.
 
 
+## Amendment (#2851 / #2867) - enforcement stays per-process, and three of the four caps stay illustrative
+
+Decision 6 says a cap without a metric is a guess, and #2302 has carried two open
+questions ever since: set the cap values from measurement, and take an explicit decision on
+global versus per-process enforcement. This amendment answers both. The honest headline is
+that **no default changes**, and the reason is not that the numbers were confirmed - it is
+that this programme's own measurements say the binding constraint is somewhere else.
+
+### 1. Enforcement stays PER-PROCESS. That is now a decision, not a scope cut.
+
+Slot accounting is in-process, so N replicas multiply every effective cap by N. Until now
+that was recorded as a Wave-3 omission. It is adopted as the decision, for four reasons.
+
+**A global ledger would sit on the hottest query in the system.** The claim is the one
+statement every replica runs constantly - four claim transactions per second per replica at
+idle, and unbounded under load, because `runnerLoop` sleeps only on a tick that started
+nothing. Enforcing a cap globally means a durable, contended counter consulted on that path,
+which turns a `FOR UPDATE SKIP LOCKED` claim - a query specifically chosen because it does
+not serialise - into a read-modify-write on a shared row. The cost lands on every install,
+including the overwhelming majority that run one worker.
+
+**OL is still before rung one of decision 5's ladder.** No compose file in this repository
+declares `replicas`, and the multi-replica arm could not be run at all until #2851 removed a
+fixed `container_name` from the perf stand's own worker. Paying a global-enforcement cost to
+correct a topology nobody runs is the shape decision 5 already rejects.
+
+**The pool is per-process too, and it is DERIVED from the caps.** The #2594/#2609 review
+amendment sets `OL_DB_POOL_MAX` at or above the sum of the four TOTAL caps, per process.
+Making the caps global while the pool stays per-process leaves two ceilings that no longer
+relate to each other, and the one that binds first would depend on the replica count.
+
+**The measurement says the caps are not what an operator should reach for anyway** - see
+section 3.
+
+*What this costs an operator, stated where they read it:* `OL_LANE_BULK_SCOPE_CAP=8` on three
+replicas is up to 24 concurrent bulk children per connection. `apps/worker/.env.example` says
+so on the caps themselves, `docs/operations/perf-lab-stand.md` says so beside the scaling
+command, and every perf manifest now carries `workerReplicas` and a `laneCapEnforcement` note
+next to `laneCaps`, because a cap figure without a replica count beside it does not state a
+deployment's real concurrency. pg-boss's `groupConcurrency` remains the design precedent for
+the day this reverses.
+
+*Reversal gate (countable):* a deployment running more than one worker replica where a
+destination's own declared rate limit is exceeded because the limiter degraded to its
+per-process fallback - the hazard `results-C` measured at one replica and `results-D` named
+as unexercised.
+
+**F4 (#2851) has now observed it, and the observation argues FOR this decision rather than
+against it.** At three replicas the PrestaShop connection saw **158.4 req/min against its
+declared 60**, while a Redis-limiter call timed out at its own 1 s budget and the adapter
+fell back to per-process pacing - N x 60/min. The gate fires on the *effect*; the *cause* is
+one layer below the lane model, and **a globally-enforced lane cap would not have prevented
+it.** The limiter is already globally enforced and it still degraded. A global slot ledger
+would have throttled the queue while leaving the failure open. So the gate stands as
+written, and what it now points at is the limiter's degradation path - it fails **open**,
+to the full per-process allowance - rather than at the caps. That is filed as its own issue
+candidate in `results-F4-2026-09-06.md`; this ADR's decision is unchanged.
+
+### 2. Cap provenance, per lane
+
+| Lane | Default | Provenance | The measurement that is missing |
+|---|---|---|---|
+| `realtime` | 4 / 2 | **Illustrative** | A saturation run: many concurrent `marketplace.order.sync` against one destination, finding the concurrency at which per-order latency degrades. F7 (#2852) probed this lane's *isolation*, not its size. |
+| `bulk` | 12 / 8 | **TOTAL measured** (#2594); **perScope derived** | Nothing for `total` - F4 (#2851) ran 600 `bulk` jobs on one connection and never reached it, because a single scope is bounded by `perScope` first. For `perScope`: a run with two bulk-capable connections, the only way to reach the lane's TOTAL and therefore the only way to test the fairness argument the 8 was chosen for. |
+| `fiscal` | 2 / 1 | **Illustrative** | A run against a real invoicing or fiscalization connection issuing real documents. F7's fiscal probe was rejected before any adapter was touched. |
+| `fan-out` | 8 / 4 | **Derived** (#2609) | A sustained stock-write load that isolates this lane. `results-D` measured the queue converging at 100 000 products (arrival 348/h against drain 380/h; net 0.0/h over an hour), but with `bulk` and `fan-out` in force together, so it attributes convergence to neither. |
+
+Two entries in that table are more precise than the prose they replace, and both matter.
+
+**`bulk`'s two numbers have different standing.** The A/B run measured ~12 concurrent
+children sustaining ~277 req/min against ~50. `total: 12` is that figure. `perScope: 8` is
+*below* it on purpose, by decision 4's no-round-robin argument - it is a derived, deliberately
+conservative fraction, never a measured ceiling, and no run has yet driven the lane to its
+total.
+
+**And the p95 "store impact" figure must not reappear.** `apps/worker/.env.example` was still
+quoting `p95 store impact 0.995` as the bulk caps' justification, which ADR-066 correction 1
+withdrew by name - the probe never checked HTTP status, so a fast error under load counted as
+a fast sample. It is removed there and stays removed here.
+
+### 3. What a cap promises, and what it does not
+
+This is the finding that changes how the knob should be described. Two runs establish two
+halves of it, and they are different facts rather than one repeated.
+
+**A cap bounds worker SLOTS in one process. It does not bound the destination's capacity.**
+F7 (#2852): with the `bulk` lane held at its per-scope cap for seventeen minutes against one
+PrestaShop connection, a probe sharing that connection had *flat* claim latency and **5.5x**
+its normal execution time (median 3.3 s to 18.1 s), while a sibling probe that touches no
+adapter at all was unchanged. Lane isolation held on the axis it governs; the shop did not.
+
+**And a cap does not bound the destination's REQUEST RATE either, once replicas multiply
+it.** F4 (#2851), same aggressor at one and three replicas: the identical 600 jobs and
+effectively identical request count (983 vs 1006) were delivered **2.77x faster** because the
+shop was hit at **158.4 req/min against the 60/min its connection declares**. Everything the
+lane model governs behaved - the claim's per-call cost was flat (0.087 ms against 0.086 ms
+while replicas tripled), `sync_jobs` lock waits were zero in every sample, the pool never
+timed out, and the three replicas split the work 33.4 / 33.3 / 33.3 with no coordination
+beyond `FOR UPDATE SKIP LOCKED`. The outbound pacing is what gave way.
+
+The operator-facing consequence is the opposite of the intuition #2594's throughput result
+invites: **raising a scope cap to make a slow destination faster makes it slower.** If the
+destination is the constraint, the remedies are to lower the cap, raise the destination's
+capacity, or reduce the work - not to widen the lane. That sentence now sits on the caps in
+`apps/worker/.env.example`, because an operator reading a cap is exactly the person about to
+get this wrong.
+
+This bounds what section 1's decision costs, and F4 makes the bound tighter than the earlier
+draft of this paragraph claimed. Per-process enforcement means N replicas see N x the cap. The
+comforting reading - that a saturated destination makes the multiplication academic, because
+the cap was never the ceiling - is **only true while the shared limiter holds**. When it
+degrades, N x the cap becomes N x the declared request rate at the shop, which is precisely
+the reversal gate above and precisely what F4 measured. So: the multiplication is usually
+absorbed by the limiter, and the day it is not is the day an operator's destination is taking
+three times the traffic they configured. Size per replica, and treat a degraded-limiter log
+line as an operational event rather than a curiosity.
+
 ## Alternatives considered
 
 - **Strict priority ordering** (realtime first): starves `bulk` under sustained realtime load — the

@@ -91,6 +91,50 @@ worker` with that var overridden in the shell, which takes precedence over
 connection via `POST /v1/sync/jobs`, wait for it to drain, then recreate
 `worker` again with the runner back off.
 
+### Scaling the worker, and what the replica count means
+
+The worker service carries **no `container_name`** (#2851). A fixed one makes
+`docker compose up --scale worker=N` refuse outright, and the multi-replica
+arm is the only way to measure ADR-050's own documented limitation: *"the caps
+bound one worker PROCESS, so N replicas multiply every effective cap by N"*
+(#2302). Compose names the replicas itself - and it does so at scale 1 too, so
+the single-replica container is **`lab-worker-1`**, not `lab-worker`.
+
+```bash
+# three replicas, without touching postgres/redis/prestashop/woocommerce
+docker compose -f docker-compose.lab.yml --env-file .env.lab -p lab \
+  up -d --no-deps --scale worker=3 worker
+
+# back to one
+docker compose -f docker-compose.lab.yml --env-file .env.lab -p lab \
+  up -d --no-deps --scale worker=1 worker
+```
+
+Two consequences worth knowing before scaling.
+
+**Do not export `WORKER_CONTAINERS`.** It was `lab-worker` in every runbook
+until this change; the harness now discovers the running replicas from
+compose's own service label, and an explicit value naming a container that
+does not exist is refused with the rename named rather than failing later
+inside `docker exec`.
+
+**Check the connection budget before adding a replica.** `OL_DB_POOL_MAX`
+defaults to 40 *per process*, so api + 3 workers is 160 against this stand's
+`max_connections=200`. A fourth replica is 200 and would not fit;
+`guard_connection_budget` refuses the run before it starts rather than letting
+Postgres answer "sorry, too many clients already" mid-window, which F4 would
+otherwise have misattributed to OpenLinker.
+
+**Roles are the same on every replica.** Compose gives every replica of one
+service the same environment, so all three carry all four roles
+(`OL_WORKER_ROLE` is empty, which `resolveWorkerRoles` reads as `all`). That is
+safe rather than merely tolerated: `OL_SCHEDULER_ENABLED=false` means no cron
+registers at all and `SchedulerLeaseCoordinator` would make it a fleet
+singleton even if it did, while `StuckJobRecoveryService.requeueStuckJobs` is
+an idempotent conditional UPDATE on a stale `lockedAt` and needs no lease
+(#2279). A genuinely split fleet needs a second service definition, which this
+file deliberately does not carry.
+
 ### Running migrations without a rebuild
 
 `migrate` reuses `ol-perf:api` rather than a second `target: base` build -
