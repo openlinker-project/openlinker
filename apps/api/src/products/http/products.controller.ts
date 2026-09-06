@@ -42,6 +42,7 @@ import {
 import type {
   Product,
   ProductVariant,
+  ProductListFilters,
   ProductListSort,
   TaxRateJournalEntry,
 } from '@openlinker/core/products';
@@ -175,40 +176,29 @@ export class ProductsController {
     type: PaginatedProductsResponseDto,
   })
   async listProducts(@Query() query: ListProductsQueryDto): Promise<PaginatedProductsResponseDto> {
-    const {
-      search,
-      stock,
-      taxRateState,
-      connectionId,
-      sort,
-      dir,
-      hideFullyStale,
-      withTotal,
-      limit = 20,
-      offset = 0,
-    } = query;
+    // Only what this handler reads directly. Every FILTER now travels through
+    // `toProductListFilters`, so re-listing them here would be a third place
+    // the DTO's field names appear and a third place they can drift.
+    const { sort, dir, withTotal, limit = 20, offset = 0 } = query;
 
-    const unlistedOnConnectionIds = this.parseUnlistedOn(query.unlistedOn);
     const sortSpec: ProductListSort | undefined = sort
       ? { field: sort, dir: dir ?? 'desc' }
       : undefined;
-    const filters = {
-      search,
-      stock,
-      taxRateState,
-      unlistedOnConnectionIds,
-      sourceConnectionId: connectionId,
-      hideFullyStale,
-    };
+    const filters = this.toProductListFilters(query);
 
     // `?withTotal=false` skips the COUNT entirely and the response OMITS
     // `total` rather than reporting 0 (#2944) - an absent total and a genuine
     // zero must stay distinguishable, or a client renders "0 products" for a
     // number it simply did not ask for. The second stage is `/products/count`.
+    // Two branches rather than one `total?: number` local, so the response
+    // literally does not carry the key when it was not asked for - see the
+    // same note in `orders.controller.ts`.
     let rows: Product[];
     let total: number | undefined;
+    let omitTotal = false;
     if (withTotal === false) {
       rows = await this.productsService.listProductRows(filters, { limit, offset }, sortSpec);
+      omitTotal = true;
     } else {
       const page = await this.productsService.listProducts(filters, { limit, offset }, sortSpec);
       rows = page.items;
@@ -272,7 +262,7 @@ export class ProductsController {
 
     return {
       items: dtos,
-      total,
+      ...(omitTotal ? {} : { total }),
       limit,
       offset,
     };
@@ -291,16 +281,32 @@ export class ProductsController {
   })
   @ApiResponse({ status: 200, description: 'Row count', type: PaginatedTotalResponseDto })
   async countProducts(@Query() query: CountProductsQueryDto): Promise<PaginatedTotalResponseDto> {
-    const { search, stock, taxRateState, connectionId, hideFullyStale } = query;
-    const total = await this.productsService.countProducts({
-      search,
-      stock,
-      taxRateState,
-      unlistedOnConnectionIds: this.parseUnlistedOn(query.unlistedOn),
-      sourceConnectionId: connectionId,
-      hideFullyStale,
-    });
+    // The SAME mapper the list uses (#2944 review): `OmitType` keeps the query
+    // surfaces from drifting and `buildFilteredQuery` keeps the SQL from
+    // drifting, and this closes the DTO-to-filters step in between.
+    const total = await this.productsService.countProducts(this.toProductListFilters(query));
     return { total };
+  }
+
+  /**
+   * The one DTO-to-filters mapping this list has (#2944 review).
+   *
+   * Shared by `GET /products` and `GET /products/count`, so the count cannot
+   * apply a different filter set than the page. `sort` is deliberately absent:
+   * unlike `/orders`, this list carries it as a separate argument rather than
+   * as a filter field, so a count neither receives it nor needs to ignore it.
+   */
+  private toProductListFilters(
+    query: CountProductsQueryDto & Partial<Pick<ListProductsQueryDto, 'sort' | 'dir'>>
+  ): ProductListFilters {
+    return {
+      search: query.search,
+      stock: query.stock,
+      taxRateState: query.taxRateState,
+      unlistedOnConnectionIds: this.parseUnlistedOn(query.unlistedOn),
+      sourceConnectionId: query.connectionId,
+      hideFullyStale: query.hideFullyStale,
+    };
   }
 
   /**

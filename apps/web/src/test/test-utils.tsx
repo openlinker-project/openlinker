@@ -119,6 +119,20 @@ async function* emptyResolveCategoryStream(): AsyncGenerator<
  * the relationship the real API has: the same page, split in two. A test that
  * needs the two to diverge - a count that fails while the rows succeed, say -
  * overrides `listRows` / `count` explicitly, and an explicit override wins.
+ *
+ * Two consequences to know before reaching for the derived form:
+ *
+ * - The derived `count` CALLS the same `list` spy, so `list` is invoked twice
+ *   per render. An `expect(list).toHaveBeenCalledTimes(n)` will be off, and a
+ *   `mockResolvedValueOnce` CHAIN becomes a race between the rows and the count
+ *   for one queue.
+ * - A test asserting on a `list` spy for one of these four namespaces is
+ *   asserting on a function the PAGE no longer calls, so it can pass for the
+ *   wrong reason.
+ *
+ * Either case means the test wants the two stages apart: mock `listRows` and
+ * `count` explicitly. The listings tab-count tests hit the first one and do
+ * exactly that.
  */
 function withTwoStageReads<T extends Record<string, unknown>>(namespace: T): T {
   const list = namespace.list;

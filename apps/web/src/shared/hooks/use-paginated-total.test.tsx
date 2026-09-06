@@ -70,6 +70,20 @@ describe('inferTotalFromPage', () => {
     expect(inferTotalFromPage({ rowCount: 20, limit: 20, offset: 100 })).toBeNull();
   });
 
+  it('refuses to infer from a non-finite page rather than producing NaN', () => {
+    // `offset + rowCount` on an absent field is `NaN`, which passes every
+    // `!== null` guard downstream and renders as the literal "of NaN" while
+    // killing Next (every comparison against NaN is false). A worse stand-in
+    // than the `0` this mechanism already refuses.
+    expect(
+      inferTotalFromPage({ rowCount: 1, limit: undefined as unknown as number, offset: 0 })
+    ).toBeNull();
+    expect(
+      inferTotalFromPage({ rowCount: 1, limit: 20, offset: undefined as unknown as number })
+    ).toBeNull();
+    expect(inferTotalFromPage({ rowCount: NaN, limit: 20, offset: 0 })).toBeNull();
+  });
+
   it('refuses to infer from an empty page past the start, where the offset overshot', () => {
     // The operator paged beyond the end: the total is anywhere from 0 to 40,
     // and `offset + 0` would state 40 as a fact.
@@ -293,6 +307,59 @@ describe('usePaginatedTotal (#2945)', () => {
     // A failed read must not become a positive claim that nothing matched.
     expect(result.current.total).toBeNull();
     expect(result.current.total).not.toBe(0);
+  });
+
+  it('reports UNAVAILABLE when selectTotal declines to read a number', async () => {
+    // A response the caller cannot honestly read a total out of - `/listings`
+    // answering without its lifecycle buckets while a tab is selected. The
+    // payload's own number is the WRONG number there, so the honest answer is
+    // unknown rather than a substitute from a different question.
+    const queryFn = vi.fn().mockResolvedValue(42);
+    const { result } = renderHook(
+      () =>
+        usePaginatedTotal({
+          queryKey: ['orders', 'count', {}],
+          queryFn,
+          selectTotal: () => null,
+        }),
+      { wrapper: createWrapper() }
+    );
+
+    await flush();
+    expect(result.current.state).toBe('unavailable');
+    expect(result.current.total).toBeNull();
+    expect(result.current.total).not.toBe(0);
+    // The raw payload is still handed back, so a caller reading more than the
+    // number off it is not punished for the total being unreadable.
+    expect(result.current.data).toBe(42);
+  });
+
+  it('shows a CACHED total for the current key immediately, even while disabled', async () => {
+    // The key is always the current filters', so cached data can only ever be
+    // this filter's answer - blanking it while `enabled` is false or the
+    // debounce settles would be a flicker for nothing. This is the common case
+    // when paging, since the key carries no offset.
+    const queryFn = vi.fn().mockResolvedValue(4321);
+    const wrapper = createWrapper();
+    const { result, rerender } = renderHook(
+      ({ enabled }: { enabled: boolean }) =>
+        usePaginatedTotal({
+          queryKey: ['orders', 'count', { search: 'x' }],
+          queryFn,
+          selectTotal,
+          enabled,
+        }),
+      { wrapper, initialProps: { enabled: true } }
+    );
+
+    await flush();
+    expect(result.current.total).toBe(4321);
+
+    // The rows query goes back in flight, so the caller disables the count.
+    rerender({ enabled: false });
+    expect(result.current.total).toBe(4321);
+    expect(result.current.state).toBe('known');
+    expect(queryFn).toHaveBeenCalledTimes(1);
   });
 
   it('does not fetch while disabled', async () => {

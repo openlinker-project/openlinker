@@ -2224,6 +2224,15 @@ textarea,
   white-space: nowrap;
 }
 
+/* A count that FAILED, said in visible text rather than only in a `title`.
+   `pending` and `unavailable` both keep the `N+` placeholder, and a tooltip
+   cannot tell them apart for a screen reader or on touch. */
+.pagination__total-failed {
+  color: var(--status-warning-fg);
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
 /* Shown only once the count has been in flight past the delay window, so a
    count that resolves in ~11 ms never flickers one into view. */
 .pagination__counting-dot {

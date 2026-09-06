@@ -456,7 +456,7 @@ export function ListingsListPage(): ReactElement {
   // Two-stage read (#2947): the rows do not wait for either aggregate over
   // this list's four-way join and `ILIKE` search.
   const query = useListingRowsQuery(filters, pagination);
-  const totalStage = useListingsTotal(filters, query.data);
+  const totalStage = useListingsTotal(filters, query.data, query.isPlaceholderData);
 
   /**
    * The tab-bar buckets (#2947).

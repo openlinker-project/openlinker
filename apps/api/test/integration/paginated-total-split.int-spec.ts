@@ -28,6 +28,7 @@ import { createTestOrderRecord } from './fixtures/order.fixtures';
 import type { OrderRecordRepositoryPort } from '@openlinker/core/orders';
 import { ORDER_RECORD_REPOSITORY_TOKEN } from '@openlinker/core/orders';
 import type { CustomerProjectionRepositoryPort } from '@openlinker/core/customers';
+import { CustomerProjection } from '@openlinker/core/customers';
 import { CUSTOMER_PROJECTION_REPOSITORY_TOKEN } from '@openlinker/core/customers';
 import type {
   ProductRepositoryPort,
@@ -40,8 +41,8 @@ import {
 import type { OfferMappingRepositoryPort } from '@openlinker/core/listings';
 import { OFFER_MAPPING_REPOSITORY_TOKEN } from '@openlinker/core/listings';
 import { ProductOrmEntity, ProductVariantOrmEntity } from '@openlinker/core/products/orm-entities';
-import { CustomerProjectionOrmEntity } from '@openlinker/core/customers/orm-entities';
 import { IdentifierMappingOrmEntity } from '@openlinker/core/identifier-mapping/orm-entities';
+import { InventoryItemOrmEntity } from '@openlinker/core/inventory/orm-entities';
 
 const CONNECTION_A = '11111111-1111-4111-8111-111111111111';
 const CONNECTION_B = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -158,37 +159,52 @@ describe('Paginated total split (integration, #2944)', () => {
         .get<CustomerProjectionRepositoryPort>(CUSTOMER_PROJECTION_REPOSITORY_TOKEN);
     });
 
+    /**
+     * Seeded through the repository port rather than an ORM entity: `customers`
+     * publishes no `orm-entities` sub-barrel, and minting one for a test's
+     * convenience would add public surface no production caller wants.
+     */
     async function seed(): Promise<void> {
-      const repo = harness.getDataSource().getRepository(CustomerProjectionOrmEntity);
-      await repo.save([
-        repo.create({
-          internalCustomerId: 'ol_customer_split_1',
-          emailHash: 'hash-one',
-          normalizedEmail: 'ada@example.com',
-          firstName: 'Ada',
-          lastName: 'Lovelace',
-          lastSeenAt: new Date('2026-01-01T00:00:00Z'),
-          lastSourceConnectionId: CONNECTION_A,
-        }),
-        repo.create({
-          internalCustomerId: 'ol_customer_split_2',
-          emailHash: 'hash-two',
-          normalizedEmail: 'grace@example.com',
-          firstName: 'Grace',
-          lastName: 'Hopper',
-          lastSeenAt: new Date('2026-01-02T00:00:00Z'),
-          lastSourceConnectionId: CONNECTION_A,
-        }),
-        repo.create({
-          internalCustomerId: 'ol_customer_split_3',
-          emailHash: 'hash-three',
-          normalizedEmail: 'alan@example.com',
-          firstName: 'Alan',
-          lastName: 'Turing',
-          lastSeenAt: new Date('2026-01-03T00:00:00Z'),
-          lastSourceConnectionId: CONNECTION_B,
-        }),
-      ]);
+      const at = (iso: string): Date => new Date(iso);
+      await repository.upsert(
+        new CustomerProjection(
+          'ol_customer_split_1',
+          'hash-one',
+          'ada@example.com',
+          'Ada',
+          'Lovelace',
+          at('2026-01-01T00:00:00Z'),
+          CONNECTION_A,
+          at('2026-01-01T00:00:00Z'),
+          at('2026-01-01T00:00:00Z')
+        )
+      );
+      await repository.upsert(
+        new CustomerProjection(
+          'ol_customer_split_2',
+          'hash-two',
+          'grace@example.com',
+          'Grace',
+          'Hopper',
+          at('2026-01-02T00:00:00Z'),
+          CONNECTION_A,
+          at('2026-01-02T00:00:00Z'),
+          at('2026-01-02T00:00:00Z')
+        )
+      );
+      await repository.upsert(
+        new CustomerProjection(
+          'ol_customer_split_3',
+          'hash-three',
+          'alan@example.com',
+          'Alan',
+          'Turing',
+          at('2026-01-03T00:00:00Z'),
+          CONNECTION_B,
+          at('2026-01-03T00:00:00Z'),
+          at('2026-01-03T00:00:00Z')
+        )
+      );
     }
 
     it('moves both paths together when the ILIKE search changes', async () => {
@@ -268,6 +284,63 @@ describe('Paginated total split (integration, #2944)', () => {
       const byName = await repository.findMany({}, PAGE, { field: 'name', dir: 'asc' });
       expect(await repository.countMany({})).toBe(unsorted.total);
       expect(await repository.countMany({})).toBe(byName.total);
+    });
+
+    it('agrees on the total when SORTING BY STOCK pulls in the join a count omits', async () => {
+      await seed();
+
+      // The one case where `countMany` dropping `sort` is load-bearing rather
+      // than tidy. Sorting by stock adds a LEFT JOIN to the grouped
+      // inventory subquery; the count builds without it. That is only safe
+      // because the join is at most 1:1 (the subquery groups by `productId`),
+      // so it cannot change how many rows match - and this asserts that
+      // against real SQL rather than against the argument.
+      const sortedByStock = await repository.findMany({}, PAGE, {
+        field: 'stock',
+        dir: 'desc',
+      });
+      expect(await repository.countMany({})).toBe(sortedByStock.total);
+      expect(sortedByStock.total).toBe(3);
+    });
+
+    it('moves both paths together when the stock filter changes', async () => {
+      await seed();
+      // Rows inserted directly rather than through `createTestInventoryItem`:
+      // that fixture mints a parent product of its own, which would add rows
+      // this block's counts are asserting exact numbers about.
+      const inventory = harness.getDataSource().getRepository(InventoryItemOrmEntity);
+      await inventory.save([
+        inventory.create({
+          id: 'ol_inventory_split_1',
+          productId: 'ol_product_split_1',
+          availableQuantity: 50,
+          reservedQuantity: 0,
+        }),
+        inventory.create({
+          id: 'ol_inventory_split_2',
+          productId: 'ol_product_split_2',
+          availableQuantity: 2,
+          reservedQuantity: 0,
+        }),
+      ]);
+      // The third product has no inventory row at all: it joins to NULL and
+      // `COALESCE(stock.total, 0)` reads it as out of stock.
+
+      // Each of these predicates is expressed against the joined alias, so the
+      // count MUST carry the join. If `buildFilteredQuery` ever stopped adding
+      // it for a filter-driven request the count would fail outright, not
+      // merely disagree - which is why the filtered path is exercised here and
+      // not only the sorted one above.
+      for (const stock of ['out', 'low'] as const) {
+        const page = await repository.findMany({ stock }, PAGE);
+        expect(await repository.countMany({ stock })).toBe(page.total);
+        expect(
+          (await repository.findManyRows({ stock }, PAGE)).map((p) => p.id)
+        ).toEqual(page.items.map((p) => p.id));
+      }
+
+      expect(await repository.countMany({ stock: 'low' })).toBe(1);
+      expect(await repository.countMany({ stock: 'out' })).toBe(1);
     });
   });
 

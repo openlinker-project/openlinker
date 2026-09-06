@@ -133,4 +133,43 @@ describe('CustomersController', () => {
       await expect(controller.getCustomer('nonexistent')).rejects.toThrow(NotFoundException);
     });
   });
+
+  describe('the two-stage read (#2944)', () => {
+    it('reads the page ALONE and omits total when withTotal=false', async () => {
+      repository.findManyRows.mockResolvedValue([mockCustomer]);
+
+      const result = await controller.listCustomers({ withTotal: false, limit: 20, offset: 0 });
+
+      expect(repository.findManyRows).toHaveBeenCalledTimes(1);
+      expect(repository.findMany).not.toHaveBeenCalled();
+      // `in`, not a truthiness check: `total: 0` would pass the latter while
+      // being exactly the failure the omission exists to prevent.
+      expect('total' in result).toBe(false);
+      expect(result.total).toBeUndefined();
+    });
+
+    it('reads both when withTotal is not asked for, exactly as before', async () => {
+      repository.findMany.mockResolvedValue({ items: [mockCustomer], total: 7 });
+
+      const result = await controller.listCustomers({ limit: 20, offset: 0 });
+
+      expect(repository.findMany).toHaveBeenCalledTimes(1);
+      expect(repository.findManyRows).not.toHaveBeenCalled();
+      expect(result.total).toBe(7);
+    });
+
+    it('counts under the SAME filters the list applies', async () => {
+      repository.findManyRows.mockResolvedValue([]);
+      repository.countMany.mockResolvedValue(42);
+      const filters = { search: 'ada', lastSourceConnectionId: 'conn-1' };
+
+      await controller.listCustomers({ ...filters, withTotal: false, limit: 20, offset: 0 });
+      const counted = await controller.countCustomers({ ...filters });
+
+      expect(repository.findManyRows).toHaveBeenCalledWith(filters, { limit: 20, offset: 0 });
+      expect(repository.countMany).toHaveBeenCalledWith(filters);
+      expect(counted).toEqual({ total: 42 });
+    });
+  });
+
 });

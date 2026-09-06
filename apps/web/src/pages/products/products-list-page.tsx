@@ -358,8 +358,13 @@ export function ProductsListPage(): ReactElement {
   const query = useProductRowsQuery(filters, pagination, sort);
   const totalStage = useProductsTotal(filters, query.data);
   // `20+` until the count lands (#2947), never `0` - the rows on screen are
-  // evidence for at least that many.
-  const totalLabel = formatPaginatedTotal(totalStage.total, offset + (query.data?.items.length ?? 0));
+  // evidence for at least that many, and `?? 0` would turn an unloaded page
+  // into a claim. These chips render ABOVE the loading branch, so on a deep
+  // link like `/products?offset=100` an ungated floor would read "All 100+"
+  // before a single row exists - a positive claim computed from a URL.
+  const totalLabel = query.data
+    ? formatPaginatedTotal(totalStage.total, offset + query.data.items.length)
+    : '—';
   const items = query.data?.items ?? [];
 
   // Fire once per successful list load, not on every filter/page refetch —

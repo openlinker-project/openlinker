@@ -244,6 +244,11 @@ export class ListingsController {
     // lifecycle buckets - and the response OMITS `total` rather than reporting
     // 0 (#2944), so an absent total and a genuine zero stay distinguishable.
     // The second stage is `GET /listings/count`, which answers both.
+    //
+    // It therefore also declines `includeLifecycleCounts`, and that is stated
+    // in the route description rather than left silent: a caller asking for the
+    // buckets and receiving neither them nor an error has no way to tell a
+    // deliberate refusal from a defect.
     if (withTotal === false) {
       const items = await this.offerMappingRepository.findManyRows(filters, { limit, offset });
       return { items: items.map((m) => this.toListDto(m)), limit, offset };

@@ -9,7 +9,10 @@
  * @module libs/core/src/listings/application/services/__tests__
  */
 import { StaleOfferPauseService } from '../stale-offer-pause.service';
-import type { IIdentifierMappingService, ExternalIdMapping } from '@openlinker/core/identifier-mapping';
+import type {
+  IIdentifierMappingService,
+  ExternalIdMapping,
+} from '@openlinker/core/identifier-mapping';
 import type { IProductsService, ProductVariant } from '@openlinker/core/products';
 import type { SyncJobQueuePort } from '@openlinker/core/sync';
 import type { OfferMappingRepositoryPort, StaleMappedVariant } from '@openlinker/core/listings';
@@ -57,8 +60,8 @@ describe('StaleOfferPauseService', () => {
     offerMappings = {
       findById: jest.fn(),
       findMany: jest.fn(),
-    findManyRows: jest.fn(),
-    countMany: jest.fn(),
+      findManyRows: jest.fn(),
+      countMany: jest.fn(),
       findMappingPage: jest.fn(),
       countByLifecycle: jest.fn(),
       countByConnectionAndVariants: jest.fn(),

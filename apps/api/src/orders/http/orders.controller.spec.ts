@@ -1470,4 +1470,65 @@ describe('OrdersController', () => {
       expect(result.salesDocument?.documentKind).toBe('fiscal-receipt');
     });
   });
+
+  describe('the two-stage read (#2944)', () => {
+    it('reads the page ALONE and omits total when withTotal=false', async () => {
+      repository.findManyRows.mockResolvedValue([]);
+
+      const result = await controller.listOrders({ withTotal: false, limit: 20, offset: 0 });
+
+      expect(repository.findManyRows).toHaveBeenCalledTimes(1);
+      expect(repository.findMany).not.toHaveBeenCalled();
+      expect('total' in result).toBe(false);
+      expect(result.total).toBeUndefined();
+    });
+
+    it('maps the DTO to filters with ONE function, so list and count cannot drift', async () => {
+      repository.findManyRows.mockResolvedValue([]);
+      repository.countMany.mockResolvedValue(9);
+      const query = {
+        health: 'needs_attention' as const,
+        syncStatus: 'failed' as const,
+        hold: 'fraud-review' as const,
+        attention: true,
+        phase: 'held' as const,
+      };
+
+      await controller.listOrders({ ...query, withTotal: false, limit: 20, offset: 0 });
+      await controller.countOrders({ ...query });
+
+      const listFilters = repository.findManyRows.mock.calls[0][0];
+      const countFilters = repository.countMany.mock.calls[0][0];
+      expect(countFilters).toEqual(listFilters);
+      // And the renames are actually applied, not merely equal to each other.
+      expect(countFilters).toMatchObject({
+        lifecyclePhase: 'held',
+        omsAttention: true,
+        activeHoldReason: 'fraud-review',
+      });
+    });
+
+    it('ACCEPTS sort and dir on the count rather than 400-ing on them', async () => {
+      // They travel inside this list's filter object, so a client reusing one
+      // query builder sends them to the count too. Refusing them would 400 the
+      // orders total on every request carrying the default triage sort - which
+      // is every request the list page makes.
+      repository.countMany.mockResolvedValue(9);
+
+      await expect(
+        controller.countOrders({ sort: 'dispatchBy', dir: 'asc', health: 'synced' })
+      ).resolves.toEqual({ total: 9 });
+    });
+
+    it('refuses a contradictory cancelled/phase pair on the COUNT too', async () => {
+      // The same guard the list applies, through the same shared function. If
+      // only the list refused, the count would answer a number for a pair that
+      // can never match a row.
+      await expect(
+        controller.countOrders({ cancelled: false, phase: 'cancelled' })
+      ).rejects.toThrow(/contradicts/);
+      expect(repository.countMany).not.toHaveBeenCalled();
+    });
+  });
+
 });

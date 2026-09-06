@@ -14,8 +14,8 @@ describe('PublishedVariantsService', () => {
     offerRepo = {
       findById: jest.fn(),
       findMany: jest.fn(),
-    findManyRows: jest.fn(),
-    countMany: jest.fn(),
+      findManyRows: jest.fn(),
+      countMany: jest.fn(),
       findMappingPage: jest.fn(),
       countByLifecycle: jest.fn(),
       countByConnectionAndVariants: jest.fn(),
@@ -63,7 +63,7 @@ describe('PublishedVariantsService', () => {
       new Map([
         ['v1', 1],
         ['v3', 1],
-      ]),
+      ])
     );
 
     const result = await service.getPublishedVariantIds('conn-1', ['v1', 'v2', 'v3']);
@@ -85,7 +85,7 @@ describe('PublishedVariantsService', () => {
     const tooMany = Array.from({ length: 1001 }, (_, i) => `v${String(i)}`);
 
     await expect(service.getPublishedVariantIds('conn-1', tooMany)).rejects.toThrow(
-      /at most 1000 variantIds/,
+      /at most 1000 variantIds/
     );
   });
 });

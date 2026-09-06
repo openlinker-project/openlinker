@@ -18,8 +18,8 @@ describe('CoverageGapReadService', () => {
     offerRepo = {
       findById: jest.fn(),
       findMany: jest.fn(),
-    findManyRows: jest.fn(),
-    countMany: jest.fn(),
+      findManyRows: jest.fn(),
+      countMany: jest.fn(),
       findMappingPage: jest.fn(),
       countByConnectionAndVariants: jest.fn(),
       countByLifecycle: jest.fn(),
@@ -51,7 +51,8 @@ describe('CoverageGapReadService', () => {
 
   function capableConnections(...connectionIds: string[]): void {
     integrationsService.listCapabilityAdapters.mockImplementation(({ capability }) => {
-      const ids = capability === 'OfferManager' ? connectionIds.slice(0, 1) : connectionIds.slice(1);
+      const ids =
+        capability === 'OfferManager' ? connectionIds.slice(0, 1) : connectionIds.slice(1);
       return Promise.resolve(
         ids.map((connectionId) => ({
           connectionId,

@@ -201,6 +201,16 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
    * builder and read the page. MUTATES the builder, so a caller that also
    * needs a count must take it BEFORE calling this - which is why `findMany`
    * counts first.
+   *
+   * A `clone()` here would make that ordering structural rather than
+   * documented, and was tried (#2944 review). It is not worth its cost: this
+   * spec's fake query builder is ONE shared object returned by every
+   * `createQueryBuilder` call, so a fake `clone` returning itself would prove
+   * nothing while diverging from real TypeORM, and a fake returning a fresh
+   * recorder would invalidate the assertions of all 26 tests that read the
+   * original. The property that actually matters - the total describes the
+   * same set as the page - is asserted against real SQL in
+   * `paginated-total-split.int-spec.ts`.
    */
   private async fetchListPage(
     qb: SelectQueryBuilder<IdentifierMappingOrmEntity>,
@@ -247,10 +257,10 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
   ): Promise<PaginatedOfferMappings> {
     const qb = this.buildListQuery(filters);
 
-    // Counted before the projection/paging clauses are attached so the count
+    // Counted before the projection/paging clauses are attached, so the count
     // is unambiguously the filtered total, independent of the raw select.
+    // These two lines must stay in this order - see `fetchListPage`.
     const total = await qb.getCount();
-
     const items = await this.fetchListPage(qb, pagination);
     return { items, total };
   }

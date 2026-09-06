@@ -323,9 +323,14 @@ describe('ListingsController', () => {
       // thread 3) - the counts aggregate is now OFF by default, since three
       // other callers (product drawer, nav badge probe) share this endpoint
       // and never render a tab bar to pay the second full scan for.
+      //
+      // They mock `findManyRows`, not `findMany` (#2944). This branch reads
+      // the page ALONE and derives `total` from the buckets, so there is no
+      // longer a `skipTotal` option and no `total: -1` sentinel for a caller
+      // to forget to substitute.
 
       it('should carry a per-bucket count alongside the page', async () => {
-        repository.findMany.mockResolvedValue({ items: [], total: -1 });
+        repository.findManyRows.mockResolvedValue([]);
         repository.countByLifecycle.mockResolvedValue({
           Active: 4,
           Invalid: 1,
@@ -371,7 +376,7 @@ describe('ListingsController', () => {
       // `apps/api/test/integration/listings/offer-lifecycle-counts.int-spec.ts`.
 
       it('should apply the same search and connection filters to the counts as to the list', async () => {
-        repository.findMany.mockResolvedValue({ items: [], total: -1 });
+        repository.findManyRows.mockResolvedValue([]);
 
         await controller.listOfferMappings({
           connectionId: 'conn-1',
@@ -387,7 +392,7 @@ describe('ListingsController', () => {
       });
 
       it('should narrow only the list by the selected tab, never the counts', async () => {
-        repository.findMany.mockResolvedValue({ items: [], total: -1 });
+        repository.findManyRows.mockResolvedValue([]);
         repository.countByLifecycle.mockResolvedValue({
           ...emptyOfferLifecycleCounts(),
           Ended: 300,
@@ -399,13 +404,14 @@ describe('ListingsController', () => {
           includeLifecycleCounts: true,
         });
 
-        // The third arg tells `findMany` to skip its own now-redundant
-        // `getCount()` - `total` is derived from `countByLifecycle` instead.
-        expect(repository.findMany).toHaveBeenCalledWith(
+        // `findManyRows`, not `findMany` (#2944): this branch reads the page
+        // alone and derives `total` from `countByLifecycle`, so there is no
+        // now-redundant `getCount()` to opt out of and no third argument.
+        expect(repository.findManyRows).toHaveBeenCalledWith(
           expect.objectContaining({ lifecycle: 'Ended' }),
-          { limit: 20, offset: 0 },
-          { skipTotal: true }
+          { limit: 20, offset: 0 }
         );
+        expect(repository.findMany).not.toHaveBeenCalled();
         // Forwarding it here would zero every other tab the moment one is clicked.
         expect(repository.countByLifecycle).toHaveBeenCalledWith(
           expect.not.objectContaining({ lifecycle: expect.anything() as unknown })
@@ -413,7 +419,7 @@ describe('ListingsController', () => {
       });
 
       it('should report the selected bucket size as total so paging inside a tab works', async () => {
-        repository.findMany.mockResolvedValue({ items: [], total: -1 });
+        repository.findManyRows.mockResolvedValue([]);
         repository.countByLifecycle.mockResolvedValue({
           ...emptyOfferLifecycleCounts(),
           Ended: 300,
@@ -431,7 +437,7 @@ describe('ListingsController', () => {
       });
 
       it('should report the sum across every bucket as total when no tab is selected', async () => {
-        repository.findMany.mockResolvedValue({ items: [], total: -1 });
+        repository.findManyRows.mockResolvedValue([]);
         repository.countByLifecycle.mockResolvedValue({
           Active: 4,
           Invalid: 1,
@@ -447,10 +453,10 @@ describe('ListingsController', () => {
 
       it('should issue the list and the counts concurrently rather than back to back', async () => {
         let listSettled = false;
-        repository.findMany.mockImplementation(async () => {
+        repository.findManyRows.mockImplementation(async () => {
           await Promise.resolve();
           listSettled = true;
-          return { items: [], total: -1 };
+          return [];
         });
         repository.countByLifecycle.mockImplementation(() => {
           // Reached before the list resolved: the two are not chained.

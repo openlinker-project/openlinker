@@ -218,9 +218,17 @@ export class ProductRepository implements ProductRepositoryPort {
     pagination: ProductPagination,
     sort?: ProductListSort
   ): Promise<PaginatedProducts> {
-    // Unchanged: two statements in parallel, exactly as before #2944. Unlike
-    // the other four lists this one never used `getManyAndCount`, so there is
-    // no short-page inference to lose by composing it from the split reads.
+    // Two statements in parallel as before #2944, and unlike the other four
+    // lists this one never used `getManyAndCount`, so there is no short-page
+    // inference to lose by composing it from the split reads.
+    //
+    // The PAGED statement is unchanged. The COUNT is not, and saying otherwise
+    // in a change whose whole subject is "does the total still describe the
+    // same set" would be the wrong thing to leave here: the count no longer
+    // carries the sort-only stock join, because `countMany` takes no sort. That
+    // is argued in `countMany`'s own docblock - the join is 1:1, so it cannot
+    // change how many rows match - and the int-spec asserts the totals agree
+    // across sorts.
     const [items, total] = await Promise.all([
       this.findManyRows(filters, pagination, sort),
       this.countMany(filters),

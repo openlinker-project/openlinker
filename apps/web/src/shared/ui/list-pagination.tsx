@@ -30,12 +30,20 @@ import { forwardRef, type ComponentPropsWithoutRef } from 'react';
 import { Button } from './button';
 import { formatPaginatedTotal, type PaginatedTotalState } from '../hooks/use-paginated-total';
 
-export interface ListPaginationProps extends ComponentPropsWithoutRef<'div'> {
+export interface ListPaginationProps extends ComponentPropsWithoutRef<'nav'> {
   /** Zero-based index of the first row on this page. */
   offset: number;
   /** Page size requested. */
   limit: number;
-  /** Rows actually returned for this page. */
+  /**
+   * Rows actually returned for this page.
+   *
+   * **Precondition**: the page must have LOADED. `0` here means "no rows
+   * matched", and is rendered as `No results` - it must never stand in for
+   * "the rows have not arrived yet", which would print that over a spinner.
+   * Every adopter today short-circuits to its own empty state before reaching
+   * this component, so the branch is a guard rather than a live path.
+   */
   rowCount: number;
   /** The exact total, or `null` when it is not known yet. Never pass `0` for unknown. */
   total: number | null;
@@ -46,7 +54,7 @@ export interface ListPaginationProps extends ComponentPropsWithoutRef<'div'> {
   onOffsetChange: (nextOffset: number) => void;
 }
 
-export const ListPagination = forwardRef<HTMLDivElement, ListPaginationProps>(
+export const ListPagination = forwardRef<HTMLElement, ListPaginationProps>(
   function ListPagination(
     {
       offset,
@@ -71,8 +79,18 @@ export const ListPagination = forwardRef<HTMLDivElement, ListPaginationProps>(
     const totalUnavailable = totalState === 'unavailable';
 
     return (
-      <div ref={ref} className={['pagination', className].filter(Boolean).join(' ')} {...rest}>
-        <span className="text-muted" aria-busy={showTotalLoader || undefined}>
+      <nav
+        ref={ref}
+        aria-label="Pagination"
+        className={['pagination', className].filter(Boolean).join(' ')}
+        {...rest}
+      >
+        {/*
+          `aria-live` on the summary, not merely `aria-busy`: a busy flag on a
+          non-live region announces nothing, so a screen-reader user would never
+          learn that `20+` had become `1,234`. Polite, so it waits for a pause.
+        */}
+        <span className="text-muted" aria-live="polite" aria-busy={showTotalLoader || undefined}>
           {rowCount === 0 ? (
             'No results'
           ) : (
@@ -96,6 +114,18 @@ export const ListPagination = forwardRef<HTMLDivElement, ListPaginationProps>(
                   ) : null}
                 </span>
               )}
+              {/*
+                A FAILED count gets visible, machine-readable text - not just a
+                `title`. The hook goes to real trouble to keep `unavailable`
+                apart from `pending`, and a tooltip keeps neither promise: it is
+                not reliably surfaced to a screen reader, never appears on
+                touch, and needs a hover-and-wait on desktop. Without this the
+                two states are indistinguishable to the operator, which makes
+                the distinction a comment rather than a behaviour.
+              */}
+              {totalUnavailable ? (
+                <span className="pagination__total-failed"> (count unavailable)</span>
+              ) : null}
             </>
           )}
         </span>
@@ -117,7 +147,7 @@ export const ListPagination = forwardRef<HTMLDivElement, ListPaginationProps>(
             Next
           </Button>
         </div>
-      </div>
+      </nav>
     );
   }
 );

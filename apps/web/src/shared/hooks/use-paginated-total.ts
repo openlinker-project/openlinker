@@ -17,12 +17,15 @@
  *    expensive query in the system.
  * 2. **Never render a superseded total.** A slow answer for the filter the
  *    operator has LEFT is worse than no number, because it looks authoritative.
- *    Two mechanisms guard it: the query is keyed on the filters (so TanStack
- *    can only ever hand back the current key's data, and a late response lands
- *    in a different cache entry), and while the debounce is still settling the
- *    hook reports `null` rather than the previous key's answer. Note that
- *    `placeholderData: keepPreviousData` is deliberately NOT used - it is the
- *    exact mechanism that would surface the previous filter's total.
+ *    The guard is that the query is keyed on the filters, so TanStack can only
+ *    ever hand back the CURRENT key's data and a late response for an abandoned
+ *    one lands in a different cache entry. That is also why a cached answer is
+ *    safe to show while the debounce is still settling: it belongs to the
+ *    filters on screen, not to the ones being left. `placeholderData:
+ *    keepPreviousData` is deliberately NOT used - it is the one mechanism that
+ *    would surface the previous filter's total, and it is the reason a caller
+ *    whose ROWS query keeps a placeholder must not pass that page as
+ *    `knownTotal` (see {@link inferTotalFromPage}'s precondition).
  * 3. **Delay the loader, so small installs never see it.** At ten thousand
  *    orders the count returns in about 11 ms; a spinner that appears and
  *    vanishes inside that window is a flicker, and a flicker is worse than no
@@ -39,7 +42,7 @@
  * @module shared/hooks
  * @see shared/ui/list-pagination for the presentational half
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useDebouncedValue } from './use-debounced-value';
 
@@ -116,8 +119,23 @@ export interface UsePaginatedTotalOptions<TData = PaginatedTotalPayload> {
    * Explicit rather than assumed, so a route answering with more than the total
    * has one obvious place to say which field is the total - and so two
    * observers of the same query key can never disagree about the cached shape.
+   *
+   * Returning `null` reports the total as UNAVAILABLE. That is for a response
+   * this caller cannot honestly read a number out of - `/listings/count`
+   * answering without its lifecycle buckets while a tab is selected, say, where
+   * the payload's own `total` is the un-narrowed sum and therefore the wrong
+   * number. Reporting unknown is the only safe answer; substituting a number
+   * from a different question is the failure this whole mechanism exists to
+   * prevent, one layer in.
+   *
+   * Applied at READ time, in the render body - never handed to TanStack's
+   * `select`. That is what lets a selector close over state the query key
+   * deliberately omits (again `/listings`, whose key carries no `lifecycle`)
+   * and re-derive from the same cached response when that state changes.
+   * Moving it into `useQuery({ select })` would capture it at fetch time and
+   * silently freeze the stale value.
    */
-  selectTotal: (data: TData) => number;
+  selectTotal: (data: TData) => number | null;
   /**
    * An exact total the caller already knows, typically from
    * {@link inferTotalFromPage}. When non-null the count is NOT requested.
@@ -161,9 +179,18 @@ export function inferTotalFromLoadedPage(
  *   end and the total is anywhere between 0 and `offset`.
  *
  * **Precondition**: `rowCount` must be the number of rows the query matched,
- * not a client-side subset of them. Every list this serves returns its rows
- * straight from `LIMIT`/`OFFSET`; a caller that filters the page after
- * fetching it must pass `knownTotal: null` instead.
+ * not a client-side subset of them, and the page must be the one CURRENTLY
+ * displayed for the current filters. A list whose rows query keeps the previous
+ * page alive (`placeholderData: keepPreviousData`) must therefore not infer
+ * from that placeholder - it describes a filter the operator has left, and
+ * `offset + rowCount` would state its size as the new filter's. A caller that
+ * filters the page after fetching it, or that holds a placeholder, passes
+ * `knownTotal: null` instead.
+ *
+ * A non-finite input returns `null` rather than propagating. `offset + rowCount`
+ * on an absent field is `NaN`, and `NaN` is a WORSE stand-in than the `0` this
+ * mechanism already refuses: it reads as "of NaN", and every comparison against
+ * it is false, so the pager's Next silently dies.
  */
 export function inferTotalFromPage(page: {
   rowCount: number;
@@ -171,6 +198,9 @@ export function inferTotalFromPage(page: {
   offset: number;
 }): number | null {
   const { rowCount, limit, offset } = page;
+  if (!Number.isFinite(rowCount) || !Number.isFinite(limit) || !Number.isFinite(offset)) {
+    return null;
+  }
   if (rowCount >= limit) return null;
   if (rowCount === 0 && offset > 0) return null;
   return offset + rowCount;
@@ -238,22 +268,35 @@ export function usePaginatedTotal<TData = PaginatedTotalPayload>(
     // than carrying a second, divergent one.
   });
 
+  // A cached answer for the CURRENT key, if there is one. `queryKey` is always
+  // the current filters' key, so TanStack can only ever hand back this filter's
+  // data - which is what makes it safe to read even while the fetch is disabled
+  // or the debounce is settling. Checked before those two branches on purpose:
+  // the key carries no offset, so paging a result set lands here every time,
+  // and blanking a number already in hand would be a flicker for nothing.
+  const cached = query.isSuccess ? selectTotal(query.data) : null;
+
   let state: PaginatedTotalState;
   let total: number | null;
   if (inferred) {
     state = 'known';
     total = knownTotal;
+  } else if (cached !== null) {
+    state = 'known';
+    total = cached;
   } else if (!enabled) {
     state = 'idle';
     total = null;
   } else if (!settled) {
     state = 'settling';
     total = null;
-  } else if (query.isSuccess) {
-    state = 'known';
-    total = selectTotal(query.data);
   } else if (query.isError) {
     // A failed count leaves the placeholder standing. Never `0`.
+    state = 'unavailable';
+    total = null;
+  } else if (query.isSuccess) {
+    // Fetched, but `selectTotal` declined to read a number out of it - see its
+    // docblock. Unknown, not zero, and not the payload's own number.
     state = 'unavailable';
     total = null;
   } else {
@@ -279,16 +322,18 @@ export function usePaginatedTotal<TData = PaginatedTotalPayload>(
  */
 function useDelayedFlag(active: boolean, delayMs: number): boolean {
   const [elapsed, setElapsed] = useState(false);
-  const activeRef = useRef(active);
-  activeRef.current = active;
 
+  // No ref guard inside the timeout: the cleanup below clears the timer
+  // whenever `active` changes, so the callback cannot fire while inactive. A
+  // ref would also have to be written during render, which a render body must
+  // not do - the listings page deleted one for exactly that reason.
   useEffect(() => {
     if (!active) {
       setElapsed(false);
       return;
     }
     const timer = setTimeout(() => {
-      if (activeRef.current) setElapsed(true);
+      setElapsed(true);
     }, delayMs);
     return () => {
       clearTimeout(timer);

@@ -54,6 +54,54 @@ describe('ListPagination (#2945)', () => {
     expect(screen.getByTitle(/could not be loaded/i)).toBeInTheDocument();
   });
 
+  it('says a FAILED count failed, in visible text a screen reader can reach', () => {
+    // `pending` and `unavailable` both keep the `N+` placeholder. The hook goes
+    // to real trouble to keep them apart, and a `title` alone keeps neither
+    // promise: not reliably announced, absent on touch, hover-and-wait on
+    // desktop. Without visible text the distinction is a comment.
+    renderPagination({ total: null, totalState: 'unavailable', rowCount: 20 });
+    expect(screen.getByText(/count unavailable/i)).toBeInTheDocument();
+  });
+
+  it('does NOT say the count failed while it is merely still counting', () => {
+    renderPagination({ total: null, totalState: 'pending', rowCount: 20 });
+    expect(screen.queryByText(/count unavailable/i)).not.toBeInTheDocument();
+  });
+
+  it('is a labelled navigation landmark, and announces the total when it lands', () => {
+    const { rerender } = render(
+      <ListPagination
+        offset={0}
+        limit={20}
+        rowCount={20}
+        total={null}
+        totalState="pending"
+        showTotalLoader={false}
+        onOffsetChange={vi.fn()}
+      />
+    );
+
+    const pager = screen.getByRole('navigation', { name: 'Pagination' });
+    expect(pager).toBeInTheDocument();
+    // `aria-busy` on a non-live region announces nothing, so the summary is a
+    // polite live region: a screen-reader user learns that `20+` became a real
+    // number rather than being left with the placeholder.
+    expect(pager.querySelector('[aria-live="polite"]')).not.toBeNull();
+
+    rerender(
+      <ListPagination
+        offset={0}
+        limit={20}
+        rowCount={20}
+        total={1234}
+        totalState="known"
+        showTotalLoader={false}
+        onOffsetChange={vi.fn()}
+      />
+    );
+    expect(screen.getByText('1,234')).toBeInTheDocument();
+  });
+
   describe('per-affordance degradation', () => {
     it('enables Next from a FULL page with no total at all', async () => {
       // The whole benefit: Next needs no total, so it must not wait for one.

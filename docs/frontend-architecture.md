@@ -259,6 +259,10 @@ Some list totals are expensive. A paged read stops after its `LIMIT`; the `COUNT
 - **Delay the loader by ~150–200 ms** (the hook uses 175). At small row counts the total returns in about 11 ms, and a spinner that appears and vanishes inside that window is a flicker — worse than no state change at all. This is what keeps the change invisible on an install that never had the problem. Arm the delay on the fetch alone, never on the debounce, or a keystroke burst produces the very flash the delay exists to prevent.
 - **`20+`, never skeleton rows.** The rows are already on screen and only a number is missing; a skeleton claims content is missing and makes the page read as slower than it is. `inferTotalFromPage` goes further: a page that came back SHORT already carries its own exact total, so most small installs never request the count at all.
 
+**If your rows query keeps a placeholder, do not infer from it.** `placeholderData: keepPreviousData` is right for a table that should not blank on a filter change, and it means `query.data` is the PREVIOUS filter's page during every transition. `offset + rowCount` from that page states the old filter's size as the new one's - authoritatively, and while the correct answer may already be cached. Pass `query.isPlaceholderData` and skip the inference when it is true, as `useListingsTotal` does. The same precondition rules out inferring from a page whose rows the caller filters client-side.
+
+**`idle` and `unavailable` are different, and a surface must render them differently.** Both keep the placeholder, but only `unavailable` means the count was asked for and failed - and that has to reach the operator in visible, machine-readable text. A `title` alone is not reliably announced, never appears on touch, and needs a hover-and-wait on desktop; leaving the distinction there makes it a comment rather than a behaviour.
+
 **Pagination degrades per affordance, not as a block.** Disabling the whole pager until the total lands throws away most of the benefit:
 
 | Control | Available before the total |

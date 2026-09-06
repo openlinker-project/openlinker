@@ -200,7 +200,10 @@ describe('ProductsService', () => {
 
   describe('getVariantsByProductIds', () => {
     it('forwards the id list to the repository and returns the result', async () => {
-      const variants = [makeVariant(), makeVariant({ id: 'ol_variant_2', productId: 'ol_product_2' })];
+      const variants = [
+        makeVariant(),
+        makeVariant({ id: 'ol_variant_2', productId: 'ol_product_2' }),
+      ];
       variantRepo.findByProductIds.mockResolvedValue(variants);
 
       const result = await service.getVariantsByProductIds(['ol_product_1', 'ol_product_2']);
