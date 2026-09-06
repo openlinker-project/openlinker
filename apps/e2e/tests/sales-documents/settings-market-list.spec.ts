@@ -15,10 +15,10 @@
  * mockup actually depicts: the market section (mockup's four "Show state"
  * variants) and the per-country routing dialog it opens.
  *
- * The old "Connected providers" table (`SalesDocumentsPanel`) and its own
- * settings sub-page are RETIRED (the "opcja b" fallback retirement) — the
- * `config.invoicing.isPrimary` flag it edited is no longer consulted by
- * `AutoIssueTriggerService` at all.
+ * The "Connected providers" table (`SalesDocumentsPanel`) is DEMOTED below the
+ * market list rather than removed — it is the only surface that sets a
+ * connection's document kind, "goes first" and trigger model, and it is the
+ * mockup's own second section. This spec asserts the market half only.
  *
  * THE FOUR MOCKUP STATES map onto the shipped code's pure rules exactly
  * (`summarize-sales-document-markets.ts` + `sales-document-market-section.tsx`):

@@ -30,6 +30,7 @@
  */
 import { Client } from 'pg';
 import { resolveEnv } from '../config/env';
+import { assertSeedableDatabase } from './assert-seedable-database';
 
 /** Fixed connection ids — stable across seed runs, distinct from anything a real install would mint. */
 export const SEED_CONNECTION_IDS = {
@@ -76,6 +77,9 @@ function orderSnapshot(country: string, city: string, customerName: string): str
  * yet.
  */
 export async function seedSalesDocumentStates(): Promise<void> {
+  // #2809 review — this seed DELETEs before it writes; refuse a target that
+  // is not obviously a disposable stack unless the operator opted in.
+  assertSeedableDatabase('seedSalesDocumentStates');
   const env = resolveEnv();
   const client = new Client({ connectionString: env.databaseUrl });
   await client.connect();

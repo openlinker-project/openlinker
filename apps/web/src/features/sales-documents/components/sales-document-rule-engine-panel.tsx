@@ -13,13 +13,14 @@
  * and its "← Back to {country}" affordance, both of which switch the
  * dialog's country while it stays open.
  *
- * WIRED TO AUTO-ISSUE (#2173, fallback retired — "opcja b" decision):
- * `AutoIssueTriggerService` consults `evaluateSalesDocumentRules` ONLY. The
- * pre-#2170 operator-configured single-primary model
- * (`config.invoicing.isPrimary`) is no longer consulted at all — a country
- * with no rule-engine configuration always resolves to manual, never to a
- * connection picked via `isPrimary`. The old "Connected providers" page that
- * edited that flag is retired; there is nothing left for it to configure.
+ * WIRED TO AUTO-ISSUE (#2173): `AutoIssueTriggerService` consults
+ * `evaluateSalesDocumentRules` FIRST. Only when the engine reports
+ * `'no-configuration-for-country'` — or the order carries no delivery country
+ * at all — does it fall back to the pre-#2170 operator-configured
+ * single-primary model (`config.invoicing.isPrimary`), which is what the
+ * "Connected providers" table below this panel edits. Retiring that fallback
+ * is a separate change with its own ADR-041 amendment; it is deliberately not
+ * this panel's to assert.
  *
  * ONE LIST, NOT TWO (#2806 review, second pass): this used to compose the
  * market section ABOVE a second, separate `SalesDocumentCountryIndex` table

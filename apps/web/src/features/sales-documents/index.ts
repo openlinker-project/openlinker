@@ -7,6 +7,7 @@
  * for cross-feature consumers (#609).
  */
 export { SalesDocumentsTile } from './components/sales-documents-tile';
+export { SalesDocumentsPanel } from './components/sales-documents-panel';
 export { SalesDocumentRuleEnginePanel } from './components/sales-document-rule-engine-panel';
 
 export type {

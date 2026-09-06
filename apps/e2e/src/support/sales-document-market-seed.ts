@@ -30,6 +30,7 @@
  */
 import { Client } from 'pg';
 import { resolveEnv } from '../config/env';
+import { assertSeedableDatabase } from './assert-seedable-database';
 
 // Version(4)/variant(a) nibbles kept deliberately valid — `PUT
 // /sales-documents/country-defaults` validates `connectionId` with
@@ -67,6 +68,9 @@ function orderSnapshot(country: string, city: string, customerName: string): str
 }
 
 export async function seedSalesDocumentMarketOrders(): Promise<void> {
+  // #2809 review — this seed DELETEs before it writes; refuse a target that
+  // is not obviously a disposable stack unless the operator opted in.
+  assertSeedableDatabase('seedSalesDocumentMarketOrders');
   const env = resolveEnv();
   const client = new Client({ connectionString: env.databaseUrl });
   await client.connect();

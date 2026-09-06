@@ -68,7 +68,7 @@ export function summarizeSalesDocumentMarkets(
 ): SalesDocumentMarketSummary | null {
   if (rows.length === 0) return null;
 
-  const blocked = rows.filter(needsDecision);
+  const blocked = rows.filter((row) => needsDecision(row));
 
   if (blocked.length === 0) {
     return {

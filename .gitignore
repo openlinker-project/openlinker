@@ -61,9 +61,15 @@ Thumbs.db
 # E2E script screenshot output (apps/web/e2e/*.mjs, OUT_DIR)
 e2e-out/
 
-# Playwright spec screenshots (apps/e2e) — captured locally for manual
-# review/PR-comment attachment, never committed to the repo.
-apps/e2e/tests/**/__screenshots__/
+# Playwright screenshots and throwaway verification scripts (apps/e2e) —
+# captured locally for manual review / PR-comment attachment, never committed.
+# The pattern is deliberately wider than `__screenshots__/`: the first version
+# of this rule matched only that one spelling while the same commit added PNGs
+# under `screenshots/` (#2809 review, BLOCKING 1).
+apps/e2e/**/screenshots/
+apps/e2e/**/__screenshots__/
+apps/e2e/**/docshots/
+apps/e2e/verify-scratch/
 
 # Husky
 .husky/_
