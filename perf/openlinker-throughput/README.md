@@ -421,6 +421,62 @@ active use, for a number that still could not be published (the host is
 contended and pins no CPUs). The publishable figure is taken on #2854's
 stand by re-running this same, unmodified scenario.
 
+## F2 - stock propagation latency (#2848)
+
+Measures hop-by-hop how long a stock change made at the PrestaShop master
+takes to reach OpenLinker's own `inventory_items` row and to have a
+`marketplace.offerQuantity.update` job DISPATCHED toward the destination -
+never "delivered to the marketplace", which this stand cannot measure (see
+below). Deliberately NOT #2848's own stub-driven, cron-sweep-based design:
+#2846 (the mutable-stock PrestaShop stub) does not exist in this worktree,
+so this scenario drives the REAL `lab-prestashop` container through the
+real webhook path (`master.inventory.syncByExternalId`, the `realtime` lane
+per #2594's split - not the sweep-triggered `*.syncFromSweep`/`*.syncBatch`
+children #2848 describes).
+
+```
+bash scenarios/f2-stock-propagation.sh --smoke   # driver self-test
+bash scenarios/f2-stock-propagation.sh           # strict measurement
+```
+
+Three load-bearing findings, each root-caused live rather than assumed -
+see `results/results-F2-*.md` for the full evidence and the exact source
+lines:
+
+- **The PrestaShop webservice cannot fire `actionUpdateQuantity` at all on
+  PrestaShop 9.0.2.** `stock_availables` PUT is a generic `ObjectModel::update()`
+  call; the only `Hook::exec('actionUpdateQuantity', ...)` call site is
+  inside the static `StockAvailable::setQuantity()` helper, reachable in
+  core only from the CSV importer and the back-office "Quantities" tab. So
+  `drivers/ps-set-quantity.php` drives t0 through that helper directly via
+  CLI, not through the webservice API.
+- **The module's response-flush fast path (#2624) never fires on this
+  image** (SAPI is `apache2handler`/mod_php; `fastcgi_finish_request()`
+  does not exist there), so every delivery on this stand depends entirely
+  on the harness manually calling the module's cron controller - which
+  means the outbox-delivery hop this scenario reports is an EXCLUDED floor,
+  never a production cron-cadence estimate. Read the report's own headline
+  section before quoting a "shop to OpenLinker" total from this scenario.
+- **The cron controller answers HTTP 500 on a successful delivery** - a
+  real module bug (`controllers/front/cron.php`'s success branch never
+  calls `exit`, so PrestaShop falls through into rendering a page behind
+  the JSON body), escalated to a fatal by this stand's own unwritable theme
+  asset-cache directory. Every hop in this scenario is computed from
+  PrestaShop's own `delivered_at` column and OpenLinker's own timestamps,
+  never from the HTTP status; `drivers/stock-control.sh`'s `sc_drain_body_ok()`
+  asserts positively on the JSON body instead.
+
+Destination-write latency (hop 5) is **not measurable** on this stand:
+both Allegro connections have `OfferManager` disabled by `bootstrap.sh`'s
+own design (a different scenario's, F1's, concern), and no Allegro stub
+(#2856/PR #2876) is wired into this compose file - see the report's own
+"Hop 5" section for exactly what a future run needs to close that gap.
+
+This scenario calls `guard_stand_exclusive` (see above) as its very first
+step, before touching the shared PrestaShop module config or the worker's
+`WORKER_RUNNER_ENABLED` posture - both of which it mutates before the
+measurement window even opens.
+
 ## Not built here
 
 No config format, no driver abstraction, no plugin model - this is
