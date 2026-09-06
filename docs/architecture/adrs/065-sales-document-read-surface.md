@@ -43,6 +43,24 @@ Two rules follow, and they are the load-bearing half:
 **Migration path:**
 - Additive. Existing invoice and fiscal reads keep their callers; the projection is a new read consumed by the three redesigned surfaces.
 
+## Amendment (#2886) — the inherited volume argument, re-checked
+
+The Alternatives section rejects a materialized read model *"at this volume"*, citing
+[ADR-036](./036-cross-context-read-model-joins.md) and
+[ADR-039](./039-order-analytics-read-model-persistence-strategy.md). #2886 re-examined that after
+the programme-wide persona change to ~1000 orders/day
+(`product-spec-oms-wave3b-scan-pick-pack.md` § 1.1), and the borrowed argument survives the change
+**for a reason this ADR should state rather than inherit**: the projection is read either for ONE
+order (the detail panel) or **batched across the ids of ONE page** of the orders list — the
+`getEarliestOrderDateByConnection` batching precedent (#2083) named in the Consequences. Neither
+read scales with the size of the table, so a table growing tenfold does not move either cost.
+
+That is a stronger property than the one it borrowed. ADR-039's premise was corpus size, which the
+persona change genuinely invalidated; this one is per-request row count, which the persona change
+does not touch at all. **Decision unchanged, and its justification no longer depends on a number
+that moved.**
+
+
 ## References
 
 - Related issues: #2501, #2513, #2514, #2515, #2516, #2517
