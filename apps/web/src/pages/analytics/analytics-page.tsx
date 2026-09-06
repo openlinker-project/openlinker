@@ -116,10 +116,25 @@ export function AnalyticsPage(): ReactElement {
   // current view/session; absent one, the persisted default applies.
   const settingsQuery = useAnalyticsSettingsQuery();
   const netGrossBasisParam = searchParams.get('netGrossBasis');
-  const netGrossBasis: NetGrossBasis =
+  // `null` means NOT KNOWN YET, never "gross" (#2668 review, finding 3/6).
+  // `?? 'gross'` collapsed "the persisted default has not arrived" into
+  // "gross", so an operator whose saved default is `net` saw Revenue, AOV,
+  // median and both table revenue columns render VAT-INCLUSIVE for the whole
+  // `settingsQuery` in-flight window and then flip — money figures an
+  // operator may read and act on in the meantime. This is the `AccessGate`
+  // rule (`frontend-architecture.md § Access Control And UI Visibility`,
+  // "'not known yet' is not 'denied'") applied to a value rather than a
+  // permission. `displayCurrency`/`rateBasis` are immune because they are
+  // URL-only with no persisted default; `netGrossBasis` is the one axis
+  // carrying both, which is why only it needs the third state.
+  const netGrossBasis: NetGrossBasis | null =
     netGrossBasisParam === 'net' || netGrossBasisParam === 'gross'
       ? netGrossBasisParam
-      : settingsQuery.data?.netGrossBasis ?? 'gross';
+      : settingsQuery.isSuccess
+        ? settingsQuery.data.netGrossBasis
+        : settingsQuery.isError
+          ? 'gross'
+          : null;
 
   function handleNetGrossBasisChange(next: NetGrossBasis): void {
     const nextParams = new URLSearchParams(searchParams);
@@ -196,7 +211,10 @@ export function AnalyticsPage(): ReactElement {
               displayCurrency={displayCurrency}
               onChange={handleDisplayCurrencyChange}
             />
-            <AnalyticsNetGrossToggle value={netGrossBasis} onChange={handleNetGrossBasisChange} />
+            <AnalyticsNetGrossToggle
+              value={netGrossBasis}
+              onChange={handleNetGrossBasisChange}
+            />
           </div>
         }
       />
@@ -243,27 +261,44 @@ export function AnalyticsPage(): ReactElement {
             />
           ) : (
             <>
-              <AnalyticsKpiStrip
-                filters={salesFilters}
-                connections={trustQuery.data.connections}
-                coverage={coverageQuery.data}
-                onOpenCategory={setOpenCoverageCategory}
-                netGrossBasis={netGrossBasis}
-              />
-              <ChannelSalesTable
-                filters={salesFilters}
-                coverage={coverageQuery.data}
-                coverageFilters={coverageFilters}
-                onOpenCategory={setOpenCoverageCategory}
-                netGrossBasis={netGrossBasis}
-              />
-              <ProductSalesTable
-                filters={salesFilters}
-                coverage={coverageQuery.data}
-                coverageFilters={coverageFilters}
-                onOpenCategory={setOpenCoverageCategory}
-                netGrossBasis={netGrossBasis}
-              />
+              {/* Every figure below is denominated by `netGrossBasis`, so
+                  none of them renders until the basis is KNOWN (#2668
+                  review, finding 3/6) — an `aria-busy` placeholder rather
+                  than a plausible wrong number, the discipline
+                  `RichTextEditor` already uses while an adapter's declared
+                  description format is in flight. */}
+              {netGrossBasis === null ? (
+                <div aria-busy="true">
+                  <LoadingState
+                    title="Loading sales figures"
+                    message="Resolving your saved VAT basis…"
+                  />
+                </div>
+              ) : (
+                <>
+                  <AnalyticsKpiStrip
+                    filters={salesFilters}
+                    connections={trustQuery.data.connections}
+                    coverage={coverageQuery.data}
+                    onOpenCategory={setOpenCoverageCategory}
+                    netGrossBasis={netGrossBasis}
+                  />
+                  <ChannelSalesTable
+                    filters={salesFilters}
+                    coverage={coverageQuery.data}
+                    coverageFilters={coverageFilters}
+                    onOpenCategory={setOpenCoverageCategory}
+                    netGrossBasis={netGrossBasis}
+                  />
+                  <ProductSalesTable
+                    filters={salesFilters}
+                    coverage={coverageQuery.data}
+                    coverageFilters={coverageFilters}
+                    onOpenCategory={setOpenCoverageCategory}
+                    netGrossBasis={netGrossBasis}
+                  />
+                </>
+              )}
             </>
           )}
           {/* Coverage gaps and stock-at-risk are listing facts, not order

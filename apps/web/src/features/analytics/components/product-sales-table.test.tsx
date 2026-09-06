@@ -656,6 +656,8 @@ describe('ProductSalesTable', () => {
             cancelledValue: 0,
             cancelledUnconvertedCount: 0,
             cancelledUnconvertedValue: 0,
+            cancelledNetExcludedCount: 0,
+            cancelledNetExcludedValue: 0,
             unconvertedCount: 0,
             unconvertedValue: 0,
             unconvertedCurrency: null,

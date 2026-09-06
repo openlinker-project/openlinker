@@ -22,6 +22,15 @@ interface AnalyticsCurrencyPickerProps {
 
 const NATIVE_VALUE = '';
 
+/*
+ * The no-override option reads `No conversion · {reportingCurrency}`, NOT
+ * "Current rate ·" (#2668 review, SUGGESTION 9). "Current rate" is the name of
+ * a conversion MODE everywhere else on this page — `rateBasis:
+ * 'current-rate'`, the "Rate basis" control in the settings dialog, the
+ * convert-note's own "Current rate:" heading — so using it for the option that
+ * performs no conversion at all put one phrase on two axes. The label now
+ * states the axis it is on: whether the page converts, and into what.
+ */
 export function AnalyticsCurrencyPicker({
   reportingCurrency,
   displayCurrency,
@@ -41,7 +50,7 @@ export function AnalyticsCurrencyPicker({
         }}
       >
         <option value={NATIVE_VALUE}>
-          {reportingCurrency ? `Current rate · ${reportingCurrency}` : 'Reporting currency'}
+          {reportingCurrency ? `No conversion · ${reportingCurrency}` : 'Reporting currency'}
         </option>
         {options.map((code) => (
           <option key={code} value={code}>

@@ -711,10 +711,21 @@ describe('OrderLineItemRepository', () => {
       expect(result.size).toBe(2);
     });
 
-    it('returns EVERY distinct product an order touches, not just the first line (#2799 review BLOCKING 1)', async () => {
-      // The bug this guards against: a DISTINCT ON collapsed a multi-product
-      // order to its single lowest-lineNumber line, silently dropping every
-      // other product the order affected from the exclusion-map cross-reference.
+    it('maps every grouped row an order returns, never only the first (the JS half of #2799 review BLOCKING 1)', async () => {
+      // SCOPE, stated because the previous title over-claimed (#2668 review,
+      // finding 10). The query builder here is fully mocked and `getRawMany`
+      // is stubbed with rows that are ALREADY grouped, so this exercises the
+      // JS grouping loop and nothing else — reverting the SQL to the
+      // `DISTINCT ON` that caused #2799's BLOCKING finding leaves this test
+      // green, because a `DISTINCT ON` would simply return fewer rows for
+      // the stub to map.
+      //
+      // The REAL regression guard for that finding is
+      // `apps/api/test/integration/sales-analytics-aggregates.int-spec.ts`'s
+      // "returns every distinct product an order touches, not just its first
+      // line", which runs the actual SQL against real Postgres. This case is
+      // kept because the mapping loop is worth covering on its own — it just
+      // must not be read as coverage of the SQL.
       const qb = makeGroupedQb([
         { order_record_id: 'order-1', product_id: 'ol_product_1', variant_id: 'ol_variant_1' },
         { order_record_id: 'order-1', product_id: 'ol_product_2', variant_id: null },

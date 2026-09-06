@@ -29,6 +29,7 @@ import type {
   VariantRankingRow,
 } from '../../../domain/types/top-products.types';
 import {
+  grossRevenueLineAmountSql,
   netSalesLineNetAmountSql,
   netSalesLineNetEligibleConditionSql,
 } from '../../../domain/types/net-sales-tax-rate.types';
@@ -99,6 +100,17 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       )
       .where(`rec."recordStatus" = 'ready'`)
       .andWhere('rec."cancelledAt" IS NULL')
+      // `totalAmount IS NOT NULL` aligns this read's population with the two
+      // order-level scopes (#2668 review, SUGGESTION 11). Both
+      // `applySalesAnalyticsScope` and `applyTopProductsScope` apply it, so
+      // without it an order with no resolvable total contributed units to the
+      // channel table while contributing neither an order nor revenue beside
+      // them — three predicates meant to describe ONE population, which is
+      // exactly what this method's own docblock says it keeps in agreement.
+      // `rec."placedAt" IS NOT NULL` is deliberately still not repeated: the
+      // `li."placedAt"` range predicate below already excludes a NULL, since
+      // that column is denormalized from the parent order at write time.
+      .andWhere('rec."totalAmount" IS NOT NULL')
       .andWhere('li."placedAt" >= :salesFrom', { salesFrom: filters.from })
       .andWhere('li."placedAt" < :salesTo', { salesTo: filters.to })
       .setParameter('currentReportingCurrency', currentReportingCurrency)
@@ -168,6 +180,7 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
     const {
       stampedNonZero,
       unconvertedOrZeroTotal,
+      lineGrossAmount,
       lineNetAmount,
       stampedNonZeroKnownRate,
       stampedNonZeroUnknownRate,
@@ -179,11 +192,11 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       .select('li.productId', 'product_id')
       .addSelect('COALESCE(SUM(li."quantity"), 0)', 'units')
       .addSelect(
-        `COALESCE(SUM(li."unitPrice" * li."quantity" * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZero}), 0)`,
+        `COALESCE(SUM((${lineGrossAmount}) * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZero}), 0)`,
         'revenue'
       )
       .addSelect(
-        `COALESCE(SUM(li."unitPrice" * li."quantity") FILTER (WHERE ${unconvertedOrZeroTotal}), 0)`,
+        `COALESCE(SUM(${lineGrossAmount}) FILTER (WHERE ${unconvertedOrZeroTotal}), 0)`,
         'unconverted_revenue'
       )
       .addSelect(
@@ -206,7 +219,7 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
         'net_revenue'
       )
       .addSelect(
-        `COALESCE(SUM(li."unitPrice" * li."quantity" * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZeroUnknownRate}), 0)`,
+        `COALESCE(SUM((${lineGrossAmount}) * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZeroUnknownRate}), 0)`,
         'net_excluded_revenue'
       )
       .addSelect(`COUNT(*) FILTER (WHERE ${stampedNonZeroUnknownRate})`, 'net_excluded_line_count')
@@ -286,6 +299,7 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
     const {
       stampedNonZero,
       unconvertedOrZeroTotal,
+      lineGrossAmount,
       lineNetAmount,
       stampedNonZeroKnownRate,
       stampedNonZeroUnknownRate,
@@ -298,11 +312,11 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       .addSelect('li.sourceConnectionId', 'source_connection_id')
       .addSelect('COALESCE(SUM(li."quantity"), 0)', 'units')
       .addSelect(
-        `COALESCE(SUM(li."unitPrice" * li."quantity" * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZero}), 0)`,
+        `COALESCE(SUM((${lineGrossAmount}) * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZero}), 0)`,
         'revenue'
       )
       .addSelect(
-        `COALESCE(SUM(li."unitPrice" * li."quantity") FILTER (WHERE ${unconvertedOrZeroTotal}), 0)`,
+        `COALESCE(SUM(${lineGrossAmount}) FILTER (WHERE ${unconvertedOrZeroTotal}), 0)`,
         'unconverted_revenue'
       )
       .addSelect(
@@ -321,7 +335,7 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
         'net_revenue'
       )
       .addSelect(
-        `COALESCE(SUM(li."unitPrice" * li."quantity" * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZeroUnknownRate}), 0)`,
+        `COALESCE(SUM((${lineGrossAmount}) * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZeroUnknownRate}), 0)`,
         'net_excluded_revenue'
       )
       .addSelect(`COUNT(*) FILTER (WHERE ${stampedNonZeroUnknownRate})`, 'net_excluded_line_count')
@@ -383,6 +397,7 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
     const {
       stampedNonZero,
       unconvertedOrZeroTotal,
+      lineGrossAmount,
       lineNetAmount,
       stampedNonZeroKnownRate,
       stampedNonZeroUnknownRate,
@@ -394,11 +409,11 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       .select('li.variantId', 'variant_id')
       .addSelect('COALESCE(SUM(li."quantity"), 0)', 'units')
       .addSelect(
-        `COALESCE(SUM(li."unitPrice" * li."quantity" * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZero}), 0)`,
+        `COALESCE(SUM((${lineGrossAmount}) * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZero}), 0)`,
         'revenue'
       )
       .addSelect(
-        `COALESCE(SUM(li."unitPrice" * li."quantity") FILTER (WHERE ${unconvertedOrZeroTotal}), 0)`,
+        `COALESCE(SUM(${lineGrossAmount}) FILTER (WHERE ${unconvertedOrZeroTotal}), 0)`,
         'unconverted_revenue'
       )
       .addSelect(
@@ -421,7 +436,7 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
         'net_revenue'
       )
       .addSelect(
-        `COALESCE(SUM(li."unitPrice" * li."quantity" * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZeroUnknownRate}), 0)`,
+        `COALESCE(SUM((${lineGrossAmount}) * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZeroUnknownRate}), 0)`,
         'net_excluded_revenue'
       )
       .addSelect(`COUNT(*) FILTER (WHERE ${stampedNonZeroUnknownRate})`, 'net_excluded_line_count')
@@ -480,6 +495,7 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
     const {
       stampedNonZero,
       unconvertedOrZeroTotal,
+      lineGrossAmount,
       lineNetAmount,
       stampedNonZeroKnownRate,
       stampedNonZeroUnknownRate,
@@ -492,11 +508,11 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       .addSelect('li.sourceConnectionId', 'source_connection_id')
       .addSelect('COALESCE(SUM(li."quantity"), 0)', 'units')
       .addSelect(
-        `COALESCE(SUM(li."unitPrice" * li."quantity" * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZero}), 0)`,
+        `COALESCE(SUM((${lineGrossAmount}) * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZero}), 0)`,
         'revenue'
       )
       .addSelect(
-        `COALESCE(SUM(li."unitPrice" * li."quantity") FILTER (WHERE ${unconvertedOrZeroTotal}), 0)`,
+        `COALESCE(SUM(${lineGrossAmount}) FILTER (WHERE ${unconvertedOrZeroTotal}), 0)`,
         'unconverted_revenue'
       )
       .addSelect(
@@ -515,7 +531,7 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
         'net_revenue'
       )
       .addSelect(
-        `COALESCE(SUM(li."unitPrice" * li."quantity" * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZeroUnknownRate}), 0)`,
+        `COALESCE(SUM((${lineGrossAmount}) * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZeroUnknownRate}), 0)`,
         'net_excluded_revenue'
       )
       .addSelect(`COUNT(*) FILTER (WHERE ${stampedNonZeroUnknownRate})`, 'net_excluded_line_count')
@@ -570,6 +586,7 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
   private buildTopProductsSqlFragments(includeBackfilledPreRollout = false): {
     stampedNonZero: string;
     unconvertedOrZeroTotal: string;
+    lineGrossAmount: string;
     lineNetAmount: string;
     stampedNonZeroKnownRate: string;
     stampedNonZeroUnknownRate: string;
@@ -584,6 +601,26 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
     // NULL whenever any row's reportingCurrency mismatched).
     const unconvertedOrZeroTotal =
       '(rec."reportingCurrency" IS DISTINCT FROM :reportingCurrency OR rec."totalAmount" = 0)';
+
+    // GROSS (VAT-inclusive) amount for a LINE — the exact helper #2892 moved
+    // the headline GMV onto and #2906 moved the gross median onto (#2668
+    // review, BLOCKING 1). This file previously used a raw
+    // `li."unitPrice" * li."quantity"`, which is the NET figure whenever the
+    // parent order is net-priced: `prestashop-order.mapper.ts` and
+    // `woocommerce-order-source.adapter.ts` both emit
+    // `taxTreatment: 'exclusive'`, i.e. two of the four shipped order sources
+    // and typically a merchant's primary channel. The result was the Top
+    // Products table reporting an un-grossed figure directly beneath a KPI
+    // strip reporting a grossed-up one, both labelled the same basis — a
+    // ~23% divergence between two numbers on one page, which is precisely the
+    // symptom #2908 was opened for. Net mode was always correct, so the bug
+    // was toggle-dependent and easy to miss.
+    const lineGrossAmount = grossRevenueLineAmountSql(
+      'li."unitPrice"',
+      'li."quantity"',
+      'li."taxRate"',
+      'rec."taxTreatment"'
+    );
 
     // Net-sales (VAT-exclusive) eligibility for a LINE — this read already
     // operates at line grain, so unlike #1987's order-level aggregates no
@@ -604,6 +641,7 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
     return {
       stampedNonZero,
       unconvertedOrZeroTotal,
+      lineGrossAmount,
       lineNetAmount,
       stampedNonZeroKnownRate: `${stampedNonZero} AND ${netEligibleCondition}`,
       stampedNonZeroUnknownRate: `${stampedNonZero} AND NOT ${netEligibleCondition}`,

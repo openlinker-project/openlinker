@@ -82,7 +82,25 @@ test.describe('analytics mockup parity (#2482)', () => {
     poll,
   }, testInfo) => {
     const ps = buildPrestashopWebserviceClient(world);
-    test.skip(!ps, 'needs OL_PS_WEBSERVICE_KEY (+ a resolvable PS base URL) to seed real orders');
+    // FAIL in CI, skip only locally (#2668 review, IMPORTANT 4).
+    //
+    // This spec is the epic's declared Phase-9 merge gate, and a gate that
+    // cannot fail is not one: an unconditional `test.skip` on a missing env
+    // var reads green forever, so a run with the credential absent was
+    // indistinguishable from a run that verified every mockup state. A local
+    // developer without the PrestaShop key still skips — there is nothing they
+    // can do about it and failing would just be noise — but in CI the absence
+    // is a misconfiguration of the job, which must be loud.
+    if (!ps) {
+      const reason =
+        'analytics mockup-parity needs OL_PS_WEBSERVICE_KEY (+ a resolvable PS base URL) to seed real orders';
+      if (process.env.CI) {
+        throw new Error(
+          `${reason}. Refusing to skip in CI — this spec is the #2482 Phase-9 gate, and skipping it silently would report the gate as satisfied.`
+        );
+      }
+      test.skip(true, reason);
+    }
 
     // The mockup (a static `file://` document) and the real /analytics app
     // (a live page navigation) must NOT share one tab: `pages.analyticsMockup`
@@ -205,6 +223,26 @@ test.describe('analytics mockup parity (#2482)', () => {
           pages.analyticsMockup.regionFor('converted'),
           page,
           'converted',
+        );
+      });
+
+      await test.step('net-basis', async () => {
+        // The Net/Gross toggle changes EVERY money figure on the page, so it
+        // needs its own parity step (#2668 review, IMPORTANT 4). The mockup's
+        // DEFAULT renders the gross basis — GMV headline, Net sales qualifier
+        // — matching the shipped default in `analytics-page.tsx`; this state
+        // is the mirror image.
+        await pages.analyticsMockup.gotoState('net-basis');
+        await pages.analytics.goto({ from: range.from, to: range.to, netGrossBasis: 'net' });
+        // The primary headline is Net sales and GMV has moved to the
+        // qualifier row — the swap #2908 wired end to end.
+        await expect(page.locator('.kpi-card').first()).toContainText('Net sales');
+        await expect(page.locator('.kpi-card').first()).toContainText('GMV');
+        await captureBoth(
+          testInfo,
+          pages.analyticsMockup.regionFor('net-basis'),
+          page,
+          'net-basis',
         );
       });
 

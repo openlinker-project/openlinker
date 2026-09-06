@@ -18,9 +18,12 @@
  *  - `'current-rate'` (default): groups the two native-currency buckets this
  *    read model already tracks per row — the reporting-currency-stamped
  *    revenue bucket and, when present, the still-unconverted bucket — and
- *    converts each at today's rate. This is the finest native-currency
- *    breakdown available at THIS read model's granularity; a full per-order
- *    breakdown would need a new query and is out of scope here.
+ *    converts the stamped one at today's rate. The unconverted bucket is
+ *    REPORTED in the breakdown and deliberately NOT summed into the converted
+ *    total (#2668 review, BLOCKING 1 — see `buildNativeCurrencyAmounts`).
+ *    This is the finest native-currency breakdown available at THIS read
+ *    model's granularity; a full per-order breakdown would need a new query
+ *    and is out of scope here.
  *  - `'order-date'`: converts the already-aggregated revenue total in one
  *    shot, per `OrderDateConversionInput`'s own doc comment (which names
  *    `SalesAnalyticsHeadline.revenue` as its intended input).
@@ -145,23 +148,32 @@ export class SalesAnalyticsController {
     // guard for every pre-#2459 caller.
     if (query.displayCurrency !== undefined) {
       const rateBasis: DisplayCurrencyRateBasis = query.rateBasis ?? 'current-rate';
-      // Run concurrently rather than one sequential await per row (#2668
-      // review, finding 12) — every row resolves the SAME (source, from, to,
-      // rateDate) pair since `resolveCurrentRateDate` is `now`-derived, so a
-      // channel-heavy response no longer pays N sequential round-trips
-      // (including a real external NBP/ECB call the first time of day) in
-      // series on the landing page. This does not dedupe the underlying rate
-      // lookup itself — see the port's own caching for that — it only stops
-      // paying its latency N times over.
-      const [headlineConversion, ...channelConversions] = await Promise.all([
-        this.buildDisplayCurrencyConversion(analytics.headline, query.displayCurrency, rateBasis),
-        ...analytics.channels.map((channel) =>
-          this.buildDisplayCurrencyConversion(channel, query.displayCurrency as string, rateBasis)
-        ),
-      ]);
-      dto.headline.displayCurrencyConversion = headlineConversion;
-      for (let i = 0; i < dto.channels.length; i += 1) {
-        dto.channels[i].displayCurrencyConversion = channelConversions[i];
+      // SEQUENTIAL, and the headline first (#2668 review, finding 9) — this
+      // reverses the `Promise.all` an earlier round introduced.
+      //
+      // Every row here resolves the SAME `(source, from, to, rateDate)` pair:
+      // `resolveCurrentRateDate` is `now`-derived, and every channel's
+      // `currency` is the one system-wide reporting currency. But
+      // `ICurrencyRateService.getRateFor` is get-or-create against the
+      // `exchange_rates` registry — it calls the provider "only if it is not
+      // already registered" — so fanning the calls out does not share the
+      // lookup, it races it: on the first request of the day a cold registry
+      // meant N+1 concurrent NBP/ECB calls plus N+1 racing inserts against
+      // `UQ` on `(source, from, to, rateDate)`. Awaiting the headline first
+      // registers the row, and every channel after it reads that row instead.
+      // This is also what `DisplayCurrencyConversionService`'s own inner loop
+      // says it does, in as many words; the two halves now agree.
+      dto.headline.displayCurrencyConversion = await this.buildDisplayCurrencyConversion(
+        analytics.headline,
+        query.displayCurrency,
+        rateBasis
+      );
+      for (let i = 0; i < analytics.channels.length; i += 1) {
+        dto.channels[i].displayCurrencyConversion = await this.buildDisplayCurrencyConversion(
+          analytics.channels[i],
+          query.displayCurrency,
+          rateBasis
+        );
       }
     }
 
@@ -213,6 +225,21 @@ export class SalesAnalyticsController {
    * {@link MIXED_NATIVE_CURRENCIES_LABEL} rather than silently dropped: this
    * read model doesn't retain which individual currencies made up that sum,
    * but it can and must still surface that unresolved money exists.
+   *
+   * **The unconverted bucket is REPORTED but never COUNTED** (#2668 review,
+   * BLOCKING 1). It carries `excludedFromTotal: true`, so it appears in
+   * `CurrentRateConversionResult.breakdown` and contributes nothing to
+   * `convertedTotal` — the figure the KPI strip renders as GMV. Three
+   * separate rules say it must not be in that number:
+   * `architecture-overview.md § 4 Orders` and ADR-040 call the unstamped
+   * slice "informational, may mix currencies — never a KPI — rather than
+   * silently mixed in"; it is a shipping-INCLUSIVE `SUM(totalAmount)`, so
+   * summing it partly undid #2892's move of GMV onto merchandise-only line
+   * amounts as soon as a display currency was picked; and the KPI strip's own
+   * "N orders not reflected in revenue" caveat was rendering over a number
+   * that reflected them. It also restores headline GMV === Σ channel GMV,
+   * since `channel-sales-table.tsx` converts via the per-bucket `appliedRate`
+   * and never included this bucket.
    */
   private buildNativeCurrencyAmounts(row: CurrencyBucketRow): NativeCurrencyAmount[] {
     const amounts: NativeCurrencyAmount[] = [];
@@ -224,12 +251,14 @@ export class SalesAnalyticsController {
         currency: row.unconvertedCurrency,
         amount: row.unconvertedValue,
         count: row.unconvertedCount,
+        excludedFromTotal: true,
       });
     } else if (row.unconvertedCount > 0) {
       amounts.push({
         currency: MIXED_NATIVE_CURRENCIES_LABEL,
         amount: row.unconvertedValue,
         count: row.unconvertedCount,
+        excludedFromTotal: true,
       });
     }
     return amounts;

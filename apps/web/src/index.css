@@ -4549,6 +4549,31 @@ a.delivery-rider-banner__button:focus-visible {
   .toolbar-chip {
     min-height: 28px; /* badges stay compact — not primary tap targets */
   }
+
+  /*
+   * Inline marks carved down explicitly (#2668 review, SUGGESTION 12).
+   *
+   * `.gap-mark--clickable` and `.analytics-coverage-alert-badge__trigger` are
+   * real `<button>`s rendered INSIDE running text — a dagger beside "GMV" in a
+   * KPI card label, a badge beside the page title, a mark inside a table
+   * header cell. They therefore inherit the 44px floor above and blow a 44px
+   * box into the middle of a line, wrecking the label's baseline at 360px.
+   *
+   * They keep a real tap target through generous padding rather than a box:
+   * the surrounding label is the affordance, and the mark itself is a
+   * secondary "why is this figure low?" disclosure, not a primary action —
+   * the same reasoning the badge carve-down above states.
+   */
+  .gap-mark--clickable,
+  .analytics-coverage-alert-badge__trigger {
+    min-height: 0;
+    min-width: 0;
+  }
+
+  .gap-mark--clickable {
+    padding: var(--space-1);
+    margin: calc(var(--space-1) * -1);
+  }
 }
 
 /*

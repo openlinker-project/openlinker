@@ -83,6 +83,7 @@ describe('DisplayCurrencyConversionService', () => {
             derivation: 'direct',
             sourceRef: '149/A/NBP/2026',
           },
+          excludedFromTotal: false,
         },
         {
           currency: 'XXX',
@@ -90,8 +91,85 @@ describe('DisplayCurrencyConversionService', () => {
           nativeTotal: 50,
           convertedTotal: null,
           appliedRate: null,
+          excludedFromTotal: false,
         },
       ]);
+    });
+
+    it('should report an excludedFromTotal bucket in the breakdown while contributing NOTHING to the total (#2668 review, BLOCKING 1)', async () => {
+      rates.getRateFor.mockResolvedValue(storedRate());
+
+      const result = await service.convertAtCurrentRate(
+        {
+          amounts: [
+            { currency: 'PLN', amount: 100, count: 1 },
+            // The still-unconverted slice: a shipping-INCLUSIVE
+            // `SUM(totalAmount)` over orders ADR-040 calls "informational …
+            // never a KPI". Reported, never counted.
+            { currency: 'PLN', amount: 40, count: 2, excludedFromTotal: true },
+          ],
+          displayCurrency: 'EUR',
+        },
+        NOW
+      );
+
+      // 100 * 0.25 — the excluded 40 contributes nothing.
+      expect(result.convertedTotal).toBe(25);
+      // NOT reported as unresolved: "we chose not to count this" and "we could
+      // not convert this" are different statements, and the operator-facing
+      // copy behind `unresolvedNativeCurrencies` makes the second one.
+      expect(result.unresolvedNativeCurrencies).toEqual([]);
+      // No provider call is spent on a bucket that cannot move a KPI.
+      expect(rates.getRateFor).toHaveBeenCalledTimes(1);
+      expect(result.breakdown).toEqual([
+        {
+          currency: 'PLN',
+          orderCount: 1,
+          nativeTotal: 100,
+          convertedTotal: 25,
+          appliedRate: {
+            from: 'PLN',
+            to: 'EUR',
+            rate: '0.25',
+            rateDate: '2026-06-09',
+            source: 'nbp',
+            derivation: 'direct',
+            sourceRef: '149/A/NBP/2026',
+          },
+          excludedFromTotal: false,
+        },
+        {
+          currency: 'PLN',
+          orderCount: 2,
+          nativeTotal: 40,
+          convertedTotal: null,
+          appliedRate: null,
+          excludedFromTotal: true,
+        },
+      ]);
+    });
+
+    it('should NOT merge an excluded bucket into a counted one that shares its currency (#2668 review, BLOCKING 1)', async () => {
+      rates.getRateFor.mockResolvedValue(storedRate());
+
+      // The common real shape: the unstamped slice is denominated in the SAME
+      // currency the stamped one reports in. Grouping on the currency alone
+      // would merge them, so the excluded money would be summed into
+      // `convertedTotal` through the counted group — the exclusion silently a
+      // no-op exactly where it matters most.
+      const result = await service.convertAtCurrentRate(
+        {
+          amounts: [
+            { currency: 'PLN', amount: 100, count: 1 },
+            { currency: 'PLN', amount: 1_000_000, count: 1, excludedFromTotal: true },
+          ],
+          displayCurrency: 'EUR',
+        },
+        NOW
+      );
+
+      expect(result.convertedTotal).toBe(25);
+      expect(result.breakdown).toHaveLength(2);
     });
 
     it('should group multiple orders sharing a native currency into one rate lookup', async () => {
@@ -134,7 +212,14 @@ describe('DisplayCurrencyConversionService', () => {
       // An identity, not a rate (#2778) — no lookup happened, so nothing
       // should be reported as having produced this figure.
       expect(result.breakdown).toEqual([
-        { currency: 'EUR', orderCount: 1, nativeTotal: 100, convertedTotal: 100, appliedRate: null },
+        {
+          currency: 'EUR',
+          orderCount: 1,
+          nativeTotal: 100,
+          convertedTotal: 100,
+          appliedRate: null,
+          excludedFromTotal: false,
+        },
       ]);
     });
 
@@ -207,6 +292,7 @@ describe('DisplayCurrencyConversionService', () => {
         nativeTotal: 75,
         convertedTotal: null,
         appliedRate: null,
+        excludedFromTotal: false,
       });
       // Never sent to the rate provider — there is no single currency to
       // resolve a rate for.

@@ -99,6 +99,19 @@ export interface SalesAnalyticsHeadline {
   cancelledUnconvertedCount: number;
   /** Native-currency sum for `cancelledUnconvertedCount` — informational only, may mix currencies. */
   cancelledUnconvertedValue: number;
+  /**
+   * Cancelled orders excluded from `cancelledValue` because a line's tax rate
+   * is unresolvable (#2910). The backend has always sent this; the KPI strip
+   * did not read it (#2668 review, SUGGESTION 12), which left the one card
+   * whose COUNT and VALUE cover different cohorts — `cancelledCount` is the
+   * whole cancelled set, `cancelledValue` only its stamped ∧ net-eligible
+   * subset — silently divergent. The Cancellations card now renders a gap
+   * mark on "Cancelled value" whenever this or `cancelledUnconvertedCount`
+   * is non-zero.
+   */
+  cancelledNetExcludedCount: number;
+  /** Native-currency sum for `cancelledNetExcludedCount` — informational only, may mix currencies. */
+  cancelledNetExcludedValue: number;
   /** Non-cancelled orders in range with no reporting-currency stamp yet — not reflected in `revenue`. */
   unconvertedCount: number;
   /** Native-currency sum for `unconvertedCount` — informational only, may mix currencies. */

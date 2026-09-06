@@ -77,6 +77,32 @@ export interface NativeCurrencyAmount {
    * its input.
    */
   readonly count: number;
+  /**
+   * When `true`, this bucket is reported in
+   * {@link CurrentRateConversionResult.breakdown} but contributes NOTHING to
+   * {@link CurrentRateConversionResult.convertedTotal} (#2668 review,
+   * BLOCKING 1).
+   *
+   * It exists for one caller: the still-unconverted (not-yet-FX-stamped)
+   * slice. `architecture-overview.md § 4 Orders` and ADR-040 are explicit
+   * that that slice is "informational, may mix currencies — never a KPI —
+   * rather than silently mixed in", and it is additionally a
+   * shipping-INCLUSIVE `SUM(totalAmount)` figure, so folding it into a
+   * headline that #2892 deliberately re-based onto merchandise-only line
+   * amounts would partly undo that fix the moment a display currency is
+   * picked. Three things broke when it was summed in: GMV silently regained
+   * shipping, the "N orders not reflected in revenue" caveat rendered over a
+   * number that DID reflect them, and headline GMV stopped equalling the sum
+   * of the channel rows (which convert via the per-bucket `appliedRate`
+   * instead).
+   *
+   * An excluded bucket resolves NO rate — it cannot move a KPI, so spending a
+   * provider call on it would buy nothing — and is therefore never reported
+   * in {@link CurrentRateConversionResult.unresolvedNativeCurrencies}, which
+   * means "we tried and could not", a different and operator-visible claim.
+   * Absent is the same as `false`, so every pre-#2668 caller is unchanged.
+   */
+  readonly excludedFromTotal?: boolean;
 }
 
 /**
@@ -130,6 +156,14 @@ export interface NativeCurrencyBreakdown {
    * reporting one would assert a lookup that never happened.
    */
   readonly appliedRate: AppliedRate | null;
+  /**
+   * Mirrors {@link NativeCurrencyAmount.excludedFromTotal} — this row was
+   * reported but deliberately not summed into
+   * {@link CurrentRateConversionResult.convertedTotal} (#2668 review,
+   * BLOCKING 1). Always present here (never optional) so a consumer reading
+   * the breakdown cannot mistake "not stated" for "counted".
+   */
+  readonly excludedFromTotal: boolean;
 }
 
 /**
@@ -143,9 +177,12 @@ export interface NativeCurrencyBreakdown {
 export interface CurrentRateConversionResult {
   readonly displayCurrency: string;
   /**
-   * Sum of every RESOLVED breakdown row's `convertedTotal`. A native currency
-   * in `unresolvedNativeCurrencies` contributes nothing to this figure — the
-   * total is honest about only what it could actually convert.
+   * Sum of every RESOLVED, NON-EXCLUDED breakdown row's `convertedTotal`. A
+   * native currency in `unresolvedNativeCurrencies` contributes nothing to
+   * this figure — the total is honest about only what it could actually
+   * convert — and neither does a row carrying
+   * {@link NativeCurrencyBreakdown.excludedFromTotal} (#2668 review,
+   * BLOCKING 1), which the caller asked to be reported but not counted.
    */
   readonly convertedTotal: number;
   readonly breakdown: readonly NativeCurrencyBreakdown[];

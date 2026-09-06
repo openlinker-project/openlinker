@@ -18,9 +18,10 @@
  *     Both Net sales and GMV (`headline.revenue`, real, FX-stamped, in
  *     `headline.currency`) always render — one as the primary headline
  *     figure, the other as the qualifier below it — and which one is
- *     primary is driven by `netGrossBasis` (#2908 fix): `'net'` (the
- *     default) shows Net sales primary / GMV qualifier; `'gross'` shows GMV
- *     primary / Net sales qualifier, matching the channel/product tables'
+ *     primary is driven by `netGrossBasis` (#2908 fix): `'net'` shows Net
+ *     sales primary / GMV qualifier; `'gross'` — the DEFAULT, in the prop,
+ *     in the settings column and in `analytics-page.tsx`'s resolver — shows
+ *     GMV primary / Net sales qualifier, matching the channel/product tables'
  *     own basis-driven primary column (`channel-sales-table.tsx`'s
  *     `revenueLabel`/`revenueOf`). Neither figure is ever hidden — the
  *     toggle only decides which one is labelled and rendered as the
@@ -46,9 +47,28 @@
  *     principled reason to exclude a tax-rate-unresolved order from the
  *     GROSS figure. The ONE restriction kept there is the FX-stamp one — a
  *     currency-denominated average genuinely cannot include an order with no
- *     known amount in the reporting currency, and that is the SAME
- *     restriction `revenue`/`orderCount` (Number of Orders) already apply,
- *     disclosed via the same `STAMPED_GAP` gap mark as before. Under
+ *     known amount in the reporting currency, and it is disclosed via the
+ *     same `STAMPED_GAP` gap mark as before.
+ *
+ *     **That restriction is NOT the one the Number-of-Orders card applies,
+ *     and the earlier wording here claimed it was** (#2668 review, finding
+ *     8). `revenue` is FX-restricted, but the ORDERS card renders
+ *     `totalOrders = orderCount + unconvertedCount` — the full cohort — so
+ *     AOV's denominator is strictly the stamped subset of what that card
+ *     counts, against the spec's "exactly the same set of orders as Number
+ *     of Orders". It is nonetheless the only defensible arithmetic
+ *     available: an unstamped order contributes a known count and an
+ *     UNKNOWN reporting-currency amount, so including it in the denominator
+ *     alone would divide a partial numerator by a full denominator and
+ *     report an AOV lower than any order in the range. The alternatives are
+ *     to suppress AOV entirely whenever `unconvertedCount > 0` (hiding a
+ *     figure that is correct for the orders it can see) or to report it
+ *     un-annotated (the pre-#2894 state). The divergence is therefore
+ *     accepted and DISCLOSED — the gap mark says so on the card, and the
+ *     metrics spec carries the same amendment (#2668 review, finding 10).
+ *     The fields it reads are `averageOrderValue`/`medianOrderValue`, which
+ *     since #2892/#2906 are derived from merchandise-only line amounts and
+ *     no longer from `reportingTotalAmount` directly. Under
  *     `netGrossBasis="net"` — an operator's own explicit choice to view the
  *     page net-of-VAT — the card instead reads `netAverageOrderValue`/
  *     `netMedianOrderValue`, whose narrower net-eligible cohort is disclosed
@@ -57,7 +77,13 @@
  *   - Returns & refunds: no return/refund entity exists anywhere in the
  *     orders domain — fully planned.
  *   - Cancellations: `cancelledCount`/`cancelledValue` are real fields —
- *     rendered as a normal, real card.
+ *     rendered as a normal, real card. It is the ONE card whose count and
+ *     value cover different cohorts (#2668 review, SUGGESTION 12): the count
+ *     is every cancelled order in range, while the value covers only the
+ *     stamped ∧ net-eligible subset. The remainder
+ *     (`cancelledUnconvertedCount`, `cancelledNetExcludedCount`) is disclosed
+ *     by a gap mark on the "Cancelled value" qualifier rather than
+ *     reconciled — the two figures genuinely answer different questions.
  *   - Delta ("vs previous period"), on the four cards with a real headline
  *     number (Orders, Order value, Units, Cancellations): a second
  *     `GET /analytics/sales` call over the immediately-preceding period of
@@ -362,11 +388,54 @@ export function AnalyticsKpiStrip({
   // and Net sales is the qualifier; under `'net'` (the default) it's the
   // reverse, byte-identical to this card's pre-#2908 rendering. Both
   // figures still always render — this only swaps which one is primary.
+  // Net sales carries the CURRENCY caveat too (#2668 review, BLOCKING 2).
+  // `netRevenue` is computed over exactly the same FX-stamped population
+  // `revenue` is, so an unstamped slice under-states BOTH — but this label
+  // used to mark only on `netExcludedGapOpen`, a TAX-RATE exclusion the code
+  // itself documents as disjoint from the currency one. With
+  // `unconvertedCount > 0` and `netExcludedCount === 0` — the ordinary shape
+  // of an install that has not finished FX-stamping — the primary headline
+  // under `netGrossBasis="net"` therefore carried no coverage caveat at all
+  // while GMV beside it carried one, for the same underlying gap.
+  //
+  // The two caveats are APPENDED rather than one overwriting the other: they
+  // describe different, independently-open exclusions, so a reader seeing
+  // only the tax sentence would conclude the currency gap does not apply.
+  // Cancellations card: what `cancelledValue` leaves out relative to
+  // `cancelledCount` (#2668 review, SUGGESTION 12). Two independent
+  // exclusions, reported together because they land on the same figure.
+  const cancelledValueGapVisible =
+    headline.cancelledUnconvertedCount > 0 || headline.cancelledNetExcludedCount > 0;
+  const cancelledValueGapTitle = [
+    headline.cancelledUnconvertedCount > 0
+      ? `${headline.cancelledUnconvertedCount} cancelled order(s) have no current-era currency stamp and are not reflected in this value.`
+      : '',
+    headline.cancelledNetExcludedCount > 0
+      ? `${headline.cancelledNetExcludedCount} cancelled order(s) carry a line with an unresolvable tax rate and are excluded from this VAT-exclusive value.`
+      : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  const netSalesGapVisible = netExcludedGapOpen || stampedGapVisible;
+  function netSalesGapTitle(): string {
+    const parts: string[] = [];
+    if (netExcludedGapOpen) {
+      parts.push(netExcludedGapTitle ?? netExcludedNote);
+    }
+    if (stampedGapVisible) {
+      parts.push(currencyGapTitle);
+    }
+    return parts.join(' ');
+  }
   function renderNetSalesLabel(): ReactElement | string {
-    return netExcludedGapOpen ? (
+    return netSalesGapVisible ? (
       <>
         Net sales{' '}
-        <GapMark title={netExcludedGapTitle ?? netExcludedNote} onActivate={onOpenNetExcludedGap} />
+        <GapMark
+          title={netSalesGapTitle()}
+          onActivate={onOpenNetExcludedGap ?? onOpenCurrencyGap}
+        />
       </>
     ) : (
       'Net sales'
@@ -656,7 +725,24 @@ export function AnalyticsKpiStrip({
         qualifiers={[
           { label: 'Cancelled orders', value: numberFormat.format(headline.cancelledCount) },
           {
-            label: 'Cancelled value',
+            // The one card whose COUNT and VALUE describe different cohorts
+            // (#2668 review, SUGGESTION 12). `cancelledCount` is every
+            // cancelled order in range; `cancelledValue` covers only the
+            // stamped ∧ net-eligible subset, with the remainder reported by
+            // `cancelledUnconvertedCount` (no current-era FX stamp) and
+            // `cancelledNetExcludedCount` (a line whose tax rate is
+            // unresolvable). Both fields have always been on the wire and
+            // neither was rendered, so the divergence was invisible and an
+            // operator could read a value that omits orders the count beside
+            // it includes. It is annotated in place rather than reconciled:
+            // the two really do answer different questions.
+            label: cancelledValueGapVisible ? (
+              <>
+                Cancelled value <GapMark title={cancelledValueGapTitle} />
+              </>
+            ) : (
+              'Cancelled value'
+            ),
             value: currencyRecalculating ? (
               <RecalculatingValue />
             ) : (

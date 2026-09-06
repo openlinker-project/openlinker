@@ -10,7 +10,7 @@ describe('AnalyticsCurrencyPicker', () => {
     );
 
     expect(screen.getByRole('combobox', { name: 'Display currency' })).toHaveValue('');
-    expect(screen.getByText('Current rate · PLN')).toBeInTheDocument();
+    expect(screen.getByText('No conversion · PLN')).toBeInTheDocument();
   });
 
   it('should call onChange with the picked currency', async () => {

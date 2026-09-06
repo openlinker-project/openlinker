@@ -10,6 +10,15 @@
  * "how to read this view" preferences and the currency picker is the taller,
  * more consequential choice of the pair.
  *
+ * `value` accepts `null` for "not resolved yet" (#2668 review, finding 3/6):
+ * the basis has a PERSISTED default, so between first paint and the settings
+ * response there is genuinely no answer, and pre-selecting `gross` would
+ * assert one — the toggle would show `Gross` selected for an operator whose
+ * saved default is `net`, then move under them. The control renders
+ * `aria-busy` with neither segment selected and refuses input for that
+ * window, which is the same window `analytics-page.tsx` withholds every
+ * money figure for.
+ *
  * @module apps/web/src/features/analytics/components
  */
 import type { ReactElement } from 'react';
@@ -17,7 +26,8 @@ import { SegmentedControl } from '../../../shared/ui';
 import type { NetGrossBasis } from '../api/analytics-settings.types';
 
 interface AnalyticsNetGrossToggleProps {
-  value: NetGrossBasis;
+  /** `null` = the persisted default has not resolved yet — see the file header. */
+  value: NetGrossBasis | null;
   onChange: (value: NetGrossBasis) => void;
 }
 
@@ -30,10 +40,19 @@ export function AnalyticsNetGrossToggle({
   value,
   onChange,
 }: AnalyticsNetGrossToggleProps): ReactElement {
+  const pending = value === null;
   return (
-    <div className="analytics-toolbar__field analytics-net-gross-toggle">
+    <div
+      className="analytics-toolbar__field analytics-net-gross-toggle"
+      aria-busy={pending || undefined}
+    >
       <span className="sr-only">VAT basis</span>
-      <SegmentedControl aria-label="VAT basis" options={OPTIONS} value={value} onChange={onChange} />
+      <SegmentedControl
+        aria-label="VAT basis"
+        options={pending ? OPTIONS.map((option) => ({ ...option, disabled: true })) : OPTIONS}
+        value={value}
+        onChange={onChange}
+      />
     </div>
   );
 }

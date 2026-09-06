@@ -1066,6 +1066,30 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   }
 
   /**
+   * The stamped order's own FX multiplier, with a zero `totalAmount` read as a
+   * ZERO-valued order rather than an unknown one (#2668 review, finding 3).
+   *
+   * `reportingTotalAmount / NULLIF(totalAmount, 0)` is NULL for a fully
+   * discounted order. Inside `SUM(...)` that is harmless — a NULL term is
+   * skipped, so the order contributes 0 to `revenue`, exactly what a buyer who
+   * paid nothing should contribute — but `PERCENTILE_CONT` ignores NULLs
+   * ENTIRELY, so the same order silently left the median's ordered set while
+   * still counting in `orderCount` and in the Number-of-Orders card. That is
+   * precisely the cohort divergence #2894 was raised to close, reintroduced on
+   * one axis: `applySalesAnalyticsScope` requires `totalAmount IS NOT NULL`
+   * and deliberately not `<> 0`, so such an order IS in scope.
+   *
+   * Coalescing to `0` makes the median agree with what `revenue` (and
+   * therefore AOV) already does with the row, so the two figures describe one
+   * population. The `SUM` call sites are left as they are: adding `0` and
+   * skipping a NULL are the same number there, and rewriting them would change
+   * no result while making the arithmetic harder to read.
+   */
+  private zeroSafeFxMultiplierSql(): string {
+    return `COALESCE(rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0), 0)`;
+  }
+
+  /**
    * Headline median order value via `PERCENTILE_CONT` (#1987) — always
    * excludes cancelled orders, unlike {@link getDailyOrderAggregates} (which
    * reports them in a separate column rather than omitting them). `null`
@@ -1096,7 +1120,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     const qb = this.repository
       .createQueryBuilder('rec')
       .select(
-        `PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY (${grossRevenueOrderAmount}) * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0)))`,
+        `PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY (${grossRevenueOrderAmount}) * ${this.zeroSafeFxMultiplierSql()})`,
         'median'
       )
       .andWhere('rec."cancelledAt" IS NULL')
@@ -1126,7 +1150,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     const qb = this.repository
       .createQueryBuilder('rec')
       .select(
-        `PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY (${netOrderAmount}) * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0)))`,
+        `PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY (${netOrderAmount}) * ${this.zeroSafeFxMultiplierSql()})`,
         'median'
       )
       .andWhere('rec."cancelledAt" IS NULL')
@@ -1194,8 +1218,32 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    *
    * Unlike Net Sales, there is no eligibility gate here: revenue does not
    * exclude an order for lacking a resolvable tax rate (see
-   * {@link grossRevenueLineAmountSql}'s per-line fallback) — every `'ready'`
-   * order carries line items (ADR-039), so this always has something to sum.
+   * {@link grossRevenueLineAmountSql}'s per-line fallback).
+   *
+   * **A `'ready'` order with NO line items contributes 0 to GMV while still
+   * counting in `orderCount`, and nothing reports it** (#2668 review,
+   * IMPORTANT 2). The earlier wording here asserted that every `'ready'`
+   * order carries line items; that is not guaranteed —
+   * `projectOrderLineItems` explicitly "returns `[]` for an order with no
+   * items (never throws)", so `COALESCE(SUM(...), 0)` over an empty set is a
+   * real reachable state. Pre-#2892 such an order contributed its
+   * `reportingTotalAmount`; it now deflates both GMV and AOV silently.
+   *
+   * This is a DECISION, not an oversight, and it is deliberately asymmetric
+   * with Net Sales: `netSalesOrderNetEligibleSql` requires
+   * `EXISTS (SELECT 1 FROM order_line_items ...)` and reports the order via
+   * `netExcludedCount` / `netExcludedValue`, so on the net axis the operator
+   * sees it. GMV has no per-order exclusion category at all, and inventing
+   * one for this row alone would put a second, differently-shaped exclusion
+   * vocabulary on the gross axis for a state that is pathological rather
+   * than routine (an order whose source reported no lines is an ingestion
+   * defect, not a tax-coverage gap). The exposure is UNBOUNDED per order —
+   * the whole order's value vanishes, unlike one line's unresolvable rate,
+   * which is bounded by that line — so it is stated here rather than left to
+   * be discovered, and pinned by a fixture in
+   * `apps/api/test/integration/sales-analytics-aggregates.int-spec.ts` so
+   * the behaviour cannot change without a test changing with it. Surfacing
+   * it as a reported `noLineItemsCount` on the gross axis is the follow-up.
    */
   private buildGrossRevenueOrderAmountSql(): string {
     const grossLineAmount = grossRevenueLineAmountSql(

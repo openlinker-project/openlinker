@@ -253,8 +253,8 @@ describe('AnalyticsPage', () => {
 
     renderWithProviders(<AnalyticsPage />, { apiClient, route: ROUTE });
 
-    expect(await screen.findByText('Current rate · PLN')).toBeInTheDocument();
-    expect(screen.queryByText('Current rate · EUR')).not.toBeInTheDocument();
+    expect(await screen.findByText('No conversion · PLN')).toBeInTheDocument();
+    expect(screen.queryByText('No conversion · EUR')).not.toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Display currency' })).toHaveValue('');
   });
 

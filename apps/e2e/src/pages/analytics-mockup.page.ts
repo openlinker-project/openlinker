@@ -42,6 +42,7 @@ export const MOCKUP_STATES = [
   'native',
   'converting',
   'converted',
+  'net-basis',
   'unavailable',
   'settings-open',
   'all-clear',

@@ -48,6 +48,13 @@ export interface AnalyticsGotoOptions {
   to?: string;
   displayCurrency?: string;
   rateBasis?: 'current-rate' | 'order-date';
+  /**
+   * The page-level VAT basis (#2895/#2903). URL-encoded like every other axis
+   * here, so the parity spec can reach both renderings of the Revenue card
+   * (#2668 review, IMPORTANT 4 — the mockup gained a `net-basis` state, and a
+   * state the spec cannot navigate to is not covered).
+   */
+  netGrossBasis?: 'gross' | 'net';
 }
 
 export class AnalyticsPage {
@@ -77,6 +84,7 @@ export class AnalyticsPage {
     if (options.to) params.set('to', new Date(options.to).toISOString().slice(0, 10));
     if (options.displayCurrency) params.set('displayCurrency', options.displayCurrency);
     if (options.rateBasis) params.set('rateBasis', options.rateBasis);
+    if (options.netGrossBasis) params.set('netGrossBasis', options.netGrossBasis);
     const query = params.toString();
     // `/analytics` is a LEGACY bookmark-compat shim (`<Navigate to="/"
     // replace />`, `analytics.route.tsx`) — react-router's `<Navigate to>`

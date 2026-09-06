@@ -61,11 +61,17 @@ export type ProductExclusionMap = Map<string, Map<CrossReferenceableCategory, nu
 /** Distinct product ids referenced by one coverage order row (currency's `lineProducts`, or tax's per-line `lineRates`). */
 function distinctProductIdsOf(order: CoverageOrderLite): string[] {
   const ids = new Set<string>();
+  // The `null` skip is a RUNTIME guard, not a type consequence (#2668 review,
+  // finding 5). This file's header states the function "skips a `null`
+  // `productId` unconditionally"; the declared shape says `productId: string`,
+  // which is a claim about a JSON body rather than a guarantee about one, and
+  // a `null` slipping through would key the map on the string "null" and
+  // annotate no row while inflating no count in any visible way.
   for (const line of order.lineProducts ?? []) {
-    ids.add(line.productId);
+    if (line.productId) ids.add(line.productId);
   }
   for (const line of order.lineRates ?? []) {
-    ids.add(line.productId);
+    if (line.productId) ids.add(line.productId);
   }
   return [...ids];
 }

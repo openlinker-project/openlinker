@@ -242,8 +242,16 @@ describe('SalesAnalyticsController', () => {
             nativeTotal: 18420.5,
             convertedTotal: 79200,
             appliedRate: null,
+            excludedFromTotal: false,
           },
-          { currency: 'PLN', orderCount: 2, nativeTotal: 145, convertedTotal: null, appliedRate: null },
+          {
+            currency: 'PLN',
+            orderCount: 2,
+            nativeTotal: 145,
+            convertedTotal: null,
+            appliedRate: null,
+            excludedFromTotal: true,
+          },
         ],
         unresolvedNativeCurrencies: ['XXX'],
       };
@@ -257,6 +265,7 @@ describe('SalesAnalyticsController', () => {
             nativeTotal: 11980,
             convertedTotal: 52000,
             appliedRate: null,
+            excludedFromTotal: false,
           },
         ],
         unresolvedNativeCurrencies: [],
@@ -276,17 +285,25 @@ describe('SalesAnalyticsController', () => {
       // count carries the REAL order count for each bucket (#2488 review,
       // IMPORTANT 1) — headline.orderCount / unconvertedCount, never a flat
       // "1 bucket = 1 order".
+      //
+      // The UNCONVERTED bucket carries `excludedFromTotal: true` (#2668
+      // review, BLOCKING 1): it is still reported in the breakdown, and it
+      // contributes nothing to the converted total the KPI strip renders as
+      // GMV. That figure is a shipping-INCLUSIVE `SUM(totalAmount)` over
+      // orders ADR-040 calls "informational … never a KPI", so summing it
+      // partly undid #2892's shipping exclusion the moment a display currency
+      // was picked.
       expect(displayCurrencyConversionService.convertAtCurrentRate).toHaveBeenNthCalledWith(1, {
         amounts: [
           { currency: 'EUR', amount: 18420.5, count: 142 },
-          { currency: 'PLN', amount: 145, count: 2 },
+          { currency: 'PLN', amount: 145, count: 2, excludedFromTotal: true },
         ],
         displayCurrency: 'PLN',
       });
       expect(displayCurrencyConversionService.convertAtCurrentRate).toHaveBeenNthCalledWith(2, {
         amounts: [
           { currency: 'EUR', amount: 11980, count: 90 },
-          { currency: 'PLN', amount: 60, count: 1 },
+          { currency: 'PLN', amount: 60, count: 1, excludedFromTotal: true },
         ],
         displayCurrency: 'PLN',
       });

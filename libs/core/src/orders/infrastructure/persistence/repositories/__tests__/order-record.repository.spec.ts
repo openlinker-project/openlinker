@@ -788,12 +788,14 @@ describe('OrderRecordRepository', () => {
       expect(revenueCall?.[0]).toContain(
         'rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0)'
       );
-      // The bare pre-#2892 fragment (shipping-inclusive, no line-item join)
-      // must not survive — a straight `SUM(rec."reportingTotalAmount")` with
-      // no line-item subquery is exactly the regression this test guards.
-      expect(revenueCall?.[0]).not.toBe(
-        `COALESCE(SUM(rec."reportingTotalAmount") FILTER (WHERE rec."cancelledAt" IS NULL AND rec."reportingCurrency" = :currentReportingCurrency), 0)`
-      );
+      // The byte-exact `not.toBe(<pre-#2892 SQL string>)` assertion that
+      // used to sit here is DELETED (#2668 review, finding 11): it failed only
+      // on a character-identical revert, so any whitespace or alias change
+      // made it trivially true while the metric was wrong again — a guard
+      // that reads as coverage and is not. The `toContain` assertions above
+      // are the real structural claims, and the arithmetic itself is proved
+      // against real Postgres by
+      // `apps/api/test/integration/sales-analytics-aggregates.int-spec.ts`.
     });
 
     it('computes cancelledValue net-of-VAT from order_line_items, never the shipping-inclusive reportingTotalAmount directly (#2910)', async () => {
@@ -821,9 +823,8 @@ describe('OrderRecordRepository', () => {
         'rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0)'
       );
       expect(cancelledValueCall?.[0]).toContain('rec."cancelledAt" IS NOT NULL');
-      expect(cancelledValueCall?.[0]).not.toBe(
-        `COALESCE(SUM(rec."reportingTotalAmount") FILTER (WHERE rec."cancelledAt" IS NOT NULL AND rec."reportingCurrency" = :currentReportingCurrency), 0)`
-      );
+      // Byte-exact `not.toBe` deleted for the same reason as in the revenue
+      // case above (#2668 review, finding 11).
 
       // The exclusion-reporting counterpart is scoped to the CANCELLED
       // cohort too, so an order with an unresolvable rate is reported here

@@ -238,6 +238,101 @@ describe('Sales analytics daily aggregates (integration, #1987)', () => {
     expect(rows[0].revenue).toBeCloseTo(123, 5);
   });
 
+  it(
+    'contributes 0 GMV for a ready order with NO line items while still counting it in orderCount ' +
+      '(#2668 review, IMPORTANT 2 — pinned, not a silent exclusion)',
+    async () => {
+      const day = new Date('2026-08-07T10:00:00.000Z');
+      // `projectOrderLineItems` returns `[]` for an order whose source
+      // reported no items, so a 'ready' order with zero lines is reachable.
+      // Since #2892 moved GMV onto `order_line_items`, such an order
+      // contributes 0 revenue and still sits in the AOV denominator — an
+      // UNBOUNDED per-order understatement with no exclusion category on the
+      // gross axis, unlike Net Sales, which reports it via netExcluded*.
+      //
+      // This fixture pins that behaviour so it is a decision rather than an
+      // accident: changing it must change this test. See
+      // `buildGrossRevenueOrderAmountSql`'s docblock for the full reasoning.
+      await seedStampedOrder({
+        placedAt: day,
+        totalAmount: 200,
+        reportingCurrency: 'EUR',
+        reportingTotalAmount: 200,
+      });
+
+      const rows = await repository.getDailyOrderAggregates(
+        {
+          from: new Date('2026-08-01T00:00:00.000Z'),
+          to: new Date('2026-08-08T00:00:00.000Z'),
+        },
+        'EUR'
+      );
+
+      expect(rows).toHaveLength(1);
+      // Counted as an order...
+      expect(rows[0].orderCount).toBe(1);
+      // ...but contributing nothing to GMV, and NOT reported anywhere on the
+      // gross axis (there is no `noLineItemsCount` — that is the follow-up).
+      expect(rows[0].revenue).toBeCloseTo(0, 5);
+      // The NET axis does report it, via the net-eligibility EXISTS clause.
+      expect(rows[0].netRevenue).toBeCloseTo(0, 5);
+      expect(rows[0].netExcludedCount).toBe(1);
+    }
+  );
+
+  it(
+    'includes a zero-total (fully discounted) order in the median cohort as a zero rather than ' +
+      'dropping it (#2668 review, finding 3)',
+    async () => {
+      // A 100%-discount order: lines priced normally, order total 0. It counts
+      // in orderCount and contributes 0 to revenue (a NULL term is skipped by
+      // SUM), but `PERCENTILE_CONT` ignores NULLs entirely, so before the
+      // zero-safe multiplier it left the median's ordered set altogether —
+      // exactly the cohort divergence #2894 was raised to close.
+      //
+      // Two orders at 100 plus one zero-total order gives a three-element set
+      // {0, 100, 100} with median 100; dropping the zero would give {100, 100}
+      // — also 100. So the set is deliberately {0, 10, 100}: median 10 with
+      // the zero counted, 55 without it.
+      const zeroOrder = await seedStampedOrder({
+        placedAt: new Date('2026-08-02T10:00:00.000Z'),
+        totalAmount: 0,
+        reportingCurrency: 'EUR',
+        reportingTotalAmount: 0,
+      });
+      await seedLineItem({ orderRecordId: zeroOrder, unitPrice: 80, quantity: 1, taxRate: '23' });
+
+      const smallOrder = await seedStampedOrder({
+        placedAt: new Date('2026-08-03T10:00:00.000Z'),
+        totalAmount: 10,
+        reportingCurrency: 'EUR',
+        reportingTotalAmount: 10,
+      });
+      await seedLineItem({ orderRecordId: smallOrder, unitPrice: 10, quantity: 1, taxRate: '23' });
+
+      const bigOrder = await seedStampedOrder({
+        placedAt: new Date('2026-08-04T10:00:00.000Z'),
+        totalAmount: 100,
+        reportingCurrency: 'EUR',
+        reportingTotalAmount: 100,
+      });
+      await seedLineItem({ orderRecordId: bigOrder, unitPrice: 100, quantity: 1, taxRate: '23' });
+
+      const median = await repository.getMedianOrderValue(
+        {
+          from: new Date('2026-08-01T00:00:00.000Z'),
+          to: new Date('2026-08-08T00:00:00.000Z'),
+        },
+        'EUR'
+      );
+
+      // 10 (the middle of {0, 10, 100}), never 55 (the mean of {10, 100},
+      // which is what PERCENTILE_CONT reports when the zero-total order is
+      // silently dropped).
+      expect(median).toBeCloseTo(10, 5);
+    }
+  );
+
   it('computes cancelledValue net-of-VAT and shipping-excluded for a cancelled order (#2910)', async () => {
     // Same shape as the GMV shipping-exclusion fixture above: subtotal=123
     // gross (23% VAT, so 100 net), shipping=10, total=133. cancelledValue

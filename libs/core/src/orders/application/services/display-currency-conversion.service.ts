@@ -40,6 +40,7 @@ import {
   type AppliedRate,
   type CurrentRateConversionInput,
   type CurrentRateConversionResult,
+  type NativeCurrencyAmount,
   type NativeCurrencyBreakdown,
   type OrderDateConversionInput,
   type OrderDateConversionResult,
@@ -57,8 +58,10 @@ function round2(value: number): number {
 }
 
 interface CurrencyGroup {
+  currency: string;
   count: number;
   total: number;
+  excludedFromTotal: boolean;
 }
 
 /**
@@ -70,16 +73,30 @@ interface CurrencyGroup {
  * `item.count`, not the number of buckets it happened to push.
  */
 function groupByCurrency(
-  amounts: readonly { readonly currency: string; readonly amount: number; readonly count: number }[]
+  amounts: readonly NativeCurrencyAmount[]
 ): Map<string, CurrencyGroup> {
   const grouped = new Map<string, CurrencyGroup>();
   for (const item of amounts) {
-    const existing = grouped.get(item.currency);
+    const excludedFromTotal = item.excludedFromTotal === true;
+    // The key carries `excludedFromTotal`, not just the currency (#2668
+    // review, BLOCKING 1). A counted bucket and an excluded one that happen
+    // to share an ISO code — the common case, since the unstamped slice is
+    // usually denominated in the same currency the stamped one reports in —
+    // must never merge, or the excluded money would be summed into
+    // `convertedTotal` through the counted group and the exclusion would be a
+    // no-op exactly where it matters most.
+    const key = `${excludedFromTotal ? 'x' : 'i'}:${item.currency}`;
+    const existing = grouped.get(key);
     if (existing) {
       existing.count += item.count;
       existing.total += item.amount;
     } else {
-      grouped.set(item.currency, { count: item.count, total: item.amount });
+      grouped.set(key, {
+        currency: item.currency,
+        count: item.count,
+        total: item.amount,
+        excludedFromTotal,
+      });
     }
   }
   return grouped;
@@ -109,7 +126,27 @@ export class DisplayCurrencyConversionService implements IDisplayCurrencyConvers
     // own reasoning: a handful of distinct currencies is a handful of
     // provider calls, and there is no latency anyone is waiting on that
     // fanning them out would improve.
-    for (const [currency, group] of grouped) {
+    for (const group of grouped.values()) {
+      const currency = group.currency;
+      // Reported, never counted (#2668 review, BLOCKING 1). The caller asked
+      // for this bucket to appear in the breakdown without moving the KPI, so
+      // no rate is resolved for it (a converted figure it cannot contribute
+      // is a provider call bought for nothing) and it is NOT reported as
+      // unresolved — "we chose not to count this" and "we could not convert
+      // this" are different statements, and the operator-facing copy behind
+      // `unresolvedNativeCurrencies` makes the second one.
+      if (group.excludedFromTotal) {
+        breakdown.push({
+          currency,
+          orderCount: group.count,
+          nativeTotal: round2(group.total),
+          convertedTotal: null,
+          appliedRate: null,
+          excludedFromTotal: true,
+        });
+        continue;
+      }
+
       // A bucket with no single native currency (#2488 review, IMPORTANT 2)
       // has no rate to resolve — report it as unresolved unconditionally
       // rather than spending a provider call that could only ever fail, and
@@ -123,6 +160,7 @@ export class DisplayCurrencyConversionService implements IDisplayCurrencyConvers
           nativeTotal: round2(group.total),
           convertedTotal: null,
           appliedRate: null,
+          excludedFromTotal: false,
         });
         continue;
       }
@@ -137,6 +175,7 @@ export class DisplayCurrencyConversionService implements IDisplayCurrencyConvers
           nativeTotal,
           convertedTotal: nativeTotal,
           appliedRate: null,
+          excludedFromTotal: false,
         });
         convertedTotal += nativeTotal;
         continue;
@@ -155,6 +194,7 @@ export class DisplayCurrencyConversionService implements IDisplayCurrencyConvers
           nativeTotal: round2(group.total),
           convertedTotal: null,
           appliedRate: null,
+          excludedFromTotal: false,
         });
         continue;
       }
@@ -166,6 +206,7 @@ export class DisplayCurrencyConversionService implements IDisplayCurrencyConvers
         nativeTotal: round2(group.total),
         convertedTotal: converted,
         appliedRate: toAppliedRate(stored),
+        excludedFromTotal: false,
       });
       convertedTotal += converted;
     }

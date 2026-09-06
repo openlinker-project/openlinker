@@ -11,9 +11,24 @@
  *      already drives. Genuinely non-destructive: Apply only pushes a
  *      search-param change, exactly like the date-range toolbar's own
  *      Apply. This is NOT `AnalyticsSettingsView.displayCurrency`/
- *      `rateBasis` (the persisted, admin-only DEFAULT those fields resolve
- *      from when no URL override is present) — a different axis, never
- *      written by this section.
+ *      `rateBasis` — a different axis, never written by this section.
+ *
+ *      **Those two persisted fields are not a default the dashboard falls
+ *      back to** (#2668 review, finding 5 — the earlier wording here said
+ *      they were). `analytics-page.tsx` resolves `displayCurrency` and
+ *      `rateBasis` from the URL alone, with `null` / `'current-rate'` as the
+ *      hardcoded fallbacks, and never consults the settings response for
+ *      either. That is ADR-064's own design — the display currency "lives in
+ *      the URL like the date range, never in a saved preference", so it is
+ *      shareable and reversible with no persisted side effect — and it is
+ *      deliberately asymmetric with `netGrossBasis` on the same object,
+ *      which IS resolved from the persisted value when no URL override is
+ *      present. What is left is a stored value with no reader: the settings
+ *      row still carries `displayCurrency` / `displayCurrencySource` /
+ *      `rateBasis`, and `PUT /analytics/settings` still requires them, so a
+ *      caller can persist a display currency the dashboard will never honour.
+ *      Stated here so nobody reads the round trip as working; removing those
+ *      fields from the contract, or giving them a reader, is a follow-up.
  *   2. "Currency — recalculation" / "Tax rates" / "Default VAT basis" — real,
  *      persisted actions. Recalculating enqueues a real remediation run
  *      (`POST /analytics/coverage/currency/recalculate`, #2468); the tax

@@ -73,6 +73,8 @@ function analytics(
       cancelledValue: 200,
       cancelledUnconvertedCount: 0,
       cancelledUnconvertedValue: 0,
+      cancelledNetExcludedCount: 0,
+      cancelledNetExcludedValue: 0,
       unconvertedCount: 0,
       unconvertedValue: 0,
       unconvertedCurrency: null,
@@ -407,16 +409,52 @@ describe('AnalyticsKpiStrip', () => {
         { apiClient }
       );
 
-      // The same currency GapMark renders on BOTH the Revenue card's GMV
-      // qualifier and the Order value card's Average qualifier — clicking
-      // either must open the same 'currency' category.
+      // The same currency GapMark renders on THREE surfaces — the Revenue
+      // card's GMV qualifier, its Net sales figure (#2668 review, BLOCKING 2)
+      // and the Order value card's Average qualifier — and clicking any of
+      // them must open the same 'currency' category. Net sales is computed
+      // over exactly the same FX-stamped population `revenue` is, so an
+      // unstamped slice under-states it identically; before #2668 it marked
+      // only on the disjoint TAX exclusion, so with `netExcludedCount === 0`
+      // the primary headline under `netGrossBasis="net"` carried no coverage
+      // caveat at all while GMV beside it carried one.
       const buttons = await screen.findAllByRole('button', {
         name: 'The reporting currency changed — these orders are still tagged with the old one.',
       });
-      expect(buttons).toHaveLength(2);
+      expect(buttons).toHaveLength(3);
       await user.click(buttons[0]);
 
       expect(onOpenCategory).toHaveBeenCalledWith('currency');
+    });
+
+    it('marks Net sales with the currency caveat even when no tax-rate exclusion is open (#2668 review, BLOCKING 2)', async () => {
+      const apiClient = createMockApiClient({
+        analytics: {
+          getSales: vi
+            .fn()
+            .mockResolvedValue(analytics({ unconvertedCount: 5, netExcludedCount: 0 })),
+        },
+      });
+
+      renderWithProviders(
+        <AnalyticsKpiStrip
+          filters={FILTERS}
+          connections={[]}
+          coverage={coverage({ currency: 5 })}
+          onOpenCategory={vi.fn()}
+          netGrossBasis="net"
+        />,
+        { apiClient }
+      );
+
+      // Net sales is the PRIMARY headline under `netGrossBasis="net"`, so a
+      // missing caveat here is a money figure rendered with no disclosure at
+      // all. `findAllBy` because GMV (now the qualifier) carries the same mark.
+      const marks = await screen.findAllByRole('button', {
+        name: 'The reporting currency changed — these orders are still tagged with the old one.',
+      });
+      expect(marks.length).toBeGreaterThanOrEqual(2);
+      expect(screen.getByText('Net sales')).toBeInTheDocument();
     });
 
     it('picks the tax category with the LARGEST affectedCount for the Net Sales GapMark, never just tax-a', async () => {
