@@ -215,14 +215,21 @@ MOVED_THRESHOLD_PCT="${MOVED_THRESHOLD_PCT:-15}"
 #
 # Arms are DATA rather than code so a fifth one is a config line, not an edit.
 # ---------------------------------------------------------------------------
-ARM_SPECS="${ARM_SPECS:-A:60:4:::false B:600:4:::false C:60:32:::false}"
+# `${VAR-default}`, NOT `${VAR:-default}`, on all three of these. The colon
+# form substitutes the default when the variable is unset OR EMPTY, so
+# `ARM_SPECS="" ... limiter-ab.sh` - the documented way to run only the
+# recreate arms - silently ran the full interleaved set instead. Caught live:
+# an invocation asking for two arms wrote a directory named `-A-r1`. An
+# explicitly-empty arm list is a legitimate request and must be honoured, or
+# "arms are data" is only true for adding them.
+ARM_SPECS="${ARM_SPECS-A:60:4:::false B:600:4:::false C:60:32:::false}"
 # Arms needing a worker recreate, run as consecutive blocks after the
 # interleaved set above. Arm E is the decisive concurrency falsifier (see the
 # header) and is off by default because it costs two more windows.
-RECREATE_ARM_SPECS="${RECREATE_ARM_SPECS:-D:60:4:::true}"
+RECREATE_ARM_SPECS="${RECREATE_ARM_SPECS-D:60:4:::true}"
 # One extra repeat of the first interleaved arm, run last, purely to show
 # whether the stand drifted under the consecutive blocks.
-DRIFT_CONTROL="${DRIFT_CONTROL:-A:60:4:::false}"
+DRIFT_CONTROL="${DRIFT_CONTROL-A:60:4:::false}"
 
 MODE="strict"
 for arg in "$@"; do

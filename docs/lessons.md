@@ -1270,3 +1270,34 @@ zero it reports is believed.
 `guard_*` that reads applied state back out of a container log, an env var or an API response.
 
 **Source**: #2840 (limiter A/B), building on #2229's reported-versus-enforced rule.
+
+## `${VAR:-default}` swallows an explicitly-EMPTY value - use `${VAR-default}` when empty is a legitimate request
+
+**Context**: `perf/openlinker-throughput/scenarios/limiter-ab.sh` (#2840) makes its measurement
+arms DATA - `ARM_SPECS="A:60:4:::false B:600:4:::false C:60:32:::false"` - so that running a
+different set is a config change rather than an edit. Running only the arms that need a worker
+recreate is documented as `ARM_SPECS="" RECREATE_ARM_SPECS="..." limiter-ab.sh`.
+
+**Problem**: the defaults were written `ARM_SPECS="${ARM_SPECS:-A:60:4:...}"`. The COLON form
+substitutes the default when the variable is unset **or empty**, so an explicit `ARM_SPECS=""`
+resolved back to the full default set. The invocation asked for two arms and silently ran nine -
+six of them the wrong configuration, on a stand where each window costs about nine minutes of
+wall clock. Caught only because the first results directory it created was named `-A-r1` for a
+run whose arm list contained no `A`.
+
+Worth noting how it failed: not with an error, but by measuring something else and labelling it
+correctly. The manifest, the guards and the verdict were all internally consistent - they
+described the arms that actually ran. Nothing in the output contradicted itself, so the only
+signal was a directory name that a reader had to notice.
+
+**Rule**: when an empty value is a legitimate request rather than an omission, use
+`${VAR-default}` (no colon), which substitutes only when the variable is UNSET. Reach for
+`${VAR:-default}` only where empty and unset genuinely mean the same thing. This bites hardest on
+a list-shaped knob - "run none of these" is exactly the request the colon form cannot express -
+and a harness whose selling point is that its arms are configurable has that property only for
+ADDING arms until this is fixed.
+
+**Applies to**: `perf/openlinker-throughput/**`, and any script exposing a list or set as an env
+knob (`ARM_SPECS`, `CAPS`, `WORKER_CONTAINERS`, `BUILD_RELEVANT_PATHS`).
+
+**Source**: #2840 (limiter A/B).
