@@ -16,6 +16,7 @@
  */
 import type { FulfillmentRouterPort } from '../../domain/ports/fulfillment-router.port';
 import type { RoutingLockPort } from '../../domain/ports/routing-lock.port';
+import type { RoutedWorkRef } from '../../domain/types/fulfillment-dispatch-enqueue.types';
 import type { RoutingDecisionAbandonReason } from '../../domain/types/routing-decision.types';
 import type { RoutingInputLine } from '../../domain/types/routing.types';
 import type { RoutingShipTo } from '../../domain/types/routing-ship-to.types';
@@ -52,8 +53,15 @@ export interface RouteOrderInput {
  * site.
  */
 export type RoutingCommitOutcome =
-  /** N work rows and the decision's terminalisation committed together. */
-  | { readonly status: 'routed'; readonly decisionId: string; readonly workIds: readonly string[] }
+  /**
+   * N work rows and the decision's terminalisation committed together.
+   *
+   * Carries each work's HOLDER, not just its id (#2955): `SyncJob.connectionId`
+   * is non-nullable and must be the work's own `assignedConnectionId`, so a
+   * caller building the dispatch enqueue would otherwise need a second read.
+   * `commit()` already holds the created rows, so reporting it costs nothing.
+   */
+  | { readonly status: 'routed'; readonly decisionId: string; readonly works: readonly RoutedWorkRef[] }
   /**
    * Nothing was attempted and nothing was written.
    *
