@@ -1074,6 +1074,9 @@ window_start() {
   log "settling ${SETTLE_SECS}s before window_start (letting the build/rebuild's CPU and page-cache impact fade)"
   sleep "$SETTLE_SECS"
   sampler_start "$dir" "$conn_ids"
+  # AFTER the settle and any scenario-owned recreate, so the baseline is the
+  # stack the window actually measures (see post_guard_containers_stable).
+  capture_container_starts "$dir"
   WINDOW_START_EPOCH="$(epoch)"
   log "window_start at $(iso_now)"
 }
@@ -1265,6 +1268,86 @@ post_guard_destination_creates() {
   fi
 }
 
+# ---------------------------------------------------------------------------
+# Container stability across the measurement window (#2852).
+#
+# The stand lock (guard_stand_exclusive) arbitrates SCENARIOS. It cannot stop a
+# peer running `docker compose up -d` by hand, and on a shared multi-worktree
+# checkout that is a routine thing to do - a rebuild is finished, the operator
+# recreates the stack. Observed live during F7's re-run: `lab-api` and
+# `lab-worker-1` were both recreated 7.5 minutes into a held window.
+#
+# Every consequence of that is silent:
+#   - in-flight jobs are killed, and their rows sit `running` forever, so the
+#     `COUNT(*) WHERE status='running'` lane-occupancy proxy is inflated by
+#     phantoms for the rest of the run;
+#   - `docker logs` starts over, so every log-derived post-guard (the degraded
+#     limiter one above all) silently loses the part of the window that
+#     preceded the recreate and reports a count for the remainder as if it
+#     were the whole;
+#   - probe timings straddle a cold start.
+#
+# None of that trips any existing guard. It was found by noticing a degraded
+# line COUNT go DOWN between two reads, which is not a thing anyone should have
+# to notice. `.State.StartedAt` changes on both a restart and a recreate, which
+# is exactly the set of events that invalidates the window.
+#
+# Captured at window_start rather than at scenario start on purpose: a
+# scenario legitimately recreates the worker itself while setting up (F7 flips
+# WORKER_RUNNER_ENABLED), and those recreates happen BEFORE the window opens.
+container_stability_file() { printf '%s/.container-starts' "$1"; }
+
+# The containers whose behaviour a run measures. A destination is included when
+# the scenario declares one - a shop restarting mid-window invalidates a
+# throughput number as surely as the worker doing so.
+measured_containers() {
+  # `>&2`, because this function's STDOUT is its return value and
+  # `_ensure_worker_containers` logs "worker replicas: ..." on first call.
+  # Without the redirect that log line is captured by `$(measured_containers)`
+  # and every word of it becomes a "container" - which the real-docker
+  # red-first check for this guard caught on its first run, as
+  # `MISSING) [lib](was= now=MISSING)` noise in the refusal text.
+  _ensure_worker_containers >&2
+  local c out=""
+  for c in $OL_API_CONTAINER $WORKER_CONTAINERS "${PG_CONTAINER:-}" "${REDIS_CONTAINER:-}" "${PS_CONTAINER:-}" "${WC_CONTAINER:-}"; do
+    [ -n "$c" ] || continue
+    case " $out " in *" $c "*) continue ;; esac
+    out="$out $c"
+  done
+  printf '%s' "${out# }"
+}
+
+capture_container_starts() {
+  local dir="$1" c started
+  : > "$(container_stability_file "$dir")"
+  for c in $(measured_containers); do
+    started="$(docker inspect --format '{{.State.StartedAt}}' "$c" 2>/dev/null || printf 'MISSING')"
+    printf '%s %s\n' "$c" "$started" >> "$(container_stability_file "$dir")"
+  done
+}
+
+# A missing baseline is NOT "ok" - it means the run never recorded one, so the
+# question cannot be answered, and answering "stable" would be the same class
+# of confident-but-blind pass this guard exists to remove.
+post_guard_containers_stable() {
+  local dir="$1" f c was now changed=""
+  f="$(container_stability_file "$dir")"
+  if [ ! -s "$f" ]; then
+    echo "DISCARDED post_guard_containers_stable: no container baseline was captured at window_start - cannot tell whether the stand was recreated mid-window"
+    return 0
+  fi
+  while read -r c was; do
+    [ -n "$c" ] || continue
+    now="$(docker inspect --format '{{.State.StartedAt}}' "$c" 2>/dev/null || printf 'MISSING')"
+    [ "$now" = "$was" ] || changed="$changed $c(was=$was now=$now)"
+  done < "$f"
+  if [ -n "$changed" ]; then
+    echo "DISCARDED post_guard_containers_stable: container(s) restarted or recreated inside the measurement window -$changed"
+  else
+    echo "ok"
+  fi
+}
+
 # post_guard_limiter_degraded - greps the worker log for the Redis
 # rate-limiter's degraded-mode message (redis-rate-limiter.adapter.ts:563).
 # At three replicas a degraded episode turns a configured 60/min into an
@@ -1428,6 +1511,10 @@ run_post_guards() {
   results+=("$(post_guard_requeues "$conn_ids")")
   results+=("$(post_guard_destination_creates "$ws_iso" "$dest")")
   results+=("$(post_guard_limiter_degraded "$ws_epoch" "$we_epoch")")
+  # Runs alongside the others rather than first: every guard's answer is worth
+  # having, and a reader needs to see WHICH of them a mid-window recreate
+  # coincided with.
+  results+=("$(post_guard_containers_stable "$dir")")
   results+=("$(post_guard_generator_saturated "$k6_summary" "$k6_executor")")
 
   local reasons=()
