@@ -196,12 +196,38 @@ measurement or by reading the code:
   one cursor read, one marketplace call, one conditional cursor advance and one
   lock release per item.
 
-The leading hypothesis is § 4.1's limiter timeout charged several times per job,
-which would put ~9 s within reach. **It is a hypothesis and is labelled as one.**
-Settling it needs the worker log for one traced job, which needs the stand; the
+**The leading hypothesis is the Allegro client's own retry ladder, and the
+arithmetic lands almost exactly on the observation.**
+`allegro-http-client.ts`'s `DEFAULT_RETRY_CONFIG` is `maxRetries: 3`,
+`initialDelayMs: 1000`, `backoffMultiplier: 2`. A request that exhausts it
+sleeps **1000 + 2000 + 4000 = 7000 ms** across four attempts, and four attempts
+against a 127.6 ms destination add ~510 ms:
+
+| Term | ms | Source |
+|---|---|---|
+| Retry backoff, 3 retries at 1 s / 2 s / 4 s | 7000 | `DEFAULT_RETRY_CONFIG` (code) |
+| 4 attempts x 127.6 ms | ~510 | § 4.1 (measured) |
+| One limiter timeout (§ 4.1) | ~1000 | measured, once, on another call |
+| Lock acquire + cursor read + cursor advance + release | small | `InventorySyncService` (code) |
+| **Total** | **~8510-9500** | vs **9116-9850 measured** |
+
+That is a fit, not a proof, and it is labelled **derived**. What would confirm
+it is one log line, which the client emits by name on that path -
+`Rate limit exceeded (attempt N/4), retrying after Xms`. If it is present, the
+9 s is backoff and the realtime lane's *real* per-job cost is ~130 ms, which
+would put the correct cap an order of magnitude away from 2 and would make this
+a defect report rather than a tuning exercise. If it is absent, something else
+is sleeping and the question is still open.
+
+Settling it needs the worker log for one traced job, which needs the stand. The
 attempt to take it was refused by `guard_stand_exclusive` because a peer had
-taken the stand two minutes earlier, and the smoke run's own container had
-already been replaced by the scenario's restore, so its logs were gone.
+taken the stand two minutes earlier, and the smoke run's own containers had
+already been replaced by the scenario's own restore, so their logs were gone.
+The probe is written and is two minutes of stand time.
+
+Note this compounds with § 4.1 rather than competing with it: if the limiter's
+1 s timeout is what the client is retrying *against*, then one defect is
+producing both, and a lane cap is not the knob for either.
 
 *Label: the durations are **measured** (n=12, smoke mode - the harness's own
 rule is that smoke numbers are not a measurement of the thing the scenario
@@ -335,7 +361,7 @@ reasoning in place; see § 6.
 
 | Lane | Current | Recommended | Basis |
 |---|---|---|---|
-| `realtime` | 4 / 2 | **4 / 2 - unchanged** | No curve was taken. § 4.2's 9.1 s must be attributed first: if it is § 4.1's limiter, the lane's real per-job cost is ~130 ms and the correct cap is a different order of magnitude; if it is genuine work, 2 is defensible. Changing the number before knowing which would be a guess dressed as a measurement. |
+| `realtime` | 4 / 2 | **4 / 2 - unchanged** | No curve was taken. § 4.2's 9.1 s must be attributed first, and the derived arithmetic there says ~7 s of it is very likely the Allegro client's own retry backoff. If so the lane's real per-job cost is ~130 ms, the correct cap is an order of magnitude from 2, and the finding is a defect rather than a tuning number. Changing the cap before knowing which would be a guess dressed as a measurement. |
 | `fiscal` | 2 / 1 | **2 / 1 - unchanged** | Unmeasurable here (§ 4.5). Flag for the owner: `perScope: 1` serialises bulk issuance across distinct orders, which the per-order lock would not. |
 | `fan-out` | 8 / 4 | **8 / 4 - unchanged** | Not reached (peers held the stand). Confirmed derived, not measured (§ 4.6). |
 
@@ -371,9 +397,10 @@ class-level initialiser, against `resolveLaneCaps`'s 8/4 fallback. Aligned; see
 
 - **Any cap curve for any lane.** No sweep arm ran outside smoke mode. The
   scenario exists, is tested, and ran clean end to end; it did not get the stand.
-- **The attribution of § 4.2's 9.1 s.** Ruled out: destination, Redis, pacing
-  config, fan-out, round-trip count. Not ruled in: anything. One traced job's
-  worker log settles it.
+- **The attribution of § 4.2's 9.1 s.** Ruled out by measurement or code:
+  destination, Redis, pacing config, fan-out, round-trip count. The retry-ladder
+  arithmetic in § 4.2 fits to within ~5 %, but a fit is not an observation - no
+  log line was captured showing a retry actually firing.
 - **Whether § 4.1's limiter timeout occurs inside a measurement window.** It was
   observed outside one. `post_guard_limiter_degraded` would `DISCARD` an arm
   that contained one - and since #2851 that guard can actually see, so a future
@@ -395,9 +422,12 @@ class-level initialiser, against `resolveLaneCaps`'s 8/4 fallback. Aligned; see
 
 ## 8. Next, in the order that buys the most
 
-1. **Trace one `marketplace.offerQuantity.update` job's worker log.** Minutes of
-   stand time. It either collapses § 4.2 into § 4.1 or opens a new question,
-   and every realtime number depends on which.
+1. **Trace one `marketplace.offerQuantity.update` job's worker log.** Two
+   minutes of stand time; the probe is written. Grep for
+   `Rate limit exceeded (attempt N/4), retrying after` - present means § 4.2 is
+   retry backoff and this becomes a defect report, absent means something else
+   sleeps ~9 s and the question is open. Every realtime number depends on it,
+   and no realtime cap should be proposed before it is answered.
 2. **Run the fan-out sweep** (`--lane=fan-out`). It needs no destination -
    database reads and child enqueues - so it is the one lane whose curve is not
    hostage to § 4.1, and it is the lane whose current value is derived rather
