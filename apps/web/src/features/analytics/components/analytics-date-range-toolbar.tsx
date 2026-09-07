@@ -8,7 +8,7 @@
  *
  * @module apps/web/src/features/analytics/components
  */
-import { useEffect, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { Button, Popover, PopoverContent, PopoverTrigger, SegmentedControl } from '../../../shared/ui';
 import {
   computePresetRange,
@@ -21,6 +21,8 @@ interface AnalyticsDateRangeToolbarProps {
   from: string;
   to: string;
   onApply: (from: string, to: string) => void;
+  /** Rendered as a second, right-aligned `toolbar__group` (#2472 — the currency picker). */
+  trailing?: ReactNode;
 }
 
 const PRESET_OPTIONS: readonly { value: DateRangeHighlight; label: string }[] = [
@@ -40,6 +42,7 @@ export function AnalyticsDateRangeToolbar({
   from,
   to,
   onApply,
+  trailing,
 }: AnalyticsDateRangeToolbarProps): ReactElement {
   const today = useRef(new Date()).current;
   const [draftFrom, setDraftFrom] = useState(from);
@@ -141,6 +144,7 @@ export function AnalyticsDateRangeToolbar({
           </Popover>
         </span>
       </div>
+      {trailing ? <div className="toolbar__group">{trailing}</div> : null}
     </div>
   );
 }

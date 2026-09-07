@@ -27,6 +27,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Logger } from '@openlinker/shared/logging';
 import {
   CURRENCY_RATE_SERVICE_TOKEN,
+  EXCHANGE_RATE_LOOKUP_SERVICE_TOKEN,
   EXCHANGE_RATE_PROVIDER_REGISTRY_TOKEN,
   EXCHANGE_RATE_REPOSITORY_TOKEN,
   REPORTING_CURRENCY_SETTING_REPOSITORY_TOKEN,
@@ -35,6 +36,7 @@ import {
 import { NoExchangeRateProvidersRegisteredError } from './domain/exceptions/exchange-rate-source.exception';
 import { ExchangeRateProviderRegistryPort } from './domain/ports/exchange-rate-provider-registry.port';
 import { CurrencyRateService } from './application/services/currency-rate.service';
+import { ExchangeRateLookupService } from './application/services/exchange-rate-lookup.service';
 import { ReportingCurrencySettingsService } from './application/services/reporting-currency-settings.service';
 import { ExchangeRateProviderRegistryService } from './infrastructure/adapters/exchange-rate-provider-registry.service';
 import { ExchangeRateOrmEntity } from './infrastructure/persistence/entities/exchange-rate.orm-entity';
@@ -62,6 +64,8 @@ import { ReportingCurrencySettingRepository } from './infrastructure/persistence
     },
     CurrencyRateService,
     { provide: CURRENCY_RATE_SERVICE_TOKEN, useExisting: CurrencyRateService },
+    ExchangeRateLookupService,
+    { provide: EXCHANGE_RATE_LOOKUP_SERVICE_TOKEN, useExisting: ExchangeRateLookupService },
     ReportingCurrencySettingsService,
     {
       provide: REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN,
@@ -74,6 +78,7 @@ import { ReportingCurrencySettingRepository } from './infrastructure/persistence
     EXCHANGE_RATE_REPOSITORY_TOKEN,
     REPORTING_CURRENCY_SETTING_REPOSITORY_TOKEN,
     CURRENCY_RATE_SERVICE_TOKEN,
+    EXCHANGE_RATE_LOOKUP_SERVICE_TOKEN,
     REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN,
   ],
 })

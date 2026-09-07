@@ -68,7 +68,7 @@ export interface ProductRankingRow {
   unconvertedCurrency: string | null;
   /**
    * VAT-exclusive counterpart of `revenue` (net-sales tax-rate epic) —
-   * `SUM(unitPrice × quantity × (1 - rateFraction) × orderFxMultiplier)` over
+   * `SUM(unitPrice × quantity / (1 + rateFraction) × orderFxMultiplier)` over
    * lines that are stamped, non-zero-total, not pre-rollout, and carry a
    * resolvable {@link resolveNetSalesTaxRate} outcome. A line failing any of
    * those does not appear here — see `netExcludedRevenue`/

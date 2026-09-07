@@ -120,6 +120,9 @@ describe('ShipmentDispatchNotificationService', () => {
       countOrdersWithOmsAttention: jest.fn(),
       getTopProductVariantSales: jest.fn(),
       discoverSalesDocumentMarkets: jest.fn(),
+      getCurrencyMismatchOrders: jest.fn(),
+      getCurrencyMismatchOrdersByConnection: jest.fn(),
+      getProductMatchingErrorOrders: jest.fn(),
     };
 
     integrations = {

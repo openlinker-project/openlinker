@@ -110,6 +110,10 @@ const VALUE_EXPORT_ALLOWED = new Map([
         'RefundReasonValues',
         '#2327 (ADR-060) - `returns` reuses the refund vocabulary VERBATIM so returns-by-reason and refunds-by-reason report on one axis; its read coercion (ReturnRepository/return-reason.mapper) and three apps/api DTOs iterate the runtime array, and the main barrel re-exports OrdersModule.',
       ],
+      [
+        'CoverageResolutionStatusValues',
+        'epic #2452 - AnalyticsRemediationRunRepository.isCoverageResolutionStatus (analytics) value-imports it to type-guard a DB-read string; the main barrel re-exports OrdersModule so this seam is what keeps the analytics --> orders edge from pulling that in.',
+      ],
     ]),
   ],
 ]);

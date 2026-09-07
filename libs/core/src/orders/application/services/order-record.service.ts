@@ -66,6 +66,12 @@ import type {
   TopProductsResult,
   VariantSalesResult,
 } from '../../domain/types/top-products.types';
+import type {
+  CoverageDetectionPagination,
+  PaginatedCurrencyMismatchOrders,
+  PaginatedProductMatchingErrorOrders,
+  CoverageConnectionAggregateRow,
+} from '../../domain/types/coverage-detection.types';
 
 /** One day in milliseconds, for the market-discovery window arithmetic (#2518). */
 const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -673,7 +679,8 @@ export class OrderRecordService implements IOrderRecordService {
   }
 
   async getSalesAndChannelAnalytics(
-    filters: SalesAnalyticsFilters
+    filters: SalesAnalyticsFilters,
+    includeBackfilledPreRollout = false
   ): Promise<SalesAndChannelAnalytics> {
     // Resolved once per read, never per row (#1987 review notes) — every
     // downstream query is scoped against the SAME current-era reporting
@@ -683,9 +690,17 @@ export class OrderRecordService implements IOrderRecordService {
 
     const [dailyRows, medianOrderValue, netMedianOrderValue, unitsByConnection] =
       await Promise.all([
-        this.repository.getDailyOrderAggregates(filters, currentReportingCurrency),
+        this.repository.getDailyOrderAggregates(
+          filters,
+          currentReportingCurrency,
+          includeBackfilledPreRollout
+        ),
         this.repository.getMedianOrderValue(filters, currentReportingCurrency),
-        this.repository.getNetMedianOrderValue(filters, currentReportingCurrency),
+        this.repository.getNetMedianOrderValue(
+          filters,
+          currentReportingCurrency,
+          includeBackfilledPreRollout
+        ),
         this.lineItemRepository.getUnitsSoldByConnection(filters, currentReportingCurrency),
       ]);
 
@@ -718,17 +733,22 @@ export class OrderRecordService implements IOrderRecordService {
    * to the current page's `productIds`, which only exist once the ranking
    * query has returned (#2172 review, SUGGESTION 2).
    */
-  async getTopProducts(filters: TopProductFilters): Promise<TopProductsResult> {
+  async getTopProducts(
+    filters: TopProductFilters,
+    includeBackfilledPreRollout = false
+  ): Promise<TopProductsResult> {
     const reportingCurrency = await this.reportingCurrencySettings.resolve();
     const { rows: ranking, total } = await this.lineItemRepository.getTopProductRanking(
       filters,
-      reportingCurrency
+      reportingCurrency,
+      includeBackfilledPreRollout
     );
     const productIds = ranking.map((row) => row.productId);
     const breakdown = await this.lineItemRepository.getProductChannelBreakdown(
       productIds,
       filters,
-      reportingCurrency
+      reportingCurrency,
+      includeBackfilledPreRollout
     );
 
     return buildTopProducts({ ranking, total, breakdown });
@@ -755,6 +775,76 @@ export class OrderRecordService implements IOrderRecordService {
     ]);
 
     return buildVariantSales({ productId, ranking, breakdown });
+  }
+
+  /**
+   * Data Coverage `'currency'` category drill-down (#2464/#2466) —
+   * delegates the page read to {@link
+   * OrderRecordRepositoryPort.findCurrencyMismatchOrders}, then enriches
+   * each row with EVERY distinct product it touches (#2799, corrected per
+   * #2799 review BLOCKING 1) via one batched {@link
+   * OrderLineItemRepositoryPort.findProductRefsByOrderIds} call scoped to
+   * just this page's order ids — never per-row, which would turn a bounded
+   * page read into an N+1. The enrichment lives here rather than inside the
+   * repository because `OrderRecordRepository` has no `order_line_items`
+   * access of its own; this service already composes both repositories for
+   * {@link buildTopProducts}, so the join belongs at the same layer.
+   */
+  async getCurrencyMismatchOrders(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string,
+    pagination: CoverageDetectionPagination
+  ): Promise<PaginatedCurrencyMismatchOrders> {
+    const page = await this.repository.findCurrencyMismatchOrders(
+      filters,
+      currentReportingCurrency,
+      pagination
+    );
+
+    if (page.items.length === 0) {
+      return page;
+    }
+
+    const productRefs = await this.lineItemRepository.findProductRefsByOrderIds(
+      page.items.map((item) => item.internalOrderId)
+    );
+
+    return {
+      ...page,
+      items: page.items.map((item) => ({
+        ...item,
+        lineProducts: productRefs.get(item.internalOrderId) ?? [],
+      })),
+    };
+  }
+
+  /**
+   * Data Coverage `'currency'` category aggregate-by-connection (#2713) —
+   * thin pass-through to {@link
+   * OrderRecordRepositoryPort.findCurrencyMismatchOrdersByConnection}. No
+   * line-item enrichment here (unlike {@link getCurrencyMismatchOrders}) — a
+   * count carries no `productId`/`variantId` to attach.
+   */
+  async getCurrencyMismatchOrdersByConnection(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string
+  ): Promise<CoverageConnectionAggregateRow[]> {
+    return this.repository.findCurrencyMismatchOrdersByConnection(
+      filters,
+      currentReportingCurrency
+    );
+  }
+
+  /**
+   * Data Coverage `'product-matching'` category drill-down (#2466) — thin
+   * pass-through to {@link
+   * OrderRecordRepositoryPort.findProductMatchingErrorOrders}.
+   */
+  async getProductMatchingErrorOrders(
+    filters: OrderHealthSummaryFilters,
+    pagination: CoverageDetectionPagination
+  ): Promise<PaginatedProductMatchingErrorOrders> {
+    return this.repository.findProductMatchingErrorOrders(filters, pagination);
   }
 
   /**

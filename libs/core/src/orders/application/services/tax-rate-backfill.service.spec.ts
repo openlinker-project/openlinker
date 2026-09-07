@@ -16,7 +16,7 @@ import { TaxRateBackfillService } from './tax-rate-backfill.service';
 describe('TaxRateBackfillService', () => {
   let service: TaxRateBackfillService;
   let lineItemRepository: jest.Mocked<
-    Pick<OrderLineItemRepositoryPort, 'findPageWithNoTaxRate' | 'backfillTaxRate'>
+    Pick<OrderLineItemRepositoryPort, 'findPageWithNoTaxRate' | 'backfillTaxRate' | 'findByOrderId'>
   >;
   let recordRepository: jest.Mocked<Pick<OrderRecordRepositoryPort, 'patchSnapshotTaxRates'>>;
   let productsService: jest.Mocked<Pick<IProductsService, 'getEffectiveTaxRate'>>;
@@ -49,6 +49,7 @@ describe('TaxRateBackfillService', () => {
     const mockLineItemRepository = {
       findPageWithNoTaxRate: jest.fn(),
       backfillTaxRate: jest.fn(),
+      findByOrderId: jest.fn(),
     };
     const mockRecordRepository = {
       patchSnapshotTaxRates: jest.fn(),
@@ -189,6 +190,83 @@ describe('TaxRateBackfillService', () => {
       sourceConnectionId: 'conn-1',
       limit: 50,
       afterId: 'line-99',
+    });
+  });
+
+  describe('backfillOrders (#2469)', () => {
+    it('resolves and writes a rate for every rate-less line across the requested orders', async () => {
+      lineItemRepository.findByOrderId.mockImplementation((orderId) =>
+        Promise.resolve([
+          makeLine({ id: `${orderId}-l0`, orderRecordId: orderId, lineNumber: 0, taxRate: null }),
+          makeLine({ id: `${orderId}-l1`, orderRecordId: orderId, lineNumber: 1, taxRate: '23' }),
+        ])
+      );
+      productsService.getEffectiveTaxRate.mockResolvedValue(known('8'));
+
+      const result = await service.backfillOrders(['ol_order_a', 'ol_order_b']);
+
+      // Only the rate-LESS line of each order is touched; the '23' line is
+      // already resolvable and must not be rewritten.
+      expect(result).toEqual({ scanned: 2, updated: 2 });
+      expect(lineItemRepository.backfillTaxRate).toHaveBeenCalledTimes(2);
+      expect(lineItemRepository.backfillTaxRate).toHaveBeenCalledWith(
+        'ol_order_a-l0',
+        expect.objectContaining({ taxRate: '8', taxSource: 'backfill' })
+      );
+    });
+
+    it('counts a line the catalogue still cannot answer for as scanned but not updated', async () => {
+      lineItemRepository.findByOrderId.mockResolvedValue([makeLine({ taxRate: null })]);
+      productsService.getEffectiveTaxRate.mockResolvedValue(unknown);
+
+      await expect(service.backfillOrders(['ol_order_a'])).resolves.toEqual({
+        scanned: 1,
+        updated: 0,
+      });
+      expect(lineItemRepository.backfillTaxRate).not.toHaveBeenCalled();
+    });
+
+    it('retries a line carrying a value net-sales cannot use, not only a NULL one', async () => {
+      // Fractional notation is ambiguous with a genuine 0.23% rate, so
+      // `resolveNetSalesTaxRate` reports it unknown — which means the coverage
+      // panel counts the order, and so must this action.
+      lineItemRepository.findByOrderId.mockResolvedValue([makeLine({ taxRate: '0.23' })]);
+      productsService.getEffectiveTaxRate.mockResolvedValue(known('23'));
+
+      await expect(service.backfillOrders(['ol_order_a'])).resolves.toEqual({
+        scanned: 1,
+        updated: 1,
+      });
+    });
+
+    it('is idempotent: a second request over an already-resolved order scans nothing', async () => {
+      lineItemRepository.findByOrderId.mockResolvedValue([makeLine({ taxRate: '23' })]);
+
+      await expect(service.backfillOrders(['ol_order_a'])).resolves.toEqual({
+        scanned: 0,
+        updated: 0,
+      });
+      expect(productsService.getEffectiveTaxRate).not.toHaveBeenCalled();
+    });
+
+    it('keeps going when one catalogue read fails, so one bad line cannot abort the request', async () => {
+      lineItemRepository.findByOrderId.mockResolvedValue([
+        makeLine({ id: 'l0', taxRate: null }),
+        makeLine({ id: 'l1', lineNumber: 1, taxRate: null }),
+      ]);
+      productsService.getEffectiveTaxRate
+        .mockRejectedValueOnce(new Error('catalogue unavailable'))
+        .mockResolvedValue(known('23'));
+
+      await expect(service.backfillOrders(['ol_order_a'])).resolves.toEqual({
+        scanned: 2,
+        updated: 1,
+      });
+    });
+
+    it('does nothing at all for an empty id list', async () => {
+      await expect(service.backfillOrders([])).resolves.toEqual({ scanned: 0, updated: 0 });
+      expect(lineItemRepository.findByOrderId).not.toHaveBeenCalled();
     });
   });
 });
