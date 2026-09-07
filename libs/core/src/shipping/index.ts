@@ -214,3 +214,32 @@ export type {
   FulfillmentStatusSyncResult,
 } from './application/types/fulfillment-status-sync.types';
 export { DEFAULT_UPDATED_SINCE_DAYS } from './application/types/fulfillment-status-sync.types';
+
+// Domain + application — line-grain shipment read model (#2727,
+// `DECISION-oms-fulfilment-grain` option C). Contracts and the pure capacity
+// rule only; the service is injected via SHIPMENT_LINE_SERVICE_TOKEN and the
+// repository via SHIPMENT_LINE_REPOSITORY_TOKEN (both exported above by
+// `export * from './shipping.tokens'`).
+//
+// The ORM entities are deliberately NOT here: they are TypeORM-decorated
+// infrastructure, private to `ShippingModule` per engineering-standards
+// §"ORM ↔ Domain Mapping".
+export { ShipmentLineActKindValues } from './domain/types/shipment-line.types';
+export type {
+  ShipmentLine,
+  ShipmentLineAct,
+  ShipmentLineActKind,
+  ShipmentLineCapacityInput,
+  FulfillmentQuantityCoverage,
+} from './domain/types/shipment-line.types';
+export {
+  checkShipmentLineCapacity,
+  netShippedQuantity,
+} from './domain/types/shipment-line.types';
+export type {
+  ShipmentLineRepositoryPort,
+  UpsertShipmentLineInput,
+  RecordShipmentLineActInput,
+  OrderLineQuantities,
+} from './domain/ports/shipment-line-repository.port';
+export type { IShipmentLineService } from './application/interfaces/shipment-line.service.interface';

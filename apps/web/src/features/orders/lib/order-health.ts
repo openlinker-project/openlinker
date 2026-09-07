@@ -184,11 +184,18 @@ export type FulfillmentState = (typeof FulfillmentStateValues)[number];
  * ShippingProviderManager capability the order can't be dispatched at all, so
  * the state collapses to `unavailable` (the panel + cell hide the affordance).
  *
- * **Twin (#1108):** the BE `deriveFulfillmentRollup`
+ * **Twin (#1108, precedence revised #2727):** the BE `deriveFulfillmentRollup`
  * (`libs/core/src/shipping/domain/fulfillment-rollup.ts`) encodes the same
- * precedence to populate `order.fulfillmentState` (which the list reads
+ * STATUS precedence to populate `order.fulfillmentState` (which the list reads
  * directly). Keep both in lockstep if the precedence changes; `unavailable`
  * is a FE-only render state that the BE rollup never produces.
+ *
+ * **The twin is deliberately ASYMMETRIC.** #2727 gave the BE rollup a second,
+ * quantity-based half: a delivered order whose `shipment_lines` coverage falls
+ * short of what it ordered is demoted to `dispatched`. That half is BE-only
+ * because this function has no quantity input — it is handed shipment statuses
+ * and nothing else. Only the status half is mirrored here, and the asymmetry is
+ * intended rather than drift.
  */
 export function deriveFulfillment(
   shipmentStatuses: readonly string[] | null,
@@ -196,10 +203,13 @@ export function deriveFulfillment(
 ): FulfillmentState {
   if (!hasShippingCapability) return 'unavailable';
   if (!shipmentStatuses || shipmentStatuses.length === 0) return 'not-shipped';
-  if (shipmentStatuses.includes('delivered')) return 'delivered';
+  // #2727: an in-progress parcel OUTRANKS a delivered sibling. This clause moved
+  // above the `delivered` test; before that, an order with one parcel delivered
+  // and one still in transit reported as fully delivered.
   if (shipmentStatuses.some((s) => s === 'dispatched' || s === 'in-transit' || s === 'generated')) {
     return 'dispatched';
   }
+  if (shipmentStatuses.includes('delivered')) return 'delivered';
   if (shipmentStatuses.every((s) => s === 'failed' || s === 'cancelled')) return 'failed';
   return 'not-shipped';
 }

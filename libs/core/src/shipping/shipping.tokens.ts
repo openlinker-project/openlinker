@@ -32,3 +32,5 @@ export const SHIPMENT_RESERVATION_CONSUME_SERVICE_TOKEN = Symbol(
 export const ORDER_FULFILLMENT_PROJECTION_SERVICE_TOKEN = Symbol(
   'IOrderFulfillmentProjectionService',
 );
+export const SHIPMENT_LINE_REPOSITORY_TOKEN = Symbol('ShipmentLineRepositoryPort');
+export const SHIPMENT_LINE_SERVICE_TOKEN = Symbol('IShipmentLineService');
