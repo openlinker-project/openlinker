@@ -1,5 +1,6 @@
 /**
- * Sales-Document Rule Composer (#2170, mockup tab 02 "+ Add rule")
+ * Sales-Document Rule Composer (#2170, mockup tab 02 "+ Add rule", redesigned
+ * per review — spacing/hierarchy + warning-density findings)
  *
  * Document type stays EXACTLY two-valued — Invoice / Receipt — never a third
  * "Receipt with NIP" option (the independent-review correction the mockup's
@@ -18,6 +19,25 @@
  * content (50) and would otherwise leave the routing dialog undimmed behind
  * this one.
  *
+ * TWO REVIEW FINDINGS closed here, both about the SAME root cause: the form
+ * had no visual grouping at all — every field, label, and full-width warning
+ * `Alert` sat in one flat flex column with only a 2-column grid breaking up
+ * pairs, so an operator could not tell "conditions" from "what this rule
+ * does" from "when it applies" at a glance.
+ *
+ *  1. **Bordered `.rule-composer-section` cards** (the `.sales-document-tier`
+ *     precedent from the routing dialog) now group Conditions / Document &
+ *     destination / Effective window into three visually distinct blocks
+ *     with consistent internal spacing, rather than one continuous column.
+ *  2. **The buyerHasTaxId coverage warning is a tooltip-triggered glyph, not
+ *     a full-width `Alert` per row.** A rule with 3 tax-ID conditions used to
+ *     render the IDENTICAL multi-line warning box 3 times in a row - the
+ *     same fact, repeated verbatim, dominating the whole dialog. A small
+ *     `WarningGlyph` beside the row states "this needs a caveat" at a
+ *     glance; the caveat itself is one hover/focus away via `Tooltip`,
+ *     never duplicated as a wall of orange boxes. The fact represented is
+ *     unchanged - only its density is.
+ *
  * @module apps/web/src/features/sales-documents/components
  */
 import { useState, type ReactElement } from 'react';
@@ -26,6 +46,7 @@ import { Button } from '../../../shared/ui/button';
 import { Select } from '../../../shared/ui/select';
 import { Input } from '../../../shared/ui/input';
 import { Alert } from '../../../shared/ui/alert';
+import { Tooltip, TooltipTrigger, TooltipContent } from '../../../shared/ui/tooltip';
 import { useConnectionsQuery } from '../../connections';
 import { selectInvoicingCandidates } from '../../invoicing';
 import { selectFiscalizationCandidates } from '../../fiscalization';
@@ -65,6 +86,50 @@ function toConditionInput(draft: ConditionDraft): SalesDocumentConditionInput {
     return { field: 'orderCountry', op: 'eq', stringValue: draft.stringValue };
   }
   return { field: 'orderTotalGross', op: draft.op, thresholdRef: draft.thresholdRef };
+}
+
+/** A small triangle-in-circle glyph — the trigger for a per-row caveat tooltip, never a full-width banner. */
+function WarningGlyph(): ReactElement {
+  return (
+    <svg
+      className="rule-composer-warning-glyph"
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+    >
+      <path
+        d="M8 1.5 14.8 13.5H1.2Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+      <path d="M8 6.2v3.4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <circle cx="8" cy="11.3" r="0.9" fill="currentColor" />
+    </svg>
+  );
+}
+
+function BuyerTaxIdCoverageWarning(): ReactElement {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          className="rule-composer-warning-trigger"
+          aria-label="Coverage caveat for this condition"
+        >
+          <WarningGlyph />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent className="rule-composer-warning-tooltip" side="top">
+        Only some sources report this today: a PrestaShop order carries a real tax-ID status
+        (present, or explicitly none). An Allegro or WooCommerce order reports neither — this
+        condition will never match those, and the order falls through to the next tier instead.
+      </TooltipContent>
+    </Tooltip>
+  );
 }
 
 export function SalesDocumentRuleComposerDialog({
@@ -129,112 +194,114 @@ export function SalesDocumentRuleComposerDialog({
         aria-describedby={undefined}
         className="dialog__content--elevated"
         overlayClassName="dialog__overlay--elevated"
-        style={{ maxWidth: '30rem' }}
+        style={{ maxWidth: '32rem' }}
       >
         <DialogTitle>Add rule</DialogTitle>
 
         {createRule.error ? <Alert tone="error">{createRule.error.message}</Alert> : null}
 
-        <div>
-          <label className="eyebrow" style={{ marginBottom: 2 }}>
-            Conditions
-          </label>
-          {conditions.map((condition, index) => (
-            <div key={index} className="frame-grid frame-grid--2" style={{ marginBottom: 'var(--space-2)' }}>
-              <Select
-                aria-label="Condition field"
-                value={condition.kind}
-                onChange={(event) => {
-                  const kind = event.target.value as ConditionKind;
-                  setConditions((prev) =>
-                    prev.map((c, i) => (i === index ? { ...newConditionDraft(), kind } : c)),
-                  );
-                }}
-              >
-                <option value="buyerHasTaxId">Buyer has a tax ID</option>
-                <option value="orderCountry">Order country is</option>
-                <option value="orderTotalGross">Order total (gross)</option>
-              </Select>
+        <section className="rule-composer-section">
+          <header className="rule-composer-section__header">
+            <p className="eyebrow">Conditions</p>
+            <p className="muted-text">
+              Every added condition must ALL be true for this rule to match (AND).
+            </p>
+          </header>
 
-              {condition.kind === 'buyerHasTaxId' ? (
+          <div className="rule-composer-conditions">
+            {conditions.map((condition, index) => (
+              <div key={index} className="rule-composer-condition-row">
                 <Select
-                  aria-label="Buyer has a tax ID value"
-                  value={String(condition.boolValue)}
-                  onChange={(event) =>
+                  aria-label="Condition field"
+                  value={condition.kind}
+                  onChange={(event) => {
+                    const kind = event.target.value as ConditionKind;
                     setConditions((prev) =>
-                      prev.map((c, i) =>
-                        i === index ? { ...c, boolValue: event.target.value === 'true' } : c,
-                      ),
-                    )
-                  }
+                      prev.map((c, i) => (i === index ? { ...newConditionDraft(), kind } : c)),
+                    );
+                  }}
                 >
-                  <option value="true">yes</option>
-                  <option value="false">no</option>
+                  <option value="buyerHasTaxId">Buyer has a tax ID</option>
+                  <option value="orderCountry">Order country is</option>
+                  <option value="orderTotalGross">Order total (gross)</option>
                 </Select>
-              ) : null}
-              {condition.kind === 'buyerHasTaxId' ? (
-                <div style={{ gridColumn: '1 / -1' }}>
-                  <Alert tone="warning">
-                    This condition cannot match yet: OpenLinker doesn&apos;t know a buyer&apos;s
-                    tax-ID status for any order today, so a rule using it will never fire until that
-                    data is available.
-                  </Alert>
-                </div>
-              ) : null}
 
-              {condition.kind === 'orderCountry' ? (
-                <Input
-                  aria-label="Order country value"
-                  value={condition.stringValue}
-                  placeholder="e.g. PL"
-                  onChange={(event) =>
-                    setConditions((prev) =>
-                      prev.map((c, i) =>
-                        i === index ? { ...c, stringValue: event.target.value.toUpperCase() } : c,
-                      ),
-                    )
-                  }
-                />
-              ) : null}
-
-              {condition.kind === 'orderTotalGross' ? (
-                <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                {condition.kind === 'buyerHasTaxId' ? (
                   <Select
-                    aria-label="Order total comparison"
-                    value={condition.op}
+                    aria-label="Buyer has a tax ID value"
+                    value={String(condition.boolValue)}
                     onChange={(event) =>
                       setConditions((prev) =>
                         prev.map((c, i) =>
-                          i === index ? { ...c, op: event.target.value as 'gte' | 'lt' } : c,
+                          i === index ? { ...c, boolValue: event.target.value === 'true' } : c,
                         ),
                       )
                     }
                   >
-                    <option value="gte">≥</option>
-                    <option value="lt">&lt;</option>
+                    <option value="true">yes</option>
+                    <option value="false">no</option>
                   </Select>
-                  <Select
-                    aria-label="Threshold"
-                    value={condition.thresholdRef}
+                ) : null}
+
+                {condition.kind === 'orderCountry' ? (
+                  <Input
+                    aria-label="Order country value"
+                    value={condition.stringValue}
+                    placeholder="e.g. PL"
                     onChange={(event) =>
                       setConditions((prev) =>
                         prev.map((c, i) =>
-                          i === index ? { ...c, thresholdRef: event.target.value } : c,
+                          i === index
+                            ? { ...c, stringValue: event.target.value.toUpperCase() }
+                            : c,
                         ),
                       )
                     }
-                  >
-                    <option value="">Select a threshold…</option>
-                    {thresholds.map((t) => (
-                      <option key={t.ref} value={t.ref}>
-                        {t.ref} ({t.amount} {t.currency})
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-              ) : null}
-            </div>
-          ))}
+                  />
+                ) : null}
+
+                {condition.kind === 'orderTotalGross' ? (
+                  <div className="rule-composer-condition-row__threshold">
+                    <Select
+                      aria-label="Order total comparison"
+                      value={condition.op}
+                      onChange={(event) =>
+                        setConditions((prev) =>
+                          prev.map((c, i) =>
+                            i === index ? { ...c, op: event.target.value as 'gte' | 'lt' } : c,
+                          ),
+                        )
+                      }
+                    >
+                      <option value="gte">≥</option>
+                      <option value="lt">&lt;</option>
+                    </Select>
+                    <Select
+                      aria-label="Threshold"
+                      value={condition.thresholdRef}
+                      onChange={(event) =>
+                        setConditions((prev) =>
+                          prev.map((c, i) =>
+                            i === index ? { ...c, thresholdRef: event.target.value } : c,
+                          ),
+                        )
+                      }
+                    >
+                      <option value="">Select a threshold…</option>
+                      {thresholds.map((t) => (
+                        <option key={t.ref} value={t.ref}>
+                          {t.ref} ({t.amount} {t.currency})
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                ) : null}
+
+                {condition.kind === 'buyerHasTaxId' ? <BuyerTaxIdCoverageWarning /> : <span />}
+              </div>
+            ))}
+          </div>
+
           <Button
             tone="secondary"
             className="button--sm"
@@ -242,86 +309,95 @@ export function SalesDocumentRuleComposerDialog({
           >
             + Add condition
           </Button>
-          <p className="muted-text" style={{ marginTop: 'var(--space-2)' }}>
-            Every added condition must ALL be true for this rule to match (AND). The underlying{' '}
-            <span className="mono-text">field</span> is one closed, cross-country vocabulary — never a
-            country-specific string.
+          <p className="muted-text rule-composer-section__footnote">
+            The underlying <span className="mono-text">field</span> is one closed, cross-country
+            vocabulary — never a country-specific string.
           </p>
-        </div>
+        </section>
 
-        <div className="frame-grid frame-grid--2">
-          <div>
-            <label className="eyebrow" htmlFor="sd-rule-doctype" style={{ marginBottom: 2 }}>
-              Document type
-            </label>
-            <Select
-              id="sd-rule-doctype"
-              value={documentKind}
-              onChange={(event) => {
-                setDocumentKind(event.target.value as SalesDocumentKind);
-                setConnectionId('');
-              }}
-            >
-              <option value="invoice">Invoice</option>
-              <option value="fiscal-receipt">Receipt</option>
-            </Select>
+        <section className="rule-composer-section">
+          <header className="rule-composer-section__header">
+            <p className="eyebrow">Document &amp; destination</p>
+          </header>
+          <div className="frame-grid frame-grid--2">
+            <div>
+              <label className="eyebrow" htmlFor="sd-rule-doctype" style={{ marginBottom: 2 }}>
+                Document type
+              </label>
+              <Select
+                id="sd-rule-doctype"
+                value={documentKind}
+                onChange={(event) => {
+                  setDocumentKind(event.target.value as SalesDocumentKind);
+                  setConnectionId('');
+                }}
+              >
+                <option value="invoice">Invoice</option>
+                <option value="fiscal-receipt">Receipt</option>
+              </Select>
+            </div>
+            <div>
+              <label className="eyebrow" htmlFor="sd-rule-connection" style={{ marginBottom: 2 }}>
+                Integration
+              </label>
+              <Select
+                id="sd-rule-connection"
+                value={connectionId}
+                onChange={(event) => setConnectionId(event.target.value)}
+              >
+                <option value="">Select a connection…</option>
+                {candidates.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
           </div>
-          <div>
-            <label className="eyebrow" htmlFor="sd-rule-connection" style={{ marginBottom: 2 }}>
-              Integration
-            </label>
-            <Select
-              id="sd-rule-connection"
-              value={connectionId}
-              onChange={(event) => setConnectionId(event.target.value)}
-            >
-              <option value="">Select a connection…</option>
-              {candidates.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </Select>
-          </div>
-        </div>
 
-        {documentKind === 'fiscal-receipt' ? (
-          <div className="ack-row" style={{ background: 'var(--bg-surface-muted)' }}>
-            <input type="checkbox" id="sd-rule-taxid-toggle" disabled />
-            <label htmlFor="sd-rule-taxid-toggle">
-              Include the buyer&apos;s tax ID on the receipt, where the destination supports it
-              <span className="muted-text" style={{ display: 'block', marginTop: 2 }}>
-                A property of the Receipt outcome, not a separate document type. Not workable today —
-                eparagony.pl&apos;s adapter has no tax-id field yet.
-              </span>
-            </label>
-          </div>
-        ) : null}
+          {documentKind === 'fiscal-receipt' ? (
+            <div className="ack-row rule-composer-section__footnote-row">
+              <input type="checkbox" id="sd-rule-taxid-toggle" disabled />
+              <label htmlFor="sd-rule-taxid-toggle">
+                Include the buyer&apos;s tax ID on the receipt, where the destination supports it
+                <span className="muted-text" style={{ display: 'block', marginTop: 2 }}>
+                  A property of the Receipt outcome, not a separate document type. Not workable
+                  today — eparagony.pl&apos;s adapter has no tax-id field yet.
+                </span>
+              </label>
+            </div>
+          ) : null}
+        </section>
 
-        <div className="frame-grid frame-grid--2">
-          <div>
-            <label className="eyebrow" htmlFor="sd-rule-from" style={{ marginBottom: 2 }}>
-              Effective from
-            </label>
-            <Input
-              id="sd-rule-from"
-              type="date"
-              value={effectiveFrom}
-              onChange={(event) => setEffectiveFrom(event.target.value)}
-            />
+        <section className="rule-composer-section">
+          <header className="rule-composer-section__header">
+            <p className="eyebrow">Effective window</p>
+          </header>
+          <div className="frame-grid frame-grid--2">
+            <div>
+              <label className="eyebrow" htmlFor="sd-rule-from" style={{ marginBottom: 2 }}>
+                Effective from
+              </label>
+              <Input
+                id="sd-rule-from"
+                type="date"
+                value={effectiveFrom}
+                onChange={(event) => setEffectiveFrom(event.target.value)}
+              />
+            </div>
+            <div>
+              <label className="eyebrow" htmlFor="sd-rule-to" style={{ marginBottom: 2 }}>
+                Effective to <span className="text-muted">(optional)</span>
+              </label>
+              <Input
+                id="sd-rule-to"
+                type="date"
+                value={effectiveTo}
+                onChange={(event) => setEffectiveTo(event.target.value)}
+              />
+            </div>
           </div>
-          <div>
-            <label className="eyebrow" htmlFor="sd-rule-to" style={{ marginBottom: 2 }}>
-              Effective to <span className="text-muted">(optional)</span>
-            </label>
-            <Input
-              id="sd-rule-to"
-              type="date"
-              value={effectiveTo}
-              onChange={(event) => setEffectiveTo(event.target.value)}
-            />
-          </div>
-        </div>
+        </section>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
           <Button

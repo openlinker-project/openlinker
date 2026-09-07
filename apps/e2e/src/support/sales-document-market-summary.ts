@@ -1,31 +1,42 @@
 /**
- * Summarize Sales-Document Markets (#2541)
+ * Sales-document market summary mirror (#2563 M10)
  *
- * One computed prose sentence for the settings page's market section —
- * derived from the same rows the list renders, never hand-written. Three
- * outcomes:
+ * A byte-for-byte-behavior mirror of `summarizeSalesDocumentMarkets`
+ * (`apps/web/src/features/sales-documents/lib/summarize-sales-document-markets.ts`)
+ * and `describeSalesDocumentMarketOutcome`'s `needsDecision` predicate
+ * (`sales-document-market-outcome-copy.ts`). This package deliberately
+ * imports nothing from `apps/web` or `libs/*` (see the package doc comment),
+ * so — exactly like `apps/web`'s own browser-side mirrors of `libs/core`
+ * logic (`stock-and-pricing-preview.ts`, `parameter-restrictions.ts`, …) —
+ * the rule is copied rather than shared.
  *
- *  1. **Nothing configured anywhere, but orders are arriving** — a fresh
- *     install that already has traffic. This reads as "not set up yet",
- *     never "broken": a brand new instance receiving orders is the expected
- *     starting state, not a fault.
- *  2. **Some markets issue nothing** — names them (capped, so the sentence
- *     stays a sentence on an install with many blocked markets) and states
- *     explicitly that nothing is lost while they stay unconfigured — the
- *     document is held, not dropped.
- *  3. **Everything issues** — the reassuring one-liner.
+ * WHY THIS EXISTS: the settings page's "which of the mockup's four states is
+ * the stack in right now" is a GLOBAL property of every market the whole
+ * install has ever seen — unreachable to force deterministically once
+ * another spec (or a real operator) has left the stack in some particular
+ * mix of configured/unconfigured countries. Rather than assert a canned
+ * scenario that only holds on a freshly migrated stack, this mirror computes
+ * the EXPECTED summary from the LIVE `GET /sales-documents/markets` read, so
+ * the spec can assert "the page agrees with the rule" on whatever real data
+ * the stack happens to hold — always a real assertion, never a skip, and
+ * never a hardcoded assumption about install history.
  *
- * `rows.length === 0` returns `null`: the empty state
- * (`SalesDocumentMarketEmptyState`) owns that case, and the two must never
- * both render (#2541 acceptance).
+ * Kept in exact sync with the two files above; if either changes, update
+ * this too (there is no `check:invariants` mirror script for this pair
+ * since `apps/e2e` sits outside that gate — see the package doc comment on
+ * why this package isn't part of the mirror-drift CI checks the rest of the
+ * monorepo runs).
  *
- * @module apps/web/src/features/sales-documents/lib
+ * @module support
  */
-import { SALES_DOCUMENT_REST_OF_WORLD_COUNTRY } from '../api/sales-document-rules.types';
-import { describeSalesDocumentMarketOutcome } from './sales-document-market-outcome-copy';
-import type { SalesDocumentMarketRow } from '../api/sales-document-markets.types';
+import type { SalesDocumentMarketRow } from '../api/api.types';
 
+const REST_OF_WORLD_COUNTRY = '*';
 const MAX_NAMED_MARKETS = 3;
+
+export function needsDecision(row: SalesDocumentMarketRow): boolean {
+  return row.outcome.kind === 'unresolved';
+}
 
 function isConfigured(row: SalesDocumentMarketRow): boolean {
   return (
@@ -37,7 +48,7 @@ function isConfigured(row: SalesDocumentMarketRow): boolean {
 }
 
 function countryLabel(country: string): string {
-  return country === SALES_DOCUMENT_REST_OF_WORLD_COUNTRY ? 'Rest of world' : country;
+  return country === REST_OF_WORLD_COUNTRY ? 'Rest of world' : country;
 }
 
 function namesSentenceFragment(rows: readonly SalesDocumentMarketRow[]): string {
@@ -57,7 +68,7 @@ export function summarizeSalesDocumentMarkets(
 ): SalesDocumentMarketSummary | null {
   if (rows.length === 0) return null;
 
-  const blocked = rows.filter((row) => describeSalesDocumentMarketOutcome(row.outcome).needsDecision);
+  const blocked = rows.filter((row) => needsDecision(row));
 
   if (blocked.length === 0) {
     return {
@@ -82,10 +93,6 @@ export function summarizeSalesDocumentMarkets(
     };
   }
 
-  // #2807 review — states the fraction (mirroring the mockup's "3 of your 4
-  // markets are issuing nothing right now"), not just an enumeration: an
-  // operator reading "4 markets — CZ, FI, NO, and 1 more" has no way to tell
-  // whether that is most of their footprint or a small corner of it.
   return {
     tone: 'attention',
     sentence:
