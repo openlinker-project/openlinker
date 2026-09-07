@@ -128,25 +128,47 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
    * `perScope` bounds them per isolation scope (`resolveJobScope`, =
    * connectionId today).
    *
-   * `realtime`, `fiscal` and `fan-out` are still ILLUSTRATIVE — treat any
-   * number there as a guess until #1134's per-lane metrics exist.
+   * Provenance per lane — `apps/worker/.env.example` carries the long form,
+   * and ADR-050 § Amendment (#2851 / #2867) the reasoning:
    *
-   * `bulk` is the first lane with a measurement behind it (#2594, ADR-050
-   * amendment). An interleaved A/B run against a real PrestaShop catalogue
-   * held the shop's p95 response time at a 0.995 ratio while ~12 per-product
-   * child jobs ran concurrently on one connection, taking a full sweep from
-   * ~26.5 h to ~2.4 h. `perScope` is set below that measured ceiling because
-   * ADR-050 decision 4 deliberately ships no round-robin fairness between
-   * scopes: at `perScope === total` one connection's catalogue cycle could
-   * hold the whole lane and a second connection's sweep would make no
-   * progress at all. The measurement covers the PrestaShop catalogue path
-   * only; a slower destination is lowered with OL_LANE_BULK_SCOPE_CAP.
+   * - `realtime` and `fiscal` are ILLUSTRATIVE. Treat any number there as a
+   *   guess.
+   * - `fan-out` is DERIVED, not measured (#2609): the 1/1 it replaced was
+   *   sized for this lane's cron-paced members, and the observed backlog that
+   *   prompted the raise measures the defect, not the fix.
+   * - `bulk`'s TOTAL is the one MEASURED figure (#2594): an interleaved A/B
+   *   run against a real PrestaShop catalogue sustained ~277 req/min against
+   *   ~50 with ~12 per-product children concurrent on one connection, taking a
+   *   39 700-request sweep from ~26.5 h to ~2.4 h. `bulk`'s `perScope` is NOT
+   *   that measurement — it sits below it on purpose, because ADR-050
+   *   decision 4 ships no round-robin fairness between scopes and at
+   *   `perScope === total` one connection's catalogue cycle could hold the
+   *   whole lane.
+   *
+   * Do NOT reintroduce a p95 "store impact" ratio as justification for the
+   * `bulk` caps. The 0.995 figure this comment used to carry is WITHDRAWN
+   * (ADR-066 correction 1): the probe never checked HTTP status, so a fast
+   * error under load counted as a fast sample. The throughput figure above
+   * survives; the store-impact one does not.
+   *
+   * The `bulk` measurement covers the PrestaShop catalogue read path only; a
+   * slower destination is lowered with OL_LANE_BULK_SCOPE_CAP. And a cap
+   * bounds worker SLOTS in one process, never the destination's own capacity
+   * — raising a scope cap to make a slow destination faster makes it slower.
    */
   private laneCaps: Record<SyncJobLane, { total: number; perScope: number }> = {
     realtime: { total: 4, perScope: 2 },
     bulk: { total: 12, perScope: 8 },
     fiscal: { total: 2, perScope: 1 },
-    'fan-out': { total: 1, perScope: 1 },
+    // 8/4 since #2609, and this literal is kept in step with
+    // `resolveLaneCaps`'s fallback below ON PURPOSE. It used to read 1/1 —
+    // the pre-#2609 value — which changed no behaviour (the field is
+    // overwritten by `resolveLaneCaps()` in `onModuleInit`, and on the one
+    // path where it is NOT overwritten the runner is disabled and consults no
+    // cap at all), but left a reader of this class with a default that
+    // disagreed with the one the process actually runs. Two spellings of a
+    // default is how a wrong one gets quoted.
+    'fan-out': { total: 8, perScope: 4 },
   };
 
   /** In-flight job counts per lane, keyed by scope. */

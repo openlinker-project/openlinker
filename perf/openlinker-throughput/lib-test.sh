@@ -968,6 +968,77 @@ rm -rf "$CS_DIR"
 
 # ---------------------------------------------------------------------------
 echo
+echo "--- lane caps are reachable from a scenario at all (#2867) ---"
+# The failure this defends against is silent and total. Compose substitutes
+# `${VAR}` only for keys the service actually LISTS, so before #2867 exporting
+# OL_LANE_* around `docker compose up` changed nothing - and a cap sweep would
+# have produced a perfectly clean curve of the SAME cap measured at every
+# point, which is indistinguishable from "this lane does not respond to its
+# cap". That is a conclusion, so it must not be reachable by accident.
+F8_COMPOSE="$SCRIPT_DIR/../../docker-compose.lab.yml"
+if [ -f "$F8_COMPOSE" ]; then
+  F8_WORKER_ENV="$(awk '/^  worker:/{inw=1} inw && /^  [a-z]/ && !/^  worker:/{inw=0} inw' "$F8_COMPOSE")"
+  for f8_stem in REALTIME BULK FISCAL FANOUT; do
+    for f8_suffix in CAP SCOPE_CAP; do
+      assert_contains "docker-compose.lab.yml passes OL_LANE_${f8_stem}_${f8_suffix} through to the worker" \
+        "$F8_WORKER_ENV" "OL_LANE_${f8_stem}_${f8_suffix}:"
+      # Default must be EMPTY, never a literal number: resolveLaneCaps reads ''
+      # as "use the code default", so an empty default keeps an untouched stand
+      # byte-identical to its pre-#2867 self. A number here would silently pin
+      # every lab stand to a cap the code no longer owns.
+      assert_contains "OL_LANE_${f8_stem}_${f8_suffix} defaults to empty (unset == code default)" \
+        "$F8_WORKER_ENV" "OL_LANE_${f8_stem}_${f8_suffix}: '\${OL_LANE_${f8_stem}_${f8_suffix}:-}'"
+    done
+  done
+else
+  FAIL=$((FAIL + 1)); FAILURES+=("docker-compose.lab.yml not found at $F8_COMPOSE")
+fi
+
+F8_SCENARIO="$SCRIPT_DIR/scenarios/f8-lane-caps.sh"
+if [ -f "$F8_SCENARIO" ]; then
+  F8_SRC="$(cat "$F8_SCENARIO")"
+  # `fan-out` is the one lane whose env stem is not its own name. Getting it
+  # wrong sets nothing, every arm runs at the same cap, and the run looks fine.
+  assert_contains "f8 maps the fan-out lane to the FANOUT env stem, not 'FAN-OUT'" \
+    "$F8_SRC" 'fan-out)  LANE_ENV_STEM="FANOUT"'
+  # The cap must be read back out of the worker's own startup line. Trusting
+  # the env write is exactly the silent-failure mode above.
+  assert_contains "f8 verifies the applied cap against the worker's startup line" \
+    "$F8_SRC" 'assert_caps_applied'
+  assert_contains "f8 refuses an arm whose cap did not apply" \
+    "$F8_SRC" 'The cap did NOT apply'
+  # Occupancy over-reads (F4 § 2) and is a larger fraction of a small cap than
+  # of bulk's 12. Every cap f8 sweeps is smaller than 12, so the script must
+  # say so where a reader of its output will see it.
+  assert_contains "f8 labels the occupancy figures as an over-reading proxy" \
+    "$F8_SRC" 'PROXY and OVER-READ'
+  # #2617 takes a per-(connection, offer) lock. A pool at or below the widest
+  # cap would serialise the arm on the lock and the curve would be the lock's.
+  assert_contains "f8 refuses a realtime sweep whose offer pool is not wider than the widest cap" \
+    "$F8_SRC" 'curve of the lock, not of the lane'
+  # The fiscal arm exercises a handler that returns before any adapter, lock or
+  # provider. It measures the runner's floor and must never be quoted as a cap.
+  assert_contains "f8 states the fiscal arm is not a cap measurement" \
+    "$F8_SRC" 'NOT a cap measurement'
+  # A command substitution runs the function in a SUBSHELL, so every ARMS_CSV
+  # append is discarded and every log line is swallowed into the substitution's
+  # value. The first run of f8 did exactly that: both arms executed against the
+  # stand and the summary came out with a header and no rows.
+  case "$F8_SRC" in
+    *'$(run_arm'*) FAIL=$((FAIL + 1)); FAILURES+=("f8 must not call run_arm in a command substitution - the subshell discards ARMS_CSV") ;;
+    *) PASS=$((PASS + 1)) ;;
+  esac
+  # An oversized TOTAL turns every refill into a claim-and-release of
+  # (free - 1) rows, because claimAndStartForLane claims `total - inFlight` and
+  # only then drops what exceeds perScope.
+  assert_contains "f8 derives TOTAL from perScope x scopes rather than pinning it high" \
+    "$F8_SRC" 'total=$(( cap * SCOPES ))'
+else
+  FAIL=$((FAIL + 1)); FAILURES+=("f8-lane-caps.sh not found at $F8_SCENARIO")
+fi
+
+# ---------------------------------------------------------------------------
+echo
 echo "=== $PASS passed, $FAIL failed ==="
 if [ "$FAIL" -gt 0 ]; then
   printf 'FAILURES:\n'

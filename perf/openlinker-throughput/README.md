@@ -33,6 +33,7 @@ sources it rather than re-implementing any piece of it.
 | `seed/cleanup.sh` | Removes every row the three seeders above wrote, matching on the `perfseed` tag alone. Standalone - does NOT touch #2854's `stand-down.sh`. |
 | `scenarios/f5-read-path.sh` | Operator read-path scenario (#2843) - orders/products/jobs-dashboard routes + the app-shell nav-probe fan-out, at each of the three seeded dataset sizes. See "F5 - operator read path at row count" below. |
 | `drivers/read-path.js` | k6 driver for `f5-read-path.sh` - a weighted browse-mix scenario plus a separate page-shell scenario, one Trend per named route. |
+| `scenarios/f8-lane-caps.sh` | Lane-cap SATURATION sweep (#2867) - drives ONE lane's per-scope cap across a list of values, one worker recreate per value, and reports throughput and per-job latency at each point so the knee is read off a curve. The only scenario that WRITES a lane cap; it restores the caps it found on exit. Reads the applied cap back out of the worker's own startup line and refuses the arm on a mismatch, because a cap that silently did not apply produces a clean curve of the same cap measured five times. See "F8 - lane cap saturation" below. |
 
 Not owned here: `docker-compose.lab.yml` and `preflight.sh` are **#2854's**
 (the `lab` stand itself - Postgres's `pg_stat_statements`/`auto_explain`
@@ -555,6 +556,72 @@ order-detail / products-list / product-detail / jobs-dashboard, one Trend
 per route) and `page_shell` (the five nav-probe requests fired together as
 one group per "page load", measured separately per #2843's own AC that the
 page-shell tax must not be folded into a route's own number).
+
+## F8 - lane cap saturation (#2867)
+
+`scenarios/f8-lane-caps.sh` sweeps ONE lane's per-scope cap and reports what
+each setting buys. ADR-050 decision 6 says a cap without a metric is a guess;
+its § Amendment (#2851 / #2867) names, per lane, the measurement that is
+missing. This is that run.
+
+```bash
+# one lane, one sweep, one worker recreate per cap point
+bash scenarios/f8-lane-caps.sh --lane=realtime --caps="1 2 4 8 16" --jobs=240
+bash scenarios/f8-lane-caps.sh --lane=fan-out  --caps="1 2 4 8 16" --jobs=150
+bash scenarios/f8-lane-caps.sh --lane=fiscal   --caps="1 2 4"      --jobs=200
+bash scenarios/f8-lane-caps.sh --lane=realtime --smoke   # plumbing only
+```
+
+Five things about it are worth knowing before reading its output.
+
+**It is the only scenario that WRITES a lane cap.** It sets
+`OL_LANE_<LANE>_CAP` / `_SCOPE_CAP` in `.env.lab`, recreates the worker
+service (`--no-deps`, so nothing else on the stand is touched), and restores
+every cap it found on exit. `docker-compose.lab.yml` gained the passthrough
+for those eight variables in #2867 - compose substitutes `${VAR}` only for
+keys a service actually lists, so before that, exporting them around
+`docker compose up` changed nothing at all.
+
+**It reads the cap back out of the worker's own startup line and refuses the
+arm on a mismatch.** This is the guard the whole scenario rests on: a cap that
+silently did not apply produces a perfectly clean curve of the SAME cap
+measured at every point, which is indistinguishable from "this lane does not
+respond to its cap" - and that is a conclusion, so it must not be reachable
+by accident.
+
+**Nothing is sized from lane occupancy.** The `sync_jobs`-row proxy
+over-reads (F4 § 2: a slot is released in-process when the handler resolves,
+while the row stays `running` until a separate terminal write commits), and
+the over-read is a larger fraction of a small cap than of `bulk`'s 12. Every
+cap this scenario sweeps is smaller than 12. `occMaxProxy` / `occMeanProxy`
+are reported so a reader can see whether the lane was near its cap at all;
+every sizing figure comes from `sync_jobs.lastAttemptDurationMs` (#2611) and
+per-row timestamps instead, which the worker writes at real precision and
+which do not inherit the ~1 Hz sampler floor F7 hit.
+
+**The load is chosen per lane, because the cap protects something different
+in each.** `realtime` gets `marketplace.offerQuantity.update` against the
+`allegro-stub` - one synchronous call, no fan-out, and a destination whose
+latency is a knob rather than a shop, which is what makes the LANE the thing
+being measured. It is deliberately not `marketplace.order.sync`, which on
+this stand fans an ingested order out to every `OrderProcessorManager`
+connection and would create hundreds of real orders in a real PrestaShop
+against its declared 60 req/min - F4 already measured what happens then
+(both arms `DISCARDED`, the shop the ceiling). `fan-out` gets
+`inventory.propagateToMarketplaces`, whose work is database reads plus child
+enqueues. `fiscal` gets F7's invalid-payload `invoicing.issue` probe, and
+see the next paragraph.
+
+**The fiscal arm measures the runner's floor, NOT the cap, and must never be
+quoted as a cap measurement.** No invoicing or fiscalization connection
+exists on this stand, and building one means a real provider issuing real
+documents. The probe reaches `InvoicingIssueHandler`'s payload validation and
+returns `business_failure` before any adapter, lock or provider - so it does
+none of the work whose concurrency the cap governs. What it is good for is
+bounding the other half arithmetically: a burst of N documents at cap C
+against a provider taking T seconds each drains in about `N*T/C` plus this
+floor, which says how much of a fiscal burst's latency is OL's and how much
+is the provider's.
 
 ## Not built here
 

@@ -487,6 +487,29 @@ services:
       # file deliberately does not carry.
       OL_WORKER_ROLE: '${OL_WORKER_ROLE:-}'
       WORKER_RUNNER_ENABLED: '${WORKER_RUNNER_ENABLED:-false}'
+      # Lane caps (ADR-050 decisions 2/6, #2867). Passed through so a scenario
+      # can SWEEP a cap - which is the only way to measure one, and was not
+      # possible before: compose substitutes `${VAR}` only for keys the service
+      # actually lists, so exporting OL_LANE_* around `docker compose up`
+      # previously changed nothing at all and a sweep would silently have
+      # measured the same default at every point. `f8-lane-caps.sh` does not
+      # trust this either - it reads the caps back out of the worker's own
+      # startup line and refuses the arm on a mismatch.
+      #
+      # Empty is the default and means UNSET: `resolveLaneCaps`
+      # (apps/worker/src/sync/sync-job.runner.ts) reads '' as "use the code
+      # default", so an unset stand is byte-identical to its pre-#2867 self.
+      # These are per PROCESS (ADR-050 § Amendment (#2851 / #2867)), so at
+      # `--scale worker=N` the deployment's real concurrency is N times each
+      # figure.
+      OL_LANE_REALTIME_CAP: '${OL_LANE_REALTIME_CAP:-}'
+      OL_LANE_REALTIME_SCOPE_CAP: '${OL_LANE_REALTIME_SCOPE_CAP:-}'
+      OL_LANE_BULK_CAP: '${OL_LANE_BULK_CAP:-}'
+      OL_LANE_BULK_SCOPE_CAP: '${OL_LANE_BULK_SCOPE_CAP:-}'
+      OL_LANE_FISCAL_CAP: '${OL_LANE_FISCAL_CAP:-}'
+      OL_LANE_FISCAL_SCOPE_CAP: '${OL_LANE_FISCAL_SCOPE_CAP:-}'
+      OL_LANE_FANOUT_CAP: '${OL_LANE_FANOUT_CAP:-}'
+      OL_LANE_FANOUT_SCOPE_CAP: '${OL_LANE_FANOUT_SCOPE_CAP:-}'
       OL_LOG_BODY_MAX_BYTES: '${OL_LOG_BODY_MAX_BYTES:-8192}'
       NODE_EXTRA_CA_CERTS: /etc/ssl/lab/wc-tls-ca.pem
     volumes:
