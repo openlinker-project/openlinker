@@ -1230,3 +1230,74 @@ a longer lock TTL instead: the peer never took the lock.
 harness that measures a shared, human-reachable environment.
 
 **Source**: #2852 (found while re-running F7 against the fixed degraded-limiter guard).
+
+## A verification that compares must compare SEMANTICALLY - a textual match refuses configurations that did in fact apply
+
+**Context**: building the #2840 limiter A/B (`perf/openlinker-throughput/scenarios/limiter-ab.sh`),
+which follows the harness's own rule that what a scenario applied must be READ BACK and asserted
+rather than trusted (#2229). Two of those assertions were written as text comparisons, and both
+refused a correctly-configured arm on their very first real run.
+
+**Problem**: two different mechanisms, one shape.
+
+1. *A token matched inside an identifier's own name.* The worker logs
+   `Job intake Redis client: SHARED (OL_JOB_INTAKE_DEDICATED_REDIS is not true)`, and the guard
+   parsed it with `grep -oE 'SHARED|DEDICATED' | tail -1`. The alternation matches `SHARED` and
+   then the `DEDICATED` inside the variable's own name, so `tail -1` returned `DEDICATED` and the
+   guard refused the SHARED baseline with "asked for false but the worker reports DEDICATED"
+   while `printenv` in the same message read `false`. The self-contradiction in its own error
+   text is what gave it away.
+2. *Two JSON objects compared as strings.* `set_rate_limit` PATCHed
+   `{requestsPerMinute:60, maxConcurrent:4}` and compared the read-back against
+   `jq -nc '{requestsPerMinute:$r, maxConcurrent:$c}'`. `jq -c` preserves insertion order and the
+   API answers its own, so the read-back was `{"maxConcurrent":4,"requestsPerMinute":60}` and the
+   two semantically identical objects compared unequal.
+
+Both failure modes are worse than having no guard at all: a guard that blocks correct runs is a
+guard the next person deletes, and the reported-versus-enforced gap it existed to close comes
+back with it.
+
+**Rule**: when asserting that a configuration applied, compare the VALUE, never its rendering.
+Anchor a log parse on the prefix that fixes the token's position (`grep -oP 'client: \K(SHARED|DEDICATED)'`),
+never a bare alternation that can match a substring elsewhere on the line - and be especially
+careful when the log line names the env var it is reporting on, because the state word and the
+variable name usually share a stem. Compare JSON field by field (or normalise both sides with
+`jq -S`), never as two strings. Then check the guard against BOTH answers it must distinguish
+before trusting it, the same way `post_guard_limiter_degraded` is proved able to fail before a
+zero it reports is believed.
+
+**Applies to**: `perf/openlinker-throughput/scenarios/*.sh`, and any `assert_*` /
+`guard_*` that reads applied state back out of a container log, an env var or an API response.
+
+**Source**: #2840 (limiter A/B), building on #2229's reported-versus-enforced rule.
+
+## `${VAR:-default}` swallows an explicitly-EMPTY value - use `${VAR-default}` when empty is a legitimate request
+
+**Context**: `perf/openlinker-throughput/scenarios/limiter-ab.sh` (#2840) makes its measurement
+arms DATA - `ARM_SPECS="A:60:4:::false B:600:4:::false C:60:32:::false"` - so that running a
+different set is a config change rather than an edit. Running only the arms that need a worker
+recreate is documented as `ARM_SPECS="" RECREATE_ARM_SPECS="..." limiter-ab.sh`.
+
+**Problem**: the defaults were written `ARM_SPECS="${ARM_SPECS:-A:60:4:...}"`. The COLON form
+substitutes the default when the variable is unset **or empty**, so an explicit `ARM_SPECS=""`
+resolved back to the full default set. The invocation asked for two arms and silently ran nine -
+six of them the wrong configuration, on a stand where each window costs about nine minutes of
+wall clock. Caught only because the first results directory it created was named `-A-r1` for a
+run whose arm list contained no `A`.
+
+Worth noting how it failed: not with an error, but by measuring something else and labelling it
+correctly. The manifest, the guards and the verdict were all internally consistent - they
+described the arms that actually ran. Nothing in the output contradicted itself, so the only
+signal was a directory name that a reader had to notice.
+
+**Rule**: when an empty value is a legitimate request rather than an omission, use
+`${VAR-default}` (no colon), which substitutes only when the variable is UNSET. Reach for
+`${VAR:-default}` only where empty and unset genuinely mean the same thing. This bites hardest on
+a list-shaped knob - "run none of these" is exactly the request the colon form cannot express -
+and a harness whose selling point is that its arms are configurable has that property only for
+ADDING arms until this is fixed.
+
+**Applies to**: `perf/openlinker-throughput/**`, and any script exposing a list or set as an env
+knob (`ARM_SPECS`, `CAPS`, `WORKER_CONTAINERS`, `BUILD_RELEVANT_PATHS`).
+
+**Source**: #2840 (limiter A/B).
