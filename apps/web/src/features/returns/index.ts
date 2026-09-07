@@ -139,11 +139,26 @@ export {
 } from './lib/return-segments';
 export type { ReturnSegment, ReturnSegmentCounts } from './lib/return-segments';
 
+// The order-detail returns panel (#2640, returns spec § 5.4 surface 3).
+//
+// It lives in THIS feature rather than `features/orders` — see the component's
+// own docblock: `features/returns` already value-imports the orders barrel, so
+// the reverse edge would close a runtime cycle.
+export { OrderReturnsPanel } from './components/order-returns-panel';
+export { ORDER_RETURNS_PANEL_COPY } from './lib/order-returns-panel.copy';
+
 // Returns activity on the ORDER timeline (#2383, `W2-45`).
 //
 // The mapper is exported, the timeline component is not: `features/orders` owns
 // the timeline and this feature only contributes rows to it.
 export { useOrderReturnEventsQuery } from './hooks/use-order-return-events-query';
+
+// The RETURN-detail activity timeline (#2646). Same acts, same mapper, same
+// `by` table as the order timeline above — re-projected at the return grain,
+// which is the only grain an ORPHAN return has.
+export { useReturnEventsQuery } from './hooks/use-return-events-query';
+export { ReturnActivityTimeline } from './components/return-activity-timeline';
+export { RETURN_ACTIVITY_COPY } from './lib/return-activity.copy';
 export { mapReturnEventsToTimeline } from './lib/return-timeline-events';
 export { RETURN_TIMELINE_COPY } from './lib/return-timeline.copy';
 export type { ReturnTimelineEntry } from './api/returns.types';

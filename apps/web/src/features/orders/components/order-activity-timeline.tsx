@@ -12,7 +12,7 @@
 import { useMemo, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { EmptyState } from '../../../shared/ui/feedback-state';
-import { TimeDisplay } from '../../../shared/ui/time-display';
+import { ActivityTimelineList } from './activity-timeline-list';
 import { ConnectionEntityLabel } from '../../connections';
 import {
   SYNC_ATTEMPTS_PER_DESTINATION_CAP,
@@ -606,14 +606,6 @@ export function mergeTimelineEvents(
   return [...merged, ...pending.slice(next)];
 }
 
-const TONE_CLASS: Record<TimelineEvent['tone'], string> = {
-  default: 'order-activity__dot--default',
-  success: 'order-activity__dot--success',
-  error: 'order-activity__dot--error',
-  warning: 'order-activity__dot--warning',
-  conflict: 'order-activity__dot--conflict',
-};
-
 export function OrderActivityTimeline({
   createdAt,
   recordStatus,
@@ -689,30 +681,10 @@ export function OrderActivityTimeline({
 
   return (
     <>
-    <ol className="order-activity" aria-label="Order activity timeline">
-      {events.map((event) => (
-        <li key={event.id} className="order-activity__item">
-          <span className={`order-activity__dot ${TONE_CLASS[event.tone]}`} aria-hidden="true" />
-          <div className="order-activity__body">
-            <p className="order-activity__title">
-              {event.title}
-              {event.by ? <span className="order-activity__by">{event.by}</span> : null}
-            </p>
-            {event.description ? (
-              <p className="order-activity__description">{event.description}</p>
-            ) : null}
-            {event.footer ? <p className="order-activity__footer">{event.footer}</p> : null}
-          </div>
-          {event.timestamp ? (
-            <time className="order-activity__time" dateTime={event.timestamp}>
-              <TimeDisplay iso={event.timestamp} format="datetime" />
-            </time>
-          ) : (
-            <span className="order-activity__time" aria-hidden="true" />
-          )}
-        </li>
-      ))}
-    </ol>
+    {/* The rows moved to `ActivityTimelineList` (#2646) when the return detail
+        became a second consumer. Markup and class names are unchanged; the
+        caption below stays here because it is a statement about `sync_jobs`. */}
+    <ActivityTimelineList events={events} ariaLabel="Order activity timeline" />
     <p className="order-activity__caption">
       Showing {events.length} of {events.length} event{events.length === 1 ? '' : 's'} · attempts capped at{' '}
       {SYNC_ATTEMPTS_PER_DESTINATION_CAP} per destination.

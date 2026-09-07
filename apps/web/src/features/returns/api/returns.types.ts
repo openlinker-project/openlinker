@@ -162,6 +162,13 @@ export interface ReturnIngestionAvailability {
 export interface ReturnFilters {
   sourceConnectionId?: string;
   bucket?: ReturnBucket;
+  /**
+   * One order's returns (#2640) — the order-detail returns panel.
+   *
+   * A separate dimension from `bucket`, mirroring `ReturnListFilter`: it is
+   * never written as `bucket: 'attributed'` on the caller's behalf.
+   */
+  internalOrderId?: string;
   createdFrom?: string;
   createdTo?: string;
   /** #2378 — the worklist strip. One dimension; never translated into `bucket`. */

@@ -16,7 +16,11 @@
 export const RETURN_TIMELINE_COPY = {
   /** Titles, keyed by the reporting source's own `kind`. */
   opened: 'Return opened',
+  authorized: 'Return authorized',
   declined: 'Return declined',
+  closed: 'Return closed',
+  // #2646 / #2372 — an ORPHAN return attributed to an order by an operator.
+  matched: 'Matched to an order',
   receive: 'Return received',
   dispose: 'Returned goods disposed',
   stock_attestation: 'Stock handled manually',

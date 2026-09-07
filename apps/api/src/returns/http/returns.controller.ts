@@ -108,6 +108,10 @@ export class ReturnsController {
     // bucket they are currently looking at.
     const scope: ReturnListFilter = {
       sourceConnectionId: query.sourceConnectionId,
+      // #2640 — part of the SCOPE, so all four count reads see it. An order's
+      // panel that counted against every order's returns would report numbers
+      // describing a scope the operator is not looking at.
+      internalOrderId: query.internalOrderId,
       createdFrom: query.createdFrom === undefined ? undefined : new Date(query.createdFrom),
       createdTo: query.createdTo === undefined ? undefined : new Date(query.createdTo),
       // #2378 value filters. `openedAt` is the SOURCE's instant — deliberately
@@ -270,6 +274,77 @@ export class ReturnsController {
         })
       )
     ).flat();
+
+    const entries = [...owned, ...refundEntries]
+      .sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime())
+      .map((entry) => ({ ...entry, occurredAt: entry.occurredAt.toISOString() }));
+
+    return { entries };
+  }
+
+  /**
+   * The return-detail activity timeline (#2646).
+   *
+   * Declared before `:returnId` for the same reason its siblings are, though
+   * this one is two segments deep and could not collide — the ordering is kept
+   * so the file's rule stays uniform rather than a reader having to work out
+   * per route whether it applies.
+   *
+   * NOT `@AnyRole()`, and NOT copied bare from `/returns/events`: the reasoning
+   * has to travel with the decorator. These entries carry a refund `amount` and
+   * `currency`, and a `packer` can obtain return ids from `GET /returns`, so the
+   * route is walkable from the bench exactly as the order-scoped one is.
+   * Narrowed rather than stripped — the money belongs on this timeline for the
+   * roles that own it (#2905's register principle: exclude the audience, not
+   * the field).
+   *
+   * **This does not close the wider hole**: `GET /returns/:returnId` is still
+   * `@AnyRole()` and already returns `refunds[]` with amounts, so a packer
+   * reaches the same money one route over. That is pre-existing and is not
+   * fixed here.
+   */
+  @Roles('admin', 'operator', 'viewer')
+  @Get(':returnId/events')
+  @ApiOperation({
+    summary: "One return's activity, oldest first",
+    description:
+      'Feeds the return-detail activity timeline. Works for an ORPHAN return (one OpenLinker could not ' +
+      'attribute to an order), which is why it is keyed on the return rather than the order. Answers 404 ' +
+      'for a return that does not exist — never an empty timeline, which would render a history for ' +
+      'something that is not there.',
+  })
+  @ApiResponse({ status: 200, type: ReturnTimelineResponseDto })
+  @ApiResponse({ status: 404, description: 'No such return' })
+  async listReturnEventsForReturn(
+    @Param('returnId') returnId: string
+  ): Promise<ReturnTimelineResponseDto> {
+    const { entries: owned, returns } =
+      await this.returnsService.listReturnEventsForReturn(returnId);
+
+    // Composed HERE for the reason the order-scoped read states: `RefundRecord`
+    // belongs to `orders`, and `ReturnsModule` excludes `OrdersModule`. One
+    // context (this read is a single return), so no fan-out.
+    const context = returns[0];
+    const refundEntries = (await this.refunds.getRefundsForReturn(returnId)).map((record) => ({
+      id: `refund:${record.id}`,
+      source: 'refund' as const,
+      kind: 'refund_confirmed',
+      occurredAt: record.recordedAt,
+      returnId,
+      // Taken from the context, never defaulted — a guessed `returnOrigin`
+      // would claim a channel opened a return the operator authored.
+      externalReturnId: context.externalReturnId,
+      returnOrigin: context.returnOrigin,
+      sourceConnectionName: context.sourceConnectionName,
+      // `RefundRecord` carries no actor column (ADR-056).
+      actorUserId: null,
+      quantity: null,
+      restockState: null,
+      disposition: null,
+      refundExecutedBy: record.executedBy,
+      amount: record.amount,
+      currency: record.currency,
+    }));
 
     const entries = [...owned, ...refundEntries]
       .sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime())

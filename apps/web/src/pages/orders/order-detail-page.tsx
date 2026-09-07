@@ -52,6 +52,7 @@ import { parseOrderSnapshot } from '../../features/orders/api/order-snapshot.sch
 // #2383 — returns activity on the order timeline. The PAGE composes: the orders
 // timeline stays unaware of returns, and the returns feature maps its own acts.
 import {
+  OrderReturnsPanel,
   mapReturnEventsToTimeline,
   useOrderReturnEventsQuery,
 } from '../../features/returns';
@@ -514,6 +515,15 @@ export function OrderDetailPage(): ReactElement {
           rather than silently disappearing, which is what a reader needs when
           routing is switched on and an order was not routed. */}
       <OrderFulfillmentTasksPanel
+        key={order.internalOrderId}
+        internalOrderId={order.internalOrderId}
+      />
+
+      {/* #2640 — returns spec § 5.4's third surface. Rendered UNCONDITIONALLY
+          and keyed per order: an absent panel would read as "this order cannot
+          have returns", which is a fourth wrong answer beside the three the
+          panel itself distinguishes (failed / unreadable / confirmed-empty). */}
+      <OrderReturnsPanel
         key={order.internalOrderId}
         internalOrderId={order.internalOrderId}
       />
