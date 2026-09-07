@@ -209,3 +209,72 @@ describe('mapReturnEventsToTimeline', () => {
     expect(event.id).toBe('return:created');
   });
 });
+
+describe('mapReturnEventsToTimeline — the actor-bearing header column (#2646)', () => {
+  function headerEntry(overrides: Partial<ReturnTimelineEntry> = {}): ReturnTimelineEntry {
+    return {
+      id: 'r1:matched',
+      source: 'record_status',
+      kind: 'matched',
+      occurredAt: '2026-01-01T00:00:00.000Z',
+      returnId: 'r1',
+      externalReturnId: 'RET-1',
+      returnOrigin: 'source_ingested',
+      sourceConnectionName: 'Allegro Main',
+      actorUserId: null,
+      quantity: null,
+      restockState: null,
+      disposition: null,
+      refundExecutedBy: null,
+      amount: null,
+      currency: null,
+      ...overrides,
+    };
+  }
+
+  it('attributes a record-status entry to the OPERATOR when it carries an actor', () => {
+    const [event] = mapReturnEventsToTimeline(
+      [headerEntry({ actorUserId: 'user-1' })],
+      'user-1',
+    );
+
+    expect(event.title).toBe('Matched to an order');
+    expect(event.by).toBe('you');
+  });
+
+  it('distinguishes another operator from the session user', () => {
+    const [event] = mapReturnEventsToTimeline(
+      [headerEntry({ actorUserId: 'user-2' })],
+      'user-1',
+    );
+
+    expect(event.by).toBe('another operator');
+  });
+
+  it('still attributes `opened` and `declined` to the SOURCE, unchanged', () => {
+    // The presence rule must not have converted every header column into an
+    // operator claim: these two carry no actor and are a source claim or
+    // nothing.
+    const events = mapReturnEventsToTimeline(
+      [
+        headerEntry({ id: 'r1:opened', kind: 'opened' }),
+        headerEntry({ id: 'r1:declined', kind: 'declined' }),
+      ],
+      'user-1',
+    );
+
+    expect(events.map((e) => e.by)).toEqual(['Allegro Main', 'Allegro Main']);
+    expect(events.map((e) => e.title)).toEqual(['Return opened', 'Return declined']);
+  });
+
+  it('renders a title even when no actor can be named', () => {
+    const [event] = mapReturnEventsToTimeline(
+      [headerEntry({ actorUserId: null, sourceConnectionName: null })],
+      null,
+    );
+
+    // An unknown actor is not a reason to drop a fact.
+    expect(event.title).toBe('Matched to an order');
+    expect(event.by).toBe('an unrecognised source');
+  });
+});

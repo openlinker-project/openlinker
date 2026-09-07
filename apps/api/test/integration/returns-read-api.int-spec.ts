@@ -288,6 +288,84 @@ describe('Returns Read API Integration', () => {
       expect(bracketed.body.items).toHaveLength(1);
     });
 
+    /**
+     * #2640 — the order-detail returns panel's read.
+     *
+     * Asserted on ALL FOUR reads (the page and the three count aggregates),
+     * because the controller threads `internalOrderId` through the shared
+     * `scope`: a count computed without it would describe every order's returns
+     * while the rows underneath describe one, which reads as a data bug rather
+     * than a query bug.
+     */
+    it('should filter to ONE order across the page and every count', async () => {
+      const mappings = harness
+        .getApp()
+        .get<IIdentifierMappingService>(IDENTIFIER_MAPPING_SERVICE_TOKEN, { strict: false });
+
+      await seedAttributed(connectionA, 'R1', 'ORDER-1', '2026-08-01T10:00:00.000Z');
+      await seedAttributed(connectionA, 'R2', 'ORDER-2', '2026-08-02T10:00:00.000Z');
+      // An orphan must never be swept in: it has no internal order id at all.
+      await seedOrphan(connectionA, 'R3', '2026-08-03T10:00:00.000Z');
+
+      const internalOrderId = await mappings.getInternalId(
+        CORE_ENTITY_TYPE.Order,
+        'ORDER-1',
+        connectionA
+      );
+      expect(internalOrderId).not.toBeNull();
+
+      const scoped = await get(
+        `/v1/returns?internalOrderId=${encodeURIComponent(internalOrderId as string)}`
+      ).expect(200);
+
+      expect(scoped.body.items).toHaveLength(1);
+      expect(scoped.body.items[0].externalReturnId).toBe('R1');
+      expect(scoped.body.total).toBe(1);
+      // The counts describe the SAME scope the rows do.
+      expect(scoped.body.counts).toEqual({ total: 1, orphan: 0, attributed: 1 });
+      expect(scoped.body.stageCounts.total).toBe(1);
+      expect(scoped.body.segmentCounts.total).toBe(1);
+
+      // Absent, it does not filter — `ReturnListFilter` rule 1.
+      const unscoped = await get('/v1/returns').expect(200);
+      expect(unscoped.body.total).toBe(3);
+    });
+
+    it('should compose with another filter arm rather than replacing it', async () => {
+      const mappings = harness
+        .getApp()
+        .get<IIdentifierMappingService>(IDENTIFIER_MAPPING_SERVICE_TOKEN, { strict: false });
+
+      await seedAttributed(connectionA, 'R1', 'ORDER-1', '2026-08-01T10:00:00.000Z');
+      const internalOrderId = (await mappings.getInternalId(
+        CORE_ENTITY_TYPE.Order,
+        'ORDER-1',
+        connectionA
+      )) as string;
+
+      // The order's return is on connection A, so scoping to B must yield
+      // nothing — an arm that replaced rather than composed would return it.
+      const wrongConnection = await get(
+        `/v1/returns?internalOrderId=${encodeURIComponent(internalOrderId)}&sourceConnectionId=${connectionB}`
+      ).expect(200);
+      expect(wrongConnection.body.items).toHaveLength(0);
+
+      const rightConnection = await get(
+        `/v1/returns?internalOrderId=${encodeURIComponent(internalOrderId)}&sourceConnectionId=${connectionA}`
+      ).expect(200);
+      expect(rightConnection.body.items).toHaveLength(1);
+    });
+
+    it('should return nothing for an order id that names no returns', async () => {
+      await seedOrphan(connectionA, 'R1', '2026-08-01T10:00:00.000Z');
+
+      // An empty answer, never a 404 and never an unfiltered list: the order may
+      // simply have no returns, which is the panel's confirmed-empty state.
+      const response = await get('/v1/returns?internalOrderId=ol_order_doesnotexist').expect(200);
+      expect(response.body.items).toHaveLength(0);
+      expect(response.body.total).toBe(0);
+    });
+
     it('should reject an unknown bucket rather than silently returning everything', async () => {
       // A filter that falls back shows the operator a list they did not ask for.
       await get('/v1/returns?bucket=nonsense').expect(400);

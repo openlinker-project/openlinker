@@ -30,10 +30,26 @@
  *
  * PRECEDENCE (highest wins) — the shipping-side `deriveFulfillmentRollup`
  * helper and the orders SQL filter/summary must both encode exactly this:
- *   1. `delivered`   — any shipment delivered
- *   2. `dispatched`  — any shipment in `generated | dispatched | in-transit`
- *   3. `failed`      — shipments exist AND all are terminal `failed | cancelled`
- *   4. `not-shipped` — the residual: no shipments, or only `draft` (also NULL)
+ *   1. `dispatched`  — any shipment in `generated | dispatched | in-transit`
+ *   2. `delivered`   — any shipment delivered, AND (when line-grain coverage is
+ *                      known) every ordered unit is accounted for
+ *   3. `dispatched`  — a delivered shipment whose coverage falls short
+ *   4. `failed`      — shipments exist AND all are terminal `failed | cancelled`
+ *   5. `not-shipped` — the residual: no shipments, or only `draft` (also NULL)
+ *
+ * **Revised by #2727.** The old rule led with `delivered` — *any* delivered
+ * shipment won — so an order with one parcel delivered and one still in transit
+ * reported as fully delivered. Two things changed: an in-progress shipment now
+ * OUTRANKS a delivered sibling (rule 1, needing no line data), and a delivered
+ * order whose `shipment_lines` coverage falls short of what it ordered is
+ * demoted to `dispatched` (rule 3). `dispatched` is the honest approximation
+ * because this vocabulary has no `partial` value — adding one would need this
+ * union's SQL twins, the FE `deriveFulfillment` and every label map, so it is
+ * named as a deliberate omission rather than smuggled in.
+ *
+ * Coverage is OPTIONAL at the derivation, and ABSENT means "no line data"
+ * (a pre-backfill install, or a snapshot with no items) — never "zero
+ * delivered", which would demote every such order.
  */
 export const FulfillmentRollupStateValues = [
   'not-shipped',
