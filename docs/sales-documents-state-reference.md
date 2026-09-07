@@ -7,7 +7,7 @@ The two document kinds have different states, because they are different things.
 > How a document kind is chosen: see [How OpenLinker decides](./sales-documents-how-routing-decides.md).
 > Setting a market up: see [Setting up a market](./sales-documents-setting-up-a-market.md).
 >
-> The fiscal-receipt states, the invoice document states, and the "check with the provider" flow already ship. The routing terms this page uses (rules, defaults, "not yet distinguished" reasons) belong to the #2513 redesign, proposed with no code yet.
+> Configuring the routing these states refer to: see [Setting up a market](./sales-documents-setting-up-a-market.md), or the user guide's [Sales documents (routing)](./user-guide/04b-sales-documents.md) for the screens with captures.
 
 ## The one you should read first
 
@@ -53,7 +53,7 @@ An invoice has a state of its own, and separately an answer from the tax authori
 | **Failed** | The provider refused | Yes | Read the reason, fix it, issue again |
 | **Needs review** | We cannot confirm whether it was created | Yes | Check with the provider before issuing again |
 
-> The `/orders` list today shows this on one badge, not the two separate rows above: **Issuing**, **Issued**, **Failed**. It does not yet split "queued" from "being created" — that split is part of the #2513 redesign this page describes.
+> The `/orders` row shows one word for the most actionable fact rather than the two rows above. For an invoice that word is **Issuing** (covering both queued and being created), **At authority**, **Authority rejected**, **Issued**, **Failed**, or **Needs review**.
 
 ### The authority answer
 
@@ -64,7 +64,7 @@ An invoice has a state of its own, and separately an answer from the tax authori
 | **Cleared** | The authority accepted it. Fully done | No | Nothing |
 | **Rejected** | The authority refused it | Yes | Read the reason, fix it, then send it again |
 
-> Today's `/orders` badge renders this as **Cleared** (not "Clearing" — the authority has already accepted it, this isn't a processing state), **Submitted**, **Rejected**, or falls back to **Issued** when there is no authority answer yet or none applies.
+> The `/orders` row folds this into the same single word: an invoice waiting on the authority reads **At authority**, one the authority refused reads **Authority rejected**, and one that is cleared (or whose provider has no authority step) reads **Issued**. The full pair of states is on the order itself.
 
 An invoice can be **Issued** and **Rejected** at the same time: the document exists in OpenLinker, and the authority has not accepted it. Both facts are true and both are shown.
 

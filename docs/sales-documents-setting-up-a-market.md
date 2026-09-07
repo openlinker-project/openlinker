@@ -7,7 +7,7 @@ This page gets you from an empty setup to one that issues documents.
 > Why an order got the document it got: see [How OpenLinker decides](./sales-documents-how-routing-decides.md).
 > What a state on an order means: see [Sales document states](./sales-documents-state-reference.md).
 >
-> `Settings → Sales documents` and the rule-based routing described here are the #2513 redesign, proposed with no code yet — see `docs/architecture-overview.md § 17. Sales Documents`.
+> Screen-by-screen walkthrough of the same screens, with captures: see the user guide's [Sales documents (routing)](./user-guide/04b-sales-documents.md).
 
 Everything below happens on **Settings → Sales documents**.
 
@@ -21,8 +21,8 @@ There is also one special market, **Rest of world**, used for any country you ha
 
 You do not have to guess. OpenLinker knows which countries your orders are delivered to, so any country that orders arrive from appears in the market list with a count, whether or not you have set it up:
 
-> **Poland** · PL · not set up
-> Nothing · 47 orders delivered here in the last 30 days
+> **PL** — 47 orders in the last 30 days, 0 rules configured
+> Nothing issued · No routing anywhere
 
 A market listed like this is **not an error**. It means nobody has made a decision about it yet. Nothing is lost while it waits: no document is created, and one will be as soon as the market can answer.
 
@@ -55,14 +55,14 @@ Two limits to know before you start:
 
 The market list states what an order delivered there gets today, worked out the same way as when a document is issued. Read it back before you move on:
 
-> **Germany** · DE
-> Invoice from Ksef Demo · Set by the default
+> **DE** — 4 orders in the last 30 days, 1 rule configured
+> Invoice
 
 If it says **Nothing**, the short reason is next to it, and [How OpenLinker decides](./sales-documents-how-routing-decides.md) has the fix for each one.
 
 ## A market that should issue nothing
 
-Some markets genuinely need no document from OpenLinker. Say so explicitly, using the *no document by choice* setting on the market.
+Some markets genuinely need no document from OpenLinker. Say so explicitly: close that market's dialog while it still has no rules and no defaults, and OpenLinker asks you to confirm you meant to leave it unconfigured. Confirming records the decision; you can undo it later from the same dialog.
 
 This matters because otherwise that market looks identical to one nobody has configured, and it will keep drawing your attention forever.
 
@@ -70,15 +70,15 @@ This matters because otherwise that market looks identical to one nobody has con
 
 Where we have researched public guidance for a market, the market offers a suggested setup you can read before adopting. Nothing is applied until you adopt it, and nothing is ever adopted automatically.
 
-**Today Poland is the only market with any guidance.** A market without one simply gets a plain *set up*, and that is not a hint that something is missing on your side.
+**Today Poland is the only market with any guidance.** A market without one simply opens an empty routing dialog, and that is not a hint that something is missing on your side.
 
 ### Before you adopt the Poland template
 
 The Poland template contains three rules. All three ask **whether the buyer gave a tax ID**.
 
-Whether OpenLinker can answer that depends on where the order came from. Today only PrestaShop reports it (from the customer's own VAT number); an order from a source that asserts nothing about it, such as Allegro or WooCommerce, leaves the condition neither true nor false, so the rule does not fire for that order.
+Whether OpenLinker can answer that depends on where the order came from. All four sources can report it, but each only under its own condition: PrestaShop when the buyer filled in a VAT number on the address; Allegro and Erli when the buyer requested a VAT invoice; WooCommerce only if the store runs a supported VAT-number plugin. An order whose source asserts nothing about it leaves the condition neither true nor false, so the rule does not fire for that order.
 
-So if you adopt the template as it stands, it is **live for your PrestaShop-sourced orders and dormant for the rest**, depending on your own mix of connections. The market page reports how many of your rules read the buyer's tax ID, so you can check whether the gap matters for you. The template is still worth reading, because it shows the shape a Polish setup takes and cites its source — but keep a default in place alongside it, so an order from a source that cannot answer the condition still gets a document instead of being held.
+So if you adopt the template as it stands, it is **live only for the orders whose source actually recorded a tax ID and dormant for the rest**, depending on your own mix of connections and on how your buyers check out. The market's dialog reports how many of your rules read the buyer's tax ID, so you can check whether the gap matters for you. The template is still worth reading, because it shows the shape a Polish setup takes and cites its source — but keep a default in place alongside it, so an order from a source that cannot answer the condition still gets a document instead of being held.
 
 None of this is legal advice. Review any suggested setup with your accountant before relying on it.
 
