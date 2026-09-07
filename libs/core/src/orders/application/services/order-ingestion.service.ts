@@ -75,6 +75,8 @@ import {
   FULFILLMENT_ROUTER_RESOLVER_TOKEN,
   ROUTING_COMMIT_SERVICE_TOKEN,
   buildRoutingShipTo,
+  deriveFulfillmentDispatchEnqueueIntents,
+  findUndispatchableWorkIds,
   type FulfillmentBlock,
   type FulfillmentRouterResolverPort,
   type IRoutingCommitService,
@@ -863,6 +865,11 @@ export class OrderIngestionService implements IOrderIngestionService {
         },
       });
 
+      // BEFORE the mapping, and inside a method that CANNOT throw — see
+      // `enqueueRoutedDispatchJobs`. Ordering it here keeps `toInterceptOutcome`
+      // a pure, synchronous, exhaustive switch.
+      await this.enqueueRoutedDispatchJobs(order.id, outcome);
+
       return this.toInterceptOutcome(order.id, outcome);
     } catch (error) {
       // Fail OPEN, and say so. An optional routing layer that cannot answer must
@@ -875,6 +882,93 @@ export class OrderIngestionService implements IOrderIngestionService {
           `error=${errorName} orderId=${order.id} connectionId=${connectionId}`
       );
       return { held: false, block: null };
+    }
+  }
+
+  /**
+   * Offer every routed work object to its holder (#2955).
+   *
+   * The FIRST producer of `fulfillment.work.dispatch`. Without it a routed
+   * `FulfillmentWork` never leaves `unsubmitted`, so it never reaches `accepted`
+   * and the pack bench — which filters on exactly that — stays permanently empty
+   * on a routed install.
+   *
+   * ## This method MUST NOT throw, and that is the whole reason it exists
+   *
+   * It is called from inside `interceptFulfillmentRouting`'s fail-open `try`,
+   * whose catch returns `{ held: false }`. An unguarded enqueue failure would
+   * therefore not merely lose the dispatch — it would convert a `routed` outcome
+   * into "not held", and ingestion would then mirror to every destination an
+   * order whose `fulfillment_works` rows are already committed. That is an order
+   * fulfilled twice. The `try` therefore wraps the WHOLE body — not only the
+   * enqueue — because a docblock stating an absolute has to be true rather than
+   * nearly true; a spec asserts it by rejecting the enqueue.
+   *
+   * Swallowing is also the only useful treatment: a retry re-enters `route()`,
+   * which answers `already-routed` and reaches no enqueue at all, so rethrowing
+   * would buy a burnt retry ladder and no dispatch. The loud `error` log naming
+   * the work ids is the signal.
+   *
+   * ## One enqueue per work, and the failure is reported PER WORK
+   *
+   * `enqueueBulk` disclaims atomicity in its own docblock and
+   * `SyncJobQueueService` really is a sequential `for`, so a bulk call whose
+   * second request throws leaves the first work DISPATCHED — and one error log
+   * naming every work would then be a false statement about it, in the single
+   * artefact an operator reads to decide what to re-drive. Looping costs nothing
+   * in idempotency (each request carries its own dedupe key) and makes this host
+   * report the same fidelity as `FulfillmentWorkRouteHandler`, which loops over
+   * the same intents.
+   *
+   * The decision itself is the leaf's (ADR-053 report-don't-perform); only the
+   * I/O is here, because `fulfillment` may not import `@openlinker/core/sync`.
+   */
+  private async enqueueRoutedDispatchJobs(
+    orderId: string,
+    outcome: RoutingCommitOutcome
+  ): Promise<void> {
+    try {
+      if (outcome.status !== 'routed') return;
+
+      const unassigned = findUndispatchableWorkIds(outcome.works);
+      if (unassigned.length > 0) {
+        // Never inferred from an absence: work with no holder cannot be dispatched
+        // (`SyncJob.connectionId` is non-nullable and the handshake would throw a
+        // retryable error), so it is skipped and named.
+        this.logger.warn(
+          `Not dispatching fulfilment work with no assigned holder: ` +
+            `orderId=${orderId} work=[${unassigned.join(',')}]`
+        );
+      }
+
+      for (const intent of deriveFulfillmentDispatchEnqueueIntents(outcome.works, orderId)) {
+        try {
+          await this.jobQueue.enqueue({
+            type: 'fulfillment.work.dispatch',
+            connectionId: intent.connectionId,
+            payload: {
+              workId: intent.workId,
+              orderId: intent.orderId,
+              // Always `null`, and REQUIRED to be: `claimDispatchAttempt` bumps
+              // the counter itself, so any pre-claim value would make this
+              // producer's own retry refuse to resume and send nothing.
+              expectedAssignmentAttempt: null,
+            },
+            options: { dedupeKey: intent.dedupeKey },
+          });
+        } catch (error) {
+          this.logger.error(
+            `Failed to enqueue a fulfilment dispatch job; the work is routed but was ` +
+              `NOT offered to its holder: orderId=${orderId} workId=${intent.workId}`,
+            error instanceof Error ? error.stack : undefined
+          );
+        }
+      }
+    } catch (error) {
+      this.logger.error(
+        `Failed to dispatch routed fulfilment work: orderId=${orderId}`,
+        error instanceof Error ? error.stack : undefined
+      );
     }
   }
 
@@ -897,7 +991,7 @@ export class OrderIngestionService implements IOrderIngestionService {
         // would be a second answer to a question the work already answers.
         this.logger.log(
           `Routed order ${orderId}: decisionId=${outcome.decisionId} ` +
-            `work=[${outcome.workIds.join(',')}]`
+            `work=[${outcome.works.map((work) => work.workId).join(',')}]`
         );
         return { held: true, block: null };
 
