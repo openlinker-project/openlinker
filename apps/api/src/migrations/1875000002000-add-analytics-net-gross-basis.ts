@@ -10,8 +10,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddAnalyticsNetGrossBasis1870000007000 implements MigrationInterface {
-  name = 'AddAnalyticsNetGrossBasis1870000007000';
+export class AddAnalyticsNetGrossBasis1875000002000 implements MigrationInterface {
+  name = 'AddAnalyticsNetGrossBasis1875000002000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
