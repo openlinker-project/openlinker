@@ -35,6 +35,21 @@ source "$SCRIPT_DIR/seed-lib.sh"
 LIB_LOG_PREFIX="seed-orders"
 
 TARGET_ORDERS="${TARGET_ORDERS:?TARGET_ORDERS is required, e.g. TARGET_ORDERS=10000}"
+
+# Per-DESTINATION probability that a seeded order's syncStatus entry reads
+# 'failed'. There are two destinations, so the share of orders matching the
+# `/orders?health=needs_attention` predicate (`syncStatus @> '[{"status":
+# "failed"}]'`) is 1 - (1 - rate)^2, NOT the rate itself.
+#
+# The default 0.15 is the value the first three size steps were seeded with,
+# kept so an unaware caller reproduces that dataset exactly. It puts 27.75% of
+# orders in the needs-attention bucket, which is an install in an incident
+# rather than one in steady state - see rebalance-sync-status.sh, which exists
+# to correct it, and pass SYNC_FAILED_RATE explicitly for a realistic seed.
+SYNC_FAILED_RATE="${SYNC_FAILED_RATE:-0.15}"
+awk -v r="$SYNC_FAILED_RATE" 'BEGIN{exit !(r >= 0 && r <= 1)}' \
+  || die "SYNC_FAILED_RATE must be between 0 and 1, got '$SYNC_FAILED_RATE'"
+
 require_connections
 
 EXISTING_TOTAL="$(pg_sql "SELECT COUNT(*) FROM order_records WHERE \"internalOrderId\" LIKE '${PREFIX}\\_ord\\_%' ESCAPE '\\'" 2>/dev/null || printf 0)"
@@ -100,6 +115,8 @@ ALTER TABLE perfseed_orders_stage ADD COLUMN tax_rate_era varchar(16);
 --   taxTreatment: inclusive 80% / exclusive 20%
 --   reportingCurrency stamped (of 'ready' rows): 80%
 --   taxRateEra: NULL 30% (not-yet-checked) / 'pre-rollout' 10% / 'standard' 60%
+--   syncStatus 'failed', PER DESTINATION: SYNC_FAILED_RATE (see the header).
+--     The needs-attention share is 1-(1-rate)^2 across the two destinations.
 UPDATE perfseed_orders_stage SET
   conn_id = CASE WHEN r_conn < 0.6 THEN '${PS_CONNECTION_ID}' ELSE '${WC_CONNECTION_ID}' END,
   record_status = CASE WHEN r_status < 0.90 THEN 'ready' WHEN r_status < 0.95 THEN 'awaiting_mapping' ELSE 'source_deleted' END,
@@ -122,8 +139,8 @@ SELECT
     'items', COALESCE((SELECT jsonb_agg(jsonb_build_object('sku', 'ITEM-' || g)) FROM generate_series(1, s.line_count) g), '[]'::jsonb)
   ),
   jsonb_build_array(
-    jsonb_build_object('destinationConnectionId', '${PS_CONNECTION_ID}', 'status', CASE WHEN s.r_sync_ps < 0.85 THEN 'synced' ELSE 'failed' END),
-    jsonb_build_object('destinationConnectionId', '${WC_CONNECTION_ID}', 'status', CASE WHEN s.r_sync_wc < 0.85 THEN 'synced' ELSE 'failed' END)
+    jsonb_build_object('destinationConnectionId', '${PS_CONNECTION_ID}', 'status', CASE WHEN s.r_sync_ps >= ${SYNC_FAILED_RATE} THEN 'synced' ELSE 'failed' END),
+    jsonb_build_object('destinationConnectionId', '${WC_CONNECTION_ID}', 'status', CASE WHEN s.r_sync_wc >= ${SYNC_FAILED_RATE} THEN 'synced' ELSE 'failed' END)
   ),
   s.placed_at, s.placed_at + interval '1 minute',
   s.record_status, '[]'::jsonb,
@@ -178,6 +195,20 @@ check_share "recordStatus=ready" "\"recordStatus\"='ready'" 90
 check_share "sourceConnectionId=PS" "\"sourceConnectionId\"='${PS_CONNECTION_ID}'" 60
 check_share "currency=PLN" "currency='PLN'" 70
 check_share "reportingCurrency stamped (of ready)" "\"recordStatus\"='ready' AND \"reportingCurrency\" IS NOT NULL" 72
+
+# The needs-attention share is the compound of two independent destination
+# draws, not SYNC_FAILED_RATE itself - asserting the rate here would pass a
+# dataset carrying nearly twice the intended proportion.
+#
+# Note what this check is and is not. `check_share`'s tolerance is an ABSOLUTE
+# number of percentage points, shared with the four checks above whose targets
+# are 60-90%, so at a realistic failure rate of well under one percent it is
+# only a coarse net: it catches the 27.7%-instead-of-0.6% class of error - which
+# is the one this campaign actually hit - and would not notice 0.3% instead of
+# 0.6%. `rebalance-sync-status.sh` asserts the same quantity with a RELATIVE
+# +/-10% band, and is the tighter of the two.
+NEEDS_ATTENTION_PCT="$(awk -v r="$SYNC_FAILED_RATE" 'BEGIN{printf "%.2f", (1-(1-r)*(1-r))*100}')"
+check_share "syncStatus contains failed" "\"syncStatus\" @> '[{\"status\": \"failed\"}]'::jsonb" "$NEEDS_ATTENTION_PCT"
 
 N_ORDERS="$(pg_sql "SELECT COUNT(*) FROM order_records WHERE \"internalOrderId\" LIKE '${PREFIX}\\_ord\\_%' ESCAPE '\\'")"
 N_LINES="$(pg_sql "SELECT COUNT(*) FROM order_line_items oli JOIN order_records o ON o.\"internalOrderId\"=oli.\"orderRecordId\" WHERE o.\"internalOrderId\" LIKE '${PREFIX}\\_ord\\_%' ESCAPE '\\'")"
