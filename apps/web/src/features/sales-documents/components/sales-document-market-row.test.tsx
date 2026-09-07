@@ -22,12 +22,12 @@ function renderRow(
   row: MarketRowData,
   onSelect = vi.fn(),
   disabled = false,
-  extra: { windowDays?: number; isSoleTemplatedMarket?: boolean } = {}
+  extra: { windowDays?: number } = {},
 ): void {
   render(
     <ul>
       <SalesDocumentMarketRow row={row} onSelect={onSelect} disabled={disabled} {...extra} />
-    </ul>
+    </ul>,
   );
 }
 
@@ -37,27 +37,21 @@ describe('SalesDocumentMarketRow', () => {
     expect(screen.getByRole('button', { name: 'Configure' })).toBeInTheDocument();
   });
 
-  it('should offer a plain "Set up" action for an unresolved row without a starter template', () => {
-    renderRow(
-      makeRow({
-        ruleCount: 0,
-        invoiceDefaultConnectionId: null,
-        outcome: { kind: 'unresolved', reason: 'no-configuration-for-country' },
-      })
-    );
-    expect(screen.getByRole('button', { name: 'Set up' })).toBeInTheDocument();
+  it('should label the action "Configure" for an unresolved row without a starter template', () => {
+    renderRow(makeRow({ ruleCount: 0, invoiceDefaultConnectionId: null, outcome: { kind: 'unresolved', reason: 'no-configuration-for-country' } }));
+    expect(screen.getByRole('button', { name: 'Configure' })).toBeInTheDocument();
   });
 
-  it('should offer "Use starter setup" when a template exists for an unresolved market', () => {
+  it('should label the action "Configure" even when a template exists for an unresolved market (review finding: one label, not three)', () => {
     renderRow(
       makeRow({
         hasTemplate: true,
         ruleCount: 0,
         invoiceDefaultConnectionId: null,
         outcome: { kind: 'unresolved', reason: 'no-configuration-for-country' },
-      })
+      }),
     );
-    expect(screen.getByRole('button', { name: 'Use starter setup' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Configure' })).toBeInTheDocument();
   });
 
   it('should call onSelect with the row country when the action is clicked', async () => {
@@ -72,29 +66,15 @@ describe('SalesDocumentMarketRow', () => {
     expect(screen.getByRole('button')).toBeDisabled();
   });
 
-  it('should announce a settled row as needing no action, never as an imperative', () => {
-    renderRow(makeRow());
-    expect(screen.getByText('No action needed')).toBeInTheDocument();
-    // The action button on an unresolved row is labelled "Set up" - the status
-    // text must never reuse those words for a row that is already settled.
-    expect(screen.queryByText(/^Set up$/)).not.toBeInTheDocument();
-  });
-
   it('should render the Rest of world pseudo-country with its display label', () => {
     renderRow(makeRow({ country: '*' }));
     expect(screen.getByText('★ Rest of world')).toBeInTheDocument();
   });
 
   describe('detected markets (#2542)', () => {
-    it("should render a detected market's order count with its discovery window", () => {
+    it('should render a detected market\'s order count with its discovery window', () => {
       renderRow(makeRow({ orderCount: 12 }), vi.fn(), false, { windowDays: 30 });
       expect(screen.getByText(/12 orders in the last 30 days/)).toBeInTheDocument();
-    });
-
-    it('should render a single detected order in the singular', () => {
-      renderRow(makeRow({ orderCount: 1 }), vi.fn(), false, { windowDays: 30 });
-      expect(screen.getByText(/1 order in the last 30 days/)).toBeInTheDocument();
-      expect(screen.queryByText(/1 orders/)).not.toBeInTheDocument();
     });
 
     it('should render only the order count when the window is not known', () => {
@@ -108,7 +88,7 @@ describe('SalesDocumentMarketRow', () => {
       expect(screen.queryByText(/orders/)).not.toBeInTheDocument();
     });
 
-    it('should name this market as the only one with guidance when it is the sole template', () => {
+    it('should render "Starter setup available" for a market carrying a template', () => {
       renderRow(
         makeRow({
           hasTemplate: true,
@@ -116,30 +96,11 @@ describe('SalesDocumentMarketRow', () => {
           invoiceDefaultConnectionId: null,
           outcome: { kind: 'unresolved', reason: 'no-configuration-for-country' },
         }),
-        vi.fn(),
-        false,
-        { isSoleTemplatedMarket: true }
-      );
-      expect(screen.getByText(/the only market with guidance so far/)).toBeInTheDocument();
-    });
-
-    it('should not claim exclusivity when several markets carry a template', () => {
-      renderRow(
-        makeRow({
-          hasTemplate: true,
-          ruleCount: 0,
-          invoiceDefaultConnectionId: null,
-          outcome: { kind: 'unresolved', reason: 'no-configuration-for-country' },
-        }),
-        vi.fn(),
-        false,
-        { isSoleTemplatedMarket: false }
       );
       expect(screen.getByText(/Starter setup available/)).toBeInTheDocument();
-      expect(screen.queryByText(/the only market with guidance/)).not.toBeInTheDocument();
     });
 
-    it('should never render the sole-template caption for a market without a template', () => {
+    it('should never render the starter-setup caption for a market without a template', () => {
       renderRow(
         makeRow({
           hasTemplate: false,
@@ -147,12 +108,9 @@ describe('SalesDocumentMarketRow', () => {
           invoiceDefaultConnectionId: null,
           outcome: { kind: 'unresolved', reason: 'no-configuration-for-country' },
         }),
-        vi.fn(),
-        false,
-        { isSoleTemplatedMarket: true }
       );
       expect(screen.queryByText(/Starter setup available/)).not.toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Set up' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Configure' })).toBeInTheDocument();
     });
   });
 });

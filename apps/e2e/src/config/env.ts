@@ -206,6 +206,16 @@ export interface E2eEnv {
    * variant on (mirrors the `E2E_TEST_RATE_LIMIT` opt-in precedent).
    */
   allowDestructivePrune: boolean;
+  /**
+   * Direct Postgres connection string, used ONLY by `tests/sales-documents/`
+   * (#2563 M10) to seed rows for states no HTTP API can put the stack into on
+   * demand — a fabricated order in a country nobody has ordered from yet, in
+   * particular. Every other suite in this package reaches the stack through
+   * OL's own HTTP API by design — see the package doc comment — so this is a
+   * deliberate, narrow exception. Defaults to the plain `demo:up` Postgres
+   * (`localhost:5432`); override when a local stack remaps the host port.
+   */
+  databaseUrl: string;
 }
 
 const DEFAULTS = {
@@ -219,6 +229,7 @@ const DEFAULTS = {
   wcAdminUrl: 'http://localhost:8082/wp-admin',
   wcAdminUser: 'admin',
   wcAdminPass: 'admin123',
+  databaseUrl: 'postgres://postgres:postgres@localhost:5432/openlinker',
 } as const;
 
 function optional(value: string | undefined): string | null {
@@ -315,5 +326,6 @@ export function resolveEnv(): E2eEnv {
     testRateLimit: process.env.E2E_TEST_RATE_LIMIT?.trim() === 'true',
     testInpostWebhook: process.env.E2E_TEST_INPOST_WEBHOOK?.trim() === 'true',
     allowDestructivePrune: process.env.E2E_ALLOW_DESTRUCTIVE_PRUNE?.trim() === 'true',
+    databaseUrl: process.env.E2E_DATABASE_URL?.trim() || DEFAULTS.databaseUrl,
   };
 }
