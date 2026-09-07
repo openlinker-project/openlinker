@@ -920,6 +920,9 @@ export function createMockApiClient(
       // #2383 — the order detail page reads this on every render. Defaulted to
       // the no-returns case so every existing order test keeps its behaviour.
       listReturnEventsForOrder: vi.fn().mockResolvedValue([]),
+      // #2646 — the return detail reads this on every render. Defaulted to the
+      // no-activity case so every existing returns test keeps its behaviour.
+      listReturnEventsForReturn: vi.fn().mockResolvedValue([]),
       ...overrides.returns,
     } as ApiClient['returns'],
     shipments: {

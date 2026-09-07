@@ -32,6 +32,9 @@ import { InventoryModule } from '@openlinker/core/inventory';
 
 import { ShipmentOrmEntity } from './infrastructure/persistence/entities/shipment.orm-entity';
 import { ShipmentRepository } from './infrastructure/persistence/repositories/shipment.repository';
+import { ShipmentLineOrmEntity } from './infrastructure/persistence/entities/shipment-line.orm-entity';
+import { ShipmentLineEventOrmEntity } from './infrastructure/persistence/entities/shipment-line-event.orm-entity';
+import { ShipmentLineRepository } from './infrastructure/persistence/repositories/shipment-line.repository';
 import { RedisPickupPointCacheAdapter } from './infrastructure/adapters/redis-pickup-point-cache.adapter';
 import { RedisPickupPointSearchCacheAdapter } from './infrastructure/adapters/redis-pickup-point-search-cache.adapter';
 import { RedisPickupPointQueryStatsAdapter } from './infrastructure/adapters/redis-pickup-point-query-stats.adapter';
@@ -46,6 +49,7 @@ import { ShipmentStatusSyncService } from './application/services/shipment-statu
 import { FulfillmentStatusSyncService } from './application/services/fulfillment-status-sync.service';
 import { ShipmentLabelService } from './application/services/shipment-label.service';
 import { OrderFulfillmentProjectionService } from './application/services/order-fulfillment-projection.service';
+import { ShipmentLineService } from './application/services/shipment-line.service';
 import { ShipmentReservationConsumeService } from './application/services/shipment-reservation-consume.service';
 import {
   BULK_SHIPMENT_DISPATCH_SERVICE_TOKEN,
@@ -60,6 +64,8 @@ import {
   SHIPMENT_DISPATCH_NOTIFICATION_SERVICE_TOKEN,
   SHIPMENT_DISPATCH_SERVICE_TOKEN,
   SHIPMENT_LABEL_SERVICE_TOKEN,
+  SHIPMENT_LINE_REPOSITORY_TOKEN,
+  SHIPMENT_LINE_SERVICE_TOKEN,
   SHIPMENT_QUERY_SERVICE_TOKEN,
   SHIPMENT_REPOSITORY_TOKEN,
   SHIPMENT_RESERVATION_CONSUME_SERVICE_TOKEN,
@@ -68,7 +74,11 @@ import {
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ShipmentOrmEntity]),
+    // #2727: BOTH shipment-line entities are registered here. `synchronize`
+    // builds the harness schema from the registered set, so an entity left out
+    // simply has no table under test while production (which runs migrations)
+    // has one.
+    TypeOrmModule.forFeature([ShipmentOrmEntity, ShipmentLineOrmEntity, ShipmentLineEventOrmEntity]),
     // #835 dispatch seam: resolve the processor via the routing model
     // (MappingsModule) and dispatch to the resolved connection's
     // ShippingProviderManager adapter (IntegrationsModule). No cycle — nothing
@@ -178,6 +188,20 @@ import {
     {
       provide: SHIPMENT_LABEL_SERVICE_TOKEN,
       useExisting: ShipmentLabelService,
+    },
+    // #2727 line-grain read model: the ONE writer of `shipment_lines` and its
+    // append-only act ledger, plus the coverage derivation the rollup reads.
+    // Provided BEFORE the projection service that consumes it purely for
+    // readability; Nest resolves providers by token, not by order.
+    ShipmentLineRepository,
+    {
+      provide: SHIPMENT_LINE_REPOSITORY_TOKEN,
+      useExisting: ShipmentLineRepository,
+    },
+    ShipmentLineService,
+    {
+      provide: SHIPMENT_LINE_SERVICE_TOKEN,
+      useExisting: ShipmentLineService,
     },
     // #1108 fulfillment-rollup projection: pushes a per-order rollup onto the
     // orders context after any shipment-status mutation (best-effort).

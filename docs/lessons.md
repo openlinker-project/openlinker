@@ -106,6 +106,81 @@ unit gate was green.
 
 ---
 
+## A schema assertion must be written against what Postgres RENDERS, not what you typed
+
+**Context**: #2727 added `CHK_shipment_lines_capacity` to
+`fulfillment-work-migration-parity.int-spec.ts`, asserting each clause is present and — the point of
+the exercise — that `"shippedQuantity" <= "quantity"` is **absent**, because that clause looks like a
+missing invariant and is in fact a trap (re-ingestion and the dispatch retry both exceed the frozen
+`quantity` in ordinary operation).
+
+**Problem**: `pg_get_constraintdef` renders an all-lowercase identifier **unquoted** and a camelCase
+one quoted, so the constraint reads `((quantity >= 0) AND ("shippedQuantity" >= 0) …)`. The positive
+assertion for `'"quantity" >= 0'` failed loudly, which was fine. The **negative** assertion was
+written `not.toContain('"shippedQuantity" <= "quantity"')` — a string Postgres can never emit — so it
+was a check that COULD NOT FAIL. Had someone later "completed" the constraint, the guard protecting
+that decision would have passed happily.
+
+A positive assertion that is spelled wrong fails and gets fixed. A negative one spelled wrong is
+indistinguishable from a passing test forever.
+
+**Rule**: when asserting on a catalogue-rendered string (`pg_get_constraintdef`, `pg_indexes.indexdef`,
+`information_schema` defaults), copy the expected substring from a REAL rendered value rather than
+from the DDL you wrote. For a `not.toContain`, additionally prove the assertion can fail — flip it to
+`toContain` once against a schema that really has the clause, or assert a sibling substring you know
+is present — before trusting it.
+
+**Applies to**: `apps/api/test/integration/fulfillment-work-migration-parity.int-spec.ts` and any
+future schema-parity spec; more generally any negative assertion over a normalised string.
+
+**Source**: #2727.
+
+---
+
+## A branch-1 shipment row is unique per (order, connection, direction) — seed history with provider ids
+
+**Context**: #2727's backfill int-spec seeds a cancel-and-reissue history — two or three shipments for
+one order — and ran them through the real migration.
+
+**Problem**: every seeded row left `providerShipmentId` NULL, so the second insert violated
+`UQ_shipments_branch_one_per_order_conn` (#2373), which is
+`UNIQUE (orderId, connectionId, direction) WHERE "providerShipmentId" IS NULL`. The index was right
+and the fixture was modelling the wrong thing: a branch-1 row is the ONE observed projection of an
+OMP-fulfilled order, and there cannot be two. A cancel-and-reissue is two real dispatched labels,
+each with its own carrier-assigned id.
+
+**Rule**: when seeding more than one `shipments` row for a single `(orderId, connectionId, direction)`,
+give each a distinct `providerShipmentId`. A NULL there is a positive claim that the row is the
+branch-1 projection, not merely an unset column.
+
+**Applies to**: any int-spec inserting into `shipments`.
+
+**Source**: #2727 / #2373.
+
+---
+
+## A cross-table FK needs matching column TYPES, and only the parity spec will tell you
+
+**Context**: #2727 added `shipment_line_events.shipmentLineId` referencing `shipment_lines.id`.
+
+**Problem**: the child column was declared `text` by analogy with its sibling
+`shipment_lines.shipmentId` (which is correctly `text`, because `shipments.id` is an
+`ol_shipment_*` internal id). But `shipment_lines.id` is a generated **uuid**, so Postgres refused the
+constraint outright: `foreign key constraint "FK_shipment_line_events_line" cannot be implemented`.
+Nothing else in the tree would have caught it — the integration harness builds schema by
+`synchronize`, which creates no FKs at all, so every other int-spec passed.
+
+**Rule**: when adding an FK, check the referenced column's type at its declaration rather than
+inferring it from a neighbouring column, and add both tables to
+`fulfillment-work-migration-parity.int-spec.ts` — it is the only thing in this repository that runs a
+migration.
+
+**Applies to**: any new migration declaring a `REFERENCES` clause.
+
+**Source**: #2727.
+
+---
+
 ## Before a surface asserts a behaviour, read the code that implements it
 
 **Context**: redesigning the three sales-document surfaces (#2513). The design was worked out from

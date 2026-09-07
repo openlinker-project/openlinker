@@ -220,6 +220,16 @@ const harness = createIntegrationTestHarness({
     'mcp_tokens',
     'product_variants',
     'products',
+    // shipment_line_events / shipment_lines (#2727) — the line-grain read model.
+    // Both FKs (events -> lines, lines -> shipments, both ON DELETE CASCADE)
+    // live in the MIGRATION rather than the ORM decorators, so the
+    // synchronize-built test schema has no FK at all and `truncateTables`'
+    // CASCADE closure walk can reach NEITHER child from `shipments`. Listed
+    // explicitly, children first, or a line written by one case is still
+    // counted by the next — exactly how `fulfillment_work_verifications` was
+    // found the hard way.
+    'shipment_line_events',
+    'shipment_lines',
     // shipments (#763 / #835) — order- + connection-scoped; truncate before
     // connections so the dispatch int-spec starts each case with no rows.
     'shipments',

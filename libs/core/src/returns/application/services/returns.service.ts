@@ -201,6 +201,35 @@ export class ReturnsService implements IReturnsService {
     };
   }
 
+  /** See {@link IReturnsService.listReturnEventsForReturn}. */
+  async listReturnEventsForReturn(returnId: string): Promise<ReturnTimelineForOrder> {
+    const { entries, sourceConnectionIdByReturn, contexts } =
+      await this.repository.findTimelineEntriesForReturn(returnId);
+
+    // An empty projection means the RETURN does not exist — the join is a LEFT
+    // JOIN off `returns`, so a real return with no acts still yields one row.
+    // Reported as not-found rather than as an empty history, which would render
+    // a timeline for a return that is not there.
+    if (contexts.length === 0) {
+      throw new ReturnNotFoundError(returnId);
+    }
+
+    const nameById = await this.resolveConnectionNames();
+    const nameFor = (id: string): string | null =>
+      nameById.get(sourceConnectionIdByReturn.get(id) ?? '') ?? null;
+
+    return {
+      entries: entries.map((entry) => ({
+        ...entry,
+        sourceConnectionName: nameFor(entry.returnId),
+      })),
+      returns: contexts.map(({ sourceConnectionId: _ignored, ...context }) => ({
+        ...context,
+        sourceConnectionName: nameFor(context.returnId),
+      })),
+    };
+  }
+
   /**
    * `connectionId` → display name, for the timeline's source-claim rows.
    *
