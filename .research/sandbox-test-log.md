@@ -349,3 +349,76 @@ figures — Amazon already does the split and reports it natively**, unlike a pl
 the shipping-tax portion itself from a lump sum. Recommend confirming this against a real order with
 `includedData=TAX` returning a genuinely mixed-rate basket, since the sandbox sample data doesn't populate
 this level of detail by default.
+
+## SESSION 3 (2026-09-07) — C13 Notifications: partially UNBLOCKED, prior conclusion CORRECTED
+
+Live re-test with the same sandbox app ("OL-testt", Solution Provider Portal, **Status: `Sandbox`**) and a
+freshly minted sandbox refresh token (obtained via the app-list dropdown -> "Create Token" -> Sandbox Testing
+page — NOT via Seller Central "Develop Apps" / "Authorize app", which does not exist for a Sandbox-status app).
+
+### 🔧 CORRECTION to Session 1's C13 conclusion
+Session 1 recorded a single `403` on `getDestinations` with a refresh_token-based token and hypothesised a
+missing "Notifications" role, i.e. that the whole Notifications API was blocked for this app. **That was
+wrong.** Per-operation testing shows the API is largely usable in the static sandbox — only the *destination
+write/list* half is refused. Session 1's error was generalising from one operation to a whole API.
+
+Note also: one earlier `403` in this session carried `"details": "The access token you provided is revoked,
+malformed or invalid."` — that was an artefact of a **truncated** access token (copied through `head -c 300`),
+not a real auth signal. The genuine refusal carries an EMPTY `details`. Worth knowing: a truncated bearer
+token and a genuinely unauthorized one are distinguishable only by that field.
+
+### Static sandbox support is REAL for Notifications — confirmed from the model, not inferred
+`models/notifications-api-model/notifications.json` (note: `notifications.json`, not `notifications_v1.json`)
+carries **11 `x-amzn-api-sandbox` blocks across 9 of 10 operations**. `getDestinations`' block declares
+`"parameters": {}` — i.e. no params, exactly as we called it — so the `403` is unambiguously **authorization**,
+never a static-pattern mismatch (which answers `400 "Could not match input arguments"`).
+**`sendTestNotification` is the ONE operation with no sandbox block at all.**
+
+### Results — seller-authorized token (grant_type=refresh_token), host NA (EU/FE identical where tested)
+| Operation | Grantless per docs? | Result |
+|---|---|---|
+| `getSubscriptions?notificationTypes=ANY_OFFER_CHANGED` | no | ✅ 200, canned subscription |
+| `getSubscription/ANY_OFFER_CHANGED` | no | ✅ 200, `TEST_CASE_200_SUBSCRIPTION_ID` |
+| `createSubscription/ANY_OFFER_CHANGED` | no | ✅ 200, `TEST_CASE_200_SUBSCRIPTION_ID` |
+| `getDestination/{id}` (single) | **yes** | ✅ 200, canned SQS destination |
+| `getDestinations` (list) | **yes** | ❌ 403 Unauthorized, empty `details` — on **all three** hosts (EU/NA/FE) |
+| `createDestination` | **yes** | ❌ 403 Unauthorized, empty `details` |
+| `getSubscriptionById/{id}` | **yes** | ❌ 500 InternalFailure (Amazon-side, not ours) |
+| `deleteSubscriptionById/{id}` | **yes** | ❌ 500 InternalFailure (Amazon-side, not ours) |
+| `sendTestNotification` | no | ❌ no sandbox support (no model block) |
+
+**The grantless/non-grantless split does NOT cleanly predict the outcome** — `getDestination` (single) is
+documented grantless yet answers 200 on a seller token, while `getDestinations` (list) is equally grantless and
+answers 403. So "grantless ops need a grantless token" is not a sufficient explanation; the sandbox's
+per-operation authorization is inconsistent. Flag rather than rationalise.
+
+### 🎯 Root cause of `invalid_scope`: grantless is unavailable to this app ENTIRELY, not per-scope
+Five scopes tested against `grant_type=client_credentials`, **all `invalid_scope`**:
+`sellingpartnerapi::notifications`, `::migration`, `::client_credential:rotation`, `::shipping`, `::tracking`.
+
+The decisive one is **`sellingpartnerapi::client_credential:rotation`** — a generic scope backing
+`rotateApplicationClientSecret`, available to any normally-registered SP-API app regardless of roles. Its
+rejection means the **whole `client_credentials` grant is refused for this app client**, so this was never a
+missing-Notifications-role problem. Combined with the portal UI evidence (Status `Sandbox`; the app-edit form
+offers only `API Type: SP API` with no roles section; the row dropdown offers only "Create Token"), the
+explanation is the **app registration tier**: a Sandbox-status app has no role-request surface and no grantless
+grant. Session 1's official-docs quote ("grantless operations apply only to seller applications") is consistent
+with this.
+**Not verified**: that a full Private/Public registration *would* grant it. That remains the open assumption.
+
+### What this means for the epic — the transport still cannot be validated in sandbox
+The subscription CONTRACT is now verifiable (subscribe/read/enumerate all answer 200). The **delivery channel
+is not**, and that is the half that matters for OL's cost estimate:
+- `createDestination` → 403, so no SQS/EventBridge destination can be registered at all;
+- `sendTestNotification` → no sandbox support, so no notification can be made to arrive.
+So **no end-to-end notification can be observed in the static sandbox under any app tier** (the second half is
+a model-level absence, not a permission). Validating the inbound transport — ADR-049-shaped durable ingress,
+the epic's #1 architectural cost driver — requires a **fully registered app plus a real SQS queue**, and is
+therefore live-account work, not sandbox work. This narrows C13 from "blocked, unknown" to "contract verified,
+transport unverifiable in sandbox by construction".
+
+### Practical note for anyone re-running this
+`getDestinations`' 403 is reproducible on EU, NA and FE hosts, so it is not the region-mismatch cause the
+official "Authorization Errors" page lists. Session 2's community-thread reading (role-related 403s on
+`createSubscription`) does **not** apply here — `createSubscription` is precisely one of the operations that
+works.

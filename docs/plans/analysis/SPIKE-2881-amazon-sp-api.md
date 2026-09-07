@@ -1,8 +1,10 @@
 # Spike #2881 — Amazon SP-API (FR/DE/PL): capabilities, flows, verdict
 
 > **Status: IN PROGRESS, not final.** Issue #2881's own day-0 desk research (2026-09-04) has been partially
-> live-verified against the Amazon SP-API **static sandbox** (self-authorized Private app, EU host) on
-> 2026-09-04. Several stories remain unconfirmed or blocked — see "Open risks" and the per-group status
+> live-verified against the Amazon SP-API **static sandbox** on 2026-09-04 and 2026-09-07. The app used is a
+> **`Sandbox`-status app** registered in the Solution Provider Portal — *not* a Private app, which the original
+> header claimed; that distinction turned out to be load-bearing (Evidence #32), so it is corrected here.
+> Several stories remain unconfirmed or blocked — see "Open risks" and the per-group status
 > below. Do **not** treat any box here as satisfying the issue's own DONE rule ("a live-call transcript +
 > the endpoint + one line on *why that endpoint*, or an explicit NOT SUPPORTED") unless explicitly marked
 > ✅ VERIFIED LIVE below. Everything else is either the original desk claim (unverified) or a live probe that
@@ -302,12 +304,49 @@ over from the issue (marked accordingly).
     against a real mixed-rate basket (sandbox sample data doesn't populate this granularity by default), but
     the schema capability is confirmed to exist.
 
+31. **🔧 C13 PARTIALLY UNBLOCKED, and Evidence-#9-era reasoning CORRECTED — Notifications *is* testable in the
+    static sandbox; only its delivery half is not.** The earlier read (one `403` on `getDestinations` ⇒ a
+    missing "Notifications" role ⇒ the API is blocked) generalised from one operation to a whole API and was
+    wrong. Per-operation live testing on a seller-authorized token (`grant_type=refresh_token`, sandbox app
+    "OL-testt"): `getSubscriptions` **200**, `getSubscription` **200**, `createSubscription` **200**,
+    `getDestination/{id}` **200** — while `getDestinations` (list) and `createDestination` answer **403** on
+    **all three** hosts (EU/NA/FE, so not the region-mismatch cause the official Authorization Errors page
+    lists), and `getSubscriptionById` / `deleteSubscriptionById` answer **500 InternalFailure** (Amazon-side).
+    Sandbox support is confirmed **from the model, not inferred**: `models/notifications-api-model/`
+    `notifications.json` carries 11 `x-amzn-api-sandbox` blocks across 9 of 10 operations, and
+    `getDestinations`' block declares `"parameters": {}` — exactly how it was called — so its `403` is
+    unambiguously authorization and never a static-pattern mismatch (which answers `400 "Could not match input
+    arguments"`). **`sendTestNotification` is the one operation with no sandbox block at all.**
+    Note the grantless/non-grantless split does **not** predict the outcome: `getDestination` (single) is
+    documented grantless yet answers 200 on a seller token, while `getDestinations` (list) is equally grantless
+    and answers 403 — so "grantless ops require a grantless token" is not a sufficient explanation, and the
+    sandbox's per-operation authorization is simply inconsistent. Flagged rather than rationalised.
+
+32. **🎯 Root cause of the Evidence-#9 `invalid_scope`: the `client_credentials` grant is refused for this app
+    ENTIRELY — it was never a per-scope or per-role problem.** Five scopes tested, all `invalid_scope`:
+    `sellingpartnerapi::notifications`, `::migration`, `::client_credential:rotation`, `::shipping`,
+    `::tracking`. The decisive one is **`::client_credential:rotation`**, a generic scope backing
+    `rotateApplicationClientSecret` that any normally-registered SP-API app holds regardless of roles — its
+    rejection means the whole grant is unavailable, which no missing-Notifications-role theory explains.
+    Combined with portal evidence (app **Status: `Sandbox`**; the app-edit form offers only `API Type: SP API`
+    with no roles section; the app-row dropdown offers only "Create Token"), the explanation is the
+    **registration TIER**: a Sandbox-status app has no role-request surface and no grantless grant. This is
+    consistent with the official docs line already quoted at Evidence #9 ("grantless operations apply only to
+    seller applications"). **Still unverified**: that a full Private/Public registration *would* grant it —
+    that is now the open assumption, and a much narrower one than "unknown external blocker".
+    Corollary worth recording: the epic's **inbound transport cannot be validated in the sandbox under any app
+    tier**. `createDestination` is refused (permission), and `sendTestNotification` has no sandbox block
+    (model-level absence) — so no notification can be *registered* a destination for, and none can be made to
+    *arrive*. Validating ADR-049-shaped durable ingress for Amazon is therefore **live-account work with a real
+    SQS queue**, not sandbox work. C13 moves from "blocked, unknown" to "subscription contract verified,
+    transport unverifiable in sandbox by construction".
+
 ## API surface summary
 
 | Group | Story | Status | Evidence |
 |---|---|---|---|
 | C | C4 (connection test probe) | ✅ verified live | #1 |
-| C | C13 (Notifications, SQS/EventBridge) | 🔴 blocked (grantless token) | #9 |
+| C | C13 (Notifications, SQS/EventBridge) | ⚠️ subscription contract ✅ verified live; destinations 403 / transport unverifiable in sandbox | #9, **#31, #32** |
 | T | T7 (catalogue product card) | ✅ confirmed unsupported in static sandbox | #8 |
 | O | O1/O2 (order feed, v0) | ✅ verified live | #2 |
 | O | O8/O10 (line resolve, tax rate) | ✅ resolved — no rate, ever | #3, #4 |
@@ -339,6 +378,10 @@ over from the issue (marked accordingly).
 | P/D | P9/D3 (facilitator tax model) | 🎯 confirmed with a named schema field, was hypothesis | #29 |
 | D | D5 (shipping tax split) | 🎯 resolved — Amazon does this natively | #30 |
 
+| C | C13 (Notifications subscriptions) | ✅ verified live — subscribe/read/enumerate all 200 | #31 |
+| C | C13 (Notifications destinations + delivery) | 🔴 403 + no `sendTestNotification` sandbox — needs live account | #31, #32 |
+| — | grantless grant availability | 🎯 resolved — refused app-wide, a registration-TIER limit | #32 |
+
 Everything else in the original issue's story checklist (T6/T8, P3/P6/P8/P10–P13, S1/S2/S4/S6/S9/S11/S13,
 F1/F4/F7, D1/D2/D6/D9, R2/R3/R8–R10, X3–X7) remains at its **original desk-research status** (⚠️/?/🔴 as the
 issue left it) — not re-verified in this session. F3 (order status writeback) is effectively answered by
@@ -350,9 +393,13 @@ exist, no generic order-status writeback operation.
 - **v2026-01-01 sandbox coverage (Evidence #6) is the single highest-priority open risk.** If it genuinely
   isn't wired up yet, AC2 cannot be satisfied for the mandated API version via sandbox alone, and the spike's
   timeline assumption ("sandbox first, live account later") may need to invert for Orders specifically.
-- **C13 blocked on an unresolved `invalid_scope` (Evidence #9)**, with no further automated path forward. This
-  is the epic's #1 architectural cost driver (new inbound transport) and cannot be scoped with confidence until
-  resolved.
+- **~~C13 blocked on an unresolved `invalid_scope` (Evidence #9)~~ — SUPERSEDED by Evidence #31/#32.** The
+  `invalid_scope` is now explained (the `client_credentials` grant is refused for this app *tier*, not for a
+  scope or a role), and the subscription half is verified live. What remains open is narrower but structural:
+  **the inbound transport cannot be exercised in the static sandbox at all** — not under a better app tier
+  either, because `sendTestNotification` has no sandbox block. So the epic's #1 cost driver stays unscoped by
+  *evidence*, but the reason has changed from "unknown external blocker" to "requires a live account + a real
+  SQS queue". Plan the estimate accordingly rather than waiting on a sandbox answer that cannot come.
 - **AC7 (public vs private app) is not resolved by this session.** Confirmed from `application-authorization-limits`
   docs: Private apps are capped at **10 self-authorizations, no OAuth**; Public (unlisted) gets up to 25 OAuth +
   10 self-auth; Public (Appstore-listed) is unlimited. Given OpenLinker's multi-operator model, Private is very
@@ -367,8 +414,12 @@ exist, no generic order-status writeback operation.
 ## Recommendation
 
 Continue the spike rather than close it. Concretely, in priority order:
-1. Escalate the C13 grantless-token blocker to a human channel (AWS support / SP-API forum) — this cannot be
-   resolved by further automated research.
+1. ~~Escalate the C13 grantless-token blocker to a human channel~~ — **no longer the first move** (Evidence
+   #32 explains it as a registration-tier limit). Instead: register a **full Private app** (the tier with a
+   roles surface, distinct from the current `Sandbox`-status app), then re-test the two 403 operations and the
+   grantless grant. Only if grantless is *still* refused on a Private app does this become a support-channel
+   question. Note the sandbox can never answer the delivery half regardless — that needs a live account plus a
+   real SQS queue, so schedule it as such rather than as sandbox work.
 2. Confirm or refute Evidence #6 (v2026-01-01 sandbox) the same way — if genuinely unsupported, decide whether
    to build against v0 first with a documented migration plan, given v0's 2027-03-27 sunset.
 3. Resolve AC7 before any further registration steps, now informed by the concrete authorization-limit numbers
