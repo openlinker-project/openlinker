@@ -37,7 +37,7 @@ the saturation sweep". After it, the answer is:
 |---|---|---|---|
 | `realtime` | 4 / 2 | ILLUSTRATIVE | A sweep is now RUNNABLE (§ 2), but per-job cost on the write path is **~9.5 s against a 127 ms destination**, and three traces put **~7-8 s of it inside OpenLinker either side of one HTTP call** (§ 4.2). A cap curve taken through that measures the 7-8 s, not the lane - and if that overhead is fixable the right cap moves by an order of magnitude. |
 | `fiscal` | 2 / 1 | ILLUSTRATIVE | Unchanged and, on the evidence in § 4.5, likely permanent. No provider exists on this stand and building one means issuing real documents. |
-| `fan-out` | 8 / 4 | **DERIVED, not measured** - confirmed, see § 4.6 | Not reached. The peers held the stand. |
+| `fan-out` | 8 / 4 | **DERIVED, not measured** - confirmed, see § 4.6 | Not reached. Peers held the stand for most of the session, and when it was free `guard_build` correctly refused every arm because this branch also edits `apps/worker` (§ 3.1). |
 
 **The one thing that did change is that the measurement is now possible at
 all.** It was not, and that is § 2.
@@ -117,23 +117,45 @@ so a sub-second difference between arms cannot be resolved by it.
 
 ---
 
-### 3.1 One methodology note: `guard_build` refused the first sweep, correctly
+### 3.1 The blocker that stopped the fan-out sweep, and it generalises
 
-The fan-out sweep's first attempt died at `guard_build`: the running `lab` image
-was built from the branch base, and this branch had since committed a change to
-`apps/worker/src/sync/sync-job.runner.ts`. That change is **documentation plus
-one inert literal** (§ 6) and could not alter behaviour - but the guard cannot
-know that, and *"the diff looked harmless"* is precisely the reasoning a
-stale-image guard exists to refuse.
+The fan-out sweep never ran. `guard_build` refused it, three times, and the
+refusal is correct - but the shape of it is worth recording because it will stop
+the next person too.
 
-Rather than bypass it, the working tree's copy of that one file was checked out
-at the image's own commit for the duration of the measurement and restored
-immediately after. The guard then passed on its own terms rather than being
-argued with.
+`guard_build` compares the running image's recorded commit against the
+**committed** tree at `HEAD` for each build-relevant path, not the working tree,
+and separately refuses any *uncommitted* change under those paths. Both halves
+are right: an image cannot contain a commit it predates, and it certainly cannot
+contain an edit that was never committed.
+
+The consequence is a rule this campaign has not had to state before:
+
+> **A perf branch that also touches product code cannot run any scenario against
+> a stand built from another commit, however inert the product change is.**
+
+This branch's only `apps/**` change is the two documentation corrections in
+section 6 - a withdrawn figure in a docblock, and one literal that is
+overwritten at boot. It changes nothing a measurement could observe. It still,
+correctly, blocks every scenario until the stand is rebuilt, because
+`guard_build` cannot read intent and must not try.
+
+Checking that one file out at the image's own commit does **not** work around
+it, and that is the guard being well built rather than an obstacle: reverting in
+the working tree leaves `HEAD` unchanged, so the tree comparison still fails,
+and it makes the tree dirty, so the uncommitted-changes check fires instead.
+Verified by attempting exactly that.
+
+**The remedy is to rebuild the stand**, which was declined here rather than
+deferred silently: a docker build is minutes of heavy CPU on a workstation where
+a peer scenario was actively measuring latency, and corrupting a peer's run to
+take my own is the same failure `guard_stand_exclusive` exists to prevent. The
+practical lesson for the campaign is to **land measurement-only branches
+separately from product edits**, or to rebuild first and measure second.
 
 ---
 
-## 4. Findings
+## 4. Findings## 4. Findings
 
 ### 4.1 The rate limiter degrades on a healthy, essentially idle Redis (measured)
 
@@ -397,7 +419,7 @@ reasoning in place; see § 6.
 |---|---|---|---|
 | `realtime` | 4 / 2 | **4 / 2 - unchanged** | No curve was taken, and § 4.2 is the reason it would not have been worth taking yet: ~7-8 s of reproducible OpenLinker-side overhead brackets a 127 ms call. Until that is attributed, any cap this lane is given is a cap chosen to accommodate an overhead that may simply be a defect. |
 | `fiscal` | 2 / 1 | **2 / 1 - unchanged** | Unmeasurable here (§ 4.5). Flag for the owner: `perScope: 1` serialises bulk issuance across distinct orders, which the per-order lock would not. |
-| `fan-out` | 8 / 4 | **8 / 4 - unchanged** | Not reached (peers held the stand). Confirmed derived, not measured (§ 4.6). |
+| `fan-out` | 8 / 4 | **8 / 4 - unchanged** | Not reached (§ 3.1). Confirmed derived, not measured (§ 4.6). It is the lane most likely to yield a real number next, because its work is database reads and child enqueues, so it is hostage to neither § 4.1 nor § 4.2. |
 
 **No default is changed by this work.** The only defaults touched in code are a
 withdrawn figure and a stale literal, both in § 6, neither of which changes what
@@ -430,7 +452,10 @@ class-level initialiser, against `resolveLaneCaps`'s 8/4 fallback. Aligned; see
 ## 7. What this did **not** establish
 
 - **Any cap curve for any lane.** No sweep arm ran outside smoke mode. The
-  scenario exists, is tested, and ran clean end to end; it did not get the stand.
+  scenario exists, is tested, and ran clean end to end in smoke mode; it was
+  then blocked by peers holding the stand and, once that cleared, by § 3.1's
+  `guard_build` refusal. **Nothing here is evidence about how a lane responds to
+  its cap.**
 - **The attribution of § 4.2's 9.1 s.** Ruled out by measurement or code:
   destination, Redis, pacing config, fan-out, round-trip count. The retry-ladder
   arithmetic in § 4.2 fits to within ~5 %, but a fit is not an observation - no
