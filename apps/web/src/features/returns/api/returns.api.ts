@@ -192,6 +192,15 @@ export interface ReturnsApi {
    * returns half. `[]` for an order with no returns.
    */
   listReturnEventsForOrder: (internalOrderId: string) => Promise<ReturnTimelineEntry[]>;
+
+  /**
+   * `GET /returns/:returnId/events` — one RETURN's activity, oldest first
+   * (#2646), for the return-detail timeline.
+   *
+   * Works for an orphan return; answers 404 for a return that does not exist,
+   * which the page renders as not-found rather than as an empty history.
+   */
+  listReturnEventsForReturn: (returnId: string) => Promise<ReturnTimelineEntry[]>;
 }
 
 interface ApiRequest {
@@ -202,6 +211,7 @@ function buildQuery(filters?: ReturnFilters, pagination?: ReturnPagination): str
   const params = new URLSearchParams();
   if (filters?.sourceConnectionId) params.set('sourceConnectionId', filters.sourceConnectionId);
   if (filters?.bucket) params.set('bucket', filters.bucket);
+  if (filters?.internalOrderId) params.set('internalOrderId', filters.internalOrderId);
   if (filters?.createdFrom) params.set('createdFrom', filters.createdFrom);
   if (filters?.createdTo) params.set('createdTo', filters.createdTo);
   // Clamped rather than forwarded: the backend answers HTTP 400 above 100, so
@@ -336,6 +346,13 @@ export function createReturnsApi(request: ApiRequest): ReturnsApi {
         }),
       });
       return parseConfirmReturnRefundResult(raw);
+    },
+
+    async listReturnEventsForReturn(returnId): Promise<ReturnTimelineEntry[]> {
+      const raw = await request<unknown>(
+        `/returns/${encodeURIComponent(returnId)}/events`
+      );
+      return parseReturnTimeline(raw);
     },
 
     async listReturnEventsForOrder(internalOrderId): Promise<ReturnTimelineEntry[]> {

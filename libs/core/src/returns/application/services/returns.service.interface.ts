@@ -239,6 +239,22 @@ export interface IReturnsService {
    */
   listReturnEventsForOrder(internalOrderId: string): Promise<ReturnTimelineForOrder>;
 
+  /**
+   * One RETURN's activity, oldest first (#2646) — the return-detail timeline.
+   *
+   * Same two sources, same projection and same connection-name resolution as
+   * {@link IReturnsService.listReturnEventsForOrder}; the refund entry is
+   * likewise composed one layer up, for the same `OrdersModule` reason.
+   *
+   * **Works for an orphan**, which is the whole reason it exists rather than
+   * the order-scoped read being reused: an orphan has no order to key on.
+   *
+   * Raises {@link ReturnNotFoundError} for a return id that names nothing —
+   * never an empty timeline, which would render a history for a return that
+   * does not exist.
+   */
+  listReturnEventsForReturn(returnId: string): Promise<ReturnTimelineForOrder>;
+
   getReturnIngestionAvailability(): Promise<ReturnIngestionAvailability>;
 
   /**

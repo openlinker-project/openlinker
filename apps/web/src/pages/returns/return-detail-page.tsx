@@ -54,6 +54,7 @@ import {
   useReturnProposalQuery,
   ReturnDeclineAction,
   ReturnRailsNote,
+  ReturnActivityTimeline,
   ReturnOrphanBanner,
   ReturnSourceStatus,
   ReturnDetailUnreadableError,
@@ -334,6 +335,12 @@ export function ReturnDetailPage(): ReactElement {
       </section>
 
       <ReturnDeclineAction detail={detail} writeAccess={writeAccess} />
+
+      {/* #2646 — returns spec § 5's activity panel, last in the panel order:
+          the record, then what came back, then the money, then the channel's
+          own word, then the action, and finally what has actually happened.
+          Works for an orphan, which is why it is keyed on the return. */}
+      <ReturnActivityTimeline returnId={detail.id} />
     </PageLayout>
   );
 }
