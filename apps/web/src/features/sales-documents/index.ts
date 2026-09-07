@@ -6,8 +6,8 @@
  * `features/sales-documents/api|hooks|lib|components` are banned by ESLint
  * for cross-feature consumers (#609).
  */
-export { SalesDocumentsTile } from './components/sales-documents-tile';
 export { SalesDocumentsPanel } from './components/sales-documents-panel';
+export { SalesDocumentsTile } from './components/sales-documents-tile';
 export { SalesDocumentRuleEnginePanel } from './components/sales-document-rule-engine-panel';
 
 export type {
