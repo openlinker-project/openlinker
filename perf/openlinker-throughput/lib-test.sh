@@ -545,12 +545,18 @@ FAKE_PG[count]=0
 DRAIN_DEFERRED_SEEN=0
 WORKER_CONTAINERS="lab-worker"
 RPGDIR="$(mktemp -d)"
+# window_start would have captured this; these tests call run_post_guards
+# directly, so they must establish the same baseline or
+# post_guard_containers_stable correctly refuses to certify a window it has no
+# "before" reading for.
+capture_container_starts "$RPGDIR"
 run_post_guards "$RPGDIR" "'c1'" '2026-01-01T00:00:00Z' 0 9999999999 ''
 assert_eq "every post-guard ok -> VALID" "VALID" "$(verdict_read "$RPGDIR" | head -1)"
 rm -rf "$RPGDIR"
 
 FAKE_PG[count]=1
 RPGDIR2="$(mktemp -d)"
+capture_container_starts "$RPGDIR2"
 run_post_guards "$RPGDIR2" "'c1'" '2026-01-01T00:00:00Z' 0 9999999999 ''
 assert_eq "any post-guard failing -> DISCARDED" "DISCARDED" "$(verdict_read "$RPGDIR2" | head -1)"
 rm -rf "$RPGDIR2"
@@ -560,6 +566,7 @@ FAKE_PG[count]=0
 # post_guard_generator_saturated: a fixed-pool-at-ceiling summary passed with
 # the constant-vus hint must still resolve VALID, never DISCARDED.
 RPGDIR3="$(mktemp -d)"
+capture_container_starts "$RPGDIR3"
 write_k6_summary "$RPGDIR3/k6-summary.json" 16 16 none 2000
 run_post_guards "$RPGDIR3" "'c1'" '2026-01-01T00:00:00Z' 0 9999999999 '' "$RPGDIR3/k6-summary.json" constant-vus
 assert_eq "run_post_guards threads the executor hint through to the generator guard" "VALID" \
@@ -876,6 +883,88 @@ docker() {
 assert_eq "no degraded line inside the window passes" \
   "ok" "$(post_guard_limiter_degraded 1788730000 1788734000)"
 rm -f "$DOCKER_LOGS_ARGS_FILE"
+
+# ---------------------------------------------------------------------------
+echo "--- post_guard_containers_stable (#2852) ---"
+# The stand lock arbitrates scenarios, not `docker compose up` typed by hand.
+# A recreate inside the window kills in-flight jobs (leaving phantom `running`
+# rows that inflate the lane-occupancy proxy) and resets `docker logs`, so
+# every log-derived guard silently measures only the tail of the window. This
+# was observed live and tripped NOTHING; these assertions exist so the failing
+# case is proved to fail, not merely hoped to.
+CS_DIR="$(mktemp -d)"
+declare -A FAKE_STARTED
+docker() {
+  case "$1" in
+    ps) printf '%s\n' "$FAKE_WORKER_PS" ;;
+    inspect)
+      local last="${@: -1}"
+      case "$*" in
+        *'{{.State.StartedAt}}'*)
+          if [ -z "${FAKE_STARTED[$last]+set}" ]; then return 1; fi
+          echo "${FAKE_STARTED[$last]}" ;;
+        *'{{.Id}}'*) echo "fake-id-$last" ;;
+        *) echo "" ;;
+      esac ;;
+    *) : ;;
+  esac
+}
+OL_API_CONTAINER="lab-api"
+PG_CONTAINER="lab-postgres"; REDIS_CONTAINER=""; PS_CONTAINER=""; WC_CONTAINER=""
+WORKER_CONTAINERS="lab-worker-1"; WORKER_CONTAINERS_RESOLVED=1
+FAKE_STARTED["lab-api"]="2026-09-07T00:33:00Z"
+FAKE_STARTED["lab-worker-1"]="2026-09-07T00:33:01Z"
+FAKE_STARTED["lab-postgres"]="2026-09-07T00:10:00Z"
+
+capture_container_starts "$CS_DIR"
+assert_eq "a stand nobody touched passes" "ok" "$(post_guard_containers_stable "$CS_DIR")"
+
+# THE case this guard exists for: a peer recreates the worker mid-window.
+FAKE_STARTED["lab-worker-1"]="2026-09-07T00:41:21Z"
+CS_OUT="$(post_guard_containers_stable "$CS_DIR")"
+assert_contains "a worker recreated mid-window DISCARDS the run" "$CS_OUT" "DISCARDED post_guard_containers_stable"
+assert_contains "the refusal names the offending container" "$CS_OUT" "lab-worker-1"
+assert_contains "the refusal quotes the before/after start times" "$CS_OUT" "was=2026-09-07T00:33:01Z"
+
+# The api half of the same recreate - F7's live incident restarted BOTH, and a
+# guard watching only the worker would have called that stand stable.
+FAKE_STARTED["lab-worker-1"]="2026-09-07T00:33:01Z"
+FAKE_STARTED["lab-api"]="2026-09-07T00:41:21Z"
+assert_contains "an api recreated mid-window DISCARDS the run" \
+  "$(post_guard_containers_stable "$CS_DIR")" "lab-api"
+
+# A container that vanished entirely must not read as stable.
+FAKE_STARTED["lab-api"]="2026-09-07T00:33:00Z"
+unset 'FAKE_STARTED[lab-postgres]'
+assert_contains "a container that disappeared DISCARDS the run" \
+  "$(post_guard_containers_stable "$CS_DIR")" "lab-postgres"
+
+# An absent baseline is a REFUSAL, never a pass: it means the run cannot answer
+# the question, and "stable" would be exactly the confident-but-blind reading
+# the degraded-limiter defect taught us to distrust.
+assert_contains "a missing baseline DISCARDS rather than passing" \
+  "$(post_guard_containers_stable "$(mktemp -d)")" "no container baseline"
+
+# measured_containers' STDOUT is its return value, and _ensure_worker_containers
+# logs "worker replicas: ..." on its FIRST call. Unredirected, every word of
+# that log line becomes a "container" - the guard then records rubbish like
+# `[lib]` and `(explicit)` as things to watch, and reports them as MISSING for
+# ever after. Caught by the real-docker red-first check, not by the stubbed
+# assertions above (which run with discovery already memoised, so nothing
+# logs). This resets the memo so the log path is actually exercised.
+FAKE_WORKER_PS="lab-worker-1"
+WORKER_CONTAINERS="lab-worker-1"; WORKER_CONTAINERS_RESOLVED=0
+FAKE_EXISTING_CONTAINERS="lab-worker-1"
+MC_OUT="$(measured_containers)"
+case "$MC_OUT" in
+  *'['*|*'('*|*'replicas'*)
+    FAIL=$((FAIL + 1))
+    FAILURES+=("measured_containers leaked _ensure_worker_containers' log into its return value: [$MC_OUT]") ;;
+  *) PASS=$((PASS + 1)) ;;
+esac
+assert_eq "measured_containers returns only the container names" \
+  "lab-api lab-worker-1 lab-postgres" "$MC_OUT"
+rm -rf "$CS_DIR"
 
 # ---------------------------------------------------------------------------
 echo

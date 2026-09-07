@@ -1190,3 +1190,43 @@ but still risks interleaving at the wrong offset.
 `perf/**/*.sh`, `scripts/*.sh`, CI wrappers.
 
 **Source**: #2851 (F4 claim-contention scenario).
+
+---
+
+## A lock that arbitrates SCENARIOS does not arbitrate the STAND - a peer's `docker compose up` invalidates a held window, silently
+
+**Context**: F7's re-run (#2852) held `guard_stand_exclusive` for its whole
+measurement. Seven and a half minutes into the window, `lab-api` and
+`lab-worker-1` were both recreated by a peer who had just finished rebuilding
+the images. Every guard still passed. The contamination was noticed only
+because a `docker logs | grep -c` of degraded-limiter lines was read twice by
+hand and went **down**, from 36 to 2.
+
+**Problem**: the stand lock is advisory and scenario-scoped. It stops a second
+*scenario* from starting; it cannot stop `docker compose up -d`, which is a
+routine thing to type on a shared multi-worktree checkout the moment a build
+finishes. Three consequences follow, and not one of them raises anything:
+
+- in-flight jobs are killed and their rows stay `running` for ever, so a
+  `COUNT(*) WHERE status='running'` lane-occupancy proxy is inflated by
+  phantoms for the rest of the run (observed: 16 concurrent against a
+  per-scope cap of 8);
+- `docker logs` starts over, so every log-derived post-guard silently loses
+  the part of the window before the recreate and reports a count for the
+  remainder as though it were the whole - which is the *same* blindness as the
+  `--since "@epoch"` defect, arrived at from the other direction;
+- probe timings straddle a cold start.
+
+**Rule**: a measurement window must record what it is measuring ON, not only
+what it measured. Capture each measured container's `.State.StartedAt` at
+window_start and re-check it in the post-guards; any change means a restart or
+a recreate and the window is void. `post_guard_containers_stable`
+(`perf/openlinker-throughput/lib.sh`) does this. A **missing** baseline must
+refuse too - it means the run cannot answer the question, and "stable" would be
+the same confident-but-blind pass the guard exists to remove. Do not reach for
+a longer lock TTL instead: the peer never took the lock.
+
+**Applies to**: every scenario in `perf/openlinker-throughput/`, and any future
+harness that measures a shared, human-reachable environment.
+
+**Source**: #2852 (found while re-running F7 against the fixed degraded-limiter guard).

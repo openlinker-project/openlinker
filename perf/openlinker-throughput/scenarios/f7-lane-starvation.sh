@@ -74,14 +74,22 @@
 #     and the transaction rollback means nothing measured here persists or
 #     interacts with the live-load arms.
 #
-# (5) The 3-replica arm is NOT RUN. `docker-compose.lab.yml`'s worker service
-#     declares a fixed `container_name: lab-worker` (confirmed by reading the
-#     file directly) - `docker compose up --scale worker=3` refuses to scale a
-#     service with a fixed container name, and lib.sh's own
-#     `WORKER_CONTAINERS` comment names this exact blocker ("A `--scale
-#     worker=3` stand (#2854) does not carry a fixed `container_name` per
-#     replica"). #2851 (the compose overlay this needs) does not exist in this
-#     worktree. This is reported as NOT ESTABLISHED, not silently skipped.
+# (5) The 3-replica arm is NOT RUN - but the ORIGINAL reason recorded here no
+#     longer holds, and is corrected rather than left standing. When this
+#     scenario was first written, `docker-compose.lab.yml`'s worker service
+#     declared a fixed `container_name: lab-worker`, and compose refuses to
+#     `--scale` such a service. #2969 REMOVED that pin (the replica is now
+#     compose-named `lab-worker-1`), so scaling works today and F4 (#2851)
+#     exercises the multi-replica arm.
+#
+#     F7 stays single-replica for a different and still-valid reason: its lane
+#     occupancy figure is proxied by `COUNT(*) FROM sync_jobs WHERE
+#     status='running' AND ...`, which #2852's own dependency list admits only
+#     "for lane occupancy only, and only on the 1-replica arm". Slot
+#     accounting is per PROCESS (ADR-050/#2302), so at N replicas that COUNT
+#     sums N independent lane budgets and stops meaning "this lane's
+#     occupancy" at all. Measuring it there needs #2850's exporter, not a
+#     bigger stand. Reported as NOT ESTABLISHED, not silently skipped.
 #
 # (6) #2850 (the metrics exporter) does not exist in this worktree. There is
 #     no `ol_lane_slots_in_use`, no `ol_event_loop_lag_seconds`, no
@@ -165,15 +173,68 @@ RUN_GROUP="run$(date +%s)"
 DIR="$(results_dir_init f7-lane-starvation "$RUN_GROUP")"
 log "results dir: $DIR"
 
+# Which compose file and env file does the RUNNING stand actually use?
+#
+# Asking the stand rather than assuming a path matters here: on a multi-
+# worktree checkout the stand is routinely brought up from a DIFFERENT
+# worktree than the one a scenario runs from (verified on this host - the
+# `lab` project's working_dir pointed at a sibling agent worktree, so the
+# hardcoded `$SCRIPT_DIR/../../../.env.lab` did not exist and the runner
+# toggle died). Compose stamps both paths onto every container it creates, so
+# the container is the authority on its own project's configuration; an
+# operator can still override either explicitly.
+#
+# `.env.lab` is deliberately NOT copied into this worktree: it is the STAND's
+# configuration, shared by every scenario, and a private copy would silently
+# diverge from the file the stand is really running on.
+_compose_label() {
+  local w
+  w="$(discover_worker_containers | awk '{print $1}')"
+  [ -n "$w" ] || return 0
+  docker inspect --format "{{index .Config.Labels \"$1\"}}" "$w" 2>/dev/null || true
+}
+LAB_ENV_FILE="${LAB_ENV_FILE:-$(_compose_label com.docker.compose.project.environment_file)}"
+[ -n "$LAB_ENV_FILE" ] || LAB_ENV_FILE="$SCRIPT_DIR/../../../.env.lab"
+LAB_COMPOSE_FILE="${LAB_COMPOSE_FILE:-$(_compose_label com.docker.compose.project.config_files)}"
+[ -n "$LAB_COMPOSE_FILE" ] || LAB_COMPOSE_FILE="$SCRIPT_DIR/../../../docker-compose.lab.yml"
+# A multi-file project stamps a comma-separated list; this scenario recreates
+# one service from one file and refuses to guess which.
+case "$LAB_COMPOSE_FILE" in
+  *,*) die "LAB_COMPOSE_FILE resolved to a multi-file compose project [$LAB_COMPOSE_FILE] - set LAB_COMPOSE_FILE explicitly to the file carrying the 'worker' service" ;;
+esac
+log "stand config: compose=$LAB_COMPOSE_FILE env=$LAB_ENV_FILE project=$LAB_COMPOSE_PROJECT"
+
+# Read the posture from the DISCOVERED replica, never from a hardcoded
+# `lab-worker`. #2969 removed the worker service's fixed `container_name` so
+# compose could `--scale` it, and the container is now `lab-worker-1`. The
+# old form did not error - `docker exec lab-worker` fails, `2>/dev/null`
+# swallows it, and `|| printf 'false'` supplies a confident answer nobody
+# measured. That happens to match this stand's real posture today, which is
+# precisely what makes it dangerous: it would silently restore `false` over
+# an `enabled` stand. An unreadable container falls back to the ENV FILE (the
+# F4 pattern), and an unreadable env file is fatal rather than assumed.
+_read_runner_posture() {
+  local w val
+  w="$(discover_worker_containers | awk '{print $1}')"
+  if [ -n "$w" ]; then
+    val="$(docker exec "$w" printenv WORKER_RUNNER_ENABLED 2>/dev/null || printf '')"
+    [ -z "$val" ] || { printf '%s' "$val"; return 0; }
+  fi
+  val="$(awk -F= '/^WORKER_RUNNER_ENABLED=/{print $2; exit}' "$LAB_ENV_FILE" 2>/dev/null || printf '')"
+  [ -n "$val" ] || die "_read_runner_posture: could not read WORKER_RUNNER_ENABLED from any running worker replica [$(discover_worker_containers)] or from $LAB_ENV_FILE - refusing to guess a posture this run must restore"
+  printf '%s' "$val"
+}
+
 # Capture the worker's CURRENT runner posture so it can be restored exactly,
 # whatever it was, at the end - the task's own instruction ("say what you
 # left it at").
-ORIGINAL_RUNNER_ENABLED="$(docker exec lab-worker printenv WORKER_RUNNER_ENABLED 2>/dev/null || printf 'false')"
+ORIGINAL_RUNNER_ENABLED="$(_read_runner_posture)"
 log "worker's runner posture at scenario start: WORKER_RUNNER_ENABLED=$ORIGINAL_RUNNER_ENABLED (will be restored on exit)"
 
 restore_runner_posture() {
   local current
-  current="$(docker exec lab-worker printenv WORKER_RUNNER_ENABLED 2>/dev/null || printf 'false')"
+  current="$(_read_runner_posture 2>/dev/null || printf '')"
+  [ -n "$current" ] || { warn "restore_runner_posture: could not read the current posture - leaving the stand as-is"; return 0; }
   if [ "$current" != "$ORIGINAL_RUNNER_ENABLED" ]; then
     log "restoring WORKER_RUNNER_ENABLED=$ORIGINAL_RUNNER_ENABLED (was $current)"
     set_runner_enabled "$ORIGINAL_RUNNER_ENABLED"
@@ -198,22 +259,52 @@ trap f7_on_exit EXIT
 # stand to itself, but a full `up -d` would still be a wider blast radius
 # than this scenario needs).
 set_runner_enabled() {
-  local want="$1" env_file="$SCRIPT_DIR/../../../.env.lab"
-  [ -f "$env_file" ] || die "set_runner_enabled: $env_file not found"
+  local want="$1" env_file="$LAB_ENV_FILE"
+  [ -f "$env_file" ] || die "set_runner_enabled: $env_file not found - set LAB_ENV_FILE to the .env.lab the running stand was created from (see LAB_ENV_FILE's own resolution note above)"
+  # `grep -q` on a plain FILE argument is safe - the SIGPIPE/pipefail trap
+  # docs/lessons.md records applies only when grep terminates a PIPE.
   if grep -q '^WORKER_RUNNER_ENABLED=' "$env_file"; then
     sed -i "s/^WORKER_RUNNER_ENABLED=.*/WORKER_RUNNER_ENABLED=$want/" "$env_file"
   else
     printf 'WORKER_RUNNER_ENABLED=%s\n' "$want" >> "$env_file"
   fi
-  ( cd "$SCRIPT_DIR/../../.." && docker compose -f docker-compose.lab.yml --env-file .env.lab up -d --no-deps worker >/dev/null )
+  # `-p lab` is REQUIRED. The worker service no longer carries a
+  # `container_name` (#2969), so without an explicit project name compose
+  # derives one from the directory and would bring up a SECOND, parallel
+  # worker against this same database rather than recreating the stand's.
+  # `--no-deps` plus an explicit service name bounds this to `worker`, so a
+  # compose file that knows about MORE services than the one the project was
+  # created from cannot start or alter any of them.
+  ( cd "$(dirname "$LAB_COMPOSE_FILE")" && docker compose -f "$LAB_COMPOSE_FILE" --env-file "$env_file" -p "$LAB_COMPOSE_PROJECT" up -d --no-deps worker >/dev/null )
   # Give the process a moment to actually boot and print its startup line
   # before any guard reads it.
   sleep 5
-  local tries=0
-  until docker logs lab-worker 2>&1 | grep -qF 'Starting sync job runner loop' || [ "$want" = "false" ]; do
-    tries=$((tries + 1))
-    [ "$tries" -lt 20 ] || die "set_runner_enabled: lab-worker never logged 'Starting sync job runner loop' after enabling"
-    sleep 1
+  # The recreate mints a NEW container, so lib.sh's memoised list is stale.
+  WORKER_CONTAINERS=""
+  WORKER_CONTAINERS_RESOLVED=0
+  _ensure_worker_containers
+  # Written as an `if`, not `[ ... ] && return 0`: that idiom is safe here
+  # only because a non-final member of an `&&` list is exempt from `set -e`,
+  # and it silently stops being safe the day it becomes the last statement.
+  if [ "$want" = "false" ]; then
+    return 0
+  fi
+  local tries w hits
+  for w in $WORKER_CONTAINERS; do
+    tries=0
+    # `grep -c`, never `grep -q`: `grep -q` exits on its first match, closing
+    # the pipe while `docker logs` is still writing, so `docker logs` dies of
+    # SIGPIPE (141) and `set -o pipefail` reports the pipeline as FAILED even
+    # though the line matched. It is length-dependent, so it passes while the
+    # log is short and starts failing once the worker has been up a while -
+    # the exact trap docs/lessons.md records from F4 (#2851).
+    while true; do
+      hits="$(docker logs "$w" 2>&1 | grep -cF 'Starting sync job runner loop' || true)"
+      [ "${hits:-0}" -eq 0 ] || break
+      tries=$((tries + 1))
+      [ "$tries" -lt 60 ] || die "set_runner_enabled: $w never logged 'Starting sync job runner loop' after enabling"
+      sleep 1
+    done
   done
 }
 
@@ -260,6 +351,19 @@ SQL
 
 run_depth_phase() {
   log "=== Phase 1: queued-depth vs. claim latency (runner disabled, isolated SQL) ==="
+  # ENSURE the posture this phase needs; do not merely assert it. This phase
+  # inserts synthetic queued rows inside a rolled-back transaction, so a live
+  # runner could claim against the table mid-EXPLAIN and put another process's
+  # work into the number. The original version asserted `disabled` and never
+  # set it, which silently depended on whatever posture the previous scenario
+  # happened to leave behind - it passed for as long as the stand was found
+  # idle and died the first time a peer left the runner enabled. The exit trap
+  # restores ORIGINAL_RUNNER_ENABLED either way, so setting it here is safe
+  # and symmetric with the live-load phase enabling it below.
+  if [ "$(_read_runner_posture)" != "false" ]; then
+    log "runner is enabled; disabling it for the isolated-SQL phase"
+    set_runner_enabled false
+  fi
   guard_runner_state disabled
   local depths="0 1000 10000"
   [ "$MODE" != "smoke" ] || depths="0 50"
@@ -333,7 +437,7 @@ extra_manifest="$(jq -n \
   --arg fiscal_probe_type "invoicing.issue (deliberately-invalid payload, business_failure by design)" \
   '{aggressorRoute:$aggressor_route, aggressorCount:$aggressor_count, probeCount:$probe_count, products:$products,
     realtimeProbeType:$realtime_probe_type, fiscalProbeType:$fiscal_probe_type,
-    replicaCount: 1, threeReplicaArm: "NOT RUN - docker-compose.lab.yml pins container_name: lab-worker, --scale refuses; #2851 compose overlay absent from this worktree",
+    replicaCount: 1, threeReplicaArm: "NOT RUN - out of scope for this scenario. The original blocker (docker-compose.lab.yml pinning container_name: lab-worker) was REMOVED by #2969, so --scale now works; F4 (#2851) runs the multi-replica arm. F7 stays single-replica because its lane-occupancy proxy (COUNT(*) over sync_jobs status='running') is only valid at one replica.",
     metricsExporter: "absent (#2850 not in this worktree) - lane occupancy proxied via sync_jobs COUNT(*), event-loop lag not directly measured"}')"
 
 window_start "$DIR" f7-lane-starvation "$CONN_IDS" "$([ "$MODE" = smoke ] && echo 1 || echo 0)" "$extra_manifest"
