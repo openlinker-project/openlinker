@@ -1301,3 +1301,38 @@ ADDING arms until this is fixed.
 knob (`ARM_SPECS`, `CAPS`, `WORKER_CONTAINERS`, `BUILD_RELEVANT_PATHS`).
 
 **Source**: #2840 (limiter A/B).
+
+---
+
+## A seeder that sets a target distribution needs a TWO-SIDED assertion - a one-sided one passes while the dataset is silently wrong
+
+**Context**: re-seeding the #2840 measurement stand (#2949). `rebalance-sync-status.sh` sets the
+share of `order_records` matching `GET /orders?health=needs_attention`
+(`syncStatus @> '[{"status":"failed"}]'`) to a realistic figure, replacing the 27.7% the earlier
+seed produced. Target 0.6%.
+
+**Problem**: the first draft only ever HEALED - it turned a seeded `failed` entry into `synced`
+for rows outside the kept hash fraction, on the reasoning that a seeder should never manufacture
+a needs-attention row. So a row survived as failed only if it was ALREADY failed **and** its hash
+fell in the kept fraction, and the realised share was the PRODUCT of the two: `27.686% x 0.6% =
+0.166%`. Measured 0.158%, **3.8x below target**. The run's own assertion passed, because it tested
+only `realised > target * 1.10`. Nothing downstream could have caught it either: 0.158% is still
+"a fraction of a percent", the dataset still looks plausible, and no other part of the harness
+knows what the share was supposed to be. This is the same family as *An "authenticates" assertion
+is not a "works" assertion* and the red-first rule under *A zero-rows assertion about what a
+MIGRATION does is vacuous* - a test passing for a reason it did not claim.
+
+**Rule**: an assertion over a quantity a script SETS must bound it on both sides, and the low side
+is the one that matters - an undershoot is invisible in every downstream figure, whereas an
+overshoot usually announces itself. Prefer a RELATIVE band (`+/-10%`) over an absolute
+percentage-point tolerance when the target is small: `check_share`'s 5pp tolerance, correct for
+its 60-90% targets, is vacuous at 0.6% and would pass anything under 5.6%. And a seeder whose
+whole job is to set a distribution must be able to set it in BOTH directions - a monotone
+"only ever heal" primitive cannot reach a target above its current value, and the arithmetic that
+makes that a multiplication rather than an assignment is easy to miss when reading the code.
+Verify red-first: run it once against a deliberately wrong target and watch the assertion fail.
+
+**Applies to**: `perf/openlinker-throughput/seed/*.sh`, and any fixture/seeder asserting a
+proportion rather than a count.
+
+**Source**: #2949 (dataset re-seed), building on #2840.
