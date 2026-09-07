@@ -195,6 +195,24 @@ export DRAIN_MAX_WAIT_SECS
 # and how late" measurement.
 RECOVERY_WAIT_SECS="${RECOVERY_WAIT_SECS:-180}"
 
+# Thirteen windows in one lock hold. The library default TTL (3600s) is a
+# CRASH bound, not a run bound - it is the longest a dead holder can block the
+# stand - and thirteen settle-plus-window-plus-drain cycles do not fit inside
+# it. Raised here rather than left to expire mid-run, which would let a peer
+# take the stand underneath an open window.
+OL_STAND_LOCK_TTL_SECS="${OL_STAND_LOCK_TTL_SECS:-9000}"
+export OL_STAND_LOCK_TTL_SECS
+STAND_LOCK_TTL_SECS="$OL_STAND_LOCK_TTL_SECS"
+
+# The library default is 60s, sized to let a REBUILD's CPU and page-cache
+# impact fade. Nothing is rebuilt between these windows and the load is
+# modest, so 60s x 13 would be thirteen minutes of the lock spent waiting for
+# an effect that is not present. 30s still covers the previous window's drain
+# tail, which is the only carry-over this scenario actually has. Declared as a
+# deviation rather than silently taken - it is recorded in every manifest by
+# manifest_gather_environment.
+SETTLE_SECS="${SETTLE_SECS:-30}"
+
 PROXY_CONTAINER="${PROXY_CONTAINER:-lab-ps-fault-proxy}"
 PROXY_IMAGE="${PROXY_IMAGE:-ol-perf:ps-fault-proxy}"
 PROXY_NETWORK="${PROXY_NETWORK:-lab_default}"
@@ -548,6 +566,7 @@ install_fault() {
 REDIS_PAUSE_MS="${REDIS_PAUSE_MS:-3000}"
 REDIS_PAUSE_EVERY_SECS="${REDIS_PAUSE_EVERY_SECS:-6}"
 MIDWINDOW_AT_SECS="${MIDWINDOW_AT_SECS:-35}"
+WORKER_RUNNER_LINES_BEFORE_KILL=0
 
 # ===========================================================================
 # The mid-window infrastructure actions. Each runs as a background job whose
@@ -575,6 +594,15 @@ start_midwindow_action() {
       log "  redis will be stopped ${MIDWINDOW_AT_SECS}s into the window and started again 20s later (pid=$MIDWINDOW_PID)"
       ;;
     I3)
+      # Counted BEFORE the kill so `restore_infrastructure` can wait for a NEW
+      # runner-loop line rather than for the presence of one - `docker start`
+      # preserves the log, so the old line is still there and a mere `grep -q`
+      # would answer "ready" the instant the container was started.
+      WORKER_RUNNER_LINES_BEFORE_KILL=0
+      local wc
+      for wc in $WORKER_CONTAINERS; do
+        WORKER_RUNNER_LINES_BEFORE_KILL=$(( WORKER_RUNNER_LINES_BEFORE_KILL + $(docker logs "$wc" 2>&1 | grep -cF 'Starting sync job runner loop' || true) ))
+      done
       ( sleep "$MIDWINDOW_AT_SECS"
         local w
         for w in $WORKER_CONTAINERS; do docker kill -s KILL "$w" >/dev/null 2>&1 || true; done
@@ -625,8 +653,25 @@ restore_infrastructure() {
     I3)
       local w
       for w in $WORKER_CONTAINERS; do docker start "$w" >/dev/null 2>&1 || true; done
-      sleep 5
-      log "  worker(s) started again"
+      # Waited for by its own startup line, never by a fixed sleep. The NEXT
+      # window's `window_start` calls `reassert_volatile_guards`, which runs
+      # `guard_runner_state enabled` and DIES if the runner loop line is not
+      # in the log - so a worker that is merely `Running` but has not booted
+      # yet would abort the whole remaining run at the next window rather
+      # than at this one. `docker start` preserves the log, so the line this
+      # greps for may be the previous boot's; it is the readiness of the
+      # PROCESS that the count below establishes.
+      local want_lines have_lines
+      want_lines="$WORKER_RUNNER_LINES_BEFORE_KILL"
+      while [ "$waited" -lt 120 ]; do
+        have_lines=0
+        for w in $WORKER_CONTAINERS; do
+          have_lines=$(( have_lines + $(docker logs "$w" 2>&1 | grep -cF 'Starting sync job runner loop' || true) ))
+        done
+        [ "$have_lines" -le "${want_lines:-0}" ] || break
+        sleep 2; waited=$((waited + 2))
+      done
+      log "  worker(s) started again and re-announced the runner loop after ${waited}s (runner lines ${want_lines:-0} -> ${have_lines:-0})"
       ;;
   esac
 }
@@ -706,6 +751,13 @@ read_ledger() {
              COUNT(*)::int AS n,
              SUM(attempts)::int AS attempts_total,
              MAX(attempts)::int AS attempts_max,
+             -- A `dead` row the HARNESS produced must never read as one the
+             -- system dead-lettered. drain_wait stamps its own lastError when
+             -- it times out; the ledger below is read before that runs, so
+             -- this should be 0 everywhere - it is carried so that if the
+             -- ordering is ever broken, the contamination is visible in the
+             -- data rather than only in a comment.
+             COUNT(*) FILTER (WHERE \"lastError\" LIKE '%perf harness drain_wait timeout%')::int AS killed_by_harness,
              COUNT(*) FILTER (WHERE COALESCE(\"deferredTotalMs\",0) > 0)::int AS deferred_rows,
              COALESCE(SUM(\"deferredTotalMs\"),0)::bigint AS deferred_ms_total,
              COALESCE(SUM(\"lastAttemptDurationMs\"),0)::bigint AS attempt_ms_total,
@@ -750,6 +802,12 @@ read_ledger() {
     #    This is the only reconciliation in the campaign whose witness is not
     #    OpenLinker, and it is the whole answer to "does any surface report
     #    success on a failed path".
+    #
+    #    PROVEN ABLE TO FIRE before the run, against live data on this stand,
+    #    rather than assumed: three genuinely-claimed ids answered 3 present
+    #    (missing 0), and the same query with one id replaced by a fabricated
+    #    999999 answered 2 present (missing 1). A detector nobody has seen go
+    #    red is a detector that reports zero for the wrong reason.
     local claimed_ids
     claimed_ids="$(pg_sql "SELECT string_agg(DISTINCT e->>'externalOrderId', ',')
       FROM order_records o, jsonb_array_elements(o.\"syncStatus\") e
@@ -909,7 +967,16 @@ run_fault() {
   if [ "$load" = "order" ]; then
     start_order_pump "$id"
   else
-    log "  enqueued $(enqueue_quantity_jobs "$id") quantity job(s)"
+    # Assigned, not interpolated into a `log` argument. `enqueue_quantity_jobs`
+    # calls `enqueue_perf_job`, which RECORDS each key it enqueued into
+    # `PERF_ENQUEUED_KEYS_FILE` - and `cap_perf_job_attempts` reads that file
+    # to apply the attempt cap. Running the whole loop inside a command
+    # substitution would keep the file path (it is exported from main below)
+    # but would lose any assignment the helper made to the variable itself,
+    # so the path is minted once in main rather than lazily in a subshell.
+    local qn
+    qn="$(enqueue_quantity_jobs "$id")"
+    log "  enqueued $qn quantity job(s)"
     cap_perf_job_attempts
   fi
 
@@ -957,24 +1024,47 @@ run_fault() {
   clear_all_faults
   restore_infrastructure "$id"
   log "  fault cleared; waiting up to ${RECOVERY_WAIT_SECS}s for unattended recovery"
-  local drain_result
-  drain_result="$(drain_wait "$CONN_IDS" || true)"
-  log "  drain_wait: $drain_result"
 
+  # THE RECOVERY WAIT RUNS BEFORE `drain_wait`, AND THE ORDER IS LOAD-BEARING.
+  #
+  # `drain_wait` is not a passive observer: on timeout it marks every
+  # still-queued or still-running row `dead` with its own `lastError`
+  # (lib.sh). Running it first would make a job the HARNESS killed
+  # indistinguishable from one the system dead-lettered - and a fault window
+  # is exactly the window where leftover rows are the finding. It would also
+  # make the recovery loop that followed it read zero still-in-flight jobs and
+  # report a clean recovery that never happened.
+  #
+  # So: observe recovery, read the settled ledger, and only then let
+  # `drain_wait` clean up for the next window. Its answer is still recorded.
+  local recovered_at="" still
   waited=0
   while [ "$waited" -lt "$RECOVERY_WAIT_SECS" ]; do
-    sleep 15; waited=$((waited + 15))
-    local still
     still="$(pg_sql "SELECT COUNT(*) FROM sync_jobs WHERE \"connectionId\" IN ($CONN_IDS) AND status IN ('queued','running') AND \"createdAt\">='$ws_iso'" 2>/dev/null || printf 0)"
-    log "    recovery t+${waited}s: ${still} job(s) from this window still queued/running"
-    [ "${still:-0}" -gt 0 ] || break
+    log "    recovery t+${waited}s: ${still:-?} job(s) from this window still queued/running"
+    if [ "${still:-1}" -eq 0 ]; then recovered_at="$waited"; break; fi
+    sleep 15; waited=$((waited + 15))
   done
 
-  # (c) the settled state
+  # (c) the settled state, read BEFORE any harness cleanup touches a row.
   read_ledger "$dir" "$ws_iso" "$ps_order_before" "$ps_cart_before" "$load"
   mv "$dir/ledger.json" "$dir/ledger-after-recovery.json"
+
+  local drain_result
+  drain_result="$(drain_wait "$CONN_IDS" || true)"
+  log "  drain_wait (cleanup for the next window, AFTER the ledger was read): $drain_result"
+
   jq -n --arg d "$drain_result" --argjson w "$waited" \
-    '{drainResult:$d, recoveryWaitedSecs:$w}' > "$dir/recovery.json"
+    --arg r "${recovered_at:-never}" --argjson still "${still:-0}" \
+    --arg killed "${DRAIN_DEAD_IDS:-}" \
+    '{
+       recoveredWithoutAHumanAfterSecs: (if $r == "never" then null else ($r|tonumber) end),
+       recoveryObservedForSecs: $w,
+       jobsStillInFlightWhenObservationEnded: $still,
+       drainResult: $d,
+       rowsTheHARNESSMarkedDeadDuringCleanup: $killed,
+       note: "recoveredWithoutAHumanAfterSecs is null when this window still had queued/running jobs when the observation window ended - that is NOT a claim that recovery never happens, only that it had not happened within recoveryObservedForSecs. rowsTheHARNESSMarkedDeadDuringCleanup names rows drain_wait killed AFTER the ledger above was read, so they are absent from it."
+     }' > "$dir/recovery.json"
 
   run_f10_guards "$dir" "$ws_iso" "$WINDOW_START_EPOCH" "$WINDOW_STOP_EPOCH" "$id" "$backlog_at_stop"
   log "  verdict: $(verdict_read "$dir" 2>/dev/null | head -1 || true)"
@@ -1055,6 +1145,14 @@ printf '%s' "$PROXY_TEST" | jq -e '.success == true' >/dev/null \
 # The quantity arm's targets, materialised BEFORE any loop that runs
 # `docker exec` - see enqueue_quantity_jobs for why.
 QUANTITY_OFFER_IDS="$(resolve_quantity_offer_ids)"
+[ -n "$QUANTITY_OFFER_IDS" ] || warn "no seeded Offer mappings on $SOURCE_CONNECTION_ID - the M3 quantity arm will enqueue nothing and must be recorded as NOT EXERCISED"
+
+# Minted in THIS shell, not lazily inside `enqueue_perf_job`'s first call: that
+# call happens inside a command substitution for the quantity arm, and a
+# variable assigned in a subshell does not survive it - so the cap would then
+# read an unset path and silently cap nothing.
+PERF_ENQUEUED_KEYS_FILE="$(mktemp)"
+export PERF_ENQUEUED_KEYS_FILE
 
 for f in $FAULTS; do
   run_fault "$f"
