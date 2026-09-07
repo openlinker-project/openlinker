@@ -65,6 +65,9 @@ import type {
   RotateWebhookSecretResponse,
   RoutingRule,
   RoutingRuleInput,
+  SalesDocumentCountryAcknowledgment,
+  SalesDocumentCountryDefault,
+  SalesDocumentMarketsResponse,
   SendInvoiceEmailInput,
   SendInvoiceEmailResult,
   Shipment,
@@ -631,6 +634,34 @@ export class ApiClient {
      */
     statusSummary: (): Promise<OrderHealthSummary> =>
       this.request<OrderHealthSummary>('/orders/status-summary'),
+  };
+
+  // ── Sales-document markets + routing (#2563 M10, ADR-066) ────────────────
+  salesDocuments = {
+    /** GET /sales-documents/markets — configured + detected markets, merged. */
+    markets: (): Promise<SalesDocumentMarketsResponse> =>
+      this.request<SalesDocumentMarketsResponse>('/sales-documents/markets'),
+    /** PUT /sales-documents/country-defaults — insert-or-replace, keyed on (country, documentKind). */
+    upsertCountryDefault: (input: {
+      country: string;
+      documentKind: string;
+      connectionId: string;
+    }): Promise<SalesDocumentCountryDefault> =>
+      this.request<SalesDocumentCountryDefault>('/sales-documents/country-defaults', {
+        method: 'PUT',
+        body: JSON.stringify(input),
+      }),
+    deleteCountryDefault: (id: string): Promise<void> =>
+      this.request<void>(`/sales-documents/country-defaults/${id}`, { method: 'DELETE' }),
+    acknowledgeNoDocument: (country: string): Promise<SalesDocumentCountryAcknowledgment> =>
+      this.request<SalesDocumentCountryAcknowledgment>(
+        `/sales-documents/countries/${country}/acknowledgment`,
+        { method: 'PUT' },
+      ),
+    clearAcknowledgment: (country: string): Promise<void> =>
+      this.request<void>(`/sales-documents/countries/${country}/acknowledgment`, {
+        method: 'DELETE',
+      }),
   };
 
   // ── Invoices ────────────────────────────────────────────────────────────
