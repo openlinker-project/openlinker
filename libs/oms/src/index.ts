@@ -61,4 +61,20 @@ export type {
 export { stockKey } from './routing/routing-facts.types';
 export type { RoutingCandidate, RoutingFacts } from './routing/routing-facts.types';
 export type { RoutingRuleSourcePort } from './routing/routing-rule-source.port';
+// #2953 — the operator-authoring half. The PORT and its shapes are published;
+// `OmsRoutingRuleRepository` and `OmsRoutingRuleOrmEntity` deliberately are not
+// (see `oms.module.ts` — a consumer codes against the port, and the ORM entity
+// is banned from plugin barrels).
+export type {
+  CreateRoutingRuleInput,
+  ListRoutingRulesOptions,
+  RoutingRuleAdminPort,
+  RoutingRuleRecord,
+  UpdateRoutingRuleInput,
+} from './routing/routing-rule-admin.port';
+export {
+  DuplicateLiveRoutingRuleError,
+  RoutingRuleNotFoundError,
+  RoutingRuleReorderMismatchError,
+} from './routing/routing-rule-admin.errors';
 export * from './oms.tokens';
