@@ -24,6 +24,11 @@
       "require": "./dist/currency/index.js",
       "default": "./dist/currency/index.js"
     },
+    "./currency/testing": {
+      "types": "./dist/currency/testing/index.d.ts",
+      "require": "./dist/currency/testing/index.js",
+      "default": "./dist/currency/testing/index.js"
+    },
     "./operational-settings": {
       "types": "./dist/operational-settings/index.d.ts",
       "require": "./dist/operational-settings/index.js",

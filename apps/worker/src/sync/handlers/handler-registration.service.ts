@@ -19,6 +19,7 @@ import { MarketplaceReturnSyncHandler } from './marketplace-return-sync.handler'
 import { MarketplaceReturnsStatusSyncHandler } from './marketplace-returns-status-sync.handler';
 import { ReturnsOrphanReconcileHandler } from './returns-orphan-reconcile.handler';
 import { OrdersTaxRateBackfillHandler } from './orders-tax-rate-backfill.handler';
+import { AnalyticsCurrencyRecalculateHandler } from './analytics-currency-recalculate.handler';
 import { MarketplaceOfferQuantityUpdateHandler } from './marketplace-offer-quantity-update.handler';
 import { MarketplaceOfferQuantityReconcileHandler } from './marketplace-offer-quantity-reconcile.handler';
 import { MarketplaceOfferFieldUpdateHandler } from './marketplace-offer-field-update.handler';
@@ -81,6 +82,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly marketplaceReturnsStatusSyncHandler: MarketplaceReturnsStatusSyncHandler,
     private readonly returnsOrphanReconcileHandler: ReturnsOrphanReconcileHandler,
     private readonly ordersTaxRateBackfillHandler: OrdersTaxRateBackfillHandler,
+    private readonly analyticsCurrencyRecalculateHandler: AnalyticsCurrencyRecalculateHandler,
     private readonly marketplaceOfferQuantityUpdateHandler: MarketplaceOfferQuantityUpdateHandler,
     private readonly marketplaceOfferQuantityReconcileHandler: MarketplaceOfferQuantityReconcileHandler,
     private readonly marketplaceOfferFieldUpdateHandler: MarketplaceOfferFieldUpdateHandler,
@@ -546,6 +548,16 @@ export class HandlerRegistrationService implements OnModuleInit {
       'fulfillment.work.route',
       this.fulfillmentWorkRouteHandler,
       'realtime'
+    );
+
+    // Data Coverage currency-restatement driver (#2468). 'bulk' lane: an
+    // operator-triggered batch repair that must never delay a queued
+    // 'realtime' order sync or a 'fiscal' document — the same reasoning that
+    // puts the offer-publish waves and the master sweeps there (ADR-050).
+    this.handlerRegistry.register(
+      'analytics.currency.recalculate',
+      this.analyticsCurrencyRecalculateHandler,
+      'bulk'
     );
 
     // Boot gate (ADR-050 D1 / ADR-051 D6): every JobTypeValues member must be

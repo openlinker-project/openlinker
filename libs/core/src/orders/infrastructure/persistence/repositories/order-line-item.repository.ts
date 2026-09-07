@@ -12,7 +12,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { SelectQueryBuilder } from 'typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { OrderLineItemOrmEntity } from '../entities/order-line-item.orm-entity';
 import { OrderRecordOrmEntity } from '../entities/order-record.orm-entity';
 import type { OrderLineItemRepositoryPort } from '../../../domain/ports/order-line-item-repository.port';
@@ -29,6 +29,7 @@ import type {
   VariantRankingRow,
 } from '../../../domain/types/top-products.types';
 import {
+  grossRevenueLineAmountSql,
   netSalesLineNetAmountSql,
   netSalesLineNetEligibleConditionSql,
 } from '../../../domain/types/net-sales-tax-rate.types';
@@ -46,6 +47,27 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       order: { lineNumber: 'ASC' },
     });
     return entities.map((e) => this.toDomain(e));
+  }
+
+  async findByOrderIds(orderRecordIds: string[]): Promise<Map<string, OrderLineItem[]>> {
+    if (orderRecordIds.length === 0) {
+      return new Map();
+    }
+
+    // One query for the whole id set — the real batch a cross-cutting read
+    // needs, as opposed to an N-call fan-out over `findByOrderId` (#2826).
+    const entities = await this.repository.find({
+      where: { orderRecordId: In(orderRecordIds) },
+      order: { orderRecordId: 'ASC', lineNumber: 'ASC' },
+    });
+
+    const grouped = new Map<string, OrderLineItem[]>();
+    for (const entity of entities) {
+      const lines = grouped.get(entity.orderRecordId) ?? [];
+      lines.push(this.toDomain(entity));
+      grouped.set(entity.orderRecordId, lines);
+    }
+    return grouped;
   }
 
   /**
@@ -78,6 +100,17 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       )
       .where(`rec."recordStatus" = 'ready'`)
       .andWhere('rec."cancelledAt" IS NULL')
+      // `totalAmount IS NOT NULL` aligns this read's population with the two
+      // order-level scopes (#2668 review, SUGGESTION 11). Both
+      // `applySalesAnalyticsScope` and `applyTopProductsScope` apply it, so
+      // without it an order with no resolvable total contributed units to the
+      // channel table while contributing neither an order nor revenue beside
+      // them — three predicates meant to describe ONE population, which is
+      // exactly what this method's own docblock says it keeps in agreement.
+      // `rec."placedAt" IS NOT NULL` is deliberately still not repeated: the
+      // `li."placedAt"` range predicate below already excludes a NULL, since
+      // that column is denormalized from the parent order at write time.
+      .andWhere('rec."totalAmount" IS NOT NULL')
       .andWhere('li."placedAt" >= :salesFrom', { salesFrom: filters.from })
       .andWhere('li."placedAt" < :salesTo', { salesTo: filters.to })
       .setParameter('currentReportingCurrency', currentReportingCurrency)
@@ -141,15 +174,17 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
    */
   async getTopProductRanking(
     filters: TopProductFilters,
-    reportingCurrency: string
+    reportingCurrency: string,
+    includeBackfilledPreRollout = false
   ): Promise<{ rows: ProductRankingRow[]; total: number }> {
     const {
       stampedNonZero,
       unconvertedOrZeroTotal,
+      lineGrossAmount,
       lineNetAmount,
       stampedNonZeroKnownRate,
       stampedNonZeroUnknownRate,
-    } = this.buildTopProductsSqlFragments();
+    } = this.buildTopProductsSqlFragments(includeBackfilledPreRollout);
 
     const rankingQb = this.repository
       .createQueryBuilder('li')
@@ -157,11 +192,11 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       .select('li.productId', 'product_id')
       .addSelect('COALESCE(SUM(li."quantity"), 0)', 'units')
       .addSelect(
-        `COALESCE(SUM(li."unitPrice" * li."quantity" * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZero}), 0)`,
+        `COALESCE(SUM((${lineGrossAmount}) * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZero}), 0)`,
         'revenue'
       )
       .addSelect(
-        `COALESCE(SUM(li."unitPrice" * li."quantity") FILTER (WHERE ${unconvertedOrZeroTotal}), 0)`,
+        `COALESCE(SUM(${lineGrossAmount}) FILTER (WHERE ${unconvertedOrZeroTotal}), 0)`,
         'unconverted_revenue'
       )
       .addSelect(
@@ -184,7 +219,7 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
         'net_revenue'
       )
       .addSelect(
-        `COALESCE(SUM(li."unitPrice" * li."quantity" * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZeroUnknownRate}), 0)`,
+        `COALESCE(SUM((${lineGrossAmount}) * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZeroUnknownRate}), 0)`,
         'net_excluded_revenue'
       )
       .addSelect(`COUNT(*) FILTER (WHERE ${stampedNonZeroUnknownRate})`, 'net_excluded_line_count')
@@ -254,7 +289,8 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
   async getProductChannelBreakdown(
     productIds: string[],
     filters: SalesAnalyticsFilters,
-    reportingCurrency: string
+    reportingCurrency: string,
+    includeBackfilledPreRollout = false
   ): Promise<ProductChannelBreakdownRow[]> {
     if (productIds.length === 0) {
       return [];
@@ -263,10 +299,11 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
     const {
       stampedNonZero,
       unconvertedOrZeroTotal,
+      lineGrossAmount,
       lineNetAmount,
       stampedNonZeroKnownRate,
       stampedNonZeroUnknownRate,
-    } = this.buildTopProductsSqlFragments();
+    } = this.buildTopProductsSqlFragments(includeBackfilledPreRollout);
 
     const qb = this.repository
       .createQueryBuilder('li')
@@ -275,11 +312,11 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       .addSelect('li.sourceConnectionId', 'source_connection_id')
       .addSelect('COALESCE(SUM(li."quantity"), 0)', 'units')
       .addSelect(
-        `COALESCE(SUM(li."unitPrice" * li."quantity" * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZero}), 0)`,
+        `COALESCE(SUM((${lineGrossAmount}) * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZero}), 0)`,
         'revenue'
       )
       .addSelect(
-        `COALESCE(SUM(li."unitPrice" * li."quantity") FILTER (WHERE ${unconvertedOrZeroTotal}), 0)`,
+        `COALESCE(SUM(${lineGrossAmount}) FILTER (WHERE ${unconvertedOrZeroTotal}), 0)`,
         'unconverted_revenue'
       )
       .addSelect(
@@ -298,7 +335,7 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
         'net_revenue'
       )
       .addSelect(
-        `COALESCE(SUM(li."unitPrice" * li."quantity" * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZeroUnknownRate}), 0)`,
+        `COALESCE(SUM((${lineGrossAmount}) * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZeroUnknownRate}), 0)`,
         'net_excluded_revenue'
       )
       .addSelect(`COUNT(*) FILTER (WHERE ${stampedNonZeroUnknownRate})`, 'net_excluded_line_count')
@@ -360,6 +397,7 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
     const {
       stampedNonZero,
       unconvertedOrZeroTotal,
+      lineGrossAmount,
       lineNetAmount,
       stampedNonZeroKnownRate,
       stampedNonZeroUnknownRate,
@@ -371,11 +409,11 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       .select('li.variantId', 'variant_id')
       .addSelect('COALESCE(SUM(li."quantity"), 0)', 'units')
       .addSelect(
-        `COALESCE(SUM(li."unitPrice" * li."quantity" * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZero}), 0)`,
+        `COALESCE(SUM((${lineGrossAmount}) * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZero}), 0)`,
         'revenue'
       )
       .addSelect(
-        `COALESCE(SUM(li."unitPrice" * li."quantity") FILTER (WHERE ${unconvertedOrZeroTotal}), 0)`,
+        `COALESCE(SUM(${lineGrossAmount}) FILTER (WHERE ${unconvertedOrZeroTotal}), 0)`,
         'unconverted_revenue'
       )
       .addSelect(
@@ -398,7 +436,7 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
         'net_revenue'
       )
       .addSelect(
-        `COALESCE(SUM(li."unitPrice" * li."quantity" * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZeroUnknownRate}), 0)`,
+        `COALESCE(SUM((${lineGrossAmount}) * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZeroUnknownRate}), 0)`,
         'net_excluded_revenue'
       )
       .addSelect(`COUNT(*) FILTER (WHERE ${stampedNonZeroUnknownRate})`, 'net_excluded_line_count')
@@ -457,6 +495,7 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
     const {
       stampedNonZero,
       unconvertedOrZeroTotal,
+      lineGrossAmount,
       lineNetAmount,
       stampedNonZeroKnownRate,
       stampedNonZeroUnknownRate,
@@ -469,11 +508,11 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       .addSelect('li.sourceConnectionId', 'source_connection_id')
       .addSelect('COALESCE(SUM(li."quantity"), 0)', 'units')
       .addSelect(
-        `COALESCE(SUM(li."unitPrice" * li."quantity" * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZero}), 0)`,
+        `COALESCE(SUM((${lineGrossAmount}) * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZero}), 0)`,
         'revenue'
       )
       .addSelect(
-        `COALESCE(SUM(li."unitPrice" * li."quantity") FILTER (WHERE ${unconvertedOrZeroTotal}), 0)`,
+        `COALESCE(SUM(${lineGrossAmount}) FILTER (WHERE ${unconvertedOrZeroTotal}), 0)`,
         'unconverted_revenue'
       )
       .addSelect(
@@ -492,7 +531,7 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
         'net_revenue'
       )
       .addSelect(
-        `COALESCE(SUM(li."unitPrice" * li."quantity" * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZeroUnknownRate}), 0)`,
+        `COALESCE(SUM((${lineGrossAmount}) * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZeroUnknownRate}), 0)`,
         'net_excluded_revenue'
       )
       .addSelect(`COUNT(*) FILTER (WHERE ${stampedNonZeroUnknownRate})`, 'net_excluded_line_count')
@@ -544,9 +583,10 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
    * fragment is parameter-name-only (`:reportingCurrency`); the actual value
    * is bound once per query via `.setParameter(...)`, so this needs none.
    */
-  private buildTopProductsSqlFragments(): {
+  private buildTopProductsSqlFragments(includeBackfilledPreRollout = false): {
     stampedNonZero: string;
     unconvertedOrZeroTotal: string;
+    lineGrossAmount: string;
     lineNetAmount: string;
     stampedNonZeroKnownRate: string;
     stampedNonZeroUnknownRate: string;
@@ -562,6 +602,26 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
     const unconvertedOrZeroTotal =
       '(rec."reportingCurrency" IS DISTINCT FROM :reportingCurrency OR rec."totalAmount" = 0)';
 
+    // GROSS (VAT-inclusive) amount for a LINE — the exact helper #2892 moved
+    // the headline GMV onto and #2906 moved the gross median onto (#2668
+    // review, BLOCKING 1). This file previously used a raw
+    // `li."unitPrice" * li."quantity"`, which is the NET figure whenever the
+    // parent order is net-priced: `prestashop-order.mapper.ts` and
+    // `woocommerce-order-source.adapter.ts` both emit
+    // `taxTreatment: 'exclusive'`, i.e. two of the four shipped order sources
+    // and typically a merchant's primary channel. The result was the Top
+    // Products table reporting an un-grossed figure directly beneath a KPI
+    // strip reporting a grossed-up one, both labelled the same basis — a
+    // ~23% divergence between two numbers on one page, which is precisely the
+    // symptom #2908 was opened for. Net mode was always correct, so the bug
+    // was toggle-dependent and easy to miss.
+    const lineGrossAmount = grossRevenueLineAmountSql(
+      'li."unitPrice"',
+      'li."quantity"',
+      'li."taxRate"',
+      'rec."taxTreatment"'
+    );
+
     // Net-sales (VAT-exclusive) eligibility for a LINE — this read already
     // operates at line grain, so unlike #1987's order-level aggregates no
     // correlated subquery is needed: the rate fraction is read directly off
@@ -574,12 +634,14 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
     );
     const netEligibleCondition = netSalesLineNetEligibleConditionSql(
       'li."taxRate"',
-      'rec."taxTreatment"'
+      'rec."taxTreatment"',
+      includeBackfilledPreRollout
     );
 
     return {
       stampedNonZero,
       unconvertedOrZeroTotal,
+      lineGrossAmount,
       lineNetAmount,
       stampedNonZeroKnownRate: `${stampedNonZero} AND ${netEligibleCondition}`,
       stampedNonZeroUnknownRate: `${stampedNonZero} AND NOT ${netEligibleCondition}`,
@@ -655,6 +717,48 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
     }
     const entities = await qb.getMany();
     return entities.map((e) => this.toDomain(e));
+  }
+
+  /**
+   * Every distinct (productId, variantId) pair per order, batched (#2799,
+   * corrected per #2799 review BLOCKING 1) — see the port's JSDoc. Grouping
+   * by all three columns (rather than the prior `DISTINCT ON
+   * orderRecordId`) is deliberate: `DISTINCT ON` collapses an order to its
+   * single lowest-`lineNumber` line, which silently dropped every other
+   * product a multi-product order touched. No aggregate function is
+   * selected, so `GROUP BY` here is a plain dedup, not an aggregation.
+   */
+  async findProductRefsByOrderIds(
+    orderRecordIds: string[]
+  ): Promise<Map<string, Array<{ productId: string; variantId: string | null }>>> {
+    if (orderRecordIds.length === 0) {
+      return new Map();
+    }
+
+    const rows = await this.repository
+      .createQueryBuilder('li')
+      .select('li."orderRecordId"', 'order_record_id')
+      .addSelect('li."productId"', 'product_id')
+      .addSelect('li."variantId"', 'variant_id')
+      .where('li."orderRecordId" IN (:...orderRecordIds)', { orderRecordIds })
+      .groupBy('li."orderRecordId"')
+      .addGroupBy('li."productId"')
+      .addGroupBy('li."variantId"')
+      .orderBy('li."orderRecordId"', 'ASC')
+      .addOrderBy('li."productId"', 'ASC')
+      .getRawMany<{ order_record_id: string; product_id: string; variant_id: string | null }>();
+
+    const map = new Map<string, Array<{ productId: string; variantId: string | null }>>();
+    for (const row of rows) {
+      const existing = map.get(row.order_record_id);
+      const ref = { productId: row.product_id, variantId: row.variant_id };
+      if (existing) {
+        existing.push(ref);
+      } else {
+        map.set(row.order_record_id, [ref]);
+      }
+    }
+    return map;
   }
 
   async backfillTaxRate(

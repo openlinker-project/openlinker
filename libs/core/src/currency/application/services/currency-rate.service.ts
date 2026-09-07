@@ -5,26 +5,28 @@
  * `(source, pair, date)` rather than held per order.
  *
  * WHAT THE REGISTRY DOES AND DOES NOT ABSORB - the pre-fetch read is keyed on
- * the CANDIDATE day the caller asked for, while the write is keyed on the day
- * the source actually PUBLISHED for, and those are not always the same day:
+ * the day each provider RESOLVES the candidate to, while the write is always
+ * keyed on the day the source actually PUBLISHED for, and those are not
+ * always the same day:
  *
- *  - Candidate IS a publication day (roughly 5 days in 7). The two keys
- *    coincide, so five hundred EUR orders carrying that candidate cost one
- *    provider call, not five hundred.
+ *  - Candidate IS a publication day (roughly 5 days in 7). The resolved day
+ *    equals the candidate, so five hundred EUR orders carrying that
+ *    candidate cost one provider call, not five hundred.
  *  - Candidate is NOT a publication day - a weekend or a holiday, roughly 2
  *    days in 7. The adapter walks back and the row lands under the earlier
- *    published date. Nothing is ever written under the candidate, so the
- *    pre-fetch read misses forever and EVERY order carrying that candidate
- *    makes a live provider call. The insert is then absorbed as a duplicate.
- *
- * The second case is a real, recurring cost, not a rounding error, and it is
- * accepted deliberately: the registry stores PUBLISHED rates, so writing a
- * second row under a non-publication date would record a rate the source never
- * published for that day - a figure an operator could not verify against any
- * table, in the one place whose whole purpose is to be verifiable. Memoising
- * the candidate-to-published-date mapping needs its own persisted table and
- * belongs to the persistence phase (#2124); it is not folded in here, where
- * nothing else changes behaviour.
+ *    published date. As of #2777, a provider that declares the optional
+ *    `resolveExpectedPublicationDay` (NBP and ECB both do) lets the pre-fetch
+ *    read key on that earlier day directly, so the very first order under a
+ *    given non-publication candidate still pays one provider call, but every
+ *    later one - for that candidate, or any other candidate resolving to the
+ *    same published day - hits the cache instead of repeating the walk-back.
+ *    A provider that declares nothing keeps the pre-#2777 behaviour: the
+ *    read stays keyed on the candidate, so the row it wants is never found
+ *    and every order carrying that candidate pays a live call. The registry
+ *    itself never writes a second row under a non-publication date - the
+ *    write is always keyed on the source's own answer - so this changes only
+ *    which key is READ, never what gets written (ADR-040 verifiability is
+ *    untouched).
  *
  * It decides nothing about terminal-versus-retry policy: `RateUnsupportedPairError`
  * and `RateUnavailableTransientError` propagate unchanged, and the stamp
@@ -77,7 +79,16 @@ export class CurrencyRateService implements ICurrencyRateService {
       );
     }
 
-    const existing = await this.repository.findByKey(input);
+    // ADR-046 probe-not-trust pattern (see description-format-resolution.ts):
+    // an out-of-tree provider compiled against an older `libs/core` would
+    // satisfy a widened type guard without implementing the method, so this
+    // checks for the method itself rather than trusting the type.
+    const expectedPublicationDay =
+      typeof provider.resolveExpectedPublicationDay === 'function'
+        ? provider.resolveExpectedPublicationDay(input.rateDate)
+        : input.rateDate;
+
+    const existing = await this.repository.findByKey({ ...input, rateDate: expectedPublicationDay });
     if (existing) {
       return existing;
     }
@@ -95,15 +106,14 @@ export class CurrencyRateService implements ICurrencyRateService {
         // Two shapes land here and both resolve the same way.
         //
         //  1. A genuine race - a concurrent caller inserted the same key first.
-        //  2. The provider resolved the CANDIDATE day onto an earlier published
-        //     day (a weekend or holiday candidate), so the row it wants already
-        //     exists under that earlier date while the pre-fetch read looked
-        //     under the candidate. Never a duplicate row and never a rate keyed
-        //     to the wrong date - but note the cost is one provider call per
-        //     ORDER carrying such a candidate, not one per candidate day: no
-        //     row is ever written under the candidate, so the pre-fetch read
-        //     goes on missing. See the file header for why that is accepted
-        //     and where memoising it belongs (#2124).
+        //  2. `resolveExpectedPublicationDay` (or its absence) resolved a
+        //     different day than the one the provider's own `fetchRate` walk-
+        //     back landed on, so the row it wants already exists under
+        //     `fetched.rateDate` while the pre-fetch read looked under a
+        //     different key. Never a duplicate row and never a rate keyed to
+        //     the wrong date - the row this re-read finds is now the one the
+        //     NEXT caller's pre-fetch read will hit directly, per the file
+        //     header.
         const winner = await this.repository.findByKey({
           source: fetched.source,
           from: fetched.from,

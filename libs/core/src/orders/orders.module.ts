@@ -14,6 +14,7 @@ import { OrderItemRefResolverService } from './application/services/order-item-r
 import { OrderRecordService } from './application/services/order-record.service';
 import { SalesDocumentViewService } from './application/services/sales-document-view.service';
 import { OrderFxStampService } from './application/services/order-fx-stamp.service';
+import { OrderFxRestatementService } from './application/services/order-fx-restatement.service';
 import { OrderFxReadService } from './application/services/order-fx-read.service';
 import { OrderDestinationRetryService } from './application/services/order-destination-retry.service';
 import { OrderProvisioningResumeService } from './application/services/order-provisioning-resume.service';
@@ -27,11 +28,14 @@ import { RefundRecordRepository } from './infrastructure/persistence/repositorie
 import { RefundRecordOrmEntity } from './infrastructure/persistence/entities/refund-record.orm-entity';
 import { OrderLineItemOrmEntity } from './infrastructure/persistence/entities/order-line-item.orm-entity';
 import { TaxRateBackfillService } from './application/services/tax-rate-backfill.service';
+import { TaxCoverageDetectionService } from './application/services/tax-coverage-detection.service';
+import { DisplayCurrencyConversionService } from './application/services/display-currency-conversion.service';
 import {
   ORDER_SYNC_SERVICE_TOKEN,
   ORDER_INGESTION_SERVICE_TOKEN,
   ORDER_RECORD_REPOSITORY_TOKEN,
   ORDER_RECORD_SERVICE_TOKEN,
+  ORDER_FX_RESTATEMENT_SERVICE_TOKEN,
   ORDER_FX_STAMP_SERVICE_TOKEN,
   ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
   ORDER_PROVISIONING_RESUME_SERVICE_TOKEN,
@@ -44,6 +48,8 @@ import {
   TAX_RATE_BACKFILL_SERVICE_TOKEN,
   FULFILLMENT_DISPATCH_RELAY_SERVICE_TOKEN,
   SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
+  TAX_COVERAGE_DETECTION_SERVICE_TOKEN,
+  DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,
 } from './orders.tokens';
 import { OrderHoldsModule } from './order-holds.module';
 import { IntegrationsModule } from '@openlinker/core/integrations';
@@ -124,6 +130,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     OrderRecordService,
     SalesDocumentViewService,
     OrderFxStampService,
+    OrderFxRestatementService,
     OrderDestinationRetryService,
     OrderProvisioningResumeService,
     OrderLifecycleRelayService,
@@ -134,6 +141,8 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     RefundRecordRepository,
     OrderLineItemRepository,
     TaxRateBackfillService,
+    TaxCoverageDetectionService,
+    DisplayCurrencyConversionService,
     // Then provide token bindings using useExisting
     {
       provide: ORDER_SYNC_SERVICE_TOKEN,
@@ -154,6 +163,10 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     {
       provide: ORDER_FX_STAMP_SERVICE_TOKEN,
       useExisting: OrderFxStampService,
+    },
+    {
+      provide: ORDER_FX_RESTATEMENT_SERVICE_TOKEN,
+      useExisting: OrderFxRestatementService,
     },
     {
       provide: ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
@@ -203,6 +216,14 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
       provide: SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
       useExisting: SalesDocumentViewService,
     },
+    {
+      provide: TAX_COVERAGE_DETECTION_SERVICE_TOKEN,
+      useExisting: TaxCoverageDetectionService,
+    },
+    {
+      provide: DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,
+      useExisting: DisplayCurrencyConversionService,
+    },
   ],
   exports: [
     OrderRecordService, // Export service class for direct injection
@@ -214,6 +235,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     // Exported so the worker's `marketplace.order.fxStamp` + `.fxStampSweep`
     // handlers can inject the stamp seam (#2125).
     ORDER_FX_STAMP_SERVICE_TOKEN,
+    ORDER_FX_RESTATEMENT_SERVICE_TOKEN,
     ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
     ORDER_PROVISIONING_RESUME_SERVICE_TOKEN,
     ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
@@ -232,7 +254,12 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     // Exported so the API's orders controller can compose the per-order
     // sales-document projection for the list and the detail panel (#2516).
     SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
+    // Exported so the `/analytics/coverage` endpoint (#2466) can inject the
+    // tax A/B/C detector seam (#2465).
+    TAX_COVERAGE_DETECTION_SERVICE_TOKEN,
+    // Exported so the `/analytics` display-currency read surface (a later
+    // phase of #2452) can inject this seam (#2458, ADR-064).
+    DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,
   ],
 })
 export class OrdersModule {}
-
