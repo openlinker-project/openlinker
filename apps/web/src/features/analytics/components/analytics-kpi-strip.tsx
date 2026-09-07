@@ -384,10 +384,13 @@ export function AnalyticsKpiStrip({
       : undefined;
   // Headline Revenue card (#2908 fix): the primary rendered value/label now
   // tracks `netGrossBasis` the same way the channel/product tables do
-  // (`revenueLabel` / `revenueOf` there) — under `'gross'` GMV is primary
-  // and Net sales is the qualifier; under `'net'` (the default) it's the
-  // reverse, byte-identical to this card's pre-#2908 rendering. Both
-  // figures still always render — this only swaps which one is primary.
+  // (`revenueLabel` / `revenueOf` there) — under `'gross'`, the DEFAULT,
+  // GMV is primary and Net sales is the qualifier; under `'net'` it's the
+  // reverse. (`'gross'` is the default in the prop, in the settings column
+  // and in `analytics-page.tsx`'s resolver — this comment said `'net'` was,
+  // contradicting this file's own header two hundred lines up, and #2668's
+  // review caught the header half only.) Both figures still always render —
+  // this only swaps which one is primary.
   // Net sales carries the CURRENCY caveat too (#2668 review, BLOCKING 2).
   // `netRevenue` is computed over exactly the same FX-stamped population
   // `revenue` is, so an unstamped slice under-states BOTH — but this label

@@ -117,6 +117,7 @@ Every other figure uses its metric name verbatim.
 > renders on the Order value card exactly when `unconvertedCount > 0`, so an operator reading a
 > figure computed over the narrower cohort is told so in place. The divergence closes by itself as
 > FX stamping catches up; the Data Coverage panel's currency category is the remediation path.
+
 **Interpretation note:** AOV does not multiply back to Net Sales, because Net Sales is reduced by returns. The difference between (AOV × Number of Orders) and Net Sales is exactly the Returns Value.
 
 ### Median Order Value

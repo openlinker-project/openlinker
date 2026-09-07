@@ -209,11 +209,15 @@ interface ProductSalesTableProps {
   onOpenCategory?: (category: CoverageCategory) => void;
   /**
    * VAT basis for the money column (#2903 — wiring the #2895 toggle).
-   * `'net'` (the default) reproduces this table's pre-#2903 rendering
+   * `'net'` reproduces this table's pre-#2903 rendering
    * exactly — `row.netRevenue`, labeled "Net sales" — the ONLY figure this
    * table ever showed (a deliberate choice, see this file's own module doc
    * comment, to keep the flagship cross-channel view from doubling its
    * money column). `'gross'` reads `row.revenue` instead, labeled "GMV".
+   *
+   * **Defaults to `'gross'`** (see the destructuring below), matching the
+   * prop default in `analytics-kpi-strip.tsx` and the persisted column's own
+   * default — so an omitted prop renders GMV, not the pre-#2903 net view.
    */
   netGrossBasis?: NetGrossBasis;
 }

@@ -24,19 +24,24 @@ export const ANALYTICS_DISPLAY_CURRENCY_SOURCES = ['setting', 'default'] as cons
 export type AnalyticsDisplayCurrencySource = (typeof ANALYTICS_DISPLAY_CURRENCY_SOURCES)[number];
 
 export interface AnalyticsSettingsView {
-  /** The resolved display currency: an operator-saved override, or the system reporting currency. Never `null`. */
   /**
-   * NOT read by `/analytics` (#2668 review, finding 5). The dashboard resolves
-   * its display currency from `?displayCurrency=` alone — ADR-064 keeps that
-   * choice in the URL, never in a saved preference — so this value round-trips
-   * through `PUT /analytics/settings` and no surface honours it. Contrast
-   * `netGrossBasis` below, which IS resolved from the persisted value.
+   * The resolved display currency: an operator-saved override, or the system
+   * reporting currency. Never `null`.
+   *
+   * **NOT read by `/analytics`** (#2668 review, finding 5). The dashboard
+   * resolves its display currency from `?displayCurrency=` alone — ADR-064
+   * keeps that choice in the URL, never in a saved preference — so this value
+   * round-trips through `PUT /analytics/settings` and no surface honours it.
+   * Contrast `netGrossBasis` below, which IS resolved from the persisted value.
    */
   displayCurrency: string;
   /** Which rung answered `displayCurrency`. See the note above: nothing reads it. */
   displayCurrencySource: AnalyticsDisplayCurrencySource;
-  /** How a multi-currency figure is recomputed for display: `current` (today's rate) or `order-date` (the rate stamped at ingestion). */
-  /** NOT read by `/analytics` either — see the `displayCurrency` note above. */
+  /**
+   * How a multi-currency figure is recomputed for display: `current` (today's
+   * rate) or `order-date` (the rate stamped at ingestion). **NOT read by
+   * `/analytics` either** — see the `displayCurrency` note above.
+   */
   rateBasis: RateBasis;
   /** Org-wide opt-in: admit a backfilled pre-rollout order into Net Sales. Never mutates any `order_records` row. */
   includeBackfilledTaxRatesInNetSales: boolean;

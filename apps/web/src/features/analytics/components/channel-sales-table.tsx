@@ -238,7 +238,7 @@ interface ChannelSalesTableProps {
   onOpenCategory?: (category: CoverageCategory) => void;
   /**
    * VAT basis for the money/AOV columns (#2903 — wiring the #2895 toggle).
-   * `'net'` (the default) reproduces this table's pre-#2903 rendering
+   * `'net'` reproduces this table's pre-#2903 rendering
    * exactly — `netRevenue`/`netAverageOrderValue`, labeled "Net sales"/"AOV"
    * — since that was this table's ONLY rendering before the toggle existed
    * (a prior revision that also showed gross figures was removed, see this
@@ -248,6 +248,10 @@ interface ChannelSalesTableProps {
    * regression risk, since both columns always switch TOGETHER under one
    * basis and can therefore never disagree with each other the way the
    * removed dual-column design once did.
+   *
+   * **Defaults to `'gross'`** (see the destructuring below), matching the
+   * prop default in `analytics-kpi-strip.tsx` and the persisted column's own
+   * default — so an omitted prop renders GMV, not the pre-#2903 net view.
    */
   netGrossBasis?: NetGrossBasis;
 }
