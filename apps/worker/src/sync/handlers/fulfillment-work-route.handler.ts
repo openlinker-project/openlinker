@@ -69,8 +69,11 @@ import {
   FULFILLMENT_ROUTER_RESOLVER_TOKEN,
   ROUTING_COMMIT_SERVICE_TOKEN,
   buildRoutingShipTo,
+  deriveFulfillmentDispatchEnqueueIntents,
+  findUndispatchableWorkIds,
   type FulfillmentRouterResolverPort,
   type IRoutingCommitService,
+  type RoutingCommitOutcome,
   type RoutingInputLine,
   type RoutingShipTo,
 } from '@openlinker/core/fulfillment';
@@ -92,7 +95,13 @@ import type {
   SyncJobHandler,
   SyncJobHandlerResult,
 } from '@openlinker/core/sync';
-import { SYNC_LOCK_TOKEN, SyncJobExecutionError, type SyncLockPort } from '@openlinker/core/sync';
+import {
+  JOB_ENQUEUE_TOKEN,
+  SYNC_LOCK_TOKEN,
+  SyncJobExecutionError,
+  type JobEnqueuePort,
+  type SyncLockPort,
+} from '@openlinker/core/sync';
 import { getEnvBoolean } from '@openlinker/shared/config';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -113,7 +122,11 @@ export class FulfillmentWorkRouteHandler implements SyncJobHandler {
     // a worker that lost its binding fails to boot rather than quietly routing
     // nothing — see the port's header.
     @Inject(FULFILLMENT_ROUTER_RESOLVER_TOKEN)
-    private readonly routerResolver: FulfillmentRouterResolverPort
+    private readonly routerResolver: FulfillmentRouterResolverPort,
+    // #2955: this host's enqueue seam. NOT `SyncJobQueuePort` — no worker
+    // handler injects that; the worker's fan-out port is `JobEnqueuePort`.
+    @Inject(JOB_ENQUEUE_TOKEN)
+    private readonly jobEnqueue: JobEnqueuePort
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
@@ -170,19 +183,83 @@ export class FulfillmentWorkRouteHandler implements SyncJobHandler {
       },
     });
 
+    await this.enqueueRoutedDispatchJobs(payload.orderId, outcome);
+
     return this.toJobResult(job, payload.orderId, outcome);
+  }
+
+  /**
+   * Offer every routed work object to its holder (#2955).
+   *
+   * The same ONE derivation `OrderIngestionService` uses
+   * (`deriveFulfillmentDispatchEnqueueIntents`), mapped onto this host's own
+   * enqueue port — the two hosts reach DIFFERENT ports with incompatible request
+   * shapes (`JobEnqueuePort.enqueueJob` here, `SyncJobQueuePort.enqueueBulk`
+   * there), which is why the derivation returns a neutral intent rather than a
+   * request. One decision, two mappings.
+   *
+   * **This branch is unreachable today, deliberately.** `fulfillment.work.route`
+   * has no producer of its own, so nothing calls this handler in production.
+   * Wiring it anyway is not oversight: the handler is registered and may gain a
+   * producer, and a route handler that silently fails to dispatch is strictly
+   * worse than an unexercised branch — the #2400 posture. Do not "clean this up"
+   * as dead code without also giving `fulfillment.work.route` a producer.
+   *
+   * Never throws. A retry re-enters `route()`, which answers `already-routed`
+   * and reaches no enqueue, so rethrowing would burn the retry ladder and still
+   * dispatch nothing; the loud `error` log naming the work ids is the signal.
+   */
+  private async enqueueRoutedDispatchJobs(
+    orderId: string,
+    outcome: RoutingCommitOutcome
+  ): Promise<void> {
+    if (outcome.status !== 'routed') return;
+
+    const unassigned = findUndispatchableWorkIds(outcome.works);
+    if (unassigned.length > 0) {
+      this.logger.warn(
+        `Not dispatching fulfilment work with no assigned holder: ` +
+          `orderId=${orderId} work=[${unassigned.join(',')}]`
+      );
+    }
+
+    const intents = deriveFulfillmentDispatchEnqueueIntents(outcome.works, orderId);
+
+    for (const intent of intents) {
+      try {
+        await this.jobEnqueue.enqueueJob({
+          jobType: 'fulfillment.work.dispatch',
+          connectionId: intent.connectionId,
+          payload: {
+            workId: intent.workId,
+            orderId: intent.orderId,
+            // Always `null`, and REQUIRED to be — `claimDispatchAttempt` bumps
+            // the counter itself, so a pre-claim value would make this
+            // producer's own retry refuse to resume.
+            expectedAssignmentAttempt: null,
+          },
+          idempotencyKey: intent.dedupeKey,
+        });
+      } catch (error) {
+        this.logger.error(
+          `Failed to enqueue fulfilment dispatch job; the work is routed but was ` +
+            `NOT offered to its holder: orderId=${orderId} workId=${intent.workId}`,
+          error instanceof Error ? error.stack : undefined
+        );
+      }
+    }
   }
 
   private toJobResult(
     job: SyncJob,
     orderId: string,
-    outcome: Awaited<ReturnType<IRoutingCommitService['route']>>
+    outcome: RoutingCommitOutcome
   ): SyncJobHandlerResult {
     switch (outcome.status) {
       case 'routed':
         this.logger.log(
           `Routed order ${orderId}: decisionId=${outcome.decisionId} ` +
-            `work=[${outcome.workIds.join(',')}]`
+            `work=[${outcome.works.map((work) => work.workId).join(',')}]`
         );
         return { outcome: 'ok' };
 

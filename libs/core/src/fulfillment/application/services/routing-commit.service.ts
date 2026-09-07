@@ -69,6 +69,7 @@ import { assertRoutingPlanResolved } from '../../domain/exceptions/pending-routi
 import { FulfillmentWorkRepositoryPort } from '../../domain/ports/fulfillment-work-repository.port';
 import { RoutingDecisionRepositoryPort } from '../../domain/ports/routing-decision-repository.port';
 import type { RoutingDecision } from '../../domain/entities/routing-decision.entity';
+import type { RoutedWorkRef } from '../../domain/types/fulfillment-dispatch-enqueue.types';
 import {
   deriveRouteIdempotencyKey,
   type RoutingDecisionAbandonReason,
@@ -378,8 +379,8 @@ export class RoutingCommitService implements IRoutingCommitService {
     plan: ResolvedRoutingPlan,
     variantByOrderLineId: ReadonlyMap<string, string>
   ): Promise<RoutingCommitOutcome> {
-    const workIds = await this.works.runInTransaction(async (transaction) => {
-      const created: string[] = [];
+    const works = await this.works.runInTransaction(async (transaction) => {
+      const created: RoutedWorkRef[] = [];
 
       for (const assignment of groupAssignmentsIntoWork(plan, variantByOrderLineId)) {
         const work = await this.works.create(
@@ -392,7 +393,9 @@ export class RoutingCommitService implements IRoutingCommitService {
           },
           transaction
         );
-        created.push(work.id);
+        // The HOLDER travels with the id (#2955) — the dispatch producer needs
+        // it for `SyncJob.connectionId` and must not re-read the row for it.
+        created.push({ workId: work.id, assignedConnectionId: work.assignedConnectionId });
       }
 
       const terminalised = await this.decisions.terminalise({
@@ -414,7 +417,7 @@ export class RoutingCommitService implements IRoutingCommitService {
       return created;
     });
 
-    return { status: 'routed', decisionId: decision.id, workIds };
+    return { status: 'routed', decisionId: decision.id, works };
   }
 
   /**

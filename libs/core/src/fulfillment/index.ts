@@ -111,6 +111,7 @@ export { FulfillmentWorkUnassignedError } from './domain/exceptions/fulfillment-
 
 export * from './domain/types/fulfillment-progress-event.types';
 export * from './domain/types/routing-decision.types';
+export * from './domain/types/fulfillment-dispatch-enqueue.types';
 
 // #2869 R7 / M3 — the live-decision refusal. Ships with NO caller: the manual
 // route producer is #2869's and does not exist yet. Exported anyway because it

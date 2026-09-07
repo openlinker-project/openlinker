@@ -239,7 +239,7 @@ describe('Fulfilment router wiring (#2408)', () => {
       // narrower check — see the TRAP note in this file's header.
       expect(outcome.status).toBe('routed');
       if (outcome.status !== 'routed') throw new Error('unreachable');
-      expect(outcome.workIds).toHaveLength(1);
+      expect(outcome.works).toHaveLength(1);
 
       // --- the rows the routing commit is FOR -------------------------------
       const works = (await dataSource.query(
