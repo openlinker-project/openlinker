@@ -35,7 +35,7 @@ the saturation sweep". After it, the answer is:
 
 | Lane | Default | Still | Why it did not get a number here |
 |---|---|---|---|
-| `realtime` | 4 / 2 | ILLUSTRATIVE | A sweep is now RUNNABLE (§ 2) and a smoke arm ran clean, but per-job cost on the write path measured **9.1-9.8 s against a 127 ms destination**, and a trace puts ~7 s of that in OpenLinker either side of one HTTP call (§ 4.2). A curve taken through that is a curve of the 7 s, not of the lane. |
+| `realtime` | 4 / 2 | ILLUSTRATIVE | A sweep is now RUNNABLE (§ 2), but per-job cost on the write path is **~9.5 s against a 127 ms destination**, and three traces put **~7-8 s of it inside OpenLinker either side of one HTTP call** (§ 4.2). A cap curve taken through that measures the 7-8 s, not the lane - and if that overhead is fixable the right cap moves by an order of magnitude. |
 | `fiscal` | 2 / 1 | ILLUSTRATIVE | Unchanged and, on the evidence in § 4.5, likely permanent. No provider exists on this stand and building one means issuing real documents. |
 | `fan-out` | 8 / 4 | **DERIVED, not measured** - confirmed, see § 4.6 | Not reached. The peers held the stand. |
 
@@ -182,7 +182,7 @@ realtime curve measures the limiter, not the lane.
 not directly instrumented - #2850's `ol_event_loop_lag_seconds` is what would
 settle it.*
 
-### 4.2 The realtime write path costs 9.1-9.8 s against a 127 ms destination (measured, n=12)
+### 4.2 The realtime write path costs ~9.5 s against a 127 ms destination, and ~7 s of it is not the network (measured, n=12 + n=3 traced)
 
 Smoke arm, `marketplace.offerQuantity.update`, `perf-allegro-a`, one scope,
 caps 1/1 and 4/4, 12 jobs each. All 12 jobs of the recorded arm reached
@@ -212,33 +212,46 @@ measurement or by reading the code:
   one cursor read, one marketplace call, one conditional cursor advance and one
   lock release per item.
 
-**Traced, and it is NOT the retry ladder.** An earlier draft of this report
-predicted the Allegro client's `DEFAULT_RETRY_CONFIG` (`maxRetries: 3`,
-`initialDelayMs: 1000`, `backoffMultiplier: 2` = 7000 ms of backoff across four
-attempts) and noted that the arithmetic fitted to within ~5 %. **It fitted and
-it was wrong**, which is the reason this paragraph exists rather than the
-prediction. One traced job (`durationMs=9727`, `succeeded`, `outcome=ok`) shows
-**exactly one HTTP attempt**, no `Rate limit exceeded (attempt N/4)` line, and
-the 9.7 s distributed like this:
+**Traced three times, and it is NOT the retry ladder.** An earlier draft of
+this report predicted the Allegro client's `DEFAULT_RETRY_CONFIG`
+(`maxRetries: 3`, `initialDelayMs: 1000`, `backoffMultiplier: 2` = 7000 ms of
+backoff across four attempts) and noted the arithmetic fitted to within ~5 %.
+**It fitted and it was wrong**, which is why this paragraph exists rather than
+the prediction. Every trace shows **exactly one HTTP attempt** and no
+`Rate limit exceeded (attempt N/4)` line.
 
-| Interval | Elapsed | What the log shows |
-|---|---|---|
-| `Executing ...offerQuantity.update` -> `PUT /sale/offer-quantity-change-commands/...` | **~4 s** | nothing logged in between |
-| inside the PUT | **1126 ms** | against a destination measured at 127.6 ms; a `checkPace timed out after 1000ms` line lands mid-call |
-| HTTP `Response: 200` -> `Job ... succeeded` | **~3 s** | nothing logged in between |
+Three independent traced jobs, each `succeeded` / `outcome=ok`:
 
-So the shape is **~4 s before the call, ~1 s of limiter timeout inside it, ~3 s
-after it** - roughly **7 s of OpenLinker-side time bracketing a single 127 ms
-request**, with the network the smallest term by an order of magnitude.
+| Trace | `durationMs` | `Executing` -> `PUT` | inside the PUT | `200` -> `succeeded` |
+|---|---:|---:|---:|---:|
+| 1 | 9727 | ~4 s | 1126 ms | ~3 s |
+| 2 | 9492 | ~4 s | 1123 ms | ~4 s |
+| 3 | 9651 | ~4 s | ~1120 ms | ~4 s |
 
-The two unlogged brackets are where the cost is, and neither is attributed to a
-specific statement yet. By code reading, the pre-call bracket contains capability
-adapter resolution (`getCapabilityAdapter` builds a fresh adapter per call and
-resolves + decrypts credentials), `applyPublishControlsBatch`, the #2617
-`SyncLockPort.acquire`, and the observation-cursor read; the post-call bracket
-contains the conditional cursor advance, the lock release and the terminal
-`sync_jobs` write. **Which of those dominates is not established** - that needs
-either #2850's instrumentation or a debug-level trace, and is named in § 8.
+Range 235 ms across the three (~2.4 %), and the call itself reproduces to
+within 3 ms. Nothing is logged inside either bracket.
+
+So the shape is **~4 s before the call, ~1.1 s inside it, ~3-4 s after it** -
+roughly **7-8 s of OpenLinker-side time bracketing a single request against a
+destination measured at 127.6 ms.** The network is the smallest term by an
+order of magnitude, and the ~1 s excess *inside* the call is § 4.1's limiter
+timeout, which lands mid-call in all three traces.
+
+The two unlogged brackets are where the cost is, and **neither is attributed to
+a specific statement.** By code reading the candidates are, before the call:
+capability-adapter resolution (`getCapabilityAdapter` builds a fresh adapter per
+call and resolves + decrypts credentials), `applyPublishControlsBatch`, the
+#2617 `SyncLockPort.acquire`, and the observation-cursor read; and after it: the
+conditional cursor advance, the lock release and the terminal `sync_jobs` write.
+Which dominates needs a debug-level trace or #2850's instrumentation, and is
+§ 8's first item.
+
+**What this means for the cap is the whole point.** If those 7-8 s are adapter
+construction and a degraded limiter rather than work the destination requires,
+then the realtime lane's real per-job cost is ~130 ms, a cap of 2 is throttling
+a lane whose jobs are ~70x cheaper than they appear, and the correct response is
+to fix the per-job overhead rather than to tune the cap. **That is a defect
+report, not a tuning number**, and it is why no realtime cap is proposed here.
 
 Two smaller observations from the same trace, recorded because they are cheap
 and someone will otherwise re-derive them:
@@ -251,7 +264,7 @@ and someone will otherwise re-derive them:
   attempts off that column is counting something else.
 
 *Label: the 12 durations and the traced breakdown are **measured** (n=12 smoke
-arm; n=1 trace). The retry-ladder explanation is **withdrawn - it was derived,
+arm; n=3 traces). The retry-ladder explanation is **withdrawn - it was derived,
 it fitted, and the trace falsified it.** Which statement inside the two unlogged
 brackets dominates is **open**.*
 
@@ -382,7 +395,7 @@ reasoning in place; see § 6.
 
 | Lane | Current | Recommended | Basis |
 |---|---|---|---|
-| `realtime` | 4 / 2 | **4 / 2 - unchanged** | No curve was taken. § 4.2's 9.1 s must be attributed first, and the derived arithmetic there says ~7 s of it is very likely the Allegro client's own retry backoff. If so the lane's real per-job cost is ~130 ms, the correct cap is an order of magnitude from 2, and the finding is a defect rather than a tuning number. Changing the cap before knowing which would be a guess dressed as a measurement. |
+| `realtime` | 4 / 2 | **4 / 2 - unchanged** | No curve was taken, and § 4.2 is the reason it would not have been worth taking yet: ~7-8 s of reproducible OpenLinker-side overhead brackets a 127 ms call. Until that is attributed, any cap this lane is given is a cap chosen to accommodate an overhead that may simply be a defect. |
 | `fiscal` | 2 / 1 | **2 / 1 - unchanged** | Unmeasurable here (§ 4.5). Flag for the owner: `perScope: 1` serialises bulk issuance across distinct orders, which the per-order lock would not. |
 | `fan-out` | 8 / 4 | **8 / 4 - unchanged** | Not reached (peers held the stand). Confirmed derived, not measured (§ 4.6). |
 
