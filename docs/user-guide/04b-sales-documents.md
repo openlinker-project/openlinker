@@ -124,9 +124,20 @@ Read together, these three rules say:
 
 | Buyer has tax ID | Order total | → | Document | Connection |
 |---|---|---|---|---|
-| Yes | < 450 PLN | → | Receipt | eparagony |
-| Yes | 450 – 999.99 PLN | → | Invoice | KSeF (direct, test) |
-| Yes | ≥ 1000 PLN | → | Invoice | inFakt |
+| Yes | below `pl-simplified-invoice-2026` (450 PLN) | → | Receipt | eparagony |
+| Yes | at or above `pl-simplified-invoice-2026`, below `pl-full-invoice-1000-2026` (450–999.99 PLN) | → | Invoice | KSeF (direct, test) |
+| Yes | at or above `pl-full-invoice-1000-2026` (1000 PLN) | → | Invoice | inFakt |
+
+The screenshot shows the threshold **names**, not the amounts, because a name is
+what a rule stores — on this install `pl-simplified-invoice-2026` is 450 PLN and
+`pl-full-invoice-1000-2026` is 1000 PLN. The third rule also carries an end date
+(`ends 2026-12-31`); the other two run indefinitely.
+
+A threshold is defined in one currency, and amounts are **never converted** when
+routing decides. An order priced in a different currency therefore matches no
+amount-based rule and is reported as a currency mismatch — see
+[How routing decides](../sales-documents-how-routing-decides.md) for that state
+and its remedy.
 
 An order where the buyer asserted no tax ID matches none of them and falls to
 Tier 2.
@@ -244,10 +255,13 @@ what the order actually needed.
 
 ### In progress
 
-Once you (or auto-issue) trigger a registration, the panel shows a live
-progress state and keeps polling:
+Once you (or auto-issue) trigger a registration, the panel's heading switches to
+**Registering** and the page keeps polling for the result. Registering continues
+even if you navigate away, and the panel says so — except where the order already
+carries a document, as in the capture below, and the blocking notice takes that
+space instead:
 
-![Sales document panel showing "Fiscal receipt · Registering" with a note that registering continues if you leave the page and the result will be there when you come back](./images/04b-order-panel-registering.png)
+![Sales document panel headed "Fiscal receipt · Registering". Because this order already carries a receipt, the body renders the "This order already has a document" notice](./images/04b-order-panel-registering.png)
 
 ### Issued — the lifecycle stepper
 
@@ -257,11 +271,11 @@ captured live:
 
 **Invoice submitted, awaiting the tax authority's clearance:**
 
-![Sales document panel: Invoice · Awaiting clearance — a two-step stepper with Issued done and "Awaiting the authority" in progress, clearance reading KSEF: SUBMITTED, and the Issue correction action](./images/04b-order-panel-awaiting-clearance.png)
+![The invoice section of the Sales document panel: an "Issued by" card, a two-step stepper with Issued done and "Awaiting the authority" in progress, clearance reading KSEF: SUBMITTED, and the Issue correction action](./images/04b-order-panel-awaiting-clearance.png)
 
 **The same invoice, after KSeF accepted it:**
 
-![Sales document panel: Invoice · Cleared — both stepper steps done, clearance reading KSEF: ACCEPTED, and the UPO and FA(3) document rows now available](./images/04b-order-panel-cleared.png)
+![The same invoice section after clearance: both stepper steps done, the second labelled Cleared, clearance reading KSEF: ACCEPTED, and the UPO and FA(3) document rows now available](./images/04b-order-panel-cleared.png)
 
 Note the two words for one thing: the panel's own heading and stepper say
 **Cleared**, while the clearance field reports the authority's own answer,
