@@ -78,18 +78,22 @@
 #   post_guard_generator_saturated   there is no k6 generator on this path.
 #                                    The same is true of F2, which is why the
 #                                    argument is optional in the first place.
-#   post_guard_feed_starved          it takes a min-available-work series this
-#                                    scenario does not sample. The property it
-#                                    protects is checked directly instead: the
-#                                    upstream backlog is read at window stop
-#                                    and recorded per window, and a window
-#                                    that ended with a drained feed is flagged
-#                                    in fault-observations.txt. At the offered
-#                                    load here (a 120-order backlog against a
-#                                    baseline that clears roughly five orders
-#                                    in a 90s window) the feed cannot run dry,
-#                                    but that is asserted from a reading, not
-#                                    from the arithmetic.
+#   post_guard_feed_starved          it protects a SATURATION measurement -
+#                                    it asks whether a standing supply ever
+#                                    ran dry, because a throughput figure
+#                                    taken while the generator was empty
+#                                    measures the generator. F10 offers a
+#                                    FIXED BATCH on purpose, so a drained feed
+#                                    is the expected end state and that guard
+#                                    would flag every window for doing what it
+#                                    was told. The property that DOES matter
+#                                    here is checked instead, and it is a
+#                                    different one: did every order pushed at
+#                                    the stub become a child job? If not, every
+#                                    per-order figure in the window is against
+#                                    the wrong denominator. See the
+#                                    offered_work observation in
+#                                    run_f10_guards.
 #
 # The two stand guards keep their full force, and they are the ones that
 # matter for trusting a window at all: `post_guard_containers_stable` (a peer
@@ -169,10 +173,29 @@ SOURCE_TENANT="${SOURCE_TENANT:-perf-allegro-a}"
 FAULT_WINDOW_SECS="${FAULT_WINDOW_SECS:-90}"
 POLL_CADENCE_SECS="${POLL_CADENCE_SECS:-10}"
 
-# Enough backlog that the feed cannot run dry inside a window at any rate this
-# scenario reaches. Pushed once, before the window, so the pusher is never the
-# bottleneck.
-WINDOW_BACKLOG="${WINDOW_BACKLOG:-120}"
+# THIS SCENARIO OFFERS A FIXED BATCH, NOT A STANDING SUPPLY, AND THE SIZE IS
+# CHOSEN AGAINST THE RECOVERY QUESTION RATHER THAN AGAINST SATURATION.
+#
+# The first calibration run used 120, on the saturation reasoning every other
+# scenario in this campaign uses: offer more than the window can consume so the
+# feed can never run dry. That is the right rule for a throughput measurement
+# and the wrong one here. This stand's measured baseline is ~207 orders/h -
+# roughly five orders in a 90 s window - so a batch of 120 leaves ~115 children
+# queued when the window closes, and NO window can then observe its own
+# recovery: every one reports "still not drained" whether the system healed or
+# not. The single most important question after "was the order lost" would have
+# been unanswerable in all thirteen windows.
+#
+# A batch is sized instead so that a HEALTHY window finishes inside the window
+# plus the recovery observation, which is what makes "did it recover on its
+# own, and how late" a readable number. 12 orders against ~3.3 orders/min over
+# 90 s + 240 s is comfortable at baseline and merely late under a fault - and
+# late is exactly the answer this run wants to be able to give.
+#
+# It is still far more than enough fault deliveries: the baseline window
+# measured ~11 PrestaShop requests per order, so 12 orders is ~130 requests and
+# a fraction of 0.3 delivers ~40 faults.
+WINDOW_BACKLOG="${WINDOW_BACKLOG:-12}"
 
 # The retry ladder is capped so a window's cost is bounded and comparable
 # across faults. `enqueue_perf_job` + `cap_perf_job_attempts` apply it. THIS
@@ -193,7 +216,7 @@ export DRAIN_MAX_WAIT_SECS
 # After the fault is cleared, how long to give the system to finish the work
 # it was struggling with. This is the "does recovery happen without a human,
 # and how late" measurement.
-RECOVERY_WAIT_SECS="${RECOVERY_WAIT_SECS:-180}"
+RECOVERY_WAIT_SECS="${RECOVERY_WAIT_SECS:-240}"
 
 # Thirteen windows in one lock hold. The library default TTL (3600s) is a
 # CRASH bound, not a run bound - it is the longest a dead holder can block the
@@ -911,8 +934,12 @@ read_ledger() {
 
   if [ "$load" = "order" ]; then
     # 2. order_records created in the window.
+    # `SUM(c)`, not `COUNT(*)`. The first calibration run had `COUNT(*)` here,
+    # which counts the rows of the SUBQUERY - the number of distinct
+    # recordStatus values - and duly reported `created: 1` beside four orders
+    # claimed synced.
     orders_json="$(pg_sql "SELECT jsonb_build_object(
-        'created', COUNT(*)::int,
+        'created', COALESCE(SUM(c),0)::int,
         'recordStatus', COALESCE(jsonb_object_agg(rs, c) FILTER (WHERE rs IS NOT NULL), '{}'::jsonb))
       FROM (SELECT \"recordStatus\" AS rs, COUNT(*)::int AS c
             FROM order_records
@@ -997,7 +1024,7 @@ read_ledger() {
 # is not used wholesale.
 # ===========================================================================
 run_f10_guards() {
-  local dir="$1" ws_iso="$2" ws_epoch="$3" we_epoch="$4" fault_id="$5" backlog_at_stop="$6"
+  local dir="$1" ws_iso="$2" ws_epoch="$3" we_epoch="$4" fault_id="$5" load="$6"
   local stand_reasons=() observations=() answer
 
   # --- STAND guards: these still discard --------------------------------
@@ -1021,16 +1048,38 @@ run_f10_guards() {
   observations+=("$(post_guard_destination_creates "$ws_iso" "$PS_CONNECTION_ID")")
   observations+=("$(post_guard_limiter_degraded "$ws_epoch" "$we_epoch")")
 
-  # The feed-starvation property, checked from a reading rather than from the
-  # arithmetic (see the header for why post_guard_feed_starved itself is not
-  # used). `unknown` is NOT read around: an unreadable upstream means the
-  # window cannot show it kept offering load, which is the whole point of the
-  # guard this replaces.
-  case "$backlog_at_stop" in
-    unknown) observations+=("UNKNOWN feed_backlog_at_stop: the upstream backlog could not be read - this window cannot show it kept offering load") ;;
-    0)       observations+=("STARVED feed_backlog_at_stop=0: the feed was drained at window stop, so the offered load was bounded by supply and not by the fault") ;;
-    *)       observations+=("ok feed_backlog_at_stop=$backlog_at_stop (the feed never ran dry)") ;;
-  esac
+  # WAS THE INTENDED LOAD ACTUALLY OFFERED?
+  #
+  # This replaces `post_guard_feed_starved`, and it is a different question
+  # rather than a cheaper version of the same one. That guard protects a
+  # SATURATION measurement: it asks whether a standing supply ever ran dry,
+  # because a throughput figure taken while the generator was empty measures
+  # the generator. F10 offers a FIXED BATCH on purpose (see WINDOW_BACKLOG), so
+  # the upstream feed draining is the expected and desired end state - the
+  # first calibration run's check would have flagged STARVED on every window
+  # for doing exactly what it was told to do.
+  #
+  # What has to be true here instead is that every order pushed at the stub
+  # became a child job. If it did not, the window offered less work than it
+  # claims and every count below is against the wrong denominator.
+  if [ "$load" = "order" ]; then
+    local children
+    children="$(pg_sql "SELECT COUNT(*) FROM sync_jobs
+      WHERE \"jobType\" IN ('marketplace.order.sync')
+        AND \"connectionId\" IN ($CONN_IDS) AND \"createdAt\" >= '$ws_iso'" 2>/dev/null || printf 'unknown')"
+    case "$children" in
+      unknown) observations+=("UNKNOWN offered_work: the child-job count could not be read, so this window cannot show the intended load was offered") ;;
+      *)
+        if [ "${children:-0}" -lt "$WINDOW_BACKLOG" ]; then
+          observations+=("UNDER-OFFERED offered_work: $children of $WINDOW_BACKLOG pushed order(s) became a marketplace.order.sync child - every per-order figure in this window is against a smaller denominator than the manifest's offeredBacklog")
+        else
+          observations+=("ok offered_work: $children child job(s) for $WINDOW_BACKLOG pushed order(s) - the intended load reached the queue")
+        fi
+        ;;
+    esac
+  else
+    observations+=("n/a offered_work: the quantity-write path enqueues its jobs directly and pushes nothing at the stub")
+  fi
 
   printf '%s\n' "${observations[@]}" > "$dir/fault-observations.txt"
   log "  fault observations:"
@@ -1123,14 +1172,6 @@ run_fault() {
   stop_order_pump
   stop_midwindow_action
 
-  # Read BEFORE window_stop's own bookkeeping, while the window's own state is
-  # still what the fault produced. On the quantity path there is no feed, so
-  # the reading is `n/a` rather than a fabricated number.
-  local backlog_at_stop='n/a'
-  if [ "$load" = "order" ]; then
-    backlog_at_stop="$(of_backlog "$SOURCE_TENANT" "$SOURCE_CONNECTION_ID" 2>/dev/null || printf 'unknown')"
-  fi
-
   window_stop "$dir"
 
   # The delivered fault count, read back from the injector. A rule that
@@ -1200,7 +1241,7 @@ run_fault() {
        note: "recoveredWithoutAHumanAfterSecs is null when this window still had queued/running jobs when the observation window ended - that is NOT a claim that recovery never happens, only that it had not happened within recoveryObservedForSecs. rowsTheHARNESSMarkedDeadDuringCleanup names rows drain_wait killed AFTER the ledger above was read, so they are absent from it."
      }' > "$dir/recovery.json"
 
-  run_f10_guards "$dir" "$ws_iso" "$WINDOW_START_EPOCH" "$WINDOW_STOP_EPOCH" "$id" "$backlog_at_stop"
+  run_f10_guards "$dir" "$ws_iso" "$WINDOW_START_EPOCH" "$WINDOW_STOP_EPOCH" "$id" "$load"
   log "  verdict: $(verdict_read "$dir" 2>/dev/null | head -1 || true)"
 }
 
