@@ -23,6 +23,55 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## A `@Global()` module publishes its EXPORTS, and an optional token hides the host that forgot it
+
+**Context**: wiring OpenLinker's fulfilment router (#2408). The router is resolved through a token
+bound host-side in a `@Global()` module, and injected by `OrderIngestionService`, which is declared
+in `OrdersModule`.
+
+**Problem**: three ways to wire it that all type-check, all pass unit tests, and all do nothing.
+
+- **`providers` without `exports`.** `@Global()` publishes a module's *exports*, not its providers.
+  Without the `exports: [TOKEN]` line the token is invisible outside the module, so the injection
+  resolves from somewhere else or not at all.
+- **Importing the bare `PluginRegistryModule`.** It is a `@Module({})` shell with a static
+  `forRoot`; importing the class yields an *empty* module, so any token a plugin exports through it
+  never resolves. Calling `forRoot` a second time is worse - it double-registers every plugin. The
+  established route is the HOST's own `IntegrationsModule` wrapper, which re-exports it.
+- **`@Optional()` on a token whose absence is a valid state.** A router-less install is a silent,
+  fully-specified pass-through, so a host that FORGOT the binding is indistinguishable from one
+  deliberately running without a router - and nothing fails to say so.
+- **Importing a host WRAPPER that re-exports nothing.** This is the one that actually shipped, and
+  it shipped because the bullet above generalises and the generalisation is false. `apps/api`'s
+  `IntegrationsModule` really does re-export `PluginRegistryModule`; `apps/api`'s `InventoryModule`
+  imports core's module for its two controllers and declares **no `exports` array at all**. Both are
+  "the host's own wrapper", and only one of them hands you a token. Read the wrapper's `exports`
+  before importing it for a token - never infer it from a sibling wrapper's behaviour.
+
+**Rule**: a `@Global()` binding module must `exports` its token, and must import the host's
+`IntegrationsModule` rather than `PluginRegistryModule`. Make the injection **required** whenever
+the degenerate behaviour is silent, so a missing binding is a boot failure rather than a feature
+that quietly does nothing - and pin it with a spec that resolves the token from the CONSUMING
+module's injector (`app.select(OrdersModule).get(TOKEN)`), never the root injector, which passes
+even when the consumer cannot see it.
+
+**No unit test can catch any of this, which is the half that decides the gate.** `pnpm test` never
+builds the Nest graph and the pre-commit hook runs no integration tests, so a required-injection
+wiring error passes lint, type-check, `pnpm test` and the whole commit path, then fails EVERY
+integration suite in the app at boot. For a change whose subject is host-side DI wiring, the
+integration suite is the gate rather than an extra - run the relevant int-spec with
+`--runTestsByPath` before calling the work done, and if Docker is down, say the gate did not run
+instead of reporting the unit gate as if it covered this.
+
+**Applies to**: any `@Global()` provider binding in `apps/api/src/**` or `apps/worker/src/**`; any
+core service injecting a token a host supplies.
+
+**Source**: #2408. `/tech-review` and `/pre-implement` both flagged the first three traps before
+implementation; the fourth was found only by running the int-spec, after CI went red on a diff whose
+unit gate was green.
+
+---
+
 ## Before a surface asserts a behaviour, read the code that implements it
 
 **Context**: redesigning the three sales-document surfaces (#2513). The design was worked out from
