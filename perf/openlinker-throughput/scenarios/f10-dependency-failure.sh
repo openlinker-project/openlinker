@@ -337,8 +337,18 @@ ORIGINAL_PS_CONFIG="$(connection_json "$PS_CONNECTION_ID" | jq -c '.config // {}
 ORIGINAL_PS_BASE_URL="$(printf '%s' "$ORIGINAL_PS_CONFIG" | jq -r '.baseUrl // empty')"
 [ -n "$ORIGINAL_PS_BASE_URL" ] || die "perf-prestashop carries no config.baseUrl - nothing to repoint, and nothing to restore"
 ORIGINAL_ALLEGRO_CAPS="$(connection_json "$SOURCE_CONNECTION_ID" | jq -c '.enabledCapabilities // []')"
+
+ORIGINAL_REPLICAS="$(discover_worker_containers | wc -w | tr -d ' ')"
+[ "$ORIGINAL_REPLICAS" -ge 1 ] || ORIGINAL_REPLICAS=1
+# Read from the RUNNING container, never from an env file: the file is a
+# request, the container's environment is what is in force, and on a
+# multi-worktree checkout the file that was used may not even be this one.
+ORIGINAL_RUNNER_ENABLED="$(docker exec "$(discover_worker_containers | awk '{print $1}')" printenv WORKER_RUNNER_ENABLED 2>/dev/null || printf '')"
+[ -n "$ORIGINAL_RUNNER_ENABLED" ] || ORIGINAL_RUNNER_ENABLED=false
+
 log "posture at start: perf-prestashop baseUrl=$ORIGINAL_PS_BASE_URL"
 log "                  perf-allegro-a caps=$ORIGINAL_ALLEGRO_CAPS"
+log "                  worker replicas=$ORIGINAL_REPLICAS runner=$ORIGINAL_RUNNER_ENABLED"
 
 # A restore that CANNOT abort itself. Every lib.sh helper reaches `die` on
 # failure and `die` calls `exit`; inside an EXIT trap that skips every later
@@ -357,6 +367,18 @@ restore_curl() {
 # that legitimately holds the stand (the F1 lesson).
 CONNECTION_TOUCHED=0
 PROXY_STARTED=0
+WORKER_TOUCHED=0
+
+# Declared HERE, above the trap, and not beside the function that fills them
+# in. `set -u` is on, and an unset variable read inside an EXIT trap aborts
+# the trap - which would skip `release_stand_exclusive` and leave the stand
+# locked for the whole TTL after any early `die`. The trap must be able to run
+# at every point after it is installed, including before any of this is
+# resolved.
+COMPOSE_WORKDIR=""
+COMPOSE_FILE=""
+COMPOSE_ENV_FILE=""
+COMPOSE_PROJECT=""
 
 f10_on_exit() {
   local rc=$?
@@ -365,7 +387,7 @@ f10_on_exit() {
   # behind - a peer's next window would measure OUR fault as their result.
   clear_all_faults || true
 
-  if [ "$CONNECTION_TOUCHED" = "0" ] && [ "$PROXY_STARTED" = "0" ]; then
+  if [ "$CONNECTION_TOUCHED" = "0" ] && [ "$PROXY_STARTED" = "0" ] && [ "$WORKER_TOUCHED" = "0" ]; then
     log "nothing was changed on the stand - no restore needed"
     release_stand_exclusive
     return $rc
@@ -390,6 +412,18 @@ f10_on_exit() {
     log "  $PROXY_CONTAINER removed"
   fi
 
+  # The runner posture is put back the way it was found. A stand left with the
+  # runner ENABLED that shipped it disabled is a changed stand, and the next
+  # scenario's `guard_runner_state disabled` would refuse against a state this
+  # run created.
+  if [ "$WORKER_TOUCHED" = "1" ] && [ "$ORIGINAL_RUNNER_ENABLED" != "true" ]; then
+    log "  restoring WORKER_RUNNER_ENABLED=$ORIGINAL_RUNNER_ENABLED"
+    local args=(-f "$COMPOSE_FILE" -p "$COMPOSE_PROJECT")
+    [ -z "$COMPOSE_ENV_FILE" ] || args+=(--env-file "$COMPOSE_ENV_FILE")
+    ( cd "$COMPOSE_WORKDIR" && WORKER_RUNNER_ENABLED="$ORIGINAL_RUNNER_ENABLED" \
+        docker compose "${args[@]}" up -d --no-deps --scale "worker=$ORIGINAL_REPLICAS" worker >/dev/null 2>&1 ) || true
+  fi
+
   # Redis and the worker are restored inside their own arms rather than here,
   # because a window that stopped them must not run its ledger read against a
   # stopped stand. This is the belt-and-braces pass for an abort mid-arm.
@@ -409,6 +443,106 @@ f10_on_exit() {
   return $rc
 }
 trap 'f10_on_exit' EXIT
+
+# ===========================================================================
+# The worker's runner posture
+#
+# The lab stand ships WORKER_RUNNER_ENABLED=false (docker-compose.lab.yml's
+# own default), so a scenario that needs jobs to actually execute has to
+# recreate the worker - the variable is read at boot. F1 and F4 do the same.
+#
+# WHERE THE RECREATE IS RUN FROM IS A CORRECTNESS QUESTION, NOT A DETAIL.
+#
+# This repository is checked out as several worktrees, and the running stack
+# was brought up from ONE of them - not necessarily this one. Two things
+# differ between worktrees and both would silently change the container:
+#
+#   - docker-compose.lab.yml itself. The tree that launched this stand is on
+#     an older commit whose worker service does not carry the #2867 lane-cap
+#     passthrough keys; recreating from here would add eight of them.
+#   - the wc-tls certificate the worker bind-mounts. `certs/` is gitignored,
+#     so it exists only in the worktree that generated it. Recreating from a
+#     worktree without it makes docker CREATE AN EMPTY DIRECTORY at the
+#     bind-mount path, and the worker then starts with a directory where
+#     NODE_EXTRA_CA_CERTS expects a file.
+#
+# So the compose context is READ BACK from the running container's own
+# labels rather than assumed to be this checkout - the same
+# verify-what-is-in-force rule the rest of this harness applies to
+# configuration. The recreated worker is then byte-identical to the running
+# one except for the single variable being changed.
+#
+# That variable is passed in the SHELL ENVIRONMENT, not by editing the
+# stand's .env.lab: compose's interpolation precedence puts the shell above
+# --env-file, and a scenario has no business rewriting a file that belongs to
+# another worktree. It is verified rather than trusted - the value is read
+# back out of the recreated container before anything is measured.
+# ===========================================================================
+resolve_compose_context() {
+  _ensure_worker_containers
+  local w
+  w="$(printf '%s' "$WORKER_CONTAINERS" | awk '{print $1}')"
+  COMPOSE_WORKDIR="$(docker inspect "$w" --format '{{index .Config.Labels "com.docker.compose.project.working_dir"}}' 2>/dev/null || printf '')"
+  COMPOSE_FILE="$(docker inspect "$w" --format '{{index .Config.Labels "com.docker.compose.project.config_files"}}' 2>/dev/null || printf '')"
+  COMPOSE_ENV_FILE="$(docker inspect "$w" --format '{{index .Config.Labels "com.docker.compose.project.environment_file"}}' 2>/dev/null || printf '')"
+  COMPOSE_PROJECT="$(docker inspect "$w" --format '{{index .Config.Labels "com.docker.compose.project"}}' 2>/dev/null || printf 'lab')"
+  [ -n "$COMPOSE_WORKDIR" ] && [ -d "$COMPOSE_WORKDIR" ] \
+    || die "resolve_compose_context: $w carries no usable com.docker.compose.project.working_dir label (got '$COMPOSE_WORKDIR') - this stand was not brought up by compose, and recreating the worker from a guess would change more than the runner flag"
+  [ -f "$COMPOSE_FILE" ] \
+    || die "resolve_compose_context: the compose file this stand was brought up with ($COMPOSE_FILE) does not exist"
+  log "compose context (read from $w's own labels, never assumed to be this checkout):"
+  log "  workdir=$COMPOSE_WORKDIR"
+  log "  file=$COMPOSE_FILE"
+  log "  envFile=${COMPOSE_ENV_FILE:-<none>} project=$COMPOSE_PROJECT"
+}
+
+# recreate_worker <runner:true|false>
+recreate_worker() {
+  local runner="$1" tries hits w found
+  WORKER_TOUCHED=1
+  local args=(-f "$COMPOSE_FILE" -p "$COMPOSE_PROJECT")
+  [ -z "$COMPOSE_ENV_FILE" ] || args+=(--env-file "$COMPOSE_ENV_FILE")
+  ( cd "$COMPOSE_WORKDIR" && WORKER_RUNNER_ENABLED="$runner" \
+      docker compose "${args[@]}" up -d --no-deps --scale "worker=$ORIGINAL_REPLICAS" worker >/dev/null 2>&1 ) \
+    || die "recreate_worker: compose refused to recreate the worker service from $COMPOSE_WORKDIR"
+
+  # The discovery cache in lib.sh is stale by construction after a recreate.
+  WORKER_CONTAINERS=""
+  WORKER_CONTAINERS_RESOLVED=0
+  _ensure_worker_containers
+  found="$(discover_worker_containers | wc -w | tr -d ' ')"
+  [ "$found" -eq "$ORIGINAL_REPLICAS" ] || die "recreate_worker: expected $ORIGINAL_REPLICAS replica(s), discovery found $found"
+
+  # ASKED IS NOT GOT. The shell-over-env-file interpolation precedence this
+  # relies on is read back out of the container rather than trusted - a
+  # scenario that measured a runner posture it did not get would be the
+  # reported-versus-enforced gap this campaign keeps closing.
+  for w in $WORKER_CONTAINERS; do
+    local got
+    got="$(docker exec "$w" printenv WORKER_RUNNER_ENABLED 2>/dev/null || printf '<unset>')"
+    [ "$got" = "$runner" ] \
+      || die "recreate_worker: asked for WORKER_RUNNER_ENABLED=$runner, $w reports '$got' - compose did not take the shell override, so this run would have measured the wrong posture"
+  done
+
+  if [ "$runner" = "true" ]; then
+    for w in $WORKER_CONTAINERS; do
+      tries=0
+      while true; do
+        # `grep -c`, never `grep -q`: -q closes the pipe on the first match
+        # and `set -o pipefail` then fails the pipeline on the very reading
+        # that succeeded.
+        hits="$(docker logs "$w" 2>&1 | grep -cF 'Starting sync job runner loop' || true)"
+        [ "${hits:-0}" -eq 0 ] || break
+        tries=$((tries + 1))
+        [ "$tries" -lt 90 ] || die "recreate_worker: $w never logged 'Starting sync job runner loop'"
+        sleep 1
+      done
+    done
+  else
+    sleep 5
+  fi
+  log "worker recreated: runner=$runner (verified from the container), replicas=$ORIGINAL_REPLICAS"
+}
 
 # ===========================================================================
 # Injector control surfaces
@@ -1115,6 +1249,19 @@ guard_perf_max_attempts
 guard_connection_budget
 guard_pool_recorded
 guard_scheduler_off
+
+# The runner has to be ON for any of this to mean anything - a fault injected
+# into a system that executes no jobs measures the injector. The lab stand
+# ships it OFF, so it is turned on here rather than declared as a
+# precondition an operator has to arrange, and turned back off on exit if
+# that is how it was found.
+resolve_compose_context
+if [ "$ORIGINAL_RUNNER_ENABLED" = "true" ]; then
+  log "the runner is already enabled - not recreating the worker"
+else
+  log "the runner is disabled on this stand; recreating the worker with it enabled"
+  recreate_worker true
+fi
 guard_runner_state enabled
 
 of_health >/dev/null || die "the Allegro stub is not answering at $OF_STUB_URL"
