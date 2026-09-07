@@ -181,6 +181,39 @@ function priceForOffer(offerIndex) {
   return Number((9.99 + (offerIndex % 20) * 1.5).toFixed(2));
 }
 
+// A pool slot rendered as LETTERS ONLY - 1 -> 'a', 26 -> 'z', 27 -> 'aa'.
+//
+// This exists because of a real destination refusal, found live by F1 (#2847)
+// and worth stating precisely rather than leaving as a mystery constant. The
+// buyer's `firstName`/`lastName` travel all the way into
+// `PrestashopCustomerProvisioner`'s `POST /api/customers`, and PrestaShop
+// validates them with `Validate::isName`, which REJECTS digits outright. A
+// lastName of `Number42` therefore answered
+//
+//   HTTP 400  code 85  Validation error: "Property Customer->firstname is not valid"
+//
+// on every single order, so no stub order could reach a destination create at
+// all - and because `OrderSyncService` fans out under `Promise.allSettled`,
+// the job still recorded `outcome: 'ok'` while the shop received nothing.
+//
+// Distinctness per pool slot is preserved, which is the property the buyer
+// pool exists for (see the README's "buyer-identity decision"): letters are a
+// bijection with the slot number. The EMAIL keeps its digits deliberately -
+// it is the masked-email fixedPart the identity normalizer keys on, an email
+// is not name-validated anywhere, and changing it would change the axis the
+// pool is about. The street keeps its digits too: `Validate::isAddress`
+// allows them, as a street number must be.
+function poolSlotLetters(n) {
+  let s = '';
+  let v = n;
+  while (v > 0) {
+    const rem = (v - 1) % 26;
+    s = String.fromCharCode(97 + rem) + s;
+    v = Math.floor((v - 1) / 26);
+  }
+  return s || 'a';
+}
+
 function buyerFor(orderN) {
   const idx = orderN % CONFIG.buyerPoolSize; // 0-based
   const buyerNumber = idx + 1;
@@ -195,8 +228,11 @@ function buyerFor(orderN) {
     // and is deliberately included BECAUSE it must be irrelevant.
     email: `buyer${buyerNumber}+tx${orderN}@allegromail.pl`,
     login: `buyer${buyerNumber}`,
+    // Letters only - see poolSlotLetters above. Never re-introduce a digit
+    // here: it fails PrestaShop's Validate::isName and silently costs every
+    // destination create.
     firstName: 'Buyer',
-    lastName: `Number${buyerNumber}`,
+    lastName: `Testbuyer${poolSlotLetters(buyerNumber)}`,
     phoneNumber: '+48000000000',
     address: {
       street: `ul. Testowa ${buyerNumber}`,

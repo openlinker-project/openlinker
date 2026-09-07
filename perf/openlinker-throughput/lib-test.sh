@@ -513,6 +513,128 @@ FAKE_PG[count]=1
 assert_contains "DISCARDED when a failed syncStatus entry exists" "$(post_guard_destination_creates '2026-01-01T00:00:00Z' '')" "DISCARDED"
 FAKE_PG[count]=0
 
+echo "--- reset_between_repeats SCAN loop (#2847) ---"
+# This function shipped with NO CALLER in any scenario, so its SCAN loop had
+# never executed. It used `redis-cli --no-raw`, whose reply renders as
+# `1) "8192"` - `head -1` then fed `1) "8192"` back as the cursor, Redis
+# answered `ERR invalid cursor`, that string is never `0`, and the loop spun
+# for ever. Observed live before the fix: a scenario stuck at 0% with a
+# `SCAN (error) ERR invalid cursor` child process.
+#
+# Both directions are asserted: a well-behaved raw reply terminates, and a
+# malformed cursor DIES rather than looping. The second is the one that
+# matters - the original failure was survivable only because it was silent.
+RESET_SCAN_CALLS_FILE="$(mktemp)"
+RESET_SCAN_MODE=raw
+# Only `redis_cli` is faked here. `pg_sql_write`'s own fake RECORDS the SQL it
+# was handed and a later cap_perf_job_attempts test asserts against those
+# recordings - replacing it with a no-op made three unrelated assertions fail
+# with an empty haystack.
+redis_cli() {
+  case "$1" in
+    SCAN)
+      printf '1\n' >> "$RESET_SCAN_CALLS_FILE"
+      if [ "$RESET_SCAN_MODE" = "noraw" ]; then
+        # Exactly what `--no-raw` produced, which is what caused the hang.
+        printf '1) "8192"\n2) 1) "jobdedup:x:conn-1:y"\n'
+      else
+        # Raw: bare cursor on line 1, one key per line after. Terminates on
+        # the second call by answering cursor 0.
+        if [ "$(wc -l < "$RESET_SCAN_CALLS_FILE")" -lt 2 ]; then
+          printf '8192\njobdedup:a:conn-1:1\njobdedup:a:conn-1:2\n'
+        else
+          printf '0\njobdedup:a:conn-1:3\n'
+        fi
+      fi ;;
+    DEL) printf '1' ;;
+    *) printf '' ;;
+  esac
+}
+assert_ok "a raw SCAN reply terminates the loop" \
+  reset_between_repeats "'conn-1'" "'allegro.orders.lastEventId'"
+assert_eq "and it issued exactly the two SCAN calls the fake scripted" "2" \
+  "$(wc -l < "$RESET_SCAN_CALLS_FILE" | tr -d ' ')"
+
+: > "$RESET_SCAN_CALLS_FILE"
+RESET_SCAN_MODE=noraw
+# Without the guard this call never returns, so a regression here hangs the
+# test suite rather than failing it - which is itself the signal.
+assert_dies "a non-numeric cursor dies instead of looping for ever" \
+  reset_between_repeats "'conn-1'" "'allegro.orders.lastEventId'"
+rm -f "$RESET_SCAN_CALLS_FILE"
+# Restore the stand-lock fake the later guard tests rely on.
+redis_cli() {
+  case "$1" in
+    SET) if [ -n "$(fake_redis_get)" ]; then printf ''; else fake_redis_set "$3"; printf 'OK'; fi ;;
+    GET) fake_redis_get ;;
+    DEL) fake_redis_set ""; printf '1' ;;
+    *) printf '' ;;
+  esac
+}
+
+echo "--- post_guard_feed_starved ---"
+# The counterpart to post_guard_generator_saturated for a scenario whose load
+# is a standing supply of work rather than an HTTP generator (#2847/F1).
+# Both answer "was the instrument, not the system, the ceiling?" and both
+# reach the same wrong conclusion when they cannot: an achieved rate reported
+# as a ceiling when it is a floor on what the instrument offered.
+#
+# The input is AVAILABLE WORK - upstream supply PLUS the due queue - not an
+# upstream backlog alone. A poll pump that drains its upstream into queued
+# child jobs empties the upstream while the system is at its busiest, so a
+# backlog-only reading would discard every valid run. See the guard's own
+# docblock; these assertions are worded in those terms so a later edit cannot
+# quietly narrow the input back.
+assert_eq "no standing supply is not applicable, and passes" "ok" \
+  "$(post_guard_feed_starved "")"
+assert_eq "work that was always available passes" "ok" \
+  "$(post_guard_feed_starved "137")"
+assert_eq "exactly 1 unit of available work still passes - it never ran dry" "ok" \
+  "$(post_guard_feed_starved "1")"
+assert_contains "available work reaching zero is discarded" \
+  "$(post_guard_feed_starved "0")" "DISCARDED"
+# Asserted on the SPECIFIC wording, not merely on DISCARDED: the refusal has
+# to say that the number is a floor on the OFFERED rate, or a reader takes the
+# discarded run's figure at face value anyway - which is exactly what nearly
+# happened to F3's ~600/s (#2933).
+assert_contains "the zero refusal names what the number actually is" \
+  "$(post_guard_feed_starved "0")" "floor on the OFFERED rate"
+assert_contains "the zero refusal names the remedy" \
+  "$(post_guard_feed_starved "0")" "deeper backlog"
+# It must name BOTH halves of the sum, or the next reader repeats the mistake
+# this guard's own first draft made and passes an upstream backlog alone.
+assert_contains "the zero refusal names both halves of available work" \
+  "$(post_guard_feed_starved "0")" "the due queue were BOTH empty"
+# `unknown` must never be read as "fine". A run that cannot show its
+# instrument kept offering load is not a run whose instrument behaved - the
+# same rule the generator guard applies to a missing k6 summary.
+assert_contains "unestablished available work is discarded, never skipped" \
+  "$(post_guard_feed_starved "unknown")" "DISCARDED"
+assert_contains "the unknown refusal says it could not be established" \
+  "$(post_guard_feed_starved "unknown")" "could not be established"
+# A malformed value must not fall through to the zero branch (which would give
+# the right verdict for the wrong reason) nor to "ok" (which would be silent).
+assert_contains "a non-numeric value is discarded as unreadable" \
+  "$(post_guard_feed_starved "3 orders")" "unreadable available-work value"
+assert_contains "a negative value is discarded as unreadable" \
+  "$(post_guard_feed_starved "-1")" "unreadable available-work value"
+
+echo "--- run_post_guards threads the feed guard through ---"
+# The 9th positional argument is the one a scenario can silently forget, which
+# is the failure mode the k6-summary argument already has a warning about in
+# run_post_guards' own docblock. These two assertions pin both directions.
+FAKE_PG[count]=0
+RPG_DIR="$(mktemp -d)"
+run_post_guards "$RPG_DIR" "'c1'" '2026-01-01T00:00:00Z' 0 9999999999 '' '' '' '' >/dev/null 2>&1 || true
+assert_eq "omitting the feed argument leaves the verdict VALID (not applicable)" \
+  "VALID" "$(verdict_read "$RPG_DIR" | head -1)"
+run_post_guards "$RPG_DIR" "'c1'" '2026-01-01T00:00:00Z' 0 9999999999 '' '' '' '0' >/dev/null 2>&1 || true
+assert_eq "a starved feed reaches the verdict as DISCARDED" \
+  "DISCARDED" "$(verdict_read "$RPG_DIR" | head -1)"
+assert_contains "and the verdict carries the feed guard's own reason" \
+  "$(verdict_read "$RPG_DIR")" "post_guard_feed_starved"
+rm -rf "$RPG_DIR"
+
 echo "--- post_guard_limiter_degraded ---"
 FAKE_LOG["degraded-container"]="Redis rate limiter unavailable for connection abc — falling back to per-process in-memory limiting (degraded, not unthrottled). timeout"
 WORKER_CONTAINERS="degraded-container"
