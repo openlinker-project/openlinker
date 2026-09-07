@@ -153,6 +153,12 @@ export type { FiscalizationRegisterPayloadV1 } from './domain/types/fiscalizatio
 export type { OrdersTaxRateBackfillPayloadV1 } from './domain/types/orders-job-payloads.types';
 export type { OrdersHoldsReconcilePayloadV1 } from './domain/types/orders-job-payloads.types';
 export type { FulfillmentWorkStatusSyncPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
+export {
+  ANALYTICS_CURRENCY_RECALCULATE_MAX_POLLS,
+  ANALYTICS_CURRENCY_RECALCULATE_POLL_DELAY_SECONDS,
+  buildAnalyticsCurrencyRecalculateIdempotencyKey,
+} from './domain/types/analytics-job-payloads.types';
+export type { AnalyticsCurrencyRecalculatePayloadV1 } from './domain/types/analytics-job-payloads.types';
 
 // Exceptions
 export { SyncJobExecutionError } from './domain/exceptions/sync-job-execution.error';

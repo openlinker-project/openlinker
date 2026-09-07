@@ -87,6 +87,7 @@ export {
 
 // Application service interfaces
 export type { ICurrencyRateService } from './application/interfaces/currency-rate.service.interface';
+export type { IExchangeRateLookupService } from './application/interfaces/exchange-rate-lookup.service.interface';
 export type { IReportingCurrencySettingsService } from './application/interfaces/reporting-currency-settings.service.interface';
 
 // Module + tokens

@@ -98,6 +98,11 @@ export class FakeExchangeRateAdapter implements ExchangeRateProviderPort {
     });
   }
 
+  /** Identity - test determinism for existing specs is unaffected (#2777). */
+  resolveExpectedPublicationDay(candidate: string): string {
+    return candidate;
+  }
+
   /** Seed or replace a pair. */
   setRate(from: string, to: string, rate: string): void {
     this.rates[`${from}/${to}`] = rate;

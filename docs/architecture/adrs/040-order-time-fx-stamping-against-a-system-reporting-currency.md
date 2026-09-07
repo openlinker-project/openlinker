@@ -226,6 +226,83 @@ is the one being priced — what the registry stores as `fromCurrency`, i.e. the
   (§ Decision 8). Until it lands, changing the setting is forward-only, and the `PUT` reports the
   stamped-row count so the era split is accepted rather than discovered.
 
+## Amendment (#2468, 2026-08-26): an operator-triggered, ledger-audited restatement of a stale-era stamp
+
+**Status of the rule:** unchanged as a default. `stampFxIfAbsent`, `claimFxIntentIfAbsent` and
+`markFxTerminal` still all guard on `reportingCurrency IS NULL`, and no automatic path anywhere moves a
+figure. What this amendment adds is one narrow, deliberate exception, and it exists because the rule as
+written had a cost nobody had priced: an order stamped under a previous reporting-currency era is not
+merely "recorded in an old currency", it is **invisible to every `/analytics` KPI**. `getDailyOrderAggregates`
+sums `reportingTotalAmount` only where `reportingCurrency = :currentReportingCurrency`, so a prior-era
+stamp reads as unconverted — the same bucket as an order that was never stamped at all. Revenue silently
+under-reports, and the immutability rule is what keeps it under-reporting forever.
+
+Epic #2452's Data Coverage panel surfaces exactly that population, and #2468 gives it a fix:
+
+- `OrderRecordRepositoryPort.clearFxStampForRestatement` nulls the six stamp columns
+  (`reportingCurrency`, `reportingTotalAmount`, `exchangeRateId`, `fxStampedAt`, `fxIntendedCurrency`,
+  `fxRule`) in one guarded statement, and is the ONLY writer in the codebase that moves a stamp. The
+  column set is the one the `1840000000000-reset-fx-stamp-for-mislabelled-prestashop-orders` migration
+  already established; `fxIntendedCurrency` in particular must go, or `resolveIntent` re-pins the stale
+  currency and re-stamps it — a repair that looks successful and is not.
+- `OrderFxRestatementService` (`@openlinker/core/orders`) is the only caller, reachable only from the
+  `analytics.currency.recalculate` worker job.
+- **The exception is acceptable because of the ledger, not in spite of it.** Every restatement runs inside
+  an `analytics_remediation_runs` row (`@openlinker/core/analytics`) recording who asked, when, over how
+  many orders, and how it ended. What § Decision 8 forbids is a figure that moves with no traceable cause;
+  a figure that moves with a durable audit row naming its cause is a different act. Widening the caller
+  set, or letting the repair run outside a run row, reopens the original problem.
+- The scope is the operator's own coverage-panel window, so a repair can never be wider than the count
+  they were shown, and the repair only ever CLEARS — the actual re-stamp is the ordinary
+  `marketplace.order.fxStamp` path, against the ordinary intent-resolution and rate rules.
+
+**This is not #2096.** #2096 is "re-express history after a reporting-currency change", which needs an era
+model and a restatement policy across the whole corpus. This is the bounded operator-initiated repair of a
+coverage gap, on a population the panel already reports and a window the operator already chose. #2096
+stays open.
+
+## Amendment (#2777, 2026-09-03): resolving the publication day before the pre-fetch cache read
+
+**The original debt, restated.** Before this amendment, a non-publication candidate (a weekend or a
+holiday, roughly 2 days in 7) was a permanent cache miss: the pre-fetch read was keyed on the raw
+candidate day, `fetchRate` walked the candidate back to the day the source actually published for, and the
+row landed under that earlier day - never under the candidate. This was accepted deliberately, not
+overlooked: the registry stores **published** rates, so writing a second row under the candidate (a
+non-publication day) would record a rate the source never published for that day - a figure an operator
+could not verify against any table, in the one place whose whole purpose is to be verifiable. Memoising
+the candidate-to-published-date mapping needed its own persisted table and belonged to a later persistence
+phase (#2124); it was not folded into the original stamp (#2049) work, where nothing else changed
+behaviour. The cost was real and recurring - every order carrying such a candidate paid a live provider
+call, one hundred percent of the time, forever - but it was the honest price of keeping the registry a
+verifiable ledger of published rates rather than an invented one.
+
+**What #2777 changes, and what it deliberately does not.** `ExchangeRateProviderPort` gains an optional
+`resolveExpectedPublicationDay(candidate): string` (ADR-046 probe-not-trust pattern), which each adapter
+answers from the same walk-back calendar it already owns - NBP from the Polish working-day calendar,
+ECB from a weekend-only rule (see that adapter's own header for why it must not share NBP's calendar).
+`CurrencyRateService.getRateFor` probes for the method and, when present, keys the pre-fetch `findByKey`
+read on the RESOLVED day rather than the raw candidate - so the first order under a given non-publication
+candidate still pays one provider call (as before), but every later one, for that candidate or any other
+candidate resolving to the same published day, now hits the cache. **The write path is untouched**: the
+registry still never writes a second row under a non-publication date, and `fetchRate` still receives the
+raw candidate and answers with whatever day the source actually published for. Only which key is READ
+changes; this ADR's verifiability guarantee - a stored row is always a source's own published answer -
+holds exactly as before.
+
+**The guarantee this creates is asymmetric, and an implementer must respect the asymmetry.** A day
+resolved TOO LATE (later than the true nearest publication day) can only ever cause a cache miss - no row
+exists there, so the read falls through to `fetchRate` unchanged, at the original cost and no worse. A day
+resolved TOO EARLY - walking back past a genuine publication day to an earlier one - corrupts a stamp
+silently: a row under that earlier day very likely already exists (written by some other candidate that
+legitimately resolved there), so the read *hits* and returns the wrong day's rate on a financial figure,
+with no exception anywhere. The port's own docblock states this explicitly and requires that an
+implementer in doubt return the candidate unchanged - erring late is free, erring early is not. Neither
+shipped adapter can produce a too-early answer today: ECB only ever skips a weekend, and NBP's calendar is
+the same one that already decides which day NBP requests, so it errs optimistic rather than walking back
+past a day it is not certain about. A shared `resolveExpectedPublicationDay` port-contract suite
+(`@openlinker/core/currency/testing`) binds every implementer - NBP, ECB, and the fake - to this contract,
+so a future implementer cannot silently drift from it.
+
 ## References
 
 - Related issues: #2049 (this work), #1976 (analytics epic), #1985 (order analytics read model),
@@ -244,6 +321,8 @@ is the one being priced — what the registry stores as `fromCurrency`, i.e. the
   referencing a registry row).
 - Follow-ups: **#2096** (restate already-stamped orders when the reporting currency changes),
   **#2097** (populate `placedAt` on the WooCommerce order source)
+- Amended by: **#2468** (epic #2452 Phase 5) — the ledger-audited, operator-triggered restatement of a
+  stale-era stamp; see § Amendment above.
 - Primary doc section: a `docs/architecture-overview.md` § Currency section is **to be added by the #2049
   implementation PR**; it does not exist yet, so this reference is forward-looking rather than a citation.
 - Plan: [implementation-plan-2049-order-fx-rate-snapshot.md](../../plans/implementation-plan-2049-order-fx-rate-snapshot.md)

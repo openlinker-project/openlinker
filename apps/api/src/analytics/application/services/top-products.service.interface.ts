@@ -15,7 +15,10 @@ import type { TopProductVariantsResponseDto } from '../../http/dto/top-product-v
 export const TOP_PRODUCTS_SERVICE_TOKEN = Symbol('ITopProductsService');
 
 export interface ITopProductsService {
-  getTopProducts(filters: TopProductFilters): Promise<TopProductsResponseDto>;
+  getTopProducts(
+    filters: TopProductFilters,
+    includeBackfilledTaxRatesInNetSales?: boolean
+  ): Promise<TopProductsResponseDto>;
 
   /**
    * One product's sales split by variant, per channel (#2765) — the

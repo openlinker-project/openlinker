@@ -48,6 +48,14 @@ Every other figure uses its metric name verbatim.
   GMV, Units Sold and every figure derived from them. Its **cancelled** line items are excluded from
   GMV and Units Sold. Wherever a metric below says "excluding cancelled orders", it means orders
   cancelled in full; line-item-level cancellations are handled by this rule.
+- **Net / Gross view toggle** (added, shipped with #2895/#2903 — an operator-facing addition, not
+  part of the originally agreed text) – the dashboard offers a page-level Net/Gross basis toggle.
+  **Every metric below is defined NET by default**, exactly as written; the toggle's Gross setting
+  is a secondary VIEW of the same underlying order/line population, substituting GMV for Net Sales
+  and the gross (VAT-inclusive) value field for AOV/Median's net value field, with every other rule
+  on this page (cohort, exclusions, currency conversion) unchanged. It does not introduce a second
+  metric definition — GMV and Net Sales each already have their own definition below, and Gross-mode
+  AOV/Median simply reuse GMV's value field the same way Net-mode AOV/Median reuse Net Sales'.
 
 ## List of metrics:
 
@@ -58,6 +66,17 @@ Every other figure uses its metric name verbatim.
 **Formula:** `SUM(gross_unit_price before discount × quantity, for all line items of orders placed in the period, excluding cancelled)`
 
 **Source:** Orders API – sum of the order's gross value field; without any adjustments. Do not convert to net.
+
+> **Implementation limitation — "before deducting discounts" is not implemented** (added, #2668
+> review, findings 7/6 — an implementation note, not part of the originally agreed text).
+> `grossRevenueLineAmountSql` sums `order_line_items.unitPrice × quantity`, and
+> `order_line_items` carries **no pre-discount price column** — the write path denormalizes the
+> line's actual (post-discount) unit price and nothing else. GMV as shipped is therefore computed
+> *after* line-item discounts, which makes it identical in basis to Net Sales' value field except
+> for VAT. It is stated here rather than left to be discovered, because this is the page whose
+> "on any divergence this file wins" rule would otherwise make the shipped figure silently wrong
+> against its own definition. Closing it requires a new denormalized column on `order_line_items`
+> plus a backfill, and every order source reporting a pre-discount price — which not all of them do.
 
 ### Net Sales
 
@@ -82,6 +101,23 @@ Every other figure uses its metric name verbatim.
 **Formula:** SUM(net value after discounts of orders placed in the period, excluding cancelled) ÷ Number of Orders (same period, same definition)
 
 **Source:** calculated by us. The numerator and denominator must operate on exactly the same set of orders as Number of Orders and Median Order Value.
+
+> **Implementation divergence — AOV/Median use a narrower cohort than the Number of Orders card**
+> (added, #2668 review, finding 10 / SUGGESTION 10 — an implementation note, not part of the
+> originally agreed text). AOV and Median operate on `stamped ∧ ¬cancelled` orders, while the
+> Number of Orders card renders `orderCount + unconvertedCount`, i.e. the full placed cohort
+> including orders not yet FX-stamped (ADR-040). They therefore do **not** operate on exactly the
+> same set, contrary to the sentence above.
+>
+> The divergence is deliberate and is the only defensible arithmetic available: an unstamped order
+> contributes a known count and an **unknown** reporting-currency amount, so admitting it to the
+> denominator alone would divide a partial numerator by a full denominator and report an AOV lower
+> than any order in the range. The alternatives — suppressing AOV whenever `unconvertedCount > 0`,
+> or reporting it silently — are worse. It is **disclosed on the card**: the `STAMPED_GAP` gap mark
+> renders on the Order value card exactly when `unconvertedCount > 0`, so an operator reading a
+> figure computed over the narrower cohort is told so in place. The divergence closes by itself as
+> FX stamping catches up; the Data Coverage panel's currency category is the remediation path.
+
 **Interpretation note:** AOV does not multiply back to Net Sales, because Net Sales is reduced by returns. The difference between (AOV × Number of Orders) and Net Sales is exactly the Returns Value.
 
 ### Median Order Value

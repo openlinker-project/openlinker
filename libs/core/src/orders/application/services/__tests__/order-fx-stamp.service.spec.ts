@@ -333,6 +333,31 @@ describe('OrderFxStampService', () => {
       expect(rates.getRateFor).not.toHaveBeenCalled();
     });
 
+    it('should resolve the CURRENT reporting currency once a restatement page cleared a deferred row (#2775)', async () => {
+      // The deferred shape carries a pinned intent and no figure. Before #2775
+      // the restatement clear skipped it, `resolveIntent` re-pinned the stale
+      // currency, and the run could never converge. After the clear all six FX
+      // columns are NULL, so the settings service is consulted again.
+      const clearedRecord = buildRecord({
+        totals: { total: 100, currency: 'EUR' },
+        fxIntendedCurrency: null,
+        fxRule: null,
+      });
+      repository.findById.mockResolvedValue(clearedRecord);
+      repository.claimFxIntentIfAbsent.mockResolvedValue(true);
+      settings.resolve.mockResolvedValue('EUR');
+
+      const outcome = await service.stamp('ol_order_1');
+
+      expect(settings.resolve).toHaveBeenCalled();
+      expect(repository.claimFxIntentIfAbsent).toHaveBeenCalledWith(
+        'ol_order_1',
+        expect.objectContaining({ reportingCurrency: 'EUR' })
+      );
+      expect(outcome.kind).toBe('stamped');
+      expect((outcome as { reportingCurrency: string }).reportingCurrency).toBe('EUR');
+    });
+
     it("should adopt the winner's intent when the intent claim is lost", async () => {
       const record = buildRecord({ totals: { total: 100, currency: 'EUR' } });
       const winnerRecord = buildRecord({

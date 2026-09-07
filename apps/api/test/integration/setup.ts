@@ -192,6 +192,13 @@ const harness = createIntegrationTestHarness({
     // row. No FK, so it never cascades; a row written by one case would
     // otherwise change every later case's resolved budgets.
     'operational_settings',
+    // analytics_remediation_runs (#2468) — the Data Coverage remediation audit
+    // ledger. No FK anywhere (its `triggered_by` is a plain text user id, the
+    // invoice_records precedent), so nothing cascades into it — and its partial
+    // unique index admits only ONE open run per category, so a run left behind
+    // by one case makes every later case's `openRun` throw
+    // OpenRemediationRunExistsError. Truncate explicitly.
+    'analytics_remediation_runs',
     // product_content_field FKs to both products + connections, so it goes
     // before them.
     'product_content_field',

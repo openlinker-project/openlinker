@@ -51,11 +51,18 @@ describe('Earliest order date by connection (integration)', () => {
       placedAt: new Date('2026-01-15T00:00:00Z'),
       createdAt: new Date('2026-01-16T00:00:00Z'),
     });
-    // No placedAt asserted by the source — falls back to createdAt.
+    // No placedAt asserted by the source — falls back to createdAt. Two rows,
+    // so the fallback can be asserted by ORDERING rather than by a wall-clock
+    // constant (see the note on `earliestB` below).
     await createTestOrderRecord(ds, {
       sourceConnectionId: CONNECTION_B,
       placedAt: null,
       createdAt: new Date('2026-02-10T00:00:00Z'),
+    });
+    await createTestOrderRecord(ds, {
+      sourceConnectionId: CONNECTION_B,
+      placedAt: null,
+      createdAt: new Date('2026-04-20T00:00:00Z'),
     });
 
     const result = await repository.findEarliestOrderDateByConnection([
@@ -68,9 +75,29 @@ describe('Earliest order date by connection (integration)', () => {
     expect(earliestA).toBeInstanceOf(Date);
     expect(earliestA?.toISOString()).toBe(new Date('2026-01-15T00:00:00Z').toISOString());
 
+    // The `createdAt` fallback is asserted by ORDERING against a sibling row,
+    // never against a wall-clock constant, and that is deliberate. `placedAt`
+    // is `timestamptz` while `createdAt` is a bare `@CreateDateColumn()` —
+    // `timestamp` WITHOUT time zone on Postgres — so
+    // `COALESCE("placedAt", "createdAt")` casts the naked operand using the DB
+    // SESSION TimeZone, while node-postgres writes and reads that same column
+    // through the CLIENT PROCESS's zone. The two agree only when the process
+    // runs in UTC, which is why the original assertion passed in CI and failed
+    // by exactly one hour under Europe/Warsaw (and by a whole calendar day
+    // under America/Los_Angeles). Both of B's rows travel the identical cast
+    // path, so their ORDER is stable in every zone while their absolute instant
+    // is not — and ordering is what MIN is actually being tested for.
+    // The underlying `timestamptz`/`timestamp` asymmetry predates this suite
+    // (#2014's schema, read by #2083) and is reported separately.
+    const [olderB, newerB] = await ds.query<{ earliest: Date }[]>(
+      `SELECT COALESCE("placedAt", "createdAt") AS earliest FROM order_records
+       WHERE "sourceConnectionId" = $1 ORDER BY 1 ASC`,
+      [CONNECTION_B]
+    );
     const earliestB = result.get(CONNECTION_B);
     expect(earliestB).toBeInstanceOf(Date);
-    expect(earliestB?.toISOString()).toBe(new Date('2026-02-10T00:00:00Z').toISOString());
+    expect(earliestB?.getTime()).toBe(olderB.earliest.getTime());
+    expect(earliestB?.getTime()).toBeLessThan(newerB.earliest.getTime());
 
     // No orders at all for this connection — absent, not a zeroed entry.
     expect(result.has(CONNECTION_C)).toBe(false);

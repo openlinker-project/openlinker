@@ -184,6 +184,7 @@ dashboard checkpoints).
 | `invoicing` | inFakt run, payment marking, bulk issue/resend/e-mail, KOR corrections, FA(3) parity + preview, Transfer bank accounts (#1573). | Yes (issues/corrects invoices, synthesizes orders) | No |
 | `lifecycle` | Order-lifecycle idempotency, cross-channel stock propagation + oversell safety, stale-variant pruning (#1574). | Yes (real PS stock; pruning is destructive, opt-in) | No |
 | `access-control` | Demo mode, registration, RBAC, and UI-reflection checks. | Yes - registers real accounts (deleted on teardown) | No |
+| `analytics` | `/analytics` mockup-parity: real page vs. the repo-committed mockup, state by state (#2482). | Yes (seeds orders, temporarily flips the reporting currency) | No |
 
 > ⚠️ **Every project except `smoke`/`setup` mutates the stack** (publishes
 > products, creates offers, generates labels, issues invoices, rotates webhook
