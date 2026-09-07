@@ -35,7 +35,7 @@ the saturation sweep". After it, the answer is:
 
 | Lane | Default | Still | Why it did not get a number here |
 |---|---|---|---|
-| `realtime` | 4 / 2 | ILLUSTRATIVE | A sweep is now RUNNABLE (§ 2) and a smoke arm ran clean, but per-job cost on the write path measured **9.1-9.8 s against a 127 ms destination** (§ 4.2). Until that is attributed, a curve taken through it is a curve of the unattributed 9 s. |
+| `realtime` | 4 / 2 | ILLUSTRATIVE | A sweep is now RUNNABLE (§ 2) and a smoke arm ran clean, but per-job cost on the write path measured **9.1-9.8 s against a 127 ms destination**, and a trace puts ~7 s of that in OpenLinker either side of one HTTP call (§ 4.2). A curve taken through that is a curve of the 7 s, not of the lane. |
 | `fiscal` | 2 / 1 | ILLUSTRATIVE | Unchanged and, on the evidence in § 4.5, likely permanent. No provider exists on this stand and building one means issuing real documents. |
 | `fan-out` | 8 / 4 | **DERIVED, not measured** - confirmed, see § 4.6 | Not reached. The peers held the stand. |
 
@@ -114,6 +114,22 @@ claim-latency band *is* the instrument (`POLL_INTERVAL_MS` plus a ~1 Hz poller),
 so a sub-second difference between arms cannot be resolved by it.
 
 **The fiscal arm measures the runner's floor and says so** - see § 4.5.
+
+---
+
+### 3.1 One methodology note: `guard_build` refused the first sweep, correctly
+
+The fan-out sweep's first attempt died at `guard_build`: the running `lab` image
+was built from the branch base, and this branch had since committed a change to
+`apps/worker/src/sync/sync-job.runner.ts`. That change is **documentation plus
+one inert literal** (§ 6) and could not alter behaviour - but the guard cannot
+know that, and *"the diff looked harmless"* is precisely the reasoning a
+stale-image guard exists to refuse.
+
+Rather than bypass it, the working tree's copy of that one file was checked out
+at the image's own commit for the duration of the measurement and restored
+immediately after. The guard then passed on its own terms rather than being
+argued with.
 
 ---
 
@@ -196,43 +212,48 @@ measurement or by reading the code:
   one cursor read, one marketplace call, one conditional cursor advance and one
   lock release per item.
 
-**The leading hypothesis is the Allegro client's own retry ladder, and the
-arithmetic lands almost exactly on the observation.**
-`allegro-http-client.ts`'s `DEFAULT_RETRY_CONFIG` is `maxRetries: 3`,
-`initialDelayMs: 1000`, `backoffMultiplier: 2`. A request that exhausts it
-sleeps **1000 + 2000 + 4000 = 7000 ms** across four attempts, and four attempts
-against a 127.6 ms destination add ~510 ms:
+**Traced, and it is NOT the retry ladder.** An earlier draft of this report
+predicted the Allegro client's `DEFAULT_RETRY_CONFIG` (`maxRetries: 3`,
+`initialDelayMs: 1000`, `backoffMultiplier: 2` = 7000 ms of backoff across four
+attempts) and noted that the arithmetic fitted to within ~5 %. **It fitted and
+it was wrong**, which is the reason this paragraph exists rather than the
+prediction. One traced job (`durationMs=9727`, `succeeded`, `outcome=ok`) shows
+**exactly one HTTP attempt**, no `Rate limit exceeded (attempt N/4)` line, and
+the 9.7 s distributed like this:
 
-| Term | ms | Source |
+| Interval | Elapsed | What the log shows |
 |---|---|---|
-| Retry backoff, 3 retries at 1 s / 2 s / 4 s | 7000 | `DEFAULT_RETRY_CONFIG` (code) |
-| 4 attempts x 127.6 ms | ~510 | § 4.1 (measured) |
-| One limiter timeout (§ 4.1) | ~1000 | measured, once, on another call |
-| Lock acquire + cursor read + cursor advance + release | small | `InventorySyncService` (code) |
-| **Total** | **~8510-9500** | vs **9116-9850 measured** |
+| `Executing ...offerQuantity.update` -> `PUT /sale/offer-quantity-change-commands/...` | **~4 s** | nothing logged in between |
+| inside the PUT | **1126 ms** | against a destination measured at 127.6 ms; a `checkPace timed out after 1000ms` line lands mid-call |
+| HTTP `Response: 200` -> `Job ... succeeded` | **~3 s** | nothing logged in between |
 
-That is a fit, not a proof, and it is labelled **derived**. What would confirm
-it is one log line, which the client emits by name on that path -
-`Rate limit exceeded (attempt N/4), retrying after Xms`. If it is present, the
-9 s is backoff and the realtime lane's *real* per-job cost is ~130 ms, which
-would put the correct cap an order of magnitude away from 2 and would make this
-a defect report rather than a tuning exercise. If it is absent, something else
-is sleeping and the question is still open.
+So the shape is **~4 s before the call, ~1 s of limiter timeout inside it, ~3 s
+after it** - roughly **7 s of OpenLinker-side time bracketing a single 127 ms
+request**, with the network the smallest term by an order of magnitude.
 
-Settling it needs the worker log for one traced job, which needs the stand. The
-attempt to take it was refused by `guard_stand_exclusive` because a peer had
-taken the stand two minutes earlier, and the smoke run's own containers had
-already been replaced by the scenario's own restore, so their logs were gone.
-The probe is written and is two minutes of stand time.
+The two unlogged brackets are where the cost is, and neither is attributed to a
+specific statement yet. By code reading, the pre-call bracket contains capability
+adapter resolution (`getCapabilityAdapter` builds a fresh adapter per call and
+resolves + decrypts credentials), `applyPublishControlsBatch`, the #2617
+`SyncLockPort.acquire`, and the observation-cursor read; the post-call bracket
+contains the conditional cursor advance, the lock release and the terminal
+`sync_jobs` write. **Which of those dominates is not established** - that needs
+either #2850's instrumentation or a debug-level trace, and is named in § 8.
 
-Note this compounds with § 4.1 rather than competing with it: if the limiter's
-1 s timeout is what the client is retrying *against*, then one defect is
-producing both, and a lane cap is not the knob for either.
+Two smaller observations from the same trace, recorded because they are cheap
+and someone will otherwise re-derive them:
 
-*Label: the durations are **measured** (n=12, smoke mode - the harness's own
-rule is that smoke numbers are not a measurement of the thing the scenario
-exists to measure, and they are used here only as evidence about per-job cost,
-never as a cap curve). The attribution is **open**.*
+- The limiter line reads **"still degraded"**, not "unavailable" - the adapter
+  had already entered degraded mode and stays there, so § 4.1's ~1 s is charged
+  to calls indefinitely rather than once.
+- `sync_jobs.attempts` reads **0** on this succeeded row while the runner logged
+  `attempt 1/3` and `after 1 attempt(s)`. Harmless here, but a reader counting
+  attempts off that column is counting something else.
+
+*Label: the 12 durations and the traced breakdown are **measured** (n=12 smoke
+arm; n=1 trace). The retry-ladder explanation is **withdrawn - it was derived,
+it fitted, and the trace falsified it.** Which statement inside the two unlogged
+brackets dominates is **open**.*
 
 ### 4.3 A freed slot waits up to a full poll interval (derived, from code)
 
@@ -422,12 +443,13 @@ class-level initialiser, against `resolveLaneCaps`'s 8/4 fallback. Aligned; see
 
 ## 8. Next, in the order that buys the most
 
-1. **Trace one `marketplace.offerQuantity.update` job's worker log.** Two
-   minutes of stand time; the probe is written. Grep for
-   `Rate limit exceeded (attempt N/4), retrying after` - present means § 4.2 is
-   retry backoff and this becomes a defect report, absent means something else
-   sleeps ~9 s and the question is open. Every realtime number depends on it,
-   and no realtime cap should be proposed before it is answered.
+1. **Attribute § 4.2's two unlogged brackets** - ~4 s before the outbound call
+   and ~3 s after it, per the trace. Done (the trace); the retry-ladder
+   explanation is falsified. What remains is *which statement* inside each
+   bracket dominates, which needs a debug-level trace or #2850. Until it is
+   answered no realtime cap should be proposed, because if the 7 s is adapter
+   construction or the degraded limiter then the lane's real per-job cost is
+   ~130 ms and the right cap is an order of magnitude from 2.
 2. **Run the fan-out sweep** (`--lane=fan-out`). It needs no destination -
    database reads and child enqueues - so it is the one lane whose curve is not
    hostage to § 4.1, and it is the lane whose current value is derived rather
