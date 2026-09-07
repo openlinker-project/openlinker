@@ -73,13 +73,37 @@ export function resolveConvertNoteState(input: ConvertNoteStateInput): ConvertNo
  * `convertedRevenue / revenue` and applied it client-side to every other
  * same-currency figure (netRevenue, AOV, median, cancelled value). That is
  * UNSOUND and was caught by a real bad number in production (29 000 PLN
- * rendering as ~20 000 "EUR" instead of the correct ~6 700 EUR). The reason:
- * in "current rate" mode, `convertedRevenue` is NOT `revenue` converted — it
- * is `revenue` (the stamped bucket) PLUS `unconvertedValue` (a separate pool
- * of not-yet-stamped/prior-era money), both converted and SUMMED (see
- * `SalesAnalyticsController.buildNativeCurrencyAmounts`). So DIVIDING
- * `convertedRevenue` by `revenue` to back out "the rate" is contaminated by
- * however much unconverted money exists and is not the actual exchange rate.
+ * rendering as ~20 000 "EUR" instead of the correct ~6 700 EUR).
+ *
+ * The stated reason was RESTATED at #2668 review (IMPORTANT 8), because the
+ * original one was invalidated by this epic's own BLOCKING fix and a reader
+ * who checks a justification and finds it no longer holds is one step from
+ * concluding the ban has expired. It used to read: `convertedRevenue` is
+ * `revenue` (the stamped bucket) PLUS `unconvertedValue` (a separate pool of
+ * not-yet-stamped/prior-era money), both converted and SUMMED, so the
+ * quotient is contaminated by however much unconverted money exists. That
+ * specific contamination is gone: the unconverted bucket now carries
+ * `excludedFromTotal: true`, resolves no rate and contributes nothing to
+ * `convertedTotal` (#2668 review, BLOCKING 1), so in the ordinary
+ * single-stamped-currency case `convertedRevenue` really is `revenue`
+ * converted. The ban survives on three grounds that do not depend on that:
+ *
+ * - `appliedRates` IS the authority. The backend reports the real published
+ *   rate it applied to each bucket (`NativeCurrencyBreakdown.appliedRate` /
+ *   `OrderDateConversionResult.appliedRate`), so division is an inference
+ *   OpenLinker already answers directly. An inference that agrees with the
+ *   authority most of the time is worse than one that never runs, because it
+ *   is wrong only on the cases nobody tests.
+ * - The identity still breaks, just on different inputs. A genuinely
+ *   multi-currency stamped set sums several buckets each converted at its
+ *   own rate, so the quotient is a weighted average of rates and not any
+ *   rate; and a bucket listed in `unresolvedNativeCurrencies` resolved NO
+ *   rate, so it contributes to `revenue` while contributing nothing to
+ *   `convertedRevenue` and the quotient silently understates.
+ * - A quotient is unlabelled. It carries no `from`/`to`/`rateDate`, so
+ *   nothing downstream can check that it converts the very pair the figure
+ *   is labelled with - which is exactly the both-ends check
+ *   `resolveReportingCurrencyRate` performs below.
  *
  * #2778 closes this the right way: the backend now reports the REAL,
  * published rate it applied to EACH native-currency bucket individually
@@ -149,12 +173,10 @@ export function isCurrencyRecalculating(coverage: AnalyticsCoverage | undefined)
 /**
  * Rate provenance for the GMV qualifier (#2778/#2779).
  *
- * `appliedRates` is 0..N because `current-rate` mode can genuinely span
- * several native currencies (the stamped `revenue` bucket plus the separate
- * `unconvertedValue` bucket, each independently converted — see the
- * "REJECTED APPROACH" note above for why nothing here may be derived by
- * dividing two totals). A single inline line can only ever honestly name
- * ONE rate, so:
+ * `appliedRates` is 0..N because a converted figure can genuinely span
+ * several native currencies, each independently converted at its own
+ * published rate. A single inline line can only ever honestly name ONE
+ * rate, so:
  *
  * - exactly one entry → that IS the rate behind the figure, safe to show
  *   inline.
@@ -164,6 +186,21 @@ export function isCurrencyRecalculating(coverage: AnalyticsCoverage | undefined)
  * - two or more entries → several different rates fed one number; naming
  *   just one inline would misrepresent it as the whole story, so the inline
  *   line stays silent and the full breakdown lives only in the disclosure.
+ *
+ * The two-or-more branch is now HARD TO REACH for the headline in
+ * `current-rate` mode, and that is a consequence rather than dead code
+ * (#2668 review, IMPORTANT 8). It used to be the common case: the stamped
+ * bucket and the unconverted bucket each resolved a rate, so a mixed-era
+ * range produced two entries. Since BLOCKING 1 the unconverted bucket is
+ * excluded from the total and resolves no rate at all, so on an install with
+ * ONE reporting currency (ADR-040's invariant) the headline resolves at most
+ * one. It stays because the branch is still reachable and still the honest
+ * answer where it is: `order-date` mode, a per-channel or per-product
+ * conversion whose native currencies differ, and any future corpus carrying
+ * more than one reporting currency (#2096's restatement eras). A function
+ * that names one of several rates is a wrong number whatever made the set
+ * plural, so the guard is kept rather than narrowed to the case that happens
+ * to be live today.
  */
 export function pickInlineAppliedRate(appliedRates: readonly AppliedRate[]): AppliedRate | null {
   return appliedRates.length === 1 ? appliedRates[0] : null;

@@ -81,7 +81,13 @@ export interface NativeCurrencyAmount {
    * When `true`, this bucket is reported in
    * {@link CurrentRateConversionResult.breakdown} but contributes NOTHING to
    * {@link CurrentRateConversionResult.convertedTotal} (#2668 review,
-   * BLOCKING 1).
+   * BLOCKING 1). "Reported" means in the DOMAIN result only: the breakdown
+   * itself is not projected over HTTP, and an excluded row carries
+   * `appliedRate: null` so it is filtered out of the one field that is
+   * (`DisplayCurrencyConversionDto.appliedRates`). No HTTP consumer ever
+   * observes this flag; the wire discloses the same money as
+   * `headline.unconvertedCount` / `unconvertedValue` / `unconvertedCurrency`
+   * (#2668 review, SUGGESTION 9).
    *
    * It exists for one caller: the still-unconverted (not-yet-FX-stamped)
    * slice. `architecture-overview.md § 4 Orders` and ADR-040 are explicit
@@ -162,6 +168,11 @@ export interface NativeCurrencyBreakdown {
    * {@link CurrentRateConversionResult.convertedTotal} (#2668 review,
    * BLOCKING 1). Always present here (never optional) so a consumer reading
    * the breakdown cannot mistake "not stated" for "counted".
+   *
+   * "A consumer" means an in-process one. This breakdown is a domain shape
+   * that no HTTP response projects, so the flag never crosses the wire - see
+   * {@link NativeCurrencyAmount.excludedFromTotal} for what the API surface
+   * discloses instead.
    */
   readonly excludedFromTotal: boolean;
 }

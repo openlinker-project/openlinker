@@ -407,10 +407,19 @@ describe('SalesAnalyticsController', () => {
         displayCurrency: 'PLN',
       });
 
+      // The mixed-currency bucket is the unconverted slice, so like every other
+      // unconverted bucket it is REPORTED and never COUNTED (#2668 review,
+      // BLOCKING 1) — `excludedFromTotal: true` is what keeps it out of
+      // `convertedTotal`, i.e. out of the GMV figure the KPI strip renders.
       expect(displayCurrencyConversionService.convertAtCurrentRate).toHaveBeenNthCalledWith(1, {
         amounts: [
           { currency: 'EUR', amount: 18420.5, count: 142 },
-          { currency: MIXED_NATIVE_CURRENCIES_LABEL, amount: 210, count: 3 },
+          {
+            currency: MIXED_NATIVE_CURRENCIES_LABEL,
+            amount: 210,
+            count: 3,
+            excludedFromTotal: true,
+          },
         ],
         displayCurrency: 'PLN',
       });
