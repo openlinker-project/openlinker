@@ -18,6 +18,7 @@ import type { SyncJobRequest } from '@openlinker/core/sync';
 import { JobTypeValues } from '@openlinker/core/sync';
 import { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
 import { randomUUID } from 'crypto';
+import { JOB_INTAKE_REDIS_CLIENT_TOKEN } from '../sync-worker.tokens';
 
 describe('JobIntakeConsumer', () => {
   let consumer: JobIntakeConsumer;
@@ -43,7 +44,12 @@ describe('JobIntakeConsumer', () => {
       providers: [
         JobIntakeConsumer,
         {
-          provide: 'REDIS_CLIENT',
+          // The consumer injects its own token rather than `'REDIS_CLIENT'`
+          // (#2840) - in production that token resolves to the shared client
+          // unless `OL_JOB_INTAKE_DEDICATED_REDIS=true`. Which client backs it
+          // is `SyncWorkerModule`'s decision, not this unit's, so the unit
+          // test supplies the token directly.
+          provide: JOB_INTAKE_REDIS_CLIENT_TOKEN,
           useValue: mockRedisClient,
         },
         {
@@ -63,7 +69,7 @@ describe('JobIntakeConsumer', () => {
     }).compile();
 
     consumer = module.get<JobIntakeConsumer>(JobIntakeConsumer);
-    redisClient = module.get('REDIS_CLIENT');
+    redisClient = module.get(JOB_INTAKE_REDIS_CLIENT_TOKEN);
     jobRepository = module.get(SYNC_JOB_REPOSITORY_TOKEN);
   });
 

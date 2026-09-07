@@ -33,6 +33,7 @@ import {
   type StreamConsumerClient,
   type StreamEntry,
 } from '@openlinker/shared/redis';
+import { JOB_INTAKE_REDIS_CLIENT_TOKEN } from './sync-worker.tokens';
 
 @Injectable()
 export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
@@ -57,7 +58,12 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
   private restartTimer: NodeJS.Timeout | null = null;
 
   constructor(
-    @Inject('REDIS_CLIENT')
+    // NOT `'REDIS_CLIENT'` directly (#2840). This loop blocks on `xReadGroup`
+    // with `BLOCK: 5000`, and the shared client is also the outbound rate
+    // limiter's — see the provider in `sync-worker.module.ts`. The token
+    // resolves to the shared client by default, so this is a seam, not a
+    // behaviour change.
+    @Inject(JOB_INTAKE_REDIS_CLIENT_TOKEN)
     private readonly redisClient: RedisClientType,
     @Inject(SYNC_JOB_REPOSITORY_TOKEN)
     private readonly jobRepository: SyncJobRepositoryPort,
