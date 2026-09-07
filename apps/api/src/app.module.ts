@@ -60,6 +60,7 @@ import { ReturnsReadApiModule } from './returns/returns-read.module';
 import { AutomationApiModule } from './automation/automation-api.module';
 import { CurrencyApiModule } from './currency/currency.module';
 import { OperationalSettingsApiModule } from './operational-settings/operational-settings.module';
+import { OmsApiModule } from './oms/oms-api.module';
 import { RequestPriorityModule } from './http/request-priority.module';
 
 @Module({
@@ -137,6 +138,10 @@ import { RequestPriorityModule } from './http/request-priority.module';
     McpModule, // MCP Resource-Server auth (PATs) + Streamable-HTTP ingress (#1486, ADR-034)
     CurrencyApiModule, // Reporting-currency settings HTTP API (#2126, ADR-040)
     OperationalSettingsApiModule, // Operator-settable sweep budgets + deletion-audit cadence (#2651)
+    // /connections/:id/sourcing-rules — authoring the OL fulfilment router's ordered
+    // ruleset (#2953). Deliberately NOT `routing-rules`, which MappingsApiModule owns
+    // for the unrelated ADR-012 dispatch surface.
+    OmsApiModule,
   ],
   controllers: [AppController],
   providers: [AppService],

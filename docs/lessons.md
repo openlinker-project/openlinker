@@ -1119,3 +1119,39 @@ media queries evaluate against, which at a boundary inverts the reading.
   `resolveSalesDocumentRouting`, and the `check-*-mirror.mjs` family that exists for the same
   class of split-brain.
 - **Source**: #2666 (plan-stage `/tech-review`, escalated to BLOCKING before implementation).
+
+---
+
+## Grep the live `@Controller` prefixes and the DTO class names before adding a route — neither collision fails anything
+
+**Context**: #2953 added an operator CRUD surface for the OL fulfilment router's ruleset. The
+natural prefix was `connections/:connectionId/routing-rules`, and the natural response class was
+`RoutingRuleResponseDto`. Both were already taken by
+`apps/api/src/mappings/http/fulfillment-routing.controller.ts` — the ADR-012 *dispatch* surface
+(#836), which answers a different question over a different table.
+
+**Problem**: two silent collisions, neither of which any gate in this repo detects.
+
+- **Duplicate route path.** NestJS registers both handlers for `GET /connections/:id/routing-rules`
+  and the first-registered wins. Depending on module order in `app.module.ts`, either the dispatch
+  rules or the sourcing rules become unreachable — no boot error, no failing test.
+  `route-authorization-coverage.spec.ts` walks every controller but checks **decorators**, not path
+  uniqueness, so it stays green either way.
+- **Duplicate DTO class name.** `@nestjs/swagger` keys schema definitions by CLASS NAME, so a
+  second `RoutingRuleResponseDto` in a different folder silently overwrites the first in the
+  generated OpenAPI document. Both classes compile, both are type-correct, and the published
+  contract ends up describing one surface with the other's fields.
+
+**Rule**: before adding a controller, run `grep -rn "@Controller('" apps/api/src` and confirm the
+prefix is unclaimed; before naming a DTO, grep the class name across `apps/api/src/**/dto`. Prefer
+a prefix that names the **question the surface answers** (`sourcing-rules`) over one that names the
+mechanism (`routing-rules`), because the mechanism word is the one two unrelated features
+independently reach for. Where the two surfaces are deliberately kept apart by an ADR, say so in
+each controller's docblock and point at the other.
+
+**Applies to**: any new `apps/api` controller or request/response DTO — especially in a domain
+where an adjacent context already owns similar vocabulary (`routing`, `fulfillment`, `mapping`,
+`status`).
+
+**Source**: #2953 (caught by `/pre-implement` before implementation; both collisions were in the
+first draft of the plan).
