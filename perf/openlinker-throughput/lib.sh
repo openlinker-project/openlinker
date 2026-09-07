@@ -1152,12 +1152,37 @@ reset_between_repeats() {
   # order-ingestion.service.ts:239, redis-streams-job-enqueue.service.ts:23).
   # SCAN rather than KEYS - this runs against the shared redis-data volume,
   # never blocking, matching the #2590 finding of 37,500+ standing keys.
+  #
+  # RAW output, never `--no-raw`. This function shipped with `--no-raw` and had
+  # NO CALLER in any scenario until F1 (#2847) - F3 only names it in a comment
+  # explaining why it does not use it - so the flag had never executed. It
+  # cannot work: `--no-raw` asks redis-cli for its human-readable form, which
+  # renders the SCAN reply as
+  #
+  #     1) "8192"
+  #     2) 1) "jobdedup:..."
+  #
+  # so `head -1` yields `1) "8192"`, feeding `1) "8192"` back as the next
+  # cursor. Redis answers `ERR invalid cursor`, that string is not `0`, and the
+  # `while true` loop spins for ever issuing the same failing command. Observed
+  # live: a scenario sat at 0% progress with a `docker exec ... SCAN (error) ERR
+  # invalid cursor ...` child, indefinitely.
+  #
+  # Raw mode prints the cursor bare on line 1 and one key per line after it,
+  # which is exactly the shape the parsing below already assumed.
   for conn_id in $(printf '%s' "$conn_ids" | tr -d "'" | tr ',' ' '); do
     n=0
-    local cursor=0 batch
+    local cursor=0 batch guard=0
     while true; do
-      batch="$(redis_cli --no-raw SCAN "$cursor" MATCH "jobdedup:*:${conn_id}:*" COUNT 1000)"
+      batch="$(redis_cli SCAN "$cursor" MATCH "jobdedup:*:${conn_id}:*" COUNT 1000)"
       cursor="$(printf '%s' "$batch" | head -1)"
+      # FAIL FAST on a cursor that is not a plain integer. The bug above was
+      # survivable only because it was silent; a loop whose termination
+      # condition can never be met must abort rather than spin, so a future
+      # redis-cli output change is a loud failure and not another hang.
+      case "$cursor" in
+        ''|*[!0-9]*) die "reset_between_repeats: redis SCAN answered a non-numeric cursor [$cursor] - refusing to loop. Full reply: $batch" ;;
+      esac
       local keys
       keys="$(printf '%s' "$batch" | tail -n +2)"
       if [ -n "$keys" ]; then
@@ -1166,6 +1191,12 @@ reset_between_repeats() {
         n=$((n + $(printf '%s\n' "$keys" | wc -l)))
       fi
       [ "$cursor" != "0" ] || break
+      # A second belt: SCAN is guaranteed to terminate, but only against a
+      # server that keeps its promises. Bounding the iteration count turns a
+      # pathological server into a named failure instead of a hung campaign.
+      guard=$((guard + 1))
+      [ "$guard" -lt "${RESET_SCAN_MAX_ITERATIONS:-100000}" ] \
+        || die "reset_between_repeats: SCAN did not complete within ${RESET_SCAN_MAX_ITERATIONS:-100000} iterations for connection $conn_id"
     done
     [ "$n" -eq 0 ] || log "reset_between_repeats: deleted $n jobdedup:* key(s) for connection $conn_id"
   done
@@ -1383,6 +1414,64 @@ post_guard_generator_saturated() {
   ' "$summary_path" 2>/dev/null || echo "DISCARDED post_guard_generator_saturated: could not parse $summary_path"
 }
 
+# post_guard_feed_starved - the system must never have RUN OUT OF WORK inside
+# the window, or the run measured the driver rather than OpenLinker.
+#
+# This is `post_guard_generator_saturated`'s counterpart for a scenario whose
+# load does not arrive over HTTP from k6 (#2847/F1). There the instrument is a
+# request generator and the failure is "k6 was at its own ceiling"; here the
+# instrument is a supply of pending work and the failure is the mirror image -
+# "the supply ran dry and the system sat idle". Both produce the same wrong
+# conclusion, which #2933 records F3 nearly publishing: an achieved rate
+# reported as the system's ceiling when it is in fact a floor on what the
+# instrument offered.
+#
+# THE INPUT IS AVAILABLE WORK, NOT AN UPSTREAM BACKLOG, and the distinction is
+# the whole correctness of the guard. F1's first draft passed the ALLEGRO STUB's
+# own un-polled backlog, which is wrong in the dangerous direction: a poll pump
+# reading 100 events every 10 seconds drains a 900-order stub in 90 seconds and
+# turns every one of them into a queued child job, so the stub reads empty
+# while OpenLinker is at its busiest. That would have discarded every valid
+# throughput run. What the guard actually needs is the total the system could
+# still have worked on - upstream supply PLUS whatever is already queued and
+# due - and it is zero only when the system genuinely had nothing to do.
+#
+# It is deliberately a PURE function of one already-measured number rather
+# than a reader of anything, because the guard that cannot see is this
+# harness's other recurring failure (post_guard_limiter_degraded answered "ok"
+# on every scenario of this campaign while structurally unable to match a
+# line, #2851). The scenario samples available work on every observer tick and
+# passes the MINIMUM it saw; whether that sensor works is then provable
+# against the live stand by a scenario's own --smoke, not asserted here.
+#
+# Three inputs, told apart on purpose:
+#   ""        -> the scenario offers no standing supply (a serial,
+#                one-order-at-a-time latency arm deliberately runs the system
+#                dry between samples). Not applicable.
+#   "unknown" -> available work could not be established for at least one
+#                tick. DISCARDS: a run that cannot show its instrument was
+#                still offering load is not a run whose instrument behaved,
+#                which is the same rule post_guard_generator_saturated applies
+#                to a missing k6 summary.
+#   <integer> -> 0 discards, anything positive is ok.
+post_guard_feed_starved() {
+  local min_available="${1:-}"
+  [ -n "$min_available" ] || { echo "ok"; return 0; }
+  if [ "$min_available" = "unknown" ]; then
+    echo "DISCARDED post_guard_feed_starved: available work could not be established for at least one observer tick - a run that cannot show its instrument was still offering load cannot report a ceiling"
+    return 0
+  fi
+  if ! [ "$min_available" -ge 0 ] 2>/dev/null; then
+    echo "DISCARDED post_guard_feed_starved: unreadable available-work value '$min_available' - expected a non-negative integer, the empty string, or 'unknown'"
+    return 0
+  fi
+  if [ "$min_available" -eq 0 ]; then
+    echo "DISCARDED post_guard_feed_starved: the system ran out of work inside the window (upstream supply and the due queue were BOTH empty on at least one tick), so it was idle for part of the measurement - the achieved rate is a floor on the OFFERED rate, not the system's ceiling. Push a deeper backlog (or a shorter window) and re-run"
+    return 0
+  fi
+  echo "ok"
+}
+
 # ---------------------------------------------------------------------------
 # verdict - VALID / DISCARDED + reason, with a documented, machine-parseable
 # schema (--resume parses it, #2845). One `key=value` per line, LF-terminated,
@@ -1420,8 +1509,15 @@ verdict_read() {
 # genuinely has none (F2). Omitting it for a k6 scenario silently skips the
 # generator check, which is the shape post_guard_generator_saturated exists to
 # stop - so scenarios should pass it even when they expect it to pass.
+#
+# `min_available_work` (9th, #2847) carries the same "absence is meaningful"
+# rule one instrument over: pass the minimum AVAILABLE WORK observed across
+# the window (upstream supply plus the due queue - see post_guard_feed_starved
+# for why an upstream backlog alone is the wrong number) for any scenario
+# whose load is a standing supply, and leave it empty only for one that
+# deliberately runs the system dry between samples.
 run_post_guards() {
-  local dir="$1" conn_ids="$2" ws_iso="$3" ws_epoch="$4" we_epoch="$5" dest="${6:-}" k6_summary="${7:-}" k6_executor="${8:-ramping-arrival-rate}"
+  local dir="$1" conn_ids="$2" ws_iso="$3" ws_epoch="$4" we_epoch="$5" dest="${6:-}" k6_summary="${7:-}" k6_executor="${8:-ramping-arrival-rate}" min_available_work="${9:-}"
   local results=() r
   results+=("$(post_guard_attempts "$conn_ids" "$ws_iso")")
   results+=("$(post_guard_deferrals "$conn_ids" "$ws_iso")")
@@ -1429,6 +1525,7 @@ run_post_guards() {
   results+=("$(post_guard_destination_creates "$ws_iso" "$dest")")
   results+=("$(post_guard_limiter_degraded "$ws_epoch" "$we_epoch")")
   results+=("$(post_guard_generator_saturated "$k6_summary" "$k6_executor")")
+  results+=("$(post_guard_feed_starved "$min_available_work")")
 
   local reasons=()
   for r in "${results[@]}"; do

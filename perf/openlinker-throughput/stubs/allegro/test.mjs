@@ -286,6 +286,49 @@ test('distinct buyers produce distinct masked-email fixed parts', async () => {
 });
 
 // ---------------------------------------------------------------------------
+// Buyer NAMES carry no digits, and are still distinct per pool slot
+//
+// Found live by F1 (#2847): PrestaShop validates a customer's firstname and
+// lastname with `Validate::isName`, which rejects digits outright, so a
+// lastName of `Number42` answered HTTP 400 code 85 on every destination
+// create - and because OrderSyncService fans out under Promise.allSettled the
+// job still recorded `outcome: 'ok'` while the shop received nothing. This
+// asserts both halves of the fix, because dropping the digits without keeping
+// the slots distinct would silently collapse the buyer pool the stub's own
+// identity decision depends on.
+// ---------------------------------------------------------------------------
+
+test('buyer names carry no digits and stay distinct per pool slot', async () => {
+  await resetRun('t-buyer-names');
+  await call('POST', `/__stub/tenants/${TENANT_A}/orders`, {
+    token: null,
+    body: { count: 30 },
+  });
+  const { body: eventsPage } = await call('GET', '/order/events?limit=50', { token: TOKEN_A });
+
+  const names = new Set();
+  for (const event of eventsPage.events) {
+    const { body: form } = await call(
+      'GET',
+      `/order/checkout-forms/${encodeURIComponent(event.order.checkoutForm.id)}`,
+      { token: TOKEN_A }
+    );
+    assert.ok(
+      !/[0-9]/.test(form.buyer.firstName),
+      `buyer.firstName must contain no digit (PrestaShop Validate::isName), got ${form.buyer.firstName}`
+    );
+    assert.ok(
+      !/[0-9]/.test(form.buyer.lastName),
+      `buyer.lastName must contain no digit (PrestaShop Validate::isName), got ${form.buyer.lastName}`
+    );
+    names.add(`${form.buyer.firstName} ${form.buyer.lastName}`);
+  }
+  // 30 orders against the default 50-slot pool: every slot is still distinct,
+  // so the letter encoding did not collapse the pool.
+  assert.equal(names.size, 30, 'each pool slot should still render a distinct name');
+});
+
+// ---------------------------------------------------------------------------
 // Offer ids: {tenant}-offer-{n}, n within the configured pool size
 // ---------------------------------------------------------------------------
 

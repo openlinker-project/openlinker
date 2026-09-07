@@ -187,7 +187,36 @@ step_module() {
 # junction the account is unbound and every WS call answers 503 "The PrestaShop
 # webservice is disabled" with PSWS-Version: 0, even with PS_WEBSERVICE on.
 # ---------------------------------------------------------------------------
-WS_RESOURCES="products combinations stock_availables orders order_details customers addresses carriers order_carriers order_states specific_prices product_options product_option_values tax_rules taxes"
+# Every resource `PrestashopOrderProcessorManagerAdapter.createOrder` touches,
+# plus the catalogue/stock ones the master-sync paths need.
+#
+# `countries`, `currencies` and `carts` were MISSING until #2847, and the
+# failure they produced is worth naming because it does not look like a
+# permission problem: PrestaShop answers an ungranted resource with
+# `Authentication failed: Invalid API key`, so the order create died reporting
+# a bad credential on a connection whose own `POST /connections/:id/test` had
+# just passed and whose `customers` writes were succeeding. The three are on
+# the create path exactly once each -
+#   countries   `PrestashopCountryResolver.resolveCountryId`, reached by
+#               address provisioning (24h per-connection cache, so it fires
+#               on the first order after a restart and then rarely)
+#   currencies  `readPrestashopCurrencyByIso`, once per order before the cart
+#   carts       `POST carts`, the cart every order is built on
+# - and each is a hard stop for the whole destination arm when absent.
+#
+# `configurations` is a FOURTH, and it fails differently, which is why it
+# survived the first three being added: the create path reads
+# `GET configurations?filter[name]=[PS_CURRENCY_DEFAULT]` and tolerates a
+# failure, so the order still completes. It is therefore not a hard stop - it
+# is a silent tax. Measured during F1's latency arm: 4 of 4 orders spent one
+# 401 there, i.e. roughly a tenth of the destination's whole 60/min rate-limit
+# budget per order, on a request that can never succeed. A tolerated error is
+# harder to find than a fatal one, so it is named here rather than left to be
+# rediscovered.
+#
+# The grant below is re-applied on EVERY bootstrap run (DELETE + re-INSERT),
+# so adding a name here repairs an existing stand rather than only a fresh one.
+WS_RESOURCES="products combinations stock_availables orders order_details customers addresses countries currencies carts configurations carriers order_carriers order_states specific_prices product_options product_option_values tax_rules taxes"
 
 step_webservice() {
   log "--- PrestaShop WebService key ---"
@@ -328,7 +357,39 @@ step_woocommerce() {
   WC_CK="$(printf '%s' "$json" | json_field consumer_key)"
   WC_CS="$(printf '%s' "$json" | json_field consumer_secret)"
   [ -n "$WC_CK" ] || die "WooCommerce key creation returned no consumer_key"
+  WC_KEY_ROTATED=1
   created "WooCommerce REST key (${WC_CK:0:10}...)"
+}
+
+# ---------------------------------------------------------------------------
+# Step 4b (#2847) - push a ROTATED WooCommerce key onto an existing connection.
+#
+# `ol_ensure_connection` is create-only, so it supplies credentials exactly
+# once, at creation. `step_woocommerce` above, meanwhile, ROTATES the key
+# whenever it cannot recover the plaintext from stand-ids.env - and the
+# plaintext is unrecoverable by construction, because WooCommerce stores the
+# consumer key hashed. So on any stand whose stand-ids.env was lost (a fresh
+# worktree is enough), the two halves silently disagree: WooCommerce holds a
+# new key and the OpenLinker connection still holds the old one, for ever, and
+# nothing repairs it because every later step reports FOUND.
+#
+# Found live by F1 (#2847), whose WooCommerce destination arm answered
+# `WooCommerce authentication failed - check consumer key and secret` on a
+# stand that every other check called healthy. Without this step that arm is
+# unrunnable and the failure looks like a stand fault rather than a bootstrap
+# one.
+#
+# Only fires when this run actually rotated: a reused key is already the one
+# the connection carries, and a needless credential write would rewrite the
+# encrypted row for nothing.
+step_woocommerce_credentials() {
+  [ "${WC_KEY_ROTATED:-0}" = "1" ] || return 0
+  [ -n "${WC_CONN_ID:-}" ] || { warn "WooCommerce key was rotated but no connection id resolved - the connection still carries the OLD key"; return 0; }
+  [ "$VERIFY_ONLY" = 1 ] && { gap "WooCommerce connection credentials (key was rotated this run)"; return 0; }
+  would "push the rotated WooCommerce key onto connection $WC_CONN_ID" && return 0
+  ol_api PUT "/v1/connections/$WC_CONN_ID/credentials" \
+    "$(jq -n --arg ck "$WC_CK" --arg cs "$WC_CS" '{credentials:{consumerKey:$ck, consumerSecret:$cs}}')" >/dev/null
+  created "WooCommerce connection credentials updated to the rotated key"
 }
 
 # ---------------------------------------------------------------------------
@@ -496,31 +557,92 @@ step_allegro_offer_manager() {
 # never reaches a destination create, and burns ten retry attempts over roughly
 # 30 hours. The offer-id space must match the stub's (#2856).
 # ---------------------------------------------------------------------------
+# AN OFFER MUST POINT AT A PRODUCT THE DESTINATION ACTUALLY HAS (#2847)
+#
+# The original seeder pointed every offer at any non-stale `product_variants`
+# row. That is not enough for a DESTINATION-CREATE path, and F1 found out the
+# expensive way: `seed-catalogue.sh` writes 10 000 OL products plus matching
+# `identifier_mappings` rows whose external ids are synthetic strings
+# (`PERFSEED-EXT-PROD-ps-*`, `PERFSEED-EXT-PROD-wc-*`) - it seeds OL's own
+# tables and the MAPPINGS, never a product in either shop. It was built for the
+# read-path scenarios, where nothing crosses to a shop and that is fine.
+#
+# An order whose line resolves to one of those products reaches the destination
+# adapter and dies there:
+#
+#   PrestaShop   GET products/PERFSEED-EXT-PROD-ps-10000 -> Resource not found
+#                (the tax-rate chain, before any order is created)
+#   WooCommerce  Corrupted mapping: "PERFSEED-EXT-PROD-wc-10000" is not a
+#                valid positive integer WC ID
+#
+# and because `OrderSyncService` fans out under `Promise.allSettled`, the job
+# still records `outcome: 'ok'` while the shop receives nothing.
+#
+# The target set is therefore variants whose product carries a NUMERIC
+# PrestaShop external id - a real `id_product` in the shop's own catalogue,
+# which on this stand is the six products bootstrap itself installs (20-25,
+# eleven non-stale positions). A numeric test rather than a hardcoded list, so
+# a stand that later grows a real catalogue picks it up automatically.
+#
+# Note what this means for #2856's seeded-mapping contract ("the offer pool and
+# the distinct-product count are the same number"): it CANNOT hold on a stand
+# with six real products, and the warning below says so with the real figure
+# rather than letting a reader assume 200. A destination-create measurement has
+# to state its true distinct-product count, because that is what the PrestaShop
+# tax chain's 24h per-(connection, product, country) cache decays against.
 seed_offer_mappings_for() {
-  local conn_id="$1" tenant="$2" existing
+  local conn_id="$1" tenant="$2" rows distinct usable want
   [ -n "$conn_id" ] || { warn "no connection id for tenant $tenant - skipping offer mappings"; return 0; }
-  existing="$(pg_sql "SELECT COUNT(*) FROM identifier_mappings WHERE \"entityType\"='Offer' AND \"connectionId\"='$conn_id'")"
-  if [ "${existing:-0}" -ge "$ALLEGRO_OFFER_POOL_SIZE" ]; then
-    found "Offer mappings for $tenant ($existing rows)"; return 0
+
+  # Variants whose product is REAL at the PrestaShop destination.
+  local real_clause=""
+  if [ -n "${PS_CONN_ID:-}" ]; then
+    real_clause="AND EXISTS (SELECT 1 FROM identifier_mappings m
+                             WHERE m.\"entityType\"='Product' AND m.\"connectionId\"='$PS_CONN_ID'
+                               AND m.\"internalId\"=pv.\"productId\" AND m.\"externalId\" ~ '^[0-9]+\$')"
   fi
-  if [ "$VERIFY_ONLY" = 1 ]; then gap "Offer mappings for $tenant (have ${existing:-0}, need $ALLEGRO_OFFER_POOL_SIZE)"; return 0; fi
-  would "seed $ALLEGRO_OFFER_POOL_SIZE Offer mappings for $tenant" && return 0
+  usable="$(pg_sql "SELECT COUNT(*) FROM product_variants pv WHERE pv.\"isStale\" = false $real_clause")"
+  [ "${usable:-0}" -gt 0 ] || die "no non-stale product_variants map to a real (numeric-id) PrestaShop product - install the module's catalogue before the offer mappings"
 
-  # Each mapping points at a live, non-stale ProductVariant. A stale one would
-  # resolve as 'source_deleted' rather than a usable item.
-  local variants
-  variants="$(pg_sql "SELECT COUNT(*) FROM product_variants WHERE \"isStale\" = false")"
-  [ "${variants:-0}" -gt 0 ] || die "no non-stale product_variants exist - seed the catalogue before the mappings"
+  # The most distinct targets this stand can support. Comparing against the
+  # pool size alone would report a permanent gap on a stand whose real
+  # catalogue is smaller than the pool, and a permanent gap trains people to
+  # ignore the summary.
+  want="$ALLEGRO_OFFER_POOL_SIZE"
+  [ "$usable" -ge "$want" ] || want="$usable"
 
+  rows="$(pg_sql "SELECT COUNT(*) FROM identifier_mappings WHERE \"entityType\"='Offer' AND \"connectionId\"='$conn_id'")"
+  distinct="$(pg_sql "SELECT COUNT(DISTINCT im.\"internalId\") FROM identifier_mappings im
+                      JOIN product_variants pv ON pv.id = im.\"internalId\"
+                      WHERE im.\"entityType\"='Offer' AND im.\"connectionId\"='$conn_id'
+                        AND pv.\"isStale\" = false $real_clause")"
+  if [ "${rows:-0}" -ge "$ALLEGRO_OFFER_POOL_SIZE" ] && [ "${distinct:-0}" -ge "$want" ]; then
+    found "Offer mappings for $tenant ($rows rows over $distinct destination-resolvable variant(s); stand supports $usable)"; return 0
+  fi
+  if [ "$VERIFY_ONLY" = 1 ]; then
+    gap "Offer mappings for $tenant (have ${rows:-0} rows over ${distinct:-0} destination-resolvable variant(s), need $ALLEGRO_OFFER_POOL_SIZE rows over $want)"; return 0
+  fi
+  would "seed/repair $ALLEGRO_OFFER_POOL_SIZE Offer mappings for $tenant over $want destination-resolvable variant(s)" && return 0
+
+  if [ "$usable" -lt "$ALLEGRO_OFFER_POOL_SIZE" ]; then
+    warn "only $usable variant(s) resolve to a real PrestaShop product, fewer than the offer pool $ALLEGRO_OFFER_POOL_SIZE - offers will SHARE targets and the distinct-product count will NOT equal the offer pool. Any destination-create measurement must record the real figure (#2856's seeded-mapping contract cannot hold here)."
+  fi
+
+  # DELETE-then-insert rather than ON CONFLICT DO NOTHING: the repair case has
+  # rows whose externalId already exists but whose internalId points somewhere
+  # unusable, and DO NOTHING would leave every one of them exactly as it was.
+  pg_sql "DELETE FROM identifier_mappings WHERE \"entityType\"='Offer' AND \"connectionId\"='$conn_id'" >/dev/null
   pg_sql "INSERT INTO identifier_mappings (id, \"entityType\", \"internalId\", \"externalId\", \"platformType\", \"connectionId\", \"createdAt\", \"updatedAt\")
           SELECT gen_random_uuid(), 'Offer', v.id, '${tenant}-offer-' || g.n, 'allegro', '$conn_id', NOW(), NOW()
           FROM generate_series(1, $ALLEGRO_OFFER_POOL_SIZE) AS g(n)
           JOIN LATERAL (
-            SELECT id FROM product_variants WHERE \"isStale\" = false
-            ORDER BY id OFFSET ((g.n - 1) % $variants) LIMIT 1
+            SELECT pv.id FROM product_variants pv
+            WHERE pv.\"isStale\" = false $real_clause
+            ORDER BY pv.id OFFSET ((g.n - 1) % $usable) LIMIT 1
           ) AS v ON true
           ON CONFLICT DO NOTHING" >/dev/null
-  created "$ALLEGRO_OFFER_POOL_SIZE Offer mappings for $tenant"
+  distinct="$(pg_sql "SELECT COUNT(DISTINCT \"internalId\") FROM identifier_mappings WHERE \"entityType\"='Offer' AND \"connectionId\"='$conn_id'")"
+  created "$ALLEGRO_OFFER_POOL_SIZE Offer mappings for $tenant over ${distinct} destination-resolvable variant(s)"
 }
 
 step_offer_mappings() {
@@ -613,6 +735,10 @@ main() {
   step_tax_group
   step_woocommerce
   step_connections
+  # After step_connections (the connection must exist to be patched) and
+  # before step_verify_connections (whose WooCommerce test is exactly what a
+  # stale credential fails) - #2847.
+  step_woocommerce_credentials
   step_allegro_offer_manager
   step_offer_mappings
   step_verify_connections
