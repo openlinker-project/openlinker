@@ -277,6 +277,10 @@ function selfCheck() {
   expect('full copy coverage is ok', diffCopyCoverage(['a', 'b'], ['a', 'b']).ok, true);
   expect('missing copy entry fails', diffCopyCoverage(['a', 'b'], ['a']).ok, false);
   expect('orphan copy entry fails', diffCopyCoverage(['a'], ['a', 'b']).ok, false);
+  // Both sides empty compares EQUAL — the pure diff is vacuous by design,
+  // which is exactly why `main` refuses an empty parse before calling it.
+  // Pinned so nobody "fixes" the vacuity here and drops the guard there.
+  expect('empty vs empty is vacuously ok', diffReasonValues([], []).ok, true);
 
   // The local parsers are exercised too — a copied parser that silently stopped
   // reading literals would make every comparison vacuously pass.
@@ -317,10 +321,31 @@ async function main() {
   const frontend = parseReasonValues(frontendSrc, DECLARATION);
   const copy = parseCopyKeys(copySrc, COPY_DECLARATION);
 
+  // An EMPTY parse is fatal, not merely a parse that found no declaration.
+  //
+  // `diffReasonValues([], [])` is `ok`, so a parser that silently read zero
+  // literals from both sides would print `0 reason value(s) identical` and pass
+  // while asserting nothing — the same green reading for "not covered" and
+  // "covered and passing" that #2673 rejects. That is also the OTHER half of
+  // the sibling's defect this file's `parseReasonValues` fixes (#3002): the
+  // comment-order bug made both sides parse as empty, and only an emptiness
+  // guard turns that into a failure rather than a vacuous pass. The shape is
+  // `check-attention-reason-mirror.mjs`'s `need` / `needEntries`.
   const fatal = [];
-  if (!backend) fatal.push(`${BACKEND_FILE}: could not find \`export const ${DECLARATION} = [\``);
-  if (!frontend) fatal.push(`${FRONTEND_FILE}: could not find \`export const ${DECLARATION} = [\``);
-  if (!copy) fatal.push(`${COPY_FILE}: could not find \`export const ${COPY_DECLARATION} = {\``);
+  const needValues = (parsed, file) => {
+    if (!parsed) {
+      fatal.push(`${file}: could not find \`export const ${DECLARATION} = [\``);
+    } else if (parsed.values.length === 0) {
+      fatal.push(`${file}:${parsed.line}: \`${DECLARATION}\` parsed as EMPTY — refusing to compare`);
+    }
+  };
+  needValues(backend, BACKEND_FILE);
+  needValues(frontend, FRONTEND_FILE);
+  if (!copy) {
+    fatal.push(`${COPY_FILE}: could not find \`export const ${COPY_DECLARATION} = {\``);
+  } else if (copy.keys.length === 0) {
+    fatal.push(`${COPY_FILE}:${copy.line}: \`${COPY_DECLARATION}\` parsed as EMPTY — refusing to compare`);
+  }
 
   if (fatal.length > 0) {
     console.error('✗ check-destination-routing-reason-mirror FAILED');
