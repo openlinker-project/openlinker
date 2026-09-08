@@ -627,6 +627,19 @@ The unit test covering it passed, and that is the part worth remembering: it con
 
 **Applies to**: any backgrounded `until`/`while` poll used to serialise against a long build, test or migration run; `pgrep`/`pkill -f` used anywhere near a process whose name is a substring of the polling command.
 
+**Five independent instances, five different scripts, four different authors, one mechanism** (#2840, 2026-09-08 — recorded because a rule with four instances behind it reads differently from one with an anecdote):
+
+1. **A build waiter.** `until ! pgrep -f 'docker build --target worker'` never exited, because it and its two sibling waiters each carried that string in their own command lines. Consequence: **no api image was built for ten minutes while a separate check reported `api build running? yes`** — the check was reading the same self-match.
+2. **A measurement sampler's stop condition.** A cgroup RSS sampler decided when to stop with `ps aux | grep '[s]ustained-mixed-load'` — the scenario's own *name*. It kept sampling through container teardown and restart, and a least-squares fit then ran across a container boundary and returned **+0.67 MB/h** for what is really **+1.81 to +1.85 MB/h** with the quoted `last` value belonging to **a different, restarted process**. Nothing errored.
+3. **The same author finding their own withdrawal.** Diagnosing (2) required noticing the same mechanism a second time, in their own script.
+4. **A process count used to decide what was running.** `sustained-mixed-load` matched five processes on the stand — two genuine, plus a stale waiter from instance (1) and two transient inspection shells. Read as "arm C has launched"; **arm C had not launched at all**, and the arm still running was a different one with a different offered rate. Caught only by reading the run's `manifest.json` (`ordersPerMin`) instead of the process list.
+
+5. **`pkill -f` killed the shell doing the killing.** Cleaning up after the same campaign: `P='cgroup-rss-sampler'; pkill -f "$P"`. The shell's own command line contained the pattern, so `pkill` matched it and the command exited **144 (SIGTERM)** having terminated itself — the samplers were still running. `pgrep` never matches its own pid, which makes the read-only form feel safe and hides the trap; **`pkill` has no such courtesy, and neither does the surrounding shell.** The safe form is to resolve pids first and kill those (`ps -eo pid,args | awk '/pattern/ && !/awk/ {print $1}' | xargs -r kill`). Written down within minutes of instance (4), by the author who had just written instances (1) to (4) up — which is the strongest available argument that knowing the rule is not the same as applying it.
+
+**The generalisation the five instances support**: a guard's or probe's output must be verified in **both** directions. The ledger already covers a check that cannot report a FAILURE; instances (1) and (4) are a check that cannot stop reporting a **PASS**, and (2) is a *calculation* that cannot report "I have no data". A false pass sends someone to rebuild what was already correct or to hunt a stall that never happened; a false fail hides a real defect. Both are silent, and both are indistinguishable from the truth at the call site.
+
+**And the cheapest corollary, learned the same day**: when a process list and a persisted artefact disagree about what is running, **believe the artefact**. A run's own manifest records what it was configured to do; `pgrep` records what strings happen to be in flight.
+
 **Source**: #2380 (two stale watchers kept each other alive across several turns while the real gate ran undetected).
 
 ## `getMany()` materialises entities and silently DROPS raw `addSelect` columns — a raw column needs `getRawMany` or its own aggregate query
@@ -1041,6 +1054,24 @@ media queries evaluate against, which at a boundary inverts the reading.
 
 **Source**: #2405 (the parity spec from #2392 is now load-bearing for a second issue).
 
+## Before trusting a detector's NEGATIVES, feed it a known positive and watch it fire
+
+**Context**: `post_guard_limiter_degraded` (`perf/openlinker-throughput/lib.sh`) greps the worker log for the Redis rate-limiter's degraded-mode message, and its `ok` is written into `verdict.txt` for every scenario it runs against. It carried `docker logs --since "@$epoch"` from the day it was written.
+
+**Problem**: on Docker 29.5.2 the `@epoch` form is **accepted without error and matches nothing** — the same window returns 180 lines with a bare epoch, an RFC3339 timestamp or a relative `25m`, and 0 with `@`. So the guard answered `ok` on every scenario in the #2840 campaign **while being structurally unable to see a single degraded-limiter line, whatever the limiter did**. Fixed in `b12d4b272` (PR #2969); the verdict timestamps then split the campaign cleanly either side of it — F2 (09-05 23:53), F3 (09-05 23:23–09-06 00:30), F5 (09-06 09:23) and the #2943 read-path report all pre-date the fix, so **their `VALID` does not include "the limiter was not degraded"**, while all four F1 runs (09-07 02:01 onward) post-date it and are `DISCARDED` on exactly this guard.
+
+Two things make this worse than *a test passing for a reason it does not claim* (the seeder and migration entries above, and the red-first rule immediately preceding). First, a weak negative is still evidence; **this was no evidence at all**, dressed as a passing check. Second, a guard's answer is *recorded into every verdict it touches*, so one blind detector **retroactively weakened every prior `VALID` in the campaign** — the damage is not scoped to the run that introduced it.
+
+And note that **red-first does not catch this class**. Breaking the limiter deliberately would not have made the guard fire, because the guard could not see the log line under any condition. Nor can a stub-based unit test: a fake that returns lines regardless of the window passes however the window is spelled, which is precisely how the defect survived review. The fix's own test therefore asserts on the **arguments the guard hands `docker`** (a bare epoch, and no `@`) rather than on a count.
+
+**Rule**: a detector whose value is its negative — a guard, a post-guard, an absence assertion, a "no errors in the log" check — must be exercised against a **known positive** before any of its negatives is believed. Emit one real instance of the thing it looks for (a throwaway container printing the matched line, a deliberately injected failure) and confirm it reports; then confirm the window *before* that instance still reports clean, or the check is matching everything rather than the right thing. Where the detector shells out to an external tool, assert the **arguments** as well as the outcome, because a stub cannot distinguish a correct invocation from a malformed one. Red-first proves an assertion can fail *on bad input*; this proves the instrument can *see at all*.
+
+**Corollary, and it is what saved the published figures**: a contaminated guard does **not** automatically invalidate the measurements it accompanied. Each has to be re-argued on the mechanism, one at a time. The four figures now in the client-facing document were re-argued and are immune, each for its own reason: the **webhook-accept** arms ran with `runnerState=disabled`, so no job executed and the outbound limiter was never consulted; the **read-path** and **#2943** figures are pure HTTP reads that never touch the outbound limiter, and #2943 is additionally an in-run A/B on one dataset and one binary; and **F2** ran a single worker replica, where the per-process fallback equals the configured rate, so degradation cannot have inflated the figure — any Redis timeout on that path makes it *worse*, which is the conservative direction. What is not available is the blanket claim "the guard passed, so the limiter was fine".
+
+**Applies to**: `perf/openlinker-throughput/lib.sh` post-guards and `lib-test.sh`; any absence-shaped assertion, and any check that shells out to `docker logs`, `grep`, `journalctl` or similar to look for something.
+
+**Source**: #2851 (F4, where the guard was fixed), #2969 (the fix), #2840 (the campaign whose verdicts it retroactively qualified).
+
 ## A manifest that advertises no capabilities stamps an EMPTY `enabledCapabilities`, permanently
 
 **Context**: #2405 shipped the OL-OMS manifest with `supportedCapabilities: []`, following the Erli #980 precedent that a capability name enters the manifest together with the adapter that delivers it.
@@ -1397,3 +1428,77 @@ child rather than trusting the assignment.
 `lib.sh` that declares `${VAR:-...}` defaults at top level.
 
 **Source**: #2840 (weak-shop rate-limit gate).
+
+---
+
+## Verify a claim against the source that would carry it - a grep that came back empty is not evidence
+
+**Context**: a mixed-workload perf run (#2983, epic #2840) was commissioned with the framing
+that such a run is "the only run whose orders/hour figure an operator can apply to their own
+Tuesday", attributed to the epic. Before building on that framing I checked it, grepping all six
+`perf/openlinker-throughput/*.md` campaign documents for `mixed`, `soak`, `sustained`, `for
+hours`, `co-tenan`, `steady-state`, `queue depth` and `drain rate`. Two hits, neither relevant.
+I published a correction withdrawing the attribution.
+
+**Problem**: the sentence exists, verbatim, in **GitHub issue #2840's body** - a source I never
+searched. `gh issue view 2840` returns it at line 120, together with two obligations I had also
+therefore missed: that the run's composition is *"sweep crons ticking, plus an order ramp, plus
+stock churn"*, and that it must be *"flagged in its manifest as one inside which attribution is
+impossible"*. The grep was accurate; the inference from it was not. **An epic is an issue, and an
+issue's framing lives in its body** - so six repo files not containing a sentence says nothing
+about whether the epic said it. The withdrawal was more confidently wrong than the claim it
+corrected, because it was dressed as a verification.
+
+Note the mirror error this campaign has made repeatedly in the other direction: believing a
+figure because a PR comment or an earlier agent's paraphrase asserted it (ADR-050's `2.77x`
+attribution, F7's `32x` growth ratio, #2590's p95 ratios - all withdrawn). Both failures share
+one root: treating a *convenient* source as authoritative instead of the *owning* one.
+
+**Rule**: before asserting that a claim is unsupported, enumerate where it *would* live and check
+each - for a programme claim that means the epic and child issue bodies (`gh issue view N`), the
+ADRs, and the repo docs, not whichever of those is already open. State the scope actually
+searched, so a reader can see what was not. Silence from one source is grounds for widening the
+search, never for a withdrawal; a withdrawal needs positive evidence that the owning source does
+not carry it. This cuts both ways: an assertion in a comment is not evidence a figure is real
+either - read the source that owns it.
+
+**Applies to**: any correction, withdrawal or provenance claim in `perf/**/results-*.md`,
+`docs/architecture/adrs/**`, and PR or issue commentary that says a prior claim is unsupported.
+
+**Source**: #2983 (epic #2840, sustained mixed load).
+
+---
+
+## A liveness check keyed on a process NAME matches a peer's process - bound a sampler by its window, or by the PID it was started against
+
+**Context**: a mid-run side sampler added to the #2983 mixed-load window, writing container
+cgroup RSS into that run's results directory every 60 s. Its stop condition was
+`ps aux | grep '[s]ustained-mixed-load'` - the scenario's own name - on the reasoning that the
+sampler must not outlive the window it describes.
+
+**Problem**: a peer agent in another worktree then ran **the same scenario**, the grep matched
+*their* process, and the sampler kept appending to this run's results for **3.5 hours past
+`window_stop`**. The first analysis ran minutes after the window closed and therefore picked up
+post-window rows taken while the worker was being recreated by the teardown - which is where an
+anomalous `min 75.1 MB` came from. Restricting to in-window samples moved the fitted memory slopes
+materially (the worker's from +0.67 to +1.85 MB/h) and forced a published correction. Nothing
+warned: the CSV grew monotonically and every row was individually valid. On a host where several
+agents share one stand and routinely run each other's scenarios, a name is not an identity.
+
+**Rule**: a sampler's lifetime must be tied to the thing it measures, not to a process pattern.
+Prefer an explicit bound - a sample count, or the window's own end instant passed in - so the
+series cannot extend past the window even if the sampler is never signalled. Where liveness is
+genuinely needed, key it on the **PID** the sampler was started against (`kill -0 "$pid"`), never
+on a name a peer can also be running. Whatever the bound, **stamp the window's start and end into
+the results directory** so a later reader can restrict the series without having to reconstruct
+it. The two samplers `lib.sh` owns were never exposed to this: `sampler_stop` and its scenario
+counterpart both `kill` a recorded PID.
+
+Corollary for the analysis, not just the collection: when a series can outlive its window, an
+analysis run "just after the window closed" is not the same as one restricted to the window. Apply
+the time restriction explicitly rather than relying on when the analysis happened to run.
+
+**Applies to**: `perf/openlinker-throughput/**` samplers and any ad-hoc background collector
+writing into a measurement's results directory on a shared host.
+
+**Source**: #2983 (sustained mixed load, epic #2840).

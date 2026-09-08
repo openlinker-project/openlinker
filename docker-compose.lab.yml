@@ -487,6 +487,25 @@ services:
       # file deliberately does not carry.
       OL_WORKER_ROLE: '${OL_WORKER_ROLE:-}'
       WORKER_RUNNER_ENABLED: '${WORKER_RUNNER_ENABLED:-false}'
+      # The job-intake Redis client (#2983). `sync-worker.module.ts` still
+      # defaults this to `'false'`, i.e. the intake consumer shares the
+      # worker's one Redis client with the rate limiter's registry - and
+      # `JobIntakeConsumer` blocks on `xReadGroup` with `BLOCK: 5000` on that
+      # shared client, so a limiter `EVAL` can wait out up to 5s against its
+      # own 1s budget and fall back to per-process pacing. `results-retest-
+      # 2026-09-07.md` measured 40-49 fallback episodes per 300s window with
+      # the default and 0 with `true`, at 10.8x the order throughput.
+      #
+      # Passed through for the same reason the lane caps below are, and it is
+      # the same trap: compose substitutes `${VAR}` only for keys the service
+      # itself lists, so exporting this around `docker compose up` - or
+      # writing it into .env.lab - changed NOTHING before this line existed.
+      # Do not trust it either; read the worker's own
+      # `Job intake Redis client: SHARED|DEDICATED` startup line back.
+      #
+      # Empty is the default and means UNSET, so an untouched stand is
+      # byte-identical to its pre-#2983 self.
+      OL_JOB_INTAKE_DEDICATED_REDIS: '${OL_JOB_INTAKE_DEDICATED_REDIS:-}'
       # Lane caps (ADR-050 decisions 2/6, #2867). Passed through so a scenario
       # can SWEEP a cap - which is the only way to measure one, and was not
       # possible before: compose substitutes `${VAR}` only for keys the service
