@@ -2243,17 +2243,9 @@ class OpenLinker extends CarrierModule
 
         $classesDir = dirname(__FILE__) . '/classes/';
 
-        // #2962 - this call site referenced WebhookSender without the same
-        // class_exists/require_once guard every OTHER WebhookSender call site
-        // in this module uses, and $classesDir was computed only AFTER the
-        // static call. On a request where nothing had already pulled the class
-        // in, that is a fatal "Class WebhookSender not found" raised straight
-        // out of hookActionValidateOrderAfter / hookActionUpdateQuantity -
-        // aborting the shop's own order validation and stock-change hooks, not
-        // merely OpenLinker's outbox drain, and invisible from OpenLinker's
-        // side (no job, no delivery row). Whether it fires depends on autoload
-        // state, which is why it is route- and load-dependent rather than
-        // deterministic.
+        // #2962 - without this guard, a request where nothing has autoloaded
+        // WebhookSender yet fatals here, aborting hookActionValidateOrderAfter/
+        // hookActionUpdateQuantity; $classesDir must stay hoisted above this call.
         if (!class_exists('WebhookSender')) {
             require_once($classesDir . 'WebhookSender.php');
         }
