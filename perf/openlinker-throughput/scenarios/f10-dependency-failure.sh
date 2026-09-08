@@ -360,6 +360,7 @@ ORIGINAL_PS_CONFIG="$(connection_json "$PS_CONNECTION_ID" | jq -c '.config // {}
 ORIGINAL_PS_BASE_URL="$(printf '%s' "$ORIGINAL_PS_CONFIG" | jq -r '.baseUrl // empty')"
 [ -n "$ORIGINAL_PS_BASE_URL" ] || die "perf-prestashop carries no config.baseUrl - nothing to repoint, and nothing to restore"
 ORIGINAL_ALLEGRO_CAPS="$(connection_json "$SOURCE_CONNECTION_ID" | jq -c '.enabledCapabilities // []')"
+ORIGINAL_WC_CAPS="$(connection_json "$WC_CONNECTION_ID" | jq -c '.enabledCapabilities // []')"
 
 ORIGINAL_REPLICAS="$(discover_worker_containers | wc -w | tr -d ' ')"
 [ "$ORIGINAL_REPLICAS" -ge 1 ] || ORIGINAL_REPLICAS=1
@@ -391,6 +392,7 @@ restore_curl() {
 CONNECTION_TOUCHED=0
 PROXY_STARTED=0
 WORKER_TOUCHED=0
+WC_TOUCHED=0
 
 # Declared HERE, above the trap, and not beside the function that fills them
 # in. `set -u` is on, and an unset variable read inside an EXIT trap aborts
@@ -410,7 +412,7 @@ f10_on_exit() {
   # behind - a peer's next window would measure OUR fault as their result.
   clear_all_faults || true
 
-  if [ "$CONNECTION_TOUCHED" = "0" ] && [ "$PROXY_STARTED" = "0" ] && [ "$WORKER_TOUCHED" = "0" ]; then
+  if [ "$CONNECTION_TOUCHED" = "0" ] && [ "$PROXY_STARTED" = "0" ] && [ "$WORKER_TOUCHED" = "0" ] && [ "$WC_TOUCHED" = "0" ]; then
     log "nothing was changed on the stand - no restore needed"
     release_stand_exclusive
     return $rc
@@ -425,6 +427,11 @@ f10_on_exit() {
   if [ "$CONNECTION_TOUCHED" = "1" ]; then
     restore_curl PATCH "/v1/connections/$PS_CONNECTION_ID" "$(jq -n --argjson c "$ORIGINAL_PS_CONFIG" '{config:$c}')"
     log "  perf-prestashop config restored to baseUrl=$ORIGINAL_PS_BASE_URL"
+  fi
+
+  if [ "$WC_TOUCHED" = "1" ]; then
+    restore_curl PATCH "/v1/connections/$WC_CONNECTION_ID" "$(jq -n --argjson c "$ORIGINAL_WC_CAPS" '{enabledCapabilities:$c}')"
+    log "  perf-woocommerce enabledCapabilities restored to $ORIGINAL_WC_CAPS"
   fi
 
   # The proxy container is removed LAST, after the connection has been
@@ -1028,8 +1035,42 @@ run_f10_guards() {
   local stand_reasons=() observations=() answer
 
   # --- STAND guards: these still discard --------------------------------
-  answer="$(post_guard_requeues "$CONN_IDS")"
-  [ "$answer" = "ok" ] || stand_reasons+=("$answer")
+  #
+  # A NARROWED post_guard_requeues, and the narrowing is a correction rather
+  # than a relaxation.
+  #
+  # lib.sh's version matches "was running+locked in the snapshot, is unlocked
+  # now, attempts unchanged". It has no filter on the job's CURRENT status -
+  # and `SyncJobRepository.markSucceeded` sets `lockedAt: null` while leaving
+  # `attempts` alone, so an ordinary job that was simply RUNNING when the
+  # snapshot was taken and has since SUCCEEDED matches the signature exactly.
+  #
+  # Every other scenario snapshots a quiet queue, so it never sees this. F10
+  # cannot: its windows run back to back, and one order on this path spawns
+  # roughly three downstream jobs (master.inventory.syncByExternalId ->
+  # inventory.propagateToMarketplaces -> one marketplace.offerQuantity.update
+  # per marketplace connection), so there is essentially always something
+  # running when the next window's snapshot is taken. The first measured
+  # baseline was DISCARDED on four such rows, all of which had merely
+  # finished.
+  #
+  # Adding `j.status IN ('queued','running')` keeps the case the guard exists
+  # to catch - a row the recovery pass moved that this window is about to
+  # count - and drops the case it cannot distinguish and does not care about,
+  # a row that completed. It is deliberately still imperfect and says so: a
+  # requeue followed by a success is invisible to both versions, because
+  # `requeueStuckJobs` touches neither `attempts` nor anything else that
+  # would separate it from an ordinary completion. Fixing the shared guard is
+  # a follow-up, not something to do inside the run it would score.
+  answer="$(pg_sql "SELECT COUNT(*) FROM _perf_sync_jobs_snapshot s
+      JOIN sync_jobs j ON j.id = s.id
+      WHERE s.status='running' AND s.\"lockedAt\" IS NOT NULL
+        AND j.\"lockedAt\" IS NULL AND j.attempts = s.attempts
+        AND j.status IN ('queued','running')" 2>/dev/null || printf 0)"
+  if [ "${answer:-0}" -gt 0 ]; then
+    stand_reasons+=("DISCARDED f10_post_guard_requeues: $answer non-terminal job(s) show StuckJobRecoveryService's requeue signature")
+  fi
+  pg_sql_write "DROP TABLE IF EXISTS _perf_sync_jobs_snapshot" >/dev/null
 
   answer="$(post_guard_containers_stable "$dir")"
   if [ "$answer" != "ok" ]; then
@@ -1323,6 +1364,32 @@ CONNECTION_TOUCHED=1
 # PrestaShop before any window opens. A proxy that silently could not reach
 # upstream would make every window read as a total destination outage and the
 # whole run would report a fault that was never injected.
+# THE DESTINATION FAN-OUT IS NARROWED TO ONE MEMBER, STRUCTURALLY.
+#
+# `perf-woocommerce` also carries `OrderProcessorManager`, so every ingested
+# order fans out to it as well - and on this stand it fails EVERY time, with
+# "No WC product mapping for OL product ...", because the WC connection has no
+# product mappings seeded. The first measured baseline showed it plainly: 12
+# orders, 12 synced entries against PrestaShop, and 12 FAILED entries against
+# WooCommerce, in a window with no fault injected at all.
+#
+# That is fatal to this scenario's primary signal rather than merely noisy. The
+# question every destination window asks is "did the injected fault produce a
+# failed syncStatus entry", and it cannot be asked while a second destination
+# contributes one to every order unconditionally. It also puts a doomed HTTP
+# call on the critical path of each order.
+#
+# F1 removes the same contaminant the same way and for a related reason (its
+# `syncedAt` is stamped after the slowest of N destinations). Removing it
+# structurally beats caveating it: with one member in the fan-out, a failed
+# entry means the fault did it.
+log "narrowing the destination fan-out: disabling OrderProcessorManager on perf-woocommerce for the run"
+WC_CAPS_WITHOUT_ORDERS="$(printf '%s' "$ORIGINAL_WC_CAPS" | jq -c '[.[] | select(. != "OrderProcessorManager")]')"
+ol_api PATCH "/v1/connections/$WC_CONNECTION_ID" \
+  "$(jq -n --argjson c "$WC_CAPS_WITHOUT_ORDERS" '{enabledCapabilities:$c}')" >/dev/null
+WC_TOUCHED=1
+log "  perf-woocommerce caps $ORIGINAL_WC_CAPS -> $WC_CAPS_WITHOUT_ORDERS"
+
 log "verifying the proxy reaches the real PrestaShop before any window opens"
 PROXY_TEST="$(ol_api POST "/v1/connections/$PS_CONNECTION_ID/test" '{}' | jq -c '{success, message}')"
 log "  connection test through the proxy: $PROXY_TEST"
