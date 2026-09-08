@@ -426,7 +426,25 @@ f10_on_exit() {
 
   if [ "$CONNECTION_TOUCHED" = "1" ]; then
     restore_curl PATCH "/v1/connections/$PS_CONNECTION_ID" "$(jq -n --argjson c "$ORIGINAL_PS_CONFIG" '{config:$c}')"
-    log "  perf-prestashop config restored to baseUrl=$ORIGINAL_PS_BASE_URL"
+    # READ IT BACK. This line used to log "restored" unconditionally, and on
+    # the one run where it mattered it said so while restoring nothing: the
+    # API had exited (the I2 window's Redis outage killed it), `restore_curl`
+    # returned early with no token, and the stand was left with
+    # `config.baseUrl` pointing at a proxy container that had just been
+    # removed - every PrestaShop call on the stand would have failed, for the
+    # next scenario as much as for this one. A cleanup that reports success it
+    # did not achieve is worse than one that fails loudly.
+    local now_url
+    now_url="$(curl -sS "$OL_API_URL/v1/connections/$PS_CONNECTION_ID" \
+      -H "Authorization: Bearer ${RESTORE_TOKEN:-}" 2>/dev/null | jq -r '.config.baseUrl // empty' 2>/dev/null || printf '')"
+    if [ "$now_url" = "$ORIGINAL_PS_BASE_URL" ]; then
+      log "  perf-prestashop config restored and VERIFIED (baseUrl=$now_url)"
+    else
+      warn "  perf-prestashop was NOT restored - it reads [${now_url:-<unreadable>}], expected [$ORIGINAL_PS_BASE_URL].
+  THE STAND IS LEFT BROKEN FOR THE NEXT SCENARIO. Restore by hand:
+    curl -X PATCH $OL_API_URL/v1/connections/$PS_CONNECTION_ID \\
+      -H 'Content-Type: application/json' -d '{\"config\":$ORIGINAL_PS_CONFIG}'"
+    fi
   fi
 
   if [ "$WC_TOUCHED" = "1" ]; then
@@ -807,12 +825,34 @@ restore_infrastructure() {
         sleep 1; waited=$((waited + 1))
       done
       log "  redis answered PING after ${waited}s"
+      # THE LOCK IS RE-ESTABLISHED, AND A RIVAL HOLDER IS FATAL.
+      #
+      # Stopping Redis can destroy the lock this run holds, and the window in
+      # which it is gone is a window a peer can claim the stand in. Three
+      # cases, and only the first two are survivable:
+      #   gone            -> re-take it and carry on
+      #   still ours      -> nothing to do (RDB persistence restored it)
+      #   held by someone -> ABORT. Every later window would be measuring a
+      #                      stand somebody else is also driving, and the
+      #                      whole point of the lock is that this never
+      #                      silently happens. The previous version tested
+      #                      only for "gone", so a rival holder was passed
+      #                      over in silence.
       local holder
       holder="$(redis_cli GET "$STAND_LOCK_KEY" 2>/dev/null || printf '')"
-      if [ -z "$holder" ]; then
-        warn "  the stand lock did not survive the redis restart - re-taking it"
-        redis_cli SET "$STAND_LOCK_KEY" "f10-dependency-failure:pid$$@$(hostname):$(iso_now)" NX EX "$STAND_LOCK_TTL_SECS" >/dev/null 2>&1 || true
-      fi
+      case "$holder" in
+        "")
+          warn "  the stand lock did not survive the redis restart - re-taking it"
+          redis_cli SET "$STAND_LOCK_KEY" "f10-dependency-failure:pid$$@$(hostname):$(iso_now)" NX EX "$STAND_LOCK_TTL_SECS" >/dev/null 2>&1 || true
+          ;;
+        *":pid$$@"*)
+          log "  the stand lock survived the redis restart and is still ours"
+          ;;
+        *)
+          die "restore_infrastructure: the stand lock is now held by [$holder] - it was lost when redis stopped and a peer claimed it.
+  Every remaining window would measure a stand two scenarios are driving. Stopping here."
+          ;;
+      esac
       ;;
     I3)
       local w
@@ -915,7 +955,7 @@ read_ledger() {
              COUNT(*)::int AS n,
              SUM(attempts)::int AS attempts_total,
              MAX(attempts)::int AS attempts_max,
-             -- A `dead` row the HARNESS produced must never read as one the
+             -- A dead row the HARNESS produced must never read as one the
              -- system dead-lettered. drain_wait stamps its own lastError when
              -- it times out; the ledger below is read before that runs, so
              -- this should be 0 everywhere - it is carried so that if the
