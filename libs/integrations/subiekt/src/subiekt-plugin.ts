@@ -40,9 +40,16 @@ export const subiektAdapterManifest: AdapterMetadata = {
   version: '1.0.0',
   isDefault: true,
   // #1810 §1 — the Sfera bridge runs on the operator's own machine alongside
-  // Subiekt nexo, the same merchant-hosted profile PrestaShop's 60/4 (#1815)
-  // was calibrated for (not a borrowed number — Subiekt genuinely fits that
-  // rationale, unlike a carrier/marketplace platform). Both call sites already
+  // Subiekt nexo, the same merchant-hosted RATIONALE (#1815) PrestaShop's
+  // default was calibrated for (not a borrowed number — Subiekt genuinely fits
+  // that rationale, unlike a carrier/marketplace platform).
+  //
+  // The shared rationale is all that is shared: the two are no longer the same
+  // FIGURE. #2840 measured PrestaShop on constrained hardware and moved it to
+  // 300/min; this 60 was deliberately left where it is, because that
+  // measurement is evidence about PrestaShop and not about a Sfera bridge on
+  // an operator's desktop. It remains an UNMEASURED, conservative default —
+  // raise it only with a measurement of this platform. Both call sites already
   // pass this to `host.http.forConnection` (see `createCapabilityAdapter` below
   // and `SubiektConnectionTesterAdapter`, injected via constructor — never via
   // an import of this module, which would cycle back into it).

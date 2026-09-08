@@ -76,12 +76,53 @@ export const prestashopAdapterManifest: AdapterMetadata = {
   displayName: 'PrestaShop WebService v1',
   version: '1.0.0',
   isDefault: true,
-  // Conservative resolution-time fallback for a connection with no
-  // explicit config.rateLimit (#1810/#1772) — a shared-hosting PrestaShop
-  // VPS is the platform this issue's reporter hit an abuse block on.
-  // Placeholder values pending the reporter's actual abuse-notice text
-  // (see #1810's own open question); never written into stored config.
-  defaultRateLimit: { requestsPerMinute: 60, maxConcurrent: 4 },
+  // Resolution-time fallback for a connection with no explicit
+  // config.rateLimit (#1810/#1772); never written into stored config. A
+  // self-hosted PrestaShop is the operator's OWN webserver - simultaneously
+  // the throughput bottleneck and busy serving customers - which is why a
+  // default belongs here at all (#1815).
+  //
+  // 300/min is one request every 200 ms. `requestsPerMinute` is strict
+  // minimum-interval spacing with NO burst, CAS'd in Redis across every
+  // replica (#2015), so the shop sees an evenly spaced 5 req/s and never a
+  // spike. Peak concurrency stays at ~1, which is why `maxConcurrent: 4` is
+  // not binding at this rate and is left alone.
+  //
+  // MEASURED, not inherited (#2840,
+  // perf/openlinker-throughput/results-weak-shop-2026-09-07.md). PrestaShop
+  // 9.0.2 with a 50 000-product catalogue, driven at 1-10 req/s of
+  // create-path reads across six CPU profiles, with the database squeezed
+  // alongside the shop on the small ones. Every constraint was read back from
+  // both the daemon and the container's own cgroup:
+  //
+  //   5 req/s (this default) is FREE down to 0.5 cpu (p99 78 ms), and
+  //   DEGRADES but never fails at 0.25 cpu (p99 143 ms; 3000/3000 ok over a
+  //   sustained 10 min with the tail flat). NOTHING refused at any profile or
+  //   rate - a constrained shop QUEUES, it does not shed.
+  //
+  // THE BOUND: this is not support for 600. 10 req/s is free at 1.0 cpu
+  // (p99 20 ms) and collapses below it - p99 617 ms at 0.5 cpu, 2126 ms at
+  // 0.25 cpu. The knee for THIS value sits between 0.5 and 0.25 cpu.
+  //
+  // AND DO NOT RAISE `maxConcurrent` ON THE STRENGTH OF THIS. The limiter is
+  // WEIGHT-BLIND: it admits five requests per second whether each costs 11 ms
+  // (a create-path read) or 1021 ms (a `display=full` catalogue page on a
+  // quarter-core shop - both measured). Pacing bounds ARRIVAL; `maxConcurrent`
+  // bounds SIMULTANEOUS WORK, and it is the latter that stops a sweep's heavy
+  // pages from swamping a small shop. It is deliberately left at 4.
+  //
+  // WHAT IT DOES NOT COVER: synthetic cgroup limits on one host are not a
+  // hosting provider's abuse policy. #1810's report was an abuse NOTICE, and
+  // a rule counting requests per hour is not reproducible this way - a busy
+  // install really can send ~5x more per hour at this ceiling. If that
+  // notice's text ever surfaces a request quota, re-derive from the quota
+  // rather than from this measurement.
+  //
+  // Deliberately NOT copied to any other manifest: WooCommerce and Subiekt
+  // carry their own, still unmeasured, 60/4, and moving them on the strength
+  // of a PrestaShop measurement is the mistake docs/lessons.md exists to
+  // prevent ("Never copy another platform's `defaultRateLimit` figure").
+  defaultRateLimit: { requestsPerMinute: 300, maxConcurrent: 4 },
 };
 
 /**

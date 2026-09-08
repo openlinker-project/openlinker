@@ -93,10 +93,24 @@ export const woocommerceAdapterManifest: AdapterMetadata = {
   // locked default any undeclared adapter resolves to.
   variantGrouping: 'parent-child',
   // #1810 Phase 5 (#1970): WooCommerceHttpClient now goes through
-  // `HttpTransportFactoryPort`, so this default is real — mirrors
-  // PrestaShop's conservative merchant-hosted default (the same "no
-  // documented req/min cap" home.pl scenario applies to any self-hosted
-  // WooCommerce install).
+  // `HttpTransportFactoryPort`, so this default is real. It was originally
+  // copied from PrestaShop's, on the reasoning that the same "no documented
+  // req/min cap" self-hosted scenario applies to any WooCommerce install.
+  //
+  // IT NO LONGER MIRRORS PRESTASHOP, and that is deliberate (#2840). #2840
+  // measured PrestaShop on constrained hardware and raised its default to
+  // 300/min on the strength of that measurement; this figure was NOT moved
+  // with it, because a PrestaShop measurement is not evidence about
+  // WooCommerce - copying a figure across platforms is precisely the mistake
+  // docs/lessons.md records ("Never copy another platform's
+  // `defaultRateLimit` figure"), and it is how this 60 arrived here in the
+  // first place. So 60 stands as an UNMEASURED, conservative default.
+  //
+  // Measuring it is a well-defined follow-up: the `lab` stand already runs a
+  // WooCommerce, and `perf/openlinker-throughput/scenarios/weak-shop-ramp.sh`
+  // is the shape of the sweep - it needs a WooCommerce endpoint mix in place
+  // of the PrestaShop create-path one. Raise this only with that measurement,
+  // or with a documented quota.
   defaultRateLimit: { requestsPerMinute: 60, maxConcurrent: 4 },
 };
 
