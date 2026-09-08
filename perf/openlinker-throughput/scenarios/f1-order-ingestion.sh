@@ -666,6 +666,8 @@ SAMPLE_MAX_WAIT_SECS="${SAMPLE_MAX_WAIT_SECS:-120}"
 # worker has been up a while (#2851).
 # ---------------------------------------------------------------------------
 F1_SCHED_TASKS=""
+F1_POLL_CRON=""
+F1_POLL_PERIOD_SECS=60
 
 f1_wait_for_scheduler() {
   local w tries hits
@@ -724,6 +726,16 @@ $tasks"
   worker service LISTS them - compose substitutes \${VAR} only for keys the
   service itself carries, which is why #2840 had to add them."
   F1_POLL_CRON="$cron"
+  # The period, derived from the cron's minute field, is what the push jitter
+  # below is drawn from. Derived rather than hardcoded to 60 so the jitter
+  # cannot silently stop covering the period if the cadence is ever changed.
+  local minute_field; minute_field="$(printf '%s' "$cron" | awk '{print $1}')"
+  case "$minute_field" in
+    '*/'[0-9]*) F1_POLL_PERIOD_SECS=$(( ${minute_field#*/} * 60 )) ;;
+    '*')        F1_POLL_PERIOD_SECS=60 ;;
+    *)          F1_POLL_PERIOD_SECS=60
+                warn "could not derive a poll period from cron minute field [$minute_field]; jitter falls back to 60s" ;;
+  esac
   log "AC2 ok: marketplace.orders.poll at cron [$cron]; none of master.product.syncAll / master.inventory.syncAll / master.product.reconcile registered"
 }
 
@@ -778,6 +790,31 @@ run_one_sample() {
   local poll_created poll_locked poll_updated poll_status poll_outcome poll_attempts poll_dur
   local child_created child_locked child_updated child_status child_outcome child_attempts child_dur
   local internal_id rec_created synced_at dest_status rec_status
+
+  # ---------------------------------------------------------------------
+  # PUSH JITTER (#2840). Without it this arm's hop A is a CONSTANT, not a
+  # sample of the poll wait, and the constant is the wrong number.
+  #
+  # A serial sample pushed at offset t within the cron period waits (P - t)
+  # for the next poll, then spends L in the ladder, so the NEXT push lands at
+  # offset (t + (P - t) + L) mod P = L - independent of t. The loop therefore
+  # locks onto offset L after a single sample and every hop A afterwards is
+  # (P - L), forever.
+  #
+  # Measured, before this existed: samples 2, 3 and 4 pushed at :06, :06 and
+  # :06 and waited 53.7s, 53.6s and 53.6s. Reporting that median as the poll
+  # wait would have overstated it by ~24s against the true uniform-arrival
+  # mean of P/2, and a buyer's order does not arrive in step with our cron.
+  #
+  # Drawing the delay uniformly from [0, P) breaks the lock and makes the
+  # sample an actual sample. $RANDOM is 0..32767 so `% P` carries ~0.2% modulo
+  # bias at P=60, which is far below the resolution of anything reported here.
+  # ---------------------------------------------------------------------
+  if [ "$F1_SCHEDULER_ON" = "1" ]; then
+    local jitter=$(( RANDOM % F1_POLL_PERIOD_SECS ))
+    log "sample $n: jittering ${jitter}s before the push (uniform over the ${F1_POLL_PERIOD_SECS}s poll period, to decorrelate the push from the cron)"
+    sleep "$jitter"
+  fi
 
   # Push ONE order and take the source-side instant from the stub's own
   # response, not from before the call: the order does not exist until the
