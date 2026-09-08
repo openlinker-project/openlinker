@@ -1,0 +1,8 @@
+status=SUPERSEDED
+generatedAt=2026-09-06T11:03:15Z
+supersededAt=2026-09-08T22:35:28Z
+supersedes_status=VALID
+superseded_by=results/f7-lane-starvation/run1788741154
+withdrawn_reason=the degraded-mode input to this verdict was never measured: post_guard_limiter_degraded bounded its window with docker logs --since @epoch, a GNU date form Docker neither accepts nor rejects, so the guard matched nothing and answered ok on every run in this campaign (found #2851, fixed #2969)
+withdrawn_reason=withdrawn on the report side by the 2026-09-07 correction banner in results-F7-2026-09-06.md; the re-run that replaced it is itself DISCARDED for 38 degraded-mode lines inside its window, which is the finding rather than a failed run
+withdrawn_reason=this verdict carries no guard record at all - it predates #3009 - so it cannot show which checks it passed, only that nothing wrote a reason line

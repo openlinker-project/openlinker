@@ -323,11 +323,13 @@ run_size() {
   local non2xx total
   non2xx="$(jq -r '.metrics.non_2xx_responses.count // 0' "$dir/k6-summary.json" 2>/dev/null || echo 0)"
   total="$(jq -r '[.metrics | to_entries[] | select(.key | startswith("route_")) | .value.count // 0] | add // 0' "$dir/k6-summary.json" 2>/dev/null || echo 0)"
-  {
-    printf 'status=%s\n' "VALID"
-    printf 'generatedAt=%s\n' "$(iso_now)"
-    printf 'reason=non2xx=%s total_route_requests=%s\n' "$non2xx" "$total"
-  } > "$dir/verdict.txt"
+  # Written through verdict_write rather than by hand (#3009): it is the single
+  # verdict writer, and only it refuses to overwrite a SUPERSEDED verdict. A
+  # hand-rolled block here could silently put VALID back on a withdrawn run.
+  # The emitted file is unchanged in shape - status, generatedAt, one
+  # informational reason - and carries no `guard=` lines, correctly, because
+  # this scenario runs no post-guard chain.
+  verdict_write "$dir" VALID "non2xx=$non2xx total_route_requests=$total"
 
   log "size step done: $dir (non2xx=$non2xx / $total route requests)"
 }

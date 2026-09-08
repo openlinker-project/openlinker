@@ -1,0 +1,54 @@
+{
+  "scenario": "f3-webhook-burst",
+  "generatedAt": "2026-09-05T23:27:00Z",
+  "gitSha": "2c758521dfd932e9fe747c6e6ec95cde32fbc101",
+  "connectionIds": "'c9f4c835-0238-458d-b402-9089adab7950'",
+  "quick": false,
+  "runnerState": "disabled",
+  "laneCaps": "unknown",
+  "pool": {
+    "maxConnections": "200",
+    "olDbPoolMax": "40",
+    "processCount": "2",
+    "budget": "80"
+  },
+  "schedulerCadenceRow": {},
+  "olLogBodyMaxBytes": "lab-api=8192 lab-worker=8192",
+  "syncJobsRowsAtStart": 10,
+  "syncJobsRowsAtEnd": 6638,
+  "environment": {
+    "postgres": {
+      "shared_buffers": "128MB",
+      "work_mem": "4MB",
+      "shared_preload_libraries": "",
+      "installed_extensions": "pg_trgm"
+    },
+    "node_version": "v22.23.1",
+    "postgres_image_digest": "sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193",
+    "redis_image_digest": "sha256:bd4a0d37e7cd830117ffec9329052b4a1887afa060c265e1768f82b177ff6f43",
+    "redis_used_memory_bytes": "3095856",
+    "host": {
+      "cpu_count": "28",
+      "ram": "15912MB",
+      "load_average": "1.57, 1.97, 2.04"
+    }
+  },
+  "containerLimits": [
+    {
+      "container": "lab-api",
+      "cpu_nanocpus": "none",
+      "memory_bytes": "none"
+    },
+    {
+      "container": "lab-worker",
+      "cpu_nanocpus": "none",
+      "memory_bytes": "none"
+    }
+  ],
+  "excludedPgStatStatementsQueries": [
+    "GET /v1/connections/:id/sync-status (7-day connection-sync-status aggregate over sync_jobs) - issued by sample_queue itself, see README"
+  ],
+  "webhookDeliveriesRowsAtStart": 6659,
+  "arm": "unique",
+  "arrivalRatePerSec": 50
+}

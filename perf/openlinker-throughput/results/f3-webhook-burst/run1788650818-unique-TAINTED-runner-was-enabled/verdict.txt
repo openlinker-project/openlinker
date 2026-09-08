@@ -1,0 +1,9 @@
+status=SUPERSEDED
+generatedAt=2026-09-05T23:30:48Z
+supersededAt=2026-09-08T22:35:28Z
+supersedes_status=VALID
+superseded_by=results-mixed-load-fixed-2026-09-08.md section 8.1 - cite the 300/s arm, not this run
+withdrawn_reason=this run's own directory name records it as TAINTED while the file inside it read status=VALID: the retraction lived only in a directory name, where no reader and no script looks
+withdrawn_reason=its three records disagree and it cannot be certified either way - the directory name says the runner was enabled, its own manifest.json records runnerState=disabled, and this verdict said VALID. Whichever is right, two of the three are wrong, so no figure from this run may travel
+withdrawn_reason=the F3 webhook ceiling this arm fed was published as ~600 req/s and rests on runs today's guard chain discards (19.6-26.7% of iterations never dispatched, k6 at 92-97% of its own VU ceiling); #2842/#2931/#2933
+withdrawn_reason=no guard record - this verdict predates #3009

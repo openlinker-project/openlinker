@@ -1397,3 +1397,51 @@ child rather than trusting the assignment.
 `lib.sh` that declares `${VAR:-...}` defaults at top level.
 
 **Source**: #2840 (weak-shop rate-limit gate).
+
+## A tool that cannot see a path answers confidently ABOUT it - and a policy search that looks only at the nearest level finds "no policy"
+
+**Context**: auditing #3009, which asks whether `perf/openlinker-throughput/results/` is
+committed, ignored, or neither. Three confident wrong answers were produced about that one
+question before any of them was checked against the files themselves.
+
+**Problem**:
+
+1. `git check-ignore -v perf/prestashop-baseline/results` reports **not ignored** for a path
+   that is unambiguously ignored. The pattern is `results/` with a trailing slash - directories
+   only - and the directory does not exist in the worktree being checked, so `check-ignore` has
+   nothing to classify as a directory and answers negatively for a path that WILL be ignored the
+   moment it is created. Nothing errors; the answer is simply the opposite of the truth.
+2. A follow-up audit then searched for a **nested** `.gitignore` under
+   `perf/openlinker-throughput/`, found none, and concluded that campaign "took no decision at
+   all". The decision exists, at repo-root `.gitignore:100`, carrying a three-line comment that
+   names the sibling campaign as its precedent. The word "local" in that audit's table was doing
+   all the work: technically true, and the conclusion drawn from it was false.
+3. The same audit read `perf/openlinker-throughput` from a worktree on an unrelated branch, where
+   the directory carries **4** committed files rather than the epic's **75**, so a file-count
+   check answered about a tree that never had them.
+4. Verifying the fix hit a fourth variant of the same shape.
+   `git status --porcelain perf/openlinker-throughput/results` prints the single line
+   `?? perf/openlinker-throughput/results/` - git collapses a directory whose every entry is
+   untracked - which says **nothing** about whether the per-file `!` negations inside it work. It
+   looks like a clean answer and is not an answer at all.
+
+**Rule**: to decide whether a path is ignored, **read the `.gitignore` files** - repo root first,
+then every directory along the path - rather than asking `git check-ignore` about a path that may
+not exist on disk. Search for a policy at **every** level, not just the nearest, and treat "no
+file here" as evidence about this directory only, never as evidence that no decision was taken.
+And **name the ref**: any audit of a directory whose contents differ between branches must state
+which branch it read, or it is answering about a different tree.
+
+To verify which files a gitignore actually admits, use `git add --dry-run --verbose <dir>` (it
+names every path it would stage) or `git status --porcelain -uall <dir>`. Plain
+`git status --porcelain <dir>` is not sufficient - it collapses to the directory. And verify the
+**failing** direction too: create a file the policy is supposed to EXCLUDE and confirm it does not
+appear. A negation list is not proved by the one pattern you happened to have a fixture for; this
+issue's seven `!` lines were each given one before the policy was believed.
+
+**Applies to**: any audit of gitignore state, artefact retention, or committed-file inventory;
+`perf/**` especially, where every campaign directory has a partly-ignored `results/` tree and the
+branches differ in what they carry.
+
+**Source**: #3009. Sibling entry: `docker logs --since "@<epoch>"` above - both are "a tool
+answered confidently about something it could not see".

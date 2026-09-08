@@ -625,6 +625,11 @@ echo "--- run_post_guards threads the feed guard through ---"
 # run_post_guards' own docblock. These two assertions pin both directions.
 FAKE_PG[count]=0
 RPG_DIR="$(mktemp -d)"
+# window_start would have captured this; calling run_post_guards directly
+# without it makes post_guard_containers_stable discard unconditionally, which
+# made the first assertion below fail and the second pass VACUOUSLY (it would
+# have read DISCARDED whatever the feed guard answered).
+capture_container_starts "$RPG_DIR"
 run_post_guards "$RPG_DIR" "'c1'" '2026-01-01T00:00:00Z' 0 9999999999 '' '' '' '' >/dev/null 2>&1 || true
 assert_eq "omitting the feed argument leaves the verdict VALID (not applicable)" \
   "VALID" "$(verdict_read "$RPG_DIR" | head -1)"
@@ -694,6 +699,185 @@ run_post_guards "$RPGDIR3" "'c1'" '2026-01-01T00:00:00Z' 0 9999999999 '' "$RPGDI
 assert_eq "run_post_guards threads the executor hint through to the generator guard" "VALID" \
   "$(verdict_read "$RPGDIR3" | head -1)"
 rm -rf "$RPGDIR3"
+
+# ===========================================================================
+# verdict guard record (#3009)
+# ===========================================================================
+echo "--- verdict records which guards ran ---"
+# A `status=VALID` with no guard record cannot be told apart from a verdict
+# written before a guard existed - which is literally what F7's
+# run1788691274/verdict.txt is. These pin the guard NAMES, not just a count:
+# the question a later reader asks is "did the check that would have caught
+# this run exist yet?", and a bare count cannot answer it.
+FAKE_PG[count]=0
+DRAIN_DEFERRED_SEEN=0
+WORKER_CONTAINERS="lab-worker"
+GDIR="$(mktemp -d)"
+capture_container_starts "$GDIR"
+run_post_guards "$GDIR" "'c1'" '2026-01-01T00:00:00Z' 0 9999999999 ''
+assert_eq "a VALID verdict still records every guard that ran" "8" \
+  "$(grep -c '^guard=' "$GDIR/verdict.txt" || true)"
+assert_contains "the guard record names post_guard_attempts by name" \
+  "$(cat "$GDIR/verdict.txt")" "guard=post_guard_attempts:ok"
+assert_contains "the guard record names post_guard_limiter_degraded by name" \
+  "$(cat "$GDIR/verdict.txt")" "guard=post_guard_limiter_degraded:ok"
+assert_contains "the guard record names post_guard_feed_starved by name" \
+  "$(cat "$GDIR/verdict.txt")" "guard=post_guard_feed_starved:ok"
+# verdict_read's SHAPE must not change: f3 reads its output back and re-passes
+# those lines as reasons to verdict_write, so a guard line leaking into it
+# would silently become a reason on the next re-write.
+assert_eq "guard lines do not leak into verdict_read's reason output" "" \
+  "$(verdict_read "$GDIR" | tail -n +2)"
+rm -rf "$GDIR"
+
+# A failing guard is recorded as :failed BESIDE the ones that passed. "Seven of
+# eight passed" is the fact a reader needs, and a reason line alone cannot say
+# which seven.
+FAKE_PG[count]=1
+GDIR2="$(mktemp -d)"
+capture_container_starts "$GDIR2"
+run_post_guards "$GDIR2" "'c1'" '2026-01-01T00:00:00Z' 0 9999999999 ''
+assert_contains "a failing guard is recorded as :failed" \
+  "$(cat "$GDIR2/verdict.txt")" "guard=post_guard_attempts:failed"
+assert_contains "and a passing guard beside it is still recorded as :ok" \
+  "$(cat "$GDIR2/verdict.txt")" "guard=post_guard_feed_starved:ok"
+assert_eq "every guard is recorded even on a DISCARDED verdict" "8" \
+  "$(grep -c '^guard=' "$GDIR2/verdict.txt" || true)"
+FAKE_PG[count]=0
+rm -rf "$GDIR2"
+
+# f3 re-writes an existing verdict to downgrade it (non-2xx ratio), reading the
+# prior reasons back and re-passing them. That re-write must not erase the
+# guard record on its way past - a guard answer is an observation about the
+# RUN, not a property of the verdict.
+GDIR3="$(mktemp -d)"
+capture_container_starts "$GDIR3"
+run_post_guards "$GDIR3" "'c1'" '2026-01-01T00:00:00Z' 0 9999999999 ''
+verdict_write "$GDIR3" DISCARDED "non-2xx ratio 0.4 exceeds 0.05"
+assert_eq "a later downgrade preserves the guard record" "8" \
+  "$(grep -c '^guard=' "$GDIR3/verdict.txt" || true)"
+assert_eq "and the downgrade still takes effect" "DISCARDED" \
+  "$(verdict_read "$GDIR3" | head -1)"
+rm -rf "$GDIR3"
+
+# The guard record is scoped to the directory it was measured for. A scenario
+# that measures several arms in one shell (f3 does) must not stamp arm 1's
+# guard record onto arm 2's verdict - an instrument that cannot identify its
+# own subject is a defect this campaign has already found three times.
+GDIR4="$(mktemp -d)"
+capture_container_starts "$GDIR4"
+run_post_guards "$GDIR4" "'c1'" '2026-01-01T00:00:00Z' 0 9999999999 ''
+GDIR5="$(mktemp -d)"
+verdict_write "$GDIR5" VALID
+assert_eq "another directory's verdict carries no borrowed guard record" "0" \
+  "$(grep -c '^guard=' "$GDIR5/verdict.txt" || true)"
+rm -rf "$GDIR4" "$GDIR5"
+
+# ===========================================================================
+# verdict supersession (#3009)
+# ===========================================================================
+echo "--- a superseded run cannot read VALID ---"
+# The failing-direction check: mark a run superseded, read it back, confirm it
+# no longer reads VALID. Two runs in this campaign's own results tree read
+# `status=VALID` while being withdrawn - one with TAINTED in its own directory
+# name - so this is what makes a withdrawal mechanical rather than remembered.
+SDIR="$(mktemp -d)"
+capture_container_starts "$SDIR"
+run_post_guards "$SDIR" "'c1'" '2026-01-01T00:00:00Z' 0 9999999999 ''
+assert_eq "the run starts out VALID" "VALID" "$(verdict_read "$SDIR" | head -1)"
+assert_ok "and starts out quotable" verdict_quotable "$SDIR"
+SDIR_GENERATED_AT="$(awk -F= '$1=="generatedAt"{print $2}' "$SDIR/verdict.txt")"
+
+verdict_supersede "$SDIR" "results/f7-lane-starvation/run1788741154" \
+  "the limiter-degradation input to this verdict was never measured (#2969)"
+assert_eq "a superseded run no longer reads VALID" "SUPERSEDED" \
+  "$(verdict_read "$SDIR" | head -1)"
+assert_dies "and is no longer quotable" verdict_quotable "$SDIR"
+assert_contains "the withdrawal names what replaces it" \
+  "$(cat "$SDIR/verdict.txt")" "superseded_by=results/f7-lane-starvation/run1788741154"
+assert_contains "the withdrawal carries its reason" \
+  "$(cat "$SDIR/verdict.txt")" "withdrawn_reason=the limiter-degradation input"
+assert_contains "the status it used to carry is preserved" \
+  "$(cat "$SDIR/verdict.txt")" "supersedes_status=VALID"
+assert_contains "and the withdrawal is timestamped separately" \
+  "$(cat "$SDIR/verdict.txt")" "supersededAt="
+assert_eq "the original generatedAt survives the withdrawal" \
+  "$SDIR_GENERATED_AT" "$(awk -F= '$1=="generatedAt"{print $2}' "$SDIR/verdict.txt")"
+assert_eq "the guard record survives the withdrawal" "8" \
+  "$(grep -c '^guard=' "$SDIR/verdict.txt" || true)"
+
+# A withdrawal must not be undoable by a later ordinary write. Without this,
+# re-running a scenario into a superseded directory silently puts VALID back.
+assert_dies "verdict_write refuses to overwrite a SUPERSEDED verdict" \
+  verdict_write "$SDIR" VALID
+assert_eq "and the refusal leaves the withdrawal standing" "SUPERSEDED" \
+  "$(verdict_read "$SDIR" | head -1)"
+
+# Re-superseding (a corrected reason, a different replacement) must not
+# overwrite the ORIGINAL status - what the run once claimed is the one fact the
+# audit trail exists to keep.
+verdict_supersede "$SDIR" "#3009" "a corrected withdrawal reason"
+assert_contains "re-superseding keeps the original status, not SUPERSEDED" \
+  "$(cat "$SDIR/verdict.txt")" "supersedes_status=VALID"
+assert_eq "re-superseding still reads SUPERSEDED" "SUPERSEDED" \
+  "$(verdict_read "$SDIR" | head -1)"
+rm -rf "$SDIR"
+
+# A DISCARDED run can be withdrawn too, and its own reasons survive.
+FAKE_PG[count]=1
+SDIR2="$(mktemp -d)"
+capture_container_starts "$SDIR2"
+run_post_guards "$SDIR2" "'c1'" '2026-01-01T00:00:00Z' 0 9999999999 ''
+assert_dies "a DISCARDED run is not quotable either" verdict_quotable "$SDIR2"
+verdict_supersede "$SDIR2" "#3009" "withdrawn for the record"
+assert_contains "superseding a DISCARDED run records that prior status" \
+  "$(cat "$SDIR2/verdict.txt")" "supersedes_status=DISCARDED"
+assert_contains "and its original discard reason survives" \
+  "$(cat "$SDIR2/verdict.txt")" "reason=DISCARDED post_guard_attempts"
+FAKE_PG[count]=0
+rm -rf "$SDIR2"
+
+# Every refusal, asserted on its own. A withdrawal naming neither a replacement
+# nor a reason is the state verdict_supersede exists to remove.
+SDIR3="$(mktemp -d)"
+verdict_write "$SDIR3" VALID
+assert_dies "verdict_supersede refuses a missing reason" \
+  verdict_supersede "$SDIR3" "#3009"
+assert_dies "verdict_supersede refuses an empty superseded_by" \
+  verdict_supersede "$SDIR3" "" "a reason"
+assert_dies "verdict_supersede refuses an all-empty reason" \
+  verdict_supersede "$SDIR3" "#3009" ""
+assert_eq "and no refusal has touched the verdict" "VALID" \
+  "$(verdict_read "$SDIR3" | head -1)"
+rm -rf "$SDIR3"
+
+SDIR4="$(mktemp -d)"
+assert_dies "verdict_supersede refuses a directory with no verdict.txt" \
+  verdict_supersede "$SDIR4" "#3009" "a reason"
+assert_dies "an uncertified run is not quotable" verdict_quotable "$SDIR4"
+rm -rf "$SDIR4"
+
+# A VALID verdict that carries an INFORMATIONAL reason line must still be
+# quotable. f5-read-path.sh writes exactly that shape. Reading the status
+# through `verdict_read | head -1` would SIGPIPE the reason awk under pipefail
+# and answer "not quotable" for a good run - so this pins the direction that
+# fails silently rather than loudly.
+QDIR="$(mktemp -d)"
+verdict_write "$QDIR" VALID "non2xx=0 total_route_requests=1450"
+assert_eq "a VALID verdict may carry an informational reason" "VALID" \
+  "$(verdict_read "$QDIR" | head -1)"
+assert_ok "and is still quotable despite the reason line" verdict_quotable "$QDIR"
+rm -rf "$QDIR"
+
+# A DISCARDED verdict carrying reason lines is the shape the SIGPIPE bug bit
+# hardest, so it gets its own directory rather than riding on the missing-file
+# arm (an earlier draft of this assertion pointed at a non-existent path and so
+# tested the MISSING arm while claiming to test DISCARDED).
+QDIR2="$(mktemp -d)"
+verdict_write "$QDIR2" DISCARDED "reason one" "reason two"
+assert_dies "a DISCARDED verdict with reason lines is not quotable" \
+  verdict_quotable "$QDIR2"
+rm -rf "$QDIR2"
 
 # ===========================================================================
 # manifest assembly
