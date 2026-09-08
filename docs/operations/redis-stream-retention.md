@@ -47,8 +47,6 @@ filed about is still held.
 ### 2. Trim the streams that grew unbounded
 
 ```
-XTRIM events.inbound.webhooks       MAXLEN ~ 50000
-XTRIM events.inbound.webhooks.dead  MAXLEN ~ 10000
 XTRIM jobs.sync                     MINID  ~ <now_ms - 14 days>
 XTRIM events.master.deletion.dead   MINID  ~ <now_ms - 30 days>
 ```
@@ -57,11 +55,27 @@ XTRIM events.master.deletion.dead   MINID  ~ <now_ms - 30 days>
 match `libs/shared/src/redis/stream-retention.ts`; treat that file as the source
 of truth if these drift.
 
+### 2b. Delete the retired webhook streams
+
+```
+DEL events.inbound.webhooks
+DEL events.inbound.webhooks.dead
+```
+
+These are **deleted, not trimmed** (#2300). #2280 moved webhook routing to
+ingress, retiring the only writer, and #2300 removed the one-shot drain that was
+their last reader — so neither stream can receive another entry and neither
+appears in `stream-retention.ts` any more. Trimming them to a cap would leave a
+permanently frozen residue; a `DEL` reclaims all of it.
+
+A long-lived stack may still hold real entries here, which is why this is a step
+rather than a note. See *Webhook-stream sunset* below for the one precondition.
+
 Check what you are dealing with first:
 
 ```
-XLEN events.inbound.webhooks
-MEMORY USAGE events.inbound.webhooks
+XLEN jobs.sync
+MEMORY USAGE jobs.sync
 INFO memory
 ```
 
@@ -98,8 +112,6 @@ than by count:
 | Stream | Bound | Rough worst case |
 |---|---|---|
 | `jobs.sync` | 14 days | **unbounded by count** — ~700k entries (~350 MB) at 50k jobs/day |
-| `events.inbound.webhooks` | 50 000 entries | 100–250 MB (payloads run 2–5 KB) |
-| `events.inbound.webhooks.dead` | 10 000 entries | 20–50 MB (carries the original entry again) |
 | `events.master.deletion` | 10 000 entries | ~5 MB |
 | `events.master.deletion.dead` | 30 days | small, but unbounded by count |
 | `healthcheck` | 1 entry (exact) | negligible |
@@ -139,27 +151,33 @@ commits straight to `sync_jobs` in the same transaction as its
 and the trim-vs-TTL reasoning still governs the stream's remaining non-webhook
 writers (scheduler, cron sweeps, API-triggered enqueues).
 
-## Webhook-stream sunset (#2280)
+## Webhook-stream sunset — completed (#2280, #2300)
 
-`events.inbound.webhooks` no longer receives writes — routing runs at ingress
-and no event is published. The always-on `webhook-handler` consumer loop is
-retired; the only remaining reader is the one-shot `LegacyInboundWebhookDrain`,
-which runs at every api boot and drains any pre-upgrade backlog (the group's
-full PEL plus unread entries) into durable `sync_jobs` / `webhook_deliveries`
-rows. Practical consequences:
+`events.inbound.webhooks` and `events.inbound.webhooks.dead` are **retired**.
+#2280 moved routing to ingress, so nothing publishes to either; #2300 deleted
+`LegacyInboundWebhookDrain`, their last reader, and removed both names from
+`libs/shared/src/redis/stream-retention.ts`. Neither stream has a writer, a
+reader or a declared retention bound any more.
 
-- **Do not delete the stream or the `webhook-handler` group until at least one
-  post-upgrade api boot has completed cleanly** (look for the
-  `Legacy inbound-webhook drain: … routed, … deadlettered` log line, or the
-  `nothing to drain` debug line). A transiently-failing entry is left un-ACKed
-  and retried on the next boot.
-- After a clean drain, `DEL events.inbound.webhooks` (which also removes the
-  group) and `DEL events.inbound.webhooks.dead` are safe and reclaim their
-  memory; the retention caps for both become irrelevant. A later release removes
-  the drain and the stream names.
-- If you skip the manual `DEL`, nothing breaks — the streams simply sit at
-  whatever size the last trim left them, since a stream with no writes is never
-  trimmed again (lazy trimming, above).
+**The version floor.** The drain shipped in **v0.8.0** and ran at every api boot
+through v0.10.0. An operator upgrading to the release carrying #2300 must have
+**booted v0.8.0, v0.9.0 or v0.10.0 at least once** — that boot is what drained
+any pre-#2280 backlog into durable `sync_jobs` / `webhook_deliveries` rows.
+Upgrading straight from **v0.7.0 or earlier** skips every release that carried
+the drain and can strand that backlog: those webhooks were recorded `published`
+with no job, so the source's redelivery bounces off the Postgres gate without
+creating one. If you are on v0.7.0 or earlier, boot any of v0.8.0–v0.10.0 once
+and confirm the `Legacy inbound-webhook drain: … routed, … deadlettered` log
+line (or the `nothing to drain` debug line) before upgrading further.
+
+Practical consequences:
+
+- `DEL events.inbound.webhooks` (which also removes the `webhook-handler`
+  consumer group) and `DEL events.inbound.webhooks.dead` are safe once that
+  boot has happened, and reclaim all their memory — see § 2b above.
+- If you skip the `DEL`, nothing breaks — the streams simply sit at whatever
+  size the last trim left them, since a stream with no writes is never trimmed
+  again (lazy trimming, above). They are inert, not dangerous.
 
 ## Related
 
