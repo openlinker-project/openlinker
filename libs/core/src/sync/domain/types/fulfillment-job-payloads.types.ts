@@ -129,3 +129,26 @@ export interface FulfillmentWorkTimeoutSweepPayloadV1 {
   readonly schemaVersion: 1;
   readonly pageLimit?: number;
 }
+
+/**
+ * `fulfillment.work.relaySweep` (#2728).
+ *
+ * Same shape and the same reading as its timeout-sweep sibling above: a
+ * scheduler tick carries only `schemaVersion`, and `pageLimit` exists so an
+ * operator draining a backlog can widen ONE run without moving the default.
+ *
+ * There is no cursor field and there must not be one. The pass is
+ * frontier-as-query — a repaired work leaves the candidate set by acquiring
+ * `dispatchRelayedAt` — so an offset would step over rows, which here means a
+ * work whose source is never told it shipped.
+ *
+ * The two age bounds are deliberately NOT on the payload. They are resolved from
+ * the environment through one path each (`resolveFulfillmentRelayGraceMs` /
+ * `resolveFulfillmentRelayStuckAfterMs`), and a payload override would be a
+ * second source for a number an operator reads back on the escalation it
+ * produced - the reported-versus-enforced gap #2229 exists to close.
+ */
+export interface FulfillmentWorkRelaySweepPayloadV1 {
+  readonly schemaVersion: 1;
+  readonly pageLimit?: number;
+}

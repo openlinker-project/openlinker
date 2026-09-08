@@ -3,7 +3,7 @@
  *
  * Pins the ADR-050 lane partition (#2278): every `JobTypeValues` member is
  * registered with exactly one lane, the per-lane counts match the ADR's
- * table (16 realtime / 28 bulk / 5 fiscal / 7 fan-out across 56 job types —
+ * table (16 realtime / 29 bulk / 5 fiscal / 7 fan-out across 57 job types —
  * `fiscalization.register` joined `fiscal` post-ADR, #2156;
  * `inventory.provenance.backfill` joined `bulk` with #2317; the three returns
  * types joined realtime/bulk/fan-out with #2330; `returns.orphan.reconcile`
@@ -17,13 +17,15 @@
  * D); `marketplace.offerQuantity.reconcile` joined `bulk` as a scan-style
  * pass over adapter-internal pending state with #2621; and
  * `analytics.currency.recalculate` joined `bulk` with #2468 (the Data Coverage
- * currency-restatement driver). #2609 changed no
+ * currency-restatement driver); `fulfillment.work.timeoutSweep` joined `bulk`
+ * with #2712 and `fulfillment.work.relaySweep` beside it with #2728. #2609
+ * changed no
  * assignment at all), and the consequential assignments
  * the ADR calls out cannot silently churn.
  *
  * @module apps/worker/src/sync/handlers
  */
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call -- test constructs the service with 52 interchangeable dummy handlers */
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call -- test constructs the service with 54 interchangeable dummy handlers */
 import type { SyncJobHandler } from '@openlinker/core/sync';
 import { JobTypeValues, SyncJobLaneValues } from '@openlinker/core/sync';
 import { SyncJobHandlerRegistry } from '../sync-job-handler.registry';
@@ -34,13 +36,13 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
 
   beforeEach(() => {
     registry = new SyncJobHandlerRegistry();
-    // The constructor takes the registry followed by 53 handler instances.
+    // The constructor takes the registry followed by 54 handler instances.
     // The dummies are DISTINCT objects so that "these two job types share one
     // handler instance" (#2594) is a real assertion rather than a tautology;
     // the partition under test keys on jobType, so they are otherwise
     // interchangeable.
     const handlers = Array.from(
-      { length: 53 },
+      { length: 54 },
       () => ({ execute: jest.fn() }) as unknown as SyncJobHandler
     );
     const service = new (HandlerRegistrationService as any)(registry, ...handlers);
@@ -52,10 +54,11 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     expect(() => registry.assertFullLaneCoverage()).not.toThrow();
   });
 
-  it('should partition the 56 job types 16/28/5/7 per ADR-050 decision 1', () => {
-    // 16: three of the FOUR fulfilment job types are `realtime` by
-    // cost-of-starvation. The fourth, #2712's
-    // `fulfillment.work.timeoutSweep`, is deliberately NOT — see the `bulk`
+  it('should partition the 57 job types 16/29/5/7 per ADR-050 decision 1', () => {
+    // 16: three of the FIVE fulfilment job types are `realtime` by
+    // cost-of-starvation. The other two, #2712's
+    // `fulfillment.work.timeoutSweep` and #2728's
+    // `fulfillment.work.relaySweep`, are deliberately NOT — see the `bulk`
     // block below. Stated as a count rather than "all of them" because the
     // rule is per job type, and a blanket claim about the family is what
     // would make the next fulfilment sweep look like it belonged here.
@@ -105,8 +108,13 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     // `realtime`, which is the rule working rather than an exception to it: a
     // dispatch and a route are outbound acts an order waits on, and letting a
     // reaper take a slot from an actual dispatch is the wrong trade in the one
-    // direction that costs a shipment.
-    expect(registry.getJobTypesByLane('bulk')).toHaveLength(28);
+    // direction that costs a shipment. #2728's `fulfillment.work.relaySweep`
+    // is the twenty-ninth, on a STRONGER version of that same argument: its
+    // candidates have by construction been unrelayed for at least the grace
+    // window, AND unlike the reaper beside it each one fans a lifecycle relay
+    // out to N participant adapters — heavy outbound work, which is what
+    // `bulk` is for.
+    expect(registry.getJobTypesByLane('bulk')).toHaveLength(29);
     expect(registry.getJobTypesByLane('fiscal')).toHaveLength(5);
     expect(registry.getJobTypesByLane('fan-out')).toHaveLength(7);
   });
