@@ -1041,6 +1041,24 @@ media queries evaluate against, which at a boundary inverts the reading.
 
 **Source**: #2405 (the parity spec from #2392 is now load-bearing for a second issue).
 
+## Before trusting a detector's NEGATIVES, feed it a known positive and watch it fire
+
+**Context**: `post_guard_limiter_degraded` (`perf/openlinker-throughput/lib.sh`) greps the worker log for the Redis rate-limiter's degraded-mode message, and its `ok` is written into `verdict.txt` for every scenario it runs against. It carried `docker logs --since "@$epoch"` from the day it was written.
+
+**Problem**: on Docker 29.5.2 the `@epoch` form is **accepted without error and matches nothing** — the same window returns 180 lines with a bare epoch, an RFC3339 timestamp or a relative `25m`, and 0 with `@`. So the guard answered `ok` on every scenario in the #2840 campaign **while being structurally unable to see a single degraded-limiter line, whatever the limiter did**. Fixed in `b12d4b272` (PR #2969); the verdict timestamps then split the campaign cleanly either side of it — F2 (09-05 23:53), F3 (09-05 23:23–09-06 00:30), F5 (09-06 09:23) and the #2943 read-path report all pre-date the fix, so **their `VALID` does not include "the limiter was not degraded"**, while all four F1 runs (09-07 02:01 onward) post-date it and are `DISCARDED` on exactly this guard.
+
+Two things make this worse than *a test passing for a reason it does not claim* (the seeder and migration entries above, and the red-first rule immediately preceding). First, a weak negative is still evidence; **this was no evidence at all**, dressed as a passing check. Second, a guard's answer is *recorded into every verdict it touches*, so one blind detector **retroactively weakened every prior `VALID` in the campaign** — the damage is not scoped to the run that introduced it.
+
+And note that **red-first does not catch this class**. Breaking the limiter deliberately would not have made the guard fire, because the guard could not see the log line under any condition. Nor can a stub-based unit test: a fake that returns lines regardless of the window passes however the window is spelled, which is precisely how the defect survived review. The fix's own test therefore asserts on the **arguments the guard hands `docker`** (a bare epoch, and no `@`) rather than on a count.
+
+**Rule**: a detector whose value is its negative — a guard, a post-guard, an absence assertion, a "no errors in the log" check — must be exercised against a **known positive** before any of its negatives is believed. Emit one real instance of the thing it looks for (a throwaway container printing the matched line, a deliberately injected failure) and confirm it reports; then confirm the window *before* that instance still reports clean, or the check is matching everything rather than the right thing. Where the detector shells out to an external tool, assert the **arguments** as well as the outcome, because a stub cannot distinguish a correct invocation from a malformed one. Red-first proves an assertion can fail *on bad input*; this proves the instrument can *see at all*.
+
+**Corollary, and it is what saved the published figures**: a contaminated guard does **not** automatically invalidate the measurements it accompanied. Each has to be re-argued on the mechanism, one at a time. The four figures now in the client-facing document were re-argued and are immune, each for its own reason: the **webhook-accept** arms ran with `runnerState=disabled`, so no job executed and the outbound limiter was never consulted; the **read-path** and **#2943** figures are pure HTTP reads that never touch the outbound limiter, and #2943 is additionally an in-run A/B on one dataset and one binary; and **F2** ran a single worker replica, where the per-process fallback equals the configured rate, so degradation cannot have inflated the figure — any Redis timeout on that path makes it *worse*, which is the conservative direction. What is not available is the blanket claim "the guard passed, so the limiter was fine".
+
+**Applies to**: `perf/openlinker-throughput/lib.sh` post-guards and `lib-test.sh`; any absence-shaped assertion, and any check that shells out to `docker logs`, `grep`, `journalctl` or similar to look for something.
+
+**Source**: #2851 (F4, where the guard was fixed), #2969 (the fix), #2840 (the campaign whose verdicts it retroactively qualified).
+
 ## A manifest that advertises no capabilities stamps an EMPTY `enabledCapabilities`, permanently
 
 **Context**: #2405 shipped the OL-OMS manifest with `supportedCapabilities: []`, following the Erli #980 precedent that a capability name enters the manifest together with the adapter that delivers it.
@@ -1435,3 +1453,39 @@ either - read the source that owns it.
 `docs/architecture/adrs/**`, and PR or issue commentary that says a prior claim is unsupported.
 
 **Source**: #2983 (epic #2840, sustained mixed load).
+
+---
+
+## A liveness check keyed on a process NAME matches a peer's process - bound a sampler by its window, or by the PID it was started against
+
+**Context**: a mid-run side sampler added to the #2983 mixed-load window, writing container
+cgroup RSS into that run's results directory every 60 s. Its stop condition was
+`ps aux | grep '[s]ustained-mixed-load'` - the scenario's own name - on the reasoning that the
+sampler must not outlive the window it describes.
+
+**Problem**: a peer agent in another worktree then ran **the same scenario**, the grep matched
+*their* process, and the sampler kept appending to this run's results for **3.5 hours past
+`window_stop`**. The first analysis ran minutes after the window closed and therefore picked up
+post-window rows taken while the worker was being recreated by the teardown - which is where an
+anomalous `min 75.1 MB` came from. Restricting to in-window samples moved the fitted memory slopes
+materially (the worker's from +0.67 to +1.85 MB/h) and forced a published correction. Nothing
+warned: the CSV grew monotonically and every row was individually valid. On a host where several
+agents share one stand and routinely run each other's scenarios, a name is not an identity.
+
+**Rule**: a sampler's lifetime must be tied to the thing it measures, not to a process pattern.
+Prefer an explicit bound - a sample count, or the window's own end instant passed in - so the
+series cannot extend past the window even if the sampler is never signalled. Where liveness is
+genuinely needed, key it on the **PID** the sampler was started against (`kill -0 "$pid"`), never
+on a name a peer can also be running. Whatever the bound, **stamp the window's start and end into
+the results directory** so a later reader can restrict the series without having to reconstruct
+it. The two samplers `lib.sh` owns were never exposed to this: `sampler_stop` and its scenario
+counterpart both `kill` a recorded PID.
+
+Corollary for the analysis, not just the collection: when a series can outlive its window, an
+analysis run "just after the window closed" is not the same as one restricted to the window. Apply
+the time restriction explicitly rather than relying on when the analysis happened to run.
+
+**Applies to**: `perf/openlinker-throughput/**` samplers and any ad-hoc background collector
+writing into a measurement's results directory on a shared host.
+
+**Source**: #2983 (sustained mixed load, epic #2840).

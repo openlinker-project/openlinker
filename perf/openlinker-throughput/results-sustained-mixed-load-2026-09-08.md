@@ -1,14 +1,13 @@
 # What does a Tuesday look like? Orders, catalogue sweeps and crons together, for hours
 
-> **DRAFT - the window is still running.** Every `TBD` below is a figure this
-> run has not produced yet. Nothing in this file may be quoted until this
-> banner is gone.
-
-**Run**: `results/sustained-mixed-load/run1788846800`, window opened
-2026-09-08T05:54 UTC. **One continuous measurement window, 3 hours.**
+**Run**: `results/sustained-mixed-load/run1788846800`,
+2026-09-08T05:54:21Z - 08:54:04Z. **One continuous measurement window,
+10 783 s = 3.00 h, 319 samples.**
 **Scenario**: `scenarios/sustained-mixed-load.sh`.
 **Image**: `fabab189eda90f7a09bbe64301449b092b00d5ff`, rebuilt for this run
-(see § 1.1), `guard_build ok`. Verdict: TBD.
+(see § 1.1), `guard_build ok`.
+**Verdict: `DISCARDED`** on three guards - **read § 0.1 before quoting any
+figure.**
 
 **Why three hours and not four.** The window length was cut from the planned
 four hours because rebuilding the two application images (§ 1.1) took ~40
@@ -16,6 +15,42 @@ minutes of session budget. Three hours still covers three firings of every
 hourly cron, nine `master.product.syncAll` ticks, twelve
 `master.inventory.syncAll` ticks, ~180 order polls and ~360 samples. It is
 stated here rather than implied, and § 6 says what a longer window would add.
+
+> ## Correction, 2026-09-08 - the memory figures published in the first
+> ## revision of this report were contaminated, and are restated in § 4
+>
+> **Withdrawn.** The RSS slopes and endpoints in the first revision:
+> `lab-worker-1` +0.67 MB/h, first 133.1 -> last 133.6, min 75.1;
+> `lab-api` −1.46 MB/h; `lab-postgres` −1.71 MB/h; `lab-redis` +0.70 MB/h;
+> Postgres page cache "1 574 -> 1 502 MB". All n=134/135.
+>
+> **Why.** The side sampler added mid-window (§ 2.4.1) decided when to stop
+> with `ps aux | grep '[s]ustained-mixed-load'` - the scenario's own *name*.
+> A **peer agent in another worktree then ran the same scenario**, that grep
+> matched their process, and the sampler kept appending to this run's results
+> directory for **3.5 hours past window close**. The first analysis was run
+> minutes after the window closed and so picked up a handful of post-window
+> rows, taken while the worker was being recreated by the teardown - which is
+> where the anomalous `min 75.1 MB` came from.
+>
+> **What replaced it.** § 4's table, recomputed over the **131 samples with
+> `ts <= 08:54:04Z`**. The slopes move materially - the worker's nearly
+> triples, from +0.67 to +1.85 MB/h - so this is a real correction and not a
+> rounding one.
+>
+> **What did NOT change: the conclusion.** Nothing accumulates. On the
+> corrected series the worker *ends 16.9 MB lower than it starts* inside a
+> 45 MB band, which is a stronger reading of "no leak" than the original
+> figures gave. What weakens is the *sensitivity*: the floor below which a
+> leak would be invisible rises from ~1 MB/h to ~2 MB/h.
+>
+> **Nothing else in this report draws on that file.** The throughput,
+> concurrency, queue-curve, degradation and fault findings come from
+> `sync_jobs`, `order_records` and `mixed-timeseries.csv`, all of which stop
+> at `window_stop` by construction. The raw CSV is deliberately **not**
+> trimmed - editing collected data is worse than documenting its boundary -
+> so a reader re-running the analysis must apply the same `ts` restriction.
+> The process lesson is at § 7 item 8.
 
 ## This is the run the epic named and never got
 
@@ -71,16 +106,82 @@ widened to the composition #2840 asked for.
 
 ## 0. The answers, in one page
 
+Window **10 783 s = 3.00 h**, 319 samples, 10 800 orders offered. **Verdict:
+`DISCARDED`** - see § 0.1, which must be read before any figure is quoted.
+
 | Question | Answer | Label |
 |---|---|---|
-| Does the queue converge under sustained mixed load at shipped defaults? | TBD | TBD |
-| What order rate survives competing catalogue sweeps? | TBD | TBD |
-| Does anything accumulate over hours - memory, Postgres backends, DB size? | TBD | TBD |
-| How many limiter-degradation episodes does an hours-long window really carry, against the 300 s extrapolation? | TBD | TBD |
-| Does a destination fault strand orders at volume the way it does at 12? | TBD | TBD |
+| **What order rate survives competing catalogue sweeps and 30 crons?** | **200.6 orders/h** completed over the whole window (193.3/h steady, 227.3/h recovery) | measured |
+| **What binds it?** | The `realtime` **per-scope cap of 2**, proven twice (§ 3.3). `2 slots / 31.44 s mean service = 229 orders/h` ceiling; the recovery phase reached 99.3% of it | measured + derived |
+| **Was the destination rate limit binding?** | **No.** At ~11 req/order and 200 orders/h that is ~37 req/min against the 300/min the manifest now ships - ~12% utilisation | derived |
+| **Does the queue converge?** | **No - it grows without bound at this offered rate**, +4 298 jobs/h over the last third against a ±1 259 noise band. But this is a property of the OFFERED LOAD, not a capacity result - see § 0.2 | measured |
+| **Does anything accumulate over hours?** | **No.** Worker RSS *ends 16.9 MB lower than it starts* inside a 98-143 MB band (fitted slope +1.85 MB/h = 9% of the band); api and Postgres slopes negative; Postgres page cache plateaued (+2%); backends peaked at 46 of 200; database +29.8 MB. A leak slower than ~2 MB/h is not distinguishable here | measured |
+| **How many limiter-degradation episodes does 3 h carry, vs the 300 s extrapolation?** | **1 454** against a predicted 1 438-1 761. **The 300 s figure extrapolates linearly - 1.01x the low end.** Degradation is a steady ~8/min, it does not accumulate | measured vs extrapolated |
+| **Does a destination fault strand orders at volume the way it does at 12?** | **The mechanism reproduced; the rate did not scale.** 1 of 413 (0.24%) against #2978's 17-42%. Stranding scales with orders IN FLIGHT, which the lane cap bounds - not with queue depth (§ 3.4) | measured |
+| Did the sweeps actually run inside the window? | **Yes** - 9 `master.product.syncAll`, 45 `syncBatch`, 300 `syncFromSweep`, 12 `master.inventory.syncAll`, 3 `master.product.reconcile`, matching their crons exactly (§ 3.1) | measured |
+| What did a second arm with `OL_JOB_INTAKE_DEDICATED_REDIS=true` show? | **Not run** - § 6 | not measured |
 
 > Every figure is labelled **measured**, **derived** or **extrapolated**.
 > § 6 "What this did not establish" is not optional reading.
+
+### 0.1 This window is `DISCARDED` by the harness's own rule, and must not be presented as a clean capacity measurement
+
+`verdict.txt` reads `DISCARDED`, on three guards:
+
+| Guard | Count | Structural? |
+|---|---|---|
+| `post_guard_limiter_degraded` | **1 454** degraded-mode lines | yes - shipped default is the SHARED intake client |
+| `post_guard_destination_creates` | 650 orders with a failed `syncStatus` entry, 729 lacking `syncedAt` | yes - § 1.4(a) two-member fan-out, and no in-flight allowance |
+| `post_guard_attempts` | 474 jobs with `attempts > 1` | yes - any 3-hour window contains retries |
+
+**The limiter count is the one that matters, and it is not waived.** 1 454 is
+non-zero, the guard's rule is that non-zero discards, and this report does not
+relabel it, exempt it, or argue it away. **This is therefore not a clean
+capacity measurement.**
+
+What the window *is* legitimate evidence for, stated so the distinction is not
+lost:
+
+1. **A `before` figure for the intake-client A/B.** This is the baseline arm -
+   shipped defaults, SHARED intake client (read back from the worker's own log,
+   § 2.0), which is precisely the configuration the degradation comes from. A
+   baseline that the harness rejects *for carrying the very defect the fix
+   removes* is still the right before-figure for that fix, provided it is
+   labelled as one. It is not a general-purpose capacity number.
+2. **The concurrency finding (§ 3.3), which does not depend on the limiter at
+   all.** The bind is the lane's per-scope cap of 2, established from job
+   timestamps by two independent methods. And the direction of the
+   contamination is knowable: a degraded limiter falls back to per-process
+   pacing, and at **one replica per-process pacing equals the configured
+   rate**, so degradation cannot have *inflated* the throughput - each
+   fallback adds latency to a limiter call, which raises mean service time and
+   *lowers* the derived ceiling. The capacity figure is therefore a
+   conservative lower bound with respect to this defect. That is an argument
+   about the mechanism, not a waiver of the guard.
+3. **The fault-stranding result (§ 3.4)**, which is a claim about a code path -
+   `Promise.allSettled` swallowing a per-destination failure - and is
+   established by one order's own persisted rows, not by a rate.
+
+### 0.2 `verdict = growing` is a property of the OFFERED LOAD, not a capacity result
+
+Stated explicitly because `+4 298 jobs/h` is the kind of number a later reader
+will quote as though it measured the system:
+
+The scenario **deliberately offers 60 orders/min = 3 600 orders/h** in order to
+saturate (§ 2.2), against a drain of ~200 orders/h. The queue therefore *must*
+grow at roughly `3 600 - 200 = 3 400` order-syncs/h plus whatever the 30 crons
+contribute, and the measured +4 298 jobs/h is that arithmetic, observed.
+
+**It is not a defect, not a capacity figure, and not a statement about
+OpenLinker.** It is what saturation looks like, and saturation is the method:
+under a standing backlog the achieved throughput *is* the service rate, which
+is why the 200.6 orders/h above is the capacity answer and the growth rate is
+merely the confirmation that the offered rate exceeded it.
+
+The actionable form of the same observation is the **threshold**: at shipped
+defaults, with the sweeps and crons running, **an install offered more than
+~200 orders/h will accumulate queue without bound.** Offered less, it
+converges. That is the number an operator can act on; `+4 298 jobs/h` is not.
 
 ## 1. Conditions
 
@@ -484,6 +585,122 @@ per-jobType queue breakdown is a *depth* attribution and must not be read as a
 
 ## 3. Results
 
+Five readings, in order of how much they matter.
+
+### 3.1 The sweeps and crons genuinely ran - the co-tenancy is real
+
+#2840 requires each flow to record whether the sweeps ran inside its window.
+They did, and the counts match the crons exactly, which is the check that the
+scheduler was not merely enabled but firing:
+
+| job type | succeeded | expected from its cron over 3 h |
+|---|---|---|
+| `master.product.syncAll` | **9** | `*/20` -> 9 |
+| `master.product.syncBatch` | 45 | 5 batch children per tick x 9 |
+| `master.product.syncFromSweep` | 300 | per-product children |
+| `master.inventory.syncAll` | **12** | `*/15` -> 12 |
+| `master.inventory.syncBatch` | 12 | |
+| `master.product.reconcile` | **3** | hourly -> 3 |
+| `marketplace.orders.poll` | 378 | `*/1` allegro x2 + `*/5` wc/erli + `*/10` ps |
+| `orders.taxRate.backfill` | 9 | hourly x 3 `OrderSource` connections |
+| `marketplace.order.fxStampSweep` | 9 | hourly x 3 |
+| `inventory.propagateToMarketplaces` | 327 | per-order cascade |
+| `automation.trigger.deadlineSweep` | 36 | `*/15` x 3 |
+
+The two hourly sweeps over the 2 003 176-row `order_records` history
+(`orders.taxRate.backfill`, `marketplace.order.fxStampSweep`) both completed
+every tick, at p50 9.6 s and 9.8 s per attempt - so the "read-path cost at a
+large history of the OTHER tables" the campaign doc § 7 names as unmeasured is,
+for these two sweeps at this row count, **not a problem**.
+
+**One thing the crons did that nothing had measured before.**
+`marketplace.fulfillment.statusSync` on the destination connection took a
+**p50 of 474 s** per run - just under 8 minutes - and runs every 15 minutes, a
+**~53% duty cycle** holding one slot continuously for more than half the
+window. Its sibling on `perf-webhook-ingress` took p50 9.8 s, so the cost is
+specific to the connection with the 50 006-product catalogue. It registers in
+the **`bulk`** lane (`handler-registration.service.ts:282`), so it competes
+with the catalogue-sweep children rather than with the order path - which is
+why it does not appear in the capacity model below, and why it is worth a look
+by whoever owns #834.
+
+### 3.2 The capacity answer: 200.6 orders/h
+
+`marketplace.order.sync` jobs reaching `status = 'succeeded'`, which is the
+job-terminal measure rather than a `syncedAt`-derived one (§ 1.4(a) explains
+why):
+
+| phase | duration | completed | orders/h |
+|---|---|---|---|
+| steady | 6 574 s | 353 | **193.3** |
+| fault | 275 s | 1 | 13.1 |
+| recovery | 3 865 s | 244 | **227.3** |
+| **whole window** | **10 783 s** | **601** | **200.6** |
+
+Ingestion ran slightly ahead at 217.3 orders/h (651 rows), because an
+`order_records` row is written before the destination create and a job that
+fails the create and retries has already written one.
+
+**Context, with the comparison stated carefully.** The retest campaign measured
+**207 orders/h** for the *isolated* order path, same SHARED intake client, with
+the destination limited to 60 req/min. This window measured **200.6 orders/h**
+with the destination at 300 req/min *and* the full cron co-tenancy. Two changes
+moved in opposite directions at once and **this run cannot separate them** -
+that is exactly what § 2.8's attribution flag means. What can be said is the
+conjunction: **raising the destination limit 5x did not buy enough to offset
+the co-tenancy**, and § 3.3 explains why raising it could not have helped much
+in the first place.
+
+### 3.3 What binds: the realtime per-scope cap of 2, confirmed twice
+
+Not assumed from the config. Two independent measurements over the steady
+phase, both from job timestamps at real precision rather than the sampler's
+30 s floor:
+
+**(a) Little's law**, `L = lambda x W`:
+
+| term | value |
+|---|---|
+| n (succeeded order.sync, steady) | 405 |
+| span | 6 560.8 s |
+| lambda | 0.061 73 /s |
+| W (mean `lastAttemptDurationMs`) | 31.44 s (p50 30.31 s) |
+| **L** | **1.941** |
+
+**(b) Direct interval overlap.** Each succeeded job's execution interval is
+`[updatedAt - lastAttemptDurationMs, updatedAt]`; counting intervals spanning a
+probe instant *is* the concurrency there. 105 probes at 60 s spacing:
+
+| statistic | value |
+|---|---|
+| mean | 1.95 |
+| p50 / p90 | 2 / 2 |
+| **max** | **2** |
+| probes at concurrency >= 2 | 95.2% |
+| probes above 2 | **0** |
+
+Distribution: concurrency 1 at 5 probes, **concurrency 2 at 100 probes**, never
+3. The cap is binding, hard, essentially all of the time.
+
+**The capacity model that follows**, and it closes:
+
+```
+ceiling = perScope_cap / mean_service_time
+        = 2 / 31.44 s
+        = 0.0636 /s = 229 orders/h        [derived]
+```
+
+The recovery phase measured **227.3 orders/h**, i.e. **99.3% of that ceiling**.
+So the order path is slot-bound, not budget-bound: at ~11 requests per order
+and 200 orders/h the destination sees ~37 req/min against the 300/min the
+manifest now ships - about **12% utilisation** [derived; the per-order request
+count is the retest's measurement, not re-measured here].
+
+Both figures are **lower bounds on true occupancy**, for a reason worth
+stating: `lastAttemptDurationMs` records the last attempt only and is reset on
+every enqueue (#2611), so a job that retried contributes only its final
+attempt while its earlier attempts also held a slot.
+
 ### 3.4 The destination fault: stranding scales with CONCURRENCY, not with queue depth
 
 This is the question #2978 left open. It found that a destination fault
@@ -582,13 +799,108 @@ error-response-shaped fault #2978 measured**; it measures the timeout-shaped
 one and finds the same swallowing mechanism at the end of it. Whether an
 error-response fault strands more is unmeasured here.
 
-## 4. Recommendation
+### 3.5 The queue curve
 
-TBD
+| statistic | value |
+|---|---|
+| samples used / dropped | 319 / 0 |
+| depth first / min / max / last | 58 / 56 / **12 832** / 12 832 |
+| deferred (backing off) at end | 184 |
+| overall slope | +4 180.6 jobs/h |
+| **last-third slope** | **+4 298.0 jobs/h** (n=108 over 3 727 s) |
+| noise band | ±1 259.3 jobs/h (sd 1 303.8) |
+| **verdict** | **`growing`** - 3.4x the band |
 
-## 5. Accumulation
+The overall slope (+4 181/h) and the last-third slope (+4 298/h) agree within
+3%, so the divergence is **linear** - the apparent deceleration in the first
+half hour was the crons' initial burst clearing on top of a constant floor, not
+the queue approaching a plateau. **The window ended before the queue converged,
+and it was never going to at this offered rate**; the last sample is not an
+equilibrium. § 0.2 states why this is a property of the offered load.
 
-TBD
+At the end, 11 926 of the 12 832 due rows (93%) were `marketplace.order.sync`.
+The three job types that died on missing stub endpoints (§ 1.4(b)) contributed
+41 queued rows, **0.3%**, so the finding does not rest on them.
+
+**One incidental figure worth recording:** `deferredTotalMs > 0` on **zero**
+jobs, despite 1 454 limiter degradations. Degradation and penalty-free
+deferral are different mechanisms and this window exercised only the first;
+the `requeueWithoutPenalty` path (#2613) never fired.
+
+## 4. Accumulation over hours: nothing does
+
+The question a 300-second window structurally cannot answer.
+
+**Memory (cgroup `total_rss`, n=131 samples over ~2 h 13 m, restricted to
+samples inside the window - see § 2.4.1 for why `docker stats` cannot answer
+this and why the series starts late, and the correction block at the top of
+this report for why the restriction is necessary):**
+
+| container | first | last | min | max | mean | slope |
+|---|---|---|---|---|---|---|
+| `lab-worker-1` | 133.1 | **116.2** | 98.4 | 143.3 | 114.9 | **+1.85 MB/h** |
+| `lab-api` | 126.3 | 121.8 | 121.8 | 126.4 | 126.0 | −0.75 MB/h |
+| `lab-postgres` | 77.1 | 9.5 | 3.0 | 77.1 | 14.1 | −0.78 MB/h |
+| `lab-redis` | 45.5 | 45.2 | 44.9 | 51.8 | 47.8 | +1.12 MB/h |
+
+**No leak is detectable over three hours**, and the worker's row is worth
+reading carefully rather than from its slope alone. The fitted slope is
+**+1.85 MB/h**, but the container **ended 16.9 MB LOWER than it started**
+(133.1 -> 116.2) inside a **45 MB oscillation band**. A positive slope fitted
+across a sawtooth whose endpoints fall is a property of where the samples
+landed, not a trend: +1.85 MB/h over the 2.18 h series is ~4 MB, i.e. **9% of
+the band**. Two of the four slopes are negative outright.
+
+The honest bound on the claim: a leak slower than **~2 MB/h** is not
+distinguishable from this oscillation, so this window cannot rule one out.
+Doing that needs a 24-hour run.
+
+Postgres page cache **plateaued** rather than growing: 1 574 MB at the first
+RSS sample and 1 608 MB at the last - **+34 MB, or +2%, over 2 h 13 m**. It
+filled during the first ~48 minutes as the sweeps first touched the 2M-row
+table and then essentially stopped, which is what confirms the § 2.4.1 reading
+that the earlier 7.7x `docker stats` rise was cache fill and not growth.
+
+**Postgres connections:** mean 11, **max 46**, last 9, against
+`max_connections = 200` - a **23% peak**. The budget guard's arithmetic
+(`OL_DB_POOL_MAX 40 x 2 processes = 80`) held with a wide margin, and the peak
+of 46 exceeding the 40-per-process pool is the api and worker pools summing,
+exactly as expected.
+
+**Database size:** 4 817.7 MB -> 4 847.5 MB, **+29.8 MB** over three hours,
+against 651 ingested orders and ~14 000 `sync_jobs` rows. Nothing here suggests
+a storage problem at this rate.
+
+**Retries:** 474 jobs reached `attempts > 1`, max 9 - so one job came within a
+single attempt of the entity default of 10 and `dead` - and 352 jobs died, all
+of them on the stub 404s of § 1.4(b). **No `marketplace.order.sync` job died
+at all.**
+
+## 5. Recommendation
+
+**None is owed by this run**, and saying so is the honest answer rather than a
+gap. This is the baseline arm of an A/B whose second arm has not been run
+(§ 6), and its verdict is `DISCARDED` for carrying the very defect the fix
+addresses (§ 0.1). A recommendation drawn from one contaminated arm is exactly
+what `results-retest-2026-09-07.md` had to withdraw when it corrected ADR-050's
+`2.77x` attribution.
+
+Three things it does support, none of which is a config change:
+
+1. **The order path is slot-bound at the `realtime` per-scope cap, not
+   budget-bound.** §3.3 shows the destination at ~12% of its rate-limit
+   budget while concurrency sat at the cap 95% of the time. This is
+   corroborating evidence for a finding the campaign already holds and
+   deliberately declines to act on: the prior campaign's arm ED raised
+   `realtime` 4/2 -> 16/16 and throughput **fell 12.5%**, and F7 measured a
+   5-6x execution-time penalty under destination contention. **Raising the cap
+   is not the indicated fix and this run does not recommend it.**
+2. **`marketplace.fulfillment.statusSync` deserves a look** (§ 3.1): p50 474 s
+   per run every 15 minutes on a 50 006-product catalogue is a ~53% duty cycle
+   on one `bulk` slot. Whether that is inherent or accidental is unmeasured.
+3. **A swallowed per-destination failure needs to leave a trace a sweep can
+   find** (§ 3.4). That is a product gap, not a tuning one, and this run is
+   the second independent observation of it.
 
 ## 6. What this did NOT establish
 
@@ -691,7 +1003,20 @@ TBD
    the PrestaShop webservice key and reseeded offer mappings - i.e. changed
    the thing under measurement - so the scenario resolves connection ids from
    the database by name instead, which is what bootstrap itself keys on.
-7. **`lib-test.sh` shipped with a permanently-failing assertion** (165 passed
+8. **A sampler that decides when to stop by grepping for a process NAME will
+   outlive its own window on a shared host.** The mid-window RSS sampler used
+   `ps aux | grep '[s]ustained-mixed-load'`; a peer agent in another worktree
+   ran the same scenario, the grep matched *their* process, and it kept
+   appending to this run's results directory for 3.5 hours after
+   `window_stop`. That is how contaminated figures reached the first revision
+   of this report (see the correction block at the top). Two things would have
+   prevented it, and a future side sampler should do both: **bound it by the
+   window** rather than by liveness (pass `window_stop` in, or a sample count),
+   and if liveness is used at all, key it on the **PID** the sampler was
+   started against, never on a name any peer can also be running. The
+   scenario's own two samplers were never exposed to this - `sampler_stop` and
+   `mixed_supp_sampler_stop` both `kill` a recorded PID.
+9. **`lib-test.sh` shipped with a permanently-failing assertion** (165 passed
    / 1 failed at the start of this session). "Omitting the feed argument
    leaves the verdict VALID" called `run_post_guards` against a fresh temp
    directory, so `post_guard_containers_stable` correctly refused a window it
