@@ -261,9 +261,11 @@ if [ -n "$MIXED_RAMP" ]; then
   done
   MIXED_RAMP_TOTAL="$_ramp_acc"
   [ "${#MIXED_RAMP_LABELS[@]}" -ge 2 ] || warn "MIXED_RAMP has a single segment - that is a constant-rate window with extra steps"
-  if [ -z "${MIXED_DURATION_SECS_EXPLICIT:-}" ]; then
-    MIXED_DURATION_SECS="$MIXED_RAMP_TOTAL"
-  fi
+  # The ramp total IS the window length when a ramp is given. There is
+  # deliberately no override: two knobs that can disagree about how long the
+  # window is would let a window end mid-drain and still look healthy, and a
+  # knob nobody can discover is a false statement about what is configurable.
+  MIXED_DURATION_SECS="$MIXED_RAMP_TOTAL"
   log "ramp: $MIXED_RAMP (total ${MIXED_RAMP_TOTAL}s, window ${MIXED_DURATION_SECS}s)"
 fi
 
@@ -1010,6 +1012,23 @@ log "=== summary ==="
 bash "$SCRIPT_DIR/../drivers/mixed-summarize.sh" "$RESULTS_DIR" \
   "$WS_ISO" "$ALLEGRO_A_CONNECTION_ID" "$PS_CONNECTION_ID" "$MIXED_PUSHED_TOTAL" \
   | tee "$RESULTS_DIR/summary.txt"
+
+# Per-order end-to-end age (#2840). APPENDED rather than folded into
+# mixed-summarize.sh, so a run without a ramp produces a byte-identical
+# summary and this section simply does not exist for it.
+#
+# The phase boundary is the first ramp segment's end, converted from the
+# window's own start epoch. `date -u -d @epoch` is GNU date, which DOES accept
+# an @-prefixed epoch - it is `docker logs --since` that silently accepts one
+# and returns nothing, a different tool and a different defect.
+if [ -n "$MIXED_RAMP" ]; then
+  _age_boundary_epoch=$(( WINDOW_START_EPOCH + ${MIXED_RAMP_ENDS[0]} ))
+  _age_boundary_iso="$(date -u -d "@$_age_boundary_epoch" +%Y-%m-%dT%H:%M:%SZ)"
+  log "=== per-order end-to-end age (ramp boundary $_age_boundary_iso) ==="
+  bash "$SCRIPT_DIR/../drivers/order-age-percentiles.sh" \
+    "$ALLEGRO_A_CONNECTION_ID" "$WS_ISO" "$_age_boundary_iso" \
+    | tee -a "$RESULTS_DIR/summary.txt"
+fi
 
 # ---------------------------------------------------------------------------
 # Hand the stand back. The runner goes off FIRST so nothing is mid-flight
