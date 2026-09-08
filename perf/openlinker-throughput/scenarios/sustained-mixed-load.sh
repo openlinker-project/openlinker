@@ -584,8 +584,7 @@ mixed_supp_header() {
 # than several of the flows under measurement. It is computed once, at the
 # end, in the summary.
 mixed_supp_sample() {
-  local csv="$1" ws_epoch="$2" ws_iso="$3" prev_epoch="$4" now phase
-  now="$(epoch)"
+  local csv="$1" ws_epoch="$2" ws_iso="$3" prev_epoch="$4" now="$5" phase
   phase="$(cat "$MIXED_PHASE_FILE" 2>/dev/null || printf 'unknown')"
 
   local gq gd gr gdead
@@ -653,10 +652,21 @@ mixed_supp_sampler_start() {
   mixed_phase_set "starting"
   mixed_supp_header "$MIXED_SUPP_CSV"
   (
-    local prev="$ws_epoch"
+    # `now` is computed HERE and handed to the sample, then becomes the next
+    # interval's lower bound. Reading the clock again AFTER the sample returns
+    # leaves the sample's own duration uncovered by any interval - and a
+    # sample takes seconds (several Postgres counts plus a `docker stats`),
+    # so at a 15s interval roughly a third of the window went uncounted.
+    #
+    # Measured on this scenario's first smoke run: the sampler totalled 19
+    # limiter-degradation episodes over a window in which
+    # `post_guard_limiter_degraded`, reading the whole window in one grep,
+    # found 25. The intervals must TILE the window, not sample points in it.
+    local prev="$ws_epoch" now
     while :; do
-      mixed_supp_sample "$MIXED_SUPP_CSV" "$ws_epoch" "$ws_iso" "$prev" || true
-      prev="$(epoch)"
+      now="$(epoch)"
+      mixed_supp_sample "$MIXED_SUPP_CSV" "$ws_epoch" "$ws_iso" "$prev" "$now" || true
+      prev="$now"
       sleep "$MIXED_SAMPLE_INTERVAL_SECS"
     done
   ) &

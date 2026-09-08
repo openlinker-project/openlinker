@@ -221,6 +221,13 @@ echo "   Each line is an EPISODE, not a call: the fallback message is logged on"
 echo "   the transition into degraded mode and then at most once per 30s"
 echo "   (DEGRADED_LOG_INTERVAL_MS). The number of individual calls that fell"
 echo "   back is NOT established by this figure."
+echo
+echo "   The AUTHORITATIVE total for the window is post_guard_limiter_degraded's,"
+echo "   in verdict.txt: it reads the whole window in one grep. The sum below is"
+echo "   a sum of per-interval counts, kept because it is the only thing that"
+echo "   shows the SHAPE over time - whether episodes cluster at boot and early"
+echo "   load, as F7 found, or accumulate. The two can differ by a line landing"
+echo "   on an interval boundary; quote the verdict's figure as the total."
 hr
 awk -F, -v cd="$C_DEG" -v ce="$C_ELAPSED" '
   NR>1 && $cd >= 0 { n++; t+=$cd; if ($cd>mx) mx=$cd; e=$ce }
