@@ -1025,7 +1025,66 @@ Two separate defects, and the first is worse than noise:
 definitions B and D need **no signature change**, which was the point of
 measuring them.
 
-#### 7.4(b).2 And the fix is deliberately NOT applied here
+#### 7.4(b).0 SETTLED: three windows, the same arithmetic impossibility
+
+The parity reason for leaving this unrepaired has now expired - **all three
+arms are done** - and the evidence is no longer an anomaly:
+
+| Arm | orders carrying a "failed" entry | ingested from the source |
+|---|---|---|
+| A | **2 967** | 2 961 |
+| B | **2 967** | 2 961 |
+| C | **1 798** | 1 792 |
+
+**Three independent windows in which the guard's count exceeds the population
+it claims to describe.** A count cannot exceed its own denominator, so this is
+not a borderline reading: the predicate is unscoped, and the measured
+destination-scoped answers for arm A were **1 and 1** (§ 7.4(b).1).
+
+Arm C adds the confirmation from the other arm: its `missing` count of
+**1 456** is the **1 454** re-ingested `perf-webhook-ingress` orders
+(§ 7.5.1), i.e. orders that were never dispatched to the declared destination
+and cannot "lack `syncedAt`" on it.
+
+**This is now a settled defect with a named repair**, and it is a *defect
+fix*, not tuning-to-pass: the guard's own message says "the declared
+destination" while its SQL names none, so bringing the predicate into line
+with the sentence changes what the guard *claims* not at all and what it
+*counts* completely. Disabling a connection to make it pass would have been
+tuning; this is not.
+
+**The repair** (`lib.sh:1282-1300`), both one-liners, needing no signature
+change because the guard already receives the destination id:
+
+```sql
+-- failed arm: add the predicate the message already promises
+AND EXISTS (SELECT 1 FROM jsonb_array_elements("syncStatus") e
+            WHERE e->>'status' = 'failed'
+              AND e->>'destinationConnectionId' = '$destination_conn_id')
+
+-- missing arm: only orders the destination was actually attempted on
+AND EXISTS     (SELECT 1 FROM jsonb_array_elements("syncStatus") e
+                WHERE e->>'destinationConnectionId' = '$destination_conn_id')
+AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements("syncStatus") e
+                WHERE e->>'destinationConnectionId' = '$destination_conn_id'
+                  AND e->>'syncedAt' IS NOT NULL)
+```
+
+**And it must be landed red-first**, which is this branch's own rule and
+exactly the case it exists for: before trusting the repaired guard's `ok`, it
+has to be made to **fire** on a known positive - arm A's window, where the
+declared destination genuinely carries one failed entry and the guard must
+still report it *and name that destination* - and then to **pass** on a window
+where only a non-declared destination failed. A guard that can no longer
+refuse anything is worse than the unfiltered one, and asserting only the pass
+direction is how the unfiltered version survived the whole campaign.
+
+The `missing` arm's repair also carries a **stated weakening**: an order
+ingested and never dispatched *at all* becomes invisible to it (arm A had 2
+such). That is a different check - "nothing was dispatched" - and should be a
+separate guard rather than smuggled into this one.
+
+#### 7.4(b).2 And the fix was deliberately NOT applied during the three arms
 
 Repairing the SQL now would change what `verdict.txt` means **between arms
 that are otherwise identical**. Parity across the three arms is the entire
@@ -1045,9 +1104,169 @@ that can see"* a swallowed per-destination failure - true only in principle
 today: it can see one, and then reports it at a magnitude that makes it
 invisible.
 
-### 7.5 Results
+### 7.5 Results - the split § 7.4(a) predicted happened
 
-TBD.
+Window `2026-09-08T12:31:33Z` + 10777s, 600 orders/h offered, no fault.
+
+**C3 PASSES, and its pass is not qualified by C1's failure.**
+
+| | offered | completed |
+|---|---|---|
+| whole window | 1 792 ingested = **598.6/h** | 1 791 = **598.3/h** |
+
+**1:1 for three hours.** `ord_sync_succeeded` 1 791 against 1 792 ingested is
+99.94% - the order path kept up exactly, at the owner's own peak figure. And
+**limiter degradation was 0** for the third independent window
+(arm A 1 454, arm B 0, arm C 0).
+
+**C1 FAILS** (`verdict = GROWING`, last-third slope **+481.3 jobs/h** against a
+144.0 noise band) and **C2 FAILS** (due depth 66 -> 1 367). The summary's own
+"ended before convergence" note stands.
+
+**These are not in tension, and § 7.4(a) is why they were declared
+separately.** The aggregate verdict is not the order path.
+
+#### 7.5.1 What the growth is, settled from terminal states
+
+The queue at close is **1 969 rows, of which 1 786 are
+`marketplace.order.sync`** - `offerQuantity.update` shows 3 600 succeeded with
+**none** queued and `propagateToMarketplaces` 1 802 succeeded with **none**
+queued. So the sweeps drained completely; one job type carries essentially all
+of the growth.
+
+Seven findings, each measured:
+
+1. **The twins accumulate at exactly the order rate.** From t+1806s to close:
+   `ord_sync_queued` **+596.7/h**, `ord_sync_succeeded` **+601.1/h**,
+   `orders_ingested` **+600.7/h**. The queued/ingested ratio holds **0.86-0.99
+   flat across the whole window** - it does not climb, which is what a
+   capacity shortfall would do. One un-drained twin per order, steady.
+2. **The twins are DUE, not deferred** - your fourth possibility, checked
+   before concluding. At close: due 1 367, **deferred 603**, `order.sync`
+   queued 1 787. At most a third could be backing off; the majority are due.
+   So the depth figure and the growth verdict mean what they appear to.
+3. **The twins are not duplicates of the measured orders.** The 1 800
+   surviving succeeded rows are **1 800 distinct orders under 1 800 distinct
+   idempotency keys**, and `sync_jobs.idempotencyKey` carries a unique index
+   (`UQ_9da61f0b254051a6249d0ae2ea1`), so a duplicate row for one key is not
+   representable.
+4. **The dedup key is working, and the poll is not double-firing.** Connection
+   A holds **1 813** `jobdedup:marketplace:{cidA}:order:*` keys for 1 800
+   orders. The 378 `marketplace.orders.poll` successes that looked like ~2/min
+   against a 1-minute cron decompose exactly: **allegro-a 180 + allegro-b 180
+   + webhook-ingress 18** (`0 */10`) = 378. Two connections, not two firings -
+   and identical in all three arms, as cron-driven counts should be.
+5. **Not the second Allegro connection either.** `perf-allegro-b` holds **9**
+   dedup keys in that namespace.
+6. **A second PrestaShop connection polls the shop OL writes into.**
+   `perf-webhook-ingress` is an *active* `prestashop` connection with
+   `OrderSource`; its poll succeeded **18** times, and **1 454
+   `order_records` were created for it inside the window** - OL re-ingesting
+   orders it had itself just created in that shop, at 600/h. Note **zero
+   `webhook_deliveries`** in the window: despite the name, this connection
+   arrives by *polling*.
+7. **The guard's own count corroborates the population.**
+   `post_guard_destination_creates` reports **1 456** orders lacking
+   `syncedAt` on the declared destination; the re-ingested set is **1 454**.
+   Two apart.
+
+**Conclusion, in the terms it must be quoted in: the stand has a
+re-ingestion loop. It is NOT that OpenLinker cannot keep up at 600
+orders/h.**
+
+`perf-webhook-ingress` is an active PrestaShop `OrderSource` polling **the
+same shop OpenLinker writes into**, so OL re-reads orders it has just created
+- **1 454 `order_records` for that connection inside the window.** A shop
+configured as both an order *destination* and an order *source* loops, because
+OL does not recognise orders it created itself.
+
+**The flat ratio is what settles it, and it is the sentence to keep**: the
+queued/ingested ratio holds **0.86-0.99 across the whole window**. A capacity
+shortfall **climbs**; a feedback loop **tracks the input**. This tracks the
+input.
+
+#### 7.5.1.1 Arms A and B carried the same loop - so every queue-growth figure in this report is partly this artefact
+
+Stated explicitly rather than left to be inferred, because it cuts two ways.
+
+`perf-webhook-ingress` was active and polling in **all three** windows - arm A
+ingested **726** orders on it, arm B **1 484**, arm C **1 454**. So the loop is
+a **constant across the three arms**.
+
+**What that protects:** the A-versus-B service-time comparison is untouched.
+A constant present in both arms cannot manufacture a 5.11x difference in mean
+per-order service time, and the loop's own jobs are a different connection's
+scope with their own lane slots.
+
+**What that contaminates:** **every queue-growth figure in every arm.** Arm A's
+**+4 298 jobs/h**, arm B's **+3 859 jobs/h** and arm C's **+481 jobs/h** are
+all partly this artefact and **none of them is a clean capacity statement.**
+Arm A's figure in particular has been quoted onward as though it were one; it
+is hereby corrected - the honest form is *"the queue grew at +4 298 jobs/h on
+a stand carrying a re-ingestion loop, at an offered rate 16x the drain"*, and
+the load shape alone already made it uninterpretable as capacity (§ 3.5,
+§ 6.1).
+
+The figures this report stands behind are the **service times** and the
+**order-path throughput**, neither of which the loop touches.
+
+#### 7.5.2 What I could NOT establish, and the probe that would
+
+**The twins' connection attribution is unrecoverable from this run.** The
+scenario's teardown runs
+`DELETE FROM sync_jobs WHERE "createdAt" >= WS AND status IN ('queued','running')`
+and purged 1 976 rows **before** they could be inspected, so the direct
+statement *"the 1 787 queued rows carry `connectionId = perf-webhook-ingress`"*
+is inferred from (1), (4), (5), (6) and (7) rather than read. Points 6 and 7
+make it the only surviving candidate, and the rate in (1) matches, but that is
+strong circumstantial evidence, not attribution.
+
+Two loose ends of the same kind. **`post_guard_attempts`' 1 367 jobs with
+`attempts>1` cannot be attributed either** - every surviving measured
+order-sync row has `attempts = 0.00`, so the retries are not on the measured
+path; that they are the twins failing against a shop with no mapping for those
+orders is consistent and unproven. And 1 454 `order_records` imply 1 454
+*successful* twins whose rows should have survived the purge and did not,
+which the purge predicate alone does not explain - so the picture is
+incomplete in a way worth naming rather than smoothing over.
+
+**The probe, named so nobody rediscovers it.** Either settles it in one read:
+
+```sql
+-- taken MID-window, before teardown
+SELECT "connectionId", status, COUNT(*)
+FROM sync_jobs
+WHERE "jobType" = 'marketplace.order.sync' AND "createdAt" >= '<WS_ISO>'
+GROUP BY 1, 2;
+```
+
+or a 15-minute window at the same offered rate with the teardown purge
+deferred. I did not spend the stand on either.
+
+**And the harness defect this exposes is a defect, not an inconvenience: a
+teardown that erases the evidence of its own anomaly.** The purge exists so
+the next scenario's `guard_queue_empty` passes, which is legitimate - but it
+runs *after* the post-guards have already reported an anomaly and *before* any
+human can look at the rows that caused it. Every figure in § 7.5.2 that reads
+"inferred, not read" is inferred **because the harness deleted the answer**.
+The fix is not to stop purging: it is to record a bounded sample of what is
+about to be deleted (a `connectionId`/`status`/`jobType` rollup into the run
+directory costs one query), or to gate the purge behind an env flag a
+diagnosing operator can unset. This belongs in the same family as § 1.3.1's
+and § 6.3's four instrument failures - a mechanism that produces a confident
+account with the disconfirming evidence removed.
+
+#### 7.5.3 What this does and does not license
+
+**Licensed**: the order path sustains **600 orders/h at 1:1** with the limiter
+clean - which is the owner's peak figure, measured on a window that was not
+saturating. That is the first arm to put weight on § 6.1's derived ceiling,
+and it constrains it from below: **ceiling >= 600/h, observed.**
+
+**Not licensed**: "the queue converges at 600/h". It did not, C1 and C2 are
+recorded as failed, and no criterion was moved after reading it. What
+converged is the order path; the install-wide queue did not, for a reason
+outside the order path.
 
 ## 8. Two campaign figures this report must not repeat, and the one window that would fix them
 

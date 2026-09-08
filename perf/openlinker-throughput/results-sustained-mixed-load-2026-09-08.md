@@ -843,8 +843,42 @@ this report for why the restriction is necessary):**
 | `lab-postgres` | 77.1 | 9.5 | 3.0 | 77.1 | 14.1 | −0.78 MB/h |
 | `lab-redis` | 45.5 | 45.2 | 44.9 | 51.8 | 47.8 | +1.12 MB/h |
 
-**No leak is detectable over three hours**, and the worker's row is worth
-reading carefully rather than from its slope alone. The fitted slope is
+> ### Second correction, 2026-09-08 - "no leak is detectable" is withdrawn too, and replaced by "not measured"
+>
+> The correction at the top of this report withdrew the contaminated
+> *numbers* and restated them. This one withdraws the *conclusion* drawn from
+> the restated ones, and it comes from #2992 § 6 (`docs/operations/
+> requirements-and-scaling.md`), which measured the same series independently.
+>
+> **Two independent corrections agree on the mechanism and differ slightly on
+> the number.** Both found the sampler ran past the run's own end - this
+> report's own block traces it to
+> `ps aux | grep '[s]ustained-mixed-load'`, i.e. **a pattern that matches the
+> scenario's own name**, which is the third instance of self-matching process
+> detection this campaign has hit. #2992, cutting at `06:40:39 -> 08:53:27`,
+> reports the worker slope as **+1.81 MB/h**; this report's cut reports
+> **+1.85 MB/h**. The gap is the sample cut, not a disagreement, and neither
+> number changes the reading below.
+>
+> **What is withdrawn.** *"No leak is detectable over three hours."* The
+> sentence claims a negative result the window cannot deliver. Against a
+> **45 MB oscillation band** over ~2.2 h, a slope under roughly **±1-2 MB/h**
+> is not distinguishable from jitter - and the corrected worker slope, at
+> +1.81 to +1.85 MB/h, sits **inside** that floor. So the honest answer is
+> **not measured**, not *no leak*. This report's own bound was right even
+> where its conclusion was not: *"a leak slower than ~1 MB/h would be
+> invisible here; ruling one out needs a 24-hour window"* - and no 24-hour
+> window was run.
+>
+> **What replaces it for a reader sizing hardware: the measured MAXIMA in the
+> table above, never a slope.** A slope this run cannot resolve must not enter
+> a provisioning decision in either direction. The endpoint argument below
+> (the container ended 16.9 MB lower than it started, so a positive fitted
+> slope reflects where samples landed) is sound and is *also* not evidence of
+> absence - it is a second reason the slope carries no information, not a
+> reason to trust its sign.
+
+The worker's row is worth reading carefully rather than from its slope alone. The fitted slope is
 **+1.85 MB/h**, but the container **ended 16.9 MB LOWER than it started**
 (133.1 -> 116.2) inside a **45 MB oscillation band**. A positive slope fitted
 across a sawtooth whose endpoints fall is a property of where the samples
