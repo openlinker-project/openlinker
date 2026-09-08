@@ -2415,4 +2415,47 @@ describe('unrecognised fulfillmentState degrades one cell, not the page (#2678)'
     const notShipped = screen.queryAllByText('Not shipped');
     expect(notShipped.every((el) => el.tagName === 'OPTION')).toBe(true);
   });
+
+  /**
+   * The two-stage total (#2947). Both properties are acceptance criteria of
+   * the epic, and both are about what the page does when the count is NOT
+   * there: the rows must still be, and the missing number must never be
+   * rendered as a zero.
+   */
+  describe('two-stage total (#2947)', () => {
+    // A page reported FULL, so the rows imply no exact total and the count is
+    // genuinely needed - a short page would answer it without a request.
+    const fullPage = { items: [syncedOrder], limit: 1, offset: 0 };
+
+    it('renders its rows while the count is still in flight', async () => {
+      const mockApi = createMockApiClient({
+        orders: {
+          listRows: vi.fn().mockResolvedValue(fullPage),
+          count: vi.fn().mockReturnValue(new Promise(() => {})),
+        },
+      });
+
+      renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      expect(await screen.findByText('ALG-882414')).toBeInTheDocument();
+      expect(screen.getAllByText('1+').length).toBeGreaterThan(0);
+    });
+
+    it('keeps the placeholder when the count FAILS, and never renders it as 0', async () => {
+      const mockApi = createMockApiClient({
+        orders: {
+          listRows: vi.fn().mockResolvedValue(fullPage),
+          count: vi.fn().mockRejectedValue(new Error('count blew up')),
+        },
+      });
+
+      renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      expect(await screen.findByText('ALG-882414')).toBeInTheDocument();
+      // A failed read must not become a positive claim that nothing matched.
+      expect(await screen.findByTitle(/could not be loaded/i)).toBeInTheDocument();
+      expect(screen.getAllByText('1+').length).toBeGreaterThan(0);
+    });
+  });
+
 });

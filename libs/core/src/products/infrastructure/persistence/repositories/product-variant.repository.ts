@@ -15,7 +15,7 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, Brackets } from 'typeorm';
+import { Repository, In, Brackets, type SelectQueryBuilder } from 'typeorm';
 import { ProductVariantOrmEntity } from '../entities/product-variant.orm-entity';
 import type { ProductVariantRepositoryPort } from '../../../domain/ports/product-variant-repository.port';
 import type { ProductVariant } from '../../../domain/entities/product-variant.entity';
@@ -193,10 +193,16 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
     return entities.map((entity) => this.toDomain(entity));
   }
 
-  async findMany(
-    filters: ProductVariantListFilters,
-    pagination: ProductPagination
-  ): Promise<PaginatedProductVariants> {
+  /**
+   * The WHERE clause shared by every read of this list (#2944).
+   *
+   * `findMany`, `findManyRows` and `countMany` all start here, so the total can
+   * never describe a different set than the page: there is one predicate, and
+   * the three methods differ only in what they do after it.
+   */
+  private buildFilteredQuery(
+    filters: ProductVariantListFilters
+  ): SelectQueryBuilder<ProductVariantOrmEntity> {
     const qb = this.repository.createQueryBuilder('variant');
 
     if (filters.productId) {
@@ -226,10 +232,49 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
       );
     }
 
-    qb.orderBy('variant.createdAt', 'DESC').skip(pagination.offset).take(pagination.limit);
+    return qb;
+  }
 
-    const [entities, total] = await qb.getManyAndCount();
+  /** {@link buildFilteredQuery} plus this list's ordering and page window. */
+  private buildPagedQuery(
+    filters: ProductVariantListFilters,
+    pagination: ProductPagination
+  ): SelectQueryBuilder<ProductVariantOrmEntity> {
+    return this.buildFilteredQuery(filters)
+      .orderBy('variant.createdAt', 'DESC')
+      .skip(pagination.offset)
+      .take(pagination.limit);
+  }
+
+  async findMany(
+    filters: ProductVariantListFilters,
+    pagination: ProductPagination
+  ): Promise<PaginatedProductVariants> {
+    // Deliberately still ONE `getManyAndCount()` rather than `findManyRows()` +
+    // `countMany()`, so `?withTotal=true` - the default - emits exactly the two
+    // statements it emitted before #2944, on the one query runner it emitted
+    // them on. Composing would be an unmeasured second change (two pool
+    // connections per list request) inside a change about something else.
+    //
+    // It is NOT because the count is skipped for a short page. Read against
+    // typeorm@0.3.17: `getManyAndCount` awaits `executeEntitiesAndRawResults`
+    // and then `executeCountQuery`, unconditionally and sequentially, with no
+    // short-page branch. The count always runs - which is the argument for
+    // splitting it out, not against.
+    const [entities, total] = await this.buildPagedQuery(filters, pagination).getManyAndCount();
     return { items: entities.map((e) => this.toDomain(e)), total };
+  }
+
+  async findManyRows(
+    filters: ProductVariantListFilters,
+    pagination: ProductPagination
+  ): Promise<ProductVariant[]> {
+    const entities = await this.buildPagedQuery(filters, pagination).getMany();
+    return entities.map((e) => this.toDomain(e));
+  }
+
+  async countMany(filters: ProductVariantListFilters): Promise<number> {
+    return this.buildFilteredQuery(filters).getCount();
   }
 
   /**

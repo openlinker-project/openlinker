@@ -8,8 +8,9 @@
 import { IsOptional, IsString, IsInt, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { PaginatedReadQueryDto } from '../../../common/dto/paginated-read-query.dto';
 
-export class ListCustomersQueryDto {
+export class ListCustomersQueryDto extends PaginatedReadQueryDto {
   @ApiPropertyOptional({
     description: 'Case-insensitive search on emailHash, normalizedEmail, firstName, or lastName',
   })

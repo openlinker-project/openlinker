@@ -44,7 +44,9 @@ import {
   type ConnectionCellFacts,
 } from '../../features/connections';
 import { resolvePlatformLabel } from '../../features/mappings';
-import { useListingsQuery } from '../../features/listings/hooks/use-listings-query';
+import { useListingRowsQuery } from '../../features/listings/hooks/use-listings-query';
+import { useListingsTotal } from '../../features/listings/hooks/use-listings-total';
+import { ListPagination } from '../../shared/ui/list-pagination';
 import { OfferProductPickerModal } from '../../features/listings/components/offer-product-picker-modal';
 import {
   listingRowAlert,
@@ -61,7 +63,6 @@ import { useDemoMode } from '../../features/system';
 import type {
   ListingsFilters,
   OfferLifecycle,
-  OfferLifecycleCounts,
   OfferMapping,
 } from '../../features/listings/api/listings.types';
 
@@ -454,56 +455,58 @@ export function ListingsListPage(): ReactElement {
   };
   const pagination = { limit: PAGE_SIZE, offset };
 
-  const query = useListingsQuery(filters, pagination);
+  // Two-stage read (#2947): the rows do not wait for either aggregate over
+  // this list's four-way join and `ILIKE` search.
+  const query = useListingRowsQuery(filters, pagination);
+  const totalStage = useListingsTotal(filters, query.data, query.isPlaceholderData);
 
   /**
-   * `useListingsQuery`'s `placeholderData: keepPreviousData` keeps `query.data`
-   * (rows AND counts) populated with the PRIOR key's response while any new
-   * key's fetch is in flight - tab, search, or connection change alike. That
-   * is exactly right for the table (round-1 "blanking" fix): showing the
-   * previous rows for a moment during any transition beats a full-page
-   * skeleton on every keystroke.
+   * The tab-bar buckets (#2947).
    *
-   * It is NOT right for `lifecycleCounts` on its own (round-2 fix; regression
-   * caught by CI): `keepPreviousData` cannot tell "just switched tabs" apart
-   * from "changed search/connection", but the two must be treated
-   * oppositely. The counts genuinely don't change across a lifecycle-only
-   * refetch (the backend computes every bucket regardless of which tab is
-   * selected), so keeping the OLD counts visible while a tab's own rows load
-   * is correct and was this page's very first requirement (#2029). But a
-   * search/connection change makes the PRIOR counts describe a filter set
-   * that no longer applies - keeping them visible, even briefly, is
-   * dishonest, and dropping to the skeleton immediately (not waiting for the
-   * new fetch, which may hang or error) is what a hand-rolled ref+fingerprint
-   * used to guarantee. `keepPreviousData` alone regressed exactly that case,
-   * so the fingerprint is restored here - scoped ONLY to `lifecycleCounts`,
-   * deliberately excluding `lifecycle` itself so a tab switch never trips it.
+   * The hand-rolled ref + fingerprint this replaced existed because the rows
+   * and the counts shared ONE query under `placeholderData: keepPreviousData`,
+   * which cannot tell "switched tabs" (keep the counts - they do not change)
+   * from "changed search or connection" (drop them - they now describe a
+   * filter set that no longer applies). They are separate queries now, and the
+   * counts query is keyed WITHOUT `lifecycle`, so TanStack gives both
+   * behaviours for free: a tab switch is a cache hit, and a search change is a
+   * new key with no data.
    *
-   * The ref is written from an effect, never during render: a render body must
-   * stay side-effect-free, or a StrictMode double-invoke / a concurrent render
-   * React discards would both stamp it. Writing after commit is equivalent
-   * here, because the ref is only ever READ on a later, placeholder-serving
-   * render - the render that receives fresh counts uses them directly.
+   * `null` while unknown, and rendered as a skeleton - never as zeroes, which
+   * would state that every bucket is empty.
    */
-  const lifecycleCountsRef = useRef<{ fingerprint: string; counts: OfferLifecycleCounts } | null>(
-    null,
-  );
-  const countsFingerprint = `${debouncedSearch}::${urlConnectionId}`;
-  const freshLifecycleCounts =
-    query.data?.lifecycleCounts && !query.isPlaceholderData ? query.data.lifecycleCounts : null;
+  const lifecycleCounts = totalStage.lifecycleCounts;
+  // The buckets are not merely late, they are not coming. Distinct from `null`,
+  // which is "not yet" - see `lifecycleCountsState` (#2957 review, I2).
+  const countsUnavailable =
+    lifecycleCounts === null && totalStage.lifecycleCountsState === 'unavailable';
+
+  /**
+   * Are the rows on screen the PREVIOUS tab's? (#2957 review round 3, I3.)
+   *
+   * `keepPreviousData` holds the old page during every transition, but only one
+   * of them is a hazard for the summary. The count query is keyed without
+   * `lifecycle` and without pagination, so:
+   *
+   * - paging: the total is already correct, and suppressing it blanks
+   *   "of 1,234" to "50+" and back on every click - the flicker this epic
+   *   exists to remove, one layer up;
+   * - search / channel change: the count key changes too, so the total is
+   *   `null` on its own and suppression is a no-op;
+   * - TAB SWITCH: the total re-derives for the NEW tab from buckets already in
+   *   hand, while the rows are still the old tab's - so the summary would read
+   *   "Showing 1-25 of 3", a range wider than its own total.
+   *
+   * Only the third is suppressed. The lifecycle the rows were fetched for is
+   * tracked rather than inferred, because the rows page carries no lifecycle of
+   * its own.
+   */
+  const rowsLifecycleRef = useRef(activeTabDef.lifecycle);
   useEffect(() => {
-    if (freshLifecycleCounts) {
-      lifecycleCountsRef.current = {
-        fingerprint: countsFingerprint,
-        counts: freshLifecycleCounts,
-      };
-    }
-  }, [countsFingerprint, freshLifecycleCounts]);
-  const lifecycleCounts =
-    freshLifecycleCounts ??
-    (lifecycleCountsRef.current?.fingerprint === countsFingerprint
-      ? lifecycleCountsRef.current.counts
-      : null);
+    if (!query.isPlaceholderData) rowsLifecycleRef.current = activeTabDef.lifecycle;
+  }, [query.isPlaceholderData, activeTabDef.lifecycle]);
+  const rowsAreForAnotherTab =
+    query.isPlaceholderData && rowsLifecycleRef.current !== activeTabDef.lifecycle;
 
   const platforms = usePlatforms();
   // One batched read for the whole page - the Connection column must never cost
@@ -662,9 +665,6 @@ export function ListingsListPage(): ReactElement {
   }
 
   const hasFilters = !!(debouncedSearch || urlConnectionId);
-  const total = query.data?.total ?? 0;
-  const hasPrev = offset > 0;
-  const hasNext = offset + PAGE_SIZE < total;
 
   // /listings is backed exclusively by OfferManager-capable connections (the
   // channel <Select> below filters on the same capability) - a shop with only
@@ -755,15 +755,24 @@ export function ListingsListPage(): ReactElement {
                 {/* A count that snaps from 0 to its real value reads as a
                     bug (#2029 / mockup frame 04) - render a skeleton line
                     instead of a placeholder zero while it's unknown.
-                    Gated on `lifecycleCounts === null`, not `query.isPending`
-                    (#2032 review round 2, regression caught by CI): the
-                    fingerprint above already decides whether the counts on
-                    hand are trustworthy for the CURRENT filters - a tab
-                    switch keeps showing them (fingerprint unchanged), a
-                    search/connection change drops to skeleton immediately
-                    even though `isPending` stays false (placeholder data is
-                    still present). */}
-                {lifecycleCounts === null ? (
+
+                    Gated on the counts themselves, not on `query.isPending`
+                    (#2032 review round 2, regression caught by CI). Since
+                    #2943 the buckets come from their own query, keyed WITHOUT
+                    `lifecycle`, which is what replaced the fingerprint this
+                    comment used to point at: a tab switch is a cache hit and
+                    keeps showing them, a search/connection change mints a new
+                    key and drops to skeleton immediately even though
+                    `isPending` stays false on the rows query.
+
+                    A skeleton is a positive claim that content is arriving, so
+                    a FAILED count must not render one - it would spin for the
+                    life of the page (#2957 review, I2). `lifecycleCountsState`
+                    and not `state`, because a short page overrides the latter
+                    to `'known'` while saying nothing about the other tabs. */}
+                {countsUnavailable ? (
+                  '—'
+                ) : lifecycleCounts === null ? (
                   <span className="tabs__count-skeleton" aria-hidden="true" />
                 ) : (
                   (lifecycleCounts[def.lifecycle] ?? '—')
@@ -788,7 +797,9 @@ export function ListingsListPage(): ReactElement {
             ? 'Refreshing listings…'
             : lifecycleCounts
               ? 'Listing counts loaded.'
-              : 'Loading listing counts…'}
+              : countsUnavailable
+                ? 'Listing counts unavailable.'
+                : 'Loading listing counts…'}
         </span>
 
         {/* `placeholderData: keepPreviousData` (round-1 fix) stops the table
@@ -1033,29 +1044,29 @@ export function ListingsListPage(): ReactElement {
                 }}
               />
 
-              <div className="pagination">
-                <span className="text-muted">
-                  Showing {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of {total}
-                </span>
-                <div className="pagination__actions">
-                  <Button
-                    disabled={!hasPrev}
-                    onClick={() => {
-                      setOffset(offset - PAGE_SIZE);
-                    }}
-                  >
-                    Previous
-                  </Button>
-                  <Button
-                    disabled={!hasNext}
-                    onClick={() => {
-                      setOffset(offset + PAGE_SIZE);
-                    }}
-                  >
-                    Next
-                  </Button>
-                </div>
-              </div>
+              {/* `rowCount` comes from a page that may still be the PREVIOUS
+                  tab's (`keepPreviousData`), while the count query is keyed
+                  without `lifecycle` and re-derives the new tab's bucket
+                  immediately. Pairing the two prints "Showing 1-25 of 3"
+                  (#2957 review, I1) - a range wider than its own total, which
+                  is a worse artefact than a late number. For that one
+                  transition the summary describes ONE thing: the rows on
+                  screen, as a floor. Paging is deliberately NOT suppressed -
+                  see `rowsAreForAnotherTab`. */}
+              <ListPagination
+                offset={offset}
+                limit={PAGE_SIZE}
+                rowCount={query.data?.items.length ?? 0}
+                total={rowsAreForAnotherTab ? null : totalStage.total}
+                totalState={rowsAreForAnotherTab ? 'settling' : totalStage.state}
+                showTotalLoader={totalStage.showLoader}
+                // The one list that keeps a previous page alive, so the one
+                // that must say so (#2957 review round 7, I1). Without it the
+                // pager derives a range end and a Next affordance from a fresh
+                // offset paired with another page's rows.
+                rowsArePlaceholder={query.isPlaceholderData}
+                onOffsetChange={setOffset}
+              />
             </>
           )}
         </TabsContent>

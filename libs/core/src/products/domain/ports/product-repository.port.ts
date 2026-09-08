@@ -65,6 +65,33 @@ export interface ProductRepositoryPort {
   ): Promise<PaginatedProducts>;
 
   /**
+   * The page WITHOUT its total (#2944).
+   *
+   * A paged read stops after its `LIMIT`; the `COUNT` beside it cannot stop at
+   * all, so under a predicate no plain index serves - here the name / SKU
+   * `ILIKE` search - the count scans the table however small the page is. This
+   * read pays only for the page.
+   *
+   * It applies the identical predicate to {@link countMany}: both are built by
+   * one private `buildFilteredQuery`, so the total can never describe a
+   * different set than the page.
+   */
+  findManyRows(
+    filters: ProductListFilters,
+    pagination: ProductPagination,
+    sort?: ProductListSort
+  ): Promise<Product[]>;
+
+  /**
+   * The total WITHOUT its page (#2944) - the second half of {@link findManyRows}.
+   *
+   * Takes neither pagination nor sort, which is the point: the answer depends
+   * on the filters alone, so a caller may cache it per filter combination and
+   * paging or re-sorting a result set never recomputes it.
+   */
+  countMany(filters: ProductListFilters): Promise<number>;
+
+  /**
    * Upsert product (create or update by internal ID)
    *
    * If product with given ID exists, updates it. Otherwise, creates new product.

@@ -19,6 +19,19 @@ const ZERO_LIFECYCLE_COUNTS: OfferLifecycleCounts = {
   Unsynced: 0,
 };
 
+/**
+ * The rows-only half of a page fixture (#2947), for a test that drives the two
+ * stages apart. Derived from the same fixture so the two cannot disagree about
+ * which rows they describe.
+ */
+function rowsOf(page: PaginatedOfferMappings): {
+  items: PaginatedOfferMappings['items'];
+  limit: number;
+  offset: number;
+} {
+  return { items: page.items, limit: page.limit, offset: page.offset };
+}
+
 function emptyPage(counts: OfferLifecycleCounts = ZERO_LIFECYCLE_COUNTS): PaginatedOfferMappings {
   return { items: [], total: 0, limit: 20, offset: 0, lifecycleCounts: counts };
 }
@@ -865,17 +878,21 @@ describe('ListingsListPage', () => {
 
     it('shows a refetch indicator while a tab switch is in flight, and clears it once it resolves (#2032 review round 2, finding 2)', async () => {
       const user = userEvent.setup();
-      let resolveSecondFetch: (value: PaginatedOfferMappings) => void = () => {};
-      const list = vi
+      type Rows = ReturnType<typeof rowsOf>;
+      let resolveSecondFetch: (value: Rows) => void = () => {};
+      // The indicator tracks the ROWS query, which is the one a tab switch
+      // refetches (#2947) - the counts query is keyed without `lifecycle` and
+      // does not move at all.
+      const listRows = vi
         .fn()
-        .mockResolvedValueOnce(sampleMappings)
+        .mockResolvedValueOnce(rowsOf(sampleMappings))
         .mockImplementationOnce(
           () =>
-            new Promise<PaginatedOfferMappings>((resolve) => {
+            new Promise<Rows>((resolve) => {
               resolveSecondFetch = resolve;
             }),
         );
-      const mockApi = createListingsMockApiClient({ listings: { list } });
+      const mockApi = createListingsMockApiClient({ listings: { listRows } });
 
       renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
@@ -892,7 +909,7 @@ describe('ListingsListPage', () => {
       });
       expect(screen.getByText('Doniczka ceramiczna Terra')).toBeInTheDocument();
 
-      resolveSecondFetch(emptyPage());
+      resolveSecondFetch(rowsOf(emptyPage()));
 
       await waitFor(() => {
         expect(document.querySelector('.listings-refetch-indicator')).toBeNull();
@@ -937,16 +954,17 @@ describe('ListingsListPage', () => {
     it("renders each tab's own count from lifecycleCounts, not the active bucket's row count", async () => {
       const mockApi = createListingsMockApiClient({
         listings: {
-          list: vi.fn().mockResolvedValue({
-            ...sampleMappings,
-            lifecycleCounts: { Active: 7, Invalid: 3, Draft: 2, Ended: 1, Unsynced: 0 },
-          }),
+          listRows: vi.fn().mockResolvedValue(rowsOf(sampleMappings)),
+          count: vi.fn().mockResolvedValue({ total: 13, lifecycleCounts: { Active: 7, Invalid: 3, Draft: 2, Ended: 1, Unsynced: 0 } }),
         },
       });
 
       renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
+      // The counts are a SECOND stage (#2947), so they land after the rows -
+      // `findBy` rather than `getBy` is the difference, and it is the point.
       await screen.findByText('Doniczka ceramiczna Terra');
+      expect(await screen.findByRole('tab', { name: 'Active 7' })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: /^Active/ })).toHaveTextContent('7');
       expect(screen.getByRole('tab', { name: /^Invalid/ })).toHaveTextContent('3');
       expect(screen.getByRole('tab', { name: /^Draft/ })).toHaveTextContent('2');
@@ -956,7 +974,10 @@ describe('ListingsListPage', () => {
 
     it('renders tab counts as skeleton placeholders while loading, never as a placeholder zero', () => {
       const mockApi = createListingsMockApiClient({
-        listings: { list: vi.fn().mockReturnValue(new Promise(() => {})) },
+        listings: {
+          listRows: vi.fn().mockReturnValue(new Promise(() => {})),
+          count: vi.fn().mockReturnValue(new Promise(() => {})),
+        },
       });
 
       const { container } = renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
@@ -967,27 +988,29 @@ describe('ListingsListPage', () => {
 
     it("keeps every tab's already-known count visible - no skeleton reappears - while a switched-to tab is still loading its own rows", async () => {
       const user = userEvent.setup();
-      const list = vi
+      const listRows = vi
         .fn()
-        .mockResolvedValueOnce({
-          ...sampleMappings,
-          lifecycleCounts: { Active: 7, Invalid: 3, Draft: 2, Ended: 1, Unsynced: 0 },
-        })
-        // The Draft tab's own fetch never resolves in this test - it is the
+        .mockResolvedValueOnce(rowsOf(sampleMappings))
+        // The Draft tab's own row fetch never resolves in this test - it is the
         // "still loading" window the skeleton must not reappear during.
         .mockReturnValueOnce(new Promise(() => {}));
-      const mockApi = createListingsMockApiClient({ listings: { list } });
+      const count = vi
+        .fn()
+        .mockResolvedValue({ total: 13, lifecycleCounts: { Active: 7, Invalid: 3, Draft: 2, Ended: 1, Unsynced: 0 } });
+      const mockApi = createListingsMockApiClient({ listings: { listRows, count } });
 
       const { container } = renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
       await screen.findByText('Doniczka ceramiczna Terra');
-      expect(screen.getByRole('tab', { name: 'Active 7' })).toBeInTheDocument();
+      expect(await screen.findByRole('tab', { name: 'Active 7' })).toBeInTheDocument();
 
       await user.click(screen.getByRole('tab', { name: /^Draft/ }));
 
-      // The Draft tab's own request is now pending (a fresh query key with no
-      // cached data), which used to blank every badge - including the four
-      // that did not just change - back to skeleton.
+      // The counts query is keyed WITHOUT `lifecycle` (#2947), so a tab switch
+      // is a cache hit and issues no second request at all - which is what now
+      // keeps the four unchanged badges on screen, structurally, where a
+      // hand-rolled ref and fingerprint used to.
+      expect(count).toHaveBeenCalledTimes(1);
       expect(container.querySelectorAll('.tabs__count-skeleton')).toHaveLength(0);
       expect(screen.getByRole('tab', { name: 'Active 7' })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: 'Invalid 3' })).toBeInTheDocument();
@@ -997,33 +1020,33 @@ describe('ListingsListPage', () => {
     });
 
     it("falls back to skeletons - not the pre-search counts - once the search term changes and the new query has not resolved (#2029 round 2 review)", async () => {
-      const list = vi
+      const listRows = vi
         .fn()
-        .mockResolvedValueOnce({
-          ...sampleMappings,
-          lifecycleCounts: { Active: 7, Invalid: 3, Draft: 2, Ended: 1, Unsynced: 0 },
-        })
-        // The new search term's query key has never been fetched before - it
-        // hangs, which is the window during which a state+Effect pair used to
-        // keep showing the now-wrong "Active 7" (it only ever cleared on the
-        // NEXT successful fetch, so an error here would have left it stuck
-        // forever). The fingerprint-gated ref must drop it immediately.
+        .mockResolvedValueOnce(rowsOf(sampleMappings))
         .mockReturnValueOnce(new Promise(() => {}));
-      const mockApi = createListingsMockApiClient({ listings: { list } });
+      const count = vi
+        .fn()
+        .mockResolvedValueOnce({ total: 13, lifecycleCounts: { Active: 7, Invalid: 3, Draft: 2, Ended: 1, Unsynced: 0 } })
+        // The new search term's count key has never been fetched before - it
+        // hangs, which is the window during which the now-wrong "Active 7"
+        // must not survive. Unlike a tab switch, a search change IS part of
+        // the count key, so it genuinely refetches.
+        .mockReturnValueOnce(new Promise(() => {}));
+      const mockApi = createListingsMockApiClient({ listings: { listRows, count } });
 
       const { container } = renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
       await screen.findByText('Doniczka ceramiczna Terra');
-      expect(screen.getByRole('tab', { name: 'Active 7' })).toBeInTheDocument();
+      expect(await screen.findByRole('tab', { name: 'Active 7' })).toBeInTheDocument();
 
       fireEvent.change(
         screen.getByLabelText('Search listings by product name, SKU, EAN or external ID'),
         { target: { value: 'brand new search term' } },
       );
 
-      // Wait past the debounce window for the new (still-pending) request.
+      // Wait past the debounce window for the new (still-pending) requests.
       await vi.waitFor(() => {
-        expect(list).toHaveBeenCalledTimes(2);
+        expect(count).toHaveBeenCalledTimes(2);
       });
 
       // The stale count must not survive the filter change - it falls
@@ -1036,10 +1059,8 @@ describe('ListingsListPage', () => {
     it("separates a tab's label from its count badge in the accessible name", async () => {
       const mockApi = createListingsMockApiClient({
         listings: {
-          list: vi.fn().mockResolvedValue({
-            ...sampleMappings,
-            lifecycleCounts: { Active: 7, Invalid: 3, Draft: 2, Ended: 1, Unsynced: 0 },
-          }),
+          listRows: vi.fn().mockResolvedValue(rowsOf(sampleMappings)),
+          count: vi.fn().mockResolvedValue({ total: 13, lifecycleCounts: { Active: 7, Invalid: 3, Draft: 2, Ended: 1, Unsynced: 0 } }),
         },
       });
 
@@ -1048,7 +1069,7 @@ describe('ListingsListPage', () => {
       await screen.findByText('Doniczka ceramiczna Terra');
       // A missing separator collapses the JSX whitespace entirely, so the
       // accessible name would read the run-on "Active7" instead of "Active 7".
-      expect(screen.getByRole('tab', { name: 'Active 7' })).toBeInTheDocument();
+      expect(await screen.findByRole('tab', { name: 'Active 7' })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: 'Invalid 3' })).toBeInTheDocument();
     });
 
@@ -1061,7 +1082,7 @@ describe('ListingsListPage', () => {
 
       expect(screen.getByText('Loading listing counts…')).toBeInTheDocument();
       await screen.findByText('Doniczka ceramiczna Terra');
-      expect(screen.getByText('Listing counts loaded.')).toBeInTheDocument();
+      expect(await screen.findByText('Listing counts loaded.')).toBeInTheDocument();
       expect(screen.queryByText('Loading listing counts…')).not.toBeInTheDocument();
     });
   });
@@ -1239,4 +1260,164 @@ describe('ListingsListPage', () => {
       expect(screen.getByRole('combobox', { name: 'Filter by channel' })).toHaveValue('');
     });
   });
+
+  /**
+   * The two-stage total (#2947). This list has TWO second-stage numbers - the
+   * pager total and the tab-bar buckets - and both must be absent rather than
+   * zero while they are unknown.
+   */
+  describe('two-stage total (#2947)', () => {
+    // A page reported FULL, so the rows imply no exact total.
+    const fullPage = { items: sampleMappings.items.slice(0, 1), limit: 1, offset: 0 };
+
+    // SHORT - one row against a limit of twenty - so `inferTotalFromPage`
+    // derives the pager total exactly and `useListingsTotal` overrides `state`
+    // to `'known'`. That override is the whole reason the tab bar must read
+    // `lifecycleCountsState` instead, so a test of the failed-count tab bar is
+    // only a test at all against a short page (#2957 review round 3, B1).
+    const shortPage = { items: sampleMappings.items.slice(0, 1), limit: 20, offset: 0 };
+
+    it('renders its rows while both aggregates are still in flight', async () => {
+      const { container } = renderWithProviders(<ListingsListPage />, {
+        apiClient: createListingsMockApiClient({
+          listings: {
+            listRows: vi.fn().mockResolvedValue(fullPage),
+            count: vi.fn().mockReturnValue(new Promise(() => {})),
+          },
+        }),
+      });
+
+      expect(await screen.findByText('Doniczka ceramiczna Terra')).toBeInTheDocument();
+      expect(screen.getByText('1+')).toBeInTheDocument();
+      // The tab bar is unknown, not empty: five skeletons, never five zeroes.
+      expect(container.querySelectorAll('.tabs__count-skeleton')).toHaveLength(5);
+    });
+
+    it('renders neither placeholder as 0 when the count FAILS on a FULL page', async () => {
+      const { container } = renderWithProviders(<ListingsListPage />, {
+        apiClient: createListingsMockApiClient({
+          listings: {
+            listRows: vi.fn().mockResolvedValue(fullPage),
+            count: vi.fn().mockRejectedValue(new Error('count blew up')),
+          },
+        }),
+      });
+
+      expect(await screen.findByText('Doniczka ceramiczna Terra')).toBeInTheDocument();
+      expect(await screen.findByText(/count unavailable/i)).toBeInTheDocument();
+      expect(screen.getByText('1+')).toBeInTheDocument();
+      await screen.findByText('Listing counts unavailable.');
+      expect(container.querySelectorAll('.tabs__count-skeleton')).toHaveLength(0);
+    });
+
+    it('STOPS loading the tab bar when the count fails and the page implies its own total', async () => {
+      // The case the page-level fix is actually for, and the one the FULL-page
+      // test above cannot reach (#2957 review round 3, B1). A short page makes
+      // `state` `'known'` while the buckets are `unavailable`, so this is the
+      // only shape that distinguishes the two - reverting the page to
+      // `totalStage.state` renders five skeletons here and passes everywhere
+      // else. `retry` is false and nothing re-drives the count, so a skeleton
+      // would spin for the life of the page: a positive claim that content is
+      // arriving when nothing is coming.
+      const { container } = renderWithProviders(<ListingsListPage />, {
+        apiClient: createListingsMockApiClient({
+          listings: {
+            listRows: vi.fn().mockResolvedValue(shortPage),
+            count: vi.fn().mockRejectedValue(new Error('count blew up')),
+          },
+        }),
+      });
+
+      expect(await screen.findByText('Doniczka ceramiczna Terra')).toBeInTheDocument();
+      // The pager is not rendered for a single-page result, so the discriminating
+      // condition is asserted through its EFFECT rather than through the number:
+      // a short page makes `state` `'known'`, and a tab bar reading `state`
+      // therefore renders skeletons here while passing every other test.
+      await screen.findByText('Listing counts unavailable.');
+      expect(container.querySelectorAll('.tabs__count-skeleton')).toHaveLength(0);
+    });
+
+    it('SUPPRESSES the total while the rows still belong to the previous tab', async () => {
+      // The defect the suppression exists for (#2957 review I1, pinned in round
+      // 4 after `rowsAreForAnotherTab = false` was found to pass all 50 tests).
+      // The count key omits `lifecycle`, so clicking a tab re-derives the NEW
+      // tab's bucket instantly from cached buckets, while `keepPreviousData`
+      // still has the OLD tab's twenty rows on screen. Pair the two and the
+      // summary reads "Showing 1-20 of 3" - a range wider than its own total.
+      const user = userEvent.setup();
+      const rows = Array.from({ length: 20 }, (_, i) => ({
+        ...sampleMappings.items[0],
+        id: `uuid-mapping-tab-${i}`,
+        externalId: `allegro-offer-tab-${i}`,
+      }));
+      // The Draft page never resolves, so the placeholder window stays open.
+      const listRows = vi
+        .fn()
+        .mockResolvedValueOnce({ items: rows, limit: 20, offset: 0 })
+        .mockReturnValue(new Promise(() => {}));
+      renderWithProviders(<ListingsListPage />, {
+        apiClient: createListingsMockApiClient({
+          listings: {
+            listRows,
+            count: vi.fn().mockResolvedValue({
+              total: 1237,
+              lifecycleCounts: { ...ZERO_LIFECYCLE_COUNTS, Active: 1234, Draft: 3 },
+            }),
+          },
+        }),
+      });
+
+      expect(await screen.findByText('1,234')).toBeInTheDocument();
+      await user.click(screen.getByRole('tab', { name: /draft/i }));
+      await waitFor(() => expect(listRows).toHaveBeenCalledTimes(2));
+
+      // Draft's bucket is 3 and is already in hand - but the twenty rows on
+      // screen are Active's, so stating it would contradict them. `20+` is the
+      // floor those rows actually prove.
+      expect(screen.getByText('20+')).toBeInTheDocument();
+      expect(screen.queryByText(/Showing 1.*20 of 3\b/)).not.toBeInTheDocument();
+    });
+
+    it('keeps a KNOWN total on screen while paging, rather than blanking it', async () => {
+      // The placeholder suppression must not fire on an ordinary page click
+      // (#2957 review round 3, I3): the count key carries no offset, so the
+      // number is already correct and blanking it to `20+` and back is the
+      // flicker this epic exists to remove, one layer up.
+      const user = userEvent.setup();
+      const rows = Array.from({ length: 20 }, (_, i) => ({
+        ...sampleMappings.items[0],
+        id: `uuid-mapping-page-${i}`,
+        externalId: `allegro-offer-${i}`,
+      }));
+      // The second page NEVER resolves, so the placeholder window stays open
+      // for the assertion. With a resolving mock the window closes before the
+      // test can look and the assertion passes against the broken code too.
+      const listRows = vi
+        .fn()
+        .mockResolvedValueOnce({ items: rows, limit: 20, offset: 0 })
+        .mockReturnValue(new Promise(() => {}));
+      renderWithProviders(<ListingsListPage />, {
+        apiClient: createListingsMockApiClient({
+          listings: {
+            listRows,
+            count: vi.fn().mockResolvedValue({
+              total: 1234,
+              lifecycleCounts: { ...ZERO_LIFECYCLE_COUNTS, Active: 1234 },
+            }),
+          },
+        }),
+      });
+
+      expect(await screen.findByText('1,234')).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: /next/i }));
+      await waitFor(() => expect(listRows).toHaveBeenCalledTimes(2));
+
+      // The rows are now a placeholder and the second page is still in flight.
+      // The total is unaffected - the count key carries no offset - so it must
+      // still read 1,234, not `20+` and not an em-dash.
+      expect(screen.getByText('1,234')).toBeInTheDocument();
+      expect(screen.queryByText('20+')).not.toBeInTheDocument();
+    });
+  });
+
 });

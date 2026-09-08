@@ -429,6 +429,22 @@ const ALLOW_LIST = new Map([
     new Set(['CustomerProjectionRepositoryPort']),
   ],
 
+  // #2944 — ONE int-spec asserts, for all five split reads, that `countMany`
+  // and `findManyRows` describe the same set as `findMany`. It reaches the
+  // repository ports on purpose: the claim IS about repository behaviour under
+  // real SQL, so unlike the rewire debt below this entry has no rewire target
+  // and must NOT be dropped when #722 lands.
+  [
+    'apps/api/test/integration/paginated-total-split.int-spec.ts',
+    new Set([
+      'OrderRecordRepositoryPort',
+      'CustomerProjectionRepositoryPort',
+      'ProductRepositoryPort',
+      'ProductVariantRepositoryPort',
+      'OfferMappingRepositoryPort',
+    ]),
+  ],
+
   // apps → orders.OrderRecordRepositoryPort — rewire via IOrdersService
   ['apps/api/src/orders/http/orders.controller.ts', new Set(['OrderRecordRepositoryPort'])],
   ['apps/api/src/orders/http/orders.controller.spec.ts', new Set(['OrderRecordRepositoryPort'])],
