@@ -115,6 +115,40 @@ describe('InfaktConnectionConfigShapeValidatorAdapter', () => {
     );
   });
 
+  describe('defaultSaleType (#2177)', () => {
+    it('should resolve when defaultSaleType is absent', async () => {
+      await expect(validator.validate({})).resolves.toBeUndefined();
+    });
+
+    it.each(['goods', 'service'])(
+      'should resolve when defaultSaleType is %s',
+      async (defaultSaleType) => {
+        await expect(validator.validate({ defaultSaleType })).resolves.toBeUndefined();
+      },
+    );
+
+    it('should resolve when defaultSaleType is null', async () => {
+      await expect(validator.validate({ defaultSaleType: null })).resolves.toBeUndefined();
+    });
+
+    it('should reject when defaultSaleType is not a supported value', async () => {
+      await expect(
+        validator.validate({ defaultSaleType: 'towar' }),
+      ).rejects.toMatchObject({
+        pluginName: 'Infakt',
+        errors: [
+          { path: 'defaultSaleType', message: expect.stringContaining('goods, service') },
+        ],
+      });
+    });
+
+    it('should reject when defaultSaleType is not a string', async () => {
+      await expect(validator.validate({ defaultSaleType: 123 })).rejects.toBeInstanceOf(
+        InvalidConnectionConfigException,
+      );
+    });
+  });
+
   describe('environment (#2174)', () => {
     it('should resolve when environment is absent', async () => {
       await expect(validator.validate({})).resolves.toBeUndefined();

@@ -242,6 +242,13 @@ export interface InfaktInvoiceRequest {
     services: InfaktInvoiceServiceRequest[];
     bank_account?: string;
     bank_name?: string;
+    /**
+     * inFakt's sale-type classification (#2177) — required by inFakt for a
+     * non-PL client, silently defaulted for a PL one. Sent only when the
+     * connection has `defaultSaleType` configured; see
+     * `InfaktConnectionConfig.defaultSaleType`.
+     */
+    sale_type?: string;
     external_id?: string;
   };
 }
@@ -297,6 +304,12 @@ export interface InfaktCorrectiveInvoiceRequest {
     client_id: number | null;
     bank_account?: string;
     bank_name?: string;
+    /**
+     * inFakt's sale-type classification (#2177) — see the matching field on
+     * {@link InfaktInvoiceRequest}. A correction should not disagree with the
+     * original invoice's sale classification.
+     */
+    sale_type?: string;
     corrected_invoice_number: string | null;
     corrected_invoice_date: string;
     corrected_invoice_uuid: string;

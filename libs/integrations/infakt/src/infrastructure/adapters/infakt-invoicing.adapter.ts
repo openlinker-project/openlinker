@@ -468,6 +468,15 @@ export class InfaktInvoicingAdapter
    */
   private readonly bankAccount: InfaktConnectionConfig['bankAccount'];
 
+  /**
+   * Sale-type sent on every issued invoice/correction (#2177) — see
+   * `InfaktConnectionConfig.defaultSaleType`. Stays `undefined` unless the
+   * operator explicitly configured it; there is NO fallback here, since a
+   * silently-guessed sale type would misstate the invoice's VAT
+   * classification for a real fiscal document.
+   */
+  private readonly saleType: InfaktConnectionConfig['defaultSaleType'];
+
   constructor(
     private readonly connectionId: string,
     private readonly http: IInfaktHttpClient,
@@ -476,6 +485,7 @@ export class InfaktInvoicingAdapter
   ) {
     this.paymentMethod = config.defaultPaymentMethod ?? 'cash';
     this.bankAccount = config.bankAccount;
+    this.saleType = config.defaultSaleType;
   }
 
   /**
@@ -605,6 +615,11 @@ export class InfaktInvoicingAdapter
         client_id: clientId,
         services,
         ...this.bankAccountFields(),
+        // Per-connection setting (#2177) — see `this.saleType` doc. Omitted
+        // entirely when unconfigured so a PL client keeps relying on inFakt's
+        // own silent default and a non-PL client keeps 422ing exactly as
+        // before, unchanged from pre-#2177 behaviour.
+        ...(this.saleType ? { sale_type: this.saleType } : {}),
         ...(idempotencyKey ? { external_id: idempotencyKey } : {}),
       },
     };
@@ -970,6 +985,10 @@ export class InfaktInvoicingAdapter
         // upsertCustomer round-trip is needed for a correction.
         client_id: original.client_id,
         ...this.bankAccountFields(),
+        // Per-connection setting (#2177) — see `this.saleType` doc. A
+        // correction should not disagree with the original invoice's sale
+        // classification, so the same conditional-spread pattern applies.
+        ...(this.saleType ? { sale_type: this.saleType } : {}),
         corrected_invoice_number: original.number,
         corrected_invoice_date: original.invoice_date ?? new Date().toISOString().slice(0, 10),
         // Documented alongside corrected_invoice_number/_date as a third,
