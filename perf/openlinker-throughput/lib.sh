@@ -200,6 +200,34 @@ ps_sql() {
     mysql -uroot -N -B "$PS_DB" -e "$1" 2>&1 | grep -v '^mysql: \[Warning\]' || true
 }
 
+# as_count <value> - echoes <value> when it is a non-negative integer, and
+# NOTHING otherwise, so a caller can tell "the read answered 0" from "the read
+# did not answer" (#3004).
+#
+# Both `ps_sql` above and `pg_sql` fold stderr into stdout and end `|| true`,
+# so a database failure is not an exit code a caller can test - it arrives as
+# the VALUE. A caller that then does arithmetic or a numeric comparison on it
+# gets one of two wrong answers:
+#
+#   present=""            -> $(( claimed - 0 ))       -> a FABRICATED finding
+#   present="ERROR 1054"  -> arithmetic on a word     -> the run dies mid-window
+#
+# and for a GUARD the second form is worse than it looks: `[ "$n" -gt 0 ]` on a
+# non-numeric value is "integer expression expected", which under `set -e`
+# aborts the caller and without it falls through to the else branch and
+# CERTIFIES a window nobody measured.
+#
+# The rule this encodes is the campaign's own: a probe that cannot identify
+# its subject must report that it could not, never a number that looks like an
+# answer. Deliberately rejects a leading `+`/`-`, whitespace, decimals and the
+# empty string - every one of those is a read that did not return a count.
+as_count() {
+  case "${1:-}" in
+    ''|*[!0-9]*) printf '' ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
 ps_sql_write() {
   ps_mysql_pwd
   docker exec -i -e MYSQL_PWD="$PS_MYSQL_PWD" "$PS_MYSQL_CONTAINER" \
@@ -1320,7 +1348,12 @@ post_guard_requeues() {
 post_guard_destination_creates() {
   local window_start_iso="$1" destination_conn_id="${2:-}" failed missing scope
   if [ -n "$destination_conn_id" ]; then
-    scope="the declared destination"
+    # Name the destination, not just its role (#3004). "the declared
+    # destination" is true of whichever connection the scenario passed, and a
+    # refusal that does not say WHICH sends its reader back to the scenario
+    # source to find out - on a stand carrying five connections, four of which
+    # can also fail.
+    scope="the declared destination $destination_conn_id"
     failed="$(pg_sql "SELECT COUNT(*) FROM order_records
       WHERE \"createdAt\">='$window_start_iso'
         AND EXISTS (SELECT 1 FROM jsonb_array_elements(\"syncStatus\") e
@@ -1339,8 +1372,21 @@ post_guard_destination_creates() {
         AND EXISTS (SELECT 1 FROM jsonb_array_elements(\"syncStatus\") e WHERE e->>'status'='failed')")"
     missing=0
   fi
-  if [ "${failed:-0}" -gt 0 ] || [ "${missing:-0}" -gt 0 ]; then
-    echo "DISCARDED post_guard_destination_creates: $failed order(s) carry a failed syncStatus entry on $scope, $missing lack syncedAt on $scope"
+  # FAIL CLOSED when the count could not be read (#3004). `pg_sql` folds stderr
+  # into stdout and ends `|| true`, so a database failure arrives as the VALUE
+  # of `failed`/`missing`, and `[ "$x" -gt 0 ]` on a non-numeric value is
+  # "integer expression expected" - which under `set -e` aborts the caller, and
+  # without it falls through to `ok` and CERTIFIES a window nobody measured.
+  # A guard that could not read cannot certify, and must say which arm.
+  local failed_n missing_n
+  failed_n="$(as_count "$failed")"
+  missing_n="$(as_count "$missing")"
+  if [ -z "$failed_n" ] || [ -z "$missing_n" ]; then
+    echo "DISCARDED post_guard_destination_creates: the count could not be read (failed=[${failed:0:60}] missing=[${missing:0:60}]) - this window was NOT measured for a swallowed per-destination failure"
+    return 0
+  fi
+  if [ "$failed_n" -gt 0 ] || [ "$missing_n" -gt 0 ]; then
+    echo "DISCARDED post_guard_destination_creates: $failed_n order(s) carry a failed syncStatus entry on $scope, $missing_n lack syncedAt on $scope"
   else
     echo "ok"
   fi

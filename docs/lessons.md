@@ -643,7 +643,11 @@ The unit test covering it passed, and that is the part worth remembering: it con
 
 **Both are the same underlying error: trusting a signal that is CORRELATED with the fact rather than CONSTITUTIVE of it.** That is the test to apply to a new check - not "could this be wrong?" but "is this the fact, or something that usually accompanies it?" A correlated signal fails silently and in both directions, which is why every one of the nine produced a confident answer and none of them errored.
 
-**A worked counter-example from the same branch, because the rule is not "distrust everything".** `post_guard_containers_stable` (#2852) asks whether every measured container's `.State.StartedAt` at `window_stop` equals the baseline captured at `window_start`. `StartedAt` **is** the fact - it changes on exactly the events that invalidate a window - so the guard caught an operator restarting `lab-api` mid-window, named the container and both timestamps, and discarded the arm. Constitutive signals do not need vigilance; that is the point of preferring them.
+**A worked counter-example from the same branch - CORRECTED (#3004), and the correction is the more useful half.** `post_guard_containers_stable` (#2852) asks whether every measured container's `.State.StartedAt` at `window_stop` equals the baseline captured at `window_start`. This entry used to say `StartedAt` **is** the fact, and offered it as the case where a probe needs no vigilance. **That is wrong, and it was wrong in the worst place** - the paragraph telling readers when they may relax.
+
+`StartedAt` is constitutive of **container restart** and is a *proxy* for **process liveness**, which is what a measurement window actually depends on. A parallel campaign observed the guard certify a window `VALID` while the api process had been **dead for three hours**: the process crashed in place, the container never restarted, and `StartedAt` never moved. The guard was answering the question it asks, correctly, and that question was not the one being relied on.
+
+So the real lesson is sharper than "prefer constitutive signals": **a signal is constitutive OF SOMETHING, and you have to name what.** `StartedAt` genuinely catches the recreate it was built for (it caught an operator restarting `lab-api` mid-window, named the container and both timestamps, and discarded the arm) and cannot catch a crash in place. Liveness needs a liveness probe - a request the process must answer, or a log line it must still be emitting - not an attribute of the box it runs in. Ask "what exactly would still be true if this signal were unchanged?" before treating any reading as needing no vigilance.
 
 **The generalisation the five instances support**: a guard's or probe's output must be verified in **both** directions. The ledger already covers a check that cannot report a FAILURE; instances (1) and (4) are a check that cannot stop reporting a **PASS**, and (2) is a *calculation* that cannot report "I have no data". A false pass sends someone to rebuild what was already correct or to hunt a stall that never happened; a false fail hides a real defect. Both are silent, and both are indistinguishable from the truth at the call site.
 
@@ -1592,3 +1596,92 @@ branches differ in what they carry.
 
 **Source**: #3009. Sibling entry: `docker logs --since "@<epoch>"` above - both are "a tool
 answered confidently about something it could not see".
+
+---
+
+## A fake that answers ONE value for every query cannot prove a predicate is scoped - key the fake on the SQL
+
+**Context**: `post_guard_destination_creates` counted an order that failed on ANY destination while
+its message promised "the declared destination". It shipped with two green assertions beside it for
+a whole campaign, and was repaired twice independently (#2985 and #3004) once the data was looked
+at.
+
+**Problem**: the assertions used the shared `FAKE_PG[count]`, a single number the fake returns for
+every query containing `COUNT(*)`. Both arms therefore read the SAME value, so a scoped predicate
+and an unscoped one are indistinguishable to the test - `FAKE_PG[count]=1` makes the correct and
+the broken implementation produce byte-identical output. The tests were not weak about the defect,
+they were structurally incapable of seeing it, while the guard flagged 650 of 652 ingested orders
+against a true count of 1.
+
+**Rule**: when a test must prove a query has a particular SHAPE, capture the emitted SQL and assert
+on it **per arm** - a whole-capture assertion that the destination appears SOMEWHERE is satisfied
+by the other arm on its own. Assert the specific message, never a word both arms share
+(`"DISCARDED"` passes for either). Then prove it: apply the mutation, watch the assertion go red,
+restore. Note `case` patterns are POSITIONAL - `*a*b*` requires `a` before `b`, so an arm that
+matches nothing looks exactly like an arm whose key holds the same number.
+
+**Applies to**: `perf/openlinker-throughput/lib-test.sh`, and any test double standing in for a
+database, HTTP client or CLI whose SHAPE the code under test is responsible for.
+
+**Source**: #2985, #3004.
+
+---
+
+## A read that folds stderr into stdout returns its ERROR as a VALUE - coerce before you compare or compute
+
+**Context**: `ps_sql` and `pg_sql` both end `|| true` and fold stderr into stdout, so a database
+failure is not an exit code any caller can test. F10's ground-truth silent-loss detector did
+`claimed_missing=$(( claimed_total - ${present:-0} ))` straight on that value, and
+`post_guard_destination_creates` did `[ "${failed:-0}" -gt 0 ]` on it.
+
+**Problem**: three different wrong answers, none of which errors. An empty read makes the
+subtraction report **every claimed order as missing** - the scenario's headline finding, red, for a
+hiccup. An error string makes `$(( ))` abort the run mid-window under `set -u`. And in a GUARD,
+`[ "ERROR ..." -gt 0 ]` is "integer expression expected", which under `set -e` aborts the caller
+and without it **falls through to `ok` and certifies a window nobody measured** - a fail-open
+sitting inside the fix for a different fail-open.
+
+**Rule**: coerce every count read from one of these helpers through `as_count` (`lib.sh`) before
+comparing or computing with it, and treat the empty answer as *not established* rather than as
+zero: a detector reports that it could not read, a guard DISCARDS. Carry the distinction into the
+artefact too - F10's ledger now emits `groundTruth.readable`, because
+`claimedButAbsentFromPsOrders: 0` from a failed read must not be quotable as a measured zero.
+
+**Applies to**: `perf/openlinker-throughput/**`, any caller of `ps_sql` / `pg_sql`.
+
+**Source**: #3004.
+
+---
+
+## Command substitution is a SUBSHELL - a function that reports by setting a global reports nothing through `$( )`
+
+**Context**: `f10-dependency-failure.sh` called `drain_result="$(drain_wait "$CONN_IDS")"`, where
+`drain_wait` reports which rows it killed by setting the globals `DRAIN_DEAD_IDS` /
+`DRAIN_DEFERRED_SEEN` / `DRAIN_REQUEUED_SEEN`.
+
+**Problem**: `$( )` forks, so every assignment inside it died with the subshell and
+`rowsTheHARNESSMarkedDeadDuringCleanup` was always `""` however many rows were killed. That is not
+cosmetic: F10 reads its ledgers BEFORE cleanup precisely so the harness cannot forge a finding, and
+this field was the only record that the cleanup killed anything. The one contamination the ordering
+was designed to keep visible was invisible, silently. The same shape bit a test recorder that
+appended captured SQL to a bash array from inside `pg_sql`.
+
+**Rule**: a function that communicates by side effect must be called WITHOUT command substitution -
+redirect its stdout to a file and read the file back. Check a helper's docblock for "sets X as a
+side effect" before reaching for `$( )`. Redirect **stdout only** unless you mean to swallow
+`warn`, which writes to stderr. For a recorder, use a file rather than an array whenever the thing
+being recorded is written from inside a substitution.
+
+**A related one from the same change, because it is the same silence.** A `case` dispatch with no
+`*)` arm reports nothing about an input it does not handle: a new fault id was added to the
+catalogue and to two other `case` statements but not to the one that reads the injector's delivery
+count back, so it ran a full 90 s measurement window whose manifest recorded `"delivered": {}` -
+the exact artefact that exists to tell "the rule installed and never matched" from "the system
+absorbed the fault". **A dispatch that cannot report an unhandled input is indistinguishable from
+one that handled it.** Give every dispatch over an open set a `*)` arm that warns and writes its
+own ignorance into the artefact.
+
+**Applies to**: `perf/openlinker-throughput/**`, and any bash calling a helper documented as
+setting globals.
+
+**Source**: #3004.
