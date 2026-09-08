@@ -16,6 +16,42 @@ hourly cron, nine `master.product.syncAll` ticks, twelve
 `master.inventory.syncAll` ticks, ~180 order polls and ~360 samples. It is
 stated here rather than implied, and § 6 says what a longer window would add.
 
+> ## Correction, 2026-09-08 - the memory figures published in the first
+> ## revision of this report were contaminated, and are restated in § 4
+>
+> **Withdrawn.** The RSS slopes and endpoints in the first revision:
+> `lab-worker-1` +0.67 MB/h, first 133.1 -> last 133.6, min 75.1;
+> `lab-api` −1.46 MB/h; `lab-postgres` −1.71 MB/h; `lab-redis` +0.70 MB/h;
+> Postgres page cache "1 574 -> 1 502 MB". All n=134/135.
+>
+> **Why.** The side sampler added mid-window (§ 2.4.1) decided when to stop
+> with `ps aux | grep '[s]ustained-mixed-load'` - the scenario's own *name*.
+> A **peer agent in another worktree then ran the same scenario**, that grep
+> matched their process, and the sampler kept appending to this run's results
+> directory for **3.5 hours past window close**. The first analysis was run
+> minutes after the window closed and so picked up a handful of post-window
+> rows, taken while the worker was being recreated by the teardown - which is
+> where the anomalous `min 75.1 MB` came from.
+>
+> **What replaced it.** § 4's table, recomputed over the **131 samples with
+> `ts <= 08:54:04Z`**. The slopes move materially - the worker's nearly
+> triples, from +0.67 to +1.85 MB/h - so this is a real correction and not a
+> rounding one.
+>
+> **What did NOT change: the conclusion.** Nothing accumulates. On the
+> corrected series the worker *ends 16.9 MB lower than it starts* inside a
+> 45 MB band, which is a stronger reading of "no leak" than the original
+> figures gave. What weakens is the *sensitivity*: the floor below which a
+> leak would be invisible rises from ~1 MB/h to ~2 MB/h.
+>
+> **Nothing else in this report draws on that file.** The throughput,
+> concurrency, queue-curve, degradation and fault findings come from
+> `sync_jobs`, `order_records` and `mixed-timeseries.csv`, all of which stop
+> at `window_stop` by construction. The raw CSV is deliberately **not**
+> trimmed - editing collected data is worse than documenting its boundary -
+> so a reader re-running the analysis must apply the same `ts` restriction.
+> The process lesson is at § 7 item 8.
+
 ## This is the run the epic named and never got
 
 The framing is **#2840's own**, in the epic issue body:
@@ -79,7 +115,7 @@ Window **10 783 s = 3.00 h**, 319 samples, 10 800 orders offered. **Verdict:
 | **What binds it?** | The `realtime` **per-scope cap of 2**, proven twice (§ 3.3). `2 slots / 31.44 s mean service = 229 orders/h` ceiling; the recovery phase reached 99.3% of it | measured + derived |
 | **Was the destination rate limit binding?** | **No.** At ~11 req/order and 200 orders/h that is ~37 req/min against the 300/min the manifest now ships - ~12% utilisation | derived |
 | **Does the queue converge?** | **No - it grows without bound at this offered rate**, +4 298 jobs/h over the last third against a ±1 259 noise band. But this is a property of the OFFERED LOAD, not a capacity result - see § 0.2 | measured |
-| **Does anything accumulate over hours?** | **No.** Worker RSS +0.67 MB/h inside a 75-143 MB oscillation band; api and Postgres RSS slopes negative; Postgres page cache plateaued at ~1.5 GB; backends peaked at 46 of 200; database +29.8 MB | measured |
+| **Does anything accumulate over hours?** | **No.** Worker RSS *ends 16.9 MB lower than it starts* inside a 98-143 MB band (fitted slope +1.85 MB/h = 9% of the band); api and Postgres slopes negative; Postgres page cache plateaued (+2%); backends peaked at 46 of 200; database +29.8 MB. A leak slower than ~2 MB/h is not distinguishable here | measured |
 | **How many limiter-degradation episodes does 3 h carry, vs the 300 s extrapolation?** | **1 454** against a predicted 1 438-1 761. **The 300 s figure extrapolates linearly - 1.01x the low end.** Degradation is a steady ~8/min, it does not accumulate | measured vs extrapolated |
 | **Does a destination fault strand orders at volume the way it does at 12?** | **The mechanism reproduced; the rate did not scale.** 1 of 413 (0.24%) against #2978's 17-42%. Stranding scales with orders IN FLIGHT, which the lane cap bounds - not with queue depth (§ 3.4) | measured |
 | Did the sweeps actually run inside the window? | **Yes** - 9 `master.product.syncAll`, 45 `syncBatch`, 300 `syncFromSweep`, 12 `master.inventory.syncAll`, 3 `master.product.reconcile`, matching their crons exactly (§ 3.1) | measured |
@@ -795,28 +831,35 @@ the `requeueWithoutPenalty` path (#2613) never fired.
 
 The question a 300-second window structurally cannot answer.
 
-**Memory (cgroup `total_rss`, n=134 samples over ~2 h 14 m - see § 2.4.1 for
-why `docker stats` cannot answer this and why the series starts late):**
+**Memory (cgroup `total_rss`, n=131 samples over ~2 h 13 m, restricted to
+samples inside the window - see § 2.4.1 for why `docker stats` cannot answer
+this and why the series starts late, and the correction block at the top of
+this report for why the restriction is necessary):**
 
 | container | first | last | min | max | mean | slope |
 |---|---|---|---|---|---|---|
-| `lab-worker-1` | 133.1 | 133.6 | 75.1 | 143.3 | 114.5 | **+0.67 MB/h** |
-| `lab-api` | 126.3 | 109.9 | 109.9 | 126.4 | 125.7 | −1.46 MB/h |
-| `lab-postgres` | 77.1 | 1.1 | 1.0 | 77.1 | 13.7 | −1.71 MB/h |
-| `lab-redis` | 45.5 | 41.8 | 41.8 | 51.8 | 47.7 | +0.70 MB/h |
+| `lab-worker-1` | 133.1 | **116.2** | 98.4 | 143.3 | 114.9 | **+1.85 MB/h** |
+| `lab-api` | 126.3 | 121.8 | 121.8 | 126.4 | 126.0 | −0.75 MB/h |
+| `lab-postgres` | 77.1 | 9.5 | 3.0 | 77.1 | 14.1 | −0.78 MB/h |
+| `lab-redis` | 45.5 | 45.2 | 44.9 | 51.8 | 47.8 | +1.12 MB/h |
 
-The worker's +0.67 MB/h is **inside its own 68 MB oscillation band** and its
-first and last samples are 0.5 MB apart, so it is not distinguishable from
-sawtooth GC behaviour. Two of the four slopes are negative. **No leak is
-detectable over three hours** - and the honest bound on that claim is that a
-leak slower than ~1 MB/h would be invisible here; ruling one out needs a
-24-hour window.
+**No leak is detectable over three hours**, and the worker's row is worth
+reading carefully rather than from its slope alone. The fitted slope is
+**+1.85 MB/h**, but the container **ended 16.9 MB LOWER than it started**
+(133.1 -> 116.2) inside a **45 MB oscillation band**. A positive slope fitted
+across a sawtooth whose endpoints fall is a property of where the samples
+landed, not a trend: +1.85 MB/h over the 2.18 h series is ~4 MB, i.e. **9% of
+the band**. Two of the four slopes are negative outright.
+
+The honest bound on the claim: a leak slower than **~2 MB/h** is not
+distinguishable from this oscillation, so this window cannot rule one out.
+Doing that needs a 24-hour run.
 
 Postgres page cache **plateaued** rather than growing: 1 574 MB at the first
-RSS sample and 1 502 MB at the last. It filled during the first ~48 minutes as
-the sweeps first touched the 2M-row table and then stopped, which is what
-confirms the § 2.4.1 reading that the earlier 7.7x `docker stats` rise was
-cache fill and not growth.
+RSS sample and 1 608 MB at the last - **+34 MB, or +2%, over 2 h 13 m**. It
+filled during the first ~48 minutes as the sweeps first touched the 2M-row
+table and then essentially stopped, which is what confirms the § 2.4.1 reading
+that the earlier 7.7x `docker stats` rise was cache fill and not growth.
 
 **Postgres connections:** mean 11, **max 46**, last 9, against
 `max_connections = 200` - a **23% peak**. The budget guard's arithmetic
@@ -960,7 +1003,20 @@ Three things it does support, none of which is a config change:
    the PrestaShop webservice key and reseeded offer mappings - i.e. changed
    the thing under measurement - so the scenario resolves connection ids from
    the database by name instead, which is what bootstrap itself keys on.
-7. **`lib-test.sh` shipped with a permanently-failing assertion** (165 passed
+8. **A sampler that decides when to stop by grepping for a process NAME will
+   outlive its own window on a shared host.** The mid-window RSS sampler used
+   `ps aux | grep '[s]ustained-mixed-load'`; a peer agent in another worktree
+   ran the same scenario, the grep matched *their* process, and it kept
+   appending to this run's results directory for 3.5 hours after
+   `window_stop`. That is how contaminated figures reached the first revision
+   of this report (see the correction block at the top). Two things would have
+   prevented it, and a future side sampler should do both: **bound it by the
+   window** rather than by liveness (pass `window_stop` in, or a sample count),
+   and if liveness is used at all, key it on the **PID** the sampler was
+   started against, never on a name any peer can also be running. The
+   scenario's own two samplers were never exposed to this - `sampler_stop` and
+   `mixed_supp_sampler_stop` both `kill` a recorded PID.
+9. **`lib-test.sh` shipped with a permanently-failing assertion** (165 passed
    / 1 failed at the start of this session). "Omitting the feed argument
    leaves the verdict VALID" called `run_post_guards` against a fresh temp
    directory, so `post_guard_containers_stable` correctly refused a window it

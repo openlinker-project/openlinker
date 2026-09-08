@@ -1451,3 +1451,39 @@ either - read the source that owns it.
 `docs/architecture/adrs/**`, and PR or issue commentary that says a prior claim is unsupported.
 
 **Source**: #2983 (epic #2840, sustained mixed load).
+
+---
+
+## A liveness check keyed on a process NAME matches a peer's process - bound a sampler by its window, or by the PID it was started against
+
+**Context**: a mid-run side sampler added to the #2983 mixed-load window, writing container
+cgroup RSS into that run's results directory every 60 s. Its stop condition was
+`ps aux | grep '[s]ustained-mixed-load'` - the scenario's own name - on the reasoning that the
+sampler must not outlive the window it describes.
+
+**Problem**: a peer agent in another worktree then ran **the same scenario**, the grep matched
+*their* process, and the sampler kept appending to this run's results for **3.5 hours past
+`window_stop`**. The first analysis ran minutes after the window closed and therefore picked up
+post-window rows taken while the worker was being recreated by the teardown - which is where an
+anomalous `min 75.1 MB` came from. Restricting to in-window samples moved the fitted memory slopes
+materially (the worker's from +0.67 to +1.85 MB/h) and forced a published correction. Nothing
+warned: the CSV grew monotonically and every row was individually valid. On a host where several
+agents share one stand and routinely run each other's scenarios, a name is not an identity.
+
+**Rule**: a sampler's lifetime must be tied to the thing it measures, not to a process pattern.
+Prefer an explicit bound - a sample count, or the window's own end instant passed in - so the
+series cannot extend past the window even if the sampler is never signalled. Where liveness is
+genuinely needed, key it on the **PID** the sampler was started against (`kill -0 "$pid"`), never
+on a name a peer can also be running. Whatever the bound, **stamp the window's start and end into
+the results directory** so a later reader can restrict the series without having to reconstruct
+it. The two samplers `lib.sh` owns were never exposed to this: `sampler_stop` and its scenario
+counterpart both `kill` a recorded PID.
+
+Corollary for the analysis, not just the collection: when a series can outlive its window, an
+analysis run "just after the window closed" is not the same as one restricted to the window. Apply
+the time restriction explicitly rather than relying on when the analysis happened to run.
+
+**Applies to**: `perf/openlinker-throughput/**` samplers and any ad-hoc background collector
+writing into a measurement's results directory on a shared host.
+
+**Source**: #2983 (sustained mixed load, epic #2840).
