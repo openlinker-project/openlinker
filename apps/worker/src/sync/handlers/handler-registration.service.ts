@@ -62,6 +62,7 @@ import { PendingRecoveryHandler } from './pending-recovery.handler';
 import { PaymentStatusRefreshHandler } from './payment-status-refresh.handler';
 import { FulfillmentWorkDispatchHandler } from './fulfillment-work-dispatch.handler';
 import { FulfillmentWorkRouteHandler } from './fulfillment-work-route.handler';
+import { FulfillmentWorkRelaySweepHandler } from './fulfillment-work-relay-sweep.handler';
 import { FulfillmentWorkTimeoutSweepHandler } from './fulfillment-work-timeout-sweep.handler';
 
 @Injectable()
@@ -121,14 +122,15 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly paymentStatusRefreshHandler: PaymentStatusRefreshHandler,
     private readonly fulfillmentWorkDispatchHandler: FulfillmentWorkDispatchHandler,
     private readonly fulfillmentWorkRouteHandler: FulfillmentWorkRouteHandler,
-    private readonly fulfillmentWorkTimeoutSweepHandler: FulfillmentWorkTimeoutSweepHandler
+    private readonly fulfillmentWorkTimeoutSweepHandler: FulfillmentWorkTimeoutSweepHandler,
+    private readonly fulfillmentWorkRelaySweepHandler: FulfillmentWorkRelaySweepHandler
   ) {}
 
   onModuleInit(): void {
     // Every registration declares its ADR-050 concurrency lane (#2278). The
     // lane is chosen by cost-of-starvation, never by I/O shape or bounded
     // context — the authoritative table is ADR-050 decision 1, now 16 realtime /
-    // 26 bulk / 5 fiscal / 7 fan-out across 54 job types. Amendments since the
+    // 29 bulk / 5 fiscal / 7 fan-out across 57 job types. Amendments since the
     // ADR: `fiscalization.register` joined `fiscal` (#2156),
     // `inventory.provenance.backfill` joined `bulk` (#2317), the three returns
     // types joined realtime/bulk/fan-out (#2330), `returns.orphan.reconcile`
@@ -142,8 +144,12 @@ export class HandlerRegistrationService implements OnModuleInit {
     // and `marketplace.offerQuantity.reconcile` joined `bulk` as a scan-style
     // pass over adapter-internal pending state (#2621). #2609 left the tally
     // alone: it raised the `fan-out` lane's caps instead of moving a job out of
-    // it. The tripwire in `handler-registration.service.spec.ts` is the
-    // authority on these counts — this comment had drifted from it before #2330.
+    // it. `fulfillment.work.timeoutSweep` joined `bulk` (#2712) and
+    // `fulfillment.work.relaySweep` beside it (#2728) — both cron-paced
+    // reconcilers over work that is already stalled by definition. The tripwire
+    // in `handler-registration.service.spec.ts` is the authority on these
+    // counts — this comment had drifted from it before #2330, and again before
+    // #2728, which is why it is restated here rather than only appended to.
 
     // Register generic marketplace handlers (Option B)
     this.handlerRegistry.register(
@@ -567,6 +573,21 @@ export class HandlerRegistrationService implements OnModuleInit {
     this.handlerRegistry.register(
       'fulfillment.work.timeoutSweep',
       this.fulfillmentWorkTimeoutSweepHandler,
+      'bulk'
+    );
+
+    // The dispatch-relay reconcile sweep (#2728). 'bulk', and the argument is
+    // STRONGER here than for the timeout sweep above rather than copied from it.
+    // ADR-050 picks by cost of starvation: every candidate has by construction
+    // been unrelayed for at least the grace window, so a lane-slot's delay adds
+    // minutes to a condition measured in hours. And unlike that reaper - which
+    // makes no platform call at all - each candidate here fans a lifecycle relay
+    // out to N participant adapters, which is precisely the heavy-outbound
+    // profile 'bulk' exists for and the last thing that should hold a slot from
+    // a queued 'fulfillment.work.dispatch'.
+    this.handlerRegistry.register(
+      'fulfillment.work.relaySweep',
+      this.fulfillmentWorkRelaySweepHandler,
       'bulk'
     );
 

@@ -330,6 +330,58 @@ export interface ListTimedOutDispatchesInput {
 }
 
 /**
+ * One work that a holder reported SHIPPED and whose dispatch relay never landed
+ * (#2728).
+ *
+ * ## Why "shipped" is read off the progress claim rather than off the work row
+ *
+ * `FulfillmentProgressService.apply`'s `shipped` arm writes NOTHING to
+ * `fulfillment_works` — `fulfillment-progress-event.types.ts` says so in terms:
+ * *"`shipped` writes no status at all. Only the `eventKind` stamped on the (burnt)
+ * claim row records which arrived."* So the claim row is the SOLE trace, and this
+ * read has no alternative source.
+ *
+ * That narrows, rather than contradicts,
+ * `FulfillmentProgressClaimRepositoryPort`'s *"for forensics. Never read as
+ * state"*: the state that note protects is the WORK's, which the two axes own. A
+ * claim row is EVIDENCE OF WHAT ARRIVED — the ORM entity says exactly that — and
+ * "a shipped event was recorded for this work" is the one question it can answer.
+ *
+ * The alternative, a `shippedAt` column on `fulfillment_works`, is worse on three
+ * axes: it adds a SIXTH writer to a table whose repository header names five and
+ * warns against an unnamed one; it makes a second source of truth for one fact;
+ * and it can only be backfilled from `eventKind = 'shipped'` anyway, so the same
+ * read happens once in a migration while every work shipped before that migration
+ * stays permanently invisible to the sweep — which is precisely the silently
+ * unrelayable state this pass exists to remove.
+ */
+export interface UnrelayedShippedDispatch {
+  readonly workId: string;
+  readonly orderId: string;
+  /**
+   * When the earliest `shipped` progress event for this work was RECORDED — the
+   * claim row's `claimedAt`, i.e. OL's own observation instant, never a holder's.
+   *
+   * Earliest rather than latest, so a work that reported shipped twice is aged
+   * from the first report: the operator-facing harm is how long the source has
+   * been uninformed, which started then.
+   */
+  readonly shippedAt: Date;
+}
+
+export interface ListUnrelayedShippedDispatchesInput {
+  /**
+   * Consider only works whose earliest `shipped` claim is strictly older than
+   * this — the grace window (`resolveFulfillmentRelayGraceMs`).
+   *
+   * Required rather than optional: omitting it would make the sweep race every
+   * live relay, and a caller that forgot would get that behaviour silently.
+   */
+  readonly shippedBefore: Date;
+  readonly limit: number;
+}
+
+/**
  * One verified unit (#2418, story E1).
  *
  * NAMES A LINE AND NOTHING ELSE. There is no barcode here and no `source`,
@@ -509,6 +561,29 @@ export interface FulfillmentWorkRepositoryPort {
    * This slice RECORDS and EXPOSES the exclusion; selecting on it is #2395's.
    */
   listBlockingRejections(workId: string): Promise<FulfillmentWorkRejection[]>;
+
+  /**
+   * The #2728 reconcile frontier: works a holder reported SHIPPED whose dispatch
+   * relay never landed, oldest first.
+   *
+   * **Frontier-as-query, with no cursor** — a repaired work leaves the set by
+   * acquiring `dispatchRelayedAt`, so an advancing scan offset would step over
+   * rows, which here means a work whose source is never told and a marketplace
+   * that keeps asking for a tracking number (#1947, one grain up). The same
+   * distinction `bounded-sweep.ts` draws in its own header, and the same reading
+   * `listTimedOutDispatches` above already takes.
+   *
+   * **The page is deduplicated by `workId`**, keeping the oldest `shippedAt`. A
+   * work with two `shipped` claims is legitimate (a holder may re-report), and
+   * two candidates for one work would spend a second relay call to be told
+   * `already-relayed`. Because the LIMIT is applied to CLAIM rows before that
+   * dedupe, a page may yield fewer distinct works than `limit` — the frontier
+   * simply re-reads them next tick, and the honest alternative (an aggregate
+   * before the limit) would force a full grouping of the table on every run.
+   */
+  listUnrelayedShippedDispatches(
+    input: ListUnrelayedShippedDispatchesInput
+  ): Promise<UnrelayedShippedDispatch[]>;
 
   /** At-most-once claim, `WHERE "dispatchRelayedAt" IS NULL`. #2401 is the caller. */
   claimDispatchRelay(workId: string, at: Date): Promise<boolean>;

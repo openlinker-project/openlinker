@@ -28,6 +28,7 @@ import { FulfillmentDispatchTimeoutService } from './application/services/fulfil
 import { FulfillmentHandshakeService } from './application/services/fulfillment-handshake.service';
 import { FulfillmentProgressService } from './application/services/fulfillment-progress.service';
 import { FulfillmentRelayGateService } from './application/services/fulfillment-relay-gate.service';
+import { FulfillmentRelayReconcileService } from './application/services/fulfillment-relay-reconcile.service';
 import { FulfillmentVerificationService } from './application/services/fulfillment-verification.service';
 import { RoutingCommitService } from './application/services/routing-commit.service';
 import {
@@ -36,6 +37,7 @@ import {
   FULFILLMENT_PROGRESS_CLAIM_REPOSITORY_TOKEN,
   FULFILLMENT_PROGRESS_SERVICE_TOKEN,
   FULFILLMENT_RELAY_GATE_SERVICE_TOKEN,
+  FULFILLMENT_RELAY_RECONCILE_SERVICE_TOKEN,
   FULFILLMENT_WORK_REPOSITORY_TOKEN,
   ROUTING_COMMIT_SERVICE_TOKEN,
   ROUTING_DECISION_REPOSITORY_TOKEN,
@@ -89,6 +91,11 @@ import { RoutingDecisionRepository } from './infrastructure/persistence/reposito
     { provide: ROUTING_DECISION_REPOSITORY_TOKEN, useExisting: RoutingDecisionRepository },
     FulfillmentRelayGateService,
     { provide: FULFILLMENT_RELAY_GATE_SERVICE_TOKEN, useExisting: FulfillmentRelayGateService },
+    FulfillmentRelayReconcileService,
+    {
+      provide: FULFILLMENT_RELAY_RECONCILE_SERVICE_TOKEN,
+      useExisting: FulfillmentRelayReconcileService,
+    },
     FulfillmentWorkQueryService,
     {
       provide: FULFILLMENT_WORK_QUERY_SERVICE_TOKEN,
@@ -112,6 +119,8 @@ import { RoutingDecisionRepository } from './infrastructure/persistence/reposito
     FULFILLMENT_DISPATCH_TIMEOUT_SERVICE_TOKEN,
     FULFILLMENT_PROGRESS_SERVICE_TOKEN,
     FULFILLMENT_RELAY_GATE_SERVICE_TOKEN,
+    // Exported for the worker's dispatch-relay reconcile sweep (#2728).
+    FULFILLMENT_RELAY_RECONCILE_SERVICE_TOKEN,
     ROUTING_DECISION_REPOSITORY_TOKEN,
     // Exported for `ShippingModule` (#2402): the shipment bridge resolves an
     // order's work through this interface, never through the repository port.

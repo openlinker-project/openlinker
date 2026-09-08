@@ -340,6 +340,7 @@ describe('SchedulerService', () => {
         // #2712 — global scope and platform-free like the reservation sweeps
         // below: `IDX_fulfillment_works_request_status` carries no connection
         // axis, and a dispatch nobody answered is stalled whoever holds it.
+        'fulfillment-relay-sweep',
         'fulfillment-timeout-sweep',
         // Also core-owned and platform-free, and the most so of any task here:
         // it has neither a platform nor a capability, because its subject is a
