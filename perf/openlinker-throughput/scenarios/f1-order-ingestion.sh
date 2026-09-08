@@ -129,6 +129,28 @@ SOURCE_TENANT="${SOURCE_TENANT:-perf-allegro-a}"
 # carries the rank it resolved to at this n.
 LATENCY_SAMPLES="${LATENCY_SAMPLES:-25}"
 
+# ---------------------------------------------------------------------------
+# Scheduler-ON mode (#2840): hop A becomes a MEASUREMENT of the running
+# scheduler instead of a cadence this script chose.
+#
+# Default OFF, so every existing F1 invocation is byte-identical to its
+# pre-#2840 self. When ON:
+#   - guard_scheduler_off is deliberately WAIVED and the waiver recorded;
+#   - the three master sweeps are disabled, because their parents share the
+#     `fan-out` lane with `marketplace.orders.poll` itself and that co-tenancy
+#     is the contaminant #2847 names;
+#   - every scheduler fact is read back from the worker's own startup log, and
+#     the sample loop attributes a SCHEDULER-minted poll (never one of ours).
+# ---------------------------------------------------------------------------
+F1_SCHEDULER_ON="${F1_SCHEDULER_ON:-0}"
+# The summarizer mode follows the flag, so hop A's label can never say
+# "HARNESS-CHOSEN" on a run where it was measured, or vice versa.
+if [ "$F1_SCHEDULER_ON" = "1" ]; then
+  F1_SUMMARY_MODE=latency-scheduler-on
+else
+  F1_SUMMARY_MODE=latency
+fi
+
 # Throughput arms. The backlog is pushed in ONE request before the window
 # opens, so the pusher can never be the bottleneck; the offered rate is then
 # `min(OF_POLL_LIMIT, backlog) / POLL_CADENCE_SECS`.
@@ -241,6 +263,8 @@ ORIGINAL_REPLICAS="$(discover_worker_containers | wc -w | tr -d ' ')"
 # one without the other.
 ORIGINAL_RUNNER_ENABLED="$(docker exec "$(discover_worker_containers | awk '{print $1}')" printenv WORKER_RUNNER_ENABLED 2>/dev/null || printf '')"
 [ -n "$ORIGINAL_RUNNER_ENABLED" ] || ORIGINAL_RUNNER_ENABLED=false
+ORIGINAL_SCHEDULER_ENABLED="$(docker exec "$(discover_worker_containers | awk '{print $1}')" printenv OL_SCHEDULER_ENABLED 2>/dev/null || printf '')"
+[ -n "$ORIGINAL_SCHEDULER_ENABLED" ] || ORIGINAL_SCHEDULER_ENABLED=false
 
 connection_json() { ol_api GET "/v1/connections/$1"; }
 
@@ -283,6 +307,22 @@ restore_curl() {
 # `worker` while a peer's F7 window was open.
 CONNECTIONS_TOUCHED=0
 WORKER_TOUCHED=0
+SCHEDULER_TOUCHED=0
+
+# Upsert one key into the stand's env file. Needed because compose substitutes
+# `${VAR}` only for keys the worker service lists - the trap recorded on
+# OL_JOB_INTAKE_DEDICATED_REDIS and on the lane caps. The three sweep keys were
+# added to docker-compose.lab.yml by #2840 for exactly this reason; writing
+# them here without that change would have set nothing.
+f1_set_env_key() {
+  local k="$1" v="$2"
+  [ -f "$ENV_FILE" ] || die "f1_set_env_key: $ENV_FILE not found"
+  if grep -q "^$k=" "$ENV_FILE"; then
+    sed -i "s|^$k=.*|$k=$v|" "$ENV_FILE"
+  else
+    printf '%s=%s\n' "$k" "$v" >> "$ENV_FILE"
+  fi
+}
 
 f1_on_exit() {
   local rc=$?
@@ -309,6 +349,14 @@ f1_on_exit() {
       # achieved nothing. Cleared so a stand never carries a dead knob that
       # looks live.
       sed -i '/^OL_LANE_REALTIME_CAP=/d; /^OL_LANE_REALTIME_SCOPE_CAP=/d' "$ENV_FILE" 2>/dev/null || true
+      # #2840: put the scheduler back where it was and REMOVE the sweep keys
+      # entirely rather than writing 'true' into them. They were absent before
+      # this run, and a stand left carrying an explicit knob a peer did not set
+      # is the same class of contamination as leaving the scheduler on.
+      if [ "$SCHEDULER_TOUCHED" = "1" ]; then
+        sed -i "s/^OL_SCHEDULER_ENABLED=.*/OL_SCHEDULER_ENABLED=$ORIGINAL_SCHEDULER_ENABLED/" "$ENV_FILE" 2>/dev/null || true
+        sed -i '/^OL_PRODUCT_SYNC_ENABLED=/d; /^OL_INVENTORY_SYNC_ENABLED=/d; /^OL_MASTER_PRODUCT_RECONCILE_ENABLED=/d' "$ENV_FILE" 2>/dev/null || true
+      fi
     fi
     # The override must go BEFORE the recreate, or the restored worker keeps
     # whatever lane caps the last arm asked for.
@@ -600,6 +648,115 @@ LATENCY_HEADER='sample,checkout_form_id,pushed_at_utc,poll_key,poll_created_utc,
 
 SAMPLE_MAX_WAIT_SECS="${SAMPLE_MAX_WAIT_SECS:-120}"
 
+# ---------------------------------------------------------------------------
+# Scheduler readback (#2840). Copied in shape from
+# scenarios/sustained-mixed-load.sh's mixed_wait_for_scheduler: the resolved
+# task inventory is read out of the worker's OWN startup log, never inferred
+# from the code's defaults or from the env, because "a scenario that silently
+# measures a configuration it did not request is the worst failure mode this
+# harness has" (this file's own header).
+#
+# `grep -c`, never `grep -q`: grep -q exits at its first match and closes the
+# pipe while `docker logs` is still writing, so docker logs dies of SIGPIPE and
+# `set -o pipefail` reports the pipeline failed even though the line matched -
+# length-dependent, so it passes on a short log and starts failing once the
+# worker has been up a while (#2851).
+# ---------------------------------------------------------------------------
+F1_SCHED_TASKS=""
+
+f1_wait_for_scheduler() {
+  local w tries hits
+  for w in $WORKER_CONTAINERS; do
+    tries=0
+    while :; do
+      hits="$(docker logs "$w" 2>&1 | grep -c -F 'Registered scheduler task:' || true)"
+      [ "${hits:-0}" -eq 0 ] || break
+      tries=$((tries + 1))
+      [ "$tries" -lt 30 ] || die "f1_wait_for_scheduler: no 'Registered scheduler task:' line on [$w] within 150s.
+  This mode's entire premise is that the scheduler is ON, so a run whose
+  scheduler registered nothing measures the opposite of what it claims.
+  The scheduler is a fleet singleton behind a Redis lease; check:
+    docker exec -i \$REDIS_CONTAINER redis-cli GET singleton:scheduler"
+      sleep 5
+    done
+  done
+  F1_SCHED_TASKS="$(for w in $WORKER_CONTAINERS; do
+      docker logs "$w" 2>&1 | grep -F 'Registered scheduler task:' \
+        | sed 's/.*Registered scheduler task: //' | sed 's/\x1b\[[0-9;]*m//g'
+    done | sort -u)"
+  printf '%s' "$F1_SCHED_TASKS"
+}
+
+# AC2, enforced in code. Returns non-zero (die) rather than warning, because a
+# window that ran with the catalogue sweeps live is DISCARDED for co-tenancy -
+# it must never be quietly reported as if the sweeps were off.
+f1_assert_scheduler_inventory() {
+  local tasks="$1" poll_line cron bad=""
+  poll_line="$(printf '%s\n' "$tasks" | grep -F 'jobType: marketplace.orders.poll' | head -1 || true)"
+  [ -n "$poll_line" ] || die "f1_assert_scheduler_inventory (AC2): the scheduler registered no marketplace.orders.poll task at all.
+  Registered inventory was:
+$tasks"
+  # Keep the RAW expression for the report (it is quoted there verbatim) and
+  # compare against a whitespace-stripped copy, so "*/1 * * * *" does not get
+  # reported as "*/1****".
+  cron="$(printf '%s' "$poll_line" | sed -n 's/.*cron: \([^)]*\)).*/\1/p')"
+  local cron_cmp; cron_cmp="$(printf '%s' "$cron" | tr -d '[:space:]')"
+  {
+    case "$cron_cmp" in
+      '*/1'*) : ;;
+      *) die "f1_assert_scheduler_inventory (AC2): marketplace.orders.poll resolved cron [$cron], not */1. AC3's [0s,60s] hop-A band is void at any other cadence.
+  Line was: $poll_line" ;;
+    esac
+  }
+  local jt
+  for jt in master.product.syncAll master.inventory.syncAll master.product.reconcile; do
+    if printf '%s\n' "$tasks" | grep -qF "jobType: $jt"; then
+      bad="$bad $jt"
+    fi
+  done
+  [ -z "$bad" ] || die "f1_assert_scheduler_inventory (AC2): these master sweeps are STILL REGISTERED despite being disabled:$bad
+  Their parents share the fan-out lane with marketplace.orders.poll, so this
+  window would measure uncontrolled co-tenancy. DISCARDED rather than reported.
+  If the env keys were set but did not take, check that docker-compose.lab.yml's
+  worker service LISTS them - compose substitutes \${VAR} only for keys the
+  service itself carries, which is why #2840 had to add them."
+  F1_POLL_CRON="$cron"
+  log "AC2 ok: marketplace.orders.poll at cron [$cron]; none of master.product.syncAll / master.inventory.syncAll / master.product.reconcile registered"
+}
+
+# The scheduler-minted poll for this connection, as opposed to one of ours.
+# The scheduler's key is `marketplace:{connId}:orders:poll:{timestamp}`; ours
+# (of_enqueue_poll) is `marketplace:{connId}:orders:poll:{tag}:{ms}`, so the
+# digits-only tail is what tells them apart. Without this a harness-enqueued
+# poll left over from a previous arm could be attributed to a scheduled one -
+# which is precisely the hop-A-is-a-constant failure this mode exists to end.
+F1_SCHED_POLL_RE=""
+f1_sched_poll_re() { printf '^marketplace:%s:orders:poll:[0-9]+$' "$SOURCE_CONNECTION_ID"; }
+
+# First scheduler poll enqueued at or after an instant.
+f1_first_sched_poll_key_since() {
+  pg_sql "SELECT \"idempotencyKey\" FROM sync_jobs
+          WHERE \"jobType\"='marketplace.orders.poll'
+            AND \"connectionId\"='$SOURCE_CONNECTION_ID'
+            AND \"idempotencyKey\" ~ '$F1_SCHED_POLL_RE'
+            AND \"createdAt\" >= '$1'
+          ORDER BY \"createdAt\" ASC LIMIT 1"
+}
+
+# The poll that actually DISCOVERED a child: the newest scheduler poll enqueued
+# at or before the child's own createdAt. The child is created inside the poll
+# handler's run, so this is the true discoverer even in the ~0.5%-of-a-minute
+# edge case where an already-running poll picks the order up and the "next tick"
+# poll is not the one that found it.
+f1_discovering_poll_key() {
+  pg_sql "SELECT \"idempotencyKey\" FROM sync_jobs
+          WHERE \"jobType\"='marketplace.orders.poll'
+            AND \"connectionId\"='$SOURCE_CONNECTION_ID'
+            AND \"idempotencyKey\" ~ '$F1_SCHED_POLL_RE'
+            AND \"createdAt\" <= '$1'
+          ORDER BY \"createdAt\" DESC LIMIT 1"
+}
+
 # run_one_sample <n> <dest_connection_id> <out_csv>
 run_one_sample() {
   local n="$1" dest="$2" out="$3"
@@ -617,15 +774,40 @@ run_one_sample() {
   cf_id="$(printf '%s' "$resp" | jq -r '.minted[0].checkoutFormId // empty')"
   [ -n "$cf_id" ] || { warn "sample $n: stub minted no checkout form: $resp"; return 0; }
 
+  local row
+  if [ "$F1_SCHEDULER_ON" = "1" ]; then
+    # HOP A IS THE MEASUREMENT HERE. We enqueue nothing; we wait for the
+    # scheduler's own next `marketplace.orders.poll` to be minted, which is the
+    # wait a real deployment's buyer experiences.
+    #
+    # The 0.2s cadence is not politeness: the poll runs in ~300ms, and lockedAt
+    # exists only while it runs (markSucceeded nulls it), so a 1s loop would
+    # miss the latch on nearly every sample and push every claim-instant onto
+    # the derived path. Both paths are supported and the summarizer prints the
+    # split, but observing it is strictly better than reconstructing it.
+    local waited_poll=0 max_poll_ticks=$(( ${F1_POLL_WAIT_MAX_SECS:-150} * 5 ))
+    poll_key=""
+    while [ "$waited_poll" -lt "$max_poll_ticks" ]; do
+      poll_key="$(f1_first_sched_poll_key_since "$pushed_at" 2>/dev/null | tr -d '[:space:]')"
+      [ -z "$poll_key" ] || break
+      sleep 0.2; waited_poll=$((waited_poll + 1))
+    done
+    if [ -z "$poll_key" ]; then
+      warn "sample $n: no SCHEDULER-minted poll appeared within ${F1_POLL_WAIT_MAX_SECS:-150}s of the push - the scheduler is not firing"
+      printf '%s,%s,%s,,,,,NO_SCHED_POLL,,,,,,,,,,,,,,,\n' "$n" "$cf_id" "$pushed_at" >> "$out"
+      return 0
+    fi
+    row="$(job_row_by_key "$poll_key")"
+  else
   poll_key="$(of_enqueue_poll "$SOURCE_CONNECTION_ID" "lat$n")"
 
-  local row
   row="$(poll_until "poll job row for $poll_key" 30 job_row_by_key "$poll_key")" || {
     warn "sample $n: the poll job never produced a sync_jobs row (slow intake?)"
     # 23 columns: 4 written, cols 5-7 empty, col 8 the marker, cols 9-23 empty.
     printf '%s,%s,%s,%s,,,,NO_POLL_ROW,,,,,,,,,,,,,,,\n' "$n" "$cf_id" "$pushed_at" "$poll_key" >> "$out"
     return 0
   }
+  fi
   IFS='|' read -r poll_created poll_locked poll_updated poll_status poll_outcome poll_attempts poll_dur <<< "$row"
   # LATCH: `markSucceeded` nulls lockedAt, so the value only exists while the
   # job is running. First non-empty reading wins and is never overwritten -
@@ -653,6 +835,26 @@ run_one_sample() {
   }
   IFS='|' read -r child_created child_locked child_updated child_status child_outcome child_attempts child_dur <<< "$row"
   local child_locked_latched="$child_locked"
+
+  # The poll that actually discovered this order need not be the first one
+  # minted after the push: an already-running poll can pick an order up if it
+  # reads the feed after the stub minted it. Re-attribute from the child's own
+  # createdAt and record when the two disagree, rather than assuming they
+  # cannot - the disagreement is a real (small) fraction of a */1 minute, and
+  # reporting a hop A measured against the wrong poll would be a quiet lie.
+  if [ "$F1_SCHEDULER_ON" = "1" ] && [ -n "$child_created" ]; then
+    local disc_key
+    disc_key="$(f1_discovering_poll_key "$child_created" 2>/dev/null | tr -d '[:space:]')"
+    if [ -n "$disc_key" ] && [ "$disc_key" != "$poll_key" ]; then
+      printf '%s\t%s\t%s\treattributed\n' "$n" "$poll_key" "$disc_key" >> "$(dirname "$out")/poll-attribution.tsv"
+      poll_key="$disc_key"
+      local prow; prow="$(job_row_by_key "$poll_key")"
+      IFS='|' read -r poll_created poll_locked poll_updated poll_status poll_outcome poll_attempts poll_dur <<< "$prow"
+      poll_locked_latched="$poll_locked"
+    else
+      printf '%s\t%s\t%s\tnext-tick\n' "$n" "$poll_key" "${disc_key:-none}" >> "$(dirname "$out")/poll-attribution.tsv"
+    fi
+  fi
 
   waited=0
   while [ "$waited" -lt "$SAMPLE_MAX_WAIT_SECS" ] && [ "$child_status" != "succeeded" ] && [ "$child_status" != "dead" ]; do
@@ -808,7 +1010,7 @@ run_smoke() {
   log "=== sample row ==="
   cat "$tmp"
   log "=== reconstructed hops ==="
-  python3 "$SCRIPT_DIR/../drivers/f1-summarize.py" latency "$tmp" || true
+  python3 "$SCRIPT_DIR/../drivers/f1-summarize.py" "$F1_SUMMARY_MODE" "$tmp" || true
 
   # THE FEED-BACKLOG SENSOR IS EXERCISED HERE, ON PURPOSE.
   # post_guard_feed_starved is a pure function of a number, so lib-test.sh can
@@ -1013,7 +1215,18 @@ arm_throughput() {
 
 run_strict() {
   log "=== pre-flight guards ==="
-  guard_scheduler_off
+  if [ "$F1_SCHEDULER_ON" = "1" ]; then
+    # DELIBERATE WAIVER (#2840). guard_scheduler_off's own docblock authorises
+    # a scenario that wants the scheduler on to skip it, provided it records
+    # the resolved task inventory and every cadence it could read - which
+    # f1_wait_for_scheduler / f1_assert_scheduler_inventory do below, and the
+    # manifest carries. The cadence row the guard would have captured is
+    # captured here explicitly so the manifest is not silently thinner.
+    MANIFEST_SCHEDULER_CADENCE_ROW="$(scheduler_cadence_row)"
+    log "guard_scheduler_off DELIBERATELY WAIVED - scheduler-ON mode (operational_settings cadence row: ${MANIFEST_SCHEDULER_CADENCE_ROW:-<none>})"
+  else
+    guard_scheduler_off
+  fi
   guard_demo_mode_off
   guard_log_level
   guard_perf_max_attempts
@@ -1024,7 +1237,28 @@ run_strict() {
   # EXIT trap. guard_runner_state then verifies the flip took AND captures the
   # lane caps the runner actually resolved, which is what the falsification
   # arms compare against.
+  if [ "$F1_SCHEDULER_ON" = "1" ]; then
+    # Set BEFORE the recreate, or the recreated worker carries the old posture.
+    # These reach the container only because #2840 added the three sweep keys
+    # to the worker service in docker-compose.lab.yml; before that, writing
+    # them here set nothing at all.
+    SCHEDULER_TOUCHED=1
+    WORKER_TOUCHED=1
+    f1_set_env_key OL_SCHEDULER_ENABLED true
+    f1_set_env_key OL_PRODUCT_SYNC_ENABLED false
+    f1_set_env_key OL_INVENTORY_SYNC_ENABLED false
+    f1_set_env_key OL_MASTER_PRODUCT_RECONCILE_ENABLED false
+    F1_SCHED_POLL_RE="$(f1_sched_poll_re)"
+    log "scheduler-ON mode: scheduler=true, master sweeps disabled (product/inventory/reconcile)"
+  fi
   recreate_worker true
+  if [ "$F1_SCHEDULER_ON" = "1" ]; then
+    log "waiting for the scheduler singleton to acquire its lease and register"
+    F1_SCHED_TASKS="$(f1_wait_for_scheduler)"
+    log "scheduler registered $(printf '%s\n' "$F1_SCHED_TASKS" | grep -c . || true) task(s)"
+    printf '%s\n' "$F1_SCHED_TASKS" | sed 's/^/  task: /'
+    f1_assert_scheduler_inventory "$F1_SCHED_TASKS"
+  fi
   guard_connection_budget
   guard_pool_recorded
   guard_runner_state enabled
@@ -1082,7 +1316,7 @@ run_strict() {
     # design, one order at a time. That is post_guard_feed_starved's own
     # "not applicable" case, and passing a number would discard every run.
     run_post_guards "$lat_dir" "$CONN_IDS" "$lat_ws_iso" "$WINDOW_START_EPOCH" "$WINDOW_STOP_EPOCH" "$PS_CONNECTION_ID" "" "" ""
-    python3 "$SCRIPT_DIR/../drivers/f1-summarize.py" latency "$lat_csv" > "$lat_dir/summary.txt"
+    python3 "$SCRIPT_DIR/../drivers/f1-summarize.py" "$F1_SUMMARY_MODE" "$lat_csv" > "$lat_dir/summary.txt"
     cat "$lat_dir/summary.txt"
     drain_wait "$CONN_IDS" >/dev/null || true
   fi

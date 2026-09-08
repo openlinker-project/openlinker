@@ -6,6 +6,9 @@ Two modes, because F1 measures two different things and reporting them with
 one shape would misdescribe both:
 
   latency <samples.csv>     per-hop order statistics for the serial arm
+  latency-scheduler-on <samples.csv>
+                            same, with hop A reported as a MEASURED poll wait
+                            and a 'visible in OpenLinker' total (#2840)
   throughput <progress.csv> completion rate + queue-growth verdict for one
                             throughput arm
 
@@ -185,7 +188,38 @@ HOPS = [
 ]
 
 
-def summarize_latency(path):
+# Scheduler-ON variant (#2840). Identical to HOPS except that hop A is a real
+# measurement rather than a harness-chosen cadence, and two extra totals are
+# reported: "visible in OpenLinker" (the order_records row) is the figure that
+# compares against a competitor's "orders appear within N minutes", because
+# that is what a vendor means by "appear" - the destination-mirror hop F is
+# OpenLinker doing extra work no marketplace-only tool does at all.
+HOPS_SCHEDULER_ON = [
+    ('A  order placed -> scheduler poll enqueued',
+     'pushed_at_utc', 'poll_created_utc',
+     'MEASURED - real */1 poll wait'),
+    ('B  poll enqueued -> poll claimed',
+     'poll_created_utc', 'poll_claim', ''),
+    ('C  poll claimed -> child enqueued',
+     'poll_claim', 'child_created_utc', ''),
+    ('D  child enqueued -> child claimed',
+     'child_created_utc', 'child_claim', ''),
+    ('E  child claimed -> order_records row written',
+     'child_claim', 'record_created_utc', ''),
+    ('F  order_records written -> destination syncedAt',
+     'record_created_utc', 'synced_at_utc', ''),
+    ('G  child claimed -> child terminal',
+     'child_claim', 'child_updated_utc', ''),
+    ('TOTAL  order placed -> VISIBLE IN OPENLINKER',
+     'pushed_at_utc', 'record_created_utc',
+     'the competitor-comparable number'),
+    ('TOTAL  order placed -> destination syncedAt',
+     'pushed_at_utc', 'synced_at_utc',
+     'includes the destination mirror'),
+]
+
+
+def summarize_latency(path, hops=None):
     rows = []
     with open(path, newline='') as f:
         for row in csv.DictReader(f):
@@ -196,7 +230,7 @@ def summarize_latency(path):
     print(f'samples reaching a destination create: {len(complete)}')
     print()
 
-    for label, a, b, note in HOPS:
+    for label, a, b, note in (hops if hops is not None else HOPS):
         print(stats_line(label, [hop_ms(r, a, b) for r in rows], note))
 
     # How much of the above is observed and how much reconstructed.
@@ -361,10 +395,13 @@ def summarize_throughput(path):
 
 
 if __name__ == '__main__':
-    if len(sys.argv) != 3 or sys.argv[1] not in ('latency', 'throughput'):
+    if len(sys.argv) != 3 or sys.argv[1] not in (
+            'latency', 'latency-scheduler-on', 'throughput'):
         print(__doc__)
         sys.exit(2)
     if sys.argv[1] == 'latency':
         summarize_latency(sys.argv[2])
+    elif sys.argv[1] == 'latency-scheduler-on':
+        summarize_latency(sys.argv[2], HOPS_SCHEDULER_ON)
     else:
         summarize_throughput(sys.argv[2])
