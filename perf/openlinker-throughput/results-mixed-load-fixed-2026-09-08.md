@@ -30,6 +30,31 @@ rather than asserting it.
 > Every figure is labelled **measured**, **derived** or **extrapolated**.
 > § 6 "What this did not establish" is not optional reading.
 
+### 0.1 Do not quote 200.6 orders/h as "what OpenLinker does"
+
+This is the sharpest thing to say about arm A and it governs how the whole
+A-versus-B comparison should be read, so it comes before the comparison rather
+than after it.
+
+**Arm A is not "OpenLinker before the fix". It is a configuration that never
+shipped in either direction.** It ran the **new** destination rate limit
+(300 req/min, #2982's manifest default) against the **old** shared Redis client
+(#2984 not yet in the image). No release ever combined those two. The
+pre-#2982 world paced the destination at 60 req/min; the post-#2984 world has
+the dedicated client. Arm A sits between them and matches neither.
+
+That makes arm A a **valid control for exactly one comparison** - it isolates
+the intake client, because it differs from arm B in four files and one
+variable (§ 1.2) - and an **invalid figure to quote on its own**. "200.6
+orders/h" describes no shipped OpenLinker. Anyone reaching for a
+before-and-after number for a release note or a client document should take
+arm B's figure and the service time behind it (§ 2.1), not arm A's.
+
+The same caution applies in the other direction and is why § 6.1 exists: arm
+B's throughput was measured on a **saturating** window, so it is a floor on
+what the fixed code sustains, and the 1 197/h ceiling derived from it is
+arithmetic rather than an observation.
+
 ## 1. Conditions
 
 ### 1.1 Why this run exists
@@ -439,6 +464,25 @@ throughout. The 262 with a failed entry are the WooCommerce
 `No WC product mapping` failures - the same shape arm A shows
 (652 / 649 / 650), and the subject of § 7.4(b).
 
+### 2.3.1 Cross-check against an independent mid-window read
+
+An independent read of the same window at **t+8622s** recorded **2 304 orders
+completed in 8 622 s = ~962 orders/h**, with the degradation counter at
+**0** against arm A's 1 454. That agrees with § 2.2's ~986/h to within 2.5%,
+and the two are taken 8 000 s apart, so the rate is stable rather than a
+sampling accident.
+
+**Which figure this report quotes, and why.** § 3's headline is the
+**whole-window** figure the summarizer computes - first sample to last, no
+trim - because that is the statistic arm A's 217.3/h is, and comparability
+beats flattery. A mid-window rate and a whole-window rate can legitimately
+differ on a saturating window: the first minutes drain a primed backlog at an
+inflated rate (this window's first 305 s read 1 027/h), and the fault plus
+recovery pull the whole-window average down. If the final figure differs
+materially from ~962/h, the difference is that trim, not a change in the
+system, and § 3 says so explicitly rather than leaving a reader to reconcile
+two numbers.
+
 ### 2.4 Limiter degradation, interim
 
 **0 episodes** at t+853s. Held as interim per § 1.6: arm A degraded at roughly
@@ -551,7 +595,58 @@ A campaign that records only its confirmed predictions is advertising rather
 than measuring, so the miss stays in § 2.5 at full size and this section names
 what would close it.
 
-### 6.3 Everything else this run does not answer
+### 6.3 A withdrawn memory figure from arm A, and the mechanism that produced it
+
+Arm A's own report claims **worker RSS +0.67 MB/h** with `first = 133.1`,
+`last = 133.6` and the conclusion *"no leak is detectable over three hours"*.
+**That is withdrawn**, and it matters here because it is the fourth instance
+on this branch of the same failure: the arithmetic completed, nothing errored,
+and the answer was quietly wrong.
+
+**The mechanism.** The sampler was started by hand and was still appending
+after the run ended. Its series ends `08:57:35Z` against a run that ended
+`08:54:25Z`, and inside those three minutes the worker RSS goes
+`116.21 -> 75.06` (shutting down), `80.84 -> ~0` (container gone - the raw
+sample is a signed underflow), then `~0 -> 133.64` (**a fresh container's
+startup RSS**). So the quoted `last = 133.6` is not the run's last sample at
+all, it is **a different, restarted process**, and the quoted `min = 75.1` is
+a shutting-down one. A least-squares fit over well-formed rows returned a
+plausible number across a container boundary it had no way to see.
+
+Put beside § 1.3.1's three: `grep -c` exiting 1 on a zero count (a guard
+passing a correct image as FAILED), a `pgrep -f` poll matching its own command
+line (a wait that could never end), `exit=$?` after `| tee` (reading the
+wrong process's status), and now **a restarted container silently entering a
+slope**. None of the four threw. All four produced a confident wrong answer.
+
+Cut at the run's own end (n=131, `06:40:39 -> 08:53:27`) the slope is
+**+1.81 MB/h** - 2.7x the withdrawn figure - and first-versus-last is
+`133.09 -> 116.21`, **16.9 MB apart rather than 0.5**. And the corrected
+reading is *weaker*, not stronger: +1.81 MB/h sits **inside** the ±1-2 MB/h
+that three hours cannot separate from jitter against a 45 MB oscillation band,
+so the honest answer is **not measured**, not *no leak*. Arm A's own stated
+bound was right even though its number was not - a leak slower than ~1 MB/h is
+invisible at this window length, and no 24-hour window was run.
+
+**For a sizing reader the guidance is the measured maxima, not any slope** - a
+slope this run cannot resolve must not enter a provisioning decision in either
+direction.
+
+The verbatim withdrawal block lives in PR #2992
+(`docs/operations/requirements-and-scaling.md` § 6) and is written in the
+`results-F7-2026-09-06.md` withdrawal-in-place style. It has to be copied into
+**arm A's own report § 4**, which is not reachable from
+`perf-programme-2840` - it exists only on `2840-sustained-mixed-load` and this
+branch. That paste is queued behind arm C rather than done now: arm A's branch
+has advanced by two commits since this branch merged it, and one of them edits
+`scenarios/sustained-mixed-load.sh` (adding the `attributionImpossible`
+manifest flag #2840 asked for - metadata and comments, no behaviour). Merging
+it mid-flight would have arm C running a scenario file arm B did not, and
+instrument parity across the three arms is the whole reason the comparison
+carries weight (§ 7.4(b).2). The merge and the paste happen together, after
+arm C closes.
+
+### 6.4 Everything else this run does not answer
 
 - **The composition #2840 asked for is still incomplete.** Arms A, B and C
   carry sweep crons and an order ramp; **none carries stock churn**. Inherited
@@ -823,6 +918,30 @@ demonstrated rather than assumed, because `post_guard_generator_saturated`
 staying silent is only meaningful if it has been shown able to fire on the
 same instrument. That is § 1.3.1's rule - verify a guard's output in **both**
 directions - applied before the run rather than after it.
+
+### 8.3 The third lever on the order path, and it is the only one unowned
+
+The order path has three known levers. Two are accounted for:
+
+1. **The intake Redis client** - measured here, 32.4 s to 6.0 s of per-order
+   service time (§ 2.1). Shipped as #2984.
+2. **The limiter's minimum-interval spacing** - known, owned, discussed in the
+   limiter-A/B lineage.
+3. **Four cacheable per-order requests** - worth about **3.1x** on the order
+   path, per #2992 § 15, and **no child of #2840 currently writes that
+   work.**
+
+The third is named here rather than left where it currently lives, which is a
+document about **hardware sizing**. Nobody working on order throughput will
+look there, and a 3.1x lever with no issue against it is a lever that gets
+re-discovered in six months instead of built.
+
+It is also the lever that most changes the answer in § 4: the ceiling is
+`2 slots x 3600 / service-seconds`, so anything that cuts service time again
+multiplies the ceiling directly - the same arithmetic that turned #2984's
+26 s saving into a ~5x throughput change. **This figure is pointed at, not
+re-derived**: it is #2992's measurement, and this report neither reproduces
+nor endorses the 3.1x beyond citing its source.
 
 ## 9. Reproducing it
 
