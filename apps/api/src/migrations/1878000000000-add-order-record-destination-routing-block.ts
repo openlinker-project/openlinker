@@ -30,17 +30,25 @@
  * in production and silently not in tests.
  *
  * Generated: 2026-09-08 (synthetic sequential prefix per docs/migrations.md
- * rule 3; `1875000002000` is the analytics net/gross basis migration).
+ * rule 3).
  *
- * The `…3400` rather than `…3000` is deliberate, not a gap to tidy up:
- * `check-migration-timestamps.mjs` compares only against `origin/main`, so it
- * cannot see a sibling migration on a concurrent unpushed branch — the same
- * reasoning `1869000000400` records for its own offset.
+ * RENUMBERED from `1875000003400` before merge. That original value was chosen
+ * with a `…3400` offset so it could not collide with a sibling on a concurrent
+ * unpushed branch — `check-migration-timestamps.mjs` compares only against
+ * `origin/main` and cannot see one. The offset did its job and was then
+ * overtaken by ordinary merges: `1876000000000` (#2073's waybill-relay failure
+ * tracking) and `1877000000000` (#2728's progress-claim index) both landed on
+ * `main` first, so `…3400` came to sort BEFORE the newest migration there and
+ * the guard refused it — correctly, and only once those merged.
+ *
+ * `1878000000000` sits above both. The lesson is that an offset protects
+ * against a sibling branch, not against the branch being outlived by the queue
+ * ahead of it; a late-merging migration is renumbered rather than nudged.
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddOrderRecordDestinationRoutingBlock1875000003400 implements MigrationInterface {
-  name = 'AddOrderRecordDestinationRoutingBlock1875000003400';
+export class AddOrderRecordDestinationRoutingBlock1878000000000 implements MigrationInterface {
+  name = 'AddOrderRecordDestinationRoutingBlock1878000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(

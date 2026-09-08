@@ -278,7 +278,7 @@ as a deliberate improvement on the precedent rather than a deviation from it.
 2. **`order-record.orm-entity.ts`** — two nullable columns
    `destinationRoutingBlockReason` (indexed, §3.8) / `destinationRoutingBlockDetail`,
    documented as sole-writer + level-triggered + not round-tripped.
-3. **Migration `1875000003400-add-order-record-destination-routing-block.ts`** —
+3. **Migration `1878000000000-add-order-record-destination-routing-block.ts`** —
    `up()` adds both columns + the NULL-partial index; `down()` drops them.
    **The `…3400` offset is deliberate, not the next free slot.**
    `check-migration-timestamps.mjs` compares only against `origin/main`, so it
