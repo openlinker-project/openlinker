@@ -188,6 +188,69 @@ names as unmeasured: `order-fx-stamp-sweep`, `orders-tax-rate-backfill` and
 `master-product-reconcile` (which enumerates OL's own product mappings against
 a 50 006-product catalogue).
 
+### 1.4 Two contaminants this window carries that F1 controlled for
+
+Both were found by querying the window mid-run rather than by planning for
+them, and both are stated here because a reader comparing this run's
+orders/hour against F1's needs them.
+
+**(a) The destination fan-out has two members and one of them always fails.**
+Measured over the window's own orders:
+
+| destination | status | entries |
+|---|---|---|
+| `perf-woocommerce` | **failed** | 414 |
+| `perf-prestashop` | synced | 413 |
+| `perf-prestashop` | failed | 1 |
+
+Every order fails WooCommerce with
+`No WC product mapping for OL product ol_product_…`. That is the stand
+limitation the campaign already records - the 10 000 seeded WC `Product`
+mappings name no numeric WooCommerce product id, and
+`WooCommerceOrderProcessorAdapter.resolveLineItems` needs one. **F1 disabled
+WooCommerce before its windows precisely so the fan-out had one member**; this
+run did not, so:
+
+* `post_guard_destination_creates` fires on 414 failed entries for a reason
+  that has nothing to do with mixed load. The health signal is the PrestaShop
+  row: **413 synced against 1 failed**, i.e. the destination create succeeds
+  on essentially every first attempt.
+* the WooCommerce failure is a **local mapping lookup, not an HTTP call**, so
+  it consumes no destination budget and fails fast. Its cost to the order rate
+  is therefore small - but it is not zero and **this run did not measure it**,
+  so the orders/hour figure below should be read as a floor with respect to
+  this contaminant.
+* `syncStatus[].syncedAt` is stamped inside a `Promise.allSettled` over every
+  destination and so records whichever finished last. F1 removed that bias
+  structurally; this run inherits it. It affects any `syncedAt`-derived
+  timing, which is why the throughput figure here is taken from
+  **`marketplace.order.sync` job terminal state** instead.
+
+**(b) 328 jobs died on stub endpoints that do not exist.** Turning the crons on
+reached Allegro endpoints no previous window in this campaign called, and the
+stub does not implement them:
+
+| job type | dead | attempts | error |
+|---|---|---|---|
+| `marketplace.offer.updateFields` | 328 | **0** | `Allegro API error (404): .../sale/product-offers/perf-allegro-a-offer-100` |
+| `marketplace.offers.sync` | 8 | **0** | `Allegro API error (404): .../sale/offer-events?limit=100` |
+| `destination.taxonomy.sync` | 2 | **0** | — |
+
+`attempts = 0` on all of them, so they were classified non-retryable and
+killed on the first pass rather than burning a ladder - **correct behaviour**,
+since a 404 is deterministic. This is a **harness coverage gap, not a product
+defect**: `ol-perf:allegro-stub` implements the order-feed endpoints F1 needed
+and not the offer-management ones `allegro-offers-sync`,
+`allegro-offer-status-sync` and the field-update path call.
+
+What it does to the figures: those jobs are load - they cost claim cycles and
+stub requests - but they consume no PrestaShop budget, so the order path's
+rate limit is untouched. And their contribution to queue **depth** is
+negligible: 50 `marketplace.offer.updateFields` rows were queued against a due
+queue of ~8 000, i.e. **0.6%**, so the divergence finding does not rest on
+them. Extending the stub is the honest fix and belongs to whoever next runs
+this scenario.
+
 ## 2. Method
 
 ### 2.0 The closest call in this campaign: a log reader that inverted its own answer
@@ -305,6 +368,37 @@ They are not folded into `sample_queue` because that would change the header
 `f1-summarize.py` and `f2-summarize.py` already parse, for one scenario's
 benefit.
 
+#### 2.4.1 `docker stats` cannot answer the memory question, and a side sampler was added mid-run
+
+Both samplers take memory from `docker stats`, and **on this host that number
+includes the cgroup's page cache**, which for a database container is most of
+it. Measured directly at t+2645s:
+
+| `lab-postgres` | value |
+|---|---|
+| `docker stats` MemUsage | **1.412 GiB** |
+| cgroup `total_rss` (anonymous) | **17.4 MiB** |
+| cgroup `total_cache` (file-backed) | **1.53 GiB** |
+| of which `total_active_file` | 1.26 GiB |
+
+So the 7.7x rise from 188 MiB looks like a leak and is not one: it is the
+kernel caching database file pages as the hourly sweeps scan a 2 003 176-row
+`order_records` (F5 measured that heap at ~613 MB) and a 50 006-product
+catalogue. It is reclaimable, and the container carries no memory limit
+(`HostConfig.Memory = 0`), so it is bounded by host pressure rather than by a
+cap. `shared_buffers` is only 160 MiB, which is what rules out shared memory
+as the explanation.
+
+**The general point: `docker stats` MemUsage is the wrong instrument for
+detecting a leak in any container that reads files, and this campaign's
+samplers use it.** A `rss-timeseries.csv` reading cgroup `total_rss` and
+`total_cache` per container was therefore started **mid-window, at ~t+2 900s**,
+and covers only the last ~2 h 10 m of the 3-hour window. That late start is a
+limitation of this run, not of the instrument: the first 48 minutes have
+`docker stats` figures only, and for `lab-postgres` those cannot be read as
+memory growth. The scenario should sample cgroup RSS from `window_start` in
+future runs.
+
 ### 2.5 The convergence verdict, and the dishonesty it exists to avoid
 
 `drivers/queue-curve.awk` fits a least-squares slope over the **last third**
@@ -390,7 +484,103 @@ per-jobType queue breakdown is a *depth* attribution and must not be read as a
 
 ## 3. Results
 
-TBD
+### 3.4 The destination fault: stranding scales with CONCURRENCY, not with queue depth
+
+This is the question #2978 left open. It found that a destination fault
+stranded **2-5 orders per window at 12 orders in flight**, with jobs reporting
+`succeeded` and never retrying, and could not say what happens at volume.
+
+**The mechanism reproduced exactly. The rate did not scale.**
+
+`docker pause lab-prestashop` at t+6601s, `docker unpause` at t+6901s -
+exactly 300 s, with ~8 000 jobs queued and 4-8 running.
+
+**What the fault did to throughput** (samples, `measured`):
+
+| t+ | phase | due | running | ingested | completed |
+|---|---|---|---|---|---|
+| 6574 | steady | 7 835 | 4 | 403 | 353 |
+| 6608 | **fault** | 7 896 | 4 | 405 | 355 |
+| 6745 | fault | 8 016 | 6 | 406 | 356 |
+| 6883 | fault | 8 140 | 8 | 406 | 356 |
+| 6918 | recovery | 8 196 | 5 | 407 | 357 |
+
+Order processing **stopped almost completely** for the fault's duration - 1
+order ingested and 1 completed across 275 s of samples - while `running` rose
+from 4 to 8 as jobs sat on the client's 30 s timeout. Arrivals continued, so
+the queue kept growing at its usual rate. Throughput resumed immediately on
+unpause. Nothing needed operator intervention.
+
+**What it stranded: exactly one order, permanently and silently.**
+
+`ol_order_535e48890c8b42fea3353ccf3828586f`, created 07:44:14 - 19 seconds
+before the pause, so it was mid-dispatch when the shop went away. Its
+`syncStatus`:
+
+```json
+[ { "destinationConnectionId": "…prestashop", "status": "failed",
+    "error": "Request timeout after 30000ms: http://prestashop/api/carriers?display=full&…" },
+  { "destinationConnectionId": "…woocommerce", "status": "failed",
+    "error": "No WC product mapping for OL product perfseed_product_s200063…" } ]
+```
+
+And its job:
+
+```
+status=succeeded  outcome=ok  attempts=0  lastError=-  lastAttemptDurationMs=137792
+```
+
+**The job reports success, with no error, having reached no destination.**
+`attempts=0` and an empty `lastError` mean nothing failed as far as the runner
+is concerned; `dispatchToDestinations`' `Promise.allSettled` swallowed both
+per-destination failures (`order-sync.service.ts`). The order's `updatedAt`
+has not moved in the 13+ minutes since, and **nothing will ever retry it** -
+there is no reconcile sweep for a per-destination dispatch failure. This is
+precisely the defect `post_guard_destination_creates`' docblock calls itself
+*"the only guard that can see"*, observed in the wild rather than reasoned
+about.
+
+**The scaling answer:**
+
+| run | orders in flight | offered | stranded | rate |
+|---|---|---|---|---|
+| #2978 | ~12 | 12 orders | 2-5 | **17-42%** |
+| this run | 4-8 running, ~8 000 queued | 413 ingested | **1** | **0.24%** |
+
+So stranding scales with the number of orders **in the destination-dispatch
+step at the instant the destination fails** - which ADR-050's `realtime`
+per-scope cap of 2 bounds - and **not** with queue depth or offered volume. A
+deeper queue does not widen the exposure window; it lengthens the tail of work
+that will be dispatched *after* the destination returns, and that work is
+unaffected.
+
+Three consequences, and the third is the one that matters:
+
+1. **A 300 s outage costs ~300 s of throughput and no operator action.** The
+   retry ladder absorbed 305 order-sync jobs whose attempt landed in the fault
+   window - they were requeued, not failed - and no `marketplace.order.sync`
+   job died in the whole window (`dead = 0`).
+2. **The absolute stranded count does not grow with volume**, which is the
+   reassuring half and is why #2978's 17-42% must not be extrapolated to a
+   busy install.
+3. **But every stranded order is permanent, and 0.24% of a real order book is
+   not a rounding error.** At the ~210 orders/h this window sustained, one
+   300 s destination hiccup per day silently loses an order roughly every four
+   days, with the job log reading clean. The fix is not more retries - it is
+   that a swallowed per-destination failure must leave something for a sweep to
+   find, which no code path currently does.
+
+**One caveat that bounds this finding, stated because it is easy to miss.**
+`docker pause` produces a **timeout-shaped** fault: the connection is
+accepted and never answered, and the client aborts at 30 s
+(`prestashop-webservice.client.ts:109`). A timeout is classified retryable,
+which is why 305 jobs were requeued. #2978 used a fault **proxy**
+(`ol-perf:ps-fault-proxy` is still on this host), which can return HTTP error
+*responses* - and an error response may be classified differently by the
+per-plugin retry classifier. **This run therefore says nothing about the
+error-response-shaped fault #2978 measured**; it measures the timeout-shaped
+one and finds the same swallowing mechanism at the end of it. Whether an
+error-response fault strands more is unmeasured here.
 
 ## 4. Recommendation
 
