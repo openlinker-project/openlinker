@@ -39,6 +39,14 @@ module.exports = {
   // libs/test-kit/src/harness.ts's `IntegrationTestHarnessImpl.teardown()`
   // comment, which explicitly relies on this global hook to do it (#1285).
   globalTeardown: '<rootDir>/test/integration/teardown.ts',
+  // Reset the shared harness around EVERY test case of EVERY int-spec, so a
+  // spec is isolated by omission rather than by its author remembering to call
+  // resetTestHarness(). 118 of the 127 specs here reset in `afterEach` only and
+  // six reset nowhere, which left a file's first assertion reading whatever the
+  // previous file happened to leave behind - measured, not theorised (#2986,
+  // PR #2957). The rationale, the cost and the opt-out audit live in
+  // setup-each.ts.
+  setupFilesAfterEnv: ['<rootDir>/test/integration/setup-each.ts'],
   moduleNameMapper: {
     '^@openlinker/api/(.*)$': path.resolve(__dirname, '../src/$1'),
     '^@openlinker/core$': path.resolve(__dirname, '../../../libs/core/src/index.ts'),

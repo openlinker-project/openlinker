@@ -2241,11 +2241,18 @@ class OpenLinker extends CarrierModule
         }
         self::$fastPathDrainScheduled = true;
 
+        $classesDir = dirname(__FILE__) . '/classes/';
+
+        // #2962 - without this guard, a request where nothing has autoloaded
+        // WebhookSender yet fatals here, aborting hookActionValidateOrderAfter/
+        // hookActionUpdateQuantity; $classesDir must stay hoisted above this call.
+        if (!class_exists('WebhookSender')) {
+            require_once($classesDir . 'WebhookSender.php');
+        }
+
         if (!WebhookSender::fastPathAvailable()) {
             return;
         }
-
-        $classesDir = dirname(__FILE__) . '/classes/';
 
         register_shutdown_function(function () use ($classesDir) {
             // Flush and close the buyer's connection now. Everything below
