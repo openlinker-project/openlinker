@@ -553,21 +553,27 @@ export class RedisRateLimiterAdapter implements RateLimiterPort {
     }
   }
 
-  /** Logs the transition into degraded mode at `error`, then at most once per `DEGRADED_LOG_INTERVAL_MS` while it persists. */
+  /**
+   * Logs the transition into degraded mode at `error`, then at most once per
+   * `DEGRADED_LOG_INTERVAL_MS` while it persists. Carries a stable,
+   * greppable token (`rate_limiter_degraded_entered` / `..._still_degraded`)
+   * so an operator can alert on this without a metrics stack — see
+   * `docs/operations/rate-limiter-degraded-mode.md` (#2853).
+   */
   private enterDegraded(error: unknown): void {
     const now = this.now();
     if (!this.degraded) {
       this.degraded = true;
       this.lastDegradedLogAt = now;
       this.logger.error(
-        `Redis rate limiter unavailable for connection ${this.connectionId} — falling back to per-process in-memory limiting (degraded, not unthrottled). ${(error as Error).message}`
+        `rate_limiter_degraded_entered connectionId=${this.connectionId} — Redis rate limiter unavailable, falling back to per-process in-memory limiting (degraded, not unthrottled). ${(error as Error).message}`
       );
       return;
     }
     if (now - this.lastDegradedLogAt >= DEGRADED_LOG_INTERVAL_MS) {
       this.lastDegradedLogAt = now;
       this.logger.warn(
-        `Redis rate limiter for connection ${this.connectionId} still degraded. ${(error as Error).message}`
+        `rate_limiter_degraded_still_degraded connectionId=${this.connectionId} — Redis rate limiter still degraded. ${(error as Error).message}`
       );
     }
   }
@@ -576,7 +582,7 @@ export class RedisRateLimiterAdapter implements RateLimiterPort {
     if (this.degraded) {
       this.degraded = false;
       this.logger.log(
-        `Redis rate limiter for connection ${this.connectionId} recovered from degraded mode.`
+        `rate_limiter_degraded_recovered connectionId=${this.connectionId} — Redis rate limiter recovered from degraded mode.`
       );
     }
   }

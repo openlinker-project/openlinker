@@ -1279,21 +1279,68 @@ post_guard_requeues() {
 # destination_conn_id is the syncStatus[].destinationConnectionId to check
 # for syncedAt; pass empty to skip the "lacks syncedAt" half (a scenario
 # with no single destination, e.g. a read-path-only flow).
+# SCOPED TO THE DECLARED DESTINATION (#2840). Both arms used to carry no
+# destination predicate at all while the message said "the declared
+# destination", and the consequence was not noise - it was that the guard HID
+# the finding it exists for.
+#
+# Measured over the 2026-09-08 mixed-load arms:
+#
+#     failed, unfiltered (old)                     650     2967    1798
+#     failed, scoped to the declared destination     1        -       -
+#     missing, unfiltered (old)                    729     2967    1456
+#     missing, only where the destination was tried  1        -       -
+#     orders ingested from the source              652     2961    1792
+#
+# Three windows in which the old `failed` count EXCEEDED the population it
+# claimed to describe - a count cannot exceed its own denominator. The cause:
+# the stand runs a WooCommerce connection with no product mappings, so every
+# order carries an unrelated failed entry, and a second PrestaShop connection
+# re-ingests orders OL created, so `missing` counted orders the declared
+# destination was never sent. Scoped, arm A's real answer is 1 - and that one
+# order is the genuinely stranded order its report devotes a section to. The
+# unfiltered count did not cry wolf; it buried the wolf under 649 sheep.
+#
+# This is a DEFECT FIX, not tuning-to-pass: the message already promised "the
+# declared destination", so the predicate is being brought into line with the
+# sentence. What the guard CLAIMS is unchanged. Disabling the WooCommerce
+# connection to get a pass would have been tuning, and was refused.
+#
+# With no destination declared the old unfiltered `failed` behaviour is kept -
+# a caller that names no destination can only be asking about any of them -
+# and the message says "any destination" so the two contracts are not
+# confusable.
+#
+# KNOWN WEAKENING, stated rather than discovered later: the `missing` arm now
+# ignores an order with NO syncStatus entry for the destination at all, i.e.
+# one that was never dispatched anywhere (arm A had 2). That is a different
+# question - "nothing was dispatched" - and belongs in its own guard rather
+# than smuggled in here, because folding it back in re-admits every order
+# legitimately routed elsewhere.
 post_guard_destination_creates() {
-  local window_start_iso="$1" destination_conn_id="${2:-}" failed missing
-  failed="$(pg_sql "SELECT COUNT(*) FROM order_records
-    WHERE \"createdAt\">='$window_start_iso'
-      AND EXISTS (SELECT 1 FROM jsonb_array_elements(\"syncStatus\") e WHERE e->>'status'='failed')")"
+  local window_start_iso="$1" destination_conn_id="${2:-}" failed missing scope
   if [ -n "$destination_conn_id" ]; then
+    scope="the declared destination"
+    failed="$(pg_sql "SELECT COUNT(*) FROM order_records
+      WHERE \"createdAt\">='$window_start_iso'
+        AND EXISTS (SELECT 1 FROM jsonb_array_elements(\"syncStatus\") e
+                    WHERE e->>'status'='failed'
+                      AND e->>'destinationConnectionId'='$destination_conn_id')")"
     missing="$(pg_sql "SELECT COUNT(*) FROM order_records
       WHERE \"createdAt\">='$window_start_iso'
+        AND EXISTS (SELECT 1 FROM jsonb_array_elements(\"syncStatus\") e
+                    WHERE e->>'destinationConnectionId'='$destination_conn_id')
         AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(\"syncStatus\") e
                         WHERE e->>'destinationConnectionId'='$destination_conn_id' AND e->>'syncedAt' IS NOT NULL)")"
   else
+    scope="any destination"
+    failed="$(pg_sql "SELECT COUNT(*) FROM order_records
+      WHERE \"createdAt\">='$window_start_iso'
+        AND EXISTS (SELECT 1 FROM jsonb_array_elements(\"syncStatus\") e WHERE e->>'status'='failed')")"
     missing=0
   fi
   if [ "${failed:-0}" -gt 0 ] || [ "${missing:-0}" -gt 0 ]; then
-    echo "DISCARDED post_guard_destination_creates: $failed order(s) carry a failed syncStatus entry, $missing lack syncedAt on the declared destination"
+    echo "DISCARDED post_guard_destination_creates: $failed order(s) carry a failed syncStatus entry on $scope, $missing lack syncedAt on $scope"
   else
     echo "ok"
   fi
