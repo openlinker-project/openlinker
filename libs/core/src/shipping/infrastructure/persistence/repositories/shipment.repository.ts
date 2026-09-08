@@ -20,6 +20,7 @@ import {
   In,
   IsNull,
   LessThanOrEqual,
+  MoreThan,
   MoreThanOrEqual,
   Not,
   Repository,
@@ -40,6 +41,11 @@ import type {
   ShipmentPagination,
 } from '../../../domain/types/shipment-query.types';
 import type { ShipmentDirection } from '../../../domain/types/shipment-direction.types';
+import {
+  readWaybillRelayFailureReason,
+  type RecordWaybillRelayFailureInput,
+  type WaybillRelayFailure,
+} from '../../../domain/types/waybill-relay-failure.types';
 import type {
   CreateShipmentInput,
   UpdateShipmentInput,
@@ -215,10 +221,53 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
     return (result.affected ?? 0) > 0;
   }
 
-  async releaseWaybillRelay(id: string): Promise<void> {
+  async releaseWaybillRelay(
+    id: string,
+    failure: RecordWaybillRelayFailureInput,
+  ): Promise<void> {
     // Unconditional: only the claim holder calls this, and re-releasing an
     // already-NULL row is harmless.
-    await this.repository.update({ id }, { waybillRelayedAt: null });
+    //
+    // The release and the failure record are ONE statement (#2073), so a
+    // release that does not count is not expressible.
+    //
+    // Raw parameterized SQL rather than the object form of `update()`, because
+    // the increment and the COALESCE are expressions that form cannot carry —
+    // the same shape, and for the same reason, as the `webhook_auth_rejections`
+    // rolling counter (#1814). Values are bound, never interpolated.
+    //
+    // `firstFailedAt` is COALESCE'd so it marks the start of the CURRENT run
+    // rather than being overwritten on every attempt, which is what lets an
+    // operator see how long a relay has been stuck. `updatedAt` is bumped
+    // explicitly: a raw statement does not fire `@UpdateDateColumn`, and the
+    // `repository.update()` call this replaces did bump it.
+    await this.repository.query(
+      `UPDATE "shipments"
+          SET "waybillRelayedAt" = NULL,
+              "waybillRelayFailureCount" = "waybillRelayFailureCount" + 1,
+              "waybillRelayFirstFailedAt" = COALESCE("waybillRelayFirstFailedAt", $2),
+              "waybillRelayLastFailedAt" = $2,
+              "waybillRelayLastFailureReason" = $3,
+              "waybillRelayLastFailureConnectionId" = $4,
+              "updatedAt" = now()
+        WHERE "id" = $1`,
+      [id, failure.failedAt, failure.reason, failure.connectionId],
+    );
+  }
+
+  async clearWaybillRelayFailures(id: string): Promise<void> {
+    // Guarded on `> 0` so the healthy case - every relay that has never failed
+    // - matches zero rows and writes nothing. Idempotent either way.
+    await this.repository.update(
+      { id, waybillRelayFailureCount: MoreThan(0) },
+      {
+        waybillRelayFailureCount: 0,
+        waybillRelayFirstFailedAt: null,
+        waybillRelayLastFailedAt: null,
+        waybillRelayLastFailureReason: null,
+        waybillRelayLastFailureConnectionId: null,
+      },
+    );
   }
 
   private buildOrmEntity(input: CreateShipmentInput): ShipmentOrmEntity {
@@ -260,6 +309,17 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
     // `save` would simply write NULL on every row, silently. That is why the
     // spec asserts the PERSISTED value rather than the call argument.
     entity.fulfillmentWorkId = input.fulfillmentWorkId ?? null;
+    // No relay failures at birth (#2073). The count is assigned EXPLICITLY
+    // rather than left to the column default: `save` on a fully-populated
+    // entity would otherwise emit `DEFAULT` for it, making the insert depend on
+    // a default that a `synchronize`-built schema takes from the decorator and
+    // a migration-built one from the DDL (`docs/lessons.md`, out-of-band-UPDATE
+    // entry, trap 2). Assigning here means the insert depends on neither.
+    entity.waybillRelayFailureCount = 0;
+    entity.waybillRelayFirstFailedAt = null;
+    entity.waybillRelayLastFailedAt = null;
+    entity.waybillRelayLastFailureReason = null;
+    entity.waybillRelayLastFailureConnectionId = null;
     return entity;
   }
 
@@ -281,6 +341,11 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
     }
     if (filters.hasProviderShipmentId !== undefined) {
       where.providerShipmentId = filters.hasProviderShipmentId ? Not(IsNull()) : IsNull();
+    }
+    // #2073. A numeric floor, never a "stuck" boolean — the repository is not
+    // where the policy of which number means stuck belongs.
+    if (filters.waybillRelayFailureCountAtLeast !== undefined) {
+      where.waybillRelayFailureCount = MoreThanOrEqual(filters.waybillRelayFailureCountAtLeast);
     }
     const { createdFrom, createdTo } = filters;
     if (createdFrom !== undefined && createdTo !== undefined) {
@@ -343,6 +408,36 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
       entity.direction,
       entity.reservationConsumedAt,
       entity.fulfillmentWorkId,
+      this.toWaybillRelayFailure(entity),
     );
+  }
+
+  /**
+   * Project the five failure columns into one value object, or `null` (#2073).
+   *
+   * `null` is the single representation of healthy, so the gate is the COUNT
+   * rather than the presence of a timestamp. The two timestamps are asserted
+   * non-null before the object is built: a positive count without them would be
+   * a row no writer here can produce, and fabricating an instant to satisfy the
+   * type would put a false fact on an operator's screen — so such a row reads
+   * as no failure history rather than as an invented one.
+   */
+  private toWaybillRelayFailure(entity: ShipmentOrmEntity): WaybillRelayFailure | null {
+    if (
+      entity.waybillRelayFailureCount <= 0 ||
+      entity.waybillRelayFirstFailedAt === null ||
+      entity.waybillRelayLastFailedAt === null
+    ) {
+      return null;
+    }
+    return {
+      count: entity.waybillRelayFailureCount,
+      firstFailedAt: entity.waybillRelayFirstFailedAt,
+      lastFailedAt: entity.waybillRelayLastFailedAt,
+      // Coerced, so a value this build does not recognise reads as absent
+      // rather than being asserted onward to a frontend that cannot render it.
+      reason: readWaybillRelayFailureReason(entity.waybillRelayLastFailureReason),
+      connectionId: entity.waybillRelayLastFailureConnectionId,
+    };
   }
 }

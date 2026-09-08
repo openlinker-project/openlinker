@@ -52,6 +52,8 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     overrides.direction ?? 'outbound',
     overrides.reservationConsumedAt ?? null,
     overrides.fulfillmentWorkId ?? null,
+    // #2073 waybill-relay failure history — none by default.
+    overrides.waybillRelayFailure ?? null,
   );
 }
 
@@ -90,6 +92,7 @@ describe('ShipmentStatusSyncService', () => {
       // concurrent trigger or an already-relayed waybill.
       claimWaybillRelay: jest.fn().mockResolvedValue(true),
       releaseWaybillRelay: jest.fn().mockResolvedValue(undefined),
+      clearWaybillRelayFailures: jest.fn().mockResolvedValue(undefined),
       listDispatchedAwaitingReservationConsume: jest.fn(),
       claimReservationConsume: jest.fn(),
       claimFulfillmentWorkLink: jest.fn(),
@@ -355,7 +358,12 @@ describe('ShipmentStatusSyncService', () => {
 
       const result = await service.sync(CARRIER, { limit: 50 });
 
-      expect(shipments.releaseWaybillRelay).toHaveBeenCalledWith(s.id);
+      expect(shipments.releaseWaybillRelay).toHaveBeenCalledWith(
+        s.id,
+        // #2073 — the release and the failure record are one call, so the
+        // reason and the participant are pinned here rather than separately.
+        expect.objectContaining({ reason: 'rejected', connectionId: SOURCE }),
+      );
       // Withheld so the next poll re-detects the diff and retries.
       expect(shipments.update).not.toHaveBeenCalled();
       expect(result.propagated).toBe(0);
@@ -379,7 +387,10 @@ describe('ShipmentStatusSyncService', () => {
 
       await service.sync(CARRIER, { limit: 50 });
 
-      expect(shipments.releaseWaybillRelay).toHaveBeenCalledWith(s.id);
+      expect(shipments.releaseWaybillRelay).toHaveBeenCalledWith(
+        s.id,
+        expect.objectContaining({ reason: 'adapter-unresolved', connectionId: SOURCE }),
+      );
       expect(shipments.update).not.toHaveBeenCalled();
     });
 
@@ -425,7 +436,12 @@ describe('ShipmentStatusSyncService', () => {
 
       const result = await service.sync(CARRIER, { limit: 50 });
 
-      expect(shipments.releaseWaybillRelay).toHaveBeenCalledWith(s.id);
+      expect(shipments.releaseWaybillRelay).toHaveBeenCalledWith(
+        s.id,
+        // No participant was resolved, so naming one would be a false
+        // attribution — `connectionId` is null on this arm by design.
+        expect.objectContaining({ reason: 'threw', connectionId: null }),
+      );
       const patch = shipments.update.mock.calls[0]?.[1] as Record<string, unknown>;
       expect(patch.status).toBe('delivered');
       expect(patch.carrier).toBe('inpost');
@@ -444,6 +460,114 @@ describe('ShipmentStatusSyncService', () => {
 
       expect(relay.relay).not.toHaveBeenCalled();
       expect(shipments.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('waybill-relay failure accounting (#2073)', () => {
+    // The counter exists because a relay that fails on EVERY tick used to
+    // produce one `logger.error` per tick and nothing durable. Each member of
+    // the closed reason union is exercised through the REAL relay path rather
+    // than by hand-constructing a failure record — a hand-built fixture can
+    // describe a state the service never produces (`docs/lessons.md`, "A guard
+    // ordered behind a broader one is dead").
+
+    function dispatchedAwaitingWaybill() {
+      const s = makeShipment({ status: 'dispatched', trackingNumber: null });
+      shipments.findMany.mockResolvedValue({ items: [s], total: 1 });
+      getTracking.mockResolvedValue(snapshot({ status: 'dispatched', trackingNumber: 'NEW456' }));
+      return s;
+    }
+
+    it('records the FIRST failing participant when several are unreachable', async () => {
+      // The log keeps every target; the column carries one name so an operator
+      // sees which channel to look at. Nothing reads it to decide anything.
+      relay.relay.mockResolvedValue({
+        targets: [
+          { connectionId: SOURCE, outcome: 'rejected', detail: 'Allegro 422' },
+          { connectionId: PS1, outcome: 'rejected', detail: 'PS 500' },
+        ],
+      });
+      const s = dispatchedAwaitingWaybill();
+
+      await service.sync(CARRIER, { limit: 50 });
+
+      expect(shipments.releaseWaybillRelay).toHaveBeenCalledWith(
+        s.id,
+        expect.objectContaining({ reason: 'rejected', connectionId: SOURCE }),
+      );
+    });
+
+    it('never persists the adapter detail, only the closed reason code', async () => {
+      // The detail can carry a host, a port or a credential fragment; it is
+      // already in the log, and this column reaches a browser.
+      relay.relay.mockResolvedValue(
+        relayResult({
+          connectionId: SOURCE,
+          outcome: 'rejected',
+          detail: 'connect ECONNREFUSED 10.0.0.7:5432 password=hunter2',
+        }),
+      );
+      dispatchedAwaitingWaybill();
+
+      await service.sync(CARRIER, { limit: 50 });
+
+      const call = shipments.releaseWaybillRelay.mock.calls[0];
+      const failure = call[1];
+      expect(failure.reason).toBe('rejected');
+      // Nothing that crossed into persistence carries the adapter's message.
+      expect(JSON.stringify(failure)).not.toContain('hunter2');
+      expect(JSON.stringify(failure)).not.toContain('10.0.0.7');
+    });
+
+    it('clears the failure history when the relay reaches every participant', async () => {
+      // Without this the escalation is an alarm that never goes off.
+      relay.relay.mockResolvedValue(relayResult({ connectionId: SOURCE, outcome: 'applied' }));
+      const s = dispatchedAwaitingWaybill();
+
+      await service.sync(CARRIER, { limit: 50 });
+
+      expect(shipments.clearWaybillRelayFailures).toHaveBeenCalledWith(s.id);
+      expect(shipments.releaseWaybillRelay).not.toHaveBeenCalled();
+    });
+
+    it('does NOT clear the history when the relay failed', async () => {
+      relay.relay.mockResolvedValue(relayResult({ connectionId: SOURCE, outcome: 'rejected' }));
+      dispatchedAwaitingWaybill();
+
+      await service.sync(CARRIER, { limit: 50 });
+
+      expect(shipments.clearWaybillRelayFailures).not.toHaveBeenCalled();
+    });
+
+    it('treats a failed CLEAR as non-fatal — the relay already succeeded durably', async () => {
+      // Best-effort by design: the relay has landed, so failing the job because
+      // its bookkeeping failed would let the recording of a success destroy the
+      // success. A stale count escalates one recovered shipment, which the next
+      // successful relay clears.
+      relay.relay.mockResolvedValue(relayResult({ connectionId: SOURCE, outcome: 'applied' }));
+      shipments.clearWaybillRelayFailures.mockRejectedValue(new Error('db blip'));
+      const s = dispatchedAwaitingWaybill();
+
+      const result = await service.sync(CARRIER, { limit: 50 });
+
+      expect(result.failed).toBe(0);
+      expect(result.propagated).toBe(1);
+      // The tracking number still lands — the whole point of not throwing.
+      expect(shipments.update).toHaveBeenCalledWith(
+        s.id,
+        expect.objectContaining({ trackingNumber: 'NEW456' }),
+      );
+    });
+
+    it('records nothing when the claim was already held by a concurrent trigger', async () => {
+      // A skipped relay is not a failed one: this caller never attempted it.
+      shipments.claimWaybillRelay.mockResolvedValue(false);
+      dispatchedAwaitingWaybill();
+
+      await service.sync(CARRIER, { limit: 50 });
+
+      expect(shipments.releaseWaybillRelay).not.toHaveBeenCalled();
+      expect(shipments.clearWaybillRelayFailures).not.toHaveBeenCalled();
     });
   });
 

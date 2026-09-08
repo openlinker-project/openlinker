@@ -11,7 +11,7 @@
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { In, IsNull, Not, type Repository, type UpdateResult } from 'typeorm';
+import { In, IsNull, MoreThan, Not, type Repository, type UpdateResult } from 'typeorm';
 
 import { ShipmentNotFoundException } from '../../../domain/exceptions/shipment-not-found.exception';
 import { TerminalShipmentStatusValues } from '../../../domain/types/shipment-status.types';
@@ -49,6 +49,12 @@ describe('ShipmentRepository', () => {
     createdAt: now,
     updatedAt: now,
     fulfillmentWorkId: null,
+    // #2073 waybill-relay failure history — a fresh row has none.
+    waybillRelayFailureCount: 0,
+    waybillRelayFirstFailedAt: null,
+    waybillRelayLastFailedAt: null,
+    waybillRelayLastFailureReason: null,
+    waybillRelayLastFailureConnectionId: null,
     ...overrides,
   });
 
@@ -62,6 +68,9 @@ describe('ShipmentRepository', () => {
       findAndCount: jest.fn(),
       save: jest.fn(),
       update: jest.fn(),
+      // #2073 — `releaseWaybillRelay` is raw parameterized SQL (the increment
+      // and the COALESCE are expressions the object form cannot carry).
+      query: jest.fn(),
     } as unknown as jest.Mocked<Repository<ShipmentOrmEntity>>;
 
     const module: TestingModule = await Test.createTestingModule({
@@ -557,12 +566,44 @@ describe('ShipmentRepository', () => {
       await expect(repository.claimWaybillRelay(ID, at)).resolves.toBe(false);
     });
 
-    it('should release the claim so a later tick can retry', async () => {
-      ormRepository.update.mockResolvedValue(buildUpdateResult(1));
+    it('should release the claim and record the failure in ONE statement', async () => {
+      // #2073. The point of the assertion is the *conjunction*: the release and
+      // the count must not be separable, or a future edit could drop one and
+      // leave a permanently-failing relay invisible again.
+      ormRepository.query.mockResolvedValue([]);
+      const failedAt = new Date('2026-05-19T11:00:00Z');
 
-      await repository.releaseWaybillRelay(ID);
+      await repository.releaseWaybillRelay(ID, {
+        reason: 'rejected',
+        connectionId: '00000000-0000-0000-0000-0000000000aa',
+        failedAt,
+      });
 
-      expect(ormRepository.update).toHaveBeenCalledWith({ id: ID }, { waybillRelayedAt: null });
+      expect(ormRepository.query).toHaveBeenCalledTimes(1);
+      const [sql, params] = ormRepository.query.mock.calls[0] as [string, unknown[]];
+      expect(sql).toContain('"waybillRelayedAt" = NULL');
+      expect(sql).toContain('"waybillRelayFailureCount" = "waybillRelayFailureCount" + 1');
+      // COALESCE, not assignment: `firstFailedAt` marks the start of the run.
+      expect(sql).toContain('COALESCE("waybillRelayFirstFailedAt", $2)');
+      expect(params).toEqual([ID, failedAt, 'rejected', '00000000-0000-0000-0000-0000000000aa']);
+    });
+
+    it('should clear the failure history only when a run is in progress', async () => {
+      // Guarded on `> 0`, so a relay that has never failed writes nothing.
+      ormRepository.update.mockResolvedValue(buildUpdateResult(0));
+
+      await repository.clearWaybillRelayFailures(ID);
+
+      expect(ormRepository.update).toHaveBeenCalledWith(
+        { id: ID, waybillRelayFailureCount: MoreThan(0) },
+        {
+          waybillRelayFailureCount: 0,
+          waybillRelayFirstFailedAt: null,
+          waybillRelayLastFailedAt: null,
+          waybillRelayLastFailureReason: null,
+          waybillRelayLastFailureConnectionId: null,
+        },
+      );
     });
   });
 
@@ -584,6 +625,14 @@ describe('ShipmentRepository', () => {
         // rather than passing on a `null === null` coincidence (#2347).
         reservationConsumedAt: new Date('2026-05-21T16:00:00Z'),
         fulfillmentWorkId: 'ol_fulfillmentwork_aaaaaaaaaaaaaaaaaaaaaaaa',
+        // Non-null for the same reason as `reservationConsumedAt` above: a
+        // `null === null` round trip would pass against a mapper that dropped
+        // the projection entirely (#2073).
+        waybillRelayFailureCount: 4,
+        waybillRelayFirstFailedAt: new Date('2026-05-21T10:00:00Z'),
+        waybillRelayLastFailedAt: new Date('2026-05-21T15:00:00Z'),
+        waybillRelayLastFailureReason: 'adapter-unresolved',
+        waybillRelayLastFailureConnectionId: '00000000-0000-0000-0000-0000000000aa',
         status: 'delivered',
       });
       ormRepository.findOne.mockResolvedValue(fullyPopulated);
@@ -613,6 +662,15 @@ describe('ShipmentRepository', () => {
         direction: fullyPopulated.direction,
         reservationConsumedAt: fullyPopulated.reservationConsumedAt,
         fulfillmentWorkId: fullyPopulated.fulfillmentWorkId,
+        // The five columns collapse into ONE value object; `null` is the single
+        // representation of healthy, so a caller tests one thing.
+        waybillRelayFailure: {
+          count: 4,
+          firstFailedAt: fullyPopulated.waybillRelayFirstFailedAt,
+          lastFailedAt: fullyPopulated.waybillRelayLastFailedAt,
+          reason: 'adapter-unresolved',
+          connectionId: '00000000-0000-0000-0000-0000000000aa',
+        },
         createdAt: fullyPopulated.createdAt,
         updatedAt: fullyPopulated.updatedAt,
       });

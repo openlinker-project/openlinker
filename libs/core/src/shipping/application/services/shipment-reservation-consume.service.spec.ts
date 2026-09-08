@@ -51,6 +51,8 @@ function shipment(id: string, orderId: string, status: ShipmentStatus = 'dispatc
     null,
     // #2402 fulfillmentWorkId — no work linkage in this fixture.
     null,
+    // #2073 waybill-relay failure history — none in this fixture.
+    null,
   );
 }
 
