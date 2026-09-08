@@ -787,6 +787,17 @@ MIXED_EXTRA="$(jq -n \
   --arg stubImage "$MIXED_STUB_IMAGE" \
   --argjson stubConfig "$MIXED_STUB_CONFIG" \
   '{
+     # #2840 requires this run to be "flagged in its manifest as one inside
+     # which attribution is impossible", and this is that flag. It is a
+     # statement about the WINDOW, not a warning about the harness: thirty
+     # crons, an order ramp and the master sweeps share one worker process,
+     # one connection pool, one Redis limiter and one destination rate-limit
+     # budget, so no figure this window produces can be attributed to any
+     # single flow. A per-jobType queue breakdown is a DEPTH attribution and
+     # must not be read as a COST one.
+     attributionImpossible: true,
+     attributionImpossibleReason:
+       "scheduler ON with 30 registered tasks plus a saturating order ramp against one worker process, one pool, one limiter and one destination budget (#2840: an explicitly non-isolating mixed-workload run)",
      jobIntakeRedisClient: $intake,
      stubImage: $stubImage,
      stubConfig: $stubConfig,
