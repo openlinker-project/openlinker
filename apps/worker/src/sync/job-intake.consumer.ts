@@ -59,10 +59,11 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
 
   constructor(
     // NOT `'REDIS_CLIENT'` directly (#2840). This loop blocks on `xReadGroup`
-    // with `BLOCK: 5000`, and the shared client is also the outbound rate
-    // limiter's — see the provider in `sync-worker.module.ts`. The token
-    // resolves to the shared client by default, so this is a seam, not a
-    // behaviour change.
+    // with `BLOCK: 5000`, a blocked client serves no other commands, and the
+    // shared client is also the outbound rate limiter's - so the token is
+    // always a dedicated connection. The mechanism and the measurement are in
+    // the provider in `sync-worker.module.ts`; because the connection is this
+    // consumer's alone, `onModuleDestroy` quits it.
     @Inject(JOB_INTAKE_REDIS_CLIENT_TOKEN)
     private readonly redisClient: RedisClientType,
     @Inject(SYNC_JOB_REPOSITORY_TOKEN)
@@ -93,6 +94,11 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
 
   async onModuleDestroy(): Promise<void> {
     await this.stopConsumptionLoop();
+    // The client is this consumer's own dedicated connection (#2840), so it is
+    // this consumer's to release - the `MasterDeletionToJobHandler` precedent,
+    // and the same ordering: stop the loop first, then quit, or the quit races
+    // an in-flight blocking read.
+    await this.redisClient.quit();
   }
 
   /**

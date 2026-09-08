@@ -1240,13 +1240,15 @@ refused a correctly-configured arm on their very first real run.
 
 **Problem**: two different mechanisms, one shape.
 
-1. *A token matched inside an identifier's own name.* The worker logs
+1. *A token matched inside an identifier's own name.* The worker logged
    `Job intake Redis client: SHARED (OL_JOB_INTAKE_DEDICATED_REDIS is not true)`, and the guard
    parsed it with `grep -oE 'SHARED|DEDICATED' | tail -1`. The alternation matches `SHARED` and
    then the `DEDICATED` inside the variable's own name, so `tail -1` returned `DEDICATED` and the
    guard refused the SHARED baseline with "asked for false but the worker reports DEDICATED"
    while `printenv` in the same message read `false`. The self-contradiction in its own error
-   text is what gave it away.
+   text is what gave it away. (Past tense: the A/B answered, the dedicated client became
+   unconditional and `OL_JOB_INTAKE_DEDICATED_REDIS` was deleted, so neither that log line nor
+   that env var exists any more - the lesson is about the parse, not the flag.)
 2. *Two JSON objects compared as strings.* `set_rate_limit` PATCHed
    `{requestsPerMinute:60, maxConcurrent:4}` and compared the read-back against
    `jq -nc '{requestsPerMinute:$r, maxConcurrent:$c}'`. `jq -c` preserves insertion order and the

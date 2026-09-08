@@ -18,6 +18,8 @@ import type { SyncJobRequest } from '@openlinker/core/sync';
 import { JobTypeValues } from '@openlinker/core/sync';
 import { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
 import { randomUUID } from 'crypto';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { JOB_INTAKE_REDIS_CLIENT_TOKEN } from '../sync-worker.tokens';
 
 describe('JobIntakeConsumer', () => {
@@ -32,6 +34,9 @@ describe('JobIntakeConsumer', () => {
       xGroupCreate: jest.fn(),
       xReadGroup: jest.fn(),
       xAck: jest.fn(),
+      // The client is the consumer's own dedicated connection (#2840), so
+      // `onModuleDestroy` quits it - without this the teardown below throws.
+      quit: jest.fn(),
     } as unknown as jest.Mocked<RedisClientType>;
 
     // Mock repository
@@ -45,10 +50,11 @@ describe('JobIntakeConsumer', () => {
         JobIntakeConsumer,
         {
           // The consumer injects its own token rather than `'REDIS_CLIENT'`
-          // (#2840) - in production that token resolves to the shared client
-          // unless `OL_JOB_INTAKE_DEDICATED_REDIS=true`. Which client backs it
-          // is `SyncWorkerModule`'s decision, not this unit's, so the unit
-          // test supplies the token directly.
+          // (#2840) - in production that token is always a dedicated
+          // connection, never the shared client the outbound rate limiter is
+          // built on. Constructing it is `SyncWorkerModule`'s job, not this
+          // unit's, so the unit test supplies the token directly; the
+          // "no configuration shares it" half is asserted below.
           provide: JOB_INTAKE_REDIS_CLIENT_TOKEN,
           useValue: mockRedisClient,
         },
@@ -776,6 +782,41 @@ describe('JobIntakeConsumer', () => {
       await expect(
         runRecovery({ kind: 'entry', id: '1-0', fields: { jobType: 'a' }, deliveryCount: 1 })
       ).rejects.toThrow('Socket closed');
+    });
+  });
+
+  describe('dedicated Redis client (#2840)', () => {
+    it('should quit its own client on shutdown', async () => {
+      // The client is this consumer's alone, so releasing it is this
+      // consumer's job - the `MasterDeletionToJobHandler` precedent. If the
+      // token ever resolved to the shared client again this would close the
+      // connection the rate limiter and every other worker consumer use.
+      await consumer.onModuleDestroy();
+
+      expect(redisClient.quit).toHaveBeenCalled();
+    });
+
+    it('should leave no configuration that shares the rate limiter client', () => {
+      // Textual, and deliberately so: which client backs the token is decided
+      // by a `useFactory` in `SyncWorkerModule`, and importing that module to
+      // call the factory would pull in the whole handler graph. What must hold
+      // is a property of the source - the factory reads no flag and injects no
+      // shared client - so the source is what is read. Comment lines are
+      // stripped first, because the comment legitimately NAMES the retired
+      // seam while explaining why it is gone.
+      const source = readFileSync(join(__dirname, '..', 'sync-worker.module.ts'), 'utf8')
+        .split('\n')
+        .filter((line) => !line.trim().startsWith('//'))
+        .join('\n');
+
+      expect(source).toContain('provide: JOB_INTAKE_REDIS_CLIENT_TOKEN');
+      // No flag: there is no env var that can put the intake loop back on the
+      // shared client.
+      expect(source).not.toContain('OL_JOB_INTAKE_DEDICATED_REDIS');
+      // No shared client reaches the factory at all, so it cannot return one.
+      expect(source).not.toContain("'REDIS_CLIENT'");
+      // And it really does build one of its own.
+      expect(source).toContain('createClient(');
     });
   });
 });

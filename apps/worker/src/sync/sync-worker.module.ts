@@ -109,53 +109,57 @@ import { JOB_INTAKE_REDIS_CLIENT_TOKEN } from './sync-worker.tokens';
   ],
   providers: [
     {
-      // The client `JobIntakeConsumer` blocks on, and the ONE reason it is a
-      // provider rather than a plain `@Inject('REDIS_CLIENT')`.
+      // The client `JobIntakeConsumer` blocks on - a DEDICATED connection of
+      // its own, never the worker's shared `'REDIS_CLIENT'`, and the ONE
+      // reason this is a provider rather than a plain
+      // `@Inject('REDIS_CLIENT')`.
       //
-      // `JobIntakeConsumer` runs `xReadGroup` with `BLOCK: 5000` in a loop
-      // (`job-intake.consumer.ts`), and Redis serves no further commands from
-      // a client that is parked in a blocking read. The worker's shared
+      // Mechanism. `JobIntakeConsumer` runs `xReadGroup` with `BLOCK: 5000`
+      // in a loop (`job-intake.consumer.ts`), and Redis serves no further
+      // commands from a connection parked in a blocking read. The shared
       // `'REDIS_CLIENT'` is also what `RateLimitModule` builds the outbound
-      // rate limiter's registry on (`libs/plugin-sdk/src/rate-limit.module.ts`
-      // — `inject: ['REDIS_CLIENT']`), so a pace `EVAL` issued while an intake
-      // block is in flight waits out the block's residual: up to 5 s, against
-      // the limiter's own 1000 ms timeout. Past that the limiter logs
-      // "falling back to per-process in-memory limiting" and stops being the
-      // thing it was configured to be.
+      // rate limiter's registry on
+      // (`libs/plugin-sdk/src/rate-limit.module.ts:70` -
+      // `inject: ['REDIS_CLIENT']`), so on the shared client a pace `EVAL`
+      // issued while an intake block is in flight waits out that block's
+      // residual: up to 5 s, against the limiter's own 1000 ms timeout. Past
+      // it the limiter logs "falling back to per-process in-memory limiting"
+      // and stops being the thing it was configured to be.
       //
-      // `EventsConsumerModule` already gives its own stream consumer a
-      // dedicated client for exactly this reason, and says so in its comment;
-      // the limiter never got the same treatment. This provider is what makes
-      // that hypothesis MEASURABLE rather than argued: the flag defaults to
-      // the shipped behaviour, so an unset stand is byte-identical to its
-      // pre-change self, and one env var switches the single variable under
-      // test without a second image.
+      // Measured, not argued (#2840). The controlled A/B in
+      // `perf/openlinker-throughput/results-limiter-ab-2026-09-07.md`: 226
+      // orders/h on the shared client, 225 with the destination rate limit
+      // raised tenfold and nothing else changed - so the destination budget
+      // was never the bind - and 333 with this dedicated client and no
+      // setting change at all, i.e. +47%. Degradation lines ran 34 to 58 per
+      // window on the shared client and 0 in all six dedicated-client
+      // windows, and the limiter went from reaching about 70% of its own
+      // allowance to saturating it exactly. `results-retest-2026-09-07.md`
+      // re-measured it on a quiet machine (207.3 -> 333) and found the fix
+      // removes most of the run-to-run variance too;
+      // `results-F10-2026-09-08.md` shows the degradation firing about five
+      // times in a clean 300 s baseline with Redis untouched, so it needs
+      // neither load nor a fault to appear.
       //
-      // The flag is a measurement seam, not the intended end state. If a
-      // dedicated client is shown to remove the degradation, the follow-up is
-      // to make it unconditional and delete the flag — evidence first, in that
-      // order.
+      // `EventsConsumerModule`
+      // (`apps/worker/src/events/events-consumer.module.ts:23-26`)
+      // established this remedy: it gives its own stream consumer a dedicated
+      // client and says why. This provider extends it to the one blocking
+      // consumer that missed it. The cost is one extra Redis connection per
+      // worker process, resolved from exactly the same config keys as the
+      // shared client, so the two can never end up pointed at different Redis
+      // instances.
       //
-      // No shutdown quit, matching the `EventsConsumerModule` precedent: a
-      // plain object provider carries no lifecycle hook, and the cost is one
-      // Redis connection per worker process, released when the process exits.
+      // There is deliberately no shared-client branch and no env flag. The
+      // measurement seam (`OL_JOB_INTAKE_DEDICATED_REDIS`) existed only until
+      // the evidence above landed, and a dead alternative left behind is a
+      // thing the next reader restores "to be safe". Lifecycle follows the
+      // same precedent: this provider carries no hook, and
+      // `JobIntakeConsumer` quits the client in its own `onModuleDestroy`,
+      // exactly as `MasterDeletionToJobHandler` does.
       provide: JOB_INTAKE_REDIS_CLIENT_TOKEN,
-      useFactory: async (
-        configService: ConfigService,
-        sharedClient: RedisClientType
-      ): Promise<RedisClientType> => {
+      useFactory: async (configService: ConfigService): Promise<RedisClientType> => {
         const logger = new Logger('JobIntakeRedisClient');
-        const dedicated =
-          configService.get<string>('OL_JOB_INTAKE_DEDICATED_REDIS', 'false') === 'true';
-        if (!dedicated) {
-          // Logged on BOTH branches, and asserted on by the harness. A
-          // configuration that silently did not apply is the worst failure a
-          // measurement can have (#2229's reported-versus-enforced rule), and
-          // an env var read from outside the container is a request, not a
-          // reading.
-          logger.log('Job intake Redis client: SHARED (OL_JOB_INTAKE_DEDICATED_REDIS is not true)');
-          return sharedClient;
-        }
         const client = createClient({
           socket: {
             host: configService.get<string>('REDIS_HOST', 'localhost'),
@@ -167,16 +171,22 @@ import { JOB_INTAKE_REDIS_CLIENT_TOKEN } from './sync-worker.tokens';
         try {
           await client.connect();
         } catch (error) {
+          // Throws rather than silently falling back to the shared client: a
+          // fallback would reintroduce the degradation this provider exists to
+          // remove, and it would do so invisibly.
           throw new Error(
             `SyncWorkerModule: Failed to connect JOB_INTAKE_REDIS_CLIENT: ${error instanceof Error ? error.message : String(error)}`
           );
         }
+        // Which client backs the intake loop is worth one line at boot - a
+        // configuration you cannot read back is a request, not a reading
+        // (#2229).
         logger.log(
-          'Job intake Redis client: DEDICATED (OL_JOB_INTAKE_DEDICATED_REDIS=true) - the shared client is left free for the outbound rate limiter'
+          'Job intake Redis client: DEDICATED - the shared client is left free for the outbound rate limiter (#2840)'
         );
         return client as RedisClientType;
       },
-      inject: [ConfigService, 'REDIS_CLIENT'],
+      inject: [ConfigService],
     },
     JobIntakeConsumer,
     SyncJobRunner,
@@ -237,4 +247,3 @@ import { JOB_INTAKE_REDIS_CLIENT_TOKEN } from './sync-worker.tokens';
   ],
 })
 export class SyncWorkerModule {}
-
