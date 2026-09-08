@@ -382,9 +382,87 @@ that no longer exists in the product - so if observed episodes are 0 it will
 print `0.00x` against a predicted 1 440-1 764. **That ratio is meaningless now
 and is not quoted as a finding anywhere in this report.**
 
-## 2. What happened
+## 2. What happened - INTERIM, read at t+853s of 10800s
 
-TBD.
+> Everything in § 2 is an **interim** read taken 14 minutes into the window,
+> committed because the service-time measurement is durable and the pushed
+> record should not sit only in a session. The whole-window figures are § 3's
+> and supersede these. The fault had not yet fired.
+
+### 2.1 Per-order service time, both arms, one statistic
+
+The only term of `orders/h = 2 slots x 3600 / service-seconds` that was in
+play (§ 1.6). Mean `lastAttemptDurationMs` over **succeeded**
+`marketplace.order.sync` rows, NULL excluded, sliced by `createdAt`:
+
+| Arm | n | mean | p50 | p95 |
+|---|---|---|---|---|
+| A baseline, shared client | 602 | **32 404 ms** | 30 488 | 35 667 |
+| B fixed, dedicated client | 223 | **6 014 ms** | 6 194 | 8 700 |
+
+**5.39x reduction in per-order service time** - measured, both arms, same
+query, same window boundaries, same statistic. Arm A's 32.4 s agrees with the
+31.44 s the baseline reported for itself; the small difference is slice
+(this is succeeded-only across A's whole window).
+
+A third slice of 59 rows sits between the two windows (`createdAt` between
+08:54:23Z and 09:29:28Z - jobs the scheduler minted during arm B's own 60 s
+settle) at mean 6 270 ms. It is excluded from both arms and is noted only
+because it is consistent with the fixed image.
+
+### 2.2 The slot arithmetic, with the measured service times in it
+
+| | Arm A | Arm B (interim) |
+|---|---|---|
+| mean service time | 32.404 s | 6.014 s |
+| ceiling `= 2 x 3600 / service` | **222 orders/h** | **1 197 orders/h** |
+| observed completed | 200.6/h | ~986/h |
+| Little's law `L = throughput/s x service` | 1.81 | 1.65 |
+
+`L` stays **under the `realtime` perScope cap of 2 in both arms**, so the
+structure is unchanged and the fix moved only the service time inside it -
+which is exactly what the baseline's slot-bound finding predicted would
+happen if anything moved at all.
+
+### 2.3 The orders are real, and that was checked rather than assumed
+
+A 5x jump is the kind of result that is usually an artefact - most cheaply, a
+job that "succeeds" without reaching a destination. It is not that here:
+
+```
+ingested 263 | with syncedAt on the PrestaShop destination 262 | any failed entry 262
+```
+
+262 of 263 orders carry a `syncedAt` for the destination under test, so the
+shop really created them. `lab-prestashop` read `Up 9 hours (healthy)`
+throughout. The 262 with a failed entry are the WooCommerce
+`No WC product mapping` failures - the same shape arm A shows
+(652 / 649 / 650), and the subject of § 7.4(b).
+
+### 2.4 Limiter degradation, interim
+
+**0 episodes** at t+853s. Held as interim per § 1.6: arm A degraded at roughly
+8/min in steady state, so this is now beyond the noise window that made the
+t+68s reading meaningless, but the figure that will be quoted is the
+whole-window count against arm A's authoritative **1454**.
+
+### 2.5 The pre-registered prediction was wrong, in the conservative direction
+
+§ 1.6 predicted **300-330 orders/h** with service time **21-23 s**, on the
+reasoning that the mixed window would see the same ~10 s saving the isolated
+A/B implied. Measured: **6.0 s** and ~986/h. The prediction was not
+conservative by a little, it was out by a factor of four, and the reason
+matters more than the miss.
+
+The likely mechanism - stated as a **hypothesis**, not a measurement - is that
+the defect's cost scales with **co-tenancy**. The shared Redis client is what
+`RateLimitModule` builds the outbound limiter on, and under 30 ticking crons
+plus catalogue and inventory sweeps there is far more traffic contending for
+it than in an isolated single-flow arm. If so the isolated A/B's **+47% was a
+floor, not the headline**, and this is the first measurement of the defect
+under the co-tenancy an operator actually runs. What would confirm it is a
+limiter-wait measurement per arm, which neither arm carries; § 6 records that
+as unestablished.
 
 ## 3. Findings
 
