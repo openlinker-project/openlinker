@@ -124,6 +124,19 @@ export interface OrderHealthSummary {
    * failure behind an invoicing one.
    */
   salesDocumentBlocked: number;
+
+  /**
+   * #2703 / #2704 - orders whose routing decision narrowed the destination
+   * fan-out in a way that needs attention. ORTHOGONAL to the five health
+   * buckets and NOT part of the partition, exactly like `salesDocumentBlocked`
+   * above: such an order is also counted in one of them, so this number must
+   * never be added to their sum.
+   *
+   * Counts the ATTENTION-WORTHY subset only - a deliberate
+   * `'routed-to-no-destination'` decision is rendered as a neutral per-order
+   * badge and never aggregated here.
+   */
+  destinationRoutingBlocked: number;
   /**
    * Orders where the shop and the channel named DIFFERENT tax rates (#2254).
    *
@@ -317,6 +330,20 @@ export interface OrderRecordFilters {
    * blocked", which is the most common shape of the problem).
    */
   salesDocumentBlocked?: boolean;
+  /**
+   * #2703 / #2704 - orders whose destination fan-out a routing decision narrowed
+   * in a way that needs attention. An INDEPENDENT axis, ANDed with `health`
+   * rather than folded into it: such an order is usually also `needs_attention`
+   * (its sync failed), so folding would hide one behind the other.
+   *
+   * `true` keeps only orders carrying an attention-worthy reason, `false` only
+   * the rest, omitted does not filter. Attention-worthy EXCLUDES
+   * `'routed-to-no-destination'` - a working router deciding an order goes
+   * nowhere is a decision rather than a fault - so `true` does not return those
+   * and `false` does. Same subset the `destinationRoutingBlocked` count reports,
+   * so the chip's number and its rows always agree.
+   */
+  destinationRoutingBlocked?: boolean;
   /**
    * Derived lifecycle-phase filter (#2309, ADR-059). Translated to a SQL
    * predicate by `OrderRecordRepository.applyLifecyclePhaseFilter`, which tests

@@ -605,6 +605,14 @@ export class OrderIngestionService implements IOrderIngestionService {
         `Withholding destination mirror for order ${order.id}: fulfilment routing ` +
           `held it (${routing.block?.reason ?? 'routed'})`
       );
+      // #2703 / #2704 — `OrderSyncService` owns the destination-routing block and
+      // writes it on every branch it takes, but it is NEVER CALLED on this one.
+      // Without this clear a routing reason written by an earlier run would stand
+      // beside the fresh `fulfillmentBlockReason` above and assert "the router
+      // sent this nowhere" about an order that is in fact held — two reasons for
+      // one order, one of them stale. Clearing here is what keeps the two columns
+      // mutually exclusive and the value level-triggered across BOTH branches.
+      await this.persistDestinationRoutingCleared(order.id);
     } else {
       results = await this.orderSyncService.syncOrder({
         order,
@@ -1154,6 +1162,26 @@ export class OrderIngestionService implements IOrderIngestionService {
    *    wrong service. Swallowed: the outcome is re-decided next transition, so a
    *    lost write self-heals.
    */
+  /**
+   * Clear the destination-routing block (#2703 / #2704) on the held branch.
+   *
+   * Best-effort and never able to fail ingestion, exactly like
+   * {@link persistFulfillmentOutcome} beside it: the value is an operator-facing
+   * explanation, and a stale one is a display fault rather than a correctness
+   * one. `OrderSyncService` owns every other write of this column.
+   */
+  private async persistDestinationRoutingCleared(internalOrderId: string): Promise<void> {
+    try {
+      await this.orderRecordService.markDestinationRoutingBlock(internalOrderId, null);
+    } catch (error) {
+      const errorName = error instanceof Error ? error.name : 'UnknownError';
+      this.logger.warn(
+        `Failed to clear the destination-routing block (swallowed): ` +
+          `error=${errorName} orderId=${internalOrderId}`
+      );
+    }
+  }
+
   private async persistFulfillmentOutcome(
     internalOrderId: string,
     outcome: FulfillmentInterceptOutcome

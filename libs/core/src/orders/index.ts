@@ -96,6 +96,16 @@ export {
   decodeBuyerTaxIdColumn,
   readSourceBuyerTaxId,
 } from './domain/types/buyer-tax-id.types';
+export type {
+  DestinationRoutingBlockReason,
+  DestinationRoutingBlock,
+} from './domain/types/destination-routing-block.types';
+export {
+  DestinationRoutingBlockReasonValues,
+  DestinationRoutingAttentionReasonValues,
+  isDestinationRoutingBlockReason,
+  buildDestinationRoutingDetail,
+} from './domain/types/destination-routing-block.types';
 export { PaymentStatusValues, PAYMENT_STATUS } from './domain/types/payment-status.types';
 export type { PaymentStatus } from './domain/types/payment-status.types';
 export type { CodToCollect } from './domain/types/cod-to-collect.types';

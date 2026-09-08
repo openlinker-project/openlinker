@@ -283,6 +283,7 @@ const NARROWING_FILTER_URL_PARAM: Record<NarrowingOrderFilterKey, string> = {
   slaState: 'slaState',
   fulfillmentState: 'fulfillmentState',
   salesDocumentBlocked: 'invoicing',
+  destinationRoutingBlocked: 'routing',
   phase: 'phase',
   taxRateConflict: 'taxRate',
   holdReason: 'hold',
@@ -414,6 +415,7 @@ export function OrdersListPage(): ReactElement {
   // `health` rather than replacing it. Present-only toggle: the URL never carries
   // `invoicing=false`, so the filter is either "blocked only" or absent.
   const invoicingBlocked = searchParams.get('invoicing') === 'blocked';
+  const routingBlocked = searchParams.get('routing') === 'blocked';
   // #2310 — the derived lifecycle phase. An unrecognised value falls back to
   // "unfiltered" rather than being passed through: the server would reject it,
   // and an operator with a stale bookmark should see their orders, not an error.
@@ -460,6 +462,7 @@ export function OrdersListPage(): ReactElement {
     // never `false`, which would mean "hide blocked orders" and is not something
     // the UI offers.
     salesDocumentBlocked: invoicingBlocked ? true : undefined,
+    destinationRoutingBlocked: routingBlocked ? true : undefined,
     // #2310 — orthogonal to `health`; both compose server-side.
     phase,
     taxRateConflict: rateConflict ? true : undefined,
@@ -1312,6 +1315,25 @@ export function OrdersListPage(): ReactElement {
     });
   }
 
+  /** #2703/#2704 — mirrors `toggleInvoicingBlocked`: an independent, present-only chip. */
+  function toggleRoutingBlocked(): void {
+    captureDemoEvent('demo_orders_filtered', {
+      filter: 'destination_routing_blocked',
+      value: String(!routingBlocked),
+    });
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      if (routingBlocked) {
+        p.delete('routing');
+      } else {
+        p.set('routing', 'blocked');
+      }
+      // Any filter change invalidates the current page offset.
+      p.delete('offset');
+      return p;
+    });
+  }
+
   /**
    * Select / deselect a lifecycle-phase chip (#2310). ONE `setSearchParams`
    * write, like every sibling handler: two calls in one handler both build from
@@ -1568,6 +1590,34 @@ export function OrdersListPage(): ReactElement {
             and there is no separate filter for it to link to — the manual
             reason is visible per-row wherever the document line itself
             renders "Issued on request". */}
+        {/*
+          #2703/#2704 — its own chip beside the invoicing one, never a health
+          segment: a routing narrowing is orthogonal to sync health (such an
+          order is usually ALSO `needs_attention`, because its sync failed), and
+          the KPI segments above are a partition whose counts sum to the total.
+
+          Counts the ATTENTION-WORTHY subset only. A deliberate
+          `routed-to-no-destination` decision is badged per row and never
+          aggregated here, for the reason `trigger-model-manual` is excluded from
+          the invoicing count: on an install that legitimately routes some orders
+          nowhere it would put a large red number on a healthy system.
+
+          Mounts on `filterActive || count`, the sibling rule verbatim — gating on
+          the count alone would unmount the only control for `?routing=blocked`
+          the moment the remediation succeeded, stranding an applied filter with
+          no way to clear it.
+        */}
+        {routingBlocked || summary?.destinationRoutingBlocked ? (
+          <Chip tone="error" active={routingBlocked} onClick={toggleRoutingBlocked}>
+            {/* The count is omitted until the summary resolves rather than
+                defaulted to 0 — asserting a number the client does not have yet
+                would be worse than showing none. */}
+            Routing blocked
+            {summary?.destinationRoutingBlocked === undefined
+              ? ''
+              : ` ${summary.destinationRoutingBlocked}`}
+          </Chip>
+        ) : null}
         {summary?.salesDocumentIssuedOnRequest ? (
           <span className="text-muted mono tabular orders-summary-note">
             {summary.salesDocumentIssuedOnRequest} issued on request

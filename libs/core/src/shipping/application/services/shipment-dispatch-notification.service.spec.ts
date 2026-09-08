@@ -113,6 +113,7 @@ describe('ShipmentDispatchNotificationService', () => {
       markCancelled: jest.fn(),
       markSalesDocumentBlock: jest.fn(),
       markFulfillmentBlock: jest.fn(),
+      markDestinationRoutingBlock: jest.fn(),
       markPacked: jest.fn(),
       clearPacked: jest.fn(),
       recordAmendment: jest.fn(),
