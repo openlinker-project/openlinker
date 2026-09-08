@@ -175,23 +175,47 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
     }
   }
 
-  async findMany(
-    filters: OfferMappingFilters,
-    pagination: OfferMappingPagination,
-    options?: { skipTotal?: boolean }
-  ): Promise<PaginatedOfferMappings> {
+  /**
+   * {@link buildFilteredQuery} plus the lifecycle narrowing (#2944).
+   *
+   * `buildFilteredQuery` deliberately excludes `lifecycle` because
+   * `countByLifecycle` must see the un-narrowed set to partition it. Every read
+   * of the LIST, though, needs both - so `findMany`, `findManyRows` and
+   * `countMany` all start here, and the total can never describe a different
+   * set than the page.
+   */
+  private buildListQuery(
+    filters: OfferMappingFilters
+  ): SelectQueryBuilder<IdentifierMappingOrmEntity> {
     const qb = this.buildFilteredQuery(filters);
 
     if (filters.lifecycle) {
       this.applyLifecycleFilter(qb, filters.lifecycle);
     }
 
-    // Counted before the projection/paging clauses are attached so the count
-    // is unambiguously the filtered total, independent of the raw select.
-    // Skipped when the caller already has the total from `countByLifecycle`
-    // under the same filters (#2032 review thread 3) - see the port docblock.
-    const total = options?.skipTotal ? -1 : await qb.getCount();
+    return qb;
+  }
 
+  /**
+   * Attach the list projection and page window to a {@link buildListQuery}
+   * builder and read the page. MUTATES the builder, so a caller that also
+   * needs a count must take it BEFORE calling this - which is why `findMany`
+   * counts first.
+   *
+   * A `clone()` here would make that ordering structural rather than
+   * documented, and was tried (#2944 review). It is not worth its cost: this
+   * spec's fake query builder is ONE shared object returned by every
+   * `createQueryBuilder` call, so a fake `clone` returning itself would prove
+   * nothing while diverging from real TypeORM, and a fake returning a fresh
+   * recorder would invalidate the assertions of all 26 tests that read the
+   * original. The property that actually matters - the total describes the
+   * same set as the page - is asserted against real SQL in
+   * `paginated-total-split.int-spec.ts`.
+   */
+  private async fetchListPage(
+    qb: SelectQueryBuilder<IdentifierMappingOrmEntity>,
+    pagination: OfferMappingPagination
+  ): Promise<OfferMappingListItem[]> {
     qb.select('mapping.id', 'id')
       .addSelect('mapping.entityType', 'entityType')
       .addSelect('mapping.internalId', 'internalId')
@@ -224,7 +248,32 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
       .limit(pagination.limit);
 
     const rows = await qb.getRawMany<OfferMappingListRawRow>();
-    return { items: rows.map((row) => this.toListItem(row)), total };
+    return rows.map((row) => this.toListItem(row));
+  }
+
+  async findMany(
+    filters: OfferMappingFilters,
+    pagination: OfferMappingPagination
+  ): Promise<PaginatedOfferMappings> {
+    const qb = this.buildListQuery(filters);
+
+    // Counted before the projection/paging clauses are attached, so the count
+    // is unambiguously the filtered total, independent of the raw select.
+    // These two lines must stay in this order - see `fetchListPage`.
+    const total = await qb.getCount();
+    const items = await this.fetchListPage(qb, pagination);
+    return { items, total };
+  }
+
+  async findManyRows(
+    filters: OfferMappingFilters,
+    pagination: OfferMappingPagination
+  ): Promise<OfferMappingListItem[]> {
+    return this.fetchListPage(this.buildListQuery(filters), pagination);
+  }
+
+  async countMany(filters: OfferMappingFilters): Promise<number> {
+    return this.buildListQuery(filters).getCount();
   }
 
   async findMappingPage(

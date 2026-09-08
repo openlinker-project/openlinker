@@ -6,6 +6,8 @@
  *
  * @module apps/web/src/features/orders/api
  */
+import type { PaginatedTotal, RowsPage } from '../../../shared/api/paginated-total.types';
+import { orderMembershipFilters } from './orders.query-keys';
 import type {
   OrderFilters,
   OrderPagination,
@@ -24,6 +26,19 @@ import type {
 
 export interface OrdersApi {
   list: (filters?: OrderFilters, pagination?: OrderPagination) => Promise<PaginatedOrders>;
+  /**
+   * The page WITHOUT its total (#2947). Pair with {@link OrdersApi.count}.
+   *
+   * This is the read #2843 measured: at a million rows the count was 142 ms of
+   * a 149 ms request, because `syncStatus @> ...` is a jsonb containment no
+   * plain index serves and a count cannot stop after twenty matches.
+   */
+  listRows: (
+    filters?: OrderFilters,
+    pagination?: OrderPagination,
+  ) => Promise<RowsPage<OrderRecord>>;
+  /** The total WITHOUT its page (#2947). Takes the filters alone. */
+  count: (filters?: OrderFilters, init?: RequestInit) => Promise<PaginatedTotal>;
   statusSummary: (filters?: OrderHealthSummaryFilters) => Promise<OrderHealthSummary>;
   slaSummary: (filters?: OrderHealthSummaryFilters) => Promise<OrderSlaSummary>;
   /** Per-lifecycle-phase counts (#2310) — the chip-row counts on the orders list. */
@@ -65,7 +80,11 @@ interface ApiRequest {
   <T>(path: string, init?: RequestInit): Promise<T>;
 }
 
-function buildQuery(filters?: OrderFilters, pagination?: OrderPagination): string {
+function buildQuery(
+  filters?: OrderFilters,
+  pagination?: OrderPagination,
+  options?: { withTotal?: false },
+): string {
   const params = new URLSearchParams();
   if (filters?.sourceConnectionId) params.set('sourceConnectionId', filters.sourceConnectionId);
   if (filters?.syncStatus) params.set('syncStatus', filters.syncStatus);
@@ -105,6 +124,7 @@ function buildQuery(filters?: OrderFilters, pagination?: OrderPagination): strin
   }
   if (pagination?.limit !== undefined) params.set('limit', String(pagination.limit));
   if (pagination?.offset !== undefined) params.set('offset', String(pagination.offset));
+  if (options?.withTotal === false) params.set('withTotal', 'false');
   const qs = params.toString();
   return qs.length > 0 ? `?${qs}` : '';
 }
@@ -128,6 +148,23 @@ export function createOrdersApi(request: ApiRequest): OrdersApi {
   return {
     list(filters, pagination): Promise<PaginatedOrders> {
       return request<PaginatedOrders>(`/orders${buildQuery(filters, pagination)}`);
+    },
+    listRows(filters, pagination): Promise<RowsPage<OrderRecord>> {
+      return request<RowsPage<OrderRecord>>(
+        `/orders${buildQuery(filters, pagination, { withTotal: false })}`,
+      );
+    },
+    count(filters, init): Promise<PaginatedTotal> {
+      // Neither pagination nor sort: the answer depends on membership alone,
+      // which is what lets one cached count serve every page AND every column
+      // ordering of a result set. Stripped here as well as in the query key so
+      // the URL matches what the key claims about it - the backend accepts and
+      // ignores both, but sending them would make two identical answers look
+      // like two different requests in a log (#2957 review, I3).
+      return request<PaginatedTotal>(
+        `/orders/count${buildQuery(orderMembershipFilters(filters))}`,
+        init,
+      );
     },
     statusSummary(filters): Promise<OrderHealthSummary> {
       return request<OrderHealthSummary>(`/orders/status-summary${buildSummaryQuery(filters)}`);

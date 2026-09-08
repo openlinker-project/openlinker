@@ -12,6 +12,7 @@ import type {
   FindRecentlyListedVariantIdsOptions,
   OfferMappingCountFilters,
   OfferMappingFilters,
+  OfferMappingListItem,
   OfferMappingPagination,
   PaginatedIdentifierMappings,
   PaginatedOfferMappings,
@@ -50,18 +51,45 @@ export interface OfferMappingRepositoryPort {
    * that bucket's size, so paging stays correct inside a selected tab.
    */
   /**
-   * `skipTotal` (#2032 review thread 3): when the caller already knows the
-   * total from a `countByLifecycle` call under the same filters (the ONE
-   * caller that requests both), running `findMany`'s own `getCount()` too is
-   * a provably-redundant second full scan of the same join. Returns `total:
-   * -1` as a sentinel when set - the caller MUST supply the real value from
-   * elsewhere. Omitted or `false` preserves the original behaviour.
+   * Rows AND total in one call, for a caller that wants both at once.
    */
   findMany(
     filters: OfferMappingFilters,
-    pagination: OfferMappingPagination,
-    options?: { skipTotal?: boolean }
+    pagination: OfferMappingPagination
   ): Promise<PaginatedOfferMappings>;
+
+  /**
+   * The page WITHOUT its total (#2944).
+   *
+   * A paged read stops after its `LIMIT`; the `COUNT` beside it cannot stop at
+   * all, so under a predicate no plain index serves - here the `ILIKE` search
+   * across product name, SKUs, barcodes, attribute values and external offer
+   * id - the count scans the join however small the page is. This read pays
+   * only for the page.
+   *
+   * It applies the identical predicate to {@link countMany}: both are built by
+   * one private `buildListQuery`, so the total can never describe a different
+   * set than the page.
+   *
+   * **This replaces the `skipTotal` option (#2032 review thread 3), which
+   * returned `total: -1` as a sentinel.** A caller that forgot to substitute
+   * the real value got `-1` rendered as a row count, silently; a method that
+   * simply does not return a total cannot be misread that way.
+   */
+  findManyRows(
+    filters: OfferMappingFilters,
+    pagination: OfferMappingPagination
+  ): Promise<OfferMappingListItem[]>;
+
+  /**
+   * The total WITHOUT its page (#2944) - the second half of {@link findManyRows}.
+   *
+   * Takes no pagination, which is the point: the answer depends on the filters
+   * alone, so a caller may cache it per filter combination and paging through a
+   * result set never recomputes it. Unlike {@link countByLifecycle} this HONOURS
+   * `filters.lifecycle`, because it answers "how big is the page's own set".
+   */
+  countMany(filters: OfferMappingFilters): Promise<number>;
 
   /**
    * Find Offer mappings matching filters with offset pagination, WITHOUT the

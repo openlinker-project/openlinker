@@ -105,13 +105,40 @@ const sampleCustomers: PaginatedCustomers = {
   offset: 0,
 };
 
+/**
+ * The customers API mock, both stages (#2947).
+ *
+ * The page reads its rows (`listRows`) and its total (`count`) separately, so
+ * a mock supplying only `list` leaves the page permanently loading. All three
+ * are DERIVED from one `PaginatedCustomers` fixture so they cannot disagree
+ * about the same page - and a pending or rejecting fixture propagates to every
+ * stage, which is what keeps the loading and error tests meaningful.
+ */
+function customersApi(
+  page: PaginatedCustomers | Promise<PaginatedCustomers>,
+): Record<string, unknown> {
+  const settled = Promise.resolve(page);
+  // Attached eagerly so a rejecting fixture never surfaces as an unhandled
+  // rejection before the query subscribes to it.
+  settled.catch(() => undefined);
+  return {
+    list: vi.fn().mockImplementation(() => settled),
+    listRows: vi
+      .fn()
+      .mockImplementation(() =>
+        settled.then((p) => ({ items: p.items, limit: p.limit, offset: p.offset })),
+      ),
+    count: vi.fn().mockImplementation(() => settled.then((p) => ({ total: p.total }))),
+  };
+}
+
 function mockApi(
   customers: PaginatedCustomers | Promise<PaginatedCustomers> = sampleCustomers,
   connections: Connection[] = [makeConnection()],
   connectionOverrides: Record<string, unknown> = {},
 ): ReturnType<typeof createMockApiClient> {
   return createMockApiClient({
-    customers: { list: vi.fn().mockResolvedValue(customers) },
+    customers: customersApi(customers),
     connections: { list: vi.fn().mockResolvedValue(connections), ...connectionOverrides },
   });
 }
@@ -126,9 +153,7 @@ describe('CustomersListPage', () => {
 
   it('should show loading state initially', () => {
     const mockApiClient = createMockApiClient({
-      customers: {
-        list: vi.fn().mockReturnValue(new Promise(() => {})),
-      },
+      customers: customersApi(new Promise<PaginatedCustomers>(() => {})),
     });
 
     renderWithProviders(<CustomersListPage />, { apiClient: mockApiClient });
@@ -146,9 +171,7 @@ describe('CustomersListPage', () => {
 
   it('should show error state when fetch fails', async () => {
     const mockApiClient = createMockApiClient({
-      customers: {
-        list: vi.fn().mockRejectedValue(new Error('Network error')),
-      },
+      customers: customersApi(Promise.reject(new Error('Network error'))),
     });
 
     renderWithProviders(<CustomersListPage />, { apiClient: mockApiClient });
@@ -159,9 +182,7 @@ describe('CustomersListPage', () => {
 
   it('should show empty state with a Browse orders CTA when no customers exist', async () => {
     const mockApiClient = createMockApiClient({
-      customers: {
-        list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
-      },
+      customers: customersApi({ items: [], total: 0, limit: 20, offset: 0 }),
     });
 
     renderWithProviders(<CustomersListPage />, { apiClient: mockApiClient });
@@ -174,9 +195,7 @@ describe('CustomersListPage', () => {
   it('should show a Clear filters button that clears filters when filters are active', async () => {
     const user = userEvent.setup();
     const mockApiClient = createMockApiClient({
-      customers: {
-        list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
-      },
+      customers: customersApi({ items: [], total: 0, limit: 20, offset: 0 }),
     });
 
     renderWithProviders(<CustomersListPage />, {
@@ -403,11 +422,7 @@ describe('CustomersListPage', () => {
         const connectionsList = vi.fn().mockResolvedValue([makeConnection()]);
         renderWithProviders(<CustomersListPage />, {
           apiClient: createMockApiClient({
-            customers: {
-              list: vi
-                .fn()
-                .mockResolvedValue({ items, total: items.length, limit: 20, offset: 0 }),
-            },
+            customers: customersApi({ items, total: items.length, limit: 20, offset: 0 }),
             connections: { list: connectionsList, getById },
           }),
         });
@@ -440,7 +455,7 @@ describe('CustomersListPage', () => {
       // loading state every row would read "Unknown" until it settles.
       const { container } = renderWithProviders(<CustomersListPage />, {
         apiClient: createMockApiClient({
-          customers: { list: vi.fn().mockResolvedValue(sampleCustomers) },
+          customers: customersApi(sampleCustomers),
           connections: { list: vi.fn().mockReturnValue(new Promise(() => {})) },
         }),
       });
@@ -592,4 +607,50 @@ describe('CustomersListPage', () => {
       }
     });
   });
+
+  /**
+   * The two-stage total (#2947). Both properties are acceptance criteria of
+   * the epic, and both are about what the page does when the count is NOT
+   * there: the rows must still be, and the missing number must never be
+   * rendered as a zero.
+   */
+  describe('two-stage total (#2947)', () => {
+    // A page reported FULL, so the rows imply no exact total and the count is
+    // genuinely needed - a short page would answer it without a request.
+    const fullPage = { items: [makeCustomer()], limit: 1, offset: 0 };
+
+    it('renders its rows while the count is still in flight', async () => {
+      const apiClient = createMockApiClient({
+        customers: {
+          listRows: vi.fn().mockResolvedValue(fullPage),
+          count: vi.fn().mockReturnValue(new Promise(() => {})),
+        },
+        connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      });
+
+      renderWithProviders(<CustomersListPage />, { apiClient });
+
+      expect(await screen.findByText('Jane Smith')).toBeInTheDocument();
+      expect(screen.getByText('1+')).toBeInTheDocument();
+      expect(screen.queryByText(/\bof 0\b/)).not.toBeInTheDocument();
+    });
+
+    it('keeps the placeholder when the count FAILS, and never renders it as 0', async () => {
+      const apiClient = createMockApiClient({
+        customers: {
+          listRows: vi.fn().mockResolvedValue(fullPage),
+          count: vi.fn().mockRejectedValue(new Error('count blew up')),
+        },
+        connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      });
+
+      renderWithProviders(<CustomersListPage />, { apiClient });
+
+      expect(await screen.findByText('Jane Smith')).toBeInTheDocument();
+      expect(await screen.findByTitle(/could not be loaded/i)).toBeInTheDocument();
+      expect(screen.getByText('1+')).toBeInTheDocument();
+      expect(screen.queryByText(/\bof 0\b/)).not.toBeInTheDocument();
+    });
+  });
+
 });

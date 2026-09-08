@@ -213,6 +213,17 @@ export interface ListingsPagination {
   offset?: number;
 }
 
+/**
+ * What `GET /listings/count` answers with (#2947): the shared
+ * `PaginatedTotal` shape plus this list's own lifecycle buckets, so the second
+ * stage of a two-stage render is one request and not two.
+ */
+export interface OfferMappingCount {
+  total: number;
+  /** Present only when the request set `includeLifecycleCounts`. */
+  lifecycleCounts?: OfferLifecycleCounts;
+}
+
 export interface PaginatedOfferMappings {
   items: OfferMapping[];
   total: number;

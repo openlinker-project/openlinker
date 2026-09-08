@@ -6,6 +6,7 @@
  *
  * @module apps/web/src/features/products/api
  */
+import type { PaginatedTotal, RowsPage } from '../../../shared/api/paginated-total.types';
 import type {
   ProductFilters,
   ProductListSort,
@@ -21,6 +22,18 @@ export interface ProductsApi {
     pagination?: ProductPagination,
     sort?: ProductListSort,
   ) => Promise<PaginatedProducts>;
+  /**
+   * The page WITHOUT its total (#2947). Pair with {@link ProductsApi.count} -
+   * the name / SKU `ILIKE` search means the count cannot stop early, so the
+   * rows must not wait for it.
+   */
+  listRows: (
+    filters?: ProductFilters,
+    pagination?: ProductPagination,
+    sort?: ProductListSort,
+  ) => Promise<RowsPage<Product>>;
+  /** The total WITHOUT its page (#2947). Takes the filters alone - no sort. */
+  count: (filters?: ProductFilters, init?: RequestInit) => Promise<PaginatedTotal>;
   getById: (id: string) => Promise<Product>;
   /**
    * Lightweight projection of a single variant — id, parent product id, SKU,
@@ -38,6 +51,7 @@ function buildQuery(
   filters?: ProductFilters,
   pagination?: ProductPagination,
   sort?: ProductListSort,
+  options?: { withTotal?: false },
 ): string {
   const params = new URLSearchParams();
   if (filters?.search) params.set('search', filters.search);
@@ -54,6 +68,7 @@ function buildQuery(
   }
   if (pagination?.limit !== undefined) params.set('limit', String(pagination.limit));
   if (pagination?.offset !== undefined) params.set('offset', String(pagination.offset));
+  if (options?.withTotal === false) params.set('withTotal', 'false');
   const qs = params.toString();
   return qs.length > 0 ? `?${qs}` : '';
 }
@@ -62,6 +77,16 @@ export function createProductsApi(request: ApiRequest): ProductsApi {
   return {
     list(filters, pagination, sort): Promise<PaginatedProducts> {
       return request<PaginatedProducts>(`/products${buildQuery(filters, pagination, sort)}`);
+    },
+    listRows(filters, pagination, sort): Promise<RowsPage<Product>> {
+      return request<RowsPage<Product>>(
+        `/products${buildQuery(filters, pagination, sort, { withTotal: false })}`,
+      );
+    },
+    count(filters, init): Promise<PaginatedTotal> {
+      // No pagination and no sort: neither can change a count, and the answer
+      // depending on the filters alone is what makes it cacheable per filter.
+      return request<PaginatedTotal>(`/products/count${buildQuery(filters)}`, init);
     },
     getById(id): Promise<Product> {
       return request<Product>(`/products/${id}`);

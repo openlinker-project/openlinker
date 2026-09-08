@@ -174,6 +174,63 @@ export interface OrderRecordRepositoryPort {
   ): Promise<PaginatedOrderRecords>;
 
   /**
+   * The page WITHOUT its total (#2944).
+   *
+   * A paged read stops after its `LIMIT`; the `COUNT` beside it cannot stop at
+   * all, so under a predicate no plain index serves - here the `syncStatus @>`
+   * jsonb containment, which #2843 measured at 155x the paged read beside it -
+   * the count scans the table however small the page is. This read pays only
+   * for the page.
+   *
+   * It applies the identical predicate to {@link countMany}: both are built by
+   * one private `buildFilteredQuery`, so the total can never describe a
+   * different set than the page.
+   *
+   * With ONE exception, stated because it is the only way the split can be
+   * observed as a disagreement (#2957 review round 5). `slaState` compares
+   * `dispatchByAt` against `new Date()`, minted per call - so a page request
+   * and a count request bind two different instants, and an order that crosses
+   * its deadline between them is in the rows and not in the total. Every other
+   * filter is a pure function of its arguments.
+   *
+   * OpenLinker's own list UI MITIGATES this by enabling Next when the rows
+   * overrun the total - it does not remove it, and this port must not claim it
+   * does (#2957 review round 6, I2). A row is still unreachable when the stale
+   * total falls exactly on a page boundary, and the mitigation lives in a React
+   * component while `GET /orders/count` is a public route also reached by MCP
+   * tooling and curl. A caller that needs the two to agree exactly must pass
+   * ONE instant into both, which this port does not yet accept.
+   *
+   * {@link findMany} deliberately does NOT delegate to this method plus
+   * {@link countMany}. It keeps the single `getManyAndCount()` it already had,
+   * so `?withTotal=true` - the default, and every caller not yet migrated -
+   * emits exactly the two statements it emitted before #2944, on the one query
+   * runner it emitted them on. Composing would be a second, unmeasured change
+   * (two pool connections per list request) smuggled into a change about
+   * something else.
+   *
+   * Note what that does NOT claim. Read against typeorm@0.3.17 rather than
+   * assumed: `getManyAndCount` runs `executeEntitiesAndRawResults` and then
+   * `executeCountQuery` unconditionally and sequentially. There is no
+   * short-page branch and no `lazyCount` - the identifier does not exist in
+   * that version. The count always runs, which is the argument FOR splitting
+   * it out, not against.
+   */
+  findManyRows(
+    filters: OrderRecordFilters,
+    pagination: OrderRecordPagination
+  ): Promise<OrderRecord[]>;
+
+  /**
+   * The total WITHOUT its page (#2944) - the second half of {@link findManyRows}.
+   *
+   * Takes no pagination, which is the point: the answer depends on the filters
+   * alone, so a caller may cache it per filter combination and paging through a
+   * result set never recomputes it.
+   */
+  countMany(filters: OrderRecordFilters): Promise<number>;
+
+  /**
    * Count order records per derived health bucket (#929).
    *
    * Single aggregate query partitioning every record in scope into exactly one

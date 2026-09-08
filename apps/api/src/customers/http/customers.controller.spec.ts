@@ -49,6 +49,8 @@ describe('CustomersController', () => {
       findById: jest.fn(),
       findByEmailHash: jest.fn(),
       findMany: jest.fn(),
+      findManyRows: jest.fn(),
+      countMany: jest.fn(),
       upsert: jest.fn(),
       findAddressesByCustomerId: jest.fn(),
       upsertAddress: jest.fn(),
@@ -131,4 +133,50 @@ describe('CustomersController', () => {
       await expect(controller.getCustomer('nonexistent')).rejects.toThrow(NotFoundException);
     });
   });
+
+  describe('the two-stage read (#2944)', () => {
+    it('reads the page ALONE and omits total when withTotal=false', async () => {
+      repository.findManyRows.mockResolvedValue([mockCustomer]);
+
+      const result = await controller.listCustomers({ withTotal: false, limit: 5, offset: 40 });
+
+      expect(repository.findManyRows).toHaveBeenCalledTimes(1);
+      // The page WINDOW too - see the orders sibling (#2957 review round 6, I5).
+      expect(repository.findManyRows.mock.calls[0][1]).toStrictEqual({ limit: 5, offset: 40 });
+      expect(repository.findMany).not.toHaveBeenCalled();
+      // `in`, not a truthiness check: `total: 0` would pass the latter while
+      // being exactly the failure the omission exists to prevent.
+      expect('total' in result).toBe(false);
+      expect(result.total).toBeUndefined();
+    });
+
+    it('reads both when withTotal is not asked for, exactly as before', async () => {
+      repository.findMany.mockResolvedValue({ items: [mockCustomer], total: 7 });
+
+      const result = await controller.listCustomers({ limit: 20, offset: 0 });
+
+      expect(repository.findMany).toHaveBeenCalledTimes(1);
+      expect(repository.findManyRows).not.toHaveBeenCalled();
+      expect(result.total).toBe(7);
+    });
+
+    it('counts under the SAME filters the list applies', async () => {
+      repository.findManyRows.mockResolvedValue([]);
+      repository.countMany.mockResolvedValue(42);
+      const filters = { search: 'ada', lastSourceConnectionId: 'conn-1' };
+
+      await controller.listCustomers({ ...filters, withTotal: false, limit: 20, offset: 0 });
+      const counted = await controller.countCustomers({ ...filters });
+
+      const [listFilters] = repository.findManyRows.mock.calls[0];
+      const [countFilters] = repository.countMany.mock.calls[0];
+      expect(countFilters).toEqual(listFilters);
+      // A COMPLETE literal (#2957 review round 4, I2): `toEqual` between the
+      // two paths is symmetric and cannot see a mapper dropping the same field
+      // on both sides. This fails until a new filter is added here too.
+      expect(countFilters).toStrictEqual({ search: 'ada', lastSourceConnectionId: 'conn-1' });
+      expect(counted).toEqual({ total: 42 });
+    });
+  });
+
 });

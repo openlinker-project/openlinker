@@ -37,9 +37,13 @@ import {
   SlaState,
   FulfillmentRollupState,
 } from '@openlinker/core/orders';
-import { OrderLifecyclePhaseValues, type OrderLifecyclePhase } from '@openlinker/core/order-lifecycle';
+import {
+  OrderLifecyclePhaseValues,
+  type OrderLifecyclePhase,
+} from '@openlinker/core/order-lifecycle';
+import { PaginatedReadQueryDto } from '../../../common/dto/paginated-read-query.dto';
 
-export class ListOrdersQueryDto {
+export class ListOrdersQueryDto extends PaginatedReadQueryDto {
   @ApiPropertyOptional({ description: 'Filter by source connection ID (UUID)' })
   @IsOptional()
   @IsUUID()
@@ -182,7 +186,7 @@ export class ListOrdersQueryDto {
       '`cancelledAt IS [NOT] NULL` — the repository already honoured this field, it simply had ' +
       'no query surface. The dispatch-risk page passes false so the rows it lists match the ' +
       'bucket counts GET /orders/sla-summary returns under the same scope. NOT orthogonal to ' +
-      '`phase`: the lifecycle phase `cancelled` IS this filter\'s `true` set, so a ' +
+      "`phase`: the lifecycle phase `cancelled` IS this filter's `true` set, so a " +
       'contradictory pair (`cancelled=false&phase=cancelled`, or `cancelled=true` with any ' +
       'other phase) is rejected with a 400 rather than returning a structurally empty list.',
   })
@@ -199,7 +203,7 @@ export class ListOrdersQueryDto {
     description:
       'Derived lifecycle-phase filter (#2309, ADR-059): cancelled | vendor_authoritative | ' +
       'delivered | in_transit | fulfillment_failed | held | amending | blocked | ready. ' +
-      'Server-derived from the order\'s own facts and clock-free, so it always matches the ' +
+      "Server-derived from the order's own facts and clock-free, so it always matches the " +
       '`lifecyclePhase` the same order carries on its response. A SECOND ORTHOGONAL PARTITION ' +
       'beside `health`, not a sixth health bucket — it composes with `health` rather than ' +
       'competing with it (a held order is usually also synced). Three values ' +

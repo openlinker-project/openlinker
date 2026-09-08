@@ -1,0 +1,156 @@
+/**
+ * Listings list - the two-stage total and the tab-bar buckets (#2947)
+ *
+ * `offer_mappings` is searched with an `ILIKE` spanning product name, product
+ * and variant SKU, barcodes, attribute values and the external offer id, over
+ * a four-way join - so neither the total nor the lifecycle buckets can stop
+ * early. The rows come from `useListingRowsQuery`; both aggregates come from
+ * here, in ONE request.
+ *
+ * Two things are specific to this list and neither is incidental.
+ *
+ * **The count query is keyed WITHOUT `lifecycle`.** The buckets describe every
+ * tab regardless of which one is selected, so keying on the tab would refetch
+ * them on every tab switch and blank the tab bar - the behaviour #2029
+ * explicitly required not happen, and which the page used to protect with a
+ * hand-rolled ref and fingerprint. Not keying on it means switching tabs reuses
+ * the cached buckets, and the fingerprint machinery goes away.
+ *
+ * **A SHORT page does not short-circuit the request.** The other three lists
+ * skip the count entirely when the rows already imply an exact total; here the
+ * tab bar needs its buckets whatever the page size. The inferred total is still
+ * USED, so the pager shows the real number the moment the rows land while the
+ * buckets are still counting.
+ *
+ * **But only from a page that is not a PLACEHOLDER.** This list's rows query
+ * sets `placeholderData: keepPreviousData` - correct for the table, which
+ * should not blank on a tab switch - so during any transition `query.data` is
+ * still the PREVIOUS tab's page. Inferring from it would state that page's size
+ * as the new tab's: click from a 3-row Active tab to a 900-row Draft one and
+ * the pager would read "Showing 1-3 of 3" beside a tab badge reading 900, with
+ * Next disabled so the operator could not page out of it. Worse, the correct
+ * answer is already in hand - the count key omits `lifecycle`, so `stage.total`
+ * re-derives 900 from the cached buckets immediately - and the inference would
+ * override it. `isPlaceholderPage` is what keeps that unrepresentable, and it
+ * is required rather than optional so a caller cannot forget to answer.
+ *
+ * @module features/listings/hooks
+ */
+import { useMemo } from 'react';
+import { listingCountFilters, listingsQueryKeys } from '../api/listings.query-keys';
+import type {
+  ListingsFilters,
+  OfferLifecycleCounts,
+  OfferMapping,
+  OfferMappingCount,
+} from '../api/listings.types';
+import type { RowsPage } from '../../../shared/api/paginated-total.types';
+import { deriveListingsTotal } from '../lib/derive-listings-total';
+import {
+  inferTotalFromLoadedPage,
+  usePaginatedTotal,
+  type PaginatedTotalResult,
+  type PaginatedTotalState,
+} from '../../../shared/hooks/use-paginated-total';
+import { useApiClient } from '../../../app/api/api-client-provider';
+
+export interface ListingsTotalResult extends PaginatedTotalResult<OfferMappingCount> {
+  /**
+   * The tab-bar buckets, or `null` when they are not known yet.
+   *
+   * `null` is never rendered as zeroes: an all-zero tab bar states that every
+   * bucket is empty, which is a positive claim from an absent value - the same
+   * rule that keeps a missing total from rendering as `0`.
+   */
+  lifecycleCounts: OfferLifecycleCounts | null;
+
+  /**
+   * The stage of the BUCKETS specifically, which is not always the stage of
+   * `total` (#2957 review, I2).
+   *
+   * `state` above is overridden to `'known'` whenever a short page implies the
+   * pager total exactly, and a short page implies nothing at all about the
+   * other tabs' sizes. So with a short page AND a failed count, `state` is
+   * `'known'` while `lifecycleCounts` is `null` - and a tab bar branching on
+   * `state` would render loading skeletons for the life of the page, which
+   * positively asserts that content is arriving when nothing is coming.
+   *
+   * One `state` cannot answer two questions. This one answers "do I know the
+   * buckets", and a caller rendering the tab bar must read it rather than
+   * `state`.
+   *
+   * It is derived from the BUCKETS, not from `stage.state` (#2957 review round
+   * 3, I4). Those two coincide only while every tab carries a lifecycle: with
+   * no tab selected `selectTotal` falls back to the payload's own `total`, so a
+   * response carrying a readable total and NO buckets reports `'known'` -
+   * exactly the stuck tab bar this field exists to prevent, in the arm the
+   * first fix did not reach.
+   */
+  lifecycleCountsState: PaginatedTotalState;
+}
+
+export function useListingsTotal(
+  filters: ListingsFilters,
+  page: RowsPage<OfferMapping> | undefined,
+  /** `query.isPlaceholderData` from the rows query. See the header. */
+  isPlaceholderPage: boolean
+): ListingsTotalResult {
+  const apiClient = useApiClient();
+  const inferred = isPlaceholderPage ? null : inferTotalFromLoadedPage(page);
+  const { lifecycle } = filters;
+
+  // Everything the buckets depend on, and nothing else - see
+  // `listingCountFilters`, which is the ONE definition and is shared with the
+  // query key so the two cannot narrow differently.
+  //
+  // Memoised on the whole `filters` object rather than on named fields: the
+  // debounce compares by VALUE through TanStack's `hashKey`, so this saves an
+  // allocation and is not a correctness device. Naming fields here was how the
+  // enumeration crept in (#2957 review round 3, I5) - a deps list is a second
+  // list to keep in step by hand.
+  const countFilters: ListingsFilters = useMemo(() => listingCountFilters(filters), [filters]);
+
+  const stage = usePaginatedTotal<OfferMappingCount>({
+    queryKey: listingsQueryKeys.count(countFilters),
+    queryFn: ({ signal }) => apiClient.listings.count(countFilters, { signal }),
+    // The response's own `total` is the un-narrowed sum, because the request
+    // carries no `lifecycle`. The selected tab's size is its bucket.
+    //
+    // With the buckets absent - a rollout skew, a dropped query param, a
+    // backend regression - a SELECTED tab has no honest number available, so
+    // this reports unknown rather than falling back to `data.total`. That
+    // fallback would print the whole catalogue's size as the tab's, presented
+    // as `known`, which is precisely the number `deriveListingsTotal`'s own
+    // docblock names as wrong. With no tab selected the sum IS the answer.
+    selectTotal: (data) => {
+      // With NO tab selected the server's own `total` is the answer, and it is
+      // authoritative (#2957 review round 5, I2). Re-deriving it here would sum
+      // `OFFER_LIFECYCLE_VALUES` - the FRONTEND's copy of the bucket list, with
+      // no mirror script holding it to the backend's - so a sixth bucket added
+      // server-side would silently under-count, presented as `known`. The
+      // per-bucket `?? 0` in `deriveListingsTotal` is what makes that silent.
+      if (!lifecycle) return data.total;
+      // For a SELECTED tab the payload's `total` is the un-narrowed sum across
+      // every bucket, because the request carries no `lifecycle`. Its size is
+      // its bucket, and with the buckets absent there is no honest number -
+      // reporting `data.total` would print the whole catalogue as the tab's.
+      return data.lifecycleCounts ? deriveListingsTotal(data.lifecycleCounts, lifecycle) : null;
+    },
+    knownTotal: null,
+    enabled: page !== undefined,
+  });
+
+  const buckets = stage.data?.lifecycleCounts ?? null;
+
+  return {
+    ...stage,
+    total: inferred ?? stage.total,
+    state: inferred !== null ? 'known' : stage.state,
+    lifecycleCounts: buckets,
+    // Deliberately NOT the overridden `state` above, and not `stage.state`
+    // either - see the field's docblock. A settled response with no buckets is
+    // `unavailable` however readable its total was.
+    lifecycleCountsState:
+      buckets !== null ? 'known' : stage.state === 'known' ? 'unavailable' : stage.state,
+  };
+}

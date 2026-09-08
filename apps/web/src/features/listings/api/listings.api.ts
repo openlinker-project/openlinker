@@ -7,6 +7,8 @@
  * @module apps/web/src/features/listings/api
  */
 import type { DescriptionFormat } from '../../../shared/ui/rich-text.types';
+import type { RowsPage } from '../../../shared/api/paginated-total.types';
+import { listingRowFilters } from './listings.query-keys';
 import type {
   CatalogProduct,
   CatalogProductMatchResult,
@@ -18,6 +20,7 @@ import type {
   ListingsFilters,
   ListingsPagination,
   MarketplaceOfferResponse,
+  OfferMappingCount,
   OfferCreationStatusResponse,
   OfferPublicationStatusResponse,
   RefreshOfferPublicationStatusResponse,
@@ -66,6 +69,23 @@ export interface ListingsApi {
     filters?: ListingsFilters,
     pagination?: ListingsPagination,
   ) => Promise<PaginatedOfferMappings>;
+  /**
+   * The page WITHOUT its total or its lifecycle buckets (#2947). Pair with
+   * {@link ListingsApi.count} - the `ILIKE` search spanning product name,
+   * SKUs, barcodes and the external offer id means neither aggregate can stop
+   * early, so the rows must not wait for them.
+   */
+  listRows: (
+    filters?: ListingsFilters,
+    pagination?: ListingsPagination,
+  ) => Promise<RowsPage<OfferMapping>>;
+  /**
+   * The total WITHOUT its page (#2947), plus the tab-bar buckets when
+   * `filters.includeLifecycleCounts` is set - the total is DERIVED from those
+   * buckets server-side when they are asked for, so the second stage is one
+   * request rather than two.
+   */
+  count: (filters?: ListingsFilters, init?: RequestInit) => Promise<OfferMappingCount>;
   getById: (id: string) => Promise<OfferMapping>;
   /**
    * Fetches the live marketplace-side offer (#464). Returns 404 if the
@@ -245,7 +265,32 @@ interface ApiRequest {
   <T>(path: string, init?: RequestInit): Promise<T>;
 }
 
-function buildQuery(filters?: ListingsFilters, pagination?: ListingsPagination): string {
+/**
+ * Every key of `ListingsFilters`, exhaustively.
+ *
+ * `buildQuery` below enumerates its fields, and an enumeration is exactly what
+ * `listingCountFilters` narrows by OMISSION to avoid (#2957 review round 4,
+ * I1): a sixth membership filter would enter the count's cache key and never
+ * reach its URL, so one un-narrowed answer would be cached under many
+ * filter-specific keys and look filter-specific. This map makes that
+ * unrepresentable - adding a field to `ListingsFilters` fails to compile here
+ * until somebody decides how it is serialised.
+ */
+const LISTINGS_FILTER_KEYS: Record<keyof ListingsFilters, true> = {
+  connectionId: true,
+  internalId: true,
+  search: true,
+  lifecycle: true,
+  includeLifecycleCounts: true,
+};
+
+function buildQuery(
+  filters?: ListingsFilters,
+  pagination?: ListingsPagination,
+  options?: { withTotal?: false },
+): string {
+  // Read so the exhaustiveness map above cannot be deleted as unused.
+  void LISTINGS_FILTER_KEYS;
   const params = new URLSearchParams();
   if (filters?.connectionId) params.set('connectionId', filters.connectionId);
   if (filters?.internalId) params.set('internalId', filters.internalId);
@@ -254,6 +299,7 @@ function buildQuery(filters?: ListingsFilters, pagination?: ListingsPagination):
   if (filters?.includeLifecycleCounts) params.set('includeLifecycleCounts', 'true');
   if (pagination?.limit !== undefined) params.set('limit', String(pagination.limit));
   if (pagination?.offset !== undefined) params.set('offset', String(pagination.offset));
+  if (options?.withTotal === false) params.set('withTotal', 'false');
   const qs = params.toString();
   return qs.length > 0 ? `?${qs}` : '';
 }
@@ -434,6 +480,21 @@ export function createListingsApi(
   return {
     list(filters, pagination): Promise<PaginatedOfferMappings> {
       return request<PaginatedOfferMappings>(`/listings${buildQuery(filters, pagination)}`);
+    },
+    listRows(filters, pagination): Promise<RowsPage<OfferMapping>> {
+      // `includeLifecycleCounts` is dropped, not merely ignored downstream
+      // (#2957 review, S3). The buckets moved to `count()` in #2943, and the
+      // rows route declines the flag under `?withTotal=false` - so asking for
+      // it here is a rows-only request asking for the exact aggregate this
+      // change moved off that path, baked into the cache key for nothing.
+      return request<RowsPage<OfferMapping>>(
+        `/listings${buildQuery(listingRowFilters(filters), pagination, { withTotal: false })}`,
+      );
+    },
+    count(filters, init): Promise<OfferMappingCount> {
+      // No pagination: the answer depends on the filters alone, which is what
+      // lets one cached count serve every page of a result set.
+      return request<OfferMappingCount>(`/listings/count${buildQuery(filters)}`, init);
     },
     getById(id): Promise<OfferMapping> {
       return request<OfferMapping>(`/listings/${id}`);

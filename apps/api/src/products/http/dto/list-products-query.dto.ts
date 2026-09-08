@@ -30,8 +30,9 @@ import {
   ProductListSortField,
   ProductStockFilter,
 } from '@openlinker/core/products';
+import { PaginatedReadQueryDto } from '../../../common/dto/paginated-read-query.dto';
 
-export class ListProductsQueryDto {
+export class ListProductsQueryDto extends PaginatedReadQueryDto {
   @ApiPropertyOptional({ description: 'Case-insensitive search on product name or SKU' })
   @IsOptional()
   @IsString()

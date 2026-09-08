@@ -63,6 +63,8 @@ export { Tooltip } from './tooltip';
 export { DataTable } from './data-table';
 export type { DataTableColumn, DataTableCardView, DataTableHideBreakpoint } from './data-table';
 export { KeyValueList } from './key-value-list';
+export { ListPagination } from './list-pagination';
+export type { ListPaginationProps } from './list-pagination';
 export { RawPayloadPanel } from './raw-payload-panel';
 export { TimeDisplay } from './time-display';
 export { MetricCard } from './metric-card';

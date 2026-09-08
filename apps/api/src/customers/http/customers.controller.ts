@@ -36,7 +36,26 @@ import { ListCustomersQueryDto } from './dto/list-customers-query.dto';
 import { CustomerProjectionResponseDto } from './dto/customer-projection-response.dto';
 import type { CustomerAddressResponseDto } from './dto/customer-address-response.dto';
 import { PaginatedCustomersResponseDto } from './dto/paginated-customers-response.dto';
+import { CountCustomersQueryDto } from './dto/count-customers-query.dto';
+import type { CustomerProjectionFilters } from '@openlinker/core/customers';
+import { PaginatedTotalResponseDto } from '../../common/dto/paginated-total-response.dto';
 import { Roles } from '../../auth/decorators/roles.decorator';
+
+/**
+ * The one DTO-to-filters mapping this list has (#2957 review round 4, I2).
+ *
+ * Two fields today; the argument is about the third. Shared by `GET /customers`
+ * and `GET /customers/count` so the count cannot apply a different filter set
+ * than the page - the discipline `orders` and `products` already carry.
+ */
+function toCustomerProjectionFilters(
+  query: CountCustomersQueryDto
+): CustomerProjectionFilters {
+  return {
+    search: query.search,
+    lastSourceConnectionId: query.lastSourceConnectionId,
+  };
+}
 
 @ApiBearerAuth()
 @ApiTags('customers')
@@ -53,7 +72,8 @@ export class CustomersController {
   @ApiOperation({
     summary: 'List customer projections',
     description:
-      'Returns a paginated list of customer projections. Supports filtering by search text and lastSourceConnectionId.',
+      'Returns a paginated list of customer projections. Supports filtering by search text and lastSourceConnectionId. ' +
+      'Set `?withTotal=false` to get the page WITHOUT its total: the `total` field is omitted entirely (never `0`) and the count this list cannot serve from an index is skipped. Fetch the number separately from `GET /customers/count` (#2944).',
   })
   @ApiResponse({
     status: 200,
@@ -64,12 +84,23 @@ export class CustomersController {
   async listCustomers(
     @Query() query: ListCustomersQueryDto
   ): Promise<PaginatedCustomersResponseDto> {
-    const { search, lastSourceConnectionId, limit = 20, offset = 0 } = query;
+    const { withTotal, limit = 20, offset = 0 } = query;
+    const filters = toCustomerProjectionFilters(query);
 
-    const { items, total } = await this.customerRepository.findMany(
-      { search, lastSourceConnectionId },
-      { limit, offset }
-    );
+    // `?withTotal=false` skips the COUNT entirely and the response OMITS
+    // `total` rather than reporting 0 (#2944) - an absent total and a genuine
+    // zero must stay distinguishable, or a client renders "0 customers" for a
+    // number it simply did not ask for. Anything else keeps the pre-#2944
+    // combined read byte-for-byte: one `getManyAndCount()` on one query runner,
+    // which always runs its count - there is no short-page branch in
+    // typeorm@0.3.17, which is why moving the count off this path is worth
+    // doing at all.
+    if (withTotal === false) {
+      const items = await this.customerRepository.findManyRows(filters, { limit, offset });
+      return { items: items.map((c) => this.toDto(c)), limit, offset };
+    }
+
+    const { items, total } = await this.customerRepository.findMany(filters, { limit, offset });
 
     return {
       items: items.map((c) => this.toDto(c)),
@@ -77,6 +108,24 @@ export class CustomersController {
       limit,
       offset,
     };
+  }
+
+  @Roles('admin', 'operator', 'viewer')
+  @Get('count')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Count customer projections matching the filters',
+    description:
+      'The total for the same filters `GET /customers` accepts, without a page. Paired with ' +
+      '`GET /customers?withTotal=false` so a list renders its rows without waiting for a count ' +
+      'that cannot stop early (#2944). Takes no limit/offset - the answer depends on the ' +
+      'filters alone.',
+  })
+  @ApiResponse({ status: 200, description: 'Row count', type: PaginatedTotalResponseDto })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async countCustomers(@Query() query: CountCustomersQueryDto): Promise<PaginatedTotalResponseDto> {
+    const total = await this.customerRepository.countMany(toCustomerProjectionFilters(query));
+    return { total };
   }
 
   @Roles('admin', 'operator', 'viewer')

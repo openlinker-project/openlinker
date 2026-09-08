@@ -2247,6 +2247,55 @@ textarea,
   gap: 0.5rem;
 }
 
+/* ── Two-stage paginated total (#2945) ────────────────────────────────── */
+
+/* The `N+` placeholder shown while the count is still in flight, or after it
+   failed. Deliberately quiet: the rows are already on screen and only a number
+   is missing, so this must not read as an error or as missing content. */
+.pagination__total-pending {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* A count that FAILED, said in visible text rather than only in a `title`.
+   `pending` and `unavailable` both keep the `N+` placeholder, and a tooltip
+   cannot tell them apart for a screen reader or on touch. */
+.pagination__total-failed {
+  color: var(--status-warning-fg);
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
+/* Shown only once the count has been in flight past the delay window, so a
+   count that resolves in ~11 ms never flickers one into view. */
+.pagination__counting-dot {
+  display: inline-block;
+  width: 0.35rem;
+  height: 0.35rem;
+  margin-left: 0.3rem;
+  border-radius: 999px;
+  background: var(--accent-primary);
+  vertical-align: baseline;
+  animation: pagination-counting-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes pagination-counting-pulse {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pagination__counting-dot {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
 .status-pill {
   border-radius: 999px;
   padding: 0.22rem 0.6rem;

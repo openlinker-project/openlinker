@@ -5,15 +5,20 @@
  *
  * @module apps/api/src/products/http/dto
  */
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ProductResponseDto } from './product-response.dto';
 
 export class PaginatedProductsResponseDto {
   @ApiProperty({ type: [ProductResponseDto] })
   items!: ProductResponseDto[];
 
-  @ApiProperty({ description: 'Total number of products matching the filters' })
-  total!: number;
+  /**
+   * Absent - not `0` - when the caller passed `?withTotal=false` (#2944).
+   */
+  @ApiPropertyOptional({
+    description: 'Total number of products matching the filters. Omitted when ?withTotal=false.',
+  })
+  total?: number;
 
   @ApiProperty({ description: 'Page size used for this response' })
   limit!: number;
