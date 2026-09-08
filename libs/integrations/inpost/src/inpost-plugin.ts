@@ -36,8 +36,10 @@ export const inpostAdapterManifest: AdapterMetadata = {
   displayName: 'InPost ShipX v1',
   version: '1.0.0',
   isDefault: true,
-  // Deliberately NO `defaultRateLimit` (#1810 Phase 5). PrestaShop's 60/4 — the
-  // only manifest default in the repo — is calibrated for an operator's OWN shop
+  // Deliberately NO `defaultRateLimit` (#1810 Phase 5). PrestaShop's default —
+  // 300/min since #2840 measured it on constrained hardware, and no longer the
+  // only manifest default in the repo now that WooCommerce and Subiekt carry
+  // their own — is calibrated for an operator's OWN shop
   // webserver (#1815), which is both the throughput bottleneck and busy serving
   // customers. ShipX is a carrier platform whose quota OL has no documented
   // figure for, and `requestsPerMinute` is minimum-interval spacing (capacity

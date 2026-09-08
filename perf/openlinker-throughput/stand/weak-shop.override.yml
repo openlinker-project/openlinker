@@ -1,0 +1,68 @@
+# Weak-shop resource profiles for the `lab` stand's PrestaShop (epic #2840).
+#
+# WHY THIS FILE EXISTS SEPARATELY FROM docker-compose.lab.yml
+#
+# #2854 owns `docker-compose.lab.yml` and every scenario shares it. A profile
+# that constrains the shop belongs to ONE measurement and must not become the
+# stand's posture, so it lives here and is composed on top:
+#
+#   docker compose --project-directory "$STAND_DIR" \
+#     -f "$STAND_DIR/docker-compose.lab.yml" \
+#     -f perf/openlinker-throughput/stand/weak-shop.override.yml \
+#     --env-file "$STAND_DIR/.env.lab" -p lab \
+#     up -d --no-deps --force-recreate prestashop
+#
+# `--project-directory` and the stand's OWN compose file are both load-bearing:
+# on this host the `lab` project was brought up from a sibling agent worktree,
+# so the prestashop service's relative bind mounts
+# (`./apps/prestashop-module/openlinker`, `./docker/prestashop/post-install`)
+# resolve against THAT tree. Composing from a different checkout would recreate
+# the container with different sources bound in, which is a change to the stand
+# rather than a change to its CPU quota. `scenarios/weak-shop-ramp.sh` resolves
+# both paths from the running container's own compose labels rather than
+# assuming them.
+#
+# WHY THE VALUES ARE PARAMETERS AND NOT SEVERAL SERVICE BLOCKS
+#
+# One profile is in force at a time, and a file carrying every variant would
+# need one service name per container per profile. The sweep sets the four
+# variables below per profile; the profile TABLE - and what each profile is
+# meant to represent - lives in `scenarios/weak-shop-ramp.sh`, which is also
+# what applies them, so there is one list rather than two that can disagree.
+#
+# WHAT `memswap_limit` IS DOING HERE
+#
+# Left unset, Docker allows a container to swap up to 2x its memory limit, so
+# `mem_limit: 512m` would really mean "512m of RAM plus 512m of swap" and the
+# profile would not represent the box it claims to. Setting it EQUAL to
+# `mem_limit` disables swap for the container, which is the honest reading of
+# a small hosting plan.
+#
+# BOTH SERVICES, BECAUSE A SHARED-HOSTING SHOP DOES NOT HAVE A SPARE DATABASE
+#
+# Constraining only the PHP container would leave MySQL with all 28 host cores
+# and overstate what a small plan can serve. The sweep applies the `mysql`
+# limits only on the profiles that claim to represent shared hosting and leaves
+# the database unconstrained on the VPS-shaped ones, where a dedicated (if
+# small) database is the realistic arrangement.
+#
+# RESTORING
+#
+# Removing this `-f` and recreating is what restores the stand: a fresh
+# container from the unmodified spec carries `HostConfig.NanoCpus = 0` and
+# `HostConfig.Memory = 0`. `docker update` CANNOT do this - measured on this
+# host, Docker 29.5.2 / cgroup v1: `docker update --cpus 0 --memory 0` leaves
+# `HostConfig.NanoCpus` and the memory cgroup at their constrained values and
+# still exits 0, so a stand "restored" that way reports a limit it no longer
+# has, or keeps one it claims to have dropped. See the report's
+# "Two mechanisms, and why neither alone is enough" section.
+services:
+  prestashop:
+    cpus: ${WEAK_SHOP_PS_CPUS:-0.5}
+    mem_limit: ${WEAK_SHOP_PS_MEM:-768m}
+    memswap_limit: ${WEAK_SHOP_PS_MEM:-768m}
+
+  mysql:
+    cpus: ${WEAK_SHOP_DB_CPUS:-0.5}
+    mem_limit: ${WEAK_SHOP_DB_MEM:-512m}
+    memswap_limit: ${WEAK_SHOP_DB_MEM:-512m}

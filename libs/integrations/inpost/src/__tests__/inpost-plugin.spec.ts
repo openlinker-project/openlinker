@@ -13,8 +13,9 @@
  *
  *   - No manifest `defaultRateLimit` is passed, because InPost deliberately
  *     ships none (see the rationale on `inpostAdapterManifest`). PrestaShop's
- *     60/4 is calibrated for an operator's own shop webserver; guessing the
- *     same figure for a carrier platform would cap bulk dispatch at 1 req/s.
+ *     default is calibrated - and, since #2840, measured - for an operator's
+ *     own shop webserver; guessing the same figure for a carrier platform
+ *     would have capped bulk dispatch at 1 req/s under the old 60/min.
  *
  * @module libs/integrations/inpost/src/__tests__
  */

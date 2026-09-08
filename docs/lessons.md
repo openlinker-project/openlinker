@@ -1336,3 +1336,62 @@ Verify red-first: run it once against a deliberately wrong target and watch the 
 proportion rather than a count.
 
 **Source**: #2949 (dataset re-seed), building on #2840.
+
+## `docker update` cannot take a container back to "unconstrained" - restore by recreating from the compose spec
+
+**Context**: a perf scenario that sweeps CPU/memory profiles over the `lab` stand's PrestaShop
+container needs to apply a limit and then put the stand back exactly as it found it
+(`perf/openlinker-throughput/scenarios/weak-shop-ramp.sh`).
+
+**Problem**: `docker update` applies a limit fine and **cannot remove one**. Measured on this host
+(Docker 29.5.2, cgroup v1) against a throwaway container: after
+`docker update --cpus 0.25 --memory 512m --memory-swap 512m`, the documented reset
+`docker update --cpus 0 --memory 0 --memory-swap -1` **exits 0 and changes nothing** -
+`HostConfig.NanoCpus` stays `250000000`, `HostConfig.Memory` stays `536870912`, and the container's
+own `memory.limit_in_bytes` is untouched. `--cpu-quota -1` does clear the CPU cgroup but leaves
+`HostConfig.NanoCpus` stale, so `docker inspect` then **reports a limit the container no longer
+has**. Either way a stand "restored" that way lies about itself, and `manifest_container_limits`
+(`perf/openlinker-throughput/lib.sh`) reads exactly those two fields into every subsequent run's
+manifest - so the next scenario records the lie rather than catching it.
+
+**Rule**: apply a container limit with `docker update` when you need the container to survive (an
+opcache and page cache that stay warm are what make a multi-profile sweep a single-variable
+experiment), but **restore by recreating the service from the unmodified compose spec** - a fresh
+container is the only thing that genuinely reads back `NanoCpus=0 Memory=0`. Verify the restore by
+reading both fields back and say so loudly if they are not zero; never infer "restored" from the
+reset command's exit status. Keep the profile table monotonically TIGHTENING within one
+invocation, since no step can loosen. Before recreating a stateful service, read its image's
+entrypoint and confirm the already-installed guard fires (PrestaShop's `/tmp/docker_run.sh` skips
+its installer, and `PS_ERASE_DB`, only because `app/config/parameters.php` exists) - a recreate
+that silently reinstalls would destroy a peer's seeded catalogue.
+
+**Applies to**: `perf/openlinker-throughput/**`, and any script that constrains a shared container.
+
+**Source**: #2840 (weak-shop rate-limit gate,
+`perf/openlinker-throughput/results-weak-shop-2026-09-07.md`).
+
+## A scenario-local env knob must not reuse a name `lib.sh` already defaults - the library wins silently
+
+**Context**: `perf/openlinker-throughput/scenarios/weak-shop-ramp.sh` wanted a 10 s pause between
+rate steps and wrote the usual `SETTLE_SECS="${SETTLE_SECS:-10}"` after sourcing `lib.sh`.
+
+**Problem**: `lib.sh:159` already declares `SETTLE_SECS="${SETTLE_SECS:-60}"` for a completely
+different purpose (the settle between the last guard and `window_start`). Sourcing runs first, so
+by the time the scenario's line executes the variable is already `60` and the `:-10` **never
+applies**. Nothing warns: the script says 10, does 60, and the only symptom is a run that takes
+longer than planned. It was caught by reading the child process's `/proc/<pid>/environ` and
+cross-checking against the probe's own window timestamps (a real 63.5 s gap), not by reading the
+code - re-reading the assignment looks correct in isolation, which is exactly why this survives
+review.
+
+**Rule**: after `source lib.sh`, treat every name that library defaults as taken. A scenario's own
+knob gets a scenario-scoped name (`RAMP_SETTLE_SECS`, not `SETTLE_SECS`) and is passed explicitly
+to whatever it configures. The general form: `${VAR:-default}` in a sourcing script is not a
+default, it is a default *only if nothing upstream already set it*, and a shared library is
+upstream. When a knob's effective value matters to a measurement, assert it - read it back from the
+child rather than trusting the assignment.
+
+**Applies to**: `perf/openlinker-throughput/scenarios/**`, and any script sourcing a shared
+`lib.sh` that declares `${VAR:-...}` defaults at top level.
+
+**Source**: #2840 (weak-shop rate-limit gate).
