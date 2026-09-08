@@ -31,6 +31,7 @@ import type {
 } from '../../domain/types/order-record.types';
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
 import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
+import type { DestinationRoutingBlock } from '../../domain/types/destination-routing-block.types';
 import { IAutomationTriggerEmissionService } from '@openlinker/core/automation';
 import { AUTOMATION_TRIGGER_EMISSION_SERVICE_TOKEN } from '@openlinker/core/automation';
 import { redactAddress } from '../../domain/order-address-redaction';
@@ -871,6 +872,19 @@ export class OrderRecordService implements IOrderRecordService {
     block: FulfillmentBlock | null
   ): Promise<void> {
     await this.repository.updateFulfillmentBlock(internalOrderId, block);
+  }
+
+  /**
+   * #2703 / #2704 - the write half of "gate reports, caller persists" for the
+   * destination-routing narrowing. Thin by design, exactly like
+   * {@link markFulfillmentBlock}: the decision belongs to `OrderSyncService`,
+   * this only records it.
+   */
+  async markDestinationRoutingBlock(
+    internalOrderId: string,
+    block: DestinationRoutingBlock | null
+  ): Promise<void> {
+    await this.repository.updateDestinationRoutingBlock(internalOrderId, block);
   }
 
   /**

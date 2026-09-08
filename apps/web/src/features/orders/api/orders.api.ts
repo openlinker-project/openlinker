@@ -109,6 +109,11 @@ function buildQuery(
   if (filters?.salesDocumentBlocked !== undefined) {
     params.set('salesDocumentBlocked', String(filters.salesDocumentBlocked));
   }
+  // #2703/#2704 — boolean, same `!== undefined` guard: `false` ("exclude orders
+  // whose routing narrowed the fan-out") is a real predicate, not an absence.
+  if (filters?.destinationRoutingBlocked !== undefined) {
+    params.set('destinationRoutingBlocked', String(filters.destinationRoutingBlocked));
+  }
   // #2306 — boolean, same `!== undefined` guard as above: `false` ("exclude
   // cancelled orders") is a real predicate the dispatch-risk page depends on.
   if (filters?.cancelled !== undefined) {

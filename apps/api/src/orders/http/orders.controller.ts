@@ -187,6 +187,7 @@ function toOrderRecordFilters(
     slaState: query.slaState,
     fulfillmentState: query.fulfillmentState,
     salesDocumentBlocked: query.salesDocumentBlocked,
+    destinationRoutingBlocked: query.destinationRoutingBlocked,
     cancelled: query.cancelled,
     lifecyclePhase: query.phase,
     taxRateConflict: query.taxRateConflict,
@@ -951,6 +952,8 @@ export class OrdersController {
       salesDocumentBlockReason: order.salesDocumentBlockReason,
       salesDocumentUnresolvedReason: order.salesDocumentUnresolvedReason,
       salesDocumentBlockDetail: order.salesDocumentBlockDetail,
+      destinationRoutingBlockReason: order.destinationRoutingBlockReason,
+      destinationRoutingBlockDetail: order.destinationRoutingBlockDetail,
       salesDocumentBlockedAt: order.salesDocumentBlockedAt?.toISOString() ?? null,
       salesDocumentBlockReleasedAt: order.salesDocumentBlockReleasedAt?.toISOString() ?? null,
       // #2356 - on the SHARED toDto, like `packedAt` above: the badge renders on

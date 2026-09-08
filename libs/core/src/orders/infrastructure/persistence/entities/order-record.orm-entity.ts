@@ -50,6 +50,17 @@ export interface SyncAttemptJson {
 @Index('IDX_order_records_reporting', ['sourceConnectionId', 'reportingCurrency'], {
   where: '"reportingCurrency" IS NOT NULL',
 })
+// Destination-routing block (#2703 / #2704). PARTIAL on `IS NOT NULL` rather
+// than over a hardcoded reason list: the list form is exactly what silently went
+// stale on `IDX_order_records_salesDocumentBlockReason` when #2248 widened that
+// union without touching the index, whereas a NULL predicate cannot go stale
+// when the vocabulary widens. Just as small either way — it matches only
+// routing-narrowed orders, i.e. no rows at all on every install today. Declared
+// HERE as well as in the migration because the integration harness builds schema
+// by `synchronize`, so a migration-only index does not exist in tests.
+@Index('IDX_order_records_destinationRoutingBlockReason', ['destinationRoutingBlockReason'], {
+  where: '"destinationRoutingBlockReason" IS NOT NULL',
+})
 export class OrderRecordOrmEntity {
   @PrimaryColumn({ type: 'text' })
   internalOrderId!: string;
@@ -494,6 +505,52 @@ export class OrderRecordOrmEntity {
    */
   @Column({ type: 'text', nullable: true })
   fulfillmentBlockDetail!: string | null;
+
+  /**
+   * How a fulfilment routing decision narrowed this order's destination fan-out
+   * (#2703 / #2704) — or NULL when it narrowed nothing, which is every order on
+   * every install today, since no production caller populates
+   * `OrderSyncRequest.destinationConnectionIds` yet.
+   *
+   * Distinct from `fulfillmentBlockReason` directly above, and the two are
+   * MUTUALLY EXCLUSIVE by construction: that one records that the intercept HELD
+   * the order so `OrderSyncService` was never called, this one records what
+   * happened INSIDE it. `OrderIngestionService` clears this reason on the held
+   * branch precisely so the pair can never both stand and describe one order two
+   * ways — without that clear, a stale routing reason would sit beside a fresh
+   * fulfilment block and assert "the router sent this nowhere" about an order
+   * that is in fact held.
+   *
+   * The #2100 `salesDocument*` shape otherwise: `OrderSyncService` is the sole
+   * writer, the value is level-triggered (re-decided on every run, `null`
+   * clearing it), and both columns stay outside the ingestion write set so a
+   * re-poll cannot reset them — `persistOrder` runs BEFORE the fan-out.
+   *
+   * `text` with no CHECK, matching `fulfillmentBlockReason`: the union is
+   * enforced in TypeScript and coerced on read by `isDestinationRoutingBlockReason`,
+   * so a value written by a newer release and rolled back reads as "nothing
+   * recognised" rather than widening the union at runtime.
+   *
+   * **Indexed on `IS NOT NULL`, deliberately NOT over a value list.** Unlike the
+   * two block columns above this one really is filtered and counted, so it earns
+   * an index — but a partial index over a hardcoded reason list is exactly the
+   * shape that silently went stale on `IDX_order_records_salesDocumentBlockReason`
+   * when #2248 widened that union without touching the index. A NULL predicate
+   * cannot go stale when the vocabulary widens, and is just as small: it matches
+   * only routing-narrowed orders, i.e. no rows at all on every install today.
+   */
+  @Column({ type: 'text', nullable: true })
+  destinationRoutingBlockReason!: string | null;
+
+  /**
+   * PII-free elaboration of the reason above — connection ids and counts only,
+   * built by `buildDestinationRoutingDetail`, which bounds it because the ids
+   * come from a routing decision OpenLinker does not author and the value is
+   * rendered verbatim to an operator. Free text, never filtered on, so no index
+   * — the same call as `salesDocumentBlockDetail` / `fulfillmentBlockDetail`.
+   */
+  @Column({ type: 'text', nullable: true })
+  destinationRoutingBlockDetail!: string | null;
 
   @CreateDateColumn()
   createdAt!: Date;

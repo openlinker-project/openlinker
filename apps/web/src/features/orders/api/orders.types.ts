@@ -151,6 +151,27 @@ export const SalesDocumentUnresolvedReasonValues = [
 export type SalesDocumentUnresolvedReasonValue =
   (typeof SalesDocumentUnresolvedReasonValues)[number];
 
+// How a fulfilment routing decision narrowed an order's destination fan-out
+// (#2703/#2704). Hand-mirrored from `DestinationRoutingBlockReasonValues` in
+// `@openlinker/core/orders` per the FE-001 contract strategy (the browser bundle
+// cannot import core).
+//
+// ENFORCED, not merely commented: `scripts/check-destination-routing-reason-mirror.mjs`
+// fails `pnpm check:invariants` on any drift in either direction, VALUE AND ORDER.
+//
+// `'routed-to-no-destination'` is a working router making a DECISION and is
+// rendered neutrally; the other three name a destination the router asked for
+// that OpenLinker could not reach. Only those three are counted — see
+// `DESTINATION_ROUTING_ATTENTION_REASONS` in `../lib/destination-routing-copy`.
+export const DestinationRoutingBlockReasonValues = [
+  'routed-to-no-destination',
+  'routed-destinations-unavailable',
+  'routed-destinations-partially-unavailable',
+  'routed-to-source-only',
+] as const;
+export type DestinationRoutingBlockReasonValue =
+  (typeof DestinationRoutingBlockReasonValues)[number];
+
 // ── Sales-document view (#2516/#2552, ADR-065) ──────────────────────────────
 // Hand-mirrored from `SalesDocumentView` (`@openlinker/core/sales-documents`)
 // and `SalesDocumentViewResponseDto`
@@ -430,6 +451,15 @@ export interface OrderRecord {
   /** PII-free elaboration of the block reason (ids and counts only). */
   salesDocumentBlockDetail?: string | null;
   /**
+   * How a fulfilment routing decision narrowed this order's destination fan-out
+   * (#2703/#2704), or `null` when it narrowed nothing — which is every order
+   * until a router is wired. Independent of `health` and of
+   * `salesDocumentBlockReason`; an order routinely carries none, one or both.
+   */
+  destinationRoutingBlockReason?: DestinationRoutingBlockReasonValue | null;
+  /** PII-free elaboration of the routing reason (connection ids and counts only). */
+  destinationRoutingBlockDetail?: string | null;
+  /**
    * Instant OpenLinker last observed the SOURCE amend this order after it was
    * already ingested (#2283) — a line removed, added or re-quantified, or the
    * shipping address edited. `null`/absent = never observed amended. An internal
@@ -662,6 +692,13 @@ export interface OrderHealthSummary {
    */
   salesDocumentBlocked?: number;
   /**
+   * Orders whose routing decision narrowed the destination fan-out in an
+   * ATTENTION-WORTHY way (#2703/#2704). Orthogonal to the five health buckets
+   * and never part of their sum, exactly like `salesDocumentBlocked`. Excludes
+   * the neutral `'routed-to-no-destination'` decision.
+   */
+  destinationRoutingBlocked?: number;
+  /**
    * Orders where the shop and the channel named DIFFERENT tax rates (#2254).
    * Its OWN count, never inside `salesDocumentBlocked` — a conflict does not
    * stop the invoice, so an order can be in conflict and perfectly healthy.
@@ -718,6 +755,11 @@ export interface OrderFilters {
    * `health` — "synced AND invoicing blocked" is the common shape of the problem.
    */
   salesDocumentBlocked?: boolean;
+  /**
+   * #2703/#2704 — its own axis, ANDed with `health` and the others server-side.
+   * `true` keeps only orders carrying an attention-worthy routing narrowing.
+   */
+  destinationRoutingBlocked?: boolean;
   /**
    * Cancellation filter (#2306): `false` excludes cancelled orders, `true` keeps
    * only them, omitted does not filter. The dispatch-risk page passes `false` so

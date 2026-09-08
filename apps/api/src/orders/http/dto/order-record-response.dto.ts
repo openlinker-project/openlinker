@@ -14,6 +14,8 @@ import {
   FulfillmentRollupStateValues,
 } from '@openlinker/core/orders';
 import { OrderRecordStatus, SlaState, FulfillmentRollupState } from '@openlinker/core/orders';
+import { DestinationRoutingBlockReasonValues } from '@openlinker/core/orders';
+import type { DestinationRoutingBlockReason } from '@openlinker/core/orders';
 import {
   OrderLifecyclePhaseValues,
   HoldReasonValues,
@@ -104,6 +106,27 @@ export class OrderRecordResponseDto {
       'recordStatus: an order can be ready and synced while still carrying a block.',
   })
   salesDocumentBlockReason!: SalesDocumentGateBlockReason | null;
+
+  @ApiPropertyOptional({
+    enum: DestinationRoutingBlockReasonValues,
+    nullable: true,
+    description:
+      'How a fulfilment routing decision narrowed this order\'s destination fan-out (#2703/#2704). ' +
+      'null when routing narrowed nothing — which is every order until a router is wired. ' +
+      '"routed-to-no-destination" is a working router making a DECISION and is rendered neutrally; ' +
+      'the other three name a destination the router asked for that OpenLinker could not reach. ' +
+      'Independent of health and of salesDocumentBlockReason.',
+  })
+  destinationRoutingBlockReason!: DestinationRoutingBlockReason | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    description:
+      'PII-free elaboration of destinationRoutingBlockReason — connection ids and counts only, ' +
+      'never buyer data. null when there is no reason or nothing further to say.',
+  })
+  destinationRoutingBlockDetail!: string | null;
 
   @ApiPropertyOptional({
     enum: SalesDocumentUnresolvedReasonValues,

@@ -148,7 +148,8 @@ describe('OrderIngestionService', () => {
       markItemResolutionFailure: jest.fn().mockResolvedValue(undefined),
       markCancelled: jest.fn().mockResolvedValue(undefined),
       markSalesDocumentBlock: jest.fn().mockResolvedValue(undefined),
-      markFulfillmentBlock: jest.fn().mockResolvedValue(undefined),
+      markFulfillmentBlock: jest.fn(),
+      markDestinationRoutingBlock: jest.fn().mockResolvedValue(undefined),
       recordAmendment: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<IOrderRecordService>;
 

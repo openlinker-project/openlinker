@@ -128,6 +128,13 @@ describe('OrderSyncService', () => {
 
     orderRecordService = {
       getOrderRecord: jest.fn().mockResolvedValue(null),
+      // #2703 — `syncOrder` persists the destination-routing block on every
+      // path. The `as unknown as` cast below means a missing method is NOT a
+      // compile error, so omitting this made the call throw `TypeError` into
+      // the service's best-effort catch and inflated the `warn` count that the
+      // #2397 tests assert on: three failures that named the warn count and
+      // said nothing about the real cause.
+      markDestinationRoutingBlock: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<IOrderRecordService>;
 
     orderHoldService = {

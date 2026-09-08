@@ -53,6 +53,11 @@ import {
   netSalesOrderNetEligibleSql,
 } from '../../../domain/types/net-sales-tax-rate.types';
 import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
+import type { DestinationRoutingBlock } from '../../../domain/types/destination-routing-block.types';
+import {
+  DestinationRoutingAttentionReasonValues,
+  isDestinationRoutingBlockReason,
+} from '../../../domain/types/destination-routing-block.types';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import type { FxRestatementRemainingSummary } from '../../../domain/types/order-fx-restatement.types';
 import {
@@ -331,6 +336,18 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       );
     }
 
+    if (filters.destinationRoutingBlocked !== undefined) {
+      // #2703 / #2704 — its own axis, ANDed with the others exactly like
+      // `salesDocumentBlocked`. An order whose routing named an unreachable
+      // destination is usually ALSO `needs_attention` (its sync failed), so
+      // folding this into `health` would hide one behind the other.
+      qb.andWhere(
+        filters.destinationRoutingBlocked
+          ? OrderRecordRepository.IS_DESTINATION_ROUTING_BLOCKED
+          : `NOT (${OrderRecordRepository.IS_DESTINATION_ROUTING_BLOCKED})`
+      );
+    }
+
     if (filters.lifecyclePhase) {
       // #2309 — the derived-phase axis, deliberately ANDed with `health` rather
       // than folded into it (ADR-059, the #2100 trap): a held order is usually
@@ -489,6 +506,13 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         `COUNT(*) FILTER (WHERE ${OrderRecordRepository.HAS_OMS_ATTENTION})`,
         'oms_attention'
       )
+      // #2703 / #2704 — its own count, never inside any health bucket. Reads the
+      // SAME predicate the filter arm does, so the chip's number and the rows it
+      // reveals can never disagree (#2100's badge/count/filter rule).
+      .addSelect(
+        `COUNT(*) FILTER (WHERE ${OrderRecordRepository.IS_DESTINATION_ROUTING_BLOCKED})`,
+        'destination_routing_blocked'
+      )
       .addSelect(
         `MIN(rec."salesDocumentBlockedAt") FILTER (WHERE ${OrderRecordRepository.IS_SALES_DOCUMENT_BLOCKED})`,
         'sales_document_blocked_oldest_at'
@@ -514,6 +538,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       sales_document_blocked: string;
       tax_rate_conflict: string;
       oms_attention: string;
+      destination_routing_blocked: string;
       sales_document_blocked_oldest_at: Date | null;
       sales_document_issued_on_request: string;
     }>();
@@ -528,6 +553,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       salesDocumentBlocked: Number(raw?.sales_document_blocked ?? 0),
       taxRateConflict: Number(raw?.tax_rate_conflict ?? 0),
       omsAttention: Number(raw?.oms_attention ?? 0),
+      destinationRoutingBlocked: Number(raw?.destination_routing_blocked ?? 0),
       salesDocumentBlockedOldestAt: raw?.sales_document_blocked_oldest_at ?? null,
       salesDocumentIssuedOnRequest: Number(raw?.sales_document_issued_on_request ?? 0),
     };
@@ -1397,6 +1423,30 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   ).join(', ')})`;
 
   /**
+   * Did a routing decision narrow this order's fan-out in a way that needs
+   * attention (#2703 / #2704)?
+   *
+   * An explicit IN-list over the COUNTED subset, never `IS NOT NULL` — the
+   * vocabulary's `'routed-to-no-destination'` is a working router making a
+   * decision, and counting it would put a permanent red badge on an install that
+   * legitimately routes some orders nowhere (the #2100 `trigger-model-manual`
+   * trap). It follows that a reason written by a newer release and rolled back is
+   * not counted either, since it cannot match the list.
+   *
+   * `COALESCE(…, '')` is NOT cosmetic — it is what makes the NEGATION total.
+   * `NULL IN (…)` evaluates to NULL, so `NOT (NULL IN (…))` is NULL and `WHERE`
+   * DROPS the row: without it `destinationRoutingBlocked=false` would return
+   * ZERO orders on an install where nothing is blocked, instead of all of them.
+   * The empty string is never a valid reason, so both directions stay two-valued.
+   *
+   * A `static readonly` constant rather than a per-call build, which is also what
+   * keeps `countMany` pure for `order-record.repository.predicate-parity.spec.ts`.
+   */
+  private static readonly IS_DESTINATION_ROUTING_BLOCKED = `COALESCE(rec."destinationRoutingBlockReason", '') IN (${DestinationRoutingAttentionReasonValues.map(
+    (reason) => `'${reason}'`
+  ).join(', ')})`;
+
+  /**
    * Does this order carry at least one COUNTED OMS inert state (#2352)?
    *
    * Like {@link IS_SALES_DOCUMENT_BLOCKED} this is an explicit list of
@@ -2097,6 +2147,36 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   }
 
   /**
+   * #2703 / #2704 — the destination-routing block, copying
+   * {@link updateFulfillmentBlock} exactly.
+   *
+   * The no-op guard lives HERE, in the `WHERE`, rather than in the caller.
+   * `IS DISTINCT FROM` is NULL-safe, so it is exact for the clear case too, and
+   * it keeps the `@UpdateDateColumn` bump off the overwhelmingly common
+   * `null -> null` path — which is EVERY order on every install today, since no
+   * production caller populates `destinationConnectionIds`. `updatedAt` is a live
+   * filter axis (`FulfillmentStatusSyncService` scans `updatedSince`), so bumping
+   * it on every order for a column that did not change would be a real cost.
+   *
+   * No-op (no throw) when the order row doesn't exist.
+   */
+  async updateDestinationRoutingBlock(
+    internalOrderId: string,
+    block: DestinationRoutingBlock | null
+  ): Promise<void> {
+    await this.repository.query(
+      `UPDATE "order_records"
+          SET "destinationRoutingBlockReason" = $1,
+              "destinationRoutingBlockDetail" = $2,
+              "updatedAt" = now()
+        WHERE "internalOrderId" = $3
+          AND ("destinationRoutingBlockReason" IS DISTINCT FROM $1
+            OR "destinationRoutingBlockDetail" IS DISTINCT FROM $2)`,
+      [block?.reason ?? null, block?.detail ?? null, internalOrderId]
+    );
+  }
+
+  /**
    * How many orders carry at least one COUNTED OMS inert state (#2352)?
    *
    * The `Needs attention (N)` count's order half. Deliberately a COUNT of ORDERS
@@ -2503,6 +2583,10 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // columns (#2396 - sole writer `updateFulfillmentBlock`; `persistOrder` runs
     // BEFORE the intercept on every ingestion, so a round-trip would null the
     // reason the previous transition wrote and then re-add none),
+    // the two `destinationRoutingBlock*` columns (#2703/#2704 - sole writer
+    // `updateDestinationRoutingBlock`, called by `OrderSyncService` AFTER
+    // `persistOrder` on every ingestion, so a round-trip would null the reason
+    // that run just wrote and then re-add none),
     // `omsAttention` (#2352 -
     // sole writer `updateOmsAttention`, whose whole contract is that it edits
     // ONE producer's entry; a round-trip here would drop every producer's entry
@@ -2938,7 +3022,14 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       readAuthorityAttentionEntries(entity.omsAttention),
       entity.buyerTaxId ?? null,
       entity.shippingAddressHash ?? null,
-      (entity.totalTaxTreatment as PriceTaxTreatment | null) ?? null
+      (entity.totalTaxTreatment as PriceTaxTreatment | null) ?? null,
+      // #2703 / #2704 - coerced, never cast: the column is plain `text` with no
+      // CHECK, so a reason written by a newer release and then rolled back must
+      // read as "nothing recognised" rather than widening the union at runtime.
+      isDestinationRoutingBlockReason(entity.destinationRoutingBlockReason)
+        ? entity.destinationRoutingBlockReason
+        : null,
+      entity.destinationRoutingBlockDetail ?? null
     );
   }
 
@@ -2981,6 +3072,11 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    *   ingestion, so round-tripping them here would null the columns and then
    *   immediately re-set them - a visible flicker for any concurrent read, and
    *   a stomp against a reason a peer transition just wrote.
+   * - The two `destinationRoutingBlock*` columns (#2703/#2704) - sole writer
+   *   `updateDestinationRoutingBlock`. Same hazard as the `salesDocument*` and
+   *   `fulfillmentBlock*` pairs above: `OrderSyncService` writes the reason
+   *   AFTER `persistOrder` on every ingestion, so round-tripping would null
+   *   what that same run just decided.
    * - `omsAttention` (#2352) - sole writer `updateOmsAttention`. It carries the
    *   sharpest version of the same hazard: the column is an ARRAY shared by
    *   three unrelated producers, and its writer's entire contract is that it

@@ -23,6 +23,7 @@ import type { OrderSlaSummary } from '../types/order-sla.types';
 import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
 import type { SyncAttempt } from '../types/order-sync.types';
 import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
+import type { DestinationRoutingBlock } from '../types/destination-routing-block.types';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import type {
   AuthorityAttentionOutcome,
@@ -531,6 +532,28 @@ export interface OrderRecordRepositoryPort {
   updateFulfillmentBlock(
     internalOrderId: string,
     block: FulfillmentBlock | null
+  ): Promise<void>;
+
+  /**
+   * Persist how a routing decision narrowed this order's destination fan-out
+   * (#2703 / #2704), or clear it.
+   *
+   * Level-triggered like {@link updateFulfillmentBlock}: `OrderSyncService`
+   * re-decides on every run and writes the answer INCLUDING `null`, which is the
+   * only thing that clears a stale reason. Outside the ingestion write set, so a
+   * re-poll cannot reset it.
+   *
+   * Deliberately SEPARATE from {@link updateFulfillmentBlock} rather than folded
+   * into it: that column records the intercept HOLDING the order so
+   * `OrderSyncService` was never called, this one records what happened INSIDE
+   * it. They are mutually exclusive per run, and `OrderIngestionService` clears
+   * this one on the held branch to keep them so.
+   *
+   * No-op (no throw) when the order row doesn't exist.
+   */
+  updateDestinationRoutingBlock(
+    internalOrderId: string,
+    block: DestinationRoutingBlock | null
   ): Promise<void>;
 
   /**
