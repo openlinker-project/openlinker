@@ -69,6 +69,14 @@ describe('Invoicing list (integration)', () => {
 
   beforeAll(async () => {
     harness = await getTestHarness();
+    // Reset BEFORE the first test, not only after each one. The first case
+    // below asserts a GLOBAL `total: 0`, so with an `afterEach`-only reset it
+    // inherits whatever the previous SUITE left in `invoice_records` and is
+    // silently order-dependent — and jest's suite order is not stable, since
+    // it derives from cached per-file timings. It surfaced when #2300 changed
+    // api boot time (no drain) and shrank this file's sibling, reshuffling the
+    // run: two leftover `ol_order_*` rows made this assert `total: 2`.
+    await resetTestHarness();
   });
 
   afterEach(async () => {

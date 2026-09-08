@@ -10,8 +10,9 @@
  * can always pull), jobs run CONCURRENTLY under per-lane slot accounting
  * keyed by `scope` (= connectionId today, `resolveJobScope`), and a lane's
  * membership comes from the handler registry where lanes are declared at
- * registration. Cap values are env-overridable illustrative defaults until
- * #1134 supplies measurements (ADR-050 decision 6).
+ * registration. Cap values are env-overridable and live in one place,
+ * {@link LANE_CAP_DEFAULTS}; all but `bulk` are still illustrative pending
+ * #1134's measurements (ADR-050 decision 6).
  *
  * @module apps/worker/src/sync
  */
@@ -41,6 +42,56 @@ import { ConnectionPort, CONNECTION_PORT_TOKEN } from '@openlinker/core/identifi
 import { SyncJobHandlerRegistry } from './handlers/sync-job-handler.registry';
 import { Logger } from '@openlinker/shared/logging';
 import { runWithPriority, RateLimitTimeoutError } from '@openlinker/shared/rate-limit';
+
+/** A single lane's concurrency bounds. `Readonly` in typed code; frozen at runtime below. */
+type LaneCap = Readonly<{ total: number; perScope: number }>;
+type LaneCaps = Readonly<Record<SyncJobLane, LaneCap>>;
+
+/**
+ * Per-lane concurrency defaults (ADR-050 decisions 2/6) — the ONE definition,
+ * read by both the `laneCaps` field initializer and `resolveLaneCaps()`'s env
+ * fallbacks. Two copies is not a style problem here: #2609 raised `fan-out` in
+ * the resolver and left the field declaring the pre-#2609 1/1, so the first
+ * numbers a reader met contradicted both the code below them and
+ * `docs/architecture-overview.md`. `total` bounds concurrent jobs in the lane;
+ * `perScope` bounds them per isolation scope (`resolveJobScope`, = connectionId
+ * today).
+ *
+ * `realtime`, `fiscal` and `fan-out` are still ILLUSTRATIVE — treat any number
+ * there as a guess until #1134's per-lane metrics exist. #2609's fan-out raise
+ * came from a backlog observation and needed no per-destination measurement the
+ * way `bulk` did, so it is reasoned rather than measured under decision 6.
+ *
+ * `bulk` is the first lane with a measurement behind it (#2594, ADR-050
+ * amendment). An interleaved A/B run against a real PrestaShop catalogue held
+ * the shop's p95 response time at a 0.995 ratio while ~12 per-product child
+ * jobs ran concurrently on one connection, taking a full sweep from ~26.5 h to
+ * ~2.4 h. `perScope` is set below that measured ceiling because ADR-050
+ * decision 4 deliberately ships no round-robin fairness between scopes: at
+ * `perScope === total` one connection's catalogue cycle could hold the whole
+ * lane and a second connection's sweep would make no progress at all. The
+ * measurement covers the PrestaShop catalogue path only; a slower destination
+ * is lowered with OL_LANE_BULK_SCOPE_CAP.
+ *
+ * `fan-out` was raised from 1/1 in #2609. A cap of 1 was sized for the lane's
+ * cron-paced members, one tick at a time. `inventory.propagateToMarketplaces`
+ * is event-paced instead - one job per changed stock row - so a cap of 1
+ * serialised every stock write in the installation, and the cron members were
+ * serialised across connections too. The work here is database reads plus child
+ * enqueues, so the cap bounds queue fan-out rather than outbound HTTP.
+ *
+ * Frozen — inner objects included — because `laneCaps` ALIASES this constant
+ * rather than copying it, so a single `as any` write (the shape the runner spec
+ * already uses to read the field) would otherwise corrupt the default for the
+ * whole process. The `Readonly` type covers typed code; the freeze is what makes
+ * the guarantee structural (#2229's reported-===-enforced posture).
+ */
+const LANE_CAP_DEFAULTS: LaneCaps = Object.freeze({
+  realtime: Object.freeze({ total: 4, perScope: 2 }),
+  bulk: Object.freeze({ total: 12, perScope: 8 }),
+  fiscal: Object.freeze({ total: 2, perScope: 1 }),
+  'fan-out': Object.freeze({ total: 8, perScope: 4 }),
+});
 
 @Injectable()
 export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
@@ -81,31 +132,12 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
   private runnerLoopPromise: Promise<void> | null = null;
 
   /**
-   * Per-lane caps (ADR-050 decisions 2/6). Resolved once at startup from
-   * env-overridable defaults. `total` bounds concurrent jobs in the lane;
-   * `perScope` bounds them per isolation scope (`resolveJobScope`, =
-   * connectionId today).
-   *
-   * `realtime`, `fiscal` and `fan-out` are still ILLUSTRATIVE — treat any
-   * number there as a guess until #1134's per-lane metrics exist.
-   *
-   * `bulk` is the first lane with a measurement behind it (#2594, ADR-050
-   * amendment). An interleaved A/B run against a real PrestaShop catalogue
-   * held the shop's p95 response time at a 0.995 ratio while ~12 per-product
-   * child jobs ran concurrently on one connection, taking a full sweep from
-   * ~26.5 h to ~2.4 h. `perScope` is set below that measured ceiling because
-   * ADR-050 decision 4 deliberately ships no round-robin fairness between
-   * scopes: at `perScope === total` one connection's catalogue cycle could
-   * hold the whole lane and a second connection's sweep would make no
-   * progress at all. The measurement covers the PrestaShop catalogue path
-   * only; a slower destination is lowered with OL_LANE_BULK_SCOPE_CAP.
+   * Per-lane caps, replaced at `onModuleInit` by {@link resolveLaneCaps}. It
+   * starts at {@link LANE_CAP_DEFAULTS} — the same values that resolver falls
+   * back to — so every lane still has a defined cap if init never runs (a
+   * disabled runner, a unit test constructing the class directly).
    */
-  private laneCaps: Record<SyncJobLane, { total: number; perScope: number }> = {
-    realtime: { total: 4, perScope: 2 },
-    bulk: { total: 12, perScope: 8 },
-    fiscal: { total: 2, perScope: 1 },
-    'fan-out': { total: 1, perScope: 1 },
-  };
+  private laneCaps: LaneCaps = LANE_CAP_DEFAULTS;
 
   /** In-flight job counts per lane, keyed by scope. */
   private readonly inFlightByLane = new Map<SyncJobLane, Map<string, number>>(
@@ -149,7 +181,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
    * or non-positive value is IGNORED rather than honoured (a zero cap would
    * silently stall a whole lane — the #2229 clamp posture).
    */
-  private resolveLaneCaps(): Record<SyncJobLane, { total: number; perScope: number }> {
+  private resolveLaneCaps(): LaneCaps {
     const read = (envVar: string, fallback: number): number => {
       const raw = this.configService.get<string>(envVar);
       if (raw === undefined || raw === null || raw === '') {
@@ -163,30 +195,24 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
       return Math.floor(parsed);
     };
 
+    // Every fallback comes from LANE_CAP_DEFAULTS — see there for why each
+    // number is what it is, and never re-state one here.
     return {
       realtime: {
-        total: read('OL_LANE_REALTIME_CAP', 4),
-        perScope: read('OL_LANE_REALTIME_SCOPE_CAP', 2),
+        total: read('OL_LANE_REALTIME_CAP', LANE_CAP_DEFAULTS.realtime.total),
+        perScope: read('OL_LANE_REALTIME_SCOPE_CAP', LANE_CAP_DEFAULTS.realtime.perScope),
       },
       bulk: {
-        total: read('OL_LANE_BULK_CAP', 12),
-        perScope: read('OL_LANE_BULK_SCOPE_CAP', 8),
+        total: read('OL_LANE_BULK_CAP', LANE_CAP_DEFAULTS.bulk.total),
+        perScope: read('OL_LANE_BULK_SCOPE_CAP', LANE_CAP_DEFAULTS.bulk.perScope),
       },
       fiscal: {
-        total: read('OL_LANE_FISCAL_CAP', 2),
-        perScope: read('OL_LANE_FISCAL_SCOPE_CAP', 1),
+        total: read('OL_LANE_FISCAL_CAP', LANE_CAP_DEFAULTS.fiscal.total),
+        perScope: read('OL_LANE_FISCAL_SCOPE_CAP', LANE_CAP_DEFAULTS.fiscal.perScope),
       },
-      // Raised from 1/1 in #2609. A cap of 1 was sized for the lane's
-      // cron-paced members, one tick at a time. `inventory.propagateToMarketplaces`
-      // is event-paced instead - one job per changed stock row - so a cap of 1
-      // serialised every stock write in the installation, and the cron members
-      // were serialised across connections too. The work here is database reads
-      // plus child enqueues, so the cap bounds queue fan-out rather than
-      // outbound HTTP. perScope stays below total because ADR-050 decision 4
-      // ships no round-robin fairness between scopes.
       'fan-out': {
-        total: read('OL_LANE_FANOUT_CAP', 8),
-        perScope: read('OL_LANE_FANOUT_SCOPE_CAP', 4),
+        total: read('OL_LANE_FANOUT_CAP', LANE_CAP_DEFAULTS['fan-out'].total),
+        perScope: read('OL_LANE_FANOUT_SCOPE_CAP', LANE_CAP_DEFAULTS['fan-out'].perScope),
       },
     };
   }
