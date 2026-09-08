@@ -2141,6 +2141,12 @@ class OpenLinker extends CarrierModule
      * mod_php or CLI) — those installs keep delivering exclusively via the
      * cron controller, unchanged.
      *
+     * Also never runs when `classes/WebhookSender.php` cannot be loaded. That
+     * is logged rather than fatal: this method is called from the
+     * order-validation and stock hooks, so it must not be able to abort the
+     * shop's own checkout (#2962). Same outcome as above — the cron controller
+     * delivers.
+     *
      * @return void
      */
     public static function scheduleFastPathDrain()
@@ -2150,11 +2156,51 @@ class OpenLinker extends CarrierModule
         }
         self::$fastPathDrainScheduled = true;
 
-        if (!WebhookSender::fastPathAvailable()) {
+        $classesDir = dirname(__FILE__) . '/classes/';
+
+        // Loaded here rather than inside the closure for two reasons: the
+        // availability probe below is a static call on this class, and the
+        // shutdown handler's own catch block reports through
+        // WebhookSender::getErrorMessage() - a require_once that failed inside
+        // that try would take the error reporting down with it.
+        //
+        // file_exists-guarded, and re-checked afterwards, because this runs on
+        // the order-validation and stock hooks: require_once on an absent file
+        // is a fatal no catch block can intercept, so a module deployed
+        // without this file would abort the shop's own checkout. The fast path
+        // is an optimisation - the cron controller still owns these outbox
+        // rows - so failing to load the sender degrades to the ordinary cron
+        // delivery, exactly as a host without fastcgi_finish_request does.
+        // Same shape as OutboxRepository::worstCaseDeliverySeconds().
+        //
+        // This covers an ABSENT file, not a corrupt one: a truncated
+        // WebhookSender.php is a parse error, and no guard here can survive
+        // that. It is the reachable half, not the whole hazard.
+        if (!class_exists('WebhookSender')) {
+            $senderPath = $classesDir . 'WebhookSender.php';
+            if (file_exists($senderPath)) {
+                require_once($senderPath);
+            }
+        }
+
+        if (!class_exists('WebhookSender')) {
+            // Never silent: without this the fast path would stay off forever
+            // with nothing to find. Bounded by the latch to once per request.
+            PrestaShopLogger::addLog(
+                'OpenLinker: response-flush fast path disabled - classes/WebhookSender.php could not be loaded. '
+                    . 'Outbox events will be delivered by the cron controller only.',
+                2,
+                null,
+                'Module',
+                null
+            );
+
             return;
         }
 
-        $classesDir = dirname(__FILE__) . '/classes/';
+        if (!WebhookSender::fastPathAvailable()) {
+            return;
+        }
 
         register_shutdown_function(function () use ($classesDir) {
             // Flush and close the buyer's connection now. Everything below
@@ -2169,9 +2215,11 @@ class OpenLinker extends CarrierModule
                 if (!class_exists('OutboxRepository')) {
                     require_once($classesDir . 'OutboxRepository.php');
                 }
-                if (!class_exists('WebhookSender')) {
-                    require_once($classesDir . 'WebhookSender.php');
-                }
+                // WebhookSender is deliberately absent from this list: the
+                // guard above returns before scheduling unless the class
+                // loaded, so it is present here by construction - which is
+                // what makes the catch block's WebhookSender::getErrorMessage()
+                // safe to call from inside a shutdown handler.
                 if (!class_exists('OutboxDrainer')) {
                     require_once($classesDir . 'OutboxDrainer.php');
                 }
