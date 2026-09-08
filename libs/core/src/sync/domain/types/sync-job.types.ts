@@ -198,6 +198,13 @@ export const JobTypeValues = [
   // per-scope lane accounting for the whole installation.
   'fulfillment.work.route',
 
+  // ADR-054's timeout-as-rejection sweep (#2712). Reaps a `FulfillmentWork`
+  // left in `submitted` by a holder that never answered, through the SAME
+  // guarded transition the handshake uses. Global scope under the nil-UUID
+  // system connection id: the candidate index carries no connection axis and a
+  // stalled dispatch is stalled whoever holds it.
+  'fulfillment.work.timeoutSweep',
+
   // Data Coverage currency-restatement driver (#2468, epic #2452 Phase 5).
   // Carries the run's scope + cursor in its payload; the connection it is
   // filed under is the scope's own connection when the operator narrowed to

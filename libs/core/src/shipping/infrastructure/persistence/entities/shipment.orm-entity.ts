@@ -23,6 +23,7 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   Index,
+  Check,
 } from 'typeorm';
 
 import { ShipmentDirection } from '../../../domain/types/shipment-direction.types';
@@ -77,6 +78,26 @@ import type { DeliveryIntent } from '../../../domain/types/delivery-intent.types
 // nothing and has to be rebuilt as a full one — while permanently refusing to
 // serve the `IS NULL` scan that finding-the-unlinked-rows needs.
 @Index('IDX_shipments_fulfillmentWorkId', ['fulfillmentWorkId'])
+// Waybill-relay failure lookup (#2073). PARTIAL, and this is the one place on
+// this entity where the mutable-predicate warning on
+// `IDX_shipments_reservation_consume_pending` above has to be answered rather
+// than inherited: `waybillRelayFailureCount` genuinely does move, so rows DO
+// enter and leave this index. Two things make that acceptable where the same
+// shape over `status` would not be. It moves only on a relay OUTCOME - a
+// failure or the success that clears it - which is rare, rather than on every
+// ordinary lifecycle write; and every row is born outside the index (the column
+// defaults to 0), so the index is near-empty in steady state and SHRINKS as
+// relays succeed. A full index would instead be almost entirely dead rows.
+// `lastFailedAt` is the indexed column so the operator-facing read can order
+// the stuck set by recency without a sort.
+@Index('IDX_shipments_waybill_relay_failing', ['waybillRelayLastFailedAt'], {
+  where: '"waybillRelayFailureCount" > 0',
+})
+// Declared HERE as well as in the migration, under the identical name, because
+// the integration harness builds schema by `synchronize`: a constraint present
+// only in the migration holds in production and silently not in tests, and an
+// anonymous `@Check` carries a hash name there rather than this one.
+@Check('CHK_shipments_waybill_relay_failure_count', '"waybillRelayFailureCount" >= 0')
 export class ShipmentOrmEntity {
   @PrimaryColumn({ type: 'text' })
   id!: string;
@@ -169,6 +190,47 @@ export class ShipmentOrmEntity {
   // backfill.
   @Column({ type: 'text', nullable: true })
   fulfillmentWorkId!: string | null;
+
+  // Consecutive failed waybill-relay attempts (#2073). Incremented by
+  // `releaseWaybillRelay` in the SAME statement that releases the claim - so a
+  // release without a count is not expressible - and reset by
+  // `clearWaybillRelayFailures` on a successful relay.
+  //
+  // The `default` is declared on the DECORATOR as well as in the migration, and
+  // that is load-bearing rather than belt-and-braces: a `synchronize`-built
+  // schema (the integration harness) takes its default from here, never from
+  // the migration (`docs/lessons.md`, out-of-band-UPDATE entry, trap 2). The
+  // insert path additionally assigns 0 explicitly in `buildOrmEntity`, so it
+  // does not depend on either default being present.
+  //
+  // No counterpart exists on `UpdateShipmentInput`, so the ordinary patch path
+  // structurally cannot stomp these five columns - `update()` writes only the
+  // fields that patch carries.
+  @Column({ type: 'int', default: 0 })
+  waybillRelayFailureCount!: number;
+
+  // When the current run of failures began, and the most recent one. Plain
+  // `timestamp` - NOT `timestamptz` - matching every other timestamp on this
+  // table including both claim markers above. The repo is mixed on this, so the
+  // rule is table consistency, and the migration must agree column for column.
+  @Column({ type: 'timestamp', nullable: true })
+  waybillRelayFirstFailedAt!: Date | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  waybillRelayLastFailedAt!: Date | null;
+
+  // A `WaybillRelayFailureReason` code, coerced on read. Deliberately a closed
+  // code and NEVER the adapter's free-text detail: that detail can carry a
+  // host, a port or a credential fragment, it is already logged, and this
+  // column reaches a browser - a wider audience than a server log.
+  @Column({ type: 'text', nullable: true })
+  waybillRelayLastFailureReason!: string | null;
+
+  // The first participant in the failing set, for DISPLAY only. No gate reads
+  // it (#2100), and it stays `null` for a `'threw'` failure, which happens
+  // before any participant is known. Per-target retry state is #861.
+  @Column({ type: 'uuid', nullable: true })
+  waybillRelayLastFailureConnectionId!: string | null;
 
   @CreateDateColumn()
   createdAt!: Date;

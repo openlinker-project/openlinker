@@ -31,6 +31,10 @@ import type {
 } from '../../domain/types/order-record.types';
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
 import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
+import type {
+  AuthorityAttentionOutcome,
+  AuthorityAttentionProducer,
+} from '@openlinker/core/fulfillment-authority';
 import type { DestinationRoutingBlock } from '../../domain/types/destination-routing-block.types';
 import { IAutomationTriggerEmissionService } from '@openlinker/core/automation';
 import { AUTOMATION_TRIGGER_EMISSION_SERVICE_TOKEN } from '@openlinker/core/automation';
@@ -885,6 +889,22 @@ export class OrderRecordService implements IOrderRecordService {
     block: DestinationRoutingBlock | null
   ): Promise<void> {
     await this.repository.updateDestinationRoutingBlock(internalOrderId, block);
+  }
+
+  /**
+   * Set or clear one producer's OMS inert state (#2352, first production writer
+   * #2712). A pass-through to the repository's producer-scoped in-Postgres
+   * read-modify-write: the `indeterminate` no-op, the producer-scoped
+   * replacement and the `since` carry-forward all live in ONE statement there,
+   * and re-deciding any of them here would be a second answer to the same
+   * question.
+   */
+  async markOmsAttention<P extends AuthorityAttentionProducer>(
+    internalOrderId: string,
+    producer: P,
+    outcome: AuthorityAttentionOutcome<P>
+  ): Promise<void> {
+    await this.repository.updateOmsAttention(internalOrderId, producer, outcome);
   }
 
   /**

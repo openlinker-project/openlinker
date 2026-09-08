@@ -54,6 +54,18 @@ export interface ShipmentFilters {
   createdFrom?: Date;
   /** Inclusive upper bound on `createdAt`. */
   createdTo?: Date;
+  /**
+   * Inclusive lower bound on `waybillRelayFailureCount` (#2073) — the
+   * needs-attention bucket for a relay that keeps failing.
+   *
+   * A NUMBER, deliberately, and never a `waybillRelayStuck` boolean. Which
+   * number means "stuck" is policy that lives in exactly one place
+   * (`resolveWaybillRelayAlertThreshold`), resolved once at the HTTP boundary
+   * and passed down; the repository has no business reading an environment
+   * variable, and a boolean here would give the threshold a second reader that
+   * could disagree with the one the operator's badge was rendered from.
+   */
+  waybillRelayFailureCountAtLeast?: number;
 }
 
 export interface ShipmentPagination {
