@@ -516,10 +516,19 @@ FAKE_PG[count]=0
 # --- the destination predicate (#2840) -------------------------------------
 # Asserted in BOTH directions, and on the emitted SQL rather than on a
 # return value, because a fake answering 0 passes whatever the predicate says.
-# Three windows shipped a `failed` count that EXCEEDED the population it
-# described (2967 vs 2961 twice, 1798 vs 1792 once) because the arm carried no
-# destination predicate while its message said "the declared destination".
-# Scoped, arm A's real answer was 1 - the stranded order its report is about.
+# CORRECTED (#3004). This comment used to say three windows shipped a `failed`
+# count that EXCEEDED the population it described (2967 vs 2961, 1798 vs 1792).
+# That does not reproduce: re-measured against the same persisted rows the arms
+# read 650 of 652, 2967 of 2967 and 1792 of 1792 - equal to their source's
+# ingested count, never above it. The earlier figures compared the guard
+# against a differently-measured population, and the argument is withdrawn.
+# The true statement needs no arithmetic impossibility and is stronger: scoped
+# to the declared destination those same windows answer 1, 2 and 0. A guard
+# whose whole purpose is to isolate ONE class of failure was flagging
+# essentially the entire ingested population, so its output carried no
+# information at all - a signal that fires on everything is indistinguishable
+# from one that fires on nothing. Arm A's true 1 is the stranded order its
+# report is about, and at 650 it was invisible.
 # A guard that cannot refuse is worse than the unfiltered one, so the FIRE
 # direction is asserted first.
 # Captured to a FILE, not a variable: the guard calls pg_sql inside a command
@@ -582,9 +591,56 @@ case "$PG_CAPTURED" in
   *) assert_eq "unscoped guard emits no destination predicate" "absent" "absent" ;;
 esac
 
+# 6. The refusal NAMES the destination, not just its role (#3004). A stand
+#    carries five connections and four of them can also fail, so "the declared
+#    destination" alone sends its reader back to the scenario source.
+FAKE_PG[count]=1
+assert_contains "the refusal names the destination connection id" \
+  "$(post_guard_destination_creates '2026-01-01T00:00:00Z' 'dest-1')" "dest-1"
+
+# 7. An UNREADABLE count must DISCARD, never certify (#3004). pg_sql folds
+#    stderr into stdout and ends `|| true`, so a database failure is the VALUE.
+#    `[ "$x" -gt 0 ]` on a word is "integer expression expected" - under
+#    `set -e` that aborts the caller, and without it falls through to `ok` and
+#    certifies a window nobody measured. Asserted through the real code path by
+#    making pg_sql answer what a broken pg_sql answers.
+eval "$_pg_sql_real"
+_pg_sql_scoped="$(declare -f pg_sql)"
+pg_sql() { printf 'ERROR:  relation "order_records" does not exist\n'; }
+_unreadable="$(post_guard_destination_creates '2026-01-01T00:00:00Z' 'dest-1')"
+assert_contains "an unreadable count DISCARDS rather than certifying" \
+  "$_unreadable" "DISCARDED"
+assert_contains "and says the window was not measured, not that it passed" \
+  "$_unreadable" "could not be read"
+eval "$_pg_sql_scoped"
+
 eval "$_pg_sql_real"
 rm -f "$PG_CAPTURE_FILE"
 FAKE_PG[count]=0
+
+# --- as_count (#3004) ------------------------------------------------------
+# The coercion the guard above and F10's ground-truth detector both depend on.
+# Both failure modes are asserted as ARITHMETIC, because "it would have lied"
+# and "it would have died" are the claims, not the coercion.
+echo "--- as_count (#3004) ---"
+assert_eq "a plain count passes through" "12" "$(as_count 12)"
+assert_eq "zero is an ANSWER and must survive" "0" "$(as_count 0)"
+assert_eq "an empty read is not an answer" "" "$(as_count '')"
+assert_eq "a MySQL error string is not an answer" "" "$(as_count 'ERROR1054at')"
+assert_eq "a negative is not a count" "" "$(as_count '-1')"
+assert_eq "a decimal is not a count" "" "$(as_count '1.5')"
+assert_eq "a signed positive is not a count" "" "$(as_count '+3')"
+assert_eq "an embedded space is not a count" "" "$(as_count '1 2')"
+# Failure mode 1 - THE FABRICATED FINDING. present="" and claimed=3 made
+# claimed_missing 3: F10's headline silent-loss number, red, for a hiccup.
+_claimed=3; _present="$(as_count '')"
+assert_eq "an unreadable shop read is refused, not turned into 3 missing orders" \
+  "unreadable" "$( [ -z "$_present" ] && echo unreadable || echo "$(( _claimed - _present ))" )"
+# Failure mode 2 - THE MID-WINDOW ABORT.
+assert_dies "arithmetic on an unguarded error string aborts" \
+  bash -c 'set -euo pipefail; present="ERROR1054at"; echo $(( 3 - present ))'
+assert_ok "the guarded form survives the same input" \
+  bash -c 'set -euo pipefail; p="$(printf "")"; [ -z "$p" ] && exit 0; echo $(( 3 - p ))'
 
 echo "--- reset_between_repeats SCAN loop (#2847) ---"
 # This function shipped with NO CALLER in any scenario, so its SCAN loop had

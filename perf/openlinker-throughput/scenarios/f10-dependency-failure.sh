@@ -256,7 +256,7 @@ QUANTITY_JOBS="${QUANTITY_JOBS:-12}"
 # is built - so what the manifest records and what the injector was told
 # cannot come from two different expressions.
 # ---------------------------------------------------------------------------
-ALL_FAULTS="baseline D1 D2a D2b D3 D4 M1 M2 M2t M3 I1 I2 I3"
+ALL_FAULTS="baseline D1 D2a D2b D3 D4 M1 M2 M2t M3 M4 I1 I2 I3"
 
 fault_class() {
   case "$1" in
@@ -270,6 +270,7 @@ fault_class() {
     M2)  printf 'marketplace: the source returns a malformed payload' ;;
     M2t) printf 'marketplace: the source returns a truncated payload' ;;
     M3)  printf 'marketplace: the source rejects the offer-quantity write' ;;
+    M4)  printf 'marketplace: the source returns 503 WITH Retry-After during hydration' ;;
     I1)  printf 'infrastructure: Redis becomes slow (a blocked client, not an outage)' ;;
     I2)  printf 'infrastructure: Redis drops entirely mid-window' ;;
     I3)  printf 'infrastructure: the worker is killed mid-job' ;;
@@ -721,6 +722,31 @@ install_fault() {
       jq -n --argjson r "$(stub_fault_set '{"mode":"reject-quantity","endpoints":["quantity"]}')" \
         '{injected:true, injector:"allegro-stub", rule:$r.fault}'
       ;;
+    M4)
+      # THE MARKETPLACE-SIDE HTTP-ERROR-RESPONSE SHAPE, and the reason this id
+      # exists (#3004). Before it, every marketplace window was either a
+      # connection timeout (M1) or a 2xx that was nonetheless wrong (M2
+      # unparseable, M2t truncated, M3 a business rejection). None of them is
+      # an error STATUS, and the retry classifier reads a status - so "the
+      # source failed" was measured in one shape only while the destination
+      # side had both (D1/D2 error responses, D3 hang). A matrix that covers
+      # one shape on one side and calls the axis covered is the merge this
+      # scenario exists to avoid.
+      #
+      # `checkout` only, for M1's reason: a tenant-wide fault stops the FEED
+      # being read too, so nothing is ever hydrated and the window measures
+      # nothing about hydration.
+      #
+      # Fraction 0.5 rather than 1: a source that fails everything is an
+      # outage, and the interesting question is the PARTIAL order - the same
+      # reasoning § 5 records for D1/D2a/D2b/D3.
+      #
+      # NOTE the stub always emits Retry-After on 429/503 and offers no way to
+      # suppress it, so the with/without-header comparison D2a/D2b makes is a
+      # PrestaShop-side experiment only and is not reproducible here.
+      jq -n --argjson r "$(stub_fault_set '{"mode":"503","endpoints":["checkout"],"fraction":0.5,"retryAfterSeconds":5}')" \
+        '{injected:true, injector:"allegro-stub", rule:$r.fault}'
+      ;;
     I1)
       # CLIENT PAUSE, not DEBUG SLEEP: DEBUG is disabled by default on Redis
       # 7+ (verified refused on this stand). PAUSE stalls command processing
@@ -936,13 +962,25 @@ enqueue_quantity_jobs() {
 
 # ps_max_ids - PrestaShop's own highest order and cart ids, so the window's
 # creates can be counted without trusting a clock shared across two engines.
-ps_max_order_id() { ps_sql "SELECT COALESCE(MAX(id_order),0) FROM ps_orders" | tr -d '[:space:]'; }
-ps_max_cart_id()  { ps_sql "SELECT COALESCE(MAX(id_cart),0)  FROM ps_cart"   | tr -d '[:space:]'; }
+# Both are coerced through as_count (lib.sh) for the reason recorded there:
+# ps_sql folds stderr into stdout and ends `|| true`, so a MySQL failure is a
+# VALUE, not an exit code, and these two feed ARITHMETIC. Unguarded, an error
+# string kills the run in `$(( ))` and an empty read silently reports that the
+# shop created nothing - which is the orphaned-cart signal, inverted (#3004).
+# An unreadable end of the pair is left EMPTY rather than defaulted to 0, so
+# the delta below is suppressed instead of fabricated.
+ps_max_order_id() { as_count "$(ps_sql "SELECT COALESCE(MAX(id_order),0) FROM ps_orders" 2>/dev/null | tr -d '[:space:]' || printf '')"; }
+ps_max_cart_id()  { as_count "$(ps_sql "SELECT COALESCE(MAX(id_cart),0)  FROM ps_cart"   2>/dev/null | tr -d '[:space:]' || printf '')"; }
 
 read_ledger() {
   local dir="$1" ws_iso="$2" ps_order_before="$3" ps_cart_before="$4" load="$5"
   local jobs_json orders_json ss_json claimed_total claimed_missing
   local ps_order_after ps_cart_after
+  # 1 until a read proves otherwise. `claimedButAbsentFromPsOrders: 0` means
+  # two completely different things depending on this flag - "we checked and
+  # nothing was missing" or "we could not check" - and a reader that cannot
+  # tell them apart will quote a measured zero it never measured (#3004).
+  local claimed_gt_readable=1
 
   ps_order_after="$(ps_max_order_id)"
   ps_cart_after="$(ps_max_cart_id)"
@@ -1027,9 +1065,39 @@ read_ledger() {
       # `grep -c` under `pipefail` returns 1 when it matches nothing, which
       # would abort the run on a legitimately empty set - hence `|| true`
       # above, and hence reading the count rather than testing the exit code.
-      local present
-      present="$(ps_sql "SELECT COUNT(DISTINCT id_order) FROM ps_orders WHERE id_order IN ($claimed_ids)" | tr -d '[:space:]')"
-      claimed_missing=$(( ${claimed_total:-0} - ${present:-0} ))
+      # The shop read must be NUMERIC or the detector reports its own read
+      # failure as the finding it exists to detect (#3004). `ps_sql` folds
+      # stderr into stdout and ends `|| true` (lib.sh), so a MySQL failure
+      # arrives as the VALUE of `present`, and this line is arithmetic:
+      #   - empty      -> claimed_missing = claimed_total - 0 = claimed_total,
+      #                   i.e. a FABRICATED silent-loss finding, red for a
+      #                   hiccup, and it would be the scenario's headline;
+      #   - error text -> arithmetic on a non-numeric token under `set -u`
+      #                   kills the run mid-window.
+      # `claimed_ids` is interpolated raw and `externalOrderId` is a jsonb
+      # STRING, so one non-numeric destination id is enough to produce that.
+      # A detector that cannot read its witness must say so, not answer.
+      local present present_raw
+      present_raw="$(ps_sql "SELECT COUNT(DISTINCT id_order) FROM ps_orders WHERE id_order IN ($claimed_ids)" 2>/dev/null | tr -d '[:space:]' || printf '')"
+      present="$(as_count "$present_raw")"
+      if [ -z "$present" ]; then
+        claimed_total=0
+        claimed_missing=0
+        claimed_gt_readable=0
+        log "  WARNING ground truth UNREADABLE: the ps_orders read answered [${present_raw:0:120}] - reported as not established, NOT as missing orders"
+      else
+        claimed_missing=$(( ${claimed_total:-0} - present ))
+      fi
+      # A negative difference means the shop holds MORE distinct ids than
+      # OpenLinker claimed, which cannot happen for an `IN` list built from
+      # those same claims - so it is a defect in this reading, never a
+      # finding, and is surfaced rather than published as a negative count.
+      if [ "${claimed_missing:-0}" -lt 0 ]; then
+        log "  WARNING ground truth INCOHERENT: claimed=$claimed_total present=$present - reported as not established"
+        claimed_total=0
+        claimed_missing=0
+        claimed_gt_readable=0
+      fi
     else
       claimed_total=0
       claimed_missing=0
@@ -1041,6 +1109,26 @@ read_ledger() {
     claimed_missing=0
   fi
 
+  # The shop deltas are emitted as JSON `null` when either end of the pair was
+  # unreadable, never as a fabricated 0 (#3004). A 0 here IS the orphaned-cart
+  # signal's denominator, so defaulting an unreadable read to 0 would report
+  # "the shop created nothing" - a finding - for a MySQL hiccup.
+  local ps_orders_created ps_carts_created
+  if [ -n "${ps_order_after:-}" ] && [ -n "${ps_order_before:-}" ]; then
+    ps_orders_created=$(( ps_order_after - ps_order_before ))
+  else
+    ps_orders_created=null
+    claimed_gt_readable=0
+    log "  WARNING ps_orders delta UNREADABLE (before=[${ps_order_before:-}] after=[${ps_order_after:-}]) - emitted as null"
+  fi
+  if [ -n "${ps_cart_after:-}" ] && [ -n "${ps_cart_before:-}" ]; then
+    ps_carts_created=$(( ps_cart_after - ps_cart_before ))
+  else
+    ps_carts_created=null
+    claimed_gt_readable=0
+    log "  WARNING ps_cart delta UNREADABLE (before=[${ps_cart_before:-}] after=[${ps_cart_after:-}]) - emitted as null"
+  fi
+
   jq -n \
     --argjson jobs "$jobs_json" \
     --argjson errors "$errors_json" \
@@ -1048,8 +1136,9 @@ read_ledger() {
     --argjson syncStatus "$ss_json" \
     --argjson claimedSynced "${claimed_total:-0}" \
     --argjson claimedMissingAtDestination "${claimed_missing:-0}" \
-    --argjson psOrdersCreated "$(( ${ps_order_after:-0} - ${ps_order_before:-0} ))" \
-    --argjson psCartsCreated "$(( ${ps_cart_after:-0} - ${ps_cart_before:-0} ))" \
+    --argjson groundTruthReadable "${claimed_gt_readable:-1}" \
+    --argjson psOrdersCreated "$ps_orders_created" \
+    --argjson psCartsCreated "$ps_carts_created" \
     '{
       syncJobs: $jobs,
       lastErrors: $errors,
@@ -1060,10 +1149,11 @@ read_ledger() {
         psCartsCreated: $psCartsCreated,
         claimedSyncedToPrestashop: $claimedSynced,
         claimedButAbsentFromPsOrders: $claimedMissingAtDestination,
-        note: "claimedButAbsentFromPsOrders > 0 is a success report over a failure: OpenLinker recorded syncStatus.status=synced with an externalOrderId that names no row in the shop.\nA nonzero psCartsCreated alongside a zero psOrdersCreated is an orphaned cart - work done at the destination that produced no order."
+        readable: $groundTruthReadable,
+        note: "claimedButAbsentFromPsOrders > 0 is a success report over a failure: OpenLinker recorded syncStatus.status=synced with an externalOrderId that names no row in the shop.\nA nonzero psCartsCreated alongside a zero psOrdersCreated is an orphaned cart - work done at the destination that produced no order.\nreadable=0 means the shop could NOT be read for this window: claimedSyncedToPrestashop and claimedButAbsentFromPsOrders are then BOTH zero because nothing was established, NOT because nothing was missing. A zero from this detector may only be quoted as a measured zero when readable=1."
       }
     }' > "$dir/ledger.json"
-  log "  ledger: $(jq -c '{orders:.orderRecords.created, psOrders:.groundTruth.psOrdersCreated, psCarts:.groundTruth.psCartsCreated, claimedSynced:.groundTruth.claimedSyncedToPrestashop, claimedMissing:.groundTruth.claimedButAbsentFromPsOrders}' "$dir/ledger.json")"
+  log "  ledger: $(jq -c '{orders:.orderRecords.created, psOrders:.groundTruth.psOrdersCreated, psCarts:.groundTruth.psCartsCreated, claimedSynced:.groundTruth.claimedSyncedToPrestashop, claimedMissing:.groundTruth.claimedButAbsentFromPsOrders, gtReadable:.groundTruth.readable}' "$dir/ledger.json")"
 }
 
 # ===========================================================================
@@ -1261,9 +1351,19 @@ run_fault() {
   local delivered='{}'
   case "$id" in
     D1|D2a|D2b|D3|D4) delivered="$(pfp_stats | jq -c '{proxyCounters: .counters}')" ;;
-    M1|M2|M2t|M3)     delivered="$(stub_stats | jq -c '{stubFaultsApplied: .faultsApplied, stubRequestCounts: .requestCounts}')" ;;
+    M1|M2|M2t|M3|M4)  delivered="$(stub_stats | jq -c '{stubFaultsApplied: .faultsApplied, stubRequestCounts: .requestCounts}')" ;;
     baseline)         delivered="$(pfp_stats | jq -c '{proxyCounters: .counters}')" ;;
     I1|I2|I3)         delivered="$(jq -n '{note:"an infrastructure fault has no per-request delivery count; its delivery is the container action itself, recorded in faultInjection.rule"}')" ;;
+    *)
+      # A fault id in ALL_FAULTS with no arm here records NO delivery and,
+      # before #3004, said nothing about it. M4 was added to the catalogue, to
+      # fault_class and to install_fault, ran a full 90 s window, and its
+      # manifest read `"delivered": {}` - which is indistinguishable from a
+      # rule that installed and never matched. That is the distinction the
+      # comment above exists to preserve, so the silence is now loud.
+      delivered="$(jq -n --arg id "$id" '{unrecorded:true, error:("no delivery read-back is defined for fault id " + $id + " - add an arm to the case in run_fault")}')"
+      warn "no delivery read-back is defined for fault id $id - its manifest will say so, and this window must NOT be quoted as a result"
+      ;;
   esac
   jq --argjson d "$delivered" '.faultInjection = (.faultInjection + {delivered: $d})' "$dir/manifest.json" > "$dir/manifest.json.tmp"
   mv "$dir/manifest.json.tmp" "$dir/manifest.json"
@@ -1306,9 +1406,27 @@ run_fault() {
   read_ledger "$dir" "$ws_iso" "$ps_order_before" "$ps_cart_before" "$load"
   mv "$dir/ledger.json" "$dir/ledger-after-recovery.json"
 
-  local drain_result
-  drain_result="$(drain_wait "$CONN_IDS" || true)"
+  # `drain_wait` reports its kills by SIDE EFFECT - it sets DRAIN_DEAD_IDS,
+  # DRAIN_DEFERRED_SEEN and DRAIN_REQUEUED_SEEN as globals (lib.sh). Running
+  # it inside `$( )` puts every one of those assignments in a SUBSHELL, which
+  # exits before the parent reads them, so `rowsTheHARNESSMarkedDeadDuringCleanup`
+  # was ALWAYS the empty string however many rows were killed (#3004).
+  #
+  # That is not a cosmetic loss. The ledgers above are deliberately read
+  # BEFORE this line so the harness's own cleanup cannot forge a finding, and
+  # this field is the only record that the cleanup killed anything at all - so
+  # the one contamination the ordering was designed to keep visible was
+  # invisible. Redirecting stdout to a file keeps the function in THIS shell.
+  # stdout only, NOT `2>&1`: `log` writes to stdout and `warn` to stderr, so
+  # capturing both would swallow drain_wait's own live warnings (its
+  # "marked dead" line among them) which streamed to the console before.
+  local drain_result drain_out
+  drain_out="$(mktemp)"
+  drain_wait "$CONN_IDS" > "$drain_out" || true
+  drain_result="$(cat "$drain_out")"
+  rm -f "$drain_out"
   log "  drain_wait (cleanup for the next window, AFTER the ledger was read): $drain_result"
+  [ -n "${DRAIN_DEAD_IDS:-}" ] && log "  drain_wait marked row(s) dead during cleanup: $DRAIN_DEAD_IDS"
 
   jq -n --arg d "$drain_result" --argjson w "$waited" \
     --arg r "${recovered_at:-never}" --argjson still "${still:-0}" \
