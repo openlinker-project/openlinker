@@ -133,7 +133,12 @@ function freshTenantState(name) {
     checkoutForms: new Map(), // checkoutFormId -> AllegroCheckoutForm
     orderCounter: 0,
     lineCounter: 0, // drives round-robin offer assignment across the pool
-    fault: null, // { mode: '429'|'503'|'timeout', retryAfterSeconds, holdMs }
+    // { mode, retryAfterSeconds, holdMs, endpoints, fraction } - see
+    // applyFault and the POST /__stub/tenants/:t/fault handler. `endpoints`
+    // and `fraction` were added by #2978; a rule that names neither behaves
+    // exactly as a pre-#2978 rule did (every endpoint, every request).
+    fault: null,
+    faultsApplied: 0, // #2978: how many requests this tenant's rule ACTUALLY faulted
     requestCounts: {}, // 'GET /order/events' -> n
   };
 }
@@ -413,10 +418,94 @@ function allegroError(code, message) {
  * request. Returns true if it fully handled the response (caller must do
  * nothing further); false if the caller should proceed to serve a normal
  * response.
+ *
+ * `endpoint` is one of 'events' | 'checkout' | 'quantity' and is what makes a
+ * rule targetable (#2978). Two of that issue's fault classes are meaningless
+ * without it: "the source times out during HYDRATION" is a fault on
+ * `checkout` while `events` keeps working - a tenant-wide timeout instead
+ * stops the feed being read at all, so no order is ever hydrated and the
+ * fault measures nothing about hydration. Likewise "the source REJECTS the
+ * offer-quantity write" is meaningless anywhere but `quantity`.
+ *
+ * A rule that names no `endpoints` still applies to all three, so every
+ * pre-#2978 caller and rule behaves exactly as before.
  */
-function applyFault(tenant, req, res, log) {
+function applyFault(tenant, req, res, log, endpoint) {
   const fault = tenant.fault;
   if (!fault) return false;
+
+  // Endpoint targeting first, then the coin flip - a request excluded by
+  // endpoint must not consume a draw, or the delivered fraction would depend
+  // on how much unrelated traffic shared the window.
+  if (Array.isArray(fault.endpoints) && fault.endpoints.length > 0 && !fault.endpoints.includes(endpoint)) {
+    return false;
+  }
+  if (Math.random() >= (fault.fraction ?? 1)) return false;
+
+  tenant.faultsApplied += 1;
+
+  // A malformed body: HTTP 200, the right content type, and a body that is
+  // not JSON at all. This is the shape a shop behind a broken gateway or a
+  // PHP fatal actually returns, and it is deliberately a 2xx - the question
+  // is what OpenLinker does with a SUCCESSFUL response it cannot parse.
+  if (fault.mode === 'malformed') {
+    const body = '<!DOCTYPE html><html><body><b>Fatal error</b>: upstream returned no data</body></html>';
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) });
+    res.end(body);
+    log(200);
+    return true;
+  }
+
+  // A truncated body: a Content-Length that promises the whole document, a
+  // prefix of valid JSON on the wire, and then the socket dies. Distinct
+  // from `malformed` because the client fails at a different layer - a
+  // premature close rather than a parse error - and an adapter can plausibly
+  // handle one and not the other.
+  if (fault.mode === 'truncated') {
+    const full = JSON.stringify({ events: [], truncatedBy: 'the #2978 fault injector' });
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(full) });
+    res.write(full.slice(0, Math.max(1, Math.floor(full.length / 2))));
+    try {
+      res.destroy();
+    } catch {
+      /* the socket may already be gone */
+    }
+    log(200);
+    return true;
+  }
+
+  // Allegro's own synchronous rejection of a quantity command: HTTP 200 with
+  // `status: 'REJECTED'` in the body (allegro-api.types.ts's
+  // AllegroOfferQuantityChangeCommandResponse). This is the sharpest
+  // available test of #2978's central question, because the TRANSPORT
+  // succeeded - a caller that only inspects the status code sees a 2xx and
+  // has no reason to look further.
+  //
+  // Only meaningful on the quantity endpoint; elsewhere the rule does not
+  // match and the request is served normally, rather than the stub
+  // inventing a rejection shape for an endpoint that has none.
+  if (fault.mode === 'reject-quantity') {
+    if (endpoint !== 'quantity') {
+      tenant.faultsApplied -= 1;
+      return false;
+    }
+    const commandId = decodeURIComponent((req.url || '').split('/').pop().split('?')[0]);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(
+      JSON.stringify({
+        id: commandId,
+        status: 'REJECTED',
+        errors: [
+          {
+            code: 'OfferQuantityChangeCommandRejected',
+            message: 'Injected synchronous REJECTED for tenant ' + tenant.name,
+          },
+        ],
+      }),
+    );
+    log(200);
+    return true;
+  }
 
   if (fault.mode === '429' || fault.mode === '503') {
     const status = fault.mode === '429' ? 429 : 503;
@@ -544,7 +633,7 @@ const server = createServer((req, res) => {
     if (method === 'GET' && pathname === '/order/events') {
       recordRequestCount(tenant, 'GET', '/order/events');
       await delay(latencyFor('events'));
-      if (applyFault(tenant, req, res, (status) => log(status, '/order/events'))) return;
+      if (applyFault(tenant, req, res, (status) => log(status, '/order/events'), 'events')) return;
       const from = url.searchParams.get('from');
       const limitParam = url.searchParams.get('limit');
       const limit = limitParam ? Number.parseInt(limitParam, 10) : 100;
@@ -558,7 +647,7 @@ const server = createServer((req, res) => {
     if (method === 'GET' && checkoutMatch) {
       recordRequestCount(tenant, 'GET', '/order/checkout-forms/:id');
       await delay(latencyFor('checkout'));
-      if (applyFault(tenant, req, res, (status) => log(status, '/order/checkout-forms/:id'))) return;
+      if (applyFault(tenant, req, res, (status) => log(status, '/order/checkout-forms/:id'), 'checkout')) return;
       const id = decodeURIComponent(checkoutMatch[1]);
       const checkoutForm = tenant.checkoutForms.get(id);
       if (!checkoutForm) {
@@ -593,7 +682,9 @@ const server = createServer((req, res) => {
     if (method === 'PUT' && quantityMatch) {
       recordRequestCount(tenant, 'PUT', '/sale/offer-quantity-change-commands/:id');
       await delay(latencyFor('quantity'));
-      if (applyFault(tenant, req, res, (status) => log(status, '/sale/offer-quantity-change-commands/:id')))
+      if (
+        applyFault(tenant, req, res, (status) => log(status, '/sale/offer-quantity-change-commands/:id'), 'quantity')
+      )
         return;
       const commandId = decodeURIComponent(quantityMatch[1]);
       try {
@@ -706,6 +797,7 @@ const server = createServer((req, res) => {
       }
       if (method === 'DELETE') {
         targetTenant.fault = null;
+        targetTenant.faultsApplied = 0;
         sendJson(res, 200, { fault: null });
         return;
       }
@@ -716,10 +808,35 @@ const server = createServer((req, res) => {
         sendJson(res, 400, { error: 'invalid JSON body' });
         return;
       }
-      if (![null, '429', '503', 'timeout'].includes(body.mode)) {
-        sendJson(res, 400, { error: "mode must be one of null, '429', '503', 'timeout'" });
+      // #2978 added 'malformed', 'truncated' and 'reject-quantity' alongside
+      // the original three. The list is spelled out rather than derived so an
+      // unrecognised mode is refused here, at the control surface, instead of
+      // silently installing a rule applyFault will never match - a fault that
+      // was configured and never delivered is worse than one that was
+      // refused, because the window still gets spent.
+      const MODES = [null, '429', '503', 'timeout', 'malformed', 'truncated', 'reject-quantity'];
+      if (!MODES.includes(body.mode)) {
+        sendJson(res, 400, {
+          error: `mode must be one of ${MODES.map((m) => (m === null ? 'null' : `'${m}'`)).join(', ')}`,
+        });
         return;
       }
+      const ENDPOINTS = ['events', 'checkout', 'quantity'];
+      if (body.endpoints !== undefined && body.endpoints !== null) {
+        if (!Array.isArray(body.endpoints) || body.endpoints.some((e) => !ENDPOINTS.includes(e))) {
+          sendJson(res, 400, { error: `endpoints must be an array drawn from ${ENDPOINTS.join(', ')}` });
+          return;
+        }
+      }
+      const fraction = body.fraction === undefined ? 1 : Number(body.fraction);
+      if (!Number.isFinite(fraction) || fraction < 0 || fraction > 1) {
+        sendJson(res, 400, { error: 'fraction must be a number in [0,1]' });
+        return;
+      }
+      // Reset on every install, so a scenario reading `faultsApplied` after a
+      // window is reading THIS rule's delivery count and not an accumulation
+      // across every rule the process has ever carried.
+      targetTenant.faultsApplied = 0;
       targetTenant.fault =
         body.mode === null
           ? null
@@ -729,6 +846,8 @@ const server = createServer((req, res) => {
                 ? body.retryAfterSeconds
                 : 5,
               holdMs: Number.isInteger(body.holdMs) ? body.holdMs : undefined,
+              endpoints: Array.isArray(body.endpoints) && body.endpoints.length > 0 ? body.endpoints : null,
+              fraction,
             };
       sendJson(res, 200, { fault: targetTenant.fault });
       return;
@@ -746,6 +865,10 @@ const server = createServer((req, res) => {
         requestCounts: targetTenant.requestCounts,
         ordersPushed: targetTenant.orderCounter,
         eventsEmitted: targetTenant.events.length,
+        // #2978: how many requests the ACTIVE rule actually faulted. A
+        // fractional rule's delivered count is not its requested fraction,
+        // so a scenario must read this rather than assume one.
+        faultsApplied: targetTenant.faultsApplied,
         currentCursor:
           targetTenant.events.length > 0
             ? targetTenant.events[targetTenant.events.length - 1].id

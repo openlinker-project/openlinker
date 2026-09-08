@@ -468,3 +468,161 @@ test('an unserved path 404s in the Allegro error shape', async () => {
   assert.ok(Array.isArray(body.errors));
   assert.equal(body.errors[0].code, 'NotFound');
 });
+
+// ---------------------------------------------------------------------------
+// #2978 fault-injection extensions: endpoint targeting, a fraction, and the
+// three new modes. Every one of these is a measurement input for F10, so a
+// rule that installs but never fires would spend a window and report nothing.
+// ---------------------------------------------------------------------------
+
+/** Installs a fault rule on tenant A and returns the rule the stub stored. */
+async function setFault(faultBody) {
+  const { body } = await call('POST', `/__stub/tenants/${TENANT_A}/fault`, { token: null, body: faultBody });
+  return body.fault;
+}
+async function clearFault() {
+  await call('DELETE', `/__stub/tenants/${TENANT_A}/fault`, { token: null });
+}
+async function statsA() {
+  const { body } = await call('GET', `/__stub/tenants/${TENANT_A}/stats`, { token: null });
+  return body;
+}
+
+test('a rule naming no endpoints still faults every endpoint (pre-#2978 behaviour is unchanged)', async () => {
+  await resetRun('t-2978-allends');
+  const rule = await setFault({ mode: '503' });
+  assert.equal(rule.endpoints, null, 'an unnamed endpoints list is stored as null, not as an empty array');
+  assert.equal(rule.fraction, 1, 'an unnamed fraction defaults to 1');
+  assert.equal((await call('GET', '/order/events', { token: TOKEN_A })).status, 503);
+  assert.equal((await call('GET', '/order/checkout-forms/x', { token: TOKEN_A })).status, 503);
+  assert.equal((await call('PUT', '/sale/offer-quantity-change-commands/x', { token: TOKEN_A })).status, 503);
+  await clearFault();
+});
+
+test('endpoint targeting faults ONLY the named endpoint - the hydration-fault shape', async () => {
+  await resetRun('t-2978-targeted');
+  // This is exactly F10's "the source times out during hydration": the feed
+  // must keep answering or nothing is ever hydrated and the fault measures
+  // nothing at all.
+  await setFault({ mode: '503', endpoints: ['checkout'] });
+  assert.equal((await call('GET', '/order/events', { token: TOKEN_A })).status, 200, 'the feed still answers');
+  assert.equal(
+    (await call('GET', '/order/checkout-forms/nope', { token: TOKEN_A })).status,
+    503,
+    'hydration is faulted',
+  );
+  assert.equal(
+    (await call('PUT', '/sale/offer-quantity-change-commands/x', { token: TOKEN_A })).status,
+    200,
+    'an unnamed endpoint is untouched',
+  );
+  const s = await statsA();
+  assert.equal(s.faultsApplied, 1, 'only the targeted request counts as a delivered fault');
+  await clearFault();
+});
+
+test('an endpoint excluded by targeting does not consume a fraction draw', async () => {
+  await resetRun('t-2978-nodraw');
+  // fraction 1 on `quantity` only: 20 feed reads must all succeed AND must
+  // leave faultsApplied at 0. If the draw ran before the endpoint test this
+  // would still pass on status, so the counter is the real assertion.
+  await setFault({ mode: '503', endpoints: ['quantity'], fraction: 1 });
+  for (let i = 0; i < 20; i += 1) {
+    assert.equal((await call('GET', '/order/events', { token: TOKEN_A })).status, 200);
+  }
+  assert.equal((await statsA()).faultsApplied, 0, 'no draw was consumed by an untargeted endpoint');
+  await clearFault();
+});
+
+test('fraction is a per-request coin flip, and the DELIVERED count is reported', async () => {
+  await resetRun('t-2978-fraction');
+  await setFault({ mode: '503', endpoints: ['events'], fraction: 0.5 });
+  let faulted = 0;
+  for (let i = 0; i < 200; i += 1) {
+    if ((await call('GET', '/order/events', { token: TOKEN_A })).status === 503) faulted += 1;
+  }
+  // A wide band on purpose - this asserts the flip is a flip, not that 200
+  // draws land near the mean. It catches "always" and "never" immediately.
+  assert.ok(faulted > 70 && faulted < 130, `fraction 0.5 faulted ${faulted} of 200 (expected 70..130)`);
+  assert.equal((await statsA()).faultsApplied, faulted, 'the reported delivered count matches what was served');
+  await clearFault();
+});
+
+test('installing a rule resets the delivered-fault counter', async () => {
+  await resetRun('t-2978-counterreset');
+  await setFault({ mode: '503', endpoints: ['events'] });
+  await call('GET', '/order/events', { token: TOKEN_A });
+  assert.equal((await statsA()).faultsApplied, 1);
+  await setFault({ mode: '429', endpoints: ['events'] });
+  assert.equal((await statsA()).faultsApplied, 0, 'the counter belongs to the ACTIVE rule, not to the process');
+  await clearFault();
+  assert.equal((await statsA()).faultsApplied, 0, 'DELETE clears it too');
+});
+
+test("the 'malformed' mode answers 200 with a body that is not JSON", async () => {
+  await resetRun('t-2978-malformed');
+  await setFault({ mode: 'malformed', endpoints: ['checkout'] });
+  const r = await call('GET', '/order/checkout-forms/anything', { token: TOKEN_A });
+  assert.equal(r.status, 200, 'the transport succeeds - that is the point of this fault');
+  assert.equal(r.headers.get('content-type'), 'application/json', 'it still CLAIMS to be JSON');
+  assert.equal(r.body, undefined, 'the body did not parse as JSON');
+  assert.ok(r.raw.includes('Fatal error'), 'the body is the html-error shape a broken PHP upstream returns');
+  await clearFault();
+});
+
+test("the 'truncated' mode closes the socket mid-body", async () => {
+  await resetRun('t-2978-truncated');
+  await setFault({ mode: 'truncated', endpoints: ['events'] });
+  // fetch surfaces a premature close as a thrown TypeError rather than as a
+  // short body, which is precisely the difference from `malformed`.
+  await assert.rejects(
+    async () => {
+      const res = await fetch(`${baseUrl}/order/events`, { headers: { Authorization: `Bearer ${TOKEN_A}` } });
+      await res.text();
+    },
+    (err) => err instanceof Error,
+    'a truncated response must fail at the transport layer, not parse as a short document',
+  );
+  await clearFault();
+});
+
+test("the 'reject-quantity' mode answers HTTP 200 carrying status REJECTED", async () => {
+  await resetRun('t-2978-reject');
+  await setFault({ mode: 'reject-quantity' });
+  const r = await call('PUT', '/sale/offer-quantity-change-commands/cmd-7', { token: TOKEN_A });
+  assert.equal(r.status, 200, 'the HTTP layer succeeds - a caller reading only the status sees success');
+  assert.equal(r.body.status, 'REJECTED');
+  assert.equal(r.body.id, 'cmd-7', 'the command id is echoed, as the real response does');
+  assert.ok(Array.isArray(r.body.errors) && r.body.errors.length > 0, 'a rejection carries errors');
+  await clearFault();
+});
+
+test("'reject-quantity' does not match a non-quantity endpoint, and does not count as delivered", async () => {
+  await resetRun('t-2978-reject-scope');
+  await setFault({ mode: 'reject-quantity' });
+  const r = await call('GET', '/order/events', { token: TOKEN_A });
+  assert.equal(r.status, 200);
+  assert.ok(Array.isArray(r.body.events), 'the feed is served normally, not given an invented rejection shape');
+  assert.equal((await statsA()).faultsApplied, 0, 'a non-matching endpoint is not counted as a delivered fault');
+  await clearFault();
+});
+
+test('the control surface refuses an unknown mode, a bad endpoint and a bad fraction', async () => {
+  const bad = await call('POST', `/__stub/tenants/${TENANT_A}/fault`, { token: null, body: { mode: 'nonsense' } });
+  assert.equal(bad.status, 400);
+  const badEndpoint = await call('POST', `/__stub/tenants/${TENANT_A}/fault`, {
+    token: null,
+    body: { mode: '503', endpoints: ['orders'] },
+  });
+  assert.equal(badEndpoint.status, 400, 'an endpoint this stub does not serve is refused, not silently ignored');
+  const badFraction = await call('POST', `/__stub/tenants/${TENANT_A}/fault`, {
+    token: null,
+    body: { mode: '503', fraction: 1.5 },
+  });
+  assert.equal(badFraction.status, 400);
+  assert.equal(
+    (await call('GET', `/__stub/tenants/${TENANT_A}/stats`, { token: null })).body.fault,
+    null,
+    'none of the refused rules was installed',
+  );
+});
