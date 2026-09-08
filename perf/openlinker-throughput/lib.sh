@@ -1020,9 +1020,15 @@ sample_queue() {
 # sampler_start/stop run sample_queue in a background loop, one PID file per
 # results dir so two scenarios (never run concurrently on one stand, #2845)
 # cannot collide on a stale pid.
+# Set by sampler_start, cleared by sampler_stop. Exists so a scenario's EXIT
+# trap can stop a sampler it did not itself start and whose results dir it does
+# not know - see sampler_stop_if_running (#2840).
+LIB_ACTIVE_SAMPLER_DIR=""
+
 sampler_start() {
   local dir="$1" conn_ids="$2"
   sample_queue_header "$dir/timeseries.csv"
+  LIB_ACTIVE_SAMPLER_DIR="$dir"
   (
     while true; do
       sample_queue "$dir" "$conn_ids" || true
@@ -1040,7 +1046,24 @@ sampler_stop() {
   kill "$pid" >/dev/null 2>&1 || true
   wait "$pid" 2>/dev/null || true
   rm -f "$dir/.sampler.pid"
+  [ "$LIB_ACTIVE_SAMPLER_DIR" != "$dir" ] || LIB_ACTIVE_SAMPLER_DIR=""
   log "sampler stopped"
+}
+
+# Stop whatever sampler is running, if any. Safe to call from an EXIT trap and
+# safe to call twice.
+#
+# This exists because the sampler is started by window_start and stopped by
+# window_stop, so ANY abnormal exit between the two leaks it - and a leaked
+# sampler is not inert: it keeps querying Postgres and appending to
+# timeseries.csv every SAMPLE_INTERVAL_SECS, reparented to init, for as long as
+# the host stays up. On a shared stand that is precisely the peer-contamination
+# class this campaign has already paid for twice, except that the peer is the
+# previous run of the same scenario. Observed for real: a SIGTERM'd F1 left its
+# sampler running after the EXIT trap had reported "restoring stand posture".
+sampler_stop_if_running() {
+  [ -n "$LIB_ACTIVE_SAMPLER_DIR" ] || return 0
+  sampler_stop "$LIB_ACTIVE_SAMPLER_DIR"
 }
 
 # ---------------------------------------------------------------------------

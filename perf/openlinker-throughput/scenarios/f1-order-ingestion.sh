@@ -326,6 +326,9 @@ f1_set_env_key() {
 
 f1_on_exit() {
   local rc=$?
+  # FIRST, before anything that can block or fail: a leaked sampler keeps
+  # querying Postgres and appending samples forever (#2840).
+  sampler_stop_if_running || true
   if [ "$CONNECTIONS_TOUCHED" = "0" ] && [ "$WORKER_TOUCHED" = "0" ]; then
     log "nothing was changed on the stand - no restore needed"
     release_stand_exclusive
@@ -725,13 +728,24 @@ $tasks"
 }
 
 # The scheduler-minted poll for this connection, as opposed to one of ours.
-# The scheduler's key is `marketplace:{connId}:orders:poll:{timestamp}`; ours
-# (of_enqueue_poll) is `marketplace:{connId}:orders:poll:{tag}:{ms}`, so the
-# digits-only tail is what tells them apart. Without this a harness-enqueued
-# poll left over from a previous arm could be attributed to a scheduled one -
-# which is precisely the hop-A-is-a-constant failure this mode exists to end.
+#
+# The scheduler's key is `marketplace:{connId}:orders:poll:{timestamp}` where
+# `timestamp` is scheduler.service.ts:702's `YYYY-MM-DD-HH-mm` - a FORMATTED
+# DATE, not an epoch. Ours (of_enqueue_poll) is
+# `marketplace:{connId}:orders:poll:{tag}:{epoch_ms}`.
+#
+# The first version of this matched `[0-9]+$` on the assumption that the
+# scheduler's tail was an epoch. It matched ZERO rows while the scheduler was
+# minting a poll every minute, and the run spent 150s per sample waiting for a
+# poll that was already there - the "reads with a time format that silently
+# matches nothing" failure this campaign has already recorded once. It is
+# pinned in both directions before use (a real scheduler key must match, and
+# all 353 harness keys on this stand must not), because a regex that matches
+# nothing is indistinguishable from a scheduler that is not running.
 F1_SCHED_POLL_RE=""
-f1_sched_poll_re() { printf '^marketplace:%s:orders:poll:[0-9]+$' "$SOURCE_CONNECTION_ID"; }
+f1_sched_poll_re() {
+  printf '^marketplace:%s:orders:poll:[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{2}-[0-9]{2}$' "$SOURCE_CONNECTION_ID"
+}
 
 # First scheduler poll enqueued at or after an instant.
 f1_first_sched_poll_key_since() {
@@ -785,15 +799,24 @@ run_one_sample() {
     # miss the latch on nearly every sample and push every claim-instant onto
     # the derived path. Both paths are supported and the summarizer prints the
     # split, but observing it is strictly better than reconstructing it.
-    local waited_poll=0 max_poll_ticks=$(( ${F1_POLL_WAIT_MAX_SECS:-150} * 5 ))
+    # Bounded by WALL CLOCK, not by an iteration count. The first version
+    # counted 750 iterations of `sleep 0.2` and called it 150s, but each
+    # iteration also runs a `docker exec` psql (~100ms), so the real bound was
+    # ~225s and the timeout took half again as long as advertised to surface.
+    # A deadline cannot drift when the cost of the loop body changes.
+    local poll_deadline=$(( $(epoch) + ${F1_POLL_WAIT_MAX_SECS:-150} ))
     poll_key=""
-    while [ "$waited_poll" -lt "$max_poll_ticks" ]; do
+    while [ "$(epoch)" -lt "$poll_deadline" ]; do
       poll_key="$(f1_first_sched_poll_key_since "$pushed_at" 2>/dev/null | tr -d '[:space:]')"
       [ -z "$poll_key" ] || break
-      sleep 0.2; waited_poll=$((waited_poll + 1))
+      sleep 0.5
     done
     if [ -z "$poll_key" ]; then
-      warn "sample $n: no SCHEDULER-minted poll appeared within ${F1_POLL_WAIT_MAX_SECS:-150}s of the push - the scheduler is not firing"
+      # Reports the OBSERVATION, not a diagnosis. The first version said "the
+      # scheduler is not firing", which was a cause it could not know and in
+      # fact the wrong one - the scheduler was firing every minute and the
+      # matcher was broken.
+      warn "sample $n: no poll row matching the scheduler key shape [$F1_SCHED_POLL_RE] was created in the ${F1_POLL_WAIT_MAX_SECS:-150}s after the push. Either the scheduler is not minting polls for this connection, or the key shape above no longer matches the one it mints."
       printf '%s,%s,%s,,,,,NO_SCHED_POLL,,,,,,,,,,,,,,,\n' "$n" "$cf_id" "$pushed_at" >> "$out"
       return 0
     fi
