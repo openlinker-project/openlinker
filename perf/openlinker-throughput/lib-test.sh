@@ -513,6 +513,79 @@ FAKE_PG[count]=1
 assert_contains "DISCARDED when a failed syncStatus entry exists" "$(post_guard_destination_creates '2026-01-01T00:00:00Z' '')" "DISCARDED"
 FAKE_PG[count]=0
 
+# --- the destination predicate (#2840) -------------------------------------
+# Asserted in BOTH directions, and on the emitted SQL rather than on a
+# return value, because a fake answering 0 passes whatever the predicate says.
+# Three windows shipped a `failed` count that EXCEEDED the population it
+# described (2967 vs 2961 twice, 1798 vs 1792 once) because the arm carried no
+# destination predicate while its message said "the declared destination".
+# Scoped, arm A's real answer was 1 - the stranded order its report is about.
+# A guard that cannot refuse is worse than the unfiltered one, so the FIRE
+# direction is asserted first.
+# Captured to a FILE, not a variable: the guard calls pg_sql inside a command
+# substitution, which is a subshell, so an assignment would never reach this
+# scope - the first version of this test asserted against a permanently empty
+# string and said so loudly rather than passing vacuously.
+PG_CAPTURE_FILE="$(mktemp)"
+# One record per call, separated, so an assertion can be made PER ARM. The
+# first version concatenated both arms and asserted the destination predicate
+# appeared SOMEWHERE - which the missing arm satisfied on its own, so an
+# unscoped failed arm still passed. Caught by mutating the guard back to its
+# old form and watching the suite stay green.
+pg_sql_capturing() { printf '===SQL===\n%s\n' "$1" >> "$PG_CAPTURE_FILE"; echo "${FAKE_PG[count]:-0}"; }
+# Prints only the captured statement that tests for a failed status.
+pg_captured_failed_arm() { awk -v RS='===SQL===' "/status.=.failed/" "$PG_CAPTURE_FILE"; }
+# and only the statement that tests for syncedAt - the missing arm.
+pg_captured_missing_arm() { awk -v RS='===SQL===' "/syncedAt/" "$PG_CAPTURE_FILE"; }
+_pg_sql_real="$(declare -f pg_sql)"
+eval "pg_sql() { pg_sql_capturing \"\$@\"; }"
+
+# 1. FIRES on a known positive, and names the destination in the message.
+FAKE_PG[count]=1
+_out="$(post_guard_destination_creates '2026-01-01T00:00:00Z' 'dest-1')"
+assert_contains "scoped guard still FIRES on a positive" "$_out" "DISCARDED"
+assert_contains "scoped guard names the declared destination" "$_out" "the declared destination"
+
+# 2. PASSES when the declared destination is clean (only a non-declared one failed).
+FAKE_PG[count]=0
+assert_eq "scoped guard passes when the declared destination is clean" "ok" \
+  "$(post_guard_destination_creates '2026-01-01T00:00:00Z' 'dest-1')"
+
+# 3. The failed arm's SQL must carry the destination predicate.
+: > "$PG_CAPTURE_FILE"
+FAKE_PG[count]=0
+post_guard_destination_creates '2026-01-01T00:00:00Z' 'dest-1' >/dev/null
+PG_CAPTURED="$(pg_captured_failed_arm)"
+assert_contains "failed arm is scoped to the declared destination" "$PG_CAPTURED" \
+  "e->>'destinationConnectionId'='dest-1'"
+assert_contains "failed arm still tests for a failed status" "$PG_CAPTURED" "e->>'status'='failed'"
+# 4. The missing arm must require the destination to have been ATTEMPTED,
+#    or it counts orders that were never dispatched there (1454 of arm C's 1456).
+# BOTH clauses, because a NOT EXISTS alone survives deleting the positive
+# one - the weaker single-clause assertion stayed green under exactly that
+# mutation, so it was replaced.
+_missing_arm="$(pg_captured_missing_arm)"
+assert_contains "missing arm has the attempted-only positive clause" "$_missing_arm" \
+  "AND EXISTS (SELECT 1 FROM jsonb_array_elements(\"syncStatus\") e"
+assert_contains "missing arm has the no-syncedAt negative clause" "$_missing_arm" \
+  "AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(\"syncStatus\") e"
+
+# 5. With no destination declared, no destination predicate is emitted and the
+#    message says so, so the two contracts cannot be confused.
+: > "$PG_CAPTURE_FILE"
+FAKE_PG[count]=1
+_out="$(post_guard_destination_creates '2026-01-01T00:00:00Z' '')"
+PG_CAPTURED="$(cat "$PG_CAPTURE_FILE")"
+assert_contains "unscoped guard says 'any destination'" "$_out" "any destination"
+case "$PG_CAPTURED" in
+  *"destinationConnectionId"*) assert_eq "unscoped guard emits no destination predicate" "absent" "present" ;;
+  *) assert_eq "unscoped guard emits no destination predicate" "absent" "absent" ;;
+esac
+
+eval "$_pg_sql_real"
+rm -f "$PG_CAPTURE_FILE"
+FAKE_PG[count]=0
+
 echo "--- reset_between_repeats SCAN loop (#2847) ---"
 # This function shipped with NO CALLER in any scenario, so its SCAN loop had
 # never executed. It used `redis-cli --no-raw`, whose reply renders as
@@ -624,7 +697,19 @@ echo "--- run_post_guards threads the feed guard through ---"
 # is the failure mode the k6-summary argument already has a warning about in
 # run_post_guards' own docblock. These two assertions pin both directions.
 FAKE_PG[count]=0
+WORKER_CONTAINERS="lab-worker"
 RPG_DIR="$(mktemp -d)"
+# window_start would have captured this baseline; a test calling
+# run_post_guards directly must establish it too, or
+# post_guard_containers_stable correctly refuses to certify a window it has no
+# "before" reading for - and the VALID assertion below then fails for a reason
+# that has nothing to do with the feed argument it is about. That is exactly
+# how this assertion shipped failing: the sibling block under
+# "run_post_guards wiring" below carries this same line and this one did not,
+# so the first of these two assertions has never passed. The missing-baseline
+# refusal itself is covered separately, under
+# "post_guard_containers_stable", so seeding it here hides nothing.
+capture_container_starts "$RPG_DIR"
 run_post_guards "$RPG_DIR" "'c1'" '2026-01-01T00:00:00Z' 0 9999999999 '' '' '' '' >/dev/null 2>&1 || true
 assert_eq "omitting the feed argument leaves the verdict VALID (not applicable)" \
   "VALID" "$(verdict_read "$RPG_DIR" | head -1)"
