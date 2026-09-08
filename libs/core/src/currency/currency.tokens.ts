@@ -14,6 +14,7 @@ export const REPORTING_CURRENCY_SETTING_REPOSITORY_TOKEN = Symbol(
   'ReportingCurrencySettingRepositoryPort'
 );
 export const CURRENCY_RATE_SERVICE_TOKEN = Symbol('ICurrencyRateService');
+export const EXCHANGE_RATE_LOOKUP_SERVICE_TOKEN = Symbol('IExchangeRateLookupService');
 export const REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN = Symbol(
   'IReportingCurrencySettingsService'
 );

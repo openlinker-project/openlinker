@@ -204,6 +204,13 @@ const harness = createIntegrationTestHarness({
     // row. No FK, so it never cascades; a row written by one case would
     // otherwise change every later case's resolved budgets.
     'operational_settings',
+    // analytics_remediation_runs (#2468) — the Data Coverage remediation audit
+    // ledger. No FK anywhere (its `triggered_by` is a plain text user id, the
+    // invoice_records precedent), so nothing cascades into it — and its partial
+    // unique index admits only ONE open run per category, so a run left behind
+    // by one case makes every later case's `openRun` throw
+    // OpenRemediationRunExistsError. Truncate explicitly.
+    'analytics_remediation_runs',
     // product_content_field FKs to both products + connections, so it goes
     // before them.
     'product_content_field',
@@ -225,6 +232,16 @@ const harness = createIntegrationTestHarness({
     'mcp_tokens',
     'product_variants',
     'products',
+    // shipment_line_events / shipment_lines (#2727) — the line-grain read model.
+    // Both FKs (events -> lines, lines -> shipments, both ON DELETE CASCADE)
+    // live in the MIGRATION rather than the ORM decorators, so the
+    // synchronize-built test schema has no FK at all and `truncateTables`'
+    // CASCADE closure walk can reach NEITHER child from `shipments`. Listed
+    // explicitly, children first, or a line written by one case is still
+    // counted by the next — exactly how `fulfillment_work_verifications` was
+    // found the hard way.
+    'shipment_line_events',
+    'shipment_lines',
     // shipments (#763 / #835) — order- + connection-scoped; truncate before
     // connections so the dispatch int-spec starts each case with no rows.
     'shipments',

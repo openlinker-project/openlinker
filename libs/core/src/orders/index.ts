@@ -169,6 +169,30 @@ export {
   DailyTrendPoint,
 } from './domain/types/order-sales-analytics.types';
 
+// Data Coverage detection (epic #2452, mini-epic #2463) — shared vocabulary
+// consumed by the currency-mismatch detector (#2464) and its sibling
+// detectors (#2465/#2466).
+export {
+  CoverageCategoryValues,
+  CoverageResolutionStatusValues,
+  TaxCoverageCategoryValues,
+} from './domain/types/coverage-detection.types';
+export type {
+  CoverageCategory,
+  CoverageResolutionStatus,
+  CoverageDetectionPagination,
+  CurrencyMismatchOrderRow,
+  PaginatedCurrencyMismatchOrders,
+  TaxCoverageCategory,
+  TaxCoverageOrderRow,
+  TaxCoverageLineRateObservation,
+  PaginatedTaxCoverageOrders,
+  NetExcludedOrderCandidate,
+  TaxCoverageClassification,
+  ProductMatchingErrorOrderRow,
+  PaginatedProductMatchingErrorOrders,
+} from './domain/types/coverage-detection.types';
+
 // Top products analytics (#1988) — response shapes for
 // IOrderRecordService.getTopProducts. VariantRankingRow/VariantChannelBreakdownRow/
 // VariantSalesView/VariantSalesResult (#2765) are the per-product variant-sales
@@ -206,24 +230,52 @@ export type {
 } from './domain/types/refund-execution.types';
 export { RefundExecutionOutcomeValues } from './domain/types/refund-execution.types';
 
+// Analytics display-currency conversion read model (#2458, ADR-064).
+export {
+  DISPLAY_CURRENCY_RATE_BASIS_VALUES,
+  MIXED_NATIVE_CURRENCIES_LABEL,
+  isDisplayCurrencyRateBasis,
+} from './domain/types/display-currency.types';
+export type {
+  AppliedRate,
+  DisplayCurrencyRateBasis,
+  NativeCurrencyAmount,
+  CurrentRateConversionInput,
+  NativeCurrencyBreakdown,
+  CurrentRateConversionResult,
+  OrderDateConversionInput,
+  OrderDateConversionResult,
+} from './domain/types/display-currency.types';
+
 // Services
-export { IOrderSyncService, OrderSyncRequest, OrderSyncResult } from './application/interfaces/order-sync.service.interface';
+export {
+  IOrderSyncService,
+  OrderSyncRequest,
+  OrderSyncResult,
+} from './application/interfaces/order-sync.service.interface';
 export {
   IOrderIngestionService,
   OrderIngestionOptions,
   OrderIngestionResult,
 } from './application/interfaces/order-ingestion.service.interface';
 
-// #2396 — the SINGLE fulfilment-router resolution seam, shared by the ingestion
-// intercept and the `fulfillment.work.route` handler. Exported so the worker
-// handler consumes the same body; a second copy is a double shipment the day
-// #2408 wires a real router into only one of them.
-export { resolveFulfillmentRouter } from './application/services/fulfillment-router-resolution';
+// #2408: the fulfilment-router resolution seam moved OUT of this context and
+// onto `FulfillmentRouterResolverPort` (`@openlinker/core/fulfillment`). It had
+// to: resolving a router needs an inventory read, a location read, a work read
+// and the operator's ruleset, and a module function can obtain none of them,
+// while `orders` may not import `@openlinker/oms` where the one implementation
+// lives. Still exactly ONE body — a second copy is a double shipment.
 export { IOrderRecordService } from './application/interfaces/order-record.service.interface';
 export { OrderRecordService } from './application/services/order-record.service';
 export { ISalesDocumentViewService } from './application/interfaces/sales-document-view.service.interface';
 export { SalesDocumentViewService } from './application/services/sales-document-view.service';
 export type { IOrderFxStampService } from './application/interfaces/order-fx-stamp.service.interface';
+export type { IOrderFxRestatementService } from './application/interfaces/order-fx-restatement.service.interface';
+export type {
+  FxRestatementPageInput,
+  FxRestatementPageResult,
+  FxRestatementRemainingSummary,
+} from './domain/types/order-fx-restatement.types';
 // FX aggregate reads for the reporting-currency settings surface (#2126).
 export type { IOrderFxReadService } from './application/interfaces/order-fx-read.service.interface';
 export {
@@ -260,6 +312,8 @@ export type {
   TaxRateBackfillPageInput,
   TaxRateBackfillPageResult,
 } from './application/services/tax-rate-backfill.service.interface';
+export type { ITaxCoverageDetectionService } from './application/services/tax-coverage-detection.service.interface';
+export type { IDisplayCurrencyConversionService } from './application/interfaces/display-currency-conversion.service.interface';
 export * from './orders.tokens';
 
 // Domain entities
@@ -378,7 +432,3 @@ export { OrderChangesModule } from './order-changes.module';
 export type { IOrderHoldProjectionReconcileService } from './application/interfaces/order-hold-projection-reconcile.service.interface';
 export type { HoldProjectionReconcileResult } from './domain/types/order-hold-projection.types';
 export { OrderHoldsModule } from './order-holds.module';
-
-
-
-

@@ -306,6 +306,20 @@ body[data-state="unavailable"] .convert-note--unavailable { display: flex; }
 body:not([data-state="converted"]) .value-native,
 body[data-state="converting"] .value-native { display: inline; }
 body[data-state="converted"] .value-eur { display: inline; }
+/* VAT basis (#2895/#2903, mockup state added per #2668 review IMPORTANT 4).
+   `gross` is the default everywhere in the shipped page, so the gross block is
+   the one visible with no state set; `net-basis` swaps them. Exactly one is
+   ever rendered — the toggle only decides which figure is the headline. */
+.revenue-basis { display: contents; }
+.revenue-basis--net { display: none; }
+body[data-state="net-basis"] .revenue-basis--gross { display: none; }
+body[data-state="net-basis"] .revenue-basis--net { display: contents; }
+.segmented--vat-basis .vat-basis-btn--gross { background: var(--bg-surface); color: var(--text-primary); font-weight: 600; }
+body[data-state="net-basis"] .segmented--vat-basis .vat-basis-btn--gross { background: transparent; color: var(--text-secondary); font-weight: 500; }
+body[data-state="net-basis"] .segmented--vat-basis .vat-basis-btn--net { background: var(--bg-surface); color: var(--text-primary); font-weight: 600; }
+
+/* #2778/#2779 — the rate-provenance sub-line under the GMV qualifier is a flex row (rate text + info trigger), not inline text like the amount spans above. */
+body[data-state="converted"] .kpi-card__qualifier-value .value-eur { display: flex; }
 body[data-state="converting"] .kpi-card__value .value-native,
 body[data-state="converting"] .kpi-card__qualifier-value .value-native { visibility: hidden; }
 .skeleton { position: absolute; inset: 0; display: none; align-items: center; }
@@ -467,6 +481,7 @@ tr.total td { font-weight: 700; border-bottom: none; border-top: 2px solid var(-
   <button class="state-btn" data-goto="settings-open">Settings open</button>
   <button class="state-btn" data-goto="converting">Converting</button>
   <button class="state-btn" data-goto="converted">Converted</button>
+  <button class="state-btn" data-goto="net-basis">VAT basis: Net</button>
   <button class="state-btn" data-goto="unavailable">Rate unavailable</button>
   <button class="state-btn" data-goto="detail-currency">List: currency</button>
   <button class="state-btn" data-goto="currency-in-progress">Recalculating&hellip; (in progress)</button>
@@ -504,8 +519,21 @@ tr.total td { font-weight: 700; border-bottom: none; border-top: 2px solid var(-
     </div>
     <div class="toolbar__group">
       <span class="chip" style="background:var(--accent-primary-soft);border-color:var(--accent-primary-border);color:var(--accent-primary-soft-strong);font-weight:600;">
-        Current rate &middot; PLN
+        No conversion &middot; PLN
       </span>
+      <!--
+        VAT basis (#2895/#2903, added per #2668 review IMPORTANT 4). The page
+        carries a Net/Gross toggle that changes EVERY money figure below it, so
+        it needs a reachable `data-state` or the Phase-9 parity gate
+        structurally cannot cover the control. `gross` is the default — in the
+        prop, in the persisted settings column and in `analytics-page.tsx`'s
+        resolver — so the mockup's default state shows GMV as the headline and
+        Net sales as the qualifier, matching the shipped page.
+      -->
+      <div class="segmented segmented--vat-basis" aria-label="VAT basis">
+        <button type="button" class="vat-basis-btn vat-basis-btn--gross" data-goto="native">Gross</button>
+        <button type="button" class="vat-basis-btn vat-basis-btn--net" data-goto="net-basis">Net</button>
+      </div>
     </div>
   </div>
 
@@ -536,6 +564,32 @@ tr.total td { font-weight: 700; border-bottom: none; border-top: 2px solid var(-
         <span class="kpi-card__label-text">Revenue</span>
         <svg class="kpi-card__spark" viewBox="0 0 60 20" fill="none"><polyline points="0,15 10,13 20,14 30,9 40,10 50,4 60,6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </div>
+      <!--
+        GROSS basis (the default): GMV is the headline, Net sales the
+        qualifier. #2908 wired this swap end to end; the `net-basis` block
+        below is the mirror image.
+      -->
+      <div class="revenue-basis revenue-basis--gross">
+      <div class="kpi-card__headline">
+        <div class="kpi-card__value">
+          <span class="value-native mono">PLN&nbsp;704.18</span>
+          <span class="value-eur mono">EUR&nbsp;163.42</span>
+          <span class="skeleton"><span class="skeleton__bar"></span></span>
+        </div>
+        <div class="kpi-card__metric">GMV &middot; VAT-inclusive, shipping excluded</div>
+      </div>
+      <div class="kpi-card__qualifiers">
+        <div class="kpi-card__qualifier">
+          <span class="kpi-card__qualifier-label">Net sales</span>
+          <span class="kpi-card__qualifier-value">
+            <span class="value-native mono">PLN&nbsp;572.50</span><span class="value-eur mono">EUR&nbsp;132.86</span><span class="skeleton"><span class="skeleton__bar" style="width:4.5em"></span></span>
+          </span>
+        </div>
+      </div>
+      </div>
+
+      <!-- NET basis: Net sales is the headline, GMV the qualifier. -->
+      <div class="revenue-basis revenue-basis--net">
       <div class="kpi-card__headline">
         <div class="kpi-card__value">
           <span class="value-native mono">PLN&nbsp;572.50</span>
@@ -547,8 +601,23 @@ tr.total td { font-weight: 700; border-bottom: none; border-top: 2px solid var(-
       <div class="kpi-card__qualifiers">
         <div class="kpi-card__qualifier">
           <span class="kpi-card__qualifier-label">GMV</span>
-          <span class="kpi-card__qualifier-value"><span class="value-native mono">PLN&nbsp;704.18</span><span class="value-eur mono">EUR&nbsp;163.42</span><span class="skeleton"><span class="skeleton__bar" style="width:4.5em"></span></span></span>
+          <span class="kpi-card__qualifier-value">
+            <span class="value-native mono">PLN&nbsp;704.18</span><span class="value-eur mono">EUR&nbsp;163.42</span><span class="skeleton"><span class="skeleton__bar" style="width:4.5em"></span></span>
+            <!-- #2778/#2779 rate provenance — visible only alongside value-eur (the converted state), never for the native/unavailable states, which show no rate line at all. -->
+            <span class="value-eur" style="display:none;font-size:0.6875rem;font-weight:400;color:var(--text-muted);align-items:center;gap:4px;">
+              1 PLN = 0.2321 EUR (ECB, 2026-08-25)
+              <details style="display:inline-block;">
+                <summary class="section-infotip" style="display:inline-flex;cursor:pointer;" aria-label="About this conversion">&#9432;</summary>
+                <div class="infotip-popover" style="position:static;margin-top:6px;max-width:20rem;">
+                  <span class="infotip-def"><span class="infotip-def__term">Current rate</span><span>Today’s rate applied to each order’s own native currency, then summed.</span></span>
+                  <span class="infotip-def"><span class="infotip-def__term">PLN → EUR</span><span>1 PLN = 0.2321 EUR (ECB, 2026-08-25)</span><span class="infotip-def__caveat">EU/ECB1(1.0):D.PLN.EUR.SP00.A@2026-08-25</span></span>
+                  <span class="infotip-def"><span class="infotip-def__term">Not an invoice rate</span><span>This is an analytics-only conversion for viewing the dashboard — never the statutory rate used on an invoice.</span></span>
+                </div>
+              </details>
+            </span>
+          </span>
         </div>
+      </div>
       </div>
     </div>
     <div class="kpi-card">
@@ -764,7 +833,7 @@ tr.total td { font-weight: 700; border-bottom: none; border-top: 2px solid var(-
         <input type="radio" name="rate-basis">
         <span class="rate-basis-option__title">Rate on order date</span>
       </div>
-      <span class="rate-basis-option__desc">A stable, accounting-grade figure — doesn’t change day to day. Depends on whether this order’s rate has already been updated (see Data coverage).</span>
+      <span class="rate-basis-option__desc">Keeps each order at its own order-date rate. Showing a different currency converts that total at today’s rate - analytics only, not a figure for tax filings.</span>
     </label>
   </div>
 

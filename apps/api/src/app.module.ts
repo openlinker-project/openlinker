@@ -21,6 +21,7 @@ import { CustomersModule } from '@openlinker/core/customers';
 import { ReturnsModule } from '@openlinker/core/returns';
 import { AutomationModule } from '@openlinker/core/automation';
 import { FulfillmentModule } from '@openlinker/core/fulfillment';
+import { FulfillmentRouterBindingModule } from './fulfillment/fulfillment-router-binding.module';
 import { ContentModule } from '@openlinker/core/content';
 import { InvoicingModule } from '@openlinker/core/invoicing';
 import { FiscalizationModule } from '@openlinker/core/fiscalization';
@@ -59,6 +60,7 @@ import { ReturnsReadApiModule } from './returns/returns-read.module';
 import { AutomationApiModule } from './automation/automation-api.module';
 import { CurrencyApiModule } from './currency/currency.module';
 import { OperationalSettingsApiModule } from './operational-settings/operational-settings.module';
+import { OmsApiModule } from './oms/oms-api.module';
 import { RequestPriorityModule } from './http/request-priority.module';
 
 @Module({
@@ -89,6 +91,11 @@ import { RequestPriorityModule } from './http/request-priority.module';
     // is proven at boot, and so the tables are built by the integration harness
     // (autoLoadEntities + synchronize) rather than only by the migration.
     FulfillmentModule,
+    // #2408: binds FULFILLMENT_ROUTER_RESOLVER_TOKEN. @Global() so `OrdersModule`
+    // — where `OrderIngestionService` is declared — can see it. The injection is
+    // required, so removing this import fails the boot instead of silently
+    // switching routing off.
+    FulfillmentRouterBindingModule,
     CustomersModule, // Import CustomersModule for customer identity resolution and projections
     IntegrationsModule,
     WebhooksModule,
@@ -131,6 +138,10 @@ import { RequestPriorityModule } from './http/request-priority.module';
     McpModule, // MCP Resource-Server auth (PATs) + Streamable-HTTP ingress (#1486, ADR-034)
     CurrencyApiModule, // Reporting-currency settings HTTP API (#2126, ADR-040)
     OperationalSettingsApiModule, // Operator-settable sweep budgets + deletion-audit cadence (#2651)
+    // /connections/:id/sourcing-rules — authoring the OL fulfilment router's ordered
+    // ruleset (#2953). Deliberately NOT `routing-rules`, which MappingsApiModule owns
+    // for the unrelated ADR-012 dispatch surface.
+    OmsApiModule,
   ],
   controllers: [AppController],
   providers: [AppService],

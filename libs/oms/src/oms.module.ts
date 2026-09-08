@@ -40,7 +40,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { createNestAdapterModule } from '@openlinker/plugin-sdk';
 
 import { createOmsPlugin } from './oms.plugin';
-import { ROUTING_RULE_SOURCE_TOKEN } from './oms.tokens';
+import { ROUTING_RULE_ADMIN_TOKEN, ROUTING_RULE_SOURCE_TOKEN } from './oms.tokens';
 import { OmsRoutingRuleOrmEntity } from './routing/oms-routing-rule.orm-entity';
 import { OmsRoutingRuleRepository } from './routing/oms-routing-rule.repository';
 
@@ -61,8 +61,12 @@ export class OmsModule {
         // publishes the port and the Symbol and never the class or the ORM
         // entity.
         { provide: ROUTING_RULE_SOURCE_TOKEN, useExisting: OmsRoutingRuleRepository },
+        // #2953 — the operator-authoring half of the same table, bound to its
+        // own port for the same reason: a consumer codes against the contract it
+        // means, and neither token publishes the class.
+        { provide: ROUTING_RULE_ADMIN_TOKEN, useExisting: OmsRoutingRuleRepository },
       ],
-      exports: [ROUTING_RULE_SOURCE_TOKEN, adapterModule],
+      exports: [ROUTING_RULE_SOURCE_TOKEN, ROUTING_RULE_ADMIN_TOKEN, adapterModule],
     };
   }
 }

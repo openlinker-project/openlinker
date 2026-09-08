@@ -341,6 +341,6 @@ In **Jobs & Logs** (`http://localhost:4173/jobs-logs`):
 
 ## What's next
 
-The **user guide** at [`docs/user-guide/README.md`](./user-guide/README.md) covers the full OpenLinker admin UI — Listings, Diagnostics, Settings, and AI offer description generation — with screenshots of every surface.
+The **user guide** at [`docs/user-guide/README.md`](./user-guide/README.md) covers the full OpenLinker admin UI — Catalog, Invoices, fiscal receipts and sales-document routing, Listings, Orders, Diagnostics, Settings, and AI offer description generation — with screenshots of every surface.
 
-The **Jobs & Logs** page (`http://localhost:4173/jobs-logs`) is the best place to watch sync activity and investigate stalled jobs. The **Webhooks** page shows every inbound event delivery. See [Diagnostics](./user-guide/06-diagnostics.md) in the user guide for details.
+The **Jobs & Logs** page (`http://localhost:4173/jobs-logs`) is the best place to watch sync activity and investigate stalled jobs. The **Webhooks** page shows every inbound event delivery. See [Diagnostics](./user-guide/07-diagnostics.md) in the user guide for details.

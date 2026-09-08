@@ -99,6 +99,12 @@ export type {
   DatedTimelineEvent,
 } from './components/order-activity-timeline';
 
+// #2646 — the presentational timeline list, extracted when the return detail
+// became a second consumer. A VALUE export, unlike the row type above: the
+// returns feature renders it. The order timeline itself stays private; only the
+// row rendering is shared, so no sibling can render an order's history.
+export { ActivityTimelineList } from './components/activity-timeline-list';
+
 // #2411 — the work-grain fulfilment-task panel renders the SAME `HoldReason`
 // vocabulary at a different grain. It imports these rather than mirroring them:
 // a second frontend copy of one union would need a second guard script, and
