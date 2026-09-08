@@ -1791,6 +1791,107 @@ describe('InfaktInvoicingAdapter', () => {
     });
   });
 
+  describe('sale_type (#2177)', () => {
+    const invoiceCmd: IssueInvoiceCommand = {
+      connectionId: 'conn-1',
+      orderId: 'order-1',
+      buyer: buyer({ nip: '1234567890' }),
+      currency: 'PLN',
+      lines: [{ name: 'Widget', quantity: 1, unitPriceGross: 123, taxRate: '23' }],
+      idempotencyKey: 'idem-1',
+    };
+    const correctionCmd: IssueCorrectionCommand = {
+      connectionId: 'conn-1',
+      orderId: 'order-1',
+      originalProviderInvoiceId: 'inv-uuid-1',
+      reason: 'Zwrot towaru',
+      lines: [{ originalLineNumber: 1, newQuantity: 0 }],
+      idempotencyKey: 'idem-corr-1',
+    };
+
+    function seedIssueFixtures(): void {
+      http.seed<InfaktListResponse<InfaktClient>>('GET', 'clients.json', listResponse([]));
+      http.seed('POST', 'clients.json', {
+        id: 1,
+        uuid: 'client-uuid-1',
+        name: 'Acme',
+        nip: '1234567890',
+        email: null,
+        city: null,
+        street: null,
+        post_code: null,
+        country: null,
+      });
+      http.seed('POST', 'invoices.json', invoiceFixture());
+      http.seed('POST', 'invoices/inv-uuid-1/send_to_ksef.json', ksefResponseFixture());
+    }
+
+    function seedCorrectionFixtures(): void {
+      http.seed('GET', 'invoices/inv-uuid-1.json', invoiceFixture());
+      http.seed('POST', 'async/corrective_invoices.json', asyncTaskFixture());
+      http.seed(
+        'GET',
+        'corrective_invoices/corr-uuid-1.json',
+        invoiceFixture({ uuid: 'corr-uuid-1', kind: 'correction' }),
+      );
+      http.seed('POST', 'corrective_invoices/corr-uuid-1/send_to_ksef.json', ksefResponseFixture());
+    }
+
+    it('should NOT include sale_type on issueInvoice when the connection has no defaultSaleType configured (regression guard)', async () => {
+      seedIssueFixtures();
+      await adapter.issueInvoice(invoiceCmd);
+
+      const invoiceCall = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
+      const body = invoiceCall?.body as { invoice: Record<string, unknown> };
+      expect('sale_type' in body.invoice).toBe(false);
+    });
+
+    it.each(['goods', 'service'] as const)(
+      'should send sale_type: %s on issueInvoice when defaultSaleType is configured',
+      async (saleType) => {
+        const configured = new InfaktInvoicingAdapter('conn-1', http, logger, {
+          defaultSaleType: saleType,
+        });
+        seedIssueFixtures();
+        await configured.issueInvoice(invoiceCmd);
+
+        const invoiceCall = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
+        expect(invoiceCall?.body).toMatchObject({
+          invoice: expect.objectContaining({ sale_type: saleType }),
+        });
+      },
+    );
+
+    it('should NOT include sale_type on issueCorrection when the connection has no defaultSaleType configured (regression guard)', async () => {
+      seedCorrectionFixtures();
+      await adapter.issueCorrection(correctionCmd);
+
+      const invoiceCall = http.calls.find(
+        (c) => c.method === 'POST' && c.path === 'async/corrective_invoices.json',
+      );
+      const body = invoiceCall?.body as { corrective_invoice: Record<string, unknown> };
+      expect('sale_type' in body.corrective_invoice).toBe(false);
+    });
+
+    it.each(['goods', 'service'] as const)(
+      'should send sale_type: %s on issueCorrection when defaultSaleType is configured',
+      async (saleType) => {
+        const configured = new InfaktInvoicingAdapter('conn-1', http, logger, {
+          defaultSaleType: saleType,
+        });
+        seedCorrectionFixtures();
+        await configured.issueCorrection(correctionCmd);
+
+        const invoiceCall = http.calls.find(
+          (c) => c.method === 'POST' && c.path === 'async/corrective_invoices.json',
+        );
+        expect(invoiceCall?.body).toMatchObject({
+          corrective_invoice: expect.objectContaining({ sale_type: saleType }),
+        });
+      },
+    );
+  });
+
   describe('bank accounts (#1303 follow-up)', () => {
     // Seeded from the real `GET /bank_accounts.json` capture, so the mapping is
     // asserted against the envelope inFakt actually emits (#1926).

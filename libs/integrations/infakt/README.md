@@ -47,7 +47,8 @@ Authentication uses a **static API key** (no OAuth).
     "id": "12345",
     "accountNumber": "PL00 0000 0000 0000 0000 0000 0000",
     "bankName": "mBank"
-  }
+  },
+  "defaultSaleType": "service"
 }
 ```
 
@@ -55,6 +56,8 @@ Authentication uses a **static API key** (no OAuth).
 (`INFAKT_DEFAULT_BASE_URL`); override it to point at a sandbox host.
 `defaultPaymentMethod` and `bankAccount` are optional (see #1309/#1310 below) -
 omit both to fall back to `cash` with no stamped account.
+`defaultSaleType` is optional (see #2177 below) - omit it to leave `sale_type`
+off the payload entirely, matching pre-#2177 behavior.
 
 ## Notable implementation details
 
@@ -103,6 +106,22 @@ omit both to fall back to `cash` with no stamped account.
   picker; the picked account is snapshotted into `config.bankAccount` and pushed back
   as the inFakt default via `BankAccountDefaultSetter.setDefaultBankAccount()`.
   `transfer` invoices carry the snapshot's `bank_account` / `bank_name` fields.
+- **Per-connection sale type for non-PL clients** (#2177): `config.defaultSaleType`
+  (`goods | service`) is stamped as `sale_type` on every issued invoice/correction
+  when configured. inFakt silently defaults `sale_type` for a PL-country client, so
+  issuance without this field has always worked for PL buyers; for any other
+  country inFakt rejects the request with 422
+  (`{"errors":{"sale_type":["Proszę określić rodzaj sprzedaży."]}}`) unless it is
+  present. There is **no safe universal default** — the field is left unset unless
+  the operator configures it, and unset means `sale_type` is omitted from the
+  payload entirely (PL issuance keeps working; non-PL issuance still 422s exactly
+  as before, unchanged). Only `'service'` is confirmed against inFakt's sandbox
+  (exact lowercase match); the correct value for a physical-goods sale (`'goods'`
+  here is the placement, not a confirmed value) was **not** found and needs
+  confirming separately by an operator with a physical-goods catalog. Picking the
+  wrong value misstates the invoice's VAT sale-type classification, so this is an
+  explicit, compliance-sensitive operator opt-in — OL cannot infer goods vs.
+  services from a possibly-mixed catalog.
 - **Rendered-PDF download** (#1321): `RegulatoryDocumentReader.getRegulatoryDocument
   (record, 'rendered')` fetches the invoice PDF as rendered by inFakt - this backs
   the **Download PDF** button on the accepted invoice detail page.
