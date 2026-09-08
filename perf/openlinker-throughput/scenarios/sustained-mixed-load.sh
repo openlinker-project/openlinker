@@ -320,31 +320,21 @@ log "posture at scenario start: WORKER_RUNNER_ENABLED=$ORIGINAL_RUNNER_ENABLED O
 MIXED_SAMPLER_PID=""
 MIXED_FAULT_ACTIVE=0
 
-# One combined EXIT handler. `trap ... EXIT` is a SINGLE slot in bash, not a
-# stack, so a second `trap ... EXIT` would REPLACE guard_stand_exclusive's own
-# release and leave the stand locked for the full TTL after any `die` - the
-# bug f7-lane-starvation.sh documents having been caught. INT/TERM are trapped
-# explicitly as well: a default-disposition SIGTERM does not run an EXIT trap,
-# and a four-hour run is exactly the kind a human interrupts.
-mixed_on_exit() {
-  local rc=$?
-  set +e
-  mixed_supp_sampler_stop
-  # Unpause before anything else - a paused destination makes every restore
-  # step below hang on a shop call it does not need to make.
-  if [ "$MIXED_FAULT_ACTIVE" = "1" ]; then
-    warn "unpausing $PS_CONTAINER (fault injection was still active at exit)"
-    docker unpause "$PS_CONTAINER" >/dev/null 2>&1 || true
-    MIXED_FAULT_ACTIVE=0
-  fi
-  mixed_restore_dest_rate_limit
-  mixed_restore_worker_posture
-  release_stand_exclusive
-  return $rc
+# ---------------------------------------------------------------------------
+# Every restore step is defined BEFORE the trap that calls them, and that
+# ordering is load-bearing rather than tidy: bash resolves a function name at
+# CALL time, so a `die` between installing the trap and executing a later
+# definition would run an EXIT handler whose body does not exist yet. On a
+# four-hour run the handler is the only thing that hands the stand back, so it
+# must be complete from the moment it is armed.
+# ---------------------------------------------------------------------------
+mixed_supp_sampler_stop() {
+  [ -n "$MIXED_SAMPLER_PID" ] || return 0
+  kill "$MIXED_SAMPLER_PID" >/dev/null 2>&1 || true
+  wait "$MIXED_SAMPLER_PID" 2>/dev/null || true
+  MIXED_SAMPLER_PID=""
+  log "supplementary sampler stopped"
 }
-trap mixed_on_exit EXIT
-trap 'exit 130' INT
-trap 'exit 143' TERM
 
 mixed_restore_dest_rate_limit() {
   local current
@@ -428,6 +418,44 @@ mixed_set_worker_posture() {
     done
   done
 }
+
+# ---------------------------------------------------------------------------
+# ARM THE TEARDOWN. Placed here, immediately after the last function it calls,
+# for the reason stated above the restore helpers: bash resolves a function
+# name at call time, so a trap armed earlier would run a handler whose body
+# had not been executed yet.
+#
+# `trap ... EXIT` is a SINGLE slot in bash, not a stack, so this REPLACES
+# guard_stand_exclusive's own `trap release_stand_exclusive EXIT` - which is
+# why the release is the last thing this handler does. Getting that wrong
+# leaves the stand locked for the whole TTL after any `die`, the bug
+# f7-lane-starvation.sh documents having been caught.
+#
+# INT and TERM are trapped explicitly as well: a default-disposition SIGTERM
+# does NOT run an EXIT trap, and a four-hour window is exactly the kind of run
+# a human interrupts. Both re-enter through `exit`, so the EXIT handler is
+# what actually performs the restore, once, from one place.
+# ---------------------------------------------------------------------------
+mixed_on_exit() {
+  local rc=$?
+  set +e
+  mixed_supp_sampler_stop
+  # Unpause FIRST - a paused destination makes several of the restore steps
+  # below wait on a shop call they do not need to make.
+  if [ "$MIXED_FAULT_ACTIVE" = "1" ]; then
+    warn "unpausing $PS_CONTAINER (fault injection was still active at exit)"
+    docker unpause "$PS_CONTAINER" >/dev/null 2>&1 || true
+    MIXED_FAULT_ACTIVE=0
+  fi
+  mixed_restore_dest_rate_limit
+  mixed_restore_worker_posture
+  release_stand_exclusive
+  return $rc
+}
+trap mixed_on_exit EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+log "teardown armed (restores runner/scheduler posture, destination rate limit, stand lock)"
 
 # ---------------------------------------------------------------------------
 # Which scheduler tasks did the worker ACTUALLY register? Read out of the
@@ -573,13 +601,8 @@ mixed_supp_sampler_start() {
   log "supplementary sampler started (pid=$MIXED_SAMPLER_PID, interval=${MIXED_SAMPLE_INTERVAL_SECS}s) -> $MIXED_SUPP_CSV"
 }
 
-mixed_supp_sampler_stop() {
-  [ -n "$MIXED_SAMPLER_PID" ] || return 0
-  kill "$MIXED_SAMPLER_PID" >/dev/null 2>&1 || true
-  wait "$MIXED_SAMPLER_PID" 2>/dev/null || true
-  MIXED_SAMPLER_PID=""
-  log "supplementary sampler stopped"
-}
+# (mixed_supp_sampler_stop is defined above, beside the other teardown steps,
+# because the EXIT trap calls it.)
 
 # ===========================================================================
 # Pre-flight
@@ -601,6 +624,18 @@ log "operational_settings cadence row: ${MANIFEST_SCHEDULER_CADENCE_ROW:-<none>}
 # blind offers no load and would report the harness rather than the system.
 of_health >/dev/null || die "the Allegro stub did not answer /__stub/health - bring up lab-allegro-stub"
 log "stub health ok"
+
+# The stub's own RUNNING configuration, read from the stub rather than
+# restated from docker-compose.lab.yml - which is the whole point of that
+# endpoint. It matters more here than in a single-flow scenario: the pinned
+# upstream latencies (`GET /order/events`, `GET /order/checkout-forms/{id}`)
+# are a direct multiplier on order throughput, the stub image on this stand
+# was built by a peer campaign rather than from this branch, and a figure
+# taken against a differently-configured stub is not comparable with F1's.
+MIXED_STUB_CONFIG="$(of_config)"
+MIXED_STUB_IMAGE="$(docker inspect lab-allegro-stub --format '{{.Config.Image}}' 2>/dev/null || printf 'unknown')"
+log "stub image: $MIXED_STUB_IMAGE"
+log "stub config: $MIXED_STUB_CONFIG"
 
 # ===========================================================================
 # Arrange
@@ -674,8 +709,12 @@ MIXED_EXTRA="$(jq -n \
   --arg taskCount "$MIXED_TASK_COUNT" \
   --arg cadence "${MANIFEST_SCHEDULER_CADENCE_ROW:-}" \
   --arg intake "$MIXED_INTAKE_CLIENT" \
+  --arg stubImage "$MIXED_STUB_IMAGE" \
+  --argjson stubConfig "$MIXED_STUB_CONFIG" \
   '{
      jobIntakeRedisClient: $intake,
+     stubImage: $stubImage,
+     stubConfig: $stubConfig,
      scenarioKind: "sustained-mixed-load",
      schedulerPosture: "ON (guard_scheduler_off deliberately not called)",
      runnerPosture: "enabled",

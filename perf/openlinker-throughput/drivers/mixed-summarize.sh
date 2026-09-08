@@ -61,6 +61,17 @@ PG_USER="${PG_USER:-postgres}"
 # sourcing lib.sh here would install a second one in the child.
 pg() { docker exec -i "$PG_CONTAINER" psql -U "$PG_USER" -d "$PG_DB" -tA -c "$1"; }
 
+# Same, but tab-separated columns instead of one hand-concatenated string.
+#
+# Concatenating inside the SELECT list looked tidier and is wrong the moment a
+# GROUP BY is involved: `SELECT a || COUNT(*) ... GROUP BY 1` groups by the
+# whole expression, which now contains an aggregate, and Postgres refuses with
+# "aggregate functions are not allowed in GROUP BY". Found by running this
+# summarizer against a synthetic results directory before a four-hour window
+# depended on it - the failure would otherwise have surfaced after the
+# measurement, with the CSVs intact but the report step broken.
+pgcols() { docker exec -i "$PG_CONTAINER" psql -U "$PG_USER" -d "$PG_DB" -tA -F$'\t' -c "$1"; }
+
 hr() { printf '%s\n' '---------------------------------------------------------------------------'; }
 
 # Column indices, resolved from the header by NAME rather than hardcoded, so a
@@ -238,9 +249,9 @@ tail -1 "$SUPP" | sed -n 's/.*,"{\(.*\)}"$/{\1}/p' | sed 's/""/"/g' \
 hr
 echo "6. JOBS CREATED IN THE WINDOW, BY TYPE AND TERMINAL STATE  [measured]"
 hr
-pg "SELECT \"jobType\" || E'\t' || status || E'\t' || COALESCE(outcome,'-') || E'\t' || COUNT(*)
+pgcols "SELECT \"jobType\", status, COALESCE(outcome,'-'), COUNT(*)
     FROM sync_jobs WHERE \"createdAt\" >= '$WS_ISO'
-    GROUP BY 1,2,3 ORDER BY COUNT(*) DESC LIMIT 40" \
+    GROUP BY 1,2,3 ORDER BY 4 DESC LIMIT 40" \
   | awk -F'\t' '{printf "     %-44s %-10s %-16s %s\n", $1, $2, $3, $4}'
 
 # --- 7. Destination outcome ----------------------------------------------
@@ -276,13 +287,13 @@ echo "   non-null sample size is printed beside each row: the column is null on"
 echo "   every row predating its migration and is reset on every enqueue, so"
 echo "   counting nulls as zero would understate every duration (#2611)."
 hr
-pg "SELECT \"jobType\" || E'\t' || COUNT(*) || E'\t' ||
-      COALESCE(ROUND(percentile_cont(0.5) WITHIN GROUP (ORDER BY \"lastAttemptDurationMs\"))::text,'-') || E'\t' ||
-      COALESCE(ROUND(percentile_cont(0.95) WITHIN GROUP (ORDER BY \"lastAttemptDurationMs\"))::text,'-') || E'\t' ||
+pgcols "SELECT \"jobType\", COUNT(*),
+      COALESCE(ROUND(percentile_cont(0.5) WITHIN GROUP (ORDER BY \"lastAttemptDurationMs\"))::text,'-'),
+      COALESCE(ROUND(percentile_cont(0.95) WITHIN GROUP (ORDER BY \"lastAttemptDurationMs\"))::text,'-'),
       COALESCE(MAX(\"lastAttemptDurationMs\")::text,'-')
     FROM sync_jobs
     WHERE \"createdAt\" >= '$WS_ISO' AND \"lastAttemptDurationMs\" IS NOT NULL
-    GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT 20" \
+    GROUP BY 1 ORDER BY 2 DESC LIMIT 20" \
   | awk -F'\t' 'BEGIN {printf "     %-44s %6s %8s %8s %8s\n", "jobType", "n", "p50ms", "p95ms", "maxms"}
                {printf "     %-44s %6s %8s %8s %8s\n", $1, $2, $3, $4, $5}'
 
@@ -290,20 +301,25 @@ pg "SELECT \"jobType\" || E'\t' || COUNT(*) || E'\t' ||
 hr
 echo "9. RETRIES AND DEFERRALS FOR WINDOW JOBS  [measured]"
 hr
-pg "SELECT 'jobs with attempts>1' || E'\t' || COUNT(*) FROM sync_jobs
-      WHERE \"createdAt\" >= '$WS_ISO' AND attempts > 1
-    UNION ALL
-    SELECT 'jobs with deferredTotalMs>0' || E'\t' || COUNT(*) FROM sync_jobs
-      WHERE \"createdAt\" >= '$WS_ISO' AND \"deferredTotalMs\" > 0
-    UNION ALL
-    SELECT 'max attempts seen' || E'\t' || COALESCE(MAX(attempts)::text,'-') FROM sync_jobs
-      WHERE \"createdAt\" >= '$WS_ISO'
-    UNION ALL
-    SELECT 'max deferredTotalMs seen' || E'\t' || COALESCE(MAX(\"deferredTotalMs\")::text,'-') FROM sync_jobs
-      WHERE \"createdAt\" >= '$WS_ISO'
-    UNION ALL
-    SELECT 'dead jobs' || E'\t' || COUNT(*) FROM sync_jobs
-      WHERE \"createdAt\" >= '$WS_ISO' AND status='dead'" \
+# Explicitly ORDERed. A bare UNION ALL has no defined row order, and it came
+# back shuffled on the dry run - harmless for a labelled list, but a report
+# whose rows move between runs is one a reader cannot diff.
+pgcols "SELECT label, value FROM (
+      SELECT 1 AS o, 'jobs with attempts>1' AS label, COUNT(*)::text AS value FROM sync_jobs
+        WHERE \"createdAt\" >= '$WS_ISO' AND attempts > 1
+      UNION ALL
+      SELECT 2, 'max attempts seen', COALESCE(MAX(attempts)::text,'-') FROM sync_jobs
+        WHERE \"createdAt\" >= '$WS_ISO'
+      UNION ALL
+      SELECT 3, 'jobs with deferredTotalMs>0', COUNT(*)::text FROM sync_jobs
+        WHERE \"createdAt\" >= '$WS_ISO' AND \"deferredTotalMs\" > 0
+      UNION ALL
+      SELECT 4, 'max deferredTotalMs seen', COALESCE(MAX(\"deferredTotalMs\")::text,'-') FROM sync_jobs
+        WHERE \"createdAt\" >= '$WS_ISO'
+      UNION ALL
+      SELECT 5, 'dead jobs', COUNT(*)::text FROM sync_jobs
+        WHERE \"createdAt\" >= '$WS_ISO' AND status='dead'
+    ) t ORDER BY o" \
   | awk -F'\t' '{printf "     %-32s %s\n", $1, $2}'
 
 # --- 10. Database growth --------------------------------------------------
