@@ -6,12 +6,33 @@ measurements the #2840 performance campaign actually took.
 **Read the warning first, because it decides whether this page is the right one
 for your problem.** The campaign found that the flow an operator most often
 wants faster - order ingestion - is bounded by *configuration*, not by the
-machine. The order path measured ~207 orders/h on the then-shipped defaults and
-**2 233 orders/h on the same hardware** once one Redis client and one
-destination rate limit changed, while adding two more worker replicas bought
-only **1.50x** on top of that. If your queue is not draining, this page is
-probably not your answer;
-[§ 11](#11-scaling-what-replicas-buy-and-what-they-do-not) is.
+machine.
+
+On **today's shipped configuration** - the destination at the 300 req/min
+PrestaShop now defaults to, the scheduler on and 30 crons ticking - the order
+path took **1 792 orders offered and completed 1 791 of them, 598.3 orders/h,
+for three continuous hours**. Offered 3 600/h on a window built to saturate,
+the same configuration drained **at least 971 orders/h**. Neither
+figure was bounded by CPU, memory or the database pool; a slot cap was.
+
+What did move it was software plus one rate limit, not hardware: the same
+isolated path measured **~207 orders/h** before the intake-client fix, with the
+destination at the 60 req/min it defaulted to then. Adding two more worker
+replicas bought only **1.50x** on top of the fix. If your queue is not
+draining, this page is probably not your answer;
+[§ 11](#11-scaling-what-replicas-buy-and-what-they-do-not) is, and
+[the orders/hour reconciliation](../../perf/openlinker-throughput/campaign-orders-per-hour-2026-09-08.md)
+lists every figure the campaign produced beside the conditions it required.
+
+> **A 2 233 orders/h figure is also in circulation. It is real, and it is not
+> this configuration.** It was measured on a **five-minute isolated window**
+> with the scheduler off and no cron firing, and with the destination raised to
+> **600 req/min - double the 300 req/min PrestaShop ships** (#2982) and above
+> what this project's own weak-shop measurement supports as a default
+> ([§ 12](#12-the-destination-shop-needs-sizing-too)). Its window, like every
+> other throughput window in the campaign, is `DISCARDED`. Read it as what an
+> operator who raises that limit on a shop that can take it may see, never as
+> what OpenLinker does out of the box. § 11 carries it with the rest.
 
 ---
 
@@ -634,13 +655,27 @@ machine moves none of those terms.
 
 ### What did move it - none of it hardware
 
-| Configuration | Orders/h | Label |
-|---|---:|---|
-| **Then**-shipped defaults (shared intake Redis client, destination 60 req/min), isolated order path | ~207 | measured |
-| Dedicated intake client, destination 600 req/min, **1 replica** | **2 233** | measured |
-| Dedicated intake client, destination 600 req/min, **3 replicas** | **3 356** | measured |
-| Shared intake client, destination 300 req/min, **under mixed load** (30 crons + sweeps) | **200.6** | measured, window `DISCARDED`, **and a configuration that never shipped** - see the banner below |
-| **Today's shipped configuration, under mixed load** (dedicated client, destination 300 req/min) | **~962** | **interim, mid-window, verdict unwritten** |
+**The window length is in this table because it is the most load-bearing
+condition in it.** A five-minute isolated window counts 16-19 orders on the slow
+arms, so one order is 5-6% of the rate, and no hourly cron fires and no
+catalogue sweep cycle completes inside one. Every figure's **destination rate
+limit** is named for the same reason - three of these rows required a limit no
+release ships.
+
+| Configuration | Window | Orders/h | Label |
+|---|---|---:|---|
+| **Then**-shipped defaults (shared intake Redis client, destination 60 req/min), isolated order path | **300 s** x3 | ~207 | measured, window `DISCARDED` |
+| Dedicated intake client, destination **600 req/min**, 1 replica, isolated | **300 s** x3 | **2 233** | measured, `DISCARDED`, **double the shipped limit** |
+| Dedicated intake client, destination **600 req/min**, **3 replicas**, isolated | **300 s** x2 | **3 356** | measured, `DISCARDED`, **double the shipped limit** |
+| Shared intake client, destination 300 req/min, **under mixed load** (30 crons + sweeps) | 3 h | **200.6** | measured, `DISCARDED`, **and a configuration that never shipped** - see the banner below |
+| **Today's shipped configuration, under mixed load** (dedicated client, destination 300 req/min), offered 3 600/h to saturate | 3 h | **971.3** | measured, `DISCARDED`, **a lower bound** |
+| **Today's shipped configuration, under mixed load**, offered 598.6/h | 3 h | **598.3** | measured, **the sustained figure** |
+
+**The last row is the one to plan against.** 1 792 orders offered, 1 791
+completed - **99.94%, for three continuous hours** with the scheduler on. It is
+the only measurement in the campaign at which the offered rate and the completed
+rate met, so every other row is either a system running permanently behind or a
+five-minute window extrapolated.
 
 **One software fix plus one destination rate limit bought ~10.8x on unchanged
 hardware. Tripling the workers on top bought 1.50x.** The A/B isolates the two:
@@ -667,22 +702,45 @@ design. The remaining ~6% is three processes contending on one Redis bucket.
 > old shipped configuration nor the new one, and reading it as *"what OpenLinker
 > did before the fixes"* describes a build nobody ever ran.
 >
-> **There is no completed, verdicted capacity measurement of today's shipped
-> configuration under mixed load.** The run that would produce one is in flight:
-> arm B of the same scenario, one variable changed, and at **t+8 622 s of
-> 10 800 s** it has completed **2 304 orders in 8 622 s - about 962 orders/h
-> observed**, with the limiter-degradation counter at **0** against arm A's
-> **1 454**. Per-order service time over the same arm fell from **32 404 ms to
-> 6 014 ms** (5.39x), and 262 of 263 of its orders carry a destination
-> `syncedAt`, so it is not fast failures.
+> **What replaced it, and both figures are now complete rather than in
+> flight.** Arm B of the same scenario, one variable changed, ran the full
+> 10 802 s and completed **971.3 orders/h** (988.4/h ingested, 986.7/h over its
+> steady phase) at a **6 344 ms** mean per-order service time against arm A's
+> **32 404 ms** - a **5.11x** service-time improvement - with the
+> limiter-degradation counter at **0** against arm A's **1 454**, and 262 of 263
+> of its sampled orders carrying a destination `syncedAt`, so it is not fast
+> failures. Arm C then ran the same shape at an offered 598.6/h and completed
+> **598.3/h, 1:1 for three hours**, with degradation at 0 for the third
+> independent window.
+
+> **Two interim figures published here earlier are superseded, and are kept
+> visible rather than edited away.**
 >
-> **Treat 962 as interim, not final.** It is a mid-window reading from a
-> deliberately saturating window whose verdict is not yet written, and it is
-> coming in roughly **20% below the 1 197 orders/h** the slot arithmetic
-> (`2 slots x 3600 / 6.014 s`) predicts - the expected direction, since that
-> arithmetic used an isolated service time. It is nonetheless the **honest
-> statement about the shipped build**, and a stronger one than an extrapolation.
-> The final figure and its verdict belong to that run's own report.
+> **~962 orders/h** was a mid-window read of arm B at t+8 622 s of 10 800 s,
+> labelled *"interim, mid-window, verdict unwritten"*. Its whole-window
+> replacement is **971.3 orders/h** - about 1% apart, and the difference is the
+> window trim rather than a change in the system.
+>
+> **1 197 orders/h** was `2 slots x 3600 / 6.014 s` over that same interim
+> service time. The whole-window service time is **6 344 ms**, so the same
+> arithmetic now yields **1 135 orders/h**, and the service-time gain is
+> **5.11x** rather than the interim **5.39x**. It remains **derived**: slot
+> arithmetic over a measured service time, never an observed throughput.
+
+> ## The order path's ceiling is unmeasured, and no figure here is one
+>
+> Both saturating windows were offered more than they could take, so each
+> reports a **floor** on the ceiling. Arm C was offered **less** than it could
+> take and kept up, so it also reports a floor - `ceiling >= 600 orders/h`,
+> observed. Two floors from below do not meet in the middle, and the derived
+> 1 135/h is arithmetic that nothing observed.
+>
+> The window that would settle it is a **ramp to refusal** - the same
+> three-hour mixed-load shape with the offered rate stepped upward until the
+> completed rate stops tracking it - and **no arm in the campaign performed
+> one**. Until one does, do not read the highest number on this page as a
+> capacity limit. Every figure, with the conditions it required, is collected in
+> [the orders/hour reconciliation](../../perf/openlinker-throughput/campaign-orders-per-hour-2026-09-08.md).
 
 > **A `2.77x` replica scaling figure from F4 is withdrawn and must not be
 > quoted.** That run's three replicas drained 600 bulk jobs 2.77x faster by
@@ -837,14 +895,22 @@ Carried from the campaign's own reports, plus what this page adds.
   intake-client fix and legitimate evidence for the concurrency finding; it is
   **not a clean capacity measurement**, and the footprint figures in
   [§ 6](#6-ram) and [§ 7](#7-disk) travel with that verdict attached.
-- **A completed capacity measurement of today's shipped configuration under
-  mixed load.** Both of the changes that moved the order path by 10x are now
-  defaults, and the run measuring them together with the crons and sweeps is
-  still in flight: the honest figure is an **interim ~962 orders/h at t+8 622 s
-  of 10 800 s**, verdict unwritten. **And 200.6 orders/h is not the "before"
-  figure for it** - that run carried the new rate limit with the old shared
-  client, a configuration that never shipped. Both points are set out in
+- **The order path's ceiling.** Today's shipped configuration under mixed load
+  is now measured twice - **971.3 orders/h** on a saturating window and
+  **598.3 orders/h** sustained 1:1 - but both are **floors**, one from a system
+  running behind and one from an offered rate below capacity, and the derived
+  1 135/h is arithmetic nothing observed. The window that would settle it is a
+  **ramp to refusal**, and no arm performed one. The earlier **interim ~962
+  orders/h** published here is superseded by 971.3; both are set out in
   [§ 11](#11-scaling-what-replicas-buy-and-what-they-do-not).
+- **A `VALID` order-path window.** Every throughput window in the campaign is
+  `DISCARDED`, including the two that produced the figures above. Arm C came
+  closest: its order-path criterion passed while its install-wide queue
+  criterion failed, for a reason outside the order path (a stand connection
+  polling the shop OpenLinker writes into, so OL re-ingested its own orders).
+- **200.6 orders/h is not the "before" figure for any of this** - that run
+  carried the new rate limit with the old shared client, a configuration that
+  never shipped.
 - **F1's order-path figures are withdrawn** (#2847): all four runs are
   `DISCARDED` and their 66 s latency and 182-295 orders/h numbers must not be
   quoted.
@@ -942,6 +1008,10 @@ Carried from the campaign's own reports, plus what this page adds.
   worker roles and the scheduler singleton
 - [ADR-072](../architecture/adrs/072-append-only-table-retention.md) - the
   retention mechanism, designed and not registered
+- [campaign-orders-per-hour-2026-09-08.md](../../perf/openlinker-throughput/campaign-orders-per-hour-2026-09-08.md) -
+  every orders/hour figure the campaign produced, with the window length,
+  destination rate limit, replica count, scheduler posture and verdict each one
+  required, and which figures are withdrawn
 - `perf/openlinker-throughput/campaign-2026-09-06.md` and the `results-*.md`
   beside it - the runs themselves
 - **#2840** the performance campaign - **#2862** retention - **#1136** the
