@@ -23,6 +23,42 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## A new assertion must be verified red-first, because a test can pass for a reason it does not claim
+
+**Context**: the #2840 performance campaign and the #2943 read-split epic, over one working day.
+Both produced a lot of new test code under time pressure, and every new assertion was checked by
+breaking the behaviour it covers and confirming the suite named the break.
+
+**Problem**: **four assertions passed against deliberately broken code**, in independent files
+written by different people, and none of them would have been caught by reading the test:
+
+- a guard's refusal test asserted only on the word `DISCARDED`. With the branch under test removed,
+  the function fell through to a *different* failure path that also says `DISCARDED`, so the test
+  stayed green while the behaviour it named was gone.
+- an integration case seeded two rows to make a 1:N join observable, but read them at a page of
+  twenty. `getMany()` collapses duplicate raw rows to one entity per primary key, so a broken
+  `GROUP BY` yielded four raw rows, three entities and four passing assertions. It is only visible
+  at a page size smaller than the duplicate count.
+- a tab-switch suppression added in one review round was pinned by nothing: deleting the mechanism
+  outright passed all fifty of that page's tests, leaving the defect it exists for unguarded.
+- a parity spec written to catch clock drift between two split queries **froze the clock**. The
+  flake was the finding; freezing it turned a true statement about production into a green test -
+  in the one test whose entire job was to catch that drift.
+
+The shape is the same every time: **none of them errored.** Each produced a plausible artifact that
+was quietly incomplete, which is indistinguishable from success unless you go looking.
+
+**Rule**: after writing an assertion, break the thing it covers, run the suite, and confirm it fails
+**by name**. If it passes, the assertion is wrong - strengthen it rather than moving on. Three
+specific traps, all seen in the cases above: assert the specific message rather than a shared
+keyword; check the fixture size can actually expose the mutation; and never stabilise a flake you
+have not first explained, because the flake may be the result.
+
+**Applies to**: every new test, and especially any test written to guard a defect that was just
+found - that is precisely when the temptation to accept green is strongest.
+
+**Source**: #2933, #2943 (review rounds 3-5), #2957
+
 ## A claim about a dependency's internals must be read against the installed version
 
 **Context**: #2957 split a paginated read into a fast page and a separate total. The change had to
