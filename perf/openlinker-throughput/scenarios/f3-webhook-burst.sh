@@ -678,6 +678,17 @@ run_strict() {
   local deliveries_at_start
   deliveries_at_start="$(pg_sql "SELECT COUNT(*) FROM webhook_deliveries WHERE \"connectionId\"='$WEBHOOK_CONNECTION_ID'")"
 
+  # Fills webhookDeliveriesRowsAtEnd, which run_one_arm seeds as null at
+  # window_start. Mirrors manifest_set_sync_jobs_end (lib.sh:956-961) exactly,
+  # including the tmp-file rename: `jq ... file > file` truncates the file
+  # before jq reads it.
+  f3_manifest_set_deliveries_end() {
+    local dir="$1" n
+    n="$(pg_sql "SELECT COUNT(*) FROM webhook_deliveries WHERE \"connectionId\"='$WEBHOOK_CONNECTION_ID'" 2>/dev/null || printf '0')"
+    jq --argjson n "${n:-0}" '.webhookDeliveriesRowsAtEnd = $n' "$dir/manifest.json" > "$dir/manifest.json.tmp" \
+      && mv "$dir/manifest.json.tmp" "$dir/manifest.json"
+  }
+
   local run_group probes_dir
   run_group="run$(date +%s)"
   probes_dir="$(results_dir_init f3-webhook-burst "${run_group}-probes")"
@@ -954,8 +965,19 @@ PY
     pool="$dir/pool.json"
 
     snapshot_jobs_before "$CONN_IDS"
-    extra_manifest="$(jq -n --argjson n "$deliveries_at_start" --arg arm "$arm" --argjson rate "$TARGET_RATE" \
-      '{webhookDeliveriesRowsAtStart:$n, arm:$arm, arrivalRatePerSec:$rate}')"
+    # PER-ARM, not the run-wide figure (#2842). `deliveries_at_start` is read
+    # ONCE before any arm, so arms 2 and 3 were recording a count taken before
+    # arm 1's ~18 000 inserts - it was already wrong as a per-arm number,
+    # independently of the missing AtEnd. `rows/s into webhook_deliveries` is
+    # not computable from a start that predates two other arms.
+    local arm_deliveries_at_start
+    arm_deliveries_at_start="$(pg_sql "SELECT COUNT(*) FROM webhook_deliveries WHERE \"connectionId\"='$WEBHOOK_CONNECTION_ID'")"
+    extra_manifest="$(jq -n --argjson n "$arm_deliveries_at_start" --argjson n0 "$deliveries_at_start" \
+      --arg arm "$arm" --argjson rate "$TARGET_RATE" \
+      '{webhookDeliveriesRowsAtStart:$n,
+        webhookDeliveriesRowsAtEnd:null,
+        webhookDeliveriesRowsAtRunStart:$n0,
+        arm:$arm, arrivalRatePerSec:$rate}')"
     window_start "$dir" f3-webhook-burst "$CONN_IDS" 0 "$extra_manifest"
 
     # Real lead time now, not a 60s-stale one: window_start's settle sleep is
@@ -972,6 +994,15 @@ PY
     deadlocks_after="$(pg_deadlocks_total)"
 
     window_stop "$dir"
+    # #2842's blocker: `rows/s into webhook_deliveries` was not computable
+    # from ANY existing artefact, because only ...RowsAtStart was ever
+    # captured. Same slot relative to window_stop that
+    # manifest_set_sync_jobs_end occupies (lib.sh:1088), and the same
+    # tmp-file dance - writing jq's output straight back over manifest.json
+    # truncates it. Kept in the scenario rather than lib.sh because
+    # webhook_deliveries is F3-only and lib.sh deliberately knows nothing
+    # about it.
+    f3_manifest_set_deliveries_end "$dir"
     # The k6 summary is passed so post_guard_generator_saturated can run.
     # Omitting it would silently skip the generator check on the one scenario
     # whose headline was nearly published as a system ceiling while k6 sat at
