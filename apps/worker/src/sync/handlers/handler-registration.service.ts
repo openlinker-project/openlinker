@@ -62,6 +62,7 @@ import { PendingRecoveryHandler } from './pending-recovery.handler';
 import { PaymentStatusRefreshHandler } from './payment-status-refresh.handler';
 import { FulfillmentWorkDispatchHandler } from './fulfillment-work-dispatch.handler';
 import { FulfillmentWorkRouteHandler } from './fulfillment-work-route.handler';
+import { FulfillmentWorkTimeoutSweepHandler } from './fulfillment-work-timeout-sweep.handler';
 
 @Injectable()
 export class HandlerRegistrationService implements OnModuleInit {
@@ -119,7 +120,8 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly pendingRecoveryHandler: PendingRecoveryHandler,
     private readonly paymentStatusRefreshHandler: PaymentStatusRefreshHandler,
     private readonly fulfillmentWorkDispatchHandler: FulfillmentWorkDispatchHandler,
-    private readonly fulfillmentWorkRouteHandler: FulfillmentWorkRouteHandler
+    private readonly fulfillmentWorkRouteHandler: FulfillmentWorkRouteHandler,
+    private readonly fulfillmentWorkTimeoutSweepHandler: FulfillmentWorkTimeoutSweepHandler
   ) {}
 
   onModuleInit(): void {
@@ -548,6 +550,24 @@ export class HandlerRegistrationService implements OnModuleInit {
       'fulfillment.work.route',
       this.fulfillmentWorkRouteHandler,
       'realtime'
+    );
+
+    // ADR-054's timeout-as-rejection sweep (#2712).
+    //
+    // 'bulk', and deliberately NOT the 'realtime' its two `fulfillment.work.*`
+    // siblings take. ADR-050 picks by cost of starvation: a dispatch and a route
+    // are outbound acts an order is waiting on, whereas this is a cron-paced
+    // reconciler over work that is ALREADY STALLED BY DEFINITION — nobody is
+    // waiting on it, and one more tick of delay on a dispatch that has been
+    // silent for hours is immaterial. Putting a reaper in 'realtime' would let
+    // it take a slot from an actual dispatch, which is the wrong trade in the
+    // one direction that costs a shipment. Same profile and same reasoning as
+    // `inventory.reservations.expire` above: it enqueues no children, makes no
+    // platform call, and does its work in bounded local writes.
+    this.handlerRegistry.register(
+      'fulfillment.work.timeoutSweep',
+      this.fulfillmentWorkTimeoutSweepHandler,
+      'bulk'
     );
 
     // Data Coverage currency-restatement driver (#2468). 'bulk' lane: an

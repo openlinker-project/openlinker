@@ -92,11 +92,13 @@ export type {
   CreateFulfillmentWorkInput,
   CreateFulfillmentWorkLineInput,
   FulfillmentWorkTransaction,
+  ListTimedOutDispatchesInput,
   PlaceFulfillmentHoldInput,
   RecordFulfillmentAcceptanceInput,
   RecordFulfillmentLineProgressInput,
   RecordFulfillmentRejectionInput,
   ReleaseFulfillmentHoldInput,
+  TimedOutFulfillmentDispatch,
   TransitionFulfillmentRequestStatusInput,
   TransitionFulfillmentWorkStatusInput,
 } from './domain/ports/fulfillment-work-repository.port';
@@ -192,6 +194,15 @@ export { UnsupportedFulfillmentWorkActionError } from './domain/exceptions/unsup
 // published, and that absence is decision D18 rather than an omission.
 export * from './domain/types/fulfillment-verification.types';
 export type { IFulfillmentVerificationService } from './application/interfaces/fulfillment-verification.service.interface';
+
+// ADR-054's timeout-as-rejection sweep (#2712). The SERVICE INTERFACE, its I/O
+// and the pure rules cross the barrel; `FulfillmentWorkRepositoryPort` still
+// does not, per the deny pattern. `TimedOutFulfillmentDispatch` and
+// `ListTimedOutDispatchesInput` are the read's INPUT/projection shapes and ride
+// on the same rule as the other exported repository input shapes above.
+export * from './domain/types/fulfillment-dispatch-timeout.types';
+export type { IFulfillmentDispatchTimeoutService } from './application/interfaces/fulfillment-dispatch-timeout.service.interface';
+export * from './application/types/fulfillment-dispatch-timeout-sweep.types';
 
 export { FulfillmentModule } from './fulfillment.module';
 
