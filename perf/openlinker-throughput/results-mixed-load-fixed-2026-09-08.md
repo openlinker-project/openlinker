@@ -508,17 +508,184 @@ under the co-tenancy an operator actually runs. What would confirm it is a
 limiter-wait measurement per arm, which neither arm carries; § 6 records that
 as unestablished.
 
-## 3. Findings
+## 3. Findings - arm B, whole window
 
-TBD.
+Window `2026-09-08T09:29:28Z` + 10802s, 10800 orders offered, 299 samples.
+These supersede § 2's interim.
 
-## 4. The owner's question
+### 3.1 The comparison
 
-TBD.
+| | A shared | B dedicated | change |
+|---|---|---|---|
+| **service time** mean, succeeded `order.sync` | **32 404 ms** (n=602) | **6 344 ms** (n=2 919) | **5.11x faster** |
+| p50 / p95 | 30 488 / 35 667 | 6 234 / 9 232 | |
+| orders/h ingested, whole window | 217.3 | **988.4** | 4.55x |
+| orders/h completed, whole window | 200.6 | **971.3** | 4.84x |
+| orders/h completed, steady phase | 193.3 | 986.7 | 5.10x |
+| ceiling `2 x 3600 / service` **[derived]** | 222/h | 1 135/h | |
+| Little's law `L` | 1.81 | 1.71 | both **under 2** |
+| **limiter degradation, authoritative** | **1 454** | **0** | eliminated |
+| queue last-third slope | +4 298/h | +3 859/h | -10% |
+| jobs with `attempts>1` | 474 | 1 321 | |
+| dead jobs | 352 | 15 | |
+
+Per your rule, no throughput figure without its service time: **971.3
+orders/h at a 6 344 ms mean service time.** The whole-window figure is quoted
+because it is the statistic arm A's 200.6/h is; the steady phase reads
+986.7/h and an independent mid-window read gave ~962/h, so the three agree
+within 2.5% (§ 2.3.1).
+
+### 3.2 Limiter degradation went to zero, and that is the authoritative count
+
+`post_guard_limiter_degraded` **is absent from arm B's `verdict.txt`** - it
+answered `ok`, i.e. **zero** degraded-mode lines in a whole-window single
+grep, against arm A's **1 454**. The CSV sum agrees at 0. `post_guard_deferrals`
+also went from firing to `ok`.
+
+So #2984 did not reduce the degradation, it **removed it**, under exactly the
+co-tenancy an operator runs.
+
+### 3.3 The mechanism, and it is more specific than the hypothesis I published
+
+§ 2.5 guessed "co-tenancy" loosely. The per-type durations say something
+sharper. Four *unrelated* job types in arm A all sit at a p50 of roughly
+**4.4-4.6 s**, and in arm B they collapse to **milliseconds**:
+
+| jobType | A p50 | B p50 | ratio |
+|---|---|---|---|
+| `inventory.propagateToMarketplaces` | 4 589 ms | **17 ms** | 270x |
+| `master.inventory.syncByExternalId` | 4 392 ms | **206 ms** | 21x |
+| `marketplace.offerQuantity.update` | 9 282 ms | **130 ms** | 71x |
+| `marketplace.orders.poll` | 9 692 ms | **326 ms** | 30x |
+
+A job that does 17 ms of work cannot have been doing 4 589 ms of work. That
+floor is not the work; it is **a wait**, and its magnitude is the signature
+#2984's own commit message predicts: `JobIntakeConsumer` blocks on
+`xReadGroup` with `BLOCK: 5000`, and any command queued behind an in-flight
+block waits out its residual - a mean of ~2.5 s for uniform arrival, more with
+several commands queued. **Every Redis-touching job in the worker was paying a
+share of one five-second blocking read.**
+
+That is why the whole system sped up ~5x rather than just the order path, and
+it refines the hypothesis rather than confirming it: co-tenancy is not the
+mechanism, it is the **multiplier** - it decides how many commands pay the
+residual, which is precisely why an isolated single-flow A/B measured +47%
+where this measures 5x. **Still short of proof**: these are per-job totals,
+not a limiter-wait distribution, and § 6.2's named experiment is unchanged.
+
+### 3.4 The bottleneck did NOT move to the offer-quantity fan-out - hypothesis refuted
+
+§ 2 flagged that `marketplace.offerQuantity.update` queue depth tripled
+(504 -> 1 719) and that this might mean the freed capacity had merely shifted
+the constraint. **Tested and refuted.** Over the same arms that type went from
+150 attempted rows at a 9 282 ms p50 to **2 574 attempted rows at a 130 ms
+p50**. Its depth grew because **17x more of it was completed**, not because it
+backed up.
+
+Nothing became the new bottleneck. The offered rate is still 3 600 orders/h
+against a 988/h drain, so everything downstream still accumulates - which is
+the load shape, not a constraint (§ 6.1).
+
+### 3.5 The queue still grows, and the slope barely moved - which is arithmetic, not a disappointment
+
+`verdict = GROWING`, last-third slope **+3 859 jobs/h** against a ±1 132
+noise band, depth 66 -> 11 809. Arm A was +4 298.
+
+A 4.8x throughput gain moving the slope only 10% looks wrong until the
+subtraction: queue growth is `offered - drained`, so it went from
+`3 600 - 200 = 3 400` to `3 600 - 971 = 2 629` on the order path - a 23% fall -
+partly offset by the sweeps completing far more work and enqueuing more
+children. **The slope is dominated by the offered rate, not the drain**, which
+is exactly why § 1.6 pre-registered that it cannot answer the convergence
+question and why arm C exists.
+
+### 3.6 The fault behaved as arm A's did
+
+Fault at t+6603s, cleared t+6902s. Order processing stopped almost completely
+for its duration (**2 orders ingested and 2 completed across 257 s of
+samples**, 28.0/h) and resumed immediately: the recovery phase ran at
+1 015.7/h ingested and 1 016.6/h completed, i.e. **at or slightly above the
+steady phase**. No `marketplace.order.sync` job died. **15** dead jobs across
+the window, against arm A's 352.
+
+## 4. The owner's question: will a 5 000 orders/day shop work?
+
+**Yes, with room - and the number that carries the answer is the service
+time, not the throughput.**
+
+5 000 orders/day is **208/h averaged**, and 500-600/h at a four-to-six-hour
+peak. The measured facts:
+
+| | Required service time at 2 slots | Measured | Verdict |
+|---|---|---|---|
+| 208/h daily average | <= 34.6 s | **6.34 s** | clears with 5.5x margin |
+| 500/h peak | <= 14.4 s | **6.34 s** | clears with 2.3x margin |
+| 600/h peak | <= 12.0 s | **6.34 s** | clears with 1.9x margin |
+
+The arithmetic is `orders/h = 2 slots x 3600 / service-seconds`, and every
+input is measured except the slot count, which is `OL_LANE_REALTIME_SCOPE_CAP`
+observed in force in both arms.
+
+**Before the fix the answer was no.** At 32.4 s, two slots give 222/h - so a
+5 000/day shop was marginal at its *daily average* and could not have carried
+its peak at all. That is the change #2984 makes, and it is why the service
+time is the figure to quote rather than the throughput.
+
+**Three bounds on that "yes", stated because they are the difference between
+an answer and a sales figure:**
+
+1. **971.3 orders/h is a floor, not a ceiling.** It was measured on a
+   *saturating* window - 3 600/h offered - so it is what the system sustained
+   while permanently behind, not what it can do. The 1 135/h ceiling is
+   **derived arithmetic** and nothing here observes it (§ 6.1). **Arm C, at
+   600/h, is the first window that puts weight on the peak figure**, and its
+   result belongs in this section when it closes.
+2. **One worker replica.** Lane caps bound one *process*, so a real
+   deployment multiplies by replica count - this is a per-process answer, not
+   a deployment one.
+3. **The peak is answered at 600/h, not above it.** Nothing here measured
+   700/h or 1 000/h, and the honest form of the claim is "600/h is inside the
+   measured service time's envelope with ~1.9x margin", not "the system does
+   1 135/h".
+
+**What to do about it operationally**: nothing. No cap needs raising - arm ED
+measured that raising the lane cap made throughput *fall* 12.5%, and the
+destination ran at ~12% of its 300 req/min budget in arm A. The lever was the
+intake client, it has shipped, and the next one is § 8.3's unowned 3.1x.
 
 ## 5. Verdict, post-guards, and whether any figure here is VALID
 
-Figures: TBD.
+**Arm B: `status=DISCARDED`, on two guards - one fewer than arm A.**
+
+```
+reason=DISCARDED post_guard_attempts: 1318 job(s) in the window show attempts>1
+reason=DISCARDED post_guard_destination_creates: 2967 order(s) carry a failed
+       syncStatus entry, 1484 lack syncedAt on the declared destination
+```
+
+| Guard | Arm A | Arm B | reading |
+|---|---|---|---|
+| `post_guard_attempts` | fired (474) | fired (1 318) | structural - scheduler-minted jobs carry the entity default of 10 attempts |
+| `post_guard_destination_creates` | fired (650/729) | fired (2 967/1 484) | **the § 7.4(b) defect** - see below |
+| `post_guard_limiter_degraded` | **fired (1 454)** | **ok (0)** | **the actual defect, actually fixed** |
+| `post_guard_deferrals` | fired | **ok** | |
+| `post_guard_requeues` | ok | ok | |
+| `post_guard_containers_stable` | ok | ok | |
+| `post_guard_generator_saturated` | ok | ok | n/a on this path |
+| `post_guard_feed_starved` | ok | ok | `minAvailableWork=128` throughout |
+
+**Arm B eliminated one of arm A's three discard reasons by repairing the thing
+it measured**, which is the cleanest possible confirmation: the guard that was
+supposed to notice the limiter defect stopped firing when the defect went
+away.
+
+**And `post_guard_destination_creates`' count is now impossible on its face**,
+which is § 7.4(b) confirmed rather than argued: it reports **2 967** orders
+carrying a failed entry against **2 961 ingested from the source**. A count
+exceeding the population it claims to describe can only come from an
+unscoped predicate - it is counting orders from other sources, and counting
+WooCommerce mapping failures on essentially every order. The measured
+destination-scoped figures for arm A were **1 and 1**.
 
 **Why this section is not a formality.** All four F1 order-path runs are
 `DISCARDED`, and #2847 records that their **66 s** and **182-295 orders/h**
