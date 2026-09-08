@@ -204,6 +204,13 @@ export * from './domain/types/fulfillment-dispatch-timeout.types';
 export type { IFulfillmentDispatchTimeoutService } from './application/interfaces/fulfillment-dispatch-timeout.service.interface';
 export * from './application/types/fulfillment-dispatch-timeout-sweep.types';
 
+// The dispatch-relay reconcile pass (#2728). The pure rules, the read seam and
+// its I/O shapes; the re-drive itself is `orders`' `relayDispatch` and is
+// deliberately not reachable from here.
+export * from './domain/types/fulfillment-relay-reconcile.types';
+export type { IFulfillmentRelayReconcileService } from './application/interfaces/fulfillment-relay-reconcile.service.interface';
+export * from './application/types/fulfillment-relay-reconcile-sweep.types';
+
 export { FulfillmentModule } from './fulfillment.module';
 
 export * from './fulfillment.tokens';

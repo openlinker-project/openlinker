@@ -493,6 +493,7 @@ export class SchedulerService implements OnModuleDestroy {
       this.registerInventoryProvenanceBackfillTask();
       this.registerReservationSweepTasks();
       this.registerFulfillmentTimeoutSweepTask();
+      this.registerFulfillmentRelaySweepTask();
       this.registerOrderHoldReconcileTask();
 
       // Drain plugin-contributed tasks — populated at `onModuleInit`, complete
@@ -1097,6 +1098,47 @@ export class SchedulerService implements OnModuleDestroy {
       generatePayload: () => ({ schemaVersion: 1 }),
       generateIdempotencyKey: (_connection, timestamp) =>
         `fulfillment:work:timeout-sweep:${timestamp}`,
+    });
+  }
+
+  /**
+   * Register the dispatch-relay reconcile sweep (#2728).
+   *
+   * Its own method beside the timeout sweep's, for that method's own stated
+   * reason: coupling a task's REGISTRATION to a foreign concern's flag is how
+   * switching one thing off silently switches another off.
+   *
+   * Global scope under the nil-UUID system connection id. The frontier joins
+   * `fulfillment_progress_claims` and carries no connection axis, and a work whose
+   * source was never told it shipped is unrelayed whoever holds it.
+   *
+   * **Default ON**, and safe to be. It writes no OL row of its own; what it does is
+   * re-enter a relay OL already decided to send, through the SAME
+   * `claimDispatchRelay` an ordinary progress event would take, so the worst a
+   * spurious run can do is answer `already-relayed`. It is also INERT on every
+   * install today: `IFulfillmentProgressService.record` has no production caller,
+   * so no `shipped` progress claim exists and the frontier returns nothing. What it
+   * replaces is a marketplace that silently never learns an order shipped.
+   *
+   * Hourly at `50 * * * *`, offset from the timeout sweep's `35` for that task's own
+   * reason — both are system-scoped `bulk` passes and would otherwise contend for
+   * the same per-scope lane slot on the same minute. The cadence is the TICK, not a
+   * cycle: this pass has no cursor, so each tick takes the oldest page of whatever
+   * is still unrelayed.
+   */
+  private registerFulfillmentRelaySweepTask(): void {
+    const systemConnection = this.buildSystemConnection();
+
+    this.tasks.push({
+      taskId: 'fulfillment-relay-sweep',
+      jobType: 'fulfillment.work.relaySweep',
+      cronExpression: '50 * * * *',
+      enabledEnvVar: 'OL_FULFILLMENT_RELAY_SWEEP_ENABLED',
+      enabledDefault: true,
+      connectionFilter: () => Promise.resolve([systemConnection]),
+      generatePayload: () => ({ schemaVersion: 1 }),
+      generateIdempotencyKey: (_connection, timestamp) =>
+        `fulfillment:work:relay-sweep:${timestamp}`,
     });
   }
 

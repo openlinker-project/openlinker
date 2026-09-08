@@ -89,3 +89,12 @@ export const FULFILLMENT_ROUTER_RESOLVER_TOKEN = Symbol('FulfillmentRouterResolv
 export const FULFILLMENT_DISPATCH_TIMEOUT_SERVICE_TOKEN = Symbol(
   'IFulfillmentDispatchTimeoutService'
 );
+
+/**
+ * The #2728 dispatch-relay reconcile read. Its consumer is the WORKER's
+ * `fulfillment.work.relaySweep` handler, which composes it with the `orders`
+ * relay this context may not inject.
+ */
+export const FULFILLMENT_RELAY_RECONCILE_SERVICE_TOKEN = Symbol(
+  'IFulfillmentRelayReconcileService'
+);

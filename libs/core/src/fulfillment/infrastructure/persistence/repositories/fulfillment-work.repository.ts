@@ -78,6 +78,8 @@ import type {
   CreateFulfillmentWorkInput,
   FulfillmentWorkRepositoryPort,
   FulfillmentWorkTransaction,
+  ListUnrelayedShippedDispatchesInput,
+  UnrelayedShippedDispatch,
   ListTimedOutDispatchesInput,
   ParcelVerifiedCount,
   PlaceFulfillmentHoldInput,
@@ -116,6 +118,7 @@ import type {
   FulfillmentWork,
   FulfillmentWorkLine,
 } from '../../../domain/types/fulfillment-work.types';
+import { FulfillmentProgressClaimOrmEntity } from '../entities/fulfillment-progress-claim.orm-entity';
 import { FulfillmentWorkVerificationOrmEntity } from '../entities/fulfillment-work-verification.orm-entity';
 import { FulfillmentHoldOrmEntity } from '../entities/fulfillment-hold.orm-entity';
 import { FulfillmentWorkLineOrmEntity } from '../entities/fulfillment-work-line.orm-entity';
@@ -506,6 +509,69 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
       }));
     } catch (error) {
       throw new FulfillmentPersistenceError('listTimedOutDispatches', error);
+    }
+  }
+
+  async listUnrelayedShippedDispatches(
+    input: ListUnrelayedShippedDispatchesInput
+  ): Promise<UnrelayedShippedDispatch[]> {
+    try {
+      // Driven from the CLAIMS side deliberately. `dispatchRelayedAt IS NULL` is
+      // true of nearly every row on `fulfillment_works` (a work only acquires the
+      // stamp once it has shipped AND relayed), so it is not the selective
+      // predicate; `("claimedAt") WHERE "eventKind" = 'shipped'` is, and it is
+      // indexed for exactly this scan and its ordering.
+      //
+      // `getRawMany`, never `getMany`: the latter materialises entities and
+      // silently DROPS a raw `addSelect`, which would leave `shippedAt` undefined
+      // on every row (docs/lessons.md).
+      const rows = await this.works
+        .createQueryBuilder('work')
+        .innerJoin(
+          FulfillmentProgressClaimOrmEntity,
+          'claim',
+          'claim.workId = work.id AND claim.eventKind = :shippedKind'
+        )
+        // `alias.property` throughout, never raw-quoted SQL — the form the rest
+        // of this file uses (`countParcelVerifications`, `listWorks`), and the
+        // one TypeORM resolves through entity metadata rather than passing
+        // through verbatim.
+        .select('work.id', 'workId')
+        .addSelect('work.orderId', 'orderId')
+        .addSelect('claim.claimedAt', 'shippedAt')
+        .where('work.dispatchRelayedAt IS NULL')
+        .andWhere('claim.claimedAt < :shippedBefore')
+        .setParameters({
+          // A LITERAL, matched against a column deliberately left unconstrained
+          // `text`. An adapter that spells its kind differently therefore simply
+          // does not match — the fail-closed direction, since the cost is a relay
+          // this pass does not re-drive rather than a relay it wrongly re-drives.
+          shippedKind: 'shipped',
+          shippedBefore: input.shippedBefore,
+        })
+        .orderBy('claim.claimedAt', 'ASC')
+        // `limit`, not `take`: `take` plus a join makes TypeORM resolve every
+        // ORDER BY term back to column metadata through a distinct-id subquery
+        // (docs/lessons.md), which is neither needed nor wanted for a raw read.
+        .limit(input.limit)
+        .getRawMany<{ workId: string; orderId: string; shippedAt: Date }>();
+
+      // Dedupe keeping the FIRST occurrence, which the ASC ordering makes the
+      // oldest `shipped` claim — see the port for why the limit is applied to
+      // claim rows rather than to an aggregate.
+      const byWorkId = new Map<string, UnrelayedShippedDispatch>();
+      for (const row of rows) {
+        if (!byWorkId.has(row.workId)) {
+          byWorkId.set(row.workId, {
+            workId: row.workId,
+            orderId: row.orderId,
+            shippedAt: row.shippedAt,
+          });
+        }
+      }
+      return [...byWorkId.values()];
+    } catch (error) {
+      throw new FulfillmentPersistenceError('listUnrelayedShippedDispatches', error);
     }
   }
 

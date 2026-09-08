@@ -205,6 +205,15 @@ export const JobTypeValues = [
   // stalled dispatch is stalled whoever holds it.
   'fulfillment.work.timeoutSweep',
 
+  // The dispatch-relay reconcile sweep (#2728, ADR-054). Re-drives the lifecycle
+  // relay for a `FulfillmentWork` a holder reported SHIPPED whose
+  // `dispatchRelayedAt` never landed - through the UNCHANGED `claimDispatchRelay`,
+  // which stays the serialisation point against any concurrent progress-driven
+  // trigger. Releasing the progress claim instead would be the literal retry and
+  // is forbidden: that key is permanent memory (#2400). Global scope under the
+  // nil-UUID system connection id, like its timeout-sweep sibling.
+  'fulfillment.work.relaySweep',
+
   // Data Coverage currency-restatement driver (#2468, epic #2452 Phase 5).
   // Carries the run's scope + cursor in its payload; the connection it is
   // filed under is the scope's own connection when the operator narrowed to
