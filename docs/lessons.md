@@ -1397,3 +1397,41 @@ child rather than trusting the assignment.
 `lib.sh` that declares `${VAR:-...}` defaults at top level.
 
 **Source**: #2840 (weak-shop rate-limit gate).
+
+---
+
+## Verify a claim against the source that would carry it - a grep that came back empty is not evidence
+
+**Context**: a mixed-workload perf run (#2983, epic #2840) was commissioned with the framing
+that such a run is "the only run whose orders/hour figure an operator can apply to their own
+Tuesday", attributed to the epic. Before building on that framing I checked it, grepping all six
+`perf/openlinker-throughput/*.md` campaign documents for `mixed`, `soak`, `sustained`, `for
+hours`, `co-tenan`, `steady-state`, `queue depth` and `drain rate`. Two hits, neither relevant.
+I published a correction withdrawing the attribution.
+
+**Problem**: the sentence exists, verbatim, in **GitHub issue #2840's body** - a source I never
+searched. `gh issue view 2840` returns it at line 120, together with two obligations I had also
+therefore missed: that the run's composition is *"sweep crons ticking, plus an order ramp, plus
+stock churn"*, and that it must be *"flagged in its manifest as one inside which attribution is
+impossible"*. The grep was accurate; the inference from it was not. **An epic is an issue, and an
+issue's framing lives in its body** - so six repo files not containing a sentence says nothing
+about whether the epic said it. The withdrawal was more confidently wrong than the claim it
+corrected, because it was dressed as a verification.
+
+Note the mirror error this campaign has made repeatedly in the other direction: believing a
+figure because a PR comment or an earlier agent's paraphrase asserted it (ADR-050's `2.77x`
+attribution, F7's `32x` growth ratio, #2590's p95 ratios - all withdrawn). Both failures share
+one root: treating a *convenient* source as authoritative instead of the *owning* one.
+
+**Rule**: before asserting that a claim is unsupported, enumerate where it *would* live and check
+each - for a programme claim that means the epic and child issue bodies (`gh issue view N`), the
+ADRs, and the repo docs, not whichever of those is already open. State the scope actually
+searched, so a reader can see what was not. Silence from one source is grounds for widening the
+search, never for a withdrawal; a withdrawal needs positive evidence that the owning source does
+not carry it. This cuts both ways: an assertion in a comment is not evidence a figure is real
+either - read the source that owns it.
+
+**Applies to**: any correction, withdrawal or provenance claim in `perf/**/results-*.md`,
+`docs/architecture/adrs/**`, and PR or issue commentary that says a prior claim is unsupported.
+
+**Source**: #2983 (epic #2840, sustained mixed load).
