@@ -422,3 +422,355 @@ transport unverifiable in sandbox by construction".
 official "Authorization Errors" page lists. Session 2's community-thread reading (role-related 403s on
 `createSubscription`) does **not** apply here — `createSubscription` is precisely one of the operations that
 works.
+
+## SESSION 3b (2026-09-07) — F5 was checked against only ONE of two shipping-purchase APIs
+
+### 🔍 The gap: `shipping-api-model` is a SEPARATE API from `merchant-fulfillment-api-model`
+Enumerated all 53 API model directories in `amzn/selling-partner-api-models`. Session 1/2's F5 work read the
+**Merchant Fulfillment** use-case guide's availability table only. There is a second, independent
+label-purchasing API — **Amazon Shipping API v2** (`shipping-api-model/shippingV2.json`) — carrying
+`getRates`, `purchaseShipment`, `directPurchaseShipment`, `oneClickShipment`, `getTracking`,
+`getShipmentDocuments`, `cancelShipment`, `getAccessPoints`, `linkCarrierAccount`, `submitNdrFeedback`,
+`createClaim`. **11 of its 12 sandbox blocks are `dynamic`**, not static (only `getAdditionalInputs` is static)
+— which matters, because the dynamic sandbox routes to a real backend and therefore answers *country-specific*
+questions a static canned payload never could.
+Also enumerated for completeness: `easy-ship-model`, `delivery-by-amazon`, `external-fulfillment` — not tested.
+
+### ✅ VERIFIED LIVE, END TO END — you *can* buy a label through the API, and get the label bytes back
+Against the dynamic sandbox (`sandbox.sellingpartnerapi-eu`), seller-authorized token, GB domestic:
+1. `POST /shipping/v2/shipments/rates` -> **200**, `requestToken` + 2 rates
+   (`Amazon Shipping One Day` 4.01 GBP, `Amazon Shipping Two Day` 3 GBP), each with a `rateId`;
+2. `POST /shipping/v2/shipments` with that `{requestToken, rateId}` and
+   `requestedDocumentSpecification: {format: PNG, size 4x6 INCH, requestedDocumentTypes: [LABEL]}`
+   -> **200**, `shipmentId: amzn1.sid.97458981074956.100` plus `packageDocuments[].contents` carrying **real
+   base64 PNG label bytes** (verified `iVBORw0KGgo…` PNG magic).
+So the full rate->purchase->label flow is exercisable in sandbox. This is a *stronger* capability confirmation
+than anything F5 previously had, and it is the OL-relevant "buy shipping via API" question answered directly.
+
+### 🎯 F5 for POLAND — refused by a POSITIVE service-side answer, with a working control
+| shipTo/shipFrom country | `getRates` result |
+|---|---|
+| GB | ✅ 200, 2 rates + rateIds |
+| FR | ✅ 200, rates returned |
+| **PL** | ❌ 400 `There is no marketplaceId configured to AmazonShippingIdentifier = AmazonShipping_PL for the AmazonShipping` |
+| DE | ❌ 400, same shape (`AmazonShipping_DE`) |
+| US | ❌ 400, same shape (`AmazonShipping_US`) |
+
+**The GB/FR control is what makes this evidence rather than a shrug**: they prove the app is authorized for
+Shipping v2 and the dynamic sandbox is reachable, so the PL refusal is country-scoped and not an artefact of a
+misconfigured sandbox app. Amazon *names* the missing configuration (`AmazonShipping_PL`), which is a positive
+assertion of absence — materially better than Session 2's "Poland is absent from a docs availability table".
+
+### ⚠️ Do NOT generalise one shipping API's country list to the other
+Merchant Fulfillment's own table lists **DE and US** as available; Amazon Shipping v2 **refuses both**. The two
+programmes have different country coverage, so F5's conclusion must be stated per API. Net for the epic: PL is
+unavailable in **both**, but for independent reasons and via independent evidence — which is a stronger
+conclusion than either check alone, not a redundant one.
+
+### Consequence for OL (unchanged direction, firmer basis)
+A Polish Amazon seller cannot buy shipping through Amazon at all. Labels must come from OL's existing carrier
+adapters (InPost/DPD), with Amazon only receiving `confirmShipment` + the tracking number (F2, already ✅
+verified live in Session 1). Nothing in OL's shipping context needs an Amazon Buy-Shipping path for FR/DE/PL.
+**Not tested**: `directPurchaseShipment`, `oneClickShipment`, `getAccessPoints` (relevant to F7/O14 pickup
+points), `cancelShipment`, `easyShip`, `delivery-by-amazon`, `external-fulfillment`.
+
+### Related: MCF / Fulfillment Outbound — `createFulfillmentOrder` has NO sandbox block
+`fulfillment-outbound-api-model/fulfillmentOutbound_2020-07-01.json` carries 14 sandbox blocks overall, but
+**`createFulfillmentOrder` is not among them** — so ordering MCF fulfilment cannot be exercised in the static
+sandbox, the same class of model-level absence as `sendTestNotification` (Session 3). Untested beyond that.
+
+### And: there is NO buyer-side purchasing API in SP-API at all
+Across all 53 model directories there is no operation for placing an order *as a buyer* — SP-API is
+seller-side by construction. Amazon Business procurement integrations are a separate product, out of scope for
+#2881 and unrelated to anything OL does. Recorded so the question is not re-asked.
+
+## SESSION 3c (2026-09-07) — 🔧 CORRECTION to 3b: `channelType` is load-bearing, and the `AMAZON` path is a STUB
+
+Session 3b tested `channelDetails.channelType: "EXTERNAL"` only, and concluded "PL cannot buy shipping via
+API". That conclusion was **too strong** and is corrected here. Re-tested across both channel types, both
+directions, five countries, four currencies and four package weights.
+
+### A) `EXTERNAL` — the sandbox does a REAL, country-specific lookup, and `shipFrom` is what decides
+| shipFrom → shipTo | result |
+|---|---|
+| PL → PL | ❌ `AmazonShipping_PL` not configured |
+| PL → GB | ❌ `AmazonShipping_PL` (same — so it is NOT about the destination) |
+| PL → FR | ❌ `AmazonShipping_PL` |
+| **GB → PL** | ✅ **200**, 0 eligible rates (accepted, not refused) |
+| **FR → PL** | ✅ **200**, 0 eligible rates |
+| GB → US | ✅ 200, 0 rates |
+| US → GB | ❌ `AmazonShipping_US` |
+| DE → GB | ❌ `AmazonShipping_DE` |
+| GB → DE | ⚠️ `Cross-border compliance data is missing or invalid (D-720)` — a *different*, fixable error |
+| GB → GB | ✅ 2 rates (4.01 / 3.00 **GBP**) |
+| FR → FR | ✅ 1 rate (7.23 **EUR**) |
+
+Two conclusions. **`shipFrom` (the seller's country) drives the `AmazonShipping_XX` identifier** — so a PL
+*seller* is cut off, while **shipping TO Poland from a supported seller country is accepted**. Session 3b never
+tested the reverse direction and would have got this wrong. And **the EXTERNAL path is demonstrably not
+canned**: rates differ by country *and* currency (GB in GBP, FR in EUR, different prices), refusals name the
+specific missing config, and cross-border produces its own distinct compliance error. Currency is irrelevant —
+PL refused identically under PLN/EUR/USD/GBP.
+
+### B) 🚨 `AMAZON` channel — STUBBED in the sandbox, so it proves NOTHING about PL
+With `channelDetails: {channelType:"AMAZON", amazonOrderDetails:{orderId:"902-1845936-5435065"}}`:
+- **PL, DE, US, GB, JP — and the non-existent country code `XX` — all return HTTP 200 with the identical three
+  rates**: 4.76 GBP One-Day Tracked, 3.72 GBP Two-Day Tracked, 3.72 GBP Standard Tracked. Always GBP,
+  regardless of country or currency.
+- **Weight-invariant**: 0.5 / 1 / 5 / 20 kg all return the same three prices.
+- **`purchaseShipment` SUCCEEDS for `XX`**: HTTP 200, `shipmentId amzn1.sid.00032328622983.101`, a valid PNG
+  label of **168 008 bytes — byte-identically sized to the PL one** (`amzn1.sid.01007142850035.101`).
+  (Note: the purchase needs `requestedDocumentSpecification.dpi` ∈ {300, 203}; omitting it answers
+  `400 "Amazon Shipping doesn't support requested DPI null"`, which is a parameter fault, not a country one.)
+
+Buying a label for a country that does not exist is conclusive: this path performs **no marketplace-config
+lookup and no country validation at all**. So the PL "success" on this channel is an artefact of the stub, and
+is evidence of nothing — neither for nor against PL working in production.
+
+### C) Why this makes F5 MORE open, not less
+The `AMAZON` channel is exactly the case OL would use — buying a label for a real Amazon order. `EXTERNAL` is
+for off-Amazon orders. So the well-evidenced PL refusal covers the channel OL needs *least*, and the channel it
+needs *most* is **unverifiable in the sandbox and requires a live account**. Session 3b's "PL unavailable in
+both APIs" is accurate only for `EXTERNAL` + the Merchant Fulfillment docs table, and **must not be quoted as
+covering Amazon-order label purchase**.
+Direction for OL is unchanged (plan on InPost/DPD labels + `confirmShipment`, F2 ✅ verified), but the basis is
+weaker than 3b implied and should not be recorded as settled.
+
+### Methodological note worth keeping
+A dynamic-sandbox 200 is not evidence on its own. The cheap discriminator that caught this: **send an input
+that cannot possibly be valid** (a bogus country code) and see whether the response changes. Two other
+tell-tales agreed — invariance to a parameter that must affect the answer (weight → price), and a response
+currency that ignores the request. Apply the same probe before trusting any other dynamic-sandbox result in
+this spike; the static-sandbox findings are unaffected, since canned responses are declared as canned.
+
+## SESSION 4 (2026-09-08) — invoicing paths, returns via externalFulfillment, getOrder v2026 correction
+
+Driven by a direct question: "does status change / invoice data / returns work, and is it sandbox-tested."
+Everything below is a live call from this session; no inference from docs alone is presented as a result.
+
+### getOrder v2026-01-01 — WORKS, corrects Evidence #6's scope
+Tested all 3 documented static test cases with exact model parameters, host NA:
+```
+GET /orders/2026-01-01/orders/171-9876543-2109876?includedData=BUYER,RECIPIENT,PROCEEDS,EXPENSE,PROMOTION,CANCELLATION,FULFILLMENT,PACKAGES
+  -> 200, full BR/PRIME payload
+GET /orders/2026-01-01/orders/028-1234567-8901234?includedData=BUYER,RECIPIENT,PROCEEDS,FULFILLMENT,TAX
+  -> 200, tax.taxRegistrations[0].taxRegistrationNumber = "TR1234567890"
+GET /orders/2026-01-01/orders/114-9876543-1234567?includedData=RECIPIENT,PROCEEDS,FULFILLMENT
+  -> 200, IN_STORE_PICK_UP program
+GET /orders/2026-01-01/orders/TEST_CASE_400 -> 400 (negative case, as documented)
+```
+`searchOrders` (the enumeration operation) is still broken per Evidence #6 — this is a DIFFERENT operation on
+the same API version. Evidence #6 must be read as scoped to `searchOrders` only.
+
+### invoices-api-model (2024-06-19) — all 4 operations live-tested, BR-only sandbox coverage
+```
+GET  /tax/invoices/2024-06-19/attributes?marketplaceId=A2Q3Y263D00KWC -> 200, invoiceStatusOptions populated,
+     invoiceTypeOptions=[] (empty even for the one supported marketplace)
+GET  same, no marketplaceId -> 400 "Missing required parameter"
+GET  same, marketplaceId=A1PA6795UKMFR9 (FR) / APJ6JRA9NG5V4 (DE) / A13V1IB3VIYZZH (PL, guessed) ->
+     all 400 "Missing required parameter: 'marketplaceId'" -- i.e. the static sandbox has NO fixture for any
+     non-BR marketplaceId, so it neither confirms nor denies FR/DE/PL support for this API.
+POST /tax/invoices/2024-06-19/governmentInvoiceRequests (exact BR fixture body) -> 204
+GET  /tax/invoices/2024-06-19/governmentInvoiceRequests (matching query params) ->
+     200 {"invoiceExternalDocumentId":"35230948404147000173550010000001961","status":"SUCCESS"}
+```
+`createGovernmentInvoice`'s body has NO content/document field — it is a request that AMAZON issue the
+document (government-authority-facing), confirmed by the schema's own field descriptions
+(`externalInvoiceId`: "typically the government agency that authorized the invoice";
+`govResponse`: "response message from the government authority"). This is the opposite direction from
+`UPLOAD_VAT_INVOICE` below.
+
+### UPLOAD_VAT_INVOICE via Feeds — undecidable in static sandbox, not confirmed working or broken
+```
+POST /feeds/2021-06-30/feeds  feedType: "POST_PRODUCT_DATA" (exact model fixture) -> 202 {"feedId":"3485934"}
+POST /feeds/2021-06-30/feeds  feedType: "UPLOAD_VAT_INVOICE" (same body, only feedType swapped) ->
+     400 "Could not match input arguments"
+```
+`feedType` is an unconstrained `string` in the OpenAPI model (no enum), and grepping the ENTIRE
+selling-partner-api-models repo for `UPLOAD_VAT_INVOICE` returns zero hits — it is a feed type documented in
+prose (developer-docs "Create and Upload Invoices") but not present anywhere in the machine-readable model.
+The control call proves the createFeed mechanism itself works; the 400 on the VAT-invoice type is therefore a
+missing STATIC FIXTURE, not a rejection of the feature. This must be tested on a live account to know anything.
+
+### externalFulfillment invoice generation — separate from both of the above
+```
+POST /externalFulfillment/2024-09-11/shipments/TEST_CASE_200_FBA_SHIPMENT_ID/invoice (no body needed) ->
+     200 {"document":{"format":"PDF","content":"<base64 PNG-looking bytes, actually a PDF>"}}
+GET  same path -> 200, same shape (retrieve)
+```
+Third invoicing path, scoped to the External Fulfillment program specifically.
+
+### externalFulfillment RETURNS — confirmed working, closes a documentation gap
+This document previously had NO entry for `externalFulfillment/returns` at all — only Merchant Fulfillment and
+Shipping v1/v2 were covered under "returns/shipping". Live-tested:
+```
+GET /externalFulfillment/2024-09-11/returns?rmaId=rmaIdOneShipmentOneItemOneQty200 ->
+     200, {"returns":[{"returnReason":"Missed","status":"CREATED","numberOfUnits":1,
+       "returnShippingInfo":{"forwardTrackingInfo":..., "reverseTrackingInfo":...}}]}
+GET /externalFulfillment/2024-09-11/returns/rmaIdOneShipmentOneItemOneQty200 ->
+     200, same entity via getReturn, status "CARRIER_NOTIFIED_TO_PICK_UP_FROM_CUSTOMER"
+```
+Error-injection ids all live-tested:
+```
+rmaIdTest403 -> 403 Forbidden
+rmaIdTest409 -> 409 DuplicateRequest
+rmaIdTest429 -> 429 QuotaExceeded          <- only 429 reachable anywhere in this whole sandbox exploration
+rmaIdTest500 -> 500 InternalFailure
+rmaIdTest503 -> 500 InternalFailure         <- NOTE: model names this fixture "test503" but it answers 500, not 503
+```
+Sample data carries `channelName: "FBA"`, marketplace `AMAZON_US`/`AMAZON_IN` — whether an ordinary 3P seller
+on FR/DE/PL has access to this program AT ALL is **not established** by anything tested this session.
+Refund/write-side operations were not re-tested; Evidence #28's NOT SUPPORTED finding stands unchanged.
+
+### Net effect on prior conclusions
+- Evidence #6 (SPIKE doc) is corrected — narrowed from "the v2026-01-01 sandbox" to "the searchOrders operation".
+- The invoicing story (D1/D3 in the original issue) had three concrete, testable paths this session identifies
+  for the first time; none previously appeared in either doc.
+- Returns now has a confirmed-working sandbox path, previously undocumented in this repo's research.
+
+## SESSION 5 (2026-09-08) — closing out the "untouched" list: S1/S4/S11, R3, T6/F1/D2 formalized
+
+Driven by "27 untouched — go check them." Picked the sandbox-testable subset; policy-only items (X3/X5/X6/X7)
+and stateful-by-nature items (P7 image upload, P13 destructive-PUT semantics) are named separately below as
+genuinely out of reach for a static (canned-response) sandbox, not skipped for lack of trying.
+
+### S1/S4 — quantity and price write, both confirmed live
+```
+PATCH /listings/2021-08-01/items/A2TEST123/TEST-SKU-1?marketplaceIds=ATVPDKIKX0DER
+  patches:[{op:"merge", path:"/attributes/fulfillment_availability", value:[{fulfillment_channel_code:"DEFAULT", quantity:42, marketplace_id:"ATVPDKIKX0DER"}]}]
+  -> 200 {"status":"ACCEPTED", "issues":[]}
+PATCH same path
+  patches:[{op:"merge", path:"/attributes/purchasable_offer", value:[{marketplace_id:"ATVPDKIKX0DER", our_price:[{schedule:[{value_with_tax:29.99}]}]}]}]
+  -> 200 {"status":"ACCEPTED", "issues":[]}
+```
+Control: PATCH with sku=BadSKU -> 400 (matches the model's own negative fixture), confirming the sandbox is
+genuinely pattern-matching rather than accepting anything.
+
+### S11 — auto-match by SKU confirmed live; by EAN/GTIN/UPC undecidable
+```
+GET /listings/2021-08-01/items/SellerId?identifiersType=SKU&identifiers=GM-ZDPI-9B4E,HW-ZDPI-9B4E,TC-ZDPI-9B4E&marketplaceIds=ATVPDKIKX0DER,A2EUQ1WTGCTBG2&includedData=summaries,offers,fulfillmentAvailability,issues&pageSize=1
+  -> 200, numberOfResults:3, full item summaries/offers/fulfillmentAvailability
+GET same endpoint, identifiersType=EAN&identifiers=1234567890123 (a syntactically valid EAN)
+  -> 400 "Could not match input arguments"
+```
+`identifiersType` enum has 9 members (ASIN/EAN/FNSKU/GTIN/ISBN/JAN/MINSAN/SKU/UPC) — the parameter accepts the
+value at the schema level, but the static sandbox has a fixture only for SKU. Same shape as Evidence #39's
+`UPLOAD_VAT_INVOICE`: contract allows it, sandbox neither confirms nor denies it works. A live account is the
+only way to know if EAN/GTIN-based matching actually functions.
+
+### R3 — return status vocabulary, read from the model
+`Return.status` enum (`externalFulfillmentReturns_2024-09-11.json`), 15 values:
+`CREATED`, `CARRIER_NOTIFIED_TO_PICK_UP_FROM_CUSTOMER`, `CARRIER_OUT_FOR_PICK_UP_FROM_CUSTOMER`,
+`CUSTOMER_CANCELLED_PICK_UP`, `CUSTOMER_RESCHEDULED_PICK_UP`, `PICKED_FROM_CUSTOMER`, `IN_TRANSIT`,
+`OUT_FOR_DELIVERY`, `DELIVERED`, `REPLANNED`, `CUSTOMER_DROPPED_OFF`, `PARTIALLY_PROCESSED`, `PROCESSED`,
+`REJECTED`, `CANCELLED`. The two values Session 4 observed live (`CREATED`,
+`CARRIER_NOTIFIED_TO_PICK_UP_FROM_CUSTOMER`) are members of this exact list — cross-checked, not contradicted.
+Terminal candidates for a future `terminalRawStatuses` hint: `PROCESSED` / `REJECTED` / `CANCELLED`.
+
+### T6 / F1 / D2 — no new calls needed, already answered by evidence recorded under different story numbers
+- T6 (parameter restrictions): the `VALIDATION_PREVIEW` finding already on file (offer-creation section) IS
+  the answer — `issues[]` carries `code`/`message`/`severity`/`attributeNames`/`categories`/`enforcements`.
+- F1 (read fulfillment status): `getOrder` v2026-01-01's own `fulfillment.fulfillmentStatus` field
+  (`UNSHIPPED`/`SHIPPED`, observed live in Session 4) IS the answer — there is no separate operation.
+- D2 (buyer data sufficient to invoice): version-dependent, same split as O7. v0 = email+name only
+  (insufficient). v2026 = full tax registration + address, but ONLY when the source order actually carries a
+  business buyer (`buyerInvoicePreference: "BUSINESS"`) — a private-buyer order supplies neither version with
+  invoice-sufficient data.
+
+### Genuinely out of reach for THIS kind of sandbox — named, not silently dropped
+- **P7 (image upload) / P13 (does PUT drop omitted attributes)** — both require a stateful
+  write-then-read-back to answer, and the static sandbox returns a canned response per request pattern with no
+  persistence between calls. There is no PUT-then-GET loop that can prove or disprove either question here;
+  needs a live account.
+- **X3/X5/X6/X7 (compliance gate, v0 sunset date, multi-tenant quota, the SP-API fee saga)** — these are
+  policy/pricing facts stated in Amazon's documentation and account terms, not API behavior. No sandbox call
+  answers them; they are read-the-docs work, already partially done for the fee saga in the SPIKE doc's Open
+  risks section.
+
+### Updated tally after this session
+Have (sandbox-proven): 34. Confirmed absent: 10. Partial/undecidable-in-sandbox: 11 (adds EAN/GTIN matching).
+Genuinely untouched or out of static-sandbox reach: 20 (T8, S2/S9, P6/P8/P10/P11, F4/F7, D9, O4/O16, X3/X5/X6/X7,
+P7/P13 named as structurally out of reach above).
+
+## SESSION 6 (2026-09-08) — closing the remaining 14: S2/S9 confirmed, T5/P6/P8/P10 unified, P11/F4 demonstrated undecidable
+
+Driven directly by "if 14 are testable, test all of them." All calls below are live against
+`sandbox.sellingpartnerapi-na.amazon.com` unless noted.
+
+### S2, S9 — confirmed, and they are NOT new operations
+```
+POST /feeds/2021-06-30/feeds  feedType:"POST_PRODUCT_DATA" -> 202 {"feedId":"3485934"}   (= S2, same as P1/P4)
+PATCH .../fulfillment_availability  quantity:5 -> 200 ACCEPTED                           (= S9, same as S1)
+```
+
+### T5/P6/P8/P10 — one root cause, PROVEN not inferred
+```
+GET /definitions/2020-09-01/productTypes/LUGGAGE?marketplaceIds=ATVPDKIKX0DER -> 200
+  schema.link.resource = "https://schema-url"   <- not a real host
+GET https://schema-url -> HTTP:000, no DNS resolution at all
+```
+This is a fixture placeholder, confirmed by attempting to actually fetch it. The static sandbox literally never
+returns real JSON Schema content for ANY product type — this forecloses T5 (conditionals), P6 (description
+grammar), P8 (variation/parentageLevel), P10 (GPSR fields) simultaneously, since all four need schema CONTENT
+the sandbox structurally cannot deliver, not just a link to it.
+
+### P11, F4 — demonstrated undecidable (not merely assumed), same class as P7/P13
+```
+PUT .../DUP-SKU-1  item_name:"Test A" -> 200 {"sku":"GM-ZDPI-9B4E", "status":"ACCEPTED", ...}
+PUT .../DUP-SKU-1  item_name:"Test B" (same SKU, different content) -> 200, BYTE-IDENTICAL response
+```
+Proves the sandbox pattern-matches request SHAPE and ignores CONTENT — cannot tell upsert from
+reject-as-duplicate.
+```
+POST /orders/v0/orders/902-1106328-1059050/shipmentConfirmation
+  packageReferenceId:"1", trackingNumber:"112345678" (exact model fixture) -> 204
+POST same endpoint, same packageReferenceId:"1", trackingNumber:"999999999" (only this changed) ->
+  400 "Could not match input arguments"
+```
+No fixture exists for "same reference, different tracking" — cannot confirm the issue's own cited claim that
+Amazon treats a re-submitted `packageReferenceId` as an edit rather than a duplicate.
+
+### T8, D9, O4, O16 — answered from evidence already on file, no new call needed
+- T8: moot — T1 already confirms no category tree exists, so a taxonomy identity string format is a
+  non-decision with nothing to project onto.
+- D9: every order sample this session carries a real `currencyCode` (BRL/TRY/USD) — sufficient for ADR-040's
+  stamp, which needs only the order's own currency + a placement time.
+- O4: follows directly from C13 (no webhook, delivery unverifiable in sandbox) — no new evidence changes this.
+- O16: the cited rate numbers are documented facts, not sandbox-observable; the sandbox's OWN throttle (5rps/15
+  burst) is a different, unrelated number.
+
+### Only ONE item from the original 14 remains genuinely untouched
+**F7** (source options discovery / `listOrderStatuses`, `listDeliveryMethods`, `listPaymentMethods` for
+Amazon-as-source) — not attempted this session, no evidence either way.
+
+### Final tally after Sessions 3-6
+Have (sandbox-proven or evidence-derived): 40. Confirmed absent: 10. Structurally undecidable in THIS sandbox
+(schema never resolves, or needs write-then-observe with no state): 13 (EAN/GTIN search, UPLOAD_VAT_INVOICE,
+non-BR invoice marketplaceId, F5 Amazon-channel stub, T5/P6/P8/P10 schema-link, P7/P11/P13/F4 state-needed).
+Genuinely untouched: F7, plus the 4 policy-only items (X3/X5/X6/X7) that are read-the-docs work, not sandbox
+work.
+
+## SESSION 7 (2026-09-08) — F7 closed: no discovery operation, values are baked-in enums
+
+Last remaining sandbox-adjacent question from the original 14. Read directly from the Orders v0 model.
+
+```
+All 9 operations in ordersV0.json enumerated:
+  getOrders, getOrder, getOrderBuyerInfo, getOrderAddress, getOrderItems, getOrderItemsBuyerInfo,
+  updateShipmentStatus, getOrderRegulatedInfo, updateVerificationStatus, confirmShipment
+-> none is a listOrderStatuses/listDeliveryMethods/listPaymentMethods equivalent
+```
+The vocabulary itself is present, just not behind an API call — it's declared as closed enums in the model:
+```
+ShipmentStatus enum: ["ReadyForPickup","PickedUp","RefusedPickup"]
+VerificationStatus enum: ["Pending","Approved","Rejected","Expired","Cancelled"]
+```
+Conclusion: this is a platform characteristic, not a sandbox gap — no live account would ever reveal a
+discovery endpoint that doesn't exist. `SourceOptionsReader`'s answer for Amazon is "read the enum from the
+model at build time," not "call an operation." No further action needed; nothing here can be tested further.
+
+### Final tally
+Have (sandbox-proven or evidence-derived): 41. Confirmed absent: 10. Structurally undecidable in this sandbox:
+13. Genuinely untouched — policy/account-terms facts with no corresponding API operation at all: X3
+(compliance review process), X5 (v0 deprecation date), X6 (multi-tenant quota policy), X7 (SP-API fee saga).
+Every sandbox-testable story from the issue's own checklist has now been run.
