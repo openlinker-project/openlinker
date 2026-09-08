@@ -17,8 +17,14 @@
  * Precedence:
  *   1. Explicit `config.baseUrl` - a legacy override, honoured for backward
  *      compatibility with connections created before the environment select
- *      existed. Trimmed, and required to be https (see
- *      {@link isAllowedInfaktBaseUrl}).
+ *      existed. Trimmed, required to be https (see
+ *      {@link isAllowedInfaktBaseUrl}), and normalized to always carry the
+ *      `/api/v3` suffix (#2176) - an override supplied without it (e.g. the
+ *      README's own historical example, `https://api.infakt.pl`) would
+ *      otherwise build a URL that 404s / redirects to a garbage host, with
+ *      Node's `fetch` throwing a raw transport `TypeError` rather than an
+ *      `InfaktApiError`. Idempotent: an override that already ends in
+ *      `/api/v3` is left alone.
  *   2. `config.environment === 'sandbox'` - the neutral choice both FE forms
  *      persist today.
  *   3. `INFAKT_DEFAULT_BASE_URL` (production) - the default when neither is
@@ -62,6 +68,22 @@ export function isAllowedInfaktBaseUrl(value: string): boolean {
   return url.protocol === 'https:';
 }
 
+const INFAKT_API_VERSION_PATH = '/api/v3';
+
+/**
+ * Normalizes a legacy `config.baseUrl` override so it always carries the
+ * `/api/v3` suffix (#2176) - appending it only when not already present, so a
+ * caller who already includes it never gets a doubled `/api/v3/api/v3`. Any
+ * trailing slash is stripped first so the suffix is never joined with a
+ * doubled slash.
+ */
+function normalizeInfaktBaseUrl(value: string): string {
+  const withoutTrailingSlash = value.replace(/\/+$/, '');
+  return withoutTrailingSlash.endsWith(INFAKT_API_VERSION_PATH)
+    ? withoutTrailingSlash
+    : `${withoutTrailingSlash}${INFAKT_API_VERSION_PATH}`;
+}
+
 /**
  * Resolve the base URL for one connection. `connectionId` is optional so pure
  * precedence tests stay terse; both production call sites pass it so the
@@ -86,7 +108,9 @@ export function resolveInfaktBaseUrl(
         connectionId,
       );
     }
-    return override;
+    // #2176: normalize so an override supplied without `/api/v3` (the
+    // README's own historical example) still builds a working URL.
+    return normalizeInfaktBaseUrl(override);
   }
   return config.environment === 'sandbox' ? INFAKT_SANDBOX_BASE_URL : INFAKT_DEFAULT_BASE_URL;
 }

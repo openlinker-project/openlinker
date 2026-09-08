@@ -13,6 +13,7 @@
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
+import { Logger } from '@openlinker/shared/logging';
 import { InfaktConnectionTesterAdapter } from '../infakt-connection-tester.adapter';
 
 function connection(overrides: Partial<Connection> = {}): Connection {
@@ -99,6 +100,18 @@ describe('InfaktConnectionTesterAdapter', () => {
     expect(result.message).toBe('Infakt probe failed');
     expect(result.message).not.toContain('ECONNREFUSED');
     expect(result.message).not.toContain('secret-path');
+  });
+
+  it('should log the underlying transport error server-side while the returned message stays generic (#2176)', async () => {
+    const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    fetchMock.mockRejectedValue(new TypeError('fetch failed'));
+
+    const result = await tester.test(connection(), resolver);
+
+    expect(result.message).toBe('Infakt probe failed');
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('fetch failed'));
+
+    warnSpy.mockRestore();
   });
 
   it('should never surface InfaktApiError.responseBody in the result message', async () => {

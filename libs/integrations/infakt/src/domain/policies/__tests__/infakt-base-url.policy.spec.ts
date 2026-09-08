@@ -103,6 +103,32 @@ describe('resolveInfaktBaseUrl', () => {
   });
 });
 
+describe('resolveInfaktBaseUrl - /api/v3 normalization (#2176)', () => {
+  it('should append /api/v3 to an override that omits it', () => {
+    const config: InfaktConnectionConfig = { baseUrl: 'https://api.sandbox-infakt.pl' };
+
+    expect(resolveInfaktBaseUrl(config)).toBe('https://api.sandbox-infakt.pl/api/v3');
+  });
+
+  it('should not double-append /api/v3 to an override that already ends with it', () => {
+    const config: InfaktConnectionConfig = { baseUrl: 'https://api.sandbox-infakt.pl/api/v3' };
+
+    expect(resolveInfaktBaseUrl(config)).toBe('https://api.sandbox-infakt.pl/api/v3');
+  });
+
+  it('should strip a trailing slash before appending /api/v3', () => {
+    const config: InfaktConnectionConfig = { baseUrl: 'https://api.sandbox-infakt.pl/' };
+
+    expect(resolveInfaktBaseUrl(config)).toBe('https://api.sandbox-infakt.pl/api/v3');
+  });
+
+  it('should not double-append when the override ends with /api/v3 and a trailing slash', () => {
+    const config: InfaktConnectionConfig = { baseUrl: 'https://api.sandbox-infakt.pl/api/v3/' };
+
+    expect(resolveInfaktBaseUrl(config)).toBe('https://api.sandbox-infakt.pl/api/v3');
+  });
+});
+
 describe('isAllowedInfaktBaseUrl', () => {
   it('should accept an https URL on any host', () => {
     expect(isAllowedInfaktBaseUrl('https://api.infakt.pl/api/v3')).toBe(true);
