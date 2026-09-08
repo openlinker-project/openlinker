@@ -505,7 +505,72 @@ the window, and the baseline's authoritative count was 1454.
 
 ## 6. What this did not establish
 
-TBD.
+### 6.1 The 5.39x is a SERVICE-TIME measurement. The 1 197/h is not a measurement at all.
+
+These two numbers are the most consequential in the campaign and they have
+very different standing. Quoting them at the same confidence is the single
+easiest way to misuse this report.
+
+**Measured.** Per-order service time fell from **32 404 ms to 6 014 ms**, mean
+`lastAttemptDurationMs` over succeeded `marketplace.order.sync`, n=602 against
+n=223, same query, same statistic, same window boundaries. And it is not fast
+failures: **262 of 263** arm B orders carry a `syncedAt` for the destination
+under test, with `lab-prestashop` healthy throughout. That check was run
+*before* the number was believed, because a 5x jump is usually an artefact and
+the cheapest artefact is a job that succeeds without reaching anything.
+
+**Derived.** The **1 197 orders/h** ceiling is `2 slots x 3600 / 6.014 s` -
+**slot arithmetic over a measured service time, never an observed
+throughput.** Nothing in arms A or B put weight on it: both were offered
+3 600/h and both saturated, so the highest throughput either one *observed* is
+a lower bound on the ceiling, not the ceiling. **Arm C at 600/h is the first
+measurement that puts any weight on it**, and even a clean pass there
+constrains it only from below (600 sustained ⇒ ceiling ≥ 600). The figure that
+would establish it is a ramp to refusal, which no arm here performs.
+
+### 6.2 The co-tenancy hypothesis is unconfirmed, and the measurement that would settle it is named
+
+§ 2.5 records the miss plainly: **300-330 orders/h predicted, ~986/h
+measured** - out by a factor of four, in the conservative direction. The
+hypothesis is that the defect's cost scales with **co-tenancy**: the shared
+Redis client is what `RateLimitModule` builds the outbound limiter on, so 30
+ticking crons plus catalogue and inventory sweeps contend for it far harder
+than an isolated single-flow arm, which would make the isolated A/B's **+47% a
+floor rather than the result**.
+
+**That is a hypothesis and nothing here tests it.** What would settle it is a
+**per-arm limiter-wait measurement** - the time an outbound call spends
+waiting for a pace token, distributed, on the shared client versus the
+dedicated one, under identical co-tenancy. Neither arm carries it: the only
+limiter observable in this harness is the *degraded-mode log line count*,
+which says the limiter gave up, not how long callers waited before it did. A
+run that instruments the wait (or a histogram exported from
+`rate-limit.module.ts`) is the experiment; a fourth mixed-load arm is not.
+
+A campaign that records only its confirmed predictions is advertising rather
+than measuring, so the miss stays in § 2.5 at full size and this section names
+what would close it.
+
+### 6.3 Everything else this run does not answer
+
+- **The composition #2840 asked for is still incomplete.** Arms A, B and C
+  carry sweep crons and an order ramp; **none carries stock churn**. Inherited
+  from arm A, which named the same gap.
+- **One replica.** Lane caps bound one worker *process*, so every figure here
+  multiplies by replica count in a real deployment and none of it is a
+  deployment-level statement.
+- **One destination shape.** The fault arm is timeout-shaped (`docker pause`);
+  an error-response-shaped fault is unmeasured here, as arm A also recorded.
+- **RSS coverage is asymmetric between arms.** Arm A's cgroup sampler started
+  by hand at ~t+2900s; arms B and C sample from window open (§ 1.5). Load is
+  unaffected; the comparison window is not the same length.
+- **No read-path cost at this history.** `order_records` grew by ~2 000 rows
+  across the three arms on a 2.0M-row table; nothing here measures operator
+  read latency against it.
+- **The service time is a mean over an attempt that succeeded.** It says
+  nothing about the tail an operator waits on when a retry ladder engages;
+  p95 is reported beside it precisely so the mean is not read as the whole
+  distribution.
 
 ## 7. Arm C: a window built to DRAIN - pre-registered before it opened
 
@@ -555,6 +620,36 @@ saying not to offer at the ceiling. 120/h over-delivers on "below the ceiling,
 not at it" rather than under-delivering on it, and it is robust to arm B's
 result in both directions: if the fix raised the ceiling, the headroom is
 wider still; if it did not, 40% is ample.
+
+#### 7.2.1 SUBSTITUTION: the rate was raised to 600 orders/h before the window opened
+
+**The design above is left standing rather than rewritten, because a changed
+design has to be legible as changed.** What follows replaced it, and why.
+
+The 120/h figure was sized against a **200.6/h** ceiling - the only one that
+existed when § 7.2 was written. Arm B then measured per-order service time at
+6.014 s (§ 2.1), which puts the slot-arithmetic ceiling at **~1 197/h**. The
+brief's own rule - below the ceiling with real headroom, around 25% - resolves
+against *that* number to roughly 900/h, so 120/h is no longer 40% headroom, it
+is **10% utilisation**.
+
+Three reasons the substitution was accepted:
+
+1. At 10% utilisation the window would measure service time **at almost no
+   contention**, which is the one condition the campaign already has plenty of
+   data for. It would answer an easier question than the one asked.
+2. **600/h is the harder test**, so a pass cannot be read as manufactured -
+   which matters more here than usual, because this arm exists to produce the
+   campaign's first `VALID` order-path figure and will be read sceptically.
+3. It is **the owner's own question** (500-600/h at peak) rather than a proxy
+   for it, so one window answers the convergence question and the capacity
+   question together.
+
+`MIXED_ORDERS_PER_MIN=10` = **600 orders/h**, 50% of the measured-service-time
+ceiling. Everything else in § 7.2 is unchanged, including no fault and the
+prime defaulting to the offered rate. **C1, C2 and C3 are unchanged** - they
+are rate-independent by construction, which is why raising the rate does not
+touch them.
 
 `MIXED_PRIME_ORDERS` defaults to the offered rate, so the stub is primed with
 **2** orders rather than 60 - no artificial starting backlog, which matters for
@@ -624,17 +719,111 @@ carrying a failed entry.** Nearly every order both succeeded on the
 destination under test and carried an unrelated second-destination failure.
 
 So this guard reports non-drainage for a condition that is not non-drainage
-and cannot be drained away, and it will do so at 120 orders/h just as at
+and cannot be drained away, and it will do so at 600 orders/h just as at
 3 600. **I will not disable the WooCommerce connection to make it pass** - that
 would change a held variable and hide the defect. If it fires, it is reported
 as a guard defect with this SQL as the evidence, in the same class as § 1.3.1's
 two instrument failures: a guard that refuses a healthy window is worse than no
 guard.
 
+#### 7.4(b).1 Measured: the unfiltered arm does not merely over-report, it HIDES the finding
+
+Four candidate definitions, run over arm A's own window
+(`createdAt` in [05:54:21Z, 08:54:23Z), declared destination
+`c4710417-…-prestashop`):
+
+| Definition | Count |
+|---|---|
+| A) `failed`, unfiltered - **what the guard does today** | **650** |
+| B) `failed`, scoped to the declared destination | **1** |
+| C) `missing`, unfiltered - **what the guard does today** | **729** |
+| D) `missing`, only where the destination was actually attempted | **1** |
+
+The decomposition by source explains all four:
+
+| source | ingested | `syncedAt` on declared dest | failed **on** dest | failed anywhere | `syncStatus` empty |
+|---|---|---|---|---|---|
+| `perf-webhook-ingress` | 726 | 0 | 0 | 0 | **726** |
+| `perf-allegro-a` | 652 | 649 | **1** | **650** | 2 |
+
+Two separate defects, and the first is worse than noise:
+
+- **The `failed` arm buries the one order that mattered.** Scoped to the
+  declared destination the count is **1** - and that one order is the
+  genuinely stranded order arm A's § 3.4 spent a whole section on. The guard
+  exists to surface exactly that, and it reported it as 650, indistinguishable
+  from 649 unrelated WooCommerce mapping failures. **An unfiltered count did
+  not just cry wolf; it hid the wolf.**
+- **The `missing` arm counts orders the destination was never sent.** 726 of
+  its 729 are `perf-webhook-ingress` orders with an **empty** `syncStatus` -
+  never dispatched anywhere, and nothing to do with the destination under
+  measurement. Only 3 belong to the measured source.
+
+**Both are repairable with the destination id the guard already receives** -
+definitions B and D need **no signature change**, which was the point of
+measuring them.
+
+#### 7.4(b).2 And the fix is deliberately NOT applied here
+
+Repairing the SQL now would change what `verdict.txt` means **between arms
+that are otherwise identical**. Parity across the three arms is the entire
+reason the A/B comparison carries weight; a guard whose definition moved
+mid-campaign costs more than the defect it repairs, because every earlier
+`DISCARDED` would then be incomparable with every later one.
+
+So: **the unfiltered `failed` arm remains a known, measured, unrepaired guard
+defect**, recorded here with the numbers above and the SQL in § 7.4(b). The
+fix belongs to a follow-up that **re-runs all three arms or none** - it is a
+one-line predicate in `post_guard_destination_creates`
+(`lib.sh:1282-1300`) plus the `missing` arm's attempted-only clause, and it
+must land with fresh A/B/C windows rather than being retro-fitted to these.
+
+Note this makes the guard's own docblock claim - that it is *"the only guard
+that can see"* a swallowed per-destination failure - true only in principle
+today: it can see one, and then reports it at a magnitude that makes it
+invisible.
+
 ### 7.5 Results
 
 TBD.
 
-## 8. Reproducing it
+## 8. Two campaign figures this report must not repeat, and the one window that would fix them
+
+### 8.1 If you need an F3 webhook number, cite the 300/s arm - not 600/s
+
+An audit of **#2842** found that the published *"~600 requests per second"*
+webhook ceiling rests on three runs **today's guard chain would discard**:
+19.6% to 26.7% of iterations never dispatched, and k6 at 92-97% of its own VU
+ceiling - i.e. the generator, not the system, was the thing at its limit.
+Their `verdict.txt` files nonetheless still read `VALID`, and
+`results-F3-2026-09-06.md` still calls that figure *"the ceiling"*.
+
+The client-facing document has been corrected to **300/s, labelled "at
+least"**. **This report cites no F3 figure other than that one**, and neither
+should anything derived from it. The 600/s number is exactly the failure mode
+§ 1.3.1 is about, one flow over: a guard that could not refuse, so three runs
+passed and a number entered the product.
+
+### 8.2 The next window: one run closes three issues
+
+**#2842, #2931 and #2933 all block on the same single missing artefact:**
+
+> one clean F3 sweep past **1 000 req/s** at a VU ceiling high enough that
+> `post_guard_generator_saturated` stays quiet, plus a retro-note correcting
+> the `VALID x3` row.
+
+That is the highest-leverage measurement left in the campaign - three issues
+per window - and it is **not** started here: the stand is held by arm C until
+it closes, and starting it would forfeit the parity § 7.4(b).2 exists to
+protect.
+
+It also inherits the discipline this branch paid for: the VU ceiling has to be
+raised **until the generator guard goes quiet**, and quiet has to be
+demonstrated rather than assumed, because `post_guard_generator_saturated`
+staying silent is only meaningful if it has been shown able to fire on the
+same instrument. That is § 1.3.1's rule - verify a guard's output in **both**
+directions - applied before the run rather than after it.
+
+## 9. Reproducing it
 
 TBD.
