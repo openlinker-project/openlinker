@@ -620,7 +620,7 @@ mixed_phase_set() {
 }
 
 mixed_supp_header() {
-  printf 'ts,epoch,elapsed,phase,g_queued_due,g_queued_deferred,g_running,g_dead,ord_sync_queued,ord_sync_succeeded,ord_sync_dead,orders_ingested,pg_backends,pg_backends_active,pg_max_conn,limiter_degraded_delta,stub_backlog,mem_json,queue_by_type_json\n' > "$1"
+  printf 'ts,epoch,elapsed,phase,g_queued_due,g_queued_deferred,g_running,g_dead,ord_sync_queued,ord_sync_succeeded,ord_sync_dead,orders_ingested,pg_backends,pg_backends_active,pg_max_conn,limiter_degraded_delta,stub_backlog,src_queued_due,src_queued_deferred,mem_json,queue_by_type_json\n' > "$1"
 }
 
 # One sample. Every query is chosen to be servable by an existing index:
@@ -640,6 +640,19 @@ mixed_supp_sample() {
   gd="$(pg_sql "SELECT COUNT(*) FROM sync_jobs WHERE status='queued' AND \"nextRunAt\">NOW()" 2>/dev/null || printf -1)"
   gr="$(pg_sql "SELECT COUNT(*) FROM sync_jobs WHERE status='running'" 2>/dev/null || printf -1)"
   gdead="$(pg_sql "SELECT COUNT(*) FROM sync_jobs WHERE status='dead' AND \"createdAt\">='$ws_iso'" 2>/dev/null || printf -1)"
+
+  # SOURCE-SCOPED queue depth (#2840). The `g_` columns above are deliberately
+  # global - that is the whole-install view an operator sees - but they cannot
+  # answer "did the burst this window offered build a queue", because with the
+  # scheduler ON every other active connection's default-on tasks are also
+  # enqueueing. Measured on this stand: a 28-minute scheduler-on window
+  # drained a DIFFERENT connection's stub backlog into 396 retrying
+  # marketplace.order.sync rows, which would have swamped the burst signal
+  # entirely. Both views are recorded; the ramp's acceptance criteria are
+  # computed on the source-scoped pair.
+  local sqd sqf
+  sqd="$(pg_sql "SELECT COUNT(*) FROM sync_jobs WHERE \"connectionId\"='$ALLEGRO_A_CONNECTION_ID' AND status='queued' AND \"nextRunAt\"<=NOW()" 2>/dev/null || printf -1)"
+  sqf="$(pg_sql "SELECT COUNT(*) FROM sync_jobs WHERE \"connectionId\"='$ALLEGRO_A_CONNECTION_ID' AND status='queued' AND \"nextRunAt\">NOW()" 2>/dev/null || printf -1)"
 
   local osq oss osd
   osq="$(pg_sql "SELECT COUNT(*) FROM sync_jobs WHERE \"jobType\"='marketplace.order.sync' AND status='queued' AND \"createdAt\">='$ws_iso'" 2>/dev/null || printf -1)"
@@ -684,11 +697,12 @@ mixed_supp_sample() {
   # comma-splitting an unquoted JSON column into extra fields instead of
   # erroring - the internal escaping was right and the outer quote pair was
   # the missing half.
-  printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,"%s","%s"\n' \
+  printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,"%s","%s"\n' \
     "$(iso_now)" "$now" "$((now - ws_epoch))" "$phase" \
     "$gq" "$gd" "$gr" "$gdead" \
     "$osq" "$oss" "$osd" "$ing" \
     "$be" "$bea" "$mx" "$deg" "$backlog" \
+    "$sqd" "$sqf" \
     "$(printf '%s' "$mem" | sed 's/"/""/g')" \
     "$(printf '%s' "$bytype" | sed 's/"/""/g')" >> "$csv"
 }
