@@ -133,11 +133,101 @@ So the fix was verified by reading values back, three independent ways
 rebuild, and all three read-backs failed - each for its own distinct reason. A
 check that has never been observed to fail is not evidence.
 
-Results: TBD.
+**Results, against the running image** (`results/verify-fix-AFTER.txt`):
+
+```
+1. STRUCTURAL
+   worker image revision : 629921c5fe000f24dd66a02836a52a32ac58d877
+   working tree HEAD     : 629921c5fe000f24dd66a02836a52a32ac58d877
+   ok  apps/api  apps/worker  libs  Dockerfile  package.json
+       pnpm-lock.yaml  pnpm-workspace.yaml
+   ok  c0f366ee9 is an ancestor of the image's commit
+
+2. ARTEFACT
+   mentions of the deleted flag : 0        (pre-#2984 image: 3)
+   intake-client strings        : [client: DEDICATED]   (pre-#2984: both)
+
+3. BEHAVIOURAL
+   connections from the worker  : 3        (pre-#2984: 2)
+   by in-flight command         : 1 set, 2 xreadgroup
+   parked in xreadgroup         : 2 of 3   (pre-#2984: 2 of 2)
+```
+
+The third read-back is the most direct evidence the change does what it says:
+the extra connection is **not** in a blocking read, it is executing a `SET` -
+that is the shared client, no longer parked in the intake block and therefore
+available to the outbound rate limiter, which is the entire mechanism.
+
+`guard_build` independently agreed at the scenario's own pre-flight:
+`guard_build ok (image sha=629921c5f, tree HEAD=629921c5f, product paths
+identical)`.
+
+**And the running configuration is identical, not merely similar.** The
+worker's own `printenv`, taken inside both windows and sorted, differs in
+**exactly one variable**:
+
+```
+7c7
+< HOSTNAME=d48db2d997fe      (baseline)
+> HOSTNAME=32298b5ba289      (this run)
+```
+
+All 29 others match byte for byte - including `OL_JOB_INTAKE_DEDICATED_REDIS=`
+(still passed through by compose, still empty, now read by nothing), all eight
+`OL_LANE_*_CAP` unset so the code defaults apply, `OL_SCHEDULER_ENABLED=true`,
+`WORKER_RUNNER_ENABLED=true`, and the Redis host and port. The lane caps the
+runner then resolved are the same string in both:
+`realtime=4/2 bulk=12/8 fiscal=2/1 fan-out=8/4`.
+
+#### A note on the verifier itself, because it failed the wrong way first
+
+On its first run against the fixed image the verifier printed
+`VERDICT: FAILED` while every individual read-back was green. `grep -c` PRINTS
+its count and EXITS 1 when that count is zero, so the defensive
+`|| printf 0` fallback appended a second zero and the variable became
+`"0\n0"`, which compares unequal to `"0"`. A less careful reading would have
+concluded the image was wrong and rebuilt it.
+
+Two other instances of the same family were hit while setting this run up and
+are recorded here rather than quietly fixed. `exit=$?` after a
+`... | tee file` reports **tee's** status, not the script's - so the first
+failure looked like a pass on the line below it. And three background waiters
+built on `until ! pgrep -f 'docker build --target worker'` never terminated,
+because each matched **its own sibling waiter's command line**: the api image
+was never built at all while a poll reported `api build running? yes`. The
+campaign's standing lesson is to prove a counting guard can fail before
+trusting a zero; the same rule applies to a guard that reports a pass.
 
 ### 1.4 Dataset, and how it differs from the baseline's
 
-TBD.
+The baseline ran first, on the same stand, so its own window left the dataset
+slightly larger. Stated rather than assumed away:
+
+| Axis | Baseline at its window start | This run at its window start | Delta |
+|---|---|---|---|
+| `order_records` | 2 003 176 | 2 004 573 | +1 397 (+0.07%) |
+| `sync_jobs` rows | 140 772 | 143 512 | +2 740 (+1.9%) |
+| `sync_jobs` queued/running | 0 | 0 | - |
+| `products` / `product_variants` | 60 006 / 111 678 | 60 006 / 111 678 | unchanged |
+| PrestaShop catalogue | 50 006 active | 50 006 active | unchanged |
+| `pg_database_size` | 4 817.7 MB | 4 839 MB | +21 MB (+0.4%) |
+| Allegro offer mappings (`perf-allegro-a`) | 200 | 200 | unchanged |
+| Active connections | 5 | 5 | unchanged |
+
+The scenario's own teardown deletes only the `queued`/`running` rows it
+created *inside* its window, so the baseline's 13 070 unreached rows went and
+its 602 succeeded plus 352 dead rows stayed - which is the +2 740. Nothing
+here is large enough to move an orders/hour figure, and the catalogue the
+sweeps enumerate is byte-identical.
+
+**One leftover had to be cleared by hand, and it is the same one the baseline
+cleared.** Twelve `queued` rows (10 `marketplace.order.sync`, 2
+`marketplace.offerQuantity.reconcile`) carried `createdAt` of
+05:54:01-05:54:11 - i.e. *inside the baseline's 60 s settle, before* its
+window opened at 05:54:21Z - so its `createdAt >= WS_ISO` purge did not reach
+them and `guard_queue_empty` would have refused this run. They were deleted
+before the window. This run will leave its own equivalent handful behind for
+the same structural reason.
 
 ### 1.5 Memory is read from cgroups, not from `docker stats`
 
