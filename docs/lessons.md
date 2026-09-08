@@ -1511,3 +1511,36 @@ the time restriction explicitly rather than relying on when the analysis happene
 writing into a measurement's results directory on a shared host.
 
 **Source**: #2983 (sustained mixed load, epic #2840).
+
+## An `afterEach`-only harness reset is not isolation - the next file inherits your rows
+
+**Context**: #2986. `apps/api/test/integration` holds 127 int-specs sharing ONE Testcontainers
+Postgres at `maxWorkers: 1`. 118 of them called `resetTestHarness()` in `afterEach` only; six
+(`api-versioning`, `automation-dispatch-gate`, `bootstrap-admin-disabled`,
+`fulfillment-work-migration-parity`, `listings-offer-status-snapshot`,
+`oms-connection-never-seeded`) called it nowhere.
+
+**Problem**: an `afterEach` reset is a courtesy to the NEXT file, not isolation for the current
+one. A spec's FIRST test case reads whatever the previous file left behind, and this config
+declares no `testSequencer`, so which file that is is not stable between runs. PR #2957 measured
+the consequence: 41 assertions in `paginated-total-split.int-spec.ts` were green only because of a
+neighbour's rows, and were false in isolation. The failure mode is the worst available - the suite
+is green and the thing that is wrong is what "green" means, so nothing prompts anyone to look.
+
+**Rule**: put isolation in a `beforeEach`, because that is the only hook that makes a spec's
+assertions true independently of what ran before it. Register it ONCE in a `setupFilesAfterEnv`
+module so it cannot be skipped by omission; a per-file call depends on each new author remembering,
+which is the mechanism that produced the six. Keep an `afterEach` as well, so a spec that ever opts
+out of the `beforeEach` still cannot poison its neighbours. Cost is not a reason to skip either
+half: `truncateTables` probes for dirty tables first and issues no `TRUNCATE` at all when there are
+none, so a redundant reset costs one round-trip. Before making such a reset unconditional, check
+for suite-scoped fixtures seeded in `beforeAll` - a global `beforeEach` destroys those - and check
+that no teardown hook reads database state.
+
+**Applies to**: `apps/api/test/integration/**`, wired in `apps/api/test/jest-integration.cjs` via
+`setup-each.ts` and guarded by `harness-isolation.int-spec.ts`. **Not yet fixed for
+`apps/worker/test/integration/**`**, which has the same gap in five boot specs
+(`invoicing-auto-issue-boot`, `automation-emission-boot`, `automation-dispatch-boot`,
+`fulfillment-no-injection-boot`, `oms-module-boot`) and likewise declares no `setupFilesAfterEnv`.
+
+**Source**: #2986; reported in PR #2957 review rounds 5/6.
