@@ -53,7 +53,12 @@ rung() { # rung <rate> <preallocated> <maxvus>
   # expanded - which under `set -u` aborts the script. It did, on the first
   # launch, and cost nothing because it failed closed before taking the stand.
   local rate="$1" pre="$2" mx="$3"
-  local tag="r${rate}" rc=0
+  # Tag carries the INVOCATION, not the parameter value. `r${rate}` collided
+  # whenever two rungs shared a rate - the identical defect to
+  # write_dated_report's dated filename, rebuilt hours after documenting it,
+  # which cost rung 2's k6 memory CSV. A rule this easy to rebuild has to be
+  # enforced by the name, not remembered.
+  local tag="r${rate}-$(date +%s)" rc=0
   log "=== rung $rate/s  PRE_ALLOCATED_VUS=$pre  MAX_VUS=$mx ==="
 
   # guard_queue_empty is scoped to the F3 connection; drain install-wide so a
@@ -96,25 +101,29 @@ rung() { # rung <rate> <preallocated> <maxvus>
 }
 
 log "ladder start"
-# Rung 3 STEPS THE RATE DOWN, and the reason is what the first two rungs
-# established rather than a guess about them.
+# RUNG 6 - THE RESTART RUNG. Single variable against rung 5.
 #
-# At 1000/s offered, twice, the api met its schedule (dropped 0.5% then 0.33%)
-# and the MEDIAN was flat - 77ms then 71ms - while the tail doubled: p99
-# 1029ms -> 2635ms as the pool grew 900 -> 1782. Flat median with a growing
-# tail is queueing, not slowness: the api is running at ~rho 1 at 1000/s,
-# where throughput is met and waiting time is unstable in concurrency.
+# Four hypotheses are now dead, each by its own measurement:
+#   arrival rate  - rung 3 was SLOWER at 850/s than rung 2 at 1000/s
+#   VU pool       - rung 2 ran 1640 concurrent at 71ms; rung 3 ran 1500 at 1875ms
+#   autovacuum    - rung 4 disabled it and p50 got WORSE (1875 -> 3251ms)
+#   table size    - rung 5 truncated webhook_deliveries 485,112 -> 123 with
+#                   everything else held, and p50 moved 3251 -> 3214ms (1.1%
+#                   across a 3,944x change). And syncJobsRowsAtStart is
+#                   164,698 in the fast rung AND all three slow ones, so the
+#                   OTHER table in the gate transaction is eliminated too.
 #
-# What the two points do NOT establish is that adding VUs never converges:
-# utilisation moved 100.0% -> 92.0%, i.e. TOWARD the 90% limit, so a third
-# rung at 1000/s might well pass the guard. It is not run, because a figure
-# obtained by provisioning until a guard stops complaining is a fitted
-# parameter, and the tail it reports is a property of the provisioning.
+# The one axis that tracks the collapse is ORDER OF EXECUTION. No rung ran
+# against a fresh api: lab-api had been up 13 hours and absorbed ~700,000
+# requests across five rungs, with cgroup RSS at 781.5 MiB (503.8 MiB fresh).
 #
-# The informative question is the rate at which the tail STOPS growing. 850/s
-# is ~0.85 of the observed absorption. Provisioning is deliberately generous
-# (1200 pre-allocated, 1500 ceiling = ~1.85 GiB at the measured 1.26 MiB/VU,
-# against 7.5-9.2 GiB available) so that if the guard still fires it is the
-# system's tail talking and not the pool.
-rung 850 1200 1500
+# So: rung 5's exact configuration - 1000/s, pre=2200, max=2600, autovacuum
+# still off, table at ~117k - against a RESTARTED lab-api. Rate, pool,
+# provisioning, vacuum posture and table scale all held; only the api's age
+# differs.
+#   p50 ~= 70ms   => CUMULATIVE API STATE, and the later rungs were measuring
+#                    the instrument aging rather than the system
+#   p50 ~= 3200ms => that is eliminated too, and no hypothesis on this ladder
+#                    survives
+rung 1000 2200 2600
 log "ladder finished the scheduled rungs"
